@@ -224,8 +224,8 @@ written again by every build, is reported in the load report (`derived_prims_edi
 (`load.stage-changed`), as before. Profiles do not judge stage edits in dev1 (exploratory and research report a
 derived prims' edit alike); a1's `strict` may refuse the first too, at that seam (`stage_change_refusals`).
 
-Since phase 7l-a the saved form is its second version, as the document's and the lock's schemas say. The document holds the
-`profile`, `sources` (each `exp.source`), a quantity's reason beside its value (`{value, unit, reason}`), and a reason
+Since phase 7l-a the saved form has been in its second version (the third is below), as the document's and the lock's
+schemas say. The document holds the `profile`, `sources` (each `exp.source`), a quantity's reason beside its value (`{value, unit, reason}`), and a reason
 keyed by its kind (a text as it is, `{pending: true}`, `{chosen: ...}`); gravity is absent where the experiment states
 none, standard by convention; a condition's and a nominal's reason are held beside them. The lock's resolved record
 holds `profile`, every part of it in a canonical order (by target, then code), so the order a script declares things
@@ -237,5 +237,13 @@ wrote the lock is MIME's own defect, refused as internal, never as the installed
 version loads (`_versions.py`): its document read with its profile as exploratory, the profile under which every
 build it held builds, and its input hash compared in its own form; the load report says the saved form's version and
 the profile it is read under.
+
+The saved form is in its third version since the drag's rung was renamed `mrs`: a rung's name is in the document and in
+the resolved record, the drag node's type is in the derived graph, and all three are hashed. The same version writes
+the possessive in the sources of declared values plainly (`body umr's mass`, where a quoted name had left `'umr''s`). A
+folder of the first or second version loads: its document is read as the current schema (a document that names the
+rung by its old name reads as naming `mrs`, and the load report says so), and the rebuilt experiment is written back
+into the version its lock was written in (`document_in_form`, `resolved_in_form`, `physics_in_form`) and hashed there,
+so an old lock is compared with the form it was hashed in. Saving it again writes the third.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

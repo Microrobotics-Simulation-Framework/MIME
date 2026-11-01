@@ -1,7 +1,7 @@
 """A steel sphere settling in still water, in free space: the smallest experiment with an answer to check.
 
 ``sphere_settling(radius)`` is the experiment; ``main()`` runs it and compares the settled speed with Stokes's law,
-``2/9 (rho_s - rho_f) g a^2 / mu``, which the boundary-element rung should reproduce for a sphere in free space. A
+``2/9 (rho_s - rho_f) g a^2 / mu``, which the MRS rung should reproduce for a sphere in free space. A
 sphere of 10 um radius settles at a Reynolds number inside the rung's declared range, so the comparison is a fair one;
 one of 50 um settles at 3.7, outside it: the run's result flags that, with the size of the inertia the rung leaves out.
 
@@ -42,7 +42,7 @@ def duration(radius_um: float = 10.0) -> Quantity:
 
 
 def sphere_settling(radius_um: float = 10.0, spacing_per_radius: float = 0.25, dt_ms: float | None = None) -> Experiment:
-    """The sphere of ``radius_um`` released from rest in water, its drag by the boundary-element rung with its samples
+    """The sphere of ``radius_um`` released from rest in water, its drag by the MRS rung with its samples
     ``spacing_per_radius`` of the radius apart, stepped every ``dt_ms``."""
     exp = Experiment("sphere_settling", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(GRAVITY),
                      dt=ms(STEP_MS * scale(radius_um) if dt_ms is None else dt_ms))
@@ -53,7 +53,7 @@ def sphere_settling(radius_um: float = 10.0, spacing_per_radius: float = 0.25, d
         position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(radius_um)))}))
     exp.declare("ball.parts.steel.density", kg_per_m3(STEEL), reason="steel")
-    exp.attach(Drag.BEM(spacing=um(radius_um * spacing_per_radius), blob=0.5), body=ball, medium=water)
+    exp.attach(Drag.MRS(spacing=um(radius_um * spacing_per_radius), blob=0.5), body=ball, medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
     exp.observe(SwimSpeed(ball, along=-Z, after=ms(SETTLED_MS * scale(radius_um))))
     return exp

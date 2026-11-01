@@ -26,7 +26,7 @@ queries unless ``--batches`` says otherwise; the forward read, ``jvp``, ``vjp``,
 
 The tables are synthetic: 16 knots per axis (uniform or graded) and a scalar value, or a 3 x 3 positive definite one
 for ``cholesky``; the wall table, 40 x 40 x 64 x 128 knots on the 0.2 grid's own knots (``references/port_table.npz``)
-with a 3 x 3 value, its values a ``ShapeDtypeStruct``, never allocated; and the BEM's form, every pair of 64 or 3,100
+with a 3 x 3 value, its values a ``ShapeDtypeStruct``, never allocated; and the MRS's form, every pair of 64 or 3,100
 points, the radii a column and a row. Stored polynomials are profiled on one to three axes, and on four linear ones.
 ``--port`` profiles the 0.2 lookup the same way on the wall table, in the port's environment
 (``table_budget.baseline_lookup``), importing nothing of MIME's: its float32 lookup without x64, as it ran."""

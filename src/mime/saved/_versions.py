@@ -1,66 +1,180 @@
-"""The saved form before phase 7l-a (``mime.document/1``, ``mime.lock/1``), read under the current schema and held to
-its own lock.
+"""The saved form before version 3, read under the current schema and held to its own lock.
 
-A previous document gains what version 2 adds, with the values a build before profiles had: no setting's source given
-apart from its value, and the profile **exploratory**. That is the profile it was built under in the sense that
-matters for loading it: exploratory accepts every build version 1 accepted (version 1 had no pending reason, and
-exploratory's other rules only waive what research would ask for, never refuse more), while research would refuse a
-version 1 build that relied on a default MIME now classes as numerical (an arm tracker's tuned gains). Its outputs then
-carry the stamp of whatever is pending, which for a version 1 document is only those numerical defaults, and ``mime
-pending`` lists what sealing it needs.
+**Version 1** (``mime.document/1``, ``mime.lock/1``) is the form before phase 7l-a. A document of it gains what version
+2 added, with the values a build before profiles had: no setting's source given apart from its value, and the profile
+**exploratory**. That is the profile it was built under in the sense that matters for loading it: exploratory accepts
+every build version 1 accepted (version 1 had no pending reason, and exploratory's other rules only waive what research
+would ask for, never refuse more), while research would refuse a version 1 build that relied on a default MIME now
+classes as numerical (an arm tracker's tuned gains). Its outputs then carry the stamp of whatever is pending, which for
+a version 1 document is only those numerical defaults, and ``mime pending`` lists what sealing it needs.
 
-A previous lock's input hash was taken over the previous document and resolved record, so a load compares the rebuilt
-experiment in the previous form: the keys version 2 added taken off both, which a document read from version 1 holds
-at those values. Its schema check is the current one, run on the upgraded form, so the two cannot drift apart."""
+**Version 2** (``mime.document/2``, ``mime.lock/2``) is the form before the drag's rung ``bem`` was renamed ``mrs``
+(the method is the method of regularised Stokeslets, not a boundary-element method). Version 3 changes three things a
+hash saw: the rung's name in the document and in the resolved record, the drag node's type in the derived graph
+(``BEMDragNode``, now ``MRSDragNode``), and the possessive in the sources of the values declared in the experiment,
+which a message built from a quoted name had written ``body 'umr''s`` (now ``body umr's``). A version 2 document that
+names ``bem`` is read as naming ``mrs``, and the load says so.
+
+A previous lock's input hash was taken over the previous document and resolved record, and its derived hash over the
+previous derived graph, so a load compares the rebuilt experiment in the previous form: the rebuilt document, resolved
+record and derived graph are written back into the form the lock was written in (the keys version 2 added taken off for
+version 1; the rung, the node type and the possessive written as version 2 wrote them) and hashed there. Its schema
+check is the current one, run on the upgraded form, so the two cannot drift apart. A version 2 source whose name is not
+an identifier (a material named with spaces or quotes) was quoted differently, and is not written back: such a
+document's input hash is refused, and saving it again from the script writes version 3."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any, cast
 
-from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA, PREVIOUS_DOCUMENT_SCHEMA, PREVIOUS_LOCK_SCHEMA
+from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
-#: The profile a previous document is read under, and the keys version 2 added, with the values a previous form holds.
+#: The saved form this MIME writes.
+CURRENT = 3
+DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", CURRENT: DOCUMENT_SCHEMA}
+LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", CURRENT: LOCK_SCHEMA}
+
+#: The profile a version 1 document is read under, and the keys version 2 added, with the values a version 1 form holds.
 PREVIOUS_PROFILE = "exploratory"
 _DOCUMENT_ADDED: Mapping[str, object] = {"profile": PREVIOUS_PROFILE, "sources": {}}
 _RESOLVED_ADDED = "profile"
 _PREVIOUS_RESOLVED_PROFILE: Mapping[str, object] = {"profile": PREVIOUS_PROFILE, "pending": [], "waivers": [],
                                                     "defaults": {}, "sources": {}, "listed": [], "changes": {}}
 
-
-def upgraded_document(data: object) -> tuple[object, bool]:
-    """``data`` as the current schema reads it, and whether it was a previous document. A previous one that holds a
-    key version 2 added is left as it is, for the schema check to refuse."""
-    if not isinstance(data, dict) or cast(dict[str, object], data).get("schema") != PREVIOUS_DOCUMENT_SCHEMA:
-        return cast(object, data), False
-    held = dict(cast(dict[str, object], data))
-    if any(key in held for key in _DOCUMENT_ADDED):
-        return held, True
-    return {**held, "schema": DOCUMENT_SCHEMA, **_DOCUMENT_ADDED}, True
+#: The rung of the drag as version 2 and earlier named it, and as version 3 names it; the drag node's type likewise.
+OLD_RUNG, NEW_RUNG = "bem", "mrs"
+OLD_NODE, NEW_NODE = "BEMDragNode", "MRSDragNode"
+_DRAG = "drag"
+#: ``body umr's`` as version 3 writes a possessive in a value's source, and ``body 'umr''s`` as version 2 wrote it. Only
+#: a name that is an identifier is written back: ``repr`` quotes any other name differently.
+_PLAIN_POSSESSIVE = re.compile(r"\b(body|material) ([A-Za-z_][A-Za-z0-9_]*)'s\b")
 
 
-def upgraded_lock(data: object) -> tuple[object, bool]:
-    """``data`` as the current schema reads it, and whether it was a previous lock."""
-    if not isinstance(data, dict) or cast(dict[str, object], data).get("schema") != PREVIOUS_LOCK_SCHEMA:
-        return cast(object, data), False
-    held = dict(cast(dict[str, object], data))
+def version_of(schema: object, schemas: Mapping[int, str]) -> int | None:
+    """The version whose schema string is ``schema``, or ``None``."""
+    return next((version for version, text in schemas.items() if text == schema), None)
+
+
+def _renamed_rungs(document: dict[str, object]) -> tuple[dict[str, object], tuple[str, ...]]:
+    """``document`` with each drag that names the old rung naming the new one, and the ids of those drags."""
+    found: list[str] = []
+    interactions = document.get("interactions")
+    if not isinstance(interactions, list):
+        return document, ()
+    changed: list[object] = []
+    for item in cast("list[object]", interactions):
+        if isinstance(item, dict):
+            entry = cast("dict[str, object]", item)
+            settings = entry.get("settings")
+            if entry.get("name") == _DRAG and isinstance(settings, dict) and \
+                    cast("dict[str, object]", settings).get("rung") == OLD_RUNG:
+                item = {**entry, "settings": {**cast("dict[str, object]", settings), "rung": NEW_RUNG}}
+                found.append(str(entry.get("id")))
+        changed.append(cast(object, item))
+    return ({**document, "interactions": changed} if found else document), tuple(found)
+
+
+def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
+    """``data`` as the current schema reads it, the version it was written in (the current one for a document that is
+    not of an earlier version, which the schema check judges), and the ids of the drags that named the old rung. A
+    version 1 document that holds a key version 2 added is left as it is, for the schema check to refuse."""
+    if not isinstance(data, dict):
+        return data, CURRENT, ()
+    held = dict(cast("dict[str, object]", data))
+    version = version_of(held.get("schema"), DOCUMENT_SCHEMAS)
+    if version is None or version == CURRENT:
+        return held, CURRENT, ()
+    if version == 1:
+        if any(key in held for key in _DOCUMENT_ADDED):
+            return held, version, ()
+        held = {**held, "schema": DOCUMENT_SCHEMAS[2], **_DOCUMENT_ADDED}
+    held, renamed = _renamed_rungs(held)
+    return {**held, "schema": DOCUMENT_SCHEMA}, version, renamed
+
+
+def upgraded_lock(data: object) -> tuple[object, int]:
+    """``data`` as the current schema reads it, and the version it was written in. The lock's contents stay in the form
+    it was written in: a load compares the rebuilt experiment written back into that form."""
+    if not isinstance(data, dict):
+        return data, CURRENT
+    held = dict(cast("dict[str, object]", data))
+    version = version_of(held.get("schema"), LOCK_SCHEMAS)
+    if version is None or version == CURRENT:
+        return held, CURRENT
     resolved = held.get("resolved")
-    if isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
-        held["resolved"] = {**cast(dict[str, object], resolved), _RESOLVED_ADDED: dict(_PREVIOUS_RESOLVED_PROFILE)}
+    if version == 1 and isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
+        held["resolved"] = {**cast("dict[str, object]", resolved), _RESOLVED_ADDED: dict(_PREVIOUS_RESOLVED_PROFILE)}
     held["schema"] = LOCK_SCHEMA
-    return held, True
+    return held, version
 
 
-def previous_document(document: Mapping[str, Any]) -> dict[str, Any]:
-    """A document in the previous form, as its lock hashed it: the keys version 2 added taken off."""
-    held = {key: value for key, value in document.items() if key not in _DOCUMENT_ADDED}
-    held["schema"] = PREVIOUS_DOCUMENT_SCHEMA
+def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any]:
+    """A document written back into the form of ``version``, as its lock hashed it."""
+    held = dict(document)
+    if version == CURRENT:
+        return held
+    interactions = held.get("interactions")
+    if isinstance(interactions, list):
+        held["interactions"] = [_with_rung(item, NEW_RUNG, OLD_RUNG) for item in cast("list[Any]", interactions)]
+    if version == 1:
+        held = {key: value for key, value in held.items() if key not in _DOCUMENT_ADDED}
+    held["schema"] = DOCUMENT_SCHEMAS[version]
     return held
 
 
-def previous_resolved(resolved: Mapping[str, Any]) -> dict[str, Any]:
-    """A resolved record in the previous form: its profile taken off."""
-    return {key: value for key, value in resolved.items() if key != _RESOLVED_ADDED}
+def _with_rung(entry: Any, was: str, now: str) -> Any:
+    """``entry`` (a bound entry of the document, or a resolved entry) with the drag's rung ``was`` written ``now``."""
+    if not isinstance(entry, dict):
+        return entry
+    held = cast("dict[str, Any]", entry)
+    settings = held.get("settings")
+    if held.get("name") == _DRAG and isinstance(settings, dict) and cast("dict[str, Any]", settings).get("rung") == was:
+        return {**held, "settings": {**cast("dict[str, Any]", settings), "rung": now}}
+    return held
 
 
-__all__ = ["PREVIOUS_PROFILE", "previous_document", "previous_resolved", "upgraded_document", "upgraded_lock"]
+def _quoted_possessive(text: object) -> object:
+    return _PLAIN_POSSESSIVE.sub(r"\1 '\2''s", text) if isinstance(text, str) else text
+
+
+def _value_in_form(record: Any) -> Any:
+    """A value's record of the resolved record, its source written as version 2 wrote it."""
+    if not isinstance(record, dict):
+        return record
+    held = cast("dict[str, Any]", record)
+    return {**held, "source": _quoted_possessive(held.get("source"))}
+
+
+def resolved_in_form(resolved: Mapping[str, Any], version: int) -> dict[str, Any]:
+    """A resolved record written back into the form of ``version``."""
+    held = dict(resolved)
+    if version == CURRENT:
+        return held
+    entries = held.get("entries")
+    if isinstance(entries, dict):
+        held["entries"] = {name: _with_rung(entry, NEW_RUNG, OLD_RUNG)
+                           for name, entry in cast("dict[str, Any]", entries).items()}
+    values = held.get("values")
+    if isinstance(values, dict):
+        held["values"] = {path: _value_in_form(record) for path, record in cast("dict[str, Any]", values).items()}
+    if version == 1:
+        held = {key: value for key, value in held.items() if key != _RESOLVED_ADDED}
+    return held
+
+
+def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
+    """The derived graph's physics written back into the form of ``version``: the drag node's type as it was named."""
+    held = dict(physics)
+    nodes = held.get("nodes")
+    if version < CURRENT and isinstance(nodes, list):
+        held["nodes"] = [{**cast("dict[str, Any]", node), "type": OLD_NODE}
+                         if isinstance(node, dict) and cast("dict[str, Any]", node).get("type") == NEW_NODE else node
+                         for node in cast("list[Any]", nodes)]
+    return held
+
+
+__all__ = ["CURRENT", "DOCUMENT_SCHEMAS", "LOCK_SCHEMAS", "NEW_RUNG", "OLD_RUNG", "PREVIOUS_PROFILE",
+           "document_in_form", "physics_in_form", "resolved_in_form", "upgraded_document", "upgraded_lock",
+           "version_of"]

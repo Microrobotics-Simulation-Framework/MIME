@@ -34,7 +34,7 @@ from mime import assets
 from mime.assets import AssetRef, CheckResult, DerivationInput, DerivationRecord, Json, Produced
 from mime.build import BuildRefused
 from mime.data import asset
-from mime.nodes.hydro.bem._tube import UNIT_TUBE, table_provenance
+from mime.nodes.hydro.mrs._tube import UNIT_TUBE, table_provenance
 from mime.surrogates import DEJONGH_MLP_V2, SURROGATES, UNJUDGED_ROLES, current_inputs, staleness
 
 TABLE = assets.reference(UNIT_TUBE)

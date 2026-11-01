@@ -149,7 +149,7 @@ def declared_kinds():
 
 
 def test_every_kind_that_samples_its_surface_passes_the_kind_conformance_harness(declared_kinds, registered):
-    """Every installed kind: one a test registers on its own (the BEM oracle's spheroid) is no installed entry, as
+    """Every installed kind: one a test registers on its own (the MRS oracle's spheroid) is no installed entry, as
     the registry walk reads them."""
     load_namespaces()
     installed = {(kind, name, version) for kind, name, version in registered}

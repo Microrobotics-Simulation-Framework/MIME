@@ -62,14 +62,14 @@ class ScrewSurrogate(Surrogate):
 #: to float32 rounding): nu from 0.25 to 3.5, kappa 0 (free space) and from 0.12 to 0.655 at seven values, offset
 #: fractions up to 0.35, lengths from 4.13 to 9.73 mm (L / R from 2.65 to 6.24). The weights file itself records only
 #: the features' means and standard deviations. What the ranges bound is the training data, not the surrogate's
-#: accuracy inside them, which MIME-ANO-114 records against the BEM it was checked against.
+#: accuracy inside them, which MIME-ANO-114 records against the MRS it was checked against.
 DEJONGH_MLP_V2 = ScrewSurrogate(
     asset="dejongh_mlp_v2",
     evaluator=CHOLESKY_MLP.label(),
     features=SCREW_FEATURES,
     accuracy=(
         Accuracy("swim_speed", "relative difference in the force-free swim speed at 10 Hz", 0.162,
-                 "the 0.2 line's float32 boundary-element method with the 2026-05-21 tube table (FL-9 in the 1/4 in "
+                 "the 0.2 line's float32 method of regularised Stokeslets with the 2026-05-21 tube table (FL-9 in the 1/4 in "
                  "tube)", "five offsets from 0.20 to 0.32 of the tube's radius (the method's own value at 0.35 is not "
                  "physical)",
                  "bounds the surrogate against that method at those offsets, not against the flow: the method's table "
@@ -79,7 +79,7 @@ DEJONGH_MLP_V2 = ScrewSurrogate(
                  "unknown, not bounded: the 0.2 line's held-out entry error was never reproduced"),
     ),
     provenance=Provenance(
-        trained_on="regularised-Stokeslet boundary-element resistances the 0.2 line computed in float32, on the "
+        trained_on="regularised-Stokeslet resistances the 0.2 line computed in float32, on the "
                    "lateral surface's flat triangles, through its 2026-05-21 tube tables",
         patches=("lateral",), reference_point="end", derivation="dejongh_mlp_v2",
         stale="MIME-ANO-117: its training data were computed through the 2026-05-21 tube tables, which are wrong; "
@@ -98,7 +98,7 @@ DEJONGH_MLP_V2 = ScrewSurrogate(
     offset_fraction=DeclaredRange(
         "offset_fraction", "offset / R_tube", 0.0, 0.3,
         "as the 0.2 line declares it, with its reason now: the training data hold the operating geometries only at "
-        "offsets 0, 0.024, 0.1, 0.2 and 0.3 of the tube's radius, and past 0.3 the BEM itself fails near the wall "
+        "offsets 0, 0.024, 0.1, 0.2 and 0.3 of the tube's radius, and past 0.3 the MRS itself fails near the wall "
         "(MIME-ANO-114); some designs reach 0.35"),
     modulation=0.33,
     starts=2,

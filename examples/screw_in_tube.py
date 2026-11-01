@@ -1,7 +1,7 @@
 """A magnetic screw swimming along a tube of viscous liquid, with no material records: every value is declared.
 
 ``screw_in_tube()`` is the experiment: a de Jongh FL-9 screw (de Jongh et al. 2025, Table 1) on the axis of a 1/4"
-tube filled with glycerol, turned by a uniform field rotating about the tube's axis, its drag by the boundary-element
+tube filled with glycerol, turned by a uniform field rotating about the tube's axis, its drag by the MRS
 rung with the tube's wall kind. ``main()`` runs it and prints the speed over the last turn and the post-run watch.
 
     python examples/screw_in_tube.py                     # the starting size below
@@ -81,7 +81,7 @@ def screw_in_tube(spacing_mm: float = START_SPACING_MM, *, inertia: tuple[float,
     field = exp.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(FREQUENCY_HZ), "amplitude": mT(5.0)}))
-    exp.attach(Drag.BEM(spacing=mm(spacing_mm), blob=0.5, wall_kind="tube"), body=umr, medium=liquid)
+    exp.attach(Drag.MRS(spacing=mm(spacing_mm), blob=0.5, wall_kind="tube"), body=umr, medium=liquid)
     exp.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     exp.observe(SwimSpeed(umr, along=tube.axis, after=s(DURATION_S - 1.0 / FREQUENCY_HZ)))
     return exp

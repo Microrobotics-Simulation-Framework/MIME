@@ -1,4 +1,4 @@
-"""``Drag.BEM`` passes the hydrodynamic family's whole suite: sign, frame, units, material reach, oracle, gradients,
+"""``Drag.MRS`` passes the hydrodynamic family's whole suite: sign, frame, units, material reach, oracle, gradients,
 swap and MADDENING's battery on its node. The family's own rig fills a tube, which the free-space wall refuses, so the
 suite runs on the same family with a rig of its own: the family's screw (de Jongh's FL-9), coarsely sampled, in an
 unbounded medium (labelled in the pull request: a law the family holds whose rig it cannot stand in). A ball would not
@@ -7,10 +7,10 @@ on its own scale, where turning the world or scaling the viscosity moves roundin
 suite's oracle is the rung's formula again, in float64 NumPy (the kind's samples placed by the pose, the regularised Stokeslet's matrix and the rigid motions), its
 dense solve LAPACK's through ``jax.numpy`` (NumPy's, threaded, took a hundred times as long on a loaded machine):
 a second implementation, which bounds how far the node departs from its formula, not how far the formula departs from
-the flow (``test_bem.py`` holds that against closed forms). The swap replaces it with the Stokes sphere of the same
+the flow (``test_mrs.py`` holds that against closed forms). The swap replaces it with the Stokes sphere of the same
 radius.
 
-The family walk holds the drag entry to its surrogate rung, the first round-trip case's: this is the bem rung's half
+The family walk holds the drag entry to its surrogate rung, the first round-trip case's: this is the mrs rung's half
 (``docs/ratchets/builds_unchecked.txt``)."""
 
 import dataclasses
@@ -19,7 +19,7 @@ from functools import cache
 
 import jax.numpy as jnp
 import numpy as np
-from bem_cases import bem, free_space
+from mrs_cases import mrs, free_space
 from hydro_oracles import StokesSphere
 
 from mime.testing import NodeCase, assert_conforms, unit_quaternion
@@ -55,7 +55,7 @@ def screw_samples() -> tuple[np.ndarray, np.ndarray]:
             np.concatenate([np.asarray(h.weights, dtype=np.float64) for h in held]))
 
 
-def bem_reference(read, settings) -> dict[str, np.ndarray]:
+def mrs_reference(read, settings) -> dict[str, np.ndarray]:
     """The rung's resistance again, in float64 NumPy, at the drawn pose."""
     pose = np.asarray(read["pose"], dtype=np.float64)
     held, weights = screw_samples()
@@ -77,5 +77,5 @@ NODE = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
                          "constrain_boundary": lambda given: {**given, "pose": unit_quaternion(given["pose"])}})
 
 
-def test_the_bem_rung_conforms_to_the_hydrodynamic_family_in_free_space_and_swaps_with_the_stokes_sphere():
-    assert_conforms(bem(SPACING), FREE, oracle=bem_reference, swap_with=StokesSphere(), node_case=NODE)
+def test_the_mrs_rung_conforms_to_the_hydrodynamic_family_in_free_space_and_swaps_with_the_stokes_sphere():
+    assert_conforms(mrs(SPACING), FREE, oracle=mrs_reference, swap_with=StokesSphere(), node_case=NODE)

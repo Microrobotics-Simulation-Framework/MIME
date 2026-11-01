@@ -133,7 +133,7 @@ guarantees.
 | Fresh container, inside it | about 1.5 s (CPU) and 2 s (GPU) of imports and backend start |
 | GPU waits | **3 of 12 fresh GPU starts waited 35, 90 and 296 s outside the container**; the cause is not known |
 | Controls | the planted pin was refused and the missing GPU refused, each in 2 of 2 runs (a small count) |
-| Bits | the BEM-like program's hash was identical in all 14 GPU runs, across three device kinds (`A100-SXM4-40GB`, `A100-SXM4-80GB`, `A100 80GB PCIe`) and six CPU-flag sets, with the deterministic mode or without; and in all 12 CPU runs, across two CPU-flag sets |
+| Bits | the MRS-like program's hash was identical in all 14 GPU runs, across three device kinds (`A100-SXM4-40GB`, `A100-SXM4-80GB`, `A100 80GB PCIe`) and six CPU-flag sets, with the deterministic mode or without; and in all 12 CPU runs, across two CPU-flag sets |
 | `A100-40GB` served | by an 80 GB card in 5 of 12 fresh containers |
 | XLA cache, CPU | works: compiling a program took 1.3 s uncached and 0.3 s with the cache |
 | XLA cache, GPU | works only partly: one program's compile fell from 3 to 5 s to under 1.2 s, another stayed at 2 to 3 s, and the cache grew by 9 or 10 entries in every fresh container; the cause was not found |

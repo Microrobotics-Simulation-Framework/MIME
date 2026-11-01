@@ -53,7 +53,7 @@ Since phase 4c1:
   is for a1's profiles. The offset from the axis keeps the 0.2 line's clamp, reported as `clamp_fired` in the node's
   state. `drag` 0.2.0 (phase 4c3) moves the surrogate's resistance from the end of the body's axis, about which it
   was trained, to the centre of mass, `L / 2` along the body's x axis taken as the helix's (MIME-ANO-112, resolved);
-  0.1.0 delivered it about the end. Its accuracy against the BEM it was checked against is MIME-ANO-114's: up to 16%
+  0.1.0 delivered it about the end. Its accuracy against the MRS it was checked against is MIME-ANO-114's: up to 16%
   in swim speed between 0.2 and 0.32 of the tube's radius. `Lubrication` is a group of settings (`mime.registry.SettingGroup`),
   which the saved form writes by its group name.
 
@@ -84,4 +84,4 @@ frozen reference hold.
 
 Since phase 7i, the surrogate rung reads its weights through the evaluator its surrogate's record names
 (`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
-is unchanged. The bem rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.
+is unchanged. The mrs rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.

@@ -1,4 +1,4 @@
-"""A determined default (design #191 item 4): the bem drag's ``wall_kind``, the one wall kind that matches the region
+"""A determined default (design #191 item 4): the mrs drag's ``wall_kind``, the one wall kind that matches the region
 the medium fills, resolved in every profile and reported; refused with the candidates where several match, and the
 one written kept. The control registers a second wall kind for a medium that fills no region, which makes the default
 ambiguous."""

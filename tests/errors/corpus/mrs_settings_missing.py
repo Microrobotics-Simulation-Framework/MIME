@@ -1,4 +1,4 @@
-"""The first-hour walk's T1, first attempt: the boundary-element drag with none of its settings, under the research
+"""The first-hour walk's T1, first attempt: the MRS drag with none of its settings, under the research
 profile: the exploratory profile takes their numerical defaults, stamped pending (phase 7l-a)."""
 # corpus: codes setting.numerical-default
 from mime import Body, Experiment, Medium, State
@@ -17,6 +17,6 @@ ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
     position=um((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
     angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"sphere": Part(Sphere(radius=um(50.0)))}))
 exp.declare("ball.parts.sphere.density", kg_per_m3(7850.0), reason="steel")
-exp.attach(Drag.BEM(), body=ball, medium=water)
+exp.attach(Drag.MRS(), body=ball, medium=water)
 exp.attach(Gravity(), body=ball, medium=water)
 exp.build()  # corpus: here

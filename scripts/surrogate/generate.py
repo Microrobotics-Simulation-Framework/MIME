@@ -36,7 +36,7 @@ def near_wall(arguments: argparse.Namespace) -> None:
     discretisation = generator.Discretisation(arguments.spacing)
     gaps = arguments.gap or list(generator.NEAR_WALL_GAPS)
     started = time.perf_counter()
-    evaluator = generator.BEMEvaluator(design, generator.NEAR_WALL_TUBE, discretisation)
+    evaluator = generator.MRSEvaluator(design, generator.NEAR_WALL_TUBE, discretisation)
     built = time.perf_counter() - started
     found = []
     for gap in gaps:
@@ -78,7 +78,7 @@ SOURCES = ("src/mime/surrogates/generator.py", "scripts/surrogate/generate.py", 
 
 def data(arguments: argparse.Namespace) -> None:
     from mime.build import BuildRefused
-    from mime.nodes.hydro.bem._tube import UNIT_TUBE
+    from mime.nodes.hydro.mrs._tube import UNIT_TUBE
 
     commit, sources, dirty = assets.working_state(Path(__file__).resolve().parents[2], SOURCES)
     builder = generator.TrainingData()

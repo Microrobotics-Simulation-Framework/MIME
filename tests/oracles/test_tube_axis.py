@@ -4,7 +4,7 @@ holds them, read through the tube's correction in a tube moved off the origin, a
 exactly on it) and turned (where it is within the frame's rounding of it). The series is taken at the table's
 truncation (its sources reach 0.9 of the radius, so the series is given a source there).
 
-**Near the axis** a sample's angle is undefined, and the rule (``mime.nodes.hydro.bem._tube``) reads each pair with
+**Near the axis** a sample's angle is undefined, and the rule (``mime.nodes.hydro.mrs._tube``) reads each pair with
 the target's rows in the source's frame and blends each pair's read with its reciprocal's, the sample nearer the axis
 the target. The tests, at a sample ``rho`` of ``0``, ``1e-8``, ``1e-3``, ``0.01`` and ``0.02`` of the radius from the
 axis, as the source of a pair, its target and both: every value and every derivative (reverse and forward) is finite;
@@ -30,9 +30,9 @@ import tube_fourier_bessel as fb
 from jax import Array
 from tube_cases import builder_data, builder_table
 
-import mime.nodes.hydro.bem._tube as tube_module
+import mime.nodes.hydro.mrs._tube as tube_module
 from mime.core import switch
-from mime.nodes.hydro.bem import frame_across, tube_correction, tube_table_from
+from mime.nodes.hydro.mrs import frame_across, tube_correction, tube_table_from
 
 #: The table's knots, in the tube's radius: radii from the axis, the angle on ``[0, pi]``, the axial offset.
 RADII = (0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5)

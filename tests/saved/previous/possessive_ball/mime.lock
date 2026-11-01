@@ -1,0 +1,399 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "gravity:ball",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "ball",
+     "target_units": "N; N m"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "gravity:ball",
+     "params": {
+      "buoyant_volume": 4.188790204786391e-09,
+      "centre_of_buoyancy": null,
+      "fluid_density": 1000.0,
+      "gravity": [
+       -0.0,
+       -0.0,
+       -9.81
+      ],
+      "mass": 1e-05
+     },
+     "timestep": 0.001,
+     "type": "GravityNode"
+    },
+    {
+     "name": "ball",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1e-11,
+       1e-11,
+       1e-11
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0,
+      "mass": 1e-05,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "ball": {},
+    "gravity:ball": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "gravity",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev0",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:bc64fe593d972f5680ef2993842c9908f2d1737ad2a88ded90b05193e6e4b6b5",
+  "document": "sha256:b09f16d6c642e2cb0a330ded91a79c93193c4df88d057437bc0b2da6f79de273",
+  "input": "sha256:e6fcebe0088756b0495602cef91434d063999ba4d0d52e68d5ddef1823532485",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "rtol": 1e-06,
+  "sha256": "sha256:5f271ab4ceca5e9d9f3c507ccc8044d927b79863403ee648eb368cb3e7f40e87",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "ball": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "ball"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.2.0"
+   },
+   "gravity:ball": {
+    "binds": {
+     "body": "ball",
+     "medium": "water"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "gravity",
+    "nodes": [
+     "gravity:ball"
+    ],
+    "settings": {},
+    "version": "0.1.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "ball": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        4e-07,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4e-07,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        4e-07
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "sphere",
+       "settings": {
+        "radius": {
+         "unit": "m",
+         "value": 0.001
+        }
+       },
+       "version": "0.1.0"
+      },
+      "volume": 4.188790204786391e-09
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "gravity:ball",
+   "ball"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {},
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "possessive_ball",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.81
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "ball": "/World/ball",
+    "water": "/World/water"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "ball": "body",
+   "water": "medium"
+  },
+  "values": {
+   "ball.buoyant_volume": {
+    "details": [
+     "shell: 4.18879e-09 m^3 (sphere 0.1.0) at (0, 0, 0) m"
+    ],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "from shell (sphere 0.1.0)",
+    "source": "derived from its parts",
+    "unit": "m^3",
+    "value": 4.188790204786391e-09
+   },
+   "ball.centre_of_buoyancy": {
+    "details": [
+     "shell: 4.18879e-09 m^3 (sphere 0.1.0) at (0, 0, 0) m"
+    ],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "from shell (sphere 0.1.0)",
+    "source": "derived from its parts",
+    "unit": "m",
+    "value": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "ball.inertia": {
+    "details": [],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "a millimetre body's order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body 'ball''s mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg m^2",
+    "value": [
+     1e-11,
+     1e-11,
+     1e-11
+    ]
+   },
+   "ball.mass": {
+    "details": [],
+    "read_by": [
+     "ball",
+     "gravity:ball"
+    ],
+    "reason": "a millimetre body's order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body 'ball''s mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg",
+    "value": 1e-05
+   },
+   "water.density": {
+    "details": [],
+    "read_by": [
+     "gravity:ball"
+    ],
+    "reason": "water",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1000.0
+   },
+   "water.viscosity": {
+    "details": [],
+    "read_by": [],
+    "reason": "water",
+    "source": "declared in the experiment",
+    "unit": "Pa s",
+    "value": 0.001
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev0"
+  }
+ },
+ "schema": "mime.lock/2",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "4b479ec0d9e5285decdd84ed24b851561a5fb6dfcae8d28bf6b13d81f70ca7ed"
+ }
+}

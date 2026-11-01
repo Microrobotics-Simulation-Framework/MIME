@@ -1,0 +1,413 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "pose",
+     "source_node": "ball",
+     "source_units": "m; 1",
+     "target_field": "pose",
+     "target_node": "drag:ball",
+     "target_units": "m; 1"
+    },
+    {
+     "additive": true,
+     "source_field": "background_load",
+     "source_node": "drag:ball",
+     "source_units": "N; N m",
+     "target_field": "background_load",
+     "target_node": "ball",
+     "target_units": "N; N m"
+    },
+    {
+     "additive": true,
+     "source_field": "resistance",
+     "source_node": "drag:ball",
+     "source_units": "N s/m; N s; N m s",
+     "target_field": "resistance",
+     "target_node": "ball",
+     "target_units": "N s/m; N s; N m s"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "drag:ball",
+     "params": {
+      "blob": 0.5,
+      "counts": [
+       [
+        3,
+        5
+       ]
+      ],
+      "kind": "sphere",
+      "kind_version": "0.1.0",
+      "part_centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "part_rotation": [
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "patches": [
+       "surface"
+      ],
+      "shape_radius": 0.001,
+      "viscosity": 0.001,
+      "wall_kind": "free_space",
+      "wall_kind_version": "0.1.0"
+     },
+     "timestep": 0.001,
+     "type": "BEMDragNode"
+    },
+    {
+     "name": "ball",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1e-11,
+       1e-11,
+       1e-11
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       0.0,
+       0.9689124217106447,
+       0.24740395925452294,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0,
+      "mass": 1e-05,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "ball": {},
+    "drag:ball": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "drag",
+   "version": "0.3.0"
+  }
+ ],
+ "environment": {
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev0",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:8a4b6c2a59f4654394d8f7f632f53519c07500d2684227a754cf49dcaa1ce512",
+  "document": "sha256:a7715610403e4e44b163322093ae04b2296d2b1d17cfe84db7e35b30b40a6fa4",
+  "input": "sha256:ab9577456548cefa02d7f9fe953198bb74842b75f4184d7f0820e1802b27229a",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "rtol": 1e-06,
+  "sha256": "sha256:45ee7bb8c6ef2df500232cdb429ae1982c5401fc3244ddfa2cb7962ca3d9402c",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "ball": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      0.9689124217106447,
+      0.24740395925452294,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "ball"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.2.0"
+   },
+   "drag:ball": {
+    "binds": {
+     "body": "ball",
+     "medium": "water"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "drag",
+    "nodes": [
+     "drag:ball"
+    ],
+    "settings": {
+     "blob": 0.5,
+     "lubrication": null,
+     "patches": null,
+     "rung": "bem",
+     "spacing": {
+      "unit": "m",
+      "value": 0.0015
+     },
+     "wall_kind": "free_space",
+     "weights": null
+    },
+    "version": "0.3.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "ball": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        4e-07,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4e-07,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        4e-07
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "sphere",
+       "settings": {
+        "radius": {
+         "unit": "m",
+         "value": 0.001
+        }
+       },
+       "version": "0.1.0"
+      },
+      "volume": 4.188790204786391e-09
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "drag:ball",
+   "ball"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {},
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "bem_ball",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "ball": "/World/ball",
+    "water": "/World/water"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "ball": "body",
+   "water": "medium"
+  },
+  "values": {
+   "ball.inertia": {
+    "details": [],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "a millimetre body's order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body 'ball''s mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg m^2",
+    "value": [
+     1e-11,
+     1e-11,
+     1e-11
+    ]
+   },
+   "ball.mass": {
+    "details": [],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "a millimetre body's order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body 'ball''s mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg",
+    "value": 1e-05
+   },
+   "water.viscosity": {
+    "details": [],
+    "read_by": [
+     "drag:ball"
+    ],
+    "reason": "water",
+    "source": "declared in the experiment",
+    "unit": "Pa s",
+    "value": 0.001
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev0"
+  }
+ },
+ "schema": "mime.lock/2",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "3bd2bdcf15f94d0725f15d1ba140cd1251717e4fdbc5b0bcb9c4c4492697a5fc"
+ }
+}

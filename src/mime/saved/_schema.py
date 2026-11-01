@@ -14,11 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/2"
-LOCK_SCHEMA = "mime.lock/2"
-#: The schemas of the saved form before phase 7l-a, which a load still reads (``mime.saved._versions``).
-PREVIOUS_DOCUMENT_SCHEMA = "mime.document/1"
-PREVIOUS_LOCK_SCHEMA = "mime.lock/1"
+DOCUMENT_SCHEMA = "mime.document/3"
+LOCK_SCHEMA = "mime.lock/3"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -262,7 +259,7 @@ class ExperimentDocument(TypedDict, closed=True):
     none (standard gravity, by convention); ``conditions`` the operating conditions every record is read at;
     ``materials`` each material by name, as a reference to its record; ``controller`` the controller, or null."""
 
-    schema: ReadOnly[Literal["mime.document/2"]]
+    schema: ReadOnly[Literal["mime.document/3"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     profile: ReadOnly[Literal["exploratory", "research", "strict"]]
@@ -643,7 +640,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs."""
 
-    schema: ReadOnly[Literal["mime.lock/2"]]
+    schema: ReadOnly[Literal["mime.lock/3"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -775,7 +772,7 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "PREVIOUS_DOCUMENT_SCHEMA", "PREVIOUS_LOCK_SCHEMA", "ChosenDoc", "DefaultRecord", "ItemRecord", "PendingDoc",
+    "ChosenDoc", "DefaultRecord", "ItemRecord", "PendingDoc",
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
     "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",

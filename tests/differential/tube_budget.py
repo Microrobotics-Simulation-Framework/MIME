@@ -40,7 +40,7 @@ def main(grids: list[tuple[int, int]]) -> None:
 
     from mime.assets import locate, reference
     from mime.core.tables import evaluate
-    from mime.nodes.hydro.bem import blob_squared, resistance, tube_correction, tube_table_from
+    from mime.nodes.hydro.mrs import blob_squared, resistance, tube_correction, tube_table_from
 
     started = time.perf_counter()
     table = tube_table_from(str(locate(reference(TABLE))))

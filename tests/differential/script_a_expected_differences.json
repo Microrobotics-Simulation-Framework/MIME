@@ -900,7 +900,7 @@
    "id": "surrogate-about-the-centre",
    "declared_change": true,
    "written": "2026-10-23, before 0.3 was measured with this change, by predict_script_a.py --declare",
-   "what": "the drag's surrogate resistance moved from the end of the body's axis (zeta = 0, where the training's BEM took its torques) to its centre of mass, R_C = T^T R_P T, T = [[I, [d]x], [0, I]], d = L/2 along the body's axis from the end to the centre (MIME-ANO-112)",
+   "what": "the drag's surrogate resistance moved from the end of the body's axis (zeta = 0, where the training's MRS took its torques) to its centre of mass, R_C = T^T R_P T, T = [[I, [d]x], [0, I]], d = L/2 along the body's axis from the end to the centre (MIME-ANO-112)",
    "reasoning": "The axial block (F along the tube with Omega about it) is unchanged by a shift along the axis; the lateral and tilting coupling, which the end-referenced resistance gave L/2 times the translational resistance, collapses. In A the body rests on the wall under its buoyant weight while it turns, so the coupling between motion across the tube and turning across it, which the shift removes, carried part of the torque and of the wall-normal load into the swim. 4c2's emulation estimated -7.8% on 0.2's scheme; this is recomputed on the corrected scheme.",
    "checks": "test_script_a.py: every float64 quantity on f64_10hz, f64_11hz and f64_10hz_dt_2.5e-4; the control: the node with the resistance about the end (the test-only switch) gives the previous declaration's values",
    "scheme": {

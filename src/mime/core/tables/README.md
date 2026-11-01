@@ -1,7 +1,7 @@
 # `mime.core.tables`
 
 **The table evaluator**: one differentiable reader of tables, in pure JAX, for MIME's own solver-output tables (the
-BEM's wall correction, a resistance, a field map) and for OpenMaterica's material tables alike. Nodes import it, so it
+MRS's wall correction, a resistance, a field map) and for OpenMaterica's material tables alike. Nodes import it, so it
 lives in `mime.core` and imports nothing from MIME above it; `mime.materials` converts an OpenMaterica record's table
 into it (`evaluator_table`), and is the only importer of OpenMaterica.
 
@@ -79,7 +79,7 @@ reads over it would stop the run, comparing in the dtype the run reads (a bound 
 float32 run). At run time it publishes `accepted` (or the two
 flags) in its node's state, and `refuse(evaluation)` raises `TableRefused` on the host where any read must stop the
 run. A compiled run is not stopped from inside: the flags are the mechanism. **Neither check has a caller in `src`
-yet**: the first consumer, the BEM's wall table, wires them, and its brief carries the control (a node whose
+yet**: the first consumer, the MRS's wall table, wires them, and its brief carries the control (a node whose
 build omits the check, or whose step omits publishing the flags, fails a named test).
 
 ## The switch
@@ -93,7 +93,7 @@ an extrapolation is declared, under which they are kinks. What the switch harnes
 jump: it checks any declared order above a jump only as "not a jump", so it does not tell the kink from the smooth
 table. The cubic's continuous differentiability is carried by its own test of the one-sided derivatives at every
 interior knot, and each test entry's declared order by the status test, from `Table.value_order`; the entry that owns
-the BEM's table (the first consumer) ties its declared order to `Table.value_order` the same way. A table's switch is
+the MRS's table (the first consumer) ties its declared order to `Table.value_order` the same way. A table's switch is
 never evaluated inside a transform: a read takes a whole batch of queries at a step's top level.
 
 ## Reading in a step
@@ -191,7 +191,7 @@ recorded when tables enter an experiment's saved form, with their first consumer
 
 Since phase 7f: the description, the three schemes and the Cholesky structure, the flags, the build-time and
 host-side refusals, and `switch.searchsorted`. Since the performance pass ahead of phase 7h: the bucket index, the
-read by windows, a scheme per axis and the three settings that trade memory for time. Its first consumer is the BEM's
+read by windows, a scheme per axis and the three settings that trade memory for time. Its first consumer is the MRS's
 wall table, in phase 7h; `MaterialAt`, a2's coil maps and the table surrogate type come later.
 
 Phases and releases are explained in the [package manifest](../../README.md#status).

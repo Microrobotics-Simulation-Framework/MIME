@@ -1,0 +1,39 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Xform "ball"
+    {
+        custom string mime:name = "ball"
+        custom token mime:thing = "body"
+        quatd xformOp:orient = (0.9689124217106447, 0.24740395925452294, 0, 0)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+        def Sphere "shell" (
+            prepend apiSchemas = ["MimeGeometryAPI"]
+        )
+        {
+            float3[] extent = [(-0.001, -0.001, -0.001), (0.001, 0.001, 0.001)]
+            custom token mime:geometry = "sphere"
+            custom string mime:geometry:version = "0.1.0"
+            color3f[] primvars:displayColor = [(0.2, 0.6, 0.8)]
+            double radius = 0.001
+            quatd xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+        }
+    }
+
+    def Scope "water"
+    {
+        custom string mime:name = "water"
+        custom token mime:thing = "medium"
+    }
+}
+

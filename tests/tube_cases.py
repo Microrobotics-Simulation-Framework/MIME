@@ -1,5 +1,5 @@
 """The experiments the wall-kind interface is tested in with a confining wall: a sphere in a straight tube with
-``Drag.BEM``, the tube's correction read (``mime.nodes.hydro.bem.tube_correction``) from a small table this module
+``Drag.MRS``, the tube's correction read (``mime.nodes.hydro.mrs.tube_correction``) from a small table this module
 builds from the Fourier-Bessel series (``tube_fourier_bessel.image``), never from the network.
 
 The test registers ``oracle.tube_series``, a wall kind that matches the tube's lumen with the tube's correction
@@ -28,7 +28,7 @@ from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
-from mime.nodes.hydro.bem import register_wall_correction, tube_wall, unit_tube_table, wall_corrections
+from mime.nodes.hydro.mrs import register_wall_correction, tube_wall, unit_tube_table, wall_corrections
 from mime.registry import Geometry, WallForm, WallKind, register_wall_kind
 from mime.scene import Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
@@ -107,7 +107,7 @@ if f"{TubeSeries.name} {TubeSeries.version}" not in wall_corrections():
 def sphere_in_a_tube(name: str, *, radius: float, spacing: Quantity, wall_kind: str = TubeSeries.name,
                      blob: float = 0.5, tube_radius: Quantity = TUBE_RADIUS, hull: Geometry | None = None) -> Experiment:
     """A sphere of ``radius`` (of the tube's) at rest on the axis of a straight tube along z, in water filling its
-    lumen, unturned (its sampling's poles along the tube's axis), with ``Drag.BEM`` and nothing else; or ``hull``
+    lumen, unturned (its sampling's poles along the tube's axis), with ``Drag.MRS`` and nothing else; or ``hull``
     there in its place."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=tube_radius,
@@ -122,7 +122,7 @@ def sphere_in_a_tube(name: str, *, radius: float, spacing: Quantity, wall_kind: 
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    experiment.attach(Drag.BEM(spacing=spacing, blob=blob, wall_kind=wall_kind), body="ball", medium="water")
+    experiment.attach(Drag.MRS(spacing=spacing, blob=blob, wall_kind=wall_kind), body="ball", medium="water")
     return experiment
 
 

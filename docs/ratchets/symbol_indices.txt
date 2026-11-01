@@ -10,16 +10,16 @@ PointDipoleNode R  # the rotation matrix of the part's orientation q: a function
 PointDipoleNode \delta  # Kronecker's delta, the identity's entries
 MagneticForceNode l  # the lever, the magnet's centroid turned into the world, R(q) c_b: defined in the equations, held by no field
 MagneticForceNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol
-BEMDragNode A  # the matrix of the regularised Stokeslet between every pair of samples, defined in the equations, held by no field
-BEMDragNode G  # the wall's correction, the registered wall correction's output, added to A and held by no field
-BEMDragNode I  # the identity, in the Stokeslet's isotropic term
-BEMDragNode M  # the unit rigid motions at the samples, the output of mime.nodes.hydro.bem.rigid_motions, held by no field
-BEMDragNode N  # the count of samples, the product of the counts the node is built with
-BEMDragNode \epsilon  # the blob, defined in the equations from b and the weights, held by no field
-BEMDragNode r  # the separation of two samples, x_{m} - x_{n}, and its length: defined in the equations, held by no field
-BEMDragNode w  # each sample's quadrature weight, from the kind's samples at each step, held by no field
-BEMDragNode x  # each sample in the world, defined in the equations from the pose and the kind's samples, held by no field
-BEMDragNode y  # each sample of the hull kind in its own frame, the kind's sample function's output, held by no field
+MRSDragNode A  # the matrix of the regularised Stokeslet between every pair of samples, defined in the equations, held by no field
+MRSDragNode G  # the wall's correction, the registered wall correction's output, added to A and held by no field
+MRSDragNode I  # the identity, in the Stokeslet's isotropic term
+MRSDragNode M  # the unit rigid motions at the samples, the output of mime.nodes.hydro.mrs.rigid_motions, held by no field
+MRSDragNode N  # the count of samples, the product of the counts the node is built with
+MRSDragNode \epsilon  # the blob, defined in the equations from b and the weights, held by no field
+MRSDragNode r  # the separation of two samples, x_{m} - x_{n}, and its length: defined in the equations, held by no field
+MRSDragNode w  # each sample's quadrature weight, from the kind's samples at each step, held by no field
+MRSDragNode x  # each sample in the world, defined in the equations from the pose and the kind's samples, held by no field
+MRSDragNode y  # each sample of the hull kind in its own frame, the kind's sample function's output, held by no field
 DynamicArmNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 DynamicArmNode M  # the mass matrix, by the composite-rigid-body algorithm from the rows' masses, inertias and axes: a function of rows' symbols
 DynamicArmNode A  # the system M + dt D the step solves: defined in the equations, held by no field

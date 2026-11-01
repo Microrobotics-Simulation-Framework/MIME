@@ -18,7 +18,7 @@ the sphere's drag against Stokes's law, and the screw's speed per turn from its 
 finest spacing measured, which is no converged value (no closed form exists for the screw, and the successive spacings
 still change the speed). The screw's resistance does not depend on the liquid or on the field, so the same rows serve
 the example and the walk's. ``steps`` runs both at other steps. ``coarse`` takes the screw's resistance in float64, in its tube, at the coarse
-spacings a first look can land on and at the default's (``Drag.BEM()`` with no spacing), which the ladder above leaves out.
+spacings a first look can land on and at the default's (``Drag.MRS()`` with no spacing), which the ladder above leaves out.
 ``merge`` joins the four, and the same runs on CI's runner (``ci.json``: its machine and the rows the runs printed)
 when they were taken. Not collected by pytest."""
 

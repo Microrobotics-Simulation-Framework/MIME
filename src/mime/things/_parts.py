@@ -126,7 +126,7 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
                                           volume_lines)
     lacking = [part.name for part in bulk if part.name not in density]
     if lacking:
-        problem = ("parts.density", f"body {body!r}'s mass and inertia are derived from its parts, and "
+        problem = ("parts.density", f"body {body}'s mass and inertia are derived from its parts, and "
                                     f"{', '.join(repr(n) for n in lacking)} has no density",
                    f"give {body}.parts.<part>.density: a record that holds it, Part(..., material=Record(...)), or "
                    "declare it, exp.declare(...)")
@@ -141,7 +141,7 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
         scale = math.fsum(abs(c) for moment in moments for c in moment) / mass
         off = math.sqrt(sum(c * c for c in centre))
         if off > 1e-12 * scale:
-            problem = ("parts.centre-of-mass", f"body {body!r}'s parts put its centre of mass at {_vec(centre)} m in "
+            problem = ("parts.centre-of-mass", f"body {body}'s parts put its centre of mass at {_vec(centre)} m in "
                                                f"its frame, whose origin is its centre of mass",
                        "place the parts about the body's centre of mass: Part(..., at=...) for each, balanced about it")
             found["mass"] = Derived(mass, mass_lines, (problem,))
@@ -202,7 +202,7 @@ def _inertia_axes_problem(body: str, tensor: Sequence[Sequence[float]]) -> Probl
     reason = (f"the parts' inertia tensor about the body's axes, its products of inertia (the largest {across:.3g} kg "
               f"m^2, {100.0 * across / largest:.2g}% of the largest moment) dropped: a modelling choice, not a "
               f"measurement")
-    message = (f"body {body!r}'s parts give an inertia tensor whose principal axes are not the body frame's: a "
+    message = (f"body {body}'s parts give an inertia tensor whose principal axes are not the body frame's: a "
                f"product of inertia of {across:.3g} kg m^2 against {largest:.3g} kg m^2 on the diagonal\n"
                f"    the tensor about the body's centre of mass, in the body's frame (kg m^2):\n{rows}\n"
                f"    its principal moments, with their axes in the body's frame:\n{principal}\n"
@@ -236,11 +236,11 @@ def _extent(body: str, bulk: Sequence[PartMass]) -> Derived:
                                                         f"hull would be their union, which is not built", action),))
     part = bulk[0]
     if part.reach is None:
-        return Derived(None, problems=(("parts.extent", f"body {body!r}'s hull, {part.name!r}, is a {part.solid}, "
+        return Derived(None, problems=(("parts.extent", f"body {body}'s hull, {part.name!r}, is a {part.solid}, "
                                                         f"which gives no radial reach", action),))
     off = math.sqrt(sum(c * c for c in part.centre))
     if off > 1e-12 * part.reach:
-        return Derived(None, problems=(("parts.extent", f"body {body!r}'s hull, {part.name!r}, is centred "
+        return Derived(None, problems=(("parts.extent", f"body {body}'s hull, {part.name!r}, is centred "
                                                         f"{off:.6g} m off the body's origin, so its reach about the "
                                                         f"body's axis is not its own", action),))
     return Derived(part.reach, (f"{part.name}: the radial reach of its {part.solid} about its axis, "

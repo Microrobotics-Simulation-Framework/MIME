@@ -34,8 +34,8 @@ Since phase 4c1:
   the 0.2 line's declared upper bound, 0.66, lay just above it; offsets reach 0.35, and for the operating geometries
   are sampled only at 0, 0.024, 0.1, 0.2 and 0.3 of the radius; lengths 4.13 to 9.73 mm, which the 0.2 line declared
   no range for. `Drag.Surrogate` evaluates it (`mime.interactions`).
-- **Its accuracy** against the BEM it was checked against misses the 0.2 line's stated 1%: up to 16.2% in swim speed
-  between 0.2 and 0.32 of the tube's radius, in the gaps between those samples (MIME-ANO-114, open: the BEM's
+- **Its accuracy** against the MRS it was checked against misses the 0.2 line's stated 1%: up to 16.2% in swim speed
+  between 0.2 and 0.32 of the tube's radius, in the gaps between those samples (MIME-ANO-114, open: the MRS's
   near-wall check, dense data and retraining come first).
 
 Since phase 7i:
@@ -50,7 +50,7 @@ Since phase 7i:
   near-wall edge. A role the record names that nothing plays and the caller did not declare unjudged (a misspelling) is
   refused by name (`asset.unknown-role`), not passed as fresh;
 - **the generator and the held-out protocol** (`mime.surrogates.generator`): de Jongh's screw bodies resting on the
-  floor of a straight tube, through `Drag.BEM` in the `tube` wall kind (the corrected table, never the old ones), in
+  floor of a straight tube, through `Drag.MRS` in the `tube` wall kind (the corrected table, never the old ones), in
   float64, the resistance in the surrogate's canonical frame about the body's centroid. The domain (`DOMAIN`) is de
   Jongh's seventeen designs in his four tubes, at the contact margins a resting body keeps, with
   **its near-wall edge open, the maintainer's decision** (`OPEN_NEAR_WALL_EDGE`): the check MIME-ANO-114 declared
