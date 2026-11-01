@@ -712,6 +712,11 @@ class Dynamics(Entry):
         vector of the wrong length), one line each."""
         return []
 
+    def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:
+        """What is wrong with the values this dynamics reads (``values``, by label, once every one is resolved) that
+        their dimensions do not show (a moment of inertia of zero, which the step divides by), as refusals."""
+        return []
+
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         raise NotImplementedError
 

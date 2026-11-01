@@ -66,6 +66,11 @@ FIELD = "flux_density_magnetic_torque_umr"
 #: the register moves them; ``tests/differential/test_frozen_register_pins.py`` fails on any other.
 FROZEN_VERSIONS = {"screw": "0.2.0", "sphere": "0.1.0", "capsule": "0.1.0", "box": "0.1.0", "cylinder": "0.1.0",
                    "ellipsoid": "0.1.0", "tube": "0.1.0"}
+#: The body dynamics' versions it froze, as the geometry kinds' above. ``rigid_inertial`` 0.2.0 takes the gyroscopic
+#: term explicit; 0.3.0 takes it implicit at the midpoint (MIME-ANO-129) and moves a body of unequal moments, as the
+#: register's x4.32 transverse-inertia arm (3.20686 to 3.20747 mm/s). Every body here is built at 0.2.0 until a dated
+#: amendment of the register moves it; ``tests/differential/test_frozen_register_pins.py`` fails on any other.
+FROZEN_DYNAMICS = {"rigid_inertial": "0.2.0"}
 
 
 def pinned(geometry: Any) -> Any:
@@ -107,6 +112,20 @@ def pinned_law(law: Any) -> Any:
     return held(**{name: getattr(law, name) for name in kept})
 
 
+def pinned_dynamics(dynamics: Any) -> Any:
+    """``dynamics`` at the version :data:`FROZEN_DYNAMICS` names for its entry: itself where it is that version, or the
+    same settings on the version ``mime.dynamics.body.KEPT`` keeps registered."""
+    from dataclasses import fields
+
+    from mime.dynamics.body import KEPT
+
+    version = FROZEN_DYNAMICS[dynamics.name]
+    if dynamics.version == version:
+        return dynamics
+    held, _ = KEPT[(dynamics.name, version)]
+    return held(**{f.name: getattr(dynamics, f.name) for f in fields(dynamics) if f.init})
+
+
 def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: str = DEFAULT_WEIGHTS,
                lubrication: bool = True, epsilon_mm: float = EPSILON_MM, margin_mm: float = MARGIN_MM,
                dt_ms: float = DT_MS, frequency_hz: float = FREQUENCY_HZ, amplitude_mT: float = 1.2,
@@ -133,7 +152,7 @@ def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: 
     tube = built.add_structure(Structure("tube", geometry=pinned(Tube(axis=+X, inner_radius=mm(tube_radius_mm),
                                                                       wall=mm(1.6), length=mm(100.0)))))
     water = built.add_medium(Medium("water", fills=tube.lumen))
-    umr = built.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+    umr = built.add_body(Body("umr", dynamics=pinned_dynamics(RigidInertial()), initial=State(
         position=mm(start_mm), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(pinned(A.fl9()))}))
     field = built.add_apparatus(Apparatus("field", fields={

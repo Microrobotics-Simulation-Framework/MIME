@@ -30,13 +30,14 @@
   },
   "scripts/sim2real/operating_point.py": {
    "preregistered_sha256": "34517078080a4858ee6279bd2ee5d0dfaf0aa26e08bad2f96c8b8dd0fefe34a1",
-   "current_sha256": "042e92d221199d29e199b16cfb1297e56db2db5a48f148edca84eccdeff8ace0",
+   "current_sha256": "ba46f836568ebc6eaa3ca0f7e7078c7e4e7ee5efebeb4d4b7b426e23b994aa19",
    "changed_by": [
     "ca229c7 (2026-11-01, the rename, #83)",
     "8c1c899 (2026-11-01, phase 7m-a, #87)",
-    "2a51306 (2026-11-01, phase 7m-b)"
+    "d33be40 (2026-11-01, the gyroscopic fix, #96)",
+    "2a51306 (2026-11-01, phase 7m-b, #94)"
    ],
-   "reason": "the library's names (A1); then every kind pinned to the version the register froze (A3); then every law pinned to the version the register froze, drag 0.3.0's point forces among them, as A3 pins the kinds (phase 7m-b separated the rung's quadrature in drag 0.4.0)"
+   "reason": "the library's names (A1); then every kind pinned to the version the register froze (A3); then the body's dynamics too, rigid_inertial 0.2.0, whose x4.32 arm the implicit gyroscopic term moved (3.20686 to 3.20747 mm/s) inside a version; then every law pinned to the version the register froze, drag 0.3.0's point forces among them, as A3 pins the kinds (phase 7m-b separated the rung's quadrature in drag 0.4.0)"
   },
   "scripts/sim2real/prereg.py": {
    "preregistered_sha256": "e08706136a323f7b1119d99c797ff4b1fff38b4ce72c6c88f7abd0c81ace5e67",

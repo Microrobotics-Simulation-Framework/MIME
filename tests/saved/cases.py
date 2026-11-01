@@ -16,6 +16,7 @@ from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, EPSILON, fl9, script_a
 
 from mime.data import asset
+from mime.dynamics.body import RigidInertialExplicit
 from mime.experiment import Experiment
 from mime.interactions import Lubrication
 from mime.interactions.hydrodynamic import PointForceDrag
@@ -132,6 +133,15 @@ def probed_shapes() -> Experiment:
     return experiment
 
 
+def rigid_explicit() -> Experiment:
+    """A ball of three different moments, moving and spinning at 200 rad/s in water, on the kept ``rigid_inertial``
+    0.2.0 (the gyroscopic term explicit, MIME-ANO-129) with the drag's MRS rung: what a folder saved before the term
+    was made implicit names, and the golden of that version, which gains energy where 0.3.0's does not."""
+    return free_space("rigid_explicit", {"ball": Sphere(radius=mm(1.0))}, mrs(mm(1.5)), mass=kg(1e-6),
+                      inertia=kg_m2((1.0e-10, 1.2e-10, 0.8e-10)), velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
+                      spin=rad_per_s((150.0, 100.0, -100.0)), dynamics=RigidInertialExplicit())
+
+
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
@@ -181,6 +191,9 @@ CASES = (
     # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset
     # unit_tube_R0.997, which the run fetches into the cache before the tests (CI does it once per job).
     Case("mrs_tube", mrs_tube),
+    # The kept rigid_inertial 0.2.0 on a body of three different moments: what a folder saved with the explicit
+    # gyroscopic term names.
+    Case("rigid_explicit", rigid_explicit),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),
