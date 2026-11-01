@@ -13,7 +13,11 @@ per module).
   first): the largest residual (signed) of a step that ends on a stop falls with ``dt`` at least at first order, as
   the integrator's own per-step residual (second order) and the energy of a position clamped back by the overshoot
   (first order) both do (log2 of each halving's ratio at least ``1 - ORDER_BAND``), or lies within rounding of zero.
-  Energy a stop gave would be the same at every step size and would not fall.
+  Energy a stop gave would be the same at every step size and would not fall. A positive residual within the
+  integrator's own per-step residual (the largest of the steps that end on no stop, at the same step size) is not
+  judged: a joint resting on its stop leaves steps whose residual is the integrator's, which changes sign and whose
+  last positive sample need not fall (8 of 7706 planar draws that reached a stop showed one, none of the AR4's or the
+  branched tree's).
   The control: the node built with no gravity, its potential still counted, fails on every draw along which gravity
   would do at least as much work as the integrator leaves in the balance at its finest step, the plant above the
   oracle's resolution (the residual then holds the work gravity did, which does not shrink with ``dt``: log2 of its
@@ -105,8 +109,9 @@ def balance(tree, gravity, stops=None):
     of each step that does not end on a stop, the largest residual (signed) of a step that does and the largest size
     of any step, whether a joint reached a stop, the summed size of each step's change of the potential (the work
     gravity did, or would have done, along the run), the summed size of each step's residual with the potential left
-    out (what the integrator's order alone leaves, where the node has no gravity), and the largest sum of the sizes of
-    the terms a step's residual is made of (the scale its rounding comes from)."""
+    out (what the integrator's order alone leaves, where the node has no gravity), the largest sum of the sizes of
+    the terms a step's residual is made of (the scale its rounding comes from) and the largest size of the residual of
+    a step that does not end on a stop (the integrator's own, at this step size)."""
     a = tree.articulation
     damping = jnp.asarray([tree.joint(n).damping for n in a.dof_names])
     lower, upper = np.maximum(a.lower, -1e3), np.minimum(a.upper, 1e3)
@@ -135,7 +140,7 @@ def balance(tree, gravity, stops=None):
                                                                      length=int(round(HORIZON / h)))
         smooth = jnp.where(stopped, 0.0, jnp.abs(residuals))
         return (jnp.sum(smooth), jnp.max(jnp.where(stopped, residuals, -jnp.inf)), jnp.max(jnp.abs(residuals)),
-                jnp.any(stopped), jnp.sum(work), jnp.sum(kinetic), jnp.max(terms))
+                jnp.any(stopped), jnp.sum(work), jnp.sum(kinetic), jnp.max(terms), jnp.max(smooth))
 
     return {h: jax.jit(lambda q0, qd0, tau, gift, h=h: run(q0, qd0, tau, gift, h)) for h in STEPS}
 
@@ -193,7 +198,8 @@ class Found(NamedTuple):
     stop, the order each halving shows, whether a stop was reached, at the finest step size gravity's summed work, the
     summed residual with the potential left out and the largest size of any step's residual, at each step size the
     largest residual (signed) of a step that ends on a stop (``-inf`` where none does), and the largest scale a
-    residual's terms come from."""
+    residual's terms come from, and at each step size the largest size of the residual of a step that does not end on a
+    stop."""
 
     sums: list[float]
     orders: list[float]
@@ -203,30 +209,38 @@ class Found(NamedTuple):
     largest: float
     stops: list[float]
     scale: float
+    ordinary: list[float]
 
 
 def orders(compiled, q0, qd0, tau, gift: float = 0.0) -> Found:
-    sums, stops, stopped, work, kinetic, largest, scale = [], [], False, 0.0, 0.0, 0.0, 0.0
+    sums, stops, ordinary, stopped, work, kinetic, largest, scale = [], [], [], False, 0.0, 0.0, 0.0, 0.0
     for h in STEPS:
-        total, at_stops, biggest, hit, work_done, left, terms = compiled[h](jnp.asarray(q0), jnp.asarray(qd0),
-                                                                            jnp.asarray(tau), gift)
+        total, at_stops, biggest, hit, work_done, left, terms, plain = compiled[h](
+            jnp.asarray(q0), jnp.asarray(qd0), jnp.asarray(tau), gift)
         sums.append(float(total))
         stops.append(float(at_stops))
+        ordinary.append(float(plain))
         stopped, work, kinetic, largest, scale = stopped or bool(hit), float(work_done), float(left), \
             float(biggest), max(scale, float(terms))
     found = [math.log2(a / b) if a > 0 and b > 0 else math.nan for a, b in zip(sums, sums[1:], strict=False)]
-    return Found(sums, found, stopped, work, kinetic, largest, stops, scale)
+    return Found(sums, found, stopped, work, kinetic, largest, stops, scale, ordinary)
 
 
 def stops_not_falling(found: Found) -> list[str]:
-    """The halvings at which the largest residual of a step that ends on a stop does not fall at least at first order
-    (the integrator's per-step residual falls at second, a position clamped back by its overshoot at first). A halving
-    with no stop at its coarse step size, or whose fine one lies within rounding of zero (``ROUNDING`` units in the
-    last place of the scale the residual's terms come from), is not judged."""
+    """The halvings at which the largest residual of a step that ends on a stop gives energy and does not fall at least
+    at first order (a position clamped back by its overshoot leaves a residual of first order, the integrator's own
+    per-step residual one of second). A halving with no stop at its coarse step size, or whose fine one lies within
+    rounding of zero (``ROUNDING`` units in the last place of the scale the residual's terms come from), is not judged,
+    and neither is one whose fine one lies within the integrator's own per-step residual at that step size (the largest
+    size among the steps that end on no stop): a joint that rests on its stop for the rest of the run leaves steps whose
+    residual is the integrator's own, of second order and either sign, and when that series crosses zero before the
+    run ends its largest positive value is the last sample past the crossing, which does not fall from one step size to
+    the next (the crossing moves with the step). A stop that gave energy gives it at every step size, and so lies
+    above the integrator's residual at the finest."""
     floor = ROUNDING * EPS * found.scale
-    return [f"{coarse:.3g} at {2 * h:g}, {fine:.3g} at {h:g}" for h, coarse, fine in
-            zip(STEPS[1:], found.stops, found.stops[1:], strict=False)
-            if coarse > -math.inf and fine > floor
+    return [f"{coarse:.3g} at {2 * h:g}, {fine:.3g} at {h:g}" for h, coarse, fine, ordinary in
+            zip(STEPS[1:], found.stops, found.stops[1:], found.ordinary[1:], strict=False)
+            if coarse > -math.inf and fine > max(floor, ordinary)
             and not (coarse > 0 and math.log2(coarse / fine) >= 1 - ORDER_BAND)]
 
 
