@@ -521,7 +521,8 @@ class PointForceDrag(Interaction):
             part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
             wall_kind=wall.name, wall_kind_version=wall.version, sampling_chosen=sampling.chosen,
             sampling_members=sampling.members, quadrature_counts=counts, quadrature_owners=owners,
-            force_spacing=self._judged_spacing(spacing), reference_quadrature_counts=reference_counts,
+            force_spacing=None if correction.adds_nothing else self._judged_spacing(spacing),
+            reference_quadrature_counts=reference_counts,
             reference_quadrature_owners=reference_owners, wall_quadrature_counts=wall_counts,
             wall_quadrature_owners=wall_owners, **{f"{WALL}{name}": value for name, value in constants.items()},
             **{f"{SHAPE}{name}": value for name, value in settings.items()}))

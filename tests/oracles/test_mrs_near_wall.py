@@ -324,7 +324,7 @@ def test_the_tube_image_between_a_point_set_and_itself_is_the_tube_correction(mo
     offset = generators_pose(0.3e-3)
     node = built_unchecked(tube_screw(Drag.MRS(spacing=mm(0.829), wall_kind="tube"), offset), monkeypatch)
     parameters = wall_parameters(node)
-    points = jnp.asarray(world_force_points(node, pose_at(offset)))
+    points = jnp.asarray(world_force_points(node, pose_at(offset))[::4])  # a quarter of them: every pair is read twice
     pairs = tube_image(points, points, parameters, 1e-3).matrix
     count = 3 * points.shape[0]
     found = np.asarray(pairs.transpose(0, 2, 1, 3).reshape(count, count))

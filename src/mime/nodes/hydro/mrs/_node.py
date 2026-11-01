@@ -145,8 +145,9 @@ class SeparatedDragState(TypedDict, closed=True):
     """The state of a node on a separated quadrature: the resistance, the background load and whether every read of
     the wall's data was accepted, as on the point forces; the step's judgement of its resistance, its least eigenvalue
     each row and column scaled by its diagonal and the share its symmetric part drops, with the flags they raise; and,
-    with a wall, the body's least distance from it (m) and the stop's record: the node's count of steps, and the step
-    (zero for none), pose, gap and least eigenvalue at which its resistance first turned indefinite."""
+    with a wall, the body's least distance from it (m, and in force spacings, the near-wall flag's measure) and the
+    stop's record: the node's count of steps, and the step (zero for none), pose, gap and least eigenvalue at which its
+    resistance first turned indefinite."""
 
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Float[Array, "6"]]
@@ -157,6 +158,7 @@ class SeparatedDragState(TypedDict, closed=True):
     near_wall: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     asymmetric: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     wall_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    wall_gap_spacings: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     steps: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     stopped_at: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     stopped_pose: NotRequired[ReadOnly[Float[Array, "7"]]]
@@ -188,7 +190,7 @@ def least_distance(distances: Array) -> Array:
     return _lax.stop_gradient(jnp.min(distances))
 
 
-def judged(found: Array, accepted: Array, gap: Array, within: float | None, state: Mapping[str, Array],
+def judged(found: Array, accepted: Array, gap: Array, within: Any, state: Mapping[str, Array],
            pose: Array) -> NodeFields:
     """A step's resistance judged before the body takes it, as the node's state with a wall: ``found``, the raw
     ``W^T A^-1 M``, its symmetric part delivered where it is positive definite or where the wall's reads were refused,
@@ -464,6 +466,10 @@ class MRSDragNode(MimeNode):
         made = ("made once per build from the kind's numbers, the part's placement and the blob, in the body's frame at "
                 "unit viscosity: no quantity of its own")
         held = {HELD: ParamSpec(units="1", trainable=False, description=made)} if self._owners is not None else {}
+        if "force_spacing" in self.constants():
+            held["force_spacing"] = ParamSpec(units="m", trainable=False,
+                                              description="held as built: the force spacing the step judges the body's "
+                                                          "distance from the wall against (near_wall), a report")
         return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
                 "part_centre": ParamSpec(units="m", trainable=False, description=placed),
                 "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data,
@@ -519,7 +525,10 @@ class MRSDragNode(MimeNode):
                                                least_eigenvalue=zero, asymmetry=zero, indefinite=zero, near_wall=zero,
                                                asymmetric=zero, steps=zero, stopped_at=zero,
                                                stopped_pose=as_run_array(jnp.zeros(7)), stopped_least=zero))
-        return state | ({"wall_gap": zero, "stopped_gap": zero} if self._wall().distance is not None else {})
+        if self._wall().distance is None:
+            return state
+        return state | {"wall_gap": zero, "stopped_gap": zero} | (
+            {"wall_gap_spacings": zero} if "force_spacing" in self.constants() else {})
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -611,7 +620,7 @@ class MRSDragNode(MimeNode):
         p = {**theta, "viscosity": jnp.asarray(theta["blob"])}
         force = self.samples(p).points
         counts, owners = quadrature if quadrature is not None else (None, cast(np.ndarray, self._owners))
-        held = self._quadrature_samples(p, counts)
+        held = self._quadrature_samples(p) if counts is None else self._quadrature_samples(p, counts)
         area, centroid = cell_moments(held.points, held.weights, owners, self.sample_count)
         eps_squared = blob_squared(area, theta["blob"])
         return Body(force, held.points, held.weights, area, centroid, eps_squared)
@@ -645,8 +654,9 @@ class MRSDragNode(MimeNode):
     def _built(self) -> Built:
         """The body-frame quantity made once, from the node's constants in float64 whatever the run's precision (the
         resistance in free space, the free part's matrix with a wall), and what the build judges of the free part's
-        resistance (:class:`Built`)."""
-        with cast(Any, jax).enable_x64(True):
+        resistance (:class:`Built`). Evaluated where it is first asked for, a step's trace included, and never traced
+        (``ensure_compile_time_eval``): it is made from constants."""
+        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
             theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
             body = self.body(theta)
             matrix = separated_matrix(body.force, body.points, body.weights, self.chunks, body.eps_squared)
@@ -891,11 +901,14 @@ class MRSDragNode(MimeNode):
             return found, image.accepted, zero if distance is None else least_distance(distance(points, parameters))
 
         found, accepted, gap = checkpoint(solved)(held, theta, viscosity, pose, parameters)
-        spacing = self._force_spacing()
-        within = None if distance is None or spacing is None else NEAR_WALL * spacing
-        fields = judged(found, accepted, gap, within, state, pose)
-        return node_fields(fields if distance is not None else
-                           {key: value for key, value in fields.items() if key not in ("wall_gap", "stopped_gap")})
+        spacing = p.get("force_spacing")
+        fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
+                        state, pose)
+        if distance is None:
+            return node_fields({key: value for key, value in fields.items() if key not in ("wall_gap", "stopped_gap")})
+        if spacing is None:
+            return node_fields(fields)
+        return node_fields(fields) | {"wall_gap_spacings": (gap / spacing).astype(dtype)}
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
