@@ -6,7 +6,11 @@ MRS's correction, ``mime.nodes.hydro.mrs``).
 In 0.3 the method of regularised Stokeslets is the one solver. Its wall kinds are ``free_space``, a medium that fills no region,
 and ``tube``, the straight circular tube's, read from the corrected table of its image system (MIME-ANO-117), a file
 fetched into the assets cache (``mime assets fetch unit_tube_R0.997``). The plane's is reserved (``RESERVED``), with
-its reason."""
+its reason.
+
+Each answers where its wall is (``WallKind.distance``): its signed distance from a point of the medium and its normal
+into it, minus the matched region's shape's, so the tube's is ``R`` less the point's distance from its axis; free
+space has no wall, and gives ``None``."""
 
 from __future__ import annotations
 

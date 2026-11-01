@@ -173,7 +173,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
         no_node="a solid: the part resolver takes its volume and inertia, and the nodes that read the body's values "
                 "derived from them hold those")
        for solid, version in (("box", "0.1.0"), ("cylinder", "0.1.0"), ("ellipsoid", "0.1.0"), ("sphere", "0.1.0"),
-                              ("capsule", "0.1.0"), ("screw", "0.2.0"))},
+                              ("sphere", "0.2.0"), ("capsule", "0.1.0"), ("capsule", "0.2.0"), ("screw", "0.2.0"),
+                              ("screw", "0.3.0"), ("labx.bead", "0.1.0"))},
 }
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

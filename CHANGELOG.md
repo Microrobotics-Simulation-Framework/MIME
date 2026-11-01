@@ -8,6 +8,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Quasi-uniform surface sampling, a hull query and a wall's distance, as seams of the geometry protocol** (dev1 phase
+  7m-a, designs #195 and #196):
+  - **`Geometry.sampling(settings, spacing, patches, density=uniform)`**: a kind's surface sampled for a solver whose
+    unknowns sit at the samples, a `mime.registry.Sampling`, chosen among the kind's quadrature samples when the
+    experiment is built, so that the samples stay a JAX function of its parameters and a study's derivative flows
+    through them. `mime.scene.quasi_uniform` gives it to any kind with a quadrature, a lab's as MIME's: as many samples
+    as the quadrature has at the spacing, chosen from it at eight times finer by farthest points and twenty of Lloyd's
+    steps, each a quadrature sample (on the surface exactly) weighted by its cell's area, ties broken by index so the
+    choice is the same on another machine and on the body scaled, made in float64 whatever the run's precision. A
+    `density` grades it toward a feature with no change of the protocol. The MRS rung takes it, and refuses a kind that
+    does not implement it by name (`drag.no-samples`); its node holds the choice as it holds its counts
+    (`sampling_chosen`, `sampling_members`), and `MRSDragNode.sample_count` says how many samples it solves at.
+  - **Every solid kind samples**: the cylinder, the box and the ellipsoid gain a quadrature (the cylinder's caps in
+    rings, as the screw's; the box's faces and the ellipsoid by Gauss-Legendre) checked by the kind-conformance harness
+    (the ellipsoid's against a level set written from its definition), the sampling and the regions their patches bound
+    (the cylinder's `side` and `span`, the box's three slabs, the ellipsoid's `solid`, which no shape evaluates); a body
+    whose hull is one of them serves the MRS rung (a hull may now be a kind that samples and has no radial reach; its
+    extent is then declared where a law reads it). The lab fixture registers a kind of its own, `labx.bead`, its own
+    quadrature and `mime.scene.quasi_uniform`, which the rung and the suites serve unchanged.
+  - **`Geometry.reach(parameters, direction)`, the hull query**: the largest `x . d` over the body, homogeneous of
+    degree one in `d`, its gradient the farthest point (a face's, a segment's or a rim's middle where that is not one
+    point); closed forms for the sphere, the capsule, the cylinder, the box, the ellipsoid and the tube, an envelope for
+    the screw (the cylinder of its crests, `reach_envelope` 0.15: on FL-9 it overstates by up to 0.138 of its enclosing
+    radius between its axis and across it, and by nothing along either), and `mime.scene.sampled_reach` from any kind's
+    samples. No node's step evaluates it yet; its kinks become declared switches with the containment contact (7o).
+  - **`WallKind.distance(parameters, point)`**: a `WallDistance`, the wall's signed distance from a point of the medium
+    (above zero in it) and its normal into it, by default minus the matched region's shape's, so the tube's is its
+    radius less the point's distance from its axis, with the cylinder's switches; free space gives `None`.
+  - **The sampling conformance suite** (`mime.testing`: `sampling_problems`, `conditioning_problems`, `reach_problems`,
+    `distance_problems`; `tests/saved/test_sampling_walk.py` runs it on every registered kind, MIME's and every
+    installed namespace's): the 5th percentile of the samples' nearest neighbours at least 0.7 of the mean spacing and
+    none under 0.5 (measured 0.759 to 0.800 and 0.609 to 0.726 at 500 and 2,000 samples, against the quadratures' 0.086
+    to 0.358 and 0.062 to 0.358), each patch's, the seams' and the screw's crests' and troughs' share of the samples
+    within 15% of their share of the area (measured within 7%; the screw's quadrature gives its caps 2.4 to 2.9 times),
+    the MRS matrix's condition at blob 0.5, 1, 1.5 and 2 under bounds ten times the measured (108 to 132 at 0.5,
+    against the sphere quadrature's 2.3e4), the reach against a dense quadrature's farthest point, and the tube's
+    distance against its closed form. Each check has a control that fails on every run: every kind's own quadrature, and
+    each kept version, fails the spacing check; a sampling that leaves out the screw's caps fails the coverage check
+    and passes the spacing; the sphere's quadrature fails the conditioning bound; a reach planted short, long or without
+    a capsule's caps, and a wall's distance planted off or its normal reversed, fail.
+  - **The helix reference as shipped data** (`tests/oracles/references/helix_fl9_free_space.json`, pinned by its
+    SHA-256): FL-9's free-space swim speed at 10 Hz, 3.0573 +- 0.057 mm/s post hoc and 3.060 +- 0.147 mm/s by the
+    preregistered rule, with its two routes, runs and controls; and `tests/oracles/test_helix_reference.py`, the rung
+    at the frozen 0.16 mm (5,984 samples) and blob 0.5: on the screw 0.3.0's sampling 2.9523 mm/s (-3.43% from the
+    post hoc point), inside the preregistered band, and on the screw 0.2.0's quadrature 2.7979 mm/s (-8.48%), outside
+    it, the control. An estimate against an extrapolated reference, not a bound on the model, and no measured speed.
 - **The first run** (dev1 phase 7l-c, design #191 item 7):
   - **The README's install and quickstart**: the install section names the distribution, its extras and the branch it is
     installed from until 0.3 is released; the quickstart (a steel ball settling in water, in exploratory, with no
@@ -497,6 +543,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **The sphere 0.2.0, the capsule 0.2.0 and the screw 0.3.0 sample their surfaces quasi-uniformly** (phase 7m-a), so
+  every result of the MRS rung on them moves (the same count of samples, placed so that none crowd: on FL-9 in free
+  space at 0.16 mm and blob 0.5 the swim speed rises from 2.7979 to 2.9523 mm/s against a reference of 3.057). Their
+  quadratures, shapes and closed forms are unchanged. The versions superseded stay registered (`mime.scene.KEPT`),
+  each sampling by its quadrature, so that a folder saved with one loads and reproduces (the saved-form fixtures of
+  versions 1 and 2 name the sphere 0.1.0; 7j's saved experiments of its frozen model name the screw 0.2.0); a script
+  that writes `Sphere(...)` gets the current version. The drag stays 0.3.0 and the wall kinds 0.1.0: what changed is
+  the kinds' samples. The golden outputs that moved were regenerated, each listed in the pull request with its reason.
+  MIME-ANO-123 (the polar grids crowding the sphere's and the capsule's poles) is resolved for the current versions.
 - **The drag's `bem` rung is the `mrs` rung, and the saved form is version 3** (design #192, item 1): the node is the
   method of regularised Stokeslets (Cortez, Fauci and Medovikov, 2005), not a boundary-element method, and the name is
   kept free for a true boundary-element rung. `Drag.BEM()` is `Drag.MRS()`, `BEMDragNode` is `MRSDragNode`,

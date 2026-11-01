@@ -29,6 +29,7 @@ traction matrix for symmetric fails the reverse mode's check, while its forward 
 factorisation (``lu_factor`` and ``lu_solve`` differentiated) agrees with the linear-solve rule to rounding, so no
 check of values can tell them apart: what it costs is the difference, and it keeps the factors' derivatives."""
 
+import contextlib
 import dataclasses
 import math
 
@@ -44,6 +45,7 @@ from script_a import fl9
 import mime.interactions.hydrodynamic as hydrodynamic
 import mime.nodes.hydro.mrs._node as mrs_node
 import mime.nodes.hydro.mrs._solve as mrs_solve
+import mime.scene._sampling as scene_sampling
 from mime.build._maddening import node_state, parameter_leaves
 from mime.core import quaternion
 from mime.nodes.hydro.mrs import MRSDragNode, blob_squared
@@ -209,8 +211,14 @@ def test_check_2_the_pulled_spheres_derivative_equals_the_difference_by_rebuildi
 
 
 def test_check_2_the_swimmers_derivative_in_its_wavenumber_equals_the_difference_by_rebuilding():
-    rebuilt = lambda value: float(swimmer_loss(run(swimmer(value))))  # noqa: E731
+    """Rebuilt with the sampling's choice held, as the counts are (the check below)."""
     built = swimmer(2.33)
+    first = drag_node(built, "swimmer")
+
+    def rebuilt(value: float) -> float:
+        with held_choice(first):
+            return float(swimmer_loss(run(swimmer(value))))
+
     value = float(swimmer_loss(run(built)))
     found = through_params(built, "drag:swimmer", "shape_wavenumber", swimmer_loss)
     coarse, fine = difference(rebuilt, 2.33)
@@ -261,6 +269,17 @@ LEAVES = {"ball": ("blob", "shape_radius", "viscosity"),
           "screw": ("blob", "shape_length", "shape_modulation", "shape_radius", "shape_wavenumber", "viscosity")}
 
 
+@contextlib.contextmanager
+def held_choice(node: MRSDragNode):
+    """Every sampling made inside it is ``node``'s choice: what a build at a moved setting takes when its
+    discretisation is held, as its counts are."""
+    held = node._sampling  # noqa: SLF001 - the node's own choice, as the rung made it
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(scene_sampling, "_MADE", {})
+        patch.setattr(scene_sampling, "_quasi_uniform", lambda *args: held)
+        yield
+
+
 def written_with(body: str, leaf: str, value: float):
     """The experiment of one body of ``body``'s kind with the setting ``leaf`` is made from written as ``value`` (SI):
     the medium's viscosity, the rung's blob, or a setting of the body's kind."""
@@ -306,8 +325,11 @@ def test_check_2_each_leafs_derivative_equals_the_difference_by_rebuilding_and_a
                                                                                                     body, leaf):
     """The node's derivative in each trainable leaf, through ``params``, of a weighted sum of its resistance (each entry
     scaled by its size as first built), against the central difference of the same sum with the setting written
-    again, the experiment rebuilt at each step and the samples' counts unchanged by it. The control, in the same
-    experiment: the leaf behind a ``stop_gradient`` where it enters the step fails."""
+    again, the experiment rebuilt at each step, the samples' counts unchanged by it and their choice held: the
+    sampling's choice is the discretisation, as the counts are, and the choice made again at a moved capsule's height
+    or screw's twist is another discretisation, whose difference is no derivative (the node takes its choice as built,
+    as it takes its counts). The control, in the same experiment: the leaf behind a ``stop_gradient`` where it enters
+    the step fails."""
     built = written_with(body, "blob", 0.5).build()
     leaves = parameter_leaves(built.graph)[f"drag:{body}"]
     first = np.abs(np.diag(np.asarray(resistance_through(built, body, leaves))))
@@ -318,9 +340,13 @@ def test_check_2_each_leafs_derivative_equals_the_difference_by_rebuilding_and_a
         held = parameter_leaves(built.graph)[f"drag:{body}"]
         return jnp.sum(WEIGHTS_6 * resistance_through(built, body, {**held, leaf: x}) / scale)
 
+    first_choice = drag_node(built, body).constants()["sampling_chosen"]
+
     def rebuilt(value: float) -> float:
-        again = written_with(body, leaf, value).build()
+        with held_choice(drag_node(built, body)):
+            again = written_with(body, leaf, value).build()
         assert drag_node(again, body).constants()["counts"] == counts, "the step crossed a change of count"
+        assert np.array_equal(drag_node(again, body).constants()["sampling_chosen"], first_choice)
         return float(jnp.sum(WEIGHTS_6 * resistance_at(again, body) / scale))
 
     theta = float(leaves[leaf])
@@ -491,7 +517,7 @@ def residual_sizes(checkpointed: bool) -> list[int]:
 
 def test_the_reverse_mode_keeps_no_matrix_between_its_passes_and_its_checkpoint_is_what_does_it():
     built = free_space("count", {"ball": BALL}, mrs(SPACING)).build()
-    count = sum(int(np.prod(c)) for c in built.graph.get_node("drag:ball").constants()["counts"])
+    count = drag_node(built, "ball").sample_count
     matrix = (3 * count) ** 2
     with_checkpoint, without = residual_sizes(True), residual_sizes(False)
     print(f"\n{count} samples, the matrix {matrix} numbers: kept with the checkpoint, largest "

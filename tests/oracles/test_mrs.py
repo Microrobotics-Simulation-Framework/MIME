@@ -6,7 +6,8 @@
   sphere kind: the regularised method's error is of the order of the blob over the radius, so each resolution is off by
   more than a stated tolerance and the error falls as the spacing falls; the first-order extrapolation of two
   resolutions, the spacing halved (``2 R(h/2) - R(h)``), is held within 0.5% in translation and rotation, with every
-  coupling zero to rounding.
+  coupling of the two under ``SPHERE_COUPLING`` (zero by symmetry, a discretisation error on a quasi-uniform sampling,
+  which is not symmetric through the centre).
 - The prolate spheroid's resistance (semi-axes 2, 1, 1), Kim & Karrila (2005), Table 3.4 (Chwang & Wu's 1975 forms),
   through the rung: no 0.3 kind gives a spheroid's samples, so the test registers a kind of its own
   (``oracle.spheroid``: Gauss-Legendre in the axial coordinate, the trapezoid round the axis), which the rung samples
@@ -58,8 +59,8 @@ from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import MRSDragNode, Corrected, WallCorrection, blob_squared, resistance
-from mime.registry import Samples, Solid, register_geometry
-from mime.scene import Cylinder, Sphere, Tube
+from mime.registry import Geometry, Samples, Solid, register_geometry, uniform
+from mime.scene import Sphere, Tube, quadrature
 from mime.things import Body, State, Structure
 from mime.units import Length, Quantity, dimensionless, mm
 from mime.vocabulary import register_namespace
@@ -68,6 +69,14 @@ MU = 1e-3
 #: The sphere's two spacings: its samples at (10, 20) and (20, 40), polar by round.
 COARSE, FINE = mm(math.pi / 10 + 1e-5), mm(math.pi / 20 + 5e-6)
 SPHERE_TOLERANCE, SPHEROID_TOLERANCE, SPHEROID_02_TOLERANCE = 5e-3, 3e-3, 1.5e-2
+#: The sphere's coupling of translation and rotation, over the diagonal's geometric mean: zero by symmetry, and on a
+#: quasi-uniform sampling, which is not symmetric through the centre, a discretisation error. A declaration: four
+#: times the larger measured at the two spacings (5.2e-4 at the coarser).
+SPHERE_COUPLING = 2e-3
+#: How far the left-handed screw's axial coupling may be from the right-handed's reversed, as a share of it, at the
+#: test's 0.9 mm: the mirror image of a quasi-uniform sampling is not the mirror's sampling, so the two differ by the
+#: discretisation's error there. A declaration: about twice the 7% measured.
+MIRRORED = 0.15
 
 
 def stokes(radius: float) -> np.ndarray:
@@ -84,7 +93,8 @@ def sphere_resistances(radius=BALL.radius) -> list[np.ndarray]:
 
 def sphere_misses(found: list[np.ndarray], radius: float = 1e-3) -> tuple[np.ndarray, np.ndarray, float]:
     """Each resolution's diagonal against Stokes, the extrapolation's, and the largest coupling of translation and
-    rotation, which the samples' symmetry through the centre makes zero, scaled by the diagonal's geometric mean."""
+    rotation, zero by symmetry and a discretisation error of samples not symmetric through the centre, scaled by the
+    diagonal's geometric mean."""
     expected = stokes(radius)
     each = np.stack([np.diag(r) / expected - 1 for r in found])
     extrapolated = np.diag(2 * found[1] - found[0]) / expected - 1
@@ -98,7 +108,7 @@ def test_the_sphere_converges_on_stokes_drag_and_torque():
           f"{np.round(extrapolated, 5)}; largest coupling of translation and rotation {coupling:.1e}")
     assert np.all(np.abs(each[1]) < np.abs(each[0])) and np.all(np.abs(each[1]) > SPHERE_TOLERANCE)
     assert np.all(np.abs(extrapolated) < SPHERE_TOLERANCE)
-    assert coupling < 1e-10
+    assert coupling < SPHERE_COUPLING
 
 
 register_namespace("oracle", "0.0.1")
@@ -143,6 +153,12 @@ class Spheroid(Solid):
         """``around`` samples round the equator ``spacing`` apart, and half as many along the axis."""
         around = math.ceil(2 * math.pi * settings["b"] / spacing)
         return max(2, math.ceil(around / 2)), around
+
+    @override
+    def sampling(self, settings, spacing, patches, density=uniform):
+        """Its quadrature at the spacing, as the oracle's convergence was measured on: a kind may choose its own
+        sampling, and the rung takes whichever it gives."""
+        return quadrature(self, settings, spacing, patches)
 
     @override
     def samples(self, parameters, patch, counts):
@@ -253,7 +269,8 @@ def test_the_pill_moves_most_easily_along_its_axis_and_the_screw_couples_turning
     left = resistance_at(free_space("screw", {"screw": fl9(nu=-2.33)}, mrs(mm(0.9))).build(), "screw", identity)
     assert abs(right[0, 3]) > 1e-3 * math.sqrt(right[0, 0] * right[3, 3])
     print(f"\nthe screw's axial coupling: right-handed {right[0, 3]:.6e}, left-handed {left[0, 3]:.6e}")
-    assert math.isclose(left[0, 3], -right[0, 3], rel_tol=1e-9)
+    assert left[0, 3] * right[0, 3] < 0.0
+    assert abs(left[0, 3] + right[0, 3]) <= MIRRORED * abs(right[0, 3])
 
 
 def image_of_a_plane_below(points, parameters, viscosity):
@@ -330,9 +347,20 @@ def codes(experiment) -> set[str]:
     return set(refused.value.codes())
 
 
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Unsampled(Spheroid):
+    """The oracle's spheroid without the geometry protocol's sampling: a kind that gives its quadrature and not the
+    sampling the rung needs."""
+
+    name = "oracle.unsampled"
+    version = "0.0.1"
+    sampling = Geometry.sampling  # type: ignore[assignment]
+
+
 def test_a_body_with_no_hull_or_a_hull_kind_without_samples_is_refused():
-    cylinder = Cylinder(radius=mm(1.0), length=mm(3.0), axis=(1.0, 0.0, 0.0))
-    assert "drag.no-samples" in codes(free_space("no_samples", {"rod": cylinder}, mrs(mm(0.5))))
+    unsampled = Unsampled(a=mm(2.0), b=mm(1.0))
+    assert "drag.no-samples" in codes(free_space("no_samples", {"rod": unsampled}, mrs(mm(0.5))))
     experiment = free_space("no_hull", {}, mrs(mm(0.5)))
     experiment.add_body(Body("bare", dynamics=RigidInertial(), initial=State(position=mm((0.0, 0.0, 0.0)))))
     experiment.declare("bare.extent", mm(1.0), reason="no parts")

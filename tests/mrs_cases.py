@@ -2,6 +2,7 @@
 ``Drag.MRS`` and nothing else, one body per hull kind the rung serves (a sphere, a capsule, de Jongh's FL-9 helix),
 each starting at rest at its own place and turned."""
 
+import dataclasses
 import math
 from collections.abc import Mapping
 from typing import Any
@@ -16,7 +17,7 @@ from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import MRSDragNode
 from mime.registry import Geometry, Interaction
-from mime.scene import Capsule, Scene, Sphere, Tube, Z
+from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Quantity, kg, kg_m2, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
@@ -61,6 +62,37 @@ def mrs_free_space() -> Experiment:
     """The round-trip case: a ball, a pill and a screw, each with the rung at its coarsest spacing, each moving and turning
     from the start, so that every leaf of every node acts within the walk's first steps."""
     return free_space("mrs_free_space", KINDS, mrs(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
+                      velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
+
+
+def kept_kinds() -> dict[str, Geometry]:
+    """The kept versions of the kinds the rung serves, the ball, the pill and FL-9's screw as ``KINDS`` declares them,
+    each the version whose sampling is its quadrature (``mime.scene.KEPT``)."""
+    found: dict[str, Geometry] = {}
+    for body, kind in KINDS.items():
+        held = next(cls for (name, _), (cls, _) in KEPT.items() if name == kind.name)
+        found[body] = held(**{field.name: getattr(kind, field.name) for field in dataclasses.fields(kind)})
+    return found
+
+
+#: The solids that sample their surface from 7m-a: a cylinder, a box and an ellipsoid, each with distinct lengths.
+SOLIDS: Mapping[str, Geometry] = {
+    "rod": Cylinder(radius=mm(0.4), length=mm(1.6), axis=(0.0, 0.6, 0.8)),
+    "brick": Box(size=mm((0.6, 0.9, 1.3))),
+    "egg": Ellipsoid(semi_axes=mm((0.5, 0.7, 1.1))),
+}
+
+
+def mrs_kept() -> Experiment:
+    """The round-trip case of the kept versions: ``mrs_free_space`` with each kind the version a folder saved before
+    quasi-uniform sampling names, so that a load of one rebuilds what it saved."""
+    return free_space("mrs_kept", kept_kinds(), mrs(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
+                      velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
+
+
+def mrs_solids() -> Experiment:
+    """The rung on the solids that sample their surface from 7m-a, at a coarse spacing, each moving and turning."""
+    return free_space("mrs_solids", SOLIDS, mrs(mm(0.35)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
                       velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
 
 

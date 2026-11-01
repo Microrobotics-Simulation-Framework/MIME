@@ -88,7 +88,7 @@ def cases_using(key, cases=CASES) -> list[Case]:
     """Every round-trip case whose experiment uses the entry ``key``, in the cases' order."""
     found = []
     for case in cases:
-        if case.name == "nudged_toy" and importlib.util.find_spec(LAB_FIXTURE) is None:
+        if case.lab and importlib.util.find_spec(LAB_FIXTURE) is None:
             if os.environ.get("CI"):
                 pytest.fail("the lab fixture package is not installed; every CI lane installs it from ./lab_fixture")
             pytest.skip("the lab fixture package is not installed: uv pip install --no-deps ./lab_fixture")

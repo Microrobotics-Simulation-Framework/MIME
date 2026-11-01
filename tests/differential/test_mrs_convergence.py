@@ -97,7 +97,8 @@ def through_the_node(built, n_theta: int, n_zeta: int, cls: type[MRSDragNode] = 
     through the rung's node at the screw's starting pose, its resistance turned back into the screw's frame."""
     node = drag_node(built, "screw")
     held = dict(node.constants())
-    held.pop("counts")
+    for key in ("counts", "sampling_chosen", "sampling_members"):  # the kind's quadrature at the rule's count
+        held.pop(key, None)
     fresh = cls(node.name, node.delta_t, counts=[(2 * n_theta, n_zeta - 1)], **held)
     pose = np.asarray(node_state(built.graph, "screw")["pose"], dtype=np.float64)
     world = np.asarray(fresh.update(fresh.initial_state(), {"pose": jnp.asarray(pose)}, 1e-3)["resistance"])

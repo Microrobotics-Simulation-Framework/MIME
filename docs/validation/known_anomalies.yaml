@@ -1717,15 +1717,21 @@ anomalies:
       which invites the same use of the sphere and the capsule, whose poles are as crowded as the screw's caps were.
       A derivative that is noise, with the same forward value, would steer a fit or a sensitivity ranking to a wrong
       answer, with nothing in a run to flag it.
-    resolution_status: open
+    resolution_status: resolved
     affected_versions: ">=0.3.0.dev0"
+    resolution_version: "0.3.0.dev1"
     affected_components:
       - "the capsule and sphere shapes' polar-grid sampling (mime.scene._solids), read by mime.nodes.hydro.mrs"
       - "drag (rung mrs, formerly the bem rung), MRSDragNode"
-    verification: []
-    residual_risk: "A derivative or a confined resistance computed on a sphere or a capsule closed surface, at 0.1 mm or finer or with a wall's correction, is unvalidated"
-    workaround: "Read a sphere's or a capsule's forward values only, and check any derivative against central differences before relying on it"
-    planned_resolution: "Follow-up: sample the polar caps of the sphere and the capsule by the same remedy as the screw kind 0.2.0's rings (a sample at the pole, homothetic rings out, no two samples under a declared separation), then check the free-space matrix's conditioning and a derivative against finite differences, as for MIME-ANO-119"
+    verification:
+      - "tests/saved/test_sampling_walk.py::test_every_kind_that_samples_spreads_its_samples_evenly"
+      - "tests/saved/test_sampling_walk.py::test_every_kind_that_samples_keeps_the_mrs_matrix_conditioned"
+      - "tests/saved/test_sampling_walk.py::test_control_each_kept_version_fails_the_spacing_check_and_no_current_one_does"
+      - "tests/saved/test_sampling_walk.py::test_control_the_spheres_quadrature_fails_the_conditioning_bound_at_todays_blob"
+      - "tests/oracles/test_mrs_gradients.py::test_check_2_each_leafs_derivative_equals_the_difference_by_rebuilding_and_a_stopped_leaf_fails"
+    residual_risk: "The sphere 0.1.0 and the capsule 0.1.0, kept registered so that a folder saved with either reproduces, still sample by the crowded grid, and the sampling suite holds them to failing; the derivative checks run at the suite's few hundred samples, not at 0.1 mm or with the tube's wall correction"
+    workaround: "Build new experiments with the current versions, which a script writing Sphere(...) or Capsule(...) gets; for a kept version's folder, read its forward values only"
+    planned_resolution: "Done in dev1 phase 7m-a (designs #195, #196), by a remedy other than the one first planned: not rings at the poles, but the geometry protocol's quasi-uniform sampling of every kind (the sphere 0.2.0, the capsule 0.2.0), chosen from the quadrature by farthest points and Lloyd's relaxation. At the suite's 500 and 2,000 samples the 5th percentile of the nearest neighbours is 0.78 to 0.80 of the mean spacing and the closest pair 0.64 to 0.78 (the grid's 0.09 to 0.27), and the MRS matrix's condition at blob 0.5 is 108 to 121 (the sphere grid's 2.3e4); each leaf's derivative, the radius and the capsule's height among them, equals the difference by rebuilding with the choice held"
   - anomaly_id: MIME-ANO-124
     title: "A motor's unwrapped single-precision angle turns at a biased rate that grows with the run's length"
     description: >
