@@ -16,7 +16,7 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
 from mime.core import CYLINDER, quaternion
-from mime.nodes.body import RigidInertialNode
+from mime.nodes.body import RigidInertialMidpointNode
 from mime.nodes.body._rigid_inertial import CONTACT_ULPS
 from mime.testing import FLOOR_ULPS
 
@@ -26,10 +26,10 @@ LIMIT = RADIUS - EXTENT - MARGIN
 STEPS = 3
 
 
-def body(confined: bool) -> RigidInertialNode:
+def body(confined: bool) -> RigidInertialMidpointNode:
     confinement = dict(surface_shape="cylinder", extent=EXTENT, margin=MARGIN, velocity_rule="remove_outward",
                        **{f"surface_{k}": v for k, v in SURFACE.items()}) if confined else {}
-    return RigidInertialNode("probe", 5e-4, mass=8.5e-5, inertia=(1.0e-10, 1.2e-10, 0.8e-10),
+    return RigidInertialMidpointNode("probe", 5e-4, mass=8.5e-5, inertia=(1.0e-10, 1.2e-10, 0.8e-10),
                              initial_pose=(0, 0, 0, 1, 0, 0, 0), initial_twist=(0.0,) * 6, **confinement)
 
 
@@ -52,7 +52,7 @@ EXAMPLES = st.fixed_dictionaries({
     "force": vectors(1e-3), "torque": vectors(1e-8), "dt": st.floats(1e-4, 1e-2)})
 
 
-def steps(node: RigidInertialNode, example: dict):
+def steps(node: RigidInertialMidpointNode, example: dict):
     """Each step of the example for ``node``: its number, the state it starts from, the free step from there and the
     node's own."""
     q = exponential(jnp.asarray(example["rotation"]))
@@ -67,7 +67,7 @@ def steps(node: RigidInertialNode, example: dict):
 
 
 @functools.cache
-def hold_of(node: RigidInertialNode):
+def hold_of(node: RigidInertialMidpointNode):
     """``(pose, twist, free twist, dt) -> twist`` through the node's own ``held`` (no resistance is fed, so its system is
     ``M / dt``): the velocity after the hold in the solve, before the position is advanced and projected. Compiled once
     per node, so that each example costs one call."""
@@ -84,7 +84,7 @@ def hold_of(node: RigidInertialNode):
     return jax.jit(hold)
 
 
-def judgements(node: RigidInertialNode, example: dict) -> list[tuple[int, str, float, float]]:
+def judgements(node: RigidInertialMidpointNode, example: dict) -> list[tuple[int, str, float, float]]:
     """``(step, what, outward speed, allowed)`` for every step whose outward velocity the law fixes.
 
     A step that starts within the node's contact band of the shrunk surface is held inside the solve, along the normal
@@ -120,7 +120,7 @@ def judgements(node: RigidInertialNode, example: dict) -> list[tuple[int, str, f
     return judged
 
 
-def violations(node: RigidInertialNode, example: dict) -> list[str]:
+def violations(node: RigidInertialMidpointNode, example: dict) -> list[str]:
     """Every step at which the body ends outside the shrunk lumen, or moves outward past what the law lets through."""
     found = []
     for n, _, _, after in steps(node, example):
@@ -146,7 +146,7 @@ def test_after_every_step_the_body_lies_inside_and_moves_no_further_out(example)
     assert violations(CONFINED, example) == []
 
 
-class Planted(RigidInertialNode):
+class Planted(RigidInertialMidpointNode):
     """The shipped node with one fault planted, for the controls: each overrides a method of a subclass, so the node's
     own behaviour is untouched."""
 

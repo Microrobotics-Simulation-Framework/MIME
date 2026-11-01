@@ -2737,6 +2737,7 @@ class _Planner:
         for plan in self.dynamics.values():
             for label, name in cast(type[Dynamics], plan.registered.cls).values.items():
                 self.value(plan, label, plan.thing or "", name)
+            self.dynamics_value_problems(plan)
         for plan in self.providers.values():
             for label, name in cast(type[FieldProvider], plan.registered.cls).values.items():
                 self.value(plan, label, plan.thing or "", name)
@@ -2750,6 +2751,21 @@ class _Planner:
                                                      f"thing")
                     continue
                 self.value(plan, label, plan.bindings[read.role], read.name)
+
+    def dynamics_value_problems(self, plan: EntryPlan) -> None:
+        """What the dynamics says is wrong with the values it reads, once all are resolved: a value that was refused
+        or is missing is refused where it is read, and the dynamics is not asked about it."""
+        cls = cast(type[Dynamics], plan.registered.cls)
+        if not cls.values or set(plan.values) != set(cls.values):
+            return
+        dynamics = cast(Dynamics, plan.entry)
+        try:
+            problems = dynamics.value_problems({label: plan.values[label].value for label in cls.values})
+        except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+            self.defect(cls, f"value_problems() raised {error!r}", error)
+            return
+        for problem in problems:
+            self.refuse(problem.code, RefusalClass.USER, f"body {plan.thing!r}: {problem.message}", problem.action)
 
     def plan_confinements(self) -> None:
         for plan in self.readers:
