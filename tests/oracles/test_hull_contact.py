@@ -520,10 +520,15 @@ def free_twin(name: str) -> RigidInertialNode:
 
 
 class Lingering(RigidInertialNode):
-    """The control: a contact that keeps a force of one part in 1e15 of the body's weight's order at every point."""
+    """The control: a contact that keeps a force of one part in 1e15 of the body's weight's order at every point,
+    after the solve (the solve's own scaling of its forces would read a force at a point far from the wall as one
+    pulling it in, and amplify it)."""
 
-    def sweeps(self, coupling, start_, count, *, owner):
-        return super().sweeps(coupling, start_, count, owner=owner) + 1e-15 * MASS
+    def hull_held(self, p, body, pose, system, moved, dt):
+        held_, points_, forces, left = super().hull_held(p, body, pose, system, moved, dt)
+        rows = self.contacts(p, body, pose).rows
+        kept = jnp.full_like(forces, 1e-15 * MASS)
+        return held_ + jnp.linalg.solve(system, rows.T) @ kept, points_, forces + kept, left
 
 
 @cache

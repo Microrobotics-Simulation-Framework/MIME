@@ -33,7 +33,7 @@ from mime.core import (
     typed_view,
 )
 from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
-from mime.nodes.body._contact import Contacts, Hull, Pair, Wall, joined, no_work, pair_contacts, residual
+from mime.nodes.body._contact import Contacts, Hull, Pair, Wall, held_at, joined, no_work, pair_contacts, residual
 from mime.nodes.body._contact import sweeps as _sweeps
 from mime.registry import Geometry, implements
 
@@ -239,8 +239,11 @@ class RigidInertialNode(MimeNode):
       times the moments' spread), and the power's does exactly.
     - *After the step*, the pose is projected back inside, ``HULL_PASSES`` passes: each moves the body by the least
       change of pose in ``M``'s norm (the mass matrix itself, symmetric, not the stepping one) that takes every row's
-      point, chosen and refined again at that pose, back to it (``J delta >= -g``, by ``PROJECTION_SWEEPS`` of the same
-      sweeps), its turn applied as a rotation; the second takes what the first's linearisation, and its sweeps, left.
+      point back to it (``J delta >= -g``, by ``PROJECTION_SWEEPS`` of the same sweeps), its turn applied as a
+      rotation. The first chooses and refines the points again at the pose the step ended at; the second holds the same
+      points of the body at the pose the first left and takes what its linearisation, and its sweeps, left (the
+      points' own move between the two is the square of that small turn, and choosing again would cost a third of the
+      step).
       The velocity is the solve's: the projection moves the pose by the drift of a step, the square of its turning, and
       the next step's hold takes the rest.
     - The state adds ``contact_points``, each row's point at the step's start, ``contact_forces``, the force each took,
@@ -480,6 +483,17 @@ class RigidInertialNode(MimeNode):
         body's own deepest point near it where the hull's kind has a support query."""
         return joined([pair_contacts(pair, p["margin"]) for pair in self.contact_pairs(p, body, pose)])
 
+    def contacts_at(self, p: Mapping[str, Any], body: Array, pose: Array, local: Array) -> Contacts:
+        """Every pair's rows at ``pose`` at the body's points ``local`` (in its own frame, each pair's rows in turn, as
+        :meth:`contacts` gives them), chosen at another pose."""
+        found: list[Contacts] = []
+        start = 0
+        for pair in self.contact_pairs(p, body, pose):
+            count = len(pair.body.candidates)
+            found.append(held_at(pair, local[start:start + count]))
+            start += count
+        return joined(found)
+
     def gaps(self, p: Mapping[str, Any], points: Array) -> Array:
         """Each point's gap to the confining surface shrunk by the margin (m, positive inside)."""
         return self.wall(p).gaps(points)
@@ -507,10 +521,14 @@ class RigidInertialNode(MimeNode):
 
     def hull_projected(self, p: Mapping[str, Any], body: Array, pose: Array, mass_matrix: Array) -> Array:
         """``pose`` moved back inside the shrunk surface by ``HULL_PASSES`` passes of the least change of pose in
-        ``M``'s norm that takes each row's point, chosen at the pose the pass starts from, back to it (see the
-        class)."""
+        ``M``'s norm that takes each row's point back to it, the points chosen at the pose the first pass starts from
+        and held by every later pass at the pose it starts from (see the class)."""
+        found: Contacts | None = None
         for _ in range(HULL_PASSES):
-            found = self.contacts(p, body, pose)
+            if found is None:
+                found = self.contacts(p, body, pose)
+            else:
+                found = self.contacts_at(p, body, pose, found.local)
             response = jnp.linalg.solve(mass_matrix, found.rows.T)
             shift = response @ self.sweeps(found.rows @ response, found.gaps, PROJECTION_SWEEPS, owner="contact.push")
             pose = jnp.concatenate([pose[:3] + shift[:3], quaternion.multiply(quaternion.exponential(shift[3:]),

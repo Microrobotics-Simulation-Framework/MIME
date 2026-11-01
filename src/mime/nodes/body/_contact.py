@@ -26,6 +26,10 @@ CONTACT_NEWTON = 5
 #: speeds that its sweeps left unmet. A declaration, a thousandth: what is left goes to the projection after the step,
 #: which keeps the margin but charges no velocity, so the forces read from the state are short by about that share.
 CONVERGED = 1e-3
+#: The sweeps' relaxation: each row's update moves its force this share of the way to its own exact value (one: Gauss-
+#: Seidel; between one and two: successive over-relaxation, which a symmetric positive definite problem still
+#: converges under, each update still lowering its dual).
+RELAXATION = 1.0
 
 
 class Wall(NamedTuple):
@@ -73,11 +77,12 @@ class Pair(NamedTuple):
 class Contacts(NamedTuple):
     """The rows a solve holds, over every pair: each row's gap (m, positive where the points are apart), its row
     ``J = [n; r x n]`` in the body's twist (the normal into the free region and its moment about the centre of mass),
-    and where its point is in the world."""
+    where its point is in the world, and where it is in the body's own frame."""
 
     gaps: Array
     rows: Array
     points: Array
+    local: Array
 
 
 def joined(found: Sequence[Contacts]) -> Contacts:
@@ -156,13 +161,18 @@ def _numbers(parameters: Mapping[str, Any]) -> dict[str, Any]:
 def pair_contacts(pair: Pair, margin: Any) -> Contacts:
     """A pair's rows: each group's nearest candidate, taken to the body's own deepest point near it where the hull's
     kind has a support query (``deepest``), or held where it is."""
-    hull, wall = pair.body, pair.other
+    hull = pair.body
     seeds = hull.points[nearest_samples(pair, margin)]
-    local = seeds if hull.kind is None else deepest(pair, seeds)
+    return held_at(pair, seeds if hull.kind is None else deepest(pair, seeds))
+
+
+def held_at(pair: Pair, local: Array) -> Contacts:
+    """A pair's rows at the body's points ``local`` (in its own frame) at its pose."""
+    hull, wall = pair.body, pair.other
     arms = jnp.matmul(local, hull.rotation().T)
     points = hull.pose[:3] + arms
     normals = wall.normals(points)
-    return Contacts(wall.gaps(points), jnp.concatenate([normals, jnp.cross(arms, normals)], axis=-1), points)
+    return Contacts(wall.gaps(points), jnp.concatenate([normals, jnp.cross(arms, normals)], axis=-1), points, local)
 
 
 def sweeps(coupling: Array, start: Array, count: int, *, owner: str) -> Array:
@@ -175,7 +185,7 @@ def sweeps(coupling: Array, start: Array, count: int, *, owner: str) -> Array:
     for _ in range(count):
         for k in range(start.shape[0]):
             residual = start[k] + jnp.dot(coupling[k], found)
-            moved = found[k] - residual / held[k]
+            moved = found[k] - RELAXATION * residual / held[k]
             found = found.at[k].set(switch.maximum(moved, 0.0, owner=owner, indicator=moved, resolution=lambda:
                                                    switch.rounding(jnp.abs(found[k]) + jnp.abs(residual / held[k]))))
     return found
@@ -183,9 +193,13 @@ def sweeps(coupling: Array, start: Array, count: int, *, owner: str) -> Array:
 
 def no_work(coupling: Array, start: Array, forces: Array) -> Array:
     """``forces`` scaled along their own ray to where they do no work on the motion they leave, ``t = -f.b / f.C f``:
-    then ``f.(b + C f) = 0``, so their power at the held twist is ``-f.g/dt``, never positive, whatever the sweeps
+    then ``f.(b + C f) = 0``, so their power at the held twist is ``-t f.g/dt``, never positive, whatever the sweeps
     left; and of the scalings it is the one that lowers the problem's dual most, so the energy in the system's norm
-    never rises (for a symmetric system). At the solution it is one. Unchanged where no force is taken."""
+    never rises (for a symmetric system). At the solution it is one, and for the sweeps' own forces on a symmetric
+    system it is at least a half: they lower the dual from zero, ``f.b + f.C f / 2 <= 0``, so the scaled forces push
+    as the sweeps' do. For 0.3.0's system, whose skew part is a share ``|omega| dt / 2`` of the moments' spread, it
+    stays near one. Unchanged where no force is taken. Forces that are not the sweeps' (a planted force at a point far
+    from the wall) can give ``t`` below zero: it is meant for the sweeps' alone."""
     stiffness = forces @ coupling @ forces
     taken = stiffness > 0
     return forces * switch.domain_guard(taken, -(forces @ start) / switch.domain_guard(taken, stiffness, 1.0), 1.0)
@@ -200,5 +214,6 @@ def residual(coupling: Array, start: Array, forces: Array, free: Array) -> Array
     return jnp.max(jnp.abs(unmet)) / (jnp.max(jnp.abs(free)) + float(jnp.finfo(free.dtype).tiny))
 
 
-__all__ = ["CONTACT_NEWTON", "CONVERGED", "Contacts", "Hull", "Pair", "Wall", "deepest", "joined", "nearest_samples", "no_work",
+__all__ = ["CONTACT_NEWTON", "CONVERGED", "RELAXATION", "Contacts", "Hull", "Pair", "Wall", "deepest", "held_at",
+           "joined", "nearest_samples", "no_work",
            "pair_contacts", "residual", "sweeps"]
