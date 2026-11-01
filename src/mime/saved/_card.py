@@ -88,7 +88,8 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."""
 #: The text each licence of :data:`mime.terms.NOTICE_TEXT_REQUIRED` asks to travel with every copy, under the copyright
-#: notice (the file's credit). As SPDX's list gives them (recalled, and compared there by the maintainer).
+#: notice (the file's credit). As SPDX's list gives them: written from memory, then compared word for word with
+#: SPDX's license-list-data texts on 2026-11-01 (whitespace aside, the copyright line excluded): identical.
 LICENCE_TEXTS: Mapping[str, str] = {"MIT": _MIT, "BSD-2-Clause": _BSD_START + _BSD_END,
                                     "BSD-3-Clause": _BSD_START + _BSD_THIRD + _BSD_END}
 _OWNER_WORDS = {"yours": "the author's own", "third party": "a third party's", "record": "OpenMaterica's record"}
