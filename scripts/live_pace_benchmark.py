@@ -35,6 +35,14 @@ def processor() -> str:
     return platform.processor() or platform.machine()
 
 
+def machine() -> dict[str, Any]:
+    """The machine a measurement ran on: its processor, its cores, its platform, JAX's backend and Python."""
+    import jax
+
+    return {"processor": processor(), "cores": os.cpu_count(), "platform": platform.platform(),
+            "jax_backend": jax.default_backend(), "python": platform.python_version()}
+
+
 def served(folder: Path, work: Path, name: str, seconds: float, *extra: str) -> dict[str, Any]:
     from mime.live import FrameOrder, LiveClient
 
@@ -75,16 +83,12 @@ def main() -> int:
     sys.path.insert(0, str(ROOT / "tests"))
     from script_a0 import a0
 
-    import jax
-
     folder = work / "script_a0"
     if not (folder / "mime.lock").is_file():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             a0().save(folder)
-    result = {"machine": {"processor": processor(), "cores": os.cpu_count(), "platform": platform.platform(),
-                          "jax_backend": jax.default_backend(), "python": platform.python_version()},
-              "unpaced": served(folder, work, "unpaced", 4.0, "--unpaced"),
+    result = {"machine": machine(), "unpaced": served(folder, work, "unpaced", 4.0, "--unpaced"),
               "paced_at_1": served(folder, work, "paced", 2.0)}
     print(json.dumps(result, indent=1))
     return 0

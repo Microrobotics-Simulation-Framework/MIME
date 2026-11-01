@@ -155,8 +155,9 @@ class Site:
 class ProfileOutcome:
     """What the profile made of the experiment: the profile, every waiver the build rests on with a pending basis
     (generated, or the experiment's own), the defaults taken, the items left pending and those listed, every setting's
-    source by path, and each value given as the experimenter's own choice, by path, with its declared role (a declared
-    change of its role). Each in a canonical order."""
+    source by path, each value given as the experimenter's own choice, by path, with its declared role (a declared
+    change of its role), and every setting's declared role by path (``None``: its entry declares none). Each in a
+    canonical order."""
 
     profile: Profile
     waivers: tuple[Waiver, ...] = ()
@@ -164,6 +165,7 @@ class ProfileOutcome:
     items: tuple[PendingItem, ...] = ()
     sources: Mapping[str, Basis] = field(default_factory=dict[str, Basis])
     changes: Mapping[str, str] = field(default_factory=dict[str, str])
+    roles: Mapping[str, SettingRole | None] = field(default_factory=dict[str, SettingRole | None])
 
     @property
     def pending(self) -> tuple[PendingItem, ...]:
@@ -594,7 +596,8 @@ class ProfileWork:
             self.profile, tuple(sorted(self.waivers, key=lambda w: (w.target, w.reasons, w.generated))),
             tuple(self.defaults[p] for p in sorted(self.defaults)),
             tuple(sorted(self.items, key=lambda item: (*item.key(), item.listed))),
-            dict(sorted(self.sources.items())), dict(sorted(self.changes.items())))
+            dict(sorted(self.sources.items())), dict(sorted(self.changes.items())),
+            {path: paths[path].role for path in sorted(paths)})
 
     def _judge_site(self, site: Site, basis: Basis | None, *, from_quantity: bool) -> None:
         role = site.role

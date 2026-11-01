@@ -103,6 +103,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     bakes them into the asset cache only, drawn through an overlay in the cache (`mime visuals view`).
   - **`built.topology()`**, the built graph in MIME's names, in `hello` and as `topology.json` in run folders; and
     **`run_to(..., hook=, chunk=)`**, so a saved run streams.
+- **A live session never goes silent, and carries the build report** (dev1 phase 7n-b, design #197; the two gaps
+  MICROROBOTICA's client found):
+  - **No `set` of a live input compiles again.** A controller's step compiled once (A0's `ArmTracking`, a `jax.jit`)
+    read a live input under its label only once one was set, so the first `set` traced and compiled it again (1.9 s
+    for A0's on a laptop, 2 to 5 s on the client's machine, the session answering nothing meanwhile). A session now
+    hands every live input to the step at its declared default from its first tick (`LiveInput.default`, zeros unless
+    declared; a default not of its shape, or a label that is also a read's, is refused at registration), so the step
+    compiles at the session's first chunk with every input it reads and no `set` compiles it again; a batch run calls
+    it with its reads alone, as before, and a session that sets nothing is still a batch run's states bit for bit.
+  - **`mime serve` answers while a chunk runs**, its first chunk's compile included: each chunk runs on a thread of
+    its own, and `hello` and `status` are answered at once, the status saying what the session is doing (`activity`:
+    `compiling`, `stepping` or `idle`); `stop` and `pause` are answered at once too, their command in the status's
+    `pending`, and act at the chunk's end; the other commands are answered at the chunk's end, where they act, in the
+    order they came (`scripts/live_responsiveness.py` measures it). In a script, `status()` and `hello()` no longer
+    wait for a chunk running on another thread.
+  - **The build report's summary for clients** (`built.report_summary()`, `mime.report/1`): the validity lines
+    (declared, computed at the build, stated by a record), the post-run watches, the flags a run may raise and what
+    each means, each setting's role and default with what the profile's stamp says of it, and the profile. `hello`
+    carries it as `report`, every run folder writes it as `report.json` beside `run.json`, and `RunResult.read` reads
+    it (`result.report`; a report of a newer format leaves `report` `None` and `report_unreadable` the format it
+    states, and the run is still read).
+  - **A reply goes to the client that asked, and every `step` is answered.** A request held across a chunk is
+    answered to the connection that sent it, a count never reused, and not to whoever holds its socket's descriptor
+    when the chunk ends; a `step` taken in the same batch as a `pause` or `stop` that ends it, and a second `step`,
+    each gets its reply, in order. A `stop` taken while a chunk runs is answered as pending (`taken`, a `message`
+    saying "stop pending", no `folder`): the final frame or the closed connection says it took effect. A test walks
+    every registered controller with live inputs, a session that sets nothing against the batch run, so a default that
+    changes the run is refused by name; an open that is refused installs no live input.
 - **Proxies within a triangle budget**: a kind drawn on the stage is drawn at fewer facets a turn where it would hold
   more triangles than `PROXY_TRIANGLES`; A0's saved stage, nearly all the screw's proxy, is about a quarter of its size,
   and every stage of a chain gains its frames' prims, so its hash changes.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Mapping, Sequence
@@ -49,7 +50,9 @@ from mime.errors import public
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
 from mime.results import (
+    REPORT_FORMAT,
     RUN_MANIFEST,
+    RUN_REPORT,
     FlagLayout,
     FlagTrack,
     Layout,
@@ -482,6 +485,41 @@ RUN_TOPOLOGY = "topology.json"
 TOPOLOGY_FORMAT = "mime.topology/1"
 
 
+def report_summary(report: BuildReport, layout: Layout) -> dict[str, Any]:
+    """:meth:`BuiltExperiment.report_summary` of ``report`` and the run layout's flags."""
+    from mime.registry import DefaultKind
+    from mime.validity import basis_text
+
+    validity = [{"owner": owner, "kind": kind, "line": line}
+                for kind, held in (("declared", report.validity), ("computed", report.checked),
+                                   ("record", report.limits))
+                for owner, lines in sorted(held.items()) for line in lines]
+    flags = [{"path": flag.path, "owner": flag.owner, "entry": flag.entry, "node": flag.node, "meaning": flag.meaning,
+              "limits": [None if math.isinf(v) else v for v in flag.limits] if flag.limits is not None else None}
+             for flag in layout.flags]
+    outcome = report.profile
+    settings: list[dict[str, Any]] = []
+    profile: dict[str, Any] | None = None
+    if outcome is not None:
+        taken = {held.path: held for held in outcome.defaults}
+        for path, role in outcome.roles.items():
+            items = [item for item in outcome.items if item.target == path]
+            settings.append({
+                "path": path, "role": role.role.value if role is not None else None,
+                "default": role.default.value if role is not None else DefaultKind.UNDECLARED.value,
+                "taken": taken[path].text() if path in taken else None,
+                "source": basis_text(outcome.sources[path]) if path in outcome.sources else None,
+                "pending": [item.line() for item in items if not item.listed],
+                "listed": [item.line() for item in items if item.listed]})
+        stamp = outcome.stamp()
+        profile = {"profile": outcome.profile.value, "stamp": stamp.text(), "pending": list(stamp.pending),
+                   "measured": list(stamp.measured), "listed": [item.line() for item in outcome.listed],
+                   "defaults": [held.text() for held in outcome.defaults]}
+    return {"format": REPORT_FORMAT, "experiment": report.experiment, "profile": profile, "validity": validity,
+            "watches": [watch.line() for watch in report.watches], "flags": flags, "settings": settings,
+            "summary": report.summary()}
+
+
 def refuse_out_over(out: Path, sources: Sequence[str | PathLike[str]]) -> None:
     """Refuse a run folder that would be written over what the run reads: ``out`` the same folder as a source, inside
     one, or holding one (a run folder's ``experiment/`` is replaced as it is written, and its command log too)."""
@@ -596,6 +634,7 @@ class BuiltExperiment:
         self._runs = ChunkedRun(graph, plans, law)
         self.layout = run_layout(plans)
         self._binding: StageBinding | None = None
+        self._summary: dict[str, Any] | None = None
         #: Where a run of this built left its state not finite, for the runs after it.
         self._non_finite: NonFinite | None = None
 
@@ -779,7 +818,8 @@ class BuiltExperiment:
                       for flag in self.layout.flags}
         return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
-                         watches=read_watches(self._plans.watches, final, stacked if history else None))
+                         watches=read_watches(self._plans.watches, final, stacked if history else None),
+                         report=self.report_summary())
 
     @public
     def binding(self) -> StageBinding:
@@ -839,6 +879,17 @@ class BuiltExperiment:
                 "controller": held}
 
     @public
+    def report_summary(self) -> dict[str, Any]:
+        """The build report's summary for a client (``mime.report/1``, plain JSON): the validity lines (declared and
+        not yet checked, computed at the build, and stated by a record), the post-run watches, the flags a run may raise
+        and what each means, each setting's declared role and default kind with the default the build took and what
+        the profile's stamp says of it, the profile with its stamp, and the summary's text. ``hello`` carries it, and
+        every run folder holds it as ``report.json``, which ``RunResult.read`` reads."""
+        if self._summary is None:
+            self._summary = report_summary(self.report, self.layout)
+        return json.loads(json.dumps(self._summary))
+
+    @public
     def live(self, *, chunk: Quantity | None = None, pace: float | None = 1.0, select: Sequence[str] | None = None,
              out: str | PathLike[str] | None = None) -> LiveSession:
         """A live session of this built experiment (``mime.live``): it steps the run in chunks of one fixed size,
@@ -873,8 +924,8 @@ class BuiltExperiment:
         ``hook`` and ``chunk`` stream the run as :meth:`run` does. ``stage_every`` writes the recording layer,
         ``recording.usdc``: the bound prims' poses and vectors (:meth:`binding`) over the folder's own stage, at the
         run's start and every ``stage_every`` after it, a whole number of chunks (the run is chunked for it, which
-        changes nothing it computes, and keeps no step's state). ``topology.json`` is written beside the outputs."""
-        import json
+        changes nothing it computes, and keeps no step's state). ``topology.json`` is written beside the outputs, and
+        ``report.json``, the build report's summary (:meth:`report_summary`), beside ``run.json``."""
         import time
 
         started = time.perf_counter()
@@ -903,6 +954,8 @@ class BuiltExperiment:
         self.save(target / RUN_EXPERIMENT)
         (target / RUN_TOPOLOGY).write_text(json.dumps(self.topology(), indent=2, sort_keys=True) + "\n",
                                            encoding="utf-8", newline="\n")
+        (target / RUN_REPORT).write_text(json.dumps(self.report_summary(), indent=2, sort_keys=True) + "\n",
+                                         encoding="utf-8", newline="\n")
         recording = None
         if samples is not None:
             from mime.viz import write_recording

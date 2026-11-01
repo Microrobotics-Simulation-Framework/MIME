@@ -168,6 +168,28 @@ def test_a_controller_entry_without_writes_is_not_registered():
         register_controller(Silent)
 
 
+def test_a_live_input_whose_default_is_not_of_its_shape_or_whose_label_is_a_read_is_not_registered():
+    """A live session hands every live input to the step at its default from the first tick, so the default is finite
+    numbers of its shape (a number stands for every element), under a label none of its reads holds. The control: the
+    same declaration with a default of its shape registers."""
+    from mime.registry import LiveInput, Signal, register_controller
+
+    def declared(name: str, live: dict) -> type[Controller]:
+        return dataclasses.make_dataclass(name, [], bases=(Controller,), frozen=True, kw_only=True, namespace={
+            "name": f"oracle.{name.lower()}", "version": "0.1.0", "differentiability": Ticker.differentiability,
+            "gradient": Ticker.gradient, "builds": {"": ()}, "reads": {"pose": Signal("m; 1", (7,))},
+            "writes": {"angle": Signal("1", ())}, "live": live})
+
+    for name, live, problem in (
+            ("Ragged", {"aim": LiveInput("m", (3,), "where", default=(1.0, 2.0))}, "is not finite numbers of its shape"),
+            ("Endless", {"aim": LiveInput("m", (), "where", default=float("inf"))}, "is not finite numbers"),
+            ("Shadowed", {"pose": LiveInput("m", (), "where")}, "is also a read label")):
+        with pytest.raises(TypeError, match=problem):
+            register_controller(declared(name, live))
+    held = register_controller(declared("Aimed", {"aim": LiveInput("m", (3,), "where", default=(1.0, 2.0, 3.0))}))
+    assert held.live["aim"].default == (1.0, 2.0, 3.0)
+
+
 # -- external inputs: derived from the writes, and nothing else -----------------------------------------------------
 
 

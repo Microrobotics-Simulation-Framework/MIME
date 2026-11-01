@@ -2,19 +2,25 @@
 run's states at the same steps, bit for bit; its live input moves the motor's angle from the next tick and nothing
 before it; replaying its command log reproduces its run folder; and ``stop`` stops it in every state. Each with its
 control: frames compared one step off are not the batch's, a session that sets nothing moves nothing, and a log with
-one value changed replays to another folder."""
+one value changed replays to another folder. No set of a live input compiles the step again (its control: the cause put
+back compiles at the first set); ``status`` and ``hello`` are answered while a chunk runs, saying so (their control: a
+command that changes the run waits for the chunk); and ``hello`` and every run folder carry the build report's summary,
+which ``RunResult.read`` reads back (its control: a report of another format is refused)."""
 
 import json
 import threading
 import time
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
-from live_cases import built, files_of, in_graph, saved, steered
+from jax import monitoring
+from live_cases import built, files_of, in_graph, jit_steered, saved, steered
 
 from mime.build import ArgumentRefused
 from mime.experiment import Experiment
 from mime.live import COMMAND_LOG, PAUSED, READY, RUNNING, STOPPED, Frame, FrameOrder, replay
+from mime.results import REPORT_FORMAT, RUN_REPORT, RunResult
 from mime.units import ms
 
 RATE = 0.1  # Steered's angle per tick
@@ -87,9 +93,12 @@ def test_replaying_the_command_log_reproduces_the_sessions_run_folder(tmp_path):
     folder = saved(tmp_path)
     live = Experiment.load(folder).build().live(pace=None, out=tmp_path / "live")
     live.step(3)
-    live.set("offset", 0.002)
+    with compilations() as seen:  # A0's controller, a jax.jit, has read its live input since the first tick
+        live.set("offset", 0.002)
+        live.step(1)
+    assert seen == []
     live.record(True)
-    live.step(5)
+    live.step(4)
     live.record(False)
     live.set("offset", -0.003)
     live.step(2)
@@ -198,7 +207,9 @@ def test_hello_describes_the_session():
     hello = session.command({"command": "hello"})
     assert hello["ok"] and hello["protocol"] == "mime.live/1" and hello["state"] == READY
     assert hello["chunk_steps"] % 3 == 0 and hello["controller"]["mode"] == "callback"
-    assert hello["live_inputs"] == {"offset": {"units": "1", "shape": [], "meaning": "added to every angle it writes"}}
+    assert hello["live_inputs"] == {"offset": {"units": "1", "shape": [], "meaning": "added to every angle it writes",
+                                               "default": 0.0}}
+    assert hello["activity"] == "idle" and hello["pending"] == []
     assert {e["name"] for e in hello["binding"]["entries"]} >= {"umr", "spin.motor.base", "spin.motor.rotor"}
     assert [f["path"] for f in hello["schema"]["fields"]][:1] == ["umr.pose"]
     assert json.loads(json.dumps(hello)) == hello
@@ -330,3 +341,170 @@ def test_a_run_folder_is_never_written_over_what_it_reads(tracked_folder, tmp_pa
     # The control: a folder of its own is written.
     replay(rebuilt, tmp_path / "run" / COMMAND_LOG, tmp_path / "again")
     assert (tmp_path / "again" / "experiment").is_dir()
+
+
+#: JAX's events for a trace and for a compile (or a read of the persistent compilation cache, which JAX times as one).
+TRACE, COMPILE = "/jax/core/compile/jaxpr_trace_duration", "/jax/core/compile/backend_compile_duration"
+
+
+@contextmanager
+def compilations():
+    """Every trace and compile while the block runs, as JAX's own monitoring reports them."""
+    seen: list[str] = []
+
+    def listen(event: str, duration: float, **_: object) -> None:
+        if event in (TRACE, COMPILE):
+            seen.append(event)
+
+    monitoring.register_event_duration_secs_listener(listen)
+    try:
+        yield seen
+    finally:
+        monitoring.unregister_event_duration_listener(listen)
+
+
+#: A scalar live input in every form a client gives one: JSON's integers and floats, NumPy's scalars, 0-d arrays.
+VALUES = [1, -2, 0.5, -0.25, 3.0e-3, np.float32(0.125), np.float64(-1.5), np.int32(2), np.int64(-4),
+          np.asarray(0.75, dtype=np.float32), np.asarray(-0.5)]
+
+
+def test_no_set_of_a_live_input_compiles_the_step_again():
+    """The client's stall after its first set: a step compiled once (A0's ``ArmTracking`` is a ``jax.jit``) read a live
+    input under its label only once one was set, so the first set compiled it again, 2 to 5 s in which the session
+    answered nothing. A session now hands every live input to the step at its declared default from its first tick:
+    after the first chunk, 33 sets in every form a client gives, each with a chunk after it, trace and compile nothing,
+    and the angle is the last value's. The control: the same rig with the cause put back (the defaults cleared before
+    the first chunk, so that the step's first calls read no offset, as before) compiles at its first set and at no
+    other."""
+    for control in (False, True):
+        session = jit_steered().build().live(pace=None, select=["spin.motor.angle"])
+        if control:
+            session._callback.live.clear()
+        with compilations() as first:
+            session.step(1)
+        assert first  # the counter hears the first chunk's compile
+        each = []
+        for value in VALUES * 3:
+            with compilations() as seen:
+                session.set("offset", value)
+                held = session.step(1)[-1]
+            each.append(len(seen))
+        ticks = (held.step - 1) // 3
+        assert angle(held) == pytest.approx(RATE * ticks + float(VALUES[-1]), rel=1e-6)  # float32's, on its scale
+        if control:
+            assert each[0] > 0 and each[1:] == [0] * (len(each) - 1)
+        else:
+            assert each == [0] * len(each)
+
+
+def gated(session):
+    """The session's chunks held open until the event returned is set: a long first compile, without the clock."""
+    gate = threading.Event()
+    run = session.built._runs.run
+
+    def held(*args, **kwargs):
+        assert gate.wait(timeout=600)  # a guard against a hang, no bound on speed
+        return run(*args, **kwargs)
+
+    session.built._runs.run = held
+    return gate
+
+
+def test_status_and_hello_are_answered_while_a_chunk_runs():
+    """A chunk held open on another thread (its first, so compiling; then a later one, stepping): ``status`` and
+    ``hello`` answer at once, with the step the chunk started at, and a ``set`` waits for the chunk's end, where it
+    acts. Machine-free: the chunk cannot end before the test lets it, so an answer during it is an answer that did not
+    wait for it. The control: the set is logged at the chunk's end step, after it, not at the step it was sent at."""
+    session = steered().build().live(pace=None, select=["spin.motor.angle"])
+    gate = gated(session)
+    for activity in ("compiling", "stepping"):
+        at = session.steps
+        stepping = threading.Thread(target=session.step, args=(1,), daemon=True)
+        stepping.start()
+        while session.activity != activity:
+            assert stepping.is_alive()
+            time.sleep(0.001)
+        status, hello = session.command({"command": "status"}), session.command({"command": "hello"})
+        assert (status["activity"], status["step"], status["stepping"]) == (activity, at, 1)
+        assert hello["activity"] == activity and hello["report"]["format"] == REPORT_FORMAT
+        setting = threading.Thread(target=session.set, args=("offset", 0.5), daemon=True)
+        setting.start()
+        setting.join(timeout=0.05)
+        assert setting.is_alive() and [line["command"] for line in session.log][-1] == "step"  # it waits
+        gate.set()
+        stepping.join(timeout=600)
+        setting.join(timeout=600)
+        assert session.log[-1] == {"step": at + session.chunk_steps, "command": "set", "label": "offset",
+                                   "value": 0.5}
+        gate.clear()
+    gate.set()
+    assert session.command({"command": "status"})["activity"] == "idle"
+    session.stop()
+
+
+def test_hello_and_every_run_folder_carry_the_build_reports_summary(tmp_path):
+    """``hello``'s ``report`` is the build report's summary, the validity lines with it (each with its kind: declared,
+    computed at the build, or stated by a record), the flags a run may raise, each setting's role and default, and the
+    profile's stamp; a live session's run folder and ``run_to``'s each hold it as ``report.json``, which
+    ``RunResult.read`` reads. The controls: a run folder without one (written before) reads ``None``, and a report of
+    another format (a newer one) is marked unreadable with the format it states, the run read all the same."""
+    held = built()
+    summary = held.report_summary()
+    session = held.live(pace=None, out=tmp_path / "live")  # stopped as it opens: nothing compiled
+    hello = session.hello()
+    assert hello["report"] == summary and summary["format"] == REPORT_FORMAT
+    validity = {line["line"] for line in summary["validity"]}
+    assert validity and all(any(line in text for text in summary["summary"]) for line in validity)
+    assert {line["kind"] for line in summary["validity"]} <= {"declared", "computed", "record"}
+    assert [flag["path"] for flag in summary["flags"]] == [flag.path for flag in held.layout.flags]
+    settings = {entry["path"]: entry for entry in summary["settings"]}
+    damping = settings["controller.damping"]
+    assert (damping["role"], damping["default"], damping["pending"]) == (
+        "numerical", "numerical", ["controller.damping (a numerical default)"])
+    assert damping["taken"].startswith("controller.damping = 0.05, a numerical default")
+    assert settings["controller.end_effector"]["role"] == "design" and settings["controller.end_effector"]["taken"] is None
+    assert summary["profile"]["stamp"] == held.layout.stamp.text() and "controller.damping (a numerical default)" in \
+        summary["profile"]["pending"]
+    written = session.stop()
+    run = held.run_to(tmp_path / "batch", ms(8))
+    for folder in (written, run.outputs.parent):
+        assert json.loads((folder / RUN_REPORT).read_text()) == summary == RunResult.read(folder).report
+    (written / RUN_REPORT).unlink()
+    older = RunResult.read(written)
+    assert older.report is None and older.report_unreadable is None  # none written: not unreadable
+    readable = RunResult.read(run.outputs.parent)
+    assert readable.report == summary and readable.report_unreadable is None
+    (run.outputs.parent / RUN_REPORT).write_text(json.dumps({**summary, "format": "mime.report/9"}))
+    newer = RunResult.read(run.outputs.parent)
+    assert newer.report is None and newer.report_unreadable == "mime.report/9"
+    assert newer.steps == readable.steps and newer.final.keys() == readable.final.keys()  # the run is read
+    (run.outputs.parent / RUN_REPORT).write_text("{not json")
+    assert RunResult.read(run.outputs.parent).report_unreadable == "not JSON"
+
+
+def test_an_open_that_is_refused_leaves_no_live_input_installed(tmp_path, monkeypatch):
+    """A session installs its live inputs at their defaults in the built's callback only once it has opened: an open
+    refused by the stage check, or failed by an ``out`` that is not a folder, leaves the callback as it was (none), so
+    nothing of a session that never was reaches a later batch run. The control: an open that succeeds installs them."""
+    from mime.build._refusals import Refusal, RefusalClass
+    from mime.live import _session
+
+    held = jit_steered().build()
+    callback = held._runs.callback  # pyright: ignore[reportPrivateUsage]
+    assert callback.live == {}
+
+    def refuse(self) -> None:
+        raise ArgumentRefused([Refusal("live.stage-writer", RefusalClass.USER, "planted", "none")])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(_session.LiveSession, "_refuse_an_older_stage", refuse)
+        with pytest.raises(ArgumentRefused, match="live.stage-writer"):
+            held.live(pace=None)
+    assert callback.live == {}
+    (tmp_path / "afile").write_text("x")
+    with pytest.raises(Exception):  # noqa: B017, PT011 - whichever error an out that is a file raises, the callback is clean
+        held.live(pace=None, out=tmp_path / "afile")
+    assert callback.live == {}
+    opened = held.live(pace=None)
+    assert set(callback.live) == {"offset"}
+    opened.stop()

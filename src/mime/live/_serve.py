@@ -6,7 +6,14 @@ session stops as on SIGTERM, writing its run folder, and the server exits. On Li
 (``PR_SET_PDEATHSIG``, SIGTERM); on every platform the serve loop also looks between chunks at whether its launcher is
 alive (on POSIX, a process whose launcher died is adopted and its parent's pid changes; on Windows, the launcher's
 process handle is signalled when it exits). ``--outlive-launcher`` serves on regardless, for a server started to run
-detached."""
+detached.
+
+The server never goes silent: each chunk runs on a thread of its own while the loop moves bytes and answers. While a
+chunk runs (a first chunk's compile included), ``hello`` and ``status`` are answered at once, the status saying what
+the session is doing (``activity``: compiling, stepping); ``stop`` and ``pause`` are answered at once too, their
+command in the status's ``pending``, and act at the chunk's end; every other command is answered at the chunk's end,
+where it acts. The commands taken during a chunk act in the order they came, so the command log holds them in that
+order at the chunk's end step. The frames a chunk sends are published by the loop, which alone touches the sockets."""
 
 from __future__ import annotations
 
@@ -17,13 +24,15 @@ import os
 import signal
 import sys
 import time
+from collections import deque
 from collections.abc import Callable, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from types import FrameType
 from typing import Any, cast
 
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
-from mime.live._protocol import PROTOCOL, Frame, FrameSchema, frame_from_json, is_frame, refused, reply
+from mime.live._protocol import COMMANDS, PROTOCOL, Frame, FrameSchema, frame_from_json, is_frame, refused, reply
 from mime.live._session import STOPPED, LiveSession
 from mime.live._zmtp import Client, Server, is_loopback, parse_endpoint
 from mime.units import Quantity
@@ -32,6 +41,9 @@ DEFAULT_COMMANDS = "tcp://127.0.0.1:5555"
 DEFAULT_FRAMES = "tcp://127.0.0.1:5556"
 #: The longest the loop waits for a request before it looks again at whether a chunk is due or a signal came.
 _POLL = 0.1
+#: The commands answered at once while a chunk runs, and those answered at once that act at its end.
+_ANSWERED = frozenset({"hello", "status"})
+_TAKEN = frozenset({"stop", "pause"})
 
 
 def _bind_problems(endpoints: Sequence[str], remote: bool) -> list[Refusal]:
@@ -125,15 +137,18 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
         raise
     session.driven = True
     schema = session.schema
+    sent: deque[Frame] = deque()  # each frame a chunk sent, on its thread; published by the loop
 
-    def publish(held: Frame) -> None:
-        if json_frames:
-            server.publish(json.dumps(schema.json_frame(held.number, held.step, held.time, held.values,
-                                                        final=held.final)).encode("utf-8"))
-        else:
-            server.publish(schema.encode(held.number, held.step, held.time, held.values, final=held.final))
+    def publish() -> None:
+        while sent:
+            held = sent.popleft()
+            if json_frames:
+                server.publish(json.dumps(schema.json_frame(held.number, held.step, held.time, held.values,
+                                                            final=held.final)).encode("utf-8"))
+            else:
+                server.publish(schema.encode(held.number, held.step, held.time, held.values, final=held.final))
 
-    session.subscribe(publish)
+    session.subscribe(sent.append)
     stopping: list[int] = []
 
     def stop_on(signum: int, _: FrameType | None) -> None:
@@ -146,7 +161,22 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
         ready_file.write_text(json.dumps(endpoints) + "\n", encoding="utf-8")
     say(f"mime serve: {built.plans.settings.experiment} ready ({PROTOCOL}); commands on {endpoints['commands']}, "
         f"frames on {endpoints['frames']}; its run folder will be {target}")
-    stepper: int | None = None  # the peer whose step is in hand, answered once its chunks are stepped
+    steppers = _Steppers(server, session)  # the peers whose steps are in hand, each answered when its step ends
+    running: Future[Frame | None] | None = None  # the chunk running on the worker's thread
+    held: deque[tuple[int | None, bytes]] = deque()  # requests taken while it runs, acted on at its end, in order
+    worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mime-serve-chunk")
+
+    def act(peer: int | None, body: bytes) -> None:
+        """A request acted on between chunks, answered unless it was answered when taken (``peer`` None) or is a
+        step whose chunks are still to come."""
+        answer = _answer(session, body)
+        if peer is not None:
+            if answer.get("command") == "step" and answer["ok"] and session.stepping:
+                steppers.add(peer)
+            else:
+                server.reply(peer, _encoded(answer))
+        steppers.settle()
+
     try:
         if start:
             session.start(thread=False)
@@ -154,21 +184,39 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
             if watch is not None and watch.gone():
                 say(f"mime serve: the process that launched it ({watch.launcher}) is gone; stopping")
                 break
-            for peer, body in server.poll(min(session.due(), _POLL)):
-                answer = _answer(session, body)
-                if answer.get("command") == "step" and answer["ok"] and session.stepping:
-                    stepper = peer
+            for peer, body in server.poll(_POLL if running is not None else min(session.due(), _POLL)):
+                if running is None:
+                    act(peer, body)
                     continue
-                server.reply(peer, _encoded(answer))
-            if session.state != STOPPED and session.due() <= 0.0:
-                session.advance()  # one chunk, then the requests again: a stop or a signal waits a chunk at most
-            if stepper is not None and not session.stepping:
-                server.reply(stepper, _encoded(reply("step", **session.status_fields())))
-                stepper = None
-        written = session.stop()
-        if stepper is not None:
-            server.reply(stepper, _encoded(reply("step", **session.status_fields())))
+                answer = _while_running(session, body)
+                if answer is not None:
+                    server.reply(peer, _encoded(answer))
+                if answer is None or (answer.get("command") in _TAKEN and answer["ok"]):
+                    held.append((None if answer is not None else peer, body))
+            publish()
+            if running is not None and running.done():
+                running.result()  # a chunk's error leaves the loop, and the session stops below
+                running = None
+                while held:
+                    peer, body = held.popleft()
+                    if peer is None:
+                        session.pending.pop(0)
+                    act(peer, body)
+                publish()
+            if running is None:
+                steppers.answer_if_ended()
+            if running is None and session.state != STOPPED and not stopping and session.due() <= 0.0:
+                running = worker.submit(session.advance)  # one chunk, the requests answered while it runs
+                running.add_done_callback(lambda _: server.wake())
+        written = session.stop()  # after the chunk in flight, if there is one
+        publish()
+        steppers.answer_all()
+        for peer, body in held:  # requests a signal left unanswered: refused, the session stopped
+            if peer is not None:
+                server.reply(peer, _encoded(_answer(session, body)))
         server.flush(2.0)
+        if running is not None:
+            running.result()  # the error of a chunk a signal stopped after, if it raised one
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler)
@@ -177,25 +225,78 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
                 session.stop()
             except Exception:  # noqa: BLE001 - the first error is the one to raise
                 pass
+        worker.shutdown(wait=True)
         server.close()
     say(f"mime serve: stopped at step {session.steps}; wrote {written}")
     return written
+
+
+class _Steppers:
+    """The peers whose ``step`` is in hand, in the order they asked: each is answered, with the session's status then,
+    once no step is in hand, whether its chunks were stepped or a ``pause`` or ``stop`` ended it. One slot would lose
+    the reply of every step but the last when a batch of requests acted at a chunk's end holds more than one."""
+
+    def __init__(self, server: Server, session: LiveSession) -> None:
+        self.server, self.session = server, session
+        self.waiting: deque[int] = deque()
+
+    def add(self, peer: int) -> None:
+        self.waiting.append(peer)
+
+    def answer_if_ended(self) -> None:
+        if not self.session.stepping:
+            self.answer_all()
+
+    def settle(self) -> None:
+        """After each request acted on: a ``pause`` or ``stop`` that ended the steps in hand answers them before the
+        next request acts, which may start another."""
+        self.answer_if_ended()
+
+    def answer_all(self) -> None:
+        while self.waiting:
+            self.server.reply(self.waiting.popleft(), _encoded(reply("step", **self.session.status_fields())))
 
 
 def _encoded(answer: dict[str, Any]) -> bytes:
     return json.dumps(answer).encode("utf-8")
 
 
-def _answer(session: LiveSession, body: bytes) -> dict[str, Any]:
+def _message(body: bytes) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """A request's JSON object, or the refusal of one that is not a JSON object."""
     try:
         message = json.loads(body.decode("utf-8"))
     except (ValueError, RecursionError) as error:  # not UTF-8, not JSON, or nested past what JSON's reader takes
-        return refused(None, [Refusal("live.command", RefusalClass.USER, f"a request that is not JSON: {error}",
-                                      "send a JSON object: `{\"command\": \"hello\"}`")])
+        return None, refused(None, [Refusal("live.command", RefusalClass.USER, f"a request that is not JSON: {error}",
+                                            "send a JSON object: `{\"command\": \"hello\"}`")])
     if not isinstance(message, dict):
-        return refused(None, [Refusal("live.command", RefusalClass.USER, "a request that is not a JSON object",
-                                      "send a JSON object: `{\"command\": \"hello\"}`")])
-    return session.command(cast(dict[str, Any], message))
+        return None, refused(None, [Refusal("live.command", RefusalClass.USER, "a request that is not a JSON object",
+                                            "send a JSON object: `{\"command\": \"hello\"}`")])
+    return cast(dict[str, Any], message), None
+
+
+def _answer(session: LiveSession, body: bytes) -> dict[str, Any]:
+    message, refusal = _message(body)
+    return session.command(message) if message is not None else cast(dict[str, Any], refusal)
+
+
+def _while_running(session: LiveSession, body: bytes) -> dict[str, Any] | None:
+    """The answer to a request taken while a chunk runs, or ``None`` for one answered at the chunk's end: ``hello``,
+    ``status`` and every refusal of a request no session could take are answered at once, and so are ``stop`` and
+    ``pause``, which the session takes (its ``pending``) to act at the chunk's end."""
+    message, refusal = _message(body)
+    if message is None:
+        return refusal
+    name = message.get("command")
+    if message.get("protocol", PROTOCOL) != PROTOCOL or name not in COMMANDS or name in _ANSWERED:
+        return session.command(message)  # answered without waiting: a refusal, a hello or a status
+    if name not in _TAKEN:
+        return None
+    session.pending.append(str(name))
+    fields = session.status_fields()
+    if name == "stop":  # not the confirmation: no run folder yet, and the final frame says when it has stopped
+        return reply("stop", taken=True, message="stop pending: the session stops at the end of the chunk in hand; "
+                     "the final frame or the closed connection says it has, and no status reply will", **fields)
+    return reply(str(name), **fields)
 
 
 class LiveClient:
