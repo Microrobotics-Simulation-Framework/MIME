@@ -77,14 +77,16 @@ def turned_start(kind=DynamicArmNode) -> dict:
     return dict(turned_arm(kind).initial_state())
 
 
-#: The pose box the loads are drawn in, inside the AR4's limits and clear of its wrist's singularity: the shoulder from
-#: -0.2 rad, the elbow from 0, and the wrist's bend at least 1.2 rad either side of straight. A scan of the box (twenty
-#: thousand draws and a grid over its three joints, at both ends of each) puts the last link's Jacobian's smallest
-#: singular value at 0.058 of its largest or more, above the twentieth the draw requires. The singular poses lie
-#: outside it: more than 60% of a uniform draw over the limits does, and the fraction a filter refuses grows past
-#: that with the draws Hypothesis favours (a joint at its limit or at zero).
-SHOULDER_FROM, ELBOW_FROM, WRIST_BEND_FROM = -0.2, 0.0, 1.2
 SINGULAR_BELOW = 0.05
+#: The poses tried over the whole of the limits before one is drawn from the box below. 38% of a pose drawn over the
+#: limits clear the singularity, fewer when Hypothesis favours a joint at a limit or at zero, so that most draws find a
+#: pose in these tries and the box takes the rest; every pose that clears the singularity is still one a draw can make.
+#: More tries, or tries of all six joints, overrun Hypothesis's data buffer: 12 to 22 draws in a hundred were cut short.
+POSES_TRIED = 3
+#: A box of the limits inside which no pose is singular: the shoulder from -0.2 rad, the elbow from 0, and the wrist's
+#: bend at least 1.2 rad either side of straight. A scan of it (twenty thousand draws and a grid over its three joints,
+#: at both ends of each) puts the last link's Jacobian's smallest singular value at 0.058 of its largest or more.
+SHOULDER_FROM, ELBOW_FROM, WRIST_BEND_FROM = -0.2, 0.0, 1.2
 
 
 @st.composite
@@ -93,9 +95,10 @@ def turned_loads(draw):
     the vertical (so that the weight turned either way differs by at least a tenth of it), a pose inside the AR4's
     limits away from its wrist's singularity (the last link's Jacobian's smallest singular value a twentieth of its
     largest or more), a frame on that link, and a wrench on it of up to a newton and a tenth of a newton metre across
-    the turn's axis, each with at most as much again along it (a vector along the axis is the same turned or not). All
-    of it is built in place, the pose inside a box of the limits that holds no singular pose, so that no draw is
-    refused; the box's margin is asserted on each draw, so that a wrong box fails rather than filters."""
+    the turn's axis, each with at most as much again along it (a vector along the axis is the same turned or not). The
+    axis and the wrench are built in place rather than filtered. The pose is the first of ``POSES_TRIED`` drawn over
+    the limits to clear the singularity, else one drawn in the box that holds none: no draw is refused, and the
+    box's margin is asserted on each, so that a wrong box fails rather than filters."""
     unit = st.floats(-1.0, 1.0, allow_nan=False)
     height, bearing = draw(st.floats(-0.9, 0.9)), draw(st.floats(0.0, 2.0 * math.pi))
     axis = np.array([math.sqrt(1.0 - height**2) * math.cos(bearing), math.sqrt(1.0 - height**2) * math.sin(bearing),
@@ -112,13 +115,25 @@ def turned_loads(draw):
     offset = 0.5 * np.asarray(draw(st.tuples(unit, unit, unit)))
     placement = np.concatenate([offset, [math.cos(angle / 2)], math.sin(angle / 2) * axis])
     a = AR4_TREE.articulation
-    lower, upper = np.asarray(a.lower), np.asarray(a.upper)
-    q = np.array([draw(st.floats(lower[0], upper[0])), draw(st.floats(SHOULDER_FROM, upper[1])),
-                  draw(st.floats(ELBOW_FROM, upper[2])), draw(st.floats(lower[3], upper[3])),
-                  draw(st.floats(WRIST_BEND_FROM, upper[4])) * draw(st.sampled_from([-1.0, 1.0])),
-                  draw(st.floats(lower[5], upper[5]))])
     frame = draw(st.sampled_from([k for k, body in enumerate(a.frame_bodies) if body == a.dofs - 1]))
-    jacobian = np.linalg.svd(np.asarray(AR4_JACOBIAN(jnp.asarray(q), a.frame_names[frame])), compute_uv=False)
+    lower, upper = np.asarray(a.lower), np.asarray(a.upper)
+    # The first and last joints do not move the Jacobian's singular values (the base's vertical axis and the roll about
+    # the frame's own), so the tries redraw the other four.
+    ends = draw(st.floats(lower[0], upper[0])), draw(st.floats(lower[5], upper[5]))
+
+    def pose(middle) -> np.ndarray:
+        return np.array([ends[0], *middle, ends[1]])
+
+    for _ in range(POSES_TRIED):
+        q = pose([draw(st.floats(lower[j], upper[j])) for j in (1, 2, 3, 4)])
+        jacobian = np.linalg.svd(np.asarray(AR4_JACOBIAN(jnp.asarray(q), a.frame_names[frame])), compute_uv=False)
+        if jacobian[-1] >= SINGULAR_BELOW * jacobian[0]:
+            break
+    else:
+        bend = draw(st.floats(WRIST_BEND_FROM, upper[4])) * draw(st.sampled_from([-1.0, 1.0]))
+        q = pose([draw(st.floats(SHOULDER_FROM, upper[1])), draw(st.floats(ELBOW_FROM, upper[2])),
+                  draw(st.floats(lower[3], upper[3])), bend])
+        jacobian = np.linalg.svd(np.asarray(AR4_JACOBIAN(jnp.asarray(q), a.frame_names[frame])), compute_uv=False)
     assert jacobian[-1] >= SINGULAR_BELOW * jacobian[0], (q, frame, jacobian[-1] / jacobian[0])
     return placement, q, frame, np.concatenate([vector(1.0), vector(0.1)])
 
