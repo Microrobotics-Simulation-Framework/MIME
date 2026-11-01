@@ -174,7 +174,7 @@ def test_mime_verify_exits_with_what_it_found(saved, capsys, monkeypatch):
     _edit_lock(saved, lambda lock: lock["environment"].update(jax="0.0.1"))
     monkeypatch.setattr(toy_nodes, "PHASE", (0.0, 0.25, -0.75))
     assert mime_main(["verify", str(saved)]) == 1
-    _edit(saved, DOCUMENT_FILE, lambda t: t.replace("schema: mime.document/3", "schema: mime.document/0"))
+    _edit(saved, DOCUMENT_FILE, lambda t: t.replace("schema: mime.document/4", "schema: mime.document/0"))
     assert mime_main(["verify", str(saved)]) == 2
     assert "load.document-shape" in capsys.readouterr().err
 

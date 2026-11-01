@@ -12,6 +12,8 @@ import numpy as np
 from maddening import GraphManager
 
 from mime.build import (
+    LicenceDeclaration,
+    PermissionDeclaration,
     CONVENTIONAL_GRAVITY,
     Attachment,
     BuildRefused,
@@ -44,6 +46,7 @@ from mime.build._refusals import (
 from mime.control import ChunkedRun, ChunkHook, law_and_models
 from mime.errors import public
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
+from mime.terms import CustomLicence, Permission
 from mime.results import (
     RUN_MANIFEST,
     FlagLayout,
@@ -314,6 +317,33 @@ class Experiment:
         ``<apparatus>.<field>.<setting>``, ``<apparatus>.<command>`` (a command's value), ``<entry id>.<setting>``
         (``drag:umr.spacing``), ``dt``, ``gravity`` or ``conditions.<name>``."""
         self._declarations.append(SourceDeclaration(path, reason))
+
+    @public
+    def licence(self, licence: str | CustomLicence) -> None:
+        """Declare the experiment's own licence: an SPDX licence expression (``exp.licence("CC-BY-4.0")``), or a
+        licence of the author's own with its title and link (``CustomLicence("LicenseRef-...", title=...,
+        url=...)``). It covers the experiment's own files: those MIME writes, and those the author brings without
+        declaring terms (a third party's file is declared with its terms: ``asset(path, terms=Terms(...))``). The saved
+        form records it. Without one the experiment declares none, which saving and ``mime pack`` never refuse, and
+        every report of the folder says; ``mime push`` will not publish it until one is declared. Its form is checked
+        when the experiment is saved (``terms.licence``)."""
+        self._declarations.append(LicenceDeclaration(licence))
+
+    @public
+    def permission(self, permission: Permission) -> None:
+        """Declare a rights holder's permission for files of the experiment (``mime.terms.Permission``: grantor,
+        grantee, the files by sha256 or by their :func:`asset`, the scope, the date and the evidence). MIME checks its
+        form when the experiment is saved (``terms.permission``) and binds it to the files' bytes, so a changed file
+        inherits nothing; it never vets its truth. A permission that grants redistribution lets the files travel inside
+        a bundle; its declaration goes into the folder's NOTICE and card, under the uploader's name when it is
+        published."""
+        if not isinstance(cast(object, permission), Permission):  # a script is not type-checked
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"permission takes a mime.terms.Permission, not {type(permission).__name__}",
+                "pass one: exp.permission(Permission(grantor=..., grantee=..., files=(...), scope=Scope(...), "
+                "date=\"YYYY-MM-DD\", evidence=Evidence(...)))")])
+        self._declarations.append(PermissionDeclaration(permission))
 
     @public
     def observe(self, observation: Observation) -> ObservationHandle:

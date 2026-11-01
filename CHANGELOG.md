@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Terms and tiers** (push's first piece, P1, designs #198 and #199), all offline:
+  - **Licences are SPDX expressions** (`mime.terms`): checked by `packaging.licenses` (the floor is now `packaging>=24.2`)
+    and held to their canonical spelling; a licence of one's own is a `CustomLicence` (`LicenseRef-` with its title and
+    link); `NOASSERTION` says nobody stated one; free text is refused, an asset reference's as `asset.reference` (the
+    shipped references already hold `CC0-1.0`).
+  - **The saved form is version 4** (`mime.document/4`, `mime.lock/4`): the document holds the experiment's own licence
+    (`exp.licence("CC-BY-4.0")`), each custom licence it names, each third-party file's terms by its path with the
+    sha256 they were declared for (`asset(path, terms=Terms(licence, credit, role, origin))`) and each declared
+    permission (`exp.permission(Permission(...))`: grantor, grantee, files by sha256, scope, date, evidence; its form
+    checked, its truth never vetted), each only where something is declared; the lock names the files that travel as
+    references (`referenced_files`). Versions 1, 2 and 3 still load, each compared in its own form, and are read as
+    declaring no licence, terms or permission; one that holds a key version 4 added is refused. `save` refuses
+    incomplete terms by code (`terms.licence`, `terms.custom-licence`, `terms.file`, `terms.origin`,
+    `terms.permission`), and never an experiment that declares no licence.
+  - **Each file's verdict**, in OpenMaterica's words (permitted, not permitted, unknown), and #198's tiers for where its
+    bytes live: **`pack` never carries a file that may not be redistributed, whatever its size**; it travels as a
+    reference to its origin (`bundle.no-location` where its terms give none), and `pack` holds the lock's references to
+    its own judgement (`bundle.lock-terms`).
+  - **Bundle format 2** (`mime.bundle/2`): the manifest lists the files that travel as references and the NOTICE; format
+    1 still unpacks. `unpack`, `mime pull` and `mime assets fetch <folder>` place a referenced file from the asset cache
+    (`mime.saved.place_referenced`); a folder still missing one is refused as `asset.missing` with the command.
+  - **The NOTICE and `mime card <folder> [--notice]`**: each file's licence, credit, verdict and declared permission, the
+    licence texts MIT and BSD ask to travel with every copy, and the availability statement; the card in its sections,
+    as `mime push` will write it, saying that credit will live in `sharing.yaml` (not built yet). Both are generated and
+    deterministic, and a bundle carries the NOTICE.
 - **The first run** (dev1 phase 7l-c, design #191 item 7):
   - **The README's install and quickstart**: the install section names the distribution, its extras and the branch it is
     installed from until 0.3 is released; the quickstart (a steel ball settling in water, in exploratory, with no

@@ -133,7 +133,7 @@ def test_the_load_report_says_the_form_and_the_profile(folders):
     exploratory, and why."""
     report = Experiment.load(folders["walk"]).load_report
     assert report is not None
-    assert report.text().splitlines()[1] == "saved form: mime.document/3, built and read under the exploratory profile"
+    assert report.text().splitlines()[1] == "saved form: mime.document/4, built and read under the exploratory profile"
     previous = Experiment.load(Path(__file__).parent / "previous" / "magnetic_ball").load_report
     assert previous is not None
     line = previous.text().splitlines()[1]

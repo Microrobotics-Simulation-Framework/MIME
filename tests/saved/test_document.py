@@ -34,7 +34,7 @@ def test_an_alias_saves_as_its_family_and_rung():
 
 def test_the_document_holds_names_versions_settings_and_bindings_and_empty_slots():
     document = full_toy().document()
-    assert (document["schema"], document["experiment"]) == ("mime.document/3", "full_toy")
+    assert (document["schema"], document["experiment"]) == ("mime.document/4", "full_toy")
     assert document["run"] == {"dt": {"value": 0.02, "unit": "s"}, "seed": 0}
     assert document["scene"] == {"up": [0.0, 0.0, 1.0], "units": "m", "references": []}
     assert document["gravity"] == {"value": 9.80665, "unit": "m/s^2"}

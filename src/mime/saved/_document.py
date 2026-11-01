@@ -13,8 +13,9 @@ import numpy as np
 import yaml
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
-from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, RunSettings, \
-    SourceDeclaration, ThingDeclaration, ValueDeclaration, binding_name, mode_of
+from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, LicenceDeclaration, \
+    PermissionDeclaration, RunSettings, SourceDeclaration, TermsDeclaration, ThingDeclaration, ValueDeclaration, \
+    binding_name, mode_of
 from mime.build._derived import sha256_of
 from mime.data import Asset
 from mime.materials import RECORDS, Acceptance, Extrapolation, Nominal, Record, load_record, record_file
@@ -30,6 +31,7 @@ from mime.registry import (
     registration_of,
     setting_group_named,
 )
+from mime.saved._terms import Declared, encode, write_into
 from mime.saved._schema import (
     DOCUMENT_SCHEMA,
     AcceptanceDoc,
@@ -92,6 +94,15 @@ class UnsavableError(ArgumentRefused):
     def __init__(self, reason: str) -> None:
         self.reason = reason
         super().__init__([Refusal("save.unsavable", RefusalClass.USER, reason, UNSAVABLE_ACTION)])
+
+
+class TermsUnsavable(UnsavableError):
+    """The experiment's licence, terms or permissions in a form the saved form does not hold, every reason at once,
+    each by its own code (``terms.*``, ``mime.saved._terms``)."""
+
+    def __init__(self, refusals: Sequence[Refusal]) -> None:
+        self.reason = "; ".join(refusal.message for refusal in refusals)
+        ArgumentRefused.__init__(self, list(refusals))
 
 
 def encode_basis(basis: object, where: str) -> ReasonDoc:
@@ -527,6 +538,8 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
             declared[path] = doc
         elif isinstance(declaration, ThingDeclaration):
             things[declaration.thing.name] = _thing_doc(declaration.thing)
+        elif isinstance(declaration, (LicenceDeclaration, PermissionDeclaration, TermsDeclaration)):
+            continue
         elif isinstance(declaration, Attachment):
             law = declaration.law
             owner = entry_id(type(law), declaration.bindings)
@@ -561,7 +574,83 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     }
     if gravity is not None:
         document["gravity"] = gravity
+    encoded, refusals = encode(declared_of_terms(settings, declarations))
+    if refusals:
+        raise TermsUnsavable(refusals)
+    write_into(document, encoded)
     return document
+
+
+def _file_assets(declarations: Sequence[Declaration]) -> list[FileAsset]:
+    """Every file asset the declarations hold (a description an entry reads), each once: their entries' settings,
+    groups of settings and collections walked, nothing called."""
+    found: dict[int, FileAsset] = {}
+    seen: set[int] = set()
+
+    def walk(value: object, depth: int) -> None:
+        if depth > 12 or id(value) in seen or isinstance(value, (str, bytes, int, float, type(None), np.ndarray,
+                                                                  Quantity, type)):
+            return
+        seen.add(id(value))
+        if isinstance(value, FileAsset):
+            found.setdefault(id(value), value)
+        elif isinstance(value, Mapping):
+            for item in cast(Mapping[object, object], value).values():
+                walk(item, depth + 1)
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            for item in cast(Sequence[object], value):
+                walk(item, depth + 1)
+        elif dataclasses.is_dataclass(value):
+            for held in dataclasses.fields(value):
+                walk(getattr(value, held.name), depth + 1)
+
+    for declaration in declarations:
+        if not isinstance(declaration, (LicenceDeclaration, PermissionDeclaration, TermsDeclaration)):
+            walk(declaration, 0)
+    return list(found.values())
+
+
+def _pin(held: FileAsset, where: str) -> str:
+    try:
+        return held.sha256 or sha256_hex(held.read())
+    except OSError as error:
+        raise UnsavableError(f"{where} names the file {held.path}, which cannot be read to pin it: {error}") from error
+
+
+def declared_of_terms(settings: RunSettings, declarations: Sequence[Declaration]) -> Declared:
+    """What the experiment declares of its terms, each file pinned where it is saved: a layer under ``scene/layers/``,
+    a description under ``descriptions/``. Files are read to be pinned only where something names terms or a
+    permission."""
+    licences = tuple(d.licence for d in declarations if isinstance(d, LicenceDeclaration))
+    loaded = [d for d in declarations if isinstance(d, TermsDeclaration)]
+    permissions = [d.permission for d in declarations if isinstance(d, PermissionDeclaration)]
+    scene = settings.scene
+    layers = [reference.asset for reference in scene.references] if isinstance(scene, Scene) else []
+    described = _file_assets(declarations)
+    if not (loaded or permissions or any(held.terms is not None for held in (*layers, *described))):
+        return Declared(licences, (), (), {})
+    files: dict[str, str] = {}
+    attached: list[tuple[str, str, object]] = []
+    for held in layers:
+        pin = _pin(held, "the scene")
+        path = f"{SCENE_FOLDER}/{LAYERS}/{held.path.name}"
+        files[path] = pin
+        if held.terms is not None:
+            attached.append((path, pin, held.terms))
+    for held in described:
+        pin = _pin(held, "an entry")
+        path = description_path(held.path.name, pin)
+        files[path] = pin
+        if held.terms is not None:
+            attached.append((path, pin, held.terms))
+    attached += [(d.path, d.sha256, d.terms) for d in loaded]
+    pinned: list[tuple[object, tuple[str, ...]]] = []
+    for permission in permissions:
+        given = cast(object, getattr(permission, "files", ()))
+        named = cast(Sequence[object], given) if isinstance(given, (list, tuple)) else ()
+        pinned.append((permission, tuple(_pin(each, "a permission") if isinstance(each, FileAsset) else str(each)
+                                         for each in named)))
+    return Declared(licences, tuple(attached), tuple(pinned), files)
 
 
 def _controller_doc(declaration: ControllerDeclaration) -> ControllerDoc:

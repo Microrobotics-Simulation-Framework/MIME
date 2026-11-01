@@ -6,7 +6,9 @@ it lives, and the file is stored on the machine only when someone asks.
 
 ## The reference
 
-An `AssetRef` is `name`, `sha256`, `size` (bytes), `licence`, and `locations`: an ordered tuple of `https://` URLs or
+An `AssetRef` is `name`, `sha256`, `size` (bytes), `licence`, and `locations`. The licence is an SPDX licence expression
+in its canonical spelling, or `NOASSERTION` where nobody has stated one (a bundle fetched by address); free text is
+refused (see [`mime.terms`](../terms.py)). The locations are an ordered tuple of `https://` URLs or
 `doi:` URLs that pooch resolves (a DOI, then the file's name in the record). Plain `http://` is accepted only for a
 literal loopback host (`localhost` or the IPv4 or IPv6 loopback address). The host is read once, by the parser the download uses
 (`urllib3`'s), and a URL with a backslash, whitespace, a control character, userinfo (`user@`) or a percent-escape in its
@@ -107,7 +109,9 @@ The words are in one place, `_commands.py`.
 - `mime assets fetch <name-or-folder>... | --all`: resolve, hashing the file in full (a cached file too), and download
   again what is wrong. An argument that is a directory is an
   experiment folder, and stands for exactly the assets its lock references and nothing else (write `./name` to mean a
-  folder); any other is an asset's name; `--all` is every known asset. Exits zero, or two when refused.
+  folder), and each file of it that travels as a reference is then placed at its path from the cache
+  (`mime.saved.place_referenced`); any other is an asset's name; `--all` is every known asset. Exits zero, or two when
+  refused.
 - `mime assets check`: re-hash every cached asset in full. Exits one when a file is corrupt, marks it (so `locate`
   refuses it) and leaves it where it is.
 
@@ -126,7 +130,8 @@ table: the tube's, `unit_tube_R0.997`), and the build writes them under the key,
 none writes no key. So a tube experiment's lock names the tube table, `mime assets fetch <folder>` stores it, and the
 script `mime modal` writes fetches it onto the assets Volume before a run. A load compares the key with what the
 rebuilt experiment reads and refuses (`load.assets`) a lock that does not name an asset it reads, by name, and one
-that names it under another hash; a lock may name more than the entries read (a bundle's own files).
+that names it under another hash; a lock may name more than the entries read: a bundle's own files, such as a file
+whose terms let no bundle carry it, which the lock's `referenced_files` names with the asset that holds its bytes.
 
 ## Derived assets
 

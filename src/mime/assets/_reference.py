@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 from typing_extensions import ReadOnly, TypedDict
 
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.terms import licence_problem
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -34,8 +35,9 @@ class AssetRecord(TypedDict, closed=True):
 def _invalid(name: str, problem: str) -> BuildRefused:
     return BuildRefused([Refusal(
         "asset.reference", RefusalClass.USER, f"asset reference {name!r}: {problem}",
-        "write the reference as name, sha256 (64 lowercase hex digits), size in bytes, licence, and locations "
-        "that are https:// URLs or doi: URLs: AssetRef(name=..., sha256=..., size=..., licence=..., locations=(...))")])
+        "write the reference as name, sha256 (64 lowercase hex digits), size in bytes, licence (an SPDX licence "
+        "expression: licence=\"CC0-1.0\"), and locations that are https:// URLs or doi: URLs: AssetRef(name=..., "
+        "sha256=..., size=..., licence=..., locations=(...))")])
 
 
 def location_problem(location: str) -> str | None:
@@ -78,7 +80,9 @@ def location_problem(location: str) -> str | None:
 @dataclass(frozen=True)
 class AssetRef:
     """A large file named by the sha256 of its bytes, never by where it lives. ``locations`` are tried in order, so a
-    new home is one more location, and no saved experiment that names the sha256 changes."""
+    new home is one more location, and no saved experiment that names the sha256 changes. ``licence`` is an SPDX
+    licence expression in its canonical spelling (``CC0-1.0``), or ``NOASSERTION`` where nobody has stated one
+    (:mod:`mime.terms`); free text is refused."""
 
     name: str
     sha256: str
@@ -93,10 +97,9 @@ class AssetRef:
             raise _invalid(self.name, f"sha256 {self.sha256!r} is not 64 lowercase hex digits")
         if self.size <= 0:
             raise _invalid(self.name, f"size {self.size} is not a positive number of bytes")
-        if not self.licence:
-            raise _invalid(self.name, "the licence is empty")
-        if self.licence != "".join(each for each in self.licence if each.isprintable()):
-            raise _invalid(self.name, "the licence has a control or format character")
+        licence = licence_problem(self.licence)
+        if licence is not None:
+            raise _invalid(self.name, licence)
         if not self.locations:
             raise _invalid(self.name, "no location")
         for location in self.locations:
