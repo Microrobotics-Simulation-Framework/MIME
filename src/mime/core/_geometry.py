@@ -34,7 +34,11 @@ class Shape(Protocol):
     normal (the unit gradient of the signed distance, pointing out of the region), and its axis where it has one, as
     a direction and a point on it. Every function is traceable, and finite with finite derivatives at every point,
     including where the normal is not defined (it may be zero there). A region with an axis is taken to be uniform
-    along it: its signed distance at a point on the axis is minus its radius there and everywhere."""
+    along it: its signed distance at a point on the axis is minus its radius there and everywhere.
+
+    A shape whose functions also take an array of points ``(..., 3)``, evaluating each (its distances ``(...)``, its
+    normals ``(..., 3)``), declares ``takes_many = True``: a containment contact holds a body's hull points against it,
+    many at once. A shape that declares nothing takes one point at a time; a lab's shape need not take many."""
 
     parameter_names: tuple[str, ...]
 
@@ -58,17 +62,20 @@ class Cylinder:
     normalised here), ``radius``. Its outward normal is the radial direction, which is not defined on the axis. A point
     within ``AXIS_ULPS`` units in the last place of the radius of the axis is on it, whatever the axis's direction:
     there the signed distance is minus the radius (its derivative zero, but minus one in the radius), and the normal is
-    zero, with the derivative of the offset from the axis (in the point, the projection across the axis)."""
+    zero, with the derivative of the offset from the axis (in the point, the projection across the axis). It takes an
+    array of points as well as one (``takes_many``), each evaluated as it would be alone."""
 
     parameter_names: tuple[str, ...] = ("centre", "axis", "radius")
+    takes_many = True
 
     @staticmethod
     def _radial(parameters: Parameters, point: Point) -> tuple[Array, Array, Array]:
-        """The point's offset from the axis, its length (zero on the axis), and whether the point is off the axis."""
+        """The point's offset from the axis, its length (zero on the axis), and whether the point is off the axis;
+        for an array of points, each one's."""
         axis = _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")
         offset = point - jnp.asarray(parameters["centre"])
-        radial = offset - jnp.dot(offset, axis) * axis
-        squared = jnp.sum(radial * radial)
+        radial = offset - jnp.matmul(offset, axis)[..., None] * axis
+        squared = jnp.sum(radial * radial, axis=-1)
         resolution = AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"]
         off = squared > resolution ** 2
         length = switch.where(off, jnp.sqrt(switch.domain_guard(off, squared, 1.0)), 0.0, owner="cylinder.axis",
@@ -80,10 +87,10 @@ class Cylinder:
 
     def outward_normal(self, parameters: Parameters, point: Point) -> Point:
         radial, length, off = self._radial(parameters, point)
-        return switch.where(off, radial / switch.domain_guard(off, length, 1.0), radial - lax.stop_gradient(radial),
-                            owner="cylinder.axis",
+        return switch.where(off[..., None], radial / switch.domain_guard(off, length, 1.0)[..., None],
+                            radial - lax.stop_gradient(radial), owner="cylinder.axis",
                             resolution=lambda: AXIS_ULPS * float(jnp.finfo(radial.dtype).eps) * parameters["radius"],
-                            indicator=lambda: jnp.sqrt(jnp.sum(radial * radial)))
+                            indicator=lambda: jnp.sqrt(jnp.sum(radial * radial, axis=-1)))
 
     def axis(self, parameters: Parameters) -> Point | None:
         return _unit(jnp.asarray(parameters["axis"]), owner="cylinder.axis_norm")

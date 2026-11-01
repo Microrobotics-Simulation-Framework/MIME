@@ -388,8 +388,8 @@ class ConstantInBand(Cylinder):
 
     def outward_normal(self, parameters, point):
         radial, length, off = self._radial(parameters, point)
-        return switch.where(off, radial / switch.domain_guard(off, length, 1.0), jnp.zeros_like(radial),
-                            owner="cylinder.axis", resolution=0.0, indicator=length)
+        return switch.where(off[..., None], radial / switch.domain_guard(off, length, 1.0)[..., None],
+                            jnp.zeros_like(radial), owner="cylinder.axis", resolution=0.0, indicator=length)
 
 
 def test_control_the_normal_with_its_in_band_branch_the_constant_zero_fails():

@@ -3,7 +3,6 @@ resistance about its centre of mass at every step."""
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping, Sequence
 from functools import cached_property
 from typing import Any, cast, override
@@ -21,8 +20,8 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jn
     quaternion, typed_view
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
-from mime.registry import Direction, EntryKind, Geometry, Registered, Samples, Sampling, lookup
-from mime.units import Quantity, unit_symbol
+from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
+from mime.registry import Samples, Sampling
 
 EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \mathbf{M}, \quad "
              r"\mathbf{A}_{mn} = \frac{(r^{2} + 2 \epsilon^{2}) \mathbf{I} + \mathbf{r} \mathbf{r}^{\top}}"
@@ -68,27 +67,6 @@ def _floating_leaves(name: str, value: object) -> dict[str, Any]:
     """The floating arrays of the pytree ``value``, each by ``name`` and its path."""
     return {f"{name}{_path_name(path)}": leaf for path, leaf in _tree_util.tree_flatten_with_path(value)[0]
             if jnp.issubdtype(leaf.dtype, jnp.floating)}
-
-
-def _registered_kind(kind: str, version: str) -> Registered:
-    held = lookup(EntryKind.GEOMETRY, kind, version)
-    if held is None or not issubclass(held.cls, Geometry):
-        raise ValueError(f"no geometry kind {kind} {version} is registered; import the package that registers it")
-    return held
-
-
-def kind_from_settings(kind: str, version: str, settings: Mapping[str, object]) -> Geometry:
-    """The registered geometry kind ``kind`` made again from its settings in SI, as the node holds them."""
-    held = _registered_kind(kind, version)
-    made: dict[str, object] = {}
-    for setting in dataclasses.fields(cast(Any, held.cls)):
-        value = settings[setting.name]
-        declared = held.settings.get(setting.name)
-        if declared is not None and declared.dimension is not None:
-            made[setting.name] = Quantity(cast(Any, value), declared.dimension)
-        else:
-            made[setting.name] = value
-    return cast(Geometry, cast(Any, held.cls)(**made))
 
 
 class MRSDragNode(MimeNode):
@@ -153,7 +131,7 @@ class MRSDragNode(MimeNode):
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
                              f"more")
-        held = _registered_kind(kind, kind_version)
+        held = registered_kind(kind, kind_version)
         settings = {key.removeprefix(SHAPE): value for key, value in constants.items() if key.startswith(SHAPE)}
         wall = wall_correction_named(wall_kind, wall_kind_version)
         given = {key.removeprefix(WALL) for key in constants if key.startswith(WALL)}
@@ -166,8 +144,7 @@ class MRSDragNode(MimeNode):
         if unknown_patches:
             raise ValueError(f"{kind} has no patches {unknown_patches}; its patches are {sorted(self._kind.patches)}")
         #: The kind's settings the step takes as leaves: its numbers, not its directions or integers.
-        self._traced = tuple(name for name, value in settings.items()
-                             if isinstance(value, float) and _kind_of(held, name) is not Direction)
+        self._traced = traced_settings(held, settings)
         held_counts = tuple(tuple(int(c) for c in count) for count in counts)
         if (sampling_chosen is None) != (sampling_members is None):
             raise ValueError("a sampling's choice is its chosen samples and their cells, both or neither")
@@ -185,8 +162,8 @@ class MRSDragNode(MimeNode):
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
-        held = _registered_kind(self.constants()["kind"], self.constants()["kind_version"])
-        shapes = {f"{SHAPE}{name}": ParamSpec(units=_units_of(held, name)) if name in self._traced else
+        held = registered_kind(self.constants()["kind"], self.constants()["kind_version"])
+        shapes = {f"{SHAPE}{name}": ParamSpec(units=setting_units(held, name)) if name in self._traced else
                   ParamSpec(trainable=False, description="held as built: a direction of the kind is its part's frame")
                   for name in (key.removeprefix(SHAPE) for key in self.constants() if key.startswith(SHAPE))}
         placed = "held as built: where the part sits in the body, its frame, as a direction of the kind is"
@@ -285,16 +262,6 @@ class MRSDragNode(MimeNode):
                                              parameters)
         return node_fields(MRSDragState(resistance=found.astype(pose.dtype),
                                         background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
-
-
-def _kind_of(held: Registered, name: str) -> object:
-    declared = held.settings.get(name)
-    return None if declared is None else declared.kind
-
-
-def _units_of(held: Registered, name: str) -> str:
-    declared = held.settings.get(name)
-    return "1" if declared is None or declared.dimension is None else unit_symbol(declared.dimension)
 
 
 __all__ = ["EQUATIONS", "SHAPE", "WALL", "MRSDragInputs", "MRSDragNode", "MRSDragState", "kind_from_settings"]

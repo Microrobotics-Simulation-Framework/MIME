@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_solids, mrs_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, tracked_rpm
+from hull_cases import hull_contact
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
 
@@ -118,6 +119,8 @@ CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
     Case("script_a_records", script_a_records),
+    # FL-9 held by its hull's points from the first step: the contact 0.2.0's golden outputs come from it.
+    Case("hull_contact", hull_contact),
     Case("coupled_toy", coupled_toy),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),

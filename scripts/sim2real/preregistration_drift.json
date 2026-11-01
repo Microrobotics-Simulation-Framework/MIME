@@ -30,12 +30,13 @@
   },
   "scripts/sim2real/operating_point.py": {
    "preregistered_sha256": "34517078080a4858ee6279bd2ee5d0dfaf0aa26e08bad2f96c8b8dd0fefe34a1",
-   "current_sha256": "a7137912a791846ad09bc0ca36e7fb01b36ba6b2b02ce6e6660b3065f8cb6767",
+   "current_sha256": "d8b2414d920495b729d73a06d126c5ec96ce3127add0e1e83350e551bd0252e8",
    "changed_by": [
     "ca229c7 (2026-11-01, the rename, #83)",
-    "8c1c899 (2026-11-01, phase 7m-a, #87)"
+    "8c1c899 (2026-11-01, phase 7m-a, #87)",
+    "phase 7o (2026-11-01, the containment contact)"
    ],
-   "reason": "the library's names (A1); then every kind pinned to the version the register froze (A3)"
+   "reason": "the library's names (A1); then every kind pinned to the version the register froze (A3); then the contact pinned to the version the register froze, 0.1.0 (the body's centre held by its extent), through pinned_law, kept registered after 0.2.0 held the hull's points: same_as_script_a holds, and every graph it builds is unchanged"
   },
   "scripts/sim2real/prereg.py": {
    "preregistered_sha256": "e08706136a323f7b1119d99c797ff4b1fff38b4ce72c6c88f7abd0c81ace5e67",
@@ -47,11 +48,12 @@
   },
   "tests/script_a.py": {
    "preregistered_sha256": "e5cc18014ecbb22cbc4da9f359d9bceb02c6b9832752dda671df1ab6ae577580",
-   "current_sha256": "51efd456244657a53cfda144877792586f95cc5a9788fcc7462dd01b85512633",
+   "current_sha256": "2bb04d9e5d3f42e90c5ee2aceb9ef69cce22754a472f5f92abd29f05bae8e1cb",
    "changed_by": [
-    "dac5aaf (2026-10-31, phase 7l-a, #71)"
+    "dac5aaf (2026-10-31, phase 7l-a, #71)",
+    "phase 7o (2026-11-01, the containment contact)"
    ],
-   "reason": "the screw's `starts` became required: script A says `starts=2`, as it always built"
+   "reason": "the screw's `starts` became required: script A says `starts=2`, as it always built; then its contact named at 0.1.0, the version every comparison of script A was declared against, kept registered after 0.2.0 held the hull's points: the graph it builds is unchanged"
   }
  }
 }

@@ -125,6 +125,15 @@
     relaxes;
   - `test_projection.py`: a Hypothesis property of the confined body's node, after every step inside the lumen less
     its extent and margin and moving no further out where projected; the control, the unconfined node, fails it;
+  - `test_hull_contact.py`: the contact 0.2.0, which holds a body's hull points (`hull_cases.py`'s nodes and its
+    FL-9 held from the first step), each oracle with a control that fails it on every run: a capped cylinder and
+    FL-9 drawn turned and placed within what the tube admits, moving and driven, never past the wall nor past the
+    margin by more than the sweeps leave (today's contact, the centre held by its extent, lets the hull through); a
+    long rod pressed into both walls by a torque takes the couple's closed form at its two points (the rows' moments
+    dropped cannot); the solve never leaves more energy than the free step and its forces do no positive work (a
+    solve that pushes points away gains it); where nothing touches, the step is the free body's to the last bit (a
+    vanishing kept force is seen); turning the tube and the body together turns the step; a contact that adds
+    lubrication beside a drag that includes it is refused; and the plan's refusals of a hull it cannot hold;
   - `test_laws.py`: gravity's closed form and couple, the field (constant magnitude, perpendicular to its axis, at
     the commanded frequency, its time by count), the torque `m x B` and zero when aligned (to the products'
     rounding: XLA fuses a multiply into the subtraction); the control: a planted sign flip fails the magnetic

@@ -71,7 +71,9 @@ class Lubrication(SettingGroup):
     the sphere-wall asymptotes for the body's nearest point (Cox & Brenner 1967; Goldman, Cox & Brenner 1967, part
     I), without the terms after them or the translation-rotation coupling (``SurrogateDragNode`` names them),
     weighted by ``exp(-gap / epsilon)`` so that they count only near the wall (the 0.2 line's blend: a modelling
-    choice, with ``epsilon`` its setting, not a value a reference fixes)."""
+    choice, with ``epsilon`` its setting, not a value a reference fixes). A drag that blends it in includes near-wall
+    lubrication and declares so (``Interaction.includes_lubrication``): a contact never adds it, and the plan refuses a
+    second law on the body that includes it (``lubrication.twice``)."""
 
     group = "lubrication"
     setting_roles = {"epsilon": NUMERICAL}
@@ -237,7 +239,9 @@ class Drag(Interaction):
     node's state, ``tilt_fired`` where the body's axis has left the tube's by more than the tilt the surrogate is
     declared valid to, and ``bore_fired`` where it has left it by more than the bore allows (the surrogate cannot see a
     tilt; a screw whose axial moment is its smallest turns broadside under a rotating field, and in a bore narrower
-    than it is long goes through the wall). Its derivative is piecewise, as its switches say: at the offset's clamp,
+    than it is long goes through the wall, unless a contact holds its hull: ``Contact.Projection`` 0.2.0 holds it at
+    the bore's limit and raises its ``touching`` flag on the same result, beside these). Its derivative is piecewise,
+    as its switches say: at the offset's clamp,
     across the tube's axis
     (where the surrogate is not symmetric), where the body's axis turns across the tube, and at the lubrication's
     floors. The resistance is delivered about the body's centre of mass:
@@ -419,6 +423,12 @@ class Drag(Interaction):
     @classmethod
     def MRS(cls, **settings: Any) -> Drag:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="mrs", **settings)
+
+    @override
+    def includes_lubrication(self) -> bool:
+        """The surrogate rung with ``lubrication=`` includes near-wall lubrication, the blend of the sphere-wall
+        asymptotes; the mrs rung resolves the wall's flow at its spacing and blends in none."""
+        return self.rung == "surrogate" and self.lubrication is not None
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:

@@ -85,3 +85,17 @@ frozen reference hold.
 Since phase 7i, the surrogate rung reads its weights through the evaluator its surrogate's record names
 (`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
 is unchanged. The mrs rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.
+
+Since phase 7o, **`Contact.Projection`** (`contact` 0.2.0) holds the body's hull, its orientation read: its hull
+kind's own samples at `spacing` (the hull query's points, `mime.scene.body_reach`), each kept `margin` from the
+surface, by impulses through the body's implicit solve with the rotation coupled in (projected Gauss-Seidel over the
+points nearest the surface, one per group of the hull's points) and a projection of the pose after the step, inelastic
+and frictionless, in the body's own update (`RigidInertialNode`). A turned body that touches at two points takes the
+couple that holds it, and a screw that turns broadside in a narrow tube is held at the bore's limit, where 0.1.0
+held its centre by its extent and let it through the wall. A body with no hull is held as a sphere of its extent, as
+before; a body whose hull no point reaches the margin steps as it did, to the last bit. 0.1.0 is kept registered
+(`mime.interactions.KEPT`) for folders saved with it and for the experiments whose comparisons were declared against
+it, script A's and A0's reproductions. **A contact handles admissibility only**: it never adds near-wall lubrication,
+which a drag that includes it declares (`Interaction.includes_lubrication`: the surrogate rung with `lubrication=`),
+and the plan refuses two laws on one body that include it (`lubrication.twice`). Friction at the contact is left to
+the near-contact physics' design; its seam is the sweeps' rows.

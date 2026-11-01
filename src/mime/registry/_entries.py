@@ -127,14 +127,19 @@ class Value:
 class Confinement:
     """An inequality constraint: the body bound to ``role`` stays on the free side of the surface bound to
     ``surface``, by ``margin`` (SI) plus the body's extent (the value labelled ``extent`` in the plan), and its velocity
-    is changed by ``rule`` where it is projected back. The body's dynamics takes it at construction."""
+    is changed by ``rule`` where it is projected back. The body's dynamics takes it at construction.
+
+    With ``spacing`` (m) it holds the body's hull instead, orientation read: its hull kind's own samples at that
+    spacing on every patch (``mime.scene.body_reach``'s points), each kept ``margin`` from the surface, and no extent
+    is read (``extent`` is ``None``)."""
 
     role: str
     target: str
     surface: str
     margin: float
     rule: str
-    extent: str = "extent"
+    extent: str | None = "extent"
+    spacing: float | None = None
 
 
 @dataclass(frozen=True)
@@ -900,6 +905,13 @@ class Interaction(Entry):
 
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         raise NotImplementedError
+
+    def includes_lubrication(self) -> bool:
+        """Whether the law includes near-wall lubrication, the resistance of the film between a body and a wall as their
+        gap closes. A drag whose model includes it declares so (``Drag.Surrogate`` with ``lubrication=``); a contact
+        handles admissibility alone, where a body may be, and never adds it. At most one law bound to a body includes
+        it: the plan refuses two (``lubrication.twice``), which would count the film twice."""
+        return False
 
 
 @dataclass(frozen=True, kw_only=True)

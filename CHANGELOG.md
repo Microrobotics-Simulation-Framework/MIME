@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **An orientation-aware containment contact: `Contact` 0.2.0 holds the body's hull points** (dev1 phase 7o, design
+  #196; review 7l-c's F1, MIME-ANO-129): `Contact.Projection(margin=..., spacing=...)` keeps every point of the
+  body's hull, its kind's own samples at `spacing` (the hull query's points, `mime.scene.body_reach`; the margin by
+  default, a numerical default), at least `margin` from the surface, its orientation read. In the body's own update
+  (`RigidInertialNode`), each step holds the point of each of the hull's eight groups nearest the surface inside the
+  implicit solve, the outward velocity at each taken away with the rotation coupled in, by projected Gauss-Seidel as
+  a dynamic chain's joint stops are solved (inelastic, frictionless, its forces never pulling), and projects the pose
+  back after the step. A turned body touching at two points takes the couple that holds it, and a screw whose axial
+  moment is its smallest, which turns broadside under a rotating field, is held at the bore's limit instead of
+  passing through the wall. Projection, not penalty; no code of its own for a body or a wall: any kind that samples
+  its surface, against any surface whose shape takes many points at once (`Shape.takes_many`; the cylinder does). A
+  body with no hull is held as a sphere of its extent, by 0.1.0's projection. Where no hull point reaches the margin
+  the step is the free body's to the last bit. The body's state adds `contact_points` and `contact_forces`, the
+  result raises `<body>.touching` beside the drag's flags, and the build report states what the contact holds. Its
+  oracles (`tests/oracles/test_hull_contact.py`, `tests/oracles/test_hull_contact_screws.py`): never past the wall,
+  two-point statics against the couple's closed form, no energy gained, unchanged where nothing touches, the frame,
+  F1's screws; each with a control that fails it. Refused when planned: a spacing for a body with no hull, a hull a
+  dynamics cannot hold, a surface whose shape takes one point at a time (`confinement.no-hull`,
+  `confinement.hull-not-held`, `confinement.surface-shape`).
+- **A contact handles admissibility only** (design #196): `Interaction.includes_lubrication`, which
+  the drag's surrogate rung with `lubrication=` declares; the contact never adds it, and the plan refuses two laws on
+  one body that include it (`lubrication.twice`).
+- **`mime.core.switch.argmin`**, the index of a row's least, a switch with an owner (the contact's choice of each
+  group's point, `contact.point`), and **the cylinder shape takes arrays of points** (`(..., 3)`), each evaluated as
+  alone, to the bit.
 - **`memory_heavy`, a marker for tests that peak above 2 GiB, which run one at a time across pytest-xdist's workers**
   (`tests/conftest.py`, `tests/memory_peaks.json`, `tests/test_memory_heavy.py`, `scripts/measure_test_memory.py`): the
   shard of CI's default lane that ran the dynamic arm's battery (8.3 GB) and the helix reference (5.7 GB) at once peaked
@@ -742,6 +767,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **`Contact.Projection` is the contact 0.2.0**, which holds the hull's points (above); the contact 0.1.0, which held
+  the body's centre by its extent and never read its orientation, stays registered (`mime.interactions.KEPT`), so that
+  a folder saved with it loads and reproduces, and the experiments whose comparisons were declared against it build
+  it: script A and A0 (`tests/script_a.py`, `tests/script_a0.py`, `tests/script_a0_dynamic.py`, `examples/script_a.py`)
+  and the frozen register's scripts (`scripts/sim2real/operating_point.py`, `FROZEN_INTERACTIONS`, held by
+  `tests/differential/test_frozen_register_pins.py`), so nothing preregistered moves. `rigid_inertial` stays 0.2.0: it
+  gains the hull's hold (`Capability.HOLDS_HULL`), and what it computed for a centre's confinement, or none, is
+  unchanged. The golden outputs of the cylinder 0.1.0 and the ellipsoid 0.1.0 were regenerated: their case
+  (`bound_robot_with_parts`) now holds its ellipsoid shell by its points, where 0.1.0 held its centre by a declared
+  extent of 2.07 mm against a shell of 1.56 mm, and its shell starts on the floor so that every leaf of the contact
+  acts in the case's steps.
 - **The sphere 0.2.0, the capsule 0.2.0 and the screw 0.3.0 sample their surfaces quasi-uniformly** (phase 7m-a), so
   every result of the MRS rung on them moves (the same count of samples, placed so that none crowd: on FL-9 in free
   space at 0.16 mm and blob 0.5 the swim speed rises from 2.7979 to 2.9523 mm/s against a reference of 3.057). Their

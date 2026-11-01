@@ -566,6 +566,7 @@ def run_layout(plans: PlanSet) -> Layout:
         speed = speed_limit_flag(plans, plan)
         if speed is not None:
             flags.append(speed)
+        flags += contact_flags(plans, plan)
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
@@ -601,6 +602,27 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
                       f"joint{unlimited}), which the dynamic chain does not apply: the run went where the real "
                       f"mechanism would not. A backstop read after the run, never a refusal; a build check names a "
                       f"spinner that would drive a joint there, and its fix", SPEED_LIMIT, limits)
+
+
+#: The name of the flag a body held by its hull's points raises where a point is held.
+TOUCHING = "touching"
+
+
+def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
+    """The flag of each confinement a body's dynamics holds by the hull's points, raised at a step where one of them
+    takes a force: read from the forces its node holds for its own sake, so it adds nothing to the graph. None for a
+    dynamics that holds no hull."""
+    found: list[FlagLayout] = []
+    for confinement in plan.confinements:
+        if confinement.hull is None:
+            continue
+        owner = next((p for p in plans.entries if p.owner == confinement.id), None)
+        label = owner.registered.cls.label() if owner is not None else confinement.id
+        found.append(FlagLayout(confinement.id, label, plan.node_name(""), "contact_forces",
+                                f"a point of {confinement.subject}'s hull was held at {confinement.surface}, less the "
+                                f"margin, by a force: the contact held the body where it touches (the points and "
+                                f"forces are its state's contact_points and contact_forces)", TOUCHING))
+    return found
 
 
 def _not_writable(folder: Path, error: OSError) -> BaseException:

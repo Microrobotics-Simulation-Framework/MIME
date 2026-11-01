@@ -9,6 +9,5 @@
 drive drive.constant 0.1.0 references  # present at D1b
 field_provider uniform_rotating 0.1.0 references  # present at D1b
 geometry tube 0.1.0 references  # present at D1b
-interaction contact 0.1.0 references  # present at D1b
 observation swim_speed 0.1.0 references  # present at D1b
 wall_kind free_space 0.1.0 references  # a definition, no wall: it adds nothing to the kernel and rests on no work (phase 7h)

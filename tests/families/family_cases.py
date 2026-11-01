@@ -13,7 +13,7 @@ from hydro_oracles import StokesSphere, surrogate_reference
 
 from mime.data import asset
 from mime.core import quaternion
-from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import KEPT, Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.registry import Interaction
 from mime.testing import NodeCase, Oracle, unit_quaternion
 from mime.testing._mime_families import SCREW, TUBE_AXIS, TUBE_RADIUS
@@ -101,12 +101,19 @@ def linear(read, settings):
     return {"load": -settings["c"] * read["v"]}
 
 
+CentreContact, _ = KEPT["contact", "0.1.0"]
 TOY = "a toy with no physics, which exercises the build: the toy family has one member, the toy drag"
 FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "magnetic.torque", "0.1.0"): FamilyCase(Magnetic.Torque, torque),
     ("interaction", "magnetic.force", "0.1.0"): FamilyCase(Magnetic.Force, force),
     ("interaction", "gravity", "0.1.0"): FamilyCase(Gravity, weight_and_buoyancy),
     ("interaction", "contact", "0.1.0"): FamilyCase(
+        lambda: CentreContact.Projection(margin=mm(0.1)), projected,
+        NodeCase(no_node="a projection, built into the body's node")),
+    # The rig's body has no hull (its extent declared), which 0.2.0 holds as a sphere of its extent, by 0.1.0's
+    # projection: the family's closed form. Its hull's points have the oracles of their own
+    # (tests/oracles/test_hull_contact.py).
+    ("interaction", "contact", "0.2.0"): FamilyCase(
         lambda: Contact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
     ("interaction", "drag", "0.3.0"): FamilyCase(a_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),

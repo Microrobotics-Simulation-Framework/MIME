@@ -14,8 +14,12 @@ sampling (7m-a) moved the screw to 0.3.0, and script A's MRS arm built unpinned 
   (``tests/script_a.py``, the screw 0.3.0) node for node, edge for edge and leaf for leaf, bitwise
   (``same_as_script_a``): script A's and A0's preregistered comparisons run that rung and read no sampling, so they
   build the current kinds and nothing of theirs moved.
+- **The contact too**: every such experiment attaches the contact at the version ``operating_point.FROZEN_INTERACTIONS``
+  names, 0.1.0 (the body's centre held by its extent), through ``pinned_law``, kept registered after 0.2.0 held the
+  hull's points (phase 7o).
 - **Controls**, failing on every run: the experiment with the pin bypassed names the screw 0.3.0 and fails the first
-  check; a script that builds ``fl9()`` unpinned fails the source scan.
+  check; with the law's pin bypassed it names the contact 0.2.0; a script that builds ``fl9()`` unpinned fails the
+  source scan.
 
 Nothing here builds a graph or solves; the register's numbers are its scripts' to reproduce."""
 
@@ -26,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+import mime.interactions
+from mime.interactions import Contact
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Screw, Sphere, Tube
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +39,8 @@ SCRIPTS = ROOT / "scripts" / "sim2real"
 #: The versions registered on 2026-10-31, when 7j's register froze: what its scripts must build until it is amended.
 REGISTER_FROZE = {"screw": "0.2.0", "sphere": "0.1.0", "capsule": "0.1.0", "box": "0.1.0", "cylinder": "0.1.0",
                   "ellipsoid": "0.1.0", "tube": "0.1.0"}
+#: The interactions' versions registered then, where one has moved since.
+INTERACTIONS_FROZE = {"contact": "0.1.0"}
 CURRENT = {cls.name: cls.version for cls in (Screw, Sphere, Capsule, Box, Cylinder, Ellipsoid, Tube)}
 #: What builds a geometry or an experiment in a script: a kind's class, script A's shell or arms, an experiment.
 BUILDERS = {cls.__name__ for cls in (Screw, Sphere, Capsule, Box, Cylinder, Ellipsoid, Tube)} | {
@@ -70,6 +78,12 @@ def unfrozen(document: dict) -> list[str]:
             for where, kind, version in geometries(document) if op.FROZEN_VERSIONS.get(kind) != version]
 
 
+def unfrozen_interactions(document: dict) -> list[str]:
+    return [f"{law['id']}: {law['name']} {law['version']}, the register froze {op.FROZEN_INTERACTIONS[law['name']]}"
+            for law in document["interactions"] if law["name"] in op.FROZEN_INTERACTIONS
+            and op.FROZEN_INTERACTIONS[law["name"]] != law["version"]]
+
+
 ARMS = [{"rung": "surrogate"}, {"rung": "bem", "patches": "closed"}, {"rung": "bem", "patches": "lateral"}]
 
 
@@ -78,12 +92,17 @@ def test_every_experiment_the_registers_scripts_build_names_the_versions_it_froz
     document = op.experiment(**arm).document()
     assert {kind for _, kind, _ in geometries(document)} == {"screw", "tube"}
     assert unfrozen(document) == []
+    assert "contact" in {law["name"] for law in document["interactions"]}
+    assert unfrozen_interactions(document) == []
 
 
 def test_the_scripts_table_is_the_versions_registered_when_the_register_froze():
     assert op.FROZEN_VERSIONS == REGISTER_FROZE
     for kind, version in REGISTER_FROZE.items():
         assert CURRENT[kind] == version or (kind, version) in KEPT, f"{kind} {version} is not registered"
+    assert op.FROZEN_INTERACTIONS == INTERACTIONS_FROZE
+    for name, version in INTERACTIONS_FROZE.items():
+        assert (name, version) in mime.interactions.KEPT, f"{name} {version} is not kept registered"
 
 
 def test_the_surrogate_arm_built_pinned_is_script_as_reproduction_arm_leaf_for_leaf():
@@ -122,6 +141,12 @@ def test_control_the_experiment_with_the_pin_bypassed_names_the_screw_kind_quasi
     monkeypatch.setattr(op, "pinned", lambda geometry: geometry)
     found = unfrozen(op.experiment(rung="bem").document())
     assert found == [f"umr.shell: screw {Screw.version}, the register froze 0.2.0"] and Screw.version != "0.2.0"
+
+
+def test_control_the_experiment_with_the_laws_pin_bypassed_names_the_contact_that_holds_the_hull(monkeypatch):
+    monkeypatch.setattr(op, "pinned_law", lambda law: law)
+    found = unfrozen_interactions(op.experiment().document())
+    assert found == [f"contact:umr: contact {Contact.version}, the register froze 0.1.0"] and Contact.version != "0.1.0"
 
 
 def test_control_a_script_that_builds_the_shell_unpinned_fails_the_source_scan(tmp_path):

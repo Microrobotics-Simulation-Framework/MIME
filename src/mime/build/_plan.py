@@ -49,7 +49,7 @@ from mime.build._refusals import (
 )
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.build._watch import WATCHED_FAMILY, WatchPlan
-from mime.core import VELOCITY_RULES
+from mime.core import VELOCITY_RULES, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
@@ -107,6 +107,7 @@ from mime.scene import (
     valid_prim_path,
     world_frame,
 )
+from mime.scene._sampling import quadrature_arrays, quadrature_counts
 from mime.things import (
     WORLD,
     Apparatus,
@@ -191,7 +192,9 @@ class ResolvedRead:
 class ResolvedConfinement:
     """A confinement addressed to a body's dynamics: the confining entry's id, the confined body, the surface it
     binds (``tube.inner_surface``), the shape that surface's free side is evaluated with and its parameters in SI,
-    the margin and the body's extent in metres, and the velocity rule."""
+    the margin and the body's extent in metres, and the velocity rule. A confinement that holds the body's hull
+    carries the hull (its kind, settings and placement in the body) and the counts of its samples on each of its
+    kind's patches at the confinement's spacing, and an extent of zero, which it does not read."""
 
     id: str
     subject: str
@@ -201,6 +204,8 @@ class ResolvedConfinement:
     margin: float
     extent: float
     rule: str
+    hull: Hull | None = None
+    counts: tuple[tuple[int, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -636,6 +641,7 @@ class _Planner:
         self.check_ids()
         self.resolve_values()
         self.plan_confinements()
+        self.plan_lubrication()
         self.collect_registrations_and_slots()
         self.check_readers_outside_parts()
         self.declare_controller()
@@ -2765,14 +2771,38 @@ class _Planner:
                             f"{', '.join(c.id for c in plan.confinements)}, so that one confinement, such as "
                             f"exp.attach(Contact.Projection(...), ...), binds the body")
 
+    def plan_lubrication(self) -> None:
+        """At most one law bound to a body includes near-wall lubrication (``Interaction.includes_lubrication``): a
+        drag that resolves the film declares so, and a contact handles admissibility alone and never adds it, so two
+        that include it count the film twice."""
+        including: dict[str, list[str]] = {}
+        for plan in self.readers:
+            law = plan.entry
+            if plan.section is not Section.INTERACTION or not isinstance(law, Interaction) \
+                    or not law.includes_lubrication():
+                continue
+            for role, kind in plan.reader_cls().roles.items():
+                if kind is RoleKind.BODY and role in plan.bindings:
+                    including.setdefault(plan.bindings[role], []).append(plan.owner)
+        for body, owners in including.items():
+            if len(owners) > 1:
+                self.refuse("lubrication.twice", RefusalClass.USER,
+                            f"body {body!r} is bound to {', '.join(owners)}, each of which includes near-wall "
+                            f"lubrication: the film between the body and the wall would be counted twice",
+                            f"keep the lubrication in one of them: the drag's (lubrication=Lubrication(...)), and a "
+                            f"contact that handles admissibility alone, such as exp.attach(Contact.Projection(...), "
+                            f"...)")
+
     def plan_confinement(self, plan: EntryPlan, confinement: Confinement) -> None:
         cls = plan.reader_cls()
         where = f"interaction {plan.owner}"
         declared_values: Mapping[str, Value] = plan.plan.values if plan.plan is not None else {}
+        holds_hull = confinement.spacing is not None
         if (cls.roles.get(confinement.role) is not RoleKind.BODY or cls.roles.get(confinement.surface)
-                is not RoleKind.SURFACE or confinement.extent not in declared_values):
-            self.defect(cls, "its confinement names a body role, a surface role and the label of the body's extent "
-                             "among its values")
+                is not RoleKind.SURFACE or (holds_hull != (confinement.extent is None))
+                or (not holds_hull and confinement.extent not in declared_values)):
+            self.defect(cls, "its confinement names a body role, a surface role and either the label of the body's "
+                             "extent among its values or the spacing of its hull's points, not both")
             return
         entry = self.interface(cls, confinement.target, (TargetKind,), "confines through")
         if entry is None:
@@ -2804,8 +2834,8 @@ class _Planner:
                         "write one of the built rules, rule=\"<rule>\". "
                         f"{did_you_mean(confinement.rule, VELOCITY_RULES)}")
             return
-        extent = plan.values.get(confinement.extent)
-        if extent is None:
+        extent = plan.values.get(confinement.extent) if confinement.extent is not None else None
+        if extent is None and not holds_hull:
             return  # refused as undeclared
         geometry = self.geometries[owner]
         shape = type(geometry.geometry).surfaces[part]
@@ -2814,9 +2844,44 @@ class _Planner:
         except Exception as error:  # noqa: BLE001
             self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
             return
+        if not holds_hull:
+            dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
+                                                             confinement.margin, cast(float, cast(Any, extent).value),
+                                                             confinement.rule))
+            return
+        if Capability.HOLDS_HULL not in dynamics.record.flags:
+            self.refuse("confinement.hull-not-held", RefusalClass.USER,
+                        f"{where} holds {body!r}'s hull against {surface}, and its dynamics {dynamics.describe()} "
+                        f"holds only a centre by its extent", f"give {body!r} a dynamics that holds a hull, "
+                        f"dynamics=...: " + _qualifying(EntryKind.DYNAMICS, lambda r: Capability.HOLDS_HULL in r.flags))
+            return
+        hull = self.hull_of(body)
+        if hull is None or not implements(hull.kind, "samples"):
+            held = f"{body!r} has no hull" if hull is None else f"{hull.label()} gives no samples of its surface"
+            self.refuse("confinement.no-hull", RefusalClass.USER,
+                        f"{where} holds {body!r}'s hull against {surface}, and {held}, so there is no point of the "
+                        f"body to hold", f"give {body!r} one part outside every other whose kind samples its surface "
+                                         f"(a sphere, a capsule, a screw, a cylinder, a box, an ellipsoid): "
+                                         f"parts={{\"shell\": Part(Sphere(...))}}")
+            return
+        if not getattr(shape_named(shape), "takes_many", False):
+            self.refuse("confinement.surface-shape", RefusalClass.USER,
+                        f"{where} holds {body!r}'s hull against {surface}, whose shape {shape!r} evaluates one point "
+                        f"at a time, and the contact holds every point of the hull at once",
+                        "bind surface= a surface whose shape takes many points, such as surface=tube.inner_surface")
+            return
+        patches = tuple(hull.kind.patches)
+        spacing = cast(float, confinement.spacing)
+        counts = quadrature_counts(hull.kind, hull.settings, spacing, patches)
         dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
-                                                         confinement.margin, cast(float, extent.value),
-                                                         confinement.rule))
+                                                         confinement.margin, 0.0, confinement.rule, hull, counts))
+        held = len(quadrature_arrays(hull.kind, hull.settings, patches, counts)[0])
+        line = (f"holds {hull.label()} by its {held:,} points at a spacing of {spacing * 1e3:.4g} mm, each kept "
+                f"{confinement.margin * 1e3:.4g} mm from {surface}, its orientation read: the body reaches past its "
+                f"points by no more than its farthest point lies from the nearest of them; inelastic, frictionless "
+                f"and adding no lubrication; the points it holds and their forces are {body}'s state "
+                f"(contact_points, contact_forces), and a step that holds one raises the flag {body}.touching")
+        self.checked = {**self.checked, plan.owner: (*self.checked.get(plan.owner, ()), line)}
 
     def value_lines(self) -> tuple[ValueLine, ...]:
         """Every value an entry reads, with its readers; every value declared in the experiment that none reads; and

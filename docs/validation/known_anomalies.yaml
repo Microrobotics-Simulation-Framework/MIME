@@ -1894,4 +1894,39 @@ anomalies:
       - "tests/saved/test_sampling_walk.py::test_every_kinds_own_body_reach_holds_its_body_from_its_samples"
     residual_risk: "The supremum is FL-9's; another screw's settings may overstate by more than the declaration, which the suite checks only on the declared settings"
     workaround: "Take a contact's point from mime.scene.body_reach (the body's own quadrature samples), which never overstates the reach and whose gradient is a sample of the body; use the envelope as a broad-phase bound"
-    planned_resolution: "The containment contact (phase 7o) takes body_reach, or an exact support function of the screw"
+    planned_resolution: "The containment contact (phase 7o) takes body_reach, or an exact support function of the screw. Phase 7o's contact 0.2.0 takes body_reach's points, so the envelope reaches no contact; the envelope itself stays as it is, a conservative bound"
+  - anomaly_id: MIME-ANO-129
+    title: "The contact 0.1.0 holds a body's centre by its extent and never reads its orientation, so a screw that turns across a narrow tube passes through its wall"
+    description: >
+      Contact 0.1.0's projection keeps the body's centre the extent of its hull about its own axis, plus the margin,
+      from the surface, whatever the body's orientation: a sphere of the extent about the centre. A body whose axis
+      leaves the tube's reaches past that sphere. Review 7l-c (F1) found it on the walk's T4 screw: FL-9 with its parts'
+      inertia, its axial moment the smallest as any real screw's is, under the surrogate drag and a field turning at
+      5 Hz in the quarter-inch tube, turns broadside within about half a second (its tilt passes 10 degrees at 0.47 to
+      0.49 s and reaches 83 to 107 degrees by 0.6 s) and, at 0.98 mm off the axis, reaches 4.7 mm from it, 1.5 mm
+      through the wall, with no flag raised. Script A and A0 escaped it through their isotropic inertia, which keeps
+      the axis along the tube's (a tilt of 0.24 degrees). The surrogate's tilt flags (phase 7l-c) report the tilt; the
+      contact did not hold it.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A body through the wall is in no state the experiment describes, and every number read from it (its speed, its
+      offset, its drag's resistance) is of a body that cannot exist, with nothing in a run to say so before 7l-c's
+      flags.
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev0"
+    resolution_version: "0.3.0.dev1"
+    affected_components:
+      - "the contact 0.1.0 (mime.interactions, kept registered as mime.interactions.KEPT's contact 0.1.0)"
+      - "rigid_inertial's confinement (mime.nodes.body.RigidInertialNode)"
+    verification:
+      - "tests/oracles/test_hull_contact.py::test_no_hull_point_ends_past_the_wall_and_the_margin_is_kept_to_the_sweeps_convergence"
+      - "tests/oracles/test_hull_contact.py::test_control_todays_contact_holding_the_centre_lets_the_hull_through_the_wall"
+      - "tests/oracles/test_hull_contact.py::test_a_rod_pressed_against_both_walls_takes_the_couple_at_its_rims"
+      - "tests/oracles/test_hull_contact.py::test_the_contact_never_leaves_the_step_more_energy_than_the_free_step"
+      - "tests/oracles/test_hull_contact_screws.py::test_an_anisotropic_screw_turns_broadside_and_is_held_at_the_bores_limit"
+      - "tests/oracles/test_hull_contact_screws.py::test_control_without_the_contact_the_screw_goes_through_the_wall"
+      - "tests/oracles/test_hull_contact_screws.py::test_the_isotropic_screw_runs_as_with_no_contact_to_the_last_bit"
+    residual_risk: "The contact 0.2.0 holds the hull's samples, so the body itself may reach past them by its farthest point's distance from the nearest sample (on FL-9, 4.3 um at the default spacing of 0.1 mm, against the margin of 0.1 mm), and a turning screw sees that as a jitter of its gap; it holds one point of each of eight groups a step, by a fixed count of sweeps, so a body pressed into both walls with short levers is held to what the sweeps leave, the projection after the step taking the rest. The contact 0.1.0 stays registered, and script A, A0 and the frozen register's scripts build it, so a run of theirs that turned its body would pass through the wall as before: their bodies are isotropic and do not turn"
+    workaround: "Write Contact.Projection(...), which builds the contact 0.2.0"
+    planned_resolution: "Done in dev1 phase 7o (design #196): the contact 0.2.0 holds the body's hull points, its orientation read, by impulses through the body's implicit solve and a projection of the pose after the step. On review 7l-c's arms, 3 s in float32 (phase 7o's measurement), every arm whose axial moment is its smallest still turns, its tilt past 10 degrees at 0.47 to 0.52 s, and is stopped at 20.45 to 20.47 degrees, its body never nearer the wall than 97.6 um (a dense quadrature's, against the 0.1 mm margin); the isotropic arm runs as it did with no contact, to the last bit. Friction at the contact, and its meeting with the near-contact physics (lubrication, a compliant wall), are decided with that physics' design"

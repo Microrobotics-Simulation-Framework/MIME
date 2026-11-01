@@ -64,6 +64,7 @@ from mrs_cases import mrs_free_space, mrs_solids
 import multibody_cases
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
+from hull_cases import MARGIN as HULL_MARGIN, TUBE_RADIUS, hull_node, kind_points, rotation
 
 from switch_configurations import PACKAGE, tree_scan
 
@@ -75,6 +76,8 @@ from mime.control._arm_tracking import _outer
 from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
+from mime.scene import Cylinder, Sphere
+from mime.units import mm
 from mime.docs import load_namespaces
 from mime.nodes.hydro.mrs import frame_across, tube_correction, tube_reads, tube_table_from
 from mime.nodes.hydro.mrs._tube import pair_block
@@ -103,7 +106,8 @@ def graph():
 def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
     found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
-    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "drag", "0.3.0"),
+    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "contact", "0.2.0"),
+                                ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
                                 ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
                                 ("wall kind", "tube", "0.1.0")):
@@ -632,15 +636,144 @@ def tube_rows(declared) -> list[SwitchRow]:
     ]
 
 
+# -- the body held by its hull's points ----------------------------------------------------------------------------
+
+#: The ball whose hull's points the hull contact's rows hold: a millimetre sphere, its quadrature at 0.4 mm (the
+#: lowest of its points the ``BOTTOM``; ``NEXT`` the next lowest), and a cylinder along the tube's axis, whose caps'
+#: centres lie on it.
+HELD_BALL, BALL_SETTINGS, BALL_SPACING = Sphere(radius=mm(1.0)), {"radius": 1e-3}, 4e-4
+ROD, ROD_SETTINGS = Cylinder(radius=mm(0.5), length=mm(2.0), axis=(1.0, 0.0, 0.0)), {
+    "radius": 5e-4, "length": 2e-3, "axis": (1.0, 0.0, 0.0)}
+HULL_MASS = 1e-5
+
+
+@cache
+def ball_points() -> np.ndarray:
+    return kind_points(HELD_BALL, BALL_SETTINGS, BALL_SPACING)
+
+
+def lowest_two() -> tuple[int, int]:
+    order = np.argsort(ball_points()[:, 2], kind="stable")
+    return int(order[0]), int(order[1])
+
+
+def held_ball(groups, pose):
+    return hull_node(HELD_BALL, BALL_SETTINGS, BALL_SPACING, groups=groups, mass=HULL_MASS, pose=tuple(pose))
+
+
+def ball_gap(index: int, pose) -> float:
+    """The ball's point ``index``'s gap to the shrunk wall at ``pose``."""
+    placed = np.asarray(pose[:3]) + ball_points()[index] @ rotation(pose[3:]).T
+    return float(TUBE_RADIUS - HULL_MARGIN - np.hypot(placed[1], placed[2]))
+
+
+def ball_below(index: int, gap: float, turn=(1.0, 0.0, 0.0, 0.0), *, others=()) -> np.ndarray:
+    """The ball's pose at the orientation ``turn``, its centre below the tube's axis at the depth (found by bisection)
+    at which the nearest of its point ``index`` and ``others`` is ``gap`` from the shrunk wall."""
+    low, high = 0.0, TUBE_RADIUS
+    for _ in range(200):
+        middle = 0.5 * (low + high)
+        nearest = min(ball_gap(i, (ALONG, 0.0, -middle, *turn)) for i in (index, *others))
+        low, high = (middle, high) if nearest > gap else (low, middle)
+    return np.asarray((ALONG, 0.0, -low, *turn))
+
+
+def upright(index: int) -> tuple[float, float, float, float]:
+    """The turn that takes the ball's point ``index`` straight below its centre, where the shrunk wall's normal
+    through it passes through the centre."""
+    point = ball_points()[index] / np.linalg.norm(ball_points()[index])
+    axis = np.cross(point, (0.0, 0.0, -1.0))
+    if np.linalg.norm(axis) < 1e-15:
+        return (1.0, 0.0, 0.0, 0.0)
+    angle = math.atan2(float(np.linalg.norm(axis)), float(point @ (0.0, 0.0, -1.0)))
+    axis = axis / np.linalg.norm(axis) * math.sin(angle / 2)
+    return (math.cos(angle / 2), float(axis[0]), float(axis[1]), float(axis[2]))
+
+
+def ball_step(groups, pose, twist=(0.0,) * 6, held_passes: int | None = None):
+    """The held ball's pose and twist after one step from ``pose`` and ``twist``, with no load (``held_passes``: the
+    projection's passes, where a row measures one)."""
+    import mime.nodes.body._rigid_inertial as rigid
+
+    node = held_ball(groups, pose)
+    state = {**node.initial_state(), "pose": jnp.asarray(pose), "twist": jnp.asarray(twist)}
+    passes = rigid.HULL_PASSES
+    rigid.HULL_PASSES = passes if held_passes is None else held_passes
+    try:
+        out = node.fresh_update(state, {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)),
+                                        "background_load": jnp.zeros(6)}, DT)
+    finally:
+        rigid.HULL_PASSES = passes
+    return {"pose": out["pose"], "twist": out["twist"]}
+
+
+def tied(offset: float) -> np.ndarray:
+    """The ball's pose with its two lowest points, ``first`` and ``second``, the nearest the shrunk wall and on it,
+    ``second`` ``offset`` further from it: turned about the line across both and the vertical, by the angle (found by
+    bisection, in the bracket of a coarse scan that holds it) that sets ``second``'s gap."""
+    first, second = lowest_two()
+    points = ball_points()
+    across = np.cross(points[second] - points[first], (0.0, 0.0, 1.0))
+    across = across / np.linalg.norm(across)
+
+    def pose_at(angle: float) -> np.ndarray:
+        turn = (math.cos(angle / 2), *(float(c) for c in math.sin(angle / 2) * across))
+        return ball_below(first, 0.0, turn, others=(second,))
+
+    def excess(angle: float) -> float:
+        held = pose_at(angle)
+        return ball_gap(second, held) - ball_gap(first, held)
+
+    angles = np.linspace(-0.6, 0.6, 25)
+    values = [excess(float(angle)) for angle in angles]
+    k = next(k for k in range(len(angles) - 1) if (values[k] - offset) * (values[k + 1] - offset) < 0)
+    low, high = (float(angles[k]), float(angles[k + 1])) if values[k] < offset else (float(angles[k + 1]),
+                                                                                       float(angles[k]))
+    for _ in range(200):
+        middle = 0.5 * (low + high)
+        low, high = (middle, high) if excess(middle) < offset else (low, middle)
+    return pose_at(high)
+
+
+def hull_rows(declared) -> list[SwitchRow]:
+    """The hull contact's four switches, each placed on a held ball whose groups hold only the points the row needs, so
+    that every evaluation of its owner over the sweeps is at the row's offset: ``contact.point`` its two lowest points
+    in one group, ``offset`` apart in their gaps, the lowest on the shrunk wall and the ball moving into it at
+    0.1 um/s (so that the choice reaches the twist, and the ball moves too little in the step for the projection's
+    choice to read another offset); ``contact.gap`` the lowest point straight below the centre, ``offset`` from the
+    shrunk wall, the ball moving into it at 1 mm/s; ``contact.impulse`` that point on the wall, the ball moving into it
+    at the speed whose stopping takes a force of ``offset``; ``contact.push`` that point past the wall by the depth
+    whose projection's multiplier is ``offset``, the ball at rest, its projection one pass (the second's multiplier is
+    what the first leaves, which no row can place at the same offset)."""
+    first, second = lowest_two()
+    down = upright(first)
+    alone = [[first]]
+
+    def pressed(speed: float):
+        return (0.0, 0.0, -speed, 0.0, 0.0, 0.0)
+
+    return [
+        SwitchRow(declared["contact.point"], lambda o: ball_step([[first, second]], tied(o), pressed(1e-7)), 1e-6),
+        SwitchRow(declared["contact.gap"], lambda o: ball_step(alone, ball_below(first, o, down), pressed(1e-3)),
+                  1e-8),
+        SwitchRow(declared["contact.impulse"],
+                  lambda o: ball_step(alone, ball_below(first, 0.0, down), pressed(o * DT / HULL_MASS)), 1e-6),
+        SwitchRow(declared["contact.push"],
+                  lambda o: ball_step(alone, ball_below(first, -o / HULL_MASS, down), held_passes=1), 1e-12),
+    ]
+
+
 def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
-            *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared)]
+            *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared),
+            *hull_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
 OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.closing", "contact.scale",
-                 "contact.project", "contact.rule", "contact.rule_outward", "cylinder.axis", "cylinder.axis_norm",
+                 "contact.project", "contact.rule", "contact.rule_outward", "contact.point", "contact.gap",
+                 "contact.impulse", "contact.push", "cylinder.axis", "cylinder.axis_norm",
                  "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
@@ -797,7 +930,8 @@ def test_control_a_step_traced_before_the_setting_opened_fails(graph):
 
 def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
-    the tube's axis and free (the norm's, the cylinder's two and the hold's); the drag on the axis; the swim speed
+    the tube's axis and free (the norm's, the cylinder's two and the hold's); a body held by its hull's points, one of
+    them on the tube's axis (the sweeps'); the drag on the axis; the swim speed
     before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; and
     the drag's MRS samples on FL-9's screw and on an ellipsoid, where each kind's surface element (each sample's
     ``nonzero_norm``) is."""
@@ -807,6 +941,16 @@ def guard_points(graph):
         return graph.get_node("umr").fresh_update(state, unloaded, DT, params=leaves(graph, "umr"))
 
     body_state = {"pose": jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)), "twist": jnp.asarray((1e-4,) * 6)}
+    rod_points = kind_points(ROD, ROD_SETTINGS, BALL_SPACING)
+    on_the_axis = int(np.argmin(np.hypot(rod_points[:, 1], rod_points[:, 2])))
+    rod = hull_node(ROD, ROD_SETTINGS, BALL_SPACING, groups=[[on_the_axis]], mass=HULL_MASS)
+
+    def held_rod(state):
+        """The rod held by one point of its hull, a cap's centre, on the tube's axis, where the wall has no normal
+        and the point's row no length (the sweeps' guard)."""
+        unloaded = {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)), "background_load": jnp.zeros(6)}
+        out = rod.fresh_update({**rod.initial_state(), **state}, unloaded, DT)
+        return {"pose": out["pose"], "twist": out["twist"]}
 
     def drag(pose):
         return graph.get_node("drag:umr").fresh_update(node_state(graph, "drag:umr"), {"pose": pose}, DT,
@@ -877,6 +1021,8 @@ def guard_points(graph):
     not_positive = jnp.asarray(-1.0)
     return {
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
+        "the hull contact, its point on the tube's axis": (lambda: held_rod(body_state),
+                                                           lambda: jax.jacfwd(held_rod)(body_state)),
         "the drag on the axis": (lambda: drag(drag_pose), lambda: jax.jacfwd(drag)(drag_pose)),
         "the swim speed before observing": (lambda: swim(swim_twist), lambda: jax.jacfwd(swim)(swim_twist)),
         "the solids' shapes on their sets": (lambda: solids(on_the_sets), lambda: jax.jacfwd(solids)(on_the_sets)),
@@ -931,7 +1077,8 @@ def swim_at_twist(graph, twist):
     return node.fresh_update(state, {"twist": twist}, DT, params=leaves(graph, "swim_speed:umr", after=1.0))
 
 
-@pytest.mark.parametrize("where", ["the body at the origin, on the axis, free", "the drag on the axis",
+@pytest.mark.parametrize("where", ["the body at the origin, on the axis, free",
+                                   "the hull contact, its point on the tube's axis", "the drag on the axis",
                                    "the swim speed before observing", "the solids' shapes on their sets",
                                    "the screw on its focal set", "the dipole away from its centre",
                                    "the MRS samples on the screw",

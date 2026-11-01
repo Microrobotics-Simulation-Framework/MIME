@@ -2,13 +2,23 @@
 with buoyancy, the swim speed."""
 
 from mime.nodes.body._gravity import GravityInputs, GravityNode, Wrench
-from mime.nodes.body._rigid_inertial import SURFACE, RigidInertialInputs, RigidInertialNode, RigidInertialState
+from mime.nodes.body._rigid_inertial import (
+    HULL,
+    SURFACE,
+    RigidContactState,
+    RigidInertialInputs,
+    RigidInertialNode,
+    RigidInertialState,
+    point_groups,
+)
 from mime.nodes.body._swim_speed import SwimSpeedInputs, SwimSpeedNode, SwimSpeedState
 
 __all__ = [
+    "HULL",
     "SURFACE",
     "GravityInputs",
     "GravityNode",
+    "RigidContactState",
     "RigidInertialInputs",
     "RigidInertialNode",
     "RigidInertialState",
@@ -16,4 +26,5 @@ __all__ = [
     "SwimSpeedNode",
     "SwimSpeedState",
     "Wrench",
+    "point_groups",
 ]
