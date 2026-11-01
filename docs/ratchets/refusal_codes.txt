@@ -14,7 +14,6 @@ load.namespace-import     # no test names it
 load.reference-changed    # no test names it
 load.setting              # no test names it
 load.setting-unknown      # no test names it
-load.stage-hash           # no test names it
 maddening.compile         # no test names it
 maddening.dtype           # no test names it
 maddening.shape           # no test names it

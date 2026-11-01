@@ -24,6 +24,7 @@ LAYOUT = {
     "fields",
     "gradients",
     "interactions",
+    "live",
     "mappings",
     "materials",
     "nodes",

@@ -94,6 +94,9 @@ dev = [
     # The pinned requirements files are `uv export`'s output, and its bytes are tied to uv's release: CI's, which
     # tests/env/test_requirements.py holds equal to this pin.
     "uv==0.13.0",
+    # libzmq itself, for the test that `mime serve`'s own ZMTP speaks with a real libzmq peer both ways
+    # (tests/live/test_libzmq.py). `mime serve` never imports it.
+    "pyzmq>=27.1",
 ]
 
 [tool.hatch.version]

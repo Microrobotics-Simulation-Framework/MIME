@@ -48,7 +48,7 @@ from mime.saved._versions import (
     upgraded_document,
     upgraded_lock,
 )
-from mime.scene import LAYERS, STAGE_FILE, sha256_hex, stage_derived_findings, stage_edits
+from mime.scene import LAYERS, STAGE_FILE, STAGE_WRITER, STAGE_WRITERS, sha256_hex, stage_derived_findings, stage_edits
 
 #: The resolved record's key for the profile's record, which MIME alone writes.
 _PROFILE_RECORD = "profile"
@@ -391,9 +391,19 @@ def scene_file_refusals(folder: Path, lock: Lock, *, skip: frozenset[str] = froz
     return refusals, stage_found
 
 
-def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool) -> tuple[list[Refusal], list[str]]:
+def stage_writers(lock: Lock) -> tuple[int, ...]:
+    """The stage writers a lock's stage may have been written by: the one it records, or, for a lock written before
+    the writer was recorded, the first writer and the current one (the current writer wrote stages before it recorded
+    itself, on a development line)."""
+    held = lock["stage"].get("writer")
+    return (held,) if held is not None else (1, STAGE_WRITER)
+
+
+def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool,
+                          rebuilt: str | None = None) -> tuple[list[Refusal], list[str]]:
     """A saved stage whose bytes are not the ones its lock pins, judged against the stage the rebuild writes from the
-    same document (``compare``; without it, as after a changed document, any change is refused). An edit confined to
+    same document (``compare``; without it, as after a changed document, any change is refused), by the stage writer
+    that wrote it (``rebuilt``; the record's own stage when not given). An edit confined to
     derived prims (a kind's drawn mesh, a region's primitive) is reported, one line each: they are output only, read
     by nothing, and every build writes them again; every dev1 profile reports it, and a1's ``strict`` may refuse such
     an edit here. Any other edit is refused."""
@@ -408,7 +418,7 @@ def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool) -
     if not compare:
         return refused, []
     try:
-        edits = stage_edits(found, record.stage)
+        edits = stage_edits(found, record.stage if rebuilt is None else rebuilt)
     except Exception:  # noqa: BLE001 - a stage USD cannot read is a changed stage, refused as one
         return refused, []
     if edits.outside:
@@ -540,6 +550,8 @@ class LoadReport:
     renamed: tuple[str, ...] = ()
     #: What reading the folder found to say and not to refuse (``SavedForm.notes``).
     notes: tuple[str, ...] = ()
+    #: The stage writer whose stage the folder holds, held to its lock (``mime.scene.STAGE_WRITER`` or an earlier one).
+    stage_writer: int = STAGE_WRITER
 
     @property
     def previous(self) -> bool:
@@ -562,6 +574,10 @@ class LoadReport:
 
     def text(self) -> str:
         lines = [f"load report: {self.folder}", self.form_line(), "input hash: reproduced exactly", *self.notes]
+        if self.stage_writer != STAGE_WRITER:
+            lines.append(f"stage: written by stage writer {self.stage_writer}, rebuilt by it and held to its lock; "
+                         f"saving the experiment again writes stage writer {STAGE_WRITER}'s, which draws every chain "
+                         f"frame, visual and vector a live session or a recording moves")
         if self.derived_prims_edited:
             lines.append("stage: derived prims edited after it was written (reported, not refused)")
             lines += [f"  {line}" for line in self.derived_prims_edited]
@@ -575,19 +591,33 @@ class LoadReport:
         return "\n".join(lines)
 
 
-def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
+def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] | None = None) -> LoadReport:
     """The three load checks, against the rebuilt experiment's ``record``. The input hash must match exactly; the
     environment is compared and reported; the derived graph must match exactly within one environment, and
     otherwise is compared within the lock's tolerance and reported. A stage edited after its lock was written is
-    refused, or reported where only its derived prims were edited (:func:`stage_change_refusals`). Raises
-    :class:`LoadRefused`."""
+    refused, or reported where only its derived prims were edited (:func:`stage_change_refusals`). ``stages`` is the
+    stage as each writer the lock's stage may be of (:func:`stage_writers`) rebuilds it; the rebuilt stage must be one
+    of them, byte for byte, within one environment, and a stage of a writer this MIME does not have is refused.
+    Raises :class:`LoadRefused`."""
     lock = form.lock
+    stages = dict(stages) if stages else {STAGE_WRITER: record.stage}
+    writer = next((held for held, text in sorted(stages.items()) if sha256_hex(text.encode("utf-8")) ==
+                   lock["stage"]["sha256"]), None)
+    rebuilt = stages[writer] if writer is not None else stages[min(stages)]
     if record.document is None:
         # the rebuilt experiment's document cannot be written (terms the build judges as save would): every reason,
         # each by its code
         raise LoadRefused(list(record.unsavable))
     saved_hashes, hashes = lock["hashes"], record.hashes(version=form.version)
-    refusals, derived_prims = stage_change_refusals(form, record, hashes["input"] == saved_hashes["input"])
+    refusals, derived_prims = stage_change_refusals(form, record, hashes["input"] == saved_hashes["input"], rebuilt)
+    named = lock["stage"].get("writer")
+    if named is not None and named not in STAGE_WRITERS:
+        refusals.append(_refuse("load.stage-writer", RefusalClass.ENVIRONMENT,
+                                f"the stage was written by stage writer {named}, and this MIME writes versions "
+                                f"{', '.join(map(str, STAGE_WRITERS))}",
+                                f"install the MIME that saved it, `pip install "
+                                f"mime-engine=={lock['environment']['mime']}`, or build the experiment from its script "
+                                "and save it again: `built.save(folder)`"))
     if hashes["input"] != saved_hashes["input"]:
         edited = hashes["document"] != saved_hashes["document"]
         rebuilt = resolved_in_form(record.resolved, form.version)
@@ -626,15 +656,17 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     if refusals:
         # Another input builds another graph; the derived hash guards the same input building something else.
         raise LoadRefused(refusals)
-    if record.stage_hash != lock["stage"]["sha256"]:
+    if writer is None:
+        tried = ", ".join(f"{sha256_hex(text.encode('utf-8'))} by stage writer {held}"
+                          for held, text in sorted(stages.items()))
         if same:
             refusals.append(_refuse("load.stage-hash", RefusalClass.ENVIRONMENT,
                                     f"in the environment the lock was written in, the rebuilt stage hashes to "
-                                    f"{record.stage_hash}, and the lock records {lock['stage']['sha256']}",
+                                    f"{tried}, and the lock records {lock['stage']['sha256']}",
                                     "report it: the stage writer wrote other bytes from the same declarations; `mime "
                                     "verify <folder>` repeats it"))
         else:
-            env = [*env, f"stage: written as {lock['stage']['sha256']}, rebuilt as {record.stage_hash}"]
+            env = [*env, f"stage: written as {lock['stage']['sha256']}, rebuilt as {tried}"]
     if (hashes["derived"], hashes["observations"]) == (saved_hashes["derived"], saved_hashes["observations"]):
         derived = "the same graph, hash for hash"
     else:
@@ -664,7 +696,8 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     if refusals:
         raise LoadRefused(refusals)
     return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims),
-                      form.document["schema"], form.document["profile"], form.version, form.renamed, form.notes)
+                      form.document["schema"], form.document["profile"], form.version, form.renamed, form.notes,
+                      writer if writer is not None else STAGE_WRITER)
 
 
 def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
@@ -747,4 +780,4 @@ __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "Loa
            "environment_differences", "missing_referenced",
            "layout_problem", "lock_text_problems", "named_files", "read_document", "read_document_version",
            "read_folder",
-           "scene_file_refusals", "stage_change_refusals", "verify_history", "write_folder"]
+           "scene_file_refusals", "stage_change_refusals", "stage_writers", "verify_history", "write_folder"]

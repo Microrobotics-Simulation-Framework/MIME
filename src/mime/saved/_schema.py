@@ -685,12 +685,14 @@ class RecordFileRecord(TypedDict, closed=True):
 
 
 class StageRecord(TypedDict, closed=True):
-    """The stage the build wrote: its file below the folder and its SHA-256, and every layer it references, by its
-    file below the folder, with its SHA-256. The stage's identity."""
+    """The stage the build wrote: its file below the folder and its SHA-256, every layer it references, by its file
+    below the folder, with its SHA-256, and the version of the stage writer that wrote it (``mime.scene.STAGE_WRITER``;
+    a lock written before it was recorded holds none). The stage's identity."""
 
     file: ReadOnly[str]
     sha256: ReadOnly[str]
     layers: ReadOnly[dict[str, str]]
+    writer: NotRequired[ReadOnly[int]]
 
 
 class Lock(TypedDict, closed=True):

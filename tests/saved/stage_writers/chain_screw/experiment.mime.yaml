@@ -1,0 +1,149 @@
+schema: mime.document/4
+mime: 0.3.0.dev0
+experiment: chain_screw
+profile: exploratory
+run:
+  dt:
+    value: 0.001
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  spin:
+    kind: apparatus
+    prim: /World/spin
+    fields:
+      magnetic:
+        name: point_dipole
+        version: 0.1.0
+        settings:
+          part: magnet
+    chain:
+    - segment: motor
+      name: motor
+      version: 0.2.0
+      settings:
+        at:
+          value: [0.0, 0.0, 0.1]
+          unit: m
+        rung: kinematic
+        axis: [0.0, 0.0, 1.0]
+        prescribed: angle
+        initial_angle:
+          value: 0.0
+          unit: '1'
+    magnets:
+      magnet:
+        model: permanent_magnet
+        direction: [1.0, 0.0, 0.0]
+    parts:
+      magnet:
+        solid:
+          name: cylinder
+          version: 0.1.0
+          settings:
+            radius:
+              value: 0.0175
+              unit: m
+            length:
+              value: 0.02
+              unit: m
+            axis: [1.0, 0.0, 0.0]
+        mount: motor.rotor
+    commands:
+      motor.angle:
+        name: drive.constant
+        version: 0.1.0
+        settings:
+          value:
+            value: 0.25
+            unit: '1'
+  tube:
+    kind: structure
+    prim: /World/tube
+    geometry:
+      name: tube
+      version: 0.1.0
+      settings:
+        axis: [1.0, 0.0, 0.0]
+        inner_radius:
+          value: 0.003175
+          unit: m
+        wall:
+          value: 0.0016
+          unit: m
+        length:
+          value: 0.1
+          unit: m
+  umr:
+    kind: body
+    prim: /World/umr
+    dynamics:
+      motion:
+        name: rigid_inertial
+        version: 0.2.0
+    initial:
+      position:
+        value: [0.0, 0.0, -0.001]
+        unit: m
+      orientation: [1.0, 0.0, 0.0, 0.0]
+      velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: m/s
+      angular_velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: Hz
+    parts:
+      shell:
+        solid:
+          name: screw
+          version: 0.2.0
+          settings:
+            radius:
+              value: 0.0015600000000000002
+              unit: m
+            length:
+              value: 0.0016
+              unit: m
+            wavenumber:
+              value: 2.33
+              unit: '1'
+            modulation:
+              value: 0.33
+              unit: '1'
+            starts: 2
+interactions:
+- id: magnetic.torque:umr
+  name: magnetic.torque
+  version: 0.1.0
+  binds:
+    body: umr
+    field: spin.magnetic
+observations: []
+declared:
+  spin.magnetic_moment:
+    value: 18.89
+    unit: A m^2
+    reason: de Jongh's rotor magnet
+  umr.inertia:
+    value: [1.0e-10, 1.2e-10, 8.0e-11]
+    unit: kg m^2
+    reason: a millimetre body, its order
+  umr.magnetic_moment:
+    value: [0.0, 0.0017, 0.0]
+    unit: A m^2
+    reason: a millimetre body's magnet, its order
+  umr.mass:
+    value: 8.5e-05
+    unit: kg
+    reason: a millimetre body, round numbers of its order
+materials: {}
+controller: null
+gravity:
+  value: 9.81
+  unit: m/s^2

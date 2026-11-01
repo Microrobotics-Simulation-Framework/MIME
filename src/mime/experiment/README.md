@@ -57,4 +57,9 @@ convention when not given; `declare(path, value)` with no reason, a pending decl
 a setting's source apart from its value. The report's `pending()` lists what is pending with the lines to paste, and a
 run's result carries the profile's stamp.
 
+Since phase 7n (design #197): `built.live(...)`, a live session (`mime.live`); `built.binding()`, the stage binding,
+which field of the state moves which prim; `built.topology()`, the built graph in MIME's names, written as
+`topology.json` beside a run's outputs; and `run_to(..., hook=, chunk=, stage_every=)`, a saved run that streams and
+writes the recording layer.
+
 Phases and releases are explained in the [package manifest](../README.md#status).

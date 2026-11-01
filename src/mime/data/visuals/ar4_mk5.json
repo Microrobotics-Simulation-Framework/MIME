@@ -1,0 +1,147 @@
+{
+  "format": "mime.visual_set/1",
+  "name": "ar4_mk5",
+  "title": "the visual meshes of Annin Robotics' AR4 robot arm (mk5)",
+  "upstream": {
+    "repository": "https://github.com/Annin-Robotics/ar4_ros_driver",
+    "commit": "6a3ebb11cedab12cd1d29b41d63aa270a008ab8b",
+    "folder": "annin_ar4_description/meshes/ar4_mk5",
+    "read": "2026-11-01"
+  },
+  "licence": "LicenseRef-Annin-Robotics-NonCommercial",
+  "licence_url": "https://github.com/Annin-Robotics/ar4-hmi/blob/main/LICENSE.txt",
+  "tier": "no-redistribution",
+  "role": "presentation",
+  "credit": "Annin Robotics (anninrobotics.com): the AR4 robot arm and its 3D models, from Annin Robotics' ar4_ros_driver repository",
+  "notice": "The AR4's 3D models are Annin Robotics' design. Annin Robotics' licence for its CAD files (Annin Robotics Open Source Non-Commercial License Agreement, version 1.1, section 2) allows educational, research and personal non-commercial use, and forbids redistributing or hosting them in any form and commercial use without its written permission. The driver repository they come from is MIT-licensed, and which terms govern the meshes has not been settled; MIME follows the stricter. MIME hosts none of them: this recipe downloads each from Annin Robotics' own repository at the pinned commit, checks its sha256, and converts and decimates it on this machine, into the asset cache only, never into a saved or a run folder. Keep the logos and the names as they are, and do not use the Annin Robotics name to suggest endorsement.",
+  "archives": [],
+  "archive_checked": "2026-11-01: Software Heritage holds neither the repository (origin lookup) nor these files (content lookup by git blob)",
+  "files": [
+    {
+      "path": "meshes/ar4_mk5/Link_Base_Aluminum.STL",
+      "sha256": "6c9927755e4cb3519ed60296423e99b2a92d2ff921fa71f7f7994bf8db528bcb",
+      "size": 12968284,
+      "git_blob": "ff88e5d9eaf5726be236b83e548be08b274d92dd",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_Base_Aluminum.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_Base_Enclosure.STL",
+      "sha256": "ab3b278e8fa3bd2255977dd7b21332a4d3dab8db5ec06176ed99124c03775790",
+      "size": 760584,
+      "git_blob": "9f620471e1bda5e9ba4b03b2a9c4cde0b539fca8",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_Base_Enclosure.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_Base_Motor.STL",
+      "sha256": "8018dcb4fe6829e5ebfa25741f23a436e20f57abdd9a33843c255e69f13942cf",
+      "size": 10302884,
+      "git_blob": "19a821c8bd1112a9da9edaac9dce815638d6a076",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_Base_Motor.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_1_Aluminum.STL",
+      "sha256": "c42ebb368aa3e6587d52f49d2ba62a0ae535c16e231819b7bf1c95fc336bb08a",
+      "size": 7472934,
+      "git_blob": "a2e65399c6779eb2562f168e319d2465a1a155b0",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_1_Aluminum.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_1_Motor.STL",
+      "sha256": "c3b3021a60add42f77228c54c908e0f776c2c08a663ac3a0abca2a382877d76a",
+      "size": 219984,
+      "git_blob": "ffab22fe29c66b854347e02cbd6e12847e947c39",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_1_Motor.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_2_Aluminum.STL",
+      "sha256": "6f1c43bfaccff1431a74e18de04d8a280d460d751a49d9123b5953dc1748ea09",
+      "size": 12469584,
+      "git_blob": "c59e9f0b27140cd8f902093838bc476108b92d44",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_2_Aluminum.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_2_Motor.STL",
+      "sha256": "9f873209930deb8ce166003f2e568682e2ce288fa537430c9cb9c14373253094",
+      "size": 55984,
+      "git_blob": "a3c16f7abd0c2507caceef6fe5b0232c4561711f",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_2_Motor.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_2_Cover.STL",
+      "sha256": "c615ef8200c8675ccf0802b068d32bc9921bf85fe6d60c7a08ceb833c7c517b2",
+      "size": 257784,
+      "git_blob": "43c248d239c333faa342c2306a75c92024793e55",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_2_Cover.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_2_Logo.STL",
+      "sha256": "b910b6c265b34ee83990661babfac52f65345cd042c94a45f52aa86f81e8f8b5",
+      "size": 39184,
+      "git_blob": "6caa4fe9ab8ece74a3e843f62f189623fd78c352",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_2_Logo.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_3_Aluminum.STL",
+      "sha256": "c56aa3423a02224efb4160a15ce175acce149a8c49642ff580656fa21e367215",
+      "size": 333484,
+      "git_blob": "9a0a0ad20100d4e4bfd810f68bff9bb62099708a",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_3_Aluminum.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_3_Motor.STL",
+      "sha256": "a08651c3a1fa41f3ed280300e658597cf396291a969925dcdfede4d7e3e1475d",
+      "size": 177284,
+      "git_blob": "18885674a951bce0fd32b5caf885d3cad454f2be",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_3_Motor.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_4_Aluminum.STL",
+      "sha256": "088c46d16a977a646e1c46c6a74778cccd657e54750d5d019908e77096a10a03",
+      "size": 3817784,
+      "git_blob": "c127037d96a3bf4e58d22b76cd3660def81572af",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_4_Aluminum.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_4_Motor.STL",
+      "sha256": "c34d44ce9913a40f0f7e728fe9b47997e0a6802ee5989e37deaccb83e5e3b6ee",
+      "size": 124884,
+      "git_blob": "0f6d87b486c27f40d5d89f0036531403ae6e8e80",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_4_Motor.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_4_Cover.STL",
+      "sha256": "d1c50bf33c748c07f7703bed68164686aa3e75ebef3ef5fc0fc45e15ac781b32",
+      "size": 345884,
+      "git_blob": "569317564ff8455e07d972b8b57f1e3366ed6904",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_4_Cover.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_4_Logo.STL",
+      "sha256": "22d19cae1c88b916932bec71a9f75d76355e8d054443f5c4b1c9bfc8d6bef7ee",
+      "size": 39984,
+      "git_blob": "1312538c0e128de7476cf9861c03c75fb63b17f3",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_4_Logo.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_5_Aluminum.STL",
+      "sha256": "c69305373a9a31ba53b217622d0e4e104e0768740ff5ef2542de590fd9b1fd5c",
+      "size": 210284,
+      "git_blob": "c25b82ced5701d305a87a81a499d00b87fdc8291",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_5_Aluminum.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_5_Motor.STL",
+      "sha256": "208ef935e1838a634967992723ecc84206d3b20c6c4cb1c8b69d23b4520d183e",
+      "size": 34684,
+      "git_blob": "e27751caf9f29c6de03304bff615e0ff1caf694a",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_5_Motor.STL"
+    },
+    {
+      "path": "meshes/ar4_mk5/Link_6_Aluminum.STL",
+      "sha256": "9760571bbad338aa1262e0ca64e69ca5c754595ecf5e08f907786cf53737f472",
+      "size": 42184,
+      "git_blob": "e31eb2bde46c1906a9dba553b20b2e95763659f1",
+      "location": "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/annin_ar4_description/meshes/ar4_mk5/Link_6_Aluminum.STL"
+    }
+  ]
+}

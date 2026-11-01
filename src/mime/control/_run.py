@@ -143,6 +143,10 @@ class Callback:
         self.waiting: deque[tuple[int, Fed]] = deque()
         self.ticks = 0
         self.dt = dt
+        #: The live inputs a session has set, by label (:class:`~mime.registry.LiveInput`): read by the step under
+        #: their labels beside its reads, from the next tick on. None until one is set, so a run with no session calls
+        #: the step with its reads alone.
+        self.live: dict[str, Any] = {}
 
     def fed(self, writes: Arrays) -> Fed:
         """Writes by label as the graph's external inputs, by node and field, each in its input's dtype."""
@@ -158,7 +162,7 @@ class Callback:
         reads = {read.label: node_state(graph, read.node)[read.field] for read in self.plan.reads}
         label = self.plan.registered.cls.label()
         try:
-            self.state, writes = self.law.step(self.state, reads)
+            self.state, writes = self.law.step(self.state, {**reads, **self.live} if self.live else reads)
         except Exception as error:
             from mime.errors import first_lines, script_place
 
@@ -240,14 +244,16 @@ class ChunkedRun:
             return final, (_stacked(stacked) if history else None)
         if steps % size:
             nearest = [k * size for k in (steps // size, steps // size + 1) if k > 0]
+            why = ("a controller called between compiled chunks is called once per chunk, its control period, so a "
+                   "run is whole periods") if self.chunk is not None else \
+                "a hook is called between compiled chunks of chunk= steps, so a run with one is whole chunks"
             raise ArgumentRefused([Refusal(
                 "run.chunks", RefusalClass.USER,
                 f"a run of {steps} base steps ({steps * self.dt:.6g} s) is not a whole number of chunks of {size} "
                 "steps "
                 f"({size * self.dt:.6g} s)",
                 "run a whole number of chunks: run(s(...)) of " + " or ".join(f"{n * self.dt:.6g} s" for n in nearest),
-                why="a controller called between compiled chunks is called once per chunk, its control period, so a "
-                    "run is whole periods")])
+                why=why)])
         final: History = {}
         for index in range(steps // size):
             start = self.steps

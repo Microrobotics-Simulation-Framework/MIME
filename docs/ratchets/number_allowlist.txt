@@ -27,3 +27,6 @@ docs/profiles.md  20.0 0.5  #1  # an example's values in code, degC(20.0, plus_m
 docs/profiles.md  3.0  #1  # an example's default in code, smoothing: float = 3.0: what an undeclared default looks like, not a claim (the profiles' note)
 docs/profiles.md  7850.0  #1  # an example's value in code, kg_per_m3(7850.0): how a declaration is written, not a claim (the profiles' note)
 docs/profiles.md  1.345  #1  # an example's value in code, Nominal(T(1.345), reason=...): how a nominal's reason is written, not a claim (the profiles' note)
+docs/live.md  12850HX  #1  # the processor's model name in the pacing benchmark's machine, a name, not a claim (phase 7n's review fixes)
+docs/live.md  3.59  #1  # a measurement with its machine and script: A0's unpaced real-time factor through mime serve by scripts/live_pace_benchmark.py on the named laptop, 2026-11-01, never a CI check (phase 7n's review fixes)
+docs/live.md  1.005  #1  # a measurement with its machine and script: A0's real-time factor paced at real time through mime serve by scripts/live_pace_benchmark.py on the named laptop, 2026-11-01, never a CI check (phase 7n's review fixes)

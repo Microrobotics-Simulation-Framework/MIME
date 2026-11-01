@@ -17,7 +17,7 @@ from mime.core.multibody import DescriptionRefused, DescriptionWarning, InvalidD
     shorter_way
 from mime.gradients import GradientStatus
 from mime.registry import DESIGN, PHYSICAL, convention, numerical_default
-from mime.registry import BuildContext, ControlLaw, Controller, GradientRecord, Signal, register_controller
+from mime.registry import BuildContext, ControlLaw, Controller, GradientRecord, LiveInput, Signal, register_controller
 from mime.scene import Asset
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity, Time, m, s
 
@@ -60,7 +60,10 @@ class ArmTracking(Controller):
     It computes in single precision whatever the run's precision, as the 0.2 line's controller did, so a run in double
     precision with it is mixed. Its step is written in ``jax.numpy``, so it runs as a callback or inside the compiled
     step, where a derivative of the run passes through it. It writes no joint torques: a dynamic arm, which takes them,
-    needs a controller that does, as the 0.2 line's wrote them by computed-torque control."""
+    needs a controller that does, as the 0.2 line's wrote them by computed-torque control.
+
+    In a live session with the controller as a callback, ``offset`` (m, a live input) moves the point it holds the magnet
+    above along the axis, ahead of the body or behind it: an experimenter steering the magnet."""
 
     name = "arm_tracking"
     version = "0.1.0"
@@ -125,6 +128,8 @@ class ArmTracking(Controller):
     reads = {"body_pose": Signal("m; 1", (7,)), "body_twist": Signal("m/s; rad/s", (6,)),
              "joint_positions": Signal("1", (-1,))}
     writes = {"joint_positions": Signal("1", (-1,))}
+    live = {"offset": LiveInput("m", (), "moves the point the magnet is held above along the axis, ahead of the body "
+                                         "(towards +axis) or behind it, the point still held within reach")}
     description: Asset
     end_effector: str
     home: Annotated[Quantity, DIMENSIONLESS]
@@ -233,6 +238,8 @@ class ArmTracking(Controller):
             twist = jnp.asarray(reads["body_twist"], dtype=_F32)
             q = jnp.asarray(reads["joint_positions"], dtype=_F32)
             distance = jnp.dot(body[:3], axis)
+            if "offset" in reads:  # a live session's input, once set: a run with none traces the step without it
+                distance = distance + jnp.asarray(reads["offset"], dtype=_F32)
             along = switch.clip(distance, low, high, owner="arm_tracking.reach",
                                 resolution=lambda: switch.rounding(high - low), indicator=distance)
             position = alpha * (along * axis + standoff * up) + (1.0 - alpha) * state["target_position"]

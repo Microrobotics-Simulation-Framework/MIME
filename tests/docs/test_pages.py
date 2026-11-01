@@ -93,7 +93,8 @@ def test_every_page_the_build_wrote_is_an_entry_a_node_a_family_a_mechanism_or_a
     assert entries == names
     rest = {"/".join(path.split("/")[:2]) if path.count("/") > 1 else path for path in found - entries}
     assert rest == {"index.md", "pages/nodes", "pages/families", "pages/mechanisms", "pages/vocabulary.md",
-                    "pages/concepts.md", "pages/results.md", "pages/profiles.md", "pages/errors.md", "pages/errors"}
+                    "pages/concepts.md", "pages/results.md", "pages/profiles.md", "pages/errors.md", "pages/errors",
+                    "pages/live.md", "pages/recordings.md"}
 
 
 def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, export):

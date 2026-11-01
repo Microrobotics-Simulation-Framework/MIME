@@ -46,7 +46,9 @@
 
 ## Status
 
-Since dev1's phase 7k. Later: `.mat` through a `matlab` extra and `StudyResult`, a result with a leading sweep axis
-whose table is long (dev2's lane S); USD time samples, with MICROROBOTICA's bridge.
+Since dev1's phase 7k. Since phase 7n, a run folder also holds `topology.json` (the built graph in MIME's names) and,
+where `stage_every=` asks, the recording layer (`mime.viz`), the stage's time samples over the folder's own stage.
+Later: `.mat` through a `matlab` extra and `StudyResult`, a result with a leading sweep axis whose table is long
+(dev2's lane S).
 
 Phases and releases are explained in the [package manifest](../README.md#status).
