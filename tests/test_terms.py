@@ -90,8 +90,9 @@ def test_an_expression_is_held_to_its_canonical_spelling():
 
 @given(any_ids, any_ids)
 def test_the_ids_of_an_expression_are_its_licences_never_an_operator_or_an_exception(one: str, two: str):
+    """An id's ``+`` ("or later", which a few deprecated ids of the list carry in their name) is read as the id."""
     expression = f"({one} WITH LLVM-exception) OR {two}"
-    assert terms.ids_of(expression) == tuple(dict.fromkeys((one, two)))
+    assert terms.ids_of(expression) == tuple(dict.fromkeys((one.removesuffix("+"), two.removesuffix("+"))))
 
 
 # --- the verdict -------------------------------------------------------------------------------------------------

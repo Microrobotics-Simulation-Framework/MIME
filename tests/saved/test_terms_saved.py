@@ -319,10 +319,15 @@ def test_a_version_three_lock_holding_a_reference_is_refused(tmp_path: Path):
     assert "a mime.lock/3 lock holds referenced_files" in str(refused.value)
 
 
-@pytest.mark.parametrize("name", ["bem_ball", "magnetic_ball"])
+#: The fixtures of versions 1 and 2, every folder of ``previous/`` but version 3's.
+EARLIER = sorted(path.name for path in PREVIOUS.iterdir() if path.is_dir() and path.name != V3.name)
+
+
+@pytest.mark.parametrize("name", EARLIER)
 def test_an_earlier_version_given_a_terms_key_is_refused(tmp_path: Path, name: str):
     folder = copied(tmp_path, PREVIOUS / name)
     document = yaml.safe_load((folder / DOCUMENT_FILE).read_text())
+    assert document["schema"] in ("mime.document/1", "mime.document/2")
     (folder / DOCUMENT_FILE).write_text(yaml.safe_dump({**document, "terms": {}}, sort_keys=False))
     with pytest.raises(LoadRefused) as refused:
         Experiment.load(folder)
