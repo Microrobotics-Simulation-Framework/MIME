@@ -1,0 +1,1111 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [
+    {
+     "source_field": "x",
+     "source_node": "probe",
+     "source_units": "m",
+     "target_field": "position",
+     "target_node": "toy.recorder:probe",
+     "target_units": "m"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "toy.recorder:probe",
+     "params": {},
+     "timestep": 0.04,
+     "type": "ToyRecorderNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "toy.recorder:probe": {}
+   }
+  },
+  "physics": {
+   "coupling_groups": [
+    {
+     "accelerated_fields": null,
+     "acceleration": "none",
+     "atol": 0.0,
+     "boundary_interpolation": "linear",
+     "convergence_norm": "l2",
+     "diagnostics": false,
+     "iteration_mode": "gauss-seidel",
+     "jacobian_reuse": 0,
+     "linear_solver": "gmres",
+     "max_iterations": 50,
+     "nodes": [
+      "bath.flow",
+      "probe",
+      "toy.lift:probe"
+     ],
+     "predictor": "none",
+     "relaxation": 1.0,
+     "rtol": 1e-06,
+     "solver": "ift",
+     "strict_convergence": false,
+     "subcycling": false,
+     "tolerance": 1e-12,
+     "waveform_iterations": 1
+    }
+   ],
+   "edges": [
+    {
+     "source_field": "x",
+     "source_node": "probe",
+     "source_units": "m",
+     "target_field": "points_toy_hold_probe",
+     "target_node": "source.push",
+     "target_units": "m"
+    },
+    {
+     "source_field": "v",
+     "source_node": "probe",
+     "source_units": "m/s",
+     "target_field": "v",
+     "target_node": "toy.drag:probe",
+     "target_units": "m/s"
+    },
+    {
+     "source_field": "push_toy_hold_probe",
+     "source_node": "source.push",
+     "source_units": "1",
+     "target_field": "push",
+     "target_node": "toy.hold:probe",
+     "target_units": "1"
+    },
+    {
+     "source_field": "x",
+     "source_node": "probe",
+     "source_units": "m",
+     "target_field": "x",
+     "target_node": "toy.spring:probe",
+     "target_units": "m"
+    },
+    {
+     "source_field": "u",
+     "source_node": "bath.flow",
+     "source_units": "1",
+     "target_field": "u",
+     "target_node": "toy.lift:probe",
+     "target_units": "1"
+    },
+    {
+     "source_field": "x",
+     "source_node": "probe",
+     "source_units": "m",
+     "target_field": "pos_probe",
+     "target_node": "bath.flow",
+     "target_units": "m"
+    },
+    {
+     "source_field": "hold_z",
+     "source_node": "toy.hold:probe",
+     "source_units": "m/s",
+     "target_field": "hold_z",
+     "target_node": "probe",
+     "target_units": "m/s"
+    },
+    {
+     "additive": true,
+     "source_field": "force_probe",
+     "source_node": "bath.flow",
+     "source_units": "N",
+     "target_field": "load",
+     "target_node": "probe",
+     "target_units": "N"
+    },
+    {
+     "additive": true,
+     "source_field": "load",
+     "source_node": "toy.drag:probe",
+     "source_units": "N",
+     "target_field": "load",
+     "target_node": "probe",
+     "target_units": "N"
+    },
+    {
+     "additive": true,
+     "source_field": "load",
+     "source_node": "toy.lift:probe",
+     "source_units": "N",
+     "target_field": "load",
+     "target_node": "probe",
+     "target_units": "N"
+    },
+    {
+     "additive": true,
+     "source_field": "load",
+     "source_node": "toy.spring:probe",
+     "source_units": "N",
+     "target_field": "load",
+     "target_node": "probe",
+     "target_units": "N"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "source.push",
+     "params": {
+      "amplitude": 0.4,
+      "slots": [
+       "toy_hold_probe"
+      ],
+      "wavenumber": 1.3
+     },
+     "timestep": 0.02,
+     "type": "ToyFieldNode"
+    },
+    {
+     "name": "toy.drag:probe",
+     "params": {
+      "c": 0.37,
+      "rung": "quadratic"
+     },
+     "timestep": 0.02,
+     "type": "ToyDragNode"
+    },
+    {
+     "name": "toy.hold:probe",
+     "params": {
+      "gain": 0.5
+     },
+     "timestep": 0.02,
+     "type": "ToyHoldNode"
+    },
+    {
+     "name": "toy.spring:probe",
+     "params": {
+      "k": 1.7,
+      "x0": [
+       0.05,
+       -0.02,
+       0.01
+      ]
+     },
+     "timestep": 0.02,
+     "type": "ToySpringNode"
+    },
+    {
+     "name": "toy.lift:probe",
+     "params": {
+      "a": 0.83,
+      "w": [
+       1.0,
+       -0.7,
+       0.45
+      ]
+     },
+     "timestep": 0.02,
+     "type": "ToyLiftNode"
+    },
+    {
+     "name": "bath.flow",
+     "params": {
+      "bodies": [
+       "probe"
+      ],
+      "coupling": 1.9,
+      "drag_gain": 0.61,
+      "initial_value": [
+       0.1,
+       0.2,
+       -0.1
+      ],
+      "relax_rate": 2.1
+     },
+     "timestep": 0.02,
+     "type": "ToyMediumNode"
+    },
+    {
+     "name": "probe",
+     "params": {
+      "initial_position": [
+       0.3,
+       -0.2,
+       0.1
+      ],
+      "initial_velocity": [
+       0.5,
+       0.1,
+       -0.3
+      ],
+      "mass": 1.3
+     },
+     "timestep": 0.02,
+     "type": "ToyBodyNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "bath.flow": {},
+    "probe": {},
+    "source.push": {
+     "phase": {
+      "dtype": "float64",
+      "replication": "replicate",
+      "sha256": "a8ef21579359df47a210f4e533d86cf972c6a9205c9bc914f3eb1bb7be5884e7",
+      "shape": [
+       3
+      ],
+      "shard_axis": null
+     }
+    },
+    "toy.drag:probe": {},
+    "toy.hold:probe": {},
+    "toy.lift:probe": {},
+    "toy.spring:probe": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "dynamics",
+   "name": "toy.body",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "dynamics",
+   "name": "toy.relaxation",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "field provider",
+   "name": "toy.field",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "toy.couple",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "toy.drag",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "toy.hold",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "toy.lift",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "toy.spring",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "observation",
+   "name": "toy.recorder",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev0",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:b27a9142eaf92ecefd8dcf7f65aa5c597015f02cc9c636600f64436f972c4eb8",
+  "document": "sha256:4586a00955c466739545eb7be15ad8d6a8d5ecf53a0585ac8ec04cb875567fcf",
+  "input": "sha256:eb338142f6e9b2641f497fef377dabdbfd2f88d495f154633724452d236af001",
+  "observations": "sha256:c4b93141545c913c601e4ed648359cde982f3e1f260d563f197adb0be33e6d8f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "rtol": 1e-06,
+  "sha256": "sha256:a082c24b541326ac50d26287d20ad3f7a62a97c7fc049169fc131e95edcced1e",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "bath.flow": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "dynamics",
+    "name": "toy.relaxation",
+    "nodes": [
+     "bath.flow"
+    ],
+    "settings": {
+     "coupling": {
+      "unit": "m^-1",
+      "value": 1.9
+     },
+     "drag_gain": {
+      "unit": "N",
+      "value": 0.61
+     },
+     "rate": null,
+     "relax_rate": {
+      "unit": "Hz",
+      "value": 2.1
+     },
+     "value": [
+      0.1,
+      0.2,
+      -0.1
+     ]
+    },
+    "version": "0.1.0"
+   },
+   "probe": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "position": [
+      0.3,
+      -0.2,
+      0.1
+     ],
+     "velocity": [
+      0.5,
+      0.1,
+      -0.3
+     ]
+    },
+    "kind": "dynamics",
+    "name": "toy.body",
+    "nodes": [
+     "probe"
+    ],
+    "settings": {
+     "mass": {
+      "unit": "kg",
+      "value": 1.3
+     },
+     "rate": null
+    },
+    "version": "0.1.0"
+   },
+   "source.push": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "field provider",
+    "name": "toy.field",
+    "nodes": [
+     "source.push"
+    ],
+    "settings": {
+     "amplitude": 0.4,
+     "wavenumber": {
+      "unit": "m^-1",
+      "value": 1.3
+     }
+    },
+    "version": "0.1.0"
+   },
+   "toy.couple:probe": {
+    "binds": {
+     "body": "probe",
+     "medium": "bath"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "toy.couple",
+    "nodes": [],
+    "settings": {
+     "max_iterations": 50,
+     "solve_together": true,
+     "tolerance": 1e-12
+    },
+    "version": "0.1.0"
+   },
+   "toy.drag:probe": {
+    "binds": {
+     "body": "probe"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "toy.drag",
+    "nodes": [
+     "toy.drag:probe"
+    ],
+    "settings": {
+     "c": {
+      "unit": "kg s^-1",
+      "value": 0.37
+     },
+     "rung": "quadratic"
+    },
+    "version": "0.2.0"
+   },
+   "toy.hold:probe": {
+    "binds": {
+     "body": "probe",
+     "field": "source.push"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "toy.hold",
+    "nodes": [
+     "toy.hold:probe"
+    ],
+    "settings": {
+     "gain": {
+      "unit": "m/s",
+      "value": 0.5
+     }
+    },
+    "version": "0.1.0"
+   },
+   "toy.lift:probe": {
+    "binds": {
+     "body": "probe",
+     "medium": "bath"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "toy.lift",
+    "nodes": [
+     "toy.lift:probe"
+    ],
+    "settings": {
+     "a": {
+      "unit": "N",
+      "value": 0.83
+     },
+     "max_iterations": 50,
+     "solve_together": true,
+     "tolerance": 1e-12,
+     "w": [
+      1.0,
+      -0.7,
+      0.45
+     ]
+    },
+    "version": "0.1.0"
+   },
+   "toy.recorder:probe": {
+    "binds": {
+     "body": "probe"
+    },
+    "differentiability": "exact",
+    "every": 2,
+    "initial": {},
+    "kind": "observation",
+    "name": "toy.recorder",
+    "nodes": [
+     "toy.recorder:probe"
+    ],
+    "settings": {
+     "rate": {
+      "unit": "s",
+      "value": 0.04
+     }
+    },
+    "version": "0.1.0"
+   },
+   "toy.spring:probe": {
+    "binds": {
+     "body": "probe"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "toy.spring",
+    "nodes": [
+     "toy.spring:probe"
+    ],
+    "settings": {
+     "k": {
+      "unit": "kg s^-2",
+      "value": 1.7
+     },
+     "x0": {
+      "unit": "m",
+      "value": [
+       0.05,
+       -0.02,
+       0.01
+      ]
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [
+   {
+    "max_iterations": 50,
+    "nodes": [
+     "bath.flow",
+     "probe",
+     "toy.lift:probe"
+    ],
+    "requested_by": [
+     "toy.couple:probe: a two-way coupling",
+     "toy.lift:probe: the lift closes a loop through the medium"
+    ],
+    "tolerance": 1e-12
+   }
+  ],
+  "materials": {
+   "conditions": {},
+   "parts": {},
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "source.push",
+   "toy.drag:probe",
+   "toy.hold:probe",
+   "toy.spring:probe",
+   "toy.lift:probe",
+   "bath.flow",
+   "probe",
+   "toy.recorder:probe"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "bath.flow.coupling": {
+     "entry": "toy.relaxation 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "m^-1",
+      "value": 1.9
+     }
+    },
+    "bath.flow.drag_gain": {
+     "entry": "toy.relaxation 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "N",
+      "value": 0.61
+     }
+    },
+    "bath.flow.relax_rate": {
+     "entry": "toy.relaxation 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "Hz",
+      "value": 2.1
+     }
+    },
+    "bath.flow.value": {
+     "entry": "toy.relaxation 0.1.0",
+     "kind": "undeclared",
+     "value": [
+      0.1,
+      0.2,
+      -0.1
+     ]
+    },
+    "probe.motion.mass": {
+     "entry": "toy.body 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "kg",
+      "value": 1.3
+     }
+    },
+    "source.push.amplitude": {
+     "entry": "toy.field 0.1.0",
+     "kind": "undeclared",
+     "value": 0.4
+    },
+    "source.push.wavenumber": {
+     "entry": "toy.field 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "m^-1",
+      "value": 1.3
+     }
+    },
+    "toy.couple:probe.max_iterations": {
+     "entry": "toy.couple 0.1.0",
+     "kind": "undeclared",
+     "value": 50
+    },
+    "toy.couple:probe.tolerance": {
+     "entry": "toy.couple 0.1.0",
+     "kind": "undeclared",
+     "value": 1e-12
+    },
+    "toy.drag:probe.c": {
+     "entry": "toy.drag 0.2.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "kg s^-1",
+      "value": 0.37
+     }
+    },
+    "toy.hold:probe.gain": {
+     "entry": "toy.hold 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "m/s",
+      "value": 0.5
+     }
+    },
+    "toy.lift:probe.a": {
+     "entry": "toy.lift 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "N",
+      "value": 0.83
+     }
+    },
+    "toy.lift:probe.max_iterations": {
+     "entry": "toy.lift 0.1.0",
+     "kind": "undeclared",
+     "value": 50
+    },
+    "toy.lift:probe.tolerance": {
+     "entry": "toy.lift 0.1.0",
+     "kind": "undeclared",
+     "value": 1e-12
+    },
+    "toy.lift:probe.w": {
+     "entry": "toy.lift 0.1.0",
+     "kind": "undeclared",
+     "value": [
+      1.0,
+      -0.7,
+      0.45
+     ]
+    },
+    "toy.spring:probe.k": {
+     "entry": "toy.spring 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "kg s^-2",
+      "value": 1.7
+     }
+    },
+    "toy.spring:probe.x0": {
+     "entry": "toy.spring 0.1.0",
+     "kind": "undeclared",
+     "value": {
+      "unit": "m",
+      "value": [
+       0.05,
+       -0.02,
+       0.01
+      ]
+     }
+    }
+   },
+   "listed": [],
+   "pending": [
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.coupling"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.drag_gain"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.relax_rate"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.value"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "probe.motion.mass"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "source.push.amplitude"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "source.push.wavenumber"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.couple:probe.max_iterations"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.couple:probe.tolerance"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.drag:probe.c"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.hold:probe.gain"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.a"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.max_iterations"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.tolerance"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.w"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.k"
+    },
+    {
+     "codes": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.x0"
+    }
+   ],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": [
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.coupling"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.drag_gain"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.relax_rate"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "bath.flow.value"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "probe.motion.mass"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "source.push.amplitude"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "source.push.wavenumber"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.couple:probe.max_iterations"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.couple:probe.tolerance"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.drag:probe.c"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.hold:probe.gain"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.a"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.max_iterations"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.tolerance"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.lift:probe.w"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.k"
+    },
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "default_undeclared"
+     ],
+     "target": "toy.spring:probe.x0"
+    }
+   ]
+  },
+  "registrations": {
+   "bath.flow": [
+    {
+     "id": "toy.couple:probe",
+     "kind": "toy.coupled_body",
+     "subject": "probe"
+    }
+   ]
+  },
+  "run": {
+   "dt": 0.02,
+   "experiment": "layered_toy",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.80665
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "bath": "/World/bath",
+    "probe": "/World/probe",
+    "source": "/World/source"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {
+   "source.push": [
+    {
+     "interfaces": [
+      "toy.field.push"
+     ],
+     "name": "toy_hold_probe",
+     "reader": "toy.hold:probe"
+    }
+   ]
+  },
+  "things": {
+   "bath": "medium",
+   "probe": "body",
+   "source": "apparatus"
+  },
+  "values": {},
+  "vocabulary": {
+   "mime": "0.3.0.dev0",
+   "toy": "0.1.0"
+  }
+ },
+ "schema": "mime.lock/3",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {
+   "scene/layers/arm_visual.usda": "33ce426ea22bb3139af1251dc402e21ef5e53e59770638e7c2190e9fcc047e08"
+  },
+  "sha256": "cc32566a0408dfb32b5113558997ae86256a16d1a554b53fd8322cd2b34ba4c2"
+ }
+}

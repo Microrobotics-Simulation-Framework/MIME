@@ -37,6 +37,7 @@ from mime.assets._commands import check_command, fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
 from mime.assets._reference import AssetRef, location_problem
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.terms import NO_ASSERTION
 
 #: The part of the message pooch raises for a download whose hash differs (``pooch.hashes.hash_matches``). Any other
 #: ``ValueError`` out of pooch is a failed location, not a wrong file.
@@ -388,7 +389,7 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
             raise BuildRefused([Refusal(
                 "asset.unreachable", RefusalClass.ENVIRONMENT, f"{name} could not be downloaded from {location}: {error}",
                 "check the network and the address, then `mime assets fetch <name>` again")]) from error
-        ref = AssetRef(name, sha256_of_file(arrived), arrived.stat().st_size, "not stated", (location,))
+        ref = AssetRef(name, sha256_of_file(arrived), arrived.stat().st_size, NO_ASSERTION, (location,))
         with exclusive(lock_path(ref)):
             if cheap_problem(ref) is None:
                 return ref

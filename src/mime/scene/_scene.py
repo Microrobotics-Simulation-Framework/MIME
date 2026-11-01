@@ -11,23 +11,28 @@ from typing import Any
 
 from mime.scene._frame import unit_vector, up_axis_problem
 from mime.scene._geometry import Axis
+from mime.terms import Terms
 from mime.things import PrimPath
 
 
 @dataclass(frozen=True)
 class Asset:
-    """A USD layer on disk (a robot), pinned by the SHA-256 of its bytes. With ``sha256`` given the build refuses a
-    file whose bytes differ; without it the build pins the file as it finds it, and the saved form records the pin."""
+    """A USD layer on disk (a robot), or a file an entry reads (a robot's description), pinned by the SHA-256 of its
+    bytes. With ``sha256`` given the build refuses a file whose bytes differ; without it the build pins the file as it
+    finds it, and the saved form records the pin. ``terms`` are a third-party file's (``mime.terms.Terms``: its
+    licence, credit, role and origin), which the saved form records by the file's path and pin; a file without them is
+    the author's own, under the experiment's licence."""
 
     path: Path
     sha256: str | None = None
+    terms: Terms | None = None
 
     def read(self) -> bytes:
         return self.path.read_bytes()
 
 
-def asset(path: str | PathLike[str], *, sha256: str | None = None) -> Asset:
-    return Asset(Path(path), sha256)
+def asset(path: str | PathLike[str], *, sha256: str | None = None, terms: Terms | None = None) -> Asset:
+    return Asset(Path(path), sha256, terms)
 
 
 def sha256_hex(content: bytes) -> str:

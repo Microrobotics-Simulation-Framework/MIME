@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 from typing import cast
 from urllib.parse import urlsplit
 
 from typing_extensions import ReadOnly, TypedDict
 
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.terms import licence_problem
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -34,8 +35,9 @@ class AssetRecord(TypedDict, closed=True):
 def _invalid(name: str, problem: str) -> BuildRefused:
     return BuildRefused([Refusal(
         "asset.reference", RefusalClass.USER, f"asset reference {name!r}: {problem}",
-        "write the reference as name, sha256 (64 lowercase hex digits), size in bytes, licence, and locations "
-        "that are https:// URLs or doi: URLs: AssetRef(name=..., sha256=..., size=..., licence=..., locations=(...))")])
+        "write the reference as name, sha256 (64 lowercase hex digits), size in bytes, licence (an SPDX licence "
+        "expression: licence=\"CC0-1.0\"), and locations that are https:// URLs or doi: URLs: AssetRef(name=..., "
+        "sha256=..., size=..., licence=..., locations=(...))")])
 
 
 def location_problem(location: str) -> str | None:
@@ -78,25 +80,28 @@ def location_problem(location: str) -> str | None:
 @dataclass(frozen=True)
 class AssetRef:
     """A large file named by the sha256 of its bytes, never by where it lives. ``locations`` are tried in order, so a
-    new home is one more location, and no saved experiment that names the sha256 changes."""
+    new home is one more location, and no saved experiment that names the sha256 changes. ``licence`` is an SPDX
+    licence expression in its canonical spelling (``CC0-1.0``), or ``NOASSERTION`` where nobody has stated one
+    (:mod:`mime.terms`); free text is refused. ``unlisted`` reads an id the installed packaging does not list as
+    written, as a reference read from a record is (:meth:`from_record`): the packaging that wrote it listed it."""
 
     name: str
     sha256: str
     size: int
     licence: str
     locations: tuple[str, ...]
+    unlisted: InitVar[bool] = False
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, unlisted: bool) -> None:
         if not _NAME.fullmatch(self.name):
             raise _invalid(self.name, "a name is letters, digits, '.', '_' and '-', starting with a letter or digit")
         if not _SHA256.fullmatch(self.sha256):
             raise _invalid(self.name, f"sha256 {self.sha256!r} is not 64 lowercase hex digits")
         if self.size <= 0:
             raise _invalid(self.name, f"size {self.size} is not a positive number of bytes")
-        if not self.licence:
-            raise _invalid(self.name, "the licence is empty")
-        if self.licence != "".join(each for each in self.licence if each.isprintable()):
-            raise _invalid(self.name, "the licence has a control or format character")
+        licence = licence_problem(self.licence, unlisted=unlisted)
+        if licence is not None:
+            raise _invalid(self.name, licence)
         if not self.locations:
             raise _invalid(self.name, "no location")
         for location in self.locations:
@@ -120,4 +125,5 @@ class AssetRef:
         if (not all(isinstance(text, str) for text in texts) or not isinstance(size, int) or isinstance(size, bool)
                 or locations is None or not all(isinstance(each, str) for each in locations)):
             raise _invalid(name, "the record's values are not str, str, int, str and a list of str")
-        return AssetRef(str(texts[0]), str(texts[1]), size, str(texts[2]), tuple(str(each) for each in locations))
+        return AssetRef(str(texts[0]), str(texts[1]), size, str(texts[2]), tuple(str(each) for each in locations),
+                        unlisted=True)

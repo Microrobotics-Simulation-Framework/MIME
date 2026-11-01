@@ -1,5 +1,5 @@
-"""Bundles written by hand, for the tests of what ``pull`` refuses: a well-formed one from files and a name, and a
-rewrite of a real one with a member changed, added, removed or made to look like a link."""
+"""Bundles written by hand, for the tests of what ``pull`` refuses: a well-formed one from files and a name (format 2,
+with its NOTICE), and a rewrite of a real one with a member changed, added, removed or made to look like a link."""
 
 import json
 import stat
@@ -7,14 +7,18 @@ import zipfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from mime.saved._bundle import FOLDER_PREFIX, FORMAT, MANIFEST_MEMBER, bundle_hash, sha256_of
+from mime.saved._bundle import FOLDER_PREFIX, FORMAT, MANIFEST_MEMBER, NOTICE_MEMBER, bundle_hash, sha256_of
+
+#: The NOTICE a bundle written by hand carries.
+NOTICE = b"NOTICE: made by hand\n"
 
 
-def manifest_of(files: Mapping[str, bytes], name: str = "made_by_hand", assets: list[dict[str, object]] | None = None
-                ) -> dict[str, object]:
+def manifest_of(files: Mapping[str, bytes], name: str = "made_by_hand", assets: list[dict[str, object]] | None = None,
+                *, notice: bytes = NOTICE, referenced: Mapping[str, object] | None = None) -> dict[str, object]:
     manifest: dict[str, object] = {
         "format": FORMAT, "name": name,
         "files": {member: {"sha256": sha256_of(data), "size": len(data)} for member, data in sorted(files.items())},
+        "referenced": dict(referenced or {}), "notice": {"sha256": sha256_of(notice), "size": len(notice)},
         "assets": assets or []}
     manifest["bundle_hash"] = bundle_hash(manifest)
     return manifest
@@ -30,11 +34,14 @@ def member(archive: zipfile.ZipFile, name: str, data: bytes, *, mode: int = 0o10
 
 
 def write_bundle(path: Path, files: Mapping[str, bytes], name: str = "made_by_hand",
-                 assets: list[dict[str, object]] | None = None) -> Path:
-    """A bundle as ``pack`` writes one, of exactly ``files`` (names relative to the folder)."""
-    manifest = json.dumps(manifest_of(files, name, assets), sort_keys=True, indent=1).encode("utf-8")
+                 assets: list[dict[str, object]] | None = None, *, notice: bytes = NOTICE,
+                 referenced: Mapping[str, object] | None = None) -> Path:
+    """A bundle as ``pack`` writes one, of exactly ``files`` (names relative to the folder) and its NOTICE."""
+    manifest = json.dumps(manifest_of(files, name, assets, notice=notice, referenced=referenced), sort_keys=True,
+                          indent=1).encode("utf-8")
     with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as archive:
         member(archive, MANIFEST_MEMBER, manifest)
+        member(archive, NOTICE_MEMBER, notice)
         for each, data in sorted(files.items()):
             member(archive, FOLDER_PREFIX + each, data)
     return path
@@ -53,6 +60,7 @@ def rewrite(source: Path, target: Path, change: Callable[[dict[str, bytes]], Non
     manifest left as it was (so that what changed no longer matches it), or edited by ``manifest_change``."""
     with zipfile.ZipFile(source) as archive:
         manifest: dict[str, object] = json.loads(archive.read(MANIFEST_MEMBER))
+        notice = archive.read(NOTICE_MEMBER) if NOTICE_MEMBER in archive.namelist() else None
     files = contents(source)
     change(files)
     if manifest_change is not None:
@@ -61,6 +69,8 @@ def rewrite(source: Path, target: Path, change: Callable[[dict[str, bytes]], Non
             manifest["bundle_hash"] = bundle_hash(manifest)
     with zipfile.ZipFile(target, "w", zipfile.ZIP_STORED) as archive:
         member(archive, MANIFEST_MEMBER, json.dumps(manifest, sort_keys=True, indent=1).encode("utf-8"))
+        if notice is not None:
+            member(archive, NOTICE_MEMBER, notice)
         for each, data in files.items():
             member(archive, FOLDER_PREFIX + each, data)
     return target

@@ -6,9 +6,14 @@ outputs; a load reads them back without running code, resolves every entry among
 makes three checks: the input hash exactly, the environment by report, and the derived values within tolerances.
 
 ``pack`` writes a folder as one bundle file to share; ``pull`` gets a bundle, checks it and unpacks it into a new folder.
+What may be shared is the document's to say (version 4): the experiment's licence, each third-party file's terms and
+each declared permission. A file that may not be redistributed travels as a reference, whatever its size, and
+``place_referenced`` puts it in place from the asset cache. ``notice`` and ``card_text`` write the folder's NOTICE and
+its card, offline, as ``mime push`` will publish them.
 """
 
 from mime.saved._bundle import BUNDLE_SUFFIX, EXPANSION_LIMIT_BYTES, INLINE_LIMIT_BYTES, pack, unpack
+from mime.saved._card import card_text, notice
 from mime.saved._document import (
     SCENE_FOLDER,
     UnsavableError,
@@ -39,6 +44,7 @@ from mime.saved._pull import ASSET_CONFIRM_BYTES, pull
 from mime.saved._reconstruct import declarations_from
 from mime.saved._record import SavedRecord, environment, record_of
 from mime.saved._resolve import ENTRY_POINT_GROUP, namespace_providers
+from mime.saved._terms import FileTerms, FolderTerms, Placed, place_referenced
 from mime.saved._schema import (
     DOCUMENT_SCHEMA,
     LOCK_SCHEMA,
@@ -77,7 +83,10 @@ __all__ = [
     "EntryRecord",
     "EnvironmentRecord",
     "ExperimentDocument",
+    "FileTerms",
+    "FolderTerms",
     "LoadRefused",
+    "Placed",
     "LoadReport",
     "Lock",
     "MagnetDoc",
@@ -91,6 +100,7 @@ __all__ = [
     "ThingDoc",
     "UnsavableError",
     "VerifyReport",
+    "card_text",
     "check_load",
     "conforms",
     "declarations_from",
@@ -100,7 +110,9 @@ __all__ = [
     "environment",
     "environment_differences",
     "namespace_providers",
+    "notice",
     "pack",
+    "place_referenced",
     "parse_yaml",
     "pull",
     "read_document",

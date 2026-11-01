@@ -15,7 +15,8 @@ from typing import Any, cast
 import jax
 
 from mime.assets import AssetRef, reference
-from mime.build import LATENCY_RULE, ControllerPlan, Declaration, Mode, PlanSet, Refusal, RefusalClass, RunSettings
+from mime.build import LATENCY_RULE, BuildRefused, ControllerPlan, Declaration, Mode, PlanSet, Refusal, RefusalClass, \
+    RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
 from mime.data import Asset, asset_source
@@ -41,6 +42,7 @@ from mime.saved._document import (
     encode_setting,
 )
 from mime.saved._resolve import entry_records
+from mime.saved._terms import referenced_assets
 from mime.saved._versions import CURRENT, document_in_form, physics_in_form, resolved_in_form
 from mime.saved._schema import (
     LOCK_SCHEMA,
@@ -335,6 +337,9 @@ class SavedRecord:
     records: tuple[LoadedRecord, ...] = ()
     files: tuple[tuple[str, bytes], ...] = ()
     remote_assets: tuple[AssetRef, ...] = ()
+    #: Each file whose bytes travel as a reference, by its path below the folder, with the asset that holds them: the
+    #: lock's ``referenced_files``, its assets beside the remote ones.
+    referenced: tuple[tuple[str, AssetRef], ...] = ()
 
     @property
     def stage_hash(self) -> str:
@@ -361,8 +366,12 @@ class SavedRecord:
                 "observations": self.derived.observations_hash}
 
     def remote_asset_records(self) -> list[RemoteAssetRecord]:
-        """The remote assets the experiment's entries read, as the lock's ``assets`` key lists them."""
-        return [cast(RemoteAssetRecord, dict(ref.to_record())) for ref in self.remote_assets]
+        """The remote assets the experiment's entries read, then the assets the files that travel as references are
+        held by, as the lock's ``assets`` key lists them, each once."""
+        held = {ref.sha256: ref for ref in self.remote_assets}
+        for _, ref in self.referenced:
+            held.setdefault(ref.sha256, ref)
+        return [cast(RemoteAssetRecord, dict(ref.to_record())) for ref in held.values()]
 
     def lock(self, reference: ReferenceRecord) -> Lock:
         lock: Lock = {
@@ -377,8 +386,10 @@ class SavedRecord:
             "records": self.record_files(),
             "reference": reference,
         }
-        if self.remote_assets:
+        if self.remote_assets or self.referenced:
             lock = {**lock, "assets": self.remote_asset_records()}
+        if self.referenced:
+            lock = {**lock, "referenced_files": {path: ref.name for path, ref in sorted(self.referenced)}}
         return lock
 
 
@@ -403,9 +414,17 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
         unsavable.append(Refusal("save.unsavable", RefusalClass.USER, f"a file an entry reads cannot be read: {error}",
                                  "keep the file where the experiment names it until it is saved: built.save(folder)"))
         files = ()
+    remote = remote_assets(plans)
+    referenced: tuple[tuple[str, AssetRef], ...] = ()
+    if document is not None and "terms" in document:
+        sizes = {f"{SCENE_FOLDER}/{layer.file}": (layer.sha256, len(layer.content)) for layer in plans.scene.layers}
+        sizes.update({path: (sha256_hex(content), len(content)) for path, content in files})
+        try:
+            referenced = tuple(referenced_assets(document, sizes, [ref.name for ref in remote]))
+        except BuildRefused as error:
+            unsavable += error.refusals
     return SavedRecord(document, resolved_record(plans), tuple(entries), seeds, environment(), derived,
-                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files,
-                       remote_assets(plans))
+                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files, remote, referenced)
 
 
 def remote_assets(plans: PlanSet) -> tuple[AssetRef, ...]:

@@ -95,11 +95,13 @@ def test_a_bundle_holds_the_folder_and_a_manifest_that_describes_it(folder: Path
         assert {info.compress_type for info in archive.infolist()} == {zipfile.ZIP_STORED}
         assert {info.date_time for info in archive.infolist()} == {(1980, 1, 1, 0, 0, 0)}
         manifest = json.loads(archive.read("manifest.json"))
+        notice = archive.read("NOTICE")
+    assert names[1] == "NOTICE" and all(name.startswith("experiment/") for name in names[2:])
     held = contents(bundle)
     on_disk = {path.relative_to(folder).as_posix(): path.read_bytes() for path in folder.rglob("*") if path.is_file()}
     assert held == on_disk and set(on_disk) >= {"experiment.mime.yaml", "mime.lock", "reference.npz", "scene/scene.usda"}
-    assert manifest == manifest_of(on_disk, "full_toy")
-    assert manifest["format"] == "mime.bundle/1" and manifest["assets"] == []
+    assert manifest == manifest_of(on_disk, "full_toy", notice=notice)
+    assert manifest["format"] == "mime.bundle/2" and manifest["assets"] == [] and manifest["referenced"] == {}
 
 
 def test_the_same_folder_makes_the_same_bytes(folder: Path, tmp_path: Path):
@@ -316,30 +318,36 @@ def limit_above(folder: Path) -> int:
     return max(path.stat().st_size for path in folder.rglob("*") if path.is_file()) + 20_000
 
 
-def lock_with_asset(folder: Path, name: str, payload: bytes, url: str) -> dict[str, object]:
+def lock_with_asset(folder: Path, name: str, payload: bytes, url: str, *, path: str | None = None) -> dict[str, object]:
+    """The lock with an asset of ``payload``'s bytes, and with ``path`` travelling as that asset where given, as a
+    save writes it for a large file whose terms give an origin."""
     from mime.assets import AssetRef
 
     record = AssetRef(name, _bundle.sha256_of(payload), len(payload), "CC0-1.0", (url,)).to_record()
     lock = json.loads((folder / "mime.lock").read_text(encoding="utf-8"))
     lock["assets"] = [record]
+    if path is not None:
+        lock["referenced_files"] = {path: name}
     (folder / "mime.lock").write_text(json.dumps(lock, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     return dict(record)
 
 
-def test_a_file_over_the_limit_is_refused_unless_it_is_an_asset_the_lock_references(folder: Path,
-                                                                                     monkeypatch: pytest.MonkeyPatch):
+def test_a_file_over_the_limit_is_refused_and_a_lock_alone_never_makes_it_a_reference(
+        folder: Path, monkeypatch: pytest.MonkeyPatch):
+    """D8: a file over the limit travels as a reference only where its terms give an origin (``test_tiers`` holds that
+    case); an asset in the lock, or the lock saying the file travels as one, is no reference, since the lock is outside
+    the hashed record and ``save`` writes a reference only from terms. Its bytes never reach the bundle either way."""
     limit = limit_above(folder)
     monkeypatch.setattr(_bundle, "INLINE_LIMIT_BYTES", limit)
     big = os.urandom(limit + 1000)
     with carried(folder, {"descriptions/table.bin": big}):
         refusal = refused_codes(lambda: pack(folder))
         assert refusal == ["bundle.file-too-large"]
-        record = lock_with_asset(folder, "table", big, "https://example.org/table.bin")
-        bundle = pack(folder)
-    assert "descriptions/table.bin" not in contents(bundle), "a referenced large file was copied into the bundle"
-    manifest = json.loads(zipfile.ZipFile(bundle).read("manifest.json"))
-    assert manifest["assets"] == [record]
-    assert big not in bundle.read_bytes()
+        lock_with_asset(folder, "table", big, "https://example.org/table.bin")
+        assert refused_codes(lambda: pack(folder)) == ["bundle.file-too-large"], "an asset alone is no reference"
+        lock_with_asset(folder, "table", big, "https://example.org/table.bin", path="descriptions/table.bin")
+        assert sorted(refused_codes(lambda: pack(folder))) == ["bundle.file-too-large", "bundle.lock-terms"], \
+            "a lock alone is no reference"
 
 
 def test_the_limit_is_a_named_constant_a_bundle_stays_under():

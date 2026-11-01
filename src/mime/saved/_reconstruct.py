@@ -13,11 +13,14 @@ from mime.build import (
     Attachment,
     ControllerDeclaration,
     Declaration,
+    LicenceDeclaration,
     ObservationDeclaration,
+    PermissionDeclaration,
     Refusal,
     RefusalClass,
     RunSettings,
     SourceDeclaration,
+    TermsDeclaration,
     ThingDeclaration,
     ValueDeclaration,
     entry_id,
@@ -27,6 +30,7 @@ from mime.registry import Controller, Entry, Interaction, Observation
 from mime.saved._document import conditions_from, decode_basis, decode_setting, materials_from, thing_from
 from mime.saved._folder import LoadRefused
 from mime.saved._resolve import import_namespaces, resolve_entry
+from mime.saved._terms import declared_permissions, declared_terms, experiment_licence
 from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryRecord, ExperimentDocument, SegmentDoc, \
     SettingValue, ThingDoc
 from mime.scene import Scene, asset, up_axis_problem, within
@@ -263,6 +267,10 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
             continue
         declarations.append(ValueDeclaration(path, value, decode_basis(declared["reason"])))
     declarations += [SourceDeclaration(path, decode_basis(reason)) for path, reason in document["sources"].items()]
+    licence = experiment_licence(document)
+    declarations += [LicenceDeclaration(licence, read=True)] if licence is not None else []
+    declarations += [TermsDeclaration(path, pin, terms) for path, pin, terms in declared_terms(document)]
+    declarations += [PermissionDeclaration(permission) for permission in declared_permissions(document)]
     run = document["run"]
     try:
         dt = decode_setting(run["dt"])

@@ -1,0 +1,98 @@
+schema: mime.document/3
+mime: 0.3.0.dev0
+experiment: layered_toy
+profile: exploratory
+run:
+  dt:
+    value: 0.02
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references:
+  - at: /World/Arm
+    layer: scene/layers/arm_visual.usda
+    sha256: 33ce426ea22bb3139af1251dc402e21ef5e53e59770638e7c2190e9fcc047e08
+sources: {}
+conditions: {}
+things:
+  bath:
+    kind: medium
+    prim: /World/bath
+    dynamics:
+      flow:
+        name: toy.relaxation
+        version: 0.1.0
+  probe:
+    kind: body
+    prim: /World/probe
+    dynamics:
+      motion:
+        name: toy.body
+        version: 0.1.0
+    initial:
+      position:
+        value: [0.3, -0.2, 0.1]
+        unit: m
+      velocity:
+        value: [0.5, 0.1, -0.3]
+        unit: m/s
+  source:
+    kind: apparatus
+    prim: /World/source
+    fields:
+      push:
+        name: toy.field
+        version: 0.1.0
+interactions:
+- id: toy.couple:probe
+  name: toy.couple
+  version: 0.1.0
+  binds:
+    body: probe
+    medium: bath
+  settings:
+    solve_together: true
+- id: toy.drag:probe
+  name: toy.drag
+  version: 0.2.0
+  binds:
+    body: probe
+  settings:
+    rung: quadratic
+- id: toy.hold:probe
+  name: toy.hold
+  version: 0.1.0
+  binds:
+    body: probe
+    field: source.push
+- id: toy.lift:probe
+  name: toy.lift
+  version: 0.1.0
+  binds:
+    body: probe
+    medium: bath
+  settings:
+    solve_together: true
+- id: toy.spring:probe
+  name: toy.spring
+  version: 0.1.0
+  binds:
+    body: probe
+observations:
+- id: toy.recorder:probe
+  name: toy.recorder
+  version: 0.1.0
+  binds:
+    body: probe
+  settings:
+    rate:
+      value: 0.04
+      unit: s
+declared: {}
+materials: {}
+controller: null
+gravity:
+  value: 9.80665
+  unit: m/s^2

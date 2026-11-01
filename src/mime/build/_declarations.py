@@ -79,5 +79,32 @@ class ControllerDeclaration:
     latency: Any = None
 
 
+@dataclass(frozen=True)
+class LicenceDeclaration:
+    """The experiment's own licence (``exp.licence("CC-BY-4.0")``): an SPDX expression, or a custom licence, as
+    written. The build reads nothing of it; the saved form, ``pack`` and the card do. ``read`` is a licence read from a
+    saved document, whose ids the packaging that saved it listed."""
+
+    licence: Any
+    read: bool = False
+
+
+@dataclass(frozen=True)
+class PermissionDeclaration:
+    """A permission from a rights holder (``exp.permission(Permission(...))``), as written."""
+
+    permission: Any
+
+
+@dataclass(frozen=True)
+class TermsDeclaration:
+    """A third-party file's terms by its path below the saved folder and the sha256 they were declared against, as a
+    loaded document holds them; a script declares them on the file instead (``asset(path, terms=Terms(...))``)."""
+
+    path: str
+    sha256: str
+    terms: Any
+
+
 Declaration = (ThingDeclaration | Attachment | ObservationDeclaration | ValueDeclaration | ControllerDeclaration
-               | SourceDeclaration)
+               | SourceDeclaration | LicenceDeclaration | PermissionDeclaration | TermsDeclaration)
