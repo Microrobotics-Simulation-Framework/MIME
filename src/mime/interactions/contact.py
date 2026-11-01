@@ -33,11 +33,13 @@ if TYPE_CHECKING:
     from mime.build import InteractionBuilder
 
 
-#: What was measured of the spacing's default (the margin), its basis: the shortfall of FL-9's points against a dense
-#: quadrature across its axis, and the contact's cost a step (phase 7o's pull request).
-SPACING_MEASURED = ("de Jongh's FL-9 (radius 1.56 mm, length 7.47 mm) across its axis: its farthest point lies 4.3 um "
-                    "from the nearest of its points at a spacing of 0.1 mm (15,327 points), 9.2 um at 0.2 mm (3,958) "
-                    "and 28 um at 0.4 mm (957), against a quadrature at 1/120 of its size")
+#: What was measured of the spacing's default (the margin), its basis: how far FL-9's samples fall short of its body
+#: in any direction (``mime.scene.samples_shortfall``, against its support, over 2,062 directions; phase 7o's fix
+#: round): the shortfall in any direction, which a tilted body needs, not across the axis alone.
+SPACING_MEASURED = ("de Jongh's FL-9 (radius 1.56 mm, length 7.47 mm), in any direction: its farthest point lies up to "
+                    "1.4 um beyond its samples at a spacing of 0.05 mm, 4.5 um at 0.1 mm (15,327 samples), 20 um at "
+                    "0.2 mm, 68 um at 0.4 mm, 226 um at 0.8 mm and 544 um at 1.6 mm, the last two past the 0.1 mm "
+                    "margin and refused; the body is held at its own surface, so the samples only seed it")
 
 #: The switches of a body held by its centre: the hold in the solve, the band it starts in, and the projection after
 #: the step with its velocity rule (0.1.0's, and 0.2.0's for a body with no hull).
@@ -189,22 +191,30 @@ class Contact(Interaction):
     support = (SupportRow("projection", {"body": requires(Capability.PROJECTS_CONFINEMENT, accepts=[CONFINEMENT.name])},
                           note="the body's dynamics holds a confinement in its own update"),)
     validity = (
-        "projection: a rigid body against a fixed surface, held by its hull's points (its kind's own samples at the "
-        "spacing), each at least the margin from the surface: the body itself reaches past its points by no more than "
-        "its farthest point lies from the nearest of them (the spacing's measured basis states it for script A's "
-        "screw), so the margin it keeps is the margin less that",
+        "projection: a rigid body against a fixed surface, each point at least the margin from it: where the hull's kind "
+        "answers the support query (the sphere, the ellipsoid, the cylinder, the capsule: closed forms; the screw: "
+        "Newton's steps on its own surface), at the body's own deepest point near each group's nearest sample, so "
+        "the body keeps the margin to the support's convergence (rounding); a kind with neither (the box, a lab's "
+        "mesh) at its samples, so the body reaches past them by up to their shortfall (the build report states it, "
+        "and a spacing whose shortfall passes the margin is refused)",
+        "projection: a kind held by its samples is held at them, not at its line of contact, and a turning body's "
+        "samples arrive at the wall off it: the inelastic hold acts as a friction and a shaking set by the spacing, "
+        "which a body of revolution spun on the floor shows by losing most of its spin, and script A's screw by a "
+        "contact that carries a share of the field's torque (MIME-ANO-131 records the measurements, by samples and "
+        "by support), raising the flag held_by_samples",
         "projection: the margin is kept to what a fixed count of sweeps leaves: two points whose rows are coupled at "
         "c converge by c squared a sweep, and a body pressed into both walls with short levers is held to that, the "
-        "pose projected back after the step taking the rest",
+        "pose projected back after the step taking the rest; the solve's residual is the state's contact_residual, "
+        "and a step that leaves more than CONVERGED of the free step's normal speeds unmet raises unconverged",
         "projection: inelastic and frictionless (no traction along the surface, no static friction, no adhesion): "
         "friction at the contact is to be decided with the near-contact physics, and its seam is left in the sweeps",
         "projection: admissibility only: it adds no near-wall lubrication, which a drag that includes it declares, "
         "and the plan refuses a second law on the body that includes it",
         "projection: a rigid surface and a rigid body: no compliance of the wall or the body",
-        "projection: each step it holds one point of each of the hull's groups, the one nearest the surface, by a "
-        "fixed count of projected Gauss-Seidel sweeps, and projects the pose back after it; a point of a group that "
-        "reaches the surface within the step but is not its group's nearest at the step's start is taken by the "
-        "projection, not by the solve",
+        "projection: each step it holds one point of each of the hull's eight groups, the body's deepest near that "
+        "group's nearest sample: a body touching in more places than its groups (a screw lying along the floor on "
+        "several crest passes in one group) is held at the group's deepest of them, the rest taken by the projection "
+        "after the step when they pass the margin",
         "projection: a body with no hull is held as a sphere of its declared extent about its centre",
     )
     rung: str | None = None
