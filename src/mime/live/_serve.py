@@ -1,11 +1,21 @@
 """``mime serve``: a saved experiment's live session in a process of its own, speaking ``mime.live/1`` over ZMQ, a PUB
-for its frames and a REP for its commands, bound to localhost unless asked otherwise; and the Python client of it."""
+for its frames and a REP for its commands, bound to localhost unless asked otherwise; and the Python client of it.
+
+A served session does not outlive the process that launched it (:class:`LauncherWatch`): when that process is gone, the
+session stops as on SIGTERM, writing its run folder, and the server exits. On Linux the kernel signals it
+(``PR_SET_PDEATHSIG``, SIGTERM); on every platform the serve loop also looks between chunks at whether its launcher is
+alive (on POSIX, a process whose launcher died is adopted and its parent's pid changes; on Windows, the launcher's
+process handle is signalled when it exits). ``--outlive-launcher`` serves on regardless, for a server started to run
+detached."""
 
 from __future__ import annotations
 
+import ctypes
 import errno
 import json
+import os
 import signal
+import sys
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -43,6 +53,35 @@ def _bind_problems(endpoints: Sequence[str], remote: bool) -> list[Refusal]:
     return found
 
 
+class LauncherWatch:
+    """Whether the process that launched this one is gone. The launcher is the parent when the watch is made; on Linux,
+    with ``death_signal``, the kernel is also asked to send SIGTERM when it dies (``PR_SET_PDEATHSIG``), which the
+    serve loop takes as a stop."""
+
+    def __init__(self, *, death_signal: bool = True) -> None:
+        self.launcher = os.getppid()
+        self._handle: int | None = None
+        if sys.platform == "win32":
+            synchronize = 0x00100000
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            handle = kernel.OpenProcess(synchronize, False, self.launcher)
+            self._handle = int(handle) if handle else None
+        elif sys.platform.startswith("linux") and death_signal:
+            try:
+                ctypes.CDLL(None, use_errno=True).prctl(1, int(signal.SIGTERM))  # PR_SET_PDEATHSIG
+            except (OSError, AttributeError):  # no prctl to call: the watch below still sees it
+                pass
+
+    def gone(self) -> bool:
+        """Whether the launcher has exited since the watch was made."""
+        if sys.platform == "win32":
+            if self._handle is None:
+                return True  # it had exited before the watch could hold it
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            return int(kernel.WaitForSingleObject(self._handle, 0)) == 0  # WAIT_OBJECT_0: the process has exited
+        return os.getppid() != self.launcher
+
+
 def default_out(name: str) -> Path:
     """Where a session writes its run folder when not told: ``./<experiment>-live-<UTC time>/``."""
     return Path.cwd() / f"{name}-live-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
@@ -51,14 +90,17 @@ def default_out(name: str) -> Path:
 def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAULT_FRAMES,
           chunk: Quantity | None = None, pace: float | None = 1.0, out: Path | None = None,
           select: Sequence[str] | None = None, json_frames: bool = False, start: bool = False, remote: bool = False,
-          ready_file: Path | None = None, say: Callable[[str], None] = print) -> Path | None:
+          ready_file: Path | None = None, say: Callable[[str], None] = print,
+          outlive_launcher: bool = False) -> Path | None:
     """Load and build the saved experiment in ``folder``, open its live session and serve it until a ``stop`` command,
     SIGTERM or SIGINT: commands on ``commands`` (a REP), frames on ``frames`` (a PUB), binary or, with
     ``json_frames``, JSON. ``start`` starts stepping at once; otherwise a client's ``start`` does. ``ready_file``
-    receives the bound endpoints as JSON once the sockets listen. The run folder it wrote, or ``None``."""
+    receives the bound endpoints as JSON once the sockets listen. It stops, as on SIGTERM, when the process that
+    launched it is gone, unless ``outlive_launcher`` (:class:`LauncherWatch`). The run folder it wrote, or ``None``."""
     problems = _bind_problems((commands, frames), remote)
     if problems:
         raise ArgumentRefused(problems)
+    watch = None if outlive_launcher else LauncherWatch()
     from mime.env import apply_lock_precision
     from mime.experiment import Experiment
 
@@ -109,6 +151,9 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
         if start:
             session.start(thread=False)
         while session.state != STOPPED and not stopping:
+            if watch is not None and watch.gone():
+                say(f"mime serve: the process that launched it ({watch.launcher}) is gone; stopping")
+                break
             for peer, body in server.poll(min(session.due(), _POLL)):
                 answer = _answer(session, body)
                 if answer.get("command") == "step" and answer["ok"] and session.stepping:
@@ -180,4 +225,4 @@ class LiveClient:
         self.frames.close()
 
 
-__all__ = ["DEFAULT_COMMANDS", "DEFAULT_FRAMES", "LiveClient", "default_out", "serve"]
+__all__ = ["DEFAULT_COMMANDS", "DEFAULT_FRAMES", "LauncherWatch", "LiveClient", "default_out", "serve"]

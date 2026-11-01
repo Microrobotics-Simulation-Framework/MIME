@@ -36,29 +36,49 @@ def folder(tmp_path_factory):
     return held
 
 
-def test_a0_through_mime_serve_keeps_real_time_and_each_frame_is_the_batch_runs_state(folder, tmp_path):
+#: The slack the pacing check allows a frame early: a clock's reading and a socket's delivery, never the load (which
+#: only makes a frame late).
+EARLY = 0.005
+
+
+def ahead_of_real_time(frames, arrived, started: float, chunk: float) -> list[str]:
+    """Each frame that arrived before pacing allows: a paced session waits until real time has caught up with the
+    simulated time it is at before it steps a chunk, and its clock starts no earlier than the ``start`` request was
+    sent (``started``), so a frame of simulated time t arrives no earlier than ``started + t - chunk``, on any machine,
+    however loaded (a late frame is never wrong: a loaded machine falls behind)."""
+    return [f"frame {held.number} (t = {held.time:.4f} s) arrived {started + held.time - chunk - at:.4f} s early"
+            for held, at in zip(frames, arrived, strict=True) if at < started + held.time - chunk - EARLY]
+
+
+def test_a0_through_mime_serve_is_never_ahead_of_real_time_and_each_frame_is_the_batch_runs_state(launch, folder,
+                                                                                               tmp_path):
+    """Paced at real time, no frame arrives ahead of real time, chunk by chunk; that it keeps up with real time is a
+    machine's measurement (``scripts/live_pace_benchmark.py``), not a check here. The control of the pacing check: the
+    same frames arriving two chunks earlier than pacing allows are every one found ahead."""
     ready = tmp_path / "ready.json"
-    process = subprocess.Popen([sys.executable, "-m", "mime.cli", "serve", str(folder), "--commands",
-                                "tcp://127.0.0.1:0", "--frames", "tcp://127.0.0.1:0", "--ready-file", str(ready),
-                                "--out", str(tmp_path / "out")], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    while not ready.exists():
-        assert process.poll() is None
+    process = launch([sys.executable, "-m", "mime.cli", "serve", str(folder), "--commands", "tcp://127.0.0.1:0",
+                      "--frames", "tcp://127.0.0.1:0", "--ready-file", str(ready), "--out", str(tmp_path / "out")],
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    deadline = time.monotonic() + 600  # a guard against a hang, not a measure of speed
+    while not ready.exists() or not ready.read_text():
+        assert process.poll() is None and time.monotonic() < deadline
         time.sleep(0.05)
     endpoints = json.loads(ready.read_text())
     live = LiveClient(endpoints["commands"], endpoints["frames"])
+    chunk = live.hello["chunk_steps"] * live.hello["dt"]
+    started = time.monotonic()
     live.request("start")
     frames, arrived = [], []
     while not frames or frames[-1].time < 1.0:
         frames.append(live.frame())
         arrived.append(time.monotonic())
     live.request("stop")
-    assert process.wait(timeout=120) == 0
+    assert process.wait(timeout=600) == 0
     order = FrameOrder()
     assert [order.see(f) for f in frames] == [None] * len(frames)
-    # Paced at real time: from the first chunks after the compile to the last, the wall clock kept with simulated time,
-    # neither behind it nor running ahead to make up the compile.
-    simulated = frames[-1].time - frames[3].time
-    assert 0.8 * simulated <= arrived[-1] - arrived[3] <= 1.25 * simulated
+    assert ahead_of_real_time(frames, arrived, started, chunk) == []
+    early = [started + held.time - 2 * chunk for held in frames]
+    assert len(ahead_of_real_time(frames, early, started, chunk)) == len(frames)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         history = a0().build().run(s(frames[-1].step * 0.0005), history=True).history

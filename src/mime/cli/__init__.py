@@ -140,7 +140,8 @@ def _serve(arguments: argparse.Namespace) -> int:
           chunk=s(arguments.chunk) if arguments.chunk is not None else None,
           pace=None if arguments.unpaced else arguments.pace, out=arguments.out,
           select=arguments.select or None, json_frames=arguments.json_frames, start=arguments.start,
-          remote=arguments.remote, ready_file=arguments.ready_file, say=_say)
+          remote=arguments.remote, ready_file=arguments.ready_file, say=_say,
+          outlive_launcher=arguments.outlive_launcher)
     return 0
 
 
@@ -437,8 +438,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
     [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
-    frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command or a signal; it writes a run
-    folder when it stops.
+    frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command, a signal, or the exit of the
+    process that launched it (unless ``--outlive-launcher``); it writes a run folder when it stops.
 
     ``mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]``:
     hold this environment to MIME's pins and the GPU requested, then apply the precision the folder's lock records.
@@ -591,6 +592,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                        help="allow an address that is not loopback (no authentication: prefer an SSH tunnel)")
     serve.add_argument("--ready-file", type=Path, default=None, metavar="FILE",
                        help="write the bound endpoints as JSON to FILE once the sockets listen")
+    serve.add_argument("--outlive-launcher", action="store_true",
+                       help="serve on when the process that launched it is gone (by default the session stops then, "
+                            "writing its run folder, as on SIGTERM)")
     from mime.env import EXACT_GPUS, VARIANTS
 
     held_env = commands.add_parser("env", help="the environment a run is made in")

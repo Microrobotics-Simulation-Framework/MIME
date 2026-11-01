@@ -28,12 +28,13 @@ def folder(tmp_path_factory) -> Path:
     return saved(tmp_path_factory.mktemp("libzmq"))
 
 
-def served(folder: Path, tmp_path: Path) -> tuple[subprocess.Popen, dict]:
+def served(launch, folder: Path, tmp_path: Path) -> tuple[subprocess.Popen, dict]:
+    """``mime serve`` in a process group of its own, stopped with it when the test ends (``launch``)."""
     ready = tmp_path / "ready.json"
-    process = subprocess.Popen([*MIME, "serve", str(folder), "--commands", "tcp://127.0.0.1:0", "--frames",
-                                "tcp://127.0.0.1:0", "--ready-file", str(ready), "--out", str(tmp_path / "out"),
-                                "--unpaced"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    deadline = time.monotonic() + 240
+    process = launch([*MIME, "serve", str(folder), "--commands", "tcp://127.0.0.1:0", "--frames",
+                      "tcp://127.0.0.1:0", "--ready-file", str(ready), "--out", str(tmp_path / "out"), "--unpaced"],
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 600  # a guard against a hang, not a measure of speed
     while not ready.exists() or not ready.read_text():
         assert process.poll() is None, process.communicate()
         assert time.monotonic() < deadline
@@ -46,8 +47,8 @@ def asked(socket: zmq.Socket, command: str, **arguments) -> dict:
     return socket.recv_json()
 
 
-def test_libzmq_peers_drive_mime_serve(folder, tmp_path):
-    process, endpoints = served(folder, tmp_path)
+def test_libzmq_peers_drive_mime_serve(launch, folder, tmp_path):
+    process, endpoints = served(launch, folder, tmp_path)
     context = zmq.Context()
     try:
         frames = context.socket(zmq.SUB)
@@ -92,9 +93,6 @@ def test_libzmq_peers_drive_mime_serve(folder, tmp_path):
             other.decode(schema.encode(0, 0, 0.0, received[0].values))
     finally:
         context.destroy(linger=0)
-        if process.poll() is None:
-            process.kill()
-            process.wait()
 
 
 def test_mime_clients_talk_to_libzmq_sockets():

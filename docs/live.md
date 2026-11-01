@@ -32,7 +32,11 @@ session.stop()                # the run folder: a0_live/
   same bits.
 - **Pace.** `pace=` is a factor of real time (the default holds the loop to real time), and `pace=None` runs it as
   fast as it runs. A session that falls more than a chunk behind its pace (its first chunk compiles; a slow machine)
-  takes the time it is at as its new start, rather than running ahead to make the time up.
+  takes the time it is at as its new start, rather than running ahead to make the time up. So pacing guarantees one
+  thing on every machine, which a test holds: no frame is ever ahead of real time. Keeping up with real time is the
+  machine's, measured by `scripts/live_pace_benchmark.py` and never a CI check: on a laptop's i7-12850HX (JAX on
+  its CPU), timed from the first frame after the compile, A0 through `mime serve` ran at 3.59 times real time
+  unpaced and at 1.005 paced at real time.
   A slow subscriber is its own concern: the session never waits on one.
 - **Live inputs are the controller's only.** A controller declares them beside its reads and writes
   (`Controller.live`, each a `LiveInput` with its units, shape and meaning); in the callback mode,
@@ -79,7 +83,12 @@ mime serve a0_saved --start --unpaced --out runs/a0_live
 ```
 
 It loads and builds the saved folder, opens its session and serves it until a `stop` command, SIGTERM or SIGINT, all
-of which stop it cleanly and write its run folder. **It binds to localhost.** A session has no authentication of its
+of which stop it cleanly and write its run folder. **It does not outlive the process that launched it**: when that
+process is gone (a viewer that crashed, a test runner killed), the session stops as on SIGTERM, writes its run folder
+and the server exits. On Linux the kernel signals it (`PR_SET_PDEATHSIG`); on every platform the loop also looks between
+chunks at whether its launcher is alive (on POSIX its parent's pid changes when it is adopted; on Windows the
+launcher's process handle is signalled). `--outlive-launcher` serves on regardless, for a server started to run
+detached (with `nohup`, say). **It binds to localhost.** A session has no authentication of its
 own: reach a remote one through an SSH tunnel, which authenticates and encrypts; `--remote` binds another address all
 the same.
 

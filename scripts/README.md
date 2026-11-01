@@ -16,10 +16,11 @@ One script is read by the platforms workflow, not the lanes:
 |---|---|
 | `platforms_smoke.py` | runs the test files `tests/platforms.txt` names (one `path  # reason` a line) with pytest, with any further arguments passed on; the platforms workflow's macOS and Windows smoke jobs call it, so the selection has one home that `tests/test_platforms_selection.py` checks |
 
-One script is a maintainer's tool, run by hand and never by CI:
+Two scripts are a maintainer's tools, run by hand and never by CI:
 
 | Script | What it does |
 |---|---|
+| `live_pace_benchmark.py` | whether A0 served live keeps up with real time on the machine it runs on: unpaced and paced at real time through `mime serve`, timed from the first frame after the compile, with the machine, as JSON. A measurement for `docs/live.md`, never a CI check (CI holds only what pacing guarantees on any machine: no frame ahead of real time) |
 | `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
 
 `check_anomalies.py` runs inside `mime docs check` (see
