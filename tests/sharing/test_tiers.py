@@ -133,19 +133,25 @@ licences = st.one_of(
 sizes = st.integers(min_value=8, max_value=21).map(lambda power: 2 ** power)
 
 
+#: How a copy of an earlier file's bytes is declared: with no terms (the author's own, as a copied part usually is),
+#: with its original's terms, or with terms of its own.
+COPY_TERMS = ("none", "same", "own")
+
+
 @st.composite
 def specs(draw: st.DrawFn) -> list[Spec]:
-    """One to four files, each after the first a copy of an earlier one's bytes about half the time: with no terms,
-    with the original's, or with terms of its own."""
+    """One to four files, each after the first a copy of an earlier one's bytes about half the time, declared one of
+    the ways of ``COPY_TERMS``, each as likely."""
     count = draw(st.integers(min_value=1, max_value=4))
     found: list[Spec] = []
     for index in range(count):
-        kind, licence = draw(licences)
-        restricted = kind in ("unknown", "not permitted")
         copy_of = draw(st.one_of(st.none(), st.integers(min_value=0, max_value=index - 1))) if index else None
-        same = copy_of is not None and draw(st.booleans())
+        declared = draw(st.sampled_from(COPY_TERMS)) if copy_of is not None else "own"
+        kind, licence = ("yours", None) if declared == "none" else draw(licences)
+        restricted = kind in ("unknown", "not permitted")
         found.append(Spec(kind, licence, draw(sizes), draw(st.booleans()),
-                          draw(st.booleans()) if restricted and copy_of is None else False, copy_of, same))
+                          draw(st.booleans()) if restricted and copy_of is None else False, copy_of,
+                          declared == "same"))
     return found
 
 
