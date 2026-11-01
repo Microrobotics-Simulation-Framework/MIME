@@ -1922,8 +1922,8 @@ anomalies:
     safety_relevance_rationale: >
       A body on the floor sits about 3% of the wall correction from an indefinite resistance at every spacing
       measured, and a refinement does not move it away, so the margin cannot be cleared by M1's ladder on this rung.
-      An indefinite resistance in a body's implicit step is an energy source; the nominal readings are definite and
-      the run's checks refuse an indefinite one, so the nominal results stand, but any study that raises the wall
+      An indefinite resistance in a body's implicit step is an energy source; the study checked each nominal reading
+      definite, but drag 0.3.0 itself does not check, so any study that raises the wall
       correction coherently, or sits closer to the wall than A's floor, is closer to the loss of definiteness than a
       resolution study would lead it to expect.
     resolution_status: open
@@ -1935,7 +1935,7 @@ anomalies:
       Measured at A on one ladder and in the other three tubes at one spacing. What it bounds: nothing about the
       experiment, since the numerical band at A is unbounded on this ladder. What it estimates: the margin at the
       frozen model, to the scan's step of 0.0025. The cause is a suspicion, not a finding (below).
-    workaround: "Keep the run's definiteness check on; read a floored reading as within about 3% of the wall correction from indefinite (under 2% in the 3/16 in tube), whatever the spacing"
+    workaround: "Drag 0.3.0 does not check its resistance: check its least eigenvalue yourself near a wall, or use drag 0.4.0's per-step check once it lands; read a floored reading as within about 3% of the wall correction from indefinite (under 2% in the 3/16 in tube), whatever the spacing"
     planned_resolution: >
       Suspected, not confirmed (inference): the wall correction's assembly near the wall. Two candidates. (1) The
       point-evaluated image: MIME-ANO-130 is the same family on the separated quadrature, and its cell-integrated
