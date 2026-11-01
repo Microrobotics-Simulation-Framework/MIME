@@ -11,7 +11,6 @@ import warnings
 import numpy as np
 import pytest
 from chain_cases import kinematic_rpm
-from live_cases import built as rig
 from live_cases import steered
 from pxr import Sdf, Usd, UsdGeom
 
@@ -89,6 +88,9 @@ def test_the_topology_is_the_built_graph_in_mimes_names(built):
 
 def test_a_saved_run_streams_through_its_hook(tmp_path):
     seen = []
-    written = rig().run_to(tmp_path / "run", ms(30), hook=lambda chunk: seen.append(chunk.steps))
-    assert seen == list(range(2, 31, 2)) and written.steps == 30
+    from chain_cases import gantry_magnet
+
+    built = gantry_magnet().build()
+    written = built.run_to(tmp_path / "run", ms(30), hook=lambda chunk: seen.append(chunk.steps), chunk=ms(10))
+    assert seen == [10, 20, 30] and written.steps == 30
     assert (tmp_path / "run" / "topology.json").is_file() and written.recording is None
