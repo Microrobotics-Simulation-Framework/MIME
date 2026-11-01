@@ -704,7 +704,9 @@ class Drag(PointForceDrag):
         **PointForceDrag.setting_roles,
         "spacing": numerical_default(
             "on the mrs rung, the largest spacing, to three significant figures, at which the hull's kind gives its "
-            "family's count of force points on its grid (SEPARATED_SAMPLES: a compact body's, a screw's)",
+            "family's count of force points on its grid (SEPARATED_SAMPLES: a compact body's, a screw's); for a body a "
+            "law holds off the wall of its medium's region (a contact), no coarser than that closest approach over "
+            "CONFINED_GAP force spacings",
             "a first look at a laptop's cost, chosen by measurement, never a converged value: for each family the "
             "count whose miss against its reference (Stokes's law, the shipped helix reference) is within the stated "
             "error at a run's cost a laptop's CPU takes (scripts/default_spacing_table.py measures the misses and "

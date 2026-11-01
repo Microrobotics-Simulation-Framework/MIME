@@ -2019,8 +2019,12 @@ anomalies:
       quadrature at both spacings, not explained), and at an eighth of a spacing no refinement measured is definite.
       A step costs 0.13 s at the force points, 1.4 s at 2, 2.6 s at 4 and 8.7 s on the whole quadrature at 0.829 mm,
       and 1.8 s, 27 s and 41 s at 0.4 mm (a 24-thread laptop CPU). The default is 2 for a body a contact holds off the
-      wall, and such a body's default force spacing keeps its closest approach CONFINED_GAP force spacings or more from
-      the wall; a body nothing holds off takes the image at the force points.
+      wall. The gap bound with the image in place, wall_refinement 2, eight rolls at each gap: indefinite at some roll
+      at 0.15, 0.2 and 0.25 force spacings (the largest 0.25 at 0.6 mm, -3.14), definite at every roll at 0.3 and 0.36
+      at 0.6 and 0.829 mm. So a held body's default force spacing keeps its closest approach CONFINED_GAP, 0.36, force
+      spacings or more from the wall, and a body nothing holds off takes the image at the force points. Definite is not
+      accurate there: at 0.829 mm and 0.36 spacings the speed per turn was 411 to 460 um, and at 0.6 mm 455 to 483,
+      against about 600 at script A's frozen point.
 
       **What the node does (phase 7m-b's fix round).** On the separated quadrature with a wall, every step judges its
       resistance before the body takes it: one that is not positive definite where the wall's reads were accepted is
@@ -2054,6 +2058,6 @@ anomalies:
       - "tests/oracles/test_mrs_near_wall.py::test_the_integrated_image_is_its_sum_over_each_cell_written_again"
       - "tests/oracles/test_mrs_near_wall.py::test_control_the_cells_weights_left_unscaled_to_their_areas_are_caught_by_the_sum"
       - "tests/oracles/test_mrs_near_wall.py::test_a_confined_body_held_off_the_wall_takes_the_force_spacing_its_closest_approach_needs"
-    residual_risk: "Within half a force spacing of a wall a run stops wherever its resistance turns indefinite, and a definite resistance there is not shown accurate; a coarse first run of a body resting on a wall stops within a few steps. Measured on one screw and one sphere in one tube. Drag 0.3.0's point forces are indefinite near the wall too and have no step check"
+    residual_risk: "Close to a wall a run stops wherever its resistance turns indefinite, and a definite resistance there is not shown accurate; a body nothing holds off the wall, or a force spacing written coarser than the bound, can stop within a few steps (script A's floored FL-9 at 0.829 mm with the image at the force points, at its tenth). The bound and the wall refinement were measured on one screw and one sphere in one tube, and the integration is not monotone in the refinement. Drag 0.3.0's point forces are indefinite near the wall too and have no step check"
     workaround: "Hold a body near a wall with a contact, so that its default force spacing keeps its closest approach CONFINED_GAP force spacings from the wall with the image integrated (wall_refinement 2), or write a spacing at most the gap over CONFINED_GAP; the build report states the cost (script A's 0.1 mm margin asks 0.278 mm, about 2,000 force points on FL-9; its frozen point, 0.178 mm, peaks at 7.6 GiB on drag 0.4.0 with the image at the force points). The point forces (quadrature_refinement=1) are no way out: they are indefinite near the wall too. In a tube, read the speed from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing; the confined sphere on the axis meets Haberman and Sayre within 1.7% at two fifths of the radius"
     planned_resolution: "Built in part (design #204): the image integrated over each cell (wall_refinement) and a held body's spacing kept out of the band (CONFINED_GAP), with the step's check and the near-wall flag kept, since at an eighth of a spacing the image is not the whole cause. Open: why the integration is not monotone in the wall's refinement near the wall (an accurate near-wall integration of the image, singular as the gap closes, or an analytic plane image near the nearest wall with a smooth tabulated remainder), measured against the tube's finest spacing; and the tube's convergence ladder measured at wall_refinement 2"

@@ -78,7 +78,11 @@ NEAR_WALL = 1.0
 #: The gap to a wall, in force spacings, below which the resistance was measured indefinite with the wall's image
 #: integrated over each cell (MIME-ANO-130), with room: a confined body's default force spacing keeps its closest
 #: approach outside it (``Drag``'s rule), and a refusal or a stop near the wall names the spacing that does. A labelled
-#: decision of phase 7m-b's fix round (design #204).
+#: decision of phase 7m-b's fix round (design #204), the review's figure measured with the image in place: FL-9 in the
+#: 1/4 in tube at the screw's defaults and wall_refinement 2, eight rolls at each gap, was indefinite at some roll at
+#: 0.15, 0.2 and 0.25 force spacings (the largest 0.25, at 0.6 mm) and definite at every roll at 0.3 and 0.36 (0.6 and
+#: 0.829 mm) and at 0.25 at 0.4 mm; the bound keeps a factor of 1.44 over the largest. Definite there is not accurate:
+#: at 0.829 mm and 0.36 spacings the speed per turn was 411 to 460 um, against about 600 at script A's frozen point.
 CONFINED_GAP = 0.36
 #: The time one read of a wall's table takes, for the build's estimate of a step's cost: measured on a 24-thread laptop
 #: CPU in float64 (phase 7m-b's fix round, FL-9 in the 1/4 in tube: 1.36 to 1.52 us over 0.9 to 6.4 million reads a
