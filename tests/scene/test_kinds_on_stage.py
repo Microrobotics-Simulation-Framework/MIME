@@ -264,6 +264,44 @@ def test_the_helixs_starts_are_written_and_read_back_whole_and_rebuild_its_drawi
                                             drawn.face_vertex_counts, drawn.face_vertex_indices)
 
 
+#: The proxy budget the stage declares (``mime.build._stage.PROXY_TRIANGLES``), written here as a number so that a
+#: budget changed or removed in the source fails this file, not only a drawing over it.
+DECLARED_PROXY_TRIANGLES = 2_500
+#: The most the budgeted drawing of FL-9 may lie from the full one, measured on every vertex of each to the other's
+#: surface: 0.033 mm when the budget was set (2.1% of the 1.56 mm radius), held at 0.05 mm.
+FL9_PROXY_DISTANCE = 0.05e-3
+
+
+def test_a_drawn_proxy_holds_at_most_its_triangle_budget_and_lies_near_the_full_drawing():
+    """FL-9 drawn at the writer's 64 facets a turn is 14,720 triangles; on the stage its proxy is redrawn at fewer
+    facets until it fits the budget. The control: the full drawing is over the budget, so the check could fail."""
+    from mime.build._stage import PROXY_TRIANGLES
+    from mime.viz._meshes import Mesh, mesh_distance
+
+    assert PROXY_TRIANGLES == DECLARED_PROXY_TRIANGLES
+    helix = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+                  starts=2)
+    stage, plans = staged(helix, "m")
+    proxy = stage.GetPrimAtPath("/World/held/proxy")
+    counts = list(proxy.GetAttribute("faceVertexCounts").Get())
+    triangles = sum(max(0, count - 2) for count in counts)
+    assert 0 < triangles <= DECLARED_PROXY_TRIANGLES
+    settings = plans.geometries["held"].settings
+    full = helix.drawing(settings, DRAWING_SEGMENTS)
+    assert sum(max(0, count - 2) for count in full.face_vertex_counts) > DECLARED_PROXY_TRIANGLES
+
+    def mesh(points, counts, indices) -> Mesh:
+        held, triangles, at = np.asarray(indices), [], 0
+        for count in counts:
+            triangles += [(held[at], held[at + k], held[at + k + 1]) for k in range(1, count - 1)]
+            at += count
+        return Mesh(np.asarray(points, dtype=np.float64), np.asarray(triangles, dtype=np.int64))
+
+    drawn = mesh(proxy.GetAttribute("points").Get(), counts, proxy.GetAttribute("faceVertexIndices").Get())
+    assert mesh_distance(mesh(full.points, full.face_vertex_counts, full.face_vertex_indices), drawn) <= \
+        FL9_PROXY_DISTANCE
+
+
 #: Metres in a lab: zero, or a micrometre's thousandth to a metre (a drawn subnormal would lose its digits to the unit
 #: conversion, which no placement does).
 coordinates = st.floats(-1.0, 1.0).filter(lambda v: v == 0.0 or abs(v) >= 1e-9)

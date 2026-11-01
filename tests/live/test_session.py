@@ -223,3 +223,102 @@ def test_a_frame_carries_the_selected_fields_in_the_schemas_order():
     session = steered().build().live(pace=None, select=["umr.twist", "spin.motor.angle"])
     held = session.step(1)[-1]
     assert list(held.values) == ["umr.twist", "spin.motor.angle"] == [f.path for f in session.schema.fields]
+
+
+def test_a_malformed_argument_is_refused_with_its_code_and_the_session_goes_on():
+    session = steered().build().live(pace=None, select=["spin.motor.angle"])
+    malformed = {
+        "step text": ({"command": "step", "chunks": "x"}, "live.step"),
+        "step null": ({"command": "step", "chunks": None}, "live.step"),
+        "step true": ({"command": "step", "chunks": True}, "live.step"),
+        "step half": ({"command": "step", "chunks": 1.5}, "live.step"),
+        "set text": ({"command": "set", "values": {"offset": "abc"}}, "live.input-value"),
+        "set null": ({"command": "set", "values": {"offset": None}}, "live.input-value"),
+        "set true": ({"command": "set", "values": {"offset": True}}, "live.input-value"),
+        "set object": ({"command": "set", "values": {"offset": {"a": 1}}}, "live.input-value"),
+        "set ragged": ({"command": "set", "values": {"offset": [[1.0], [1.0, 2.0]]}}, "live.input-value"),
+        "record text": ({"command": "record", "on": "off"}, "live.record"),
+        "record number": ({"command": "record", "on": 1}, "live.record"),
+        "pace text": ({"command": "pace", "rtf": "fast"}, "live.pace"),
+        "pace true": ({"command": "pace", "rtf": True}, "live.pace"),
+    }
+    for name, (request, code) in malformed.items():
+        answer = session.command(request)
+        assert not answer["ok"] and answer["errors"][0]["code"] == code, name
+    # Nothing a refused request asked for was done or logged: the session is where it began, and goes on.
+    assert session.steps == 0 and session.log == [] and session.command({"command": "status"})["state"] == READY
+    # Two values, the second refused: neither is set.
+    assert not session.command({"command": "set", "values": {"offset": 0.5, "gain": 1.0}})["ok"]
+    assert session.log == []
+    assert session.command({"command": "step", "chunks": 2})["ok"] and session.steps == 2 * session.chunk_steps
+
+
+def test_an_error_inside_a_command_is_answered_in_the_coded_shape_and_the_session_goes_on(monkeypatch):
+    session = steered().build().live(pace=None)
+
+    def broken() -> dict:
+        raise RuntimeError("a fault planted in hello")
+
+    monkeypatch.setattr(session, "hello", broken)
+    answer = session.command({"command": "hello"})
+    assert not answer["ok"] and answer["errors"][0]["class"] in ("internal", "unrecognised")
+    assert "a fault planted in hello" in answer["errors"][0]["message"]
+    assert session.command({"command": "step"})["ok"]
+
+
+def test_a_live_input_never_outlives_its_session(tmp_path):
+    held = steered().build()
+    first = held.live(pace=None, select=["spin.motor.angle"])
+    first.step(2)
+    first.set("offset", 0.5)
+    moved = first.step(2)
+    first.stop()
+    period = 3
+    # The control: in the session that set it, the input moved the angle, so a leak would show.
+    assert angle(moved[-1]) == pytest.approx(RATE * ((moved[-1].step - 1) // period) + 0.5, abs=1e-6)
+    second = held.live(pace=None, select=["spin.motor.angle"])
+    frames = second.step(4)
+    assert all(angle(f) == pytest.approx(RATE * ((f.step - 1) // period), abs=1e-6) for f in frames[1:])
+    # A session left open, then a batch run of the same built: the run starts from the declared inputs too.
+    third = held.live(pace=None, select=["spin.motor.angle"])
+    third.set("offset", 0.5)
+    result = held.run(ms(3 * period))
+    steps = result.start_step + result.steps
+    assert float(result.final["spin.motor"]["angle"]) == pytest.approx(RATE * ((steps - 1) // period), abs=1e-6)
+
+
+def test_the_command_log_is_written_as_the_session_goes(tmp_path):
+    session = built().live(pace=None, out=tmp_path / "live")
+    log = tmp_path / "live" / COMMAND_LOG
+    assert [json.loads(line)["format"] for line in log.read_text().splitlines()] == ["mime.commands/1"]
+    session.step(2)
+    session.set("offset", 0.002)
+    lines = [json.loads(line) for line in log.read_text().splitlines()]
+    chunk = session.chunk_steps
+    assert lines[1:] == [{"command": "step", "chunks": 2, "step": 0}, {"reached": chunk}, {"reached": 2 * chunk},
+                         {"command": "set", "label": "offset", "step": 2 * chunk, "value": 0.002}]
+    session.stop()
+    assert json.loads(log.read_text().splitlines()[-1]) == {"command": "stop", "step": 2 * chunk}
+
+
+def test_a_run_folder_is_never_written_over_what_it_reads(tmp_path):
+    folder = saved(tmp_path)
+    loaded = Experiment.load(folder).build()
+    for out in (folder, folder / "inside", tmp_path):
+        with pytest.raises(ArgumentRefused, match="run.out-over-source"):
+            loaded.live(pace=None, out=out)
+        with pytest.raises(ArgumentRefused, match="run.out-over-source"):
+            loaded.run_to(out, ms(2))
+    run = loaded.live(pace=None, out=tmp_path / "run")
+    run.step(1)
+    run.stop()
+    before = files_of(tmp_path / "run")
+    rebuilt = Experiment.load(tmp_path / "run" / "experiment").build()
+    with pytest.raises(ArgumentRefused, match="run.out-over-source"):
+        replay(rebuilt, tmp_path / "run" / COMMAND_LOG, tmp_path / "run")
+    with pytest.raises(ArgumentRefused, match="run.out-over-source"):
+        rebuilt.live(pace=None, out=tmp_path / "run")
+    assert files_of(tmp_path / "run") == before
+    # The control: a folder of its own is written.
+    replay(rebuilt, tmp_path / "run" / COMMAND_LOG, tmp_path / "again")
+    assert (tmp_path / "again" / "experiment").is_dir()

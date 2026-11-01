@@ -64,6 +64,11 @@ from mime.units import Magnitude
 
 #: The writer's resolution: facets round a full turn of each curved direction of a drawn kind.
 DRAWING_SEGMENTS = 64
+#: The stage writer's version, which a lock records beside its stage's hash (``stage.writer``), and every version a
+#: stage can be rebuilt in to be held to its lock (``mime.build._stage``): version 1 is the writer before dev1 phase 7n,
+#: version 2 places every chain frame in the world and draws visuals, vectors and proxies within their budget.
+STAGE_WRITER = 2
+STAGE_WRITERS = (1, 2)
 #: A derived mesh's prim, below its kind's.
 PROXY = "proxy"
 _STRUCTURE_COLOUR = (0.85, 0.85, 0.9)
@@ -516,6 +521,6 @@ def check_stage(path: Path) -> list[StageFinding]:
     return found
 
 
-__all__ = ["ARROW", "DRAWING_SEGMENTS", "PROXY", "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256", "KindPrim",
+__all__ = ["ARROW", "DRAWING_SEGMENTS", "PROXY", "STAGE_WRITER", "STAGE_WRITERS", "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256", "KindPrim",
            "MountedPrim", "RegionPrim", "StageFinding", "StageSpec", "ThingPrim", "VectorPrim", "VisualPrim", "check_stage",
            "stage_text", "up_axis"]

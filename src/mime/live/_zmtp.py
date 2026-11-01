@@ -6,11 +6,20 @@ handshake with each side's socket type, and frames of one or more parts, the las
 What it does not do: CURVE or PLAIN security (a session is reached through an SSH tunnel, which authenticates and
 encrypts), ZMTP 3.1's heartbeats (a PING is answered with a PONG all the same), and any socket type but these four. A
 PUB never waits on a subscriber: a subscriber that falls more than :data:`QUEUE_LIMIT` messages behind loses the oldest
-it has not taken, as libzmq's high-water mark drops them."""
+it has not taken, as libzmq's high-water mark drops them.
+
+The server never stops for one peer: a peer whose bytes are not ZMTP, that does not finish its handshake within
+:data:`HANDSHAKE_SECONDS`, that sends a message over its socket's limit (:data:`REQUEST_LIMIT` for a request, as a
+command is a small JSON object; :data:`SUBSCRIPTION_LIMIT` for a subscription), or that sends requests without reading
+the replies (:data:`PENDING_LIMIT`, :data:`REPLY_BUFFER_LIMIT`) is closed, and the others are served on. A connection
+that arrives when the process has no descriptor left is accepted on a spare and closed at once, and the listener rests a
+moment rather than spin."""
 
 from __future__ import annotations
 
+import errno
 import ipaddress
+import os
 import selectors
 import socket
 import struct
@@ -29,6 +38,19 @@ QUEUE_LIMIT = 1000
 #: The peer socket types each of ours speaks with.
 PEERS = {"PUB": {"SUB", "XSUB"}, "REP": {"REQ", "DEALER"}, "SUB": {"PUB", "XPUB"}, "REQ": {"REP", "ROUTER"}}
 LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+#: The most bytes a request (its parts together) may hold, and a subscriber's message: commands are small JSON objects,
+#: a subscription a topic.
+REQUEST_LIMIT = 1 << 20
+SUBSCRIPTION_LIMIT = 1 << 16
+#: The most parts a message may have: a request's envelope, its delimiter and its body.
+PARTS_LIMIT = 64
+#: The requests a peer may send ahead of their replies, and the reply bytes it may leave unread, before it is closed.
+PENDING_LIMIT = 256
+REPLY_BUFFER_LIMIT = 16 << 20
+#: The seconds a peer has from connecting to finishing its handshake.
+HANDSHAKE_SECONDS = 10.0
+#: The seconds a listener rests when the process has no descriptor left for a new connection.
+ACCEPT_REST_SECONDS = 0.1
 
 
 class ProtocolError(ConnectionError):
@@ -55,13 +77,19 @@ def ready(socket_type: str) -> bytes:
 
 
 def _properties(body: bytes) -> dict[str, bytes]:
+    """A command's properties, each a name (a length byte, then the name) and a value (a four-byte length, then the
+    value): refused when one is cut short or runs past the command."""
     found: dict[str, bytes] = {}
     at = 0
     while at < len(body):
         size = body[at]
+        if at + 1 + size + 4 > len(body):
+            raise ProtocolError("a command's property is cut short")
         name = body[at + 1:at + 1 + size].decode("ascii", "replace")
         at += 1 + size
         (length,) = struct.unpack_from(">I", body, at)
+        if at + 4 + length > len(body):
+            raise ProtocolError(f"a command's property {name!r} runs past the command")
         found[name] = body[at + 4:at + 4 + length]
         at += 4 + length
     return found
@@ -76,6 +104,8 @@ class _Reader:
     signed: bool = False
     peer_type: str | None = None
     parts: list[bytes] = field(default_factory=list[bytes])
+    #: The most bytes one frame may declare (``None``: no limit, a client's).
+    limit: int | None = None
 
     def feed(self, data: bytes) -> None:
         self.buffer += data
@@ -117,6 +147,8 @@ class _Reader:
                 start = 9
             else:
                 size, start = self.buffer[1], 2
+            if self.limit is not None and size > self.limit:
+                raise ProtocolError(f"a frame of {size} bytes, over the {self.limit} this socket takes")
             if len(self.buffer) < start + size:
                 break
             found.append((flags, bytes(self.buffer[start:start + size])))
@@ -137,6 +169,7 @@ class _Peer:
     requests: deque[list[bytes]] = field(default_factory=deque[list[bytes]])
     envelope: list[bytes] | None = None
     dropped: int = 0
+    opened: float = field(default_factory=time.monotonic)
 
     def wants(self) -> bool:
         return bool(self.out or self.queue)
@@ -171,7 +204,10 @@ class Server:
         self.selector = selectors.DefaultSelector()
         self.peers: dict[int, _Peer] = {}
         self.listeners: dict[int, tuple[socket.socket, str]] = {}
+        #: Listeners resting after the process ran out of descriptors, with when they listen again.
+        self.resting: dict[int, float] = {}
         self.endpoints: dict[str, str] = {}
+        self._spare = _spare()
         for kind, endpoint in (("REP", commands), ("PUB", frames)):
             host, port = parse_endpoint(endpoint)
             family = socket.AF_INET6 if ":" in host else socket.AF_INET
@@ -193,12 +229,54 @@ class Server:
             self.endpoints[kind] = f"tcp://{shown}:{bound[1]}"
 
     def _accept(self, listener: socket.socket, kind: str) -> None:
-        sock, _ = listener.accept()
-        sock.setblocking(False)
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        peer = _Peer(sock, kind)
+        try:
+            sock, _ = listener.accept()
+        except (BlockingIOError, InterruptedError):
+            return
+        except OSError as error:
+            if error.errno in (errno.EMFILE, errno.ENFILE) and self._spare is not None:
+                os.close(self._spare)  # the spare descriptor takes the connection, which is closed: the peer refused
+                self._spare = None
+                try:
+                    listener.accept()[0].close()
+                except OSError:
+                    pass
+                self._spare = _spare()
+            self._rest(listener)
+            return
+        try:
+            sock.setblocking(False)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            peer = _Peer(sock, kind, _Reader(limit=REQUEST_LIMIT if kind == "REP" else SUBSCRIPTION_LIMIT))
+            self.selector.register(sock, selectors.EVENT_READ)
+        except (OSError, ValueError):
+            sock.close()
+            return
         self.peers[sock.fileno()] = peer
-        self.selector.register(sock, selectors.EVENT_READ)
+
+    def _rest(self, listener: socket.socket) -> None:
+        """Stop listening on ``listener`` for a moment, so that a listener the process cannot accept on does not
+        spin the loop."""
+        fileno = listener.fileno()
+        if fileno in self.resting:
+            return
+        try:
+            self.selector.unregister(listener)
+        except (KeyError, ValueError):
+            pass
+        self.resting[fileno] = time.monotonic() + ACCEPT_REST_SECONDS
+
+    def _housekeeping(self) -> None:
+        """Listen again on rested listeners whose rest is over, and close each peer whose handshake ran out of
+        time."""
+        now = time.monotonic()
+        for fileno, until in list(self.resting.items()):
+            if now >= until:
+                del self.resting[fileno]
+                self.selector.register(self.listeners[fileno][0], selectors.EVENT_READ)
+        for peer in list(self.peers.values()):
+            if not peer.ready and now - peer.opened > HANDSHAKE_SECONDS:
+                self._close(peer)
 
     def _close(self, peer: _Peer) -> None:
         self.peers.pop(peer.sock.fileno(), None)
@@ -231,7 +309,7 @@ class Server:
                 return
             for flags, body in reader.frames():
                 self._frame(peer, flags, body)
-        except ProtocolError:
+        except Exception:  # noqa: BLE001 - a peer's bytes never stop the server: that peer is closed
             self._close(peer)
 
     def _frame(self, peer: _Peer, flags: int, body: bytes) -> None:
@@ -262,11 +340,15 @@ class Server:
                 peer.topics.discard(body[1:])
             return
         peer.reader.parts.append(body)
+        if len(peer.reader.parts) > PARTS_LIMIT or sum(map(len, peer.reader.parts)) > REQUEST_LIMIT:
+            raise ProtocolError(f"a message of more than {PARTS_LIMIT} parts or {REQUEST_LIMIT} bytes")
         if not flags & MORE:
             parts, peer.reader.parts = peer.reader.parts, []
             delimiter = next((index for index, part in enumerate(parts) if part == b""), None)
             if delimiter is None:
                 return  # a REP drops a request with no envelope, as libzmq's does
+            if len(peer.requests) >= PENDING_LIMIT:
+                raise ProtocolError(f"more than {PENDING_LIMIT} requests sent ahead of their replies")
             peer.requests.append(parts)
 
     def _write(self, peer: _Peer) -> None:
@@ -283,18 +365,38 @@ class Server:
             return
         del peer.out[:sent]
 
+    def _requests(self) -> list[tuple[int, bytes]]:
+        """The next request of each peer that is not waiting for a reply, with its envelope kept for the reply."""
+        found: list[tuple[int, bytes]] = []
+        for fileno, peer in list(self.peers.items()):
+            if peer.kind == "REP" and peer.envelope is None and peer.requests:
+                parts = peer.requests.popleft()
+                delimiter = parts.index(b"")
+                peer.envelope = parts[:delimiter + 1]
+                found.append((fileno, b"".join(parts[delimiter + 1:])))
+        return found
+
     def poll(self, timeout: float) -> list[tuple[int, bytes]]:
         """Move bytes for up to ``timeout`` seconds (0: once, without waiting) and return each request that arrived,
-        with the peer to reply to, at most one per peer until it is answered."""
+        with the peer to reply to, at most one per peer until it is answered. A request already waiting is returned
+        without waiting for more bytes."""
         deadline = time.monotonic() + max(0.0, timeout)
-        found: list[tuple[int, bytes]] = []
+        found = self._requests()
         while True:
+            self._housekeeping()
             for key, peer in list(self.peers.items()):
                 if key in self.peers:
                     events = selectors.EVENT_READ | (selectors.EVENT_WRITE if peer.wants() else 0)
                     self.selector.modify(peer.sock, events)
-            wait = max(0.0, deadline - time.monotonic())
-            for key, events in self.selector.select(wait if not found else 0.0):
+            wait = 0.0 if found else max(0.0, deadline - time.monotonic())
+            if self.resting:
+                wait = min(wait, max(0.0, min(self.resting.values()) - time.monotonic()))
+            if not self.selector.get_map():  # nothing to wait on (Windows' select refuses an empty set)
+                time.sleep(wait)
+                ready: list[tuple[selectors.SelectorKey, int]] = []
+            else:
+                ready = self.selector.select(wait)
+            for key, events in ready:
                 held = key.fileobj
                 fileno = held.fileno() if not isinstance(held, int) else held
                 if fileno in self.listeners:
@@ -307,12 +409,7 @@ class Server:
                     self._read(peer)
                 if events & selectors.EVENT_WRITE and fileno in self.peers:
                     self._write(peer)
-            for fileno, peer in list(self.peers.items()):
-                if peer.kind == "REP" and peer.envelope is None and peer.requests:
-                    parts = peer.requests.popleft()
-                    delimiter = parts.index(b"")
-                    peer.envelope = parts[:delimiter + 1]
-                    found.append((fileno, b"".join(parts[delimiter + 1:])))
+            found += self._requests()
             if found or time.monotonic() >= deadline:
                 return found
 
@@ -323,6 +420,9 @@ class Server:
             return
         peer.out += message([*peer.envelope, body])
         peer.envelope = None
+        if len(peer.out) > REPLY_BUFFER_LIMIT:  # a peer that sends requests and does not read the replies
+            self._close(peer)
+            return
         self._write(peer)
 
     def publish(self, body: bytes) -> None:
@@ -348,11 +448,24 @@ class Server:
     def close(self) -> None:
         for peer in list(self.peers.values()):
             self._close(peer)
-        for listener, _ in self.listeners.values():
-            self.selector.unregister(listener)
+        for fileno, (listener, _) in self.listeners.items():
+            if fileno not in self.resting:
+                self.selector.unregister(listener)
             listener.close()
         self.listeners.clear()
+        self.resting.clear()
         self.selector.close()
+        if self._spare is not None:
+            os.close(self._spare)
+            self._spare = None
+
+
+def _spare() -> int | None:
+    """A descriptor held in reserve, to accept and close a connection with when the process has none left."""
+    try:
+        return os.open(os.devnull, os.O_RDONLY)
+    except OSError:
+        return None
 
 
 class Client:
@@ -413,5 +526,6 @@ class Client:
         self.sock.close()
 
 
-__all__ = ["GREETING", "LOOPBACK", "QUEUE_LIMIT", "Client", "ProtocolError", "Server", "frame", "is_loopback",
-           "message", "parse_endpoint", "ready"]
+__all__ = ["ACCEPT_REST_SECONDS", "GREETING", "HANDSHAKE_SECONDS", "LOOPBACK", "PARTS_LIMIT", "PENDING_LIMIT",
+           "QUEUE_LIMIT", "REPLY_BUFFER_LIMIT", "REQUEST_LIMIT", "SUBSCRIPTION_LIMIT", "Client", "ProtocolError", "Server",
+           "frame", "is_loopback", "message", "parse_endpoint", "ready"]

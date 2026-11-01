@@ -146,8 +146,10 @@ live.input-value              user
 live.log                      user
 live.pace                     user
 live.protocol                 user
+live.record                   user
 live.remote-bind              user
 live.select                   user
+live.stage-writer             user
 live.state                    user
 live.step                     user
 live.stopped                  user
@@ -175,6 +177,7 @@ load.setting                  user
 load.setting-unknown          user
 load.stage-changed            user
 load.stage-hash               environment
+load.stage-writer             environment
 load.units                    user
 load.unknown-entry            environment
 load.version                  environment
@@ -280,6 +283,7 @@ run.no-node-at-dt             user
 run.non-finite                user
 run.nothing-to-step           user
 run.out-of-memory             environment
+run.out-over-source           user
 run.rate-not-multiple         user
 run.rate-units                user
 run.record                    user

@@ -42,9 +42,16 @@ session.stop()                # the run folder: a0_live/
   point it holds the magnet above along its axis.
 - **Every command is logged with its step** (`commands.jsonl` in the run folder), so a session replays:
   `mime run <saved folder> --commands <run folder>/commands.jsonl --out <dir>` steps the same chunks, sets the same
-  inputs and records at the same steps, and writes the same run folder.
-- **Stop always stops**, in every state: ready, running, paused, or stepping on another thread (which finishes its
-  chunk). It sends a last frame marked final and writes the run folder.
+  inputs and records at the same steps, and writes the same run folder. The log is written as the session goes: its
+  header when the session opens, each command before it acts, and after each chunk the step it reached
+  (`{"reached": <step>}`, before that chunk's frame is sent), each line flushed. A session that dies (a crash, a
+  kill) leaves a log that replays to the last step it reached, every frame a client received included. `--out` is
+  refused when it is the folder the session or the replay reads, inside it, or holds it (`run.out-over-source`).
+- **Every session and every run starts from the declared inputs.** A live input lasts as long as its session: it is
+  cleared when a session opens and when it stops, and a batch run of the same built starts with none set.
+- **Stop always stops**, in every state: ready, running, paused, or taking a step (on another thread, or in `mime
+  serve`'s loop), within one chunk. It sends a last frame marked final and writes the run folder. `pause` ends a step
+  in hand after its chunk, as it stops a running session.
 
 ## The run folder
 
@@ -53,13 +60,15 @@ Every live session that is given `out=` writes a minimal run folder when it stop
 | File | What it holds |
 |---|---|
 | `experiment/` | the saved folder the session was loaded from, copied as it is (or the built experiment saved) |
-| `commands.jsonl` | its header (the protocol, the chunk, the experiment's input hash), then one line per command with its step |
+| `commands.jsonl` | its header (the protocol, the chunk, the experiment's input hash), then one line per command with its step and one per chunk with the step it reached, written as the session goes |
 | `outputs.npz`, `outputs.json` | the state at the end and its manifest, as `RunResult.read` reads them |
 | `run.json` | the session's record: steps, frames, wall time, the environment |
 | `topology.json` | the built graph in MIME's names (`built.topology()`) |
 | `recording.usdc` | the recording layer, when recording was on ([recordings](recordings.md)) |
 
-A run folder is self-contained: it carries its own stage, and nothing outside it.
+A run folder is self-contained: it carries its own stage, and nothing outside it. A folder saved by an earlier stage
+writer (before chains' frames, visuals and vectors were drawn) loads and verifies as it was written, and a live session
+of one whose stage lacks a prim the binding moves is refused (`live.stage-writer`): save it again with this MIME.
 
 ## `mime serve`
 
@@ -92,8 +101,13 @@ change is a new major version.
 
 A request is a JSON object, `{"command": "<name>", ...}` (with `"protocol": "mime.live/1"`, optional). A reply is a
 JSON object with `protocol`, `ok` and `command`; on success the session's status (`state`, `step`, `time`, `frames`,
-`pace`, `recording`, `non_finite`); on a refusal, `errors`, each in the shape of [MIME's errors](errors.md): `code`,
-`class`, `message`, `why`, `action`, `where` and `page`. A request a client gets wrong is refused, never dropped.
+`pace`, `recording`, `non_finite`, and `stepping`, the chunks a step in hand has still to take); on a refusal,
+`errors`, each in the shape of [MIME's errors](errors.md): `code`, `class`, `message`, `why`, `action`, `where` and
+`page`. A request a client gets wrong is refused with its code (an argument of the wrong type included: `live.step`,
+`live.input-value`, `live.record`, `live.pace`), and the session goes on; an error of MIME's own inside a command is
+answered in the same shape, the session going on. The server never stops for one peer's bytes: a peer that does not
+speak ZMTP, does not finish its handshake in time, sends a message over its socket's limit, or sends requests without
+reading their replies is closed, and the others are served on (the limits are `mime.live._zmtp`'s constants).
 
 | Command | Arguments | What it does |
 |---|---|---|
@@ -101,17 +115,20 @@ JSON object with `protocol`, `ok` and `command`; on success the session's status
 | `status` | | the session's status |
 | `start` | | starts or resumes stepping, paced |
 | `pause` | | stops stepping after the chunk in hand |
-| `step` | `chunks` | steps that many chunks now, from a session that is not running |
+| `step` | `chunks`, a whole number above zero | steps that many chunks now, from a session that is not running; answered when they are stepped, or when a `stop` or `pause` from another client ends the step (the server takes other requests between its chunks) |
 | `stop` | | stops in every state, sends the last frame, writes the run folder (its path is in the reply) |
 | `set` | `values`, live inputs by label | sets the controller's live inputs from its next tick |
-| `record` | `on` | turns the recording layer on or off |
+| `record` | `on`, true or false | turns the recording layer on or off |
 | `pace` | `rtf`, a factor or null | the real-time factor, or unpaced |
 
 `hello` returns MIME's version, the experiment's name and its hashes, the base step and the chunk in base steps, the
 controller (its entry, mode, period and latency) and its live inputs, the path of the stage the session serves
 (`stage`), what the asset cache draws of its visuals (`visuals`: the overlay to add over the stage, and the visual sets
-it lacks, see [recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema
-(`schema`), the commands, and the status.
+it lacks, and every set's notice, its credit and terms, whether its meshes are drawn or not: see
+[recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema (`schema`), the commands,
+and the status. `stage` is the path on the machine that serves the session: a client on another machine opens its own
+copy of the saved folder (the one it gave `mime serve`, or a `mime pull` of it) and checks it is the same experiment
+by `hashes`, the lock's.
 
 ### Frames
 
@@ -134,7 +151,13 @@ The schema (in `hello`) lists each field: `path` (`<node>.<field>`), `node`, `fi
 it (`<f4`), `unit` where MIME knows one, and its byte `offset` after the header; with `frame_bytes`, the whole frame's
 length. It is fixed for the session. A JSON frame holds the same keys as the header (`frame`, `step`, `time`,
 `schema`, `final`) and `fields`, each as nested lists. A client checks each frame's number against the last
-(`mime.live.FrameOrder`): a gap is a dropped frame, a number at or below one seen is one out of order.
+(`mime.live.FrameOrder`): a gap is a dropped frame, a number at or below one seen is one out of order. A ZMQ
+subscriber that connects just before `start` may miss the first frames, as ZMQ's subscriptions take a moment to reach
+the publisher (its "slow joiner"): connect the frames' socket first, then send `hello`, and read the first frame's
+number rather than assume it is zero. The server moves bytes between chunks, so a chunk that compiles (a session's
+first, a few seconds for A0) holds them: a ZMQ heartbeat (`ZMQ_HEARTBEAT_TIMEOUT`) shorter than that drops the
+connection while it compiles, and libzmq reconnects, losing the frames sent meanwhile. Leave heartbeats off, or set
+their timeout above the first chunk's compile.
 
 ### The stage binding
 
@@ -144,6 +167,16 @@ it belongs to, its public name and its units. Every bound prim is placed in the 
 their transform stack), so a `pose` (seven numbers: x, y, z, then the quaternion w, x, y, z) is the prim's translate
 and orient as it stands, applied with no composition. A `vector` (a field a law reads at a body, three numbers in the
 world's axes) is drawn at the position of the pose `at` names.
+
+**Frames carry metres; the stage has its own units.** A pose's x, y and z are in metres (as its `unit` says) whatever
+the stage is written in, and a stage's translate is in the stage's units. So a client reads the stage's
+`metersPerUnit` once (`UsdGeom.GetStageMetersPerUnit(stage)`, the root layer's `metersPerUnit`) and writes
+`translate = (x, y, z) / metersPerUnit`; the orientation is unitless and goes in as it is. In a stage in metres, as
+A0's is, the two are the same numbers; in one in millimetres the translate is a thousand times the frame's numbers.
+A vector's prim is translated the same way (the body's position divided by
+`metersPerUnit`); its arrow is a metre long in the stage's own units already, so its uniform scale is `|v|` times the
+prim's `mime:vector:metres_per_unit`, with no conversion. The recording layer is written so already
+([recordings](recordings.md)).
 
 ## What this does not do yet
 

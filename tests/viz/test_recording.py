@@ -2,8 +2,12 @@
 its poses and vectors are the run's states at its samples' steps exactly, read back through usd-core; it opens with
 no finding of usd-core's validators; it is crate 0.8.0, which OpenUSD 24.08 reads; and the folder moved elsewhere still
 composes its stage. Its controls: the same poses compared one sample off differ, and a recording whose sublayer is
-written as an absolute path into the folder no longer composes once the folder moves."""
+written as an absolute path into the folder no longer composes once the folder moves. Two checks hold the binding to
+what it stands for rather than to its own rows: the recorded rotor turns on its base by the motor's angle in the state
+(a binding that swapped the two frames fails it), and on a stage in millimetres a recorded body, composed with the
+stage's metres per unit, is where the run put it (a recording that wrote metres into it fails)."""
 
+import math
 import shutil
 from pathlib import Path
 
@@ -133,3 +137,80 @@ def test_the_layer_names_its_experiment(recorded):
     assert data["experiment"] == "tracked" and data["input_hash"].startswith("sha256:")
     assert data["stage"] == "experiment/scene/scene.usda"
     assert recording_layer.__module__ == "mime.viz._recording"
+
+
+def frame_prims(stage) -> dict[str, str]:
+    """Each chain frame's prim by the frame's name, as the stage writes it on the prim (``mime:frame``): what a client
+    finds in the stage alone, with no binding."""
+    return {str(prim.GetAttribute("mime:frame").Get()): str(prim.GetPath()) for prim in stage.Traverse()
+            if prim.GetAttribute("mime:frame") and str(prim.GetPath()).startswith("/World/rpm/motor/")}
+
+
+def test_the_recorded_rotor_turns_on_its_base_by_the_motors_angle(recorded):
+    """The binding against the kinematics, not against itself: in the recording, composed as a client composes it,
+    the rotor frame is the base frame turned about its z by the motor's angle in the run's state, at every sample.
+    A binding that swapped the two frames' rows records the base turned by minus the angle, and fails. The control
+    of the oracle: the angle grows over the run (the motor turns), so the two frames are told apart."""
+    from pxr import Gf, UsdGeom
+
+    _, written, _, history = recorded
+    stage = Usd.Stage.Open(str(written.recording))
+    prims = frame_prims(stage)
+    assert set(prims) == {"base", "rotor"}
+    steps = list(Sdf.Layer.FindOrOpen(str(written.recording)).customLayerData["mime:recording"]["steps"])
+    angles = []
+    for code, step in enumerate(steps):
+        if step == 0:
+            continue
+        cache = UsdGeom.XformCache(code)
+        base, rotor = (cache.GetLocalToWorldTransform(stage.GetPrimAtPath(prims[name])) for name in ("base", "rotor"))
+        x_base, z_base = (np.array(base.TransformDir(Gf.Vec3d(*axis))) for axis in ((1, 0, 0), (0, 0, 1)))
+        x_rotor, z_rotor = (np.array(rotor.TransformDir(Gf.Vec3d(*axis))) for axis in ((1, 0, 0), (0, 0, 1)))
+        assert np.allclose(z_rotor, z_base, atol=1e-6)
+        turned = math.atan2(float(np.dot(np.cross(x_base, x_rotor), z_base)), float(np.dot(x_base, x_rotor)))
+        angle = float(history["rpm.motor"]["angle"][step - 1])
+        assert math.remainder(turned - angle, 2 * math.pi) == pytest.approx(0.0, abs=1e-5), (step, turned, angle)
+        angles.append(angle)
+    assert max(angles) - min(angles) > 0.5
+
+
+def mm_stage_experiment():
+    from mime import Body, Experiment, State, Structure
+    from mime.dynamics import RigidInertial
+    from mime.scene import Scene, Tube, X, Z
+    from mime.units import kg, kg_m2, m, m_per_s, mm, rad_per_s, standard_gravity
+
+    exp = Experiment("mm_stage", scene=Scene.new(up=Z, units="mm"), gravity=standard_gravity(), dt=ms(1))
+    exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3), wall=mm(1), length=mm(9))))
+    exp.add_body(Body("probe", dynamics=RigidInertial(), initial=State(
+        position=m((0.001, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    exp.declare("probe.mass", kg(1e-4), reason="a probe of a millimetre body's order")
+    exp.declare("probe.inertia", kg_m2((1e-10,) * 3), reason="a probe of a millimetre body's order")
+    return exp
+
+
+def test_a_recording_on_a_stage_in_millimetres_places_each_body_where_the_run_put_it(tmp_path):
+    """A frame and the binding carry metres; the stage's translate is in its own units. Composed with the stage's
+    metres per unit, as a client reads it, the recorded body is where the run's state put it, in metres, at every
+    sample. A recording that wrote metres straight into a millimetre stage places it a thousand times too far, and
+    fails. The control: the body is off the origin (x = 1 mm), so the two differ."""
+    from pxr import UsdGeom
+
+    held = mm_stage_experiment().build()
+    entry = next(entry for entry in held.binding().entries if entry.kind == "pose")
+    start = np.asarray(held.current_state()[entry.node][entry.field][:3], dtype=np.float64)
+    written = held.run_to(tmp_path / "run", ms(20), stage_every=ms(10), history=True)
+    stage = Usd.Stage.Open(str(written.recording))
+    scale = UsdGeom.GetStageMetersPerUnit(stage)
+    assert scale == pytest.approx(0.001)
+    assert entry.unit.startswith("m;")
+    steps = list(Sdf.Layer.FindOrOpen(str(written.recording)).customLayerData["mime:recording"]["steps"])
+    assert steps == [0, 10, 20]
+    for code, step in enumerate(steps):
+        world = UsdGeom.XformCache(code).GetLocalToWorldTransform(stage.GetPrimAtPath(entry.prim))
+        placed = np.array(world.ExtractTranslation()) * scale
+        state = np.asarray(written.result.history[entry.node][entry.field][step - 1][:3], dtype=np.float64) \
+            if step else start
+        assert np.allclose(placed, state, rtol=1e-12, atol=0.0), (step, placed, state)
+    assert abs(state[0]) > 0

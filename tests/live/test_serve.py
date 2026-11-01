@@ -51,7 +51,13 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(folder, t
     live = client(tmp_path / "ready.json")
     hello = live.hello
     assert hello["ok"] and hello["state"] == "ready" and hello["stage"].endswith("scene.usda")
-    assert hello["visuals"] == {"overlay": None, "drawn": 0, "missing": {"ar4_mk5": 18}, "notice": []}
+    from mime.scene import visual_sets
+
+    # Nothing baked: no overlay, every mesh missing, and the set's notice (its credit and terms) to show beside the
+    # simple shapes, with how to fetch the meshes.
+    assert hello["visuals"] == {"overlay": None, "drawn": 0, "missing": {"ar4_mk5": 18},
+                                "notice": [visual_sets()["ar4_mk5"].text()]}
+    assert "Annin Robotics" in hello["visuals"]["notice"][0]
     assert live.request("start")["state"] == "running"
     frames = [live.frame() for _ in range(40)]
     paused = live.request("pause")
@@ -80,7 +86,9 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(folder, t
     assert {"commands.jsonl", "outputs.npz", "outputs.json", "run.json", "topology.json", "experiment"} <= \
         {path.name for path in out.iterdir()}
     log = [json.loads(line) for line in (out / COMMAND_LOG).read_text().splitlines()]
-    assert [line["command"] for line in log[1:]] == ["start", "pause", "set", "step", "stop"]
+    assert [line["command"] for line in log[1:] if "command" in line] == ["start", "pause", "set", "step", "stop"]
+    # After each chunk the step it reached, before its frame was sent: every frame's step is in the log.
+    assert {f.step for f in frames[1:] + [last]} <= {line["reached"] for line in log if "reached" in line}
     # The control: a frame the client drops is seen.
     order = FrameOrder()
     for held in frames[:5] + frames[6:9]:
@@ -146,3 +154,109 @@ def test_a_port_in_use_and_an_address_not_of_this_machine_are_refused(folder):
         held.close()
     with pytest.raises(BuildRefused, match="live.transport"):
         serve(folder, commands="tcp://192.0.2.1:0", frames="tcp://127.0.0.1:0", remote=True, say=lambda line: None)
+
+
+def test_a_malformed_argument_is_refused_over_the_wire_and_the_server_goes_on(folder, tmp_path):
+    process = started(folder, tmp_path / "out", tmp_path / "ready.json")
+    live = client(tmp_path / "ready.json")
+    codes = [live.request("step", chunks="x"), live.request("step", chunks=None),
+             live.request("set", values={"offset": "abc"}), live.request("record", on="off")]
+    assert [answer["errors"][0]["code"] for answer in codes] == ["live.step", "live.step", "live.input-value",
+                                                                 "live.record"]
+    nested = json.loads(live.commands.request(b"[" * 100_000 + b"]" * 100_000).decode())
+    assert nested["errors"][0]["code"] == "live.command"
+    assert live.request("status")["ok"] and live.request("stop")["ok"] and process.wait(timeout=60) == 0
+    log = [json.loads(line) for line in (tmp_path / "out" / COMMAND_LOG).read_text().splitlines()]
+    assert [line.get("command") for line in log[1:]] == ["stop"]
+    live.close()
+
+
+def test_a_killed_server_leaves_a_log_that_replays_every_frame_it_sent(folder, tmp_path):
+    from mime.experiment import Experiment
+    from mime.live import replay
+
+    process = started(folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
+    live = client(tmp_path / "ready.json")
+    live.request("step", chunks=4)
+    live.request("set", values={"offset": 0.002})
+    live.request("start")
+    received = [live.frame() for _ in range(30)]
+    process.kill()
+    process.wait(timeout=60)
+    live.close()
+    out = tmp_path / "out"
+    assert {path.name for path in out.iterdir()} == {"experiment", COMMAND_LOG}  # it died: nothing else was written
+    replayed: dict[int, object] = {}
+    session = replay(Experiment.load(out / "experiment").build(), out / COMMAND_LOG, tmp_path / "again",
+                     subscriber=lambda held: replayed.setdefault(held.step, held))
+    reached = max(json.loads(line).get("reached", 0) for line in (out / COMMAND_LOG).read_text().splitlines())
+    assert session.steps == reached >= received[-1].step
+    for held in received:
+        again = replayed[held.step]
+        assert all(value.tobytes() == again.values[path].tobytes() for path, value in held.values.items()), held.step
+    # The control: the live input mattered, so a replay that dropped it would differ.
+    plain = built().live(pace=None)
+    plain.step(received[-1].step // plain.chunk_steps)
+    assert plain._final["rpm.arm"]["frame_poses"].tobytes() != \
+        received[-1].values["rpm.arm.frame_poses"].tobytes()
+
+
+def test_stop_ends_a_long_step_within_a_chunk(folder, tmp_path):
+    import threading
+
+    process = started(folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
+    stepper, stopper = client(tmp_path / "ready.json"), client(tmp_path / "ready.json")
+    answers: list[dict] = []
+    thread = threading.Thread(target=lambda: answers.append(stepper.request("step", chunks=10 ** 9)))
+    thread.start()
+    stepper.frame()
+    stepper.frame()  # the first chunk compiled: the step is under way
+    assert stopper.request("status")["stepping"] > 0  # the server takes other requests during the step
+    asked = time.monotonic()
+    stopped = stopper.request("stop")
+    took = time.monotonic() - asked
+    thread.join(timeout=30)
+    assert stopped["state"] == "stopped" and took < 2.0, took
+    assert answers and answers[0]["ok"] and answers[0]["state"] == "stopped" and answers[0]["stepping"] == 0
+    assert process.wait(timeout=60) == 0
+    stepper.close()
+    stopper.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no SIGTERM to send a process")
+def test_sigterm_ends_a_long_step_within_a_chunk(folder, tmp_path):
+    import threading
+
+    process = started(folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
+    live = client(tmp_path / "ready.json")
+    thread = threading.Thread(target=lambda: live.request("step", chunks=10 ** 9), daemon=True)
+    thread.start()
+    live.frame()
+    live.frame()
+    asked = time.monotonic()
+    process.send_signal(signal.SIGTERM)
+    assert process.wait(timeout=60) == 0 and time.monotonic() - asked < 5.0
+    assert (tmp_path / "out" / "outputs.json").is_file()
+    thread.join(timeout=10)
+    live.close()
+
+
+def test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole(folder, tmp_path):
+    from mime.experiment import Experiment
+
+    run = Experiment.load(folder).build().live(pace=None, out=tmp_path / "run")
+    run.step(1)
+    run.stop()
+    before = {str(p.relative_to(tmp_path / "run")): p.read_bytes() for p in sorted((tmp_path / "run").rglob("*"))
+              if p.is_file()}
+    env = {**os.environ, "MIME_TRACEBACK": ""}
+    for argv in (["serve", str(tmp_path / "run" / "experiment"), "--out", str(tmp_path / "run")],
+                 ["run", str(tmp_path / "run" / "experiment"), "--commands", str(tmp_path / "run" / COMMAND_LOG),
+                  "--out", str(tmp_path / "run")]):
+        done = subprocess.run([*MIME, *argv, *(["--commands", "tcp://127.0.0.1:0", "--frames",
+                                                 "tcp://127.0.0.1:0"] if argv[0] == "serve" else [])],
+                              capture_output=True, text=True, timeout=240, env=env)
+        assert done.returncode == 2 and "run.out-over-source" in done.stderr, done.stderr
+    after = {str(p.relative_to(tmp_path / "run")): p.read_bytes() for p in sorted((tmp_path / "run").rglob("*"))
+             if p.is_file()}
+    assert after == before

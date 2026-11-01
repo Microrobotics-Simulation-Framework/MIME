@@ -25,7 +25,9 @@ chunked for it, which changes nothing it computes, and keeps no step's state (no
   path inside the folder, so the folder still resolves when it is moved or copied to another machine.
 - **Overs on the bound prims** (`built.binding()`): a body's and each chain frame's `translate` and `orient`, in double
   precision, so a single-precision state's values are held exactly; a field vector's `mime:vector:value`, with its
-  arrow placed at the body, turned along the vector and scaled to its length.
+  arrow placed at the body, turned along the vector and scaled to its length. A `translate` is in the stage's units:
+  the state's metres divided by the stage's `metersPerUnit`, so that composed with it (as a viewer composes it) a
+  prim is where the run put it, on a stage in millimetres as on one in metres.
 - **Its time code is the sample's index.** `timeCodesPerSecond` and `framesPerSecond` are the samples per simulated
   second; `customLayerData` holds `mime:recording`, with the experiment's name and input hash, the base step, the
   spacing, and every sample's step.
@@ -50,8 +52,14 @@ experiment's declarations alone, the same bytes for the same declarations. For a
   for meshes the stage does not hold (`fallback/`): a bone from the frame's origin to each child's, and a link's
   collision primitives.
 - **Drawn proxies within a triangle budget**: a geometry kind with no USD primitive (the screw) is drawn at fewer facets
-  a turn where its drawing would hold more triangles than the budget, which kept the screw's proxy from being nearly
-  all of every run folder.
+  a turn where its drawing would hold more triangles than the budget (`mime.build._stage.PROXY_TRIANGLES`), which kept
+  the screw's proxy from being nearly all of every run folder; a test holds script A's screw within its budget and
+  near its full drawing, measured on every vertex.
+
+The stage writer has a version, which the lock records (`stage.writer`, `mime.scene.STAGE_WRITER`). A folder saved by
+the first writer (before every chain frame, visual and vector was drawn, and every proxy was drawn whole) is rebuilt
+by the first writer when it loads, held to its lock byte for byte, and verifies as it did; saving it again writes the
+current writer's stage.
 
 ## Visuals MIME does not ship
 
@@ -70,12 +78,15 @@ mime visuals view a0_run       # the layer that opens the run's recording with t
   bytes are referenced, never uploaded) and its role (presentation: no result depends on it).
 - **Fetching** downloads each file from that commit through the asset cache's one resolver, held to its sha256,
   decimates it to its share of the set's triangle budget (vertex clustering; every vertex moves at most a cell's
-  diagonal, and the distance to the original is measured both ways and recorded), and writes it as a USD layer in the
-  asset cache, under `visuals/`, with a record of its source, parameters, checks and output.
+  diagonal), measures its distance to the original from every vertex of each to the other's surface, both ways (so
+  that no denser sample of vertices finds more), and writes it as a USD layer in the asset cache, under `visuals/`,
+  with a record of its source, parameters, checks and output, beside the most any vertex moved (the cell's
+  diagonal), which bounds it from the original's side.
 - **The stage refers to a mesh by its set and its source's sha256**, never by a path into the cache, and holds none of
   its bytes. When it is opened through `mime visuals view` or `mime.viz.open_stage`, or by a client from the overlay
   `hello` names, an overlay in the cache references each baked mesh into its prim and hides the bones. Without it, the
-  links are drawn as bones, and `mime visuals view` and `hello` say which sets are missing and how to fetch them.
+  links are drawn as bones, and `mime visuals view` and `hello` say which sets are missing and how to fetch them, with
+  each set's notice (its credit and terms) whether it is drawn or not.
 - **Nothing of it is ever written into a saved folder or a run folder**, so `mime pack` cannot carry it: a test packs
   A0's saved folder and a live session's run folder with a stand-in baked in the cache, and finds none of its bytes.
 

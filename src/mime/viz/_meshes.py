@@ -5,10 +5,13 @@ smallest the bisection finds that meets the budget."""
 
 from __future__ import annotations
 
+import importlib
 import math
 import struct
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 
@@ -142,10 +145,9 @@ def decimate(mesh: Mesh, budget: int) -> Decimated:
     return Decimated(best, best_cell, best_cell * math.sqrt(3.0))
 
 
-def _point_triangle(points: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """The distance from each point (``(p, 3)``) to each triangle (``(t, 3)`` corners each), ``(p, t)``: the closest
-    point by Ericson's regions (Real-Time Collision Detection, 5.1.5)."""
-    p = points[:, None, :]
+def _closest_distance(p: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """The distance from each point ``p`` to the triangle ``(a, b, c)`` broadcast against it (``(..., 3)`` each): the
+    closest point by Ericson's regions (Real-Time Collision Detection, 5.1.5)."""
     ab, ac, ap = b - a, c - a, p - a
     d1, d2 = np.sum(ab * ap, -1), np.sum(ac * ap, -1)
     bp = p - b
@@ -169,12 +171,18 @@ def _point_triangle(points: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndar
     return np.linalg.norm(p - closest, axis=-1)
 
 
-#: The most point and triangle pairs one block of :func:`surface_distance` holds, which bounds its memory.
+def _point_triangle(points: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """The distance from each point (``(p, 3)``) to each triangle (``(t, 3)`` corners each), ``(p, t)``."""
+    return _closest_distance(points[:, None, :], a, b, c)
+
+
+#: The most point and triangle pairs one block of a distance computation holds, which bounds its memory.
 PAIRS = 2_000_000
 
 
-def surface_distance(points: np.ndarray, mesh: Mesh) -> np.ndarray:
-    """Each point's distance to ``mesh``'s surface (its nearest triangle), by brute force in blocks of points."""
+def brute_surface_distance(points: np.ndarray, mesh: Mesh) -> np.ndarray:
+    """Each point's distance to ``mesh``'s surface (its nearest triangle), by brute force in blocks of points: every
+    point against every triangle."""
     corners = mesh.points[mesh.triangles]
     a, b, c = corners[:, 0], corners[:, 1], corners[:, 2]
     found = np.empty(len(points))
@@ -184,9 +192,51 @@ def surface_distance(points: np.ndarray, mesh: Mesh) -> np.ndarray:
     return found
 
 
+def _tree(points: np.ndarray) -> Any:
+    """SciPy's k-d tree of ``points``, which MIME already depends on (its stubs read as unknown to a strict checker)."""
+    return cast(Any, importlib.import_module("scipy.spatial")).cKDTree(points)
+
+
+def surface_distance(points: np.ndarray, mesh: Mesh) -> np.ndarray:
+    """Each point's distance to ``mesh``'s surface (its nearest triangle), exactly as :func:`brute_surface_distance`
+    finds it, with the triangles that cannot be nearest left out: a point's nearest vertex of the mesh is on its surface,
+    so its nearest triangle lies within that vertex's distance of it, and a triangle whose bounding sphere is farther
+    is never measured. The triangles are taken in classes of bounding radius, each a k-d tree of their centres."""
+    found = np.full(len(points), np.inf)
+    if not len(points) or not len(mesh.triangles):
+        return found
+    corners = mesh.points[mesh.triangles]
+    centres = corners.mean(axis=1)
+    radii = np.linalg.norm(corners - centres[:, None, :], axis=-1).max(axis=1)
+    used = np.unique(mesh.triangles)
+    # Each point's nearest vertex of the mesh: its nearest triangle is no farther.
+    reach = cast(tuple[np.ndarray, np.ndarray], _tree(mesh.points[used]).query(points))[0]
+    smallest = max(float(radii.min()), 1e-300)
+    classes = np.floor(np.log2(np.maximum(radii, smallest) / smallest)).astype(np.int64)
+    for held in np.unique(classes):
+        members = np.flatnonzero(classes == held)
+        widest = float(radii[members].max())
+        near = cast(Sequence[Sequence[int]], _tree(centres[members]).query_ball_point(
+            points, r=(reach + widest) * (1.0 + 1e-9) + 1e-300))
+        counts = np.fromiter((len(each) for each in near), dtype=np.int64, count=len(points))
+        if not counts.sum():
+            continue
+        which = np.repeat(np.arange(len(points)), counts)
+        triangles = members[np.fromiter((index for each in near for index in each), dtype=np.int64,
+                                        count=int(counts.sum()))]
+        block = PAIRS // 4  # each pair's arrays are a few times a cross block's
+        for start in range(0, len(which), block):
+            point, triangle = which[start:start + block], triangles[start:start + block]
+            held_corners = corners[triangle]
+            distance = _closest_distance(points[point], held_corners[:, 0], held_corners[:, 1], held_corners[:, 2])
+            np.minimum.at(found, point, distance)
+    return found
+
+
 def mesh_distance(original: Mesh, decimated: Mesh, *, samples: int | None = None, seed: int = 0) -> float:
     """The larger of the two one-sided distances between the meshes, each measured from vertices to the other's
-    surface: every vertex, or ``samples`` of each drawn with ``seed``."""
+    surface: every vertex (the default, so that no denser sample of vertices finds more), or ``samples`` of each drawn
+    with ``seed``."""
     generator = np.random.default_rng(seed)
 
     def chosen(points: np.ndarray) -> np.ndarray:
@@ -221,5 +271,5 @@ def write_mesh(path: Path, mesh: Mesh, name: str) -> Path:
     return path
 
 
-__all__ = ["Decimated", "Mesh", "TriangleBudget", "cluster", "decimate", "mesh_distance", "read_stl",
-           "surface_distance", "write_mesh"]
+__all__ = ["Decimated", "Mesh", "TriangleBudget", "brute_surface_distance", "cluster", "decimate", "mesh_distance",
+           "read_stl", "surface_distance", "write_mesh"]

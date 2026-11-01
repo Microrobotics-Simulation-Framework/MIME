@@ -48,6 +48,8 @@ from mime.scene._scene import Asset, Reference, Scene, asset, sha256_hex
 from mime.scene._stage import (
     ARROW,
     DRAWING_SEGMENTS,
+    STAGE_WRITER,
+    STAGE_WRITERS,
     PROXY,
     VECTOR_SCALE,
     VECTOR_UNITS,
@@ -75,7 +77,7 @@ STAGE_FILE = "scene/scene.usda"
 
 __all__ = [
     "ARROW", "DERIVED_FROM", "DERIVED_HASH", "DRAWING_SEGMENTS", "GEOMETRY_API", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION",
-    "METERS_PER_UNIT", "PROXY", "STAGE_FILE", "UP_AXES", "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
+    "METERS_PER_UNIT", "PROXY", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "UP_AXES", "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
     "Asset", "Axis", "Box", "Capsule", "ComposedLayer",
     "Composition", "Cylinder", "DerivedFinding", "Ellipsoid", "KindOnStage", "KindPrim", "MagnetDesign", "MountedPrim",
     "Reference", "RegionPrim", "Scene", "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec",

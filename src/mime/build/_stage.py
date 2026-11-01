@@ -1,7 +1,15 @@
 """What the stage writer is given, taken from phase 1's plans: each thing's prim, a structure's geometry kind and each
 part's of a body written Python-first, each with its shape settings in SI, its transform and how it is shown (its
 native form, or its drawing at the writer's resolution, with its regions' prims), a body's initial pose, the
-referenced layers."""
+referenced layers.
+
+The stage writer has versions, as the saved form has, and a lock records the one that wrote its stage
+(:data:`STAGE_WRITER`, the lock's ``stage.writer``; a lock without it was written by version 1). Version 2 (dev1
+phase 7n) places every frame of a chain segment in the world, draws each description's visuals and each field a law
+reads at a body, and draws a kind's proxy within :data:`PROXY_TRIANGLES`. Version 1 is the writer before it: a chain's
+frames only where a part is mounted, at their pose in their segment, no visuals or vectors, and every proxy at the
+writer's full resolution. A saved folder is rebuilt by the writer its lock names, so a stage version 1 wrote is held to
+version 1's bytes."""
 
 from __future__ import annotations
 
@@ -25,6 +33,7 @@ from mime.registry import (
 )
 from mime.scene import (
     DRAWING_SEGMENTS,
+    STAGE_WRITER,
     KindPrim,
     MountedPrim,
     RegionPrim,
@@ -97,10 +106,10 @@ def _resolutions(segments: int) -> list[int]:
 
 def kind_prim(geometry: Geometry, record: Registered, settings: Mapping[str, Magnitude], *,
               segments: int = DRAWING_SEGMENTS, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
-              regions: bool = False, opacity: float | None = None) -> KindPrim:
+              regions: bool = False, opacity: float | None = None, budget: int | None = PROXY_TRIANGLES) -> KindPrim:
     """A kind as the stage writes it, its origin moved by ``at`` (a part's place in its body), drawn at ``segments``
-    when it has no native form, or at fewer where that drawing holds more than :data:`PROXY_TRIANGLES` triangles (the
-    segments it was drawn at are recorded on its proxy); with ``regions``, each region whose primitive is a sphere
+    when it has no native form, or at fewer where that drawing holds more than ``budget`` triangles (the segments it
+    was drawn at are recorded on its proxy; ``None``, the first stage writer's, no budget); with ``regions``, each region whose primitive is a sphere
     or a cylinder gets its own prim (a kind with a native form is that prim already). A setting held as a whole
     number (the helix's starts) is written beside the quantities, as a count."""
     translation, orientation = kind_frame(geometry, settings)
@@ -110,12 +119,12 @@ def kind_prim(geometry: Geometry, record: Registered, settings: Mapping[str, Mag
     native = type(geometry).native
     drawing: Drawing | None = None
     if native is None and implements(geometry, "drawing"):
-        for tried in _resolutions(segments):
+        for tried in _resolutions(segments) if budget is not None else [segments]:
             drawn = _called(record, "drawing()", lambda tried=tried: geometry.drawing(settings, tried))
             if not isinstance(cast(object, drawn), Drawing):
                 raise _defect(record, f"drawing() returned {type(drawn).__name__}, not a mime.registry.Drawing")
             drawing, segments = drawn, tried
-            if _triangles(drawn) <= PROXY_TRIANGLES:
+            if budget is None or _triangles(drawn) <= budget:
                 break
     staged: list[RegionPrim] = []
     if regions and native is None and implements(geometry, "region_primitive"):
@@ -131,20 +140,21 @@ def kind_prim(geometry: Geometry, record: Registered, settings: Mapping[str, Mag
                     tuple(staged), opacity)
 
 
-def _parts(plans: PlanSet, name: str, segments: int) -> dict[str, KindPrim]:
+def _parts(plans: PlanSet, name: str, segments: int, budget: int | None) -> dict[str, KindPrim]:
     """The parts of a body written Python-first, each at its centroid in the body's frame; a part that others lie
     inside is drawn translucent, so they show through it."""
     lines = [line for line in plans.materials.parts if line.body == name]
     holding = {line.inside for line in lines if line.inside is not None}
     return {line.name: kind_prim(line.solid, line.registered, line.settings, segments=segments, at=line.centre,
-                                 opacity=0.4 if line.name in holding else None) for line in lines}
+                                 opacity=0.4 if line.name in holding else None, budget=budget) for line in lines}
 
 
-def stage_spec(plans: PlanSet, *, segments: int = DRAWING_SEGMENTS) -> StageSpec:
-    """The stage of a planned experiment, its drawn kinds at ``segments`` facets a turn (the writer's resolution). A
-    body's initial ``position`` and ``orientation``, where its dynamics takes them, place its prim; a body written
-    Python-first is shown by its parts, or with none as a sphere of its declared extent. Raises ``BuildRefused`` for a
-    kind whose drawing or region primitives fail."""
+def stage_spec(plans: PlanSet, *, segments: int = DRAWING_SEGMENTS, writer: int = STAGE_WRITER) -> StageSpec:
+    """The stage of a planned experiment as stage writer ``writer`` writes it, its drawn kinds at ``segments`` facets
+    a turn (the writer's resolution). A body's initial ``position`` and ``orientation``, where its dynamics takes them,
+    place its prim; a body written Python-first is shown by its parts, or with none as a sphere of its declared
+    extent. Raises ``BuildRefused`` for a kind whose drawing or region primitives fail."""
+    budget = PROXY_TRIANGLES if writer >= 2 else None
     initial = {plan.thing: plan.initial for plan in plans.entries if plan.thing is not None and plan.thing_kind is
                ThingKind.BODY and plan.initial}
     extents = {line.path.partition(".")[0]: line.value for line in plans.values if line.path.endswith(".extent")}
@@ -157,18 +167,20 @@ def stage_spec(plans: PlanSet, *, segments: int = DRAWING_SEGMENTS) -> StageSpec
         attributes = {"fills": plans.fills[name]} if name in plans.fills else {}
         planned = plans.geometries.get(name)
         geometry = kind_prim(planned.geometry, planned.registered, planned.settings, segments=segments,
-                             regions=True) if planned is not None else None
+                             regions=True, budget=budget) if planned is not None else None
         bound = name in plans.scene.bound
-        parts = _parts(plans, name, segments) if kind is ThingKind.BODY and not bound else {}
+        parts = _parts(plans, name, segments, budget) if kind is ThingKind.BODY and not bound else {}
         things.append(ThingPrim(
             plans.scene.prims[name], name, kind.value, bound,
             cast(tuple[float, float, float], tuple(position)) if position is not None else None,
             cast(tuple[float, float, float, float], tuple(orientation)) if orientation is not None else None,
             geometry, extent if isinstance(extent, float) else None, attributes, parts))
+    references = tuple((layer.at, layer.file) for layer in plans.scene.layers)
+    if writer < 2:
+        return StageSpec(plans.frame.up, plans.scene.meters_per_unit, references, tuple(things), _mounted_v1(plans))
     vectors = tuple(VectorPrim(held.prim, held.position, held.unit, held.name, held.metres_per_unit)
                     for held in vector_sources(plans))
-    return StageSpec(plans.frame.up, plans.scene.meters_per_unit,
-                     tuple((layer.at, layer.file) for layer in plans.scene.layers), tuple(things), _mounted(plans),
+    return StageSpec(plans.frame.up, plans.scene.meters_per_unit, references, tuple(things), _mounted(plans),
                      _visuals(plans), vectors)
 
 
@@ -335,6 +347,40 @@ def _mounted(plans: PlanSet) -> tuple[MountedPrim, ...]:
                 path = f"{prims[mount.segment].frames[mount.frame]}/{key}"
             else:
                 path = f"{prim}/{mount.segment.partition('.')[2]}/{mount.frame}/{key}"
+            on = f"{mount.segment}.{mount.frame}" if mount is not None else "the world"
+            found.append(MountedPrim(path, *_pose(part.offset), {"mount": on, "solid": part.solid},
+                                     magnets.get((apparatus, key))))
+    return tuple(found)
+
+
+def _mounted_v1(plans: PlanSet) -> tuple[MountedPrim, ...]:
+    """The first stage writer's chain: each segment at its base's pose at the start, below the apparatus's prim; each
+    frame a part is mounted on below its segment's, at its pose in the segment's base frame; and each part by its
+    authored transform there."""
+    found: list[MountedPrim] = []
+    segments = {plan.owner: plan for plan in plans.entries if isinstance(plan.entry, ChainSegment)}
+    magnets = {(m.body, m.key): m.in_part for m in plans.scene.magnets}
+    for owner, plan in segments.items():
+        held = cast(ChainSegment, plan.entry)
+        placement = held.placement(plan.settings)
+        base = composed(plan.mount.initial_pose, placement) if plan.mount is not None else placement
+        root = f"{plans.scene.prims[plan.thing or '']}/{owner.partition('.')[2]}"
+        found.append(MountedPrim(root, *_pose(base), {"segment": plan.describe()}))
+    for apparatus, parts in plans.apparatus_parts.items():
+        prim = plans.scene.prims[apparatus]
+        framed: set[str] = set()
+        for key, part in parts.items():
+            mount = part.mount
+            if mount is None:
+                path = f"{prim}/{key}"
+            else:
+                plan = segments[mount.segment]
+                frame = f"{prim}/{mount.segment.partition('.')[2]}/{mount.frame}"
+                if frame not in framed and plan.segment is not None:
+                    framed.add(frame)
+                    local = plan.segment.initial[mount.index] if plan.segment.initial else _IDENTITY_POSE
+                    found.append(MountedPrim(frame, *_pose(local), {"frame": mount.frame}))
+                path = f"{frame}/{key}"
             on = f"{mount.segment}.{mount.frame}" if mount is not None else "the world"
             found.append(MountedPrim(path, *_pose(part.offset), {"mount": on, "solid": part.solid},
                                      magnets.get((apparatus, key))))

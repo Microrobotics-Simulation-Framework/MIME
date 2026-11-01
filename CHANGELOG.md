@@ -12,13 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`built.live()`**, a live session: the run stepped in chunks of one fixed size, a frame of the selected fields to
     every subscriber after each chunk (bit for bit a batch run's state at its steps), paced to a factor of real time,
     stopped cleanly from every state; the controller's **live inputs** (`Controller.live`, `LiveInput`), set between
-    ticks in the callback mode (`ArmTracking` declares `offset`); every command logged with its step
-    (`commands.jsonl`), replayed by `mime run <folder> --commands <log>` into the same run folder; and a minimal run
-    folder written when it stops.
+    ticks in the callback mode (`ArmTracking` declares `offset`) and cleared when a session opens and stops; every
+    command logged with its step before it acts, and each chunk's step after it, flushed as the session goes
+    (`commands.jsonl`), so that a session that dies replays to the step it reached, by `mime run <folder> --commands
+    <log>` into a run folder of its own (never the folder it reads: `run.out-over-source`); and a minimal run folder
+    written when it stops.
   - **`mime serve <folder>`**, the session over ZMQ (a REP for commands, a PUB for frames), bound to localhost unless
     `--remote`, speaking **`mime.live/1`** (`docs/live.md`): JSON requests and replies in the coded shape of MIME's
     errors, binary frames (a header, then the fields in the run's own type) or JSON ones. MIME speaks ZMTP, ZMQ's wire
-    protocol, itself, so serving needs no extra package; its tests replay libzmq's own handshakes.
+    protocol, itself, so serving needs no extra package; its tests replay libzmq's own handshakes, run a libzmq peer
+    (pyzmq, in the dev group) against `mime serve` both ways, and fuzz its handshake and framing: the server closes a
+    peer that does not speak ZMTP, finishes no handshake, oversteps a size limit or never reads its replies, and serves
+    the rest. A malformed argument is refused by its code, and `stop` ends a served `step` within a chunk.
   - **The stage binding** (`built.binding()`, in `hello`): which field moves which prim, for every body, every frame of
     every chain (an arm's links by their names, each frame a prim placed in the world) and every field a law reads at a
     body, with its own prim.
@@ -33,7 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     **`run_to(..., hook=, chunk=)`**, so a saved run streams.
 - **Proxies within a triangle budget**: a kind drawn on the stage is drawn at fewer facets a turn where it would hold
   more triangles than `PROXY_TRIANGLES`; A0's saved stage, nearly all the screw's proxy, is about a quarter of its size,
-  and every stage of a chain gains its frames' prims, so its hash changes (no committed folder holds one).
+  and every stage of a chain gains its frames' prims, so its hash changes.
+- **The stage writer's version in the lock** (`stage.writer`, 2): a folder whose stage the first writer wrote (saved
+  before phase 7n) is rebuilt by it on load, held to its lock, and verifies; only a stage no writer writes is refused.
+- **A0's saved folder packs**: the AR4 URDF's xacro header, a comment, no longer names the machine it was generated on
+  (`bundle.machine-path`); the 0.2 port's check reads the file as its pinned bytes with that one line restored.
 - **Terms and tiers** (push's first piece, P1, designs #198 and #199), all offline:
   - **Licences are SPDX expressions** (`mime.terms`): checked by `packaging.licenses` (the floor is now `packaging>=24.2`)
     and held to their canonical spelling; a licence of one's own is a `CustomLicence` (`LicenseRef-` with its title and

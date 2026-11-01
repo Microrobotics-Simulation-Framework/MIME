@@ -77,8 +77,8 @@ from mime.saved import (
     verify_history,
     write_folder,
 )
-from mime.saved._folder import LoadRefused
-from mime.scene import Scene, stage_text
+from mime.saved._folder import LoadRefused, stage_writers
+from mime.scene import STAGE_WRITER, STAGE_WRITERS, Scene, stage_text
 from mime.things import (
     Apparatus,
     ApparatusHandle,
@@ -423,7 +423,16 @@ class Experiment:
         stage = stage_text(stage_spec(plans))
         record = record_of(self._settings, self._declarations, plans, derived, stage)
         report = replace(report, stage_hash=record.stage_hash)
-        load_report = check_load(self._saved, record) if self._saved is not None else None
+        load_report = None
+        if self._saved is not None:
+            # A saved folder's stage is rebuilt by the writer that wrote it, to be held to its lock; a save writes the
+            # current writer's.
+            writers = [held for held in stage_writers(self._saved.lock) if held in STAGE_WRITERS]
+            if record.stage_hash == self._saved.lock["stage"]["sha256"] and STAGE_WRITER in writers:
+                writers = [STAGE_WRITER]  # the current writer's stage, as saved: no other is written
+            stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
+                      for writer in writers}
+            load_report = check_load(self._saved, record, stages)
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law)
 
     @public
@@ -471,6 +480,23 @@ RUN_EXPERIMENT = "experiment"
 #: The built graph's topology, :meth:`BuiltExperiment.topology`, beside a run's outputs.
 RUN_TOPOLOGY = "topology.json"
 TOPOLOGY_FORMAT = "mime.topology/1"
+
+
+def refuse_out_over(out: Path, sources: Sequence[str | PathLike[str]]) -> None:
+    """Refuse a run folder that would be written over what the run reads: ``out`` the same folder as a source, inside
+    one, or holding one (a run folder's ``experiment/`` is replaced as it is written, and its command log too)."""
+    target = Path(out).resolve()
+    for source in sources:
+        held = Path(source).resolve()
+        if held == target or held.is_relative_to(target) or target.is_relative_to(held):
+            where = "is" if held == target else "holds" if held.is_relative_to(target) else "is inside"
+            raise ArgumentRefused([Refusal(
+                "run.out-over-source", RefusalClass.USER,
+                f"the run would be written into {out}, which {where} {source}, what the run reads",
+                "write it to a folder of its own: --out <a new folder> (or out=), outside the saved folder and the run "
+                "folder it reads from",
+                why="a run folder's experiment/ and command log are written afresh, which would delete or overwrite "
+                    "the files being read")])
 
 
 @dataclass(frozen=True)
@@ -716,6 +742,8 @@ class BuiltExperiment:
                 "a hook needs chunks: it is called between them, and this run has none",
                 "pass chunk=, a whole number of base steps: run(..., hook=hook, chunk=ms(10))")])
         start = self._runs.steps
+        if self._runs.callback is not None:  # a run starts from the declared inputs: none a live session set
+            self._runs.callback.live.clear()
         kept = history or bool(recorded)
         keep = None if history or not recorded else frozenset(
             {(output.node, output.field) for output in recorded}
@@ -850,6 +878,8 @@ class BuiltExperiment:
         import time
 
         started = time.perf_counter()
+        read = [source] if source is not None else [self._saved.folder] if self._saved is not None else []
+        refuse_out_over(Path(out), read)
         failed: RunFailed | None = None
         samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:

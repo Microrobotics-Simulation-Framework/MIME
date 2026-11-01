@@ -26,8 +26,9 @@ from mime.viz._meshes import Mesh, TriangleBudget, decimate, mesh_distance, read
 CONVERTER = "mime.viz._meshes"
 CONVERTER_VERSION = "0.1.0"
 VISUALS_DIR = "visuals"
-#: The vertices each way the conversion record's distance is measured on, drawn with a fixed seed.
-DISTANCE_SAMPLES = 400
+#: How the conversion record's distance is measured: from every vertex of each mesh to the other's surface, both ways
+#: (so that no denser sample of vertices finds more), beside the most any vertex moved, the clustering cell's diagonal.
+DISTANCE_BASIS = "every vertex of each mesh to the other's surface, both ways"
 MESH_PRIM = "mesh"
 FALLBACK = "fallback"
 
@@ -103,9 +104,9 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
         layer = visuals_dir() / f"{key}.usdc"
         decimated = decimate(mesh, share)
         write_mesh(layer, decimated.mesh, MESH_PRIM)
-        distance = mesh_distance(mesh, decimated.mesh, samples=DISTANCE_SAMPLES)
+        distance = mesh_distance(mesh, decimated.mesh)
         record = {
-            "format": "mime.baked_mesh/1", "set": held.name, "file": source.path, "converter": CONVERTER,
+            "format": "mime.baked_mesh/2", "set": held.name, "file": source.path, "converter": CONVERTER,
             "version": CONVERTER_VERSION, "inputs": {"source": {"sha256": source.sha256, "size": source.size,
                                                                 "location": source.location}},
             "parameters": {"method": "vertex clustering on a cubic grid", "triangles": share,
@@ -113,7 +114,9 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
             "checks": {"triangles": {"original": int(len(mesh.triangles)), "baked": int(len(decimated.mesh.triangles)),
                                      "within_budget": bool(len(decimated.mesh.triangles) <= share)},
                        "distance_m": {"cell": decimated.cell, "moved_at_most": decimated.moved,
-                                      "measured": distance, "samples_each_way": DISTANCE_SAMPLES}},
+                                      "measured": distance, "basis": DISTANCE_BASIS,
+                                      "vertices": {"original": int(len(mesh.points)),
+                                                   "baked": int(len(decimated.mesh.points))}}},
             "output": {"sha256": hashlib.sha256(layer.read_bytes()).hexdigest(), "bytes": layer.stat().st_size},
             "licence": held.licence, "tier": held.tier, "role": held.role, "credit": held.credit,
             "notice": held.notice}
@@ -121,7 +124,8 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
                                                    encoding="utf-8")
         baked.append(Baked(source.path, layer, record))
         say(f"{source.path}: {len(mesh.triangles)} triangles baked to {len(decimated.mesh.triangles)} "
-            f"(budget {share}), within {distance * 1e3:.2f} mm of the original as measured")
+            f"(budget {share}), within {distance * 1e3:.2f} mm of the original, measured on every vertex both ways; "
+            f"no vertex moved more than {decimated.moved * 1e3:.2f} mm")
     index = {"set": held.name, "budget": {"per_mesh": budget.per_mesh, "per_stage": budget.per_stage},
              "files": {item.path: {"sha256": next(f.sha256 for f in held.files if f.path == item.path),
                                    "layer": item.layer.name} for item in baked}}
@@ -147,7 +151,9 @@ def baked_layers() -> dict[tuple[str, str], Path]:
 @dataclass
 class Overlay:
     """What the cache holds for a stage: the overlay's path (``None`` when it holds nothing the stage names), the
-    meshes it draws, the meshes the stage names that it does not hold, by set, and the notices of the sets it draws."""
+    meshes it draws, the meshes the stage names that it does not hold, by set, and the notice (credit, licence and
+    terms) of every set the stage names, drawn or missing: what to show a user beside the meshes, or beside the simple
+    shapes that stand in for them, with how to fetch them."""
 
     path: Path | None
     drawn: int = 0
@@ -181,10 +187,10 @@ def overlay(stage_path: Path) -> Overlay:
             found.missing[name] = found.missing.get(name, 0) + 1
         else:
             found.drawn += 1
+    found.notices = [visual_sets()[name].text() for name in sorted({name for _, _, name in wanted})]
     if not found.drawn:
         return found
     used = sorted({name for _, layer, name in wanted if layer is not None})
-    found.notices = [visual_sets()[name].text() for name in used]
     text = json.dumps([[p, str(layer.name) if layer else None] for p, layer, _ in wanted] + [meters],
                       separators=(",", ":"))
     path = visuals_dir() / "overlays" / f"{hashlib.sha256(text.encode('utf-8')).hexdigest()}.usda"

@@ -13,7 +13,7 @@ from types import FrameType
 from typing import Any, cast
 
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
-from mime.live._protocol import PROTOCOL, Frame, FrameSchema, frame_from_json, is_frame, refused
+from mime.live._protocol import PROTOCOL, Frame, FrameSchema, frame_from_json, is_frame, refused, reply
 from mime.live._session import STOPPED, LiveSession
 from mime.live._zmtp import Client, Server, is_loopback, parse_endpoint
 from mime.units import Quantity
@@ -104,28 +104,47 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
         ready_file.write_text(json.dumps(endpoints) + "\n", encoding="utf-8")
     say(f"mime serve: {built.plans.settings.experiment} ready ({PROTOCOL}); commands on {endpoints['commands']}, "
         f"frames on {endpoints['frames']}; its run folder will be {target}")
+    stepper: int | None = None  # the peer whose step is in hand, answered once its chunks are stepped
     try:
         if start:
             session.start(thread=False)
         while session.state != STOPPED and not stopping:
             for peer, body in server.poll(min(session.due(), _POLL)):
-                server.reply(peer, json.dumps(_answer(session, body)).encode("utf-8"))
+                answer = _answer(session, body)
+                if answer.get("command") == "step" and answer["ok"] and session.stepping:
+                    stepper = peer
+                    continue
+                server.reply(peer, _encoded(answer))
             if session.state != STOPPED and session.due() <= 0.0:
-                session.advance()
+                session.advance()  # one chunk, then the requests again: a stop or a signal waits a chunk at most
+            if stepper is not None and not session.stepping:
+                server.reply(stepper, _encoded(reply("step", **session.status_fields())))
+                stepper = None
         written = session.stop()
+        if stepper is not None:
+            server.reply(stepper, _encoded(reply("step", **session.status_fields())))
         server.flush(2.0)
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler)
+        if session.state != STOPPED:  # an error of the server's own: the session still writes its run folder
+            try:
+                session.stop()
+            except Exception:  # noqa: BLE001 - the first error is the one to raise
+                pass
         server.close()
     say(f"mime serve: stopped at step {session.steps}; wrote {written}")
     return written
 
 
+def _encoded(answer: dict[str, Any]) -> bytes:
+    return json.dumps(answer).encode("utf-8")
+
+
 def _answer(session: LiveSession, body: bytes) -> dict[str, Any]:
     try:
         message = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (ValueError, RecursionError) as error:  # not UTF-8, not JSON, or nested past what JSON's reader takes
         return refused(None, [Refusal("live.command", RefusalClass.USER, f"a request that is not JSON: {error}",
                                       "send a JSON object: `{\"command\": \"hello\"}`")])
     if not isinstance(message, dict):

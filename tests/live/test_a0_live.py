@@ -1,9 +1,9 @@
 """A0 live (design #197): its saved folder served by ``mime serve`` at real time, every frame delivered and each the
 batch run's state at its steps bit for bit, the session keeping pace; its live session's recording over its run
-folder's stage; no byte of an AR4 mesh in what a pack of A0's saved folder or of a live session's run folder carries,
-nor anywhere in the run folder, with the visual set's stand-in baked in the cache and drawn; and A0's controller, called back, steered by its live input. The controls:
-a mesh planted in a copy of the run folder is found by the same scan, and a session that sets nothing leaves the magnet
-where it was."""
+folder's stage; A0's saved folder and a live session's run folder pack, and no byte of an AR4 mesh is in what either
+pack carries, nor anywhere in the run folder, with the visual set's stand-in baked in the cache and drawn; and A0's
+controller, called back, steered by its live input. The controls: a mesh planted in a copy of the run folder is found by
+the same scan, and a session that sets nothing leaves the magnet where it was."""
 
 import json
 import shutil
@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import warnings
+import zipfile
 
 import numpy as np
 import pytest
@@ -19,7 +20,6 @@ from visual_cases import holds_any, mesh_bytes, planted
 
 from mime.experiment import Experiment
 from mime.live import FrameOrder, LiveClient
-from mime.build import BuildRefused
 from mime.saved import pack, read_folder
 from mime.saved._folder import named_files
 from mime.scene import check_stage
@@ -86,13 +86,14 @@ def test_no_byte_of_an_ar4_mesh_in_a0s_packed_folder_or_a_live_run_folder(folder
     frames = session.step(4)
     run = session.stop()
     assert files_hold(run, needles) == [] and files_hold(folder, needles) == []
-    # What a pack carries is every file the saved form names, and none holds a byte of a mesh. A0's folder itself is
-    # refused by pack, for one reason only: its URDF's xacro header names the machine it was generated on, a path pack
-    # never carries (the file is pinned by A0's frozen provenance, so it is not edited here).
+    # A0's saved folder and the live run's experiment pack (the URDF's xacro header no longer names the machine it
+    # was generated on), and no member of either bundle, nor any file the saved form names, holds a byte of a mesh.
     for saved in (folder, run / "experiment"):
-        with pytest.raises(BuildRefused) as refused:
-            pack(saved, out=tmp_path / f"{saved.name}.mimebundle")
-        assert refused.value.codes() == ["bundle.machine-path"] and "ar4.urdf" in str(refused.value)
+        bundle = pack(saved, out=tmp_path / f"{saved.name}.mimebundle")
+        with zipfile.ZipFile(bundle) as held:
+            members = held.namelist()
+            assert any(name.endswith("ar4.urdf") for name in members)
+            assert [name for name in members if holds_any(held.read(name), needles)] == []
         form = read_folder(saved)
         assert [name for name in sorted(named_files(form)) if holds_any((saved / name).read_bytes(), needles)] == []
     # The recording over the run folder's stage: no finding, and its arm frames the frames' poses exactly.

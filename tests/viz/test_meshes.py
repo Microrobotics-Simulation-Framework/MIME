@@ -2,17 +2,20 @@
 from its binary form (whose header begins ``solid``, as a CAD tool's may) and its ASCII form; decimated within its
 triangle budget and within the distance it states, the most a vertex moved, of the original, measured both ways
 on every vertex; written as a USD mesh layer. The control: a decimated mesh with one vertex pushed out by three times
-that distance fails the same check."""
+that distance fails the same check. The distance is measured with a cull of the triangles that cannot be nearest, held
+to the brute force bit for bit on every draw; its control, a cull that loses a candidate, is caught."""
 
 import math
 import struct
 
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pxr import Usd, UsdGeom
 
 from mime.viz import Mesh, TriangleBudget, decimate, mesh_distance, read_stl, write_mesh
-from mime.viz._meshes import surface_distance
+from mime.viz._meshes import brute_surface_distance, surface_distance
 from visual_cases import icosphere
 
 
@@ -84,3 +87,65 @@ def test_a_mesh_layer_is_one_mesh_in_metres(tmp_path):
     assert UsdGeom.GetStageMetersPerUnit(stage) == 1.0 and len(mesh.GetFaceVertexCountsAttr().Get()) == \
         len(held.triangles)
     assert np.allclose(np.asarray(mesh.GetPointsAttr().Get()), held.points.astype(np.float32))
+
+
+COORDINATES = st.floats(-0.05, 0.05, allow_nan=False, allow_infinity=False, allow_subnormal=False, width=64)
+
+
+@st.composite
+def meshes_and_points(draw):
+    """A triangle soup at a description's scale (within 5 cm), each triangle's corners distinct, and points near it."""
+    vertices = draw(st.lists(st.tuples(COORDINATES, COORDINATES, COORDINATES), min_size=3, max_size=40,
+                             unique=True))
+    count = len(vertices)
+    triples = draw(st.lists(st.tuples(*(st.integers(0, count - 1),) * 3).filter(lambda t: len(set(t)) == 3),
+                            min_size=1, max_size=60))
+    points = draw(st.lists(st.tuples(COORDINATES, COORDINATES, COORDINATES), min_size=1, max_size=40))
+    return Mesh(np.asarray(vertices, dtype=np.float64), np.asarray(triples, dtype=np.int64)), \
+        np.asarray(points, dtype=np.float64)
+
+
+@settings(deadline=None)
+@given(meshes_and_points())
+def test_the_culled_distance_is_the_brute_forces_bit_for_bit(drawn):
+    """The distance the bake records leaves out only triangles that cannot be nearest: on every draw it is the brute
+    force's, bit for bit (both measure each pair alike, and the nearest triangle is always among those kept)."""
+    mesh, points = drawn
+    culled, brute = surface_distance(points, mesh), brute_surface_distance(points, mesh)
+    assert np.array_equal(culled, brute, equal_nan=True)
+
+
+def test_the_control_a_cull_that_drops_a_candidate_triangle_is_caught(monkeypatch):
+    """Planted: the cull's search loses one triangle it found for each point, as a cull with too small a reach would;
+    the comparison above then fails, so it can."""
+    import scipy.spatial
+
+    real = scipy.spatial.cKDTree
+
+    class Dropping:
+        def __init__(self, data):
+            self.tree = real(data)
+
+        def query(self, *arguments, **options):
+            return self.tree.query(*arguments, **options)
+
+        def query_ball_point(self, points, r):
+            return [found[:-1] for found in self.tree.query_ball_point(points, r=r)]
+
+    mesh = Mesh(np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [0.0, 0.01, 0.0], [0.05, 0.05, 0.0], [0.06, 0.05, 0.0],
+                          [0.05, 0.06, 0.0]]), np.array([[0, 1, 2], [3, 4, 5]]))
+    points = np.array([[0.002, 0.002, 0.005]])
+    assert np.array_equal(surface_distance(points, mesh), brute_surface_distance(points, mesh))
+    monkeypatch.setattr(scipy.spatial, "cKDTree", Dropping)
+    assert not np.array_equal(surface_distance(points, mesh), brute_surface_distance(points, mesh))
+
+
+def test_the_bake_measures_on_every_vertex_so_no_denser_sample_finds_more():
+    """The recorded distance is the maximum over every vertex both ways: a sample of the vertices (the 400 the first
+    bake measured) never exceeds it, and on a mesh decimated hard it finds less."""
+    original = read_stl(binary_stl(SPHERE))
+    held = decimate(original, 120)
+    every = mesh_distance(original, held.mesh)
+    for seed in range(5):
+        assert mesh_distance(original, held.mesh, samples=400, seed=seed) <= every
+    assert every <= held.moved
