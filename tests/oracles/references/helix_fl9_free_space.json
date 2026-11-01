@@ -1,0 +1,46 @@
+{
+  "what": "FL-9's axial swim speed in free space: -R_x,Ox omega / R_xx of its 6 x 6 resistance about a point on its axis, the body turned at 10 Hz about its own axis, its closed surface (the thread and both flat caps), Stokes flow",
+  "body": {
+    "kind": "screw",
+    "radius_m": 0.00156,
+    "length_m": 0.00747,
+    "wavenumber": 2.33,
+    "modulation": 0.33,
+    "starts": 2,
+    "source": "de Jongh et al. (2025), Table 1 (FL-9)"
+  },
+  "frequency_hz": 10.0,
+  "reference": {
+    "speed_m_per_s": 0.0030573,
+    "band_m_per_s": 5.7e-05,
+    "label": "post hoc: the two routes' common limit with route (b)'s two rounding-dominated blobs (eps 0.2 and 0.29 mm) left out, an asymmetry criterion stated before the band was computed and after the records were read"
+  },
+  "preregistered": {
+    "speed_m_per_s": 0.00306,
+    "band_m_per_s": 0.000147,
+    "label": "by the rule preregistered before any solve: route (a)'s limit, its band set by its small blobs' non-asymptotic orders; it bounds the free-space limit of the model under its extrapolations"
+  },
+  "method": {
+    "route_a": "the MRS rung's own discretisation (the screw 0.2.0's quadrature) at 0.2, 0.16, 0.128, 0.1024, 0.092 and 0.082 mm and blobs 0.25 to 1.0, extrapolated to zero spacing at first order at each blob, then the mean over the blobs: 3.0597 +- 0.147 mm/s",
+    "route_b": "forces separated from quadrature (Gallagher and Smith's nearest-neighbour discretisation): force sets of the quadrature at 0.2 to 0.092 mm, quadratures of 0.33 M to 2.65 M points, the regularised limit extrapolated in the force spacing: 3.054 (uninformative, sigma 6.9) by the preregistered rule, 3.057 +- 0.061 mm/s post hoc",
+    "precision": "float64, at the highest matmul precision",
+    "controls": "the free sphere through both routes against Stokes's law (0.99984 +- 0.0006 and 0.99915 +- 0.0008) and against the exact regularised drag; the in-place solve against the rung's own path, 4.7e-16 to 8.3e-16 relative"
+  },
+  "runs": {
+    "branch": "v0.3-helix-ref",
+    "head": "852ae61",
+    "predictions": "e7fa182",
+    "amendment": "32f068d",
+    "scripts": "scripts/sim2real/helix_ref.py, helix_ref_run.py, helix_ref_fit.py and helix_ref_modal.py on that branch",
+    "machine": "one A100-80GB container, one call of 25 minutes and one for the conditioning",
+    "date": "2026-10-31"
+  },
+  "on_the_rung": {
+    "spacing_m": 0.00016,
+    "blob": 0.5,
+    "samples": 5984,
+    "quadrature_m_per_s": 0.0027979126068689513,
+    "quasi_uniform_m_per_s": 0.0029522931365751495,
+    "label": "computed by MIME 0.3.0 dev1 phase 7m-a on a laptop's CPU in float64: the rung on the screw 0.2.0, whose samples are its quadrature (-8.48% from the post hoc point), and on the screw 0.3.0, whose samples are quasi-uniform (-3.43%); the helix score's scratch sampler, continuous Lloyd steps with an exact projection, gave 2.9493 mm/s (-3.53%) at the same samples"
+  }
+}

@@ -526,8 +526,7 @@ class MRSEvaluator:
         node = built.graph.get_node("drag:screw")
         state = node_state(built.graph, "drag:screw")
         self._params = parameter_leaves(built.graph)["drag:screw"]
-        self.samples = int(sum(math.prod(counts) * (2 if patch == "caps" else 1) for patch, counts in
-                               zip(node.constants()["patches"], node.constants()["counts"], strict=True)))
+        self.samples = int(node.sample_count)
         def step(params: Any, pose: Any) -> Any:
             return node.update(state, {"pose": pose}, 1e-3, params=params)
 

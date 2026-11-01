@@ -6,16 +6,17 @@ area, family parameters and radial reach, and are evaluated at run time by their
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, override
 
 import numpy as np
 
-from mime.core import jnp
+from mime.core import jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL
 from mime.registry import (
+    Density,
     Direction,
     DirectionLike,
     Drawing,
@@ -24,11 +25,15 @@ from mime.registry import (
     NoPrimitive,
     RegionPrimitive,
     Samples,
+    Sampling,
     Solid,
     Tensor,
     register_geometry,
+    uniform,
 )
+from mime.scene._caps import cap_rings, ring_floor
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
+from mime.scene._sampling import length_of, magnitude_of, quasi_uniform
 from mime.units import Length, Magnitude, Quantity
 
 
@@ -60,18 +65,52 @@ def _diagonal(x: float, y: float, z: float) -> Tensor:
     return ((x, 0.0, 0.0), (0.0, y, 0.0), (0.0, 0.0, z))
 
 
+#: A box's regions, the slab across each of its axes, and the pairs of faces that bound them.
+_SPANS = ("span_x", "span_y", "span_z")
+_FACES = ("faces_x", "faces_y", "faces_z")
+#: The nodes from pole to pole an ellipsoid's area is taken at (and twice as many round), and the ratio of its longest
+#: semi-axis to its shortest up to which that is converged to rounding: measured, the area at 256 nodes against 384
+#: within 4e-16 of it up to a ratio of 20.
+AREA_NODES = 256
+ELLIPSOID_ASPECT = 20.0
+
+
+def _unit_axes() -> tuple[tuple[float, float, float], ...]:
+    return (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)
+
+
+def _face_edges(patch: str) -> tuple[int, int]:
+    """The axes along a box's face pair's two edges, in order: y then z for ``faces_x``, x then z for ``faces_y``, x
+    then y for ``faces_z``."""
+    if patch not in _FACES:
+        raise KeyError(patch)
+    across = _FACES.index(patch)
+    first, second = (i for i in range(3) if i != across)
+    return first, second
+
+
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Cylinder(Solid):
     """A solid circular cylinder of ``radius`` and ``length`` along ``axis`` (three numbers in the part's frame),
-    centred on its centroid."""
+    centred on its centroid. Its regions are the unbounded cylinder ``side`` and the ``span`` between its end planes
+    (the body is their intersection), the boundaries of its patches, the ``lateral`` side and the two flat ``caps``.
+    Its quadrature is the trapezoid rule round the axis with Gauss-Legendre nodes along it, and each cap in rings
+    about a sample at its centre (``mime.scene._caps``, the screw's caps' layout, which no ring crowds), so that its
+    area and its divergence integrals are exact; its sampling at a spacing is quasi-uniform, chosen from that quadrature
+    (``mime.scene.quasi_uniform``), and its reach along ``d`` is ``r |d_across| + L |d . a| / 2``. Its derivative is its
+    regions' shapes', as their switches declare (the axis, the mid-plane): its volume and inertia are exact."""
 
     name = "cylinder"
     version = "0.1.0"
     setting_roles = dict.fromkeys(("radius", "length", "axis"), PHYSICAL)
-    differentiability = GradientStatus.EXACT
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord()
     references = ("WeissteinCylinder",)
     builds = {"": ()}
+    regions = ("side", "span")
+    region_shapes = {"side": "cylinder", "span": "slab"}
+    patches = {"lateral": "side", "caps": "span"}
     placement = {"axis": "z_axis"}
     native = Native("Cylinder", {"radius": "radius", "height": "length"}, {"axis": "Z"})
     radius: Annotated[Quantity, Length]
@@ -106,11 +145,87 @@ class Cylinder(Solid):
         radius, length = _length(settings, "radius"), _length(settings, "length")
         return math.hypot(radius, length / 2.0)
 
+    @override
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        axis = _lengths(settings, "axis")
+        if region == "side":
+            return {"centre": (0.0, 0.0, 0.0), "axis": axis, "radius": _length(settings, "radius")}
+        if region == "span":
+            return {"centre": (0.0, 0.0, 0.0), "axis": axis, "half_thickness": _length(settings, "length") / 2.0}
+        raise KeyError(region)
+
+    @override
+    def sample_counts(self, settings: Mapping[str, Magnitude], spacing: float, patch: str) -> tuple[int, ...]:
+        radius, length = _length(settings, "radius"), _length(settings, "length")
+        around = _counted(2.0 * math.pi * radius, spacing, 3)
+        if patch == "lateral":
+            return around, _counted(length, spacing, 1)
+        if patch == "caps":
+            # a cap's samples as dense as the side's, its area over the spacing squared, in rings (``_caps``)
+            return (max(1 + ring_floor(1), math.ceil(math.pi * radius * radius / (spacing * spacing))),)
+        raise KeyError(patch)
+
+    @override
+    def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
+        """``radius`` and ``length`` may be traced; ``axis`` is a number fixed when the samples are made, as the
+        capsule's is."""
+        axis = np.asarray(parameters["axis"], dtype=np.float64)
+        axis = axis / np.linalg.norm(axis)
+        first, second = _across(axis)
+        first, second, axis = jnp.asarray(first), jnp.asarray(second), jnp.asarray(axis)
+        radius, half = parameters["radius"], parameters["length"] / 2.0
+        if patch == "lateral":
+            around, along = counts
+            angle = _around(around)
+            node, weight = _gauss_legendre(along)
+            unit = jnp.asarray(np.cos(angle))[:, None] * first + jnp.asarray(np.sin(angle))[:, None] * second
+            normals = jnp.repeat(unit, along, axis=0)
+            points = radius * normals + jnp.tile(half * jnp.asarray(node)[:, None] * axis, (around, 1))
+            areas = jnp.asarray(np.outer(np.full(around, 2.0 * math.pi / around), weight).ravel())
+            return Samples(points, normals, radius * half * areas)
+        if patch == "caps":
+            rings = cap_rings(math.prod(counts), 1)
+            reach = jnp.asarray(rings.fraction)[:, None]
+            unit = (jnp.asarray(np.cos(rings.angle))[:, None] * first
+                    + jnp.asarray(np.sin(rings.angle))[:, None] * second)
+            found = [Samples(end * half * axis + radius * reach * unit, jnp.broadcast_to(end * axis, unit.shape),
+                             radius * radius * jnp.asarray(rings.share)) for end in (-1.0, 1.0)]
+            return Samples(*(jnp.concatenate([getattr(s, name) for s in found]) for name in
+                             ("points", "normals", "weights")))
+        raise KeyError(patch)
+
+    @override
+    def area(self, settings: Mapping[str, Magnitude], patch: str) -> float:
+        radius, length = _length(settings, "radius"), _length(settings, "length")
+        if patch == "lateral":
+            return 2.0 * math.pi * radius * length
+        if patch == "caps":
+            return 2.0 * math.pi * radius * radius
+        raise KeyError(patch)
+
+    @override
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        d = jnp.asarray(direction)
+        axis = jnp.asarray(parameters["axis"], dtype=d.dtype)
+        axis = axis / switch.nonzero_norm(axis)
+        along = jnp.dot(d, axis)
+        return parameters["radius"] * length_of(d - along * axis) + parameters["length"] / 2.0 * magnitude_of(along)
+
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Ellipsoid(Solid):
-    """A solid ellipsoid with ``semi_axes`` (three lengths) along the part frame's x, y and z."""
+    """A solid ellipsoid with ``semi_axes`` (three lengths) along the part frame's x, y and z. Its one patch,
+    ``surface``, bounds its region ``solid``, which no registered shape evaluates (its distance has no closed form);
+    its quadrature is Gauss-Legendre nodes in the cosine of the polar angle about z and the trapezoid rule round it,
+    so that its divergence integrals are exact and its area converges on the surface integral's; its sampling at a
+    spacing is quasi-uniform, chosen from that quadrature (``mime.scene.quasi_uniform``), and its reach along ``d`` is
+    ``|(a d_x, b d_y, c d_z)|``."""
 
     name = "ellipsoid"
     version = "0.1.0"
@@ -118,6 +233,8 @@ class Ellipsoid(Solid):
     differentiability = GradientStatus.EXACT
     references = ("WeissteinEllipsoid",)
     builds = {"": ()}
+    regions = ("solid",)
+    patches = {"surface": "solid"}
     semi_axes: Annotated[Quantity, Length]
 
     @override
@@ -141,6 +258,67 @@ class Ellipsoid(Solid):
         return max(_lengths(settings, "semi_axes"))
 
     @override
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        if region != "solid":
+            raise KeyError(region)
+        return {"semi_axes": _lengths(settings, "semi_axes")}
+
+    @override
+    def sample_counts(self, settings: Mapping[str, Magnitude], spacing: float, patch: str) -> tuple[int, ...]:
+        """By the root mean square of a meridian's semi-axes and of the equator's, which a half meridian and the
+        equator are about pi and two pi times long."""
+        if patch != "surface":
+            raise KeyError(patch)
+        a, b, c = _lengths(settings, "semi_axes")
+        wide = max(a, b)
+        return (_counted(math.pi * math.sqrt((wide * wide + c * c) / 2.0), spacing, 2),
+                _counted(2.0 * math.pi * math.sqrt((a * a + b * b) / 2.0), spacing, 3))
+
+    @override
+    def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
+        """At ``(a sin t cos p, b sin t sin p, c cos t)``, the area element over ``d(cos t) dp`` the length of
+        ``(b c sin t cos p, a c sin t sin p, a b cos t)``, which is the outward normal's direction."""
+        if patch != "surface":
+            raise KeyError(patch)
+        polar, around = counts
+        cosine, weight = _gauss_legendre(polar)
+        angle = _around(around)
+        sine = np.sqrt(1.0 - cosine ** 2)
+        axes = jnp.asarray(parameters["semi_axes"])
+        a, b, c = axes[0], axes[1], axes[2]
+        x, y = jnp.asarray(np.outer(sine, np.cos(angle)).ravel()), jnp.asarray(np.outer(sine, np.sin(angle)).ravel())
+        z = jnp.asarray(np.repeat(cosine, around))
+        element = jnp.stack([b * c * x, a * c * y, a * b * z], axis=-1)
+        size = switch.nonzero_norm(element, axis=-1)
+        areas = jnp.asarray(np.outer(weight, np.full(around, 2.0 * math.pi / around)).ravel())
+        return Samples(jnp.stack([a * x, b * y, c * z], axis=-1), element / size[:, None], size * areas)
+
+    @override
+    def area(self, settings: Mapping[str, Magnitude], patch: str) -> float:
+        """The surface integral, which has no closed form, by its own quadrature at ``AREA_NODES`` nodes from pole to
+        pole and twice as many round, converged to rounding on every ellipsoid whose longest semi-axis is within
+        ``ELLIPSOID_ASPECT`` of its shortest."""
+        if patch != "surface":
+            raise KeyError(patch)
+        a, b, c = _lengths(settings, "semi_axes")
+        cosine, weight = _gauss_legendre(AREA_NODES)
+        angle = _around(2 * AREA_NODES)
+        sine = np.sqrt(1.0 - cosine ** 2)[:, None]
+        element = np.sqrt((b * c * sine * np.cos(angle)) ** 2 + (a * c * sine * np.sin(angle)) ** 2
+                          + (a * b * cosine[:, None]) ** 2)
+        return float(np.sum(weight[:, None] * element)) * math.pi / AREA_NODES
+
+    @override
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """Its farthest point along ``d`` is ``A^2 d / |A d|``, ``A`` the diagonal of its semi-axes."""
+        return switch.nonzero_norm(jnp.asarray(parameters["semi_axes"]) * jnp.asarray(direction))
+
+    @override
     def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
         """Rings of constant polar angle, ``segments`` points round each and half as many bands from pole to pole,
         closed by a fan at each pole."""
@@ -159,14 +337,24 @@ class Ellipsoid(Solid):
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Box(Solid):
-    """A solid rectangular box with edges of ``size`` (three lengths) along the part frame's x, y and z."""
+    """A solid rectangular box with edges of ``size`` (three lengths) along the part frame's x, y and z. Its regions are
+    the three slabs between its opposite faces (``span_x``, ``span_y``, ``span_z``; the body is their intersection),
+    the boundaries of its patches, each pair of opposite faces (``faces_x`` across x, and so on). Its quadrature is
+    Gauss-Legendre nodes along both edges of each face, so that its divergence integrals are exact; its sampling at a
+    spacing is quasi-uniform, chosen from that quadrature (``mime.scene.quasi_uniform``), and its reach along ``d`` is
+    ``(x |d_x| + y |d_y| + z |d_z|) / 2``. Its derivative is its slabs', as their switch declares (the mid-plane): its
+    volume and inertia are exact."""
 
     name = "box"
     version = "0.1.0"
     setting_roles = {"size": PHYSICAL}
-    differentiability = GradientStatus.EXACT
+    differentiability = GradientStatus.PIECEWISE_JUMP
+    gradient = GradientRecord()
     references = ("WeissteinCuboid", "WeissteinMomentOfInertia")
     builds = {"": ()}
+    regions = ("span_x", "span_y", "span_z")
+    region_shapes = {"span_x": "slab", "span_y": "slab", "span_z": "slab"}
+    patches = {"faces_x": "span_x", "faces_y": "span_y", "faces_z": "span_z"}
     size: Annotated[Quantity, Length]
 
     @override
@@ -189,6 +377,58 @@ class Box(Solid):
         """Half its diagonal."""
         x, y, z = _lengths(settings, "size")
         return math.sqrt(x * x + y * y + z * z) / 2.0
+
+    @override
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        if region not in _SPANS:
+            raise KeyError(region)
+        i = _SPANS.index(region)
+        return {"centre": (0.0, 0.0, 0.0), "axis": _unit_axes()[i],
+                "half_thickness": _lengths(settings, "size")[i] / 2.0}
+
+    @override
+    def sample_counts(self, settings: Mapping[str, Magnitude], spacing: float, patch: str) -> tuple[int, ...]:
+        size = _lengths(settings, "size")
+        first, second = _face_edges(patch)
+        return _counted(size[first], spacing, 1), _counted(size[second], spacing, 1)
+
+    @override
+    def samples(self, parameters: Mapping[str, Any], patch: str, counts: tuple[int, ...]) -> Samples:
+        """Each face of the pair at ``-x/2`` then ``+x/2`` (for ``faces_x``), Gauss-Legendre nodes along its first and
+        then its second edge; ``size`` may be traced."""
+        first, second = _face_edges(patch)
+        across = 3 - first - second
+        size = jnp.asarray(parameters["size"])
+        one, one_weight = _gauss_legendre(counts[0])
+        two, two_weight = _gauss_legendre(counts[1])
+        grid = [jnp.asarray(np.repeat(one, counts[1])), jnp.asarray(np.tile(two, counts[0]))]
+        areas = jnp.asarray(np.outer(one_weight, two_weight).ravel()) * size[first] * size[second] / 4.0
+        found: list[Samples] = []
+        for end in (-1.0, 1.0):
+            columns = [jnp.zeros_like(grid[0])] * 3
+            columns[first], columns[second] = grid[0] * size[first] / 2.0, grid[1] * size[second] / 2.0
+            columns[across] = jnp.full_like(grid[0], end) * size[across] / 2.0
+            normal = jnp.zeros(3).at[across].set(end)
+            found.append(Samples(jnp.stack(columns, axis=-1), jnp.broadcast_to(normal, (len(areas), 3)), areas))
+        return Samples(*(jnp.concatenate([getattr(s, name) for s in found]) for name in
+                         ("points", "normals", "weights")))
+
+    @override
+    def area(self, settings: Mapping[str, Magnitude], patch: str) -> float:
+        size = _lengths(settings, "size")
+        first, second = _face_edges(patch)
+        return 2.0 * size[first] * size[second]
+
+    @override
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """Its farthest point along ``d`` is the corner on ``d``'s side, and where a component of ``d`` is zero the
+        middle of the edge or face that faces it (the derivative of a zero component's ``|d_i|`` is zero)."""
+        return jnp.sum(jnp.asarray(parameters["size"]) / 2.0 * magnitude_of(jnp.asarray(direction)))
 
     @override
     def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
@@ -220,12 +460,17 @@ def _counted(length: float, spacing: float, least: int) -> int:
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Sphere(Solid):
-    """A solid ball of ``radius``, centred on its centroid. Its one patch, ``surface``, is sampled by Gauss-Legendre
-    nodes in the cosine of the polar angle and evenly in azimuth, so its weights sum to its area and its divergence
-    integrals are exact to rounding; its run-time shape is ``sphere``."""
+    """A solid ball of ``radius``, centred on its centroid. Its one patch, ``surface``, has as its quadrature
+    Gauss-Legendre nodes in the cosine of the polar angle and evenly in azimuth, so its weights sum to its area and its
+    divergence integrals are exact to rounding; its sampling at a spacing is quasi-uniform, chosen from that quadrature
+    (``mime.scene.quasi_uniform``), and its reach in a direction its radius; its run-time shape is ``sphere``.
+
+    Version 0.2.0 samples quasi-uniformly: 0.1.0's sampling was its quadrature, which crowds at the poles (a quarter of
+    its samples closer than half the mean spacing, MIME-ANO-123), and stays registered so that a folder saved with it
+    reproduces."""
 
     name = "sphere"
-    version = "0.1.0"
+    version = "0.2.0"
     setting_roles = {"radius": PHYSICAL}
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
@@ -291,6 +536,16 @@ class Sphere(Solid):
         return {"radius": _length(settings, "radius")}
 
     @override
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """``r |d|``: its farthest point along ``d`` is ``r d / |d|``."""
+        return parameters["radius"] * switch.nonzero_norm(jnp.asarray(direction))
+
+    @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
 
@@ -326,10 +581,15 @@ class Capsule(Solid):
     Its inertia is the cylinder's and the two hemispheres': a hemisphere has half a ball's moment about any axis
     through the ball's centre in its flat face, and its centroid lies ``3 r / 8`` from that face (``int z dV / V``), so
     about the capsule's centroid, across the axis, the two have ``m_h (2 r^2 / 5 + H^2 / 4 + 3 H r / 8)`` by the
-    parallel-axis theorem (``m_h`` their mass together), and ``2 m_h r^2 / 5`` about it."""
+    parallel-axis theorem (``m_h`` their mass together), and ``2 m_h r^2 / 5`` about it.
+
+    Its sampling at a spacing is quasi-uniform, chosen from its quadrature (``mime.scene.quasi_uniform``), from version
+    0.2.0: 0.1.0's was the quadrature, which crowds at the caps' poles (MIME-ANO-123), and stays registered so that a
+    folder saved with it reproduces. Its reach along ``d`` is ``r |d| + h |d . a| / 2``, the sphere's about the end of
+    its segment that lies along ``d``."""
 
     name = "capsule"
-    version = "0.1.0"
+    version = "0.2.0"
     setting_roles = dict.fromkeys(("radius", "height", "axis"), PHYSICAL)
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
@@ -440,6 +700,19 @@ class Capsule(Solid):
     @override
     def family_parameters(self, settings: Mapping[str, Magnitude]) -> dict[str, float | int]:
         return {"radius": _length(settings, "radius"), "height": _length(settings, "height")}
+
+    @override
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        d = jnp.asarray(direction)
+        axis = jnp.asarray(parameters["axis"], dtype=d.dtype)
+        axis = axis / switch.nonzero_norm(axis)
+        return (parameters["radius"] * switch.nonzero_norm(d)
+                + parameters["height"] / 2.0 * magnitude_of(jnp.dot(d, axis)))
 
     @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:

@@ -34,6 +34,7 @@ def mesh_hashes() -> dict[str, Any]:
         for spacing in (op.SPACING_MM, bem.FINER_SPACING_MM):
             built = op.experiment("bem", patches=patches, spacing_mm=spacing).build()
             node = built.graph.get_node(op.DRAG_NODE)
+            op.require_quadrature(node)
             held = node.samples(op.leaves_of(built)[op.DRAG_NODE])
             points = np.ascontiguousarray(np.asarray(held.points, dtype=np.float64))
             out[f"{patches}/{spacing:.3f}mm"] = {

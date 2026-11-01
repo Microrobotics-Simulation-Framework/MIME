@@ -206,10 +206,13 @@ STOKES_BASIS = ("Stokes flow is the limit of vanishing Reynolds number, and its 
 #: The default blob, as a fraction of the samples' mean spacing.
 DEFAULT_BLOB = 0.5
 #: What was measured at the default spacing, in numbers and on what (``scripts/default_spacing_table.py``, float64 for
-#: the misses, the default float32 for the run times, on a 24-thread laptop CPU).
-SPACING_MEASURED = ("on the walk's T1 sphere (338 samples), its drag 1.3% and its rotational drag 5.2% above Stokes's "
-                    "law, T1's 1000 steps in 22 s; on FL-9 (222 samples), its speed per turn 63% below the finest "
-                    "spacing measured on the walk's tube's axis (5984 samples) and 61% below it in free space (6784), "
+#: the misses, the default float32 for the run times, on a 24-thread laptop CPU). The misses are the quasi-uniform
+#: sampling's (phase 7m-a: the sphere's drag 1.3% and 5.2% above on its earlier grid, the screw's speed 63% and 61%
+#: below); the run times were taken on the earlier grid, at the same counts, and the sampling adds well under a second
+#: to a build at them.
+SPACING_MEASURED = ("on the walk's T1 sphere (338 samples), its drag 1.8% and its rotational drag 5.9% above Stokes's "
+                    "law, T1's 1000 steps in 22 s; on FL-9 (222 samples), its speed per turn 23% below the finest "
+                    "spacing measured on the walk's tube's axis (5984 samples) and 16% below it in free space (6784), "
                     "a run of T2's size in the tube (6000 steps) 11 minutes: write spacing= for a number to use")
 
 
@@ -242,10 +245,12 @@ class Drag(Interaction):
     body's x axis taken as the helix's (``SurrogateDragNode``).
 
     ``mrs``: the regularised-Stokeslet resistance (``MRSDragNode``) of the body's hull, sampled by its
-    kind on ``patches`` (all of them, the closed surface, when none are written) with neighbouring samples about
-    ``spacing`` apart, the blob ``blob`` times their mean spacing, about the body's centre of mass at the pose it reads
-    each step. Any kind that gives samples serves: a sphere, a capsule, the de Jongh helix; a kind without them is
-    refused when the experiment is planned. ``wall_kind`` names the wall kind whose correction the solve adds
+    kind's sampling (``Geometry.sampling``: for MIME's kinds quasi-uniform, as many samples as their quadrature has at
+    the spacing, none crowding another) on ``patches`` (all of them, the closed surface, when none are written) with
+    neighbouring samples about ``spacing`` apart, the blob ``blob`` times their mean spacing, about the body's centre
+    of mass at the pose it reads each step. Any kind that implements the sampling serves: a sphere, a capsule, the de
+    Jongh helix, a cylinder, a box, an ellipsoid, a lab's; a kind without it is refused by name when the experiment is
+    planned. ``wall_kind`` names the wall kind whose correction the solve adds
     (``mime.walls``; ``"<name>"`` for its one registered version, or ``"<name> <version>"``), and it must match the
     region the medium fills exactly: ``free_space`` a medium that fills none, ``tube`` a tube's lumen (it reads the
     asset ``unit_tube_R0.997``, refused by name when planned if it is not in the cache); a wall kind that matches
@@ -373,15 +378,16 @@ class Drag(Interaction):
         """The mrs rung's spacing when none is written: the largest, to three significant figures, at which the hull's
         kind gives at least its family's sample count (``DEFAULT_SAMPLES``) over the patches sampled."""
         hull = ctx.geometry(of="body")
-        if self.rung != "mrs" or hull is None or not implements(hull.kind, "radial_reach"):
+        if self.rung != "mrs" or hull is None or not implements(hull.kind, "sampling"):
             return None
+        coarse = float(hull.kind.radial_reach(hull.settings) if implements(hull.kind, "radial_reach") else
+                       hull.kind.enclosing_radius(hull.settings))
         target = DEFAULT_SAMPLES.get(hull.kind.name, COMPACT_SAMPLES)
         patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
 
         def count(spacing: float) -> int:
             return sum(math.prod(hull.kind.sample_counts(hull.settings, spacing, patch)) for patch in patches)
 
-        coarse = float(hull.kind.radial_reach(hull.settings))
         fine = coarse
         while count(fine) < target:
             fine /= 2.0
@@ -494,11 +500,13 @@ class Drag(Interaction):
         body, medium = ctx.bindings["body"], ctx.bindings["medium"]
         found: list[Problem] = []
         hull = ctx.geometry(of="body")
-        if hull is None or not implements(hull.kind, "samples"):
-            held = f"{body} has no hull" if hull is None else f"{hull.label()}, a kind that gives no surface samples"
+        if hull is None or not implements(hull.kind, "sampling"):
+            held = f"{body} has no hull" if hull is None else (
+                f"{hull.label()}, a kind that does not implement the geometry protocol's sampling "
+                f"(Geometry.sampling, which mime.scene.quasi_uniform gives any kind with samples)")
             found.append(Problem("drag.no-samples", f"the mrs rung samples the body's hull, and {held}",
-                                 f"give {body} one part outside every other whose kind gives samples (a sphere, a "
-                                 "capsule, a screw), "
+                                 f"give {body} one part outside every other whose kind samples its surface (a sphere, "
+                                 "a capsule, a screw, a cylinder, a box, an ellipsoid), "
                                  f"parts={{\"shell\": Part(Sphere(...))}}, or choose another rung"))
         elif self.patches is not None and not set(self.patches) <= set(hull.kind.patches):
             found.append(Problem("drag.patches", f"{hull.label()} has the patches {sorted(hull.kind.patches)}, and "
@@ -530,12 +538,13 @@ class Drag(Interaction):
         patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
         settings = {setting.name: hull.settings.get(setting.name, getattr(hull.kind, setting.name))
                     for setting in dataclasses.fields(hull.kind)}
+        sampling = hull.kind.sampling(hull.settings, spacing, patches)
         node = b.add_response_node(MRSDragNode(
             ctx.node_name(), ctx.timestep, viscosity=ctx.scalar_value("viscosity"), blob=float(self.blob),
-            kind=hull.kind.name, kind_version=hull.kind.version, patches=patches,
-            counts=[hull.kind.sample_counts(hull.settings, spacing, patch) for patch in patches],
+            kind=hull.kind.name, kind_version=hull.kind.version, patches=patches, counts=sampling.counts,
             part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
-            wall_kind=wall.name, wall_kind_version=wall.version,
+            wall_kind=wall.name, wall_kind_version=wall.version, sampling_chosen=sampling.chosen,
+            sampling_members=sampling.members,
             **{f"{WALL}{name}": value for name, value in constants.items()},
             **{f"{SHAPE}{name}": value for name, value in settings.items()}))
         b.connect(b.read("pose"), into=node["pose"])

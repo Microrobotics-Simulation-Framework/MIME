@@ -63,7 +63,7 @@ nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 2  # a node'
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::_registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_tube.py::table_provenance ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_tube.py::unit_tube_table ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -90,6 +90,7 @@ scene/_geometry.py::Tube.surface_parameters KeyError 1  # protocol: the class Py
 scene/_geometry.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_kinds.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_kinds.py::kind_frame KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_sampling.py::_quasi_uniform ValueError 2  # a kind's sampling at the build, from a density or a count a kind's own code gives: a lab's kind that passes one above its dense set, or a density not above zero, is a defect of that kind; reached, it is error.uncoded
 scene/_scene.py::Scene.__init__ ValueError 1  # construction: raised where the script makes the value or the entry, outside every public call
 scene/_scene.py::Scene.open NotImplementedError 1  # construction: a scene opened from a file, not yet supported, outside every public call
 scene/_screw.py::Screw.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
@@ -98,16 +99,26 @@ scene/_screw.py::Screw.region_primitive KeyError 1  # protocol: the class Python
 scene/_screw.py::Screw.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_screw.py::Screw.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_screw.py::_held TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_solids.py::Box.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Capsule.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Capsule.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Capsule.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Capsule.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Capsule.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Cylinder.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Cylinder.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Cylinder.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Cylinder.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Ellipsoid.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Ellipsoid.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Ellipsoid.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Ellipsoid.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Sphere.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Sphere.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Sphere.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Sphere.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Sphere.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::_face_edges KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::_length TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_solids.py::_lengths TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class

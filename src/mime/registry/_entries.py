@@ -6,9 +6,10 @@ from enum import Enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, NamedTuple, cast, override
 
+import numpy as np
 from maddening.core.node import SimulationNode
 
-from mime.core import shape_switches, switch
+from mime.core import jnp, shape_named, shape_switches, switch
 from mime.gradients import RANK, GradientStatus
 from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Length, Magnitude, Quantity
@@ -1002,6 +1003,59 @@ class Samples:
     rounding_length: Any = None
 
 
+#: A density of samples over a kind's surface, relative to the spacing's: a function of points in the kind's own frame,
+#: ``(n, 3)`` m, giving a number above zero at each. Where it is ``d`` neighbouring samples lie about ``spacing /
+#: sqrt(d)`` apart, so that grading a sampling toward a feature is a density, and no change of the protocol.
+type Density = Callable[[np.ndarray], np.ndarray]
+
+
+def uniform(points: np.ndarray) -> np.ndarray:
+    """The uniform density: neighbouring samples ``spacing`` apart everywhere."""
+    return np.ones(len(points))
+
+
+@dataclass(frozen=True, eq=False)
+class Sampling:
+    """A kind's surface sampled at a spacing, for a solver whose unknowns sit at the samples (the MRS rung's): a choice
+    among the kind's quadrature samples on ``patches`` at ``counts`` (one per patch, what :meth:`Geometry.samples`
+    takes), fixed when the experiment is built, so that the samples stay a JAX function of the kind's parameters and a
+    study's derivative in them flows through. ``chosen`` indexes the quadrature's samples, the patches' concatenated in
+    order; ``members`` holds, row by row, the quadrature samples nearest each chosen one (its cell), padded with one
+    past the last index, so that a sample's weight is its cell's area and the weights sum to the patches' area; both
+    ``None`` where the samples are the quadrature's own. ``method`` names how they were chosen."""
+
+    patches: tuple[str, ...]
+    counts: tuple[tuple[int, ...], ...]
+    method: str
+    chosen: np.ndarray | None = None
+    members: np.ndarray | None = None
+
+    def samples(self, kind: Geometry, parameters: Mapping[str, Any]) -> Samples:
+        """The samples, in the kind's own frame, from its ``parameters`` (its settings in SI, numbers or traced
+        arrays): each patch's quadrature, the chosen ones taken and their cells' weights summed in a fixed order."""
+        found = [kind.samples(parameters, patch, count) for patch, count in zip(self.patches, self.counts, strict=True)]
+        points = jnp.concatenate([jnp.asarray(s.points) for s in found])
+        normals = jnp.concatenate([jnp.asarray(s.normals) for s in found])
+        weights = jnp.concatenate([jnp.asarray(s.weights) for s in found])
+        lengths = [s.rounding_length for s in found]
+        rounding = None if any(length is None for length in lengths) else jnp.concatenate(
+            [jnp.asarray(length) for length in lengths])
+        if self.chosen is None or self.members is None:
+            return Samples(points, normals, weights, rounding)
+        chosen = jnp.asarray(self.chosen)
+        padded = jnp.concatenate([weights, jnp.zeros((1,), dtype=weights.dtype)])
+        return Samples(points[chosen], normals[chosen], jnp.sum(padded[jnp.asarray(self.members)], axis=1),
+                       None if rounding is None else rounding[chosen])
+
+
+class WallDistance(NamedTuple):
+    """How far a point of the medium is from its wall, ``distance`` (m: above zero in the medium, zero on the wall and
+    below zero past it), and the wall's unit ``normal`` at the nearest wall point, pointing into the medium."""
+
+    distance: Any
+    normal: Any
+
+
 @dataclass(frozen=True, kw_only=True)
 class Geometry(Entry):
     """A geometry kind: a thing's shape as a script declares it, with its settings in SI handed to its methods. It
@@ -1032,6 +1086,9 @@ class Geometry(Entry):
     patches: ClassVar[Mapping[str, str]] = MappingProxyType({})
     placement: ClassVar[Mapping[str, str]] = MappingProxyType({})
     native: ClassVar[Native | None] = None
+    #: How far its :meth:`reach` may overstate its body's, as a share of its enclosing size: zero for a kind whose
+    #: reach is its body's own; above zero for one whose reach is an envelope that holds its body (the screw's).
+    reach_envelope: ClassVar[float] = 0.0
 
     def surface_parameters(self, surface: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
         raise NotImplementedError
@@ -1081,11 +1138,29 @@ class Geometry(Entry):
         law may be anisotropic in, which no kind has unless it declares one."""
         raise NotImplementedError
 
+    def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
+                 density: Density = uniform) -> Sampling:
+        """The kind's surface over ``patches`` sampled for a solver whose unknowns sit at the samples: neighbouring
+        samples about ``spacing`` (m) apart where ``density`` is 1, as a choice among its quadrature's samples
+        (:class:`Sampling`), made from its settings in SI when the experiment is built. MIME's kinds and a lab's take
+        ``mime.scene.quasi_uniform``, which needs only :meth:`samples` and :meth:`sample_counts`; a kind may choose
+        its own. A consumer that needs it of a kind that does not implement it refuses the kind by name."""
+        raise NotImplementedError
+
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """The hull query: how far the kind reaches along ``direction`` (three numbers in the frame its samples are
+        in, of any length above zero), the largest ``x . direction`` over its body, in m times the direction's length:
+        a JAX function of its parameters and the direction, homogeneous of degree one in the direction, so that its
+        gradient in the direction is the body's farthest point that way where that point is one. Exact for a kind
+        whose hull has a closed form; a kind may give an envelope that holds its body (the screw's: the cylinder of
+        its crests), and says so; ``mime.scene.sampled_reach`` gives any kind's from its samples."""
+        raise NotImplementedError
+
 
 #: The build-side capabilities a kind may implement, by method name; ``native`` is the class variable, and
 #: ``mass_properties`` a solid's ``volume`` and ``inertia_per_mass``.
 CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent", "mass_properties", "drawing",
-                "native", "region_primitive")
+                "native", "region_primitive", "sampling", "reach")
 
 
 def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:
@@ -1187,6 +1262,18 @@ class WallKind(Entry):
     form: ClassVar[WallForm]
     matches: ClassVar[str | None]
     reads: ClassVar[tuple[str, ...]] = ()
+
+    def distance(self, parameters: Mapping[str, Any], point: Any) -> WallDistance | None:
+        """The wall's signed distance from ``point`` (world frame, m) and its normal into the medium there, from the
+        parameters it reads of the region the medium fills: a JAX function of both, differentiated through as any
+        shape is. ``None`` for a medium that fills no region, which has no wall. By default the region's own shape
+        answers, as the geometry kind is the surface's one authority: the medium fills the region, so the wall's
+        distance is minus the region's signed distance and its normal minus the region's outward normal, with the
+        shape's switches."""
+        if self.matches is None:
+            return None
+        shape = shape_named(self.matches)
+        return WallDistance(-shape.signed_distance(parameters, point), -shape.outward_normal(parameters, point))
 
 
 type Tensor = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]

@@ -117,7 +117,7 @@ def graph_profile() -> dict[str, object]:
     built = free_space("budget", {"screw": fl9()}, mrs(mm(0.178), patches=("lateral",))).build()
     node = built.graph.get_node("drag:screw")
     report = profile_graph(built.graph, n_steps=5, n_warmup=1, measure_coupling=False)
-    return {"counts": node.constants()["counts"], "samples": int(np.prod(node.constants()["counts"][0])),
+    return {"counts": node.constants()["counts"], "samples": node.sample_count,
             "jit_compile_ms": report.jit_compile_ms, "mean_step_ms": report.mean_step_ms,
             "median_step_ms": report.median_step_ms, "dispatch_floor_ms": report.dispatch_floor_ms,
             "node_times_ms": report.node_times_ms, "counts_report": str(report.counts)}

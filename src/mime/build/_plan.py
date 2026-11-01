@@ -2654,10 +2654,11 @@ class _Planner:
             self.values[path] = held
 
     def hull_of(self, body: str) -> Hull | None:
-        """The hull of ``body``: its one part outside every other, when that part's kind gives its radial reach; the
-        build's other solids give none yet, and a union of several parts is not built."""
+        """The hull of ``body``: its one part outside every other, when that part's kind gives its radial reach or
+        samples its surface (a box, an ellipsoid, which have no axis to give a reach about); a union of several parts
+        is not built."""
         bulk = [line for line in self.parts.get(body, {}).values() if line.inside is None]
-        if len(bulk) != 1 or bulk[0].reach is None:
+        if len(bulk) != 1 or (bulk[0].reach is None and not implements(bulk[0].solid, "sampling")):
             return None
         line = bulk[0]
         return Hull(body, line.name, line.solid, line.settings, line.centre, line.rotation)
@@ -2667,7 +2668,7 @@ class _Planner:
         and the shape values a law reads from the kind), which is refused: the kind is the one authority for it."""
         body, _, name = path.partition(".")
         hull = self.hull_of(body)
-        if hull is None or name not in FROM_THE_KIND:
+        if hull is None or name not in FROM_THE_KIND or not implements(hull.kind, "radial_reach"):
             return False
         given = "its extent is the hull's radial reach" if name == "extent" else \
             f"{name} is a parameter of the hull's kind, which a law reads from the kind"

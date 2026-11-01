@@ -48,7 +48,7 @@ def path_of(key: tuple[str, str, str], rung: str = "") -> Path:
 
 def first_case_using(key):
     for case in CASES:
-        if case.name == "nudged_toy" and importlib.util.find_spec("mime_lab_fixture") is None:
+        if case.lab and importlib.util.find_spec("mime_lab_fixture") is None:
             if os.environ.get("CI"):
                 pytest.fail("the lab fixture package is not installed; every CI lane installs it from ./lab_fixture")
             pytest.skip("the lab fixture package is not installed: uv pip install --no-deps ./lab_fixture")

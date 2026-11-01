@@ -211,14 +211,15 @@ def test_a_labs_entry_without_a_source_is_counted_and_fails_once_the_lab_opts_in
     records = [record for record in registered() if record.namespace in ("mime", "toy", "labx")]
     walked = docs_walk(docs, records, node_classes(records))
     assert walked.problems == []
-    assert "outside MIME, without a hand-written source here, counted, not failed: labx 3 (dynamics labx.gantry " \
-           "0.1.0, interaction labx.nudge 0.1.0, observation labx.height 0.1.0); nodes without NodeMeta: 3 " \
-           "(GantryNode, HeightNode, NudgeNode)" in walked.summary
+    assert "outside MIME, without a hand-written source here, counted, not failed: labx 4 (dynamics labx.gantry " \
+           "0.1.0, geometry labx.bead 0.1.0, interaction labx.nudge 0.1.0, observation labx.height 0.1.0); nodes " \
+           "without NodeMeta: 3 (GantryNode, HeightNode, NudgeNode)" in walked.summary
     assert "exempt from the hand-written half by namespace (toy): 12 entries" in walked.summary
     held = docs_walk(docs, records, node_classes(records), held=("mime", "labx"))
     assert [problem for problem in held.problems if "labx" in problem or "Nudge" in problem or "Gantry" in problem
             or "Height" in problem] == [
         missing(docs.parent, "entry dynamics labx.gantry", "entries/dynamics/labx.gantry.md"),
+        missing(docs.parent, "entry geometry labx.bead", "entries/geometry/labx.bead.md"),
         missing(docs.parent, "entry interaction labx.nudge", "entries/interaction/labx.nudge.md"),
         missing(docs.parent, "entry observation labx.height", "entries/observation/labx.height.md"),
         missing(docs.parent, "node GantryNode", "NodeMeta and a symbol table on mime_lab_fixture.GantryNode"),

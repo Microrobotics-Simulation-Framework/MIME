@@ -23,6 +23,13 @@ scripts keep their own names for their arms and outputs (`bem.py`, `bem_*.json`,
 predictions and the preregistration key on; only what calls the library (`Drag.MRS`, `mime.nodes.hydro.mrs`,
 `MRSDragNode`) was renamed, so these scripts' bytes are no longer the ones `preregistration_7ja.json` hashed.
 
+Every experiment here builds its geometry kinds at the versions 7j's register froze (`operating_point.FROZEN_VERSIONS`:
+the screw 0.2.0, whose samples are its quadrature, not the 0.3.0 that quasi-uniform sampling brought), through
+`operating_point.pinned`, until a dated amendment of the register moves them: built on the screw 0.3.0, the MRS arm's
+speed at point A moved by +15.6%. `tests/differential/test_frozen_register_pins.py` fails on a script here that builds
+a kind unpinned. `capfix.py` and `prereg.py` rebuild the samples from the node's counts, which are its samples only on
+a kind that samples by its quadrature, and refuse any other (`operating_point.require_quadrature`).
+
 The surrogate's rows use `dejongh_mlp_v2`, trained through the 2026-05-21 tables (MIME-ANO-117) until phase 7i ships
 retrained weights; `--weights <asset>` re-runs every surrogate row with another (`surrogate.py`, `bem.py --part
 offsets`, `modal_app.py`). Every script refuses to run without `JAX_ENABLE_X64=1`.

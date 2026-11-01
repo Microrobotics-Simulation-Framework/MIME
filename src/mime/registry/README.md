@@ -108,6 +108,14 @@ settings)`, a region as one of OpenMaterica's primitives (`REGION_PRIMITIVES`: s
 `geometry.md` defines them) or `NoPrimitive` with its reason. `CAPABILITIES` lists them with the earlier ones and
 `mass_properties`, and the geometry-kind entry pages' capability rows are generated from `implements`.
 
+Since phase 7m-a, two more capabilities and a wall's distance: **`sampling(settings, spacing, patches, density)`**, a
+kind's surface sampled for a solver whose unknowns sit at the samples, as a `Sampling` (a choice among its quadrature's
+samples at counts, fixed at the build, with each sample's cell for its weight; `Density` and `uniform` the grading it
+takes); **`reach(parameters, direction)`**, the hull query, with `reach_envelope`, the share by which a kind's reach
+may overstate its body's (an envelope's; zero for a closed form); and **`WallKind.distance(parameters, point)`**, a
+`WallDistance` (the signed distance, above zero in the medium, and the normal into it), by default minus the matched
+region's shape's, and `None` for free space.
+
 Since phase 7l-a, **roles and defaults** (design #191): every setting declares its role (`Role`: design,
 physical, numerical, standard) and its default's kind (`DefaultKind`: determined, convention, numerical, none; the build
 reports a written default whose setting declares nothing as `undeclared`, stamped in exploratory and refused in

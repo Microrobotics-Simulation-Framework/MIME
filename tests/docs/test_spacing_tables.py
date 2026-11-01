@@ -11,6 +11,7 @@ machine."""
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -92,7 +93,9 @@ def test_a_changed_number_in_the_prose_is_refused(script, measurements):
     stall = " ".join(facts["stall"].split())
     flowed = " ".join(page.split())
     assert stall in flowed
-    changed = flowed.replace(stall, stall.replace("0.9%", "0.8%", 1), 1)
+    first = re.search(r"\d+(\.\d+)?%", stall)
+    assert first is not None
+    changed = flowed.replace(stall, stall.replace(first.group(0), "99.9%", 1), 1)
     assert any("'stall'" in line for line in problems(script, measurements, changed))
 
 

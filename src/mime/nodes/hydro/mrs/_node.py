@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping, Sequence
+from functools import cached_property
 from typing import Any, cast, override
 
 import jax
+import numpy as np
 from jax import Array
 from jaxtyping import Bool, Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
@@ -19,7 +21,7 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jn
     quaternion, typed_view
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
-from mime.registry import Direction, EntryKind, Geometry, Registered, Samples, lookup
+from mime.registry import Direction, EntryKind, Geometry, Registered, Samples, Sampling, lookup
 from mime.units import Quantity, unit_symbol
 
 EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \mathbf{M}, \quad "
@@ -97,8 +99,13 @@ class MRSDragNode(MimeNode):
 
     The samples are the kind's, in its own frame, from its settings (each a node constant ``shape_<setting>``): a
     number is a ``params`` leaf, so that a study's derivative in it flows through the samples; a direction and an
-    integer are held as built (a part's direction is its frame, and turning the body is its pose). They are placed in
-    the body's frame by the part's ``part_rotation`` (rows) and ``part_centre``, and in the world by the pose. The blob
+    integer are held as built (a part's direction is its frame, and turning the body is its pose). With
+    ``sampling_chosen`` and ``sampling_members`` (the kind's ``Sampling`` at the rung's spacing, made when the rung
+    built the node), they are that choice among its quadrature at ``counts``; without, the quadrature at ``counts``
+    itself, as a kind kept from before quasi-uniform sampling gives them. The choice is held as the counts are: a node
+    built again with another value of a setting keeps it, and a study's step moves the chosen samples with the shape,
+    never choosing again. They are placed in the body's frame by the part's ``part_rotation`` (rows) and
+    ``part_centre``, and in the world by the pose. The blob
     is ``blob`` times the samples' mean spacing. The solve is checkpointed: reverse mode keeps the step's inputs and
     solves again, rather than holding every step's factors.
 
@@ -140,7 +147,9 @@ class MRSDragNode(MimeNode):
 
     def __init__(self, name: str, timestep: float, *, viscosity: float, blob: float, kind: str, kind_version: str,
                  patches: Sequence[str], counts: Sequence[Sequence[int]], part_centre: Sequence[float],
-                 part_rotation: Sequence[float], wall_kind: str, wall_kind_version: str, **constants: object) -> None:
+                 part_rotation: Sequence[float], wall_kind: str, wall_kind_version: str,
+                 sampling_chosen: np.ndarray | None = None, sampling_members: np.ndarray | None = None,
+                 **constants: object) -> None:
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
                              f"more")
@@ -159,11 +168,20 @@ class MRSDragNode(MimeNode):
         #: The kind's settings the step takes as leaves: its numbers, not its directions or integers.
         self._traced = tuple(name for name, value in settings.items()
                              if isinstance(value, float) and _kind_of(held, name) is not Direction)
+        held_counts = tuple(tuple(int(c) for c in count) for count in counts)
+        if (sampling_chosen is None) != (sampling_members is None):
+            raise ValueError("a sampling's choice is its chosen samples and their cells, both or neither")
+        chosen: dict[str, np.ndarray] = {}
+        if sampling_chosen is not None and sampling_members is not None:
+            chosen = {"sampling_chosen": np.asarray(sampling_chosen, dtype=np.int32),
+                      "sampling_members": np.asarray(sampling_members, dtype=np.int32)}
+        self._sampling = Sampling(tuple(patches), held_counts, "chosen" if chosen else "quadrature",
+                                  chosen.get("sampling_chosen"), chosen.get("sampling_members"))
         super().__init__(name, timestep, viscosity=viscosity, blob=blob, kind=kind, kind_version=kind_version,
-                         patches=tuple(patches), counts=tuple(tuple(int(c) for c in count) for count in counts),
-                         part_centre=tuple(float(c) for c in part_centre),
+                         patches=tuple(patches), counts=held_counts, part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), wall_kind=wall_kind,
-                         wall_kind_version=wall_kind_version, **{key: value for key, value in constants.items()})
+                         wall_kind_version=wall_kind_version, **chosen,
+                         **{key: value for key, value in constants.items()})
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -226,19 +244,25 @@ class MRSDragNode(MimeNode):
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {"pose": node_input("m; 1", (7,))}
 
+    @cached_property
+    def sample_count(self) -> int:
+        """How many samples the node solves at: its choice's, or its quadrature's at ``counts``."""
+        if self._sampling.chosen is not None:
+            return len(self._sampling.chosen)
+        return int(self.samples(self._step_constants(None)).points.shape[0])
+
     def samples(self, p: Mapping[str, Any]) -> Samples:
         """The kind's samples on every patch, in the body's frame: points, normals and weights."""
         constants = self.constants()
         parameters = {name: p[f"{SHAPE}{name}"] if name in self._traced else constants[f"{SHAPE}{name}"]
                       for name in (key.removeprefix(SHAPE) for key in constants if key.startswith(SHAPE))}
-        found = [self._kind.samples(parameters, patch, tuple(count))
-                 for patch, count in zip(constants["patches"], constants["counts"], strict=True)]
+        found = self._sampling.samples(self._kind, parameters)
         dtype = jnp.asarray(p["viscosity"]).dtype
         turn = jnp.asarray(p["part_rotation"], dtype=dtype).reshape(3, 3)
         centre = jnp.asarray(p["part_centre"], dtype=dtype)
-        points = jnp.concatenate([jnp.asarray(s.points, dtype=dtype) for s in found])
-        normals = jnp.concatenate([jnp.asarray(s.normals, dtype=dtype) for s in found])
-        weights = jnp.concatenate([jnp.asarray(s.weights, dtype=dtype) for s in found])
+        points = jnp.asarray(found.points, dtype=dtype)
+        normals = jnp.asarray(found.normals, dtype=dtype)
+        weights = jnp.asarray(found.weights, dtype=dtype)
         return Samples(jnp.matmul(points, turn.T, precision=PRECISION) + centre,
                        jnp.matmul(normals, turn.T, precision=PRECISION), weights)
 
