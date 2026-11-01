@@ -2061,3 +2061,54 @@ anomalies:
     residual_risk: "Close to a wall a run stops wherever its resistance turns indefinite, and a definite resistance there is not shown accurate; a body nothing holds off the wall, or a force spacing written coarser than the bound, can stop within a few steps (script A's floored FL-9 at 0.829 mm with the image at the force points, at its tenth). The bound and the wall refinement were measured on one screw and one sphere in one tube, and the integration is not monotone in the refinement. Drag 0.3.0's point forces are indefinite near the wall too and have no step check"
     workaround: "Hold a body near a wall with a contact, so that its default force spacing keeps its closest approach CONFINED_GAP force spacings from the wall with the image integrated (wall_refinement 2), or write a spacing at most the gap over CONFINED_GAP; the build report states the cost (script A's 0.1 mm margin asks 0.278 mm, about 2,000 force points on FL-9; its frozen point, 0.178 mm, peaks at 7.6 GiB on drag 0.4.0 with the image at the force points). The point forces (quadrature_refinement=1) are no way out: they are indefinite near the wall too. In a tube, read the speed from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing; the confined sphere on the axis meets Haberman and Sayre within 1.7% at two fifths of the radius"
     planned_resolution: "Built in part (design #204): the image integrated over each cell (wall_refinement) and a held body's spacing kept out of the band (CONFINED_GAP), with the step's check and the near-wall flag kept, since at an eighth of a spacing the image is not the whole cause. Open: why the integration is not monotone in the wall's refinement near the wall (an accurate near-wall integration of the image, singular as the gap closes, or an analytic plane image near the nearest wall with a smooth tabulated remainder), measured against the tube's finest spacing; and the tube's convergence ladder measured at wall_refinement 2"
+
+  - anomaly_id: MIME-ANO-132
+    title: "M1's margin to indefiniteness at A stays flat at about x1.03 along the convergence ladder, while the gap grows from 0.50 to 0.98 spacings"
+    description: >
+      The margin to indefiniteness is the factor on the wall correction at which the floored resistance first turns
+      indefinite (the correction scaled from x1.000 in steps of 0.0025, at all eight phases, the least onset taken).
+      Measured at script A's operating point, the frozen model (the screw 0.2.0, closed surface, blob 0.5, a margin of
+      0.1 mm, the MRS rung drag 0.3.0's point forces, the tube's wall table), on M1's convergence ladder of nominal
+      spacings 0.2, 0.16, 0.128 and 0.1024 mm (mean spacings 0.1792, 0.1457, 0.1157 and 0.0929 mm; computed in A0f's
+      stage 1): the least onset is x1.025, x1.0325, x1.030 and x1.030. The prediction, made before the ladder ran,
+      was that the margin widens (x1.020 to x1.030 at 0.2 mm, above x1.035 at 0.1024 mm), since the floored body's
+      gap to the wall grows in spacings as the spacing refines (from 0.50 to 0.98 spacings across the ladder). It did
+      not widen: it is flat at about x1.03, and the differences between levels are at the scan's own step (0.0025).
+      Every nominal reading on the ladder was definite and accepted (the least eigenvalue 212.2 to 213.8 at blob 0.5).
+
+      Measured note, the 3/16 in tube: in A0f's stage 1 the same configuration with the wall correction scaled by
+      x1.02 is indefinite at every phase (the least eigenvalue -4365 to -4385), the nominal definite, so its margin is
+      under +2%, against +3.0% at A. The 1/2 in tube first goes indefinite between x1.042 and x1.044 on the scan, and
+      the 3/8 in tube before x1.040 (x1.02 definite). These were measured at one spacing (0.178 mm), not on a ladder.
+
+      M1's rule, set before the ladder ran: if the margin widens along the ladder it is a resolution symptom, cleared
+      by M1 and by the near-contact work; if it does not, the wall correction's assembly near the wall is suspect, and
+      it becomes its own anomaly. This is that anomaly.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A body on the floor sits about 3% of the wall correction from an indefinite resistance at every spacing
+      measured, and a refinement does not move it away, so the margin cannot be cleared by M1's ladder on this rung.
+      An indefinite resistance in a body's implicit step is an energy source; the study checked each nominal reading
+      definite, but drag 0.3.0 itself does not check, so any study that raises the wall
+      correction coherently, or sits closer to the wall than A's floor, is closer to the loss of definiteness than a
+      resolution study would lead it to expect.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "the MRS rung (drag 0.3.0) with the tube wall kind's table, on the screw 0.2.0 floored in the tube"
+    verification: []
+    residual_risk: >
+      Measured at A on one ladder and in the other three tubes at one spacing. What it bounds: nothing about the
+      experiment, since the numerical band at A is unbounded on this ladder. What it estimates: the margin at the
+      frozen model, to the scan's step of 0.0025. The cause is a suspicion, not a finding (below).
+    workaround: "Drag 0.3.0 does not check its resistance: check its least eigenvalue yourself near a wall, or use drag 0.4.0's per-step check once it lands; read a floored reading as within about 3% of the wall correction from indefinite (under 2% in the 3/16 in tube), whatever the spacing"
+    planned_resolution: >
+      Suspected, not confirmed (inference): the wall correction's assembly near the wall. Two candidates. (1) The
+      point-evaluated image: MIME-ANO-130 is the same family on the separated quadrature, and its cell-integrated
+      image is being built in dev1. (2) The tube table's accuracy near the wall: MIME-ANO-117's rebuilt table reaches
+      0.997 of the tube's radius. Resolution: the margin is re-measured on M1's convergence ladder at A on drag 0.4.0
+      with the cell-integrated image (dev1, M1's Modal run after phase 7m-b). If it widens there, this is resolved by
+      that change. If it stays flat, the tube table's near-wall resolution is next: a table rebuild with finer
+      near-wall knots (dev2, lane S, the derived-asset builders). The measurement's scripts are not in the
+      repository; they land with the A0f study.

@@ -1699,6 +1699,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-132 (open, minor): M1's margin to indefiniteness at A stays flat at about x1.03 along the convergence ladder
+  (x1.025, x1.0325, x1.030, x1.030 from 0.2 to 0.1024 mm) while the gap grows from 0.50 to 0.98 spacings; by M1's rule
+  the wall correction's assembly near the wall is suspect (a suspicion, not a finding). The 3/16 in tube's margin is
+  under +2%.
 - MIME-ANO-130 (open, major): on drag 0.4.0's separated quadrature a wall's image is taken at the force points: within
   half a force spacing of the wall the confined resistance was measured indefinite (on 0.3.0's point forces too), and
   in the tube the confinement's effect converges more slowly than the free part (FL-9's tube-over-free speed 0.971 at
