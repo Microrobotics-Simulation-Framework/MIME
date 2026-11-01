@@ -297,7 +297,8 @@ def _push(arguments: argparse.Namespace) -> int:
     if arguments.discard:
         push.discard(folder, service, yes=arguments.yes, confirm=ask, say=_say)
         return 0
-    push.push(folder, service, yes=arguments.yes, confirm=ask, say=_say)
+    push.push(folder, service, yes=arguments.yes, confirm=ask, say=_say,
+              overwrite_site_edits=arguments.overwrite_site_edits)
     return 0
 
 
@@ -429,8 +430,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
     fetch its assets and say what to install. ``mime credentials set | status | remove <service>``: the token
     ``push`` will use, kept where a commit cannot publish it. ``mime push <folder> --to zenodo|zenodo-sandbox
-    [--init | --status | --discard] [--yes]``: the plan, then the experiment's draft record and its files; never
-    published.
+    [--init | --status | --discard] [--yes] [--overwrite-site-edits]``: the plan, then the experiment's draft record
+    and its files; never published.
 
     A refused command prints why, as a MIME error with its code, and exits 2; one that met a MIME defect, or an error
     MIME does not recognise, exits 3. ``--traceback``, anywhere on the line, prints the full traceback first."""
@@ -508,6 +509,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                                                                     "push uploaded")
     pushing_mode.add_argument("--discard", action="store_true", help="delete the draft (only a draft can be deleted)")
     pushing.add_argument("--yes", action="store_true", help="go ahead after the plan without asking")
+    pushing.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
+                         help="write the draft's metadata from sharing.yaml and the folder over what was edited on the "
+                              "service's site since push last wrote it (without it, such an edit stops the push)")
     held_credentials = commands.add_parser("credentials", help="the access token mime push will use, kept where a "
                                                                "commit cannot publish it")
     credential_commands = held_credentials.add_subparsers(dest="credentials_command", required=True)

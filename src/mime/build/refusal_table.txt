@@ -235,7 +235,9 @@ pull.source                   user
 push.checksum                 environment
 push.creators                 user
 push.draft-changed            user
+push.draft-foreign            user
 push.licence                  user
+push.metadata-edited          user
 push.permission               user
 push.published                user
 push.rejected                 user internal

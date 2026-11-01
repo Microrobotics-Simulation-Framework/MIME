@@ -8,10 +8,17 @@ an entry started for it (Zenodo keeps no partial upload, ignores ``Content-Range
 is sent again). After each upload the service's md5 and size must equal MIME's; MIME's sha256 is kept in push's record,
 since Zenodo states md5 only. A file in the draft that this plan does not hold is deleted where push uploaded it
 earlier, and refused where it did not (``push.draft-changed``): one added on the site is the author's to remove.
+
+Before it writes to a draft or deletes one, push checks the draft is the one it made: the draft carries the identifier
+push wrote into it, a UUID of the service, the experiment's name and push's mark (``push.draft-foreign`` otherwise),
+and its metadata is what push last wrote, or what push would write now (``push.metadata-edited`` otherwise, naming each
+field edited on the site, until it is copied into sharing.yaml or ``overwrite_site_edits`` writes over it). Every push,
+``--status`` and ``--discard`` ends with the draft's link on a line of its own.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from collections.abc import Callable
@@ -23,14 +30,33 @@ from mime._terminal import plain
 from mime.assets import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
-from mime.push._client import Client, Dropped, Errors, Gone, Json, Transport
-from mime.push._plan import Plan, RecordFile, field_owner, make_plan
-from mime.push._service import TEST_PREFIX, Service
+from mime.push._client import Client, Dropped, Errors, Gone, Json, Owner, Transport, owned_refusals
+from mime.push._owners import FIELD_OWNERS, field_owner
+from mime.push._plan import Plan, RecordFile, make_plan
+from mime.push._service import TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
 from mime.push._sharing import read_sharing, scaffold, sharing_path
-from mime.push._state import DraftState, Uploaded, clear_state, read_state, staging, state_directory, write_state
+from mime.push._state import (
+    MARK_SCHEME,
+    DraftState,
+    Uploaded,
+    clear_state,
+    draft_identifier,
+    metadata_marks,
+    read_state,
+    staging,
+    state_directory,
+    write_state,
+)
 
 #: How often one file is started again from the beginning after its upload failed, before push stops.
 UPLOAD_ATTEMPTS = 3
+#: The flag that writes push's metadata over what was edited on the site.
+OVERWRITE_FLAG = "--overwrite-site-edits"
+#: Where each metadata field the author writes is kept in sharing.yaml, by its name in the record.
+SHARING_KEYS = {"title": "title", "creators": "creators", "contributors": "contributors", "subjects": "keywords",
+                "related_identifiers": "related"}
+#: The longest value a refusal quotes of a field.
+_SHOWN = 160
 
 type Say = Callable[[str], None]
 type Ask = Callable[[str], bool]
@@ -63,8 +89,17 @@ def experiment_name(folder: Path) -> str:
     return read_folder(folder, absent_referenced=True).document["experiment"]
 
 
+def _usable(service: Service) -> None:
+    """Refuse a service that cannot be sent its token (``push.service``), before anything is read or sent."""
+    problem = service.problem()
+    if problem is not None:
+        raise BuildRefused([_refuse("push.service", RefusalClass.USER, problem,
+                                    "push to a service by its name, `mime push <folder> --to zenodo-sandbox`")])
+
+
 def _token(service: Service) -> Token:
-    """The token push sends ``service``, and only where MIME may go online (``MIME_OFFLINE`` closes push too)."""
+    """The token push sends ``service``, and only where MIME may go online (``MIME_OFFLINE`` closes push too). The two
+    real services' stored tokens are never the same one: a token stored under the other's name is refused."""
     from mime import credentials
     from mime.assets import offline
 
@@ -80,6 +115,17 @@ def _token(service: Service) -> Token:
             f"no token for {service.name}: push uploads with the token of the account the draft belongs to; nothing "
             f"was sent", f"make a personal access token with the scope deposit:write on the service's site and store "
                          f"it, `mime credentials set {service.credential}`")])
+    others = [each.credential for each in (ZENODO, ZENODO_SANDBOX) if each.credential != service.credential]
+    if service.credential in (ZENODO.credential, ZENODO_SANDBOX.credential):
+        for other in others:
+            held = credentials.token(other)
+            if held is not None and held.reveal() == found.reveal():
+                raise BuildRefused([_refuse(
+                    "push.token", RefusalClass.ENVIRONMENT,
+                    f"the tokens held for {service.credential} and {other} are the same token, and a token is the "
+                    f"token of one service's account: one of them is held under the wrong name; nothing was sent",
+                    f"make each on its own service's site and store it under that service's name, `mime credentials "
+                    f"set {service.credential}` and `mime credentials set {other}`")])
     return found
 
 
@@ -111,36 +157,86 @@ def _entry_verified(entry: Json, file: RecordFile) -> bool:
         entry.get("checksum") == f"md5:{file.md5}"
 
 
-def _errors_refusal(service: Service, record: str, what: str, errors: Errors | list[object]) -> BuildRefused:
-    """A refusal for each field the service names in ``errors``, by who owns it (``FIELD_OWNERS``): the author's in
+def _errors_refusal(service: Service, record: str, what: str, errors: Errors | list[object],
+                    owner: Owner = field_owner) -> BuildRefused:
+    """A refusal for each field the service names in ``errors``, by who owns it (``owner``): the author's in
     sharing.yaml or the experiment, to correct there; MIME's, its defect, said as one."""
+    listed = errors.errors if isinstance(errors, Errors) else errors
+    return BuildRefused(owned_refusals(service, f"{service.name} kept the draft {record} and refused part of {what}",
+                                       listed, owner, "its answer listed errors"))
+
+
+def _identifiers(draft: Json) -> list[str]:
+    metadata = draft.get("metadata")
+    held = cast(dict[str, object], metadata).get("identifiers") if isinstance(metadata, dict) else None
+    return [str(cast(dict[str, object], each).get("identifier")) for each in cast(list[object], held)
+            if isinstance(each, dict)] if isinstance(held, list) else []
+
+
+def _ours(draft: Json, service: Service, state: DraftState) -> bool:
+    """Whether ``draft`` carries the identifier push wrote into the draft it made for the record's experiment."""
+    return draft_identifier(service, state.experiment, state.mark) in _identifiers(draft)
+
+
+def _foreign(service: Service, state: DraftState) -> BuildRefused:
+    expected = draft_identifier(service, state.experiment, state.mark)
+    page = state.page or service.draft_page(str(state.record))
+    return BuildRefused([_refuse(
+        "push.draft-foreign", RefusalClass.USER,
+        f"the draft {state.record} on {service.name} does not carry the identifier push wrote into the draft it made "
+        f"for {plain(state.experiment)!r}, {expected}: push's record names another draft (another experiment's, or a "
+        f"record edited or copied), or the identifier was removed on the site, so push changes and deletes nothing in "
+        f"it", f"look at the draft, {page}: if it is this experiment's, add the alternate identifier {expected} back "
+           f"on the site; if it is not, delete push's record, {state_directory(service, state.experiment)}, and run "
+           f"`mime push <folder> --to {service.name}`, which makes a new draft")])
+
+
+def _metadata(draft: Json) -> dict[str, object]:
+    held = draft.get("metadata")
+    return cast(dict[str, object], held) if isinstance(held, dict) else {}
+
+
+def edited_fields(draft: Json, state: DraftState) -> list[str]:
+    """The fields of ``draft``'s metadata that differ from what push last wrote: edited on the site since."""
+    now, then = metadata_marks(draft), state.written
+    return sorted(key for key in set(now) | set(then) if now.get(key) != then.get(key))
+
+
+def _shown(value: object) -> str:
+    if value in (None, "", [], {}):
+        return "nothing"
+    text = plain(value if isinstance(value, str) else json.dumps(value, sort_keys=True, ensure_ascii=False))
+    return text if len(text) <= _SHOWN else text[:_SHOWN] + "..."
+
+
+def _site_edits(service: Service, record: str, fields: list[str], site: dict[str, object],
+                ours: dict[str, object]) -> BuildRefused:
+    """A refusal for each field edited on the site, with its value there and the value push would write."""
     found: list[Refusal] = []
-    for each in errors.errors if isinstance(errors, Errors) else errors:
-        held = cast(dict[str, object], each) if isinstance(each, dict) else {}
-        field = str(held.get("field", ""))
-        said = Errors([each]).words()
-        owner = field_owner(field) if field else "mime"
-        if owner == "sharing":
-            found.append(_refuse(
-                "push.rejected", RefusalClass.USER,
-                f"{service.name} kept the draft {record} and refused part of {what}: {said}",
-                f"correct it in sharing.yaml, then `mime push <folder> --to {service.name}`, which writes the draft's "
-                f"metadata again"))
-        elif owner == "experiment":
-            found.append(_refuse(
-                "push.rejected", RefusalClass.USER,
-                f"{service.name} kept the draft {record} and refused part of {what}: {said}",
-                f"correct the licence or terms where the experiment is built, exp.licence(...) or Terms(...), save it "
-                f"again, built.save(folder), then `mime push <folder> --to {service.name}`"))
+    flag = OVERWRITE_FLAG
+    for name in fields:
+        owner = FIELD_OWNERS.get(name, "mime")
+        source = "sharing.yaml" if owner == "sharing" else "the experiment" if owner == "experiment" else "MIME"
+        message = (f"the draft {record} on {service.name} was edited on the site since push last wrote it, and push "
+                   f"would write over it: metadata.{name} on the site: {_shown(site.get(name))}; from {source}: "
+                   f"{_shown(ours.get(name))}")
+        if name in SHARING_KEYS:
+            action = (f"to keep the site's, copy it into sharing.yaml's `{SHARING_KEYS[name]}` and push again; to "
+                      f"drop it, write over it, `mime push <folder> --to {service.name} {flag}`")
+        elif name == "description":
+            action = (f"the description is sharing.yaml's `description` paragraph and the card, which MIME writes: to "
+                      f"keep a paragraph of the site's, copy it into that key, then write over the rest, `mime push "
+                      f"<folder> --to {service.name} {flag}`")
+        elif name == "rights":
+            action = (f"the licences are the files', declared where the experiment is built: to keep the site's, "
+                      f"declare them there, exp.licence(...), and save again, built.save(folder); to drop the edit, "
+                      f"write over it, `mime push <folder> --to {service.name} {flag}`")
         else:
-            found.append(_refuse(
-                "push.rejected", RefusalClass.INTERNAL,
-                f"{service.name} kept the draft {record} and refused part of {what}, in a field MIME builds, not one "
-                f"you write: {said}. This is MIME's defect, not yours", "report it with this message"))
-    return BuildRefused(found or [_refuse(
-        "push.rejected", RefusalClass.INTERNAL,
-        f"{service.name} kept the draft {record} and listed errors naming no field in its answer to {what}. This is "
-        f"MIME's defect, not yours", "report it with this message")])
+            action = (f"sharing.yaml has no key for {name}, so writing over it removes the site's from the draft, "
+                      f"`mime push <folder> --to {service.name} {flag}`; to keep it, leave the draft as it is and do "
+                      f"not push it again")
+        found.append(_refuse("push.metadata-edited", RefusalClass.USER, message, action))
+    return BuildRefused(found)
 
 
 def _published(service: Service, record: str) -> BuildRefused:
@@ -154,12 +250,21 @@ def _published(service: Service, record: str) -> BuildRefused:
 class _Drafting:
     """One push's requests, its record kept current after every step that changes the service."""
 
-    def __init__(self, client: Client, plan: Plan, state: DraftState | None, say: Say) -> None:
+    def __init__(self, client: Client, plan: Plan, state: DraftState | None, say: Say, overwrite: bool) -> None:
         self.client = client
+        client.owner = plan.owner
         self.plan = plan
         self.service = plan.service
         self.state = state
         self.say = say
+        self.overwrite = overwrite
+
+    def payload(self, state: DraftState) -> Json:
+        """The plan's metadata, with push's identifier of the draft among its alternate identifiers."""
+        metadata = dict(cast(Json, self.plan.payload["metadata"]))
+        metadata["identifiers"] = [{"identifier": draft_identifier(self.service, state.experiment, state.mark),
+                                    "scheme": MARK_SCHEME}]
+        return {**self.plan.payload, "metadata": metadata}
 
     def save(self) -> None:
         assert self.state is not None
@@ -179,38 +284,55 @@ class _Drafting:
                 state = None
             elif read[0].get("is_published") is True:
                 raise _published(service, state.record)
+            elif not _ours(read[0], service, state):
+                raise _foreign(service, state)
             else:
                 found = read[0]
         if state is None or state.record is None or found is None:
-            if state is not None and state.creating:
+            mark = state.mark if state is not None and state.creating else None
+            if mark is not None:
+                lost = draft_identifier(service, self.plan.experiment, mark)
                 self.say(f"warning: an earlier push stopped while it asked {service.name} to make the draft, before "
                          f"its answer came, so {service.name} may hold a draft MIME has no record of: look at "
-                         f"{service.site}/me/uploads, and delete one there that this push does not name")
-            self.state = state = DraftState(service.name, service.api, self.plan.experiment, creating=True)
+                         f"{service.site}/me/uploads, and delete one there that this push does not name (it carries "
+                         f"the alternate identifier {lost})")
+            fresh = DraftState(service.name, service.api, self.plan.experiment, creating=True)
+            if mark is not None:
+                fresh.mark = mark  # the draft made now carries the identifier the lost one may carry
+            self.state = state = fresh
             self.save()
-            draft, errors = self.client.create_draft(self.plan.payload)
+            draft, errors = self.client.create_draft(self.payload(state))
             record = str(draft["id"])
             self.state = state = DraftState(service.name, service.api, self.plan.experiment, record,
-                                            _parent_id(draft), None, _page(draft, service, record))
+                                            _parent_id(draft), None, _page(draft, service, record), mark=state.mark,
+                                            written=metadata_marks(draft))
             self.save()
             self.say(f"made the draft {record}: {state.page}")
             if errors:
-                raise _errors_refusal(service, record, "its metadata", errors)
+                raise _errors_refusal(service, record, "its metadata", errors, self.plan.owner)
         else:
             record = state.record
             assert record is not None
-            body = dict(self.plan.payload)
+            body = self.payload(state)
+            edited = [name for name in edited_fields(found, state)
+                      if _metadata(found).get(name) != cast(Json, body["metadata"]).get(name)]
+            if edited and not self.overwrite:
+                raise _site_edits(service, record, edited, _metadata(found), cast(Json, body["metadata"]))
             body["pids"] = found.get("pids", {})
             draft, errors = self.client.update_draft(record, body)
+            state.written = metadata_marks(draft)
+            self.save()
+            if edited:
+                self.say(f"wrote over what was edited on the site ({OVERWRITE_FLAG}): {', '.join(edited)}")
             self.say(f"wrote the metadata of the draft {record} again, from sharing.yaml and the folder")
             if errors:
-                raise _errors_refusal(service, record, "its metadata", errors)
+                raise _errors_refusal(service, record, "its metadata", errors, self.plan.owner)
         doi = _doi_of(draft)
         if doi is None:
             try:
-                draft = self.client.reserve_doi(record)
+                draft = self._reserved(record)
             except Errors as answered:
-                raise _errors_refusal(service, record, "the DOI's reservation", answered) from None
+                raise _errors_refusal(service, record, "the DOI's reservation", answered, self.plan.owner) from None
             doi = _doi_of(draft)
             if doi is None:
                 raise BuildRefused([_refuse(
@@ -229,6 +351,19 @@ class _Drafting:
         state.concept = _parent_id(draft) or state.concept
         self.save()
         return state, draft
+
+    def _reserved(self, record: str) -> Json:
+        """The draft with its DOI reserved. An answer lost is never taken for a refusal: the draft is read again, and
+        the reservation asked once more only where the draft holds no DOI."""
+        for _ in range(2):
+            try:
+                return self.client.reserve_doi(record)
+            except Dropped:
+                pass
+            read = self.client.read_draft(record)
+            if read is not None and _doi_of(read[0]) is not None:
+                return read[0]
+        raise self.client.lost("POST", f"/records/{record}/draft/pids/doi", "twice, and the draft holds no DOI")
 
     def upload(self) -> tuple[list[str], list[str]]:
         """Each planned file into the draft, unless it is there already, verified: the files sent and those kept."""
@@ -275,19 +410,29 @@ class _Drafting:
                      f"{self.service.name} states")
         return sent, kept
 
+    def _start(self, record: str, key: str) -> None:
+        """Start the entry ``key``; an answer lost is not taken for a failure where the files, read again, hold the
+        entry (it was started, and is never started twice)."""
+        try:
+            self.client.start_file(record, key)
+        except Dropped:
+            if key not in self.client.files(record):
+                raise
+
     def _send(self, record: str, file: RecordFile) -> None:
-        """One file, whole, into an entry started for it; after a failure the entry is cleared and the file sent again
-        from its start, at most :data:`UPLOAD_ATTEMPTS` times."""
+        """One file, whole, into an entry started for it; after a failure the entry is read again, and the file is
+        kept where the service holds it complete and verified (an answer lost after the service acted), or else
+        cleared and sent again from its start, at most :data:`UPLOAD_ATTEMPTS` times."""
         problem = ""
         mismatch = False
         for _ in range(UPLOAD_ATTEMPTS):
-            self.client.start_file(record, file.key)
             entry: Json | None = None
             try:
+                self._start(record, file.key)
                 entry = self.client.send_content(record, file.key, file.path)
                 entry = self.client.commit_file(record, file.key)
             except Dropped:
-                problem, mismatch, entry = "its connection dropped", False, None
+                problem, mismatch, entry = "its connection dropped, or its answer was lost", False, None
             except Gone:
                 problem, mismatch, entry = "its entry was gone before it was complete", False, None
             except Errors as answered:
@@ -317,9 +462,20 @@ class _Drafting:
             "not sent again")])
 
     def check(self) -> None:
-        """The draft holds exactly the planned files, each verified."""
+        """The draft holds exactly the planned files, each verified, and push's identifier; what its metadata is now is
+        kept, for the next push to find what was edited on the site since."""
         state = self.state
         assert state is not None and state.record is not None
+        read = self.client.read_draft(state.record)
+        if read is None or not _ours(read[0], self.service, state):
+            raise BuildRefused([_refuse(
+                "push.service", RefusalClass.ENVIRONMENT,
+                f"read again after the uploads, the draft {state.record} is "
+                f"{'gone' if read is None else 'without the identifier push wrote into it'}",
+                "look at the draft on the service's site, then run the same command again, `mime push <folder> --to "
+                "<service>`")])
+        state.written = metadata_marks(read[0])
+        self.save()
         held = self.client.files(state.record)
         wrong = [file.key for file in self.plan.files if file.key not in held or not _entry_verified(held[file.key],
                                                                                                      file)]
@@ -353,10 +509,13 @@ def _page(draft: Json, service: Service, record: str) -> str:
 
 def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False, confirm: Ask | None = None,
          say: Say = _quiet, transport: Transport | None = None, pause: float | None = None,
-         sleep: Callable[[float], None] = time.sleep) -> Drafted | None:
+         sleep: Callable[[float], None] = time.sleep, overwrite_site_edits: bool = False) -> Drafted | None:
     """Show the plan, then make or update the draft of the saved experiment in ``folder`` on ``service``, reserve its
     DOI and upload its files; never publish. Nothing is sent before the plan is shown and confirmed (``yes``, or
-    ``confirm`` answering true); without either, refused (``push.unconfirmed``). ``None`` when the plan is declined."""
+    ``confirm`` answering true); without either, refused (``push.unconfirmed``). ``None`` when the plan is declined.
+    Metadata edited on the site since push last wrote it is refused (``push.metadata-edited``), and written over
+    where ``overwrite_site_edits``."""
+    _usable(service)
     root = Path(os.path.abspath(folder))
     sharing = read_sharing(root)
     experiment = experiment_name(root)
@@ -370,20 +529,31 @@ def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False,
             raise _unconfirmed("the plan")
         if not confirm(f"Make or update the draft on {service.name}?"):
             say("Not made: nothing was sent.")
+            if state is not None and state.page:
+                say(state.page)
             return None
-    return send(plan, state, Client(service, token, transport, pause=pause, sleep=sleep), say)
+    return send(plan, state, Client(service, token, transport, pause=pause, sleep=sleep), say,
+                overwrite_site_edits=overwrite_site_edits)
 
 
-def send(plan: Plan, state: DraftState | None, client: Client, say: Say = _quiet) -> Drafted:
+def send(plan: Plan, state: DraftState | None, client: Client, say: Say = _quiet, *,
+         overwrite_site_edits: bool = False) -> Drafted:
     """What ``push`` does once its plan is shown and confirmed: make or update the draft, reserve its DOI, upload each
-    file that differs, and read the draft again to check it holds exactly the plan's files, verified."""
-    drafting = _Drafting(client, plan, state, say)
-    state, _ = drafting.draft()
-    sent, kept = drafting.upload()
-    drafting.check()
+    file that differs, and read the draft again to check it holds exactly the plan's files, verified. Whatever
+    happens, once there is a draft its link is the last line said."""
+    drafting = _Drafting(client, plan, state, say, overwrite_site_edits)
+    try:
+        state, _ = drafting.draft()
+        sent, kept = drafting.upload()
+        drafting.check()
+    except BaseException:
+        if drafting.state is not None and drafting.state.page:
+            say(drafting.state.page)
+        raise
     assert state.record is not None and state.page is not None and state.doi is not None
     say(f"The draft {state.record} on {plan.service.name} holds the {len(plan.files)} record files, each md5 "
         f"verified; its DOI {state.doi} is reserved, and nothing is published. Look at it: {state.page}")
+    say(state.page)
     return Drafted(state.record, state.page, state.doi, state.concept, tuple(sent), tuple(kept))
 
 
@@ -391,7 +561,9 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
            pause: float | None = None) -> DraftState | None:
     """Say what push knows of the experiment's draft on ``service`` and the draft as the service holds it: its page,
     reserved DOI, concept, title, creators and licences, and each file with its size and md5, against what push
-    uploaded and verified. Changes nothing."""
+    uploaded and verified, and whether it is the draft push made and what was edited on the site since push last wrote
+    it. Changes nothing; ends with the draft's link."""
+    _usable(service)
     root = Path(os.path.abspath(folder))
     experiment = experiment_name(root)
     state = read_state(service, experiment)
@@ -404,14 +576,22 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
     if read is None:
         if client.read_record(state.record) is not None:
             say(f"the record {state.record} on {service.name} is published: {service.site}/records/{state.record}")
+            say(f"{service.site}/records/{state.record}")
         else:
             say(f"the draft {state.record} MIME made is no longer on {service.name} (discarded on the site?); the next "
                 f"push makes a new one")
         return state
     draft, errors = read
-    metadata = draft.get("metadata")
-    held = cast(dict[str, object], metadata) if isinstance(metadata, dict) else {}
-    say(f"The draft {state.record} on {service.name}: {_page(draft, service, state.record)}")
+    held = _metadata(draft)
+    page = _page(draft, service, state.record)
+    say(f"The draft {state.record} on {service.name}: {page}")
+    if not _ours(draft, service, state):
+        say(f"  it does not carry the identifier push wrote into the draft it made, "
+            f"{draft_identifier(service, experiment, state.mark)}: push's record may name another draft, and push "
+            f"changes nothing in it")
+    elif edited := edited_fields(draft, state):
+        say(f"  edited on the site since push last wrote it: {', '.join(plain(each) for each in edited)} (a push "
+            f"refuses to write over them without {OVERWRITE_FLAG})")
     say(f"  status: {plain(str(draft.get('status', 'draft')))}, published: {draft.get('is_published') is True}; "
         f"reserved DOI: {_doi_of(draft) or 'none'}; concept: {_parent_id(draft) or 'none'}")
     say(f"  title: {plain(str(held.get('title', '')))}")
@@ -431,13 +611,16 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
         say(f"    {plain(key)}  {entry.get('size')} bytes  {plain(checksum)}  {verdict}")
     for key in sorted(set(state.files) - set(files)):
         say(f"    {plain(key)}: push uploaded it, and the draft no longer holds it")
+    say(page)
     return state
 
 
 def discard(folder: str | os.PathLike[str], service: Service, *, yes: bool = False, confirm: Ask | None = None,
             say: Say = _quiet, transport: Transport | None = None, pause: float | None = None) -> bool:
     """Delete the experiment's draft on ``service`` (only a draft can be deleted) and push's record of it: whether a
-    draft was deleted."""
+    draft was deleted. Only the draft push made is deleted (``push.draft-foreign`` otherwise). Ends with a link: the
+    draft's when it is kept, the account's drafts when it is deleted."""
+    _usable(service)
     root = Path(os.path.abspath(folder))
     experiment = experiment_name(root)
     state = read_state(service, experiment)
@@ -454,16 +637,21 @@ def discard(folder: str | os.PathLike[str], service: Service, *, yes: bool = Fal
         return False
     if read[0].get("is_published") is True:
         raise _published(service, state.record)
-    question = f"Delete the draft {state.record} on {service.name} and its files ({state.page})?"
+    if not _ours(read[0], service, state):
+        raise _foreign(service, state)
+    page = state.page or service.draft_page(state.record)
+    question = f"Delete the draft {state.record} on {service.name} and its files ({page})?"
     if not yes:
         if confirm is None:
             raise _unconfirmed(f"the deletion of the draft {state.record}")
         if not confirm(question):
             say("Not deleted.")
+            say(page)
             return False
     client.delete_draft(state.record)
     clear_state(service, experiment)
     say(f"deleted the draft {state.record} on {service.name}, and push's record of it")
+    say(f"{service.site}/me/uploads")
     return True
 
 
@@ -487,4 +675,5 @@ def _rights(value: object) -> list[str]:
     return found or ["none"]
 
 
-__all__ = ["UPLOAD_ATTEMPTS", "Drafted", "discard", "experiment_name", "init", "push", "send", "status"]
+__all__ = ["OVERWRITE_FLAG", "SHARING_KEYS", "UPLOAD_ATTEMPTS", "Drafted", "discard", "edited_fields",
+           "experiment_name", "init", "push", "send", "status"]

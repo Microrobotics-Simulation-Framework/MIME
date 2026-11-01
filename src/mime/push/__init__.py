@@ -7,7 +7,9 @@ InvenioRDM's records API, each md5 checked against the service's. ``--init`` wri
 credit) from what the folder knows; ``--status`` reads the draft as the service holds it; ``--discard`` deletes it
 (only a draft can be). ``--to`` is required: the sandbox and production are two services, each fixed in code, never
 one flag apart by accident. A push stopped at any request is resumed by running it again: what was uploaded and
-verified is not sent again. Publishing, versions and communities come later. See the README.
+verified is not sent again. Push writes to, or deletes, only the draft it made (it marks each with an identifier of its
+own), and never writes over metadata edited on the site unless ``--overwrite-site-edits`` says so. Publishing, versions
+and communities come later. See the README.
 """
 
 from mime.push._client import (
@@ -23,7 +25,8 @@ from mime.push._client import (
     HttpTransport,
     Transport,
 )
-from mime.push._draft import UPLOAD_ATTEMPTS, Drafted, discard, init, push, send, status
+from mime.push._draft import OVERWRITE_FLAG, UPLOAD_ATTEMPTS, Drafted, discard, edited_fields, init, push, send, status
+from mime.push._owners import FIELD_OWNERS, field_owner
 from mime.push._plan import KEYWORD, MOST_BYTES, MOST_FILES, AssetChoice, Plan, RecordFile, card_html, make_plan
 from mime.push._service import SERVICES, TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
 from mime.push._sharing import (
@@ -39,15 +42,17 @@ from mime.push._sharing import (
     orcid_problem,
     read_sharing,
 )
-from mime.push._state import DraftState, Uploaded, read_state, state_directory
+from mime.push._state import DraftState, Uploaded, draft_identifier, metadata_marks, read_state, state_directory
 
 __all__ = [
     "CONTRIBUTOR_TYPES",
     "DEFAULT_LICENCE",
+    "FIELD_OWNERS",
     "KEYWORD",
     "LONGEST_WAIT_SECONDS",
     "MOST_BYTES",
     "MOST_FILES",
+    "OVERWRITE_FLAG",
     "PAUSE_SECONDS",
     "RDM_TYPE",
     "RELATION_TYPES",
@@ -79,8 +84,12 @@ __all__ = [
     "Uploader",
     "card_html",
     "discard",
+    "draft_identifier",
+    "edited_fields",
+    "field_owner",
     "init",
     "make_plan",
+    "metadata_marks",
     "orcid_problem",
     "push",
     "read_sharing",

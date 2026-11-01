@@ -21,13 +21,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   probe of 2026-11-01: the records API's `Accept` header on every request (the legacy shape refused), every 2xx checked
   for `errors`, no resume (a file sent whole, never twice), the reserved DOI as the service gives it, the publisher
   DataCite needs, a custom licence as a rights entry without an `id`, `Retry-After` honoured on a `429` only, no
-  redirect followed. A push stopped at any request is resumed by running it again, at the level of whole files. A field
-  the service refuses is the author's to correct where they write it and MIME's defect where MIME builds it.
-  Refusals: `push.sharing-missing`, `push.sharing`, `push.creators`, `push.licence`, `push.permission`, `push.token`,
-  `push.token-scope`, `push.service`, `push.rejected`, `push.draft-changed`, `push.too-large`, `push.too-many-files`,
-  `push.sandbox-location`, `push.checksum`, `push.published`, `push.unconfirmed`, `push.state`. The tests run against
-  an offline fake of the records API, replayed against the probe's answers; the sandbox lane
-  (`scripts/zenodo_sandbox_lane.py`) is run by hand, never by CI.
+  redirect followed, and a request that changes the service never sent again after a gateway's `502` or `504` (push
+  reads the draft or its files again and goes on from what is there). A push stopped at any request is resumed by
+  running it again, at the level of whole files. A field the service refuses, in a 2xx or a 4xx, is the author's to
+  correct where they write it and MIME's defect where MIME builds it (MIME's keyword and the rights holders it adds
+  included), as is a refusal naming no field. **Push writes to and deletes only the draft it made**: each carries an
+  alternate identifier push writes into it (a `urn:uuid` of the service, the experiment's name and a mark in push's
+  record), checked before any write or discard (`push.draft-foreign`); and **an edit made on the site is never written
+  over unasked**: push keeps what the draft's metadata was after it last wrote it, and a field changed since stops the
+  push, naming its value on the site and in `sharing.yaml` (`push.metadata-edited`), until it is copied there or
+  `--overwrite-site-edits` writes over it. Every push, `--status` and `--discard` ends with the draft's link on a line
+  of its own. Push's record is kept per service and exact experiment name (two names that differ only in case have
+  two, on any file system). The token never reaches a traceback's locals, through the real transport too (whatever
+  stops a request, an interrupt included, is raised again fresh from a frame that holds none); a service on this
+  machine is reached without the environment's proxy; a `Service` pairs a real service's credential with its own host
+  alone; the two services' stored tokens are never the same one. Refusals: `push.sharing-missing`, `push.sharing`,
+  `push.creators`, `push.licence`, `push.permission`, `push.token`, `push.token-scope`, `push.service`,
+  `push.rejected`, `push.draft-changed`, `push.draft-foreign`, `push.metadata-edited`, `push.too-large`,
+  `push.too-many-files`, `push.sandbox-location`, `push.checksum`, `push.published`, `push.unconfirmed`,
+  `push.state`. The tests run against
+  an offline fake of the records API, replayed against the probe's answers, each in a home and state directory of its
+  own (a guard fails a test that writes push's records outside it); the sandbox lane (`scripts/zenodo_sandbox_lane.py`)
+  is run by hand, never by CI, and its dry run needs no token and removes what it writes.
 - **Terms and tiers** (push's first piece, P1, designs #198 and #199), all offline:
   - **Licences are SPDX expressions** (`mime.terms`): checked by `packaging.licenses` (the floor is now `packaging>=24.2`)
     and held to their canonical spelling; a licence of one's own is a `CustomLicence` (`LicenseRef-` with its title and

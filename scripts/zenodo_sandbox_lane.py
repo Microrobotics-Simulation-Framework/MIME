@@ -4,17 +4,17 @@ upload token, design #171 item 5). It is the check the offline fake cannot make 
 what the fake answers.
 
     uv run python scripts/zenodo_sandbox_lane.py --creator "<family>, <given>" [--orcid <iD>] [--log <dir>]
-        [--folder <saved folder> | --demo toy|terms ...] [--discard]
+        [--folder <saved folder> | --demo toy|terms ...] [--discard] [--dry-run]
 
 It reads the token ``mime credentials set zenodo-sandbox`` stored (or ``ZENODO_SANDBOX_TOKEN``) through
 ``mime.credentials`` and nothing else, never prints it, and sends it only to ``https://sandbox.zenodo.org``, a
 constant of MIME's (``mime.push.ZENODO_SANDBOX``; nothing here or in the environment can name another host). Requests
 are paced a second apart. Nothing is published: push has no publish.
 
-For each folder (one you name, or a demo it saves: ``toy``, the toy experiment under CC-BY-4.0; ``terms``, the toy with
-an MIT layer, a layer under a licence of its own that a declared permission lets travel, and one whose licence forbids
-redistribution, which travels as a reference), it writes ``sharing.yaml`` where the folder has none (``--creator`` the
-creator and uploader), then:
+For each folder (a copy of one you name, so nothing is written into it, or a demo it saves: ``toy``, the toy
+experiment under CC-BY-4.0; ``terms``, the toy with an MIT layer, a layer under a licence of its own that a declared
+permission lets travel, and one whose licence forbids redistribution, which travels as a reference), it writes
+``sharing.yaml`` where the folder has none (``--creator`` the creator and uploader), then:
 
 1. ``mime push <folder> --to zenodo-sandbox --yes``: the plan, the draft, its DOI, its files;
 2. ``--status``: the draft as the sandbox holds it;
@@ -28,17 +28,28 @@ The log (``zenodo_sandbox_lane_<date>.jsonl`` in ``--log``, the current director
 method, path, status, content type, rate-limit headers and field types, never a request's headers; it is searched for
 the token in every form ``Token.occurs_in`` knows before it is written, and not written if it holds one. It ends with
 the comparison's differences: none is the lane's pass.
+
+**A dry run** (``--dry-run``) sends nothing beyond this machine and needs no token: it holds a fresh one of its own in
+its process, so the stored token is never read. The sandbox is replaced by the offline fake behind a server on this
+machine, reached through the real transport, and compared with the fake in this process, so its pass line compares
+two different paths (the real transport's and the in-process one's), never the sandbox: it says so. It writes its log
+only where ``--log`` names, and removes what else it wrote (the folders, the stand-ins' records in the state
+directory), as every run removes its stand-ins'.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import json
+import os
 import re
+import secrets
+import shutil
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,11 +59,14 @@ from mime import credentials, push  # noqa: E402
 from mime.build import BuildRefused  # noqa: E402
 from mime.credentials import Token  # noqa: E402
 from mime.push import ZENODO_SANDBOX, Answer, HttpTransport  # noqa: E402
+from mime.push._service import loopback  # noqa: E402
+from mime.push._state import namespace, state_root  # noqa: E402
 
 PAUSE = 1.0
 #: The fields push reads, by where they sit in an answer: their JSON types are what the lane compares.
 DRAFT_FIELDS = ("id", "parent", "parent.id", "pids", "pids.doi.identifier", "is_published", "status",
-                "links.self_html", "metadata.title", "metadata.creators", "metadata.rights", "errors", "conceptrecid")
+                "links.self_html", "metadata.title", "metadata.creators", "metadata.rights", "metadata.identifiers",
+                "errors", "conceptrecid")
 ENTRY_FIELDS = ("key", "status", "size", "checksum", "errors")
 _NUMBER = re.compile(r"/\d+(?=/|$)")
 
@@ -163,7 +177,8 @@ def write_sharing(folder: Path, creator: str, orcid: str | None, title: str) -> 
 def cycle(folder: Path, service: push.Service, transport: object, discard: bool) -> push.Drafted | None:
     """Push, read the draft, push again (nothing sent again), and discard where asked: a second apart on the sandbox,
     at once against a fake."""
-    pause = PAUSE if isinstance(getattr(transport, "inner", transport), HttpTransport) else 0.0
+    remote = isinstance(getattr(transport, "inner", transport), HttpTransport) and not loopback(service.api)
+    pause = PAUSE if remote else 0.0
     first = push.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
     push.status(folder, service, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
     again = push.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
@@ -187,16 +202,47 @@ def differences(sandbox: list[dict[str, object]], fake: list[dict[str, object]])
     return found
 
 
-def sandbox_side(dry_run: bool, token: Token) -> tuple[push.Service, object]:
-    """What the lane pushes to: the sandbox itself, over HTTP; or, for a dry run, a fake with an address, a name and so
-    a namespace of push's records of its own (``mime.push._state.namespace``), which never reads or writes the
-    sandbox's records."""
+@contextlib.contextmanager
+def sandbox_side(dry_run: bool, token: Token) -> Iterator[tuple[push.Service, object]]:
+    """What the lane pushes to: the sandbox itself, over HTTP; or, for a dry run, the fake behind a server on this
+    machine, through the same transport, with an address, a name and so a namespace of push's records of its own
+    (``mime.push._state.namespace``), which never reads or writes the sandbox's records."""
     if not dry_run:
-        return ZENODO_SANDBOX, HttpTransport()
-    from zenodo_records import FakeRecords, FakeTransport
+        yield ZENODO_SANDBOX, HttpTransport()
+        return
+    from zenodo_records import served
 
-    fake = FakeRecords(token)
-    return fake.service("zenodo-sandbox-dry-run", credential=ZENODO_SANDBOX.credential), FakeTransport(fake)
+    with served(token.reveal()) as fake:
+        yield fake.service("zenodo-sandbox-dry-run", credential=ZENODO_SANDBOX.credential), HttpTransport()
+
+
+@contextlib.contextmanager
+def dry_token(dry_run: bool) -> Iterator[None]:
+    """For a dry run, a fresh token of the lane's own as this process's sandbox token, so the stored one is never
+    read; the variable as it was afterwards."""
+    if not dry_run:
+        yield
+        return
+    variable = credentials.SERVICES[ZENODO_SANDBOX.credential]
+    held = os.environ.get(variable)
+    os.environ[variable] = secrets.token_urlsafe(30)[:40]
+    try:
+        yield
+    finally:
+        if held is None:
+            os.environ.pop(variable, None)
+        else:
+            os.environ[variable] = held
+
+
+def remove_records(service: push.Service) -> None:
+    """A stand-in's records in the state directory, and the directories they leave empty; never a real service's."""
+    if namespace(service) in (ZENODO_SANDBOX.name, push.ZENODO.name):
+        return
+    shutil.rmtree(state_root() / namespace(service), ignore_errors=True)
+    for directory in ((state_root() / namespace(service)).parent, state_root(), state_root().parent):
+        with contextlib.suppress(OSError):
+            directory.rmdir()
 
 
 def write_log(lines: list[dict[str, object]], token: Token, directory: Path) -> Path | None:
@@ -219,20 +265,51 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--folder", type=Path, action="append", default=[], help="a saved folder to push (repeat)")
     parser.add_argument("--demo", choices=("toy", "terms"), action="append", default=[], help="a demo folder to save "
                                                                                             "and push (repeat)")
-    parser.add_argument("--log", type=Path, default=Path.cwd(), help="the directory to write the log to")
+    parser.add_argument("--log", type=Path, help="the directory to write the log to (the current directory by "
+                                                 "default; a dry run writes one only where this names)")
     parser.add_argument("--discard", action="store_true", help="delete each draft at the end")
-    parser.add_argument("--dry-run", action="store_true", help="the sandbox replaced by a fake of its own name and "
-                                                               "address, in this process: no request leaves the "
-                                                               "machine, and no record of the sandbox's is touched")
+    parser.add_argument("--dry-run", action="store_true", help="the sandbox replaced by the fake behind a server on "
+                                                               "this machine, through the real transport: no request "
+                                                               "leaves the machine, no token is read, and no record "
+                                                               "of the sandbox's is touched")
     arguments = parser.parse_args(argv)
+    with dry_token(arguments.dry_run):
+        return lane(arguments)
+
+
+def lane(arguments: argparse.Namespace) -> int:
     token = credentials.token(ZENODO_SANDBOX.credential)
     if token is None:
         print("no zenodo-sandbox token: `mime credentials set zenodo-sandbox`", file=sys.stderr)
         return 2
+    log = arguments.log if arguments.log is not None else None if arguments.dry_run else Path.cwd()
     work = Path(tempfile.mkdtemp(prefix="mime-sandbox-lane-"))
-    folders = list(arguments.folder)
-    for kind in arguments.demo or ([] if folders else ["toy"]):
-        folders.append(_toy_demo(work) if kind == "toy" else _terms_demo(work, arguments.creator))
+    stand_ins: list[push.Service] = []
+    try:
+        folders = [Path(shutil.copytree(folder, work / "given" / f"{index}" / folder.name))
+                   for index, folder in enumerate(arguments.folder)]
+        for kind in arguments.demo or ([] if folders else ["toy"]):
+            folders.append(_toy_demo(work) if kind == "toy" else _terms_demo(work, arguments.creator))
+        found = compared(arguments, folders, token, log, stand_ins)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+        for service in stand_ins:
+            remove_records(service)
+    if found is None:
+        return 3
+    if not found:
+        print("the fake behind the real transport answers as the fake in this process does (a dry run: the sandbox "
+              "was not asked, and this compared no answer of it)" if arguments.dry_run else
+              "the fake answers as the sandbox does")
+        return 0
+    print("differences:\n  " + "\n  ".join(found))
+    return 1
+
+
+def compared(arguments: argparse.Namespace, folders: list[Path], token: Token, log: Path | None,
+             stand_ins: list[push.Service]) -> list[str] | None:
+    """Each folder's cycle on the lane's side and on the fake in this process, and their differences; ``None`` when
+    the log would have held the token."""
     from zenodo_records import FakeRecords, FakeTransport
 
     lines: list[dict[str, object]] = []
@@ -241,15 +318,17 @@ def main(argv: list[str] | None = None) -> int:
         for folder in folders:
             write_sharing(folder, arguments.creator, arguments.orcid,
                           f"{folder.name} (MIME push sandbox lane, {datetime.date.today().isoformat()})")
-            service, transport = sandbox_side(arguments.dry_run, token)
-            real = Recording(transport)
-            try:
-                drafted = cycle(folder, service, real, arguments.discard)
-            finally:
-                lines += [{"folder": folder.name, "service": service.name, **each} for each in real.shapes]
+            with sandbox_side(arguments.dry_run, token) as (service, transport):
+                stand_ins.append(service)
+                real = Recording(transport)
+                try:
+                    drafted = cycle(folder, service, real, arguments.discard)
+                finally:
+                    lines += [{"folder": folder.name, "service": service.name, **each} for each in real.shapes]
             fake = FakeRecords(token)
             made = Recording(FakeTransport(fake))
             stand_in = fake.service("zenodo-sandbox-fake", credential=ZENODO_SANDBOX.credential)
+            stand_ins.append(stand_in)
             cycle(folder, stand_in, made, arguments.discard)
             if not arguments.discard:
                 push.discard(folder, stand_in, yes=True, transport=FakeTransport(fake), pause=0)
@@ -260,13 +339,13 @@ def main(argv: list[str] | None = None) -> int:
                               "page": drafted.page, "doi": drafted.doi, "kept": not arguments.discard})
     except BuildRefused as refused:
         lines.append({"stopped": [f"{r.code} [{r.category.value}]: {r.message}" for r in refused.refusals]})
-        write_log(lines, token, arguments.log)
+        if log is not None:
+            write_log(lines, token, log)
         raise
     lines.append({"differences": found})
-    if write_log(lines, token, arguments.log) is None:
-        return 3
-    print("the fake answers as the sandbox does" if not found else "differences:\n  " + "\n  ".join(found))
-    return 0 if not found else 1
+    if log is not None and write_log(lines, token, log) is None:
+        return None
+    return found
 
 
 if __name__ == "__main__":

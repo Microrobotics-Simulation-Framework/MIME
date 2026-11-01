@@ -12,7 +12,12 @@ Controls, each caught on every run:
   zip) are held to the sha256 of each such file, for the folder whose mesh may not be redistributed and over drawn
   lock assets of every verdict; a planted choice that uploads every asset is caught;
 - **a lost md5 check in the resumed push**: with the comparison planted away, a corrupt upload ends the property's
-  run with a draft that does not hold the planned bytes.
+  run with a draft that does not hold the planned bytes;
+- **a record believed whatever draft it names**: with push's identifier check planted away, a record naming another
+  experiment's draft is caught rewriting that draft's title, and ``--discard`` deleting it;
+- **an edit made on the site written over**: with the check of what push last wrote planted away, a title edited on
+  the site is caught overwritten without a word;
+- **a test writing outside its own state directory**: the conftest's guard finds a record planted in the module's.
 
 Every refusal is captured with its traceback's locals, and none holds the token, in any form ``Token.occurs_in``
 finds; nor does any line push said, any file it wrote, or any request it sent but the header.
@@ -29,7 +34,8 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from push_cases import client, copy_of, plan_of, saved_toy, with_token, write_sharing
+from homes import Outside, isolate
+from push_cases import client, copy_of, plan_of, run_until_drafted, saved_toy, with_token, write_sharing
 from terms_cases import CONDITIONAL_IDS, NO_REDISTRIBUTION, OPEN_IDS, UNKNOWN_IDS, layered, same_reference_run, \
     write_mesh
 from zenodo_records import FakeRecords, FakeTransport, Killed
@@ -132,8 +138,29 @@ def test_the_plan_is_shown_and_confirmed_before_the_first_request(toy: Path, tok
     for line in ("Record files (2", "full_toy.mimebundle", "NOTICE", "Inside the bundle (4 files)",
                  "experiment.mime.yaml", "yours; permitted, open", "Referenced, not uploaded (0): none",
                  "The experiment's licence: CC-BY-4.0", "Creators: Carberry, Josiah",
-                 "Related: Requires and IsCompiledBy mime-engine", "nothing is published"):
+                 "Related: Requires and IsCompiledBy mime-engine", "nothing is published", "Title: full_toy",
+                 "Description: the card, as HTML (", "Publisher: Zenodo", "Publication date: 20",
+                 "Resource type: dataset", "Access once published: the record public, its files public",
+                 "Alternate identifier: a urn:uuid push makes for the draft"):
         assert line in said, line
+
+
+def test_the_plan_names_every_field_of_the_metadata_push_sends(toy: Path, token: str, tmp_path: Path):
+    """Each field of the metadata push sends is named in the plan (the alternate identifier, made with the draft, by
+    what it is)."""
+    fake = FakeRecords(token)
+    seen = Seen(fake)
+    drafted = pushed(copy_of(toy, tmp_path), fake, seen=seen)
+    assert drafted is not None
+    said = "\n".join(event.removeprefix("said ") for event in seen.events if event.startswith("said "))
+    named = {"title": "Title:", "description": "Description:", "publisher": "Publisher:",
+             "publication_date": "Publication date:", "resource_type": "Resource type:", "creators": "Creators:",
+             "rights": "Licences on the record:", "subjects": "Keywords:", "related_identifiers": "Related:",
+             "identifiers": "Alternate identifier:", "contributors": "Contributors:"}
+    sent = fake.records[drafted.record].body
+    assert set(sent["metadata"]) <= set(named), set(sent["metadata"]) - set(named)  # type: ignore[arg-type]
+    assert all(named[field] in said for field in sent["metadata"])  # type: ignore[union-attr]
+    assert "Access once published:" in said and set(sent) <= {"metadata", "access", "files", "pids"}
 
 
 def test_control_a_push_whose_plan_is_planted_away_is_caught(toy: Path, token: str, tmp_path: Path,
@@ -334,8 +361,9 @@ def test_a_file_that_may_not_be_redistributed_never_reaches_the_bucket(ar4: Path
     rights = fake.records["629525"].body["metadata"]["rights"]  # type: ignore[index]
     assert rights == [{"id": "cc-by-4.0"}, {"id": "mit"}], "the record lists every licence of a file it holds"
     contributors = fake.records["629525"].body["metadata"]["contributors"]  # type: ignore[index]
-    assert {"person_or_org": {"type": "organizational", "name": "Robot Maker Ltd"},
-            "role": {"id": "rightsholder"}} in contributors
+    names = [each["person_or_org"]["name"] for each in contributors]  # type: ignore[index]
+    assert names == ["Copyright (c) 2021 A. Driver"], \
+        "the rights holder of the file the record holds is a contributor; the referenced file's is not"
 
 
 LICENCES = st.sampled_from([*OPEN_IDS, *CONDITIONAL_IDS, *UNKNOWN_IDS[:40], "NOASSERTION"])
@@ -386,18 +414,6 @@ FILES = st.dictionaries(st.sampled_from(["a.mimebundle", "NOTICE", "t.npz", "u.n
                         st.binary(min_size=1, max_size=300), min_size=1, max_size=4)
 
 
-def run_until_drafted(plan: push.Plan, fake: FakeRecords, said: list[str]) -> tuple[push.Drafted, int]:
-    """Push again, as a person would after a stop, until a push completes: the push that completed, and how many
-    stopped before it."""
-    stops = 0
-    while True:
-        try:
-            return push.send(plan, push.read_state(plan.service, plan.experiment), client(fake), said.append), stops
-        except (Killed, BuildRefused):
-            stops += 1
-            assert stops < 6, said[-5:]
-
-
 def resumed_problems(files: dict[str, bytes], kill_at: int, after: bool, verify: bool = True) -> list[str]:
     """The resume property's failures for one draw: a push killed at request ``kill_at`` (before or after the service
     acts), then pushed again until done. The end: one draft push knows, holding exactly the planned files with their
@@ -406,8 +422,7 @@ def resumed_problems(files: dict[str, bytes], kill_at: int, after: bool, verify:
     problems: list[str] = []
     with tempfile.TemporaryDirectory() as directory, pytest.MonkeyPatch.context() as patch:
         root = Path(directory)
-        patch.setenv("XDG_STATE_HOME", str(root / "state"))
-        patch.setenv("HOME", str(root / "home"))
+        isolate(patch, root / "home")
         if not verify:
             patch.setattr(_draft, "_entry_verified", lambda entry, file: entry.get("status") == "completed")
         token = with_token(patch)
@@ -670,9 +685,12 @@ def test_each_field_of_the_metadata_has_its_owner():
     assert [owner(field) for field in ("metadata.publisher", "metadata.publication_date", "metadata.resource_type",
                                        "metadata.description", "metadata.related_identifiers.1.identifier",
                                        "metadata.something_new")] == ["mime"] * 6
-    assert [owner(field) for field in ("metadata.title", "metadata.creators.0.person_or_org.family_name",
-                                       "metadata.contributors.2.role", "metadata.related_identifiers.2",
-                                       "metadata.subjects.1")] == ["sharing"] * 5
+    assert [owner(field, 3) for field in ("metadata.title", "metadata.creators.0.person_or_org.family_name",
+                                          "metadata.contributors.2.role", "metadata.related_identifiers.2",
+                                          "metadata.subjects.1")] == ["sharing"] * 5
+    assert [owner(field, 3) for field in ("metadata.contributors.3.role", "metadata.subjects.0.subject",
+                                          "metadata.identifiers.0.identifier")] == ["mime"] * 3
+    assert owner("metadata.contributors.0.role") == "mime", "with no contributor in sharing.yaml, every one is MIME's"
     assert owner("metadata.rights.0.id") == "experiment"
 
 
@@ -725,13 +743,21 @@ def lane() -> object:
     return module
 
 
+def own_temporary_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    import tempfile as temporary
+
+    folder = tmp_path / "tmp"
+    folder.mkdir()
+    monkeypatch.setattr(temporary, "tempdir", str(folder))
+    return folder
+
+
 def test_the_lanes_dry_run_never_writes_a_record_of_the_real_sandbox(token: str, tmp_path: Path,
                                                                     monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))
-    (tmp_path / "tmp").mkdir()
+    own_temporary_folder(monkeypatch, tmp_path)
     held = lane()
-    service, _ = held.sandbox_side(True, Token("zenodo-sandbox", token))  # type: ignore[attr-defined]
-    assert service != push.ZENODO_SANDBOX and _state.namespace(service).startswith("other/")
+    with held.sandbox_side(True, Token("zenodo-sandbox", token)) as (service, _):  # type: ignore[attr-defined]
+        assert service != push.ZENODO_SANDBOX and _state.namespace(service).startswith("other/")
     assert held.main(["--creator", "Carberry, Josiah", "--demo", "toy", "--dry-run",  # type: ignore[attr-defined]
                       "--log", str(tmp_path / "log")]) == 0
     assert not (_state.state_root() / "zenodo-sandbox").exists()
@@ -740,14 +766,63 @@ def test_the_lanes_dry_run_never_writes_a_record_of_the_real_sandbox(token: str,
 
 def test_control_a_dry_run_as_the_real_sandbox_is_caught_writing_its_records(token: str, tmp_path: Path,
                                                                             monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))
-    (tmp_path / "tmp").mkdir()
+    import contextlib
+
+    own_temporary_folder(monkeypatch, tmp_path)
     held = lane()
-    fake = FakeRecords(token, api=push.ZENODO_SANDBOX.api, site=push.ZENODO_SANDBOX.site, real_address=True)
-    monkeypatch.setattr(held, "sandbox_side", lambda dry_run, token: (push.ZENODO_SANDBOX, FakeTransport(fake)))
+    monkeypatch.setattr(held, "sandbox_side", lambda dry_run, token: contextlib.nullcontext((
+        push.ZENODO_SANDBOX, FakeTransport(FakeRecords(token, api=push.ZENODO_SANDBOX.api,
+                                                       site=push.ZENODO_SANDBOX.site, real_address=True)))))
     held.main(["--creator", "Carberry, Josiah", "--demo", "toy", "--dry-run",  # type: ignore[attr-defined]
                "--log", str(tmp_path / "log")])
     assert (_state.state_root() / "zenodo-sandbox").exists(), "the planted dry run's records are not seen"
+    import shutil
+
+    shutil.rmtree(_state.state_root() / "zenodo-sandbox")
+
+
+def listing(folder: Path) -> list[tuple[str, bytes]]:
+    return sorted((str(path.relative_to(folder)), path.read_bytes()) for path in folder.rglob("*") if path.is_file())
+
+
+def test_the_lanes_dry_run_needs_no_token_says_what_it_compared_and_removes_what_it_writes(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    """No token in the environment or stored (the conftest's home holds none): the dry run holds one of its own. It
+    compares the fake behind the real transport with the fake in this process, and says it asked no sandbox; it
+    leaves no folder in the temporary directory, no record in the state directory, no log where none was asked for,
+    and nothing written into a folder it was given."""
+    temporary = own_temporary_folder(monkeypatch, tmp_path)
+    given = saved_toy(tmp_path / "given")
+    before = listing(given)
+    (tmp_path / "cwd").mkdir()
+    monkeypatch.chdir(tmp_path / "cwd")
+    assert lane().main(["--creator", "Carberry, Josiah", "--demo", "toy", "--folder", str(given),  # type: ignore[attr-defined]
+                        "--dry-run"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[-1].startswith("the fake behind the real transport answers as the fake in this process does (a dry "
+                              "run: the sandbox was not asked")
+    assert listing(given) == before and not (given / "sharing.yaml").exists()
+    assert list(temporary.iterdir()) == [] and list((tmp_path / "cwd").iterdir()) == []
+    assert not _state.state_root().exists() or not [p for p in _state.state_root().rglob("*") if p.is_file()]
+
+
+def test_control_the_lanes_dry_run_comparison_finds_a_difference_planted_on_one_side(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    own_temporary_folder(monkeypatch, tmp_path)
+    real = push.HttpTransport.send
+
+    def changed(self, method, url, headers, body, token):  # noqa: ANN001, ANN202
+        answer = real(self, method, url, headers, body, token)
+        held = json.loads(answer.body) if answer.body.strip() else None
+        if isinstance(held, dict) and "parent" in held:
+            held["is_published"] = None
+            return push.Answer(answer.status, answer.headers, json.dumps(held).encode())
+        return answer
+
+    monkeypatch.setattr(push.HttpTransport, "send", changed)
+    assert lane().main(["--creator", "Carberry, Josiah", "--demo", "toy", "--dry-run"]) == 1  # type: ignore[attr-defined]
+    out = capsys.readouterr().out
+    assert "differences:" in out and "is_published" in out
 
 
 def test_mime_offline_closes_push_after_the_plan(toy: Path, token: str, tmp_path: Path,
@@ -758,3 +833,206 @@ def test_mime_offline_closes_push_after_the_plan(toy: Path, token: str, tmp_path
         pushed(copy_of(toy, tmp_path), fake)
     assert refused.value.codes() == ["push.service"] and "MIME_OFFLINE" in refused.value.refusals[0].message
     assert fake.requests == []
+
+
+
+# --- the draft push reads is the one it made --------------------------------------------------------------------------
+
+
+def two_studies(root: Path) -> tuple[Path, Path]:
+    from push_cases import saved_named
+
+    return saved_named(root, "other_study"), saved_named(root, "my_study")
+
+
+def record_naming(service: push.Service, experiment: str, other: str) -> None:
+    """Push's record of ``experiment`` edited to name the draft of ``other`` (its id and page, and its mark too: a
+    whole record copied over, with its experiment's name changed)."""
+    theirs = push.read_state(service, other)
+    assert theirs is not None
+    from dataclasses import replace
+
+    _state.write_state(service, replace(theirs, experiment=experiment))
+
+
+def test_a_record_naming_another_experiments_draft_changes_and_deletes_nothing_in_it(tmp_path: Path, token: str):
+    fake = FakeRecords(token)
+    other, mine = two_studies(tmp_path)
+    theirs = pushed(other, fake)
+    assert theirs is not None
+    record = fake.records[theirs.record]
+    before = (record.revision, dict(record.body["metadata"]), sorted(record.files))  # type: ignore[arg-type]
+    record_naming(fake.service(), "my_study", "other_study")
+    assert codes(lambda: pushed(mine, fake)) == ["push.draft-foreign"]
+    assert codes(lambda: push.discard(mine, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)) == \
+        ["push.draft-foreign"]
+    assert theirs.record in fake.records
+    assert (record.revision, dict(record.body["metadata"]), sorted(record.files)) == before  # type: ignore[arg-type]
+    said: list[str] = []
+    push.status(mine, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    assert any("does not carry the identifier push wrote" in line for line in said)
+
+
+def test_control_without_the_identifier_check_another_experiments_draft_is_rewritten_and_deleted(
+        tmp_path: Path, token: str, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(_draft, "_ours", lambda draft, service, state: True)
+    fake = FakeRecords(token)
+    other, mine = two_studies(tmp_path)
+    theirs = pushed(other, fake)
+    assert theirs is not None
+    record_naming(fake.service(), "my_study", "other_study")
+    try:
+        pushed(mine, fake)
+    except BuildRefused:
+        pass
+    assert fake.records[theirs.record].body["metadata"]["title"] == "my_study", \
+        "the planted record's push is not seen rewriting the other experiment's draft"  # type: ignore[index]
+    push.discard(mine, fake.service(), yes=True, transport=FakeTransport(fake), pause=0)
+    assert theirs.record not in fake.records, "the planted discard is not seen deleting it"
+
+
+def test_names_that_differ_only_in_case_have_records_apart_on_any_file_system(tmp_path: Path, token: str):
+    from push_cases import saved_named
+
+    fake = FakeRecords(token)
+    upper, lower = _state.state_directory(fake.service(), "Toy"), _state.state_directory(fake.service(), "toy")
+    assert str(upper).casefold() != str(lower).casefold()
+    first = pushed(saved_named(tmp_path / "a", "Toy"), fake)
+    second = pushed(saved_named(tmp_path / "b", "toy"), fake)
+    assert first is not None and second is not None and first.record != second.record
+    assert fake.records[first.record].body["metadata"]["title"] == "Toy"  # type: ignore[index]
+    assert sorted(fake.records[first.record].files) == ["NOTICE", "Toy.mimebundle"]
+
+
+def test_a_record_whose_experiment_differs_even_in_case_is_refused(tmp_path: Path, token: str):
+    """What a case-folding file system does to the lookup (``Toy``'s directory found for ``toy``), emulated by copying
+    the record across: read_state compares the name it holds."""
+    from push_cases import saved_named
+
+    fake = FakeRecords(token)
+    pushed(saved_named(tmp_path / "a", "Toy"), fake)
+    held = _state.state_directory(fake.service(), "Toy") / _state.STATE_FILE
+    folded = _state.state_directory(fake.service(), "toy") / _state.STATE_FILE
+    folded.parent.mkdir(parents=True)
+    folded.write_bytes(held.read_bytes())
+    assert codes(lambda: pushed(saved_named(tmp_path / "b", "toy"), fake)) == ["push.state"]
+
+
+def test_a_record_from_before_push_marked_its_drafts_is_refused_by_name(toy: Path, token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    old = _state.state_root() / _state.namespace(fake.service()) / "full_toy" / _state.STATE_FILE
+    old.parent.mkdir(parents=True)
+    old.write_text(json.dumps({"format": _state.OLD_FORMAT, "service": fake.service().name, "api": fake.api,
+                               "experiment": "full_toy", "record": "629525"}), encoding="utf-8")
+    with pytest.raises(BuildRefused) as refused:
+        pushed(copy_of(toy, tmp_path), fake)
+    assert refused.value.codes() == ["push.state"] and _state.OLD_FORMAT in refused.value.refusals[0].message
+    assert fake.requests == []
+
+
+# --- metadata edited on the site --------------------------------------------------------------------------------------
+
+
+def test_a_title_edited_on_the_site_stops_the_push_naming_both_values(toy: Path, token: str, tmp_path: Path):
+    from mime.build import RefusalClass
+
+    fake = FakeRecords(token)
+    folder = copy_of(toy, tmp_path)
+    pushed(folder, fake)
+    record = fake.records["629525"]
+    record.body["metadata"]["title"] = "Edited on the site"  # type: ignore[index]
+    before = record.revision
+    with pytest.raises(BuildRefused) as refused:
+        pushed(folder, fake)
+    held = refused.value.refusals
+    assert [(r.code, r.category) for r in held] == [("push.metadata-edited", RefusalClass.USER)]
+    assert "metadata.title on the site: Edited on the site; from sharing.yaml: full_toy" in held[0].message
+    assert "sharing.yaml's `title` and push again" in held[0].action and push.OVERWRITE_FLAG in held[0].action
+    assert record.revision == before, "nothing was written to the draft"
+    said: list[str] = []
+    push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    assert any("edited on the site since push last wrote it: title" in line for line in said)
+
+
+def test_an_edit_copied_into_sharing_yaml_goes_on_and_the_flag_writes_over_one_that_is_not(toy: Path, token: str,
+                                                                                         tmp_path: Path):
+    fake = FakeRecords(token)
+    folder = copy_of(toy, tmp_path)
+    pushed(folder, fake)
+    record = fake.records["629525"]
+    record.body["metadata"]["title"] = "Edited on the site"  # type: ignore[index]
+    sharing = folder / "sharing.yaml"
+    sharing.write_text(sharing.read_text(encoding="utf-8").replace('title: "full_toy"', 'title: "Edited on the site"'),
+                       encoding="utf-8")
+    assert pushed(folder, fake) is not None, "the site's title, copied into sharing.yaml, is no longer at stake"
+    record.body["metadata"]["version"] = "v2 (the site's)"  # type: ignore[index]
+    assert codes(lambda: pushed(folder, fake)) == ["push.metadata-edited"]
+    seen = Seen(fake)
+    assert pushed(folder, fake, seen=seen, overwrite_site_edits=True) is not None
+    assert "version" not in record.body["metadata"]  # type: ignore[operator]
+    assert any("wrote over what was edited on the site (--overwrite-site-edits): version" in event
+               for event in seen.events)
+    assert pushed(folder, fake) is not None, "after the flag, what push wrote is the draft's again"
+
+
+def test_control_without_the_check_of_what_push_last_wrote_a_site_edit_is_overwritten(
+        toy: Path, token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(_draft, "edited_fields", lambda draft, state: [])
+    fake = FakeRecords(token)
+    folder = copy_of(toy, tmp_path)
+    pushed(folder, fake)
+    fake.records["629525"].body["metadata"]["title"] = "Edited on the site"  # type: ignore[index]
+    pushed(folder, fake)
+    assert fake.records["629525"].body["metadata"]["title"] == "full_toy", \
+        "the planted push is not seen writing over the site's title"  # type: ignore[index]
+
+
+# --- the link, last ---------------------------------------------------------------------------------------------------
+
+
+def test_every_push_status_and_discard_ends_with_the_drafts_link(toy: Path, token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    folder = copy_of(toy, tmp_path)
+    page = "https://zenodo-records.invalid/uploads/629525"
+    seen = Seen(fake)
+    pushed(folder, fake, seen=seen)
+    assert seen.events[-2].startswith("said The draft 629525") and seen.events[-1] == f"said {page}"
+    said: list[str] = []
+    push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    assert said[-1] == page
+    said.clear()
+    push.push(folder, fake.service(), confirm=lambda question: False, say=said.append, transport=FakeTransport(fake),
+              pause=0)
+    assert said[-2:] == ["Not made: nothing was sent.", page]
+    fake.plant("status", lambda method, path: path.endswith("/content"), status=500, times=99)
+    fake.records["629525"].files.clear()
+    said.clear()
+    with pytest.raises(BuildRefused):
+        push.push(folder, fake.service(), yes=True, say=said.append, transport=FakeTransport(fake), pause=0)
+    assert said[-1] == page, "a refused push names the draft it left"
+    fake.faults.clear()
+    said.clear()
+    push.discard(folder, fake.service(), confirm=lambda question: False, say=said.append, transport=FakeTransport(fake),
+                 pause=0)
+    assert said[-2:] == ["Not deleted.", page]
+    said.clear()
+    push.discard(folder, fake.service(), yes=True, say=said.append, transport=FakeTransport(fake), pause=0)
+    assert said[-1] == "https://zenodo-records.invalid/me/uploads"
+
+
+# --- the tests' own isolation -----------------------------------------------------------------------------------------
+
+
+def test_control_a_record_written_outside_the_tests_state_directory_is_caught_by_the_guard(
+        toy: Path, token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outside_home: Outside):
+    """The conftest's guard: with this test's isolation planted away (its directories set back to the module's, as a
+    shell's XDG_STATE_HOME once named the real ones), a push's records land in the module's state directory, and the
+    guard finds them. They are removed here, so the guard's own check after this test passes."""
+    assert outside_home.written() == []
+    isolate(monkeypatch, outside_home.home)
+    pushed(copy_of(toy, tmp_path), FakeRecords(with_token(monkeypatch)))
+    found = outside_home.written()
+    assert any(path.name == _state.STATE_FILE for path in found), "the planted write is not seen by the guard"
+    import shutil
+
+    shutil.rmtree(outside_home.state)

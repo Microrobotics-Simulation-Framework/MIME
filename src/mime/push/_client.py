@@ -14,15 +14,21 @@ What the probe found and this codes against:
 - **Rate limits** are on every answer (``X-RateLimit-Limit``, ``-Remaining``, ``-Reset``), and ``Retry-After`` is on
   ordinary 2xx answers too, counting down to the reset: only a ``429`` (or a ``503``) means wait, and then for its
   ``Retry-After``. Requests are paced (``pause`` seconds apart) to stay well under the limit.
+- **A gateway's 502 or 504 can come after the service acted**, so a request that changes the service is never sent
+  again on one: it is answered as a lost answer is (:class:`Dropped`), and the caller reads the draft or its files
+  again and goes on from what is there. Only a request that changes nothing, or that is the same however often it is
+  sent (writing the metadata, a commit), is sent again on a ``5xx``.
 
 The token travels in the ``Authorization`` header alone, built inside the call that sends it, to the service's own
-host: a redirect is never followed (``urllib`` would carry the header to wherever it points), and no frame of this
-module holds the token's text under a name, so a traceback captured with its locals shows none.
+host: a redirect is never followed (``urllib`` would carry the header to wherever it points), a service on this
+machine is reached without the environment's proxy (to which plain ``http`` would carry the header in clear), and
+whatever stops a request inside the standard library (an error, an interrupt) is caught at the transport and raised
+again as a fresh error from a frame that holds no token: the library's own frames hold the request's headers, and
+none of them reaches a traceback, so a traceback captured with its locals shows no token.
 """
 
 from __future__ import annotations
 
-import http.client
 import json
 import time
 import urllib.error
@@ -37,7 +43,8 @@ from urllib.parse import quote
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
-from mime.push._service import Service
+from mime.push._owners import field_owner
+from mime.push._service import Service, loopback
 
 #: The content type of InvenioRDM's own serialisation, which every request asks for.
 RDM_TYPE = "application/vnd.inveniordm.v1+json"
@@ -49,9 +56,14 @@ RETRIES = 4
 LONGEST_WAIT_SECONDS = 300.0
 _TIMEOUT_SECONDS = 120.0
 _SAFE = frozenset({"GET", "DELETE"})
+#: What a gateway answers when it cannot tell whether the service behind it acted.
+_GATEWAY = frozenset({502, 503, 504})
+#: The longest part of an answer a refusal quotes.
+_QUOTED = 400
 
 type Json = dict[str, object]
 type Watch = Callable[[str, str, int, Mapping[str, str], bytes], None]
+type Owner = Callable[[str], str]
 
 
 def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Refusal:
@@ -71,7 +83,8 @@ class Answer:
 
 
 class Dropped(Exception):
-    """The connection failed or dropped before an answer was read: whether the service acted is not known."""
+    """The connection failed or dropped before an answer was read, or a gateway answered for the service: whether the
+    service acted is not known."""
 
 
 class Gone(Exception):
@@ -95,7 +108,7 @@ class Errors(Exception):
                 found.append(f"{held.get('field', '?')}: {said}")
             else:
                 found.append(str(each))
-        return plain("; ".join(found))
+        return _quoted("; ".join(found))
 
 
 class Transport(Protocol):
@@ -118,34 +131,59 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class HttpTransport:
     """The real transport: the standard library's HTTP client, over ``https``, a file streamed from disk with its
     length stated (never chunked), redirects not followed. A proxy the environment names is used as ``urllib``
-    uses it: for ``https`` the proxy sees only an encrypted tunnel to the service's own host."""
+    uses it (for ``https`` the proxy sees only an encrypted tunnel to the service's own host), except for a service
+    on this machine, which is reached directly (``direct``). Whatever the library raises is caught here and raised
+    again, fresh, from this frame: a lost or cut answer as :class:`Dropped`, an interrupt as the same interrupt."""
 
     def __init__(self, timeout: float = _TIMEOUT_SECONDS) -> None:
         self.timeout = timeout
         self.opener = urllib.request.build_opener(_NoRedirect())
+        self.direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
     def send(self, method: str, url: str, headers: Mapping[str, str], body: bytes | Path | None,
              token: Token) -> Answer:
         failure: str | None = None
-        stream = body.open("rb") if isinstance(body, Path) else None
+        stopped: BaseException | None = None
+        opener = self.direct if loopback(url) else self.opener
         try:
-            data: bytes | BinaryIO | None = stream if stream is not None else body if isinstance(body, bytes) else None
-            request = urllib.request.Request(url, data=data, method=method, headers=dict(headers))
-            if isinstance(body, Path):
-                request.add_header("Content-Length", str(body.stat().st_size))
-            request.add_header("Authorization", "Bearer " + token.reveal())
-            try:
-                with self.opener.open(request, timeout=self.timeout) as response:
-                    return Answer(response.status, {k.lower(): v for k, v in response.headers.items()},
-                                  response.read())
-            except urllib.error.HTTPError as error:
-                return Answer(error.code, {k.lower(): v for k, v in error.headers.items()}, error.read())
-            except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as error:
-                failure = type(error).__name__
-        finally:
-            if stream is not None:
-                stream.close()
-        raise Dropped(failure)  # raised outside the handler, so it chains to no error whose frames held the request
+            return _exchange(opener, self.timeout, method, url, headers, body, token)
+        except Exception as error:  # noqa: BLE001 - a request that failed, or whose answer was lost or cut short
+            failure = type(error).__name__
+        except BaseException as error:  # an interrupt: raised again below, by its type alone
+            stopped = _fresh(error)
+        # Raised outside the handlers, so the error chains to none whose frames held the request's headers.
+        if stopped is not None:
+            raise stopped
+        raise Dropped(failure)
+
+
+def _exchange(opener: urllib.request.OpenerDirector, timeout: float, method: str, url: str,
+              headers: Mapping[str, str], body: bytes | Path | None, token: Token) -> Answer:
+    """One request and its whole answer, through ``opener``: every error the library raises passes out of here to
+    :meth:`HttpTransport.send`, which raises none of them on."""
+    stream = body.open("rb") if isinstance(body, Path) else None
+    try:
+        data: bytes | BinaryIO | None = stream if stream is not None else body if isinstance(body, bytes) else None
+        request = urllib.request.Request(url, data=data, method=method, headers=dict(headers))
+        if isinstance(body, Path):
+            request.add_header("Content-Length", str(body.stat().st_size))
+        request.add_header("Authorization", "Bearer " + token.reveal())
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                return Answer(response.status, {k.lower(): v for k, v in response.headers.items()}, response.read())
+        except urllib.error.HTTPError as error:
+            return Answer(error.code, {k.lower(): v for k, v in error.headers.items()}, error.read())
+    finally:
+        if stream is not None:
+            stream.close()
+
+
+def _fresh(error: BaseException) -> BaseException:
+    """A new exception of ``error``'s type, holding nothing of it (an exit's code alone), with no traceback yet."""
+    try:
+        return type(error)(*error.args) if isinstance(error, SystemExit) else type(error)()
+    except Exception:  # noqa: BLE001 - a type that needs arguments: an interrupt is what stopped it
+        return KeyboardInterrupt()
 
 
 class Client:
@@ -153,7 +191,8 @@ class Client:
     answer checked as the module's docstring says. ``pause`` spaces the requests (:data:`PAUSE_SECONDS` by
     default); ``sleep`` and ``now`` are the
     clock's, which a test replaces; ``watch`` is shown each answer (method, address, status, headers, body), never
-    the request's headers, which hold the token."""
+    the request's headers, which hold the token. ``owner`` says who owns a metadata field a refusal names
+    (:func:`mime.push._owners.field_owner`; a push gives the one of its ``sharing.yaml``)."""
 
     def __init__(self, service: Service, token: Token, transport: Transport | None = None, *,
                  pause: float | None = None, sleep: Callable[[float], None] = time.sleep,
@@ -169,6 +208,7 @@ class Client:
         self.sleep = sleep
         self.now = now
         self.watch = watch
+        self.owner: Owner = field_owner
         self._last = -float("inf")
         self.requests = 0
 
@@ -207,12 +247,14 @@ class Client:
 
     def call(self, method: str, path: str, *, payload: object = None, content: Path | None = None,
              expect: frozenset[int] = frozenset({200}), retry: bool | None = None, drops: bool = False) -> Answer:
-        """One request to ``path`` below the service's API, sent again after a ``429`` or a ``5xx`` (for its
-        ``Retry-After``, or a growing pause), and after a dropped connection when ``retry`` (by default, for a
-        request that changes nothing). A connection that stays dropped is refused (``push.service``), or raised as
-        :class:`Dropped` where ``drops`` (the caller clears and starts again). An answer not in ``expect`` is
-        refused by what it means; a 2xx is checked for the records API's own content type, and for ``errors``
-        (:class:`Errors`)."""
+        """One request to ``path`` below the service's API. Sent again after a ``429``, and a ``503`` that states its
+        ``Retry-After`` (the service did not act), each for its ``Retry-After`` or a growing pause; where ``retry``
+        (by default, for a request that changes nothing), also after a dropped connection and any ``502``, ``503`` or
+        ``504``. Where it is not, a request whose answer is lost (a dropped connection, a gateway's ``5xx``, which can
+        come after the service acted) is never sent again: it is raised as :class:`Dropped` where ``drops`` (the
+        caller reads the service's state again and goes on from it), and refused otherwise (``push.service``: the
+        next run reads the draft first). An answer not in ``expect`` is refused by what it means; a 2xx is checked
+        for the records API's own content type, and for ``errors`` (:class:`Errors`)."""
         url = self.service.api + path
         headers = {"Accept": RDM_TYPE}
         body: bytes | Path | None = None
@@ -233,28 +275,35 @@ class Client:
                     continue
                 if drops:
                     raise dropped
-                status = None
-                break
+                raise self.lost(method, path, "the connection dropped") from None
             self._after_limits(answer)
             status = answer.status
-            if status == 429 or (status in (502, 503, 504) and attempt < RETRIES):
+            after = _number(answer.headers.get("retry-after"))
+            if status == 429 or (status == 503 and after is not None) or (again and status in _GATEWAY):
                 if attempt == RETRIES:
                     break
-                after = _number(answer.headers.get("retry-after"))
                 self._wait(after if after is not None else 2.0 ** attempt, f"it answered {status}")
                 continue
+            if status in _GATEWAY:
+                if drops:
+                    raise Dropped(f"a gateway's {status}")
+                raise self.lost(method, path, f"it answered {status}, which a gateway gives when it cannot tell "
+                                               f"whether the service acted")
             return self._checked(method, path, answer, expect)
-        if status is not None:
-            raise BuildRefused([_refuse(
-                "push.service", RefusalClass.ENVIRONMENT,
-                f"{self.service.name} answered {method} {plain(path)} with {status} {RETRIES + 1} times",
-                "run the same command again later, `mime push <folder> --to <service>`: what was uploaded and "
-                "verified is not sent again")])
         raise BuildRefused([_refuse(
             "push.service", RefusalClass.ENVIRONMENT,
-            f"the connection to {self.service.name} dropped during {method} {plain(path)}, so whether it was done is "
-            f"not known", "run the same command again, `mime push <folder> --to <service>`: it reads the draft "
-                          "first, and what was uploaded and verified is not sent again")])
+            f"{self.service.name} answered {method} {plain(path)} with {status} {RETRIES + 1} times",
+            "run the same command again later, `mime push <folder> --to <service>`: what was uploaded and "
+            "verified is not sent again")])
+
+    def lost(self, method: str, path: str, why: str) -> BuildRefused:
+        """The refusal of a request whose answer was lost: whether the service acted is not known."""
+        return BuildRefused([_refuse(
+            "push.service", RefusalClass.ENVIRONMENT,
+            f"the answer of {self.service.name} to {method} {plain(path)} was lost ({why}), so whether it was done is "
+            f"not known, and push does not send it again", "run the same command again, `mime push <folder> --to "
+                                                          "<service>`: it reads the draft first, and what was "
+                                                          "uploaded and verified is not sent again")])
 
     def _checked(self, method: str, path: str, answer: Answer, expect: frozenset[int]) -> Answer:
         status = answer.status
@@ -297,11 +346,12 @@ class Client:
                 f"follows: a token goes to the service's own host only",
                 "run the same command again later, `mime push <folder> --to <service>`")])
         if 400 <= status < 500:
-            raise BuildRefused([_refuse(
-                "push.rejected", RefusalClass.USER,
-                f"{self.service.name} refused {method} {plain(path)} ({status}): {said}",
-                f"correct what it names in sharing.yaml or the experiment, then `mime push <folder> --to "
-                f"{self.service.name}` again")])
+            try:
+                errors = errors_of(answer.json())
+            except ValueError:
+                errors = []
+            raise BuildRefused(owned_refusals(self.service, f"{self.service.name} refused {method} {plain(path)} "
+                                                            f"({status})", errors, self.owner, said))
         raise BuildRefused([_refuse(
             "push.service", RefusalClass.ENVIRONMENT,
             f"{self.service.name} answered {method} {plain(path)} with {status}: {said}",
@@ -331,7 +381,7 @@ class Client:
     def read_record(self, record: str) -> Json | None:
         """The published record ``record``, or ``None``."""
         try:
-            held = self.call("GET", f"/records/{_part(record)}").json()
+            held = self._coded("the record's reading", lambda: self.call("GET", f"/records/{_part(record)}")).json()
         except Gone:
             return None
         return cast(Json, held) if isinstance(held, dict) else None
@@ -345,21 +395,26 @@ class Client:
             return _checked_draft(self, answered.body), answered.errors
 
     def reserve_doi(self, record: str) -> Json:
+        """Reserve the draft's DOI: the draft. :class:`Dropped` where the answer was lost (the caller reads the draft
+        again, to see whether it was done)."""
         return _draft(self, self._present(f"the draft {record}", lambda: self.call(
-            "POST", f"/records/{_part(record)}/draft/pids/doi", expect=frozenset({200, 201}), retry=False)))
+            "POST", f"/records/{_part(record)}/draft/pids/doi", expect=frozenset({200, 201}), retry=False,
+            drops=True)))
 
     def delete_draft(self, record: str) -> bool:
         """Delete the draft ``record``; whether it was there."""
         try:
-            self.call("DELETE", f"/records/{_part(record)}/draft", expect=frozenset({204}))
+            self._coded("the draft's deletion", lambda: self.call("DELETE", f"/records/{_part(record)}/draft",
+                                                                  expect=frozenset({204})))
         except Gone:
             return False
         return True
 
     def files(self, record: str) -> dict[str, Json]:
         """The draft's file entries, by key."""
-        held = self._present(f"the draft {record}",
-                             lambda: self.call("GET", f"/records/{_part(record)}/draft/files")).json()
+        held = self._present(f"the draft {record}", lambda: self._coded(
+            "the listing of the draft's files", lambda: self.call("GET", f"/records/{_part(record)}/draft/files"))
+        ).json()
         entries = cast(dict[str, object], held).get("entries") if isinstance(held, dict) else None
         if not isinstance(entries, list):
             raise _shape(self, "the draft's files", "an object with a list of entries")
@@ -372,9 +427,24 @@ class Client:
         return found
 
     def start_file(self, record: str, key: str) -> None:
+        """Start the entry ``key``. :class:`Dropped` where the answer was lost (the caller reads the files again);
+        :class:`Errors` where the answer lists them."""
         self._present(f"the draft {record}", lambda: self.call(
             "POST", f"/records/{_part(record)}/draft/files", payload=[{"key": key}], expect=frozenset({200, 201}),
-            retry=False))
+            retry=False, drops=True))
+
+    def _coded(self, what: str, request: Callable[[], Answer]) -> Answer:
+        """``request``'s answer; one that is a 2xx and lists ``errors`` is refused, with a code, never left as an error
+        MIME does not recognise."""
+        try:
+            return request()
+        except Errors as answered:
+            words = answered.words()
+        raise BuildRefused([_refuse(
+            "push.service", RefusalClass.ENVIRONMENT,
+            f"{self.service.name} answered {what} as done, and listed errors: {words}",
+            "run the same command again, `mime push <folder> --to <service>`; if it says this again, look at the draft "
+            "on the service's site")])
 
     def _present(self, what: str, request: Callable[[], Answer]) -> Answer:
         """``request``'s answer; a ``404`` where the thing must be there (deleted on the site while push ran) is
@@ -401,7 +471,8 @@ class Client:
 
     def delete_file(self, record: str, key: str) -> None:
         try:
-            self.call("DELETE", f"/records/{_part(record)}/draft/files/{_part(key)}", expect=frozenset({204}))
+            self._coded(f"the deletion of {plain(key)}", lambda: self.call(
+                "DELETE", f"/records/{_part(record)}/draft/files/{_part(key)}", expect=frozenset({204})))
         except Gone:
             pass
 
@@ -413,6 +484,42 @@ def errors_of(held: object) -> list[object]:
         if isinstance(errors, list):
             return cast(list[object], errors)
     return []
+
+
+def owned_refusals(service: Service, head: str, errors: list[object], owner: Owner, said: str) -> list[Refusal]:
+    """A refusal for each field the service names in ``errors``, by who owns it (``owner``): the author's in
+    sharing.yaml or the experiment, to correct there; MIME's, its defect, said as one. Errors that name no field, or
+    none at all, are MIME's: what the service refused is what MIME built."""
+    found: list[Refusal] = []
+    for each in errors:
+        held = cast(dict[str, object], each) if isinstance(each, dict) else {}
+        field_name = str(held.get("field", ""))
+        words = Errors([each]).words()
+        who = owner(field_name) if field_name else "mime"
+        if who == "sharing":
+            found.append(_refuse(
+                "push.rejected", RefusalClass.USER, f"{head}: {words}",
+                f"correct it in sharing.yaml, then `mime push <folder> --to {service.name}`, which writes the draft's "
+                f"metadata again"))
+        elif who == "experiment":
+            found.append(_refuse(
+                "push.rejected", RefusalClass.USER, f"{head}: {words}",
+                f"correct the licence or terms where the experiment is built, exp.licence(...) or Terms(...), save it "
+                f"again, built.save(folder), then `mime push <folder> --to {service.name}`"))
+        else:
+            found.append(_refuse(
+                "push.rejected", RefusalClass.INTERNAL,
+                f"{head}, in a field MIME builds, not one you write: {words}. This is MIME's defect, not yours",
+                "report it with this message"))
+    return found or [_refuse(
+        "push.rejected", RefusalClass.INTERNAL,
+        f"{head}, naming no field: {said}. What it refused is what MIME built, so this is MIME's defect, not yours",
+        "report it with this message")]
+
+
+def _quoted(text: str) -> str:
+    shown = plain(text)
+    return shown if len(shown) <= _QUOTED else shown[:_QUOTED] + "..."
 
 
 def _part(text: str) -> str:
@@ -437,7 +544,7 @@ def _message(answer: Answer) -> str:
         errors = found.get("errors")
         if isinstance(errors, list) and errors:
             message += " " + Errors(cast(list[object], errors)).words()
-        return plain(message.strip()[:400]) or "no message"
+        return _quoted(message.strip()) or "no message"
     return "no message"
 
 
@@ -474,4 +581,4 @@ def _entry(client: Client, answer: Answer) -> Json:
 
 
 __all__ = ["LONGEST_WAIT_SECONDS", "PAUSE_SECONDS", "RDM_TYPE", "RETRIES", "Answer", "Client", "Dropped", "Errors",
-           "Gone", "HttpTransport", "Json", "Transport", "Watch", "errors_of"]
+           "Gone", "HttpTransport", "Json", "Owner", "Transport", "Watch", "errors_of", "owned_refusals"]

@@ -12,20 +12,35 @@ Each guard has a control that plants the defect it guards against, and the contr
   carry a ``LicenseRef-`` licence as a title and a link only;
 - ``Retry-After`` is waited for on a ``429`` and never on a 2xx (the sandbox sends it on both); a spent window waits
   for its reset; a redirect is never followed; a token goes only to the service's fixed host, whatever the
-  environment names.
+  environment names;
+- **a request that changes the service sent again after a gateway's 502 or 504**, which can come after the service
+  acted: the draft is made once (or the next push says one may be orphaned), a file started once and uploaded once;
+- **the token in a traceback's locals through the real transport**: an interrupt while a request waits on a server on
+  this machine, captured with its locals, holds no token; with the transport's boundary planted away, the standard
+  library's own frame is caught holding it;
+- **a token sent in clear to the environment's proxy**: a service on this machine is reached directly; with the
+  direct opener planted away, the proxy is caught receiving the header.
 """
 
 from __future__ import annotations
 
+import http.server
 import json
+import signal
+import socket
+import threading
+import traceback
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from push_cases import client, plan_of, with_token
+from push_cases import client, plan_of, run_until_drafted, with_token
 from zenodo_records import FakeRecords, FakeTransport
 
 from mime import push
-from mime.build import BuildRefused
+from mime.build import BuildRefused, RefusalClass
+from mime.credentials import Token
 from mime.push import _client, _draft
 from mime.push._plan import rights_entries
 from mime.saved._terms import FolderTerms
@@ -272,10 +287,11 @@ def test_a_redirect_is_never_followed(token: str, tmp_path: Path):
 def test_the_real_transport_follows_no_redirect():
     import urllib.request
 
-    handler = push.HttpTransport().opener.handlers
-    refusing = [each for each in handler if isinstance(each, urllib.request.HTTPRedirectHandler)]
-    assert refusing and all(each.redirect_request(None, None, 307, "", None, "https://x.invalid") is None  # type: ignore[arg-type]
-                            for each in refusing)
+    held = push.HttpTransport()
+    for opener in (held.opener, held.direct):
+        refusing = [each for each in opener.handlers if isinstance(each, urllib.request.HTTPRedirectHandler)]
+        assert refusing and all(each.redirect_request(None, None, 307, "", None, "https://x.invalid") is None  # type: ignore[arg-type]
+                                for each in refusing)
 
 
 def test_401_and_403_name_the_token_and_its_scope(token: str, tmp_path: Path):
@@ -338,3 +354,380 @@ def test_a_draft_deleted_on_the_site_while_push_runs_is_refused_not_unrecognised
 
     fake._route = deleting  # type: ignore[method-assign]
     assert codes(lambda: a_draft(fake, tmp_path)) == ["push.service"]
+
+
+def test_a_service_pairs_a_real_credential_with_its_own_host_alone():
+    """A ``Service`` made in Python cannot send one service's token elsewhere: a real credential goes to its own host,
+    or to a stand-in on this machine or at a ``.invalid`` address; a real host takes its own credential alone."""
+    token = Token("zenodo", "x" * 40)
+    elsewhere = ("https://elsewhere.example/api", "https://elsewhere.example")
+    for crossed in (push.Service("x", *elsewhere, "zenodo", True, "x"),
+                    push.Service("x", push.ZENODO.api, push.ZENODO.site, "zenodo-sandbox", True, "x"),
+                    push.Service("x", push.ZENODO_SANDBOX.api, push.ZENODO_SANDBOX.site, "zenodo", True, "x"),
+                    push.Service("x", push.ZENODO.api, push.ZENODO.site, "zenodo", False, "x")):
+        assert codes(lambda: push.Client(crossed, token)) == ["push.service"], crossed
+    for allowed in (push.ZENODO, push.ZENODO_SANDBOX, FakeRecords("t").service("zenodo", production=True),
+                    push.Service("x", "http://127.0.0.1:9/api", "http://127.0.0.1:9", "zenodo", True, "x"),
+                    push.Service("x", *elsewhere, "other", False, "x")):
+        assert allowed.problem() is None, allowed
+
+
+def test_the_same_token_held_for_both_services_is_refused_before_a_request(tmp_path: Path,
+                                                                           monkeypatch: pytest.MonkeyPatch):
+    from push_cases import a_token
+
+    from mime import credentials
+
+    same = a_token()
+    monkeypatch.setenv(credentials.SERVICES["zenodo"], same)
+    monkeypatch.setenv(credentials.SERVICES["zenodo-sandbox"], same)
+    fake = FakeRecords(same)
+    plan = plan_of(fake, {"a.bin": b"a"}, tmp_path / "files")
+    with pytest.raises(BuildRefused) as refused:
+        _draft._token(plan.service)  # type: ignore[attr-defined]
+    assert refused.value.codes() == ["push.token"] and "the same token" in refused.value.refusals[0].message
+    monkeypatch.setenv(credentials.SERVICES["zenodo"], a_token())
+    assert _draft._token(plan.service).length == 40  # type: ignore[attr-defined]
+
+
+# --- who owns a refused field, in any answer --------------------------------------------------------------------------
+
+
+def refused_by(fake: FakeRecords, tmp_path: Path, status: int, body: dict[str, object],
+               contributors: int = 0) -> list[tuple[str, RefusalClass, str]]:
+    """The refusals of a first push whose making of the draft is answered ``status`` with ``body``, for a sharing.yaml
+    naming ``contributors`` contributors."""
+    from dataclasses import replace
+
+    from mime.push._sharing import Person
+
+    fake.plant("status", lambda method, path: method == "POST" and path == "/records", status=status, body=body)
+    plan = plan_of(fake, {"a.bin": b"a"}, tmp_path / f"files-{status}-{len(fake.faults)}")
+    plan = replace(plan, sharing=replace(plan.sharing, contributors=tuple(
+        Person("Doe", "Jane", role="DataCurator") for _ in range(contributors))))
+    with pytest.raises(BuildRefused) as refused:
+        push.send(plan, None, client(fake))
+    return [(r.code, r.category, r.action) for r in refused.value.refusals]
+
+
+def test_a_4xx_naming_fields_mime_builds_or_no_field_is_mimes_defect(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    found = refused_by(fake, tmp_path, 400, {"status": 400, "message": "A validation error occurred.", "errors": [
+        {"field": "metadata.resource_type", "messages": ["Invalid value."]},
+        {"field": "metadata.publisher", "messages": ["Missing data."]}]})
+    assert [(code, category) for code, category, _ in found] == [("push.rejected", RefusalClass.INTERNAL)] * 2
+    assert not any("sharing.yaml" in action for _, _, action in found)
+    found = refused_by(fake, tmp_path, 400, {"status": 400, "message": "Invalid value bsd-3-clause-clear."})
+    assert [(code, category) for code, category, _ in found] == [("push.rejected", RefusalClass.INTERNAL)]
+
+
+def test_a_4xx_naming_a_field_the_author_writes_is_theirs_to_correct(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    found = refused_by(fake, tmp_path, 400, {"status": 400, "message": "A validation error occurred.", "errors": [
+        {"field": "metadata.creators.0.person_or_org.family_name", "messages": ["Missing data."]},
+        {"field": "metadata.rights.0.id", "messages": ["Invalid value."]}]})
+    assert [(code, category) for code, category, _ in found] == [("push.rejected", RefusalClass.USER)] * 2
+    assert "sharing.yaml" in found[0][2] and "exp.licence" in found[1][2]
+
+
+def test_contributors_mime_adds_and_its_keyword_are_mimes_and_the_authors_are_theirs(token: str, tmp_path: Path):
+    """The contributors after sharing.yaml's are the rights holders MIME adds from the files' terms, and the first
+    keyword is MIME's own: a refusal of either is MIME's defect, in a 2xx's ``errors`` as in a 4xx's."""
+    fake = FakeRecords(token)
+    for contributors, field, category in ((0, "metadata.contributors.0.role", RefusalClass.INTERNAL),
+                                          (1, "metadata.contributors.1.role", RefusalClass.INTERNAL),
+                                          (1, "metadata.contributors.0.role", RefusalClass.USER),
+                                          (0, "metadata.subjects.0.subject", RefusalClass.INTERNAL),
+                                          (0, "metadata.subjects.1.subject", RefusalClass.USER)):
+        found = refused_by(fake, tmp_path, 400, {"status": 400, "message": "A validation error occurred.",
+                                                 "errors": [{"field": field, "messages": ["Invalid value."]}]},
+                           contributors)
+        assert [category_ for _, category_, _ in found] == [category], (contributors, field, found)
+
+
+# --- a gateway's 502 or 504 after the service acted -------------------------------------------------------------------
+
+
+def after_acting(fake: FakeRecords, method: str, ends: str, status: int = 504) -> None:
+    fake.plant("status-after", lambda m, path: m == method and path.endswith(ends), status=status)
+
+
+def test_a_504_to_the_drafts_making_is_never_sent_again_and_the_orphan_is_said(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    after_acting(fake, "POST", "/records")
+    plan = plan_of(fake, {"a.bin": b"a"}, tmp_path / "files")
+    with pytest.raises(BuildRefused) as refused:
+        push.send(plan, None, client(fake))
+    assert refused.value.codes() == ["push.service"] and "push does not send it again" in \
+        refused.value.refusals[0].message
+    assert [path for method, path, _, _ in fake.requests if method == "POST"] == ["/records"]
+    said: list[str] = []
+    drafted, stops = run_until_drafted(plan, fake, said)
+    assert stops == 0 and drafted.record == "629527" and len(fake.drafts()) == 2
+    assert any("may hold a draft MIME has no record of" in line and "urn:uuid:" in line for line in said)
+
+
+def test_a_504_to_a_files_upload_after_it_was_stored_uploads_it_once(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    after_acting(fake, "PUT", "/a.bin/content", 502)
+    drafted = a_draft(fake, tmp_path)
+    assert fake.records[drafted.record].files["a.bin"].data == b"a" * 300
+    assert [path for method, path, _, _ in fake.requests if method == "PUT" and "a.bin" in path] == \
+        ["/records/629525/draft/files/a.bin/content"]
+
+
+def test_a_504_to_a_files_start_after_it_was_started_starts_it_once(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    after_acting(fake, "POST", "/draft/files")
+    drafted = a_draft(fake, tmp_path)
+    assert set(fake.records[drafted.record].files) == {"a.bin", "b.bin"}
+    starts = [status for method, path, _, status in fake.requests if method == "POST" and path.endswith("/draft/files")]
+    assert len(starts) == 2 and 400 not in starts, starts
+
+
+def test_a_504_to_the_dois_reservation_reads_the_draft_and_goes_on(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    after_acting(fake, "POST", "/pids/doi")
+    drafted = a_draft(fake, tmp_path)
+    assert drafted.doi == "10.5072/zenodo.629525"
+    assert sum(1 for method, path, _, _ in fake.requests if path.endswith("/pids/doi")) == 1
+
+
+def test_a_503_with_its_retry_after_is_sent_again_whatever_the_method(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    fake.plant("status", lambda method, path: method == "POST" and path == "/records", status=503,
+               headers={"Retry-After": "2"})
+    drafted = a_draft(fake, tmp_path)
+    assert drafted.record == "629525" and len(fake.drafts()) == 1
+
+
+def test_control_a_504_resent_whatever_the_method_makes_a_second_draft(token: str, tmp_path: Path,
+                                                                      monkeypatch: pytest.MonkeyPatch):
+    """The planted defect, the gateway's answer read as the service's (sent again for every method), is caught making
+    two drafts of one push, with no word of the first."""
+    real = _client.Client.call
+
+    def resending(self, method, path, **given):  # noqa: ANN001, ANN202
+        given["retry"] = True
+        return real(self, method, path, **given)
+
+    monkeypatch.setattr(_client.Client, "call", resending)
+    fake = FakeRecords(token)
+    after_acting(fake, "POST", "/records")
+    a_draft(fake, tmp_path)
+    assert len(fake.drafts()) == 2, "the planted resend is not seen making a second draft"
+
+
+# --- errors in a 2xx, wherever they come ------------------------------------------------------------------------------
+
+
+def with_errors_to(fake: FakeRecords, method: str, ends: str) -> None:
+    real = fake._route
+
+    def route(m, path, rdm, body, kind):  # noqa: ANN001, ANN202
+        status, content_type, data = real(m, path, rdm, body, kind)
+        if m == method and path.endswith(ends) and status < 300 and data:
+            held = json.loads(data)
+            held["errors"] = [{"field": "entries", "messages": ["planted"]}]
+            return status, push.RDM_TYPE, json.dumps(held).encode()
+        return status, content_type, data
+
+    fake._route = route  # type: ignore[method-assign]
+
+
+@pytest.mark.parametrize(("method", "ends"), [("POST", "/draft/files"), ("GET", "/draft/files")])
+def test_errors_in_a_2xx_to_a_files_start_or_listing_are_coded(token: str, tmp_path: Path, method: str, ends: str):
+    fake = FakeRecords(token)
+    with_errors_to(fake, method, ends)
+    with pytest.raises(BuildRefused) as refused:
+        a_draft(fake, tmp_path)
+    assert refused.value.codes() and all(code.startswith("push.") for code in refused.value.codes())
+
+
+def test_errors_in_a_2xx_to_a_deletion_or_a_records_reading_are_coded(token: str):
+    fake = FakeRecords(token)
+    held = client(fake)
+    for status, call in ((204, lambda: held.delete_draft("1")), (204, lambda: held.delete_file("1", "a.bin")),
+                         (200, lambda: held.read_record("1"))):
+        def answered(method, url, headers, body, token, status=status):  # noqa: ANN001, ANN202
+            return push.Answer(status, {"content-type": push.RDM_TYPE}, b'{"errors": ["planted"]}')
+
+        held.transport.send = answered  # type: ignore[method-assign]
+        refused = codes(call)
+        assert refused == ["push.service"], (status, refused)
+
+
+# --- the real transport: no token in a traceback, no proxy for this machine -------------------------------------------
+
+
+def captured_with_locals(error: BaseException) -> str:
+    return "".join(traceback.TracebackException.from_exception(error, capture_locals=True).format())
+
+
+@contextmanager
+def stalling() -> Iterator[tuple[int, threading.Event]]:
+    """A server on this machine that reads a request and never answers: its port, and an event set once the request
+    is in."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    arrived = threading.Event()
+    held: list[socket.socket] = []
+
+    def serve() -> None:
+        try:
+            connection, _ = listener.accept()
+        except OSError:
+            return
+        held.append(connection)
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = connection.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        arrived.set()
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    try:
+        yield listener.getsockname()[1], arrived
+    finally:
+        listener.close()
+        for each in held:
+            each.close()
+        thread.join(timeout=5)
+
+
+def interrupted_while_waiting(token: Token, send: Callable[[str], object]) -> BaseException:
+    """The error an interrupt raises while ``send`` waits on the stalling server for its answer: a real SIGALRM,
+    delivered once the request is in, raising KeyboardInterrupt in whatever frame waits, as Ctrl-C would."""
+
+    def interrupt(signum: int, frame: object) -> None:
+        raise KeyboardInterrupt
+
+    previous = signal.signal(signal.SIGALRM, interrupt)
+    try:
+        with stalling() as (port, arrived):
+            def deliver() -> None:
+                if arrived.wait(10):
+                    signal.pthread_kill(threading.main_thread().ident or 0, signal.SIGALRM)
+
+            threading.Thread(target=deliver, daemon=True).start()
+            try:
+                send(f"http://127.0.0.1:{port}")
+            except BaseException as error:  # noqa: BLE001 - the interrupt is what this returns
+                return error
+            raise AssertionError("the request returned without being interrupted")
+    finally:
+        signal.signal(signal.SIGALRM, previous)
+
+
+unix_signals = pytest.mark.skipif(not hasattr(signal, "pthread_kill"), reason="POSIX signals")
+
+
+@unix_signals
+def test_an_interrupt_through_the_real_transport_leaves_no_token_in_a_tracebacks_locals():
+    held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
+    error = interrupted_while_waiting(held, lambda base: push.HttpTransport(timeout=20).send(
+        "GET", base + "/api/records/1/draft", {"Accept": push.RDM_TYPE}, None, held))
+    assert isinstance(error, KeyboardInterrupt), repr(error)
+    assert error.__context__ is None and error.__cause__ is None
+    assert not held.occurs_in(captured_with_locals(error).encode("utf-8"))
+
+
+@unix_signals
+def test_control_without_the_transports_boundary_the_librarys_frame_is_caught_holding_the_token():
+    held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
+    transport = push.HttpTransport(timeout=20)
+    error = interrupted_while_waiting(held, lambda base: _client._exchange(  # type: ignore[attr-defined]
+        transport.direct, 20, "GET", base + "/api/records/1/draft", {"Accept": push.RDM_TYPE}, None, held))
+    assert isinstance(error, KeyboardInterrupt)
+    assert held.occurs_in(captured_with_locals(error).encode("utf-8")), \
+        "the planted defect (the library's frames left in the traceback) is not seen"
+
+
+def test_an_error_answer_cut_short_is_a_lost_answer_with_no_token_in_its_traceback():
+    held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
+
+    class Cut(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            self.wfile.write(b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n"
+                             b"Content-Length: 1000\r\n\r\n{\"status\": 500, \"mess")
+            self.wfile.flush()
+            self.connection.shutdown(socket.SHUT_RDWR)
+            self.close_connection = True
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Cut)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(push.Dropped) as dropped:
+            push.HttpTransport(timeout=10).send("GET", f"http://127.0.0.1:{server.server_address[1]}/api/x",
+                                                {}, None, held)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert dropped.value.__context__ is None and "IncompleteRead" in str(dropped.value)
+    assert not held.occurs_in(captured_with_locals(dropped.value).encode("utf-8"))
+
+
+@contextmanager
+def proxy() -> Iterator[tuple[str, list[bytes]]]:
+    """A proxy on this machine that records every request it gets and answers 502."""
+    seen: list[bytes] = []
+
+    class Proxy(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            seen.append(f"{self.requestline}\r\n{self.headers}".encode())
+            self.send_response(502)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Proxy)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}", seen
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def through_the_proxy(monkeypatch: pytest.MonkeyPatch, transport: Callable[[], push.HttpTransport]) -> list[bytes]:
+    """What the environment's proxy saw of one request to a service on this machine (one that is not listening)."""
+    held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
+    for name in ("no_proxy", "NO_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    with proxy() as (address, seen):
+        monkeypatch.setenv("http_proxy", address)
+        monkeypatch.setenv("HTTP_PROXY", address)
+        closed = socket.socket()
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+        closed.close()
+        try:
+            transport().send("GET", f"http://127.0.0.1:{port}/api/records/1/draft", {}, None, held)
+        except push.Dropped:
+            pass
+    return [each for each in seen if held.occurs_in(each)] or seen
+
+
+def test_a_service_on_this_machine_is_reached_without_the_environments_proxy(monkeypatch: pytest.MonkeyPatch):
+    assert through_the_proxy(monkeypatch, lambda: push.HttpTransport(timeout=5)) == []
+
+
+def test_control_with_the_direct_opener_planted_away_the_proxy_gets_the_token_in_clear(
+        monkeypatch: pytest.MonkeyPatch):
+    def proxied() -> push.HttpTransport:
+        held = push.HttpTransport(timeout=5)
+        held.direct = held.opener
+        return held
+
+    seen = through_the_proxy(monkeypatch, proxied)
+    held = Token("zenodo-sandbox", "a-real-transport-token-" + "q" * 20)
+    assert seen and all(held.occurs_in(each) for each in seen), "the planted proxy's request is not seen"

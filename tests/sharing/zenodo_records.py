@@ -20,13 +20,16 @@ marked where it is made: a draft updated without ``pids`` losing its reserved DO
 behaviour, not probed; push always sends the draft's ``pids`` back, so either way is safe); a second reservation
 answering the same DOI; a file entry started twice refused with a 400; a commit of a pending entry refused; the
 answer to a token that is not accepted (401) or lacks a scope (403); the content type of a file answer to a request
-without the records API's ``Accept``; and publishing, versions, communities and the vocabularies' contents (only the
-SPDX ids ``packaging`` lists, in lower case, are known here).
+without the records API's ``Accept``; an alternate identifier (push's ``urn:uuid`` mark of its draft) kept as sent and
+answered unchanged, as is every field of a draft's metadata from one answer to the next (push finds an edit made on the
+site by the change: the sandbox lane's second push of each folder is the check); and publishing, versions, communities
+and the vocabularies' contents (only the SPDX ids ``packaging`` lists, in lower case, are known here).
 
 Faults are planted per request (:class:`Fault`): a dropped connection before or after the service acted, an upload cut
-off part way, a status (``429`` with its headers, a ``5xx``), a stored file whose bytes differ from what was sent, a
-transfer that fails as a 200 with ``errors``, and a kill of the pushing process (:class:`Killed`, which nothing in push
-catches) before or after the service acted.
+off part way, a status (``429`` with its headers, a ``5xx``) before the service acts or after it acted (a gateway's
+``502`` or ``504``), a stored file whose bytes differ from what was sent, a transfer that fails as a 200 with
+``errors``, and a kill of the pushing process (:class:`Killed`, which nothing in push catches) before or after the
+service acted.
 """
 
 from __future__ import annotations
@@ -64,8 +67,9 @@ class Fault:
     """A planted failure at the requests ``matches`` picks (method, path below the API), the ``times`` next of them:
     ``drop-before`` (the connection drops and the service never acts), ``drop-after`` (it acts, then the answer is
     lost), ``cut`` (an upload's body stops part way: the entry is deleted), ``status`` (answered ``status`` with
-    ``headers`` and ``body``), ``corrupt`` (a file stored with one byte changed), ``transfer-failed`` (a 200 whose
-    ``errors`` say the transfer failed, the entry deleted), ``kill-before`` and ``kill-after``."""
+    ``headers`` and ``body``), ``status-after`` (the service acts, then a gateway answers ``status``), ``corrupt`` (a
+    file stored with one byte changed), ``transfer-failed`` (a 200 whose ``errors`` say the transfer failed, the entry
+    deleted), ``kill-before`` and ``kill-after``."""
 
     kind: str
     matches: Callable[[str, str], bool]
@@ -229,6 +233,11 @@ class FakeRecords:
             self.requests.append((method, path, rdm, "cut"))
             raise Dropped("BrokenPipeError")
         status, content_type, data = self._route(method, path, rdm, body or b"", kind)
+        if kind == "status-after":
+            assert fault is not None
+            self.requests.append((method, path, rdm, f"{status}, answered {fault.status}"))
+            return self._answer(fault.status, "text/html", b"<html><body>Gateway Time-out</body></html>",
+                                fault.headers)
         self.requests.append((method, path, rdm, status))
         if kind == "kill-after":
             raise Killed(f"{method} {path}")

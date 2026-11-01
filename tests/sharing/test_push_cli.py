@@ -50,14 +50,23 @@ def test_a_round_trip_through_the_real_transport(toy: Path, fake: FakeRecords, t
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
     assert code == 0 and "Plan for 'full_toy'" in out and "made the draft 629525" in out
     assert out.index("Next: ") < out.index("made the draft"), "the plan is shown before the draft is made"
+    page = f"{fake.site}/uploads/629525"
+    assert out.splitlines()[-1] == page, "a push ends with the draft's link on a line of its own"
     record = fake.records["629525"]
     assert set(record.files) == {"full_toy.mimebundle", "NOTICE"}
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
-    assert code == 0 and out.count("not sent again") == 2
+    assert code == 0 and out.count("not sent again") == 2 and out.splitlines()[-1] == page
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--status")
     assert code == 0 and "reserved DOI: 10.5072/zenodo.629525" in out and "as push uploaded and verified it" in out
+    assert out.splitlines()[-1] == page
+    record.body["metadata"]["title"] = "Edited on the site"  # type: ignore[index]
+    code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
+    assert code == 2 and "[user] push.metadata-edited" in err and out.splitlines()[-1] == page
+    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes", "--overwrite-site-edits")
+    assert code == 0 and record.body["metadata"]["title"] == "full_toy"  # type: ignore[index]
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--discard", "--yes")
     assert code == 0 and "deleted the draft 629525" in out and fake.drafts() == []
+    assert out.splitlines()[-1] == f"{fake.site}/me/uploads"
 
 
 def test_an_upload_cut_part_way_through_the_real_transport_is_sent_again_whole(toy: Path, fake: FakeRecords,

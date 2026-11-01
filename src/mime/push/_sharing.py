@@ -331,7 +331,7 @@ def scaffold(name: str, licence: str | None) -> str:
         "#   - {family: Carberry, given: Josiah, orcid: 0000-0002-1825-0097, affiliation: Brown University}",
         "creators: []",
         "# Others credited, each with a DataCite contributor type (DataCurator, Supervisor, HostingInstitution, ...).",
-        "# The rights holder of each third-party file is added by push from the files' terms.",
+        "# The rights holder of each third-party file the record holds is added by push from the files' terms.",
         "contributors: []",
         "# Searchable words; push adds mime-experiment.",
         "keywords: []",

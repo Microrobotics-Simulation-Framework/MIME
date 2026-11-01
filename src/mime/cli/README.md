@@ -53,14 +53,16 @@
   asked about first in a terminal; `--yes` goes ahead, and without a terminal it stops with the exact command that
   continues. Each asset download is held to the size its lock declares. Exits zero, or two when refused. Pulling a
   stranger's bundle: see [the saved form](../saved/README.md#the-bundle).
-- `mime push <folder> --to zenodo|zenodo-sandbox [--init | --status | --discard] [--yes]`: the experiment as a draft
-  record on Zenodo (see [`mime.push`](../push/README.md)). It shows the plan first, computed offline (every record
-  file, every file inside the bundle with its tier and verdict, every file that travels as a reference, each declared
-  permission in words, the metadata), asks, then makes or updates the draft, reserves its DOI and uploads each file
-  that differs, its md5 checked against the service's; nothing is published. `--init` writes `sharing.yaml`, the
-  record's credit, from what the folder knows; `--status` reads the draft as the service holds it; `--discard` deletes
-  it. `--to` is required. A push stopped at any request is resumed by running it again. Exits zero, two when refused,
-  three when the service refuses a field MIME builds.
+- `mime push <folder> --to zenodo|zenodo-sandbox [--init | --status | --discard] [--yes] [--overwrite-site-edits]`:
+  the experiment as a draft record on Zenodo (see [`mime.push`](../push/README.md)). It shows the plan first, computed
+  offline (every record file, every file inside the bundle with its tier and verdict, every file that travels as a
+  reference, each declared permission in words, the metadata), asks, then makes or updates the draft, reserves its DOI
+  and uploads each file that differs, its md5 checked against the service's; nothing is published. It writes to and
+  deletes only the draft it made, and a field edited on the site since it last wrote it stops it until the field is
+  copied into `sharing.yaml` or `--overwrite-site-edits` writes over it. `--init` writes `sharing.yaml`, the record's
+  credit, from what the folder knows; `--status` reads the draft as the service holds it; `--discard` deletes it. Each
+  ends with the draft's link on its last line. `--to` is required. A push stopped at any request is resumed by running
+  it again. Exits zero, two when refused, three when the service refuses a field MIME builds.
 - `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.

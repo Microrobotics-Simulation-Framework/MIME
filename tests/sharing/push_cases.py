@@ -9,9 +9,10 @@ import shutil
 from pathlib import Path
 
 import pytest
-from zenodo_records import FakeRecords, FakeTransport
+from zenodo_records import FakeRecords, FakeTransport, Killed
 
 from mime import push
+from mime.build import BuildRefused
 from mime.push import Client, Plan, Service
 from mime.push._plan import RecordFile, file_hashes
 from mime.testing.toys import full_toy
@@ -51,6 +52,18 @@ def saved_toy(root: Path, name: str = "full_toy", *, licence: str | None = "CC-B
     return folder
 
 
+def saved_named(root: Path, name: str) -> Path:
+    """A toy experiment named ``name``, saved under the licence CC-BY-4.0 with its sharing.yaml."""
+    from mime.testing.toys._experiments import declare_in_order, full_declarations, toy_experiment
+
+    experiment = declare_in_order(lambda: toy_experiment(name), full_declarations(), None)
+    experiment.licence("CC-BY-4.0")
+    folder = root / name
+    experiment.save(folder)
+    write_sharing(folder)
+    return folder
+
+
 def copy_of(folder: Path, root: Path) -> Path:
     return Path(shutil.copytree(folder, root / folder.name))
 
@@ -86,3 +99,15 @@ def plan_of(fake: FakeRecords, files: dict[str, bytes], where: Path, service: Se
     sharing = Sharing("a test", "", "CC0-1.0", (Person("Carberry", "Josiah"),))
     return Plan(service or fake.service(), "a_test", where, tuple(held), FolderTerms((), "CC0-1.0", {}, (), 4), (),
                 "CC0-1.0", sharing, payload, "0.3.0")
+
+
+def run_until_drafted(plan: Plan, fake: FakeRecords, said: list[str]) -> tuple[push.Drafted, int]:
+    """Push again, as a person would after a stop, until a push completes: the push that completed, and how many
+    stopped before it."""
+    stops = 0
+    while True:
+        try:
+            return push.send(plan, push.read_state(plan.service, plan.experiment), client(fake), said.append), stops
+        except (Killed, BuildRefused):
+            stops += 1
+            assert stops < 6, said[-5:]

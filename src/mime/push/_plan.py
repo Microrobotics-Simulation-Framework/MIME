@@ -9,9 +9,11 @@ read from the cache and hashed in full first. A file that may not be redistribut
 record file: ``pack`` carries it as a reference, and so does the record.
 
 **The metadata** is the records API's: resource type ``dataset``; the title, creators, contributors, keywords and
-related works from ``sharing.yaml``; each third-party file's rights holder (its credit) and each permission's grantor as
-a ``rightsholder`` contributor; the card (``mime card``'s, the same function) as the description, in HTML; every licence
-of a file in the record or the bundle as a rights entry, an SPDX id as the vocabulary's id (lower case, as the
+related works from ``sharing.yaml``; the rights holder (its credit) of each third-party file the record holds, and each
+permission's grantor, as a ``rightsholder`` contributor (a file that travels as a reference is not in the record: its
+rights holder is credited beside it in the NOTICE and the card, and is no contributor of the record); the card
+(``mime card``'s, the same function) as the description, in HTML; every licence of a file in the record or the bundle
+as a rights entry, an SPDX id as the vocabulary's id (lower case, as the
 sandbox's ``cc-by-4.0`` and ``mit`` are) and a custom ``LicenseRef-`` licence as an entry with its title and link and
 no ``id``, which the sandbox refuses for a ``LicenseRef-`` (a 400 naming no field); and the MIME release it was saved
 with as ``requires`` and ``iscompiledby``.
@@ -29,11 +31,13 @@ import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from mime._terminal import plain
 from mime.assets import AssetRef, folder_assets, locate, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._client import Json
+from mime.push._owners import FIELD_OWNERS, OWN_RELATED, field_owner
 from mime.push._service import Service
 from mime.push._sharing import Person, Sharing, sharing_path
 from mime.push._state import DraftState
@@ -49,29 +53,9 @@ MOST_FILES = 100
 #: The publisher of a record whose DOI Zenodo mints: DataCite requires one to register the DOI, and the sandbox
 #: refuses a draft without it ("Missing publisher field required for DOI registration", the sandbox lane, 2026-11-01).
 PUBLISHER = "Zenodo"
-#: MIME's own related identifiers, first in every record: the release it requires and that compiled it.
-OWN_RELATED = 2
-#: Who owns each field of the record's metadata, by its name below ``metadata`` (the start of the path the service
-#: names, ``metadata.creators.0`` for the first creator): the author in sharing.yaml, the author in the experiment (its
-#: terms, saved with it), or MIME, which builds the rest. A field the service refuses is the author's to correct where
-#: they own it, and MIME's defect where MIME does; a field not listed, or outside ``metadata``, is MIME's.
-FIELD_OWNERS: dict[str, str] = {
-    "title": "sharing", "creators": "sharing", "contributors": "sharing", "subjects": "sharing",
-    "related_identifiers": "sharing", "rights": "experiment", "resource_type": "mime", "publication_date": "mime",
-    "publisher": "mime", "description": "mime"}
 #: The fields below ``metadata`` that DataCite needs to register a DOI, each of which MIME always sends (a test holds
 #: the payload to them, and the fake holds a draft to them, as the sandbox does).
 DOI_FIELDS = ("publisher", "publication_date", "creators", "title", "resource_type")
-
-
-def field_owner(field: str) -> str:
-    """``sharing``, ``experiment`` or ``mime``: who owns the metadata field at ``field`` (``metadata.creators.0``)."""
-    parts = field.split(".")
-    if len(parts) < 2 or parts[0] != "metadata":
-        return "mime"
-    if parts[1] == "related_identifiers" and len(parts) > 2 and parts[2].isdigit() and int(parts[2]) < OWN_RELATED:
-        return "mime"
-    return FIELD_OWNERS.get(parts[1], "mime")
 
 
 #: The keyword every record push makes carries: the uncurated index of MIME's experiments (design §4).
@@ -184,11 +168,16 @@ class Plan:
     def _licences(self) -> list[str]:
         return record_licences(self.judged, self.assets, self.licence)
 
+    def owner(self, field: str) -> str:
+        """Who owns the metadata field at ``field``: :func:`mime.push._owners.field_owner`, for this sharing.yaml."""
+        return field_owner(field, len(self.sharing.contributors))
+
     def lines(self, state: DraftState | None) -> list[str]:
         """The plan as push prints it, before any request."""
         draft = (f"the draft {state.record} MIME made earlier ({state.page}), updated: its metadata is written again "
-                 f"from sharing.yaml (a change made on the site is overwritten) and only files that differ are sent"
-                 if state is not None and state.record else "a new draft, its DOI reserved")
+                 f"from sharing.yaml (a change made on the site stops the push, unless --overwrite-site-edits) and "
+                 f"only files that differ are sent" if state is not None and state.record else
+                 "a new draft, its DOI reserved")
         lines = [f"Plan for {plain(self.experiment)!r} on {self.service.words}: {draft}",
                  f"  Record files ({len(self.files)}, {size_text(self.size)}):"]
         width = max(len(plain(file.key)) for file in self.files)
@@ -216,7 +205,8 @@ class Plan:
                   f"  Creators: {'; '.join(person.words() for person in self.sharing.creators)}",
                   f"  Contributors: {'; '.join(_contributor_words(self)) or 'none'}",
                   f"  Related: {'; '.join(_related_words(self))}",
-                  f"  Keywords: {', '.join(plain(each) for each in _keywords(self.sharing))}"]
+                  f"  Keywords: {', '.join(plain(each) for each in _keywords(self.sharing))}",
+                  *_built_lines(self)]
         permissions = self.judged.permissions
         if permissions:
             lines.append(f"  Permissions you declare ({len(permissions)}); the draft is private, and each becomes "
@@ -228,6 +218,27 @@ class Plan:
                   f"that differs from the draft's is uploaded and its md5 checked; nothing is published (publishing "
                   f"comes with a later MIME)."]
         return lines
+
+
+def _built_lines(plan: Plan) -> list[str]:
+    """The metadata the plan names beyond the credit: one line each for the title, the description, the publisher, the
+    date, the resource type, the access and push's identifier of the draft."""
+    held = _mapping(plan.payload.get("metadata"))
+    description = str(held.get("description", ""))
+    paragraph = "sharing.yaml's paragraph, then " if plan.sharing.description else ""
+    shown = _mapping(plan.payload.get("access"))
+    return [f"  Title: {plain(str(held.get('title', '')))}",
+            f"  Description: {paragraph}the card, as HTML ({len(description):,} characters)",
+            f"  Publisher: {plain(str(held.get('publisher', '')))} (DataCite needs one to register the DOI)",
+            f"  Publication date: {plain(str(held.get('publication_date', '')))}",
+            f"  Resource type: {plain(str(_mapping(held.get('resource_type')).get('id', '')))}",
+            f"  Access once published: the record {plain(str(shown.get('record', '')))}, its files "
+            f"{plain(str(shown.get('files', '')))} (a draft is private)",
+            "  Alternate identifier: a urn:uuid push makes for the draft, by which it knows the draft is its own"]
+
+
+def _mapping(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value) if isinstance(value, dict) else {}
 
 
 def _whose(file: FileTerms) -> str:
@@ -261,7 +272,11 @@ def record_licences(judged: FolderTerms, choices: Sequence[AssetChoice], licence
 
 
 def _rights_holders(judged: FolderTerms) -> list[str]:
-    names = [file.credit for file in judged.files if file.owner == "third party" and file.credit]
+    """The rights holder of each third-party file the record holds (in the bundle), and each permission's grantor: a
+    file that travels as a reference is not in the record, so its rights holder is credited beside it (the NOTICE, the
+    card) and is not a contributor of the record."""
+    names = [file.credit for file in judged.files if file.owner == "third party" and file.credit
+             and file.verdict.carried and file.referenced is None]
     names += [held["grantor"] for held in judged.permissions]
     return list(dict.fromkeys(names))
 
