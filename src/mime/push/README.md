@@ -220,6 +220,7 @@ replay cannot show). CI never holds an upload token (design #171).
 ```
 uv run python scripts/zenodo_sandbox_lane.py --creator "<family>, <given>" [--orcid <iD>] --demo toy --demo terms
 uv run python scripts/zenodo_sandbox_lane.py --creator "<family>, <given>" --demo toy --dry-run   # no network
+uv run python scripts/zenodo_sandbox_lane.py --creator "<family>, <given>" --demo toy --demo terms --publish
 ```
 
 It pushes each folder to the sandbox (a copy of a folder it is given, so it writes nothing into it), reads the draft,
@@ -228,12 +229,17 @@ compares the two answer by answer; it keeps each draft for a person to look at (
 log of the answers' shapes, searched for the token before it is written, even when a push stops. A test CI does not
 run is documentation, not a test, so each run's log is kept beside the probe's. A dry run needs no token (it holds one
 of its own), compares the fake behind the real transport with the fake in this process and says it asked no sandbox,
-writes a log only where `--log` names, and removes what else it wrote.
+writes a log only where `--log` names, and removes what else it wrote. With `--publish` (the sandbox only), it
+publishes each draft (a declared permission asked in the terminal), pulls each record by its number into a fresh folder
+and verifies it, publishes the toy's next version, and says whether each file linked into that version is stored once
+(its file id the published version's), which only the service can answer.
 
 ## Status
 
-Push's draft piece, P2a (designs #198, #199), after terms and tiers (P1): `sharing.yaml` and `--init`, the client, the plan, drafts, `--status` and
-`--discard`, the offline fake and the sandbox lane. Publishing, versions, the lock's `publication` and the confirmation
-in words come with P2b.
+Push's draft piece, P2a (designs #198, #199), after terms and tiers (P1): `sharing.yaml` and `--init`, the client, the
+plan, drafts, `--status` and `--discard`, the offline fake and the sandbox lane. Its publishing piece, P2b (#199, #202):
+the quieter plan, `--publish` with its confirmation, the staged lock and the checks afterwards, versions, edits made on
+the site kept or written over, funding, conferences and `fields`, and `mime pull --from`. Metadata updates of a
+published record, communities, `--version-of` and asset records come with P3.
 
 Phases and releases are explained in the [package manifest](../README.md#status).
