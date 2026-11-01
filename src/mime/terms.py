@@ -4,7 +4,10 @@
 own parser (``packaging.licenses``, which the build already depends on) and held to its canonical spelling, so that
 one licence is written one way and no document's hash depends on how it was typed. A licence of the author's own is a
 :class:`CustomLicence`: a ``LicenseRef-`` id with its title and an https link. ``NOASSERTION`` (SPDX's word for a
-licence nobody stated) is accepted alone, and reads as unknown. Free text is refused.
+licence nobody stated) is accepted alone, and reads as unknown. Free text is refused. **An id the installed
+``packaging`` does not list** (one SPDX added after its release) is refused where a script declares it, naming the
+update to make; where it is read from a saved folder (``unlisted=True``) it is read as written, judged unknown, and
+reported (:func:`unlisted_ids`), since the packaging that saved it listed it.
 
 **A third-party file is declared with its terms** (:class:`Terms`) where the file is declared:
 ``asset("ar4_visual.usda", terms=Terms(licence=..., credit=..., role="presentation", origin=(...)))``. A file with no
@@ -19,7 +22,9 @@ licence on MIME's open or conditional lists, or a declared permission that grant
 ``permitted``; every other licence is ``unknown`` until a person declares otherwise, and a :class:`CustomLicence` may
 say ``not_permitted`` (a person may always say no; a yes needs a permission with its evidence). **The tier**, #198's,
 says where the bytes live: ``open`` and ``conditional`` travel inside a bundle (the conditions said in its NOTICE and
-on its card); ``referenced`` travels as a reference to its origin, whatever its size, and is never packed.
+on its card); ``referenced`` travels as a reference to its origin, whatever its size, and is never packed; ``carried``
+is the author's own file under a licence that is on neither list, or under none: carried because its author packs it,
+with no verdict of ``permitted`` (a reuser is granted only what its licence grants, and no licence grants nothing).
 
 Nothing here imports the rest of MIME: :mod:`mime.scene` declares a file's terms with these classes, and the saved
 form, ``pack`` and the card read them.
@@ -40,6 +45,13 @@ _CUSTOM_ID = re.compile(r"LicenseRef-[A-Za-z0-9.\-]+")
 _TOKEN = re.compile(r"\(|\)|[^\s()]+")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+#: An id as SPDX's grammar writes one (``idstring``): letters, digits, ``.`` and ``-``.
+_IDSTRING = re.compile(r"[A-Za-z0-9.\-]*[A-Za-z][A-Za-z0-9.\-]*")
+_OPERATORS = frozenset({"AND", "OR", "WITH", "(", ")"})
+#: Ids of the list that stand in for ids the installed packaging does not list while the rest of an expression is
+#: checked: the first of each that the installed packaging lists.
+_STAND_IN_LICENCES = ("MIT", "Apache-2.0", "BSD-3-Clause", "CC0-1.0")
+_STAND_IN_EXCEPTIONS = ("LLVM-exception", "Classpath-exception-2.0")
 
 #: MIME's open list: licences that permit redistribution with attribution at most. A choice, not a judgement of any
 #: other licence: a licence not listed here or on the conditional list is ``unknown``, and travels as a reference until
@@ -62,7 +74,7 @@ CONDITIONAL: Mapping[str, tuple[str, ...]] = {
 NOTICE_TEXT_REQUIRED = frozenset({"MIT", "BSD-2-Clause", "BSD-3-Clause"})
 
 type Status = Literal["permitted", "not_permitted", "unknown"]
-type Tier = Literal["open", "conditional", "referenced"]
+type Tier = Literal["open", "conditional", "referenced", "carried"]
 type Role = Literal["results", "presentation"]
 type EvidenceKind = Literal["public_statement", "written_permission"]
 ROLES: tuple[Role, ...] = ("results", "presentation")
@@ -82,9 +94,78 @@ def canonical(text: str) -> str | None:
         return None
 
 
-def licence_problem(text: object) -> str | None:
+def packaging_version() -> str:
+    """The installed ``packaging``'s version: its SPDX list is the one MIME reads ids from."""
+    import importlib.metadata
+
+    return importlib.metadata.version("packaging")
+
+
+def _stand_in(*, exception: bool) -> str:
+    """A listed id to stand in for an unlisted licence or exception."""
+    held = _STAND_IN_EXCEPTIONS if exception else _STAND_IN_LICENCES
+    return next((each for each in held if _listed(each, exception=exception)), held[0])
+
+
+def _listed(token: str, *, exception: bool) -> bool:
+    from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
+
+    if exception:
+        licence = next((each for each in _STAND_IN_LICENCES if _listed(each, exception=False)), _STAND_IN_LICENCES[0])
+        token = f"{licence} WITH {token}"
+    try:
+        canonicalize_license_expression(token)
+    except InvalidLicenseExpression:
+        return False
+    return True
+
+
+def _unlisted_only(text: str) -> tuple[str, ...]:
+    """The ids of ``text`` (licences and exceptions) that the installed packaging's SPDX list does not hold, where
+    ``text`` with each of them replaced by a listed id is an expression in its canonical spelling; none otherwise."""
+    found: list[str] = []
+    pieces: list[str] = []
+    at = 0
+    tokens = list(_TOKEN.finditer(text))
+    for index, match in enumerate(tokens):
+        token = match.group()
+        bare = token.removesuffix("+")
+        exception = index > 0 and tokens[index - 1].group() == "WITH"
+        pieces.append(text[at:match.start()])
+        at = match.end()
+        if (token in _OPERATORS or bare.startswith(CUSTOM_PREFIX) or not _IDSTRING.fullmatch(bare)
+                or _listed(token, exception=exception)):
+            pieces.append(token)
+            continue
+        found.append(bare)
+        pieces.append(_stand_in(exception=exception) + token[len(bare):])
+    pieces.append(text[at:])
+    standing = "".join(pieces)
+    return tuple(dict.fromkeys(found)) if found and canonical(standing) == standing else ()
+
+
+def unlisted_ids(text: str) -> tuple[str, ...]:
+    """The ids of the licence expression ``text`` that the installed packaging's SPDX list does not hold, where the
+    rest of ``text`` is a licence as MIME stores one; none for an expression the list reads, or one that is malformed.
+    An id SPDX added after the installed packaging's release is one of these; so is a misspelt id read from a folder,
+    which the load's input hash refuses."""
+    if not text or text == NO_ASSERTION or canonical(text) is not None:
+        return ()
+    return _unlisted_only(text)
+
+
+def unlisted_words(found: Sequence[str]) -> str:
+    """Ids the installed packaging does not list, in words, with the update that would read one SPDX added since."""
+    verb = "is" if len(found) == 1 else "are"
+    return (f"{', '.join(found)}, which {verb} not on the SPDX licence list of the packaging installed here "
+            f"({packaging_version()}): an id SPDX added since is read once packaging is updated (pip install -U "
+            f"packaging)")
+
+
+def licence_problem(text: object, *, unlisted: bool = False) -> str | None:
     """Why ``text`` is not a licence as MIME stores one, or ``None``: an SPDX licence expression in its canonical
-    spelling, or ``NOASSERTION`` alone."""
+    spelling, or ``NOASSERTION`` alone. An id the installed packaging does not list is refused, naming the update,
+    unless ``unlisted`` (a licence read from a saved folder, which the packaging that saved it listed)."""
     if not isinstance(text, str) or not text:
         return "a licence is an SPDX licence expression, such as CC-BY-4.0 or MIT OR Apache-2.0"
     if text == NO_ASSERTION:
@@ -93,6 +174,11 @@ def licence_problem(text: object) -> str | None:
         return "the licence has a control or format character"
     held = canonical(text)
     if held is None:
+        found = _unlisted_only(text)
+        if found and unlisted:
+            return None
+        if found:
+            return f"{text!r} names {unlisted_words(found)}, and any other is not an SPDX id"
         return (f"{text!r} is not an SPDX licence expression (an id of the SPDX licence list, or LicenseRef- and an id "
                 f"for a licence of your own, joined by AND, OR and WITH)")
     if held != text:
@@ -106,7 +192,7 @@ def ids_of(expression: str) -> tuple[str, ...]:
     tokens = _TOKEN.findall(expression)
     found: list[str] = []
     for index, token in enumerate(tokens):
-        if token in ("AND", "OR", "WITH", "(", ")") or (index and tokens[index - 1] == "WITH"):
+        if token in _OPERATORS or (index and tokens[index - 1] == "WITH"):
             continue
         found.append(token.removesuffix("+"))
     return tuple(dict.fromkeys(found))
@@ -270,7 +356,7 @@ class Verdict:
 
 def _rank(verdict: Verdict) -> tuple[int, int, int]:
     """Lower is freer: the tier, then the number of conditions, then unknown before not permitted."""
-    return ({"open": 0, "conditional": 1, "referenced": 2}[verdict.tier], len(verdict.conditions),
+    return ({"open": 0, "conditional": 1, "carried": 2, "referenced": 3}[verdict.tier], len(verdict.conditions),
             0 if verdict.status != "not_permitted" else 1)
 
 
@@ -348,9 +434,10 @@ class _Parser:
 def licence_verdict(expression: str, custom: Mapping[str, CustomLicence] | None = None) -> Verdict:
     """The verdict an SPDX licence expression gives a file on its own: ``permitted`` (``open`` or ``conditional``) only
     for licences on MIME's lists; ``not_permitted`` for a custom licence a person says forbids it; ``unknown`` for
-    anything else, ``NOASSERTION`` included. ``AND`` takes the most restrictive, ``OR`` the freest. Raises
-    ``ValueError`` for an expression :func:`licence_problem` refuses."""
-    problem = licence_problem(expression)
+    anything else, ``NOASSERTION`` and an id the installed packaging does not list included. ``AND`` takes the most
+    restrictive, ``OR`` the freest. Raises ``ValueError`` for an expression :func:`licence_problem` refuses, reading
+    unlisted ids as written."""
+    problem = licence_problem(expression, unlisted=True)
     if problem is not None:
         raise ValueError(problem)
     if expression == NO_ASSERTION:
@@ -378,4 +465,4 @@ __all__ = ["CONDITIONAL", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "EVIDENCE_KINDS", 
            "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN", "ROLES", "SHARE_ALIKE", "CustomLicence",
            "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role", "Scope", "Status", "Terms", "Tier",
            "Verdict", "canonical", "expression_of", "freest", "ids_of", "licence_problem", "licence_verdict",
-           "permission_problems", "permission_verdict"]
+           "packaging_version", "permission_problems", "permission_verdict", "unlisted_ids", "unlisted_words"]

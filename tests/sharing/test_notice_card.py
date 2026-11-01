@@ -7,6 +7,12 @@ exists.
 redistribution (an AR4-like file, synthetic) in a saved folder. ``pack`` carries it as a reference; the NOTICE and the
 card say so, with its licence's title and link, its role and where it is available from.
 
+What they claim is what holds: the author's own files with no licence declared are ``unknown`` (carried, and a reuser
+granted no licence), never "permitted"; "reproducible from this bundle alone" only where nothing travels as a reference;
+every condition each file's licence or permission carries, on the card as in the NOTICE; and "what reproduces" as what
+``mime verify`` would check, never as checked. A licence naming an id the installed packaging does not list is refused
+by both (``terms.unlisted-licence``).
+
 The control plants a NOTICE that drops a file, and the property must catch it on every one of twenty runs.
 """
 
@@ -22,11 +28,12 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from terms_cases import NO_REDISTRIBUTION, OPEN_IDS, UNKNOWN_IDS, V3_FIXTURE, layered, same_reference_run, write_mesh
 
+from mime.build import BuildRefused
 from mime.cli import main
-from mime.saved import _card, card_text, notice, pack, read_folder
+from mime.saved import _bundle, _card, _terms, card_text, notice, pack, read_folder
 from mime.saved._folder import named_files
 from mime.saved._card import CREDIT_HOME, LICENCE_TEXTS, NO_EVIDENCE
-from mime.terms import Terms
+from mime.terms import Evidence, Permission, Scope, Terms
 
 ORIGIN = "https://example.org/ar4_ros_driver/6a3ebb1/meshes/ar4_visual.usda"
 
@@ -71,7 +78,8 @@ def test_the_notice_says_the_mesh_is_referenced_with_its_licence_role_and_origin
     assert "role: presentation (results do not depend on it)" in block and f"origin: {ORIGIN}" in block
     assert f"{NO_REDISTRIBUTION.id}: {NO_REDISTRIBUTION.title}, {NO_REDISTRIBUTION.url}; its redistribution, as " \
            f"declared: not permitted" in text
-    assert "Reproducible exactly, given 1 file MIME cannot carry: scene/layers/ar4_visual.usda" in text
+    assert ("Reproducible exactly, given 1 file the bundle does not carry, which `mime assets fetch <folder>` fetches "
+            "and places: scene/layers/ar4_visual.usda (may not be redistributed;") in text
     assert "Naming a rights holder here implies no endorsement by them." in text
 
 
@@ -91,7 +99,7 @@ def test_the_card_says_the_mesh_is_referenced_and_where_credit_will_live(ar4_fol
            "permitted | referenced | Robot Maker Ltd (the arm's maker) |" in text
     assert f"- **Creators:** {CREDIT_HOME}" in text and NO_EVIDENCE in text and "validated" not in text
     assert "- **Licence:** CC-BY-4.0" in text
-    assert "Reproducible exactly, given 1 file MIME cannot carry" in text
+    assert "Reproducible exactly, given 1 file the bundle does not carry" in text
 
 
 def test_the_card_flags_non_commercial_terms(tmp_path: Path):
@@ -100,7 +108,103 @@ def test_the_card_flags_non_commercial_terms(tmp_path: Path):
         layered("nc", [(mesh, Terms("CC-BY-NC-4.0", "A. Maker", "results"))]).build().save(tmp_path / "nc")
     text = card_text(tmp_path / "nc")
     assert "**Non-commercial terms** hold for `scene/layers/Arm.usda`." in text
-    assert "permitted **non-commercial** | carried" in text
+    assert "permitted, **non-commercial** | carried" in text
+
+
+@pytest.mark.parametrize("licence, flagged", [
+    ("CC-BY-SA-4.0", ["Share-alike terms"]), ("CC-BY-ND-3.0", ["No-derivatives terms"]),
+    ("CC-BY-NC-SA-2.0", ["Non-commercial terms", "Share-alike terms"]),
+    ("CC-BY-NC-ND-4.0", ["Non-commercial terms", "No-derivatives terms"])])
+def test_the_card_flags_every_condition_of_every_licence_it_names(tmp_path: Path, licence: str, flagged: list[str]):
+    mesh = write_mesh(tmp_path / "sources", "Arm", 900)
+    with same_reference_run():
+        layered("conditions", [(mesh, Terms(licence, "A. Maker", "results"))]).build().save(tmp_path / "f")
+    text = card_text(tmp_path / "f")
+    assert [words for words in _card.CONDITION_WORDS.values() if f"**{words}** hold for" in text] == flagged
+    assert all(f"**{words}** hold for `scene/layers/Arm.usda`." in text for words in flagged)
+
+
+def test_the_card_flags_the_conditions_a_permission_leaves(tmp_path: Path):
+    mesh = write_mesh(tmp_path / "sources", "Arm", 900)
+    permission = Permission("Ada Maker", "A. Lab", (hashlib.sha256(mesh.read_bytes()).hexdigest(),),
+                            Scope(True, False, True), "2026-10-20",
+                            Evidence("public_statement", "https://example.org/s"))
+    with same_reference_run():
+        layered("granted", [(mesh, Terms(NO_REDISTRIBUTION, "A. Maker", "presentation", (ORIGIN,)))],
+                permissions=[permission]).build().save(tmp_path / "f")
+    text = card_text(tmp_path / "f")
+    assert "**No-derivatives terms** hold for `scene/layers/Arm.usda`." in text
+    assert "permitted, **no-derivatives** | carried" in text and "Non-commercial terms" not in text
+
+
+def test_the_card_says_what_mime_verify_would_check_and_that_it_checked_nothing(ar4_folder: Path):
+    text = card_text(ar4_folder)
+    section = text[text.index("## What reproduces"):text.index("## Validity lines")]
+    assert "`mime verify <folder>` reruns the first" in section and "it ran no check" in section
+    assert "would check" in NO_EVIDENCE and "reproduce" not in NO_EVIDENCE
+
+
+# --- what the NOTICE claims --------------------------------------------------------------------------------------
+
+
+def test_the_authors_own_files_without_a_licence_are_unknown_never_permitted(tmp_path: Path):
+    with same_reference_run():
+        layered("unlicensed", [(write_mesh(tmp_path / "sources", "Arm", 900), None)]).build().save(tmp_path / "f")
+    text = notice(tmp_path / "f")
+    verdicts = [line for line in text.splitlines() if line.startswith("  verdict: ")]
+    assert verdicts and all(line == f"  verdict: unknown, carried, by {_terms.NO_LICENCE_BY}; carried in the bundle"
+                            for line in verdicts), verdicts
+    assert "permitted" not in "\n".join(verdicts) and "a reuser is granted no licence" in text
+
+
+@pytest.mark.parametrize("licence, verdict", [
+    ("MPL-2.0", "unknown, carried, by the author's own"),
+    (NO_REDISTRIBUTION, "not permitted, carried, by the author's own"),
+    ("CC-BY-4.0", "permitted, open, by the author's own")])
+def test_the_authors_own_files_have_the_status_of_the_experiments_licence(tmp_path: Path, licence: object,
+                                                                          verdict: str):
+    with same_reference_run():
+        layered("licensed", [], licence=licence).build().save(tmp_path / "f")  # type: ignore[arg-type]
+    verdicts = {line for line in notice(tmp_path / "f").splitlines() if line.startswith("  verdict: ")}
+    assert verdicts == {f"  verdict: {verdict}; carried in the bundle"}, verdicts
+
+
+def test_a_large_file_that_travels_as_a_reference_is_named_in_the_availability(tmp_path: Path,
+                                                                              monkeypatch: pytest.MonkeyPatch):
+    limit = 200_000  # above every file MIME writes for the toy, so that the layer alone is over it
+    monkeypatch.setattr(_terms, "INLINE_LIMIT_BYTES", limit)
+    monkeypatch.setattr(_bundle, "INLINE_LIMIT_BYTES", limit)
+    mesh = write_mesh(tmp_path / "sources", "Big", 2 * limit)
+    with same_reference_run():
+        layered("big", [(mesh, Terms("CC0-1.0", "A. Maker", "results", (ORIGIN,)))], licence="CC-BY-4.0").build() \
+            .save(tmp_path / "f")
+    for text in (notice(tmp_path / "f"), card_text(tmp_path / "f")):
+        assert "from this bundle alone" not in text
+        assert ("given 1 file the bundle does not carry, which `mime assets fetch <folder>` fetches and places: "
+                f"scene/layers/Big.usda (over the size a bundle carries; licence CC0-1.0; results (results depend on "
+                f"it); available from {ORIGIN})") in text
+
+
+def test_only_a_bundle_that_carries_every_file_reproduces_from_itself_alone(tmp_path: Path):
+    with same_reference_run():
+        layered("whole", [(write_mesh(tmp_path / "sources", "Arm", 900), Terms("MIT", "A. Maker", "results"))],
+                licence="CC-BY-4.0").build().save(tmp_path / "f")
+    assert "Reproducible exactly from this bundle alone." in notice(tmp_path / "f")
+
+
+def test_the_notice_and_the_card_refuse_a_licence_the_installed_packaging_does_not_list(
+        ar4_folder: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    import packaging.licenses
+
+    folder = Path(shutil.copytree(ar4_folder, tmp_path / "ar4_like"))
+    monkeypatch.delitem(packaging.licenses.LICENSES, "mit")  # as a packaging before MIT was listed would read it
+    for action in (lambda: notice(folder), lambda: card_text(folder)):
+        with pytest.raises(BuildRefused) as refused:
+            action()
+        (refusal,) = refused.value.refusals
+        assert refusal.code == "terms.unlisted-licence" and "pip install -U packaging" in refusal.action
+        assert refusal.message.startswith("scene/layers/ar4_kinematics.usda: 'MIT' names MIT")
+    assert main(["card", str(folder)]) == 2 and "terms.unlisted-licence" in capsys.readouterr().err
 
 
 # --- deterministic -----------------------------------------------------------------------------------------------
@@ -155,7 +259,17 @@ def test_mime_pack_of_an_experiment_without_a_licence_says_so_and_packs(tmp_path
     with same_reference_run():
         layered("unlicensed", []).build().save(tmp_path / "unlicensed")
     assert main(["pack", str(tmp_path / "unlicensed")]) == 0
-    assert "licence: none declared (packing never refuses that; mime push will ask for one" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "licence: none declared (packing never refuses that; mime push will ask for one" in out
+    assert "predates terms" not in out
+
+
+def test_mime_pack_of_a_folder_before_terms_with_a_layer_says_it_is_carried_as_yours(tmp_path: Path,
+                                                                                    capsys: pytest.CaptureFixture[str]):
+    folder = Path(shutil.copytree(V3_FIXTURE, tmp_path / "layered_toy"))
+    assert main(["pack", str(folder), "--out", str(tmp_path / "v3.mimebundle")]) == 0
+    assert ("this folder predates terms: a third party's file in it is carried as yours; declare its terms and save "
+            "again") in capsys.readouterr().out
 
 
 # --- every file is in the NOTICE -----------------------------------------------------------------------------------

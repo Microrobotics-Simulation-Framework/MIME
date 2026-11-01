@@ -6,18 +6,24 @@ third-party file's ``terms`` by its path below the folder with the sha256 they w
 ``permission`` with its files by sha256. :func:`encode` checks their form when the experiment is saved and refuses
 what is incomplete, by code: a licence that is not an SPDX expression (``terms.licence``), a custom licence without
 its title or link (``terms.custom-licence``), terms for a file the experiment does not hold or for another file's
-bytes (``terms.file``), an origin that is not a location (``terms.origin``), and a permission lacking a part or bound
-to bytes no file has (``terms.permission``). The experiment's own licence may be absent: ``save`` and ``pack`` never
-refuse that, and every report of the folder says so.
+bytes, and two copies of one file's bytes declared with different terms (``terms.file``), an origin that is not a
+location (``terms.origin``), and a permission lacking a part or bound to bytes no file has (``terms.permission``). A
+load checks the same form when it reads the document (:func:`read_check`), so a hand edit is refused by its code; an
+id the installed packaging does not list is read as written there, and reported, and ``pack`` and the card refuse it
+(``terms.unlisted-licence``) until packaging is updated. The experiment's own licence may be absent: ``save`` and
+``pack`` never refuse that, and every report of the folder says so.
 
 **Each file's verdict** (:func:`folder_terms`): a file with terms is a third party's, judged by its licence and by
 every permission that names its bytes; a record file is OpenMaterica's, judged by its record's own licence of its
 values, as given; every other file (the files MIME writes, and those the author brings with no terms) is the author's
-own, under the experiment's licence, and is always carried. **A file that may not be redistributed travels as a
-reference, whatever its size**: its bytes stay out of a bundle, and the lock names the asset that holds them
-(``referenced_files``, and the asset in ``assets``), built from its origin. So does a file over the size a bundle
+own, under the experiment's licence, and is always carried: ``permitted`` only where that licence is on MIME's lists,
+and otherwise ``unknown`` (or ``not_permitted``, for a custom licence that says so), in the tier ``carried``; with no
+licence declared, a reuser is granted none. **A file that may not be redistributed travels as a reference, whatever
+its size**: its bytes stay out of a bundle, and the lock names the asset that holds them (``referenced_files``, and
+the asset in ``assets``), built from its origin, one asset for one sha256. So does a file over the size a bundle
 carries that has an origin. ``mime pull``, ``unpack`` and ``mime assets fetch <folder>`` place a referenced file from
-the asset cache (:func:`place_referenced`); a folder still missing one is refused as ``asset.missing`` with the command.
+the asset cache (:func:`place_referenced`), in the folder's real path; a file it cannot place is reported, with why,
+and a folder still missing one is refused as ``asset.missing`` with the command.
 """
 
 from __future__ import annotations
@@ -52,6 +58,8 @@ from mime.terms import (
     licence_verdict,
     permission_problems,
     permission_verdict,
+    unlisted_ids,
+    unlisted_words,
 )
 
 #: The most one file may weigh and still travel inside a bundle. A choice, not a measurement: a bundle is read and
@@ -73,6 +81,10 @@ _TERMS_FILE_ACTION = ("declare a third-party file's terms where the file is decl
 _TERMS_PERMISSION_ACTION = ("declare the permission with every part, its files by the sha256 of the bytes it covers: "
                             "exp.permission(Permission(grantor=..., grantee=..., files=(...), scope=Scope(...), "
                             "date=\"YYYY-MM-DD\", evidence=Evidence(...))), then save: built.save(folder)")
+_TERMS_COPY_ACTION = ("declare the same terms on each copy, asset(path, terms=Terms(...)), or keep one copy and "
+                      "reference it at each prim; then save the experiment again: built.save(folder)")
+#: What decides the verdict of the author's own files where the experiment declares no licence.
+NO_LICENCE_BY = "the author's own, no licence declared: a reuser is granted no licence"
 
 
 def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Refusal:
@@ -82,30 +94,38 @@ def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Ref
 @dataclass(frozen=True)
 class Declared:
     """What a script or a loaded document declares of its terms, before :func:`encode` checks it: the experiment's
-    licences (more than one is refused), each file's terms by path with the pin of its bytes, and each permission with
-    its files pinned."""
+    licences (more than one is refused), each file's terms by path with the pin of its bytes and whether they were read
+    from a saved document, and each permission with its files pinned. A licence read from a document may name an id
+    the installed packaging does not list (the packaging that saved it did): it is kept as written, and reported."""
 
     licences: tuple[object, ...]
-    terms: tuple[tuple[str, str, object], ...]
+    terms: tuple[tuple[str, str, object, bool], ...]
     permissions: tuple[tuple[object, tuple[str, ...]], ...]
-    #: Every file the experiment saves that terms may name (its layers and descriptions), by path, with its pin.
-    files: Mapping[str, str]
+    #: Every file the experiment saves that terms may name (its layers and descriptions), by path, with its pin;
+    #: ``None`` where they are not known yet (a document read before its build): the checks against them wait for it.
+    files: Mapping[str, str] | None
+    #: Whether the experiment's licence was read from a saved document.
+    licence_read: bool = False
 
 
 @dataclass(frozen=True)
 class Encoded:
-    """The document's terms keys as :func:`encode` writes them; each is absent from the document where it is empty."""
+    """The document's terms keys as :func:`encode` writes them; each is absent from the document where it is empty.
+    ``unlisted`` names each licence read from a document that names an id the installed packaging does not list."""
 
     licence: str | None
     licences: dict[str, CustomLicenceDoc]
     terms: dict[str, TermsDoc]
     permissions: list[PermissionDoc]
+    unlisted: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 def _licence_text(given: object, where: str, custom: dict[str, CustomLicence], refusals: list[Refusal],
-                  *, own: bool = False) -> str | None:
+                  *, own: bool = False, read: bool = False,
+                  unlisted: list[tuple[str, tuple[str, ...]]] | None = None) -> str | None:
     """``given`` as the expression the document holds, its custom licence noted in ``custom``; ``None`` (with the
-    refusal added) when it is not a licence MIME stores."""
+    refusal added) when it is not a licence MIME stores. A licence ``read`` from a document may name ids the installed
+    packaging does not list: they are noted in ``unlisted``, by ``where``."""
     if isinstance(given, CustomLicence):
         problem = given.problem()
         if problem is not None:
@@ -121,11 +141,14 @@ def _licence_text(given: object, where: str, custom: dict[str, CustomLicence], r
             return None
         custom[given.id] = given
         return given.id
-    problem = licence_problem(given)
+    problem = licence_problem(given, unlisted=read)
     if problem is not None:
         refusals.append(_refuse("terms.licence", RefusalClass.USER, f"{where}: {problem}", _TERMS_LICENCE_ACTION))
         return None
     text = cast(str, given)
+    found = unlisted_ids(text)
+    if found and unlisted is not None:
+        unlisted.append((where, found))
     if own and text == NO_ASSERTION:
         refusals.append(_refuse(
             "terms.licence", RefusalClass.USER, f"{where} is {NO_ASSERTION}, which says nobody stated one",
@@ -141,15 +164,15 @@ def _licence_text(given: object, where: str, custom: dict[str, CustomLicence], r
     return text
 
 
-def _terms_doc(path: str, pin: str, given: object, custom: dict[str, CustomLicence],
-               refusals: list[Refusal]) -> TermsDoc | None:
+def _terms_doc(path: str, pin: str, given: object, custom: dict[str, CustomLicence], refusals: list[Refusal], *,
+               read: bool = False, unlisted: list[tuple[str, tuple[str, ...]]] | None = None) -> TermsDoc | None:
     where = f"the terms of {path}"
     if not isinstance(given, Terms):
         refusals.append(_refuse("terms.file", RefusalClass.USER, f"{where} are {given!r}, not a mime.terms.Terms",
                                 _TERMS_FILE_ACTION))
         return None
     found = len(refusals)
-    licence = _licence_text(given.licence, f"{where}' licence", custom, refusals)
+    licence = _licence_text(given.licence, f"the licence in {where}", custom, refusals, read=read, unlisted=unlisted)
     credit = cast(object, given.credit)
     if not isinstance(credit, str) or not credit.strip():
         refusals.append(_refuse(
@@ -183,10 +206,10 @@ def _terms_doc(path: str, pin: str, given: object, custom: dict[str, CustomLicen
     return doc
 
 
-def _permission_doc(given: object, files: tuple[str, ...], known: set[str],
+def _permission_doc(given: object, files: tuple[str, ...], known: set[str] | None,
                     refusals: list[Refusal]) -> PermissionDoc | None:
     problems = permission_problems(given, files)
-    stale = sorted(set(files) - known) if not problems else []
+    stale = sorted(set(files) - known) if not problems and known is not None else []
     problems += [f"the permission names the bytes {each}, which no file the experiment holds has: a changed file "
                  f"inherits nothing" for each in stale]
     refusals += [_refuse("terms.permission", RefusalClass.USER, problem, _TERMS_PERMISSION_ACTION)
@@ -204,6 +227,7 @@ def encode(declared: Declared) -> tuple[Encoded, list[Refusal]]:
     """The document's terms keys, and every refusal of their form, at once."""
     refusals: list[Refusal] = []
     custom: dict[str, CustomLicence] = {}
+    unlisted: list[tuple[str, tuple[str, ...]]] = []
     licence: str | None = None
     if len(declared.licences) > 1:
         refusals.append(_refuse(
@@ -211,17 +235,19 @@ def encode(declared: Declared) -> tuple[Encoded, list[Refusal]]:
             f"exp.licence is called {len(declared.licences)} times, and an experiment has one licence of its own",
             "call exp.licence(...) once, with an SPDX expression: exp.licence(\"CC-BY-4.0\")"))
     elif declared.licences:
-        licence = _licence_text(declared.licences[0], "the experiment's licence", custom, refusals, own=True)
+        licence = _licence_text(declared.licences[0], "the experiment's licence", custom, refusals, own=True,
+                                read=declared.licence_read, unlisted=unlisted)
     terms: dict[str, TermsDoc] = {}
     seen: dict[str, object] = {}
-    for path, pin, given in declared.terms:
-        if path not in declared.files:
+    copies: dict[str, tuple[str, object]] = {}
+    for path, pin, given, read in declared.terms:
+        if declared.files is not None and path not in declared.files:
             refusals.append(_refuse(
                 "terms.file", RefusalClass.USER,
                 f"terms are declared for {path}, which is not a layer or a description the experiment saves",
                 _TERMS_FILE_ACTION))
             continue
-        if pin != declared.files[path]:
+        if declared.files is not None and pin != declared.files[path]:
             refusals.append(_refuse(
                 "terms.file", RefusalClass.USER,
                 f"the terms of {path} were declared for the bytes {pin}, and the file has {declared.files[path]}: a "
@@ -232,10 +258,18 @@ def encode(declared: Declared) -> tuple[Encoded, list[Refusal]]:
                                     _TERMS_FILE_ACTION))
             continue
         seen[path] = given
-        doc = _terms_doc(path, pin, given, custom, refusals)
+        original = copies.setdefault(pin, (path, given))
+        if original[0] != path and original[1] != given:
+            refusals.append(_refuse(
+                "terms.file", RefusalClass.USER,
+                f"{original[0]} and {path} hold the same bytes (sha256 {pin}) and are declared with different terms: "
+                f"each copy of a file is declared with its terms, and one file's bytes have one set of terms",
+                _TERMS_COPY_ACTION))
+            continue
+        doc = _terms_doc(path, pin, given, custom, refusals, read=read, unlisted=unlisted)
         if doc is not None:
             terms[path] = doc
-    known = set(declared.files.values())
+    known = set(declared.files.values()) if declared.files is not None else None
     permissions = [doc for given, files in declared.permissions
                    if (doc := _permission_doc(given, files, known, refusals)) is not None]
     permissions.sort(key=lambda doc: json.dumps(doc, sort_keys=True))
@@ -243,7 +277,7 @@ def encode(declared: Declared) -> tuple[Encoded, list[Refusal]]:
         key: {"title": held.title, "url": held.url, "redistribution": cast(Literal["not_permitted", "unknown"],
                                                                          held.redistribution)}
         for key, held in sorted(custom.items())}
-    return Encoded(licence, licences, dict(sorted(terms.items())), permissions), refusals
+    return Encoded(licence, licences, dict(sorted(terms.items())), permissions, tuple(unlisted)), refusals
 
 
 def write_into(document: ExperimentDocument, encoded: Encoded) -> None:
@@ -288,6 +322,26 @@ def declared_permissions(document: ExperimentDocument) -> list[Permission]:
             for held in document.get("permissions", [])]
 
 
+def unlisted_note(where: str, found: Sequence[str]) -> str:
+    """The load's note for a licence that names an id the installed packaging does not list."""
+    return (f"terms: {where} names {unlisted_words(found)}; the load reads it as written and judges it unknown, and "
+            f"`mime pack` and `mime card` refuse it until packaging lists it")
+
+
+def read_check(document: ExperimentDocument) -> tuple[list[Refusal], tuple[str, ...]]:
+    """The document's licence, terms and permissions checked for their form as the document is read, before its build
+    (what a hand edit can break): every refusal, by the code ``save`` gives it, and a note for each licence that names
+    an id the installed packaging does not list, which is read as written. The checks against the files themselves
+    (a file's pin, a permission's bytes) are the build's."""
+    licence = experiment_licence(document)
+    declared = Declared((licence,) if licence is not None else (),
+                        tuple((path, pin, terms, True) for path, pin, terms in declared_terms(document)),
+                        tuple((held, cast(tuple[str, ...], held.files)) for held in declared_permissions(document)),
+                        None, licence_read=True)
+    encoded, refusals = encode(declared)
+    return refusals, tuple(unlisted_note(where, found) for where, found in encoded.unlisted)
+
+
 # --- each file's verdict ------------------------------------------------------------------------------------------
 
 
@@ -324,11 +378,15 @@ def _record_licence(data: bytes) -> str:
 
 
 def own_verdict(licence: str | None, custom: Mapping[str, CustomLicence]) -> Verdict:
-    """The verdict of the author's own files: always carried, with the conditions of the experiment's licence where
-    it is on MIME's conditional list."""
-    held = licence_verdict(licence, custom) if licence is not None else Verdict("permitted", "open")
+    """The verdict of the author's own files, always carried: the experiment's licence's where it is on MIME's open or
+    conditional list (with its conditions); otherwise its status (``unknown``, or ``not_permitted`` for a custom
+    licence that says so) in the tier ``carried``; and ``unknown`` where the experiment declares no licence, since a
+    reuser is then granted none."""
+    if licence is None:
+        return Verdict("unknown", "carried", (), NO_LICENCE_BY)
+    held = licence_verdict(licence, custom)
     if held.tier == "referenced":
-        return Verdict("permitted", "open", (), "the author's own")
+        return Verdict(held.status, "carried", (), "the author's own")
     return Verdict("permitted", held.tier, held.conditions, "the author's own")
 
 
@@ -386,16 +444,21 @@ def referenced_assets(document: ExperimentDocument, files: Mapping[str, tuple[st
                       taken: Sequence[str]) -> list[tuple[str, AssetRef]]:
     """The files of ``files`` whose bytes travel as references, each with the asset that holds them, built from its
     origin: what ``save`` writes into the lock (``referenced_files`` and ``assets``). A file that must travel as a
-    reference and gives no origin is left out here: ``pack`` refuses it, naming what to declare."""
+    reference and gives no origin is left out here: ``pack`` refuses it, naming what to declare. Copies of one file's
+    bytes (which ``save`` holds to one set of terms) travel as one asset."""
     names = set(taken)
+    held: dict[str, AssetRef] = {}
     found: list[tuple[str, AssetRef]] = []
-    for file in file_verdicts(document, {path: held for path, held in files.items() if path in
+    for file in file_verdicts(document, {path: each for path, each in files.items() if path in
                                          document.get("terms", {})}, {}):
         if must_reference(file, INLINE_LIMIT_BYTES) and file.origin:
-            name = asset_name(file.path, names, file.sha256)
-            names.add(name)
-            found.append((file.path, AssetRef(name, file.sha256, file.size, file.licence or NO_ASSERTION,
-                                              file.origin)))
+            ref = held.get(file.sha256)
+            if ref is None:
+                name = asset_name(file.path, names, file.sha256)
+                names.add(name)
+                ref = AssetRef(name, file.sha256, file.size, file.licence or NO_ASSERTION, file.origin, unlisted=True)
+                held[file.sha256] = ref
+            found.append((file.path, ref))
     return found
 
 
@@ -418,6 +481,16 @@ class FolderTerms:
 
     def referenced(self) -> tuple[FileTerms, ...]:
         return tuple(file for file in self.files if file.referenced is not None)
+
+    def unlisted_refusals(self, command: str) -> list[Refusal]:
+        """``terms.unlisted-licence`` for each licence of the folder that names an id the installed packaging does not
+        list: ``command`` (``mime pack``, ``mime card``) would otherwise state a verdict this packaging cannot give."""
+        named = [("the experiment's licence", self.licence)] if self.licence is not None else []
+        named += [(file.path, file.licence) for file in self.files if file.owner == "third party" and file.licence]
+        return [_refuse("terms.unlisted-licence", RefusalClass.ENVIRONMENT,
+                        f"{where}: {licence!r} names {unlisted_words(found)}",
+                        f"update packaging (pip install -U packaging), then `{command} <folder>` again")
+                for where, licence in named if (found := unlisted_ids(licence))]
 
 
 def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: set[str], version: int) -> FolderTerms:
@@ -447,14 +520,23 @@ def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: 
 # --- placing a referenced file -------------------------------------------------------------------------------------
 
 
+#: Why :func:`place_referenced` left a file unplaced.
+NOT_CACHED = "the asset is not in the cache"
+OTHER_FILE = "another file is in its place"
+NO_ASSET = "the lock's assets do not name the asset"
+OUTSIDE = "its path is not a place inside the folder a saved form keeps a file"
+CORRUPT = "the cached copy is not the file's bytes (mime assets fetch hashes it and fetches it again)"
+
+
 @dataclass(frozen=True)
 class Placed:
     """What :func:`place_referenced` did: the files it placed from the cache, those already in place, and those it
-    could not place, each with the asset's name (not cached, or another file is in its place)."""
+    could not place, each with the asset's name and why (:data:`NOT_CACHED`, :data:`OTHER_FILE`, :data:`NO_ASSET`,
+    :data:`OUTSIDE`, :data:`CORRUPT`)."""
 
     placed: tuple[str, ...] = ()
     present: tuple[str, ...] = ()
-    missing: tuple[tuple[str, str], ...] = ()
+    missing: tuple[tuple[str, str, str], ...] = ()
 
 
 def _lock_of(folder: Path) -> dict[str, object]:
@@ -496,10 +578,12 @@ def _copy_checked(source: Path, target: Path, sha256: str) -> bool:
 def place_referenced(folder: str | os.PathLike[str]) -> Placed:
     """Put each file the folder's lock says travels as a reference at its path, from the asset cache: copied and
     hashed, never over a file already there, never outside the folder. A file that is not cached is left for ``mime
-    assets fetch <folder>``, which stores it and calls this again. Reads the lock as JSON and runs nothing."""
+    assets fetch <folder>``, which stores it and calls this again; every file it does not place is reported missing,
+    with why. The folder is judged by its real path, so that a folder reached through a link (macOS's ``/tmp`` and
+    ``/var``) is the folder its files are in. Reads the lock as JSON and runs nothing."""
     from mime.saved._bundle import name_problem
 
-    root = Path(os.path.abspath(folder))
+    root = Path(os.path.realpath(folder))
     lock = _lock_of(root)
     listed = lock.get("referenced_files", {})
     held_assets = lock.get("assets", [])
@@ -515,29 +599,46 @@ def place_referenced(folder: str | os.PathLike[str]) -> Placed:
             refs[ref.name] = ref
     placed: list[str] = []
     present: list[str] = []
-    missing: list[tuple[str, str]] = []
+    missing: list[tuple[str, str, str]] = []
     for path, name in sorted(cast(dict[object, object], listed).items(), key=str):
-        if not isinstance(path, str) or not isinstance(name, str) or name_problem(path) is not None:
+        if not isinstance(path, str) or not isinstance(name, str):
             continue
         target = root / path
-        if root not in target.resolve().parents:
-            continue
         ref = refs.get(name)
-        if ref is None:
-            missing.append((path, name))
+        if name_problem(path) is not None or root not in target.resolve().parents:
+            missing.append((path, name, OUTSIDE))
+        elif ref is None:
+            missing.append((path, name, NO_ASSET))
         elif target.is_file():
             if sha256_and_size(target)[0] == ref.sha256:
                 present.append(path)
             else:
-                missing.append((path, name))
-        elif is_cached(ref) and _copy_checked(cached_file(ref), target, ref.sha256):
+                missing.append((path, name, OTHER_FILE))
+        elif not is_cached(ref):
+            missing.append((path, name, NOT_CACHED))
+        elif _copy_checked(cached_file(ref), target, ref.sha256):
             placed.append(path)
         else:
-            missing.append((path, name))
+            missing.append((path, name, OTHER_FILE if target.exists() else CORRUPT))
     return Placed(tuple(placed), tuple(present), tuple(missing))
 
 
-__all__ = ["INLINE_LIMIT_BYTES", "Declared", "Encoded", "FileTerms", "FolderTerms", "Placed", "asset_name",
-           "custom_licences", "declared_permissions", "declared_terms", "encode", "experiment_licence",
-           "file_verdicts", "folder_terms", "must_reference", "own_verdict", "place_referenced", "referenced_assets",
-           "sha256_and_size", "third_party_verdict", "write_into"]
+def unplaced_refusals(folder: str | os.PathLike[str], placed: Placed) -> list[Refusal]:
+    """``asset.missing`` for each file :func:`place_referenced` left unplaced in ``folder``, with why and what to do:
+    what ``mime assets fetch <folder>`` refuses once it has fetched every asset the lock names."""
+    from mime.assets._commands import fetch_command
+
+    return [_refuse("asset.missing", RefusalClass.ENVIRONMENT,
+                    f"{path}, which travels as the reference {name}, is not placed in the folder: {why}",
+                    "the folder's lock names a place outside it: save the experiment again from its script, "
+                    "built.save(folder)" if why == OUTSIDE else
+                    f"move the file in its place away, or fetch the asset, then `{fetch_command(folder=folder)}` "
+                    f"again")
+            for path, name, why in placed.missing]
+
+
+__all__ = ["CORRUPT", "INLINE_LIMIT_BYTES", "NOT_CACHED", "NO_ASSET", "NO_LICENCE_BY", "OTHER_FILE", "OUTSIDE",
+           "Declared", "Encoded", "FileTerms", "FolderTerms", "Placed", "asset_name", "custom_licences",
+           "declared_permissions", "declared_terms", "encode", "experiment_licence", "file_verdicts", "folder_terms",
+           "must_reference", "own_verdict", "place_referenced", "read_check", "referenced_assets", "sha256_and_size",
+           "third_party_verdict", "unlisted_note", "unplaced_refusals", "write_into"]

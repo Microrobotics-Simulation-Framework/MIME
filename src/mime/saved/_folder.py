@@ -20,7 +20,7 @@ import math
 import re
 import zipfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
@@ -123,6 +123,11 @@ def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mappin
     return lock
 
 
+#: What to do about terms a document holds in a form ``save`` never writes: it was edited after it was saved.
+_EDITED_TERMS_ACTION = ("save the experiment again from its script, built.save(folder), or put the document's terms "
+                        "back as experiment.save() wrote them: a document is changed by its script, not by hand")
+
+
 def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Refusal:
     return Refusal(code, category, message, action)
 
@@ -185,6 +190,9 @@ class SavedForm:
     #: the drags that named the rung by its old name, which the document is read as naming ``mrs``.
     version: int = CURRENT
     renamed: tuple[str, ...] = ()
+    #: What reading the document's terms found to say, never to refuse: a licence naming an id the installed packaging
+    #: does not list, read as written (``mime.saved._terms.read_check``).
+    notes: tuple[str, ...] = ()
 
     @property
     def previous(self) -> bool:
@@ -266,7 +274,14 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
     lock says travels as a reference and that is not in the folder is refused as ``asset.missing``, with the command
     that fetches and places it, unless ``absent_referenced`` (an unpacked bundle, before its references are placed);
     one that is there is held to its pin as every file is."""
+    from mime.saved._terms import read_check
+
     document, refusals, version, renamed = read_document_version(folder / DOCUMENT_FILE)
+    notes: tuple[str, ...] = ()
+    if document is not None and version == CURRENT:
+        found, notes = read_check(document)
+        refusals += [replace(each, message=f"{folder / DOCUMENT_FILE}: {each.message}", action=_EDITED_TERMS_ACTION)
+                     for each in found]
     lock: Lock | None = None
     try:
         data: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
@@ -321,7 +336,7 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
         refusals += record_file_refusals(folder, lock, skip=frozenset(absent))
     if refusals or document is None or lock is None:
         raise LoadRefused(refusals)
-    return SavedForm(folder, document, lock, reference, stage_found, version, renamed)
+    return SavedForm(folder, document, lock, reference, stage_found, version, renamed, notes)
 
 
 def absent_referenced_files(folder: Path, lock: Lock) -> list[str]:
@@ -523,6 +538,8 @@ class LoadReport:
     version: int = CURRENT
     #: The ids of the drags that named the rung by its old name, which the document is read as naming ``mrs``.
     renamed: tuple[str, ...] = ()
+    #: What reading the folder found to say and not to refuse (``SavedForm.notes``).
+    notes: tuple[str, ...] = ()
 
     @property
     def previous(self) -> bool:
@@ -544,7 +561,7 @@ class LoadReport:
         return line + "; it declares no licence, terms or permission, being of a form before them"
 
     def text(self) -> str:
-        lines = [f"load report: {self.folder}", self.form_line(), "input hash: reproduced exactly"]
+        lines = [f"load report: {self.folder}", self.form_line(), "input hash: reproduced exactly", *self.notes]
         if self.derived_prims_edited:
             lines.append("stage: derived prims edited after it was written (reported, not refused)")
             lines += [f"  {line}" for line in self.derived_prims_edited]
@@ -565,6 +582,10 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     refused, or reported where only its derived prims were edited (:func:`stage_change_refusals`). Raises
     :class:`LoadRefused`."""
     lock = form.lock
+    if record.document is None:
+        # the rebuilt experiment's document cannot be written (terms the build judges as save would): every reason,
+        # each by its code
+        raise LoadRefused(list(record.unsavable))
     saved_hashes, hashes = lock["hashes"], record.hashes(version=form.version)
     refusals, derived_prims = stage_change_refusals(form, record, hashes["input"] == saved_hashes["input"])
     if hashes["input"] != saved_hashes["input"]:
@@ -643,7 +664,7 @@ def check_load(form: SavedForm, record: SavedRecord) -> LoadReport:
     if refusals:
         raise LoadRefused(refusals)
     return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims),
-                      form.document["schema"], form.document["profile"], form.version, form.renamed)
+                      form.document["schema"], form.document["profile"], form.version, form.renamed, form.notes)
 
 
 def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:

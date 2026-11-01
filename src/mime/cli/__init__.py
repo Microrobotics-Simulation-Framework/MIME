@@ -199,26 +199,30 @@ def _assets(command: str, arguments: Sequence[str]) -> int:
         for ref in refs:
             stored = assets.fetch(ref, report=_say)
             print(f"{ref.name}: hashed in full, at {stored}")
-        for argument in arguments:
-            if Path(argument).is_dir():
-                _place(Path(argument))
+        unplaced = [each for argument in arguments if Path(argument).is_dir() for each in _place(Path(argument))]
+        if unplaced:
+            raise BuildRefused(unplaced)
     return 0
 
 
-def _place(folder: Path) -> None:
-    """Put the folder's files that travel as references in place from the cache, saying what it did."""
+def _place(folder: Path) -> list[Refusal]:
+    """Put the folder's files that travel as references in place from the cache, saying what it did; an
+    ``asset.missing`` for each it could not place, with why."""
     from mime import saved
+    from mime.saved._terms import unplaced_refusals
 
     placed = saved.place_referenced(folder)
     for path in placed.placed:
         print(for_terminal(f"{path}: placed from the asset cache"))
-    for path, name in placed.missing:
-        print(for_terminal(f"{path}: not placed: the asset {name} is not in the cache, or another file is there"))
+    return unplaced_refusals(folder, placed)
 
 
 def _pack(folder: Path, out: Path | None) -> int:
     from mime import assets, saved
     from mime.saved._bundle import read_manifest, referenced_of
+    from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER
+    from mime.saved._folder import named_files
+    from mime.scene import LAYERS
 
     path = saved.pack(folder, out=out)
     with path.open("rb") as stream:
@@ -226,7 +230,8 @@ def _pack(folder: Path, out: Path | None) -> int:
     with zipfile.ZipFile(path) as archive:
         manifest = read_manifest(archive)
     referenced = referenced_of(manifest)
-    licence = saved.read_folder(folder).document.get("licence")
+    form = saved.read_folder(folder)
+    licence = form.document.get("licence")
     print(for_terminal(f"packed {folder} into {path} ({assets.size_text(path.stat().st_size)})"))
     print(f"sha256 {digest}")
     print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
@@ -235,6 +240,10 @@ def _pack(folder: Path, out: Path | None) -> int:
     print(for_terminal(f"licence: {licence}" if licence else
                        "licence: none declared (packing never refuses that; mime push will ask for one: "
                        "exp.licence(\"CC-BY-4.0\"), then save)"))
+    if form.previous and any(each.startswith((f"{SCENE_FOLDER}/{LAYERS}/", f"{DESCRIPTIONS}/"))
+                             for each in named_files(form)):
+        print("this folder predates terms: a third party's file in it is carried as yours; declare its terms and "
+              "save again")
     return 0
 
 

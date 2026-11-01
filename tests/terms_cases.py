@@ -35,14 +35,27 @@ SPRUNG = (ADD_PROBE, ATTACH_SPRING)
 #: ``mime.terms.OPEN``).
 OPEN_IDS = ("CC0-1.0", "CC-BY-4.0", "CC-BY-3.0", "CC-BY-2.5", "CC-BY-2.0", "CC-BY-1.0", "MIT", "Apache-2.0",
             "BSD-2-Clause", "BSD-3-Clause")
-#: Those that let it travel on conditions, each with them.
-CONDITIONAL_IDS = {"CC-BY-NC-4.0": ("non-commercial",), "CC-BY-SA-4.0": ("share-alike",),
-                   "CC-BY-ND-4.0": ("no-derivatives",), "CC-BY-NC-SA-4.0": ("non-commercial", "share-alike"),
-                   "CC-BY-NC-ND-3.0": ("non-commercial", "no-derivatives"), "CC-BY-SA-2.0": ("share-alike",)}
+_NC, _SA, _ND = "non-commercial", "share-alike", "no-derivatives"
+#: Those that let it travel on conditions, each with them: the Creative Commons licences with a non-commercial,
+#: share-alike or no-derivatives element, at every version the list holds, written out one by one.
+CONDITIONAL_IDS = {
+    "CC-BY-NC-1.0": (_NC,), "CC-BY-NC-2.0": (_NC,), "CC-BY-NC-2.5": (_NC,), "CC-BY-NC-3.0": (_NC,),
+    "CC-BY-NC-4.0": (_NC,),
+    "CC-BY-SA-1.0": (_SA,), "CC-BY-SA-2.0": (_SA,), "CC-BY-SA-2.5": (_SA,), "CC-BY-SA-3.0": (_SA,),
+    "CC-BY-SA-4.0": (_SA,),
+    "CC-BY-ND-1.0": (_ND,), "CC-BY-ND-2.0": (_ND,), "CC-BY-ND-2.5": (_ND,), "CC-BY-ND-3.0": (_ND,),
+    "CC-BY-ND-4.0": (_ND,),
+    "CC-BY-NC-SA-1.0": (_NC, _SA), "CC-BY-NC-SA-2.0": (_NC, _SA), "CC-BY-NC-SA-2.5": (_NC, _SA),
+    "CC-BY-NC-SA-3.0": (_NC, _SA), "CC-BY-NC-SA-4.0": (_NC, _SA),
+    "CC-BY-NC-ND-1.0": (_NC, _ND), "CC-BY-NC-ND-2.0": (_NC, _ND), "CC-BY-NC-ND-2.5": (_NC, _ND),
+    "CC-BY-NC-ND-3.0": (_NC, _ND), "CC-BY-NC-ND-4.0": (_NC, _ND)}
+#: Every id of the SPDX list the installed packaging ships, in order: the enumeration's range.
+EVERY_ID = tuple(sorted(held["id"] for held in LICENSES.values()))
 #: Every other real id of the list: MIME judges none of them, so each is unknown, and travels as a reference.
-UNKNOWN_IDS = tuple(sorted(held["id"] for held in LICENSES.values()
-                           if held["id"] not in OPEN_IDS and not held["id"].startswith("CC-BY-")
-                           and held["id"] != "CC0-1.0"))
+UNKNOWN_IDS = tuple(each for each in EVERY_ID if each not in OPEN_IDS and each not in CONDITIONAL_IDS)
+#: The Creative Commons licences ported to a jurisdiction (CC-BY-3.0-DE, CC-BY-NC-SA-2.0-UK, ...): on neither list
+#: (design D2: kept referenced until a person decides them), so each is unknown.
+JURISDICTION_PORTS = tuple(each for each in UNKNOWN_IDS if each.startswith("CC-BY-"))
 #: A licence of a rights holder's own that forbids redistribution, as an AR4-like mesh's is.
 NO_REDISTRIBUTION = CustomLicence("LicenseRef-Robot-Maker-NonCommercial", "Robot Maker Non-Commercial Licence 1.1",
                                   "https://example.org/robot-maker/LICENSE.txt", "not_permitted")

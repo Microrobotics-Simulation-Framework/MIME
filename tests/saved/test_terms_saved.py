@@ -6,6 +6,11 @@ key only where something is declared; a load reproduces them exactly. ``save`` r
 and never an experiment that declares no licence. A folder of versions 1, 2 and 3 declares no licence, terms or
 permission, loads as such, and one that holds a key version 4 added is refused, never read as declaring it.
 
+A document whose terms were edited by hand into a form ``save`` never writes is refused at load by the code ``save``
+gives it, never as an internal error. A licence id the installed packaging does not list (a folder saved where a later
+packaging listed it) is read as written: the load and ``mime verify`` go on, the load report says so, and ``pack``
+refuses it, naming the update.
+
 The controls: a version 3 folder whose document was given a licence after it was written must be refused, on every
 one of twenty runs, with the upgrade's check removed (where it would load as if it declared that licence); and a
 permission bound to bytes the file no longer has must grant nothing, on every run, with the binding by sha256
@@ -20,6 +25,7 @@ import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -198,6 +204,16 @@ def test_an_incomplete_permission_is_refused_naming_the_part(tmp_path: Path, cha
     assert said in messages_of(lambda: experiment.build().save(tmp_path / "bad"))
 
 
+def test_two_copies_of_one_files_bytes_with_different_terms_are_refused_naming_both(tmp_path: Path):
+    one = write_mesh(tmp_path / "in", "Arm", 3000)
+    two = tmp_path / "in" / "Hand.usda"
+    two.write_bytes(one.read_bytes())
+    experiment = layered("copies", [(one, third_party()), (two, third_party(licence="MIT"))])
+    assert codes_of(lambda: experiment.build().save(tmp_path / "copies")) == ["terms.file"]
+    said = messages_of(lambda: experiment.build().save(tmp_path / "copies"))
+    assert "scene/layers/Arm.usda and scene/layers/Hand.usda hold the same bytes" in said, said
+
+
 def test_a_permission_must_be_a_permission(tmp_path: Path):
     from mime.build import ArgumentTypeRefused
 
@@ -244,6 +260,122 @@ def test_a_permission_for_the_files_bytes_lets_it_travel(tmp_path: Path):
     assert "permitted, conditional (non-commercial, no-derivatives), by a declared permission" in text
     assert "A. Lab, Uni of Somewhere declares that Ada Maker, founder, Robot Maker Ltd permitted them to redistribute"\
            in text
+
+
+# --- a document edited by hand, and an id the installed packaging does not list ----------------------------------
+
+
+@pytest.fixture(scope="module")
+def termed_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    root = tmp_path_factory.mktemp("termed")
+    mesh = write_mesh(root / "in", "Arm", 3000)
+    layered("termed", [(mesh, third_party()), (write_mesh(root / "in", "Hand", 2000), third_party(licence="MPL-2.0"))],
+            licence="CC-BY-4.0").build().save(root / "termed")
+    return root / "termed"
+
+
+def _set(path: tuple[str, ...], value: object) -> Callable[[dict[str, object]], None]:
+    def change(document: dict[str, object]) -> None:
+        held: dict[str, object] = document
+        for key in path[:-1]:
+            held = cast(dict[str, object], held[key])
+        held[path[-1]] = value
+    return change
+
+
+ARM = "scene/layers/Arm.usda"
+
+
+@pytest.mark.parametrize("change, code", [
+    (_set(("licence",), "cc-by-4.0"), "terms.licence"),
+    (_set(("licence",), "NOASSERTION"), "terms.licence"),
+    (_set(("terms", ARM, "licence"), "Robot Maker's own"), "terms.licence"),
+    (_set(("terms", ARM, "credit"), " "), "terms.file"),
+    (_set(("terms", ARM, "origin"), ["http://example.org/arm.usda"]), "terms.origin"),
+    (_set(("licences", NO_REDISTRIBUTION.id, "url"), "http://example.org/licence"), "terms.custom-licence"),
+    (_set(("terms", ARM, "sha256"), "0" * 64), "terms.file"),
+    (_set(("terms", "scene/scene.usda"), {"sha256": "0" * 64, "licence": "MIT", "credit": "x",
+                                          "role": "results"}), "terms.file"),
+    (_set(("permissions",), [{"grantor": "G", "grantee": "E", "files": ["1" * 64],
+                              "scope": {"redistribute": True, "modify": True, "commercial": True},
+                              "date": "2026-10-20", "evidence": {"kind": "public_statement",
+                                                                  "pointer": "https://example.org/s"}}]),
+     "terms.permission"),
+    (_set(("permissions",), [{"grantor": "G", "grantee": "E", "files": ["1" * 64],
+                              "scope": {"redistribute": False, "modify": True, "commercial": True},
+                              "date": "2026-10-20", "evidence": {"kind": "public_statement",
+                                                                  "pointer": "https://example.org/s"}}]),
+     "terms.permission"),
+])
+def test_terms_edited_by_hand_are_refused_at_load_by_their_code(termed_folder: Path, tmp_path: Path,
+                                                                change: Callable[[dict[str, object]], None],
+                                                                code: str):
+    folder = copied(tmp_path, termed_folder)
+    document = yaml.safe_load((folder / DOCUMENT_FILE).read_text())
+    change(document)
+    (folder / DOCUMENT_FILE).write_text(yaml.safe_dump(document, sort_keys=False))
+    with pytest.raises(LoadRefused) as refused:
+        Experiment.load(folder)
+    assert code in refused.value.codes() and "error.uncoded" not in refused.value.codes(), refused.value.codes()
+    assert all(each.category.value in ("user", "environment") for each in refused.value.refusals)
+
+
+def test_mime_verify_of_a_document_edited_by_hand_exits_two_with_the_code(termed_folder: Path, tmp_path: Path):
+    folder = copied(tmp_path, termed_folder)
+    document = yaml.safe_load((folder / DOCUMENT_FILE).read_text())
+    _set(("terms", ARM, "licence"), "mit")(document)
+    (folder / DOCUMENT_FILE).write_text(yaml.safe_dump(document, sort_keys=False))
+    done = subprocess.run([sys.executable, "-m", "mime.cli", "verify", str(folder)], capture_output=True, text=True,
+                          check=False)
+    assert done.returncode == 2 and "terms.licence" in done.stderr, done.stdout + done.stderr
+
+
+@pytest.fixture
+def mpl_unlisted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The installed packaging as one before MPL-2.0 was listed would read it."""
+    import packaging.licenses
+
+    monkeypatch.delitem(packaging.licenses.LICENSES, "mpl-2.0")
+
+
+def test_a_licence_the_installed_packaging_does_not_list_is_read_as_written_and_the_load_says_so(
+        termed_folder: Path, tmp_path: Path, mpl_unlisted: None):
+    folder = copied(tmp_path, termed_folder)
+    report = Experiment.load(folder).load_report
+    assert report is not None
+    lines = report.text().splitlines()
+    assert lines[2] == "input hash: reproduced exactly"
+    (note,) = [line for line in lines if line.startswith("terms: ")]
+    assert "scene/layers/Hand.usda names MPL-2.0" in note and "pip install -U packaging" in note
+    assert "`mime pack` and `mime card` refuse it" in note
+
+
+def test_mime_verify_goes_on_with_a_licence_the_installed_packaging_does_not_list(
+        termed_folder: Path, tmp_path: Path, mpl_unlisted: None, capsys: pytest.CaptureFixture[str]):
+    from mime.cli import main
+
+    folder = copied(tmp_path, termed_folder)
+    assert main(["verify", str(folder)]) == 0
+    out = capsys.readouterr().out
+    assert "verify: reproduced 8 steps" in out and "names MPL-2.0" in out
+
+
+def test_pack_refuses_a_licence_the_installed_packaging_does_not_list_naming_the_update(
+        termed_folder: Path, tmp_path: Path, mpl_unlisted: None):
+    folder = copied(tmp_path, termed_folder)
+    with pytest.raises(BuildRefused) as refused:
+        pack(folder, out=tmp_path / "x.mimebundle")
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "terms.unlisted-licence" and refusal.category.value == "environment"
+    assert "pip install -U packaging" in refusal.action and "scene/layers/Hand.usda" in refusal.message
+    assert not (tmp_path / "x.mimebundle").exists()
+
+
+def test_a_script_naming_a_licence_the_installed_packaging_does_not_list_is_refused_at_save(
+        tmp_path: Path, mpl_unlisted: None):
+    experiment = layered("unlisted", [(write_mesh(tmp_path / "in", "Arm", 3000), third_party(licence="MPL-2.0"))])
+    assert codes_of(lambda: experiment.build().save(tmp_path / "unlisted")) == ["terms.licence"]
+    assert "pip install -U packaging" in messages_of(lambda: experiment.build().save(tmp_path / "unlisted"))
 
 
 # --- the forms before licences ------------------------------------------------------------------------------------

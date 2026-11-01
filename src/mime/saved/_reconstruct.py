@@ -268,7 +268,7 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
         declarations.append(ValueDeclaration(path, value, decode_basis(declared["reason"])))
     declarations += [SourceDeclaration(path, decode_basis(reason)) for path, reason in document["sources"].items()]
     licence = experiment_licence(document)
-    declarations += [LicenceDeclaration(licence)] if licence is not None else []
+    declarations += [LicenceDeclaration(licence, read=True)] if licence is not None else []
     declarations += [TermsDeclaration(path, pin, terms) for path, pin, terms in declared_terms(document)]
     declarations += [PermissionDeclaration(permission) for permission in declared_permissions(document)]
     run = document["run"]

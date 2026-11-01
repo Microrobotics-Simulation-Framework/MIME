@@ -332,8 +332,11 @@ def lock_with_asset(folder: Path, name: str, payload: bytes, url: str, *, path: 
     return dict(record)
 
 
-def test_a_file_over_the_limit_is_refused_unless_the_lock_says_it_travels_as_a_reference(
+def test_a_file_over_the_limit_is_refused_and_a_lock_alone_never_makes_it_a_reference(
         folder: Path, monkeypatch: pytest.MonkeyPatch):
+    """D8: a file over the limit travels as a reference only where its terms give an origin (``test_tiers`` holds that
+    case); an asset in the lock, or the lock saying the file travels as one, is no reference, since the lock is outside
+    the hashed record and ``save`` writes a reference only from terms. Its bytes never reach the bundle either way."""
     limit = limit_above(folder)
     monkeypatch.setattr(_bundle, "INLINE_LIMIT_BYTES", limit)
     big = os.urandom(limit + 1000)
@@ -342,14 +345,9 @@ def test_a_file_over_the_limit_is_refused_unless_the_lock_says_it_travels_as_a_r
         assert refusal == ["bundle.file-too-large"]
         lock_with_asset(folder, "table", big, "https://example.org/table.bin")
         assert refused_codes(lambda: pack(folder)) == ["bundle.file-too-large"], "an asset alone is no reference"
-        record = lock_with_asset(folder, "table", big, "https://example.org/table.bin", path="descriptions/table.bin")
-        bundle = pack(folder)
-    assert "descriptions/table.bin" not in contents(bundle), "a referenced large file was copied into the bundle"
-    manifest = json.loads(zipfile.ZipFile(bundle).read("manifest.json"))
-    assert manifest["assets"] == [record]
-    assert manifest["referenced"] == {"descriptions/table.bin": {"name": "table", "sha256": record["sha256"],
-                                                                 "size": len(big)}}
-    assert big not in bundle.read_bytes()
+        lock_with_asset(folder, "table", big, "https://example.org/table.bin", path="descriptions/table.bin")
+        assert sorted(refused_codes(lambda: pack(folder))) == ["bundle.file-too-large", "bundle.lock-terms"], \
+            "a lock alone is no reference"
 
 
 def test_the_limit_is_a_named_constant_a_bundle_stays_under():

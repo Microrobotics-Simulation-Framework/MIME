@@ -621,36 +621,38 @@ def declared_of_terms(settings: RunSettings, declarations: Sequence[Declaration]
     """What the experiment declares of its terms, each file pinned where it is saved: a layer under ``scene/layers/``,
     a description under ``descriptions/``. Files are read to be pinned only where something names terms or a
     permission."""
-    licences = tuple(d.licence for d in declarations if isinstance(d, LicenceDeclaration))
+    held = [d for d in declarations if isinstance(d, LicenceDeclaration)]
+    licences = tuple(d.licence for d in held)
+    read = bool(held) and all(d.read for d in held)
     loaded = [d for d in declarations if isinstance(d, TermsDeclaration)]
     permissions = [d.permission for d in declarations if isinstance(d, PermissionDeclaration)]
     scene = settings.scene
     layers = [reference.asset for reference in scene.references] if isinstance(scene, Scene) else []
     described = _file_assets(declarations)
-    if not (loaded or permissions or any(held.terms is not None for held in (*layers, *described))):
-        return Declared(licences, (), (), {})
+    if not (loaded or permissions or any(each.terms is not None for each in (*layers, *described))):
+        return Declared(licences, (), (), {}, licence_read=read)
     files: dict[str, str] = {}
-    attached: list[tuple[str, str, object]] = []
-    for held in layers:
-        pin = _pin(held, "the scene")
-        path = f"{SCENE_FOLDER}/{LAYERS}/{held.path.name}"
+    attached: list[tuple[str, str, object, bool]] = []
+    for each in layers:
+        pin = _pin(each, "the scene")
+        path = f"{SCENE_FOLDER}/{LAYERS}/{each.path.name}"
         files[path] = pin
-        if held.terms is not None:
-            attached.append((path, pin, held.terms))
-    for held in described:
-        pin = _pin(held, "an entry")
-        path = description_path(held.path.name, pin)
+        if each.terms is not None:
+            attached.append((path, pin, each.terms, False))
+    for each in described:
+        pin = _pin(each, "an entry")
+        path = description_path(each.path.name, pin)
         files[path] = pin
-        if held.terms is not None:
-            attached.append((path, pin, held.terms))
-    attached += [(d.path, d.sha256, d.terms) for d in loaded]
+        if each.terms is not None:
+            attached.append((path, pin, each.terms, False))
+    attached += [(d.path, d.sha256, d.terms, True) for d in loaded]
     pinned: list[tuple[object, tuple[str, ...]]] = []
     for permission in permissions:
         given = cast(object, getattr(permission, "files", ()))
         named = cast(Sequence[object], given) if isinstance(given, (list, tuple)) else ()
         pinned.append((permission, tuple(_pin(each, "a permission") if isinstance(each, FileAsset) else str(each)
                                          for each in named)))
-    return Declared(licences, tuple(attached), tuple(pinned), files)
+    return Declared(licences, tuple(attached), tuple(pinned), files, licence_read=read)
 
 
 def _controller_doc(declaration: ControllerDeclaration) -> ControllerDoc:

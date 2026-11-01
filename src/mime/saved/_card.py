@@ -8,8 +8,11 @@ licence that asks for it to travel with every copy (MIT and the BSD licences) un
 availability statement. A bundle carries it (format 2), and ``mime push`` will upload it beside the bundle.
 
 **The card** is Markdown, offline (``mime card <folder>``): what the experiment is, what it bounds and estimates (no
-evidence record until a1), what reproduces, its validity lines, its licences and credit, its availability, and how to
-reproduce and cite it, exactly as ``mime push`` will write it as a record's description. **Credit** (the creators with
+evidence record until a1), what ``mime verify <folder>`` would check (the card runs no check), its validity lines, its
+licences and credit with every condition each file's licence or permission carries (non-commercial, share-alike,
+no-derivatives), its availability, and how to reproduce and cite it, exactly as ``mime push`` will write it as a
+record's description. Both refuse a licence that names an id the installed packaging does not list
+(``terms.unlisted-licence``), whose verdict this packaging cannot give. **Credit** (the creators with
 their ORCIDs, the contributors and their roles) is kept in ``sharing.yaml`` beside the folder, which ``mime push
 --init`` writes and which is not built yet: until it is, the card says so where the creators go, and shows the credit
 the folder holds, each third-party file's, under its licences.
@@ -23,11 +26,20 @@ from pathlib import Path
 
 from mime._terminal import plain
 from mime.assets import size_text
+from mime.build import BuildRefused
 from mime.saved._folder import named_files, read_folder
 from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc
 from mime.saved._terms import FileTerms, FolderTerms, folder_terms
 from mime.saved._versions import CURRENT, DOCUMENT_SCHEMAS
-from mime.terms import CUSTOM_PREFIX, NON_COMMERCIAL, NOTICE_TEXT_REQUIRED, CustomLicence, ids_of
+from mime.terms import (
+    CUSTOM_PREFIX,
+    NO_DERIVATIVES,
+    NON_COMMERCIAL,
+    NOTICE_TEXT_REQUIRED,
+    SHARE_ALIKE,
+    CustomLicence,
+    ids_of,
+)
 
 SPDX_PAGE = "https://spdx.org/licenses/{}.html"
 
@@ -80,11 +92,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."""
 LICENCE_TEXTS: Mapping[str, str] = {"MIT": _MIT, "BSD-2-Clause": _BSD_START + _BSD_END,
                                     "BSD-3-Clause": _BSD_START + _BSD_THIRD + _BSD_END}
 _OWNER_WORDS = {"yours": "the author's own", "third party": "a third party's", "record": "OpenMaterica's record"}
-NO_LICENCE = ("The experiment declares no licence: its own files are shared under no licence it states. Saving and "
-              "`mime pack` never refuse that; `mime push` will not publish it until one is declared: "
-              "exp.licence(\"CC-BY-4.0\"), then save the experiment again.")
+NO_LICENCE = ("The experiment declares no licence: its own files are its author's, and a reuser is granted no licence "
+              "to them. Saving and `mime pack` never refuse that; `mime push` will not publish it until one is "
+              "declared: exp.licence(\"CC-BY-4.0\"), then save the experiment again.")
 NO_EVIDENCE = ("No evidence record: MIME's validity layer arrives in a1. This card states only what the build declares "
-               "and what the reference steps reproduce.")
+               "and what `mime verify <folder>` would check; making the card ran no check.")
+#: Each condition a licence or a permission can carry, as the card names the terms it flags.
+CONDITION_WORDS = {NON_COMMERCIAL: "Non-commercial terms", SHARE_ALIKE: "Share-alike terms",
+                   NO_DERIVATIVES: "No-derivatives terms"}
 CREDIT_HOME = ("Not stated here: credit (the creators with their ORCIDs, the contributors and their roles) is kept in "
                "`sharing.yaml` beside the folder, which `mime push --init` will write; it is not built yet. Each "
                "third-party file's credit is under Licences and credit.")
@@ -158,16 +173,22 @@ def permission_words(index: int, held: PermissionDoc, paths: Sequence[str]) -> l
             "check that it is true."]
 
 
+def _why_referenced(file: FileTerms) -> str:
+    return "may not be redistributed" if not file.verdict.carried else "over the size a bundle carries"
+
+
 def availability(judged: FolderTerms) -> str:
-    """#198's availability statement: reproducible exactly from the bundle alone, or given each file MIME cannot
-    carry, with its licence, its role and where it is available from."""
-    held = [file for file in judged.files if not file.verdict.carried]
+    """#198's availability statement: reproducible exactly from the bundle alone only where the bundle carries every
+    file; otherwise given each file it does not carry (one its terms do not let it carry, and one over the size it
+    carries), with why, its licence, its role and where it is available from."""
+    held = [file for file in judged.files if file.referenced is not None or not file.verdict.carried]
     if not held:
         return "Reproducible exactly from this bundle alone."
-    parts = [f"{plain(file.path)} (licence {plain(file.licence or 'none')}; {_role(file)}; available from "
-             f"{plain(file.origin[0]) if file.origin else 'nowhere declared'})" for file in held]
-    return (f"Reproducible exactly, given {len(held)} file{'s' if len(held) != 1 else ''} MIME cannot carry: "
-            + "; ".join(parts) + ". Not checked since the folder was saved: the availability check comes later.")
+    parts = [f"{plain(file.path)} ({_why_referenced(file)}; licence {plain(file.licence or 'none')}; {_role(file)}; "
+             f"available from {plain(file.origin[0]) if file.origin else 'nowhere declared'})" for file in held]
+    return (f"Reproducible exactly, given {len(held)} file{'s' if len(held) != 1 else ''} the bundle does not carry, "
+            f"which `mime assets fetch <folder>` fetches and places: " + "; ".join(parts)
+            + ". Not checked since the folder was saved: the availability check comes later.")
 
 
 def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -> str:
@@ -183,7 +204,8 @@ def notice_text(judged: FolderTerms, document: ExperimentDocument, lock: Lock) -
              "Each file of the folder: the sha256 and size of its bytes, whose it is, its licence, and its verdict: "
              "permitted, not permitted or unknown (OpenMaterica's words for a source's redistribution status), and "
              "its tier, where its bytes live (open and conditional: carried in the bundle, a conditional file's "
-             "conditions with it; referenced: never carried, whatever its size).", ""]
+             "conditions with it; carried: the author's own, carried because the author packs it, under a licence "
+             "that grants only what it states, or none; referenced: never carried, whatever its size).", ""]
     for file in judged.files:
         lines += file_lines(file)
     lines += ["", "Permissions", "-----------"]
@@ -210,7 +232,11 @@ def judged_folder(folder: str | os.PathLike[str]) -> tuple[FolderTerms, Experime
     its asset. Reads the folder and runs nothing it names."""
     root = Path(os.path.abspath(folder))
     form = read_folder(root, absent_referenced=True)
-    return folder_terms(root, form.document, form.lock, named_files(form), form.version), form.document, form.lock
+    judged = folder_terms(root, form.document, form.lock, named_files(form), form.version)
+    refusals = judged.unlisted_refusals("mime card")
+    if refusals:
+        raise BuildRefused(refusals)
+    return judged, form.document, form.lock
 
 
 def notice(folder: str | os.PathLike[str]) -> str:
@@ -220,8 +246,8 @@ def notice(folder: str | os.PathLike[str]) -> str:
 
 def _table_row(file: FileTerms) -> str:
     licence = file.licence or "none declared"
-    flag = " **non-commercial**" if NON_COMMERCIAL in file.verdict.conditions else ""
-    where = "carried" if file.verdict.carried else "referenced"
+    flag = "".join(f", **{condition}**" for condition in file.verdict.conditions)
+    where = "referenced" if file.referenced is not None or not file.verdict.carried else "carried"
     credit = plain(file.credit) if file.credit else ""
     return (f"| `{plain(file.path)}` | {_OWNER_WORDS[file.owner]} | {plain(licence)} | "
             f"{file.verdict.status.replace('_', ' ')}{flag} | {where} | {credit} |")
@@ -262,10 +288,12 @@ def card_text(folder: str | os.PathLike[str]) -> str:
     reference = lock["reference"]
     environment = lock["environment"]
     precision = "float64" if environment["x64"] else "float32"
-    lines += [f"The first {reference['steps']} steps of every field, bit for bit in the environment the lock was "
-              f"written in (Python {plain(environment['python'])} on {plain(environment['platform'])}, "
+    lines += [f"`mime verify <folder>` reruns the first {reference['steps']} steps of every field and checks them "
+              f"against the reference outputs the lock pins: bit for bit in the environment the lock was written in "
+              f"(Python {plain(environment['python'])} on {plain(environment['platform'])}, "
               f"{plain(environment['device'])}, {precision}, JAX {plain(environment['jax'])}), and within rtol "
-              f"{reference['rtol']!r} and atol {reference['atol']!r} in another: `mime verify <folder>`.", "",
+              f"{reference['rtol']!r} and atol {reference['atol']!r} in another. This card states what it would "
+              f"check; it ran no check.", "",
               "## Validity lines", ""]
     validity = [f"- validity of {plain(owner)} (declared, not yet checked): {plain(line)}"
                 for owner, held in sorted(report.validity.items()) for line in held]
@@ -276,9 +304,13 @@ def card_text(folder: str | os.PathLike[str]) -> str:
     lines += ["", "## Licences and credit", "", f"The experiment's licence: {own_licence_text(judged)}", "",
               "| File | Whose | Licence | Verdict | Where | Credit |", "|---|---|---|---|---|---|",
               *(_table_row(file) for file in judged.files), ""]
-    commercial = [file.path for file in judged.files if NON_COMMERCIAL in file.verdict.conditions]
-    if commercial:
-        lines += [f"**Non-commercial terms** hold for {', '.join(f'`{plain(each)}`' for each in commercial)}.", ""]
+    for condition, words in CONDITION_WORDS.items():
+        held = [file for file in judged.files if condition in file.verdict.conditions]
+        own = [file for file in held if file.owner == "yours"]
+        named = [f"`{plain(file.path)}`" for file in held if file.owner != "yours"]
+        named += [f"the experiment's own files ({len(own)}, under its licence)"] if own else []
+        if named:
+            lines += [f"**{words}** hold for {', '.join(named)}.", ""]
     lines += [plain(_licence_link(identifier, judged.custom)) for identifier in
               sorted({each for licence in licences for each in ids_of(licence) if each.startswith(CUSTOM_PREFIX)})]
     for index, held in enumerate(judged.permissions, start=1):
@@ -295,5 +327,6 @@ def card_text(folder: str | os.PathLike[str]) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["CREDIT_HOME", "LICENCE_TEXTS", "NO_EVIDENCE", "NO_LICENCE", "availability", "card_text", "file_lines",
+__all__ = ["CONDITION_WORDS", "CREDIT_HOME", "LICENCE_TEXTS", "NO_EVIDENCE", "NO_LICENCE", "availability", "card_text",
+           "file_lines",
            "judged_folder", "notice", "notice_text", "own_licence_text", "permission_words"]

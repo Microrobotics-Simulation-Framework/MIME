@@ -12,7 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Licences are SPDX expressions** (`mime.terms`): checked by `packaging.licenses` (the floor is now `packaging>=24.2`)
     and held to their canonical spelling; a licence of one's own is a `CustomLicence` (`LicenseRef-` with its title and
     link); `NOASSERTION` says nobody stated one; free text is refused, an asset reference's as `asset.reference` (the
-    shipped references already hold `CC0-1.0`).
+    shipped references already hold `CC0-1.0`). An id the installed `packaging` does not list is refused from a script,
+    naming the update; read from a saved folder it is read as written, the load and `mime verify` say so and go on, and
+    `pack` and `mime card` refuse it (`terms.unlisted-licence`). Terms edited by hand into a form `save` never writes
+    are refused at load by their code.
   - **The saved form is version 4** (`mime.document/4`, `mime.lock/4`): the document holds the experiment's own licence
     (`exp.licence("CC-BY-4.0")`), each custom licence it names, each third-party file's terms by its path with the
     sha256 they were declared for (`asset(path, terms=Terms(licence, credit, role, origin))`) and each declared
@@ -21,18 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     references (`referenced_files`). Versions 1, 2 and 3 still load, each compared in its own form, and are read as
     declaring no licence, terms or permission; one that holds a key version 4 added is refused. `save` refuses
     incomplete terms by code (`terms.licence`, `terms.custom-licence`, `terms.file`, `terms.origin`,
-    `terms.permission`), and never an experiment that declares no licence.
+    `terms.permission`), two copies of one file's bytes declared with different terms among them, and never an
+    experiment that declares no licence. The author's own files with no licence declared are `unknown` (carried, a
+    reuser granted no licence), never "permitted".
   - **Each file's verdict**, in OpenMaterica's words (permitted, not permitted, unknown), and #198's tiers for where its
     bytes live: **`pack` never carries a file that may not be redistributed, whatever its size**; it travels as a
-    reference to its origin (`bundle.no-location` where its terms give none), and `pack` holds the lock's references to
-    its own judgement (`bundle.lock-terms`).
+    reference to its origin (`bundle.no-location` where its terms give none), nor are its bytes at another path
+    (`bundle.referenced-copy`), and `pack` holds the lock's references, and each one's asset's licence and locations,
+    to its own judgement (`bundle.lock-terms`), as it holds an asset MIME ships to its shipped licence.
   - **Bundle format 2** (`mime.bundle/2`): the manifest lists the files that travel as references and the NOTICE; format
-    1 still unpacks. `unpack`, `mime pull` and `mime assets fetch <folder>` place a referenced file from the asset cache
-    (`mime.saved.place_referenced`); a folder still missing one is refused as `asset.missing` with the command.
+    1 still unpacks, and a later format is refused first with the advice to install the MIME that packed it. `unpack`,
+    `mime pull` and `mime assets fetch <folder>` place a referenced file from the asset cache
+    (`mime.saved.place_referenced`), in the folder's real path (a folder reached through a link included); a file left
+    unplaced is reported with why, `mime assets fetch <folder>` exits two while one is, and a folder still missing one
+    is refused as `asset.missing` with the command.
   - **The NOTICE and `mime card <folder> [--notice]`**: each file's licence, credit, verdict and declared permission, the
-    licence texts MIT and BSD ask to travel with every copy, and the availability statement; the card in its sections,
-    as `mime push` will write it, saying that credit will live in `sharing.yaml` (not built yet). Both are generated and
-    deterministic, and a bundle carries the NOTICE.
+    licence texts MIT and BSD ask to travel with every copy, and the availability statement ("from this bundle alone"
+    only where nothing travels as a reference); the card in its sections, as `mime push` will write it, flagging every
+    condition of every file's licence or permission and saying what `mime verify` would check, and that credit will
+    live in `sharing.yaml` (not built yet). Both are generated and deterministic, and a bundle carries the NOTICE.
 - **Joint armature and transmissions on dynamic chains, and a check that predicts a spinner's kick** (dev1 phase 7a5,
   design #193): a geared joint's drive reflects its motor's rotor onto the joint (the rotor's inertia times the square
   of the reduction), which a URDF's links do not hold, so the AR4's wrist was lighter than the rotor it carries and A0's

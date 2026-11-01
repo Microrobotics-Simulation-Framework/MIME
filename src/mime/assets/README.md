@@ -111,7 +111,7 @@ The words are in one place, `_commands.py`.
   experiment folder, and stands for exactly the assets its lock references and nothing else (write `./name` to mean a
   folder), and each file of it that travels as a reference is then placed at its path from the cache
   (`mime.saved.place_referenced`); any other is an asset's name; `--all` is every known asset. Exits zero, or two when
-  refused.
+  refused or while a file that travels as a reference is left unplaced (`asset.missing`, with why).
 - `mime assets check`: re-hash every cached asset in full. Exits one when a file is corrupt, marks it (so `locate`
   refuses it) and leaves it where it is.
 

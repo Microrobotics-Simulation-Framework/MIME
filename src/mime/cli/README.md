@@ -27,7 +27,8 @@
   by sha256, in the cache (see [`mime.assets`](../assets/README.md)). `fetch` takes an experiment folder too, and stores exactly the assets its lock references,
   then places each file of the folder that travels as a reference at its path (copied from the cache and hashed,
   never over another file); it exits zero, or two
-  when it is refused;
+  when it is refused, and two while a file that travels as a reference is left unplaced (another file in its place),
+  each with why (`asset.missing`);
   `fetch` hashes each file in full, cached ones too; `check` re-hashes every cached file in full and exits one when a file is corrupt, marking it so that a build refuses it until a fetch repairs it. The verbs are named in one place,
   `mime/assets/_commands.py`.
 
@@ -37,7 +38,8 @@
   refuses to carry a path of this machine or any token MIME holds, never carries a file its terms do not let be
   redistributed (it travels as a reference, whatever its size), puts the folder's NOTICE in the bundle, and prints
   the file and its sha256, the files that travel as references, and the experiment's licence or that it declares
-  none. `mime pack .` packs the folder it is run in. Exits zero, or two when refused.
+  none; for a folder of a form before terms that holds layers or descriptions, one line more (a third party's file in
+  it is carried as the author's own). `mime pack .` packs the folder it is run in. Exits zero, or two when refused.
 - `mime card <folder> [--out <file>] [--notice]`: the experiment's **card** (Markdown: what it is, what it bounds and
   estimates, what reproduces, its validity lines, its licences and credit, its availability, how to reproduce and cite
   it), or with `--notice` its NOTICE (each file's licence, credit, verdict and declared permission), offline and

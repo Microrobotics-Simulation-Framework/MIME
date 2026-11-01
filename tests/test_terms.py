@@ -8,7 +8,13 @@ licence's verdict.
 
 The strategies draw real ids from the SPDX list ``packaging`` ships, the expected verdicts are ``terms_cases``' own
 table, and the controls plant what each test guards against (an unknown licence judged permitted; the AND rule made
-the freest) and must be caught on every one of twenty runs.
+the freest) and must be caught on every one of twenty runs. **The single-id verdict is enumerated**, not drawn: every
+id of the list, each against the table (open, conditional with its conditions, or unknown), which takes milliseconds;
+its controls move one real id onto the open list (a different id in each of twenty runs) and judge every Creative
+Commons jurisdiction port open, and the enumeration must catch each. The drawn tests stay for expressions.
+
+An id the installed packaging does not list (one SPDX added since its release) is refused where a script declares
+it, naming the update, and read as written, judged unknown, where it is read from a saved folder.
 """
 
 from collections.abc import Callable, Iterator
@@ -17,7 +23,7 @@ from contextlib import contextmanager
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from terms_cases import CONDITIONAL_IDS, NO_REDISTRIBUTION, OPEN_IDS, UNKNOWN_IDS
+from terms_cases import CONDITIONAL_IDS, EVERY_ID, JURISDICTION_PORTS, NO_REDISTRIBUTION, OPEN_IDS, UNKNOWN_IDS
 
 from mime import terms
 from mime.assets import AssetRef, known
@@ -32,6 +38,7 @@ from mime.terms import (
     licence_verdict,
     permission_problems,
     permission_verdict,
+    unlisted_ids,
 )
 
 open_ids = st.sampled_from(OPEN_IDS)
@@ -96,6 +103,25 @@ def test_the_ids_of_an_expression_are_its_licences_never_an_operator_or_an_excep
 
 
 # --- the verdict -------------------------------------------------------------------------------------------------
+
+
+def misjudged_ids() -> list[str]:
+    """Every id of the list ``packaging`` ships judged on its own, each against ``terms_cases``' table: the ids the code
+    judges otherwise, with both verdicts."""
+    return [f"{identifier}: {found}, and the table says {expected(identifier)}" for identifier in EVERY_ID
+            if (found := licence_verdict(identifier)) != expected(identifier)]
+
+
+def test_every_id_packaging_lists_has_the_verdict_of_its_list():
+    """An enumeration, not a draw: every id, each in milliseconds."""
+    assert len(EVERY_ID) > 600 and len(EVERY_ID) == len(set(EVERY_ID))
+    assert len(CONDITIONAL_IDS) == 25 and JURISDICTION_PORTS
+    assert misjudged_ids() == []
+
+
+def test_the_tables_partition_every_id():
+    assert set(OPEN_IDS) | set(CONDITIONAL_IDS) | set(UNKNOWN_IDS) == set(EVERY_ID)
+    assert not (set(OPEN_IDS) & set(CONDITIONAL_IDS)) and set(OPEN_IDS) <= set(EVERY_ID)
 
 
 @given(any_ids)
@@ -236,6 +262,45 @@ def test_an_asset_reference_takes_an_spdx_licence(licence: str):
     assert AssetRef("table", SHA, 10, licence, ("https://example.org/table.npz",)).licence == licence
 
 
+# --- an id the installed packaging does not list -------------------------------------------------------------------
+
+#: Shaped as SPDX ids, on no list packaging has shipped (what an id SPDX added after the installed release looks like),
+#: each with the verdict it gives read as written: an unlisted id is unknown, and an exception keeps its licence's.
+UNLISTED = {"Robot-Maker-Licence-2.0": Verdict("unknown", "referenced"),
+            "MIT AND Robot-Maker-Licence-2.0": Verdict("unknown", "referenced"),
+            "(Apache-2.0 OR Later-Id-1.0) AND MIT": Verdict("permitted", "open"),
+            "MIT WITH Later-exception-1.0": Verdict("permitted", "open")}
+
+
+@pytest.mark.parametrize("text", UNLISTED)
+def test_an_unlisted_id_is_refused_from_a_script_naming_the_update(text: str):
+    problem = licence_problem(text)
+    assert problem is not None and "pip install -U packaging" in problem and terms.packaging_version() in problem
+
+
+@pytest.mark.parametrize("text", UNLISTED)
+def test_an_unlisted_id_read_from_a_folder_is_read_as_written_and_judged_unknown(text: str):
+    assert licence_problem(text, unlisted=True) is None and unlisted_ids(text)
+    assert licence_verdict(text) == UNLISTED[text]
+    with pytest.raises(BuildRefused):
+        AssetRef("mesh", SHA, 10, text, ("https://example.org/mesh.usda",))
+    held = AssetRef.from_record({"name": "mesh", "sha256": SHA, "size": 10, "licence": text,
+                                 "locations": ["https://example.org/mesh.usda"]})
+    assert held.licence == text
+
+
+@pytest.mark.parametrize("text", ["mit", "MIT or Apache-2.0", "MIT  AND Robot-Maker-Licence-2.0", "Robot Maker",
+                                  "MIT,Robot-Maker", "(Robot-Maker-1.0", "LicenseRef-a_b", "Robot-Maker AND"])
+def test_reading_unlisted_ids_as_written_reads_no_malformed_expression(text: str):
+    """Only an id the list lacks is read as written: a misspelt operator, another spelling of a listed id, free text
+    and a broken expression are refused from a folder too."""
+    assert licence_problem(text, unlisted=True) is not None and unlisted_ids(text) == ()
+
+
+def test_a_listed_id_is_never_unlisted():
+    assert all(unlisted_ids(each) == () for each in EVERY_ID)
+
+
 # --- the controls ------------------------------------------------------------------------------------------------
 
 RUNS = 20
@@ -288,6 +353,45 @@ def test_control_an_unknown_licence_judged_permitted_is_caught_every_run():
 
 def test_control_and_made_the_freest_is_caught_every_run():
     assert planted_runs(and_is_most_restrictive, and_made_freest) == RUNS
+
+
+def moved_ids() -> list[str]:
+    """Twenty real ids to move onto the open list, one a run: spread over the unknown ids and the conditional ones.
+    An id whose name ends in ``+`` (a deprecated "or later" id) is read as the id before it, so moving it alone is no
+    plant at all: none is chosen."""
+    conditional = sorted(CONDITIONAL_IDS)
+    unknown = [each for each in UNKNOWN_IDS if not each.endswith("+")]
+    return [unknown[(run * 97) % len(unknown)] if run % 4 else conditional[(run * 7) % len(conditional)]
+            for run in range(RUNS)]
+
+
+@contextmanager
+def moved_to_open(*identifiers: str) -> Iterator[None]:
+    """The plant: real ids judged open, as a list that took them for open would."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(terms, "OPEN", terms.OPEN | set(identifiers))
+        patch.setattr(terms, "CONDITIONAL", {key: held for key, held in terms.CONDITIONAL.items()
+                                             if key not in identifiers})
+        yield
+
+
+def enumeration_catches(plant: Callable[[], object]) -> bool:
+    with plant():  # type: ignore[attr-defined]
+        return misjudged_ids() != []
+
+
+def test_control_one_real_id_moved_to_open_is_caught_by_the_enumeration_every_run():
+    moved = moved_ids()
+    assert len(set(moved)) == RUNS
+    assert sum(enumeration_catches(lambda each=each: moved_to_open(each)) for each in moved) == RUNS
+
+
+def test_control_the_jurisdiction_ports_judged_open_are_caught_by_the_enumeration_every_run():
+    assert sum(enumeration_catches(lambda: moved_to_open(*JURISDICTION_PORTS)) for _ in range(RUNS)) == RUNS
+
+
+def test_the_enumeration_passes_unplanted():
+    assert misjudged_ids() == []
 
 
 def test_the_control_scenarios_pass_unplanted():
