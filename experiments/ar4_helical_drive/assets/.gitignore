@@ -1,3 +1,6 @@
+# The baked AR4 meshes: Annin Robotics' design files, built locally, never committed (AR4_MESHES.md).
+ar4_meshes.usdc
+
 # Raw STL meshes (49 MB) — only needed if re-baking ar4_meshes.usdc.
 # Run ./_fetch_meshes.py to repopulate.
 meshes/
