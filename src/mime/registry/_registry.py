@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Annotated, Any, cast
 
+import numpy as np
+from numpy.typing import NDArray
+
 from mime.core import shape_named, shape_names
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
@@ -25,6 +28,7 @@ from mime.registry._entries import (
     Flag,
     Geometry,
     Interaction,
+    LiveInput,
     Observation,
     Output,
     OutputKind,
@@ -432,7 +436,40 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
                     for label, signal in signals):
                 found.append(f"{name}: a {'non-empty ' if required else ''}mapping of labels (lower-case words joined "
                              f"by underscores) to mime.registry.Signal")
+        found += _live_problems(held)
     return found
+
+
+def _live_problems(held: Any) -> list[str]:
+    """What keeps a controller's live inputs from being read: each a :class:`LiveInput` under a label that is none of
+    its reads', its default finite numbers of its shape (a number stands for every element)."""
+    live: object = getattr(held, "live", {})
+    inputs = list(cast(Mapping[object, object], live).items()) if isinstance(live, Mapping) else None
+    reads: object = getattr(held, "reads", {})
+    if inputs is None or not all(isinstance(label, str) and _LABEL.fullmatch(label) and isinstance(value, LiveInput)
+                                 for label, value in inputs):
+        return ["live: a mapping of labels (lower-case words joined by underscores) to mime.registry.LiveInput"]
+    found: list[str] = []
+    for label, value in cast(list[tuple[str, LiveInput]], inputs):
+        if isinstance(reads, Mapping) and label in reads:
+            found.append(f"live: {label!r} is also a read label, and the step reads both under their labels")
+        if live_default(value) is None:
+            found.append(f"live: {label!r}'s default {value.default!r} is not finite numbers of its shape "
+                         f"{tuple(value.shape)}")
+    return found
+
+
+def live_default(value: LiveInput) -> NDArray[np.float64] | None:
+    """A live input's default as the value a session hands its step, float64 numbers of its shape (a number stands for
+    every element), or ``None`` when it is not finite numbers of that shape."""
+    try:
+        held = np.asarray(value.default, dtype=np.float64)
+        shaped = np.broadcast_to(held, tuple(value.shape)) if held.ndim == 0 else held
+    except (TypeError, ValueError):
+        return None
+    if shaped.shape != tuple(value.shape) or not np.isfinite(shaped).all():
+        return None
+    return np.array(shaped, dtype=np.float64)
 
 
 def _wall_kind_problems(held: Any) -> list[str]:

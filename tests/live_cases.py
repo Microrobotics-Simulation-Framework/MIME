@@ -1,6 +1,7 @@
 """The small live rig the live session's tests run: ``control_cases.spun_magnet``'s motor alone above a body, its angle
 written every 3 ms by :class:`Steered`, a callback with one live input, ``offset``, added to every angle it writes once
-a session sets it. Cheap to build and to compile, so that a test can run it live, in batch and again, and compare."""
+a session sets it. Cheap to build and to compile, so that a test can run it live, in batch and again, and compare.
+``jit_steered`` is the same rig with the step compiled once (:class:`JitSteered`), for counting its compilations."""
 
 from __future__ import annotations
 
@@ -45,9 +46,44 @@ class Steered(Controller):
         return ControlLaw(state={"ticks": 0}, held={"angle": np.asarray(0.0)}, step=step)
 
 
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class JitSteered(Controller):
+    """:class:`Steered` with its step compiled once by ``jax.jit``, as ``ArmTracking``'s is, reading its live input
+    under its label when its reads hold it: a step whose program a new input's label would compile again."""
+
+    name = "oracle.jit_steered"
+    version = "0.1.0"
+    differentiability = GradientStatus.CUT
+    gradient = GradientRecord(where="its step", reason="a test's callback", route="none: it exists to be called")
+    builds = {"": ()}
+    reads = {"pose": Signal("m; 1", (7,))}
+    writes = {"angle": Signal("1", ())}
+    live = {"offset": LiveInput("1", (), "added to every angle it writes")}
+    rate: float = 0.1
+
+    def law(self, ctx: Any) -> ControlLaw:
+        import jax
+        import jax.numpy as jnp
+
+        rate = self.rate
+
+        def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            angle = rate * state["ticks"] + (jnp.asarray(reads["offset"], jnp.float32) if "offset" in reads else 0.0)
+            return {"ticks": state["ticks"] + 1.0}, {"angle": angle}
+
+        return ControlLaw(state={"ticks": jnp.zeros((), jnp.float32)}, held={"angle": jnp.zeros((), jnp.float32)},
+                          step=jax.jit(step))
+
+
 def steered(name: str = "steered", **options: Any) -> Experiment:
     """The live rig: :class:`Steered` every 3 ms writing the motor's angle, the body's swim speed observed."""
     return spun_magnet(name, controller=Steered(), mode="callback", rate=ms(3), observe=True, **options)
+
+
+def jit_steered(name: str = "jit_steered") -> Experiment:
+    """The live rig with :class:`JitSteered` writing the motor's angle."""
+    return spun_magnet(name, controller=JitSteered(), mode="callback", rate=ms(3))
 
 
 def in_graph(name: str = "steered_in_graph") -> Experiment:
@@ -98,4 +134,4 @@ def files_of(folder: Path) -> dict[str, bytes]:
     return {str(path.relative_to(folder)): path.read_bytes() for path in sorted(folder.rglob("*")) if path.is_file()}
 
 
-__all__ = ["Steered", "built", "files_of", "in_graph", "saved", "steered", "tracked"]
+__all__ = ["JitSteered", "Steered", "built", "files_of", "in_graph", "jit_steered", "saved", "steered", "tracked"]

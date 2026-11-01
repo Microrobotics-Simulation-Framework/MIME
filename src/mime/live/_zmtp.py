@@ -198,7 +198,8 @@ def is_loopback(host: str) -> bool:
 class Server:
     """The two sockets a live session is served on, in one thread: a PUB that sends each frame to every subscriber
     whose topic it begins with, and a REP that takes one request at a time from each peer and sends its reply back
-    on the envelope it came on. :meth:`poll` moves bytes both ways and returns the requests that arrived."""
+    on the envelope it came on. :meth:`poll` moves bytes both ways and returns the requests that arrived, or returns
+    early when another thread calls :meth:`wake`."""
 
     def __init__(self, commands: str, frames: str) -> None:
         self.selector = selectors.DefaultSelector()
@@ -208,6 +209,10 @@ class Server:
         self.resting: dict[int, float] = {}
         self.endpoints: dict[str, str] = {}
         self._spare = _spare()
+        self._waker, self._wakes = socket.socketpair()
+        for end in (self._waker, self._wakes):
+            end.setblocking(False)
+        self.selector.register(self._waker, selectors.EVENT_READ)
         for kind, endpoint in (("REP", commands), ("PUB", frames)):
             host, port = parse_endpoint(endpoint)
             family = socket.AF_INET6 if ":" in host else socket.AF_INET
@@ -227,6 +232,14 @@ class Server:
             bound = listener.getsockname()
             shown = f"[{bound[0]}]" if family == socket.AF_INET6 else bound[0]
             self.endpoints[kind] = f"tcp://{shown}:{bound[1]}"
+
+    def wake(self) -> None:
+        """Make the :meth:`poll` in progress, or the next, return at once: the one call another thread may make (a
+        chunk that has ended, on the thread that ran it)."""
+        try:
+            self._wakes.send(b"\0")
+        except OSError:  # its buffer full (a wake is waiting already) or the server closed
+            pass
 
     def _accept(self, listener: socket.socket, kind: str) -> None:
         try:
@@ -396,8 +409,17 @@ class Server:
                 ready: list[tuple[selectors.SelectorKey, int]] = []
             else:
                 ready = self.selector.select(wait)
+            woken = False
             for key, events in ready:
                 held = key.fileobj
+                if held is self._waker:
+                    woken = True
+                    try:
+                        while self._waker.recv(4096):
+                            pass
+                    except OSError:  # drained
+                        pass
+                    continue
                 fileno = held.fileno() if not isinstance(held, int) else held
                 if fileno in self.listeners:
                     self._accept(*self.listeners[fileno])
@@ -410,7 +432,7 @@ class Server:
                 if events & selectors.EVENT_WRITE and fileno in self.peers:
                     self._write(peer)
             found += self._requests()
-            if found or time.monotonic() >= deadline:
+            if found or woken or time.monotonic() >= deadline:
                 return found
 
     def reply(self, peer_id: int, body: bytes) -> None:
@@ -454,6 +476,12 @@ class Server:
             listener.close()
         self.listeners.clear()
         self.resting.clear()
+        try:
+            self.selector.unregister(self._waker)
+        except (KeyError, ValueError):  # closed already
+            pass
+        self._waker.close()
+        self._wakes.close()
         self.selector.close()
         if self._spare is not None:
             os.close(self._spare)

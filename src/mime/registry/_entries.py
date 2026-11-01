@@ -1222,13 +1222,17 @@ class Signal:
 @dataclass(frozen=True)
 class LiveInput:
     """A value a live session may set while a controller in the callback mode runs (``session.set(label, value)``):
-    its units, spelt as the vocabulary spells them, its shape, and what it does. Until it is set, the controller's
-    step is called with its reads alone, as in every other run; once set, the step reads it under its label among its
-    reads, from the next tick on. A physical setting is never a live input: changing one is a rebuild."""
+    its units, spelt as the vocabulary spells them, its shape, what it does, and its ``default``, the value it has
+    until a session sets it (a number for every element, or nested tuples of its shape), at which it changes nothing
+    the step does. A live session hands every live input to the step under its label among its reads from its first
+    tick, at its default until it is set, so that a step compiled once (a ``jax.jit``) compiles at the session's first
+    chunk and no ``set`` compiles it again; a batch run calls the step with its reads alone. A physical setting is
+    never a live input: changing one is a rebuild."""
 
     units: str
     shape: tuple[int, ...] = ()
     meaning: str = ""
+    default: float | tuple[Any, ...] = 0.0
 
 
 type Arrays = Mapping[str, Any]

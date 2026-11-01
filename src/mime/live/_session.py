@@ -5,7 +5,11 @@ folder written when it stops.
 A session given a run folder writes its command log there as it goes: the header when it opens, each command before it
 acts, and after each chunk, before that chunk's frame is sent, the step it reached. Each line is flushed as it is
 written, so a session that dies (a crash, a kill) leaves a log that replays to the last step it reached, and every frame
-a client received is a step the log holds."""
+a client received is a step the log holds.
+
+Two locks: one held by a chunk while it runs, which every command that changes what a run does takes first, so that it
+acts between chunks; and one over the session's fields, held for moments, which is all ``status`` and ``hello`` take,
+so that they are answered while a chunk runs (its compile included)."""
 
 from __future__ import annotations
 
@@ -22,7 +26,7 @@ import numpy as np
 
 from mime.build import Mode
 from mime.build._refusals import ArgumentRefused, MimeError, Refusal, RefusalClass
-from mime.registry import Controller, LiveInput
+from mime.registry import Controller, LiveInput, live_default
 from mime.live._protocol import COMMANDS, PROTOCOL, Frame, FrameSchema, refused, reply
 from mime.units import TIME, Quantity, si
 
@@ -44,6 +48,10 @@ LOG_FORMAT = "mime.commands/1"
 REACHED = "reached"
 
 READY, RUNNING, PAUSED, STOPPED = "ready", "running", "paused", "stopped"
+#: What the session is doing (``activity`` in every status): its first chunk running, which compiles the run's programs
+#: (in a process that has not compiled them for an earlier session of the same built experiment), a later chunk
+#: running, or neither, between chunks.
+COMPILING, STEPPING, IDLE = "compiling", "stepping", "idle"
 
 
 def _units(built: BuiltExperiment) -> dict[tuple[str, str], str]:
@@ -75,7 +83,9 @@ class LiveSession:
 
     The session runs on the calling thread (:meth:`step`, :meth:`run_for`), on its own (:meth:`start`, which paces the
     loop to ``pace`` times real time on a thread of its own), or in a server's loop (:meth:`advance`, as
-    ``mime serve`` drives it); a lock holds commands to the gaps between chunks."""
+    ``mime serve`` drives it); a lock holds the commands that change a run to the gaps between chunks, and ``status``
+    and ``hello`` are answered while a chunk runs. Its controller's live inputs are each at their declared default
+    from its first tick until it sets them (:class:`~mime.registry.LiveInput`)."""
 
     def __init__(self, built: BuiltExperiment, *, chunk: Quantity | None = None, pace: float | None = 1.0,
                  select: Sequence[str] | None = None, out: Path | None = None,
@@ -111,8 +121,14 @@ class LiveSession:
         #: The chunks a step in hand has still to take (``mime serve`` takes its other requests between them).
         self.stepping = 0
         self.non_finite: str | None = None
+        #: The chunks run so far, and whether one is running now.
+        self.chunks = 0
+        self._in_flight = False
+        #: The commands a server took while the chunk in flight runs, in order, to act at its end (``mime serve``'s).
+        self.pending: list[str] = []
         self._subscribers: list[Subscriber] = []
         self._lock = threading.RLock()
+        self._chunk = threading.RLock()
         self._thread: threading.Thread | None = None
         self._wall: tuple[float, int] | None = None
         self._recording: StageSamples | None = None
@@ -128,10 +144,12 @@ class LiveSession:
         self.controller = built.plans.controller
         callback = built._runs.callback  # pyright: ignore[reportPrivateUsage]
         self._callback = callback
-        if callback is not None:  # every session starts from the declared inputs, none set
-            callback.live.clear()
         declared = cast(type[Controller], self.controller.registered.cls) if self.controller is not None else None
         self.live_inputs: dict[str, LiveInput] = dict(declared.live) if declared is not None else {}
+        #: Each live input at its declared default, as the step reads it until a session sets it.
+        self.defaults = {label: cast(np.ndarray, live_default(held)) for label, held in self.live_inputs.items()}
+        self._open_inputs()
+        self._topology = built.topology()
         self._started = time.perf_counter()
         self._refuse_an_older_stage()
         if out is not None:
@@ -141,6 +159,14 @@ class LiveSession:
             refuse_out_over(out, [saved.folder] if saved is not None else [])
             self._write_experiment(out)
             self._open_log(out)
+
+    def _open_inputs(self) -> None:
+        """Every session starts from the declared inputs: its controller's step, called back, reads each live input at
+        its default from the first tick, so that the step's program (a ``jax.jit``'s) is compiled with every input it
+        will read, of the dtype and shape each ``set`` gives, and no ``set`` compiles it again."""
+        if self._callback is not None:
+            self._callback.live.clear()
+            self._callback.live.update({label: value.copy() for label, value in self.defaults.items()})
 
     def _refuse_an_older_stage(self) -> None:
         """Refuse a saved folder whose stage an earlier stage writer wrote without prims the binding moves (a chain's
@@ -210,28 +236,43 @@ class LiveSession:
     # -- stepping -----------------------------------------------------------------------------------------------------
 
     def advance(self) -> Frame | None:
-        """One chunk, and its frame; ``None`` once the session has stopped or its state is not finite."""
-        with self._lock:
-            if self.state == STOPPED or self.non_finite is not None:
-                return None
-            if self.frames == 0:
-                self._send(self._final)
-            final, _ = self.built._runs.run(self.chunk_steps, history=False)  # pyright: ignore[reportPrivateUsage]
-            self.steps += self.chunk_steps
-            self._final = final
-            if self.stepping:
-                self.stepping -= 1
-            bad = [f"{node}.{name}" for node, fields in final.items() for name, value in fields.items()
-                   if np.issubdtype(np.asarray(value).dtype, np.inexact) and not np.isfinite(value).all()]
-            if bad:
-                self.non_finite = (f"the state stopped being finite numbers by step {self.steps} "
-                                   f"(t = {self.steps * self.dt:.6g} s), in {', '.join(bad[:4])}")
-                self.state = PAUSED
-                self.stepping = 0
-            if self._recording is not None:
-                self._recording.take(self.steps, final)
-            self._write_line({REACHED: self.steps})
-            return self._send(final)
+        """One chunk, and its frame; ``None`` once the session has stopped or its state is not finite. A command that
+        changes the run waits for it; ``status`` and ``hello`` are answered meanwhile."""
+        with self._chunk:
+            with self._lock:
+                if self.state == STOPPED or self.non_finite is not None:
+                    return None
+                if self.frames == 0:
+                    self._send(self._final)
+                self._in_flight = True
+            try:
+                final, _ = self.built._runs.run(self.chunk_steps, history=False)  # pyright: ignore[reportPrivateUsage]
+            except BaseException:
+                with self._lock:
+                    self._in_flight = False
+                raise
+            with self._lock:
+                self._in_flight = False
+                return self._ended(final)
+
+    def _ended(self, final: History) -> Frame:
+        """The bookkeeping after a chunk, its frame sent."""
+        self.steps += self.chunk_steps
+        self.chunks += 1
+        self._final = final
+        if self.stepping:
+            self.stepping -= 1
+        bad = [f"{node}.{name}" for node, fields in final.items() for name, value in fields.items()
+               if np.issubdtype(np.asarray(value).dtype, np.inexact) and not np.isfinite(value).all()]
+        if bad:
+            self.non_finite = (f"the state stopped being finite numbers by step {self.steps} "
+                               f"(t = {self.steps * self.dt:.6g} s), in {', '.join(bad[:4])}")
+            self.state = PAUSED
+            self.stepping = 0
+        if self._recording is not None:
+            self._recording.take(self.steps, final)
+        self._write_line({REACHED: self.steps})
+        return self._send(final)
 
     def _logged(self, command: str, **arguments: Any) -> None:
         """Log a command at the step it takes effect at, durably, before it acts."""
@@ -282,7 +323,7 @@ class LiveSession:
     def start(self, *, thread: bool = True) -> None:
         """Start (or resume) stepping. With ``thread`` (in a script or a notebook) on a thread of the session's own,
         paced; without it, the caller's loop steps it (:meth:`advance` when :meth:`due` says)."""
-        with self._lock:
+        with self._chunk, self._lock:
             self._require_open("start")
             self._refuse_while_stepping("start")
             if self.state != RUNNING:
@@ -308,7 +349,7 @@ class LiveSession:
 
     def pause(self) -> None:
         """Stop stepping after the chunk in hand, running or taking a step; the session stays open."""
-        with self._lock:
+        with self._chunk, self._lock:
             self._require_open("pause")
             if self.state == RUNNING or self.stepping:
                 self._logged("pause")
@@ -323,7 +364,7 @@ class LiveSession:
             raise ArgumentRefused([Refusal(
                 "live.step", RefusalClass.USER, f"step takes a whole number of chunks above zero, not {chunks!r}",
                 "step(1), or step(n) for n chunks: `{\"command\": \"step\", \"chunks\": 3}`")])
-        with self._lock:
+        with self._chunk, self._lock:
             self._require_open("step")
             self._refuse_while_stepping("step")
             if self.state == RUNNING:
@@ -362,7 +403,7 @@ class LiveSession:
     def set(self, label: str, value: Any) -> None:
         """Set the controller's live input ``label`` to ``value`` from its next tick on: refused unless the controller
         declares it and runs as a callback, or for a value not of its shape or not finite."""
-        with self._lock:
+        with self._chunk, self._lock:
             self._require_open("set")
             held = self._checked(label, value)
             self._logged("set", label=label, value=held.tolist())
@@ -403,7 +444,7 @@ class LiveSession:
             raise ArgumentRefused([Refusal(
                 "live.record", RefusalClass.USER, f"record takes on, true or false, not {on!r}",
                 "send `{\"command\": \"record\", \"on\": true}` or `false`; in Python, session.record(True)")])
-        with self._lock:
+        with self._chunk, self._lock:
             self._require_open("record")
             self._logged("record", on=on)
             if on and self._recording is None:
@@ -416,7 +457,7 @@ class LiveSession:
                 self._recording = None
 
     def set_pace(self, pace: float | None) -> None:
-        with self._lock:
+        with self._chunk, self._lock:
             self._require_open("pace")
             held = self._pace(pace)
             self._logged("pace", pace=held)
@@ -427,7 +468,7 @@ class LiveSession:
         """Stop, in whatever state the session is (ready, running, paused, or stepping on another thread, which
         finishes its chunk first); send the last frame and write the run folder. Stopping twice does nothing more. The
         folder written, or ``None`` without one."""
-        with self._lock:
+        with self._chunk, self._lock:
             if self.state == STOPPED:
                 return self._written
             self._logged("stop")
@@ -436,7 +477,7 @@ class LiveSession:
         thread = self._thread
         if thread is not None and thread is not threading.current_thread():
             thread.join()
-        with self._lock:
+        with self._chunk, self._lock:
             if self._callback is not None:  # a live input never outlives its session
                 self._callback.live.clear()
             self._send(self._final, final=True)
@@ -454,7 +495,8 @@ class LiveSession:
 
     def hello(self) -> dict[str, Any]:
         """The session as ``hello`` describes it: protocol, MIME's version, the experiment and its hashes, the base
-        step and chunk, the controller, the stage, the binding, the topology, the frame schema, the commands."""
+        step and chunk, the controller and its live inputs, the stage, the binding, the topology, the build report's
+        summary, the frame schema, the commands, and the status. Answered while a chunk runs."""
         from mime import __version__
 
         controller = self.controller
@@ -466,11 +508,12 @@ class LiveSession:
                      controller=None if controller is None else {
                          "entry": controller.registered.cls.label(), "mode": controller.mode.name.lower(),
                          "every": controller.period, "latency": controller.latency},
-                     live_inputs={label: {"units": held.units, "shape": list(held.shape), "meaning": held.meaning}
+                     live_inputs={label: {"units": held.units, "shape": list(held.shape), "meaning": held.meaning,
+                                          "default": self.defaults[label].tolist()}
                                   for label, held in self.live_inputs.items()},
                      stage=stage, visuals=self._visuals(stage), binding=built.binding().record(),
-                     topology=built.topology(),
-                     schema=self.schema.record(), commands=list(COMMANDS), **self._status())
+                     topology=self._topology, report=built.report_summary(),
+                     schema=self.schema.record(), commands=list(COMMANDS), **self.status_fields())
 
     def _visuals(self, stage: str | None) -> dict[str, Any] | None:
         """What the asset cache draws of the stage's visuals: the overlay to add over the stage (a layer in the cache,
@@ -483,17 +526,25 @@ class LiveSession:
         return {"overlay": str(found.path) if found.path is not None else None, "drawn": found.drawn,
                 "missing": found.missing, "notice": found.notices}
 
+    @property
+    def activity(self) -> str:
+        """What the session is doing: :data:`COMPILING`, :data:`STEPPING` or :data:`IDLE`."""
+        if not self._in_flight:
+            return IDLE
+        return COMPILING if self.chunks == 0 else STEPPING
+
     def _status(self) -> dict[str, Any]:
         return {"state": self.state, "step": self.steps, "time": self.steps * self.dt, "frames": self.frames,
                 "pace": self.pace, "recording": self._recording is not None, "non_finite": self.non_finite,
-                "stepping": self.stepping}
+                "stepping": self.stepping, "activity": self.activity, "pending": list(self.pending)}
 
     def status(self) -> dict[str, Any]:
         with self._lock:
             return reply("status", **self._status())
 
     def status_fields(self) -> dict[str, Any]:
-        """The status every reply carries: state, step, time, frames, pace, recording, non-finite and stepping."""
+        """The status every reply carries: state, step, time, frames, pace, recording, non-finite, stepping, activity
+        and pending. While a chunk runs, its step is the chunk's start."""
         with self._lock:
             return self._status()
 
@@ -579,7 +630,7 @@ class LiveSession:
 
     def _write(self, out: Path) -> Path:
         from mime.experiment._experiment import RUN_OUTPUTS, RUN_RECORD, RUN_TOPOLOGY
-        from mime.results import RUN_MANIFEST
+        from mime.results import RUN_MANIFEST, RUN_REPORT
 
         out.mkdir(parents=True, exist_ok=True)
         result = self.built.result_of(self.start_step, self.steps - self.start_step, self._final)
@@ -588,7 +639,8 @@ class LiveSession:
         if self.non_finite is not None:
             manifest["non_finite"] = self.non_finite
         _json(out / RUN_MANIFEST, manifest)
-        _json(out / RUN_TOPOLOGY, self.built.topology())
+        _json(out / RUN_TOPOLOGY, self._topology)
+        _json(out / RUN_REPORT, self.built.report_summary())
         if self._log_file is not None:
             self._log_file.close()
             self._log_file = None
@@ -707,5 +759,5 @@ def replay(built: BuiltExperiment, log: Path, out: Path | None, *,
     return session
 
 
-__all__ = ["COMMAND_LOG", "FRAMES_PER_SECOND", "LOG_FORMAT", "PAUSED", "READY", "REACHED", "RUNNING", "STOPPED",
-           "LiveSession", "read_log", "replay"]
+__all__ = ["COMMAND_LOG", "COMPILING", "FRAMES_PER_SECOND", "IDLE", "LOG_FORMAT", "PAUSED", "READY", "REACHED",
+           "RUNNING", "STEPPING", "STOPPED", "LiveSession", "read_log", "replay"]

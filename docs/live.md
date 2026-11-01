@@ -39,11 +39,14 @@ session.stop()                # the run folder: a0_live/
   unpaced and at 1.005 paced at real time.
   A slow subscriber is its own concern: the session never waits on one.
 - **Live inputs are the controller's only.** A controller declares them beside its reads and writes
-  (`Controller.live`, each a `LiveInput` with its units, shape and meaning); in the callback mode,
-  `session.set(label, value)` hands one to its step under its label from the next tick on. Until one is set the step
-  sees its reads alone, so a run that sets nothing is any other run. A physical setting is never a live input:
-  changing one is a rebuild, a new session from the saved folder. `ArmTracking` declares `offset`, which moves the
-  point it holds the magnet above along its axis.
+  (`Controller.live`, each a `LiveInput` with its units, shape, meaning and `default`, the value at which it changes
+  nothing the step does: zeros unless declared); in the callback mode, `session.set(label, value)` hands one to its
+  step under its label from the next tick on. A session hands every live input to the step from its first tick, at its
+  default until it is set, so that a step compiled once (a `jax.jit`, as `ArmTracking`'s is) compiles at the session's
+  first chunk with every input it will read, each a float of its declared shape, and **no `set` compiles it again**.
+  A session that sets nothing is a batch run (which calls the step with its reads alone) bit for bit, as a test holds
+  for A0. A physical setting is never a live input: changing one is a rebuild, a new session from the saved folder.
+  `ArmTracking` declares `offset`, which moves the point it holds the magnet above along its axis.
 - **Every command is logged with its step** (`commands.jsonl` in the run folder), so a session replays:
   `mime run <saved folder> --commands <run folder>/commands.jsonl --out <dir>` steps the same chunks, sets the same
   inputs and records at the same steps, and writes the same run folder. The log is written as the session goes: its
@@ -56,6 +59,12 @@ session.stop()                # the run folder: a0_live/
 - **Stop always stops**, in every state: ready, running, paused, or taking a step (on another thread, or in `mime
   serve`'s loop), within one chunk. It sends a last frame marked final and writes the run folder. `pause` ends a step
   in hand after its chunk, as it stops a running session.
+- **A chunk in flight holds back only what changes the run.** A command that changes what a run does (`set`,
+  `record`, `pace`, `start`, `step`, `pause`, `stop`) waits for the chunk running on another thread and acts at its
+  end; `status()` and `hello()` answer at once, the status's `activity` saying what the session is doing:
+  `compiling` while its first chunk runs (which compiles the run's programs, unless this process compiled them for an
+  earlier session of the same built experiment), `stepping` while a later one runs, `idle` between chunks, and its
+  `step` the one the chunk started at.
 
 ## The run folder
 
@@ -68,9 +77,11 @@ Every live session that is given `out=` writes a minimal run folder when it stop
 | `outputs.npz`, `outputs.json` | the state at the end and its manifest, as `RunResult.read` reads them |
 | `run.json` | the session's record: steps, frames, wall time, the environment |
 | `topology.json` | the built graph in MIME's names (`built.topology()`) |
+| `report.json` | the build report's summary (`built.report_summary()`, below), as `RunResult.read` reads it |
 | `recording.usdc` | the recording layer, when recording was on ([recordings](recordings.md)) |
 
-A run folder is self-contained: it carries its own stage, and nothing outside it. A folder saved by an earlier stage
+`mime run`'s run folders (`run_to`) hold `report.json` too. A run folder is self-contained: it carries its own stage,
+and nothing outside it. A folder saved by an earlier stage
 writer (before chains' frames, visuals and vectors were drawn) loads and verifies as it was written, and a live session
 of one whose stage lacks a prim the binding moves is refused (`live.stage-writer`): save it again with this MIME.
 
@@ -96,6 +107,25 @@ the same.
 ssh -L 5555:localhost:5555 -L 5556:localhost:5556 <host>     # then connect to localhost as if it ran here
 ```
 
+**It never goes silent.** Each chunk runs on a thread of its own while the server's loop moves bytes and answers, so a
+client is answered while a chunk compiles or steps:
+
+- `hello` and `status` are answered at once, with the status as the chunk runs (`activity` `compiling` or
+  `stepping`, `step` the chunk's start);
+- `stop` and `pause` are answered at once too, `ok` with the status as the chunk runs and the command in `pending`,
+  and act at the chunk's end, as between chunks: a `stop`'s reply then names the folder it is writing, and the
+  session's last frame, marked final, comes when it has stopped;
+- every other command is answered at the chunk's end, where it acts.
+
+The commands taken while a chunk runs act at its end in the order they came, so the command log holds them in that
+order at the chunk's end step. Measured by `scripts/live_responsiveness.py` on a laptop's i7-12850HX (JAX on its CPU),
+A0 with its controller called back, three runs: while its first chunk compiled (3.3 s), the server answered 252 to 265
+`status` requests, the median in 0.4 ms and the slowest in 82 to 97 ms, so within 0.1 s; the step after its first
+`set` took 3.5 to 3.9 ms, as any later step does. Before phase 7n-b the first `set` compiled the controller again: in a
+script on the same laptop, A0's apparatus closed by `ArmTracking` took 1.9 s for the chunk after it. These are a
+machine's measurements, never a CI check; a test holds the server answering `status`, `hello` and `pause` while a
+first chunk is held open, and its control, a server stepping on its loop's own thread, answering none.
+
 The transport is ZMQ: a REP socket for commands and a PUB socket for frames. MIME speaks ZMQ's wire protocol itself
 (ZMTP with the NULL mechanism), so `mime serve` needs no extra package, and any ZMQ library connects to it as it would
 to libzmq's own sockets: a REQ (or a DEALER) for commands, a SUB for frames. `mime.live.LiveClient` is a Python client.
@@ -110,7 +140,9 @@ change is a new major version.
 
 A request is a JSON object, `{"command": "<name>", ...}` (with `"protocol": "mime.live/1"`, optional). A reply is a
 JSON object with `protocol`, `ok` and `command`; on success the session's status (`state`, `step`, `time`, `frames`,
-`pace`, `recording`, `non_finite`, and `stepping`, the chunks a step in hand has still to take); on a refusal,
+`pace`, `recording`, `non_finite`; `stepping`, the chunks a step in hand has still to take; `activity`, what the
+session is doing, `compiling`, `stepping` or `idle`; and `pending`, the commands taken while a chunk runs that act at
+its end, in order); on a refusal,
 `errors`, each in the shape of [MIME's errors](errors.md): `code`, `class`, `message`, `why`, `action`, `where` and
 `page`. A request a client gets wrong is refused with its code (an argument of the wrong type included: `live.step`,
 `live.input-value`, `live.record`, `live.pace`), and the session goes on; an error of MIME's own inside a command is
@@ -123,15 +155,16 @@ reading their replies is closed, and the others are served on (the limits are `m
 | `hello` | | describes the session (below) |
 | `status` | | the session's status |
 | `start` | | starts or resumes stepping, paced |
-| `pause` | | stops stepping after the chunk in hand |
+| `pause` | | stops stepping after the chunk in hand (taken while a chunk runs: answered at once, `pending`) |
 | `step` | `chunks`, a whole number above zero | steps that many chunks now, from a session that is not running; answered when they are stepped, or when a `stop` or `pause` from another client ends the step (the server takes other requests between its chunks) |
-| `stop` | | stops in every state, sends the last frame, writes the run folder (its path is in the reply) |
+| `stop` | | stops in every state, sends the last frame, writes the run folder (its path is in the reply; taken while a chunk runs: answered at once, `pending`) |
 | `set` | `values`, live inputs by label | sets the controller's live inputs from its next tick |
 | `record` | `on`, true or false | turns the recording layer on or off |
 | `pace` | `rtf`, a factor or null | the real-time factor, or unpaced |
 
 `hello` returns MIME's version, the experiment's name and its hashes, the base step and the chunk in base steps, the
-controller (its entry, mode, period and latency) and its live inputs, the path of the stage the session serves
+controller (its entry, mode, period and latency) and its live inputs (each with its units, shape, meaning and
+`default`), the build report's summary (`report`, below), the path of the stage the session serves
 (`stage`), what the asset cache draws of its visuals (`visuals`: the overlay to add over the stage, and the visual sets
 it lacks, and every set's notice, its credit and terms, whether its meshes are drawn or not: see
 [recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema (`schema`), the commands,
@@ -163,10 +196,27 @@ length. It is fixed for the session. A JSON frame holds the same keys as the hea
 (`mime.live.FrameOrder`): a gap is a dropped frame, a number at or below one seen is one out of order. A ZMQ
 subscriber that connects just before `start` may miss the first frames, as ZMQ's subscriptions take a moment to reach
 the publisher (its "slow joiner"): connect the frames' socket first, then send `hello`, and read the first frame's
-number rather than assume it is zero. The server moves bytes between chunks, so a chunk that compiles (a session's
-first, a few seconds for A0) holds them: a ZMQ heartbeat (`ZMQ_HEARTBEAT_TIMEOUT`) shorter than that drops the
-connection while it compiles, and libzmq reconnects, losing the frames sent meanwhile. Leave heartbeats off, or set
-their timeout above the first chunk's compile.
+number rather than assume it is zero. The server moves bytes while a chunk runs, so a ZMQ heartbeat
+(`ZMQ_HEARTBEAT_TIMEOUT`) is answered while a chunk compiles. A frame's header carries the step it is at: a client's
+status line that follows the frames is current between its requests.
+
+### The build report's summary
+
+`report` in `hello`, and `report.json` in every run folder (`built.report_summary()`; `RunResult.read(folder).report`),
+is the build report as a client shows its claims, plain JSON of format `mime.report/1`:
+
+| Key | What it holds |
+|---|---|
+| `format`, `experiment` | `mime.report/1`, the experiment's name |
+| `profile` | the profile (`exploratory`, `research`, `strict`), its stamp's text, each item pending and each listed, what was measured of them, and each default the build took |
+| `validity` | each validity line, with its `owner` and its `kind`: `declared` (declared, not yet checked), `computed` (computed at the build) or `record` (a limit a capability record states) |
+| `watches` | what each run is compared with after it (a flag on the result, never a refusal) |
+| `flags` | each flag a run may raise: its `path` in a run's outputs and frames, its `owner` and `entry`, its `node`, its `meaning` (what it says when raised), and its `limits` where it is read against them |
+| `settings` | each setting by `path`: its declared `role` (`design`, `physical`, `numerical`, `standard`, or null when its entry declares none), its `default`'s kind (`determined`, `convention`, `numerical`, `none`, `undeclared`), the default the build `taken` (its text, or null), its `source`, and the items of the profile's stamp about it, `pending` and `listed` |
+| `summary` | the report's summary, its lines as `built.report.text()` prints them |
+
+A run folder written before this has no `report.json`, and `RunResult.read` gives `report` as `None`; a report of
+another format is refused (`result.format`).
 
 ### The stage binding
 

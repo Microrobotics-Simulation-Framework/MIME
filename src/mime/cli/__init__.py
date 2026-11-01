@@ -459,9 +459,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]
     [--stage-every <seconds>]``: load and rebuild a saved experiment, run it, and write its outputs, their manifest
-    (``outputs.json``), its record, its topology and the run's own saved form into ``<dir>``, which ``RunResult.read``
-    reads back, with the recording layer (``recording.usdc``) where ``--stage-every`` asks. ``mime run <folder>
-    --commands <log> --out <dir>`` replays a live session from its command log. Exits 0, or 2 when refused.
+    (``outputs.json``), its record, its topology, its build report's summary and the run's own saved form into
+    ``<dir>``, which ``RunResult.read`` reads back, with the recording layer (``recording.usdc``) where
+    ``--stage-every`` asks. ``mime run <folder> --commands <log> --out <dir>`` replays a live session from its command
+    log. Exits 0, or 2 when refused.
 
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
     [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
