@@ -1,0 +1,14 @@
+{
+  "measured": "2026-11-01",
+  "line_mib": 2048,
+  "basis": "A test's peak is its own process's peak resident memory (VmHWM; the process tree's PSS where it starts processes) when it runs alone in a fresh process, CPU, MiB, over every parameter; measured with scripts/measure_test_memory.py's plugin. The line is 2 GiB: CI's runner has 16 GB and four xdist workers, whole shards without a test over the line peaked at 8.2 to 9.8 GB across the five processes (measured on the default lane, 2026-11-01), and shard 3 with two of them at once (the arm battery, 8.3 GB, and the helix reference, 5.7 GB) at 14.4 GB, on a runner of 16 GB. A test over the line is marked memory_heavy and runs alone of its kind. The tests listed under the line were measured too, and are here to show how near it they come (the walks over every registry entry stay unmarked: marking a function marks every entry it walks). In the same whole-suite scan no other test grew its worker's resident memory by more than 1.45 GB.",
+  "peaks_mib": {
+    "tests/oracles/test_arm_dynamics_battery.py::test_the_dynamic_arm_is_first_order_in_time_and_passes_maddenings_battery": 8327,
+    "tests/oracles/test_helix_reference.py::test_quasi_uniform_sampling_brings_the_frozen_point_inside_the_reference_band_and_the_quadrature_does_not": 5720,
+    "tests/saved/test_sampling_walk.py::test_every_kind_that_samples_spreads_its_samples_evenly": 2494,
+    "tests/oracles/test_tube_kind.py::test_the_confined_matrix_stays_conditioned_and_its_radius_derivative_is_right_on_the_current_sampling": 2374,
+    "tests/saved/test_node_walk.py::test_every_node_an_entry_builds_passes_maddenings_verification": 1923,
+    "tests/saved/test_switch_scan.py::test_an_owner_passed_by_position_to_a_helper_fails": 1819,
+    "tests/saved/test_registry_walk.py::test_every_case_round_trips_through_a_fresh_process": 1611
+  }
+}

@@ -115,4 +115,5 @@ junit_family = "xunit1"
 markers = [
     "slow: too expensive for CI's default lane; run with -m 'slow or not slow'.",
     "gpu: needs a CUDA device; skips without one, and a skip looks like a pass in a summary line.",
+    "memory_heavy: peaks above 2 GiB of its own process (measured, tests/memory_peaks.json); under pytest-xdist the marked tests run one at a time across the workers (tests/conftest.py), so that the workers never hold two of them in a 16 GB runner; tests/test_memory_heavy.py fails a measured test over the line that is unmarked.",
 ]

@@ -21,6 +21,7 @@ One script is a maintainer's tool, run by hand and never by CI:
 
 | Script | What it does |
 |---|---|
+| `measure_test_memory.py` | each test's peak memory, from a pytest run it wraps or a file of runs' lines (`--merge`), written to `tests/memory_peaks.json` for `tests/test_memory_heavy.py`'s guard of the `memory_heavy` marker (the tests that run one at a time across xdist's workers); Linux only |
 | `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
 
 `check_anomalies.py` runs inside `mime docs check` (see

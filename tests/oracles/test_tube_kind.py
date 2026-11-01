@@ -176,6 +176,7 @@ def radius_derivative(built) -> tuple[float, float]:
 CONFINED = {"sphere": Sphere(radius=mm(0.5)), "capsule": Capsule(radius=mm(0.3), height=mm(1.0), axis=(0.0, 1.0, 0.0))}
 
 
+@pytest.mark.memory_heavy
 @pytest.mark.parametrize("body", sorted(CONFINED))
 def test_the_confined_matrix_stays_conditioned_and_its_radius_derivative_is_right_on_the_current_sampling(body):
     built = off_axis(CONFINED[body], mm(0.1))

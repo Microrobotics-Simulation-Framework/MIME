@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`memory_heavy`, a marker for tests that peak above 2 GiB, which run one at a time across pytest-xdist's workers**
+  (`tests/conftest.py`, `tests/memory_peaks.json`, `tests/test_memory_heavy.py`, `scripts/measure_test_memory.py`): the
+  shard of CI's default lane that ran the dynamic arm's battery (8.3 GB) and the helix reference (5.7 GB) at once peaked
+  at 14.4 GB in a local measurement, on a 16 GB runner whose shard was lost. The marked tests take a cross-worker file lock, whatever the `--dist` mode,
+  and return their free memory to the system when they end; a guard fails a measured test over the line that is unmarked.
 - **Quasi-uniform surface sampling, a hull query and a wall's distance, as seams of the geometry protocol** (dev1 phase
   7m-a, designs #195 and #196):
   - **`Geometry.sampling(settings, spacing, patches, density=uniform)`**: a kind's surface sampled for a solver whose

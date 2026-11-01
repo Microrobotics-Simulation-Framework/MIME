@@ -120,6 +120,7 @@ def declarations(declared, sampling_classes, name):
     return declared[cls]
 
 
+@pytest.mark.memory_heavy
 @pytest.mark.parametrize("samples", [SUITE_SAMPLES, FINER_SAMPLES])
 @pytest.mark.parametrize("name", WALKED)
 def test_every_kind_that_samples_spreads_its_samples_evenly(declared, sampling_classes, name, samples):

@@ -19,8 +19,9 @@ the limit is meant to hold. The reference's report says the preregistered band, 
 test discriminates is chiefly the reproduction pin at ``REPRODUCED``, which a change of the sampler or of the rung
 moves, and the control's -8.48%, outside both bands.
 
-The run's precision is the default, float32: the rung's speed there is within ``REPRODUCED`` of the float64 values the
-file records (the helix score measured float32 within 1e-6 of float64 on the same body)."""
+The run's precision is float64, which ``tests/oracles/conftest.py`` turns on for every module here; the file's values
+are float64's. The 17,952-unknown solve is then a 2.6 GB matrix and its factorisation beside it, and the test peaks at
+5.7 GB: it is ``memory_heavy``."""
 
 import hashlib
 import json
@@ -67,6 +68,7 @@ def test_the_reference_is_the_bodys_and_its_band_holds_its_post_hoc_point(record
     assert low < recorded["reference"]["speed_m_per_s"] < high
 
 
+@pytest.mark.memory_heavy
 def test_quasi_uniform_sampling_brings_the_frozen_point_inside_the_reference_band_and_the_quadrature_does_not(
         recorded):
     rung = recorded["on_the_rung"]

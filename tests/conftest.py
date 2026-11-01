@@ -8,9 +8,15 @@ the first leaves out: a test that loads a saved experiment in a fresh process or
 its time there. Both span setup, call and teardown.
 """
 
+import contextlib
+import ctypes
+import gc
 import os
 import sys
+import tempfile
 import time
+from collections.abc import Iterator
+from pathlib import Path
 
 #: One BLAS thread per process. JAX's CPU linear algebra (an LU, a Cholesky) runs through SciPy's OpenBLAS, whose
 #: threads wait by spinning: with pytest-xdist's workers on every core, a test of many small solves ran seven times
@@ -57,6 +63,78 @@ def pytest_configure(config: pytest.Config) -> None:
         import _jax_timing
 
         _jax_timing.register(config)
+
+
+MEMORY_HEAVY = "memory_heavy"
+
+
+def memory_lock_path() -> Path | None:
+    """The file the workers of one xdist run lock to take their ``memory_heavy`` tests one at a time; ``None`` in a
+    run with one process, which runs its tests one at a time anyway. xdist gives every worker of a run the same
+    ``PYTEST_XDIST_TESTRUNUID``, so two runs on one machine do not wait for each other."""
+    if "PYTEST_XDIST_WORKER" not in os.environ:
+        return None
+    run = os.environ.get("PYTEST_XDIST_TESTRUNUID") or f"parent{os.getppid()}"
+    return Path(tempfile.gettempdir()) / f"mime-memory-heavy-{run}.lock"
+
+
+@contextlib.contextmanager
+def held_exclusively(path: Path) -> Iterator[None]:
+    """Hold an exclusive lock on ``path`` (created if absent) for the block, waiting for whoever holds it. The lock
+    belongs to the open file, so a worker that dies releases it."""
+    with open(path, "a+b") as handle:
+        if sys.platform == "win32":
+            import msvcrt
+
+            handle.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue  # LK_LOCK gives up after ten seconds; the wait goes on
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
+    """A test marked ``memory_heavy`` runs, setup to teardown, while no other worker of the run is running one: CI's
+    runner holds four workers in 16 GB, and the heavy tests peak at several GB each (``tests/memory_peaks.json``).
+    Whatever xdist's ``--dist`` mode sends where, the marked tests take turns; the other tests go on beside them.
+
+    The memory a heavy test frees stays with its worker unless it is handed back: the worker that ran the 8 GB arm
+    battery held 8 GB for the rest of the run, 5 GB of it free and unreturned, which is as much to a runner as a second
+    heavy test. So the test's garbage is collected and glibc's free memory returned (``malloc_trim``) before the lock
+    is let go."""
+    if item.get_closest_marker(MEMORY_HEAVY) is None:
+        return (yield)
+    path = memory_lock_path()
+    with held_exclusively(path) if path is not None else contextlib.nullcontext():
+        try:
+            return (yield)
+        finally:
+            return_memory()
+
+
+def return_memory() -> None:
+    """Collect garbage and give glibc's free memory back to the system (a no-op where there is no ``malloc_trim``)."""
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 def children_cpu() -> float | None:

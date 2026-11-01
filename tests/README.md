@@ -490,6 +490,11 @@
 
 - `slow` tests are too expensive for CI's default lane. Run them with `-m "slow or not slow"`.
 - `gpu` tests need a CUDA device and **skip without one**. A skip looks like a pass in a summary line, so count skips.
+- `memory_heavy` tests peak above 2 GiB of their own process (`memory_peaks.json` lists what was measured, with the line
+  and its basis; `scripts/measure_test_memory.py` measures). Under pytest-xdist they run one at a time across the
+  workers, whatever `--dist` says, and give their free memory back when they end (`conftest.py`): CI's runner has 16 GB
+  for four workers, and the shard that ran the 8 GB arm battery beside the 6 GB helix reference peaked at 14.4 GB.
+  `test_memory_heavy.py` fails a listed test over the line that is unmarked; it cannot know a test nobody measured.
 - CI's lanes are: the default (Python 3.12 to 3.14, released dependencies), OpenMaterica `main`, MADDENING `main`, and
   a scheduled run against the newest usd-core. The last three report without blocking. Beside them, `typecheck`
   blocks: pyright, pinned, strict over `src/mime`, at zero errors.
