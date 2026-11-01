@@ -161,7 +161,7 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
         ready_file.write_text(json.dumps(endpoints) + "\n", encoding="utf-8")
     say(f"mime serve: {built.plans.settings.experiment} ready ({PROTOCOL}); commands on {endpoints['commands']}, "
         f"frames on {endpoints['frames']}; its run folder will be {target}")
-    stepper: int | None = None  # the peer whose step is in hand, answered once its chunks are stepped
+    steppers = _Steppers(server, session)  # the peers whose steps are in hand, each answered when its step ends
     running: Future[Frame | None] | None = None  # the chunk running on the worker's thread
     held: deque[tuple[int | None, bytes]] = deque()  # requests taken while it runs, acted on at its end, in order
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mime-serve-chunk")
@@ -169,14 +169,13 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
     def act(peer: int | None, body: bytes) -> None:
         """A request acted on between chunks, answered unless it was answered when taken (``peer`` None) or is a
         step whose chunks are still to come."""
-        nonlocal stepper
         answer = _answer(session, body)
-        if peer is None:
-            return
-        if answer.get("command") == "step" and answer["ok"] and session.stepping:
-            stepper = peer
-            return
-        server.reply(peer, _encoded(answer))
+        if peer is not None:
+            if answer.get("command") == "step" and answer["ok"] and session.stepping:
+                steppers.add(peer)
+            else:
+                server.reply(peer, _encoded(answer))
+        steppers.settle()
 
     try:
         if start:
@@ -204,16 +203,14 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
                         session.pending.pop(0)
                     act(peer, body)
                 publish()
-            if running is None and stepper is not None and not session.stepping:
-                server.reply(stepper, _encoded(reply("step", **session.status_fields())))
-                stepper = None
+            if running is None:
+                steppers.answer_if_ended()
             if running is None and session.state != STOPPED and not stopping and session.due() <= 0.0:
                 running = worker.submit(session.advance)  # one chunk, the requests answered while it runs
                 running.add_done_callback(lambda _: server.wake())
         written = session.stop()  # after the chunk in flight, if there is one
         publish()
-        if stepper is not None:
-            server.reply(stepper, _encoded(reply("step", **session.status_fields())))
+        steppers.answer_all()
         for peer, body in held:  # requests a signal left unanswered: refused, the session stopped
             if peer is not None:
                 server.reply(peer, _encoded(_answer(session, body)))
@@ -232,6 +229,32 @@ def serve(folder: Path, *, commands: str = DEFAULT_COMMANDS, frames: str = DEFAU
         server.close()
     say(f"mime serve: stopped at step {session.steps}; wrote {written}")
     return written
+
+
+class _Steppers:
+    """The peers whose ``step`` is in hand, in the order they asked: each is answered, with the session's status then,
+    once no step is in hand, whether its chunks were stepped or a ``pause`` or ``stop`` ended it. One slot would lose
+    the reply of every step but the last when a batch of requests acted at a chunk's end holds more than one."""
+
+    def __init__(self, server: Server, session: LiveSession) -> None:
+        self.server, self.session = server, session
+        self.waiting: deque[int] = deque()
+
+    def add(self, peer: int) -> None:
+        self.waiting.append(peer)
+
+    def answer_if_ended(self) -> None:
+        if not self.session.stepping:
+            self.answer_all()
+
+    def settle(self) -> None:
+        """After each request acted on: a ``pause`` or ``stop`` that ended the steps in hand answers them before the
+        next request acts, which may start another."""
+        self.answer_if_ended()
+
+    def answer_all(self) -> None:
+        while self.waiting:
+            self.server.reply(self.waiting.popleft(), _encoded(reply("step", **self.session.status_fields())))
 
 
 def _encoded(answer: dict[str, Any]) -> bytes:
@@ -270,8 +293,9 @@ def _while_running(session: LiveSession, body: bytes) -> dict[str, Any] | None:
         return None
     session.pending.append(str(name))
     fields = session.status_fields()
-    if name == "stop":
-        return reply("stop", folder=str(session.out) if session.out is not None else None, **fields)
+    if name == "stop":  # not the confirmation: no run folder yet, and the final frame says when it has stopped
+        return reply("stop", taken=True, message="stop pending: the session stops at the end of the chunk in hand; "
+                     "the final frame or the closed connection says it has, and no status reply will", **fields)
     return reply(str(name), **fields)
 
 

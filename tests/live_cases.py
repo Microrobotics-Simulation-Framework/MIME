@@ -76,6 +76,26 @@ class JitSteered(Controller):
                           step=jax.jit(step))
 
 
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class Offset(Controller):
+    """:class:`Steered` whose live input declares a default (0.5) that changes the run: the control of the check that a
+    session which sets nothing is the batch run, which it fails."""
+
+    name = "oracle.offset_default"
+    version = "0.1.0"
+    differentiability = GradientStatus.CUT
+    gradient = GradientRecord(where="its step", reason="a test's callback", route="none: it exists to be called")
+    builds = {"": ()}
+    reads = {"pose": Signal("m; 1", (7,))}
+    writes = {"angle": Signal("1", ())}
+    live = {"offset": LiveInput("1", (), "added to every angle it writes", default=0.5)}
+    rate: float = 0.1
+
+    def law(self, ctx: Any) -> ControlLaw:
+        return Steered(rate=self.rate).law(ctx)
+
+
 def steered(name: str = "steered", **options: Any) -> Experiment:
     """The live rig: :class:`Steered` every 3 ms writing the motor's angle, the body's swim speed observed."""
     return spun_magnet(name, controller=Steered(), mode="callback", rate=ms(3), observe=True, **options)
@@ -84,6 +104,11 @@ def steered(name: str = "steered", **options: Any) -> Experiment:
 def jit_steered(name: str = "jit_steered") -> Experiment:
     """The live rig with :class:`JitSteered` writing the motor's angle."""
     return spun_magnet(name, controller=JitSteered(), mode="callback", rate=ms(3))
+
+
+def offset_default(name: str = "offset_default") -> Experiment:
+    """The live rig with :class:`Offset` writing the motor's angle."""
+    return spun_magnet(name, controller=Offset(), mode="callback", rate=ms(3))
 
 
 def in_graph(name: str = "steered_in_graph") -> Experiment:
@@ -134,4 +159,4 @@ def files_of(folder: Path) -> dict[str, bytes]:
     return {str(path.relative_to(folder)): path.read_bytes() for path in sorted(folder.rglob("*")) if path.is_file()}
 
 
-__all__ = ["JitSteered", "Steered", "built", "files_of", "in_graph", "jit_steered", "saved", "steered", "tracked"]
+__all__ = ["JitSteered", "Offset", "Steered", "built", "files_of", "in_graph", "jit_steered", "offset_default", "saved", "steered", "tracked"]

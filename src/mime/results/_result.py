@@ -269,6 +269,9 @@ class RunResult:
         #: The build report's summary (:data:`REPORT_FORMAT`): the built experiment's for a run in memory, a run
         #: folder's ``report.json`` for one read back, ``None`` for a folder written before run folders held it.
         self.report: Mapping[str, Any] | None = report
+        #: What a run folder's ``report.json`` holds that this MIME cannot read: the format it states (a newer
+        #: ``mime.report/N``), or ``"not JSON"``. The run reads regardless; ``report`` is ``None`` then.
+        self.report_unreadable: str | None = None
         self._clock = np.dtype(clock) if clock is not None else None
 
     @property
@@ -544,7 +547,7 @@ class RunResult:
             manifest = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
             npz = _Npz(npz_path)
             result = cls.from_manifest(manifest, npz)
-            result.report = read_report(source / RUN_REPORT)
+            result.report, result.report_unreadable = read_report(source / RUN_REPORT)
             return result
         else:
             npz = _Npz(source)
@@ -581,18 +584,23 @@ class RunResult:
                    watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))])
 
 
-def read_report(path: Path) -> dict[str, Any] | None:
-    """A run folder's build report summary, or ``None`` when the folder holds none (one written before they did)."""
+def read_report(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """A run folder's build report summary and what keeps it from being read: ``(None, None)`` when the folder holds
+    none (one written before they did), ``(None, <the format it states>)`` for a report of a format this MIME does not
+    read (a newer one: the run is still read, and the report is marked unreadable, since the report is an auxiliary
+    file and not the run's results), ``(None, "not JSON")`` for one that cannot be parsed."""
     if not path.is_file():
-        return None
-    held = cast(object, json.loads(path.read_text(encoding="utf-8")))
-    if not isinstance(held, dict) or cast(dict[str, Any], held).get("format") != REPORT_FORMAT:
-        found = cast(dict[str, Any], held).get("format") if isinstance(held, dict) else None
-        raise ArgumentRefused([Refusal(
-            "result.format", RefusalClass.USER, f"{path} is a report of {found!r}; this MIME reads {REPORT_FORMAT!r}",
-            "read it with the MIME that wrote it (`pip install mime-engine==<version>`), or run the experiment again "
-            "with this one: `mime run <folder> ...`")])
-    return cast(dict[str, Any], held)
+        return None, None
+    try:
+        held = cast(object, json.loads(path.read_text(encoding="utf-8")))
+    except (ValueError, RecursionError):
+        return None, "not JSON"
+    if not isinstance(held, dict):
+        return None, "not a JSON object"
+    found = cast(dict[str, Any], held).get("format")
+    if found != REPORT_FORMAT:
+        return None, str(found)
+    return cast(dict[str, Any], held), None
 
 
 def layout_of(manifest: Mapping[str, Any]) -> Layout:

@@ -55,7 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (declared, computed at the build, stated by a record), the post-run watches, the flags a run may raise and what
     each means, each setting's role and default with what the profile's stamp says of it, and the profile. `hello`
     carries it as `report`, every run folder writes it as `report.json` beside `run.json`, and `RunResult.read` reads
-    it (`result.report`).
+    it (`result.report`; a report of a newer format leaves `report` `None` and `report_unreadable` the format it
+    states, and the run is still read).
+  - **A reply goes to the client that asked, and every `step` is answered.** A request held across a chunk is
+    answered to the connection that sent it, a count never reused, and not to whoever holds its socket's descriptor
+    when the chunk ends; a `step` taken in the same batch as a `pause` or `stop` that ends it, and a second `step`,
+    each gets its reply, in order. A `stop` taken while a chunk runs is answered as pending (`taken`, a `message`
+    saying "stop pending", no `folder`): the final frame or the closed connection says it took effect. A test walks
+    every registered controller with live inputs, a session that sets nothing against the batch run, so a default that
+    changes the run is refused by name; an open that is refused installs no live input.
 - **Proxies within a triangle budget**: a kind drawn on the stage is drawn at fewer facets a turn where it would hold
   more triangles than `PROXY_TRIANGLES`; A0's saved stage, nearly all the screw's proxy, is about a quarter of its size,
   and every stage of a chain gains its frames' prims, so its hash changes.

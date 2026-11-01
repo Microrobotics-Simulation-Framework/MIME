@@ -113,8 +113,11 @@ client is answered while a chunk compiles or steps:
 - `hello` and `status` are answered at once, with the status as the chunk runs (`activity` `compiling` or
   `stepping`, `step` the chunk's start);
 - `stop` and `pause` are answered at once too, `ok` with the status as the chunk runs and the command in `pending`,
-  and act at the chunk's end, as between chunks: a `stop`'s reply then names the folder it is writing, and the
-  session's last frame, marked final, comes when it has stopped;
+  and act at the chunk's end, as between chunks. A `stop` taken this way is *pending*, not done: its reply has
+  `taken: true`, a `message` that says "stop pending", the command in `pending`, and no `folder` (the run folder does
+  not exist yet; the reply of a `stop` between chunks, which has taken effect, has it). The session's last frame,
+  marked final, or the closed connection says it has stopped; a `status` sent after that is never answered, since the
+  server has exited;
 - every other command is answered at the chunk's end, where it acts.
 
 The commands taken while a chunk runs act at its end in the order they came, so the command log holds them in that
@@ -157,7 +160,7 @@ reading their replies is closed, and the others are served on (the limits are `m
 | `start` | | starts or resumes stepping, paced |
 | `pause` | | stops stepping after the chunk in hand (taken while a chunk runs: answered at once, `pending`) |
 | `step` | `chunks`, a whole number above zero | steps that many chunks now, from a session that is not running; answered when they are stepped, or when a `stop` or `pause` from another client ends the step (the server takes other requests between its chunks) |
-| `stop` | | stops in every state, sends the last frame, writes the run folder (its path is in the reply; taken while a chunk runs: answered at once, `pending`) |
+| `stop` | | stops in every state, sends the last frame, writes the run folder (between chunks its reply holds the run folder's path; taken while a chunk runs it is answered at once as pending, with no `folder`: the final frame or the closed connection says it took effect) |
 | `set` | `values`, live inputs by label | sets the controller's live inputs from its next tick |
 | `record` | `on`, true or false | turns the recording layer on or off |
 | `pace` | `rtf`, a factor or null | the real-time factor, or unpaced |
@@ -215,8 +218,10 @@ is the build report as a client shows its claims, plain JSON of format `mime.rep
 | `settings` | each setting by `path`: its declared `role` (`design`, `physical`, `numerical`, `standard`, or null when its entry declares none), its `default`'s kind (`determined`, `convention`, `numerical`, `none`, `undeclared`), the default the build `taken` (its text, or null), its `source`, and the items of the profile's stamp about it, `pending` and `listed` |
 | `summary` | the report's summary, its lines as `built.report.text()` prints them |
 
-A run folder written before this has no `report.json`, and `RunResult.read` gives `report` as `None`; a report of
-another format is refused (`result.format`).
+A run folder written before this has no `report.json`, and `RunResult.read` gives `report` as `None`. A report of a
+format this MIME does not read (a newer `mime.report/N`) does not stop the run being read: `RunResult.read` gives
+`report` as `None` and `report_unreadable` as the format the file states (`"not JSON"` for one that cannot be parsed);
+it is `None` when the report was read, or there was none.
 
 ### The stage binding
 

@@ -148,7 +148,6 @@ class LiveSession:
         self.live_inputs: dict[str, LiveInput] = dict(declared.live) if declared is not None else {}
         #: Each live input at its declared default, as the step reads it until a session sets it.
         self.defaults = {label: cast(np.ndarray, live_default(held)) for label, held in self.live_inputs.items()}
-        self._open_inputs()
         self._topology = built.topology()
         self._started = time.perf_counter()
         self._refuse_an_older_stage()
@@ -159,6 +158,7 @@ class LiveSession:
             refuse_out_over(out, [saved.folder] if saved is not None else [])
             self._write_experiment(out)
             self._open_log(out)
+        self._open_inputs()  # last: an open that is refused or fails installs no live input in the built's callback
 
     def _open_inputs(self) -> None:
         """Every session starts from the declared inputs: its controller's step, called back, reads each live input at

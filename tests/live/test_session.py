@@ -447,7 +447,7 @@ def test_hello_and_every_run_folder_carry_the_build_reports_summary(tmp_path):
     computed at the build, or stated by a record), the flags a run may raise, each setting's role and default, and the
     profile's stamp; a live session's run folder and ``run_to``'s each hold it as ``report.json``, which
     ``RunResult.read`` reads. The controls: a run folder without one (written before) reads ``None``, and a report of
-    another format is refused."""
+    another format (a newer one) is marked unreadable with the format it states, the run read all the same."""
     held = built()
     summary = held.report_summary()
     session = held.live(pace=None, out=tmp_path / "live")  # stopped as it opens: nothing compiled
@@ -470,7 +470,41 @@ def test_hello_and_every_run_folder_carry_the_build_reports_summary(tmp_path):
     for folder in (written, run.outputs.parent):
         assert json.loads((folder / RUN_REPORT).read_text()) == summary == RunResult.read(folder).report
     (written / RUN_REPORT).unlink()
-    assert RunResult.read(written).report is None
+    older = RunResult.read(written)
+    assert older.report is None and older.report_unreadable is None  # none written: not unreadable
+    readable = RunResult.read(run.outputs.parent)
+    assert readable.report == summary and readable.report_unreadable is None
     (run.outputs.parent / RUN_REPORT).write_text(json.dumps({**summary, "format": "mime.report/9"}))
-    with pytest.raises(ArgumentRefused, match="result.format"):
-        RunResult.read(run.outputs.parent)
+    newer = RunResult.read(run.outputs.parent)
+    assert newer.report is None and newer.report_unreadable == "mime.report/9"
+    assert newer.steps == readable.steps and newer.final.keys() == readable.final.keys()  # the run is read
+    (run.outputs.parent / RUN_REPORT).write_text("{not json")
+    assert RunResult.read(run.outputs.parent).report_unreadable == "not JSON"
+
+
+def test_an_open_that_is_refused_leaves_no_live_input_installed(tmp_path, monkeypatch):
+    """A session installs its live inputs at their defaults in the built's callback only once it has opened: an open
+    refused by the stage check, or failed by an ``out`` that is not a folder, leaves the callback as it was (none), so
+    nothing of a session that never was reaches a later batch run. The control: an open that succeeds installs them."""
+    from mime.build._refusals import Refusal, RefusalClass
+    from mime.live import _session
+
+    held = jit_steered().build()
+    callback = held._runs.callback  # pyright: ignore[reportPrivateUsage]
+    assert callback.live == {}
+
+    def refuse(self) -> None:
+        raise ArgumentRefused([Refusal("live.stage-writer", RefusalClass.USER, "planted", "none")])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(_session.LiveSession, "_refuse_an_older_stage", refuse)
+        with pytest.raises(ArgumentRefused, match="live.stage-writer"):
+            held.live(pace=None)
+    assert callback.live == {}
+    (tmp_path / "afile").write_text("x")
+    with pytest.raises(Exception):  # noqa: B017, PT011 - whichever error an out that is a file raises, the callback is clean
+        held.live(pace=None, out=tmp_path / "afile")
+    assert callback.live == {}
+    opened = held.live(pace=None)
+    assert set(callback.live) == {"offset"}
+    opened.stop()
