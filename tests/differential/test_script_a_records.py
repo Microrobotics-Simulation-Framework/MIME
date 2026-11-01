@@ -7,7 +7,10 @@ arm as it merged is in ``references/script_a_phase4_reproduction.json``; since p
 declared changes), the arm is held to ``references/script_a_4c3_reproduction.json``, frozen on 4c3's head before it
 merged phase 5. Since phase 7d read the body's shape from its hull's kind, its graph and the last bits of its run are
 held to ``references/script_a_7d_reproduction.json``, and its steady quantities still to 4c3's, within 1e-12. The
-control: with one inline value 1% off, neither holds.
+control: with one inline value 1% off, neither holds. The arms here are built on ``rigid_inertial`` 0.2.0, the law
+those freezes were made with: 0.3.0 (the gyroscopic term implicit, MIME-ANO-129) builds another node type, and so
+another derived graph, and gives this isotropic body the same arrays bit for bit
+(``tests/oracles/test_gyroscopic_energy.py``, ``tests/differential/test_frozen_register_pins.py``).
 
 **Then the records, one at a time.** Each switch (water's density, water's viscosity, N45's remanence through two
 magnet parts) changes A's steady quantities by what ``script_a_record_switches.json`` predicted before any record arm
@@ -27,6 +30,7 @@ the reproduction. It says nothing about whether the records describe A's water a
 declaration (its acceptances, with their reasons), and the dynamics' own error is phase 4's.
 """
 
+import contextlib
 import hashlib
 import json
 import platform
@@ -34,11 +38,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import script_a as script_a_module
 from script_a import ALL_RECORDS, DENSITY_RECORD, MAGNET_PARTS, VISCOSITY_RECORD, record_arm, reproduction_arm
 from script_a_runs import quantities, run_built
 from script_a_steady import GATED
 
 from mime import units
+from mime.dynamics.body import RigidInertialExplicit
 from mime.saved._record import environment
 
 HERE = Path(__file__).parent
@@ -89,9 +95,18 @@ def run_arm(built):
     return history, quantities(history, 10.0)
 
 
+@contextlib.contextmanager
+def the_law_the_freezes_were_made_with():
+    """Script A's body on ``rigid_inertial`` 0.2.0 while an arm is made (``tests/script_a.py`` builds it by name)."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(script_a_module, "RigidInertial", RigidInertialExplicit)
+        yield
+
+
 @pytest.fixture(scope="module")
 def reproduction():
-    built = reproduction_arm().build()
+    with the_law_the_freezes_were_made_with():
+        built = reproduction_arm().build()
     history, found = run_arm(built)
     return built, history, found
 
@@ -124,7 +139,8 @@ def test_the_reproduction_control_one_inline_value_one_percent_off_changes_the_g
     """Water's viscosity 1% off (phase 5 took the density, whose effect on A's speed 4c3's physics leaves below 1e-6:
     the O(dt) load it moved is gone)."""
     built, _, found = reproduction
-    experiment = reproduction_arm()
+    with the_law_the_freezes_were_made_with():
+        experiment = reproduction_arm()
     held = [d for d in experiment._declarations if getattr(d, "path", None) == "water.viscosity"]
     assert len(held) == 1
     experiment._declarations[experiment._declarations.index(held[0])] = type(held[0])(
