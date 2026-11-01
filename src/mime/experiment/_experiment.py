@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
 from pathlib import Path
-from typing import Any, cast, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 import numpy as np
 from maddening import GraphManager
@@ -43,7 +43,8 @@ from mime.build._refusals import (
     RunFailed,
     entry_defect,
 )
-from mime.control import ChunkedRun, ChunkHook, law_and_models
+from mime.build import StageBinding, stage_binding
+from mime.control import Chunk, ChunkedRun, ChunkHook, law_and_models
 from mime.errors import public
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
@@ -76,8 +77,8 @@ from mime.saved import (
     verify_history,
     write_folder,
 )
-from mime.saved._folder import LoadRefused
-from mime.scene import Scene, stage_text
+from mime.saved._folder import LoadRefused, stage_writers
+from mime.scene import STAGE_WRITER, STAGE_WRITERS, Scene, stage_text
 from mime.things import (
     Apparatus,
     ApparatusHandle,
@@ -95,7 +96,26 @@ from mime.units import TIME, Condition, Quantity, si
 from mime.validity import DEFAULT_PROFILE, Basis, Profile
 from mime.vocabulary import JOINT_VELOCITIES
 
+if TYPE_CHECKING:
+    from mime.live import LiveSession
+    from mime.viz import RecordingSettings, StageSamples
+
 type History = dict[str, dict[str, np.ndarray]]
+
+
+def _plain(value: Any) -> Any:
+    """A node's parameter as JSON holds it: a small array as lists, a larger one by its shape and dtype, anything
+    else MADDENING's text of it."""
+    if isinstance(value, (bool, int, float, str)) or value is None:
+        return value
+    if isinstance(value, Mapping):
+        return {str(k): _plain(v) for k, v in cast(Mapping[Any, Any], value).items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in cast(Sequence[Any], value)]
+    held = np.asarray(value) if hasattr(value, "shape") and hasattr(value, "dtype") else None
+    if held is not None:
+        return held.tolist() if held.size <= 16 else f"array of shape {tuple(held.shape)}, {held.dtype}"
+    return repr(value)
 
 
 class ObservationHandle:
@@ -403,7 +423,16 @@ class Experiment:
         stage = stage_text(stage_spec(plans))
         record = record_of(self._settings, self._declarations, plans, derived, stage)
         report = replace(report, stage_hash=record.stage_hash)
-        load_report = check_load(self._saved, record) if self._saved is not None else None
+        load_report = None
+        if self._saved is not None:
+            # A saved folder's stage is rebuilt by the writer that wrote it, to be held to its lock; a save writes the
+            # current writer's.
+            writers = [held for held in stage_writers(self._saved.lock) if held in STAGE_WRITERS]
+            if record.stage_hash == self._saved.lock["stage"]["sha256"] and STAGE_WRITER in writers:
+                writers = [STAGE_WRITER]  # the current writer's stage, as saved: no other is written
+            stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
+                      for writer in writers}
+            load_report = check_load(self._saved, record, stages)
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law)
 
     @public
@@ -448,6 +477,26 @@ class Experiment:
 RUN_OUTPUTS = "outputs.npz"
 RUN_RECORD = "run.json"
 RUN_EXPERIMENT = "experiment"
+#: The built graph's topology, :meth:`BuiltExperiment.topology`, beside a run's outputs.
+RUN_TOPOLOGY = "topology.json"
+TOPOLOGY_FORMAT = "mime.topology/1"
+
+
+def refuse_out_over(out: Path, sources: Sequence[str | PathLike[str]]) -> None:
+    """Refuse a run folder that would be written over what the run reads: ``out`` the same folder as a source, inside
+    one, or holding one (a run folder's ``experiment/`` is replaced as it is written, and its command log too)."""
+    target = Path(out).resolve()
+    for source in sources:
+        held = Path(source).resolve()
+        if held == target or held.is_relative_to(target) or target.is_relative_to(held):
+            where = "is" if held == target else "holds" if held.is_relative_to(target) else "is inside"
+            raise ArgumentRefused([Refusal(
+                "run.out-over-source", RefusalClass.USER,
+                f"the run would be written into {out}, which {where} {source}, what the run reads",
+                "write it to a folder of its own: --out <a new folder> (or out=), outside the saved folder and the run "
+                "folder it reads from",
+                why="a run folder's experiment/ and command log are written afresh, which would delete or overwrite "
+                    "the files being read")])
 
 
 @dataclass(frozen=True)
@@ -462,6 +511,8 @@ class RunWritten:
     record: Mapping[str, Any]
     manifest: Path
     result: RunResult
+    #: The recording layer over the run's own stage, where ``stage_every=`` asked for one.
+    recording: Path | None = None
 
 
 def run_layout(plans: PlanSet) -> Layout:
@@ -544,6 +595,7 @@ class BuiltExperiment:
         self._law = law
         self._runs = ChunkedRun(graph, plans, law)
         self.layout = run_layout(plans)
+        self._binding: StageBinding | None = None
         #: Where a run of this built left its state not finite, for the runs after it.
         self._non_finite: NonFinite | None = None
 
@@ -690,27 +742,15 @@ class BuiltExperiment:
                 "a hook needs chunks: it is called between them, and this run has none",
                 "pass chunk=, a whole number of base steps: run(..., hook=hook, chunk=ms(10))")])
         start = self._runs.steps
+        if self._runs.callback is not None:  # a run starts from the declared inputs: none a live session set
+            self._runs.callback.live.clear()
         kept = history or bool(recorded)
         keep = None if history or not recorded else frozenset(
             {(output.node, output.field) for output in recorded}
             | {(flag.node, flag.field) for flag in self.layout.flags})
         final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep)
-        tracks: dict[str, FlagTrack] = {}
-        series: dict[str, Samples] = {}
-        if stacked is not None:
-            counts = np.arange(start + 1, start + steps + 1, dtype=np.int64)
-            chosen = counts % spacing == 0
-            for output in (self.layout.per_step() if history else recorded):
-                series[output.path] = Samples(counts[chosen], np.asarray(stacked[output.node][output.field])[chosen])
-            for flag in self.layout.flags:
-                raised = flag.raised(stacked[flag.node][flag.field])
-                tracks[flag.path] = FlagTrack(raised, bool(raised[-1]))
-        else:
-            tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]))
-                      for flag in self.layout.flags}
-        result = RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
-                           recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
-                           watches=read_watches(self._plans.watches, final, stacked if history else None))
+        result = self.result_of(start, steps, final, stacked, recorded if not history else self.layout.per_step(),
+                                spacing, history=history)
         refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history,
                              already=self._non_finite)
         if refusal is not None:
@@ -719,10 +759,105 @@ class BuiltExperiment:
             raise RunFailed([refusal], result)
         return result
 
+    def result_of(self, start: int, steps: int, final: History, stacked: History | None = None,
+                  recorded: Sequence[OutputLayout] = (), spacing: int = 1, *, history: bool = False) -> RunResult:
+        """The result of ``steps`` steps from step ``start`` that ended at ``final``: the series ``recorded`` names from
+        ``stacked`` (every step's kept state, where the run kept it), one every ``spacing``, and each flag over the
+        steps kept, or at the last step alone."""
+        tracks: dict[str, FlagTrack] = {}
+        series: dict[str, Samples] = {}
+        if stacked is not None:
+            counts = np.arange(start + 1, start + steps + 1, dtype=np.int64)
+            chosen = counts % spacing == 0
+            for output in recorded:
+                series[output.path] = Samples(counts[chosen], np.asarray(stacked[output.node][output.field])[chosen])
+            for flag in self.layout.flags:
+                raised = flag.raised(stacked[flag.node][flag.field])
+                tracks[flag.path] = FlagTrack(raised, bool(raised[-1]))
+        else:
+            tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]))
+                      for flag in self.layout.flags}
+        return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
+                         recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
+                         watches=read_watches(self._plans.watches, final, stacked if history else None))
+
+    @public
+    def binding(self) -> StageBinding:
+        """Which field of the state moves which prim of the stage: each body's pose, each frame of each chain segment
+        (its row of the segment's frame poses), and each field a law reads at a body, a vector. Every bound prim is
+        placed in the world, so a pose is its prim's transform as it stands. ``binding().record()`` is its JSON."""
+        if self._binding is None:
+            self._binding = stage_binding(self._plans)
+        return self._binding
+
+    @public
+    def topology(self) -> dict[str, Any]:
+        """The built graph in MIME's names, for a graph inspector: each node with the entry that built it (its kind,
+        name and version), its owner, section and rate; each edge with MADDENING's keys, its units and the step it reads
+        (MIME's lag accounting); the coupling groups; the external inputs; and the controller, with its mode, period,
+        latency, reads, writes and live inputs. Plain JSON."""
+        from mime.build._report import graph_config
+
+        config = graph_config(self._graph)
+        lines = {line.node: line for line in self.report.nodes}
+        owners = {node: plan for plan in self._plans.entries for node in plan.node_names()}
+        read = {(e.source[0], e.source[1], e.target[0], e.target[1]): e.lag.value for e in self.report.lags}
+        nodes: list[dict[str, Any]] = []
+        for node in config["nodes"]:
+            name = str(node["name"])
+            line, plan = lines.get(name), owners.get(name)
+            nodes.append({
+                "name": name, "type": node["type"], "timestep": node["timestep"],
+                "every": line.divider if line is not None else None,
+                "owner": line.owner if line is not None else None,
+                "section": line.section if line is not None else None,
+                "entry": {"kind": plan.registered.kind.value, "name": plan.registered.name,
+                          "version": plan.registered.version, "label": line.entry if line is not None else None}
+                if plan is not None else None,
+                "thing": plan.thing if plan is not None else None,
+                "params": {key: _plain(value) for key, value in sorted(dict(node.get("params") or {}).items())}})
+        edges = [{"source_node": edge["source_node"], "source_field": edge["source_field"],
+                  "target_node": edge["target_node"], "target_field": edge["target_field"],
+                  "additive": bool(edge.get("additive")), "source_units": edge.get("source_units"),
+                  "target_units": edge.get("target_units"),
+                  "reads": read.get((edge["source_node"], edge["source_field"], edge["target_node"],
+                                     edge["target_field"]))} for edge in config["edges"]]
+        controller = self._plans.controller
+        held = None if controller is None else {
+            "entry": controller.registered.cls.label(), "mode": controller.mode.name.lower(),
+            "every": controller.period, "latency": controller.latency,
+            "reads": {r.label: r.path for r in controller.reads}, "writes": {w.label: w.path for w in controller.writes},
+            "live": {label: {"units": live.units, "shape": list(live.shape), "meaning": live.meaning}
+                     for label, live in cast(type[Controller], controller.registered.cls).live.items()}}
+        return {"format": TOPOLOGY_FORMAT, "experiment": self._plans.settings.experiment, "dt": self._plans.dt,
+                "nodes": nodes, "edges": edges,
+                "coupling_groups": [{"nodes": list(g.nodes), "tolerance": g.tolerance,
+                                     "max_iterations": g.max_iterations, "requested_by": list(g.requested_by)}
+                                    for g in self.report.groups],
+                "external_inputs": [{"node": e["target_node"], "field": e["target_field"], "shape": list(e["shape"]),
+                                     "dtype": str(e["dtype"])} for e in config["external_inputs"]],
+                "controller": held}
+
+    @public
+    def live(self, *, chunk: Quantity | None = None, pace: float | None = 1.0, select: Sequence[str] | None = None,
+             out: str | PathLike[str] | None = None) -> LiveSession:
+        """A live session of this built experiment (``mime.live``): it steps the run in chunks of one fixed size,
+        ``chunk`` (about 60 per simulated second when not given, a whole number of control periods with a controller
+        called back), hands each chunk's frame to its subscribers, takes live inputs (a controller's, in the callback
+        mode) and records the stage on request, paced to ``pace`` times real time (``None``: as fast as it runs).
+        ``select`` names the fields its frames carry (``<node>.<field>``; every bound pose and vector, every per-step
+        observation output and every flag when not given). It writes a minimal run folder into ``out`` when it stops:
+        the experiment, the command log, the final state, and the recording layer when recording was on."""
+        from mime.live import LiveSession
+
+        return LiveSession(self, chunk=chunk, pace=pace, select=select, out=Path(out) if out is not None else None)
+
     @public
     def run_to(self, out: str | PathLike[str], duration: Quantity, *, history: bool = False,
                record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
-               source: str | PathLike[str] | None = None, load_seconds: float | None = None) -> RunWritten:
+               source: str | PathLike[str] | None = None, load_seconds: float | None = None,
+               hook: ChunkHook | None = None, chunk: Quantity | None = None,
+               stage_every: Quantity | None = None) -> RunWritten:
         """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
         last step, with ``history`` at every step, the series ``record`` names, one every ``every``, and the flags at
         every step when anything is recorded), ``outputs.json`` beside it (its manifest: every output with its unit,
@@ -733,14 +868,22 @@ class BuiltExperiment:
         building took, both for the record. The precision a lock records is applied before loading
         (``mime.env.apply_lock_precision``), as ``mime run`` does. :meth:`RunResult.read` reads the folder back. A run
         whose state is not finite at its end is written all the same, its manifest and record saying so
-        (``non_finite``), and then raises ``RunFailed`` (``run.non-finite``), what it wrote as its ``written``."""
+        (``non_finite``), and then raises ``RunFailed`` (``run.non-finite``), what it wrote as its ``written``.
+
+        ``hook`` and ``chunk`` stream the run as :meth:`run` does. ``stage_every`` writes the recording layer,
+        ``recording.usdc``: the bound prims' poses and vectors (:meth:`binding`) over the folder's own stage, at the
+        run's start and every ``stage_every`` after it, a whole number of chunks (the run is chunked for it, which
+        changes nothing it computes, and keeps no step's state). ``topology.json`` is written beside the outputs."""
         import json
         import time
 
         started = time.perf_counter()
+        read = [source] if source is not None else [self._saved.folder] if self._saved is not None else []
+        refuse_out_over(Path(out), read)
         failed: RunFailed | None = None
+        samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:
-            result = self.run(duration, history=history, record=record, every=every)
+            result = self.run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk)
         except RunFailed as error:
             if not isinstance(error.result, RunResult):
                 raise
@@ -758,6 +901,13 @@ class BuiltExperiment:
         (target / RUN_MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                                            encoding="utf-8", newline="\n")
         self.save(target / RUN_EXPERIMENT)
+        (target / RUN_TOPOLOGY).write_text(json.dumps(self.topology(), indent=2, sort_keys=True) + "\n",
+                                           encoding="utf-8", newline="\n")
+        recording = None
+        if samples is not None:
+            from mime.viz import write_recording
+
+            recording = write_recording(target, self.binding(), samples, self.recording_settings())
         written: dict[str, Any] = {
             "folder": str(source) if source is not None else None, "duration": si(duration, TIME, what="the duration"),
             "steps": result.steps, "recorded": list(result.recorded),
@@ -766,14 +916,61 @@ class BuiltExperiment:
                         "run": round(ran - started, 3), "save": round(time.perf_counter() - ran, 3)},
             "environment": self.record.environment,
             "load_report": self.load_report.text() if self.load_report is not None else None,
-            "non_finite": refused}
+            "non_finite": refused,
+            "stage_every": samples.every * self._plans.dt if samples is not None else None,
+            "recording": recording.name if recording is not None else None}
         (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         done = RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
-                          target / RUN_MANIFEST, RunResult.read(target))
+                          target / RUN_MANIFEST, RunResult.read(target), recording)
         if failed is not None:
             failed.written = done
             raise failed
         return done
+
+    def recording_settings(self) -> RecordingSettings:
+        """What the recording layer is written with: the stage's up axis and metres per unit, the base step, the
+        experiment's name and its lock's hashes."""
+        from mime.viz import RecordingSettings
+
+        return RecordingSettings(up=self._plans.frame.up, meters_per_unit=self._plans.scene.meters_per_unit,
+                                 dt=self._plans.dt, experiment=self._plans.settings.experiment,
+                                 input_hash=str(self.record.hashes()["input"]))
+
+    def _stage_samples(self, stage_every: Quantity | None, hook: ChunkHook | None,
+                       chunk: Quantity | None) -> tuple[StageSamples | None, ChunkHook | None, Quantity | None]:
+        """The samples ``stage_every`` asks for, and the hook and chunk the run takes them with: the user's hook called
+        after each chunk as well, the chunks the control period's, ``chunk`` or ``stage_every``."""
+        if stage_every is None:
+            return None, hook, chunk
+        from mime.units import s
+        from mime.viz import StageSamples
+
+        spacing = self._spacing(stage_every)
+        size = self._runs.chunk or (self.steps_in(chunk) if chunk is not None else spacing)
+        if spacing % size:
+            raise ArgumentRefused([Refusal(
+                "run.stage-every", RefusalClass.USER,
+                f"stage_every= is {spacing} base steps, not a whole number of the run's chunks of {size} steps",
+                f"record the stage every whole number of chunks: stage_every=s({max(1, spacing // size) * size * self._plans.dt!r})",
+                why="the stage is recorded at the end of a chunk, where the state is on the host")])
+        samples = StageSamples(self.binding(), spacing)
+        samples.take(self._runs.steps, self.current_state())
+        user = hook
+
+        def taken(held: Chunk) -> None:
+            if (held.steps - samples.first) % spacing == 0:
+                samples.take(held.steps, held.state)
+            if user is not None:
+                user(held)
+
+        return samples, taken, (chunk if chunk is not None or self._runs.chunk is not None else s(spacing * self._plans.dt))
+
+    def current_state(self) -> History:
+        """Every node's state as the graph stands, on the host."""
+        from mime.build._maddening import node_state
+
+        return {name: {field: np.asarray(value) for field, value in node_state(self._graph, name).items()}
+                for name in self._graph.node_names}
 
     def _fresh_history(self, steps: int) -> History:
         """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in

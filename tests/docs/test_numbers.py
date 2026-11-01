@@ -148,7 +148,7 @@ def test_n1_a_near_miss_of_a_structural_idiom_is_no_idiom_and_is_keyed(tmp_path,
 
 def test_the_idiom_list_holds_exact_digit_forms_each_with_a_reason():
     idioms, found = read_idioms(Path(__file__).resolve().parents[2] / IDIOMS)
-    assert idioms == ("2D", "3D", "6 x 6", "> 0", ">= 0", "-> 0", "L/2") and found == []
+    assert idioms == ("2D", "3D", "6 x 6", "> 0", ">= 0", "-> 0", "L/2", "mime.live/1") and found == []
 
 
 def test_n1_a_number_in_a_code_fence_is_exempt_and_outside_one_is_not(tmp_path):

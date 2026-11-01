@@ -70,8 +70,8 @@ def _pending(folder: Path) -> int:
     return 1 if profile.pending else 0
 
 
-def _run(folder: Path, duration: float, out: Path, history: bool, record: Sequence[str] = (),
-         every: float | None = None) -> int:
+def _run(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str] = (),
+         every: float | None = None, stage_every: float | None = None, commands: Path | None = None) -> int:
     import time
 
     from mime.env import apply_lock_precision
@@ -83,10 +83,21 @@ def _run(folder: Path, duration: float, out: Path, history: bool, record: Sequen
     built = experiment.build()
     if experiment.load_report is not None:
         print(experiment.load_report.text())
+    if commands is not None:
+        from mime.live import replay
+
+        session = replay(built, commands, out)
+        print(f"replayed {commands}: {session.steps - session.start_step} steps in chunks of {session.chunk_steps}; "
+              f"wrote the session's run folder, {out}")
+        return 0
+    if duration is None:
+        raise BuildRefused([Refusal("run.duration", RefusalClass.USER, "mime run needs --duration, or --commands",
+                                    "give the simulated time: mime run <folder> --duration <seconds> --out <dir>")])
     try:
         written = built.run_to(out, s(duration), history=history, record=list(record),
                                every=s(every) if every is not None else None, source=folder,
-                               load_seconds=time.perf_counter() - started)
+                               load_seconds=time.perf_counter() - started,
+                               stage_every=s(stage_every) if stage_every is not None else None)
     except RunFailed as failed:
         if "run.non-finite" not in failed.codes():
             raise
@@ -119,6 +130,39 @@ def _non_finite_here(failed: RunFailed, folder: Path, duration: float, out: Path
     held = RunFailed(refusals, failed.result)
     held.written = failed.written
     return held
+
+
+def _serve(arguments: argparse.Namespace) -> int:
+    from mime.live import serve
+    from mime.units import s
+
+    serve(arguments.folder, commands=arguments.commands, frames=arguments.frames,
+          chunk=s(arguments.chunk) if arguments.chunk is not None else None,
+          pace=None if arguments.unpaced else arguments.pace, out=arguments.out,
+          select=arguments.select or None, json_frames=arguments.json_frames, start=arguments.start,
+          remote=arguments.remote, ready_file=arguments.ready_file, say=_say,
+          outlive_launcher=arguments.outlive_launcher)
+    return 0
+
+
+def _visuals(arguments: argparse.Namespace) -> int:
+    from mime import viz
+    from mime.scene import visual_sets
+
+    if arguments.visuals_command == "list":
+        baked = {name for name, _ in viz.baked_layers()}
+        for name, held in sorted(visual_sets().items()):
+            print(for_terminal(f"{name}  {len(held.files)} files  {'baked' if name in baked else 'not fetched'}  "
+                               f"{held.licence} ({held.tier}, {held.role})"))
+        return 0
+    if arguments.visuals_command == "fetch":
+        viz.fetch(arguments.set, say=_say)
+        print(f"{arguments.set}: baked into the asset cache, at {viz.visuals_dir()}; never into a saved or run folder")
+        return 0
+    path, found = viz.view(arguments.target)
+    print(for_terminal(found.text()))
+    print(path)
+    return 0
 
 
 def _env_check(arguments: argparse.Namespace) -> int:
@@ -413,9 +457,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
     corrupt).
 
-    ``mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]``:
-    load and rebuild a saved experiment, run it, and write its outputs, their manifest (``outputs.json``), its record
-    and the run's own saved form into ``<dir>``, which ``RunResult.read`` reads back. Exits 0, or 2 when refused.
+    ``mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]
+    [--stage-every <seconds>]``: load and rebuild a saved experiment, run it, and write its outputs, their manifest
+    (``outputs.json``), its record, its topology and the run's own saved form into ``<dir>``, which ``RunResult.read``
+    reads back, with the recording layer (``recording.usdc``) where ``--stage-every`` asks. ``mime run <folder>
+    --commands <log> --out <dir>`` replays a live session from its command log. Exits 0, or 2 when refused.
+
+    ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
+    [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
+    frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command, a signal, or the exit of the
+    process that launched it (unless ``--outlive-launcher``); it writes a run folder when it stops.
 
     ``mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]``:
     hold this environment to MIME's pins and the GPU requested, then apply the precision the folder's lock records.
@@ -423,6 +474,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     ``mime modal <folder> [--gpu <type>] [--deterministic] ...``: write the script that runs the saved experiment on
     Modal, beside it. Exits 0, or 2 when refused.
+
+    ``mime visuals list | fetch <set> | view <target>``: the descriptions' meshes MIME does not ship, fetched from
+    their pinned upstreams into the asset cache only, and the layer that draws them on a stage or a recording.
 
     ``mime pack <folder> [--out <file>]``: write the saved experiment in ``folder`` as one bundle file, a file its terms
     do not let be redistributed travelling as a reference. ``mime card <folder> [--out <file>] [--notice]``: the
@@ -528,8 +582,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.exit(2, f"mime credentials: {problem}\n{_CREDENTIAL_USAGE}\n")
     run = commands.add_parser("run", help="load a saved experiment, run it, and save the run beside its outputs")
     run.add_argument("folder", type=Path, help="a folder written by Experiment.save")
-    run.add_argument("--duration", type=float, required=True, help="seconds of simulated time, a whole number of the "
-                                                                   "experiment's base steps")
+    run.add_argument("--duration", type=float, default=None, help="seconds of simulated time, a whole number of the "
+                                                                  "experiment's base steps (required, but with "
+                                                                  "--commands)")
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
@@ -539,6 +594,51 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--every", type=float, default=None, metavar="SECONDS",
                      help="the spacing of the recorded series' samples, a whole number of base steps (default: every "
                           "step)")
+    run.add_argument("--stage-every", type=float, default=None, metavar="SECONDS",
+                     help="write the recording layer (recording.usdc, over the run's own stage) with a sample every "
+                          "SECONDS, a whole number of the run's chunks")
+    run.add_argument("--commands", type=Path, default=None, metavar="LOG",
+                     help="replay a live session from the command log it wrote (commands.jsonl): its run folder again, "
+                          "in place of --duration")
+    held_visuals = commands.add_parser("visuals", help="descriptions' meshes MIME does not ship, baked into the asset "
+                                                       "cache, and the overlay that draws them on a stage")
+    visual_commands = held_visuals.add_subparsers(dest="visuals_command", required=True)
+    visual_commands.add_parser("list", help="every visual set MIME has a recipe for, baked or not, with its licence")
+    visuals_fetch = visual_commands.add_parser("fetch", help="download a visual set from its pinned upstream, check "
+                                                             "each file's sha256, and bake it into the asset cache")
+    visuals_fetch.add_argument("set", help="the visual set's name, from mime visuals list")
+    visuals_view = visual_commands.add_parser("view", help="the layer that opens a stage, a recording or a folder's "
+                                                           "with the baked meshes drawn, for any USD viewer")
+    visuals_view.add_argument("target", type=Path, help="a stage or recording file, a run folder or a saved folder")
+    from mime.live import DEFAULT_COMMANDS, DEFAULT_FRAMES
+
+    serve = commands.add_parser("serve", help="serve a saved experiment's live session (mime.live/1, over ZMQ)")
+    serve.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    serve.add_argument("--commands", default=DEFAULT_COMMANDS, metavar="ENDPOINT",
+                       help=f"where to take commands, a REP socket (default: {DEFAULT_COMMANDS}; port 0 takes any "
+                            "free one)")
+    serve.add_argument("--frames", default=DEFAULT_FRAMES, metavar="ENDPOINT",
+                       help=f"where to send frames, a PUB socket (default: {DEFAULT_FRAMES})")
+    serve.add_argument("--chunk", type=float, default=None, metavar="SECONDS",
+                       help="the simulated time each chunk steps, one frame each (default: about 1/60 s, whole base "
+                            "steps and control periods)")
+    serve.add_argument("--pace", type=float, default=1.0, metavar="FACTOR",
+                       help="run at FACTOR times real time (default: 1)")
+    serve.add_argument("--unpaced", action="store_true", help="run as fast as it runs")
+    serve.add_argument("--out", type=Path, default=None, metavar="DIR",
+                       help="the run folder it writes when it stops (default: ./<experiment>-live-<time>/)")
+    serve.add_argument("--select", action="append", default=[], metavar="FIELD",
+                       help="a field the frames carry, <node>.<field> (repeat it; default: every bound pose and "
+                            "vector, every per-step output and every flag)")
+    serve.add_argument("--json-frames", action="store_true", help="send frames as JSON, for debugging")
+    serve.add_argument("--start", action="store_true", help="start stepping at once, before a client's start")
+    serve.add_argument("--remote", action="store_true",
+                       help="allow an address that is not loopback (no authentication: prefer an SSH tunnel)")
+    serve.add_argument("--ready-file", type=Path, default=None, metavar="FILE",
+                       help="write the bound endpoints as JSON to FILE once the sockets listen")
+    serve.add_argument("--outlive-launcher", action="store_true",
+                       help="serve on when the process that launched it is gone (by default the session stops then, "
+                            "writing its run folder, as on SIGTERM)")
     from mime.env import EXACT_GPUS, VARIANTS
 
     held_env = commands.add_parser("env", help="the environment a run is made in")
@@ -603,7 +703,11 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _registry(arguments.json)
     if arguments.command == "run":
         return _run(arguments.folder, arguments.duration, arguments.out, arguments.history, arguments.record,
-                    arguments.every)
+                    arguments.every, arguments.stage_every, arguments.commands)
+    if arguments.command == "serve":
+        return _serve(arguments)
+    if arguments.command == "visuals":
+        return _visuals(arguments)
     if arguments.command == "env":
         return _env_check(arguments)
     if arguments.command == "modal":

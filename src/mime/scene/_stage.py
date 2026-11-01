@@ -18,9 +18,14 @@ What it writes:
   form, derived the same way;
 - a body's initial pose as its transform, and, for a body written Python-first with no parts, a sphere of its
   declared extent;
-- an apparatus's chain: each segment's prim below the apparatus's, at its base's pose at the start, each frame a part
-  is mounted on below its segment's, and each part below its frame, by its authored transform, a magnet part with
-  ``MimeMagnetAPI`` and its direction;
+- an apparatus's chain: each segment's prim below the apparatus's, at its base's pose at the start; every frame of the
+  segment below it, placed in the world (its ``xformOpOrder`` resets the transform stack, so its transform is its
+  world pose: a state's frame pose, as it stands), at its pose at the start; each part below the frame it is mounted
+  on, by its authored transform, a magnet part with ``MimeMagnetAPI`` and its direction; and below each frame what the
+  stage draws of it: its description's visuals (``visuals/``: a box, cylinder or sphere as its USD primitive; a mesh
+  as an ``Xform`` naming its visual set and file sha256, which the asset cache's overlay fills, ``mime.viz``), and the
+  simple shapes that stand in for meshes the stage does not hold (``fallback/``: bones from the frame's origin to each
+  child's, a link's collision primitives);
 - the references to asset layers, by their path below the stage's folder.
 
 USD stores points as float32: a mesh's points stay in its own frame, near the origin, and the frame is placed by
@@ -59,6 +64,11 @@ from mime.units import Magnitude
 
 #: The writer's resolution: facets round a full turn of each curved direction of a drawn kind.
 DRAWING_SEGMENTS = 64
+#: The stage writer's version, which a lock records beside its stage's hash (``stage.writer``), and every version a
+#: stage can be rebuilt in to be held to its lock (``mime.build._stage``): version 1 is the writer before dev1 phase 7n,
+#: version 2 places every chain frame in the world and draws visuals, vectors and proxies within their budget.
+STAGE_WRITER = 2
+STAGE_WRITERS = (1, 2)
 #: A derived mesh's prim, below its kind's.
 PROXY = "proxy"
 _STRUCTURE_COLOUR = (0.85, 0.85, 0.9)
@@ -129,6 +139,50 @@ class MountedPrim:
     orientation: tuple[float, float, float, float]
     attributes: Mapping[str, str] = field(default_factory=dict[str, str])
     magnet: tuple[float, float, float] | None = None
+    #: Placed in the world, whatever its parent's transform: its transform stack is reset.
+    world: bool = False
+
+
+@dataclass(frozen=True)
+class VisualPrim:
+    """A shape drawn on a chain's frame, at ``path`` below the frame's prim, placed in the frame (``translation`` in
+    metres, ``orientation`` a unit quaternion ``(w, x, y, z)``): ``kind`` ``box`` (``size``), ``cylinder``
+    (``radius``, ``length``, along its z), ``sphere`` (``radius``), ``bone`` (a cylinder of ``radius`` from the
+    frame's origin to ``end``), or ``mesh``: an ``Xform`` scaled by ``scale``, holding its description's file name
+    (``file``) and, where a visual set lists it, the set (``asset``) and the file's sha256, never its bytes. ``role``
+    is ``visual``, ``collision`` or ``frames``."""
+
+    path: str
+    kind: str
+    role: str
+    translation: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    orientation: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    size: tuple[float, float, float] | None = None
+    radius: float | None = None
+    length: float | None = None
+    end: tuple[float, float, float] | None = None
+    colour: tuple[float, float, float] | None = None
+    file: str | None = None
+    asset: str | None = None
+    sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class VectorPrim:
+    """A field a law reads at a body, as the stage draws it: an arrow below ``path``, placed in the world at the body's
+    position (``translation``, m) and hidden until a recording or a client gives it a value (``mime:vector:value``, in
+    ``unit``); its arrow is ``metres_per_unit`` long per unit of the field, along the vector."""
+
+    path: str
+    translation: tuple[float, float, float]
+    unit: str
+    name: str
+    metres_per_unit: float
+
+
+#: The arrow's radius, as a fraction of its length: a presentation choice.
+ARROW_RADIUS_FRACTION = 0.05
 
 
 @dataclass(frozen=True)
@@ -142,6 +196,8 @@ class StageSpec:
     references: tuple[tuple[str, str], ...]
     things: tuple[ThingPrim, ...]
     mounted: tuple[MountedPrim, ...] = ()
+    visuals: tuple[VisualPrim, ...] = ()
+    vectors: tuple[VectorPrim, ...] = ()
 
 
 def up_axis(up: tuple[float, float, float]) -> str:
@@ -155,9 +211,11 @@ def _quat(q: tuple[float, float, float, float]) -> Any:
 
 
 def _place(prim: Any, translation: tuple[float, float, float] | None,
-           orientation: tuple[float, float, float, float] | None, scale: float) -> None:
+           orientation: tuple[float, float, float, float] | None, scale: float, *, world: bool = False) -> None:
     xformable = UsdGeom.Xformable(prim)
     xformable.ClearXformOpOrder()
+    if world:
+        xformable.SetResetXformStack(True)
     if translation is not None:
         xformable.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(
             Gf.Vec3d(*(c / scale for c in translation)))
@@ -310,12 +368,106 @@ def _thing(stage: Any, thing: ThingPrim, scale: float) -> None:
 
 def _mounted(stage: Any, mounted: MountedPrim, scale: float) -> None:
     prim = UsdGeom.Xform.Define(stage, mounted.path).GetPrim()
-    _place(prim, mounted.translation, mounted.orientation, scale)
+    _place(prim, mounted.translation, mounted.orientation, scale, world=mounted.world)
     for name, value in sorted(mounted.attributes.items()):
         prim.CreateAttribute(f"mime:{name}", Sdf.ValueTypeNames.String).Set(value)
     if mounted.magnet is not None:
         prim.AddAppliedSchema(MAGNET_API)
         prim.CreateAttribute(MAGNET_DIRECTION, Sdf.ValueTypeNames.Double3).Set(Gf.Vec3d(*mounted.magnet))
+
+
+_VISUAL_COLOUR = (0.7, 0.7, 0.72)
+#: The attributes a mesh visual's prim names its source with, which the asset cache's overlay reads.
+VISUAL_FILE, VISUAL_ASSET, VISUAL_SHA256, VISUAL_ROLE = ("mime:visual:file", "mime:visual:asset", "mime:visual:sha256",
+                                                         "mime:visual:role")
+_Z = (0.0, 0.0, 1.0)
+
+
+def _towards(end: tuple[float, float, float]) -> tuple[float, float, float, float]:
+    """The unit quaternion turning +Z onto ``end``'s direction, the shorter way."""
+    length = float(np.linalg.norm(end))
+    d = np.asarray(end, dtype=np.float64) / length
+    w = 1.0 + float(d[2])
+    if w < 1e-12:
+        return (0.0, 1.0, 0.0, 0.0)
+    q = np.array([w, -float(d[1]), float(d[0]), 0.0])
+    q /= np.linalg.norm(q)
+    return (float(q[0]), float(q[1]), float(q[2]), float(q[3]))
+
+
+def _visual(stage: Any, held: VisualPrim, scale: float) -> None:
+    """A shape on a frame: a USD primitive, or a mesh's ``Xform`` naming its source."""
+    translation, orientation = held.translation, held.orientation
+    if held.kind == "bone" and held.end is not None:
+        translation = (translation[0] + held.end[0] / 2, translation[1] + held.end[1] / 2,
+                       translation[2] + held.end[2] / 2)
+        orientation = _towards(held.end)
+    colour = held.colour or _VISUAL_COLOUR
+    if held.kind == "mesh":
+        prim = UsdGeom.Xform.Define(stage, held.path).GetPrim()
+        _place(prim, translation, orientation, scale)
+        if held.scale != (1.0, 1.0, 1.0):
+            UsdGeom.Xformable(prim).AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(*held.scale))
+        prim.CreateAttribute(VISUAL_FILE, Sdf.ValueTypeNames.String).Set(held.file or "")
+        if held.asset is not None and held.sha256 is not None:
+            prim.CreateAttribute(VISUAL_ASSET, Sdf.ValueTypeNames.String).Set(held.asset)
+            prim.CreateAttribute(VISUAL_SHA256, Sdf.ValueTypeNames.String).Set(held.sha256)
+        prim.CreateAttribute("primvars:displayColor", Sdf.ValueTypeNames.Color3fArray).Set(
+            Vt.Vec3fArray([Gf.Vec3f(*colour)]))
+    elif held.kind == "box" and held.size is not None:
+        cube = UsdGeom.Cube.Define(stage, held.path)
+        cube.CreateSizeAttr(1.0)
+        prim = cube.GetPrim()
+        _place(prim, translation, orientation, scale)
+        UsdGeom.Xformable(prim).AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(
+            Gf.Vec3d(*(c / scale for c in held.size)))
+        _extent(prim)
+        _display(cube, colour)
+    elif held.kind in ("cylinder", "bone") and held.radius is not None:
+        length = held.length if held.kind == "cylinder" else float(np.linalg.norm(held.end or _Z))
+        cylinder = UsdGeom.Cylinder.Define(stage, held.path)
+        cylinder.CreateRadiusAttr(held.radius / scale)
+        cylinder.CreateHeightAttr((length or 0.0) / scale)
+        cylinder.CreateAxisAttr(UsdGeom.Tokens.z)
+        prim = cylinder.GetPrim()
+        _place(prim, translation, orientation, scale)
+        _extent(prim)
+        _display(cylinder, colour)
+    elif held.kind == "sphere" and held.radius is not None:
+        sphere = UsdGeom.Sphere.Define(stage, held.path)
+        sphere.CreateRadiusAttr(held.radius / scale)
+        prim = sphere.GetPrim()
+        _place(prim, translation, orientation, scale)
+        _extent(prim)
+        _display(sphere, colour)
+    else:
+        return
+    prim.CreateAttribute(VISUAL_ROLE, Sdf.ValueTypeNames.Token).Set(held.role)
+
+
+#: The attributes a vector's prim carries: its value (time-sampled in a recording), its units and its arrow's scale.
+VECTOR_VALUE, VECTOR_UNITS, VECTOR_SCALE = "mime:vector:value", "mime:vector:units", "mime:vector:metres_per_unit"
+ARROW = "arrow"
+
+
+def _vector(stage: Any, held: VectorPrim, scale: float) -> None:
+    """A vector's prim: an ``Xform`` placed in the world at the body, hidden, holding an arrow a metre long along its
+    +Z (a cylinder from its origin) that a recording orients along the vector and scales, whole, to its length."""
+    prim = UsdGeom.Xform.Define(stage, held.path).GetPrim()
+    _place(prim, held.translation, (1.0, 0.0, 0.0, 0.0), scale, world=True)
+    UsdGeom.Xformable(prim).AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(1.0, 1.0, 1.0))
+    UsdGeom.Imageable(prim).CreateVisibilityAttr(UsdGeom.Tokens.invisible)
+    prim.CreateAttribute(VECTOR_VALUE, Sdf.ValueTypeNames.Double3).Set(Gf.Vec3d(0.0, 0.0, 0.0))
+    prim.CreateAttribute(VECTOR_UNITS, Sdf.ValueTypeNames.String).Set(held.unit)
+    prim.CreateAttribute(VECTOR_SCALE, Sdf.ValueTypeNames.Double).Set(held.metres_per_unit)
+    prim.CreateAttribute("mime:vector:name", Sdf.ValueTypeNames.String).Set(held.name)
+    arrow = UsdGeom.Cylinder.Define(stage, f"{held.path}/{ARROW}")
+    arrow.CreateRadiusAttr(ARROW_RADIUS_FRACTION / scale)
+    arrow.CreateHeightAttr(1.0 / scale)
+    arrow.CreateAxisAttr(UsdGeom.Tokens.z)
+    _place(arrow.GetPrim(), (0.0, 0.0, 0.5), None, scale)
+    _extent(arrow.GetPrim())
+    _display(arrow, (0.95, 0.55, 0.1))
 
 
 def stage_text(spec: StageSpec) -> str:
@@ -334,6 +486,10 @@ def stage_text(spec: StageSpec) -> str:
         _thing(stage, thing, spec.meters_per_unit)
     for mounted in sorted(spec.mounted, key=lambda m: m.path):
         _mounted(stage, mounted, spec.meters_per_unit)
+    for visual in sorted(spec.visuals, key=lambda v: v.path):
+        _visual(stage, visual, spec.meters_per_unit)
+    for vector in sorted(spec.vectors, key=lambda v: v.path):
+        _vector(stage, vector, spec.meters_per_unit)
     del stage, world  # the references are added to the layer alone: a stage would try to resolve them here
     for at, file in sorted(spec.references):
         layer.GetPrimAtPath(at).referenceList.Prepend(Sdf.Reference(f"./{file}"))
@@ -365,5 +521,6 @@ def check_stage(path: Path) -> list[StageFinding]:
     return found
 
 
-__all__ = ["DRAWING_SEGMENTS", "PROXY", "KindPrim", "MountedPrim", "RegionPrim", "StageFinding", "StageSpec",
-           "ThingPrim", "check_stage", "stage_text", "up_axis"]
+__all__ = ["ARROW", "DRAWING_SEGMENTS", "PROXY", "STAGE_WRITER", "STAGE_WRITERS", "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256", "KindPrim",
+           "MountedPrim", "RegionPrim", "StageFinding", "StageSpec", "ThingPrim", "VectorPrim", "VisualPrim", "check_stage",
+           "stage_text", "up_axis"]

@@ -35,7 +35,7 @@ from mime.core.multibody._tree import IDENTITY, ROTOR_ROUNDING, Body, ClosedChai
     DescriptionSource, Frame, Inertial, InvalidDescription, Joint, JointKind, JointLimits, LoopClosure, MultibodyTree, \
     Payload, RigidTransform, RotorSplit, Transmission, combined, graft, split_rotor, with_armatures
 from mime.core.multibody._urdf import CATEGORY_MESSAGES, DescriptionClassification, DescriptionElement, \
-    DescriptionReading, DescriptionRefused, DescriptionWarning, ElementGroup, InertiaGap, read_urdf
+    DescriptionReading, DescriptionRefused, DescriptionWarning, ElementGroup, InertiaGap, LinkShape, read_urdf
 
 __all__ = [
     "CATEGORY_MESSAGES",
@@ -56,6 +56,7 @@ __all__ = [
     "Frame",
     "Inertial",
     "InertiaGap",
+    "LinkShape",
     "InvalidDescription",
     "InverseKinematics",
     "Joint",
