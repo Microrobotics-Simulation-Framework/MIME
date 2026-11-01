@@ -35,6 +35,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more triangles than `PROXY_TRIANGLES`; A0's saved stage, nearly all the screw's proxy, is about a quarter of its size,
   and every stage of a chain gains its frames' prims, so its hash changes (no committed folder holds one).
 
+- **Joint armature and transmissions on dynamic chains, and a check that predicts a spinner's kick** (dev1 phase 7a5,
+  design #193): a geared joint's drive reflects its motor's rotor onto the joint (the rotor's inertia times the square
+  of the reduction), which a URDF's links do not hold, so the AR4's wrist was lighter than the rotor it carries and A0's
+  spin-up kicked it to 21 times its speed limit (7c2's review, item 3).
+  - **Armature on the dynamic arm**, per joint, on the diagonal of the mass matrix the step forms once, so that every
+    use of it carries the armature: the solve's system and its momentum `M q_dot`, the Cayley step's `M`, and the
+    stops' and friction's impulses through the same factor; also in inverse dynamics, and on the tree `ctx.models`
+    hands a controller. kg m^2 on a revolute joint, kg on a sliding one; differentiable (a parameter of the node).
+    `Arm.Dynamic(armature={"joint_6": kg_m2(..., reason=...)})` declares it; `actuators={"<actuator>": kg_m2(...) |
+    "<registered actuator>"}` gives the rotor behind a simple transmission of the description, whose reduction
+    reflects it; neither, a convention of none (the URDF's own meaning), which the build report says per joint and
+    research lists. A joint given both ways or twice, an actuator given twice, an unknown joint or actuator, or a unit
+    of the wrong kind is refused (`chain.armature`); on the kinematic rung, refused. A zero armature builds the graph of
+    none, bit for bit.
+  - **The URDF reader holds simple transmissions** (`<transmission>` of type `SimpleTransmission`, one joint and one
+    actuator, its `<mechanicalReduction>`; the older form with the type an attribute too) in
+    `MultibodyTree.transmissions` (`mime.core.multibody.Transmission`), as read: every transmission stays recognised
+    and not used, as before, and a description that loaded still loads. A transmission is judged only where it is
+    used, where `actuators=` names its actuator: there one on a joint the tree lacks or a fixed joint, two on one
+    joint, a reduction of zero or not a number, or an element URDF does not define in it is refused
+    (`chain.armature`), and the used one is read and used in the build report and the saved form, its hardware
+    interfaces, roles and offsets not used. Not used, the report names it with what is wrong with it, on both rungs.
+    `mime.core.multibody.with_armatures` sets joints' armatures on a tree.
+  - **Actuators** (`mime.dynamics.Actuator`, `register_actuator`, `actuator`): a motor's datasheet record, its rotor's
+    inertia with its source; one registered, StepperOnline's 17HS19-2004S1 (82 g cm^2, from its drawing).
+  - **The kick check** (`mime.build._kicks`): at build, for each spinner on a segment that carries mass, each revolute
+    joint's ratio `J |(M^-1 S^T e)_j|`, the joint's speed per unit of the rotor's spin with the joints held by nothing
+    (on one joint along the axis, `J / (I + a)`), from the carried tree with its armature at the start's joint
+    positions; the largest listed with the mounted masses, and a validity line (`validity of ... (computed at build)`),
+    never a refusal and the same in every profile, for each joint whose predicted speed at the motor's top speed passes
+    its speed limit (where the limit or the top speed is not given, whose ratio passes 0.1, a labelled decision the
+    line names), with `armature=` as the fix: 7c2's stand-in of 1e-4 kg m^2 on the wrist, a ratio of 0.093 and 3.73
+    times the limit, gives one. Predicted against measured on A0's free arm over six armatures: within 5.3e-4 of the
+    largest ratio, from the bare wrist's 3.93 to 0.0095.
+  - **A post-run flag** `<segment>.beyond_speed_limit` where a joint's speed passed its description's limit: a 7k flag
+    read from the joint velocities against per-joint limits (`FlagLayout.name` and `.limits`, in the manifest, a joint
+    with no limit `null` there), adding nothing to the graph. A URDF `velocity="0"` is no limit
+    (`JointLimits.speed`), as MoveIt reads a URDF.
+  - **A0**: as declared (7c2's preregistered comparison) its arm states no armature with its reason
+    (`script_a0_dynamic.NO_ARMATURE`), and the build names the bare wrist's kick (ratio 4.11). Two examples, not
+    preregistered (`tests/differential/test_a0_armature.py`), each armature an inference and not the AR4's drive: a
+    geared NEMA 17 wrist (the registered stepper's rotor behind an assumed reduction of 10, 8.2e-4 kg m^2), which A0's
+    own controller holds at 0.18 rad/s at 10 Hz against its limit of 1.57 (bare: 33 rad/s), the flag down; and 7c2's
+    stand-in of 1e-4 kg m^2, whose free kick (6.1 rad/s) passes the limit, held at 1.44 rad/s by the controller on the
+    built tree and passing it (4.6 rad/s, the flag raised) on a stale tree with the armature zeroed.
 - **The first run** (dev1 phase 7l-c, design #191 item 7):
   - **The README's install and quickstart**: the install section names the distribution, its extras and the branch it is
     installed from until 0.3 is released; the quickstart (a steel ball settling in water, in exploratory, with no

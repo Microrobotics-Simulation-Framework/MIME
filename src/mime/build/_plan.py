@@ -50,6 +50,7 @@ from mime.build._refusals import (
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.build._watch import WATCHED_FAMILY, WatchPlan
 from mime.core import VELOCITY_RULES
+from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
 from mime.core.multibody._tree import as_vector3, rotation_matrix
@@ -475,6 +476,10 @@ class PlanSet:
     profile: ProfileOutcome = ProfileOutcome(DEFAULT_PROFILE)
     #: The post-run watch's inputs, one per watched entry: read after a run, never part of the graph.
     watches: tuple[WatchPlan, ...] = ()
+    #: The validity lines the build computed, by entry id: never a refusal, and the same in every profile; and each
+    #: spinner's kick on its host's joints, as numbers (``mime.build._kicks``).
+    checked: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    kicks: tuple[SpinnerKicks, ...] = ()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -581,6 +586,10 @@ class _Planner:
         self.rates_reads: set[str] = set()
         self.apparatus_materials: dict[str, dict[str, materials.Record]] = {}
         self.masses: tuple[str, ...] = ()
+        #: The validity lines the build computes, by entry id (a spinner's kick on its host's joints), and each
+        #: spinner's kicks as numbers.
+        self.checked: dict[str, tuple[str, ...]] = {}
+        self.kicks: tuple[SpinnerKicks, ...] = ()
         self.models: dict[str, MultibodyTree] = {}
         #: The part values the mounted masses took, by path: a part's mass, or its density.
         self.mass_values: dict[str, materials.ResolvedValue] = {}
@@ -644,7 +653,8 @@ class _Planner:
         if self.refusals or self.frame is None:
             raise BuildRefused(self.refusals, BuildReport(self.settings.experiment, self.dt or None,
                                                           vocabulary=vocabulary.versions(),
-                                                          refusals=tuple(self.refusals), profile=self.outcome))
+                                                          refusals=tuple(self.refusals), profile=self.outcome,
+                                                          checked=dict(sorted(self.checked.items()))))
         entries = tuple(sorted(self.declared, key=EntryPlan.canonical_key))
         order = gathered([name for plan in entries for name in plan.node_names()], [g.nodes for g in groups])
         if self.controller is not None and self.controller.nodes:
@@ -663,7 +673,8 @@ class _Planner:
                        scene, self.orientation_lines(), self.materials_plan(values),
                        {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
                        controller, self.masses, dict(sorted(self.models.items())), self.outcome,
-                       self.watch_plans())
+                       self.watch_plans(), checked=dict(sorted(self.checked.items())),
+                       kicks=self.kicks)
 
     def watch_plans(self) -> tuple[WatchPlan, ...]:
         """The inputs of the post-run watch of every entry of the hydrodynamic family, from what the experiment
@@ -1613,7 +1624,9 @@ class _Planner:
                 model = entry.carried_model(plan.mounted)
                 if model is not None:
                     self.models[owner] = model
-        self.masses = tuple(found.lines)
+        judged = kick_lines(found.hosted, self.models, segments)
+        self.checked, self.kicks = judged.validity, judged.judged
+        self.masses = (*found.lines, *judged.lines)
 
     def part_mass(self, part: ResolvedPart) -> float | None:
         """An apparatus part's mass: declared, or its density (its material's or declared) times its volume; ``None``

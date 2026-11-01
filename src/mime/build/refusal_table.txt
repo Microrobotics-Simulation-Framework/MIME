@@ -34,6 +34,7 @@ bundle.unsafe                 user
 bundle.unscannable            user
 call.units                    user
 call.wrong-type               user
+chain.armature                user
 chain.articulated-payload     user
 chain.closed-loop             user
 chain.fixed-base              user

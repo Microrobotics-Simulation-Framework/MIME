@@ -3,8 +3,9 @@
 Nodes, dynamics entries and controllers import it; it imports nothing from MIME above ``mime.core``.
 
 - **The tree** (:class:`MultibodyTree`): bodies with inertials, joints (revolute, prismatic, fixed) with their axes,
-  limits, damping, friction and armature, named frames to mount parts on (every body's own, and extra ones), and loop
-  closures held as data. A reader records the file it read and its SHA-256.
+  limits, damping, friction and armature, named frames to mount parts on (every body's own, and extra ones), simple
+  transmissions (an actuator driving a joint through a reduction, which reflects its rotor's inertia onto the joint as
+  armature), and loop closures held as data. A reader records the file it read and its SHA-256.
 - **The URDF reader** (:func:`read_urdf`): every element of the file read and used, recognised and not used, or
   refused by name, each kind not used warned about once with what MIME does instead, and every element listed in
   the classification it returns.
@@ -32,7 +33,7 @@ from mime.core.multibody._se3 import Pose, compose, inverse, pose_error, relativ
     shorter_rotation_vector, shorter_way, transform_point
 from mime.core.multibody._tree import IDENTITY, ROTOR_ROUNDING, Body, ClosedChainRefused, ClosureKind, \
     DescriptionSource, Frame, Inertial, InvalidDescription, Joint, JointKind, JointLimits, LoopClosure, MultibodyTree, \
-    Payload, RigidTransform, RotorSplit, combined, graft, split_rotor
+    Payload, RigidTransform, RotorSplit, Transmission, combined, graft, split_rotor, with_armatures
 from mime.core.multibody._urdf import CATEGORY_MESSAGES, DescriptionClassification, DescriptionElement, \
     DescriptionReading, DescriptionRefused, DescriptionWarning, ElementGroup, InertiaGap, LinkShape, read_urdf
 
@@ -68,6 +69,7 @@ __all__ = [
     "Pose",
     "RigidTransform",
     "RotorSplit",
+    "Transmission",
     "articulate",
     "bias_forces",
     "cholesky_solve",
@@ -96,4 +98,5 @@ __all__ = [
     "shorter_way",
     "split_rotor",
     "transform_point",
+    "with_armatures",
 ]

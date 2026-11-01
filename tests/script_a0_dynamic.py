@@ -9,7 +9,11 @@ mass** (``density`` given, sintered NdFeB's typical 7.5 g/cm^3, an inference): i
 the rotor's (2.59e-5 kg m^2 in all), its mass and mean inertia across the axis are welded on ``link_6``, and its half
 difference across the axis turns with it; ``magnet_axis`` is its geometric axis in the rotor's frame (A0's along x,
 the moment's, spun about a diameter; ``(0, 0, 1)``, spun about its own axis, the symmetric case). The second arm is
-reported as data and never compared with the 0.2 reference, which carried neither."""
+reported as data and never compared with the 0.2 reference, which carried neither.
+
+**Its joints' armature** (phase 7a5): as declared, none, stated with its reason (:data:`NO_ARMATURE`), since the 0.2
+line's arm carried none and the comparison holds the reference's description; ``armature`` gives one, an example
+never compared with the reference (``tests/differential/test_a0_armature.py``)."""
 
 from __future__ import annotations
 
@@ -32,7 +36,7 @@ from mime.scene import asset as file_asset
 from mime.things import Apparatus, Part, PermanentMagnet
 from mime.units import A_m2, Hz, N_m_s, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, ms, rad, rad_per_s
 
-__all__ = ["DYNAMIC_READS", "DYNAMIC_WRITES", "a0_dynamic", "loops"]
+__all__ = ["DYNAMIC_READS", "DYNAMIC_WRITES", "NO_ARMATURE", "a0_dynamic", "loops"]
 
 #: What A0's controller reads on the dynamic rungs: ``arm_tracking``'s reads, the arm's joint velocities, and the
 #: motor's frames' angular velocities and poses; and what it writes.
@@ -52,16 +56,23 @@ def loops(frequency: float, **settings: Any) -> A0Loops:
     return A0Loops(**chosen)
 
 
+#: Why A0 as declared gives its arm's joints no armature: the source the experiment states for the convention.
+NO_ARMATURE = ("none: the 0.2 line's AR4 carried no armature, and A0's comparison with it holds the reference's "
+               "description; a bare wrist the rotor's spin-up kicks, which the build's validity line names")
+
+
 def a0_dynamic(name: str = "script_a0_dynamic", *, frequency=Hz(3.0), dt=ms(0.5), mode: Any = "graph", rate=None,
                latency=None, controller=None, density: float | None = None, magnet_axis=(1.0, 0.0, 0.0),
                top_speed: float | None = None, start=REFERENCE_START, rotor_inertia: float = ROTOR_INERTIA,
-               initial_angle: float = 0.0, magnet_direction=(1.0, 0.0, 0.0), **settings: Any) -> Experiment:
+               initial_angle: float = 0.0, magnet_direction=(1.0, 0.0, 0.0), armature: Any = None,
+               **settings: Any) -> Experiment:
     """A0 on its dynamic rungs: the arm and the motor dynamic, the rotor's magnet on ``motor.rotor``, closed by
     :func:`loops` every ``rate`` (every step when not given), ``latency`` late. ``density`` (kg/m^3) gives the magnet
     a mass, ``magnet_axis`` its geometric axis in the rotor's frame, ``top_speed`` (rad/s) the motor's, which an
     unequal rotor on a dynamic arm needs. ``controller`` replaces the controller; ``settings`` are its own.
     ``rotor_inertia`` (kg m^2), ``initial_angle`` (rad) and ``magnet_direction`` (in the rotor's frame) are A0's as
-    declared unless a control plants a fault in them."""
+    declared unless a control plants a fault in them. ``armature`` (by joint, as ``Arm.Dynamic`` takes it) gives the
+    arm's joints an armature; without it they have none, its source stated (:data:`NO_ARMATURE`)."""
     exp = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
     tube = exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                              length=mm(100.0))))
@@ -69,7 +80,8 @@ def a0_dynamic(name: str = "script_a0_dynamic", *, frequency=Hz(3.0), dt=ms(0.5)
     motor: dict[str, Any] = {"top_speed": rad_per_s(top_speed)} if top_speed is not None else {}
     exp.add_apparatus(Apparatus(
         "rpm",
-        chain={"arm": Arm.Dynamic(description=file_asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE)),
+        chain={"arm": Arm.Dynamic(description=file_asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE),
+                                  armature=armature or {}),
                "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(rotor_inertia), damping=N_m_s(ROTOR_DAMPING),
                                       initial_angle=rad(initial_angle), mount="link_6", **motor)},
         parts={"rotor_magnet": Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=magnet_axis),
@@ -77,6 +89,8 @@ def a0_dynamic(name: str = "script_a0_dynamic", *, frequency=Hz(3.0), dt=ms(0.5)
         magnets={"rotor_magnet": PermanentMagnet(direction=tuple(magnet_direction))},
         fields={"magnetic": PointDipole(part="rotor_magnet")}))
     exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet, 18.89 A m^2")
+    if armature is None:
+        exp.source("rpm.arm.armature", reason=NO_ARMATURE)
     if density is not None:
         exp.declare("rpm.parts.rotor_magnet.density", kg_per_m3(density), reason="sintered NdFeB, its typical value "
                                                                                  "(an inference)")

@@ -13,15 +13,18 @@ import numpy as np
 
 from mime.core import jnp, switch
 from mime.core.multibody import ROOT, ClosedChainRefused, DescriptionReading, DescriptionRefused, \
-    DescriptionWarning, InvalidDescription, MultibodyTree, Payload, articulate, forward_kinematics, frame_motions, graft, mass_matrix, \
-    read_urdf
+    DescriptionWarning, InvalidDescription, JointKind, MultibodyTree, Payload, Transmission, articulate, \
+    forward_kinematics, frame_motions, graft, mass_matrix, read_urdf, with_armatures
+from mime.dynamics.apparatus._actuators import actuator
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode
 from mime.registry import DESIGN, PHYSICAL, convention
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, GradientRecord, Port, Problem, \
     RungGradient, Segment, SegmentVisual, register_dynamics
 from mime.scene import Asset
-from mime.units import DIMENSIONLESS, FORCE, FREQUENCY, LENGTH, TORQUE, Magnitude, Quantity, Time
+from mime.units import DIMENSIONLESS, FORCE, FREQUENCY, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, Quantity, \
+    Time, unit_symbol
+from mime.validity import basis_text
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_INERTIA, \
     LINK_MOMENTUM, LINK_WRENCH, Capability
 
@@ -102,6 +105,11 @@ DYNAMIC_LIMITS = (
     "every moving joint moves mass or has armature: a moving body with geometry and no <inertial> is refused, and so "
     "is a joint with no inertia about its axis at the initial positions (one whose bodies have neither geometry nor "
     "<inertial>)",
+    "each joint's armature (a geared drive's rotor inertia reflected onto it, kg m^2 on a revolute joint and kg on a "
+    "prismatic one) is on the diagonal of its mass matrix wherever its dynamics uses it, declared (armature=) or "
+    "reflected through a simple transmission of its description from its actuator's rotor (actuators=); none where "
+    "neither gives one, the URDF's own meaning, which the build report says; a transmission that couples joints is not "
+    "read",
     "a joint limit is a rigid, inelastic stop: a joint driven past it arrives at it at the end of the step, and the "
     "stop takes the rest of its velocity on the next; its impulse moves every joint coupled to it; the limits on its "
     "joints' speeds and efforts in its description are not applied",
@@ -145,6 +153,19 @@ class Arm(ChainSegment):
     initial positions, whose bodies have neither geometry nor ``<inertial>`` and which has no armature
     (``chain.massless-joint``).
 
+    **Armature**, on the dynamic rung: a geared joint's drive reflects its motor's rotor inertia onto the joint, ``N^2
+    J`` through a reduction ``N``, which its description's links do not hold. ``armature`` declares it per joint
+    (``armature={"joint_6": kg_m2(1e-4, reason=...)}``, kg on a prismatic joint), and ``actuators`` gives the rotor
+    behind each simple transmission the description holds, by the actuator's name (``actuators={"motor_6":
+    kg_m2(8.2e-6, reason=...)}``, or a registered actuator's name, ``"stepperonline.17hs19-2004s1"``), whose
+    reduction reflects it. A joint given both ways, or twice, is refused (``chain.armature``). A transmission is judged
+    only where ``actuators`` names its actuator: there one with anything wrong with it (the reader's and the tree's
+    account of it, :meth:`MultibodyTree.transmission_faults`) is refused, naming what; one not used is recognised and
+    not used, as every transmission was before, and the build report names what is wrong with it. A joint given
+    neither has none, the URDF's own meaning: a convention, which the build report says and research lists. Each
+    armature is on the diagonal of the mass matrix wherever the dynamics uses it, and on the tree a model-based
+    controller reads (``ctx.models``).
+
     Every element of the file is read and used, recognised and not used, or refused, as ``mime.core.multibody``'s
     reader sorts it; each kind not used is warned about once and listed in the build report and the saved form. An
     element refused because dropping it changes the mechanism (a mimic joint, an element URDF does not define) is
@@ -163,6 +184,11 @@ class Arm(ChainSegment):
                                       "given"),
         "acknowledged": convention(DESIGN, "no element of the description is read past unless acknowledged with its "
                                            "reason"),
+        "armature": convention(PHYSICAL, "a joint whose armature is not declared, and whose transmission's actuator is "
+                                         "not given, has none: the URDF's own meaning, no geared drive's rotor "
+                                         "reflected onto it"),
+        "actuators": convention(PHYSICAL, "a transmission whose actuator's rotor is not given reflects nothing onto "
+                                          "its joint"),
     }
     differentiability = GradientStatus.PIECEWISE_KINK
     gradient = GradientRecord(switches=(*KINEMATIC_SWITCHES, *DYNAMIC_SWITCHES))
@@ -186,6 +212,20 @@ class Arm(ChainSegment):
     initial_velocities: Annotated[Quantity | None, FREQUENCY] = None
     servo: Annotated[Quantity | None, Time] = None
     acknowledged: tuple[tuple[str, str], ...] = ()
+    armature: Mapping[str, Quantity] | tuple[tuple[str, Quantity], ...] = ()
+    actuators: Mapping[str, Quantity | str] | tuple[tuple[str, Quantity | str], ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in ("armature", "actuators"):
+            object.__setattr__(self, name, _keyed(getattr(self, name)))
+
+    def declared_armature(self) -> tuple[tuple[str, Quantity], ...]:
+        """The armature declared, by joint, as pairs in the joints' names' order."""
+        return cast(tuple[tuple[str, Quantity], ...], self.armature)
+
+    def given_actuators(self) -> tuple[tuple[str, Quantity | str], ...]:
+        """The actuators given, by name, as pairs in their names' order."""
+        return cast(tuple[tuple[str, Quantity | str], ...], self.actuators)
 
     @classmethod
     def Kinematic(cls, **settings: Any) -> Arm:  # noqa: N802 - a rung's alias reads as a class
@@ -216,8 +256,15 @@ class Arm(ChainSegment):
         if self.rung == "dynamic":
             if servo is not None:
                 found.append("servo is the kinematic rung's: the dynamic arm follows the torques it is given")
-        elif "initial_velocities" in settings:
-            found.append("initial_velocities is the dynamic rung's: the kinematic arm's joints move as commanded")
+            found += _keyed_problems(self.armature, "armature", rotor=False)
+            found += _keyed_problems(self.actuators, "actuators", rotor=True)
+        else:
+            if "initial_velocities" in settings:
+                found.append("initial_velocities is the dynamic rung's: the kinematic arm's joints move as commanded")
+            given = [name for name in ("armature", "actuators") if getattr(self, name)]
+            if given:
+                found.append(f"{' and '.join(given)} {'is' if len(given) == 1 else 'are'} the dynamic rung's: the "
+                             f"kinematic arm's joints move as commanded, whatever their inertia")
         written = cast(object, self.acknowledged)  # a script is not type-checked
         pairs = list(cast(tuple[object, ...], written)) if isinstance(written, tuple) else [written]
         wrong: list[object] = [pair for pair in pairs if not _reasoned(pair)]
@@ -299,11 +346,16 @@ class Arm(ChainSegment):
                 "chain.initial", f"initial_positions lies beyond a joint's limits: {', '.join(beyond)}; the arm holds "
                                  f"every position within them, so it would jump at its first step",
                 "start every joint within its limits: initial_positions=rad((...))"),))
+        armed = _armature(tree, self.declared_armature(), self.given_actuators()) if dynamic else None
+        if armed is not None and armed.problems:
+            return Segment(tree.frame_names, description=reading.classification, problems=armed.problems)
+        classification = reading.using(armed.used) if armed is not None else reading.classification
+        held = with_armatures(tree, armed.values) if armed is not None else tree
         with cast(Any, jax).enable_x64(True):
             frames = np.asarray(forward_kinematics(tree, jnp.asarray(initial, dtype=jnp.float64)), dtype=np.float64)
             turning = np.asarray(frame_motions(tree, jnp.asarray(initial, dtype=jnp.float64),
                                                jnp.asarray(rates, dtype=jnp.float64))[1], dtype=np.float64)
-            inertia = np.diagonal(np.asarray(mass_matrix(tree, jnp.asarray(initial, dtype=jnp.float64)))) \
+            inertia = np.diagonal(np.asarray(mass_matrix(held, jnp.asarray(initial, dtype=jnp.float64)))) \
                 if dynamic else np.ones(dofs)
         unmoved = [name for name, own in zip(articulation.dof_names, inertia, strict=True)
                    if not own > _ROUNDING * float(np.max(inertia))]
@@ -321,10 +373,16 @@ class Arm(ChainSegment):
             (("joint_positions", DIMENSIONLESS, revolute), ("joint_displacements", LENGTH, prismatic))
         commands = {port: Command(port, dimension, (count,)) for port, dimension, count in kinds if count}
         massive = any(body.inertial is not None and body.inertial.mass > 0.0 for body in tree.bodies)
-        return Segment(tree.frame_names, commands, reading.classification,
+        return Segment(tree.frame_names, commands, classification,
                        initial=tuple(tuple(float(c) for c in row) for row in frames),
                        initial_rates=tuple((float(r[0]), float(r[1]), float(r[2])) for r in turning),
-                       massive=massive and not dynamic, visuals=segment_visuals(reading, frames))
+                       massive=massive and not dynamic, initial_joints=tuple(float(c) for c in initial),
+                       notes=armed.lines if armed is not None else transmission_lines(tree),
+                       visuals=segment_visuals(reading, frames))
+
+    def armed(self, tree: MultibodyTree) -> MultibodyTree:
+        """``tree`` with each joint's armature on it, as phase 1 resolved it (its problems refused there)."""
+        return with_armatures(tree, _armature(tree, self.declared_armature(), self.given_actuators()).values)
 
     @override
     def load_refusal(self) -> str | None:
@@ -359,7 +417,9 @@ class Arm(ChainSegment):
     @override
     def carried_model(self, mounted: Sequence[Payload]) -> MultibodyTree | None:
         reading = self.quietly_read()
-        return None if isinstance(reading, Problem) else graft(reading.tree, tuple(mounted))
+        if isinstance(reading, Problem):
+            return None
+        return graft(self.armed(reading.tree) if self.rung == "dynamic" else reading.tree, tuple(mounted))
 
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
@@ -369,7 +429,7 @@ class Arm(ChainSegment):
         if self.rung == "dynamic":
             tree = reading.tree
             names = tree.articulation.dof_names
-            carried = articulate(graft(tree, ctx.mounted), frames=tree.frame_names)
+            carried = articulate(graft(self.armed(tree), ctx.mounted), frames=tree.frame_names)
             b.add_node(DynamicArmNode(
                 ctx.node_name(), ctx.timestep,
                 **DynamicArmNode.described(carried, [tree.joint(name).damping for name in names],
@@ -450,6 +510,172 @@ def segment_visuals(reading: DescriptionReading, frames: np.ndarray) -> tuple[Se
 
 def _components(value: Magnitude) -> tuple[float, ...]:
     return value if isinstance(value, tuple) else (value,)
+
+
+def _keyed(value: object) -> object:
+    """A setting keyed by name (``{"joint_6": kg_m2(...)}``) as the pairs it is held and saved as, in the names'
+    order; anything else as it is, for :meth:`Arm.setting_problems` to refuse."""
+    if isinstance(value, Mapping):
+        pairs = cast(Mapping[object, object], value).items()
+    elif isinstance(value, (tuple, list)):
+        pairs = cast(Sequence[object], value)
+    else:
+        return value
+    held: list[object] = [tuple(cast(Sequence[object], pair)) if isinstance(pair, (tuple, list)) else pair
+                          for pair in pairs]
+    named = [cast(tuple[object, ...], pair) for pair in held if isinstance(pair, tuple)]
+    if len(named) == len(held) and all(len(pair) == 2 and isinstance(pair[0], str) for pair in named):
+        return tuple(sorted(cast(list[tuple[str, object]], named), key=lambda pair: pair[0]))
+    return tuple(held)
+
+
+def _keyed_problems(value: object, name: str, *, rotor: bool) -> list[str]:
+    """What is wrong with a setting keyed by name as written: each entry a name and a quantity of zero or more (a
+    rotor's above zero, kg m^2), or for an actuator a registered actuator's name."""
+    example = ('actuators={"motor_6": kg_m2(8.2e-6, reason=...)}' if rotor else
+               'armature={"joint_6": kg_m2(1e-4, reason=...)}')
+    pairs = cast(tuple[object, ...], value) if isinstance(value, tuple) else (value,)
+    found: list[str] = []
+    for pair in pairs:
+        if not (isinstance(pair, tuple) and len(cast(tuple[object, ...], pair)) == 2):
+            found.append(f"{name} holds {pair!r}, not a name and its value: write {example}")
+            continue
+        key, held = cast(tuple[object, object], pair)
+        if not isinstance(key, str):
+            found.append(f"{name} is keyed by {key!r}, not a name")
+        elif rotor and isinstance(held, str):
+            try:
+                actuator(held)
+            except KeyError as error:
+                found.append(f"{name}[{key!r}]: {error.args[0]}")
+        elif not isinstance(held, Quantity) or not isinstance(held.value, float) or not math.isfinite(held.value) \
+                or held.value < 0.0 or (rotor and held.value == 0.0):
+            what = "a rotor's moment of inertia above zero, kg_m2(...), or a registered actuator's name" if rotor \
+                else "a joint's armature of zero or more, kg_m2(...) on a revolute joint and kg(...) on a prismatic one"
+            found.append(f"{name}[{key!r}] is {held!r}, not {what}")
+        elif rotor and held.dimension != MOMENT_OF_INERTIA:
+            found.append(f"{name}[{key!r}] is {held}, not a rotor's moment of inertia: kg_m2(...)")
+    return found
+
+
+@dataclass(frozen=True)
+class _Armature:
+    """Each joint's armature as an arm's settings and description give it (``values``, SI), the build report's lines
+    for it, each problem found, with its action, and the transmissions it uses, by name."""
+
+    values: dict[str, float]
+    lines: tuple[str, ...]
+    problems: tuple[Problem, ...]
+    used: tuple[str, ...] = ()
+
+
+def _armature(tree: MultibodyTree, declared: Sequence[tuple[str, Quantity]],
+              given: Sequence[tuple[str, Quantity | str]]) -> _Armature:
+    """Each joint's armature: declared on it, or reflected through its simple transmission from the rotor its actuator
+    is given; refused where a joint or an actuator is named twice, a joint is named that the tree does not move, an
+    armature is of another dimension than its joint's kind takes, an actuator is named that no simple transmission
+    names, the transmission it names has anything wrong with it, or a joint is given one both ways. A transmission
+    whose actuator is not given is not used, and nothing wrong with it is refused: the classification names it, with
+    what is wrong with it."""
+    kinds = {j.name: j.kind for j in tree.joints if j.moves}
+    driving: dict[str, list[Transmission]] = {}
+    for held in tree.transmissions:
+        driving.setdefault(held.actuator, []).append(held)
+    values: dict[str, float] = {}
+    lines: list[str] = []
+    problems: list[Problem] = []
+    used: list[str] = []
+    for setting, names in (("armature", [joint for joint, _ in declared]), ("actuators", [name for name, _ in given])):
+        twice = sorted({name for name in names if names.count(name) > 1})
+        for name in twice:
+            problems.append(Problem(
+                "chain.armature", f"{setting} names {name!r} {names.count(name)} times, so it gives "
+                                  f"{'its joint' if setting == 'actuators' else name} more than one armature",
+                f"give {name!r} once in Arm.Dynamic({setting}=...)"))
+        if twice:
+            return _Armature({}, (), tuple(problems))
+    for joint, held in declared:
+        if joint not in kinds:
+            problems.append(Problem(
+                "chain.armature", f"armature names {joint!r}, which is not a moving joint of {tree.name}; its moving "
+                                  f"joints are {', '.join(kinds)}",
+                "key each armature by a moving joint's name: Arm.Dynamic(armature={\"<joint>\": kg_m2(...)}, ...)"))
+            continue
+        revolute = kinds[joint] is JointKind.REVOLUTE
+        wanted = MOMENT_OF_INERTIA if revolute else MASS
+        if held.dimension != wanted:
+            problems.append(Problem(
+                "chain.armature", f"armature[{joint!r}] is {held}, and {joint} is a {kinds[joint].value} joint, whose "
+                                  f"armature is {'a moment of inertia, kg m^2' if revolute else 'a mass, kg'}",
+                f"write armature={{{joint!r}: {'kg_m2' if revolute else 'kg'}(...)}} in Arm.Dynamic(...)"))
+            continue
+        values[joint] = cast(float, held.value)
+        reason = f" ({basis_text(held.reason)})" if held.reason is not None else ", its source not given"
+        lines.append(f"armature of {joint}: {values[joint]:.6g} {unit_symbol(wanted)}, declared{reason}")
+    for name, rotor in given:
+        found = driving.get(name, [])
+        if not found:
+            named = ", ".join(sorted(driving)) or "none"
+            problems.append(Problem(
+                "chain.armature", f"actuators names {name!r}, and no simple transmission of {tree.name}'s description "
+                                  f"names that actuator; the actuators its simple transmissions name: {named}",
+                "give each actuator by the name its transmission gives it, in Arm.Dynamic(actuators={...}), or declare "
+                "the joint's armature= itself"))
+            continue
+        transmission = found[0]
+        faults = tree.transmission_faults(transmission)
+        if faults:
+            problems.append(Problem(
+                "chain.armature", f"actuators names {name!r}, whose transmission {transmission.name!r} in "
+                                  f"{tree.name}'s description cannot reflect its rotor onto a joint: "
+                                  f"{'; '.join(faults)}",
+                "correct the transmission in the description, or leave its actuator out of actuators= and declare "
+                "the joint's armature= itself"))
+            continue
+        joint = transmission.joint
+        if joint in values:
+            problems.append(Problem(
+                "chain.armature", f"{joint}'s armature is given twice: declared (armature={{{joint!r}: ...}}) and "
+                                  f"reflected through transmission {transmission.name!r} from actuator {name!r} "
+                                  f"(actuators={{{name!r}: ...}})",
+                "keep one of the two in Arm.Dynamic(...): armature= or actuators="))
+            continue
+        if isinstance(rotor, str):
+            record = actuator(rotor)
+            inertia = record.inertia
+            source = f"registered actuator {record.name}: {basis_text(cast(Any, record.rotor_inertia.reason))}"
+        else:
+            inertia = cast(float, rotor.value)
+            source = basis_text(rotor.reason) if rotor.reason is not None else "its source not given"
+        values[joint] = transmission.reflected(inertia)
+        used.append(transmission.name)
+        unit = "kg m^2" if kinds[joint] is JointKind.REVOLUTE else "kg"
+        lines.append(f"armature of {joint}: {values[joint]:.6g} {unit}, reflected through transmission "
+                     f"{transmission.name!r} (reduction {transmission.reduction:g}, squared) from actuator {name!r}'s "
+                     f"rotor, {inertia:.6g} kg m^2 ({source})")
+    for transmission in tree.transmissions:
+        if transmission.name not in used:
+            lines.append(f"transmission {transmission.name!r} (on {transmission.joint or 'no joint'}): recognised and "
+                         f"not used, its actuator {transmission.actuator!r}'s rotor not given (actuators=), so it "
+                         f"reflects nothing{_faults_text(tree, transmission)}")
+    bare = [joint for joint in kinds if joint not in values]
+    if bare:
+        lines.append(f"no armature on {', '.join(bare)}: the URDF's own meaning, a convention (a geared drive's rotor "
+                     f"reflected onto a joint is declared by armature=, or given through its transmission by "
+                     f"actuators=)")
+    return _Armature(values, tuple(lines), tuple(problems), tuple(used))
+
+
+def _faults_text(tree: MultibodyTree, transmission: Transmission) -> str:
+    faults = tree.transmission_faults(transmission)
+    return f"; were it used, it would be refused: {'; '.join(faults)}" if faults else ""
+
+
+def transmission_lines(tree: MultibodyTree) -> tuple[str, ...]:
+    """The kinematic rung's lines for its description's simple transmissions: each recognised and not used, with what
+    is wrong with it, since the kinematic arm's joints move as commanded."""
+    return tuple(f"transmission {t.name!r} (on {t.joint or 'no joint'}): recognised and not used, the kinematic arm's "
+                 f"joints moving as commanded{_faults_text(tree, t)}" for t in tree.transmissions)
 
 
 __all__ = ["Arm"]
