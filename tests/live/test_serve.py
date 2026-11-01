@@ -23,6 +23,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from live_cases import built, saved
+from process_groups import running
 
 from mime.live import COMMAND_LOG, PROTOCOL, FrameOrder, LiveClient
 from mime.live._zmtp import message
@@ -305,19 +306,6 @@ def test_the_server_stops_when_the_process_that_launched_it_is_gone(launch, fold
         assert (out / "run.json").is_file() and json.loads((out / COMMAND_LOG).read_text().splitlines()[-1]) == \
             {"command": "stop", "step": 0}
         live.close()
-
-
-def running(pid: int) -> bool:
-    """Whether the process ``pid`` still runs (a zombie, its parent gone and not yet reaped, does not)."""
-    if sys.platform == "win32":
-        done = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, check=False)
-        return str(pid) in done.stdout
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    status = Path(f"/proc/{pid}/stat")
-    return not (status.is_file() and status.read_text().split(") ")[-1].startswith("Z"))
 
 
 def stop_pid(pid: int) -> None:
