@@ -97,6 +97,10 @@ class _CappedDownload:
         return None
 
 
+#: A ``doi:`` location under DataCite's test prefix: never resolved through doi.org, which does not resolve it.
+TEST_DOI = "doi:10.5072/"
+
+
 def _download_held_to(location: str, known_hash: str | None, fname: str, directory: Path, limit: int) -> Path:
     """One location through pooch into ``directory``, which pooch fills through a temporary file moved into place only
     if its hash is ``known_hash`` (``sha256:...`` for an asset, the repository's ``md5:...`` for a bundle fetched by DOI,
@@ -104,6 +108,9 @@ def _download_held_to(location: str, known_hash: str | None, fname: str, directo
     raises :class:`_SizeExceeded`, once it has passed ``limit`` bytes."""
     import pooch
 
+    if location.startswith(TEST_DOI):
+        raise ValueError(f"{location} is under DataCite's test prefix (the Zenodo sandbox's), which doi.org does not "
+                         f"resolve, so MIME does not ask doi.org for it")
     # pooch types its path argument as a bare PathLike, which a strict checker reads as unknown.
     library = _held(pooch)
     downloader = _CappedDownload(library.downloaders.choose_downloader(location), limit)

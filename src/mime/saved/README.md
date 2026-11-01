@@ -21,7 +21,12 @@
   compares); every entry used, with the distribution it came from and that
   distribution's version; the derived seeds; the hashes; the resolved record; the derived graph; the record of
   the reference outputs; and, where there are any, the remote assets (`assets`) and the files that travel as
-  references, each with the asset that holds its bytes (`referenced_files`), both outside the input hash.
+  references, each with the asset that holds its bytes (`referenced_files`), both outside the input hash; and, in
+  the lock of a bundle `mime push` published (and of its author's folder once it is published on production), the
+  record it is (`publication`: the service, the version's record and DOI, its concept's record and DOI, its number),
+  outside the input hash too, so the folder loads and verifies as before and `mime pack` makes the published bundle
+  again. Such a lock names the record's own location of each file it holds first; a referenced file's asset may so
+  name the record before its origin.
 - **The resolved record**: every setting with its default, each body's initial state in SI, the nodes each entry
   built in the canonical order, the registrations, reader slots, coupling groups, and each entry's declared gradient
   status: the attached rung's, where the entry's rungs declare their own.

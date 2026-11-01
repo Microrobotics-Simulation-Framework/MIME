@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
@@ -25,6 +25,7 @@ import yaml
 
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.push._fields import Funding, conference_problems, field_problems, funding_problems
 from mime.terms import licence_problem
 
 SHARING_FILE = "sharing.yaml"
@@ -46,7 +47,8 @@ RELATION_TYPES = ("IsCitedBy", "Cites", "IsSupplementTo", "IsSupplementedBy", "I
 _ORCID = re.compile(r"(?:https://orcid\.org/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])")
 _ROR = re.compile(r"(?:https://ror\.org/)?(0[a-z0-9]{6}\d{2})")
 _DOI = re.compile(r"10\.\d{4,9}/\S+")
-_TOP = ("format", "title", "description", "licence", "creators", "contributors", "keywords", "related", "uploader")
+_TOP = ("format", "title", "description", "licence", "creators", "contributors", "keywords", "related", "uploader",
+        "funding", "conference", "fields")
 _PERSON = ("family", "given", "organisation", "orcid", "affiliation", "ror")
 _LINE = {
     "format": f"format: {SHARING_FORMAT}",
@@ -58,6 +60,9 @@ _LINE = {
     "keywords": "keywords: [<a keyword>]",
     "related": "related: [{identifier: <10.xxxx/... or https://...>, relation: IsSupplementTo}]",
     "uploader": "uploader: {name: \"<family name>, <given name>\", institution: <your institution>}",
+    "funding": "funding: [{funder: <the funder's name>, ror: <its ROR id>, award: <number>, title: <its title>}]",
+    "conference": "conference: {title: <the conference's name>, acronym: <...>, dates: <...>, place: <...>}",
+    "fields": "fields: {languages: [{id: eng}]}",
 }
 
 
@@ -142,7 +147,8 @@ class Uploader:
 @dataclass(frozen=True)
 class Sharing:
     """``sharing.yaml`` as read: the record's title and its description's first paragraph, the licence the author states
-    (held equal to the experiment's), the creators, the contributors, keywords, related works and the uploader."""
+    (held equal to the experiment's), the creators, the contributors, keywords, related works, the uploader, the
+    funding, a conference, and any other field of the record (:mod:`mime.push._fields`)."""
 
     title: str
     description: str
@@ -152,6 +158,11 @@ class Sharing:
     keywords: tuple[str, ...] = ()
     related: tuple[Related, ...] = ()
     uploader: Uploader | None = None
+    funding: tuple[Funding, ...] = ()
+    #: Zenodo's meeting field, as the records API holds it.
+    conference: Mapping[str, str] | None = None
+    #: Any other field of the record, checked against its shape (:data:`mime.push._fields.SHAPES`).
+    fields: Mapping[str, object] = field(default_factory=lambda: cast(Mapping[str, object], {}))
 
 
 class _Reader:
@@ -299,12 +310,20 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
         name = reader.text(entry, "name", "uploader.", required=True) if entry is not None else None
         if entry is not None and name is not None:
             uploader = Uploader(name, reader.text(entry, "institution", "uploader."))
+    funding, problems = funding_problems(held.get("funding"))
+    conference, found = conference_problems(held.get("conference"))
+    problems += found
+    fields: object = held.get("fields") or {}
+    problems += field_problems(fields)
+    for problem in problems:
+        where, _, what = problem.partition(": ")
+        reader.problem(where, what)
     if reader.refusals:
         raise BuildRefused(reader.refusals)
     assert title is not None and licence is not None
     return Sharing(title, description, licence, tuple(p for p in creators if p is not None),
                    tuple(p for p in contributors if p is not None), tuple(k for k in keywords if k is not None),
-                   tuple(related), uploader)
+                   tuple(related), uploader, tuple(funding), conference, cast(Mapping[str, object], fields))
 
 
 def scaffold(name: str, licence: str | None) -> str:
@@ -340,6 +359,18 @@ def scaffold(name: str, licence: str | None) -> str:
         "related: []",
         "# The person whose token pushes, and their institution: a declared permission's grantee must be one of them.",
         "# uploader: {name: \"<family name>, <given name>\", institution: <your institution>}",
+        "# Who funded the work: each funder's name (with its ROR identifier where you know it), and the award's number",
+        "# and title. For example:",
+        "#   - {funder: European Commission, ror: 00k4n6c32, award: \"101001234\", title: <the award's title>}",
+        "funding: []",
+        "# A conference the experiment was shown at (Zenodo's meeting field): title, acronym, dates, place, url,",
+        "# session, part. For example:",
+        "# conference: {title: <the conference's name>, acronym: <...>, dates: 3-7 May 2027, place: <city>}",
+        "# Any other field of the record, in the records API's own names and shapes, checked before anything is sent:",
+        "# subjects, dates, languages, references, additional_titles, additional_descriptions, and Zenodo's own",
+        "# journal:journal, imprint:imprint, thesis:university and thesis:type. For example:",
+        "#   fields: {languages: [{id: eng}], dates: [{date: 2026-10, type: {id: collected}}]}",
+        "fields: {}",
         ""])
 
 

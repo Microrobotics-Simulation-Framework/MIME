@@ -311,11 +311,19 @@ def _ask(question: str) -> bool:
         return False
 
 
-def _pull(source: str, into: Path | None, no_assets: bool, yes: bool, max_bundle_bytes: int) -> int:
+def _typed(prompt: str) -> str:
+    try:
+        return input(prompt)
+    except EOFError:
+        return ""
+
+
+def _pull(source: str, into: Path | None, no_assets: bool, yes: bool, max_bundle_bytes: int,
+          from_service: str | None = None) -> int:
     from mime import saved
 
     saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes, confirm=_ask if sys.stdin.isatty() else None,
-               say=_say, max_bundle_bytes=max_bundle_bytes)
+               say=_say, max_bundle_bytes=max_bundle_bytes, from_service=from_service)
     return 0
 
 
@@ -326,6 +334,10 @@ def _push(arguments: argparse.Namespace) -> int:
     service = push.SERVICES[arguments.to]
     folder: Path = arguments.folder
     ask = _ask if sys.stdin.isatty() else None
+    if arguments.confirm is not None and not arguments.publish:
+        raise BuildRefused([Refusal("push.not-confirmed", RefusalClass.USER,
+                                    "--confirm names the draft a publish publishes, and this is not a publish",
+                                    f"`mime push {folder} --to {service.name} --publish --confirm <DOI>`")])
     if arguments.init:
         path, written, licence = push.init(folder)
         print(for_terminal(f"wrote {path}" if written else f"kept {path}, which exists: edit it, or delete it and "
@@ -341,8 +353,14 @@ def _push(arguments: argparse.Namespace) -> int:
     if arguments.discard:
         push.discard(folder, service, yes=arguments.yes, confirm=ask, say=_say)
         return 0
+    if arguments.publish:
+        push.publish(folder, service, confirm=arguments.confirm, ask=ask, typed=_typed if ask is not None else None,
+                     say=_say, overwrite_site_edits=arguments.overwrite_site_edits,
+                     keep_site_edits=arguments.keep_site_edits, full=arguments.full_plan)
+        return 0
     push.push(folder, service, yes=arguments.yes, confirm=ask, say=_say,
-              overwrite_site_edits=arguments.overwrite_site_edits)
+              overwrite_site_edits=arguments.overwrite_site_edits, keep_site_edits=arguments.keep_site_edits,
+              full=arguments.full_plan)
     return 0
 
 
@@ -485,8 +503,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
     fetch its assets and say what to install. ``mime credentials set | status | remove <service>``: the token
     ``push`` will use, kept where a commit cannot publish it. ``mime push <folder> --to zenodo|zenodo-sandbox
-    [--init | --status | --discard] [--yes] [--overwrite-site-edits]``: the plan, then the experiment's draft record
-    and its files; never published.
+    [--init | --status | --discard | --publish [--confirm <DOI>]] [--yes] [--full-plan] [--keep-site-edits |
+    --overwrite-site-edits]``: the plan, then the experiment's draft record and its files; ``--publish`` publishes
+    the draft after the confirmation in words, each declared permission asked and the record number typed.
+    ``mime pull --from zenodo|zenodo-sandbox <record>``: a published record by its number.
 
     A refused command prints why, as a MIME error with its code, and exits 2; one that met a MIME defect, or an error
     MIME does not recognise, exits 3. ``--traceback``, anywhere on the line, prints the full traceback first."""
@@ -540,9 +560,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     card.add_argument("--out", type=Path, help="write it to this file (default: print it)")
     card.add_argument("--notice", action="store_true", help="the NOTICE (each file's licence, credit, verdict and "
                                                             "declared permission) in place of the card")
+    from mime import credentials, push
+
     pull = commands.add_parser("pull", help="get a bundle by DOI, address or file, unpack it into a new folder, and "
                                             "fetch its assets")
-    pull.add_argument("source", help="a DOI (10.5281/zenodo.1234567), an https:// address, or a bundle file")
+    pull.add_argument("source", help="a DOI (10.5281/zenodo.1234567; a concept DOI pulls the latest version), an "
+                                     "https:// address, a bundle file, or with --from a record's number")
+    pull.add_argument("--from", dest="from_service", choices=list(push.SERVICES), metavar="SERVICE",
+                      help="read the published record of this number at the service's records API (zenodo-sandbox: "
+                           "its DOIs do not resolve through doi.org)")
     pull.add_argument("--into", type=Path, help="the new folder (default: ./<the experiment's name>/)")
     pull.add_argument("--no-assets", action="store_true", help="unpack only; fetch the assets later with "
                                                                "`mime assets fetch <folder>`")
@@ -550,8 +576,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     pull.add_argument("--max-bundle-bytes", type=int, default=assets.RETRIEVE_LIMIT_BYTES, metavar="BYTES",
                       help="the most a bundle may be when nothing states its size (default: "
                            f"{assets.size_text(assets.RETRIEVE_LIMIT_BYTES)})")
-    from mime import credentials, push
-
     pushing = commands.add_parser("push", help="show the plan, then make or update the experiment's draft record on "
                                                "Zenodo and upload its files (nothing is published)")
     pushing.add_argument("folder", type=Path, help="a folder written by Experiment.save")
@@ -563,7 +587,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     pushing_mode.add_argument("--status", action="store_true", help="the draft as the service holds it, against what "
                                                                     "push uploaded")
     pushing_mode.add_argument("--discard", action="store_true", help="delete the draft (only a draft can be deleted)")
-    pushing.add_argument("--yes", action="store_true", help="go ahead after the plan without asking")
+    pushing_mode.add_argument("--publish", action="store_true",
+                              help="publish the draft, the one step that cannot be undone: the plan, the confirmation "
+                                   "in words, each declared permission asked, then the record number typed")
+    pushing.add_argument("--confirm", metavar="DOI", help="with --publish, from a script: the draft's reserved DOI, in "
+                                                          "place of the record number typed (it must be that draft's)")
+    pushing.add_argument("--yes", action="store_true", help="delete the draft with --discard without asking (it never "
+                                                            "publishes, declares a permission or settles a site edit)")
+    pushing.add_argument(push.FULL_FLAG, dest="full_plan", action="store_true",
+                         help="the full plan: every file inside the bundle with its tier and verdict, every field sent")
+    pushing.add_argument(push.KEEP_FLAG, dest="keep_site_edits", action="store_true",
+                         help="keep each edit made on the service's site that sharing.yaml can hold, written into it, "
+                              "without asking")
     pushing.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
                          help="write the draft's metadata from sharing.yaml and the folder over what was edited on the "
                               "service's site since push last wrote it (without it, such an edit stops the push)")
@@ -726,7 +761,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "card":
         return _card(arguments.folder, arguments.out, arguments.notice)
     if arguments.command == "pull":
-        return _pull(arguments.source, arguments.into, arguments.no_assets, arguments.yes, arguments.max_bundle_bytes)
+        return _pull(arguments.source, arguments.into, arguments.no_assets, arguments.yes, arguments.max_bundle_bytes,
+                     arguments.from_service)
     if arguments.command == "credentials":
         return _credentials(arguments.credentials_command, arguments.service)
     if arguments.command == "push":

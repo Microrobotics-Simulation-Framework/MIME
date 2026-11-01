@@ -43,6 +43,8 @@ STATE_FILE = "state.json"
 STAGED = "staged"
 #: The scheme of push's mark in a draft's alternate identifiers.
 MARK_SCHEME = "urn"
+#: How a custom field is named among a draft's fields (``custom_fields.meeting:meeting``).
+CUSTOM = "custom_fields."
 _NAME_UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 #: The namespace of push's marks (a UUID 5 of MIME's PyPI address): the same service, experiment and mark always give
 #: the same identifier, and nothing else does.
@@ -64,11 +66,33 @@ class Uploaded:
 
 
 @dataclass
+class Published:
+    """The latest version push published of an experiment on one service: its record, DOI, page, concept (its record
+    and, once minted, its DOI), its number, each file as the published record holds it, its metadata's marks as
+    published (:func:`metadata_marks`) and the identity of the metadata push wrote (``sent``)."""
+
+    record: str
+    doi: str
+    page: str
+    concept: str
+    version: int
+    concept_doi: str | None = None
+    files: dict[str, Uploaded] = field(default_factory=lambda: cast(dict[str, Uploaded], {}))
+    written: dict[str, str] = field(default_factory=lambda: cast(dict[str, str], {}))
+    sent: str = ""
+    #: The staged lock's ``publication`` the published bundle holds, as it holds it.
+    publication: dict[str, object] = field(default_factory=lambda: cast(dict[str, object], {}))
+
+
+@dataclass
 class DraftState:
     """What push knows of an experiment's draft on one service. ``creating`` is set while a request to make the draft
     is in flight: found set on the next run, it means the service may hold a draft whose answer never arrived. ``mark``
     is the random part of the identifier push writes into the draft (:func:`draft_identifier`); ``written`` is the
-    draft's metadata as the service held it after push last wrote it (:func:`metadata_marks`)."""
+    draft's metadata as the service held it after push last wrote it (:func:`metadata_marks`), and ``sent`` the
+    identity of what push wrote (:func:`payload_identity`). ``version`` is the draft's number in its concept;
+    ``published``, the latest version published before it (``None`` for a first version); ``confirmed``, the
+    declared permissions a person confirmed in a terminal for this draft, each by :func:`declaration_identity`."""
 
     service: str
     api: str
@@ -81,6 +105,27 @@ class DraftState:
     files: dict[str, Uploaded] = field(default_factory=lambda: cast(dict[str, Uploaded], {}))
     mark: str = field(default_factory=lambda: secrets.token_hex(16))
     written: dict[str, str] = field(default_factory=lambda: cast(dict[str, str], {}))
+    sent: str = ""
+    version: int = 1
+    published: Published | None = None
+    confirmed: list[str] = field(default_factory=lambda: cast(list[str], []))
+
+
+def payload_identity(payload: Mapping[str, object]) -> str:
+    """The sha256 of what push writes into a draft, its publication date left out (the date a push writes is the day's,
+    and a draft whose metadata is otherwise the same is not changed by a new day)."""
+    metadata = payload.get("metadata")
+    held = {key: value for key, value in cast(dict[str, object], metadata).items() if key != "publication_date"} \
+        if isinstance(metadata, dict) else {}
+    return hashlib.sha256(json.dumps({**payload, "metadata": held}, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def declaration_identity(declaration: Mapping[str, object]) -> str:
+    """A declared permission's identity: the sha256 of its every part, its files' sha256 among them, so a changed file
+    or a changed word is a declaration not yet confirmed."""
+    return hashlib.sha256(json.dumps(declaration, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def state_root() -> Path:
@@ -135,9 +180,13 @@ def metadata_marks(draft: Mapping[str, object]) -> dict[str, str]:
     """Each field of the draft's metadata as the service holds it, as the sha256 of its canonical JSON: what push
     compares, on its next run, with the draft then, to find what was edited on the site. Taken from the service's own
     answer, not from what push sent, since the service adds to what it is sent (a licence's title, a person's name). A
-    field left empty is left out (the site's form may save one empty)."""
+    field left empty is left out (the site's form may save one empty). A custom field (Zenodo's meeting, journal,
+    imprint, thesis) is named ``custom_fields.<name>``."""
     metadata = draft.get("metadata")
     held = cast(dict[str, object], metadata) if isinstance(metadata, dict) else {}
+    custom = draft.get("custom_fields")
+    held = {**held, **{f"{CUSTOM}{key}": value for key, value in cast(dict[str, object], custom).items()}} \
+        if isinstance(custom, dict) else held
     return {key: hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
                                            ensure_ascii=False).encode("utf-8")).hexdigest()
             for key, value in sorted(held.items()) if _filled(value)}
@@ -185,19 +234,35 @@ def read_state(service: Service, experiment: str) -> DraftState | None:
         raise _unreadable(path, f"is the record of the experiment {plain(repr(found.get('experiment')))}, not "
                                 f"{plain(repr(experiment))}: push never takes one experiment's draft for another's")
     try:
-        files = {str(key): Uploaded(int(cast(int, value["size"])), str(value["md5"]), str(value["sha256"]))
-                 for key, value in cast(dict[str, dict[str, object]], found.get("files", {})).items()}
+        files = _files_of(found.get("files", {}))
         written = {str(key): str(value) for key, value in cast(dict[str, object], found.get("written", {})).items()}
+        published = _published_of(found.get("published"))
         return DraftState(str(found["service"]), str(found["api"]), str(found["experiment"]),
                           _text(found.get("record")), _text(found.get("concept")), _text(found.get("doi")),
                           _text(found.get("page")), bool(found.get("creating", False)), files, str(found["mark"]),
-                          written)
+                          written, str(found.get("sent", "")), int(cast(int, found.get("version", 1))), published,
+                          [str(each) for each in cast(list[object], found.get("confirmed", []))])
     except (KeyError, TypeError, ValueError, AttributeError):
         raise _unreadable(path, "is missing a part or holds one of another type") from None
 
 
 def _text(value: object) -> str | None:
     return None if value is None else str(value)
+
+
+def _files_of(held: object) -> dict[str, Uploaded]:
+    return {str(key): Uploaded(int(cast(int, value["size"])), str(value["md5"]), str(value["sha256"]))
+            for key, value in cast(dict[str, dict[str, object]], held or {}).items()}
+
+
+def _published_of(held: object) -> Published | None:
+    if held is None:
+        return None
+    found = cast(dict[str, object], held)
+    return Published(str(found["record"]), str(found["doi"]), str(found["page"]), str(found["concept"]),
+                     int(cast(int, found["version"])), _text(found.get("concept_doi")), _files_of(found.get("files")),
+                     {str(key): str(value) for key, value in cast(dict[str, object], found.get("written", {})).items()},
+                     str(found.get("sent", "")), dict(cast(dict[str, object], found.get("publication") or {})))
 
 
 def write_state(service: Service, state: DraftState) -> Path:
@@ -229,6 +294,6 @@ def staging(service: Service, experiment: str) -> Path:
     return directory
 
 
-__all__ = ["MARK_SCHEME", "OLD_FORMAT", "STAGED", "STATE_FILE", "STATE_FORMAT", "DraftState", "Uploaded", "clear_state",
-           "draft_identifier", "metadata_marks", "namespace", "read_state", "staging", "state_directory", "state_root",
-           "write_state"]
+__all__ = ["CUSTOM", "MARK_SCHEME", "OLD_FORMAT", "STAGED", "STATE_FILE", "STATE_FORMAT", "DraftState", "Published",
+           "Uploaded", "clear_state", "declaration_identity", "draft_identifier", "metadata_marks", "namespace",
+           "payload_identity", "read_state", "staging", "state_directory", "state_root", "write_state"]

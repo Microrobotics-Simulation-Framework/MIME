@@ -51,18 +51,28 @@
   The destination is checked before anything is downloaded, and a download stops at the size a record states, or at
   half a gigabyte for a bundle with no stated size (`--max-bundle-bytes` raises it). A download of assets over a gigabyte is
   asked about first in a terminal; `--yes` goes ahead, and without a terminal it stops with the exact command that
-  continues. Each asset download is held to the size its lock declares. Exits zero, or two when refused. Pulling a
-  stranger's bundle: see [the saved form](../saved/README.md#the-bundle).
-- `mime push <folder> --to zenodo|zenodo-sandbox [--init | --status | --discard] [--yes] [--overwrite-site-edits]`:
-  the experiment as a draft record on Zenodo (see [`mime.push`](../push/README.md)). It shows the plan first, computed
-  offline (every record file, every file inside the bundle with its tier and verdict, every file that travels as a
-  reference, each declared permission in words, the metadata), asks, then makes or updates the draft, reserves its DOI
-  and uploads each file that differs, its md5 checked against the service's; nothing is published. It writes to and
-  deletes only the draft it made, and a field edited on the site since it last wrote it stops it until the field is
-  copied into `sharing.yaml` or `--overwrite-site-edits` writes over it. `--init` writes `sharing.yaml`, the record's
-  credit, from what the folder knows; `--status` reads the draft as the service holds it; `--discard` deletes it. Each
-  ends with the draft's link on its last line. `--to` is required. A push stopped at any request is resumed by running
-  it again. Exits zero, two when refused, three when the service refuses a field MIME builds.
+  continues. Each asset download is held to the size its lock declares. A concept DOI resolves to its latest version,
+  which pull names. `mime pull --from zenodo|zenodo-sandbox <record>` pulls a published record by its number, read at
+  that service's records API with no token: a sandbox DOI is under DataCite's test prefix, which doi.org does not
+  resolve, so MIME never asks doi.org for one (`pull.sandbox-doi` says the command). Exits zero, or two when refused.
+  Pulling a stranger's bundle: see [the saved form](../saved/README.md#the-bundle).
+- `mime push <folder> --to zenodo|zenodo-sandbox [--init | --status | --discard | --publish [--confirm <DOI>]] [--yes]
+  [--full-plan] [--keep-site-edits | --overwrite-site-edits]`: the experiment as a record on Zenodo (see
+  [`mime.push`](../push/README.md)). A push shows the plan, computed offline, short (what goes up, what travels as a
+  reference, the licences and creators, warnings on lines of their own that start `!`; the full plan, every file with
+  its tier and verdict and every field sent, with `--full-plan`), then makes or updates the private draft without a
+  question, reserves its DOI and uploads each file that differs, its md5 checked against the service's; a push with
+  nothing to send says so in one line. It writes to and deletes only the draft it made. A field edited on the site
+  since it last wrote it is shown against `sharing.yaml` and, in a terminal, asked about (kept, written into
+  `sharing.yaml`, or written over); `--keep-site-edits` and `--overwrite-site-edits` answer without a terminal.
+  `--publish` publishes the draft, the one step that cannot be undone: the confirmation in words, each declared
+  permission asked on its own (`--yes` never answers one), then the record number typed, or `--confirm <DOI>` from a
+  script; afterwards the record is checked as published and, on production, the folder's lock names it, so `mime
+  pack <folder>` makes the published bundle again. Once published, a push of a changed folder makes a new version
+  under the same concept DOI, its unchanged files linked; of an unchanged one, says so in one line. `--init` writes
+  `sharing.yaml`, the record's credit; `--status` reads the draft as the service holds it; `--discard` deletes it,
+  after asking. Each ends with a link. `--to` is required. A push stopped at any request is resumed by running it
+  again. Exits zero, two when refused, three when the service refuses a field MIME builds.
 - `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.
@@ -95,7 +105,8 @@
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
 - `mime new`: scaffold a new experiment folder (0.3.0).
-- `mime push --publish`: publish the draft, the one irreversible step, behind a typed record number (push's P2b).
+- `mime push --metadata`, `mime cite`, `mime search`: a published record's metadata updated, its citation, and the
+  community's index (push's P3).
 
 ## What goes online
 
@@ -104,9 +115,9 @@ Nothing is fetched unless asked for, and a build never downloads.
 | command | network |
 |---|---|
 | `verify`, `registry`, `docs`, `pack`, `card`, `credentials`, `assets list`, `assets check`, `push --init` | never |
-| `push` | to the service `--to` names and no other, with its token, after the plan is shown and confirmed |
+| `push` | to the service `--to` names and no other, with its token, after the plan is shown (`--publish` after its confirmation) |
 | `assets fetch` | to download an asset not already in the cache, on request |
-| `pull` | to download a bundle given as a DOI or an address (a file on this machine needs none), and to fetch its assets unless `--no-assets` |
+| `pull` | to download a bundle given as a DOI or an address (a file on this machine needs none), or with `--from` to the named service's records API, without a token; and to fetch its assets unless `--no-assets` |
 
 `MIME_OFFLINE` closes `assets fetch` and `pull`, which then use only the cache and what was copied in by hand, and
 `push`, which then sends nothing.
@@ -121,7 +132,7 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 `mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase;
 `mime docs build` in the generators' phase; `mime assets` before phase 7h; `mime run`, `mime env check` and `mime modal`
 with the Modal template; `mime pack`, `mime pull` and `mime credentials` with the sharing piece; `mime card`, and the
-terms `pack` reads, with push's first piece, terms and tiers; `mime push` (drafts) with its second, P2a; the rest grows
-with the features it wraps.
+terms `pack` reads, with push's first piece, terms and tiers; `mime push` (drafts) with its second, P2a; `--publish`,
+versions and `pull --from` with P2b; the rest grows with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

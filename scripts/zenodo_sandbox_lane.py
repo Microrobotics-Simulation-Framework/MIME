@@ -4,12 +4,13 @@ upload token, design #171 item 5). It is the check the offline fake cannot make 
 what the fake answers.
 
     uv run python scripts/zenodo_sandbox_lane.py --creator "<family>, <given>" [--orcid <iD>] [--log <dir>]
-        [--folder <saved folder> | --demo toy|terms ...] [--discard] [--dry-run]
+        [--folder <saved folder> | --demo toy|terms ...] [--discard | --publish] [--dry-run]
 
 It reads the token ``mime credentials set zenodo-sandbox`` stored (or ``ZENODO_SANDBOX_TOKEN``) through
 ``mime.credentials`` and nothing else, never prints it, and sends it only to ``https://sandbox.zenodo.org``, a
 constant of MIME's (``mime.push.ZENODO_SANDBOX``; nothing here or in the environment can name another host). Requests
-are paced a second apart. Nothing is published: push has no publish.
+are paced a second apart. Nothing is published unless ``--publish`` says so, and then on the sandbox only (production
+is never this script's).
 
 For each folder (a copy of one you name, so nothing is written into it, or a demo it saves: ``toy``, the toy
 experiment under CC-BY-4.0; ``terms``, the toy with an MIT layer, a layer under a licence of its own that a declared
@@ -22,7 +23,12 @@ permission lets travel, and one whose licence forbids redistribution, which trav
 4. the same three steps against the offline fake (``tests/sharing/zenodo_records.py``), and the two compared: each
    answer's status, content type and the type of every field push reads, request by request;
 5. with ``--discard``, the draft deleted; without it, kept, and its page printed, for a person to look at on the
-   sandbox's site (the uploads page, ``https://sandbox.zenodo.org/me/uploads``).
+   sandbox's site (the uploads page, ``https://sandbox.zenodo.org/me/uploads``);
+6. with ``--publish`` (the sandbox's records only): the draft published (``--confirm`` with its DOI; a declared
+   permission is asked in the terminal, as ``mime push --publish`` asks it), the record checked as published, pulled
+   by its number into a fresh folder (``mime pull --from zenodo-sandbox <record>``) and verified (``mime verify``);
+   for the toy, a new version (the toy saved with one reference step more), pushed and published; each answer's
+   shape compared with the fake's, as the drafts' are.
 
 The log (``zenodo_sandbox_lane_<date>.jsonl`` in ``--log``, the current directory by default) holds each answer's
 method, path, status, content type, rate-limit headers and field types, never a request's headers; it is searched for
@@ -125,12 +131,15 @@ class Recording:
         return answer
 
 
-def _toy_demo(root: Path) -> Path:
+def _toy_demo(root: Path, steps: int | None = None) -> Path:
     from mime.testing.toys import full_toy
 
     experiment = full_toy()
     experiment.licence("CC-BY-4.0")
-    experiment.save(root / "mime_sandbox_toy")
+    if steps is None:
+        experiment.save(root / "mime_sandbox_toy")
+    else:
+        experiment.save(root / "mime_sandbox_toy", steps=steps)
     return root / "mime_sandbox_toy"
 
 
@@ -174,9 +183,17 @@ def write_sharing(folder: Path, creator: str, orcid: str | None, title: str) -> 
     path.write_text(text, encoding="utf-8")
 
 
-def cycle(folder: Path, service: push.Service, transport: object, discard: bool) -> push.Drafted | None:
-    """Push, read the draft, push again (nothing sent again), and discard where asked: a second apart on the sandbox,
-    at once against a fake."""
+def _declare(question: str) -> bool:
+    """A declared permission asked in the terminal, as ``mime push --publish`` asks it; no terminal declares none."""
+    if not sys.stdin.isatty():
+        return False
+    return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+
+
+def cycle(folder: Path, service: push.Service, transport: object, discard: bool, publish: bool = False,
+          declare: object = _declare) -> push.Drafted | None:
+    """Push, read the draft, push again (nothing sent again), and discard or publish where asked: a second apart on
+    the sandbox, at once against a fake. Publishing, the toy's next version is pushed and published too."""
     remote = isinstance(getattr(transport, "inner", transport), HttpTransport) and not loopback(service.api)
     pause = PAUSE if remote else 0.0
     first = push.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
@@ -185,7 +202,25 @@ def cycle(folder: Path, service: push.Service, transport: object, discard: bool)
     assert again is not None and not again.uploaded, f"the second push sent {again and again.uploaded} again"
     if discard:
         push.discard(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
+    if publish:
+        assert service.name != push.ZENODO.name and not service.production, "the lane publishes on the sandbox only"
+        push.publish(folder, service, confirm=first.doi, ask=declare, say=print, transport=transport,  # type: ignore[arg-type]
+                     pause=pause)
+        if folder.name == "mime_sandbox_toy":
+            _toy_demo(folder.parent, steps=9)
+            later = push.push(folder, service, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
+            push.publish(folder, service, confirm=later.doi, ask=declare, say=print, transport=transport,  # type: ignore[arg-type]
+                         pause=pause)
     return first
+
+
+def pulled(record: str, work: Path) -> int:
+    """The published sandbox record pulled by its number into a fresh folder, and verified: ``mime verify``'s exit."""
+    from mime.cli import main as mime
+
+    into = work / "pulled" / record
+    code = mime(["pull", "--from", ZENODO_SANDBOX.name, record, "--into", str(into)])
+    return code if code else mime(["verify", str(into)])
 
 
 def differences(sandbox: list[dict[str, object]], fake: list[dict[str, object]]) -> list[str]:
@@ -267,7 +302,10 @@ def main(argv: list[str] | None = None) -> int:
                                                                                             "and push (repeat)")
     parser.add_argument("--log", type=Path, help="the directory to write the log to (the current directory by "
                                                  "default; a dry run writes one only where this names)")
-    parser.add_argument("--discard", action="store_true", help="delete each draft at the end")
+    ending = parser.add_mutually_exclusive_group()
+    ending.add_argument("--discard", action="store_true", help="delete each draft at the end")
+    ending.add_argument("--publish", action="store_true", help="publish each draft on the sandbox, pull and verify it, "
+                                                               "and publish the toy's next version")
     parser.add_argument("--dry-run", action="store_true", help="the sandbox replaced by the fake behind a server on "
                                                                "this machine, through the real transport: no request "
                                                                "leaves the machine, no token is read, and no record "
@@ -321,16 +359,26 @@ def compared(arguments: argparse.Namespace, folders: list[Path], token: Token, l
             with sandbox_side(arguments.dry_run, token) as (service, transport):
                 stand_ins.append(service)
                 real = Recording(transport)
+                start = folder.parent / f"{folder.name}.as-saved"
+                shutil.copytree(folder, start)
                 try:
-                    drafted = cycle(folder, service, real, arguments.discard)
+                    drafted = cycle(folder, service, real, arguments.discard, arguments.publish,
+                                    declare=(lambda question: True) if arguments.dry_run else _declare)
                 finally:
                     lines += [{"folder": folder.name, "service": service.name, **each} for each in real.shapes]
+                if arguments.publish and not arguments.dry_run and drafted is not None:
+                    code = pulled(drafted.record, folder.parent)
+                    lines.append({"folder": folder.name, "pulled": drafted.record, "verify_exit": code})
+                    if code:
+                        found.append(f"{folder.name}: the record {drafted.record}, pulled, did not verify ({code})")
+            shutil.rmtree(folder)
+            shutil.move(start, folder)
             fake = FakeRecords(token)
             made = Recording(FakeTransport(fake))
             stand_in = fake.service("zenodo-sandbox-fake", credential=ZENODO_SANDBOX.credential)
             stand_ins.append(stand_in)
-            cycle(folder, stand_in, made, arguments.discard)
-            if not arguments.discard:
+            cycle(folder, stand_in, made, arguments.discard, arguments.publish, declare=lambda question: True)
+            if not arguments.discard and not arguments.publish:
                 push.discard(folder, stand_in, yes=True, transport=FakeTransport(fake), pause=0)
             found += [f"{folder.name}: {each}" for each in differences(real.shapes, made.shapes)]
             lines += [{"folder": folder.name, "service": "fake", **each} for each in made.shapes]

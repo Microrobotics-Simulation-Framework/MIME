@@ -36,7 +36,7 @@ import stat
 import unicodedata
 import zipfile
 import zlib
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
@@ -440,7 +440,7 @@ def referenced_members(judged: FolderTerms, lock: Lock) -> tuple[dict[str, Refer
         elif held is not None and not must and file.size <= INLINE_LIMIT_BYTES:
             refusals.append(_reference_problem(file.path, "the lock says it travels as a reference, and its terms let "
                                                           "it travel in the bundle"))
-        elif held is not None and _restated(held, file):
+        elif held is not None and _restated(held, file, lock.get("publication")):
             refusals.append(_reference_problem(
                 file.path, f"the lock's asset {held['name']!r} states the licence {plain(held['licence'])!r} and the "
                            f"locations {', '.join(plain(each) for each in held['locations'])}, and the file's terms "
@@ -452,10 +452,23 @@ def referenced_members(judged: FolderTerms, lock: Lock) -> tuple[dict[str, Refer
     return found, refusals
 
 
-def _restated(held: RemoteAssetRecord, file: FileTerms) -> bool:
+def _restated(held: RemoteAssetRecord, file: FileTerms, publication: Mapping[str, object] | None = None) -> bool:
     """Whether a reference's asset, as the lock holds it, states another licence or other locations than the file's
-    terms give (their licence, and their origin, primary first)."""
-    return (held["licence"], tuple(held["locations"])) != (file.licence, file.origin)
+    terms give (their licence, and their origin, primary first). A lock ``mime push`` wrote into a published bundle
+    names the record that holds the file first (its ``publication``): that one location is the record's, before the
+    origin."""
+    locations = tuple(held["locations"])
+    if publication is not None and locations and _own_location(locations[0], publication):
+        locations = locations[1:]
+    return (held["licence"], locations) != (file.licence, file.origin)
+
+
+def _own_location(location: str, publication: Mapping[str, object]) -> bool:
+    """Whether ``location`` is the published record's own, as ``mime push`` names it: its DOI and a file, or the
+    file's address in its service's records API."""
+    return location.startswith(f"doi:{publication.get('doi')}/") or \
+        re.fullmatch(rf"https?://[^/]+(/[^/]+)*/records/{re.escape(str(publication.get('record')))}/files/[^/]+/content",
+                     location) is not None
 
 
 def _copy_problems(judged: FolderTerms, listed: set[str]) -> list[Refusal]:

@@ -695,6 +695,19 @@ class StageRecord(TypedDict, closed=True):
     writer: NotRequired[ReadOnly[int]]
 
 
+class PublicationRecord(TypedDict, closed=True):
+    """The record a published bundle is, as ``mime push`` writes it into the lock it packs (outside the input hash):
+    the service, the version's record and DOI, its concept's record and, where the service stated it when the bundle
+    was packed, the concept's DOI (a first version's is minted only when it is published), and the version's number."""
+
+    service: ReadOnly[str]
+    record: ReadOnly[str]
+    doi: ReadOnly[str]
+    concept: ReadOnly[str]
+    concept_doi: NotRequired[ReadOnly[str]]
+    version: ReadOnly[int]
+
+
 class Lock(TypedDict, closed=True):
     """What a build wrote beside the document: the environment, the entries and their distributions, the derived
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
@@ -715,6 +728,9 @@ class Lock(TypedDict, closed=True):
     #: ``assets`` that holds them (version 4): a file that may not be redistributed, or one over the size a bundle
     #: carries that has an origin. Outside the input hash, as ``assets`` is.
     referenced_files: NotRequired[ReadOnly[dict[str, str]]]
+    #: The record of the published bundle that holds this lock (``mime push``), so the folder names the record it is
+    #: and ``mime pack`` makes the published bundle again. Outside the input hash, as ``assets`` is.
+    publication: NotRequired[ReadOnly[PublicationRecord]]
 
 
 _WRAPPERS = (ReadOnly, NotRequired, Required)
@@ -845,8 +861,8 @@ __all__ = [
     "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GpuRecordDoc", "GroupDoc", "GroupRecord", "GroupedValue",
     "HashRecord", "Json",
     "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc",
-    "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord", "RegistrationRecord",
-    "RemoteAssetRecord",
+    "PublicationRecord", "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord",
+    "RegistrationRecord", "RemoteAssetRecord",
     "ResolvedController", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
     "RunDoc", "SceneDoc", "SegmentDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
     "conforms", "reachable_typed_dicts", "shape_problems", "typed_dict_fields",

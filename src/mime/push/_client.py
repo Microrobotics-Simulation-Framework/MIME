@@ -30,6 +30,7 @@ none of them reaches a traceback, so a traceback captured with its locals shows 
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -119,7 +120,7 @@ class Transport(Protocol):
              token: Token) -> Answer: ...
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
+class NoRedirect(urllib.request.HTTPRedirectHandler):
     """A redirect is answered as what it is, never followed: following it would carry the token to its target."""
 
     @override
@@ -137,8 +138,8 @@ class HttpTransport:
 
     def __init__(self, timeout: float = _TIMEOUT_SECONDS) -> None:
         self.timeout = timeout
-        self.opener = urllib.request.build_opener(_NoRedirect())
-        self.direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+        self.opener = urllib.request.build_opener(NoRedirect())
+        self.direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
     def send(self, method: str, url: str, headers: Mapping[str, str], body: bytes | Path | None,
              token: Token) -> Answer:
@@ -246,7 +247,8 @@ class Client:
                 self._wait(reset - self.now(), "its rate limit is spent until its reset")
 
     def call(self, method: str, path: str, *, payload: object = None, content: Path | None = None,
-             expect: frozenset[int] = frozenset({200}), retry: bool | None = None, drops: bool = False) -> Answer:
+             expect: frozenset[int] = frozenset({200}), retry: bool | None = None, drops: bool = False,
+             raw: bool = False) -> Answer:
         """One request to ``path`` below the service's API. Sent again after a ``429``, and a ``503`` that states its
         ``Retry-After`` (the service did not act), each for its ``Retry-After`` or a growing pause; where ``retry``
         (by default, for a request that changes nothing), also after a dropped connection and any ``502``, ``503`` or
@@ -254,7 +256,8 @@ class Client:
         come after the service acted) is never sent again: it is raised as :class:`Dropped` where ``drops`` (the
         caller reads the service's state again and goes on from it), and refused otherwise (``push.service``: the
         next run reads the draft first). An answer not in ``expect`` is refused by what it means; a 2xx is checked
-        for the records API's own content type, and for ``errors`` (:class:`Errors`)."""
+        for the records API's own content type, and for ``errors`` (:class:`Errors`), unless ``raw`` (a file's bytes,
+        or a redirect ``expect`` names, whose ``Location`` the caller reads and never follows)."""
         url = self.service.api + path
         headers = {"Accept": RDM_TYPE}
         body: bytes | Path | None = None
@@ -289,6 +292,8 @@ class Client:
                     raise Dropped(f"a gateway's {status}")
                 raise self.lost(method, path, f"it answered {status}, which a gateway gives when it cannot tell "
                                                f"whether the service acted")
+            if raw and status in expect:
+                return answer
             return self._checked(method, path, answer, expect)
         raise BuildRefused([_refuse(
             "push.service", RefusalClass.ENVIRONMENT,
@@ -412,19 +417,8 @@ class Client:
 
     def files(self, record: str) -> dict[str, Json]:
         """The draft's file entries, by key."""
-        held = self._present(f"the draft {record}", lambda: self._coded(
-            "the listing of the draft's files", lambda: self.call("GET", f"/records/{_part(record)}/draft/files"))
-        ).json()
-        entries = cast(dict[str, object], held).get("entries") if isinstance(held, dict) else None
-        if not isinstance(entries, list):
-            raise _shape(self, "the draft's files", "an object with a list of entries")
-        found: dict[str, Json] = {}
-        for each in cast(list[object], entries):
-            if not isinstance(each, dict) or not isinstance(cast(dict[str, object], each).get("key"), str):
-                raise _shape(self, "a file entry", "an object with its key")
-            entry = cast(Json, each)
-            found[cast(str, entry["key"])] = entry
-        return found
+        return _entries(self, self._present(f"the draft {record}", lambda: self._coded(
+            "the listing of the draft's files", lambda: self.call("GET", f"/records/{_part(record)}/draft/files"))))
 
     def start_file(self, record: str, key: str) -> None:
         """Start the entry ``key``. :class:`Dropped` where the answer was lost (the caller reads the files again);
@@ -468,6 +462,53 @@ class Client:
     def commit_file(self, record: str, key: str) -> Json:
         return _entry(self, self.call("POST", f"/records/{_part(record)}/draft/files/{_part(key)}/commit",
                                       expect=frozenset({200, 201}), retry=True))
+
+    def publish(self, record: str) -> Json:
+        """Publish the draft ``record``: the published record. Never sent again by this call: an answer lost is
+        :class:`Dropped`, and the caller reads the record before it does anything else (publishing is the one step
+        that cannot be undone)."""
+        return _draft(self, self._present(f"the draft {record}", lambda: self.call(
+            "POST", f"/records/{_part(record)}/draft/actions/publish", expect=frozenset({200, 202}), retry=False,
+            drops=True)))
+
+    def new_version(self, record: str) -> Json:
+        """A new version of the published record ``record``: the draft of it (the concept's open one where there is
+        one). Never sent again: an answer lost is :class:`Dropped`."""
+        return _draft(self, self._present(f"the record {record}", lambda: self.call(
+            "POST", f"/records/{_part(record)}/versions", expect=frozenset({200, 201}), retry=False, drops=True)))
+
+    def import_files(self, record: str) -> dict[str, Json]:
+        """Link every file of the version before into the new version's draft ``record``: its file entries, by key."""
+        return _entries(self, self._present(f"the draft {record}", lambda: self._coded(
+            "the import of the previous version's files", lambda: self.call(
+                "POST", f"/records/{_part(record)}/draft/actions/files-import", expect=frozenset({200, 201}),
+                retry=False))))
+
+    def record_files(self, record: str) -> dict[str, Json]:
+        """The published record's file entries, by key."""
+        return _entries(self, self._present(f"the record {record}", lambda: self._coded(
+            "the listing of the record's files", lambda: self.call("GET", f"/records/{_part(record)}/files"))))
+
+    def download(self, record: str, key: str) -> bytes:
+        """The bytes of the published record's file ``key``."""
+        return self._present(f"the file {plain(key)} of the record {record}", lambda: self.call(
+            "GET", f"/records/{_part(record)}/files/{_part(key)}/content", raw=True)).body
+
+    def latest(self, record: str) -> str:
+        """The id of the latest published version of ``record``'s concept: the service's redirect read, never
+        followed."""
+        answer = self._present(f"the record {record}", lambda: self.call(
+            "GET", f"/records/{_part(record)}/versions/latest", expect=frozenset({200, 301, 302, 303}), raw=True))
+        if answer.status == 200:
+            held = answer.json()
+            found = cast(dict[str, object], held).get("id") if isinstance(held, dict) else None
+        else:
+            target = answer.headers.get("location", "")
+            matched = re.fullmatch(re.escape(self.service.api) + r"/records/(\d+)", target)
+            found = matched.group(1) if matched is not None else None
+        if not isinstance(found, (str, int)) or not str(found).isdigit():
+            raise _shape(self, "the latest version", "a redirect to a record of its own API, or the record")
+        return str(found)
 
     def delete_file(self, record: str, key: str) -> None:
         try:
@@ -573,6 +614,21 @@ def _checked_draft(client: Client, held: object) -> Json:
     return draft
 
 
+def _entries(client: Client, answer: Answer) -> dict[str, Json]:
+    """A listing's file entries, by key."""
+    held = answer.json()
+    entries = cast(dict[str, object], held).get("entries") if isinstance(held, dict) else None
+    if not isinstance(entries, list):
+        raise _shape(client, "a record's files", "an object with a list of entries")
+    found: dict[str, Json] = {}
+    for each in cast(list[object], entries):
+        if not isinstance(each, dict) or not isinstance(cast(dict[str, object], each).get("key"), str):
+            raise _shape(client, "a file entry", "an object with its key")
+        entry = cast(Json, each)
+        found[cast(str, entry["key"])] = entry
+    return found
+
+
 def _entry(client: Client, answer: Answer) -> Json:
     held = answer.json()
     if not isinstance(held, dict) or not isinstance(cast(dict[str, object], held).get("key"), str):
@@ -581,4 +637,4 @@ def _entry(client: Client, answer: Answer) -> Json:
 
 
 __all__ = ["LONGEST_WAIT_SECONDS", "PAUSE_SECONDS", "RDM_TYPE", "RETRIES", "Answer", "Client", "Dropped", "Errors",
-           "Gone", "HttpTransport", "Json", "Owner", "Transport", "Watch", "errors_of", "owned_refusals"]
+           "Gone", "HttpTransport", "Json", "NoRedirect", "Owner", "Transport", "Watch", "errors_of", "owned_refusals"]

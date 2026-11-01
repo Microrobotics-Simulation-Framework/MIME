@@ -488,7 +488,7 @@ def pack_ignores_copies() -> Iterator[None]:
 def pack_trusts_the_lock() -> Iterator[None]:
     """The plant: a pack that takes the licence and locations a lock states for a reference's asset as they are."""
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(_bundle, "_restated", lambda held, file: False)
+        patch.setattr(_bundle, "_restated", lambda held, file, publication=None: False)
         yield
 
 

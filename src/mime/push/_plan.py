@@ -29,7 +29,7 @@ import os
 import re
 import zipfile
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -40,10 +40,10 @@ from mime.push._client import Json
 from mime.push._owners import FIELD_OWNERS, OWN_RELATED, field_owner
 from mime.push._service import Service
 from mime.push._sharing import Person, Sharing, sharing_path
-from mime.push._state import DraftState
+from mime.push._state import DraftState, metadata_marks
 from mime.saved._bundle import MANIFEST_MEMBER, NOTICE_MEMBER, read_manifest
 from mime.saved._card import availability, permission_words
-from mime.saved._schema import Lock, PermissionDoc
+from mime.saved._schema import Lock, PermissionDoc, PublicationRecord
 from mime.saved._terms import FileTerms, FolderTerms
 from mime.terms import CUSTOM_PREFIX, NO_ASSERTION, Verdict, ids_of, licence_verdict
 
@@ -86,7 +86,7 @@ def file_hashes(path: Path) -> tuple[str, str, int]:
 @dataclass(frozen=True)
 class RecordFile:
     """A file the record holds: its key there, where its bytes are read from, their size, md5 and sha256, its
-    licence, and why it is in the record."""
+    licence, why it is in the record, and the asset's name where it is an asset of the lock's."""
 
     key: str
     path: Path
@@ -95,6 +95,7 @@ class RecordFile:
     sha256: str
     licence: str | None
     what: str
+    asset: str | None = None
 
 
 @dataclass(frozen=True)
@@ -108,14 +109,19 @@ class AssetChoice:
     why: str
 
 
-def on_zenodo(ref: AssetRef) -> bool:
-    return any(_ZENODO_LOCATION.match(each) for each in ref.locations)
+def on_zenodo(ref: AssetRef, own: frozenset[str] = frozenset()) -> bool:
+    """Whether ``ref`` has a location on Zenodo other than in the records ``own`` names (by DOI): the versions of this
+    experiment's own concept, whose files each new version holds again."""
+    return any(_ZENODO_LOCATION.match(each) and not any(each.startswith(f"doi:{doi}/") for doi in own)
+               for each in ref.locations)
 
 
-def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock) -> list[AssetChoice]:
+def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock,
+                  own: frozenset[str] = frozenset()) -> list[AssetChoice]:
     """Each asset with what the record does with it (#198's tiers, #171 item 4): one that holds a file that may not be
     redistributed, or whose own licence does not let it be, travels as a reference and is never uploaded; one that
-    may be redistributed is uploaded where it has no location on Zenodo yet."""
+    may be redistributed is a file of the record where it has no location on Zenodo yet, or only in an earlier version
+    of this experiment (``own``, by DOI), whose files a new version links rather than uploads again."""
     travelling = {file.referenced: file for file in judged.files if file.referenced is not None}
     listed = set(lock.get("referenced_files", {}).values())
     found: list[AssetChoice] = []
@@ -127,7 +133,7 @@ def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock) -> 
         if not verdict.carried:
             found.append(AssetChoice(ref, verdict, False, f"{verdict.words()}: travels as a reference, never "
                                                           f"uploaded"))
-        elif on_zenodo(ref):
+        elif on_zenodo(ref, own):
             found.append(AssetChoice(ref, verdict, False, "already on Zenodo: the record references it"))
         else:
             found.append(AssetChoice(ref, verdict, True, f"{verdict.words()}; no Zenodo location yet, so uploaded "
@@ -148,7 +154,9 @@ def record_key(ref: AssetRef, path: str | None) -> str:
 class Plan:
     """What a push will do, computed offline: the service, the experiment, the record files in upload order (the
     bundle, the NOTICE, then the uploaded assets), the folder's judged terms, the lock's assets with what the record
-    does with each, the experiment's licence, ``sharing.yaml`` as read, the metadata payload and the MIME release."""
+    does with each, the experiment's licence, ``sharing.yaml`` as read, the metadata payload and the MIME release; and
+    the lock the bundle was packed with (the folder's, or the staged lock naming the record it will be published
+    as)."""
 
     service: Service
     experiment: str
@@ -160,6 +168,18 @@ class Plan:
     sharing: Sharing
     payload: Json
     mime_version: str
+    #: The folder's lock as it was read, its bytes (empty for a plan of files alone).
+    lock: bytes = b""
+    #: The record the bundle was packed as (the staged lock's ``publication``), or ``None`` for the folder's own lock.
+    publication: PublicationRecord | None = None
+    #: The staged lock the bundle holds, its bytes, where it was packed with one.
+    staged: bytes | None = None
+    #: The card, as the HTML of the record's description (without sharing.yaml's paragraph).
+    card: str = ""
+    #: The version's number in its concept.
+    version: int = 1
+    #: Where the staged bundle is written.
+    staging: Path | None = None
 
     @property
     def size(self) -> int:
@@ -174,11 +194,7 @@ class Plan:
 
     def lines(self, state: DraftState | None) -> list[str]:
         """The plan as push prints it, before any request."""
-        draft = (f"the draft {state.record} MIME made earlier ({state.page}), updated: its metadata is written again "
-                 f"from sharing.yaml (a change made on the site stops the push, unless --overwrite-site-edits) and "
-                 f"only files that differ are sent" if state is not None and state.record else
-                 "a new draft, its DOI reserved")
-        lines = [f"Plan for {plain(self.experiment)!r} on {self.service.words}: {draft}",
+        lines = [f"Plan for {plain(self.experiment)!r} on {self.service.words}: {self.target(state)}",
                  f"  Record files ({len(self.files)}, {size_text(self.size)}):"]
         width = max(len(plain(file.key)) for file in self.files)
         lines += [f"    {plain(file.key):<{width}}  {size_text(file.size):>8}  {plain(file.licence or 'generated'):<14}"
@@ -212,12 +228,70 @@ class Plan:
             lines.append(f"  Permissions you declare ({len(permissions)}); the draft is private, and each becomes "
                          f"public when the record is published:")
             for index, held_permission in enumerate(permissions, start=1):
-                lines += ["    " + line for line in _declaring(index, held_permission, self.judged)]
+                lines += ["    " + line for line in declaring(index, held_permission, self.judged)]
         lines += [f"  Availability: {availability(self.judged)}",
                   f"Next: on {self.service.name}, the draft is made or updated, its DOI reserved, and each record file "
-                  f"that differs from the draft's is uploaded and its md5 checked; nothing is published (publishing "
-                  f"comes with a later MIME)."]
+                  f"that differs from the draft's is uploaded and its md5 checked; nothing is published until "
+                  f"`mime push <folder> --to {self.service.name} --publish` asks you."]
         return lines
+
+    def target(self, state: DraftState | None) -> str:
+        """What the push makes or updates, in words."""
+        published = state.published if state is not None else None
+        if state is not None and state.record and published is not None:
+            return f"the draft {state.record} of version {state.version}, a new version of {published.doi}, updated"
+        if published is not None:
+            return f"a new version, {published.version + 1}, of {published.doi}"
+        if state is not None and state.record:
+            return f"the draft {state.record}, updated"
+        return "a new draft, its DOI reserved"
+
+    def summary(self, state: DraftState | None, *, publishing: bool = False) -> list[str]:
+        """The plan as push prints it by default: what goes up, what travels as a reference, the licences and the
+        creators, and each warning on a line that starts ``!``. The full plan is :meth:`lines`."""
+        head = (f"Plan for {plain(self.experiment)!r} on {self.service.words}: the draft "
+                f"{state.record if state is not None else ''}, to publish" if publishing else
+                f"Pushing {plain(self.experiment)!r} to {self.service.words}: {self.target(state)}")
+        lines = [head,
+                 "  up: " + ", ".join(f"{plain(file.key)} {size_text(file.size)}" for file in self.files) +
+                 (f" ({size_text(self.size)} in all)" if len(self.files) > 2 else "")]
+        held = [file for file in self.judged.files if file.referenced is not None or not file.verdict.carried]
+        held_assets = [choice for choice in self.assets if not choice.upload and
+                       choice.ref.name not in {file.referenced for file in held}]
+        if held or held_assets:
+            lines.append("  by reference, never uploaded: " + "; ".join(
+                [f"{plain(file.path)} ({plain(file.licence or 'no licence')}, from "
+                 f"{plain(file.origin[0]) if file.origin else 'no origin'})" for file in held] +
+                [f"the asset {plain(choice.ref.name)} ({choice.why.split(':')[0]})" for choice in held_assets]))
+        lines.append(f"  licences {', '.join(plain(each) for each in self._licences())}; creators "
+                     f"{'; '.join(plain(person.name()) for person in self.sharing.creators)}")
+        lines += [f"! {warning}" for warning in self.warnings(state)]
+        return lines
+
+    def warnings(self, state: DraftState | None) -> list[str]:
+        """What the author should not miss: results that depend on a file the record does not hold, a permission
+        declared, a version that changes the title, the production service."""
+        found: list[str] = []
+        depends = [file.path for file in self.judged.files
+                   if (file.referenced is not None or not file.verdict.carried)
+                   and (file.role or "results") == "results"]
+        if depends:
+            found.append(f"results depend on {len(depends)} file{'s' if len(depends) != 1 else ''} the record does not "
+                         f"hold ({', '.join(plain(each) for each in depends)}): reproducible only while a copy of "
+                         f"{'each' if len(depends) != 1 else 'it'} can be fetched")
+        permissions = self.judged.permissions
+        if permissions:
+            found.append(f"{len(permissions)} permission{'s' if len(permissions) != 1 else ''} declared: each becomes "
+                         f"public, under your name, when the record is published, and --publish asks you to declare "
+                         f"{'each' if len(permissions) != 1 else 'it'} (the full plan: --full-plan)")
+        published = state.published if state is not None else None
+        title = _mapping(self.payload.get("metadata")).get("title")
+        if published is not None and state is not None and "title" in published.written and \
+                published.written["title"] != metadata_marks({"metadata": {"title": title}}).get("title"):
+            found.append("the title differs from the published version's: indexes keep a concept's first title")
+        if self.service.production:
+            found.append("production: a draft here is private, and a record published here is permanent")
+        return found
 
 
 def _built_lines(plan: Plan) -> list[str]:
@@ -232,6 +306,12 @@ def _built_lines(plan: Plan) -> list[str]:
             f"  Publisher: {plain(str(held.get('publisher', '')))} (DataCite needs one to register the DOI)",
             f"  Publication date: {plain(str(held.get('publication_date', '')))}",
             f"  Resource type: {plain(str(_mapping(held.get('resource_type')).get('id', '')))}",
+            f"  Version: {plain(str(held.get('version', '')))} (its number in the concept)",
+            *([f"  Funding: {'; '.join(each.words() for each in plan.sharing.funding)}"]
+              if plan.sharing.funding else []),
+            *([f"  Conference: {plain(plan.sharing.conference.get('title', ''))}"] if plan.sharing.conference else []),
+            *([f"  Other fields: {', '.join(plain(name) for name in plan.sharing.fields)} (from sharing.yaml's "
+               f"fields, as written)"] if plan.sharing.fields else []),
             f"  Access once published: the record {plain(str(shown.get('record', '')))}, its files "
             f"{plain(str(shown.get('files', '')))} (a draft is private)",
             "  Alternate identifier: a urn:uuid push makes for the draft, by which it knows the draft is its own"]
@@ -245,7 +325,7 @@ def _whose(file: FileTerms) -> str:
     return {"yours": "yours", "third party": "a third party's", "record": "OpenMaterica's record"}[file.owner]
 
 
-def _declaring(index: int, held: PermissionDoc, judged: FolderTerms) -> list[str]:
+def declaring(index: int, held: PermissionDoc, judged: FolderTerms) -> list[str]:
     """#198 item 6's words for one declaration, then the facts the card states of it."""
     paths = [file.path for file in judged.files if file.sha256 in held["files"]]
     count = len(held["files"])
@@ -403,9 +483,10 @@ def _related(identifier: str, scheme: str, relation: str) -> Json:
     return {"identifier": identifier, "scheme": scheme, "relation_type": {"id": relation}}
 
 
-def payload_of(plan_parts: tuple[Sharing, FolderTerms, Sequence[str], str, str], today: datetime.date) -> Json:
+def payload_of(plan_parts: tuple[Sharing, FolderTerms, Sequence[str], str, str], today: datetime.date, *,
+               record_version: int = 1) -> Json:
     """The draft's body for the records API, from ``sharing.yaml``, the folder's terms, the record's licences, the
-    description's HTML and the MIME release."""
+    description's HTML and the MIME release; ``record_version`` is the version's number in its concept."""
     sharing, judged, licences, description, version = plan_parts
     contributors: list[Json] = [_person(person) for person in sharing.contributors]
     contributors += [_holder(name) for name in _rights_holders(judged)]
@@ -422,22 +503,40 @@ def payload_of(plan_parts: tuple[Sharing, FolderTerms, Sequence[str], str, str],
         "rights": rights_entries(licences, judged),
         "subjects": [{"subject": each} for each in _keywords(sharing)],
         "related_identifiers": related,
+        "version": str(record_version),
     }
     if contributors:
         metadata["contributors"] = contributors
-    return {"metadata": metadata, "access": {"record": "public", "files": "public"}, "files": {"enabled": True}}
+    if sharing.funding:
+        metadata["funding"] = [each.entry() for each in sharing.funding]
+    custom: Json = {"meeting:meeting": dict(sharing.conference)} if sharing.conference else {}
+    for name, value in sharing.fields.items():
+        if ":" in name:
+            custom[name] = value
+        elif name == "subjects":
+            metadata["subjects"] = [*cast(list[object], metadata["subjects"]), *cast(list[object], value)]
+        else:
+            metadata[name] = value
+    body: Json = {"metadata": metadata, "access": {"record": "public", "files": "public"}, "files": {"enabled": True}}
+    if custom:
+        body["custom_fields"] = custom
+    return body
 
 
 # --- making the plan -----------------------------------------------------------------------------------------------
 
 
 def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing, staged: Path, *,
+              publication: PublicationRecord | None = None, version: int = 1, own: frozenset[str] = frozenset(),
               today: datetime.date | None = None) -> Plan:
-    """Pack the folder into ``staged`` and work out everything push will send, refusing with every reason found."""
+    """Pack the folder into ``staged`` and work out everything push will send, refusing with every reason found. With
+    ``publication``, the bundle is packed with the staged lock that names it (:mod:`mime.push._stage`); ``version`` is
+    the record's number in its concept, and ``own`` the DOIs of this experiment's earlier versions, whose files a new
+    version holds again."""
     from mime.credentials import held_tokens
-    from mime.saved import card_text, pack
     from mime.saved._bundle import scan_text
     from mime.saved._card import judged_folder
+    from mime.saved._folder import LOCK_FILE
 
     root = Path(os.path.abspath(folder))
     refusals: list[Refusal] = []
@@ -469,42 +568,38 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
             "save the experiment again from its script, built.save(folder), so the lock is written as MIME ships its "
             "assets; then `mime push <folder> --to zenodo`")
             for ref in refs for location in ref.locations if _SANDBOX_LOCATION.match(location)]
-    try:
-        bundle = pack(root, out=staged / f"{re.sub(r'[^A-Za-z0-9._-]', '_', name) or 'experiment'}.mimebundle")
-    except BuildRefused as refused:
-        if not refusals:
-            raise
-        raise BuildRefused([*refusals, *refused.refusals]) from None
-    if refusals:
-        raise BuildRefused(refusals)
-    with zipfile.ZipFile(bundle) as archive:
-        read_manifest(archive)
-        notice = archive.read(NOTICE_MEMBER)
-        assert MANIFEST_MEMBER in archive.namelist()
-    notice_path = staged / NOTICE_KEY
-    notice_path.write_bytes(notice)
-    version = lock["environment"]["mime"]
-    files = [_record_file(bundle.name, bundle, judged.licence, "the bundle, packed from the folder now"),
-             _record_file(NOTICE_KEY, notice_path, None,
-                          "each file's licence, credit, verdict and declared permission (the bundle carries it too)")]
-    choices = asset_choices(refs, judged, lock)
+    choices = asset_choices(refs, judged, lock, own)
     by_asset = {asset: path for path, asset in lock.get("referenced_files", {}).items()}
+    assets: list[RecordFile] = []
     for choice in choices:
         if not choice.upload:
             continue
         placed = by_asset.get(choice.ref.name)
         source = root / placed if placed is not None and (root / placed).is_file() else locate(choice.ref, folder=root)
         key = record_key(choice.ref, placed)
-        if key in {file.key for file in files}:
+        if key in {file.key for file in assets} or key == NOTICE_KEY or key.endswith(".mimebundle"):
             key = f"{choice.ref.sha256[:12]}-{key}"
-        held = _record_file(key, source, choice.ref.licence, f"the asset {plain(choice.ref.name)}: {choice.why}")
+        held = _record_file(key, source, choice.ref.licence, f"the asset {plain(choice.ref.name)}: {choice.why}",
+                            choice.ref.name)
         if (held.sha256, held.size) != (choice.ref.sha256, choice.ref.size):
             refusals.append(_refuse(
                 "push.checksum", RefusalClass.ENVIRONMENT,
                 f"the copy of the asset {plain(choice.ref.name)} at {source} is not its bytes (sha256 {held.sha256}, "
                 f"and the lock names {choice.ref.sha256})", f"hash the cache again, `mime assets check`, and fetch "
                                                             f"it again, `mime assets fetch {plain(choice.ref.name)}`"))
-        files.append(held)
+        assets.append(held)
+    lock_bytes = (root / LOCK_FILE).read_bytes()
+    bundle_name = f"{re.sub(r'[^A-Za-z0-9._-]', '_', name) or 'experiment'}.mimebundle"
+    try:
+        packed, staged_lock = _packed(root, service, staged, bundle_name, lock_bytes, publication, assets)
+    except BuildRefused as refused:
+        if not refusals:
+            raise
+        raise BuildRefused([*refusals, *refused.refusals]) from None
+    if refusals:
+        raise BuildRefused(refusals)
+    version_of_mime = lock["environment"]["mime"]
+    files = [replace(packed[0], licence=judged.licence), packed[1], *assets]
     refusals += [_refuse("push.too-many-files", RefusalClass.USER,
                          f"the record would hold {len(files)} files, and Zenodo holds at most {MOST_FILES}",
                          "move assets to an asset record of their own (`mime push --asset`, which comes later), or "
@@ -518,22 +613,76 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
             f"and in any one file", "move assets to an asset record of their own (`mime push --asset`, which comes "
                                     "later), or reference them with an origin, Terms(..., origin=(...)), and save "
                                     "again"))
-    description = card_html(card_text(root))
-    if sharing.description:
-        description = f"<p>{html.escape(sharing.description, quote=False)}</p>\n" + description
-    own = licence or sharing.licence
-    payload = payload_of((sharing, judged, record_licences(judged, choices, own), description, version),
-                         today or datetime.datetime.now(datetime.UTC).date())
-    refusals += scan_text("the record's metadata", json.dumps(payload, sort_keys=True).encode("utf-8"),
+    own_licence = licence or sharing.licence
+    plan = Plan(service, name, root, tuple(files), judged, tuple(choices), own_licence, sharing, {}, version_of_mime,
+                lock_bytes, publication, staged_lock, "", version, staged)
+    plan = with_sharing(plan, sharing, today)
+    refusals += scan_text("the record's metadata", json.dumps(plan.payload, sort_keys=True).encode("utf-8"),
                           held_tokens())
     if refusals:
         raise BuildRefused(refusals)
-    return Plan(service, name, root, tuple(files), judged, tuple(choices), own, sharing, payload, version)
+    return plan
 
 
-def _record_file(key: str, path: Path, licence: str | None, what: str) -> RecordFile:
+def with_sharing(plan: Plan, sharing: Sharing, today: datetime.date | None = None) -> Plan:
+    """``plan`` with ``sharing.yaml`` read again (an edit made on the site kept, written into it): its card, which
+    names the creators, and its metadata payload made again from it."""
+    from mime.saved import card_text
+
+    card = card_html(card_text(plan.folder)) if plan.staging is not None else plan.card
+    plan = replace(plan, card=card)
+    description = plan.card
+    if sharing.description:
+        description = f"<p>{html.escape(sharing.description, quote=False)}</p>\n" + description
+    payload = payload_of((sharing, plan.judged, record_licences(plan.judged, plan.assets, plan.licence), description,
+                          plan.mime_version), today or datetime.datetime.now(datetime.UTC).date(),
+                         record_version=plan.version)
+    return replace(plan, sharing=sharing, payload=payload)
+
+
+def _packed(root: Path, service: Service, staged: Path, bundle_name: str, lock: bytes,
+            publication: PublicationRecord | None, assets: Sequence[RecordFile]) -> tuple[list[RecordFile],
+                                                                                       bytes | None]:
+    """The bundle and its NOTICE as record files, packed from the folder with its own lock or, with ``publication``,
+    with the staged lock naming that record (each of ``assets`` located there first); and the staged lock."""
+    from mime.push._stage import own_location, pack_staged, staged_lock
+    from mime.saved import pack
+
+    target = staged / bundle_name
+    if publication is None:
+        bundle, held = pack(root, out=target), None
+    else:
+        own = {file.asset: own_location(service, publication["record"], publication["doi"], file.key)
+               for file in assets if file.asset is not None}
+        held = staged_lock(lock, publication, own)
+        bundle = pack_staged(root, held, staged, target)
+    with zipfile.ZipFile(bundle) as archive:
+        read_manifest(archive)
+        notice = archive.read(NOTICE_MEMBER)
+        assert MANIFEST_MEMBER in archive.namelist()
+    notice_path = staged / NOTICE_KEY
+    notice_path.write_bytes(notice)
+    what = "the bundle, packed from the folder (again once its DOI is reserved, its lock naming the record)" \
+        if publication is None else f"the bundle, its lock naming the record {publication['doi']}"
+    return [_record_file(bundle.name, bundle, None, what),
+            _record_file(NOTICE_KEY, notice_path, None,
+                         "each file's licence, credit, verdict and declared permission (the bundle carries it too)")
+            ], held
+
+
+def restaged(plan: Plan, publication: PublicationRecord) -> Plan:
+    """``plan`` with its bundle packed again with the staged lock naming ``publication`` (a draft's DOI reserved once
+    its plan was shown): its bundle and NOTICE made again, the rest as it was."""
+    assert plan.staging is not None, "a plan of files alone is not packed"
+    assets = [file for file in plan.files if file.asset is not None]
+    packed, held = _packed(plan.folder, plan.service, plan.staging, plan.files[0].key, plan.lock, publication, assets)
+    packed[0] = replace(packed[0], licence=plan.files[0].licence)
+    return replace(plan, files=(*packed, *assets), publication=publication, staged=held)
+
+
+def _record_file(key: str, path: Path, licence: str | None, what: str, asset: str | None = None) -> RecordFile:
     md5, sha256, size = file_hashes(path)
-    return RecordFile(key, path, size, md5, sha256, licence, what)
+    return RecordFile(key, path, size, md5, sha256, licence, what, asset)
 
 
 def _grantee_problems(permissions: Sequence[PermissionDoc], sharing: Sharing, root: Path) -> list[Refusal]:
@@ -554,6 +703,6 @@ def _grantee_problems(permissions: Sequence[PermissionDoc], sharing: Sharing, ro
 
 
 __all__ = ["DOI_FIELDS", "FIELD_OWNERS", "KEYWORD", "MOST_BYTES", "MOST_FILES", "NOTICE_KEY", "OWN_RELATED",
-           "PUBLISHER", "AssetChoice", "field_owner", "Plan", "RecordFile",
+           "PUBLISHER", "AssetChoice", "field_owner", "Plan", "RecordFile", "declaring",
            "asset_choices", "card_html", "file_hashes", "make_plan", "on_zenodo", "payload_of", "record_key",
-           "record_licences", "rights_entries"]
+           "record_licences", "restaged", "rights_entries", "with_sharing"]
