@@ -291,15 +291,19 @@ PLANTED_HOSTS = ("ZENODO_API", "ZENODO_URL", "ZENODO_SANDBOX_URL", "MIME_ZENODO_
 
 
 def test_no_variable_moves_a_tokens_host(monkeypatch: pytest.MonkeyPatch):
-    """The control: each variable a person might expect to redirect the host is planted, and the services' hosts and
-    the address a client sends to stay MIME's constants."""
+    """The control: each variable a person might expect to redirect the host is planted, MIME is imported afresh in a
+    process of its own, and the services' hosts stay MIME's constants; and a client sends to its service's fixed
+    address alone."""
+    import subprocess
+    import sys
+
     for name in PLANTED_HOSTS:
         monkeypatch.setenv(name, "https://attacker.invalid/api")
-    import importlib
-
-    reloaded = importlib.reload(importlib.import_module("mime.push._service"))
-    assert reloaded.SERVICES["zenodo"].api == "https://zenodo.org/api"
-    assert reloaded.SERVICES["zenodo-sandbox"].api == "https://sandbox.zenodo.org/api"
+    shown = subprocess.run([sys.executable, "-c", "import mime.push as p; print(p.SERVICES['zenodo'].api, "
+                            "p.SERVICES['zenodo-sandbox'].api, p.ZENODO.site, p.ZENODO_SANDBOX.site)"],
+                           capture_output=True, text=True, check=True, timeout=300)
+    assert shown.stdout.split() == ["https://zenodo.org/api", "https://sandbox.zenodo.org/api", "https://zenodo.org",
+                                    "https://sandbox.zenodo.org"]
     sent: list[str] = []
 
     class Seen:
@@ -309,7 +313,7 @@ def test_no_variable_moves_a_tokens_host(monkeypatch: pytest.MonkeyPatch):
 
     from mime.credentials import Token
 
-    held = push.Client(reloaded.SERVICES["zenodo-sandbox"], Token("zenodo-sandbox", "x" * 40), Seen(), pause=0,
+    held = push.Client(push.ZENODO_SANDBOX, Token("zenodo-sandbox", "x" * 40), Seen(), pause=0,
                        sleep=lambda seconds: None)
     with pytest.raises(BuildRefused):
         held.read_draft("1")
@@ -321,3 +325,16 @@ def test_a_service_reached_in_clear_is_refused_before_any_request():
 
     plain_http = push.Service("zenodo", "http://zenodo.example/api", "http://zenodo.example", "zenodo", True, "x")
     assert codes(lambda: push.Client(plain_http, Token("zenodo", "x" * 40))) == ["push.service"]
+
+
+def test_a_draft_deleted_on_the_site_while_push_runs_is_refused_not_unrecognised(token: str, tmp_path: Path):
+    fake = FakeRecords(token)
+    real = fake._route
+
+    def deleting(method, path, rdm, body, kind):  # noqa: ANN001, ANN202
+        if method == "PUT" and path.endswith("/content"):
+            fake.records.clear()
+        return real(method, path, rdm, body, kind)
+
+    fake._route = deleting  # type: ignore[method-assign]
+    assert codes(lambda: a_draft(fake, tmp_path)) == ["push.service"]

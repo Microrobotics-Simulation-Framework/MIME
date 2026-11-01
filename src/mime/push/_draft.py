@@ -23,7 +23,7 @@ from mime._terminal import plain
 from mime.assets import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
-from mime.push._client import Client, Dropped, Errors, Json, Transport
+from mime.push._client import Client, Dropped, Errors, Gone, Json, Transport
 from mime.push._plan import Plan, RecordFile, field_owner, make_plan
 from mime.push._service import TEST_PREFIX, Service
 from mime.push._sharing import read_sharing, scaffold, sharing_path
@@ -288,6 +288,8 @@ class _Drafting:
                 entry = self.client.commit_file(record, file.key)
             except Dropped:
                 problem, mismatch, entry = "its connection dropped", False, None
+            except Gone:
+                problem, mismatch, entry = "its entry was gone before it was complete", False, None
             except Errors as answered:
                 problem, mismatch, entry = f"{self.service.name} answered {answered.words()}", False, None
             if entry is not None and _entry_verified(entry, file):

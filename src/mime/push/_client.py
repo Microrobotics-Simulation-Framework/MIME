@@ -339,13 +339,14 @@ class Client:
     def update_draft(self, record: str, payload: Json) -> tuple[Json, list[object]]:
         """Write the draft's metadata: the draft, and the ``errors`` its answer lists (it is saved with them)."""
         try:
-            return _draft(self, self.call("PUT", f"/records/{_part(record)}/draft", payload=payload, retry=True)), []
+            return _draft(self, self._present(f"the draft {record}", lambda: self.call(
+                "PUT", f"/records/{_part(record)}/draft", payload=payload, retry=True))), []
         except Errors as answered:
             return _checked_draft(self, answered.body), answered.errors
 
     def reserve_doi(self, record: str) -> Json:
-        return _draft(self, self.call("POST", f"/records/{_part(record)}/draft/pids/doi",
-                                      expect=frozenset({200, 201}), retry=False))
+        return _draft(self, self._present(f"the draft {record}", lambda: self.call(
+            "POST", f"/records/{_part(record)}/draft/pids/doi", expect=frozenset({200, 201}), retry=False)))
 
     def delete_draft(self, record: str) -> bool:
         """Delete the draft ``record``; whether it was there."""
@@ -357,7 +358,8 @@ class Client:
 
     def files(self, record: str) -> dict[str, Json]:
         """The draft's file entries, by key."""
-        held = self.call("GET", f"/records/{_part(record)}/draft/files").json()
+        held = self._present(f"the draft {record}",
+                             lambda: self.call("GET", f"/records/{_part(record)}/draft/files")).json()
         entries = cast(dict[str, object], held).get("entries") if isinstance(held, dict) else None
         if not isinstance(entries, list):
             raise _shape(self, "the draft's files", "an object with a list of entries")
@@ -370,8 +372,22 @@ class Client:
         return found
 
     def start_file(self, record: str, key: str) -> None:
-        self.call("POST", f"/records/{_part(record)}/draft/files", payload=[{"key": key}],
-                  expect=frozenset({200, 201}), retry=False)
+        self._present(f"the draft {record}", lambda: self.call(
+            "POST", f"/records/{_part(record)}/draft/files", payload=[{"key": key}], expect=frozenset({200, 201}),
+            retry=False))
+
+    def _present(self, what: str, request: Callable[[], Answer]) -> Answer:
+        """``request``'s answer; a ``404`` where the thing must be there (deleted on the site while push ran) is
+        refused, never left as an error MIME does not recognise."""
+        try:
+            return request()
+        except Gone:
+            pass
+        raise BuildRefused([_refuse(
+            "push.service", RefusalClass.ENVIRONMENT,
+            f"{what} is no longer on {self.service.name} (deleted on the site while push ran?)",
+            "run the same command again, `mime push <folder> --to <service>`, which makes a new draft where the old "
+            "one is gone")])
 
     def send_content(self, record: str, key: str, path: Path) -> Json:
         """The whole file ``path`` into the started entry ``key``: one ``PUT``, never sent again by this call (a second
