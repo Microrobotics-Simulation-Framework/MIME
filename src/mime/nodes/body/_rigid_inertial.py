@@ -8,7 +8,7 @@ from typing import Any, cast, override
 
 from jax import Array
 from jaxtyping import Float
-from maddening.core.compliance.metadata import DiscretizationOrder
+from maddening.core.compliance.metadata import DiscretizationOrder, NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
@@ -17,6 +17,8 @@ from mime.core import (
     VELOCITY_RULES,
     MimeNode,
     NodeFields,
+    Symbol,
+    SymbolKind,
     as_run_array,
     jnp,
     node_fields,
@@ -264,10 +266,41 @@ class RigidInertialNode(MimeNode):
                                               twist=jnp.concatenate([velocity, moved[3:]])))
 
 
+#: Where the symbol rows' function is.
+_ADVANCE = "mime.nodes.body._rigid_inertial.RigidInertialNode.advance"
+EXPLICIT_EQUATIONS = (r"\mathbf{V}^{\prime} = \mathbf{V} + (\mathbf{M} / \mathrm{d}t + \mathbf{R})^{-1} "
+                      r"(\mathbf{F} - \boldsymbol{\omega} \times (\mathbf{I} \boldsymbol{\omega}) - \mathbf{R} \mathbf{V})")
+
+
 class RigidInertialExplicitNode(RigidInertialNode):
     """The step of ``rigid_inertial`` 0.2.0, kept so that a folder saved with it reproduces: the gyroscopic term
     explicit, ``M/dt + R`` with ``-omega x I omega`` in the load alone. It gains kinetic energy at every step when the
     three moments differ (MIME-ANO-129), and overflows where nothing damps the body."""
+
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-112",
+        description="A rigid body with the gyroscopic term explicit, kept as rigid_inertial 0.2.0: Newton's and Euler's "
+                    "equations for its centre of mass, every delivered resistance integrated implicitly, the pose "
+                    "turned by the exponential of the new rate. It gains kinetic energy for a body of three different "
+                    "moments (MIME-ANO-129); rigid_inertial 0.3.0 does not.",
+        governing_equations=EXPLICIT_EQUATIONS,
+        discretization="Semi-implicit Euler, first order in time: the resistance implicit, every load and the "
+                       "gyroscopic term at the start of the step; the position from the new velocity, the "
+                       "orientation turned by the exponential of the new angular velocity.",
+        assumptions=("A rigid body whose principal moments are about its body axes",
+                     "The gyroscopic term is evaluated at the start of the step, which gains energy at every step "
+                     "for a body of three different moments, first order in the step (MIME-ANO-129)"),
+        references=(Reference("PeraireWidnall2009", "Euler's equations for a rigid body"),
+                    Reference("Sola2017", "the quaternion exponential of the turn")),
+    )
+    symbols = (
+        Symbol(r"\mathbf{M}", SymbolKind.PARAMETER, "mass", "kg", _ADVANCE),
+        Symbol(r"\mathbf{I}", SymbolKind.PARAMETER, "inertia", "kg m^2", _ADVANCE),
+        Symbol(r"\mathbf{R}", SymbolKind.INPUT, "resistance", "N s/m; N s; N m s", _ADVANCE),
+        Symbol(r"\mathbf{F}", SymbolKind.INPUT, "applied_wrench", "N; N m", _ADVANCE),
+        Symbol(r"\mathbf{V}", SymbolKind.STATE, "twist", "m/s; rad/s", _ADVANCE),
+        Symbol(r"\boldsymbol{\omega}", SymbolKind.STATE, "twist", "m/s; rad/s", _ADVANCE),
+    )
 
     @override
     def midpoint_mass(self, mass_matrix: Array, gyroscopic: Array, dt: float) -> Array:

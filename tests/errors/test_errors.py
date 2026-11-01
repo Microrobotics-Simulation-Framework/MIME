@@ -61,8 +61,8 @@ HERE = Path(__file__).resolve()
 def rod(dt: float = 1.0, spin: tuple[float, float, float] = (0.0, 0.0, 0.0),
         inertia: tuple[float, float, float] = (1e-13, 2e-13, 3e-13)) -> tuple[Experiment, Any]:
     """A millimetre rod alone, its dynamics its own: the cheapest experiment that builds and runs; with a spin of
-    1e20 rad/s, the gyroscopic term overflows; with an inertia of zero, a value that the step divides by, it is
-    refused when built."""
+    1e200 rad/s, the gyroscopic term overflows in either precision; with an inertia of zero, a value that the step
+    divides by, it is refused when built."""
     exp = Experiment("drift", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(dt))
     exp.add_body(Body("rod", dynamics=RigidInertial(), initial=State(
         position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
@@ -430,7 +430,7 @@ def test_a_results_lookups_are_refused_with_their_codes(built, tmp_path):
 
 
 def test_a_state_that_is_not_finite_names_its_first_step_thing_and_field_where_the_run_kept_them():
-    exp, _ = rod(spin=(1e20, 7e19, 3e19))
+    exp, _ = rod(spin=(1e200, 7e199, 3e199))
     kept = _raised(lambda: exp.build().run(s(5.0), history=True))
     assert isinstance(kept, RunFailed) and kept.codes() == ["run.non-finite"]
     said = kept.refusals[0].message
@@ -468,7 +468,7 @@ def test_the_control_a_moment_above_zero_builds():
 
 
 def test_the_control_a_state_that_is_not_finite_is_still_refused_at_the_run_for_a_body_with_moments():
-    exp, _ = rod(spin=(1e20, 7e19, 3e19))
+    exp, _ = rod(spin=(1e200, 7e199, 3e199))
     assert _raised(lambda: exp.build().run(s(5.0))).codes() == ["run.non-finite"]
 
 
@@ -700,7 +700,7 @@ def test_mime_run_on_a_state_that_is_not_finite_writes_its_outputs_and_says_what
 
     monkeypatch.setenv(DIRECTORY_VARIABLE, str(tmp_path / "tracebacks"))
     monkeypatch.delenv(TRACEBACK_VARIABLE)
-    exp, _ = rod(spin=(1e20, 7e19, 3e19))
+    exp, _ = rod(spin=(1e200, 7e199, 3e199))
     exp.build().save(tmp_path / "saved", steps=2)
 
     def marked(out: Path) -> bool:

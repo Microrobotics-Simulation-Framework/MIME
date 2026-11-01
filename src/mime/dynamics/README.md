@@ -33,8 +33,8 @@ body with mass and inertia (principal moments about the body axes), its state th
 It sums every applied wrench and background load, integrates every delivered resistance implicitly, solved for the
 change in velocity, `(M/dt + R) dV = F - R V` (0.1.0 solved `(M/dt + R) V' = (M/dt) V + F`, which float32 rounded,
 MIME-ANO-113), with the gyroscopic term linearly implicit at the midpoint (0.3.0; 0.2.0 took it explicit, and gained
-energy: MIME-ANO-129; there is no explicit setting), so that the step solves `(M/dt + R - K/2) dV = F - R V` with
-`K` the term's Jacobian, a matrix that is not symmetric for unequal moments. It turns by the exponential of
+energy: MIME-ANO-129; there is no explicit setting), so that the step's matrix is `M/dt + R` less half the term's Jacobian `K`,
+and it is not symmetric for unequal moments. It turns by the exponential of
 `dt omega'`, holds its confinement inside the solve while the body starts a step on its surface moving outward (from
 0.2.0), and projects it after the step. A moment of inertia that is not above zero is refused when the experiment is
 built (`value.not-positive`). Its node declares first order in time, which the node walk measures. It reads its body's

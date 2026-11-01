@@ -86,3 +86,9 @@ SourceReactionNode \mathbf{F}  # pinned at landing
 SourceReactionNode \boldsymbol{\tau}  # pinned at landing
 SourceReactionNode \mathbf{c}  # pinned at landing
 SourceReactionNode \mathbf{o}  # pinned at landing
+RigidInertialExplicitNode \mathbf{M}  # pinned at landing
+RigidInertialExplicitNode \mathbf{I}  # pinned at landing
+RigidInertialExplicitNode \mathbf{R}  # pinned at landing
+RigidInertialExplicitNode \mathbf{F}  # pinned at landing
+RigidInertialExplicitNode \mathbf{V}  # pinned at landing
+RigidInertialExplicitNode \boldsymbol{\omega}  # pinned at landing
