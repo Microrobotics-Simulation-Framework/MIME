@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import tube_asset
 from mrs_cases import drag_node, free_space, resistance_at
-from tube_cases import TUBE_RADIUS, haberman_sayre, polar_spacing, sphere_in_a_tube
+from tube_cases import TUBE_RADIUS, grid_sphere, haberman_sayre, polar_spacing, sphere_in_a_tube
 
 import mime.nodes.hydro.mrs._tube as tube_module
 from mime.build import BuildRefused
@@ -20,7 +20,7 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import wall_correction_named
 from mime.registry import EntryKind, lookup
-from mime.scene import Capsule, Sphere
+from mime.scene import Capsule
 from mime.units import m, mm, ms
 
 RATIO = 0.1
@@ -66,7 +66,7 @@ def drag_ratio(polar: int) -> float:
     spacing = polar_spacing(RATIO, polar)
     confined = resistance_at(sphere_in_a_tube("confined", radius=RATIO, spacing=spacing, wall_kind="tube").build(),
                              "ball")
-    free = resistance_at(free_space("free", {"ball": Sphere(radius=m(RATIO * TUBE_RADIUS.value))},
+    free = resistance_at(free_space("free", {"ball": grid_sphere(m(RATIO * TUBE_RADIUS.value))},
                                     Drag.MRS(spacing=spacing, blob=0.5, wall_kind="free_space")).build(), "ball")
     return float(confined[2, 2] / free[2, 2])
 

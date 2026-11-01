@@ -17,6 +17,7 @@
 
 import dataclasses
 import math
+from typing import Annotated, override
 
 import jax
 import jax.numpy as jnp
@@ -24,11 +25,12 @@ import numpy as np
 import pytest
 
 from mime.build import BuildRefused
-from mime.registry import Geometry, register_geometry
+from mime.gradients import GradientStatus
+from mime.registry import Solid, register_geometry
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Screw, Sphere, Tube, quasi_uniform
 from mime.scene import _sampling
 from mime.scene._sampling import QUASI_UNIFORM, quadrature, quadrature_arrays
-from mime.units import mm
+from mime.units import Length, Quantity, mm
 from mime.vocabulary import register_namespace
 from mrs_cases import free_space, mrs
 from script_a import fl9
@@ -216,12 +218,32 @@ register_namespace("unsampled", "0.0.1")
 
 @register_geometry
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _Unsampled(Sphere):
-    """A sphere that gives its quadrature and not the protocol's sampling: what a lab's kind written before 7m-a is."""
+class _Unsampled(Solid):
+    """A ball that gives its volume, inertia and reach and not the protocol's sampling: what a lab's kind written
+    before 7m-a is."""
 
     name = "unsampled.ball"
     version = "0.0.1"
-    sampling = Geometry.sampling  # type: ignore[assignment]
+    differentiability = GradientStatus.EXACT
+    builds = {"": ()}
+    radius: Annotated[Quantity, Length]
+
+    @override
+    def volume(self, settings):
+        return 4.0 / 3.0 * math.pi * settings["radius"] ** 3
+
+    @override
+    def inertia_per_mass(self, settings):
+        moment = 2.0 * settings["radius"] ** 2 / 5.0
+        return ((moment, 0.0, 0.0), (0.0, moment, 0.0), (0.0, 0.0, moment))
+
+    @override
+    def enclosing_radius(self, settings):
+        return settings["radius"]
+
+    @override
+    def radial_reach(self, settings):
+        return settings["radius"]
 
 
 def test_the_mrs_rung_refuses_a_kind_that_does_not_implement_the_sampling_by_name():

@@ -30,7 +30,7 @@ from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import register_wall_correction, tube_wall, unit_tube_table, wall_corrections
 from mime.registry import Geometry, WallForm, WallKind, register_wall_kind
-from mime.scene import Scene, Sphere, Tube, Z
+from mime.scene import KEPT, Scene, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
 from mime.units import Quantity, kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 from mime.vocabulary import register_namespace
@@ -104,11 +104,19 @@ if f"{TubeSeries.name} {TubeSeries.version}" not in wall_corrections():
     register_wall_correction(tube_wall(TubeSeries.name, TubeSeries.version, series_table))
 
 
+def grid_sphere(radius: Quantity) -> Geometry:
+    """A sphere sampled by its Gauss-Legendre grid, the version kept from before quasi-uniform sampling (the sphere
+    0.1.0): Gauss's first polar node keeps every sample more than a fifth of the sphere's radius from its polar axis,
+    which the tube oracles' small series table, whose first radius is off the tube's axis, needs of a sphere centred
+    on it; the current version's quasi-uniform sampling takes samples at the poles."""
+    return KEPT[("sphere", "0.1.0")][0](radius=radius)
+
+
 def sphere_in_a_tube(name: str, *, radius: float, spacing: Quantity, wall_kind: str = TubeSeries.name,
                      blob: float = 0.5, tube_radius: Quantity = TUBE_RADIUS, hull: Geometry | None = None) -> Experiment:
     """A sphere of ``radius`` (of the tube's) at rest on the axis of a straight tube along z, in water filling its
     lumen, unturned (its sampling's poles along the tube's axis), with ``Drag.MRS`` and nothing else; or ``hull``
-    there in its place."""
+    there in its place. The sphere is sampled by its grid (:func:`grid_sphere`)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=tube_radius,
                                                              wall=mm(0.5), length=mm(200.0))))
@@ -116,7 +124,7 @@ def sphere_in_a_tube(name: str, *, radius: float, spacing: Quantity, wall_kind: 
     experiment.declare("water.viscosity", WATER, reason="water")
     experiment.add_body(Body("ball", dynamics=RigidInertial(),
                              parts={"shell": Part(hull if hull is not None else
-                                                  Sphere(radius=m(radius * float(tube_radius.value))))},
+                                                  grid_sphere(m(radius * float(tube_radius.value))))},
                              initial=State(position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
                                            velocity=m_per_s((0.0, 0.0, 0.0)),
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))

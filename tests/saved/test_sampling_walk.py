@@ -261,8 +261,11 @@ def tube_points():
 
 
 def test_every_wall_kind_gives_its_distance_and_free_space_none():
+    """Every installed wall kind: one a test registers on its own (the tube oracle's series) is no installed entry."""
     load_namespaces()
-    walls = {record.name: record.cls for record in registered_entries(EntryKind.WALL_KIND)}
+    installed = {(kind, name, version) for kind, name, version in installed_entries()}
+    walls = {record.name: record.cls for record in registered_entries(EntryKind.WALL_KIND)
+             if (record.kind.value, record.name, record.version) in installed}
     assert {"free_space", "tube"} <= set(walls)
     closed = {"tube": tube_closed_form(TUBE["centre"], TUBE["axis"], TUBE["radius"])}
     unchecked = [name for name, cls in walls.items() if cls.matches is not None and name not in closed]

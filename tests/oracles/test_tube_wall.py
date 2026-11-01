@@ -52,7 +52,7 @@ import tube_fourier_bessel as fb
 from mrs_cases import drag_node, free_space, resistance_at
 from maddening import sysid
 from maddening.core.params import ParamSpec, trainable_mask
-from tube_cases import TUBE_RADIUS, builder_table, haberman_sayre, polar_spacing, sphere_in_a_tube
+from tube_cases import TUBE_RADIUS, builder_table, grid_sphere, haberman_sayre, polar_spacing, sphere_in_a_tube
 
 import mime.interactions.hydrodynamic as hydrodynamic
 import mime.nodes.hydro.mrs._tube as tube_module
@@ -405,7 +405,7 @@ def drag_ratio(polar: int) -> float:
     correction on the series' table, over its drag in free space at the same samples."""
     spacing = polar_spacing(RATIO, polar)
     confined = resistance_at(sphere_in_a_tube("confined", radius=RATIO, spacing=spacing).build(), "ball")
-    free = resistance_at(free_space("free", {"ball": Sphere(radius=m(RATIO * TUBE_RADIUS.value))},
+    free = resistance_at(free_space("free", {"ball": grid_sphere(m(RATIO * TUBE_RADIUS.value))},
                                     Drag.MRS(spacing=spacing, blob=0.5, wall_kind="free_space")).build(), "ball")
     return float(confined[2, 2] / free[2, 2])
 

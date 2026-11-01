@@ -59,7 +59,7 @@ from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import MRSDragNode, Corrected, WallCorrection, blob_squared, resistance
-from mime.registry import Geometry, Samples, Solid, register_geometry, uniform
+from mime.registry import Samples, Solid, register_geometry, uniform
 from mime.scene import Sphere, Tube, quadrature
 from mime.things import Body, State, Structure
 from mime.units import Length, Quantity, dimensionless, mm
@@ -114,9 +114,8 @@ def test_the_sphere_converges_on_stokes_drag_and_torque():
 register_namespace("oracle", "0.0.1")
 
 
-@register_geometry
 @dataclass(frozen=True, kw_only=True)
-class Spheroid(Solid):
+class _SpheroidQuadrature(Solid):
     """A prolate spheroid for the oracle, ``x^2/a^2 + (y^2 + z^2)/b^2 = 1`` in its frame, its one patch ``surface``
     sampled by Gauss-Legendre nodes in ``u = x / a`` and the trapezoid rule round x, weighted by the surface element
     ``b sqrt(b^2 u^2 + a^2 (1 - u^2)) du dphi``: no 0.3 kind gives a spheroid's samples, so the test registers its own,
@@ -155,12 +154,6 @@ class Spheroid(Solid):
         return max(2, math.ceil(around / 2)), around
 
     @override
-    def sampling(self, settings, spacing, patches, density=uniform):
-        """Its quadrature at the spacing, as the oracle's convergence was measured on: a kind may choose its own
-        sampling, and the rung takes whichever it gives."""
-        return quadrature(self, settings, spacing, patches)
-
-    @override
     def samples(self, parameters, patch, counts):
         along, around = counts
         a, b = parameters["a"], parameters["b"]
@@ -174,6 +167,17 @@ class Spheroid(Solid):
         element = b * jnp.sqrt(b ** 2 * uu ** 2 + a ** 2 * sine ** 2) * jnp.asarray(
             np.outer(weight, np.full(around, 2 * np.pi / around)).ravel())
         return Samples(points, normals, element)
+
+
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Spheroid(_SpheroidQuadrature):
+    """The oracle's spheroid, whose sampling is its quadrature at the spacing, as the oracle's convergence was
+    measured on: a kind may choose its own sampling, and the rung takes whichever it gives."""
+
+    @override
+    def sampling(self, settings, spacing, patches, density=uniform):
+        return quadrature(self, settings, spacing, patches)
 
 
 def prolate(a: float, b: float, mu: float = 1.0) -> np.ndarray:
@@ -349,13 +353,12 @@ def codes(experiment) -> set[str]:
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
-class Unsampled(Spheroid):
+class Unsampled(_SpheroidQuadrature):
     """The oracle's spheroid without the geometry protocol's sampling: a kind that gives its quadrature and not the
     sampling the rung needs."""
 
     name = "oracle.unsampled"
     version = "0.0.1"
-    sampling = Geometry.sampling  # type: ignore[assignment]
 
 
 def test_a_body_with_no_hull_or_a_hull_kind_without_samples_is_refused():
