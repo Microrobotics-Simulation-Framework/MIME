@@ -3,30 +3,13 @@ kills the whole group when the test ends, passed, failed, errored or interrupted
 outright runs no finalizer; ``mime serve`` then stops by itself, its launcher gone
 (``mime.live._serve.LauncherWatch``)."""
 
-import os
-import signal
 import subprocess
 import sys
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 import pytest
-
-
-def stop_group(process: subprocess.Popen) -> None:
-    """Kill ``process`` and every process of its group, and reap it."""
-    if process.poll() is None:
-        if sys.platform == "win32":
-            process.kill()
-        else:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-    try:
-        process.wait(timeout=60)
-    except subprocess.TimeoutExpired:  # a hang guard: SIGKILL is not refused
-        pass
+from process_groups import stop_group
 
 
 @pytest.fixture

@@ -41,20 +41,22 @@ def folder(tmp_path_factory):
 EARLY = 0.005
 
 
-def ahead_of_real_time(frames, arrived, started: float, chunk: float) -> list[str]:
-    """Each frame that arrived before pacing allows: a paced session waits until real time has caught up with the
-    simulated time it is at before it steps a chunk, and its clock starts no earlier than the ``start`` request was
-    sent (``started``), so a frame of simulated time t arrives no earlier than ``started + t - chunk``, on any machine,
-    however loaded (a late frame is never wrong: a loaded machine falls behind)."""
-    return [f"frame {held.number} (t = {held.time:.4f} s) arrived {started + held.time - chunk - at:.4f} s early"
-            for held, at in zip(frames, arrived, strict=True) if at < started + held.time - chunk - EARLY]
+def ahead_of_real_time(frames, arrived, started: float, at: float, chunk: float) -> list[str]:
+    """Each frame that arrived before pacing allows. A paced session waits, before each chunk, until real time has
+    caught up with the simulated time it is at, counted from where it started (simulated time ``at``) and from no
+    earlier than the ``start`` request was sent (``started``); it may run a chunk behind and catch up, never more. So
+    a frame of simulated time t arrives no earlier than ``started + (t - at) - chunk``, on any machine, however loaded
+    (a late frame is never wrong: a loaded machine falls behind)."""
+    return [f"frame {held.number} (t = {held.time:.4f} s) arrived {started + held.time - at - chunk - when:.4f} s early"
+            for held, when in zip(frames, arrived, strict=True) if when < started + held.time - at - chunk - EARLY]
 
 
 def test_a0_through_mime_serve_is_never_ahead_of_real_time_and_each_frame_is_the_batch_runs_state(launch, folder,
                                                                                                tmp_path):
     """Paced at real time, no frame arrives ahead of real time, chunk by chunk; that it keeps up with real time is a
-    machine's measurement (``scripts/live_pace_benchmark.py``), not a check here. The control of the pacing check: the
-    same frames arriving two chunks earlier than pacing allows are every one found ahead."""
+    machine's measurement (``scripts/live_pace_benchmark.py``), not a check here. A first chunk is stepped before the
+    session starts, so that its compile is behind it when pacing begins. The control of the pacing check: the same
+    frames arriving two chunks earlier than pacing allows are every one found ahead."""
     ready = tmp_path / "ready.json"
     process = launch([sys.executable, "-m", "mime.cli", "serve", str(folder), "--commands", "tcp://127.0.0.1:0",
                       "--frames", "tcp://127.0.0.1:0", "--ready-file", str(ready), "--out", str(tmp_path / "out")],
@@ -66,19 +68,24 @@ def test_a0_through_mime_serve_is_never_ahead_of_real_time_and_each_frame_is_the
     endpoints = json.loads(ready.read_text())
     live = LiveClient(endpoints["commands"], endpoints["frames"])
     chunk = live.hello["chunk_steps"] * live.hello["dt"]
+    stepped = live.request("step", chunks=1)  # answered once the chunk, and its compile, are done
+    frames = [live.frame(), live.frame()]
+    at = stepped["time"]
+    assert frames[-1].time == at
     started = time.monotonic()
     live.request("start")
-    frames, arrived = [], []
-    while not frames or frames[-1].time < 1.0:
-        frames.append(live.frame())
+    paced, arrived = [], []
+    while not paced or paced[-1].time < at + 1.0:
+        paced.append(live.frame())
         arrived.append(time.monotonic())
     live.request("stop")
     assert process.wait(timeout=600) == 0
+    frames += paced
     order = FrameOrder()
     assert [order.see(f) for f in frames] == [None] * len(frames)
-    assert ahead_of_real_time(frames, arrived, started, chunk) == []
-    early = [started + held.time - 2 * chunk for held in frames]
-    assert len(ahead_of_real_time(frames, early, started, chunk)) == len(frames)
+    assert ahead_of_real_time(paced, arrived, started, at, chunk) == []
+    early = [started + held.time - at - 2 * chunk for held in paced]
+    assert len(ahead_of_real_time(paced, early, started, at, chunk)) == len(paced)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         history = a0().build().run(s(frames[-1].step * 0.0005), history=True).history
