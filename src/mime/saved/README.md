@@ -131,8 +131,10 @@ file it does not carry, with why, its licence, its role and where it is availabl
 file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
 says what `mime verify <folder>` would check (the card runs no check). Both are generated and the same bytes each
 time. **Credit** (the creators with their ORCIDs, the
-contributors and their roles) will live in `sharing.yaml` beside the folder, which `mime push --init` will write; until
-it exists the card says so where the creators go, and shows each third-party file's credit under its licences.
+contributors and their roles) lives in `sharing.yaml` beside the saved form, which `mime push <folder> --to <service>
+--init` writes (see [`mime.push`](../push/README.md)): the card names its creators and contributors, and where the folder
+holds none says so where the creators go; each third-party file's credit is under its licences either way. `pack`
+neither carries nor refuses `sharing.yaml`, the one file of a folder that is neither the saved form's nor a stray.
 
 ## The bundle
 
@@ -260,7 +262,7 @@ out of band. After a pull, `mime verify` reruns the experiment against its refer
 
 ```
 mime pack ./fl9_water/                    # fl9_water.mimebundle, and its sha256
-# publish the file: a Zenodo record, a release, a shared drive (mime push, once built, uploads it)
+# or a draft record on Zenodo: mime push ./fl9_water/ --to zenodo-sandbox (publishing comes later)
 
 mime pull 10.5281/zenodo.1234567 --into ./fl9_water/   # or an address, or the file
 mime verify ./fl9_water/

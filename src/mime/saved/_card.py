@@ -13,9 +13,9 @@ licences and credit with every condition each file's licence or permission carri
 no-derivatives), its availability, and how to reproduce and cite it, exactly as ``mime push`` will write it as a
 record's description. Both refuse a licence that names an id the installed packaging does not list
 (``terms.unlisted-licence``), whose verdict this packaging cannot give. **Credit** (the creators with
-their ORCIDs, the contributors and their roles) is kept in ``sharing.yaml`` beside the folder, which ``mime push
---init`` writes and which is not built yet: until it is, the card says so where the creators go, and shows the credit
-the folder holds, each third-party file's, under its licences.
+their ORCIDs, the contributors and their roles) is kept in ``sharing.yaml`` beside the saved form, which ``mime push
+<folder> --to <service> --init`` writes: the card names its creators (and its contributors) where it holds one, and
+says where credit lives where it does not; each third-party file's credit is under its licences either way.
 """
 
 from __future__ import annotations
@@ -102,8 +102,8 @@ NO_EVIDENCE = ("No evidence record: MIME's validity layer arrives in a1. This ca
 CONDITION_WORDS = {NON_COMMERCIAL: "Non-commercial terms", SHARE_ALIKE: "Share-alike terms",
                    NO_DERIVATIVES: "No-derivatives terms"}
 CREDIT_HOME = ("Not stated here: credit (the creators with their ORCIDs, the contributors and their roles) is kept in "
-               "`sharing.yaml` beside the folder, which `mime push --init` will write; it is not built yet. Each "
-               "third-party file's credit is under Licences and credit.")
+               "`sharing.yaml` beside the saved form, which `mime push <folder> --to <service> --init` writes; this "
+               "folder has none yet. Each third-party file's credit is under Licences and credit.")
 
 
 def _licence_link(identifier: str, custom: Mapping[str, CustomLicence]) -> str:
@@ -254,6 +254,20 @@ def _table_row(file: FileTerms) -> str:
             f"{file.verdict.status.replace('_', ' ')}{flag} | {where} | {credit} |")
 
 
+def _credit_lines(root: Path) -> list[str]:
+    """The creators and contributors ``sharing.yaml`` names, where the folder holds one (refused as push refuses it,
+    since the card is the record's description); where it holds none, where credit lives."""
+    from mime.push._sharing import SHARING_FILE, read_sharing
+
+    if not (root / SHARING_FILE).is_file():
+        return [f"- **Creators:** {CREDIT_HOME}"]
+    sharing = read_sharing(root)
+    lines = [f"- **Creators:** {'; '.join(person.words() for person in sharing.creators)}"]
+    if sharing.contributors:
+        lines.append(f"- **Contributors:** {'; '.join(person.words() for person in sharing.contributors)}")
+    return lines
+
+
 def card_text(folder: str | os.PathLike[str]) -> str:
     """The card of a saved folder as Markdown: it loads and builds the experiment (``Experiment.load``) for what the
     build declares, and reads the rest from the saved form. Deterministic within one environment."""
@@ -271,7 +285,7 @@ def card_text(folder: str | os.PathLike[str]) -> str:
              "- **Licence:** " + (plain(judged.licence) if judged.licence
                                   else "none declared (mime push will ask for one)"),
              f"- **Licences of its files:** {', '.join(plain(each) for each in licences) or 'none declared'}",
-             f"- **Creators:** {CREDIT_HOME}", "",
+             *_credit_lines(root), "",
              "## What it is", "",
              f"Saved by MIME {plain(lock['environment']['mime'])} as {DOCUMENT_SCHEMAS[judged.version]}, built under "
              f"the {document['profile']} profile.", ""]

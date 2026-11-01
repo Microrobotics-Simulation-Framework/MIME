@@ -1,7 +1,6 @@
 # `mime.credentials`
 
-**The access token `mime push` will use, kept where a commit cannot publish it and shown nowhere.** `push` is not built
-yet; this is its credentials, prepared. Nothing here goes online: a check of the token against the service's API is
+**The access token `mime push` uses, kept where a commit cannot publish it and shown nowhere.** Nothing here goes online: a check of the token against the service's API is
 `push`'s. MIME has no accounts, so nothing is "logged into": it stores another service's credential.
 
 ## Commands
@@ -57,6 +56,7 @@ the scan is the second line, and the whitelist is the first.
 
 ## Status
 
-Landed with `mime pack` and `mime pull`, ahead of `mime push`.
+Landed with `mime pack` and `mime pull`, ahead of `mime push`, which reads its token from here (push's P2a: the
+token goes in the `Authorization` header alone, built inside the call that sends it; see [`mime.push`](../push/README.md)).
 
 Phases and releases are explained in the [package manifest](../README.md#status).
