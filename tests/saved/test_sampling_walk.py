@@ -14,8 +14,8 @@ reversed, fails.
 
 **What was measured** (float64, on the declared settings, at ``SUITE_SAMPLES`` and ``FINER_SAMPLES``; recorded so that
 a threshold's margin is known): the quasi-uniform samplings' 5th percentile of nearest neighbours over the mean spacing
-0.76 to 0.80, their least 0.61 to 0.78, every region's coverage 0.96 to 1.07 (the seams' over two spacings); the
-quadratures' 0.09 to 0.36 and 0.09 to 0.36, the screw's caps 2.4 to 2.9 times their share. The conditioning, at
+0.76 to 0.81, their least 0.61 to 0.73, every region's coverage 0.96 to 1.06 (the seams' over two spacings); the
+quadratures' 0.09 to 0.36 and 0.06 to 0.36, the screw's caps 2.4 to 2.9 times their share. The conditioning, at
 ``SUITE_SAMPLES``, in ``CONDITION_BOUNDS``'s docstring."""
 
 import dataclasses

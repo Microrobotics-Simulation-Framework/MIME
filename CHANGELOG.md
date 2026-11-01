@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **The sampling conformance suite** (`mime.testing`: `sampling_problems`, `conditioning_problems`, `reach_problems`,
     `distance_problems`; `tests/saved/test_sampling_walk.py` runs it on every registered kind, MIME's and every
     installed namespace's): the 5th percentile of the samples' nearest neighbours at least 0.7 of the mean spacing and
-    none under 0.5 (measured 0.759 to 0.800 and 0.609 to 0.726 at 500 and 2,000 samples, against the quadratures' 0.086
+    none under 0.5 (measured 0.759 to 0.807 and 0.609 to 0.730 at 500 and 2,000 samples, against the quadratures' 0.086
     to 0.358 and 0.062 to 0.358), each patch's, the seams' and the screw's crests' and troughs' share of the samples
     within 15% of their share of the area (measured within 7%; the screw's quadrature gives its caps 2.4 to 2.9 times),
     the MRS matrix's condition at blob 0.5, 1, 1.5 and 2 under bounds ten times the measured (108 to 132 at 0.5,

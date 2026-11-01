@@ -45,12 +45,12 @@ from mime.units import Magnitude
 
 #: The nearest-neighbour thresholds, over the mean spacing: a declaration, design #195's ("the 5th percentile at
 #: least about 0.7 and no pair under 0.5"). Measured on every declared kind at ``SUITE_SAMPLES`` and ``FINER_SAMPLES``:
-#: the quasi-uniform samplings' 5th percentile 0.759 to 0.800 and least 0.609 to 0.726; the kinds' quadratures' 0.086 to
+#: the quasi-uniform samplings' 5th percentile 0.759 to 0.807 and least 0.609 to 0.730; the kinds' quadratures' 0.086 to
 #: 0.358 and 0.062 to 0.358.
 NEAREST_FIFTH = 0.7
 NEAREST_LEAST = 0.5
 #: A region's share of the samples over its share of the area within this of one: a declaration, under the 2.4 to 2.9
-#: times the screw's quadrature gives its caps and above the 0.95 to 1.07 the quasi-uniform samplings' regions measured
+#: times the screw's quadrature gives its caps and above the 0.956 to 1.064 the quasi-uniform samplings' regions measured
 #: (patches, seams, the screw's crests and troughs).
 COVERAGE_BAND = 0.15
 #: The seams' strip, within this many mean spacings of another patch: two, so that it holds whole the rows the samples
