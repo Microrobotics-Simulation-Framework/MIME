@@ -52,15 +52,19 @@ with its `<mechanicalReduction>`, which the reader reads) from the actuator's ro
 a moment of inertia with its reason, or as the name of a registered actuator, a datasheet's record with its source
 (`mime.dynamics.register_actuator`); or neither, a convention of none, the URDF's own meaning, which research lists. A
 joint given both ways is refused. A lead screw's reduction is in radians per metre, a turn over the lead, so its rotor
-reflects a mass onto the slide.
+reflects a mass onto the slide. A transmission is judged only where it is used, where its actuator is given: there, one
+with anything wrong with it (on a joint the arm lacks or a fixed one, two on one joint, a reduction of zero or not a
+number, an element URDF does not define in it) is refused; elsewhere it is recognised and not used, as every
+transmission was before, and the build report names what is wrong with it.
 
 **The kick a spinner gives it.** A rotor carried by its spin on a link takes momentum as it spins up, and its stator
 gives the arm as much the other way: with nothing holding them, each joint turns at a ratio of the rotor's spin, the
 rotor's inertia about its axis over the joint's effective inertia for that spin (on one joint along the axis, the
 joint's own inertia with its armature). The build computes the ratios at the start's joint positions for every spinner
-on the arm, reports the largest, and gives a validity line, in every profile and never a refusal, for each joint
-above a tenth: the joint, its ratio, its speed at the motor's top speed against its own limit, and `armature=` as the
-fix. A0's bare wrist is far above it. After a run, a flag (`<segment>.beyond_speed_limit`) says where a joint's speed
+on the arm, reports the largest, and gives a validity line, in every profile and never a refusal, for each joint the
+kick would drive past its speed limit: the speed its ratio predicts at the motor's top speed above the joint's limit,
+or, where the joint has no limit or the motor no top speed, a ratio above a tenth, which the line says. It names the
+joint, its ratio, its speed against its limit, and `armature=` as the fix. A0's bare wrist is far above it. After a run, a flag (`<segment>.beyond_speed_limit`) says where a joint's speed
 passed its description's limit, a backstop read from the joint velocities, which adds nothing to the graph.
 
 The description is read through MIME's URDF reader: every element is read and used, recognised and not used, or

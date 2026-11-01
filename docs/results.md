@@ -73,9 +73,9 @@ last step looks the same at the last step. Record the run to know.
 
 A segment whose dynamics carry a tree raises one flag more where its description limits its joints' speeds:
 `<segment>.beyond_speed_limit`, at a step where a joint's speed is above its limit. It is read after the run from the
-joint velocities the segment holds, against each joint's limit (the manifest lists them), and adds nothing to the
-graph; a dynamic arm does not apply the limit, so the flag is the record that the run went where the real mechanism
-would not.
+joint velocities the segment holds, against each joint's limit (the manifest lists them, `null` for a joint with
+none; a URDF's velocity limit of zero is none, as MoveIt reads it), and adds nothing to the graph; a dynamic arm does
+not apply the limit, so the flag is the record that the run went where the real mechanism would not.
 
 ### The Reynolds-number watch
 

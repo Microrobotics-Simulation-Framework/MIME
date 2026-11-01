@@ -61,8 +61,9 @@ class ObservationLayout:
 class FlagLayout:
     """A flag a built entry raises: the entry's id and label, the node and state field that hold it, and what it means
     when it is raised. A flag read from a field the node holds for its own sake (a dynamic chain's joint velocities)
-    has its own ``name`` and its ``limits``, one per component: it is raised at a step where any component's
-    magnitude is above its limit, and it adds nothing to the graph."""
+    has its own ``name`` and its ``limits``, one per component (infinite where a component has none, written ``null``
+    in a run's manifest): it is raised at a step where any component's magnitude is above its limit, and it adds
+    nothing to the graph."""
 
     owner: str
     entry: str

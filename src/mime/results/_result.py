@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from os import PathLike
@@ -451,7 +452,8 @@ class RunResult:
             kept = track is not None and track.raised is not None
             flags.append({"path": flag.path, "entry": flag.owner, "label": flag.entry, "node": flag.node,
                           "field": flag.field, "meaning": flag.meaning, "name": flag.name,
-                          "limits": list(flag.limits) if flag.limits is not None else None,
+                          "limits": [limit if math.isfinite(limit) else None for limit in flag.limits]
+                          if flag.limits is not None else None,
                           "recorded": "every step" if kept else "the last step",
                           "array": flag_key(flag.path) if kept else None,
                           "was_raised": track.was_raised if track is not None else None,
@@ -579,7 +581,8 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
         observations.append(ObservationLayout(str(held["id"]), str(held["entry"]), outputs))
     flags = tuple(FlagLayout(str(f["entry"]), str(f["label"]), str(f["node"]), str(f["field"]), str(f["meaning"]),
                              cast(str | None, f.get("name")),
-                             tuple(float(v) for v in cast(list[float], f["limits"])) if f.get("limits") else None)
+                             tuple(math.inf if v is None else float(v) for v in cast(list[float | None], f["limits"]))
+                             if f.get("limits") else None)
                   for f in cast(list[dict[str, Any]], manifest["flags"]))
     stamp = manifest.get("stamp")
     return Layout(str(manifest["experiment"]), float(manifest["dt"]), tuple(observations), flags,

@@ -13,8 +13,8 @@ import numpy as np
 
 from mime.core import jnp, switch
 from mime.core.multibody import ROOT, ClosedChainRefused, DescriptionReading, DescriptionRefused, \
-    DescriptionWarning, InvalidDescription, JointKind, MultibodyTree, Payload, articulate, forward_kinematics, \
-    frame_motions, graft, mass_matrix, read_urdf, with_armatures
+    DescriptionWarning, InvalidDescription, JointKind, MultibodyTree, Payload, Transmission, articulate, \
+    forward_kinematics, frame_motions, graft, mass_matrix, read_urdf, with_armatures
 from mime.dynamics.apparatus._actuators import actuator
 from mime.gradients import GradientStatus
 from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode
@@ -158,10 +158,13 @@ class Arm(ChainSegment):
     (``armature={"joint_6": kg_m2(1e-4, reason=...)}``, kg on a prismatic joint), and ``actuators`` gives the rotor
     behind each simple transmission the description holds, by the actuator's name (``actuators={"motor_6":
     kg_m2(8.2e-6, reason=...)}``, or a registered actuator's name, ``"stepperonline.17hs19-2004s1"``), whose
-    reduction reflects it. A joint given both ways is refused (``chain.armature``). A joint given neither has none,
-    the URDF's own meaning: a convention, which the build report says and research lists. Each armature is on the
-    diagonal of the mass matrix wherever the dynamics uses it, and on the tree a model-based controller reads
-    (``ctx.models``).
+    reduction reflects it. A joint given both ways, or twice, is refused (``chain.armature``). A transmission is judged
+    only where ``actuators`` names its actuator: there one with anything wrong with it (the reader's and the tree's
+    account of it, :meth:`MultibodyTree.transmission_faults`) is refused, naming what; one not used is recognised and
+    not used, as every transmission was before, and the build report names what is wrong with it. A joint given
+    neither has none, the URDF's own meaning: a convention, which the build report says and research lists. Each
+    armature is on the diagonal of the mass matrix wherever the dynamics uses it, and on the tree a model-based
+    controller reads (``ctx.models``).
 
     Every element of the file is read and used, recognised and not used, or refused, as ``mime.core.multibody``'s
     reader sorts it; each kind not used is warned about once and listed in the build report and the saved form. An
@@ -346,6 +349,7 @@ class Arm(ChainSegment):
         armed = _armature(tree, self.declared_armature(), self.given_actuators()) if dynamic else None
         if armed is not None and armed.problems:
             return Segment(tree.frame_names, description=reading.classification, problems=armed.problems)
+        classification = reading.using(armed.used) if armed is not None else reading.classification
         held = with_armatures(tree, armed.values) if armed is not None else tree
         with cast(Any, jax).enable_x64(True):
             frames = np.asarray(forward_kinematics(tree, jnp.asarray(initial, dtype=jnp.float64)), dtype=np.float64)
@@ -369,11 +373,11 @@ class Arm(ChainSegment):
             (("joint_positions", DIMENSIONLESS, revolute), ("joint_displacements", LENGTH, prismatic))
         commands = {port: Command(port, dimension, (count,)) for port, dimension, count in kinds if count}
         massive = any(body.inertial is not None and body.inertial.mass > 0.0 for body in tree.bodies)
-        return Segment(tree.frame_names, commands, reading.classification,
+        return Segment(tree.frame_names, commands, classification,
                        initial=tuple(tuple(float(c) for c in row) for row in frames),
                        initial_rates=tuple((float(r[0]), float(r[1]), float(r[2])) for r in turning),
                        massive=massive and not dynamic, initial_joints=tuple(float(c) for c in initial),
-                       notes=armed.lines if armed is not None else ())
+                       notes=armed.lines if armed is not None else transmission_lines(tree))
 
     def armed(self, tree: MultibodyTree) -> MultibodyTree:
         """``tree`` with each joint's armature on it, as phase 1 resolved it (its problems refused there)."""
@@ -513,23 +517,39 @@ def _keyed_problems(value: object, name: str, *, rotor: bool) -> list[str]:
 @dataclass(frozen=True)
 class _Armature:
     """Each joint's armature as an arm's settings and description give it (``values``, SI), the build report's lines
-    for it, and each problem found, with its action."""
+    for it, each problem found, with its action, and the transmissions it uses, by name."""
 
     values: dict[str, float]
     lines: tuple[str, ...]
     problems: tuple[Problem, ...]
+    used: tuple[str, ...] = ()
 
 
 def _armature(tree: MultibodyTree, declared: Sequence[tuple[str, Quantity]],
               given: Sequence[tuple[str, Quantity | str]]) -> _Armature:
     """Each joint's armature: declared on it, or reflected through its simple transmission from the rotor its actuator
-    is given; refused where a joint is named that the tree does not move, an armature is of another dimension than its
-    joint's kind takes, an actuator is named that no transmission names, or a joint is given one both ways."""
+    is given; refused where a joint or an actuator is named twice, a joint is named that the tree does not move, an
+    armature is of another dimension than its joint's kind takes, an actuator is named that no simple transmission
+    names, the transmission it names has anything wrong with it, or a joint is given one both ways. A transmission
+    whose actuator is not given is not used, and nothing wrong with it is refused: the classification names it, with
+    what is wrong with it."""
     kinds = {j.name: j.kind for j in tree.joints if j.moves}
-    driving = {t.actuator: t for t in tree.transmissions}
+    driving: dict[str, list[Transmission]] = {}
+    for held in tree.transmissions:
+        driving.setdefault(held.actuator, []).append(held)
     values: dict[str, float] = {}
     lines: list[str] = []
     problems: list[Problem] = []
+    used: list[str] = []
+    for setting, names in (("armature", [joint for joint, _ in declared]), ("actuators", [name for name, _ in given])):
+        twice = sorted({name for name in names if names.count(name) > 1})
+        for name in twice:
+            problems.append(Problem(
+                "chain.armature", f"{setting} names {name!r} {names.count(name)} times, so it gives "
+                                  f"{'its joint' if setting == 'actuators' else name} more than one armature",
+                f"give {name!r} once in Arm.Dynamic({setting}=...)"))
+        if twice:
+            return _Armature({}, (), tuple(problems))
     for joint, held in declared:
         if joint not in kinds:
             problems.append(Problem(
@@ -549,13 +569,23 @@ def _armature(tree: MultibodyTree, declared: Sequence[tuple[str, Quantity]],
         reason = f" ({basis_text(held.reason)})" if held.reason is not None else ", its source not given"
         lines.append(f"armature of {joint}: {values[joint]:.6g} {unit_symbol(wanted)}, declared{reason}")
     for name, rotor in given:
-        transmission = driving.get(name)
-        if transmission is None:
+        found = driving.get(name, [])
+        if not found:
             named = ", ".join(sorted(driving)) or "none"
             problems.append(Problem(
                 "chain.armature", f"actuators names {name!r}, and no simple transmission of {tree.name}'s description "
-                                  f"names that actuator; the actuators its transmissions name: {named}",
+                                  f"names that actuator; the actuators its simple transmissions name: {named}",
                 "give each actuator by the name its transmission gives it, in Arm.Dynamic(actuators={...}), or declare "
+                "the joint's armature= itself"))
+            continue
+        transmission = found[0]
+        faults = tree.transmission_faults(transmission)
+        if faults:
+            problems.append(Problem(
+                "chain.armature", f"actuators names {name!r}, whose transmission {transmission.name!r} in "
+                                  f"{tree.name}'s description cannot reflect its rotor onto a joint: "
+                                  f"{'; '.join(faults)}",
+                "correct the transmission in the description, or leave its actuator out of actuators= and declare "
                 "the joint's armature= itself"))
             continue
         joint = transmission.joint
@@ -574,21 +604,34 @@ def _armature(tree: MultibodyTree, declared: Sequence[tuple[str, Quantity]],
             inertia = cast(float, rotor.value)
             source = basis_text(rotor.reason) if rotor.reason is not None else "its source not given"
         values[joint] = transmission.reflected(inertia)
+        used.append(transmission.name)
         unit = "kg m^2" if kinds[joint] is JointKind.REVOLUTE else "kg"
         lines.append(f"armature of {joint}: {values[joint]:.6g} {unit}, reflected through transmission "
                      f"{transmission.name!r} (reduction {transmission.reduction:g}, squared) from actuator {name!r}'s "
                      f"rotor, {inertia:.6g} kg m^2 ({source})")
     for transmission in tree.transmissions:
-        if transmission.actuator not in dict(given) and transmission.joint not in values:
-            lines.append(f"{transmission.joint}: transmission {transmission.name!r} (reduction "
-                         f"{transmission.reduction:g}) read, and its actuator {transmission.actuator!r}'s rotor not "
-                         f"given (actuators=), so it reflects nothing")
+        if transmission.name not in used:
+            lines.append(f"transmission {transmission.name!r} (on {transmission.joint or 'no joint'}): recognised and "
+                         f"not used, its actuator {transmission.actuator!r}'s rotor not given (actuators=), so it "
+                         f"reflects nothing{_faults_text(tree, transmission)}")
     bare = [joint for joint in kinds if joint not in values]
     if bare:
         lines.append(f"no armature on {', '.join(bare)}: the URDF's own meaning, a convention (a geared drive's rotor "
                      f"reflected onto a joint is declared by armature=, or given through its transmission by "
                      f"actuators=)")
-    return _Armature(values, tuple(lines), tuple(problems))
+    return _Armature(values, tuple(lines), tuple(problems), tuple(used))
+
+
+def _faults_text(tree: MultibodyTree, transmission: Transmission) -> str:
+    faults = tree.transmission_faults(transmission)
+    return f"; were it used, it would be refused: {'; '.join(faults)}" if faults else ""
+
+
+def transmission_lines(tree: MultibodyTree) -> tuple[str, ...]:
+    """The kinematic rung's lines for its description's simple transmissions: each recognised and not used, with what
+    is wrong with it, since the kinematic arm's joints move as commanded."""
+    return tuple(f"transmission {t.name!r} (on {t.joint or 'no joint'}): recognised and not used, the kinematic arm's "
+                 f"joints moving as commanded{_faults_text(tree, t)}" for t in tree.transmissions)
 
 
 __all__ = ["Arm"]

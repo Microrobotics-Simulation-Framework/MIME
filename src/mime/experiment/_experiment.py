@@ -470,16 +470,18 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
     if model is None or port is None:
         return None
     names = model.articulation.dof_names
-    declared = [model.joint(name).limits.velocity for name in names]
+    declared = [model.joint(name).limits.speed for name in names]
     if all(limit is None for limit in declared):
         return None
-    limits = tuple(math.inf if limit is None else abs(float(limit)) for limit in declared)
+    limits = tuple(math.inf if limit is None else limit for limit in declared)
     stated = ", ".join(f"{name} {limit:g}" for name, limit in zip(names, limits, strict=True) if math.isfinite(limit))
+    free = [name for name, limit in zip(names, limits, strict=True) if not math.isfinite(limit)]
+    unlimited = f"; {', '.join(free)} unlimited (no limit, or velocity=\"0\", in the description)" if free else ""
     return FlagLayout(plan.owner, plan.registered.cls.label(), plan.node_name(port.node), port.field,
                       f"a joint's speed passed its description's speed limit ({stated}; rad/s, m/s on a sliding "
-                      f"joint), which the dynamic chain does not apply: the run went where the real mechanism would "
-                      f"not. A backstop read after the run, never a refusal; a build check names a spinner that "
-                      f"would drive a joint there, and its fix", SPEED_LIMIT, limits)
+                      f"joint{unlimited}), which the dynamic chain does not apply: the run went where the real "
+                      f"mechanism would not. A backstop read after the run, never a refusal; a build check names a "
+                      f"spinner that would drive a joint there, and its fix", SPEED_LIMIT, limits)
 
 
 def _not_writable(folder: Path, error: OSError) -> BaseException:
