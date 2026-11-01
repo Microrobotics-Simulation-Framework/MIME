@@ -18,7 +18,8 @@
   to move away by its gap in the step gains energy.
 - **Unchanged where nothing touches.** Where no hull point can reach the shrunk wall in the step, the step is the
   free body's to the last bit (``np.array_equal``). The control: a contact that keeps a force of one part in 1e15.
-- **The frame.** Turning the tube and the body's state together turns the step.
+- **The frame.** Turning the tube and the body's state together turns the step, off the ties of two of a group's
+  points, where the step jumps by the choice of point (``contact.point``).
 - **Admissibility only.** A contact that adds lubrication beside a drag that includes it is refused
   (``lubrication.twice``); either alone builds.
 
@@ -34,7 +35,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from hull_cases import FL9_SETTINGS, MARGIN, TUBE_RADIUS, hull_node, kind_points, rotation
-from hypothesis import find, given, settings
+from hypothesis import assume, find, given, settings
 from hypothesis import strategies as st
 
 import mime.nodes.body._rigid_inertial as rigid
@@ -468,12 +469,34 @@ def test_control_a_contact_that_keeps_a_vanishing_force_is_seen():
     assert changed(lingering(found["kind"]), found)
 
 
+#: Two of a group's points whose gaps lie within this of each other are a tie of ``contact.point``, where the step
+#: jumps (its declared order is -1) and a turned world's rounding may choose the other: far above that rounding (about
+#: 1e-17 m here), far below any gap a step reads.
+TIE = 1e-12
+
+
+def tied(name: str, node: RigidInertialNode, pose) -> bool:
+    """Whether any group's two points nearest the shrunk wall at ``pose`` tie (``TIE``): a body lying along the wall,
+    touching it along a line, or one placed symmetrically to its samples, as a draw of exact zeros places it."""
+    found = gaps(name, pose)
+    for row in node.groups:
+        members = np.sort(found[row[row >= 0]])
+        if len(members) > 1 and members[1] - members[0] < TIE:
+            return True
+    return False
+
+
 @settings(deadline=None)
 @given(DRAWS, st.tuples(st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi)))
 def test_turning_the_tube_and_the_body_together_turns_the_step(draw, world):
+    """Judged off the contact's choice of each group's point: where two of a group's points tie the step jumps
+    (``contact.point``, a declared jump), and the turned world's rounding may choose the other, which is the switch
+    and not the frame."""
     draw = near_the_wall(draw)
     node = held(draw["kind"])
     state, inputs = start(draw, node)
+    assume(not tied(draw["kind"], node, np.asarray(state["pose"])))
+    assume(not tied(draw["kind"], node, np.asarray(node.update(state, inputs, draw["dt"])["pose"])))
     turn = quaternion.exponential(jnp.asarray(world))
     matrix = np.asarray(quaternion.rotation_matrix(turn))
     pose, twist = np.asarray(state["pose"]), np.asarray(state["twist"])
