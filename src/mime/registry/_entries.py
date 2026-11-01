@@ -297,8 +297,8 @@ class BuildContext:
     whether anything reads the angular velocities of its frames (``apparatus.frame_angular_velocities``): a segment
     mounted on it, a spinner, a controller or an observation; a segment that computes them only to publish them may
     skip them where nothing does. A controller finds in ``models`` the built tree of each segment that carries mass,
-    what is mounted on it grafted on, by its id: a model-based controller reads that, and one that reads a bare
-    description of its own declares that choice."""
+    what is mounted on it grafted on and each joint's armature on its joints, by its id: a model-based controller reads
+    that, and one that reads a bare description of its own declares that choice."""
 
     id: str
     dt: float
@@ -717,7 +717,10 @@ class Segment:
     pose of each frame in the segment's base frame at its initial state, ``(x, y, z, qw, qx, qy, qz)``, which places
     what mounts on it before the first step, and its angular velocity there relative to the frame the segment mounts
     on, in its base frame's axes (none given: at rest); and whether its own description gives mass that its joints
-    move (``massive``: an arm's links), which a dynamic segment it is mounted on would have to carry."""
+    move (``massive``: an arm's links), which a dynamic segment it is mounted on would have to carry. A segment with a
+    tree gives its joints' positions at its initial state (``initial_joints``, in its tree's order), the pose the
+    build judges what is mounted on it at; ``notes`` are lines the build report prints under its description (an
+    arm's armature, each joint's with where it comes from)."""
 
     frames: tuple[str, ...]
     commands: Mapping[str, Command] = field(default_factory=dict[str, Command])
@@ -726,6 +729,8 @@ class Segment:
     initial: tuple[tuple[float, ...], ...] = ()
     initial_rates: tuple[tuple[float, float, float], ...] = ()
     massive: bool = False
+    initial_joints: tuple[float, ...] = ()
+    notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -794,8 +799,9 @@ class ChainSegment(Dynamics):
         return None
 
     def carried_model(self, mounted: Sequence[Payload]) -> MultibodyTree | None:
-        """The tree its dynamics carry, ``mounted`` grafted on: what a model-based controller reads. ``None`` for a
-        segment with no tree."""
+        """The tree its dynamics carry, ``mounted`` grafted on and each joint's armature on it: what a model-based
+        controller reads, and what the build judges a spinner mounted on it against. ``None`` for a segment with no
+        tree."""
         return None
 
     def reads_mount_rates(self, settings: Mapping[str, Magnitude], published: bool) -> bool:
