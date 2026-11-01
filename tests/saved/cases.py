@@ -15,8 +15,9 @@ from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, 
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, fl9, script_a
 
+from mime.dynamics.body import RigidInertialExplicit
 from mime.experiment import Experiment
-from mime.scene import Capsule, Sphere
+from mime.scene import Capsule, Scene, Sphere, Z
 from mime.testing.toys import (
     ToyAnchoredBody,
     ToyBody,
@@ -28,7 +29,7 @@ from mime.testing.toys import (
     toy_experiment,
 )
 from mime.things import Body, Medium, State, Structure
-from mime.units import N, kg, kg_m2, m, m_per_s, mm, rad_per_s
+from mime.units import N, kg, kg_m2, m, m_per_s, m_per_s2, mm, ms, rad_per_s
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,21 @@ def probed_shapes() -> Experiment:
     return experiment
 
 
+def rigid_explicit() -> Experiment:
+    """A body of three different moments, moving and spinning, on the kept ``rigid_inertial`` 0.2.0 (the gyroscopic term
+    explicit, MIME-ANO-129) and nothing else: what a folder saved before the term was made implicit names, and the
+    golden of that version, which gains energy where 0.3.0's does not."""
+    experiment = Experiment("rigid_explicit", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment.add_body(Body("rod", dynamics=RigidInertialExplicit(), initial=State(
+        position=mm((0.0, 0.0, 0.0)),
+        orientation=(0.8081220356417685, 0.3030457633656632, -0.40406101782088427, 0.3030457633656632),
+        velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
+        angular_velocity=rad_per_s((150.0, 100.0, -100.0)))))
+    experiment.declare("rod.mass", kg(1e-6), reason="a millimetre rod")
+    experiment.declare("rod.inertia", kg_m2((1.0e-10, 1.2e-10, 0.8e-10)), reason="three different axes")
+    return experiment
+
+
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
@@ -158,6 +174,9 @@ CASES = (
     # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset
     # unit_tube_R0.997, which the run fetches into the cache before the tests (CI does it once per job).
     Case("mrs_tube", mrs_tube),
+    # The kept rigid_inertial 0.2.0 on a body of three different moments: what a folder saved with the explicit
+    # gyroscopic term names.
+    Case("rigid_explicit", rigid_explicit),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),

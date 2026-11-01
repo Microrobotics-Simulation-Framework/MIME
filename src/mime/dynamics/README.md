@@ -27,15 +27,19 @@ constructed with the bodies it must include.
 
 ## Status
 
-Since phase 4b, **`body.RigidInertial`** (`rigid_inertial` 0.2.0 since phase 4c3; 0.1.0 in 4b): a rigid body with mass and inertia (principal
-moments about the body axes), its state the pose and twist of its centre of mass. It sums every applied wrench and
-background load, integrates every delivered resistance implicitly, solved for the change in velocity,
-`(M/dt + R) dV = F - R V` (0.2.0; 0.1.0 solved `(M/dt + R) V' = (M/dt) V + F`, which float32 rounded, MIME-ANO-113),
-with the gyroscopic term linearly implicit at the midpoint (it was explicit, and gained energy: MIME-ANO-129; there is no explicit setting), turns by the exponential of `dt omega'`, holds its
-confinement inside the solve while the body starts a step on its surface moving outward (0.2.0), and projects it after
-the step. Its node declares first order in time, which the node walk measures. It reads its body's `mass` and
-`inertia` (declared in the experiment until the part resolver lands). The rest land in dev1's phase 7 (the arm and
-motor) and a1 (the rewritten flow solver).
+Since phase 4b, **`body.RigidInertial`** (`rigid_inertial` 0.3.0 since the gyroscopic fix, MIME-ANO-129; 0.2.0, which
+takes the gyroscopic term explicit, stays registered in `body.KEPT`; 0.2.0 dates from phase 4c3, 0.1.0 from 4b): a rigid
+body with mass and inertia (principal moments about the body axes), its state the pose and twist of its centre of mass.
+It sums every applied wrench and background load, integrates every delivered resistance implicitly, solved for the
+change in velocity, `(M/dt + R) dV = F - R V` (0.1.0 solved `(M/dt + R) V' = (M/dt) V + F`, which float32 rounded,
+MIME-ANO-113), with the gyroscopic term linearly implicit at the midpoint (0.3.0; 0.2.0 took it explicit, and gained
+energy: MIME-ANO-129; there is no explicit setting), so that the step solves `(M/dt + R - K/2) dV = F - R V` with
+`K` the term's Jacobian, a matrix that is not symmetric for unequal moments. It turns by the exponential of
+`dt omega'`, holds its confinement inside the solve while the body starts a step on its surface moving outward (from
+0.2.0), and projects it after the step. A moment of inertia that is not above zero is refused when the experiment is
+built (`value.not-positive`). Its node declares first order in time, which the node walk measures. It reads its body's
+`mass` and `inertia` (declared in the experiment until the part resolver lands). The rest land in dev1's phase 7 (the
+arm and motor) and a1 (the rewritten flow solver).
 
 Since phase 7a2, an apparatus's **chain segments** (`apparatus/`), each a `mime.registry.ChainSegment` that publishes
 the world pose of every frame it names (`apparatus.frame_poses`), alike under every rung, and mounts on a frame of the

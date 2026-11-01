@@ -3,11 +3,11 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, cast, override
 
 from mime.gradients import GradientStatus
 from mime.nodes.body import SURFACE, RigidInertialNode
-from mime.registry import BuildContext, Dynamics, Port, register_dynamics
+from mime.registry import BuildContext, Dynamics, Port, Problem, register_dynamics
 from mime.things import ThingKind
 from mime.units import DIMENSIONLESS, FREQUENCY, LENGTH, VELOCITY, Magnitude
 from mime.vocabulary import (
@@ -25,6 +25,22 @@ if TYPE_CHECKING:
 
 #: How far a declared orientation's norm may be from one.
 _UNIT = 1e-6
+#: The rotation rate times the step above which the gyroscopic term is no longer resolved to the accuracy this entry
+#: states: below it the torque-free energy stays within 2e-3 of its start (measured on the node alone, 206 rad/s,
+#: moments (1.0, 1.2, 0.8) e-10, ``tests/oracles/test_gyroscopic_energy.py``: 1.4e-3 at 0.5), and the error grows as
+#: its square (5.5e-3 at 1, 0.10 at 4, 1.2 at 10). A declaration from that measurement on one body, not a fit and not a
+#: bound for every body; nothing refuses a run past it.
+RATE_TIMES_STEP = 0.5
+LIMITS = (
+    f"the gyroscopic term is resolved only while the rotation rate times the step, |omega| dt, is below about "
+    f"{RATE_TIMES_STEP:g}, where a torque-free body of unequal moments keeps its kinetic energy to 2e-3; the error "
+    f"grows as its square, and a rate times the step of order one runs finite and wrong, with nothing to refuse it "
+    f"(MIME-ANO-129)",
+    "the direction of the angular momentum in the world is first order in the step, bounded: about 2 degrees at a 1 ms "
+    "step and 200 rad/s, while its magnitude and the kinetic energy are second order (MIME-ANO-129)",
+    "the step's matrix, M/dt + R - K/2, is not symmetric for a body of unequal moments: a solve that needs it "
+    "symmetric positive definite does not hold for it (MIME-ANO-129)",
+)
 
 
 def _components(value: Magnitude) -> tuple[float, ...]:
@@ -37,22 +53,29 @@ class RigidInertial(Dynamics):
     """A rigid body with mass and inertia, its state the pose and twist of its centre of mass in the world frame.
     It sums every applied wrench and background load, integrates every delivered resistance implicitly,
     ``(M/dt + R) dV = F - R V``, ``V' = V + dV`` (there is no explicit setting), takes the gyroscopic term linearly
-    implicit at the midpoint (it keeps a torque-free body's kinetic energy; MIME-ANO-129), and projects a confinement
-    after the step.
+    implicit at the midpoint (it keeps a torque-free body's kinetic energy and the magnitude of its angular momentum
+    to second order; MIME-ANO-129), and projects a confinement after the step.
+
+    Version 0.3.0 takes the gyroscopic term linearly implicit at the midpoint, where 0.2.0 took it explicit: the
+    explicit term gained kinetic energy at every step for a body of three different moments, 2.6 times in a second at
+    1 ms, and a rig with nothing to damp it went non-finite (MIME-ANO-129). Results of a rotating body of unequal
+    moments move; those of an isotropic body do not, bit for bit. 0.2.0 stays registered
+    (``mime.dynamics.body.KEPT``), so that a folder saved with it loads and reproduces, and so that the frozen
+    register's scripts keep the law they were run with. A moment of inertia that is not above zero is refused at
+    build (``value.not-positive``).
 
     Version 0.2.0 solves the step for the change in velocity, which 0.1.0 solved as ``(M/dt + R) V' = (M/dt) V + F``:
     the same equation, so float64 results move by rounding, and in float32 a small load is no longer rounded against
     the inertial term (MIME-ANO-113). And it holds its confinement inside the solve where the body starts on its
     surface moving outward, which 0.1.0 left to the projection after the step (an error first order in ``dt`` with a
-    coupled resistance; ``RigidInertialNode``). A document naming 0.1.0 is refused at load (``load.version``). The
-    gyroscopic term is the midpoint's in 0.2.0 as well: it was first written explicit, which gained energy at every
-    step (MIME-ANO-129), and the fix is made in this version because no release has carried it.
+    coupled resistance; ``RigidInertialNode``). A document naming 0.1.0 is refused at load (``load.version``).
     It reads its body's ``mass`` and ``inertia`` (principal moments about the body axes) and needs an initial
     ``position``, ``orientation`` (a unit quaternion ``(w, x, y, z)``, body to world), ``velocity`` and
     ``angular_velocity``."""
 
     name = "rigid_inertial"
-    version = "0.2.0"
+    version = "0.3.0"
+    limits = LIMITS
     differentiability = GradientStatus.EXACT
     references = ("PeraireWidnall2009", "Sola2017")
     builds = {"": (RigidInertialNode,)}
@@ -78,17 +101,29 @@ class RigidInertial(Dynamics):
         return found
 
     @override
+    def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:
+        moments = _components(values["inertia"]) if "inertia" in values else ()
+        if all(math.isfinite(m) and m > 0.0 for m in moments):
+            return []
+        return [Problem("value.not-positive",
+                        f"the moments of inertia {moments} are not all above zero: the step divides by them, and a "
+                        f"body without one has no rotation to integrate",
+                        "declare the principal moments about the body's axes, each above zero: "
+                        "exp.declare('<body>.inertia', kg_m2((Ix, Iy, Iz)), reason=...)")]
+
+    @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
+        node = cast(type[RigidInertialNode], type(self).builds[""][0])
         initial = {name: _components(value) for name, value in ctx.initial.items()}
         pose = (*initial["position"], *initial["orientation"])
         twist = (*initial["velocity"], *initial["angular_velocity"])
         mass, inertia = ctx.scalar_value("mass"), ctx.vector_value("inertia")
         if not ctx.confinements:
-            b.add_node(RigidInertialNode(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia,
-                                         initial_pose=pose, initial_twist=twist))
+            b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
+                            initial_twist=twist))
             return
         (held,) = ctx.confinements
-        b.add_node(RigidInertialNode(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
-                                     initial_twist=twist, surface_shape=held.shape, extent=held.extent,
-                                     margin=held.margin, velocity_rule=held.rule,
-                                     **{f"{SURFACE}{name}": value for name, value in held.parameters.items()}))
+        b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
+                        initial_twist=twist, surface_shape=held.shape, extent=held.extent, margin=held.margin,
+                        velocity_rule=held.rule,
+                        **{f"{SURFACE}{name}": value for name, value in held.parameters.items()}))
