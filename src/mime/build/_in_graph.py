@@ -12,10 +12,16 @@ every node its writes reach: each read edge then reads the previous step (the st
 each write edge this step. Its nodes are added first in the canonical order for that; a node it reads that its
 writes do not reach runs before it whatever the order, since the schedule follows the edges, and is refused.
 
-**Purity.** The step is traced twice, and a step whose two programs differ is refused: it reads Python state that its
-own calls change (a counter, a global, a random generator), which the compiled step freezes at its trace, so that mode
-1 would write one number at every tick where mode 2 writes a new one. A step that writes to the world (``print``, a
-file) cannot be seen by any trace, and ``Controller``'s docstring says a mode-1 step must be pure."""
+**Purity.** The step is traced twice in all, and a step whose two programs differ is refused: it reads Python state
+that its own calls change (a counter, a global, a random generator), which the compiled step freezes at its trace, so
+that mode 1 would write one number at every tick where mode 2 writes a new one. A step that writes to the world
+(``print``, a file) cannot be seen by any trace, and ``Controller``'s docstring says a mode-1 step must be pure.
+
+**Which trace serves which check.** The first trace is the trace check's: its program is searched for host callbacks
+and its shapes are compared, and it is also the purity check's first program. The second is taken for the purity
+check alone, of a function of its own, and compared with the first. The build's host-callback probe, which traces
+every other node's step code, leaves the controller's node to the first trace, whose search it repeats and whose
+refusal (``controller.untraceable``) comes first; what the node adds around the step is a cast of its writes."""
 
 from __future__ import annotations
 
@@ -54,19 +60,17 @@ def _program(closed: Any) -> tuple[str, list[Any]]:
     return _ADDRESS.sub("", str(closed)), [np.asarray(held) for held in closed.consts]
 
 
-def impure_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any]) -> list[str]:
-    """Whether tracing ``step`` a second time gives another program: it then reads Python state its own calls change,
-    which the compiled step would freeze at its trace. A step with a side effect on the world is not seen by this."""
-    def traced() -> Any:
-        # JAX caches a trace by the function it traces, which would hand back the first program: each trace is of a
-        # function of its own.
-        def once(held: Any, given: Any) -> Any:
-            return step(held, given)
-
-        return make_jaxpr_with_shapes(once, dict(state), dict(reads))[0]
+def impure_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any], first: Any) -> list[str]:
+    """Whether tracing ``step`` a second time gives another program than ``first``, the program the trace check took:
+    it then reads Python state its own calls change, which the compiled step would freeze at its trace. A step with
+    a side effect on the world is not seen by this."""
+    # JAX caches a trace by the function it traces, which would hand back the first program: the second trace is of a
+    # function of its own.
+    def once(held: Any, given: Any) -> Any:
+        return step(held, given)
 
     try:
-        first, second = traced(), traced()
+        second = make_jaxpr_with_shapes(once, dict(state), dict(reads))[0]
     except Exception:  # noqa: BLE001 - the first trace's failure is reported by trace_problems
         return []
     (text, values), (again, held) = _program(first), _program(second)
@@ -87,12 +91,13 @@ class TracedBranch(Exception):
 
 
 def trace_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any],
-                   writes: Mapping[str, Any]) -> list[str]:
+                   writes: Mapping[str, Any]) -> tuple[list[str], Any]:
     """Why ``step`` cannot run inside the compiled step, traced from ``state`` and ``reads``: it cannot be traced,
     it calls the host, or its state or writes do not keep the fields, shapes and dtypes it starts with (``writes``,
-    the writes it holds, in the dtypes of their commands, whose shapes its writes keep). A trace stopped by a Python
-    branch, ``int()``, ``float()`` or NumPy call on a traced value raises :class:`TracedBranch` instead, for the
-    refusal that names the script's line."""
+    the writes it holds, in the dtypes of their commands, whose shapes its writes keep); and the program it traced
+    to, which the purity check compares with a second. A trace stopped by a Python branch, ``int()``, ``float()`` or
+    NumPy call on a traced value raises :class:`TracedBranch` instead, for the refusal that names the script's
+    line."""
     from mime.errors import first_lines, raised_at, traced_value_error
 
     try:
@@ -100,7 +105,7 @@ def trace_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any
     except Exception as error:  # noqa: BLE001 - whatever stops the trace is the reason, named
         if traced_value_error(error):
             raise TracedBranch(error) from error
-        return [Explained(f"its step cannot be traced: {first_lines(error, 1)}", where=raised_at(error))]
+        return [Explained(f"its step cannot be traced: {first_lines(error, 1)}", where=raised_at(error))], None
     found: list[str] = []
     calls = host_callbacks(jaxpr)
     if calls:
@@ -108,7 +113,7 @@ def trace_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, Any
     after, written = cast(tuple[Any, Any], shapes)
     found += _kept(after, state, "state", "its state comes back as", keep_dtype=True)
     found += _kept(written, writes, "write", "its writes come back as", keep_dtype=False)
-    return found
+    return found, jaxpr
 
 
 def _kept(given: Any, start: Mapping[str, Any], what: str, said: str, *, keep_dtype: bool) -> list[str]:
@@ -163,8 +168,9 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
     start = {key: jnp.asarray(value) for key, value in law.state.items()}
     step = inlined(law.step)
     label = plan.registered.cls.label()
+    given = {name: jnp.zeros_like(value) for name, value in reads.items()}
     try:
-        problems = trace_problems(step, start, {label: jnp.zeros_like(value) for label, value in reads.items()}, held)
+        problems, traced = trace_problems(step, start, given, held)
     except TracedBranch as traced:
         return [], [], [traced_branch_refusal(label, traced.error, law.step, plan.registered.cls)]
     if problems:
@@ -179,7 +185,7 @@ def controller_nodes(plan: ControllerPlan, law: Any, dt: float,
             f"{correct}run it as a callback, mode={Mode.CALLBACK.word!r}, where its step may be any Python and no "
             f"derivative passes through it; or write its step in jax.numpy, with a state and writes of fixed shapes",
             where=raised or step_place(law.step))]
-    impure = impure_problems(step, start, {label: jnp.zeros_like(value) for label, value in reads.items()})
+    impure = impure_problems(step, start, given, traced)
     if impure:
         return [], [], [Refusal(
             "controller.impure", RefusalClass.USER,

@@ -120,6 +120,36 @@ class CalledBack(Counter):
         return ControlLaw(state=counted.state, held=counted.held, step=step)
 
 
+#: How many times :class:`TracedOn`'s step has been traced (called) since a test last set it to 0. It changes nothing
+#: the step computes: the program is the same on every trace.
+STEP_TRACES = [0]
+
+
+@register_controller
+@dataclass(frozen=True, kw_only=True)
+class TracedOn(Counter):
+    """:class:`Counter`, its step counting its traces in ``STEP_TRACES`` and calling the host (``jax.debug.callback``)
+    on the trace numbered ``calls_on`` only (the first is 0; a number it never reaches calls on none). On the first
+    trace, which the build's trace check takes and every later check of the controller's node relies on, the program
+    has a callback and the second has none; on the second, the reverse."""
+
+    name = "oracle.traced_on"
+    calls_on: int = -1
+
+    def law(self, ctx: Any) -> ControlLaw:
+        counted = super().law(ctx)
+        calls_on = self.calls_on
+
+        def step(state: Mapping[str, Any], reads: Mapping[str, Any]) -> tuple[Any, Any]:
+            traced = STEP_TRACES[0]
+            STEP_TRACES[0] += 1
+            if traced == calls_on:
+                jax.debug.callback(lambda pose: None, reads["pose"])
+            return counted.step(state, reads)
+
+        return ControlLaw(state=counted.state, held=counted.held, step=step)
+
+
 #: The mutable Python state :class:`Impure` reads: a counter its step increments, which the compiled step would freeze
 #: at the number of times it was traced.
 IMPURE_CALLS = [0]
