@@ -8,6 +8,7 @@ import io
 import json
 import os
 import sys
+import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -241,17 +242,64 @@ def _assets(command: str, arguments: Sequence[str]) -> int:
         for ref in refs:
             stored = assets.fetch(ref, report=_say)
             print(f"{ref.name}: hashed in full, at {stored}")
+        unplaced = [each for argument in arguments if Path(argument).is_dir() for each in _place(Path(argument))]
+        if unplaced:
+            raise BuildRefused(unplaced)
     return 0
+
+
+def _place(folder: Path) -> list[Refusal]:
+    """Put the folder's files that travel as references in place from the cache, saying what it did; an
+    ``asset.missing`` for each it could not place, with why."""
+    from mime import saved
+    from mime.saved._terms import unplaced_refusals
+
+    placed = saved.place_referenced(folder)
+    for path in placed.placed:
+        print(for_terminal(f"{path}: placed from the asset cache"))
+    return unplaced_refusals(folder, placed)
 
 
 def _pack(folder: Path, out: Path | None) -> int:
     from mime import assets, saved
+    from mime.saved._bundle import read_manifest, referenced_of
+    from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER
+    from mime.saved._folder import named_files
+    from mime.scene import LAYERS
 
     path = saved.pack(folder, out=out)
     with path.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    with zipfile.ZipFile(path) as archive:
+        manifest = read_manifest(archive)
+    referenced = referenced_of(manifest)
+    form = saved.read_folder(folder)
+    licence = form.document.get("licence")
     print(for_terminal(f"packed {folder} into {path} ({assets.size_text(path.stat().st_size)})"))
     print(f"sha256 {digest}")
+    print(for_terminal(f"carried: {len(manifest['files'])} files and the NOTICE; referenced, never carried: "
+                       f"{len(referenced)}" + "".join(f"\n  {each} (the asset {held['name']})"
+                                                     for each, held in sorted(referenced.items()))))
+    print(for_terminal(f"licence: {licence}" if licence else
+                       "licence: none declared (packing never refuses that; mime push will ask for one: "
+                       "exp.licence(\"CC-BY-4.0\"), then save)"))
+    if form.previous and any(each.startswith((f"{SCENE_FOLDER}/{LAYERS}/", f"{DESCRIPTIONS}/"))
+                             for each in named_files(form)):
+        print("this folder predates terms: a third party's file in it is carried as yours; declare its terms and "
+              "save again")
+    return 0
+
+
+def _card(folder: Path, out: Path | None, notice: bool) -> int:
+    from mime import saved
+
+    text = saved.notice(folder) if notice else saved.card_text(folder)
+    if out is None:
+        print(for_terminal(text), end="" if text.endswith("\n") else "\n")
+        return 0
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8", newline="\n")
+    print(for_terminal(f"wrote the {'NOTICE' if notice else 'card'} of {folder} to {out}"))
     return 0
 
 
@@ -402,7 +450,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     ``mime visuals list | fetch <set> | view <target>``: the descriptions' meshes MIME does not ship, fetched from
     their pinned upstreams into the asset cache only, and the layer that draws them on a stage or a recording.
 
-    ``mime pack <folder> [--out <file>]``: write the saved experiment in ``folder`` as one bundle file. ``mime pull
+    ``mime pack <folder> [--out <file>]``: write the saved experiment in ``folder`` as one bundle file, a file its terms
+    do not let be redistributed travelling as a reference. ``mime card <folder> [--out <file>] [--notice]``: the
+    experiment's card, or its NOTICE, offline, as ``mime push`` will publish them. ``mime pull
     <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
     fetch its assets and say what to install. ``mime credentials set | status | remove <service>``: the token
     ``push`` will use, kept where a commit cannot publish it.
@@ -453,6 +503,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     pack = commands.add_parser("pack", help="write a saved experiment folder as one bundle file")
     pack.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     pack.add_argument("--out", type=Path, help="the bundle file (default: <folder>.mimebundle beside the folder)")
+    card = commands.add_parser("card", help="a saved experiment's card (Markdown), or its NOTICE, offline, exactly as "
+                                            "mime push will publish them")
+    card.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    card.add_argument("--out", type=Path, help="write it to this file (default: print it)")
+    card.add_argument("--notice", action="store_true", help="the NOTICE (each file's licence, credit, verdict and "
+                                                            "declared permission) in place of the card")
     pull = commands.add_parser("pull", help="get a bundle by DOI, address or file, unpack it into a new folder, and "
                                             "fetch its assets")
     pull.add_argument("source", help="a DOI (10.5281/zenodo.1234567), an https:// address, or a bundle file")
@@ -618,6 +674,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else ())
     if arguments.command == "pack":
         return _pack(arguments.folder, arguments.out)
+    if arguments.command == "card":
+        return _card(arguments.folder, arguments.out, arguments.notice)
     if arguments.command == "pull":
         return _pull(arguments.source, arguments.into, arguments.no_assets, arguments.yes, arguments.max_bundle_bytes)
     if arguments.command == "credentials":

@@ -10,15 +10,18 @@
   interaction and observation by registered name and version, with its settings and its bindings by name. An alias
   such as `ToyDrag.Quadratic()` saves as its family with the rung among its settings. Settings left at their defaults
   are not written; the resolved record holds them. Slots for material references, the scene and the controller stay
-  empty until those land. It never holds code, and never holds copies of a record's values.
+  empty until those land. It never holds code, and never holds copies of a record's values. It holds what may be
+  shared (see [Terms and tiers](#terms-and-tiers)): the experiment's own licence, each custom licence it names, each
+  third-party file's terms and each declared permission, each only where something is declared.
 - **The lock**, `mime.lock` (JSON). The environment (MIME, MADDENING, OpenMaterica, JAX, jaxlib and Python versions,
   the platform, the device, the precision, the PRNG, and what no pin holds: the GPU's device kind with its driver, CUDA
   and cuDNN as JAX reports them, the CPU's model and the hash of its flags, the matmul precision, `XLA_FLAGS` and
   whether they turn XLA's deterministic GPU mode on, the runner's own record, from `MIME_RUNNER`, which MIME stores
   and compares and never reads, and the runner's information, from `MIME_RUNNER_INFO`, which it stores and never
   compares); every entry used, with the distribution it came from and that
-  distribution's version; the derived seeds; the hashes; the resolved record; the derived graph; and the record of
-  the reference outputs.
+  distribution's version; the derived seeds; the hashes; the resolved record; the derived graph; the record of
+  the reference outputs; and, where there are any, the remote assets (`assets`) and the files that travel as
+  references, each with the asset that holds its bytes (`referenced_files`), both outside the input hash.
 - **The resolved record**: every setting with its default, each body's initial state in SI, the nodes each entry
   built in the canonical order, the registrations, reader slots, coupling groups, and each entry's declared gradient
   status: the attached rung's, where the entry's rungs declare their own.
@@ -66,16 +69,89 @@ A package that registers entries declares, for each namespace, `[project.entry-p
 <namespace> = "<module whose import registers them>"`. `save` refuses an entry a load elsewhere could not find this
 way, and a setting the document cannot hold.
 
+## Terms and tiers
+
+**Who may hold which bytes** is the document's to say (designs #198 and #199), and `pack` obeys it. The words are in
+[`mime.terms`](../terms.py):
+
+- **A licence is an SPDX licence expression** in its canonical spelling, checked by the packaging standards' own parser;
+  a licence of the author's own is a `CustomLicence`, a `LicenseRef-` id with its title and an https link. Free text is
+  refused, and so is another spelling of a real licence (the canonical one is named). `NOASSERTION` says nobody stated
+  one, and reads as unknown. An asset reference's licence is held to the same rule (`asset.reference`). An id the
+  installed `packaging` does not list (one SPDX added after its release) is refused where a script declares it, naming
+  the update (`pip install -U packaging`); read from a saved folder it is read as written and judged unknown, the load
+  and `mime verify` go on and their report says so, and `pack` and the card refuse it (`terms.unlisted-licence`),
+  since they would state a verdict this packaging cannot give. A document whose terms were edited by hand into a form
+  `save` never writes is refused at load by the code `save` gives it.
+- **The experiment's own licence**, `exp.licence(...)`, covers its own files: those MIME writes and those its author
+  brings with no terms declared. An experiment may declare none: saving and `pack` never refuse that, and the NOTICE,
+  the card and `mime pack` say so; `mime push` will not publish one until it declares a licence. Its own files are
+  always carried (its author packs them), and their verdict is the licence's: permitted only for a licence on MIME's
+  lists, otherwise unknown (or not permitted, for a custom licence that says so), in the tier **carried**; with no
+  licence declared they are **unknown**, "the author's own, no licence declared: a reuser is granted no licence", never
+  permitted. A folder of a form before licences declares none, and `mime pack` adds a line where it holds layers or
+  descriptions: a third party's file in it is carried as the author's own until its terms are declared.
+- **A third-party file is declared with its terms** where it is declared, `asset(path, terms=Terms(...))`: its licence,
+  the credit its licence asks for, its role (results depend on it, or it only draws the scene) and its origin, the
+  locations of its exact bytes. The document records them by the file's path below the folder, with the sha256 they
+  were declared for. Terms bind by path, so two copies of one file's bytes (a mesh copied for a second prim) are
+  declared with the same terms or refused (`terms.file`, naming both), and `pack` never carries a copy of bytes that
+  travel as a reference, whatever terms it has (`bundle.referenced-copy`, naming both).
+- **A permission** from the rights holder, `exp.permission(Permission(...))`: the grantor, the grantee, the files by
+  sha256, the scope (redistribute, modify, commercial use), the date and the evidence (a public statement's link, or a
+  written permission held privately, which is never published). MIME checks its form and binds it to the bytes, so a
+  changed file inherits nothing; it never vets its truth.
+
+Each file's **verdict** is in OpenMaterica's words for a source's redistribution status: permitted, not permitted or
+unknown. A licence on MIME's open list (public-domain dedication, attribution, the permissive software licences) or
+conditional list (the Creative Commons non-commercial, share-alike and no-derivatives licences), or a permission that
+grants redistribution, makes a file permitted; every other licence is unknown until a person declares a permission, and
+a custom licence may say not permitted. A record file is judged by its record's own licence of its values, as given.
+The **tier** says where the bytes live: open and conditional files travel inside a bundle, a conditional one's
+conditions said in its NOTICE and on its card; **a file that may not be redistributed travels as a reference to its
+origin, whatever its size, and is never packed**, nor its bytes at another path. So does a file over the size limit
+whose terms give an origin. The lock names each (`referenced_files`) and the asset that holds its bytes (one asset for
+one sha256), which `mime assets fetch <folder>` fetches and places; since the lock is outside the hashed record,
+`pack` holds each such asset to the file's terms (their licence, and their origin as its locations, primary first),
+and an asset MIME ships to the licence it ships it under (`bundle.lock-terms`). An asset the lock names that is neither
+has no source MIME knows, and its licence is the lock's word only.
+
+`save` refuses what is incomplete, every reason at once, by its code: a licence that is not an expression
+(`terms.licence`), a custom licence without its title or link (`terms.custom-licence`), terms for a file the experiment
+does not hold, for other bytes, or without credit or role (`terms.file`), an origin that is not a location
+(`terms.origin`), and a permission lacking a part, or bound to bytes no file has (`terms.permission`).
+
+**The NOTICE and the card.** `mime card <folder> --notice` (`mime.saved.notice`) writes the NOTICE: the experiment's
+licence, every file the folder names with its sha256, size, owner, licence, verdict and where its bytes live, a third
+party's credit, role, origin and permissions in #198's words, each custom licence with its link, the text of each
+licence that asks to travel with every copy (MIT and the BSD licences) under its file's credit, and the availability
+statement: "reproducible exactly from this bundle alone" only where the bundle carries every file, and otherwise each
+file it does not carry, with why, its licence, its role and where it is available from. `mime card <folder>`
+(`mime.saved.card_text`) writes the card, as `mime push` will write a record's description: every condition each
+file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
+says what `mime verify <folder>` would check (the card runs no check). Both are generated and the same bytes each
+time. **Credit** (the creators with their ORCIDs, the
+contributors and their roles) will live in `sharing.yaml` beside the folder, which `mime push --init` will write; until
+it exists the card says so where the creators go, and shows each third-party file's credit under its licences.
+
 ## The bundle
 
 A **bundle** is a saved folder as one file, to hand to someone else (`mime pack <folder>`, `mime.saved.pack`). It is a
 zip with nothing compressed, named `<folder>.mimebundle`:
 
-- `manifest.json` first: the format (with its version in the name), the experiment's name, every file's sha256 and size,
-  the asset references of the lock, and the **bundle hash**, the sha256 of the rest of the manifest. It names the bundle's
+- `manifest.json` first: the format (with its version in the name), the experiment's name, every carried file's sha256
+  and size, each file that travels as a reference with the asset that holds it, the NOTICE's sha256 and size, the asset
+  references of the lock, and the **bundle hash**, the sha256 of the rest of the manifest. It names the bundle's
   content whatever the zip around it.
+- The `NOTICE` (see [Terms and tiers](#terms-and-tiers)), which `unpack` checks and keeps and writes into no folder.
 - The folder's files under `experiment/`: the document, the lock, the reference outputs, the scene and its layers, the
-  records and the descriptions.
+  records and the descriptions, less those that travel as references.
+
+The format before references (its manifest's format ends in one) still unpacks: every file carried, no NOTICE. A bundle
+of a format this MIME does not read (a later one) is refused before any other check, by `unpack` and `pull` alike,
+with the advice to install the MIME that packed it, so that a member a later format adds is never judged as a hostile
+bundle's. A MIME from before this format (a development checkout; no release holds format one alone) instead refuses
+one as not a bundle `mime pack` wrote, except `mime pull` without `--into`, which reads the manifest first.
 
 **Deterministic.** The same folder makes the same bytes: entries sorted, a fixed timestamp and mode, no compression
 (a compressor's output differs between zlib builds). A test packs twice, and from a copy with other modification times
@@ -112,13 +188,22 @@ in the forms it is known in. `pack` then reads every file's bytes, refusing, wit
 - a **file it cannot search** (`bundle.unscannable`): a compressed file that expands past
   `mime.saved.EXPANSION_LIMIT_BYTES`, is nested more than four deep, or cannot be read inside;
 - a **link or a special file** in the folder (`bundle.special-file`);
-- a **file over the size limit** (`bundle.file-too-large`).
+- a **file over the size limit** that travels as no reference (`bundle.file-too-large`);
+- a **file that may not be redistributed** whose terms give no origin (`bundle.no-location`), and a lock whose
+  references are not the ones the document's terms make, or whose assets state another licence or other locations
+  than their source (`bundle.lock-terms`): `pack` judges every file's terms itself, and holds the lock to its
+  judgement;
+- a **copy of a referenced file's bytes** that would be carried, at another path and under whatever terms
+  (`bundle.referenced-copy`);
+- a **licence naming an id the installed `packaging` does not list** (`terms.unlisted-licence`).
 
 **The size limit** is fifty megabytes a file (`mime.saved.INLINE_LIMIT_BYTES`), a choice and not a measurement: a bundle
 is read and hashed member by member, and one a person downloads, checks and keeps beside their experiment should stay
 small. A larger file is an **asset**: the lock's `assets` records it with its sha256, size, licence and locations, and
 it travels as that reference, never copied, and is fetched on request ([`mime.assets`](../assets/README.md)). A large
-file in the folder that the lock references is left out of the bundle; one it does not is refused.
+file of the folder travels as a reference only where its terms give an origin: a save then writes it into the lock
+(`referenced_files`), and a lock that lists one whose terms give none is refused (`bundle.lock-terms`), as one that
+does not list it is (`bundle.file-too-large`).
 
 **Reading one back.** `mime pull <doi | address | file>` (`mime.saved.pull`) gets the bundle through the assets
 resolver: a bundle is a content-addressed file like an asset, stored in the same cache under its hash, subject to the
@@ -141,6 +226,14 @@ Then, before anything is trusted:
   Python distribution name and every version a valid Python version (the packaging standards' own rules), and every file it names must be in the layout, or the bundle is refused
   (`load.lock-shape`). The new folder must not exist (or be empty); a refused pull leaves nothing. (A process killed
   outright is not a refusal: it can leave a hidden `.<name>.partial-<hex>` folder beside the target, which is safe to delete.)
+- each file that travels as a reference must be one the layout holds, carried by no member, and named in the lock with
+  an asset of the same sha256 and size, its bytes carried by no member at another path and its name no member's in
+  another case (`bundle.manifest`, `bundle.unsafe`); it is placed from the asset cache where it is cached, copied and
+  hashed, never over another file, the folder judged by its real path (a folder reached through a link, as macOS's
+  `/tmp` and `/var` are, is placed in like any other). `pull` fetches the assets first, unless `--no-assets`, and says
+  in a line of its summary what it placed and what it did not; a file still missing is left for `mime assets fetch
+  <folder>`, which exits two while any is unplaced (saying why: not cached, another file in its place), and a load of
+  the folder until then is refused as `asset.missing` with that command.
 
 It then lists the packages and versions the lock names that are not installed, with the command to install them, each
 word quoted for a shell. The packages are the bundle author's choice, which the summary says. **It never installs and

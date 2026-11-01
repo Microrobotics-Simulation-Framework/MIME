@@ -24,6 +24,8 @@ def private_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pa
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(home / ".cache"))
+    for variable in ("APPDATA", "LOCALAPPDATA", "WIN_PD_OVERRIDE_APPDATA", "WIN_PD_OVERRIDE_LOCAL_APPDATA"):
+        monkeypatch.setenv(variable, str(home / "AppData"))  # Windows: platformdirs reads its overrides first
     for variable in (*credentials.SERVICES.values(), "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
         monkeypatch.delenv(variable, raising=False)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(home / "gitconfig"))  # a token's store asks git, which reads the user's

@@ -24,16 +24,27 @@
   `mime.docs` is imported inside the command, so every other command runs without it.
 
 - `mime assets list`, `mime assets fetch <name-or-folder>... | --all` and `mime assets check`: the large files MIME references
-  by sha256, in the cache (see [`mime.assets`](../assets/README.md)). `fetch` takes an experiment folder too, and stores exactly the assets its lock references; it exits zero, or two
-  when it is refused;
+  by sha256, in the cache (see [`mime.assets`](../assets/README.md)). `fetch` takes an experiment folder too, and stores exactly the assets its lock references,
+  then places each file of the folder that travels as a reference at its path (copied from the cache and hashed,
+  never over another file); it exits zero, or two
+  when it is refused, and two while a file that travels as a reference is left unplaced (another file in its place),
+  each with why (`asset.missing`);
   `fetch` hashes each file in full, cached ones too; `check` re-hashes every cached file in full and exits one when a file is corrupt, marking it so that a build refuses it until a fetch repairs it. The verbs are named in one place,
   `mime/assets/_commands.py`.
 
 - `mime pack <folder> [--out <file>]`: write the saved experiment in the folder as one **bundle** file
   (`<folder>.mimebundle` beside it by default); see [the saved form](../saved/README.md#the-bundle). It checks that the
   folder loads, carries only the files a saved folder names (an `.env` or a `.git` directory is refused, not packed),
-  refuses to carry a path of this machine or any token MIME holds, and prints the file and its sha256. `mime pack .`
-  packs the folder it is run in. Exits zero, or two when refused.
+  refuses to carry a path of this machine or any token MIME holds, never carries a file its terms do not let be
+  redistributed (it travels as a reference, whatever its size), puts the folder's NOTICE in the bundle, and prints
+  the file and its sha256, the files that travel as references, and the experiment's licence or that it declares
+  none; for a folder of a form before terms that holds layers or descriptions, one line more (a third party's file in
+  it is carried as the author's own). `mime pack .` packs the folder it is run in. Exits zero, or two when refused.
+- `mime card <folder> [--out <file>] [--notice]`: the experiment's **card** (Markdown: what it is, what it bounds and
+  estimates, what reproduces, its validity lines, its licences and credit, its availability, how to reproduce and cite
+  it), or with `--notice` its NOTICE (each file's licence, credit, verdict and declared permission), offline and
+  byte for byte as `mime push` will publish them; printed, or written to `--out`. It loads the folder as `pack` does.
+  Exits zero, or two when refused.
 - `mime pull <doi | address | file> [--into <folder>] [--no-assets] [--yes] [--max-bundle-bytes <n>]`: get a bundle,
   check its hashes, unpack it into a new folder, fetch its assets (unless `--no-assets`) and say what is still needed:
   the packages the lock names that are not installed, with the command to install them. It installs and runs nothing.
@@ -73,8 +84,9 @@
 
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
-- `mime new` and `mime push`: scaffold a new experiment folder; publish a bundle to Zenodo, uploading the assets it
-  references that have no Zenodo location yet (0.3.0).
+- `mime new` and `mime push`: scaffold a new experiment folder; publish a bundle to Zenodo with its NOTICE and its
+  card as the record's description, uploading the assets it may redistribute that have no Zenodo location yet
+  (0.3.0).
 
 ## What goes online
 
@@ -82,7 +94,7 @@ Nothing is fetched unless asked for, and a build never downloads.
 
 | command | network |
 |---|---|
-| `verify`, `registry`, `docs`, `pack`, `credentials`, `assets list`, `assets check` | never |
+| `verify`, `registry`, `docs`, `pack`, `card`, `credentials`, `assets list`, `assets check` | never |
 | `assets fetch` | to download an asset not already in the cache, on request |
 | `pull` | to download a bundle given as a DOI or an address (a file on this machine needs none), and to fetch its assets unless `--no-assets` |
 
@@ -97,7 +109,7 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 
 `mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase;
 `mime docs build` in the generators' phase; `mime assets` before phase 7h; `mime run`, `mime env check` and `mime modal`
-with the Modal template; `mime pack`, `mime pull` and `mime credentials` with the sharing piece; the rest grows with the
-features it wraps.
+with the Modal template; `mime pack`, `mime pull` and `mime credentials` with the sharing piece; `mime card`, and the
+terms `pack` reads, with push's first piece, terms and tiers; the rest grows with the features it wraps.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

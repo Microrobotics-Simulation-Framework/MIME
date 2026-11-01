@@ -23,10 +23,13 @@ binding.wrong-kind            user
 bundle.changed                user
 bundle.credential             user
 bundle.file-too-large         user
+bundle.lock-terms             user
 bundle.machine-path           user
 bundle.manifest               user
 bundle.name-collision         user
+bundle.no-location            user
 bundle.output-inside          user
+bundle.referenced-copy        user
 bundle.special-file           user
 bundle.stray-file             user
 bundle.unreadable             user
@@ -322,6 +325,12 @@ target.chain-link             user
 target.exclusive              user
 target.kinematic-chain        user
 target.not-accepted           user
+terms.custom-licence          user
+terms.file                    user
+terms.licence                 user
+terms.origin                  user
+terms.permission              user
+terms.unlisted-licence        environment
 thing.duplicate               user
 thing.duplicate-prim          user
 thing.field-name              user

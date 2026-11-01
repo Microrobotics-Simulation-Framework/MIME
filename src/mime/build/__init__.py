@@ -28,9 +28,12 @@ from mime.build._declarations import (
     Attachment,
     ControllerDeclaration,
     Declaration,
+    LicenceDeclaration,
     ObservationDeclaration,
+    PermissionDeclaration,
     RunSettings,
     SourceDeclaration,
+    TermsDeclaration,
     ThingDeclaration,
     ValueDeclaration,
 )
@@ -97,6 +100,9 @@ from mime.build._stage import kind_prim, stage_spec
 __all__ = [
     "CONVENTIONAL_GRAVITY",
     "SourceDeclaration",
+    "LicenceDeclaration",
+    "PermissionDeclaration",
+    "TermsDeclaration",
     "LATENCY_RULE",
     "PLANNED",
     "REFUSAL_TABLE",

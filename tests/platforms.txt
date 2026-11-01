@@ -10,5 +10,6 @@ tests/saved/test_load.py  # load, verify and `mime verify`, and the edits a load
 tests/saved/test_schema.py  # the document's schema
 tests/saved/test_array_guards.py  # the arrays a save refuses to hold
 tests/saved/test_chain_saved.py  # description files of one name in different folders: paths joined and copied
+tests/sharing/test_referenced.py  # a sharing round trip (save, pack, unpack, a referenced file placed from the cache), into a folder reached through a link and into the platform's temporary folder as it names it
 tests/test_gitattributes.py  # the line-end rules cover every tracked file, so a checkout on Windows keeps the bytes a pinned hash was taken of
 tests/errors/test_corpus.py  # the error corpus: each planted mistake, short and in full, in a fresh process
