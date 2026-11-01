@@ -22,6 +22,7 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jn
     quaternion, typed_view
 from mime.nodes.hydro.mrs._quadrature import (
     Chunks,
+    padded,
     asymmetry,
     cell_moments,
     empty_cells,
@@ -84,6 +85,16 @@ NEAR_WALL = 1.0
 #: 0.829 mm) and at 0.25 at 0.4 mm; the bound keeps a factor of 1.44 over the largest. Definite there is not accurate:
 #: at 0.829 mm and 0.36 spacings the speed per turn was 411 to 460 um, against about 600 at script A's frozen point.
 CONFINED_GAP = 0.36
+#: How near the wall, in force spacings of its force point, a cell takes the wall's image integrated over it: beyond
+#: WALL_REACH its column is the image at its force point, within WALL_REACH / 2 the integrated one, and between them a
+#: smooth blend of the two, so that a cell's column is continuous as it nears the wall. A labelled decision of phase
+#: 7m-b's fix round (design #204, the maintainer's cost point): the integrated column against the point column, FL-9
+#: in the 1/4 in tube at 0.4 and 0.829 mm, measured below the bound beyond it (WALL_REACH_MEASURED).
+WALL_REACH = 1.0
+#: The share of a body's cells the step integrates at most (its budget, ``wall_cells``, fixed at build so that the
+#: step's shapes are), the cells nearest the wall; a step with more cells than that within WALL_REACH raises
+#: ``wall_cells_short`` and takes the image at the force points for the farthest of them.
+WALL_CELL_SHARE = 0.5
 #: The time one read of a wall's table takes, for the build's estimate of a step's cost: measured on a 24-thread laptop
 #: CPU in float64 (phase 7m-b's fix round, FL-9 in the 1/4 in tube: 1.36 to 1.52 us over 0.9 to 6.4 million reads a
 #: step). An estimate for one machine, stated as one.
@@ -159,6 +170,7 @@ class SeparatedDragState(TypedDict, closed=True):
     asymmetric: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     wall_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     wall_gap_spacings: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    wall_cells_short: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     steps: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     stopped_at: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     stopped_pose: ReadOnly[Float[Array, "7"]]
@@ -182,6 +194,50 @@ def on_the_cells(weights: Array, owners: np.ndarray, area: Array) -> Array:
     held = jnp.asarray(owners)
     wall_area = _ops.segment_sum(weights, held, num_segments=area.shape[0])
     return weights * (area / wall_area)[held]
+
+
+def reach_weight(gap: Array) -> Array:
+    """A cell's weight on its integrated column, from its force point's distance from the wall in force spacings: 1
+    within half of :data:`WALL_REACH`, 0 beyond it, and a smoothstep between (continuous with its first derivative)."""
+    t = jnp.clip((WALL_REACH - gap) / (0.5 * WALL_REACH), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
+                    table: np.ndarray, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
+                    viscosity: Any) -> tuple[Corrected, Array]:
+    """The wall's image with the cells nearest the wall integrated (:func:`cell_image`): the image at the force points
+    (``point``, each column times its cell's area) for every cell, and for the ``budget`` cells whose force points lie
+    nearest the wall (``gap``, in force spacings) their column blended towards the integrated one by
+    :func:`reach_weight`, which is zero beyond :data:`WALL_REACH`; so a cell far from the wall costs what it did, and a
+    cell's column is continuous as it crosses the reach and as it enters or leaves the budget. ``points`` and
+    ``weights`` are the wall quadrature's (world frame; the weights scaled to the cells' areas), ``table`` each cell's
+    points of it (:attr:`MRSDragNode.wall_table`) and ``chunks`` the budget's rows of it flattened. Also whether a cell
+    within the reach was left out of the budget. A step with no cell within the reach reads no more than the image at
+    the force points (a ``cond``, whose two branches agree there, every weight zero)."""
+    return _lax.cond(jnp.any(gap < WALL_REACH),
+                     lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
+                                              parameters, viscosity),
+                     lambda: (point, jnp.asarray(False)))
+
+
+def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
+                     table: np.ndarray, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
+                     viscosity: Any) -> tuple[Corrected, Array]:
+    """:func:`near_wall_image` where a cell lies within the reach; where none does, the step takes the image at the
+    force points alone and reads nothing more."""
+    count = force.shape[0]
+    nearest = _lax.top_k(-gap, min(budget + 1, count))[1]
+    chosen = nearest[:budget]
+    short = jnp.asarray(False) if budget >= count else gap[nearest[budget]] < WALL_REACH
+    held, mass = padded(points, weights)
+    rows = jnp.asarray(table)[chosen].reshape(-1)
+    integrated = cell_image(wall, force, held[rows], mass[rows], chunks, parameters, viscosity)
+    columns = (3 * chosen[:, None] + jnp.arange(3)[None, :]).reshape(-1)
+    near = point.matrix[:, columns]
+    blend = jnp.repeat(reach_weight(gap[chosen]), 3)[None, :]
+    matrix = point.matrix.at[:, columns].set(near + blend * (integrated.matrix - near))
+    return Corrected(matrix, point.accepted & integrated.accepted), short
 
 
 def least_distance(distances: Array) -> Array:
@@ -378,7 +434,8 @@ class MRSDragNode(MimeNode):
                  reference_quadrature_counts: Sequence[Sequence[int]] | None = None,
                  reference_quadrature_owners: np.ndarray | None = None,
                  wall_quadrature_counts: Sequence[Sequence[int]] | None = None,
-                 wall_quadrature_owners: np.ndarray | None = None, **constants: object) -> None:
+                 wall_quadrature_owners: np.ndarray | None = None, wall_cells: int | None = None,
+                 **constants: object) -> None:
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
                              f"more")
@@ -440,6 +497,7 @@ class MRSDragNode(MimeNode):
             self._wall_quadrature = (wall_counts, wall_owners)
             separated["wall_quadrature_counts"] = wall_counts
             separated["wall_quadrature_owners"] = wall_owners
+            separated["wall_cells"] = int(wall_cells) if wall_cells is not None else 0
         super().__init__(name, timestep, viscosity=viscosity, blob=blob, kind=kind, kind_version=kind_version,
                          patches=tuple(patches), counts=held_counts, part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), wall_kind=wall_kind,
@@ -528,8 +586,9 @@ class MRSDragNode(MimeNode):
                                                stopped_pose=as_run_array(jnp.zeros(7)), stopped_least=zero))
         if self._wall().distance is None:
             return state
-        return state | {"wall_gap": zero, "stopped_gap": zero} | (
-            {"wall_gap_spacings": zero} if "force_spacing" in self.constants() else {})
+        spaced = "force_spacing" in self.constants()
+        return state | {"wall_gap": zero, "stopped_gap": zero} | ({"wall_gap_spacings": zero} if spaced else {}) | (
+            {"wall_cells_short": zero} if spaced and self._wall_quadrature is not None else {})
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -586,12 +645,37 @@ class MRSDragNode(MimeNode):
         return Chunks.of(self._owners, self.sample_count)
 
     @cached_property
-    def wall_chunks(self) -> Chunks | None:
-        """The wall quadrature taken in chunks by its force points, cut for the wall's image's pairs; ``None`` where
-        the wall's image is taken at the force points."""
+    def wall_budget(self) -> int:
+        """How many cells a step integrates the wall's image over at most, the nearest the wall: ``wall_cells`` where
+        given, else :data:`WALL_CELL_SHARE` of the cells, rounded up."""
+        held = int(self.constants().get("wall_cells") or 0)
+        found = held if held > 0 else math.ceil(WALL_CELL_SHARE * self.sample_count)
+        return max(1, min(found, self.sample_count))
+
+    @cached_property
+    def wall_table(self) -> np.ndarray | None:
+        """Each cell's points of the wall quadrature, ``(N, widest)`` indices padded with the quadrature's count (a
+        point of weight zero); ``None`` without a wall quadrature."""
         if self._wall_quadrature is None:
             return None
-        return Chunks.of(self._wall_quadrature[1], self.sample_count, pair_values=self._wall().pair_values)
+        owners = self._wall_quadrature[1]
+        order = np.argsort(owners, kind="stable")
+        counts = np.bincount(owners, minlength=self.sample_count)
+        table = np.full((self.sample_count, int(counts.max())), len(owners), dtype=np.int32)
+        starts = np.concatenate([[0], np.cumsum(counts)[:-1]])
+        for cell in range(self.sample_count):
+            table[cell, :counts[cell]] = order[starts[cell]:starts[cell] + counts[cell]]
+        return table
+
+    @cached_property
+    def wall_chunks(self) -> Chunks | None:
+        """The budget's cells' points, ``wall_budget`` rows of the wall table flattened, taken in chunks cut for the
+        wall's image's pairs; ``None`` where the wall's image is taken at the force points."""
+        table = self.wall_table
+        if table is None:
+            return None
+        rows = np.repeat(np.arange(self.wall_budget, dtype=np.int32), table.shape[1])
+        return Chunks.of(rows, self.wall_budget, pair_values=self._wall().pair_values)
 
     def body_leaf_names(self) -> tuple[str, ...]:
         """The leaves the body-frame quantity is made from: the kind's numbers, the part's placement and the blob."""
@@ -822,17 +906,20 @@ class MRSDragNode(MimeNode):
 
     @property
     def wall_reads(self) -> int:
-        """The reads of the wall's table a step makes: every force point against every force point with the image at
-        the force points, else against every point of the wall quadrature, both ways for the reciprocal blend."""
-        if self._wall_quadrature is None:
-            return self.sample_count ** 2
-        return 2 * self.sample_count * len(self._wall_quadrature[1])
+        """The reads of the wall's table a step makes: every force point against every force point (the image at the
+        force points), and with a wall quadrature every force point against the points of the budget's cells, each
+        padded to the widest cell, both ways for the reciprocal blend."""
+        table = self.wall_table
+        reads = self.sample_count ** 2
+        return reads if table is None else reads + 2 * self.sample_count * self.wall_budget * table.shape[1]
 
     def _wall_text(self) -> str:
-        if self._wall_quadrature is None:
+        table = self.wall_table
+        if table is None:
             return "the image at the force points"
-        return (f"the image integrated over each cell on a wall quadrature of {len(self._wall_quadrature[1])} "
-                f"points")
+        return (f"the image at the force points, and integrated over the {self.wall_budget} cells nearest the wall on "
+                f"a wall quadrature of up to {table.shape[1]} points a cell, blended to the point image beyond "
+                f"{WALL_REACH:g} force spacing")
 
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
         """Why the node stopped a run, from its state at the run's end: the step whose resistance turned indefinite
@@ -898,35 +985,41 @@ class MRSDragNode(MimeNode):
         parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
         distance, wall_quadrature, wall_chunks = wall.distance, self._wall_quadrature, self.wall_chunks
 
+        spacing = p.get("force_spacing")
+
         def solved(held: Array, theta: Mapping[str, Any], viscosity: Array, pose: Array,
-                   parameters: Mapping[str, Any]) -> tuple[Array, Array, Array]:
+                   parameters: Mapping[str, Any]) -> tuple[Array, Array, Array, Array]:
             turn = quaternion.rotation_matrix(pose[3:])
             body = self.body(theta)
             force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
             centroid = pose[:3] + jnp.matmul(body.centroid, turn.T, precision=PRECISION)
-            if wall_quadrature is None or wall_chunks is None:
-                corrected = wall.correction(force, parameters, viscosity)
-                image = Corrected(corrected.matrix * jnp.repeat(body.area, 3)[None, :], corrected.accepted)
-            else:
+            corrected = wall.correction(force, parameters, viscosity)
+            image = Corrected(corrected.matrix * jnp.repeat(body.area, 3)[None, :], corrected.accepted)
+            short = jnp.asarray(False)
+            if wall_quadrature is not None and wall_chunks is not None and distance is not None and spacing is not None:
                 cells = self._quadrature_samples({**theta, "viscosity": jnp.asarray(theta["blob"])},
                                                  wall_quadrature[0])
-                image = cell_image(wall, force, pose[:3] + jnp.matmul(cells.points, turn.T, precision=PRECISION),
-                                   on_the_cells(cells.weights, wall_quadrature[1], body.area), wall_chunks,
-                                   parameters, viscosity)
+                image, short = near_wall_image(
+                    wall, image, force, pose[:3] + jnp.matmul(cells.points, turn.T, precision=PRECISION),
+                    on_the_cells(cells.weights, wall_quadrature[1], body.area), distance(force, parameters) / spacing,
+                    cast(np.ndarray, self.wall_table), self.wall_budget, wall_chunks, parameters, viscosity)
             found = separated_resistance(turned(held, turn) / viscosity + image.matrix, force, body.area, centroid,
                                          pose[:3])
             points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
-            return found, image.accepted, zero if distance is None else least_distance(distance(points, parameters))
+            gap = zero if distance is None else least_distance(distance(points, parameters))
+            return found, image.accepted, gap, short
 
-        found, accepted, gap = checkpoint(solved)(held, theta, viscosity, pose, parameters)
-        spacing = p.get("force_spacing")
+        found, accepted, gap, short = checkpoint(solved)(held, theta, viscosity, pose, parameters)
         fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
                         state, pose)
         if distance is None:
             return node_fields({key: value for key, value in fields.items() if key not in ("wall_gap", "stopped_gap")})
         if spacing is None:
             return node_fields(fields)
-        return node_fields(fields) | {"wall_gap_spacings": (gap / spacing).astype(dtype)}
+        extra = {"wall_gap_spacings": (gap / spacing).astype(dtype)}
+        if wall_quadrature is not None:
+            extra["wall_cells_short"] = jnp.where(short, jnp.ones((), dtype=dtype), zero)
+        return node_fields(fields) | extra
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -962,6 +1055,7 @@ def _units_of(held: Registered, name: str) -> str:
 
 
 __all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "NEAR_WALL",
-           "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "Body", "Built", "Judgement",
-           "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged", "kind_from_settings",
-           "least_distance", "on_the_cells", "quadrature_move", "stops_where"]
+           "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_SHARE", "WALL_REACH",
+           "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged",
+           "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",
+           "reach_weight", "stops_where"]

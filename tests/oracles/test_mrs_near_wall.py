@@ -348,12 +348,14 @@ def world_force_points(node: MRSDragNode, pose: np.ndarray) -> np.ndarray:
 
 def rebuilt(node: MRSDragNode, pose: np.ndarray) -> np.ndarray:
     """The node's step with a wall written again from its pieces, the image summed cell by cell with no chunks: the
-    held free matrix turned, plus for each force point's cell the tube's kernel at every force point from each of the
-    cell's wall points, its weight scaled so the cell's weights sum to its area; then ``W^T A^-1 M``, its symmetric
-    part (the review's s5 rebuild, here of the integrated image)."""
+    held free matrix turned, plus the tube's correction at the force points, each column times its cell's area, and for
+    each of the cells nearest the wall within the node's budget its column moved towards the tube's kernel summed over
+    the cell's wall points (each weight scaled so the cell's sum to its area) by the smoothstep of its force point's
+    distance from the wall in force spacings, one within half the reach and zero beyond it; then ``W^T A^-1 M``, its
+    symmetric part (the review's s5 rebuild, here of the image integrated near the wall)."""
     from mime.nodes.hydro.mrs import HELD
     from mime.nodes.hydro.mrs._quadrature import separated_resistance, turned
-    from mime.nodes.hydro.mrs._tube import tube_image
+    from mime.nodes.hydro.mrs._tube import tube_correction, tube_distance, tube_image
 
     theta = {key: jnp.asarray(node.constants()[key]) for key in node.body_leaf_names()}
     body = node.body(theta)
@@ -365,16 +367,24 @@ def rebuilt(node: MRSDragNode, pose: np.ndarray) -> np.ndarray:
     points = jnp.asarray(pose[:3]) + cells.points @ turn.T
     weights, area = np.asarray(cells.weights), np.asarray(body.area)
     parameters = wall_parameters(node)
+    count = node.sample_count
+    image = np.asarray(tube_correction(force, parameters, 1e-3).matrix) * np.repeat(area, 3)[None, :]
+    gap = np.asarray(tube_distance(force, parameters)) / node.constants()["force_spacing"]
+    reach = mrs_node.WALL_REACH
     widest = int(np.bincount(owners).max())
     kernel = jax.jit(lambda sources: tube_image(force, sources, parameters, 1e-3).matrix)
-    columns = []
-    for cell in range(node.sample_count):
+    for cell in np.argsort(gap, kind="stable")[:node.wall_budget]:
+        t = min(max((reach - gap[cell]) / (0.5 * reach), 0.0), 1.0)
+        blend = t * t * (3.0 - 2.0 * t)
+        if blend == 0.0:
+            continue
         mine = np.flatnonzero(owners == cell)
         scaled = np.zeros(widest)
         scaled[:len(mine)] = weights[mine] * area[cell] / weights[mine].sum()
         sources = jnp.asarray(np.asarray(points)[np.concatenate([mine, np.full(widest - len(mine), mine[0])])])
-        columns.append(np.einsum("tsij,s->tij", np.asarray(kernel(sources)), scaled))
-    image = np.stack(columns, axis=1).transpose(0, 2, 1, 3).reshape(3 * node.sample_count, 3 * node.sample_count)
+        integrated = np.einsum("tsij,s->tij", np.asarray(kernel(sources)), scaled).reshape(3 * count, 3)
+        columns = slice(3 * cell, 3 * cell + 3)
+        image[:, columns] += blend * (integrated - image[:, columns])
     matrix = turned(jnp.asarray(node.params_pytree()[HELD]), turn) / 1e-3 + jnp.asarray(image)
     found = np.asarray(separated_resistance(matrix, force, body.area, centroid, jnp.asarray(pose[:3])))
     return (found + found.T) / 2.0
