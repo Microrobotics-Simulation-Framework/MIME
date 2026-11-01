@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/3"
-LOCK_SCHEMA = "mime.lock/3"
+DOCUMENT_SCHEMA = "mime.document/4"
+LOCK_SCHEMA = "mime.lock/4"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -251,15 +251,69 @@ class ControllerDoc(TypedDict, closed=True):
     latency: NotRequired[QuantityDoc]
 
 
+class CustomLicenceDoc(TypedDict, closed=True):
+    """A custom licence by its ``LicenseRef-`` id: its title, its https link, and what a person says it allows
+    (``unknown`` or ``not_permitted``; a licence that permits is a permission)."""
+
+    title: ReadOnly[str]
+    url: ReadOnly[str]
+    redistribution: ReadOnly[Literal["not_permitted", "unknown"]]
+
+
+class TermsDoc(TypedDict, closed=True):
+    """A third-party file's terms, by its path below the folder: the sha256 of the bytes they were declared for (a
+    changed file inherits nothing), its licence as an SPDX expression, the credit its licence asks for, its role, and
+    where its exact bytes can be fetched from, primary first."""
+
+    sha256: ReadOnly[str]
+    licence: ReadOnly[str]
+    credit: ReadOnly[str]
+    role: ReadOnly[Literal["results", "presentation"]]
+    origin: NotRequired[ReadOnly[list[str]]]
+
+
+class ScopeDoc(TypedDict, closed=True):
+    """What a permission allows."""
+
+    redistribute: ReadOnly[bool]
+    modify: ReadOnly[bool]
+    commercial: ReadOnly[bool]
+
+
+class EvidenceDoc(TypedDict, closed=True):
+    """A permission's evidence: its kind and its pointer (a public statement's link, or what a written permission is
+    and who holds it)."""
+
+    kind: ReadOnly[Literal["public_statement", "written_permission"]]
+    pointer: ReadOnly[str]
+
+
+class PermissionDoc(TypedDict, closed=True):
+    """A permission as declared: the rights holder and who was permitted, the files by sha256, the scope, the date
+    and the evidence. Its form is checked; its truth never is."""
+
+    grantor: ReadOnly[str]
+    grantee: ReadOnly[str]
+    files: ReadOnly[list[str]]
+    scope: ReadOnly[ScopeDoc]
+    date: ReadOnly[str]
+    evidence: ReadOnly[EvidenceDoc]
+
+
 class ExperimentDocument(TypedDict, closed=True):
     """What the experiment declares, written by registered name and version, settings and bindings, and nothing
     else: never code, never a copy of a record's values. ``profile`` is the profile it is built under; ``declared``
     holds the values declared in the experiment, each with its reason; ``sources`` each setting's source given apart
     from its value (``exp.source``); ``gravity`` is its magnitude, along ``-up``, absent where the experiment states
     none (standard gravity, by convention); ``conditions`` the operating conditions every record is read at;
-    ``materials`` each material by name, as a reference to its record; ``controller`` the controller, or null."""
+    ``materials`` each material by name, as a reference to its record; ``controller`` the controller, or null.
 
-    schema: ReadOnly[Literal["mime.document/3"]]
+    Version 4 adds what may be shared, each absent where nothing is declared: ``licence``, the experiment's own (an
+    SPDX expression; absent, it declares none, which ``save`` and ``pack`` never refuse and ``push`` will); ``licences``,
+    each custom licence named, by its ``LicenseRef-`` id; ``terms``, each third-party file's, by its path below the
+    folder; and ``permissions``, each declared permission (``mime.terms``)."""
+
+    schema: ReadOnly[Literal["mime.document/4"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     profile: ReadOnly[Literal["exploratory", "research", "strict"]]
@@ -274,6 +328,10 @@ class ExperimentDocument(TypedDict, closed=True):
     declared: dict[str, DeclaredDoc]
     materials: dict[str, MaterialDoc]
     controller: ControllerDoc | None
+    licence: NotRequired[str]
+    licences: NotRequired[dict[str, CustomLicenceDoc]]
+    terms: NotRequired[dict[str, TermsDoc]]
+    permissions: NotRequired[list[PermissionDoc]]
 
 
 class GpuRecordDoc(TypedDict, closed=True):
@@ -638,9 +696,9 @@ class StageRecord(TypedDict, closed=True):
 class Lock(TypedDict, closed=True):
     """What a build wrote beside the document: the environment, the entries and their distributions, the derived
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
-    reference outputs."""
+    reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/3"]]
+    schema: ReadOnly[Literal["mime.lock/4"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -651,6 +709,10 @@ class Lock(TypedDict, closed=True):
     records: ReadOnly[dict[str, RecordFileRecord]]
     reference: ReadOnly[ReferenceRecord]
     assets: NotRequired[ReadOnly[list[RemoteAssetRecord]]]
+    #: Each named file whose bytes travel as a reference, by its path below the folder, to the name of the asset in
+    #: ``assets`` that holds them (version 4): a file that may not be redistributed, or one over the size a bundle
+    #: carries that has an origin. Outside the input hash, as ``assets`` is.
+    referenced_files: NotRequired[ReadOnly[dict[str, str]]]
 
 
 _WRAPPERS = (ReadOnly, NotRequired, Required)
@@ -772,7 +834,8 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "ChosenDoc", "DefaultRecord", "ItemRecord", "PendingDoc",
+    "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
+    "ScopeDoc", "TermsDoc",
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
     "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",

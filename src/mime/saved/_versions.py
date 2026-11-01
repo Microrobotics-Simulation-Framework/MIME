@@ -1,4 +1,4 @@
-"""The saved form before version 3, read under the current schema and held to its own lock.
+"""The saved form before version 4, read under the current schema and held to its own lock.
 
 **Version 1** (``mime.document/1``, ``mime.lock/1``) is the form before phase 7l-a. A document of it gains what version
 2 added, with the values a build before profiles had: no setting's source given apart from its value, and the profile
@@ -9,19 +9,27 @@ classes as numerical (an arm tracker's tuned gains). Its outputs then carry the 
 a version 1 document is only those numerical defaults, and ``mime pending`` lists what sealing it needs.
 
 **Version 2** (``mime.document/2``, ``mime.lock/2``) is the form before the drag's rung ``bem`` was renamed ``mrs``
-(the method is the method of regularised Stokeslets, not a boundary-element method). Version 3 changes three things a
+(the method is the method of regularised Stokeslets, not a boundary-element method). Version 3 changed three things a
 hash saw: the rung's name in the document and in the resolved record, the drag node's type in the derived graph
 (``BEMDragNode``, now ``MRSDragNode``), and the possessive in the sources of the values declared in the experiment,
 which a message built from a quoted name had written ``body 'umr''s`` (now ``body umr's``). A version 2 document that
 names ``bem`` is read as naming ``mrs``, and the load says so.
 
+**Version 3** (``mime.document/3``, ``mime.lock/3``) is the form before licences and terms (designs #198, #199).
+Version 4 adds four keys to the document (``licence``, ``licences``, ``terms``, ``permissions``) and one to the lock
+(``referenced_files``), each written only where something is declared; nothing else changed. A document of an earlier
+version declares no licence, no terms and no permission, and is read so: every file of it is its author's own, carried
+by ``pack``, with no licence declared. One of an earlier version that holds a key version 4 added is refused, never
+read as declaring it.
+
 A previous lock's input hash was taken over the previous document and resolved record, and its derived hash over the
 previous derived graph, so a load compares the rebuilt experiment in the previous form: the rebuilt document, resolved
-record and derived graph are written back into the form the lock was written in (the keys version 2 added taken off for
-version 1; the rung, the node type and the possessive written as version 2 wrote them) and hashed there. Its schema
-check is the current one, run on the upgraded form, so the two cannot drift apart. A version 2 source whose name is not
-an identifier (a material named with spaces or quotes) was quoted differently, and is not written back: such a
-document's input hash is refused, and saving it again from the script writes version 3."""
+record and derived graph are written back into the form the lock was written in (the keys version 4 added taken off;
+the keys version 2 added taken off for version 1; the rung, the node type and the possessive written as version 2
+wrote them, for versions 1 and 2) and hashed there. Its schema check is the current one, run on the upgraded form, so
+the two cannot drift apart. A version 2 source whose name is not an identifier (a material named with spaces or
+quotes) was quoted differently, and is not written back: such a document's input hash is refused, and saving it again
+from the script writes the current version."""
 
 from __future__ import annotations
 
@@ -32,9 +40,16 @@ from typing import Any, cast
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 3
-DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", CURRENT: DOCUMENT_SCHEMA}
-LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", CURRENT: LOCK_SCHEMA}
+CURRENT = 4
+DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
+                                       CURRENT: DOCUMENT_SCHEMA}
+LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", CURRENT: LOCK_SCHEMA}
+#: The version that renamed the drag's rung: a form before it names the rung ``bem``.
+RUNG_RENAMED = 3
+#: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
+#: licence, no terms and no permission.
+TERMS_KEYS: tuple[str, ...] = ("licence", "licences", "terms", "permissions")
+LOCK_TERMS_KEY = "referenced_files"
 
 #: The profile a version 1 document is read under, and the keys version 2 added, with the values a version 1 form holds.
 PREVIOUS_PROFILE = "exploratory"
@@ -43,7 +58,7 @@ _RESOLVED_ADDED = "profile"
 _PREVIOUS_RESOLVED_PROFILE: Mapping[str, object] = {"profile": PREVIOUS_PROFILE, "pending": [], "waivers": [],
                                                     "defaults": {}, "sources": {}, "listed": [], "changes": {}}
 
-#: The rung of the drag as version 2 and earlier named it, and as version 3 names it; the drag node's type likewise.
+#: The rung of the drag as version 2 and earlier named it, and as version 3 on names it; the drag node's type likewise.
 OLD_RUNG, NEW_RUNG = "bem", "mrs"
 OLD_NODE, NEW_NODE = "BEMDragNode", "MRSDragNode"
 _DRAG = "drag"
@@ -76,33 +91,49 @@ def _renamed_rungs(document: dict[str, object]) -> tuple[dict[str, object], tupl
     return ({**document, "interactions": changed} if found else document), tuple(found)
 
 
+def terms_keys_held(data: object) -> list[str]:
+    """The keys version 4 added that ``data`` (a document, or a lock) holds."""
+    if not isinstance(data, dict):
+        return []
+    held = cast("dict[str, object]", data)
+    return [key for key in (*TERMS_KEYS, LOCK_TERMS_KEY) if key in held]
+
+
 def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
     """``data`` as the current schema reads it, the version it was written in (the current one for a document that is
     not of an earlier version, which the schema check judges), and the ids of the drags that named the old rung. A
-    version 1 document that holds a key version 2 added is left as it is, for the schema check to refuse."""
+    document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's in any
+    earlier) is left as it is, for the schema check to refuse."""
     if not isinstance(data, dict):
         return data, CURRENT, ()
     held = dict(cast("dict[str, object]", data))
     version = version_of(held.get("schema"), DOCUMENT_SCHEMAS)
     if version is None or version == CURRENT:
         return held, CURRENT, ()
+    if terms_keys_held(held):
+        return held, version, ()
     if version == 1:
         if any(key in held for key in _DOCUMENT_ADDED):
             return held, version, ()
-        held = {**held, "schema": DOCUMENT_SCHEMAS[2], **_DOCUMENT_ADDED}
-    held, renamed = _renamed_rungs(held)
+        held = {**held, **_DOCUMENT_ADDED}
+    renamed: tuple[str, ...] = ()
+    if version < RUNG_RENAMED:
+        held, renamed = _renamed_rungs(held)
     return {**held, "schema": DOCUMENT_SCHEMA}, version, renamed
 
 
 def upgraded_lock(data: object) -> tuple[object, int]:
     """``data`` as the current schema reads it, and the version it was written in. The lock's contents stay in the form
-    it was written in: a load compares the rebuilt experiment written back into that form."""
+    it was written in: a load compares the rebuilt experiment written back into that form. A lock of an earlier
+    version that holds the key version 4 added is left as it is, for the schema check to refuse."""
     if not isinstance(data, dict):
         return data, CURRENT
     held = dict(cast("dict[str, object]", data))
     version = version_of(held.get("schema"), LOCK_SCHEMAS)
     if version is None or version == CURRENT:
         return held, CURRENT
+    if LOCK_TERMS_KEY in held:
+        return held, version
     resolved = held.get("resolved")
     if version == 1 and isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
         held["resolved"] = {**cast("dict[str, object]", resolved), _RESOLVED_ADDED: dict(_PREVIOUS_RESOLVED_PROFILE)}
@@ -115,8 +146,9 @@ def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any
     held = dict(document)
     if version == CURRENT:
         return held
+    held = {key: value for key, value in held.items() if key not in TERMS_KEYS}
     interactions = held.get("interactions")
-    if isinstance(interactions, list):
+    if version < RUNG_RENAMED and isinstance(interactions, list):
         held["interactions"] = [_with_rung(item, NEW_RUNG, OLD_RUNG) for item in cast("list[Any]", interactions)]
     if version == 1:
         held = {key: value for key, value in held.items() if key not in _DOCUMENT_ADDED}
@@ -148,9 +180,9 @@ def _value_in_form(record: Any) -> Any:
 
 
 def resolved_in_form(resolved: Mapping[str, Any], version: int) -> dict[str, Any]:
-    """A resolved record written back into the form of ``version``."""
+    """A resolved record written back into the form of ``version``: version 3's is the current one."""
     held = dict(resolved)
-    if version == CURRENT:
+    if version >= RUNG_RENAMED:
         return held
     entries = held.get("entries")
     if isinstance(entries, dict):
@@ -168,13 +200,13 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
     """The derived graph's physics written back into the form of ``version``: the drag node's type as it was named."""
     held = dict(physics)
     nodes = held.get("nodes")
-    if version < CURRENT and isinstance(nodes, list):
+    if version < RUNG_RENAMED and isinstance(nodes, list):
         held["nodes"] = [{**cast("dict[str, Any]", node), "type": OLD_NODE}
                          if isinstance(node, dict) and cast("dict[str, Any]", node).get("type") == NEW_NODE else node
                          for node in cast("list[Any]", nodes)]
     return held
 
 
-__all__ = ["CURRENT", "DOCUMENT_SCHEMAS", "LOCK_SCHEMAS", "NEW_RUNG", "OLD_RUNG", "PREVIOUS_PROFILE",
-           "document_in_form", "physics_in_form", "resolved_in_form", "upgraded_document", "upgraded_lock",
-           "version_of"]
+__all__ = ["CURRENT", "DOCUMENT_SCHEMAS", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG", "OLD_RUNG", "PREVIOUS_PROFILE",
+           "RUNG_RENAMED", "TERMS_KEYS", "document_in_form", "physics_in_form", "resolved_in_form", "terms_keys_held",
+           "upgraded_document", "upgraded_lock", "version_of"]

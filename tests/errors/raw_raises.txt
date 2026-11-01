@@ -124,6 +124,7 @@ surrogates/generator.py::MRSEvaluator.__call__ ValueError 1  # tooling: the surr
 surrogates/generator.py::TrainingData.produce ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
 surrogates/generator.py::_require_float64 RuntimeError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
 surrogates/generator.py::accuracy ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
+terms.py::licence_verdict ValueError 1  # invariant: a licence MIME judges was held to licence_problem where it was declared or read; reached, it is error.uncoded, keeping its class
 testing/__init__.py::<module> ImportError 1  # the verify extra's import message, at import
 testing/_families.py::conformance ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_families.py::family_named KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call

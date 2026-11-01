@@ -2,8 +2,9 @@
 
 The bundle is fetched through ``mime.assets`` as any content-addressed file is: stored in the cache under its hash, the
 network used only because this was asked for, and offline refused. Its assets are fetched the same way afterwards,
-unless declined. Nothing here installs or runs a package: the packages the lock names that are not installed are
-listed with the command to install them.
+unless declined, and each file that travels as a reference (one its licence does not let a bundle carry) is placed at
+its path from the cache. Nothing here installs or runs a package: the packages the lock names that are not installed
+are listed with the command to install them.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from mime.assets._commands import fetch_command, folder_argument
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._bundle import BUNDLE_SUFFIX, Unpacked, bundle_name, destination_problem, unpack
 from mime.saved._schema import Lock
+from mime.saved._terms import Placed, place_referenced
 
 #: Assets whose download is larger than this are asked about first (an interactive terminal), or need ``--yes``. A
 #: choice: about what a session on a laptop's connection should not start without being told.
@@ -188,6 +190,20 @@ def _assets_line(outcome: _AssetOutcome, folder: Path) -> str:
     return "Assets: " + (", ".join(parts) if parts else "none referenced")
 
 
+def _referenced_line(placed: Placed, folder: Path) -> str | None:
+    """What became of the files that travel as references (their terms let no bundle carry them, or they are large):
+    placed from the cache, or still to fetch; ``None`` where the bundle carries every file. Their licences and credit
+    are in the folder's NOTICE (``mime card <folder> --notice``)."""
+    total = len(placed.placed) + len(placed.present) + len(placed.missing)
+    if not total:
+        return None
+    line = (f"Referenced files: {total}, not carried in the bundle (their terms are in `mime card "
+            f"{folder_argument(folder)} --notice`)")
+    if placed.missing:
+        return line + f"; {len(placed.missing)} not placed: run `{fetch_command(folder=folder)}`"
+    return line + "; each placed from the asset cache"
+
+
 def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, confirm: Callable[[str], bool] | None,
                   say: Callable[[str], None] | None) -> _AssetOutcome:
     refs = assets.folder_assets(folder)
@@ -235,9 +251,12 @@ def pull(source: str | os.PathLike[str], *, into: str | os.PathLike[str] | None 
     unpacked: Unpacked = unpack(bundle, destination)
     needed = packages_needed(unpacked.lock)
     outcome = _fetch_assets(destination, wanted=fetch_assets, yes=yes, confirm=confirm, say=say)
+    placed = place_referenced(destination)
+    referenced = _referenced_line(placed, destination)
     lines = [f"\N{CHECK MARK} Bundle {unpacked.manifest['name']!r} unpacked to {folder_argument(destination)}",
              "  - Manifest, scene and records: OK",
              f"  - {_assets_line(outcome, destination)}",
+             *([f"  - {referenced}"] if referenced is not None else []),
              f"  - {_packages_line(needed)}",
              f"Next: mime verify {folder_argument(destination)}"]
     if say is not None:
