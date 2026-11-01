@@ -70,6 +70,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **The exact symmetries are kept on the kept versions**: the sphere's coupling at rounding on the grid sphere 0.1.0,
     the mirrored screw's coupling reversed to 1e-9 and the generator's half turn to 1e-6 on the screw 0.2.0, beside the
     bounds a quasi-uniform sampling needs, which pass errors those caught.
+- **`mime push`, drafts** (push's P2a, designs #198 and #199; publishing comes with P2b): `mime push <folder> --to
+  zenodo|zenodo-sandbox` shows the plan, computed offline (every record file, every file inside the bundle with its tier
+  and verdict, every file that travels as a reference, each declared permission in #198's words, the metadata), asks,
+  then makes or updates the experiment's draft through InvenioRDM's records API, reserves its DOI and uploads each file
+  that differs, its md5 held to the service's; nothing is published. `--to` is required, and the two services are
+  fixed in code, each with its own token and its own records. `--init` writes **`sharing.yaml`**, the record's credit
+  (creators with ORCID iDs held to their check digit, contributors with DataCite types, related works, the uploader),
+  from what the folder knows, the licence pre-filled `CC-BY-4.0` where the experiment declares none and always held
+  equal to the one it declares; `pack` neither carries nor refuses it, and `mime card` names its creators.
+  `--status` reads the draft as the service holds it, `--discard` deletes it. The client codes against the sandbox
+  probe of 2026-11-01: the records API's `Accept` header on every request (the legacy shape refused), every 2xx checked
+  for `errors`, no resume (a file sent whole, never twice), the reserved DOI as the service gives it, the publisher
+  DataCite needs, a custom licence as a rights entry without an `id`, `Retry-After` honoured on a `429` only, no
+  redirect followed, and a request that changes the service never sent again after a gateway's `502` or `504` (push
+  reads the draft or its files again and goes on from what is there). A push stopped at any request is resumed by
+  running it again, at the level of whole files. A field the service refuses, in a 2xx or a 4xx, is the author's to
+  correct where they write it and MIME's defect where MIME builds it (MIME's keyword and the rights holders it adds
+  included), as is a refusal naming no field. **Push writes to and deletes only the draft it made**: each carries an
+  alternate identifier push writes into it (a `urn:uuid` of the service, the experiment's name and a mark in push's
+  record), checked before any write or discard (`push.draft-foreign`); and **an edit made on the site is never written
+  over unasked**: push keeps what the draft's metadata was after it last wrote it, and a field changed since stops the
+  push, naming its value on the site and in `sharing.yaml` (`push.metadata-edited`), until it is copied there or
+  `--overwrite-site-edits` writes over it. Every push, `--status` and `--discard` ends with the draft's link on a line
+  of its own. Push's record is kept per service and exact experiment name (two names that differ only in case have
+  two, on any file system). The token never reaches a traceback's locals, through the real transport too (whatever
+  stops a request, an interrupt included, is raised again fresh from a frame that holds none); a service on this
+  machine is reached without the environment's proxy; a `Service` pairs a real service's credential with its own host
+  alone; the two services' stored tokens are never the same one. Refusals: `push.sharing-missing`, `push.sharing`,
+  `push.creators`, `push.licence`, `push.permission`, `push.token`, `push.token-scope`, `push.service`,
+  `push.rejected`, `push.draft-changed`, `push.draft-foreign`, `push.metadata-edited`, `push.too-large`,
+  `push.too-many-files`, `push.sandbox-location`, `push.checksum`, `push.published`, `push.unconfirmed`,
+  `push.state`. The tests run against
+  an offline fake of the records API, replayed against the probe's answers, each in a home and state directory of its
+  own (a guard fails a test that writes push's records outside it); the sandbox lane (`scripts/zenodo_sandbox_lane.py`)
+  is run by hand, never by CI, and its dry run needs no token and removes what it writes.
 - **Terms and tiers** (push's first piece, P1, designs #198 and #199), all offline:
   - **Licences are SPDX expressions** (`mime.terms`): checked by `packaging.licenses` (the floor is now `packaging>=24.2`)
     and held to their canonical spelling; a licence of one's own is a `CustomLicence` (`LicenseRef-` with its title and
