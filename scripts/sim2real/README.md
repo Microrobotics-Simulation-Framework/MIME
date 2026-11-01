@@ -23,6 +23,8 @@ scripts keep their own names for their arms and outputs (`bem.py`, `bem_*.json`,
 predictions and the preregistration key on; only what calls the library (`Drag.MRS`, `mime.nodes.hydro.mrs`,
 `MRSDragNode`) was renamed, so these scripts' bytes are no longer the ones `preregistration_7ja.json` hashed.
 
+A file `preregistration_7ja.json` hashed changes only by a listed change: `preregistration_drift.json` lists each one with its new hash, its commits and its reason (the register's amendment A2), and `tests/differential/test_preregistration_drift.py` fails on a change to any of them that is not listed, or listed and changed again.
+
 Every experiment here builds its geometry kinds at the versions 7j's register froze (`operating_point.FROZEN_VERSIONS`:
 the screw 0.2.0, whose samples are its quadrature, not the 0.3.0 that quasi-uniform sampling brought), through
 `operating_point.pinned`, until a dated amendment of the register moves them: built on the screw 0.3.0, the MRS arm's
