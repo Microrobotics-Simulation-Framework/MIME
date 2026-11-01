@@ -803,11 +803,21 @@ def _referenced_problems(manifest: Manifest | ManifestFormat1, form_lock: Lock) 
         problems.append(_refuse("bundle.manifest", RefusalClass.USER,
                                 "the manifest's references are not the files the lock says travel as references",
                                 action))
+    return problems
+
+
+def _carried_reference_problems(manifest: Manifest | ManifestFormat1) -> list[Refusal]:
+    """What no bundle ``pack`` writes holds, judged from the manifest before anything is written (so the same on every
+    filesystem): a carried member with a reference's bytes, and a carried member whose name is a reference's in
+    another case."""
+    referenced = referenced_of(manifest)
+    action = ("this is not a bundle `mime pack` wrote; do not unpack it: ask its sender to pack the folder again with "
+              "`mime pack <folder>`")
     carried = {held["sha256"]: name for name, held in manifest["files"].items()}
-    problems += [_refuse("bundle.unsafe", RefusalClass.USER,
-                         f"the bundle carries the bytes of the reference {path!r} as {carried[held['sha256']]!r}",
-                         action)
-                 for path, held in sorted(referenced.items()) if held["sha256"] in carried]
+    problems = [_refuse("bundle.unsafe", RefusalClass.USER,
+                        f"the bundle carries the bytes of the reference {path!r} as {carried[held['sha256']]!r}",
+                        action)
+                for path, held in sorted(referenced.items()) if held["sha256"] in carried]
     problems += [_refuse("bundle.unsafe", RefusalClass.USER,
                          f"{one!r} and {other!r}, one carried and one a reference, are one name on a case-insensitive "
                          f"filesystem", action)
@@ -851,6 +861,9 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
                     "missing", "the bundle was altered after it was packed: fetch it again from its source, `mime pull "
                                "<doi | url>`")])
             notice, problems = _notice_of(archive, manifest)
+            unsafe = _carried_reference_problems(manifest)
+            if unsafe:
+                raise BuildRefused([*problems, *unsafe])
             destination.parent.mkdir(parents=True, exist_ok=True)
             staging.mkdir()
             problems += _write_members(archive, manifest, staging)
