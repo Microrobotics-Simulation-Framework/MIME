@@ -725,6 +725,31 @@ class Segment:
     initial: tuple[tuple[float, ...], ...] = ()
     initial_rates: tuple[tuple[float, float, float], ...] = ()
     massive: bool = False
+    #: What the stage draws of each frame: its description's visuals and the simple shapes that stand in for them.
+    visuals: tuple[SegmentVisual, ...] = ()
+
+
+@dataclass(frozen=True)
+class SegmentVisual:
+    """One shape the stage draws on a frame of a chain segment, in that frame (``origin``, ``(x, y, z, qw, qx, qy,
+    qz)``): ``kind`` is ``mesh`` (``mesh`` the file as its description writes it, scaled by ``scale``), ``box``
+    (``size``, its three edges, m), ``cylinder`` (``radius`` and ``length`` along its z, m), ``sphere`` (``radius``)
+    or ``bone`` (a cylinder of ``radius`` from the frame's origin to ``end``, a child frame's origin). ``role`` says
+    where it comes from: ``visual`` (the description's own look), ``collision`` (its collision geometry, drawn where a
+    link's visuals are meshes the stage may not have) or ``frames`` (a bone, drawn where it has neither). ``colour``
+    is an RGB triple in 0 to 1, where the description gives one."""
+
+    frame: str
+    kind: str
+    role: str
+    origin: tuple[float, float, float, float, float, float, float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+    mesh: str | None = None
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    size: tuple[float, float, float] | None = None
+    radius: float | None = None
+    length: float | None = None
+    end: tuple[float, float, float] | None = None
+    colour: tuple[float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -1187,6 +1212,19 @@ class Signal:
     shape: tuple[int, ...] = ()
 
 
+
+@dataclass(frozen=True)
+class LiveInput:
+    """A value a live session may set while a controller in the callback mode runs (``session.set(label, value)``):
+    its units, spelt as the vocabulary spells them, its shape, and what it does. Until it is set, the controller's
+    step is called with its reads alone, as in every other run; once set, the step reads it under its label among its
+    reads, from the next tick on. A physical setting is never a live input: changing one is a rebuild."""
+
+    units: str
+    shape: tuple[int, ...] = ()
+    meaning: str = ""
+
+
 type Arrays = Mapping[str, Any]
 type ControlStep = Callable[[Arrays, Arrays], tuple[Arrays, Arrays]]
 
@@ -1241,6 +1279,8 @@ class Controller(Entry):
 
     reads: ClassVar[Mapping[str, Signal]] = _EMPTY
     writes: ClassVar[Mapping[str, Signal]] = _EMPTY
+    #: The values a live session may set between its ticks in the callback mode (:class:`LiveInput`), by label.
+    live: ClassVar[Mapping[str, LiveInput]] = MappingProxyType({})
     #: The status of the controller placed as a callback, recorded beside ``differentiability``, which is its law's
     #: own, inside the compiled step. The binding's: no entry declares it.
     callback_gradient: ClassVar[RungGradient] = CALLBACK_GRADIENT

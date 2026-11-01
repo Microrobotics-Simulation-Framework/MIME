@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Live sessions and recordings: MIME's side of MICROROBOTICA's move to 0.3** (dev1 phase 7n, design #197):
+  - **`built.live()`**, a live session: the run stepped in chunks of one fixed size, a frame of the selected fields to
+    every subscriber after each chunk (bit for bit a batch run's state at its steps), paced to a factor of real time,
+    stopped cleanly from every state; the controller's **live inputs** (`Controller.live`, `LiveInput`), set between
+    ticks in the callback mode (`ArmTracking` declares `offset`); every command logged with its step
+    (`commands.jsonl`), replayed by `mime run <folder> --commands <log>` into the same run folder; and a minimal run
+    folder written when it stops.
+  - **`mime serve <folder>`**, the session over ZMQ (a REP for commands, a PUB for frames), bound to localhost unless
+    `--remote`, speaking **`mime.live/1`** (`docs/live.md`): JSON requests and replies in the coded shape of MIME's
+    errors, binary frames (a header, then the fields in the run's own type) or JSON ones. MIME speaks ZMTP, ZMQ's wire
+    protocol, itself, so serving needs no extra package; its tests replay libzmq's own handshakes.
+  - **The stage binding** (`built.binding()`, in `hello`): which field moves which prim, for every body, every frame of
+    every chain (an arm's links by their names, each frame a prim placed in the world) and every field a law reads at a
+    body, with its own prim.
+  - **The recording layer** (`docs/recordings.md`): `run_to(..., stage_every=)`, `mime run --stage-every` and a live
+    session's `record` write `recording.usdc` over the run folder's own stage, exactly the run's states at its samples.
+  - **Descriptions' visuals in the stage**: URDF visuals drawn on their frames (primitives as USD primitives; meshes
+    named by a visual set and their source's sha256; bones from the frames where a mesh is absent). The AR4's meshes
+    are never shipped (Annin Robotics' licence): the visual set `ar4_mk5` is a recipe, the upstream at a pinned commit
+    with each file's sha256, and `mime visuals fetch ar4_mk5` downloads, decimates (to a declared triangle budget) and
+    bakes them into the asset cache only, drawn through an overlay in the cache (`mime visuals view`).
+  - **`built.topology()`**, the built graph in MIME's names, in `hello` and as `topology.json` in run folders; and
+    **`run_to(..., hook=, chunk=)`**, so a saved run streams.
+- **Proxies within a triangle budget**: a kind drawn on the stage is drawn at fewer facets a turn where it would hold
+  more triangles than `PROXY_TRIANGLES`; A0's saved stage, nearly all the screw's proxy, is about a quarter of its size,
+  and every stage of a chain gains its frames' prims, so its hash changes (no committed folder holds one).
+
 - **The first run** (dev1 phase 7l-c, design #191 item 7):
   - **The README's install and quickstart**: the install section names the distribution, its extras and the branch it is
     installed from until 0.3 is released; the quickstart (a steel ball settling in water, in exploratory, with no
@@ -1390,6 +1417,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference does not carry the float32 rounding; the tag's run on 0.3.1 does.
 
 ### Fixed
+- The bibliography's `Annin2024AR4` named a repository that is gone; it names the AR4's ROS driver.
+- A run with a hook refused for chunks that were not whole said its reason was a controller's.
 - **The screw kind's caps no longer crowd their centres** (MIME-ANO-119; `screw` 0.2.0). Each cap is sampled in rings:
   a sample at its centre and rings out to the rim, each a copy of the section at a fraction of the way out, its count a
   multiple of the starts growing with its radius (above `4 starts + 2`, which the second moments need), equally spaced

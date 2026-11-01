@@ -135,7 +135,8 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 | [`study/`](study/) | sweeps, fits and sensitivities over experiments | new | dev2 (sweeps), a1 (fits) |
 | [`validity/`](validity/) | validity lines, watches, evidence, profiles | new | a1 |
 | [`gradients/`](gradients/) | gradient statuses and their checks | new | declared from dev1; checked in a1 |
-| [`viz/`](viz/) | recording over the scene; viewports | ported | when recording is needed |
+| [`viz/`](viz/) | the recording layer over a run folder's stage; descriptions' meshes baked in the asset cache, and the overlay that draws them | new | dev1, phase 7n |
+| [`live/`](live/) | live sessions (`built.live()`), `mime serve` and the `mime.live` protocol, ZMQ spoken by MIME itself | new | dev1, phase 7n |
 
 Three modules sit beside the packages: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`, checked by
 dimension in phase 1 and turned into plain SI floats, landed in phase 2; the dimension markers an entry's settings

@@ -13,7 +13,9 @@ from mime.docs._context import (
     CONCEPTS_PATH,
     ERRORS_PATH,
     INDEX_PATH,
+    LIVE_PATH,
     PROFILES_PATH,
+    RECORDINGS_PATH,
     RESULTS_PATH,
     VOCABULARY_PATH,
     Context,
@@ -176,7 +178,10 @@ def index_page(context: Context) -> Page:
                    f"explore, see what is pending, seal." if PROFILES_PATH in context.hand else "")
                 + (f" When MIME refuses something, {_page_link(ERRORS_PATH, 'reading an error')}, and "
                    f"{_page_link('errors/index.md', 'every error by its code')}." if ERRORS_PATH in context.hand
-                   else ""))
+                   else "")
+                + (f" To watch a run as it runs, {_page_link(LIVE_PATH, 'live sessions and the protocol')}"
+                   + (f", and to replay one, {_page_link(RECORDINGS_PATH, 'recordings')}"
+                      if RECORDINGS_PATH in context.hand else "") + "." if LIVE_PATH in context.hand else ""))
     w.heading(2, "By goal")
     w.heading(3, "What can act on a body?")
     w.paragraph("A body takes deliveries into its targets; the mechanism page of each target kind says how they "

@@ -12,6 +12,7 @@ Also here: the helix's starts, a count beside its settings, are written, read ba
 placement site (a thing, a part, a structure's kind, a mounted prim, a region's prim) writes its translation in the
 stage's units, found by USD's composed transform; and ``onto`` carries +Z to an axis near -Z within a few ulps."""
 
+import json
 import math
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from dataclasses import replace
 
 from mime.registry import Native, RegionPrimitive, implements
 from mime.scene import (
+    DERIVED_FROM,
     DRAWING_SEGMENTS,
     GEOMETRY_API,
     Box,
@@ -253,8 +255,10 @@ def test_the_helixs_starts_are_written_and_read_back_whole_and_rebuild_its_drawi
     rebuilt = Screw(radius=m(read.settings["radius"]), length=m(read.settings["length"]),
                            wavenumber=dimensionless(read.settings["wavenumber"]),
                            modulation=dimensionless(read.settings["modulation"]), starts=read.counts["starts"])
-    drawn = rebuilt.drawing(read.settings, DRAWING_SEGMENTS)
     proxy = stage.GetPrimAtPath("/World/held/proxy")
+    segments = json.loads(proxy.GetAttribute(DERIVED_FROM).Get())["segments"]
+    assert segments <= DRAWING_SEGMENTS
+    drawn = rebuilt.drawing(read.settings, segments)
     written = [proxy.GetAttribute(name).Get() for name in ("points", "faceVertexCounts", "faceVertexIndices")]
     assert mesh_hash(*written) == mesh_hash((np.asarray(drawn.points) / 0.001).astype(np.float32),
                                             drawn.face_vertex_counts, drawn.face_vertex_indices)

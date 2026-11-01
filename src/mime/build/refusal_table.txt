@@ -133,6 +133,21 @@ group.settings                user
 id.duplicate                  user
 lag.cross-check               internal
 lag.unplanned                 internal
+live.address-in-use           environment
+live.chunk                    user
+live.command                  user
+live.input-mode               user
+live.input-unknown            user
+live.input-value              user
+live.log                      user
+live.pace                     user
+live.protocol                 user
+live.remote-bind              user
+live.select                   user
+live.state                    user
+live.step                     user
+live.stopped                  user
+live.transport                environment
 load.asset-changed            user
 load.assets                   user environment
 load.code-in-document         user
@@ -265,6 +280,7 @@ run.rate-not-multiple         user
 run.rate-units                user
 run.record                    user
 run.seed                      user
+run.stage-every               user
 run.unfed-input               internal
 rung.missing                  user
 rung.reserved                 user
@@ -323,4 +339,7 @@ value.unknown                 user
 value.unknown-part            user
 value.unknown-thing           user
 verify.nothing-saved          user
+visuals.convert               environment
+visuals.no-stage              user
+visuals.unknown-set           user
 vocabulary.reserved           user

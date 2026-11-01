@@ -66,8 +66,9 @@ class InertiaGap:
 
 #: What MIME does instead of each element it does not use or refuses, where to look, and how to ask.
 CATEGORY_MESSAGES: dict[str, str] = {
-    "visual": "MIME simulates no link's appearance: what a part looks like is the experiment's scene (mime.scene). "
-              f"To have a description's visuals in the stage, ask at {ISSUES}.",
+    "visual": "MIME simulates no link's appearance; the stage draws it on each link's frame (mime.viz): a box, "
+              "cylinder or sphere as its USD primitive, a mesh from the asset cache where a visual set bakes it "
+              "(`mime visuals fetch <set>`), and simple shapes from the link's frames where it has neither.",
     "collision": "MIME simulates no collision between a chain's links: contact is an interaction an experiment "
                  f"attaches between named things (mime.interactions.Contact). To ask for link collisions: {ISSUES}.",
     "material": "a URDF material is a colour, not a physical material: a part's material comes from an OpenMaterica "
@@ -189,11 +190,32 @@ class DescriptionRefused(ValueError):
 
 
 @dataclass(frozen=True)
+class LinkShape:
+    """A link's ``<visual>`` or ``<collision>`` as the file writes it, for the stage to draw (no physics reads it):
+    its link, ``role`` (``visual`` or ``collision``), its origin in the link's frame, and its geometry: ``mesh`` (the
+    file name as written, with ``scale``), ``box`` (``size``), ``cylinder`` (``radius``, ``length``) or ``sphere``
+    (``radius``), in metres; and its colour (RGB, 0 to 1), its own material's or the robot's material it names."""
+
+    link: str
+    role: str
+    origin: RigidTransform
+    kind: str
+    mesh: str | None = None
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    size: tuple[float, float, float] | None = None
+    radius: float | None = None
+    length: float | None = None
+    colour: tuple[float, float, float] | None = None
+
+
+@dataclass(frozen=True)
 class DescriptionReading:
-    """A description read: its tree, and the classification of every element in it."""
+    """A description read: its tree, the classification of every element in it, and its links' visual and collision
+    shapes, which the stage draws (a shape the file writes malformed is left out: it is appearance, never physics)."""
 
     tree: MultibodyTree
     classification: DescriptionClassification
+    shapes: tuple[LinkShape, ...] = ()
 
 
 def read_urdf(path: str | Path, *, sha256: str | None = None,
@@ -237,7 +259,63 @@ def read_urdf(path: str | Path, *, sha256: str | None = None,
     classification = DescriptionClassification(source, tuple(elements), _inertia_gaps(robot, tree),
                                                classification.acknowledged)
     _warn(classification)
-    return DescriptionReading(tree, classification)
+    return DescriptionReading(tree, classification, _shapes(robot))
+
+
+def _colour(material: ElementTree.Element | None, named: Mapping[str, tuple[float, float, float]]) -> \
+        tuple[float, float, float] | None:
+    if material is None:
+        return None
+    color = material.find("color")
+    if color is not None:
+        try:
+            rgba = _floats(color.get("rgba"), 4, (0.0, 0.0, 0.0, 1.0), "a material's colour")
+        except InvalidDescription:
+            return None
+        return (min(max(rgba[0], 0.0), 1.0), min(max(rgba[1], 0.0), 1.0), min(max(rgba[2], 0.0), 1.0))
+    return named.get(str(material.get("name")))
+
+
+def _shape(link: str, role: str, element: ElementTree.Element,
+           named: Mapping[str, tuple[float, float, float]]) -> LinkShape | None:
+    """One ``<visual>`` or ``<collision>``, or ``None`` where it is malformed or holds no geometry the stage draws."""
+    geometry = element.find("geometry")
+    if geometry is None or len(geometry) != 1:
+        return None
+    held, where = geometry[0], f"link[{link}]/{role}"
+    try:
+        origin = _origin(element.find("origin"), where)
+        colour = _colour(element.find("material"), named) if role == "visual" else None
+        if held.tag == "mesh" and held.get("filename"):
+            scale = _floats(held.get("scale"), 3, (1.0, 1.0, 1.0), f"{where} mesh scale")
+            return LinkShape(link, role, origin, "mesh", mesh=str(held.get("filename")),
+                             scale=(scale[0], scale[1], scale[2]), colour=colour)
+        if held.tag == "box":
+            size = _floats(held.get("size"), 3, (0.0, 0.0, 0.0), f"{where} box size")
+            return LinkShape(link, role, origin, "box", size=(size[0], size[1], size[2]), colour=colour)
+        if held.tag == "cylinder":
+            return LinkShape(link, role, origin, "cylinder", radius=_number(held, "radius", 0.0, where),
+                             length=_number(held, "length", 0.0, where), colour=colour)
+        if held.tag == "sphere":
+            return LinkShape(link, role, origin, "sphere", radius=_number(held, "radius", 0.0, where), colour=colour)
+    except InvalidDescription:
+        return None
+    return None
+
+
+def _shapes(robot: ElementTree.Element) -> tuple[LinkShape, ...]:
+    """Every link's visuals, then its collisions, in file order; a robot-level material lends its colour by name."""
+    named: dict[str, tuple[float, float, float]] = {}
+    for material in robot.findall("material"):
+        colour = _colour(material, {})
+        if colour is not None and material.get("name"):
+            named[str(material.get("name"))] = colour
+    found: list[LinkShape] = []
+    for link in robot.findall("link"):
+        name = str(link.get("name"))
+        for role in ("visual", "collision"):
+            found += [shape for element in link.findall(role) if (shape := _shape(name, role, element, named))]
+    return tuple(found)
 
 
 def _warn(classification: DescriptionClassification) -> None:

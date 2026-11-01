@@ -91,6 +91,7 @@ from mime.build._regions import (
     primitive_problems,
     region_handoff,
 )
+from mime.build._binding import Bound, StageBinding, stage_binding
 from mime.build._stage import kind_prim, stage_spec
 
 __all__ = [
@@ -104,6 +105,7 @@ __all__ = [
     "Attachment",
     "ArgumentRefused",
     "ArgumentTypeRefused",
+    "Bound",
     "BuildRefused",
     "InternalError",
     "MimeError",
@@ -153,6 +155,7 @@ __all__ = [
     "RunStructure",
     "ScenePlan",
     "Slot",
+    "StageBinding",
     "TargetRef",
     "ThingDeclaration",
     "UncataloguedRefusal",
@@ -175,5 +178,6 @@ __all__ = [
     "region_handoff",
     "refused_reads",
     "run_steps",
+    "stage_binding",
     "stage_spec",
 ]
