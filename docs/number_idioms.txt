@@ -12,3 +12,4 @@
 >= 0   # a sign condition's zero, the boundary of an inequality, not a measured quantity
 -> 0   # a limit's zero (Re -> 0), the point the limit is taken at, not a measured quantity
 L/2    # half a length (the half-length of a body of length L), a shape of the formulation, not a measured quantity
+mime.live/1  # the live protocol's name and its major version (a version, as mime.document's), not a measured quantity

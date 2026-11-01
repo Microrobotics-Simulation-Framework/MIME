@@ -56,31 +56,46 @@ from mime.scene._read import KindOnStage, geometry_schema_problems, read_kind
 from mime.scene._solids import Box, Capsule, Cylinder, Ellipsoid, Sphere
 from mime.scene._scene import Asset, Reference, Scene, asset, sha256_hex
 from mime.scene._stage import (
+    ARROW,
     DRAWING_SEGMENTS,
+    STAGE_WRITER,
+    STAGE_WRITERS,
     PROXY,
+    VECTOR_SCALE,
+    VECTOR_UNITS,
+    VECTOR_VALUE,
+    VISUAL_ASSET,
+    VISUAL_FILE,
+    VISUAL_ROLE,
+    VISUAL_SHA256,
     KindPrim,
     MountedPrim,
     RegionPrim,
     StageFinding,
     StageSpec,
     ThingPrim,
+    VectorPrim,
+    VisualPrim,
     check_stage,
     stage_text,
     up_axis,
 )
+from mime.scene._visual_sets import VisualFile, VisualSet, mesh_path, mesh_source, visual_sets
 
 #: The stage's file below a saved experiment's folder.
 STAGE_FILE = "scene/scene.usda"
 
 __all__ = [
-    "Asset", "Axis", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM", "DERIVED_HASH",
-    "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage", "KindPrim", "LAYERS",
-    "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "QUADRATURE",
-    "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "Scene", "Screw", "Shape", "Sphere", "StageEdits",
-    "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",
-    "check_stage",
-    "compose", "derived_findings", "geometry_schema_problems", "kind_frame", "length_of", "meters_per_unit", "placed",
-    "quadrature", "quasi_uniform", "read_kind", "register_shape", "sampled_reach", "scene_up", "sha256_hex",
-    "shape_settings", "stage_derived_findings", "stage_edits", "stage_text", "unit_vector", "up_axis",
-    "up_axis_problem", "valid_part_path", "valid_prim_path", "within", "world_frame",
+    "ARROW", "Asset", "Axis", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
+    "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
+    "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY",
+    "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
+    "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
+    "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
+    "VectorPrim", "VisualFile", "VisualPrim", "VisualSet", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",
+    "check_stage", "compose", "derived_findings", "geometry_schema_problems", "kind_frame", "length_of", "mesh_path",
+    "mesh_source", "meters_per_unit", "placed", "quadrature", "quasi_uniform", "read_kind", "register_shape",
+    "sampled_reach", "scene_up", "sha256_hex", "shape_settings", "stage_derived_findings", "stage_edits",
+    "stage_text", "unit_vector", "up_axis", "up_axis_problem", "valid_part_path", "valid_prim_path", "visual_sets",
+    "within", "world_frame",
 ]

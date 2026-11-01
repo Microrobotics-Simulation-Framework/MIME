@@ -47,6 +47,12 @@ env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and r
 experiment/_experiment.py::ObservationHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 interactions/hydrodynamic.py::Drag._build_mrs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 interactions/hydrodynamic.py::Drag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+live/_protocol.py::FrameSchema.decode ValueError 3  # a client's frame of another schema, length or protocol: a Python client's own check of a message it received, below any public call; the protocol's page documents it
+live/_protocol.py::FrameSchema.encode ValueError 1  # a frame whose field has another shape than its schema's: the session's own state, which a schema fixed at its start always fits; a defect if reached
+live/_protocol.py::FrameSchema.from_record ValueError 1  # a schema whose id is not its fields' hash, received by a client: the client's own check of what a server sent
+live/_protocol.py::frame_from_json ValueError 1  # a JSON frame of another protocol or schema, received by a client: the client's own check
+live/_zmtp.py::Client._fill ConnectionError 1  # the server closed a client's connection: the socket's own error class, which a client catches as one
+live/_zmtp.py::parse_endpoint ValueError 1  # an endpoint that is not tcp://: mime serve refuses it first, coded (live.remote-bind); a client's own call raises it raw
 materials/_records.py::RecordFile.read OSError 1  # invariant: a record file constructed with neither a path nor a packaged record, which its constructor refuses
 nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -116,6 +122,7 @@ scene/_solids.py::_face_edges KeyError 1  # protocol: the class Python's protoco
 scene/_solids.py::_length TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_solids.py::_lengths TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_visual_sets.py::visual_sets ValueError 1  # a visual set's record in MIME's own package data of another format: MIME's packaging defect, held by its tests
 surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::Surrogate.resolve ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::evaluator_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
@@ -151,6 +158,10 @@ units.py::parse_unit UnitError 2  # construction: raised where the script makes 
 units.py::si UnitError 3  # coded at the boundary as call.units, keeping its class
 validity/_profiles.py::FindingClasses.read ValueError 3  # invariant: the packaged profile tables' own form, read at import, which their tests hold
 validity/_profiles.py::ProfileRules.read ValueError 2  # invariant: the packaged profile tables' own form, read at import, which their tests hold
+viz/_meshes.py::_ascii_corners ValueError 1  # an STL file's text that is not whole triangles: caught where a set is baked and coded there (visuals.convert)
+viz/_meshes.py::read_stl ValueError 1  # an STL file with no triangles: caught where a set is baked and coded there (visuals.convert)
+viz/_meshes.py::write_mesh OSError 1  # usd-core could not write a baked mesh into the asset cache: the file system's own error class, as save.not-writable keeps it
+viz/_recording.py::write_recording OSError 1  # usd-core could not write the recording into the run folder: the file system's own error class, as save.not-writable keeps it
 vocabulary/_vocabulary.py::Interface.__post_init__ TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::Interface.__post_init__ ValueError 5  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::define ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call

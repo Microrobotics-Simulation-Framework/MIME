@@ -42,8 +42,12 @@ RESULTS_PATH = "results.md"
 ERRORS_PATH = "errors.md"
 #: The hand-written note on the profiles' path: explore, see what is pending, seal.
 PROFILES_PATH = "profiles.md"
+#: The hand-written note on live sessions, ``mime serve`` and the ``mime.live`` protocol.
+LIVE_PATH = "live.md"
+#: The hand-written note on recordings, the stage a recording is over, and the visuals MIME does not ship.
+RECORDINGS_PATH = "recordings.md"
 #: The hand-written notes that are pages as they are, at the pages' root.
-NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH, ERRORS_PATH)
+NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH, ERRORS_PATH, LIVE_PATH, RECORDINGS_PATH)
 INDEX_PATH = "index.md"
 
 

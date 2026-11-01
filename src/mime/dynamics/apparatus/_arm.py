@@ -20,7 +20,7 @@ from mime.gradients import GradientStatus
 from mime.nodes.actuation import SWEEPS, DynamicArmNode, KinematicArmNode
 from mime.registry import DESIGN, PHYSICAL, convention
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, GradientRecord, Port, Problem, \
-    RungGradient, Segment, register_dynamics
+    RungGradient, Segment, SegmentVisual, register_dynamics
 from mime.scene import Asset
 from mime.units import DIMENSIONLESS, FORCE, FREQUENCY, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, Quantity, \
     Time, unit_symbol
@@ -377,7 +377,8 @@ class Arm(ChainSegment):
                        initial=tuple(tuple(float(c) for c in row) for row in frames),
                        initial_rates=tuple((float(r[0]), float(r[1]), float(r[2])) for r in turning),
                        massive=massive and not dynamic, initial_joints=tuple(float(c) for c in initial),
-                       notes=armed.lines if armed is not None else transmission_lines(tree))
+                       notes=armed.lines if armed is not None else transmission_lines(tree),
+                       visuals=segment_visuals(reading, frames))
 
     def armed(self, tree: MultibodyTree) -> MultibodyTree:
         """``tree`` with each joint's armature on it, as phase 1 resolved it (its problems refused there)."""
@@ -462,6 +463,50 @@ def _reasoned(pair: object) -> bool:
     """Whether ``pair`` is an element's path and the reason it is read past, two strings."""
     held = cast(tuple[object, ...], pair) if isinstance(pair, tuple) else ()
     return len(held) == 2 and all(isinstance(item, str) for item in held)
+
+
+#: A bone's radius, the stand-in drawn from a link's origin to each child's where the stage has no visual of it, as a
+#: fraction of the segment's reach at its initial positions (the farthest frame from its base): a presentation choice,
+#: thin beside the link it stands for and wide enough to see.
+BONE_RADIUS_FRACTION = 0.02
+_BONE_COLOUR = (0.55, 0.55, 0.6)
+
+
+def _pose7(transform: Any) -> tuple[float, float, float, float, float, float, float]:
+    t, q = transform.translation, transform.rotation
+    return (float(t[0]), float(t[1]), float(t[2]), float(q[0]), float(q[1]), float(q[2]), float(q[3]))
+
+
+def segment_visuals(reading: DescriptionReading, frames: np.ndarray) -> tuple[SegmentVisual, ...]:
+    """What the stage draws of a description, frame by frame: every link's visual (a mesh, a box, a cylinder or a
+    sphere); where a link's visuals are meshes, its collision primitives; and, where any visual is a mesh or a link has
+    none, a bone from each body's origin to each child joint's that is offset from it, so that the chain shows
+    whatever the stage can resolve. ``frames`` are the frames' poses at the initial positions, for the bones'
+    radius."""
+    tree = reading.tree
+    found: list[SegmentVisual] = []
+    meshed: set[str] = set()
+    for shape in reading.shapes:
+        if shape.role == "visual":
+            found.append(SegmentVisual(shape.link, shape.kind, "visual", _pose7(shape.origin), shape.mesh,
+                                       shape.scale, shape.size, shape.radius, shape.length, colour=shape.colour))
+            if shape.kind == "mesh":
+                meshed.add(shape.link)
+    for shape in reading.shapes:
+        if shape.role == "collision" and shape.kind != "mesh" and shape.link in meshed:
+            found.append(SegmentVisual(shape.link, shape.kind, "collision", _pose7(shape.origin), None, shape.scale,
+                                       shape.size, shape.radius, shape.length, colour=_BONE_COLOUR))
+    seen = {shape.link for shape in reading.shapes if shape.role == "visual"}
+    if meshed or any(body.name not in seen for body in tree.bodies):
+        held = np.asarray(frames, dtype=np.float64)
+        reach = float(np.max(np.linalg.norm(held[:, :3], axis=1))) if len(held) else 0.0
+        radius = max(reach * BONE_RADIUS_FRACTION, 1e-6)
+        for joint in tree.joints:
+            end = tuple(float(c) for c in joint.origin.translation)
+            if math.hypot(*end) > radius:
+                found.append(SegmentVisual(joint.parent, "bone", "frames", radius=radius,
+                                           end=(end[0], end[1], end[2]), colour=_BONE_COLOUR))
+    return tuple(found)
 
 
 def _components(value: Magnitude) -> tuple[float, ...]:

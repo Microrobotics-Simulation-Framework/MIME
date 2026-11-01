@@ -81,7 +81,7 @@ from mime.saved._schema import (
     WaiverRecord,
 )
 from mime.core.multibody import DescriptionClassification, ElementGroup
-from mime.scene import STAGE_FILE, ComposedLayer, sha256_hex
+from mime.scene import STAGE_FILE, STAGE_WRITER, ComposedLayer, sha256_hex
 from mime.scene import Asset as FileAsset
 from mime.vocabulary import MIME_NAMESPACE, namespace_of
 
@@ -350,7 +350,8 @@ class SavedRecord:
 
     def stage_record(self) -> StageRecord:
         return {"file": STAGE_FILE, "sha256": self.stage_hash,
-                "layers": {f"{SCENE_FOLDER}/{layer.file}": layer.sha256 for layer in self.layers}}
+                "layers": {f"{SCENE_FOLDER}/{layer.file}": layer.sha256 for layer in self.layers},
+                "writer": STAGE_WRITER}
 
     def hashes(self, *, version: int = CURRENT) -> HashRecord:
         """The hashes a lock records; with an earlier ``version``, the document, resolved record and derived graph in

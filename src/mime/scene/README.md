@@ -174,5 +174,21 @@ Since phase 7m-a (designs #195, #196), **the geometry protocol's sampling and hu
   (phase 7o), which declares them.
 - A body's hull may now be a kind that samples but has no radial reach (a box, an ellipsoid): its extent is then not
   the kind's, and is declared if a law reads it.
+Since phase 7n (design #197), **the stage a live client and a recording read**:
+
+- **Every frame of every chain segment is a prim** below its segment's, named by the frame (a name USD does not take
+  as a prim's written with `_` for each such character, the frame's own name kept as `mime:frame`), and placed in the
+  world: its transform stack is reset, so its transform is the frame's world pose, a state's frame pose as it stands.
+  The segment's own prim stays at its base's pose at the start; a part mounted on a frame stays below the frame's prim.
+- **A field a law reads at a body** (a vector in the world's axes, the flux density a torque reads) has a prim below
+  its apparatus, an arrow hidden until a recording or a client gives it a value (`mime:vector:value`).
+- **A description's visuals** are drawn below each frame's prim: a box, a cylinder or a sphere as its USD primitive;
+  a mesh as an `Xform` naming its visual set and the sha256 of its source (`mime:visual:asset`,
+  `mime:visual:sha256`), never its bytes; and, where the stage holds no mesh, bones from each frame's origin to its
+  children's (`fallback/`). The visual sets are `mime.data`'s `visuals/` recipes (`visual_sets()`, `mesh_source`),
+  read here so that the stage writer can name them; `mime.viz` fetches and bakes them into the asset cache.
+- **A drawn proxy holds at most its triangle budget** (`PROXY_TRIANGLES` in `mime.build`): a kind whose drawing at the
+  writer's resolution would hold more is drawn at fewer facets a turn, and its proxy records the facets it was drawn
+  at. The screw's proxy was nearly all of A0's saved stage.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

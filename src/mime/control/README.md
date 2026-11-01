@@ -52,8 +52,12 @@ The rigid-body maths a controller uses (forward and inverse kinematics, Jacobian
   of `mime docs check`'s cut summary with its route (the mode inside the compiled step).
 - **Latency**, in whole base steps, the same in every mode. A tick at time t reads the state at t; its writes act from
   the step that starts at t + latency. Before the first lands, the held writes act.
-- **The per-chunk hook.** `run(duration, hook=...)` calls the hook after every chunk with its step, time and state.
-  The viewer bridge will use it.
+- **The per-chunk hook.** `run(duration, hook=...)` and `run_to(..., hook=...)` call the hook after every chunk with
+  its step, time and state.
+- **Live inputs.** A controller declares the values a live session may set (`live`, each a `LiveInput`: units, shape,
+  meaning). In the callback mode the session hands each one set to the step under its label beside its reads, from
+  the next tick on; until one is set, the step sees its reads alone, so every other run is unchanged. `ArmTracking`
+  declares `offset`, which moves the point it holds the magnet above along its axis.
 - **Classed reads.** Each read is the physics state ("ground truth, not deployable") or an observation's output. The
   build report and the lock list each with its class. `mime.build.refused_reads` is where a profile will judge them.
 - **`ArmTracking`**, the arm-driven experiment's controller, ported from the v0.2 line: a magnet on an arm held above

@@ -1,0 +1,695 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "source_field": "frame_poses",
+     "source_node": "spin.motor",
+     "source_units": "m; 1",
+     "target_field": "mount_poses",
+     "target_node": "spin.magnetic",
+     "target_units": "m; 1"
+    },
+    {
+     "source_field": "pose",
+     "source_node": "umr",
+     "source_units": "m; 1",
+     "target_field": "points_magnetic_torque_umr",
+     "target_node": "spin.magnetic",
+     "target_units": "m; 1"
+    },
+    {
+     "source_field": "flux_density_magnetic_torque_umr",
+     "source_node": "spin.magnetic",
+     "source_units": "T",
+     "target_field": "flux_density",
+     "target_node": "magnetic.torque:umr",
+     "target_units": "T"
+    },
+    {
+     "source_field": "pose",
+     "source_node": "umr",
+     "source_units": "m; 1",
+     "target_field": "pose",
+     "target_node": "magnetic.torque:umr",
+     "target_units": "m; 1"
+    },
+    {
+     "additive": true,
+     "source_field": "wrench",
+     "source_node": "magnetic.torque:umr",
+     "source_units": "N; N m",
+     "target_field": "applied_wrench",
+     "target_node": "umr",
+     "target_units": "N; N m"
+    },
+    {
+     "source_field": "value",
+     "source_node": "drive:spin.motor.angle",
+     "source_units": "1",
+     "target_field": "angle",
+     "target_node": "spin.motor",
+     "target_units": "1"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "spin.magnetic",
+     "params": {
+      "initial_mount_pose": [
+       0.0,
+       0.0,
+       0.1,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "magnet_radius": 0.020155644370746375,
+      "moment": [
+       18.89,
+       0.0,
+       0.0
+      ],
+      "mount_count": 2,
+      "mount_index": 1,
+      "placement": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "slots": [
+       "magnetic_torque_umr"
+      ]
+     },
+     "timestep": 0.001,
+     "type": "PointDipoleNode"
+    },
+    {
+     "name": "magnetic.torque:umr",
+     "params": {
+      "moment": [
+       0.0,
+       0.0017,
+       0.0
+      ]
+     },
+     "timestep": 0.001,
+     "type": "MagneticTorqueNode"
+    },
+    {
+     "name": "umr",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1e-10,
+       1.2e-10,
+       8e-11
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       -0.001,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0,
+      "mass": 8.5e-05,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialNode"
+    },
+    {
+     "name": "spin.motor",
+     "params": {
+      "axis": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "initial_angle": 0.0,
+      "initial_mount_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_mount_rate": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "mount_count": 0,
+      "mount_index": -1,
+      "placement": [
+       0.0,
+       0.0,
+       0.1,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "prescribed": "angle",
+      "rates": false
+     },
+     "timestep": 0.001,
+     "type": "KinematicMotorNode"
+    },
+    {
+     "name": "drive:spin.motor.angle",
+     "params": {
+      "value": 0.25
+     },
+     "timestep": 0.001,
+     "type": "ConstantNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "drive:spin.motor.angle": {},
+    "magnetic.torque:umr": {},
+    "spin.magnetic": {},
+    "spin.motor": {},
+    "umr": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "drive",
+   "name": "drive.constant",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "dynamics",
+   "name": "motor",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.2.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "field provider",
+   "name": "point_dipole",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "geometry",
+   "name": "tube",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev0",
+   "kind": "interaction",
+   "name": "magnetic.torque",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev0",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:c28c0d93430a64b7b73adf12cf757eec2161db9e38d4dd098454592cdd3c7da6",
+  "document": "sha256:73cc13573db72a2cb8ef508a6c487a2ffd7abc2001458fb84e811b974c81a4fe",
+  "input": "sha256:f231386c03d5de96c6be5564a0ca67b16d31983f31226d4b3d69e75d36f458b6",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "rtol": 1e-06,
+  "sha256": "sha256:c3aad116f6576ac7ee87c954eff409de354c1fdb7f3374fd4fa1add0579fe921",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "drive:spin.motor.angle": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "drive",
+    "name": "drive.constant",
+    "nodes": [
+     "drive:spin.motor.angle"
+    ],
+    "settings": {
+     "value": {
+      "unit": "1",
+      "value": 0.25
+     }
+    },
+    "version": "0.1.0"
+   },
+   "magnetic.torque:umr": {
+    "binds": {
+     "body": "umr",
+     "field": "spin.magnetic"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "magnetic.torque",
+    "nodes": [
+     "magnetic.torque:umr"
+    ],
+    "settings": {},
+    "version": "0.1.0"
+   },
+   "spin.magnetic": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "field provider",
+    "name": "point_dipole",
+    "nodes": [
+     "spin.magnetic"
+    ],
+    "settings": {
+     "part": "magnet"
+    },
+    "version": "0.1.0"
+   },
+   "spin.motor": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "dynamics",
+    "name": "motor",
+    "nodes": [
+     "spin.motor"
+    ],
+    "settings": {
+     "at": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.1
+      ]
+     },
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "damping": null,
+     "inertia": null,
+     "initial_angle": {
+      "unit": "1",
+      "value": 0.0
+     },
+     "initial_velocity": null,
+     "mount": null,
+     "orientation": null,
+     "prescribed": "angle",
+     "rate": null,
+     "rung": "kinematic",
+     "top_speed": null
+    },
+    "version": "0.2.0"
+   },
+   "umr": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      -0.001
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "umr"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.2.0"
+   }
+  },
+  "fills": {},
+  "geometry": {
+   "tube": {
+    "name": "tube",
+    "settings": {
+     "axis": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "centre": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "inner_radius": {
+      "unit": "m",
+      "value": 0.003175
+     },
+     "length": {
+      "unit": "m",
+      "value": 0.1
+     },
+     "wall": {
+      "unit": "m",
+      "value": 0.0016
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "umr": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        1.5360993100886723e-06,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0617877937637652e-06,
+        8.598927220117277e-08
+       ],
+       [
+        0.0,
+        8.598927220117277e-08,
+        9.009781829915738e-07
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "screw",
+       "settings": {
+        "length": {
+         "unit": "m",
+         "value": 0.0016
+        },
+        "modulation": {
+         "unit": "1",
+         "value": 0.33
+        },
+        "radius": {
+         "unit": "m",
+         "value": 0.0015600000000000002
+        },
+        "starts": 2,
+        "wavenumber": {
+         "unit": "1",
+         "value": 2.33
+        }
+       },
+       "version": "0.2.0"
+      },
+      "volume": 1.2898673306142132e-08
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "spin.magnetic",
+   "magnetic.torque:umr",
+   "umr",
+   "spin.motor",
+   "drive:spin.motor.angle"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "tube.centre": {
+     "entry": "tube 0.1.0",
+     "kind": "convention",
+     "value": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "chain_screw",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.81
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {
+    "spin": {
+     "magnet": {
+      "in_body": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "in_part": [
+       1.0,
+       0.0,
+       0.0
+      ],
+      "model": "permanent_magnet",
+      "part": "/World/spin/magnet",
+      "source": "declared in the experiment"
+     }
+    }
+   },
+   "meters_per_unit": 1.0,
+   "prims": {
+    "spin": "/World/spin",
+    "tube": "/World/tube",
+    "umr": "/World/umr"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {
+   "spin.magnetic": [
+    {
+     "interfaces": [
+      "field.magnetic.flux_density"
+     ],
+     "name": "magnetic_torque_umr",
+     "reader": "magnetic.torque:umr"
+    }
+   ]
+  },
+  "things": {
+   "spin": "apparatus",
+   "tube": "structure",
+   "umr": "body"
+  },
+  "values": {
+   "spin.magnetic_moment": {
+    "details": [],
+    "read_by": [
+     "spin.magnetic"
+    ],
+    "reason": "de Jongh's rotor magnet",
+    "source": "declared in the experiment (its magnitude), along the magnet magnet's direction, from declared in the experiment",
+    "unit": "A m^2",
+    "value": [
+     18.89,
+     0.0,
+     0.0
+    ]
+   },
+   "umr.inertia": {
+    "details": [],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "a millimetre body, its order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body umr's mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg m^2",
+    "value": [
+     1e-10,
+     1.2e-10,
+     8e-11
+    ]
+   },
+   "umr.magnetic_moment": {
+    "details": [],
+    "read_by": [
+     "magnetic.torque:umr"
+    ],
+    "reason": "a millimetre body's magnet, its order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body 'umr' has parts and no magnet among them, so no moment to derive)",
+    "unit": "A m^2",
+    "value": [
+     0.0,
+     0.0017,
+     0.0
+    ]
+   },
+   "umr.mass": {
+    "details": [],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "a millimetre body, round numbers of its order",
+    "source": "declared in the experiment, in place of the value its parts would give (none: body umr's mass and inertia are derived from its parts, and 'shell' has no density)",
+    "unit": "kg",
+    "value": 8.5e-05
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev0"
+  }
+ },
+ "schema": "mime.lock/4",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "a678fac1c07c580c3e8ad08cf6e393066bd9ebf3c70a0b74665da60536e368dd"
+ }
+}
