@@ -127,10 +127,10 @@ def _answer(session: LiveSession, body: bytes) -> dict[str, Any]:
         message = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         return refused(None, [Refusal("live.command", RefusalClass.USER, f"a request that is not JSON: {error}",
-                                      "send a JSON object: {\"command\": \"hello\"}")])
+                                      "send a JSON object: `{\"command\": \"hello\"}`")])
     if not isinstance(message, dict):
         return refused(None, [Refusal("live.command", RefusalClass.USER, "a request that is not a JSON object",
-                                      "send a JSON object: {\"command\": \"hello\"}")])
+                                      "send a JSON object: `{\"command\": \"hello\"}`")])
     return session.command(cast(dict[str, Any], message))
 
 

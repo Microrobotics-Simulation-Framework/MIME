@@ -15,7 +15,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -120,8 +120,8 @@ def recording_layer(samples: StageSamples, settings: RecordingSettings, *, stage
                 layer.SetTimeSample(translate.path, float(code), Gf.Vec3d(*(row[:3] / scale)))
                 layer.SetTimeSample(orient.path, float(code), Gf.Quatd(float(row[3]), Gf.Vec3d(*row[4:7])))
         else:
-            at = held[entry.at] if entry.at is not None else None
-            per_unit = (scales or {}).get(entry.prim, 1.0)
+            at: np.ndarray | None = np.asarray(held[entry.at], dtype=np.float64) if entry.at is not None else None
+            per_unit = float((scales or {}).get(entry.prim, 1.0))
             value = _attribute(prim, VECTOR_VALUE, Sdf.ValueTypeNames.Double3)
             translate = _attribute(prim, "xformOp:translate", Sdf.ValueTypeNames.Double3)
             orient = _attribute(prim, "xformOp:orient", Sdf.ValueTypeNames.Quatd)
@@ -131,10 +131,12 @@ def recording_layer(samples: StageSamples, settings: RecordingSettings, *, stage
             for code, row in enumerate(np.asarray(rows, dtype=np.float64)):
                 layer.SetTimeSample(value.path, float(code), Gf.Vec3d(*row))
                 if at is not None:
+                    position = at[code, :3] / scale
                     layer.SetTimeSample(translate.path, float(code),
-                                        Gf.Vec3d(*(np.asarray(at[code], dtype=np.float64)[:3] / scale)))
-                layer.SetTimeSample(orient.path, float(code), _turn(row))
-                length = float(np.linalg.norm(row)) * per_unit
+                                        Gf.Vec3d(float(position[0]), float(position[1]), float(position[2])))
+                vector = cast(np.ndarray, row)
+                layer.SetTimeSample(orient.path, float(code), _turn(vector))
+                length = float(np.linalg.norm(vector)) * per_unit
                 layer.SetTimeSample(scaled.path, float(code), Gf.Vec3d(length, length, length))
     return layer
 

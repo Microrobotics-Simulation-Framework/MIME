@@ -12,13 +12,13 @@ from pathlib import Path
 
 import numpy as np
 
-from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
+from mime.scene._pxr import Sdf, Usd, UsdGeom, Vt
 
 
 @dataclass(frozen=True)
 class TriangleBudget:
     """How many triangles a stage holds of a description's meshes: at most ``per_mesh`` in one, and ``per_stage`` over
-    all of a visual set's, shared in proportion to each mesh's own count. A presentation setting with its basis: the
+    all of a visual set's (:meth:`shares`). A presentation setting with its basis: the
     0.2 line's AR4 meshes at CAD density (about a million triangles) shimmered in the viewport, with triangles smaller
     than its pixels, and drew slowly on a software renderer; at these counts they did neither."""
 
@@ -26,11 +26,19 @@ class TriangleBudget:
     per_stage: int = 100_000
 
     def shares(self, counts: list[int]) -> list[int]:
-        """Each mesh's budget: its share of the stage's, never more than ``per_mesh`` nor more than it has."""
-        total = sum(counts)
-        if total <= 0:
-            return [0 for _ in counts]
-        return [min(count, self.per_mesh, max(1, math.floor(self.per_stage * count / total))) for count in counts]
+        """Each mesh's budget: all its triangles up to one cap shared by the set's meshes, the largest cap (never more
+        than ``per_mesh``) under which their total is at most ``per_stage``; so a small mesh keeps every triangle and
+        only the large ones are decimated."""
+        def total(cap: int) -> int:
+            return sum(min(count, cap) for count in counts)
+
+        if total(self.per_mesh) <= self.per_stage:
+            return [min(count, self.per_mesh) for count in counts]
+        low, high = 0, self.per_mesh
+        while low < high:
+            middle = (low + high + 1) // 2
+            low, high = (middle, high) if total(middle) <= self.per_stage else (low, middle - 1)
+        return [min(count, low) for count in counts]
 
 
 @dataclass(frozen=True)
@@ -129,7 +137,7 @@ def decimate(mesh: Mesh, budget: int) -> Decimated:
             best, best_cell, high = held, middle, middle
         else:
             low = middle
-        if high / low < 1.01:
+        if high / low < 1.02:
             break
     return Decimated(best, best_cell, best_cell * math.sqrt(3.0))
 
@@ -204,7 +212,7 @@ def write_mesh(path: Path, mesh: Mesh, name: str) -> Path:
     held.CreateFaceVertexIndicesAttr(Vt.IntArray.FromNumpy(mesh.triangles.reshape(-1).astype(np.int32)))
     held.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
     if len(points):
-        held.CreateExtentAttr(Vt.Vec3fArray([Gf.Vec3f(*points.min(axis=0)), Gf.Vec3f(*points.max(axis=0))]))
+        held.CreateExtentAttr(Vt.Vec3fArray.FromNumpy(np.stack([points.min(axis=0), points.max(axis=0)])))
     stage.SetDefaultPrim(held.GetPrim())
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)

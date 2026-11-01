@@ -21,6 +21,10 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
 - [`platforms.md`](platforms.md): what each platform supports (Linux, macOS on Apple Silicon, native Windows and WSL2),
   what the smoke job tests on the last two and what nothing tests, where a large job or a GPU belongs, and that
   verification off Linux is within the lock's tolerances, by decision.
+- [`live.md`](live.md): live sessions (`built.live()`), `mime serve` and the `mime.live/1` protocol: its commands,
+  its frames, the stage binding; printed among the pages.
+- [`recordings.md`](recordings.md): the recording layer in a run folder, the stage it is over, and the visuals MIME does
+  not ship (the AR4's), fetched and baked into the asset cache; printed among the pages.
 - [`running_on_modal.md`](running_on_modal.md): running a saved experiment on Modal, with the environment built once
   per release and pinned by hash, and what that does and does not let a run claim.
 - [`validation/`](validation/): the known-anomalies registry.

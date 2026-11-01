@@ -17,6 +17,7 @@ import numpy as np
 
 from mime.build import Mode
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+from mime.registry import Controller, LiveInput
 from mime.live._protocol import COMMANDS, PROTOCOL, Frame, FrameSchema, refused, reply
 from mime.units import TIME, Quantity, si
 
@@ -35,10 +36,6 @@ COMMAND_LOG = "commands.jsonl"
 LOG_FORMAT = "mime.commands/1"
 
 READY, RUNNING, PAUSED, STOPPED = "ready", "running", "paused", "stopped"
-
-
-def _refusal(code: str, message: str, action: str, why: str | None = None) -> Refusal:
-    return Refusal(code, RefusalClass.USER, message, action, why=why)
 
 
 def _units(built: BuiltExperiment) -> dict[tuple[str, str], str]:
@@ -60,13 +57,13 @@ def _units(built: BuiltExperiment) -> dict[tuple[str, str], str]:
 
 
 class LiveSession:
-    """A built experiment run live (``built.live(...)``). Its loop steps the compiled run ``chunk_steps`` base steps at a
-    time, one length for the whole session, since each new length compiles anew; after each chunk it hands a frame of
-    the selected fields to every subscriber. Its commands are those of ``mime.live/1`` (:meth:`command`), each also a
-    method: :meth:`start`, :meth:`pause`, :meth:`step`, :meth:`stop` (which stops in every state), :meth:`set` (a live
-    input of the controller in the callback mode), :meth:`record` (the recording layer, on or off) and
-    :meth:`set_pace`. Every command is logged with the step it took effect at, so :func:`replay` reproduces the session's
-    run folder.
+    """A built experiment run live (``built.live(...)``). Its loop steps the compiled run ``chunk_steps`` base steps at
+    a time, one length for the whole session, since each new length compiles anew; after each chunk it hands a frame
+    of the selected fields to every subscriber. Its commands are those of ``mime.live/1`` (:meth:`command`), each also
+    a method: :meth:`start`, :meth:`pause`, :meth:`step`, :meth:`stop` (which stops in every state), :meth:`set` (a
+    live input of the controller in the callback mode), :meth:`record` (the recording layer, on or off) and
+    :meth:`set_pace`. Every command is logged with the step it took effect at, so :func:`replay` reproduces the
+    session's run folder.
 
     The session runs on the calling thread (:meth:`step`, :meth:`run_for`), on its own (:meth:`start`, which paces the
     loop to ``pace`` times real time on a thread of its own), or in a server's loop (:meth:`advance`, as
@@ -84,8 +81,8 @@ class LiveSession:
         else:
             steps = built.steps_in(chunk)
             if period is not None and steps % period:
-                raise ArgumentRefused([_refusal(
-                    "live.chunk", f"a chunk of {steps} base steps is not a whole number of the controller's control "
+                raise ArgumentRefused([Refusal(
+"live.chunk", RefusalClass.USER, f"a chunk of {steps} base steps is not a whole number of the controller's control "
                                   f"periods of {period}",
                     f"give whole periods: built.live(chunk=s({max(1, steps // period) * period * dt!r}))",
                     why="a controller called back is called once per control period, between compiled chunks")])
@@ -117,7 +114,8 @@ class LiveSession:
         self.controller = built.plans.controller
         callback = built._runs.callback  # pyright: ignore[reportPrivateUsage]
         self._callback = callback
-        self.live_inputs = dict(self.controller.registered.cls.live) if self.controller is not None else {}
+        declared = cast(type[Controller], self.controller.registered.cls) if self.controller is not None else None
+        self.live_inputs: dict[str, LiveInput] = dict(declared.live) if declared is not None else {}
         self._started = time.perf_counter()
         if out is not None:
             self._write_experiment(out)
@@ -127,8 +125,8 @@ class LiveSession:
         if pace is None or pace == 0:
             return None
         if not (isinstance(cast(object, pace), (int, float)) and math.isfinite(pace) and pace > 0):
-            raise ArgumentRefused([_refusal(
-                "live.pace", f"pace is {pace!r}, not a real-time factor above zero",
+            raise ArgumentRefused([Refusal(
+"live.pace", RefusalClass.USER, f"pace is {pace!r}, not a real-time factor above zero",
                 "give a factor of real time, pace=1.0 (real time) or pace=None (as fast as it runs)")])
         return float(pace)
 
@@ -146,9 +144,9 @@ class LiveSession:
             if path not in paths:
                 from mime.things import did_you_mean
 
-                raise ArgumentRefused([_refusal(
-                    "live.select", f"select= names {path!r}, which is no field of the state",
-                    f"name fields as <node>.<field>. {did_you_mean(path, paths)}")])
+                raise ArgumentRefused([Refusal(
+"live.select", RefusalClass.USER, f"select= names {path!r}, which is no field of the state",
+                    f"name fields as select=[\"<node>.<field>\", ...]. {did_you_mean(path, paths)}")])
             found.append(paths[path])
         return list(dict.fromkeys(found))
 
@@ -242,16 +240,24 @@ class LiveSession:
         """Step ``chunks`` chunks now, on the calling thread, from a session that is not running; it is paused
         after."""
         if not (isinstance(cast(object, chunks), int) and chunks >= 1):
-            raise ArgumentRefused([_refusal("live.step", f"step takes a whole number of chunks above zero, not "
-                                                         f"{chunks!r}", "step(1), or step(n) for n chunks")])
+            raise ArgumentRefused([Refusal(
+                "live.step", RefusalClass.USER, f"step takes a whole number of chunks above zero, not {chunks!r}",
+                "step(1), or step(n) for n chunks")])
         with self._lock:
             self._require_open("step")
             if self.state == RUNNING:
-                raise ArgumentRefused([_refusal("live.state", "step is refused while the session runs",
-                                                "pause it first: session.pause(), then session.step(n)")])
+                raise ArgumentRefused([Refusal(
+                    "live.state", RefusalClass.USER, "step is refused while the session runs",
+                    "pause it first: session.pause(), then session.step(n)")])
             self._logged("step", chunks=chunks)
             self.state = PAUSED
-            return [frame for _ in range(chunks) if (frame := self.advance()) is not None]
+        found: list[Frame] = []
+        for _ in range(chunks):  # the lock is let go between chunks, so that a stop from another thread is taken
+            frame = self.advance()
+            if frame is None:
+                break
+            found.append(frame)
+        return found
 
     def run_for(self, duration: Quantity) -> list[Frame]:
         """Step a whole number of chunks covering ``duration`` on the calling thread, unpaced; its frames."""
@@ -267,24 +273,24 @@ class LiveSession:
             declared = self.live_inputs.get(label)
             if controller is None or self._callback is None or controller.mode is not Mode.CALLBACK:
                 mode = "no controller" if controller is None else f"its controller runs {controller.mode.name.lower()}"
-                raise ArgumentRefused([_refusal(
-                    "live.input-mode", f"a live input needs a controller called back between chunks, and this "
+                raise ArgumentRefused([Refusal(
+"live.input-mode", RefusalClass.USER, f"a live input needs a controller called back between chunks, and this "
                                        f"experiment has {mode}",
                     "declare the controller as a callback: exp.set_controller(..., mode=\"callback\"), and serve "
                     "that experiment",
                     why="the session sets a live input between ticks, on the host; inside the compiled step the "
                         "controller's state is in the graph")])
             if declared is None:
-                raise ArgumentRefused([_refusal(
-                    "live.input-unknown", f"the controller {controller.registered.cls.label()} has no live input "
+                raise ArgumentRefused([Refusal(
+"live.input-unknown", RefusalClass.USER, f"the controller {controller.registered.cls.label()} has no live input "
                                           f"{label!r}; its live inputs are {', '.join(self.live_inputs) or 'none'}",
                     "set one it declares: session.set(<label>, value), a label of Controller.live",
                     why="a live session changes only what the controller declares live; a physical setting is a "
                         "rebuild")])
             held = np.asarray(value, dtype=np.float64)
             if held.shape != tuple(declared.shape) or not np.isfinite(held).all():
-                raise ArgumentRefused([_refusal(
-                    "live.input-value", f"{label} takes finite numbers of shape {tuple(declared.shape)} "
+                raise ArgumentRefused([Refusal(
+"live.input-value", RefusalClass.USER, f"{label} takes finite numbers of shape {tuple(declared.shape)} "
                                         f"({declared.units}), not {value!r}",
                     f"give it one: session.set({label!r}, <a value of shape {tuple(declared.shape)}>)")])
             self._callback.live[label] = held
@@ -331,8 +337,9 @@ class LiveSession:
 
     def _require_open(self, command: str) -> None:
         if self.state == STOPPED:
-            raise ArgumentRefused([_refusal("live.stopped", f"{command} is refused: the session has stopped",
-                                            "start another: built.live(...), or `mime serve <folder>` again")])
+            raise ArgumentRefused([Refusal(
+                "live.stopped", RefusalClass.USER, f"{command} is refused: the session has stopped",
+                "start another: built.live(...), or `mime serve <folder>` again")])
 
     # -- the protocol ------------------------------------------------------------------------------------------------
 
@@ -381,13 +388,14 @@ class LiveSession:
         name = message.get("command") if isinstance(cast(object, message), Mapping) else None
         try:
             if message.get("protocol", PROTOCOL) != PROTOCOL:
-                raise ArgumentRefused([_refusal(
-                    "live.protocol", f"a request of {message.get('protocol')!r}; this session speaks {PROTOCOL}",
-                    f"send {PROTOCOL} requests, or use the MIME that speaks the client's protocol")])
+                raise ArgumentRefused([Refusal(
+"live.protocol", RefusalClass.USER, f"a request of {message.get('protocol')!r}; this session speaks {PROTOCOL}",
+                    f"send {PROTOCOL} requests, `{{\"protocol\": \"{PROTOCOL}\", \"command\": ...}}`, or use "
+                    "the MIME that speaks the client's protocol")])
             if name not in COMMANDS:
-                raise ArgumentRefused([_refusal(
-                    "live.command", f"no command {name!r}; the commands are {', '.join(COMMANDS)}",
-                    "send one of them: {\"command\": \"hello\"}")])
+                raise ArgumentRefused([Refusal(
+"live.command", RefusalClass.USER, f"no command {name!r}; the commands are {', '.join(COMMANDS)}",
+                    "send one of them: `{\"command\": \"hello\"}`")])
             if name == "hello":
                 return self.hello()
             if name == "status":
@@ -404,8 +412,9 @@ class LiveSession:
             elif name == "set":
                 values = message.get("values")
                 if not isinstance(values, Mapping) or not values:
-                    raise ArgumentRefused([_refusal("live.input-value", "set takes values, a mapping of live inputs",
-                                                    "send {\"command\": \"set\", \"values\": {\"<label>\": <value>}}")])
+                    raise ArgumentRefused([Refusal(
+                        "live.input-value", RefusalClass.USER, "set takes values, a mapping of live inputs",
+                        "send `{\"command\": \"set\", \"values\": {\"<label>\": <value>}}`")])
                 for label, value in cast(Mapping[str, Any], values).items():
                     self.set(str(label), value)
             elif name == "record":
@@ -492,8 +501,8 @@ def read_log(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """A command log's header and its lines."""
     lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not lines or lines[0].get("format") != LOG_FORMAT:
-        raise ArgumentRefused([_refusal(
-            "live.log", f"{path} is not a command log of {LOG_FORMAT}",
+        raise ArgumentRefused([Refusal(
+"live.log", RefusalClass.USER, f"{path} is not a command log of {LOG_FORMAT}",
             "replay the commands.jsonl a live session wrote into its run folder: mime run <folder> --commands "
             "<run folder>/commands.jsonl --out <dir>")])
     return lines[0], lines[1:]
@@ -505,8 +514,8 @@ def replay(built: BuiltExperiment, log: Path, out: Path | None) -> LiveSession:
     stopped, its run folder written into ``out``."""
     header, lines = read_log(log)
     if header["input_hash"] != built.record.hashes()["input"]:
-        raise ArgumentRefused([_refusal(
-            "live.log", f"the log was written by a session of {header['experiment']} with input hash "
+        raise ArgumentRefused([Refusal(
+"live.log", RefusalClass.USER, f"the log was written by a session of {header['experiment']} with input hash "
                         f"{header['input_hash']}, and this experiment's is {built.record.hashes()['input']}",
             "replay it on the saved folder the session served: mime run <that folder> --commands ...")])
     session = LiveSession(built, chunk=None, pace=None, out=out)

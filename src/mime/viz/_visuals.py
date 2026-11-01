@@ -20,14 +20,14 @@ from typing import Any
 
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
 from mime.scene import VISUAL_ASSET, VISUAL_ROLE, VISUAL_SHA256, VisualSet, visual_sets
-from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom
-from mime.viz._meshes import TriangleBudget, decimate, mesh_distance, read_stl, write_mesh
+from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
+from mime.viz._meshes import Mesh, TriangleBudget, decimate, mesh_distance, read_stl, write_mesh
 
-CONVERTER = "mime.viz.mesh_import"
+CONVERTER = "mime.viz._meshes"
 CONVERTER_VERSION = "0.1.0"
 VISUALS_DIR = "visuals"
 #: The vertices each way the conversion record's distance is measured on, drawn with a fixed seed.
-DISTANCE_SAMPLES = 1500
+DISTANCE_SAMPLES = 400
 MESH_PRIM = "mesh"
 FALLBACK = "fallback"
 
@@ -87,7 +87,7 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
     held = _set(name)
     say(held.text())
     sources = [resolve(_source_ref(held, index), report=say) for index in range(len(held.files))]
-    meshes = []
+    meshes: list[Mesh] = []
     for index, path in enumerate(sources):
         try:
             meshes.append(read_stl(path.read_bytes()))
@@ -189,8 +189,9 @@ def overlay(stage_path: Path) -> Overlay:
                       separators=(",", ":"))
     path = visuals_dir() / "overlays" / f"{hashlib.sha256(text.encode('utf-8')).hexdigest()}.usda"
     held = Sdf.Layer.CreateAnonymous(".usda")
-    held.customLayerData = {"mime:visuals": {"sets": used, "credit": [visual_sets()[n].credit for n in used],
-                                             "notice": [visual_sets()[n].notice for n in used]}}
+    held.customLayerData = {"mime:visuals": {"sets": Vt.StringArray(used),
+                                             "credit": Vt.StringArray([visual_sets()[n].credit for n in used]),
+                                             "notice": Vt.StringArray([visual_sets()[n].notice for n in used])}}
     complete: dict[str, bool] = {}
     for prim_path, layer, _ in wanted:
         segment = str(Sdf.Path(prim_path).GetParentPath().GetParentPath().GetParentPath())

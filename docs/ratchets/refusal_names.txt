@@ -6,6 +6,7 @@
 bath.density             # a typed path in a family's rig: the bath's density
 bulk.density             # an OpenMaterica record field a value is read from
 coils.magnetic           # a typed path in a family's rig: the coils' magnetic field
+commands.jsonl           # the command log a live session writes into its run folder (mime.live)
 fluid.dynamic_viscosity  # an OpenMaterica record field a value is read from
 lubrication.epsilon      # a setting group's setting, as an entry reads it in SI
 magnetic.remanence       # an OpenMaterica record field a value is read from

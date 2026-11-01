@@ -4,7 +4,6 @@ a session sets it. Cheap to build and to compile, so that a test can run it live
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,9 +57,39 @@ def in_graph(name: str = "steered_in_graph") -> Experiment:
     return spun_magnet(name, controller=Counter(), mode="graph", rate=ms(3))
 
 
-def saved(tmp_path: Path, name: str = "steered") -> Path:
+def tracked(name: str = "tracked") -> Experiment:
+    """A0's apparatus closed by ``ArmTracking`` as a callback every 2 ms (``chain_cases.tracked_rpm``), the body's swim
+    speed observed: a rig that saves and loads (its controller is MIME's own), with the live input ``offset``."""
+    import warnings
+
+    from chain_cases import tracked_rpm
+
+    from mime.observations import SwimSpeed
+    from mime.scene import X
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        exp = tracked_rpm(name, rate=ms(2), latency=None)
+    exp.observe(SwimSpeed("umr", along=X))
+    return exp
+
+
+def built(make=None):
+    """A rig built with the description's warnings silenced."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return (make or tracked)().build()
+
+
+def saved(tmp_path: Path, name: str = "tracked") -> Path:
     folder = tmp_path / name
-    steered(name).save(folder)
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        tracked(name).save(folder)
     return folder
 
 
@@ -69,4 +98,4 @@ def files_of(folder: Path) -> dict[str, bytes]:
     return {str(path.relative_to(folder)): path.read_bytes() for path in sorted(folder.rglob("*")) if path.is_file()}
 
 
-__all__ = ["Steered", "dataclasses", "files_of", "in_graph", "saved", "steered"]
+__all__ = ["Steered", "built", "files_of", "in_graph", "saved", "steered", "tracked"]

@@ -100,9 +100,9 @@ def kind_prim(geometry: Geometry, record: Registered, settings: Mapping[str, Mag
               regions: bool = False, opacity: float | None = None) -> KindPrim:
     """A kind as the stage writes it, its origin moved by ``at`` (a part's place in its body), drawn at ``segments``
     when it has no native form, or at fewer where that drawing holds more than :data:`PROXY_TRIANGLES` triangles (the
-    segments it was drawn at are recorded on its proxy); with ``regions``, each region whose primitive is a sphere or a cylinder gets its own
-    prim (a kind with a native form is that prim already). A setting held as a whole number (the helix's starts) is
-    written beside the quantities, as a count."""
+    segments it was drawn at are recorded on its proxy); with ``regions``, each region whose primitive is a sphere
+    or a cylinder gets its own prim (a kind with a native form is that prim already). A setting held as a whole
+    number (the helix's starts) is written beside the quantities, as a count."""
     translation, orientation = kind_frame(geometry, settings)
     moved = (translation[0] + at[0], translation[1] + at[1], translation[2] + at[2])
     counts = {item.name: float(value) for item in dataclasses.fields(geometry) if item.name not in settings
@@ -218,16 +218,14 @@ def segment_prims(plans: PlanSet) -> dict[str, SegmentPrims]:
     for plan in plans.entries:
         if not isinstance(plan.entry, ChainSegment) or plan.segment is None or plan.thing is None:
             continue
-        held = cast(ChainSegment, plan.entry)
-        placement = held.placement(plan.settings)
+        placement = plan.entry.placement(plan.settings)
         base = composed(plan.mount.initial_pose, placement) if plan.mount is not None else placement
         root = f"{plans.scene.prims[plan.thing]}/{plan.owner.partition('.')[2]}"
         names = frame_prim_names(plan.segment.frames)
         initial = {frame: composed(base, plan.segment.initial[index] if len(plan.segment.initial) > index
                                    else _IDENTITY_POSE)
                    for index, frame in enumerate(plan.segment.frames)}
-        publishes = plan.record.publishes if plan.record is not None else {}
-        port = publishes.get(FRAME_POSES.name)
+        port = plan.record.publishes.get(FRAME_POSES.name) if plan.record is not None else None
         found[plan.owner] = SegmentPrims(plan.owner, plan.node_name(port.node if port is not None else ""),
                                          port.field if port is not None else "frame_poses", plan.thing, root,
                                          {frame: f"{root}/{name}" for frame, name in names.items()}, initial)
@@ -294,7 +292,7 @@ def vector_sources(plans: PlanSet) -> list[VectorSource]:
             body = bodies.get((read.points.node, read.points.field))
             declared = lookup(read.interface)
             provider = next((p for p in plans.entries if read.node in p.node_names()), None)
-            if body is None or declared is None or tuple(declared.shape) != (3,) or declared.frame != "world" or \
+            if body is None or declared is None or declared.shape != (3,) or declared.frame != "world" or \
                     provider is None or provider.thing is None:
                 continue
             seen.add((read.node, read.field))

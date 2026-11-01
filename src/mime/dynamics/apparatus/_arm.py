@@ -498,7 +498,8 @@ def segment_visuals(reading: DescriptionReading, frames: np.ndarray) -> tuple[Se
                                        shape.size, shape.radius, shape.length, colour=_BONE_COLOUR))
     seen = {shape.link for shape in reading.shapes if shape.role == "visual"}
     if meshed or any(body.name not in seen for body in tree.bodies):
-        reach = float(np.max(np.linalg.norm(np.asarray(frames, dtype=np.float64)[:, :3], axis=1))) if len(frames) else 0.0
+        held = np.asarray(frames, dtype=np.float64)
+        reach = float(np.max(np.linalg.norm(held[:, :3], axis=1))) if len(held) else 0.0
         radius = max(reach * BONE_RADIUS_FRACTION, 1e-6)
         for joint in tree.joints:
             end = tuple(float(c) for c in joint.origin.translation)

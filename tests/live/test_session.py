@@ -7,11 +7,10 @@ one value changed replays to another folder."""
 import json
 import threading
 import time
-from pathlib import Path
 
 import numpy as np
 import pytest
-from live_cases import files_of, in_graph, saved, steered
+from live_cases import built, files_of, in_graph, saved, steered
 
 from mime.build import ArgumentRefused
 from mime.experiment import Experiment
@@ -88,11 +87,11 @@ def test_replaying_the_command_log_reproduces_the_sessions_run_folder(tmp_path):
     folder = saved(tmp_path)
     live = Experiment.load(folder).build().live(pace=None, out=tmp_path / "live")
     live.step(3)
-    live.set("offset", 0.25)
+    live.set("offset", 0.002)
     live.record(True)
     live.step(5)
     live.record(False)
-    live.set("offset", -0.5)
+    live.set("offset", -0.003)
     live.step(2)
     written = live.stop()
     assert written == tmp_path / "live"
@@ -109,7 +108,7 @@ def test_replaying_the_command_log_reproduces_the_sessions_run_folder(tmp_path):
     assert plain == {k: v for k, v in json.loads(second["run.json"])["live"].items() if k != "wall_seconds"}
     # The control: the log with one live input's value changed replays to another folder.
     lines = log.read_text().splitlines()
-    planted = [json.dumps({**json.loads(line), "value": 0.75}) if '"set"' in line and "0.25" in line else line
+    planted = [json.dumps({**json.loads(line), "value": 0.004}) if '"set"' in line and "0.002" in line else line
                for line in lines]
     (tmp_path / "planted.jsonl").write_text("\n".join(planted) + "\n")
     replay(Experiment.load(folder).build(), tmp_path / "planted.jsonl", tmp_path / "planted")
@@ -126,7 +125,7 @@ def threaded(session):
 
 @pytest.mark.parametrize("state", [READY, RUNNING, PAUSED, "stepping"])
 def test_stop_stops_in_every_state(tmp_path, state):
-    session = steered().build().live(pace=None, out=tmp_path / "out")
+    session = built().live(pace=None, out=tmp_path / "out")
     frames: list[Frame] = []
     session.subscribe(frames.append)
     if state == RUNNING:
@@ -184,7 +183,7 @@ def test_what_a_session_refuses():
 
 
 def test_a_log_of_another_experiment_or_no_log_at_all_is_refused(tmp_path):
-    session = steered().build().live(pace=None, out=tmp_path / "live")
+    session = built().live(pace=None, out=tmp_path / "live")
     session.step(1)
     log = session.stop() / COMMAND_LOG
     with pytest.raises(ArgumentRefused, match="live.log"):

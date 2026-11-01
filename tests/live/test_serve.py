@@ -1,4 +1,4 @@
-"""``mime serve`` in a process of its own, the live rig's saved folder served over ZMQ on loopback ports of the system's
+"""``mime serve`` in a process of its own, A0's apparatus closed by ``ArmTracking`` (``live_cases.tracked``) served over ZMQ on loopback ports of the system's
 choosing, driven by MIME's client: ``hello`` describes the session; every frame is delivered, in order, and each is the
 batch run's state at its steps bit for bit; a live input set over the wire moves the angle; ``stop`` stops it from every
 state and writes its run folder; SIGTERM stops it as cleanly. The controls: a frame dropped on the client's side is
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from live_cases import saved, steered
+from live_cases import built, saved
 
 from mime.live import COMMAND_LOG, FrameOrder, LiveClient
 from mime.units import ms
@@ -51,11 +51,15 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(folder, t
     live = client(tmp_path / "ready.json")
     hello = live.hello
     assert hello["ok"] and hello["state"] == "ready" and hello["stage"].endswith("scene.usda")
-    assert hello["visuals"] == {"overlay": None, "drawn": 0, "missing": {}, "notice": []}
+    assert hello["visuals"] == {"overlay": None, "drawn": 0, "missing": {"ar4_mk5": 18}, "notice": []}
     assert live.request("start")["state"] == "running"
     frames = [live.frame() for _ in range(40)]
-    assert live.request("pause")["state"] == "paused"
-    assert live.request("set", values={"offset": 0.5})["ok"]
+    paused = live.request("pause")
+    assert paused["state"] == "paused"
+    while frames[-1].step < paused["step"]:  # the frames sent before the pause took effect
+        frames.append(live.frame())
+    before = len(frames)
+    assert live.request("set", values={"offset": 0.002})["ok"]
     stepped = live.request("step", chunks=3)
     frames += [live.frame() for _ in range(3)]
     assert stepped["step"] == frames[-1].step
@@ -64,13 +68,14 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(folder, t
     assert stopped["state"] == "stopped" and last.final and process.wait(timeout=60) == 0
     order = FrameOrder()
     assert [order.see(f) for f in frames + [last]] == [None] * (len(frames) + 1)
-    history = steered().build().run(ms(frames[39].step), history=True).history
-    for held in frames[1:40]:
+    history = built().run(ms(frames[-1].step), history=True).history
+    for held in frames[1:before]:
         for path, value in held.values.items():
             node, _, field = path.rpartition(".")
             assert value.tobytes() == np.asarray(history[node][field][held.step - 1]).tobytes(), (path, held.step)
-    assert float(frames[-1].values["spin.motor.angle"]) != float(np.asarray(
-        history["spin.motor"]["angle"][-1]))
+    # The live input took effect: the arm the batch run left alone stands elsewhere at the session's last step.
+    assert frames[-1].values["rpm.arm.frame_poses"].tobytes() != np.asarray(
+        history["rpm.arm"]["frame_poses"][frames[-1].step - 1]).tobytes()
     out = tmp_path / "out"
     assert {"commands.jsonl", "outputs.npz", "outputs.json", "run.json", "topology.json", "experiment"} <= \
         {path.name for path in out.iterdir()}
@@ -87,7 +92,7 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(folder, t
 
 @pytest.mark.parametrize("state", ["ready", "running", "paused"])
 def test_stop_stops_the_server_in_every_state(folder, tmp_path, state):
-    process = started(folder, tmp_path / "out", tmp_path / "ready.json", "--pace", "0.2")
+    process = started(folder, tmp_path / "out", tmp_path / "ready.json")
     live = client(tmp_path / "ready.json")
     if state in ("running", "paused"):
         live.request("start")

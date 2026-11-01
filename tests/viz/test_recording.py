@@ -1,4 +1,4 @@
-"""The recording layer in a run folder (``run_to(..., stage_every=)``, and a live session's ``record``), on the live rig:
+"""The recording layer in a run folder (``run_to(..., stage_every=)``, and a live session's ``record``), on A0's apparatus closed by ``ArmTracking`` (``live_cases.tracked``):
 its poses and vectors are the run's states at its samples' steps exactly, read back through usd-core; it opens with
 no finding of usd-core's validators; it is crate 0.8.0, which OpenUSD 24.08 reads; and the folder moved elsewhere still
 composes its stage. Its controls: the same poses compared one sample off differ, and a recording whose sublayer is
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from live_cases import steered
+from live_cases import built
 from pxr import Sdf, Usd
 
 from mime.build import ArgumentRefused
@@ -17,16 +17,17 @@ from mime.scene import VECTOR_VALUE, check_stage
 from mime.units import ms
 from mime.viz import RECORDING_FILE, crate_version, recording_layer
 
-EVERY = 6  # base steps between samples: two of the rig's control periods
+EVERY = 6  # base steps between samples: three of the rig's control periods
 
 
 @pytest.fixture(scope="module")
 def recorded(tmp_path_factory):
     folder = tmp_path_factory.mktemp("rec") / "run"
-    built = steered().build()
-    written = built.run_to(folder, ms(120), stage_every=ms(EVERY))
-    history = steered().build().run(ms(120), history=True).history
-    return folder, written, built.binding(), history
+    held = built()
+    written = held.run_to(folder, ms(120), stage_every=ms(EVERY), history=True)
+    history = written.result.history
+    assert history is not None
+    return folder, written, held.binding(), history
 
 
 def recorded_values(path: Path, binding, samples: int):
@@ -111,11 +112,11 @@ def test_the_folder_moved_still_composes_its_stage(recorded, tmp_path):
 
 def test_a_spacing_that_is_not_whole_chunks_is_refused():
     with pytest.raises(ArgumentRefused, match="run.stage-every"):
-        steered().build().run_to("unused", ms(12), stage_every=ms(4))
+        built().run_to("unused", ms(12), stage_every=ms(3))
 
 
 def test_a_live_sessions_recording_is_its_run_folders(tmp_path):
-    session = steered().build().live(pace=None, out=tmp_path / "live")
+    session = built().live(pace=None, out=tmp_path / "live")
     session.step(2)
     session.record(True)
     session.step(3)
@@ -129,6 +130,6 @@ def test_a_live_sessions_recording_is_its_run_folders(tmp_path):
 def test_the_layer_names_its_experiment(recorded):
     _, written, _, _ = recorded
     data = Sdf.Layer.FindOrOpen(str(written.recording)).customLayerData["mime:recording"]
-    assert data["experiment"] == "steered" and data["input_hash"].startswith("sha256:")
+    assert data["experiment"] == "tracked" and data["input_hash"].startswith("sha256:")
     assert data["stage"] == "experiment/scene/scene.usda"
     assert recording_layer.__module__ == "mime.viz._recording"

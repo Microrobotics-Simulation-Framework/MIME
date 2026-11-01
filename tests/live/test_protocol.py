@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mime.live import FINAL, HEADER, PROTOCOL, Frame, FrameOrder, FrameSchema, frame_from_json, is_frame
+from mime.live import HEADER, PROTOCOL, Frame, FrameOrder, FrameSchema, frame_from_json, is_frame
 from mime.live._zmtp import GREETING, Client, Server, frame, message, ready
 
 CAPTURED = json.loads((Path(__file__).parent / "libzmq_handshakes.json").read_text())
@@ -134,8 +134,7 @@ def test_libzmqs_request_is_taken_and_answered_on_its_envelope(server):
     while not found and time.monotonic() < deadline:
         found = server.poll(0.05)
     assert [body for _, body in found] == [b'{"command": "hello"}']
-    req.setblocking(True)
-    assert req.recv(len(GREETING) + len(ready("REP"))) == GREETING + ready("REP")
+    assert received(server, req, len(GREETING) + len(ready("REP"))) == GREETING + ready("REP")
     server.reply(found[0][0], b'{"ok": true}')
     assert received(server, req, 2 + 2 + 12) == message([b"", b'{"ok": true}'])
     req.close()
@@ -160,28 +159,29 @@ def test_a_peer_of_another_mechanism_or_socket_type_is_closed(server, planted):
     req.close()
 
 
-def test_mimes_own_client_speaks_with_its_server(server):
-    sub = Client(server.endpoints["PUB"], "SUB")
-    req_ready: list[Client] = []
-    server.poll(0.05)
+def polled(server: Server, call):
+    """``call``'s result, made on a thread while the server is polled on this one: a client's handshake waits on it."""
     import threading
 
-    thread = threading.Thread(target=lambda: req_ready.append(Client(server.endpoints["REP"], "REQ")))
+    held: list = []
+    thread = threading.Thread(target=lambda: held.append(call()), daemon=True)
     thread.start()
-    while thread.is_alive():
-        server.poll(0.02)
-    req = req_ready[0]
+    deadline = time.monotonic() + 10
+    while thread.is_alive() and time.monotonic() < deadline:
+        for peer, body in server.poll(0.02):
+            server.reply(peer, body + b" back")
+    assert held, "the client's call did not return"
+    return held[0]
+
+
+def test_mimes_own_client_speaks_with_its_server(server):
+    sub = polled(server, lambda: Client(server.endpoints["PUB"], "SUB"))
+    req = polled(server, lambda: Client(server.endpoints["REP"], "REQ"))
     server.poll(0.05)
     for n in range(3):
         server.publish(f"frame {n}".encode())
     server.flush(1.0)
     assert [sub.receive() for _ in range(3)] == [b"frame 0", b"frame 1", b"frame 2"]
-    answers: list[bytes] = []
-    thread = threading.Thread(target=lambda: answers.append(req.request(b"ping")))
-    thread.start()
-    while thread.is_alive():
-        for peer, body in server.poll(0.02):
-            server.reply(peer, body + b" back")
-    assert answers == [b"ping back"]
+    assert polled(server, lambda: req.request(b"ping")) == b"ping back"
     sub.close()
     req.close()

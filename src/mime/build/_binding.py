@@ -12,6 +12,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+
 from mime.build._plan import PlanSet
 from mime.build._stage import body_poses, segment_prims, vector_sources
 from mime.vocabulary import FRAME_POSES
@@ -65,8 +67,8 @@ class StageBinding:
         return list(seen)
 
     def problems(self, prims: Sequence[str], state: Mapping[str, Mapping[str, Any]]) -> list[str]:
-        """Every way the binding does not fit a stage (its prim paths, ``prims``) and a state (by node and field,
-        arrays or shapes): a prim it names that the stage does not hold, a field the state does not have, a row past
+        """Every way the binding does not fit a stage (its prim paths, ``prims``) and a state (its arrays by node and
+        field): a prim it names that the stage does not hold, a field the state does not have, a row past
         the field's rows, or a field of another shape than its kind."""
         held = set(prims)
         found: list[str] = []
@@ -77,7 +79,7 @@ class StageBinding:
             if value is None:
                 found.append(f"{entry.name}: the state has no field {entry.node}.{entry.field}")
                 continue
-            shape = tuple(value) if isinstance(value, (tuple, list)) else tuple(getattr(value, "shape", ()))
+            shape = tuple(int(n) for n in np.shape(value))
             width = 7 if entry.kind == POSE else 3
             if entry.index is None:
                 if shape != (width,):

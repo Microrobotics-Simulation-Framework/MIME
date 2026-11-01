@@ -770,7 +770,7 @@ class BuiltExperiment:
             "every": controller.period, "latency": controller.latency,
             "reads": {r.label: r.path for r in controller.reads}, "writes": {w.label: w.path for w in controller.writes},
             "live": {label: {"units": live.units, "shape": list(live.shape), "meaning": live.meaning}
-                     for label, live in controller.registered.cls.live.items()}}
+                     for label, live in cast(type[Controller], controller.registered.cls).live.items()}}
         return {"format": TOPOLOGY_FORMAT, "experiment": self._plans.settings.experiment, "dt": self._plans.dt,
                 "nodes": nodes, "edges": edges,
                 "coupling_groups": [{"nodes": list(g.nodes), "tolerance": g.tolerance,

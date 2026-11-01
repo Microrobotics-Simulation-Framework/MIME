@@ -30,7 +30,8 @@ session.stop()                # the run folder: a0_live/
   binding moves, every per-step output of an observation, and every flag). Frame zero is the state the session
   starts from. A frame's values are the run's own, in its own float type: a batch run of the same steps gives the
   same bits.
-- **Pace.** `pace=1.0` holds the loop to real time, a slower factor slows it, `pace=None` runs it as fast as it runs.
+- **Pace.** `pace=` is a factor of real time (the default holds the loop to real time), and `pace=None` runs it as
+  fast as it runs.
   A slow subscriber is its own concern: the session never waits on one.
 - **Live inputs are the controller's only.** A controller declares them beside its reads and writes
   (`Controller.live`, each a `LiveInput` with its units, shape and meaning); in the callback mode,
@@ -69,8 +70,12 @@ mime serve a0_saved --start --unpaced --out runs/a0_live
 
 It loads and builds the saved folder, opens its session and serves it until a `stop` command, SIGTERM or SIGINT, all
 of which stop it cleanly and write its run folder. **It binds to localhost.** A session has no authentication of its
-own: reach a remote one through an SSH tunnel (`ssh -L 5555:localhost:5555 -L 5556:localhost:5556 <host>`), which
-authenticates and encrypts; `--remote` binds another address all the same.
+own: reach a remote one through an SSH tunnel, which authenticates and encrypts; `--remote` binds another address all
+the same.
+
+```sh
+ssh -L 5555:localhost:5555 -L 5556:localhost:5556 <host>     # then connect to localhost as if it ran here
+```
 
 The transport is ZMQ: a REP socket for commands and a PUB socket for frames. MIME speaks ZMQ's wire protocol itself
 (ZMTP with the NULL mechanism), so `mime serve` needs no extra package, and any ZMQ library connects to it as it would

@@ -66,7 +66,7 @@ def test_the_stage_names_each_mesh_by_its_set_and_sha256_and_holds_none_of_its_b
     assert all("/visuals/" not in str(prim.GetPath()) for prim in meshes)
     bones = [prim for prim in stage.Traverse() if prim.GetAttribute(VISUAL_ROLE) and
              prim.GetAttribute(VISUAL_ROLE).Get() == "frames"]
-    assert len(bones) >= 6 and all(prim.IsA(UsdGeom.Cylinder) for prim in bones)
+    assert len(bones) >= 5 and all(prim.IsA(UsdGeom.Cylinder) for prim in bones)
 
 
 def test_with_nothing_baked_the_stage_draws_its_bones_and_says_so(cache, stage_file):

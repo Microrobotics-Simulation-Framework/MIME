@@ -65,10 +65,14 @@ def test_the_distance_is_exact_on_points_off_a_triangle():
     assert surface_distance(points, triangle) == pytest.approx([0.5, 1.0, math.sqrt(2), math.sqrt(0.5)])
 
 
-def test_a_set_shares_its_stage_budget_by_each_meshs_count():
+def test_a_set_shares_its_stage_budget_keeping_small_meshes_whole():
     budget = TriangleBudget(per_mesh=20_000, per_stage=100_000)
-    assert budget.shares([1000, 250_000, 750_000]) == [99, 20_000, 20_000]
+    assert budget.shares([1000, 250_000, 750_000]) == [1000, 20_000, 20_000]
     assert budget.shares([5000, 5000]) == [5000, 5000]
+    counts = [800, 4000, 15_000, 250_000, 200_000, 150_000, 76_000, 60_000, 50_000]
+    shares = budget.shares(counts)
+    assert shares[:2] == counts[:2] and len(set(shares[2:])) == 1 and sum(shares) <= 100_000
+    assert sum(min(count, shares[2] + 1) for count in counts) > 100_000  # the cap is the largest that fits
     assert sum(budget.shares([10_000] * 30)) <= 100_000
 
 
