@@ -1,0 +1,76 @@
+schema: mime.document/2
+mime: 0.3.0.dev0
+experiment: possessive_ball
+profile: exploratory
+run:
+  dt:
+    value: 0.001
+    unit: s
+  seed: 0
+scene:
+  up: [0.0, 0.0, 1.0]
+  units: m
+  references: []
+sources: {}
+conditions: {}
+things:
+  ball:
+    kind: body
+    prim: /World/ball
+    dynamics:
+      motion:
+        name: rigid_inertial
+        version: 0.2.0
+    initial:
+      position:
+        value: [0.0, 0.0, 0.0]
+        unit: m
+      orientation: [1.0, 0.0, 0.0, 0.0]
+      velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: m/s
+      angular_velocity:
+        value: [0.0, 0.0, 0.0]
+        unit: Hz
+    parts:
+      shell:
+        solid:
+          name: sphere
+          version: 0.1.0
+          settings:
+            radius:
+              value: 0.001
+              unit: m
+  water:
+    kind: medium
+    prim: /World/water
+interactions:
+- id: gravity:ball
+  name: gravity
+  version: 0.1.0
+  binds:
+    body: ball
+    medium: water
+observations: []
+declared:
+  ball.inertia:
+    value: [1.0e-11, 1.0e-11, 1.0e-11]
+    unit: kg m^2
+    reason: a millimetre body's order
+  ball.mass:
+    value: 1.0e-05
+    unit: kg
+    reason: a millimetre body's order
+  water.density:
+    value: 1000.0
+    unit: kg/m^3
+    reason: water
+  water.viscosity:
+    value: 0.001
+    unit: Pa s
+    reason: water
+materials: {}
+controller: null
+gravity:
+  value: 9.81
+  unit: m/s^2

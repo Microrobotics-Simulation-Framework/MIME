@@ -132,7 +132,7 @@ def current_inputs() -> Mapping[str, Any]:
     """What plays each role a derivation can name, now: ``wall:<kind>`` for each wall kind's correction that reads a
     shipped table, the reference of that table."""
     from mime import assets
-    from mime.nodes.hydro.bem import wall_correction_named, wall_corrections
+    from mime.nodes.hydro.mrs import wall_correction_named, wall_corrections
 
     found: dict[str, Any] = {}
     for label in wall_corrections():

@@ -1,5 +1,5 @@
 """The full unit-tube table (MIME-ANO-117): its knots and truncation rule, the specs of the jobs Modal runs, the 4D read
-on blocks of knots, the table's assembly in the form ``mime.nodes.hydro.bem._tube.tube_table_from`` reads, and its
+on blocks of knots, the table's assembly in the form ``mime.nodes.hydro.mrs._tube.tube_table_from`` reads, and its
 gate.
 
     python full.py specs-blocks SPECS.json
@@ -158,7 +158,7 @@ def load(results: Path, key: str) -> tuple[np.ndarray, dict]:
 def read_at(table, rho_t, rho_s, phi, z) -> np.ndarray:
     from mime.core import jnp
     from mime.core.tables import evaluate
-    from mime.nodes.hydro.bem._tube import TABLE
+    from mime.nodes.hydro.mrs._tube import TABLE
 
     value = evaluate(table, jnp.asarray(rho_t), jnp.asarray(rho_s), jnp.asarray(phi), jnp.asarray(z), owner=TABLE)
     return np.asarray(value.value).reshape(len(rho_t), 3, 3)
@@ -182,7 +182,7 @@ def relative(read: np.ndarray, reference: np.ndarray) -> np.ndarray:
 def in_source_frame(block: np.ndarray, phi: np.ndarray) -> np.ndarray:
     """The builder's blocks (rows the target's cylindrical components) with their rows turned into the source's frame,
     ``x = cos B_rho - sin B_phi`` and ``y = sin B_rho + cos B_phi`` at the target's angle ``phi``: the form the table
-    and the evaluator that ships (``mime.nodes.hydro.bem._tube``) hold and read."""
+    and the evaluator that ships (``mime.nodes.hydro.mrs._tube``) hold and read."""
     cos, sin = np.cos(phi)[..., None], np.sin(phi)[..., None]
     out = np.empty_like(block)
     out[..., 0, :] = cos * block[..., 0, :] - sin * block[..., 1, :]
@@ -199,7 +199,7 @@ def read_errors(table, rho_t, rho_s, phi, z, reference: np.ndarray) -> np.ndarra
 
 
 def blocks(results: Path) -> dict:
-    from mime.nodes.hydro.bem._tube import unit_tube_table
+    from mime.nodes.hydro.mrs._tube import unit_tube_table
 
     out: dict = {}
     for grid in GRIDS:
@@ -284,7 +284,7 @@ def _mfs(sources: list[np.ndarray], targets: np.ndarray) -> tuple[np.ndarray, fl
 def cartesian(table_arrays, points: np.ndarray) -> np.ndarray:
     """``(N, N, 3, 3)``: the evaluator's own read (``tube_correction``) of the image between every pair of points."""
     from mime.core import jnp
-    from mime.nodes.hydro.bem._tube import frame_across, tube_correction
+    from mime.nodes.hydro.mrs._tube import frame_across, tube_correction
 
     parameters = {"table": table_arrays, "frame": frame_across((0.0, 0.0, 1.0)), "radius": 1.0,
                   "centre": (0.0, 0.0, 0.0)}
@@ -330,7 +330,7 @@ def decay(path: Path) -> dict:
 
 
 def gate(table_path: Path, defective_path: Path, results: Path) -> dict:
-    from mime.nodes.hydro.bem._tube import tube_table_from
+    from mime.nodes.hydro.mrs._tube import tube_table_from
 
     out: dict = {}
     for label, path in (("table", table_path), ("defective", defective_path)):

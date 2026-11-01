@@ -35,7 +35,7 @@ whose axial moment is its smallest (as a screw's is) turns broadside under a rot
 it is long goes through the wall, and the surrogate prices it as if nothing had happened. ``bore_fired`` reports the
 step at which the body, as the cylinder of its length and outer radius, no longer fits the bore.
 
-**Reference point** (MIME-ANO-112). The training's BEM took its torques about the origin of the body's mesh, the end
+**Reference point** (MIME-ANO-112). The training's MRS took its torques about the origin of the body's mesh, the end
 ``zeta = 0`` of de Jongh's Eq. 1, with the body spanning ``zeta`` from 0 to ``L`` along the tube's axis: the surrogate's
 resistance ``R_P`` is about that end. The node moves it to the body's centre of mass, where the body's dynamics applies
 it. With ``d`` from the end ``P`` to the centre ``C``, a point of the body at ``P`` moves at ``U_P = U_C + d x Omega``
@@ -110,7 +110,7 @@ FEATURE_GAP_FLOOR = 1e-3
 CLAMP_DIVISOR_FLOOR = 1e-10
 #: The tilt (radians) of the body's axis from the tube's up to which the surrogate is declared valid: 5 degrees, a
 #: declaration, not a fit. The surrogate was trained for a helix along the tube's axis and cannot see a tilt;
-#: ``scripts/tilt_validity.py`` measures what a tilt does to the boundary-element rung's force-free swim speed of FL-9
+#: ``scripts/tilt_validity.py`` measures what a tilt does to the MRS rung's force-free swim speed of FL-9
 #: on the axis (``docs/data/tilt_validity.json``), and 5 degrees is the largest tilt measured at which it moves by less
 #: than the 16% the entry states for the surrogate's own error, in both directions of tilt measured. One spacing, one
 #: offset and one body: ``tests/oracles/test_tilt_flag.py`` holds the number to that file, and no more.

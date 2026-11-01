@@ -1,13 +1,13 @@
-"""How the de Jongh helix's boundary-element resistance converges, by two discretisations of its lateral surface at
+"""How the de Jongh helix's MRS resistance converges, by two discretisations of its lateral surface at
 the same counts: the 0.2 line's rule (flat triangles between vertices of the surface, a point at each centroid, its
-area the weight) and the kind's own samples through ``Drag.BEM``'s node. The measurement is recorded
-(``references/bem_convergence.json``, written by ``measure_bem_convergence.py``, not collected) at five levels, the
+area the weight) and the kind's own samples through ``Drag.MRS``'s node. The measurement is recorded
+(``references/mrs_convergence.json``, written by ``measure_mrs_convergence.py``, not collected) at five levels, the
 0.2 rule's vertex grid 12 x 10 to 36 x 30, 216 to 2,088 samples, and the kind's lateral samples at the same counts
 (twice the grid's turn by one less than its length); FL-9, water, the blob half the mean spacing, float64.
 
 **The 0.2 rule here is independent of the kind's code**: its vertices come from de Jongh's Eq. 1 written again in
 this file, and at the 0.2 mesh's own grid they are the frozen 0.2 vertices, and the rule on them gives the frozen 0.2
-resistance (``references/port_bem.npz``): this rule is the 0.2 code's. The kind's path is the rung's: the kind's
+resistance (``references/port_mrs.npz``): this rule is the 0.2 code's. The kind's path is the rung's: the kind's
 samples on its lateral patch, placed by the part and by the body's pose (the screw moved and turned, its resistance
 turned back into its frame), and solved by the node.
 
@@ -20,7 +20,7 @@ more, and the 0.2 rule's limit about the axis lies outside the bracket, so which
 The axial coupling is not bracketed: both sequences grow in magnitude, the 0.2 rule's ahead at every level, so its
 is the nearer there, and both are still moving at the finest level.
 
-**The bound on the kind's path**, which the golden reproduction (``test_port_bem.py``, fed the 0.2 samples) does not
+**The bound on the kind's path**, which the golden reproduction (``test_port_mrs.py``, fed the 0.2 samples) does not
 give: at the CI levels the node reproduces the record, lies above the 0.2 rule and falls with the count, and the
 three-level fits of its translation and the 0.2 rule's agree within 1%: a sampling or placement fault of a few per
 cent in the kind's path, which would read as a model difference, fails here. The control: the screw's samples read
@@ -33,17 +33,17 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from bem_cases import bem, drag_node, free_space
+from mrs_cases import mrs, drag_node, free_space
 from script_a import fl9
 
 from mime.build._maddening import node_state
 from mime.core import quaternion
-from mime.nodes.hydro.bem import BEMDragNode, blob_squared, resistance
+from mime.nodes.hydro.mrs import MRSDragNode, blob_squared, resistance
 from mime.registry import Samples
 from mime.units import mm
 
 HERE = Path(__file__).parent
-RECORD = HERE / "references" / "bem_convergence.json"
+RECORD = HERE / "references" / "mrs_convergence.json"
 #: The record as written, pinned: the CI levels are reproduced on every push and the rest by the slow test.
 RECORD_SHA256 = "21c23ce309f9a0c6f2da177f478acc0a132765bfc22c178f28d46f1f4f708c04"
 #: The vertex grids (round the turn, along the axis) of the five levels; the CI test takes the first three.
@@ -88,11 +88,11 @@ def the_02_rule(n_theta: int, n_zeta: int) -> np.ndarray:
 
 
 def lateral_rung():
-    """``Drag.BEM`` on FL-9's lateral patch in free space, built; the screw starts moved and turned."""
-    return free_space("convergence", {"screw": fl9()}, bem(mm(1.0), patches=("lateral",))).build()
+    """``Drag.MRS`` on FL-9's lateral patch in free space, built; the screw starts moved and turned."""
+    return free_space("convergence", {"screw": fl9()}, mrs(mm(1.0), patches=("lateral",))).build()
 
 
-def through_the_node(built, n_theta: int, n_zeta: int, cls: type[BEMDragNode] = BEMDragNode) -> np.ndarray:
+def through_the_node(built, n_theta: int, n_zeta: int, cls: type[MRSDragNode] = MRSDragNode) -> np.ndarray:
     """The kind's lateral samples at the 0.2 rule's count (``2 n_theta`` round the turn by ``n_zeta - 1`` along),
     through the rung's node at the screw's starting pose, its resistance turned back into the screw's frame."""
     node = drag_node(built, "screw")
@@ -105,7 +105,7 @@ def through_the_node(built, n_theta: int, n_zeta: int, cls: type[BEMDragNode] = 
     return frame.T @ world @ frame
 
 
-def measured(levels=LEVELS, cls: type[BEMDragNode] = BEMDragNode, rule: bool = True) -> list[dict]:
+def measured(levels=LEVELS, cls: type[MRSDragNode] = MRSDragNode, rule: bool = True) -> list[dict]:
     built = lateral_rung()
     found = []
     for n_theta, n_zeta in levels:
@@ -136,7 +136,7 @@ def fitted_limits(levels: list[dict], name: str) -> np.ndarray:
 def test_the_02_rule_here_is_the_02_codes_on_its_own_mesh():
     """At the frozen helix's grid and scale (the radius 1, the viscosity 1), these vertices are the 0.2 code's and the
     rule on them gives its resistance, about the 0.2 frame's origin."""
-    held = np.load(HERE / "references" / "port_bem.npz")
+    held = np.load(HERE / "references" / "port_mrs.npz")
     length = LENGTH / RADIUS
     vertices = screw_vertices(12, 10, radius=1.0, length=length)
     assert np.abs(vertices - held["helix_coarse/vertices"]).max() <= 64 * np.finfo(float).eps * length
@@ -176,7 +176,7 @@ def test_the_recorded_convergence_brackets_the_diagonal_and_the_kind_is_the_near
     assert np.all(np.abs(rule[:, coupling]) > np.abs(kind[:, coupling]))
 
 
-def bound_misses(cls: type[BEMDragNode] = BEMDragNode) -> tuple[float, np.ndarray]:
+def bound_misses(cls: type[MRSDragNode] = MRSDragNode) -> tuple[float, np.ndarray]:
     """The kind's path at the CI levels: how far it is from the record (of each entry's scale), and how far its
     three-level fitted limits of translation are from the 0.2 rule's; asserting it lies in each level's bracket."""
     levels = recorded()[:CI_LEVELS]
@@ -199,7 +199,7 @@ def test_the_kinds_path_through_the_node_is_bounded_by_the_02_rules_convergence(
     assert np.all(np.abs(limits) < LIMITS_AGREE)
 
 
-class _WiderScrewNode(BEMDragNode):
+class _WiderScrewNode(MRSDragNode):
     """The screw's samples read 2% too large: a sampling fault of the size the model differences are."""
 
     def samples(self, p):

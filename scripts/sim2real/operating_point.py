@@ -108,7 +108,7 @@ def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: 
         law = Drag.Surrogate(weights=asset(weights), lubrication=Lubrication(epsilon=mm(epsilon_mm))
                              if lubrication else None)
     elif rung == "bem":
-        law = Drag.BEM(spacing=mm(spacing_mm), blob=blob, patches=PATCHES[patches], wall_kind="tube")
+        law = Drag.MRS(spacing=mm(spacing_mm), blob=blob, patches=PATCHES[patches], wall_kind="tube")
     else:
         raise ValueError(f"rung {rung!r} is neither 'surrogate' nor 'bem'")
     built.attach(law, body=umr, medium=water)
@@ -180,7 +180,7 @@ def bem_resistance(built: Any, pose: Any, leaves: dict[str, Any] | None = None, 
     import jax.numpy as jnp
 
     from mime.core import quaternion
-    from mime.nodes.hydro.bem import blob_squared, resistance, wall_correction_named
+    from mime.nodes.hydro.mrs import blob_squared, resistance, wall_correction_named
 
     node = built.graph.get_node(DRAG_NODE)
     # What the node's step reads as its constants: its own, the leaves over them, the wall's table rebuilt from its
@@ -198,7 +198,7 @@ def bem_resistance(built: Any, pose: Any, leaves: dict[str, Any] | None = None, 
 def lubrication_matrix(surrogate_built: Any, pose: Any) -> Any:
     """The surrogate rung's lubrication term (6 x 6, SI) at ``pose``, from its own node: what script A adds to the
     surrogate, here to be added to the BEM's resistance by a script, since the rung that carries it is the surrogate's
-    alone (``Drag.BEM`` takes no ``lubrication``)."""
+    alone (``Drag.MRS`` takes no ``lubrication``)."""
     node = surrogate_built.graph.get_node(DRAG_NODE)
     p = node._step_constants(leaves_of(surrogate_built)[DRAG_NODE])  # noqa: SLF001 - what the node's step reads
     _, frame = node.frame(p, pose[:3], pose[3:])

@@ -44,7 +44,7 @@ PLAN_ADDS = ("Reads, values and deliveries that its `plan` adds for a particular
              "they list what the class declares, and `plan` is code the build runs when the entry is attached.")
 #: A geometry kind's build-side capabilities, each with what it is and who uses it, in the order a page lists them.
 CAPABILITY_ROWS = {
-    "samples": ("surface samples by named patch, at a resolution the consumer chooses", "the BEM; immersed-boundary "
+    "samples": ("surface samples by named patch, at a resolution the consumer chooses", "the MRS; immersed-boundary "
                                                                                         "markers"),
     "area": ("the area of each patch", "the samples' weights"),
     "mass_properties": ("volume and inertia at a density", "the part resolver"),

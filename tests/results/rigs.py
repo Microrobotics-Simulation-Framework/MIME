@@ -23,7 +23,7 @@ WATER = 1000.0
 def falling_bead(dt: float, after: float, density: float, volume: float, v0: float, viscosity: float | None = None):
     """A bead of ``density`` (kg/m^3) and ``volume`` (m^3) released at ``v0`` (m/s) downwards in still water, with no
     drag: its speed downwards grows by ``(1 - WATER / density) g dt`` each step. With ``viscosity`` (Pa s) the bead is
-    a sphere with Stokes drag in the water (``Drag.BEM``, linear in its velocity), so its speed approaches a terminal
+    a sphere with Stokes drag in the water (``Drag.MRS``, linear in its velocity), so its speed approaches a terminal
     speed as an exponential with the time constant ``m / (6 pi viscosity radius)``: a speed that is not linear in
     time. Returns the experiment and the swim speed's handle, observed downwards from ``after`` (s)."""
     experiment = Experiment("falling_bead", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(GRAVITY), dt=s(dt))
@@ -43,7 +43,7 @@ def falling_bead(dt: float, after: float, density: float, volume: float, v0: flo
     experiment.declare("bead.centre_of_buoyancy", m((0.0, 0.0, 0.0)), reason="a uniform ball's")
     experiment.attach(Gravity(), body=bead, medium=water)
     if viscosity is not None:
-        experiment.attach(Drag.BEM(spacing=m(0.8 * radius), blob=0.5, wall_kind="free_space"), body=bead,
+        experiment.attach(Drag.MRS(spacing=m(0.8 * radius), blob=0.5, wall_kind="free_space"), body=bead,
                           medium=water)
     swim = experiment.observe(SwimSpeed(bead, along=(0.0, 0.0, -1.0), after=s(after)))
     return experiment, swim

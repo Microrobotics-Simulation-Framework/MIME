@@ -1,5 +1,5 @@
-"""How a confining wall reaches the boundary-element method: as the BEM's correction for a wall kind, a registered
-function the BEM's node evaluates, keyed by the wall kind's name and version (``mime.registry.WallKind`` is the
+"""How a confining wall reaches the method of regularised Stokeslets: as the MRS's correction for a wall kind, a registered
+function the MRS's node evaluates, keyed by the wall kind's name and version (``mime.registry.WallKind`` is the
 declaration every solver shares: the geometry it matches, the parameters it reads, its validity and gradient status).
 
 A correction takes the body's samples in the world frame (``N x 3``), its parameters by name (each a leaf of the
@@ -45,7 +45,7 @@ def _any_reach(parameters: Mapping[str, Any], reach: float) -> list[tuple[str, s
 
 @dataclass(frozen=True)
 class WallCorrection:
-    """The BEM's correction for the wall kind ``name`` ``version``: the ``parameters`` it reads (the node's
+    """The MRS's correction for the wall kind ``name`` ``version``: the ``parameters`` it reads (the node's
     ``wall_<name>`` constants, in SI), each one's ``units``, those ``held`` as built (not a study's leaf: a frame, a
     table), the function, and ``prepare``, which makes the constants from what the wall kind reads of the geometry,
     for a run in a dtype; and ``beyond`` says, when the experiment is planned, why a body that reaches ``reach`` (m)
@@ -78,7 +78,7 @@ def register_wall_correction(wall: WallCorrection) -> WallCorrection:
 
 def wall_correction_named(name: str, version: str) -> WallCorrection:
     if (name, version) not in _corrections:
-        raise KeyError(f"no wall correction {name} {version} is registered for the boundary-element method; those "
+        raise KeyError(f"no wall correction {name} {version} is registered for the method of regularised Stokeslets; those "
                        f"registered are {wall_corrections()}")
     return _corrections[(name, version)]
 

@@ -38,7 +38,7 @@ ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
     position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
     angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(Sphere(radius=mm(0.5)))}))
 DECLARE
-exp.attach(Drag.BEM(DRAG), body=ball, medium=water)
+exp.attach(Drag.MRS(DRAG), body=ball, medium=water)
 exp.attach(Gravity(), body=ball, medium=water)
 exp.observe(SwimSpeed(ball, along=-Z, after=s(0.004)))
 AFTER
@@ -159,7 +159,7 @@ ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
     position=um((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
     angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"sphere": Part(Sphere(radius=um(50.0)))}))
 exp.declare("ball.parts.sphere.density", kg_per_m3(7850.0))
-exp.attach(Drag.BEM(DRAG), body=ball, medium=water)
+exp.attach(Drag.MRS(DRAG), body=ball, medium=water)
 exp.attach(Gravity(), body=ball, medium=water)
 exp.observe(SwimSpeed(ball, along=-Z, after=s(0.04)))
 AFTER

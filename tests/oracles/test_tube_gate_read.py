@@ -1,6 +1,6 @@
 """The table gate's read check (``scripts/tube_table/full.py: read_errors``) compares the table's read with the builder
 in the frame the evaluator that ships holds and reads: each block's rows turned from the target's cylindrical components
-into the source's (``mime.nodes.hydro.bem._tube``). It once compared with the builder's unturned rows, which misses by
+into the source's (``mime.nodes.hydro.mrs._tube``). It once compared with the builder's unturned rows, which misses by
 about 2 for any table, the control and the defective one alike, so it checked nothing.
 
 On a small table built by the builder (``tube_cases.builder_table``), read at drawn points between its knots against the
@@ -19,7 +19,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "tube_table"
 sys.path.insert(0, str(SCRIPTS))
 import full  # noqa: E402
 
-from mime.nodes.hydro.bem import unit_tube_table  # noqa: E402
+from mime.nodes.hydro.mrs import unit_tube_table  # noqa: E402
 
 RADII = (0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5)
 ANGLES = tuple(float(a) for a in np.linspace(0.0, np.pi, 13))

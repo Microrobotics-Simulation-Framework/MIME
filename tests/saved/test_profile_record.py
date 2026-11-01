@@ -1,7 +1,7 @@
 """The profile's record in the saved form: what a build in exploratory leaves pending is recorded in a canonical order
 (by target, then code), so the order a script declares things in never reaches the hashed record, and a folder saved
 with several pending declarations loads, ``mime pending``s and ``mime verify``s. The walk's T1, written as a new user
-writes it with no paperwork (its declarations out of alphabetical order, the boundary-element drag's settings left to
+writes it with no paperwork (its declarations out of alphabetical order, the MRS drag's settings left to
 their defaults), is the case; the same declarations in reverse order give the same lock, and in alphabetical order
 (the review's control, which loaded before this fix too) the same again.
 
@@ -44,7 +44,7 @@ def t1_bare(order: tuple[str, ...] = WALK_ORDER) -> Experiment:
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"sphere": Part(Sphere(radius=um(50.0)))}))
     for path in order:
         exp.declare(path, VALUES[path])
-    exp.attach(Drag.BEM(), body=ball, medium=water)
+    exp.attach(Drag.MRS(), body=ball, medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
     exp.observe(SwimSpeed(ball, along=-Z, after=s(0.04)))
     return exp
@@ -118,7 +118,7 @@ def test_a_difference_in_mime_s_own_record_is_internal_and_an_entry_s_is_the_env
 def test_a_reworded_default_loads_and_a_changed_value_is_refused(folders, monkeypatch: pytest.MonkeyPatch):
     """K5: the blob's basis reworded in the code, its entry's version unchanged: the folder loads. The control: the
     blob's default value changed is refused."""
-    roles = registration_of(Drag.BEM()).roles
+    roles = registration_of(Drag.MRS()).roles
     monkeypatch.setitem(roles, "blob", dataclasses.replace(roles["blob"], basis="the same claim, in other words"))
     report = Experiment.load(folders["walk"]).load_report
     assert report is not None and report.text().splitlines()[2] == "input hash: reproduced exactly"
@@ -133,7 +133,7 @@ def test_the_load_report_says_the_form_and_the_profile(folders):
     exploratory, and why."""
     report = Experiment.load(folders["walk"]).load_report
     assert report is not None
-    assert report.text().splitlines()[1] == "saved form: mime.document/2, built and read under the exploratory profile"
+    assert report.text().splitlines()[1] == "saved form: mime.document/3, built and read under the exploratory profile"
     previous = Experiment.load(Path(__file__).parent / "previous" / "magnetic_ball").load_report
     assert previous is not None
     line = previous.text().splitlines()[1]

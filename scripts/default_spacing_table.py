@@ -1,4 +1,4 @@
-"""The boundary-element rung's default spacing, measured: for each body family the default serves, how far its headline
+"""The MRS rung's default spacing, measured: for each body family the default serves, how far its headline
 number is from a reference at a ladder of sample counts, and how long a task of the first-hour walk's size takes at
 each on this machine's CPU. ``Drag``'s default spacing (``mime.interactions.hydrodynamic``) is chosen from this table,
 and its basis quotes the misses at the chosen count.
@@ -9,7 +9,7 @@ and its basis quotes the misses at the chosen count.
         <miss.json>
     JAX_PLATFORMS=cpu uv run --no-sync python scripts/default_spacing_table.py default-time <out.json>
 
-The two ``default-`` modes measure the same at the spacing the default rule takes (``Drag.BEM()`` with no spacing),
+The two ``default-`` modes measure the same at the spacing the default rule takes (``Drag.MRS()`` with no spacing),
 against the references ``miss`` measured: ``default-miss <out.json> <miss.json>``.
 
 Not collected by pytest. The two families and what each measures:
@@ -19,7 +19,7 @@ Not collected by pytest. The two families and what each measures:
   at the start; its task is T1 as the walk wrote it, 0.05 s at a step of 0.05 ms (1000 steps).
 - **screw**: de Jongh's FL-9 on the axis of the walk's T2 tube (3.175 mm radius, the tube wall kind), and in free
   space. Its miss is the force-free speed along the axis per turn about it, from the 6 x 6 resistance, against the
-  finest spacing measured (no closed form exists); its task is T2 with the boundary-element rung in place of the
+  finest spacing measured (no closed form exists); its task is T2 with the MRS rung in place of the
   surrogate, 3 s at a step of 0.5 ms (6000 steps) under a 5 Hz rotating field.
 
 ``miss`` measures the misses (in float64, so that the number is the discretisation's and not float32's rounding);
@@ -51,7 +51,7 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
 from mime.interactions import Drag, Gravity, Magnetic
-from mime.nodes.hydro.bem import BEMDragNode
+from mime.nodes.hydro.mrs import MRSDragNode
 from mime.observations import SwimSpeed
 from mime.scene import Scene, Screw, Sphere, Tube, X, Z
 from mime.things import Part
@@ -103,9 +103,9 @@ def at_rest(position: Any) -> State:
                  angular_velocity=rad_per_s((0.0, 0.0, 0.0)))
 
 
-def bem(spacing: float | None, wall_kind: str) -> Drag:
+def mrs(spacing: float | None, wall_kind: str) -> Drag:
     """The rung at ``spacing``, or at its default (``None``), the blob at its default's value either way."""
-    return Drag.BEM(wall_kind=wall_kind) if spacing is None else Drag.BEM(spacing=m(spacing), blob=0.5,
+    return Drag.MRS(wall_kind=wall_kind) if spacing is None else Drag.MRS(spacing=m(spacing), blob=0.5,
                                                                            wall_kind=wall_kind)
 
 
@@ -118,14 +118,14 @@ def sphere_task(spacing: float | None) -> Experiment:
     ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=at_rest(um((0.0, 0.0, 0.0))),
                              parts={"sphere": Part(Sphere(radius=m(SPHERE_RADIUS)))}))
     exp.declare("ball.parts.sphere.density", kg_per_m3(7850.0), reason="steel")
-    exp.attach(bem(spacing, "free_space"), body=ball, medium=water)
+    exp.attach(mrs(spacing, "free_space"), body=ball, medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
     exp.observe(SwimSpeed(ball, along=-Z, after=s(0.04)))
     return exp
 
 
 def screw_task(spacing: float | None, *, tube: bool = True) -> Experiment:
-    """The walk's T2 with the boundary-element rung at ``spacing`` (``None``: the default's), in its tube or in free
+    """The walk's T2 with the MRS rung at ``spacing`` (``None``: the default's), in its tube or in free
     space."""
     exp = Experiment("t2", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(0.5))
     if tube:
@@ -144,7 +144,7 @@ def screw_task(spacing: float | None, *, tube: bool = True) -> Experiment:
     field = exp.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=X, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(5.0), "amplitude": mT(1.2)}))
-    exp.attach(bem(spacing, "tube" if tube else "free_space"), body=umr, medium=water)
+    exp.attach(mrs(spacing, "tube" if tube else "free_space"), body=umr, medium=water)
     exp.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     exp.observe(SwimSpeed(umr, along=X, after=s(2.0)))
     return exp
@@ -153,7 +153,7 @@ def screw_task(spacing: float | None, *, tube: bool = True) -> Experiment:
 def resistance(built: Any, body: str) -> tuple[np.ndarray, int]:
     """The rung's 6 x 6 resistance with the body at its starting pose, and the samples' count."""
     node = built.graph.get_node(f"drag:{body}")
-    assert isinstance(node, BEMDragNode), type(node)
+    assert isinstance(node, MRSDragNode), type(node)
     params = parameter_leaves(built.graph)[f"drag:{body}"]
     held = node_state(built.graph, f"drag:{body}")
     pose = node_state(built.graph, body)["pose"]

@@ -1,4 +1,4 @@
-"""The straight circular tube's correction for the boundary-element method: the image system of a Stokeslet inside an
+"""The straight circular tube's correction for the method of regularised Stokeslets: the image system of a Stokeslet inside an
 infinite tube with a no-slip wall (Liron & Shahar 1978), read from a table of it through ``mime.core.tables``.
 
 **The table** is a table file of the 2026-05-21 form, at a tube radius ``R_cyl`` and viscosity 1: for a source at
@@ -71,8 +71,8 @@ from jax import Array
 from mime import assets
 from mime.core import jnp, switch
 from mime.core.tables import Axis, Scheme, Table, TableArrays, evaluate, query_range_problems
-from mime.nodes.hydro.bem._solve import PRECISION
-from mime.nodes.hydro.bem._walls import Corrected, WallCorrection, register_wall_correction
+from mime.nodes.hydro.mrs._solve import PRECISION
+from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, register_wall_correction
 
 #: The components odd in the angle between the source and the target, and odd in their axial offset: rows the
 #: velocity's cylindrical component at the target, columns the force's at the source (radial, azimuthal, axial).
@@ -333,7 +333,7 @@ def axial_reach(table: Callable[[], Table]) -> Callable[[Mapping[str, Any], floa
 
 def tube_wall(name: str, version: str, table: Callable[[], Table], assets: tuple[str, ...] = ()) -> WallCorrection:
     """The tube's correction for a wall kind ``name`` ``version`` reading ``table()``, the unit tube's table (from the
-    shipped references ``assets``, where it is one): what a tube's wall kind registers with the boundary-element
+    shipped references ``assets``, where it is one): what a tube's wall kind registers with the regularised-Stokeslet
     method (``register_wall_correction``)."""
     return WallCorrection(name, version, TUBE_PARAMETERS, tube_correction, prepare=tube_preparation(table),
                           units=TUBE_UNITS, held=frozenset({"frame", "table"}), beyond=axial_reach(table),
@@ -354,7 +354,7 @@ def shipped_unit_tube() -> Table:
     return tube_table_from(str(assets.locate(assets.reference(UNIT_TUBE))))
 
 
-#: The boundary-element method's correction for the tube wall kind, on the shipped table.
+#: The MRS's correction for the tube wall kind, on the shipped table.
 TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped_unit_tube, (UNIT_TUBE,)))
 
 

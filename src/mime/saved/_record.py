@@ -41,7 +41,7 @@ from mime.saved._document import (
     encode_setting,
 )
 from mime.saved._resolve import entry_records
-from mime.saved._versions import previous_document, previous_resolved
+from mime.saved._versions import CURRENT, document_in_form, physics_in_form, resolved_in_form
 from mime.saved._schema import (
     LOCK_SCHEMA,
     ConditionDoc,
@@ -347,16 +347,18 @@ class SavedRecord:
         return {"file": STAGE_FILE, "sha256": self.stage_hash,
                 "layers": {f"{SCENE_FOLDER}/{layer.file}": layer.sha256 for layer in self.layers}}
 
-    def hashes(self, *, previous: bool = False) -> HashRecord:
-        """The hashes a lock records; with ``previous``, the document and resolved record in the previous saved form,
-        as a lock of that form hashed them (``mime.saved._versions``)."""
+    def hashes(self, *, version: int = CURRENT) -> HashRecord:
+        """The hashes a lock records; with an earlier ``version``, the document, resolved record and derived graph in
+        that version's form, as a lock of that version hashed them (``mime.saved._versions``)."""
         if self.document is None:
             raise ValueError("this experiment cannot be saved:\n" + "\n".join(str(r) for r in self.unsavable))
-        document = cast(ExperimentDocument, previous_document(self.document)) if previous else self.document
-        resolved = cast(ResolvedRecord, previous_resolved(self.resolved)) if previous else self.resolved
+        document = cast(ExperimentDocument, document_in_form(self.document, version))
+        resolved = cast(ResolvedRecord, resolved_in_form(self.resolved, version))
         return {"recipe": HASH_RECIPE, "document": document_hash(document),
                 "input": input_hash(document, resolved, self.entries),
-                "derived": self.derived.physics_hash, "observations": self.derived.observations_hash}
+                "derived": self.derived.physics_hash if version == CURRENT
+                else sha256_of(physics_in_form(self.derived.physics, version)),
+                "observations": self.derived.observations_hash}
 
     def remote_asset_records(self) -> list[RemoteAssetRecord]:
         """The remote assets the experiment's entries read, as the lock's ``assets`` key lists them."""

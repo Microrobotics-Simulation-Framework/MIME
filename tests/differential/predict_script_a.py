@@ -742,7 +742,7 @@ REASONING: dict[str, dict[str, str]] = {
     },
     "surrogate-about-the-centre": {
         "what": "the drag's surrogate resistance moved from the end of the body's axis (zeta = 0, where the "
-                "training's BEM took its torques) to its centre of mass, R_C = T^T R_P T, T = [[I, [d]x], [0, I]], d "
+                "training's MRS took its torques) to its centre of mass, R_C = T^T R_P T, T = [[I, [d]x], [0, I]], d "
                 "= L/2 along the body's axis from the end to the centre (MIME-ANO-112)",
         "reasoning": "The axial block (F along the tube with Omega about it) is unchanged by a shift along the axis; "
                      "the lateral and tilting coupling, which the end-referenced resistance gave L/2 times the "

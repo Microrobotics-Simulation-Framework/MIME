@@ -109,14 +109,14 @@ and its half difference across its axis, now and a step on. `DynamicArmNode` tak
 (`link_momentum`, `link_inertia`): the gyroscopic torque by a Cayley step at its own velocity, which does no work, and
 the turning inertia in its mass matrix.
 
-Since phase 7g, **`hydro/bem/`**: the regularised-Stokeslet boundary-element method, ported from the earlier line's
+Since phase 7g, **`hydro/mrs/`**: the method of regularised Stokeslets, ported from the earlier line's
 `stokeslet/` behind its contracts. A library (the matrix of a body's samples in point forces, symmetric whatever the
 quadrature weights; the solve by the linear-solve rule; the 6 x 6 resistance about a centre), the wall corrections a
-confining wall adds to the matrix, registered by name (`free_space` adds none), and `BEMDragNode`, which samples a
+confining wall adds to the matrix, registered by name (`free_space` adds none), and `MRSDragNode`, which samples a
 body's hull kind at each step, places the samples by the pose, adds the wall's correction and solves, checkpointed so
 that the reverse mode keeps no matrix between its passes. It holds no geometry's formula: the samples are the kind's.
 
-Since phase 7h, the wall corrections are the BEM's own use of a wall kind (`mime.walls`), registered by the kind's
+Since phase 7h, the wall corrections are the MRS's own use of a wall kind (`mime.walls`), registered by the kind's
 name and version, each with the constants it prepares at build and the reads it checks when planned; the node
 publishes `wall_accepted`, whether every read its correction made was inside its data. The straight circular tube's
 correction, its image system read from a table of the Fourier-Bessel series in the tube's own units (the angle and

@@ -1,10 +1,10 @@
-"""The surrogate drag's tilt validity, measured against the boundary-element rung: how far the swim speed of FL-9 on
+"""The surrogate drag's tilt validity, measured against the MRS rung: how far the swim speed of FL-9 on
 the axis of the walk's tube moves when the body is tilted, which the surrogate cannot see.
 
     JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 uv run --no-sync python scripts/tilt_validity.py <out.json> [spacing_mm]
 
 The surrogate's resistance is built in the tube's frame from the body's centre and which way its axis points along the
-tube, so it gives a tilted body the resistance of one along the axis. The boundary-element rung (the tube wall kind)
+tube, so it gives a tilted body the resistance of one along the axis. The MRS rung (the tube wall kind)
 solves for the body as it lies. For FL-9 on the axis, at a tilt of 0, 2, 5, 10 and 15 degrees about each of two axes
 across the tube (the helix's section is not round, so the direction of the tilt matters), this takes the rung's 6 x 6
 resistance in float64 and the force-free speed along the tube per turn about it, ``-R_FU^-1 R_FOmega (2 pi, 0, 0)``,
@@ -61,7 +61,7 @@ def measure(spacing_m: float) -> dict[str, Any]:
     for row in rows:
         row["change_vs_aligned"] = row["speed_per_turn_m"] / aligned - 1.0
     return {"spacing_m": spacing_m, "x64": True, "python": platform.python_version(), "rows": rows,
-            "note": "FL-9 on the axis of the 1/4 inch tube, boundary-element rung with the tube wall kind, float64"}
+            "note": "FL-9 on the axis of the 1/4 inch tube, MRS rung with the tube wall kind, float64"}
 
 
 def main(argv: list[str]) -> int:

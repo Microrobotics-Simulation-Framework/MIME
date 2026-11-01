@@ -1,5 +1,5 @@
-"""The ``tube`` wall kind, registered on the shipped asset ``unit_tube_R0.997`` (``mime.walls.TubeWall``; the boundary-element
-method's correction ``mime.nodes.hydro.bem._tube.TUBE_CORRECTION``): a small tube experiment builds and runs with it, the
+"""The ``tube`` wall kind, registered on the shipped asset ``unit_tube_R0.997`` (``mime.walls.TubeWall``; the regularised-Stokeslet
+method's correction ``mime.nodes.hydro.mrs._tube.TUBE_CORRECTION``): a small tube experiment builds and runs with it, the
 confined sphere drags as Haberman and Sayre say, a read past the table's readable range (0.997 of the radius, the
 file's own ``readable_rho``) is refused, a body longer than the table reaches is refused when planned, and an asset that
 is not in the cache fails by name, naming the command that stores it, and downloads nothing.
@@ -11,14 +11,14 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import tube_asset
-from bem_cases import drag_node, free_space, resistance_at
+from mrs_cases import drag_node, free_space, resistance_at
 from tube_cases import TUBE_RADIUS, haberman_sayre, polar_spacing, sphere_in_a_tube
 
-import mime.nodes.hydro.bem._tube as tube_module
+import mime.nodes.hydro.mrs._tube as tube_module
 from mime.build import BuildRefused
 from mime.build._maddening import node_state, parameter_leaves
 from mime.interactions import Drag
-from mime.nodes.hydro.bem import wall_correction_named
+from mime.nodes.hydro.mrs import wall_correction_named
 from mime.registry import EntryKind, lookup
 from mime.scene import Capsule, Sphere
 from mime.units import m, mm, ms
@@ -67,7 +67,7 @@ def drag_ratio(polar: int) -> float:
     confined = resistance_at(sphere_in_a_tube("confined", radius=RATIO, spacing=spacing, wall_kind="tube").build(),
                              "ball")
     free = resistance_at(free_space("free", {"ball": Sphere(radius=m(RATIO * TUBE_RADIUS.value))},
-                                    Drag.BEM(spacing=spacing, blob=0.5, wall_kind="free_space")).build(), "ball")
+                                    Drag.MRS(spacing=spacing, blob=0.5, wall_kind="free_space")).build(), "ball")
     return float(confined[2, 2] / free[2, 2])
 
 

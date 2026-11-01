@@ -37,7 +37,7 @@ LOG = dict(allow_nan=False, allow_infinity=False)
 
 def plan_of(*, diameter: float, density: float, viscosity: float, upper: float | None, kind: str = "sphere",
             missing: tuple[str, ...] = ()) -> WatchPlan:
-    return WatchPlan("drag:b", "drag 0.3.0", "bem", "b", "m", "b", "twist", kind, diameter, density, viscosity, upper,
+    return WatchPlan("drag:b", "drag 0.3.0", "mrs", "b", "m", "b", "twist", kind, diameter, density, viscosity, upper,
                      "the planted bound's basis" if upper is not None else None, missing)
 
 
@@ -129,17 +129,17 @@ def test_the_manifest_form_round_trips_a_watch():
     (("0.1",), "a tuple of mime.registry.ReynoldsRange"),
 ])
 def test_a_malformed_reynolds_declaration_is_refused_at_registration_naming_what_is_wrong(held, problem):
-    found = _reynolds_problems(SimpleNamespace(reynolds=held, rungs=("surrogate", "bem")))  # type: ignore[arg-type]
+    found = _reynolds_problems(SimpleNamespace(reynolds=held, rungs=("surrogate", "mrs")))  # type: ignore[arg-type]
     assert any(problem in line for line in found), found
 
 
 def test_the_drag_declares_a_bound_with_its_basis_for_each_rung_and_the_declaration_is_well_formed():
     assert _reynolds_problems(Drag) == []
-    assert sorted(r.rung for r in Drag.reynolds if r.rung) == ["bem", "surrogate"]
+    assert sorted(r.rung for r in Drag.reynolds if r.rung) == ["mrs", "surrogate"]
     assert all(r.upper > 0.0 and "Oseen" in r.basis for r in Drag.reynolds)
 
 
-# -- end to end, on the rig of a bead falling through water under the boundary-element drag -----------------------
+# -- end to end, on the rig of a bead falling through water under the MRS drag -----------------------
 
 DENSITY, VOLUME, VISCOSITY, DT = 2000.0, 1e-12, 1e-2, 1e-4
 
@@ -202,7 +202,7 @@ def test_a_watch_changes_no_graph_the_derived_hash_is_the_same_with_and_without_
 def test_where_the_medium_s_density_is_declared_nowhere_the_build_goes_on_and_the_watch_says_why():
     from mime import Body, Experiment, Medium, State
     from mime.dynamics import RigidInertial
-    from mime.interactions import Drag as BemDrag
+    from mime.interactions import Drag as MrsDrag
     from mime.scene import Scene, Sphere, Z
     from mime.things import Part
     from mime.units import kg_per_m3, m, m_per_s, m_per_s2, mPa_s, rad_per_s, um
@@ -214,7 +214,7 @@ def test_where_the_medium_s_density_is_declared_nowhere_the_build_goes_on_and_th
         position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, -1.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(50.0)))}))
     exp.declare("ball.parts.steel.density", kg_per_m3(7850.0), reason="steel")
-    exp.attach(BemDrag.BEM(spacing=um(25.0), blob=0.5), body=ball, medium=water)
+    exp.attach(MrsDrag.MRS(spacing=um(25.0), blob=0.5), body=ball, medium=water)
     built = exp.build()
     assert "no number can be computed until water.density is declared" in built.report.text()
     (read,) = built.run(s(2 * DT), history=True).watches

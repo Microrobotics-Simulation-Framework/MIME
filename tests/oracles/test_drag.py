@@ -1,8 +1,8 @@
 """The drag's surrogate rung against what can check it, each with a control that fails (float64, per module).
 
-- **Accuracy against the BEM values the surrogate was checked against** (the 0.2 line's six offsets in the 1/4"
-  tube, ``references/dejongh_bem_offsets.*``): the swim speed the surrogate gives, against the BEM's. This bounds the
-  surrogate against that BEM (float32, with the 2026-05-21 wall table, which was never checked against Fourier-Bessel
+- **Accuracy against the MRS values the surrogate was checked against** (the 0.2 line's six offsets in the 1/4"
+  tube, ``references/dejongh_mrs_offsets.*``): the swim speed the surrogate gives, against the MRS's. This bounds the
+  surrogate against that MRS (float32, with the 2026-05-21 wall table, which was never checked against Fourier-Bessel
   series), not against the flow. At 0.30 of the radius it is within the 0.2 line's own assertion, 5%; at 0.20, 0.25
   and 0.28 it misses the 1% that line's docstring and metadata state (2.6%, 16.2%, 10.2%), as the 0.2 line measured,
   and the test holds those numbers so a change shows. The control: the coupling blocks scaled by ``mu R`` instead of
@@ -87,10 +87,10 @@ def blockwise(found: np.ndarray, expected: np.ndarray) -> float:
     return worst
 
 
-# -- accuracy against the BEM ---------------------------------------------------------------------------------------
+# -- accuracy against the MRS ---------------------------------------------------------------------------------------
 
-BEM = np.load(REFERENCES / "dejongh_bem_offsets.npz")
-RECORD = json.loads((REFERENCES / "dejongh_bem_offsets.json").read_text())
+MRS = np.load(REFERENCES / "dejongh_mrs_offsets.npz")
+RECORD = json.loads((REFERENCES / "dejongh_mrs_offsets.json").read_text())
 OMEGA = 2 * math.pi * 10.0
 #: The 0.2 test's: the 1/4" tube's confinement, by which it turned an offset fraction into the MLP's offset.
 KAPPA = 0.491
@@ -115,17 +115,17 @@ def surrogate_speed(fraction: float, scaled=lambda r: r) -> float:
     return swim_speed(scaled(resistance(node(epsilon=None, reference_point="end"), (offset, 0.0, 0.0, *IDENTITY))))
 
 
-def test_the_surrogate_against_the_bem_values_it_was_checked_against():
+def test_the_surrogate_against_the_mrs_values_it_was_checked_against():
     points = RECORD["envelope_0_2"]["points"]
     errors = {}
-    for fraction, r_bem, point in zip(BEM["offsets"], BEM["R_BEMs"], points, strict=True):
+    for fraction, r_mrs, point in zip(MRS["offsets"], MRS["R_BEMs"], points, strict=True):
         assert point["offset_frac"] == pytest.approx(float(fraction))
-        bem, mlp = swim_speed(to_si(r_bem)), surrogate_speed(float(fraction))
-        assert bem * 1e3 == pytest.approx(point["v_BEM_mm_s"], rel=1e-12)
+        mrs, mlp = swim_speed(to_si(r_mrs)), surrogate_speed(float(fraction))
+        assert mrs * 1e3 == pytest.approx(point["v_BEM_mm_s"], rel=1e-12)
         # The 0.2 line evaluated the MLP at a float32 position: its speeds agree with 0.3's to that rounding.
         assert mlp * 1e3 == pytest.approx(point["v_MLP_mm_s"], rel=1e-5)
-        errors[round(float(fraction), 2)] = abs(mlp - bem) / abs(bem)
-    print(f"\nrelative swim-speed error against the BEM: {errors}")
+        errors[round(float(fraction), 2)] = abs(mlp - mrs) / abs(mrs)
+    print(f"\nrelative swim-speed error against the MRS: {errors}")
     assert errors[0.3] < 0.05
     assert errors == pytest.approx({0.2: 0.0260, 0.25: 0.1620, 0.28: 0.1016, 0.3: 0.0028, 0.32: 0.0826, 0.35: 0.8346},
                                    abs=1e-3)
@@ -141,17 +141,17 @@ def about(r_nd: np.ndarray, shift: float) -> np.ndarray:
 
 def test_the_surrogates_resistance_is_about_the_end_of_the_bodys_axis():
     """MIME-ANO-112: moving the reference by L/2 along the axis, towards the body's centre, takes the coupling across
-    the axis from thousands (non-dimensional) to under 1% of that in the BEM values and under 10% in the surrogate's;
+    the axis from thousands (non-dimensional) to under 1% of that in the MRS values and under 10% in the surrogate's;
     moving it the other way (the control) doubles it. So the training's
     resistances, and the surrogate's, are about the end of the axis, and the port applies them about the centre."""
     half = LENGTH / RADIUS / 2
-    for fraction, r_bem in zip(BEM["offsets"][:4], BEM["R_BEMs"][:4], strict=True):
+    for fraction, r_mrs in zip(MRS["offsets"][:4], MRS["R_BEMs"][:4], strict=True):
         surrogate = resistance(node(epsilon=None, reference_point="end"),
                                (fraction / KAPPA * RADIUS, 0.0, 0.0, *IDENTITY))
         r_nd = surrogate / np.kron(np.array([[MU * RADIUS, MU * RADIUS ** 2], [MU * RADIUS ** 2, MU * RADIUS ** 3]]),
                                    np.ones((3, 3)))
-        # The surrogate is held to the BEM's pattern within its own accuracy against it (up to 16% at these points).
-        for held, within in ((r_bem, 0.01), (r_nd, 0.1)):
+        # The surrogate is held to the MRS's pattern within its own accuracy against it (up to 16% at these points).
+        for held, within in ((r_mrs, 0.01), (r_nd, 0.1)):
             assert held[0, 4] / held[0, 0] == pytest.approx(half, rel=within)
             centred, away = about(held, half), about(held, -half)
             assert abs(centred[0, 4]) < within * abs(held[0, 4]) and abs(centred[1, 3]) < within * abs(held[1, 3])
@@ -169,7 +169,7 @@ def test_about_the_centre_the_cross_axis_coupling_collapses_and_the_opposite_shi
     test-only switch) the force across the axis from a rotation across it is about L/(2R) times the translational
     resistance; about the centre, under 10% of that (the surrogate's own asymmetry, as 4c1 measured it). The control:
     the shift made the other way doubles it."""
-    for fraction in BEM["offsets"][:4]:
+    for fraction in MRS["offsets"][:4]:
         pose = (fraction / KAPPA * RADIUS, 0.0, 0.0, *ALONG)
         end = resistance(node(epsilon=None, reference_point="end"), pose) / NODE_SCALE
         centre = resistance(node(epsilon=None), pose) / NODE_SCALE
@@ -205,11 +205,11 @@ def test_a_body_turned_end_for_end_gets_the_mirror_image_shift():
         assert blockwise(found, expected) < 1e-12 if mirrored else blockwise(found, expected) > 1e-2
 
 
-def test_a_planted_unit_scaling_misses_the_bem_at_030():
-    bem = swim_speed(to_si(BEM["R_BEMs"][3]))
+def test_a_planted_unit_scaling_misses_the_mrs_at_030():
+    mrs = swim_speed(to_si(MRS["R_BEMs"][3]))
     planted = surrogate_speed(0.30, scaled=lambda r: np.block([[r[:3, :3], r[:3, 3:] / RADIUS],
                                                                [r[3:, :3] / RADIUS, r[3:, 3:]]]))
-    assert abs(planted - bem) / abs(bem) > 0.05
+    assert abs(planted - mrs) / abs(mrs) > 0.05
 
 
 # -- the training domain --------------------------------------------------------------------------------------------

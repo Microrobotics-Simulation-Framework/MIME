@@ -84,10 +84,10 @@ def test_the_report_keeps_the_attached_rungs_validity_lines_and_the_control_keep
     def plan(rung: str) -> SimpleNamespace:
         return SimpleNamespace(registered=SimpleNamespace(cls=Drag), entry=SimpleNamespace(rung=rung))
 
-    surrogate, bem = attached_validity(plan("surrogate")), attached_validity(plan("bem"))  # type: ignore[arg-type]
-    assert surrogate and all(not line.startswith("bem: ") for line in surrogate)
-    assert bem and all(not line.startswith("surrogate: ") for line in bem)
-    assert len(surrogate) + len(bem) == len(Drag.validity)
+    surrogate, mrs = attached_validity(plan("surrogate")), attached_validity(plan("mrs"))  # type: ignore[arg-type]
+    assert surrogate and all(not line.startswith("mrs: ") for line in surrogate)
+    assert mrs and all(not line.startswith("surrogate: ") for line in mrs)
+    assert len(surrogate) + len(mrs) == len(Drag.validity)
 
 
 def test_the_report_gives_a_summary_first_and_its_details_on_request():

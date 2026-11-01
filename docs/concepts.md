@@ -2,7 +2,7 @@
 
 MIME's documentation has four page types (entry, node, family and mechanism) and one idea that is a section of a page
 and not a page (the rung), because the things a user needs to know do not fit one shape. A
-family of laws can have several models (a surrogate, a boundary-element solve, a penalty law), and the model is
+family of laws can have several models (a surrogate, an MRS solve, a penalty law), and the model is
 where the physics is, but it is not what a user writes. So there is no page per model, and no page per law: each fact
 has one page that owns it, and the links between pages are generated from the registry, never typed.
 

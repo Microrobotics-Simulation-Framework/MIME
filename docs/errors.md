@@ -12,7 +12,7 @@ Traceback (most recent call last; MIME's, JAX's and MADDENING's frames left out)
     exp.build()
 BuildRefused: the build is refused:
 [user] setting.value: interaction drag:ball (drag 0.3.0): spacing is None m, not a length above zero
-    why: the bem rung samples the body's surface with neighbouring samples about spacing apart
+    why: the mrs rung samples the body's surface with neighbouring samples about spacing apart
     do: write spacing=mm(...), where interaction drag:ball is declared (Drag(...))
     see: https://microrobotica.org/mime/0.3.0/pages/errors/setting.value
 The full traceback is in ~/.cache/mime/tracebacks/mime-...-setting.value.txt; MIME_TRACEBACK=full shows it here.

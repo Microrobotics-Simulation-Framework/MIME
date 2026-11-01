@@ -78,7 +78,7 @@ def run_case(case: Case, tmp_path: Path, *, full: bool) -> subprocess.CompletedP
 def test_the_corpus_holds_the_cases_the_brief_names():
     held = {case.path.stem for case in CASES}
     assert {"spacing_missing", "law_traced_branch", "wrong_unit", "misspelled_body", "unfed_input", "nan_large_dt",
-            "record_without_conditions", "series_not_recorded", "law_wrong_shape", "bem_settings_missing",
+            "record_without_conditions", "series_not_recorded", "law_wrong_shape", "mrs_settings_missing",
             "gravity_none", "inertia_axes", "record_condition_unchecked", "value_unknown", "run_duration_bare",
             "load_missing_folder"} <= held
 

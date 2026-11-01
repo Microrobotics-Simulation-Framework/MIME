@@ -1,6 +1,6 @@
 {
  "entry": "wall kind tube 0.1.0",
- "case": "bem_tube",
+ "case": "mrs_tube",
  "steps": 8,
  "outputs": {
   "ball": {

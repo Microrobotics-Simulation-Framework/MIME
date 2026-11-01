@@ -341,7 +341,7 @@ def test_the_flag_is_raised_by_the_limit_not_by_the_bore_so_both_are_seen_beside
 
 # -- the declared limit and the measurement it rests on ----------------------------------------------------------------
 
-#: The error this entry states for the surrogate against the boundary element (its validity line): up to 16% in swim speed.
+#: The error this entry states for the surrogate against the MRS rung (its validity line): up to 16% in swim speed.
 STATED_ERROR = 0.16
 
 
@@ -357,7 +357,7 @@ def largest_tilt_inside(error: float, rows) -> float:
 
 
 def test_the_declared_limit_is_the_largest_measured_tilt_inside_the_stated_error_and_no_more():
-    """What the limit rests on: ``docs/data/tilt_validity.json``, the boundary-element rung's swim speed of FL-9 on the
+    """What the limit rests on: ``docs/data/tilt_validity.json``, the MRS rung's swim speed of FL-9 on the
     axis tilted, from ``scripts/tilt_validity.py``. The declaration is not the fit of a curve: it is the largest
     measured tilt at which the speed is inside the error the entry states, one spacing, one offset, one body. The
     controls: a limit one measured step further is outside it in a direction measured, and the same rule over a

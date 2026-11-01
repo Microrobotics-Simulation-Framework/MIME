@@ -4,7 +4,7 @@ describes: 0.1.0
 
 # `tube`
 
-A straight circular tube with a no-slip wall, the medium filling its lumen. The boundary-element method adds the tube's
+A straight circular tube with a no-slip wall, the medium filling its lumen. The method of regularised Stokeslets adds the tube's
 image system to the free-space kernel: the flow a point force makes inside the tube, less the free Stokeslet
 [@LironShahar1978]. It is read from one table of the unit tube's image system, which the tube's radius and the
 fluid's viscosity scale to any tube, a file fetched into the assets cache (`mime assets fetch unit_tube_R0.997`) and

@@ -1,4 +1,4 @@
-"""The regularised-Stokeslet boundary-element method for a rigid body in Stokes flow: the matrix of a body's samples,
+"""The method of regularised Stokeslets for a rigid body in Stokes flow: the matrix of a body's samples,
 its solve and the 6 x 6 resistance (Cortez, Fauci & Medovikov 2005).
 
 **The formulation: point forces.** The unknown at each sample ``x_n`` is the force ``g_n`` the body puts on the fluid
@@ -22,7 +22,7 @@ receives is ``-R [U; Omega]``.
 **The blob** ``eps`` is ``blob`` times the samples' mean spacing, the square root of their area over their count (the
 0.2 line took half of it): so the weights reach the resistance through the blob alone. Only ``eps^2`` is used.
 
-**A wall** reaches the matrix as a block matrix added to ``A`` (``mime.nodes.hydro.bem.wall_correction``), in the same
+**A wall** reaches the matrix as a block matrix added to ``A`` (``mime.nodes.hydro.mrs.wall_correction``), in the same
 units, the velocity at each sample per unit force at each: free space adds nothing.
 
 **Differentiation.** ``jax.numpy.linalg.solve`` factorises ``A`` once with its derivatives stopped and differentiates

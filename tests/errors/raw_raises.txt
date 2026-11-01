@@ -42,7 +42,7 @@ dynamics/apparatus/_arm.py::Arm.build ValueError 1  # invariant: MIME's own chec
 env/_pins.py::applicable ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and refused with its code (env.lab, by the env check)
 experiment/_experiment.py::ObservationHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
-interactions/hydrodynamic.py::Drag._build_bem ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+interactions/hydrodynamic.py::Drag._build_mrs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 interactions/hydrodynamic.py::Drag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 materials/_records.py::RecordFile.read OSError 1  # invariant: a record file constructed with neither a path nor a packaged record, which its constructor refuses
 nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -54,12 +54,12 @@ nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 2  # a node'
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/bem/_node.py::BEMDragNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/bem/_node.py::_registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/bem/_tube.py::table_provenance ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/bem/_tube.py::unit_tube_table ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/bem/_walls.py::register_wall_correction ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/bem/_walls.py::wall_correction_named KeyError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_node.py::_registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_tube.py::table_provenance ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_tube.py::unit_tube_table ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_walls.py::register_wall_correction ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/mrs/_walls.py::wall_correction_named KeyError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 registry/_entries.py::_held KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 registry/_entries.py::_scalar TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 registry/_entries.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
@@ -106,7 +106,7 @@ surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's o
 surrogates/_type.py::Surrogate.resolve ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::evaluator_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 surrogates/_type.py::register_evaluator ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
-surrogates/generator.py::BEMEvaluator.__call__ ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
+surrogates/generator.py::MRSEvaluator.__call__ ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
 surrogates/generator.py::TrainingData.produce ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
 surrogates/generator.py::_require_float64 RuntimeError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
 surrogates/generator.py::accuracy ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call

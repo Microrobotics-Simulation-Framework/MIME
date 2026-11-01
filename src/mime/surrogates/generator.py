@@ -1,7 +1,7 @@
 """The generator of a screw surrogate's training data, and its held-out protocol (phase 7i).
 
-**What it computes.** The boundary-element resistance of de Jongh's screw bodies resting on the floor of a straight
-tube, through ``Drag.BEM`` in the ``tube`` wall kind, which reads the corrected table of the unit tube's image system
+**What it computes.** The MRS resistance of de Jongh's screw bodies resting on the floor of a straight
+tube, through ``Drag.MRS`` in the ``tube`` wall kind, which reads the corrected table of the unit tube's image system
 (MIME-ANO-117); never the 2026-05-21 tables. One experiment is built per design, tube and discretisation, and its drag
 node is evaluated at each case's pose: the body's axis along the tube's, its centre ``offset`` from the tube's axis
 towards the floor, so that the gap from its outer radius to the wall is the case's ``gap``. The resistance is
@@ -25,7 +25,7 @@ domain; and ``roll``, every design in every tube at the middle training margin w
 an input the surrogate does not read, which measures what leaving it out costs. A rolled body is floored again at each
 roll (``resting_offset``): its nearest point, not its outer radius, keeps the margin from the wall. ``accuracy`` judges
 a surrogate on a held-out set per use: the resistance, block by block, and the swim speed. What it estimates is the
-surrogate's error against this boundary-element method at this discretisation; it bounds nothing about the flow, since
+surrogate's error against this method of regularised Stokeslets at this discretisation; it bounds nothing about the flow, since
 the method's own error (MIME-ANO-116, the near-wall edge) is in neither side.
 
 Each case's checks are part of the build: the table read every sample (``wall_accepted``), the resistance is finite,
@@ -210,7 +210,7 @@ class Case:
 
 @dataclass(frozen=True)
 class Discretisation:
-    """How ``Drag.BEM`` samples the body: neighbouring samples about ``spacing`` (m) apart, the blob ``blob`` times
+    """How ``Drag.MRS`` samples the body: neighbouring samples about ``spacing`` (m) apart, the blob ``blob`` times
     their mean spacing, on ``patches`` (every patch of the kind, its closed surface, when ``None``)."""
 
     spacing: float
@@ -358,7 +358,7 @@ MEASURED_NEAR_WALL_NOTES: tuple[str, ...] = (
 )
 #: The near-wall edge is the maintainer's decision, open (7i-a review of PR #60, finding B1).
 OPEN_NEAR_WALL_EDGE = OpenEdge(
-    decision="Where the boundary-element method resolves the wall at a spacing, so that data may be drawn from it, is "
+    decision="Where the method of regularised Stokeslets resolves the wall at a spacing, so that data may be drawn from it, is "
              "open: it is the maintainer's decision, and 7i-b is blocked on it.",
     options=(
         "a near-contact boundary-element capability (a method that resolves the gap at the spacing)",
@@ -379,7 +379,7 @@ DOMAIN = Domain(
         "free space, and any tube but the four (kappa is trained at their four values only)",
         "any screw but the seventeen designs (another wavenumber or length is read between designs, untrained)",
         "a body off the floor: centred, or resting with a gap above the largest contact margin",
-        "a gap below the near-wall edge, which is open (the maintainer's decision): where the boundary-element method "
+        "a gap below the near-wall edge, which is open (the maintainer's decision): where the method of regularised Stokeslets "
         "does not resolve the wall, a surrogate's near-wall part would be the Lubrication blend's; the measured edges "
         "are in the domain's record, and they differ by design, tube and far gap",
         "a body turned about its own axis from the trained roll (an input the surrogate does not read; the held-out "
@@ -430,7 +430,7 @@ def overlap(first: Iterable[Case], second: Iterable[Case]) -> list[str]:
 
 @dataclass(frozen=True)
 class Sample:
-    """A case's boundary-element resistance: ``resistance`` in the canonical frame about the body's centroid (SI),
+    """A case's MRS resistance: ``resistance`` in the canonical frame about the body's centroid (SI),
     whether every table read was ``accepted``, and the number of surface ``samples``."""
 
     case: Case
@@ -481,8 +481,8 @@ def _require_float64() -> None:
 
 
 def experiment(design: Design, tube: str, discretisation: Discretisation, *, wall_kind: str = "tube") -> Any:
-    """``design`` resting in ``tube`` (along x, its floor at -z) in water, with ``Drag.BEM`` and nothing else, at its
-    smallest training gap's pose; ``BEMEvaluator`` moves it to each case's."""
+    """``design`` resting in ``tube`` (along x, its floor at -z) in water, with ``Drag.MRS`` and nothing else, at its
+    smallest training gap's pose; ``MRSEvaluator`` moves it to each case's."""
     from mime.dynamics import RigidInertial
     from mime.experiment import Experiment
     from mime.interactions import Drag
@@ -508,11 +508,11 @@ def experiment(design: Design, tube: str, discretisation: Discretisation, *, wal
                                 "wall_kind": wall_kind}
     if discretisation.patches is not None:
         settings["patches"] = discretisation.patches
-    held.attach(Drag.BEM(**settings), body="screw", medium="water")
+    held.attach(Drag.MRS(**settings), body="screw", medium="water")
     return held
 
 
-class BEMEvaluator:
+class MRSEvaluator:
     """One design in one tube at one discretisation: the experiment built once, its drag node compiled once, and
     evaluated at each case's pose (its step's ``params``, the tube's table among them, are arguments, so a pose is
     one call)."""
@@ -549,12 +549,12 @@ class BEMEvaluator:
 def evaluate(cases: Sequence[Case], discretisation: Discretisation, *,
              report: Callable[[Sample], None] | None = None) -> list[Sample]:
     """Every case's sample, one evaluator per design and tube, in the cases' order."""
-    evaluators: dict[tuple[str, str], BEMEvaluator] = {}
+    evaluators: dict[tuple[str, str], MRSEvaluator] = {}
     found: list[Sample] = []
     for case in cases:
         key = (case.design.name, case.tube)
         if key not in evaluators:
-            evaluators[key] = BEMEvaluator(case.design, case.tube, discretisation)
+            evaluators[key] = MRSEvaluator(case.design, case.tube, discretisation)
         sample = evaluators[key](case)
         found.append(sample)
         if report is not None:
@@ -634,7 +634,7 @@ class TrainingData:
         return cases
 
     def produce(self, parameters: Mapping[str, Json], inputs: Mapping[str, AssetRef]) -> Produced:
-        from mime.nodes.hydro.bem._tube import UNIT_TUBE
+        from mime.nodes.hydro.mrs._tube import UNIT_TUBE
 
         given = inputs.get("wall:tube")
         if given is None or given.name != UNIT_TUBE:
@@ -653,7 +653,7 @@ class TrainingData:
 
 
 def accuracy(predicted: Sequence[np.ndarray], reference: Sequence[Sample], *, over: str) -> tuple[Accuracy, ...]:
-    """A surrogate's accuracy per use against the boundary-element samples ``reference`` (its predictions
+    """A surrogate's accuracy per use against the MRS samples ``reference`` (its predictions
     ``predicted`` in the same frame, about the same point): ``resistance``, the largest difference in each 3 x 3 block
     relative to that block's largest magnitude over the set; and ``swim_speed``, the largest relative difference in the
     force-free speed along the tube's axis per unit spin. Each estimates the error against this method at this
@@ -670,7 +670,7 @@ def accuracy(predicted: Sequence[np.ndarray], reference: Sequence[Sample], *, ov
     speeds = np.array([swim_per_spin(each)[2] for each in found])
     expected = np.array([sample.swim()[2] for sample in reference])
     speed = float(np.max(np.abs(speeds - expected) / np.abs(expected)))
-    against = "the boundary-element method through the tube wall kind, at the generator's discretisation"
+    against = "the method of regularised Stokeslets through the tube wall kind, at the generator's discretisation"
     estimates = ("estimates the surrogate's error against that method over the held-out set; bounds nothing about the "
                  "flow, since the method's own error is in neither side (MIME-ANO-116, the near-wall edge)")
     return (Accuracy("resistance", "largest blockwise difference relative to the block's largest magnitude", worst,
@@ -760,7 +760,7 @@ def protocol_json(domain: Domain, discretisation: Discretisation) -> str:
 __all__ = ["ASYMMETRY_TOLERANCE", "CANONICAL", "DESIGNS", "DOMAIN", "EIGENVALUE_FLOOR", "MARGIN",
            "MEASURED_NEAR_WALL_EDGES", "MEASURED_NEAR_WALL_NOTES", "NEAR_WALL_CRITERION_COMMIT", "NEAR_WALL_DESIGN",
            "NEAR_WALL_GAPS", "NEAR_WALL_QUANTITIES", "NEAR_WALL_SPACINGS", "NEAR_WALL_TOLERANCE", "NEAR_WALL_TUBE",
-           "NEAR_WALL_USES", "OPEN_NEAR_WALL_EDGE", "ROLLS", "TRAINING_MARGINS", "TUBES", "BEMEvaluator", "Case",
+           "NEAR_WALL_USES", "OPEN_NEAR_WALL_EDGE", "ROLLS", "TRAINING_MARGINS", "TUBES", "MRSEvaluator", "Case",
            "DeclaredEdge", "Design", "Discretisation", "Domain", "OpenEdge", "Sample", "TrainingData", "accuracy",
            "design_named", "evaluate", "experiment", "held_out_cases", "into_canonical", "near_wall_ratio",
            "near_wall_ratios", "overlap", "protocol_json", "resting_offset", "samples_npz", "swim_per_spin",

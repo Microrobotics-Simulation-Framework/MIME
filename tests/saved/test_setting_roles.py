@@ -189,7 +189,7 @@ PLACED = {"gantry_magnet": (("provider.reader-inside",), "the gantry's placement
 def mime_wall_kinds_alone():
     """Only MIME's wall kinds registered while the test runs, and every other restored after: a test elsewhere registers
     a wall kind that matches a tube's lumen too (``tests/tube_cases.py``'s ``oracle.tube_series``, imported by this
-    module, so in every worker that runs it), which leaves the bem tube's wall kind undetermined, as its rule says. The
+    module, so in every worker that runs it), which leaves the mrs tube's wall kind undetermined, as its rule says. The
     minimal builds judge MIME's defaults, so each runs among MIME's wall kinds, whatever ran before it in the worker."""
     others = [r for r in registered(EntryKind.WALL_KIND) if r.namespace != MIME_NAMESPACE]
     assert others, "the tube oracle's wall kind is registered, so the case is explicit in every worker"

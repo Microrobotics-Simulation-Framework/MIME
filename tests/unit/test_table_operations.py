@@ -344,7 +344,7 @@ def test_the_reference_is_the_7f_read_its_values_within_the_reads_rounding():
     assert np.max(np.abs(np.asarray(slope) - np.asarray(reference_slope))) <= 64 * np.finfo(float).eps * scale
 
 
-#: The BEM's form at 64 points: per pair, the gathered elements (exactly) and elementwise operations (a fiftieth above)
+#: The MRS's form at 64 points: per pair, the gathered elements (exactly) and elementwise operations (a fiftieth above)
 #: measured with each point's radius given as a column and a row, which the same read with the radii broadcast to
 #: every pair first exceeds.
 PAIRS = 64

@@ -3,7 +3,7 @@ builds none, of every dynamics in its case), in the first round-trip case that u
 what a version computes shows here as a failure, so a changed law takes a new version; an entry registered without a
 golden output fails, as one without a round-trip case fails the registry walk. An entry with rungs has one more golden
 output per rung its first case does not build, from the first case that builds it (``<name>@<version>.<rung>.json``):
-the arm's and the motor's dynamic rungs from A0's dynamic case, the drag's boundary-element rung from the free-space
+the arm's and the motor's dynamic rungs from A0's dynamic case, the drag's MRS rung from the free-space
 case.
 
 Compared within 1e-10 of each field's largest magnitude: across machines XLA may fuse a multiply into an add
@@ -123,7 +123,7 @@ def differences(found: dict, golden: dict) -> list[str]:
             continue
         for field, value in fields.items():
             want, got = np.asarray(value), np.asarray(found["outputs"][node][field])
-            if want.dtype == bool or got.dtype == bool:  # a flag (the bem's wall_accepted) is compared exactly
+            if want.dtype == bool or got.dtype == bool:  # a flag (the mrs's wall_accepted) is compared exactly
                 if want.shape != got.shape or not np.array_equal(want, got):
                     moved.append(f"{node}.{field} moved from its golden output")
                 continue

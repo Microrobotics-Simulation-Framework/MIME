@@ -1,5 +1,5 @@
 """A saved experiment records the remote assets it reads: the build that reads the first one writes the lock's
-``assets`` key (``mime.assets``'s README, "What a folder's lock references"). A tube experiment's ``Drag.BEM`` reads
+``assets`` key (``mime.assets``'s README, "What a folder's lock references"). A tube experiment's ``Drag.MRS`` reads
 the corrected tube table through its wall kind, so its lock names ``unit_tube_R0.997``: ``mime assets fetch <folder>``
 stores it, and the script ``mime modal`` writes fetches it onto the assets Volume before a run. An experiment that
 reads none writes no key.
@@ -14,12 +14,12 @@ import shutil
 from pathlib import Path
 
 import pytest
-from bem_cases import BALL, bem, bem_tube, free_space
+from mrs_cases import BALL, mrs, mrs_tube, free_space
 
 import mime.env._modal_script as modal_generator
 from mime import assets
 from mime.experiment import Experiment
-from mime.nodes.hydro.bem._tube import UNIT_TUBE
+from mime.nodes.hydro.mrs._tube import UNIT_TUBE
 from mime.saved import LOCK_FILE, LoadRefused
 from mime.units import mm
 
@@ -28,8 +28,8 @@ TABLE = assets.reference(UNIT_TUBE)
 
 @pytest.fixture(scope="module")
 def saved(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    folder = tmp_path_factory.mktemp("tube") / "bem_tube"
-    bem_tube().build().save(folder, steps=2)
+    folder = tmp_path_factory.mktemp("tube") / "mrs_tube"
+    mrs_tube().build().save(folder, steps=2)
     return folder
 
 
@@ -60,7 +60,7 @@ def test_the_saved_tube_experiment_loads_and_its_modal_script_fetches_its_assets
 
 def test_an_experiment_reading_no_remote_asset_writes_no_key(tmp_path: Path):
     folder = tmp_path / "ball"
-    free_space("ball", {"ball": BALL}, bem(mm(1.5))).build().save(folder, steps=2)
+    free_space("ball", {"ball": BALL}, mrs(mm(1.5))).build().save(folder, steps=2)
     assert "assets" not in lock_of(folder) and assets.folder_assets(folder) == ()
 
 

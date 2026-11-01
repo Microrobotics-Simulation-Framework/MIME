@@ -1,10 +1,10 @@
-"""The boundary-element rung's performance budget: the cost and memory of one solve of the 9,360-unknown system (the
+"""The MRS rung's performance budget: the cost and memory of one solve of the 9,360-unknown system (the
 0.2 surrogate's training mesh of de Jongh's FL-9, 3,120 samples, frozen in ``tests/differential/references/``),
-forward and differentiated, and of a step of ``Drag.BEM`` in a graph, by MADDENING 0.4's profiler.
+forward and differentiated, and of a step of ``Drag.MRS`` in a graph, by MADDENING 0.4's profiler.
 
-    JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 uv run --no-sync python scripts/bem_budget.py <out.json>
+    JAX_PLATFORMS=cpu JAX_ENABLE_X64=1 uv run --no-sync python scripts/mrs_budget.py <out.json>
     JAX_PLATFORMS=cuda JAX_ENABLE_X64=1 JAX_DEFAULT_MATMUL_PRECISION=highest uv run --no-sync python \
-        scripts/bem_budget.py <out.json>
+        scripts/mrs_budget.py <out.json>
 
 Not collected by pytest. Each time is the median of ``REPEATS`` runs after the first (which compiles), each blocked
 until its result is ready; the memory is XLA's own account of the compiled program (its arguments, outputs and
@@ -16,7 +16,7 @@ temporaries) and, on a GPU, the device's peak. What it measures:
   is, and not, for the memory the checkpoint saves;
 - ``factor``: the LU alone, and a Cholesky factorisation of the same matrix (symmetric positive definite on every
   case measured), for what a symmetric solve would save;
-- ``graph``: ``profile_graph`` on a free FL-9 body with ``Drag.BEM`` sampled at about the same count, its steps,
+- ``graph``: ``profile_graph`` on a free FL-9 body with ``Drag.MRS`` sampled at about the same count, its steps,
   compile and kernel counts."""
 
 import json
@@ -34,7 +34,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
-from mime.nodes.hydro.bem import blob_squared, resistance, rigid_motions, stokeslet_matrix  # noqa: E402
+from mime.nodes.hydro.mrs import blob_squared, resistance, rigid_motions, stokeslet_matrix  # noqa: E402
 
 REPEATS = 5
 WEIGHTS = jnp.asarray(np.diag([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
@@ -67,7 +67,7 @@ def device_peak() -> int | None:
 
 
 def main(out: Path) -> None:
-    held = np.load(ROOT / "tests" / "differential" / "references" / "port_bem_full.npz")
+    held = np.load(ROOT / "tests" / "differential" / "references" / "port_mrs_full.npz")
     points = jnp.asarray(held["helix_training/points"])
     weights = jnp.asarray(held["helix_training/weights"])
     count = int(points.shape[0])
@@ -108,13 +108,13 @@ def main(out: Path) -> None:
 
 
 def graph_profile() -> dict[str, object]:
-    from bem_cases import bem, free_space
+    from mrs_cases import mrs, free_space
     from maddening.core.simulation.profiler import profile_graph
     from script_a import fl9
 
     from mime.units import mm
 
-    built = free_space("budget", {"screw": fl9()}, bem(mm(0.178), patches=("lateral",))).build()
+    built = free_space("budget", {"screw": fl9()}, mrs(mm(0.178), patches=("lateral",))).build()
     node = built.graph.get_node("drag:screw")
     report = profile_graph(built.graph, n_steps=5, n_warmup=1, measure_coupling=False)
     return {"counts": node.constants()["counts"], "samples": int(np.prod(node.constants()["counts"][0])),

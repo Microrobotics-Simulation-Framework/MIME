@@ -49,20 +49,20 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import tube_fourier_bessel as fb
-from bem_cases import drag_node, free_space, resistance_at
+from mrs_cases import drag_node, free_space, resistance_at
 from maddening import sysid
 from maddening.core.params import ParamSpec, trainable_mask
 from tube_cases import TUBE_RADIUS, builder_table, haberman_sayre, polar_spacing, sphere_in_a_tube
 
 import mime.interactions.hydrodynamic as hydrodynamic
-import mime.nodes.hydro.bem._tube as tube_module
-import mime.nodes.hydro.bem._walls as walls
+import mime.nodes.hydro.mrs._tube as tube_module
+import mime.nodes.hydro.mrs._walls as walls
 from mime.build._maddening import node_state, parameter_leaves, parameter_specs
 from mime.build import BuildRefused
 from mime.gradients import GradientStatus
-from mime.nodes.hydro.bem import UNBOUNDED, BEMDragNode, frame_across, tube_correction, unit_tube_table, \
+from mime.nodes.hydro.mrs import UNBOUNDED, MRSDragNode, frame_across, tube_correction, unit_tube_table, \
     wall_correction_named
-from mime.nodes.hydro.bem._tube import axial_reach, tube_preparation
+from mime.nodes.hydro.mrs._tube import axial_reach, tube_preparation
 from mime.dynamics import RigidInertial
 from mime.experiment import Experiment
 from mime.interactions import Drag
@@ -365,7 +365,7 @@ def channel_experiment(wall_kind: str):
                                            angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare("ball.mass", kg(1e-5), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    experiment.attach(Drag.BEM(spacing=mm(0.3), blob=0.5, wall_kind=wall_kind), body="ball", medium="water")
+    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind=wall_kind), body="ball", medium="water")
     return experiment
 
 
@@ -401,12 +401,12 @@ SPHERE_TOLERANCE = 5e-3
 
 
 def drag_ratio(polar: int) -> float:
-    """The drag along the tube's axis on the sphere centred in the tube, through ``Drag.BEM`` with the tube's
+    """The drag along the tube's axis on the sphere centred in the tube, through ``Drag.MRS`` with the tube's
     correction on the series' table, over its drag in free space at the same samples."""
     spacing = polar_spacing(RATIO, polar)
     confined = resistance_at(sphere_in_a_tube("confined", radius=RATIO, spacing=spacing).build(), "ball")
     free = resistance_at(free_space("free", {"ball": Sphere(radius=m(RATIO * TUBE_RADIUS.value))},
-                                    Drag.BEM(spacing=spacing, blob=0.5, wall_kind="free_space")).build(), "ball")
+                                    Drag.MRS(spacing=spacing, blob=0.5, wall_kind="free_space")).build(), "ball")
     return float(confined[2, 2] / free[2, 2])
 
 
@@ -467,7 +467,7 @@ def test_a_body_moved_off_the_table_is_published_as_not_accepted(centred):
     assert off_the_table_is_published(centred)
 
 
-class _AlwaysAccepted(BEMDragNode):
+class _AlwaysAccepted(MRSDragNode):
     """A node whose step does not publish the reads' flag: it says every read was accepted."""
 
     def advance(self, p, state, boundary_inputs, dt):
@@ -475,7 +475,7 @@ class _AlwaysAccepted(BEMDragNode):
 
 
 def test_control_a_node_that_does_not_publish_the_flag_fails(monkeypatch):
-    monkeypatch.setattr(hydrodynamic, "BEMDragNode", _AlwaysAccepted)
+    monkeypatch.setattr(hydrodynamic, "MRSDragNode", _AlwaysAccepted)
     built = sphere_in_a_tube("unpublished", radius=RATIO, spacing=polar_spacing(RATIO, 6)).build()
     assert not off_the_table_is_published(built)
 
@@ -558,7 +558,7 @@ def two_sizes():
 def embedded(monkeypatch):
     """The route before the table was an argument, planted: the node holds no wall pytree as leaves, so the step reads
     the constant, and the graph's leaves are those it held then."""
-    monkeypatch.setattr(BEMDragNode, "_wall_trees", lambda self: [])
+    monkeypatch.setattr(MRSDragNode, "_wall_trees", lambda self: [])
 
 
 def lowered(built, *, as_before: bool = False) -> tuple[int, int, int]:

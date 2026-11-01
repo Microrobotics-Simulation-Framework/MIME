@@ -36,7 +36,7 @@ ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
     position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
     angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(Sphere(radius=mm(0.5)))}))
 exp.declare("ball.parts.shell.density", kg_per_m3(7850.0))
-exp.attach(Drag.BEM(), body=ball, medium=water)
+exp.attach(Drag.MRS(), body=ball, medium=water)
 exp.attach(Gravity(), body=ball, medium=water)
 exp.observe(SwimSpeed(ball, along=-Z, after=s(0.004)))
 
@@ -50,7 +50,7 @@ the one that matches a medium filling no region; the build report says both. Fou
 
 - the ball's density was declared with no reason;
 - water's viscosity record states no shear rate, which exploratory waives as an assumption;
-- the boundary-element drag's `spacing` and `blob` took their numerical defaults, each a stated rule with its basis,
+- the MRS drag's `spacing` and `blob` took their numerical defaults, each a stated rule with its basis,
   never a converged value. What was measured of the default is printed beside it, in numbers: how far a sphere's drag
   at the default spacing is from Stokes's law, and how far a screw's speed per turn is from the finest spacing
   measured, with how long a task of a first experiment's size takes at it.

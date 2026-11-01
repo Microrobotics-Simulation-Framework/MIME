@@ -4,9 +4,8 @@ own lock (design #190 item 7, ``mime.saved._versions``).
 ``previous/magnetic_ball/`` was written by MIME at the commit before 7l-a (e36c017), in float64 with one BLAS thread as
 the saved tests run, from the experiment below, with nothing of 7l-a's API in it: a resin ball with an N45 magnet inside,
 the magnet's remanence read from a vendor's record, accepted with a text and its nominal value declared, water's density
-read from its record, the resin's density declared with its reason. (It has no boundary-element drag: on this machine
-that rung's run is not bitwise the same in every fresh process, which a fixture held bit for bit cannot rest on.) It
-loads with its profile read as exploratory (the reason is in ``_versions``' docstring), its input hash reproduced
+read from its record, the resin's density declared with its reason. (It has no MRS drag: ``test_form_v2.py`` holds a version 2 folder with
+one.) It loads with its profile read as exploratory (the reason is in ``_versions``' docstring), its input hash reproduced
 exactly in the previous form, and it verifies. The controls: the same folder with its document edited after its lock
 is refused, and a previous document holding a key version 2 added is refused, as is a previous document beside a
 current lock.
@@ -52,8 +51,8 @@ from mime.saved import DOCUMENT_FILE, LOCK_FILE
 from mime.saved._folder import LoadRefused
 from mime.saved._versions import (
     PREVIOUS_PROFILE,
-    previous_document,
-    previous_resolved,
+    document_in_form,
+    resolved_in_form,
     upgraded_document,
     upgraded_lock,
 )
@@ -126,20 +125,21 @@ def test_the_control_a_previous_document_beside_a_current_lock_is_refused(tmp_pa
 
 def test_the_upgrade_and_the_previous_form_are_inverse():
     document = yaml.safe_load((FIXTURE / DOCUMENT_FILE).read_text())
-    upgraded, previous = upgraded_document(document)
-    assert previous and upgraded["profile"] == "exploratory" and upgraded["sources"] == {}
-    assert previous_document(upgraded) == document
+    upgraded, version, renamed = upgraded_document(document)
+    assert version == 1 and renamed == () and upgraded["profile"] == "exploratory" and upgraded["sources"] == {}
+    assert upgraded["schema"] == "mime.document/3"
+    assert document_in_form(upgraded, 1) == document
     lock = json.loads((FIXTURE / LOCK_FILE).read_text())
-    upgraded_held, previous = upgraded_lock(lock)
-    assert previous and previous_resolved(upgraded_held["resolved"]) == lock["resolved"]
-    assert upgraded_document({**document, "schema": "mime.document/2"}) == ({**document, "schema": "mime.document/2"},
-                                                                           False)
+    upgraded_held, version = upgraded_lock(lock)
+    assert version == 1 and resolved_in_form(upgraded_held["resolved"], 1) == lock["resolved"]
+    current = {**document, "schema": "mime.document/3"}
+    assert upgraded_document(current) == (current, 3, ())
 
 
 def test_a_previous_folder_saved_again_is_of_the_current_form(tmp_path: Path):
     experiment = Experiment.load(copied(tmp_path))
     experiment.save(tmp_path / "again")
-    assert yaml.safe_load((tmp_path / "again" / DOCUMENT_FILE).read_text())["schema"] == "mime.document/2"
+    assert yaml.safe_load((tmp_path / "again" / DOCUMENT_FILE).read_text())["schema"] == "mime.document/3"
     assert Experiment.load(tmp_path / "again").load_report is not None
 
 

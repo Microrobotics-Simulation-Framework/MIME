@@ -4,7 +4,7 @@ Shahar 1978, without the v0.2 builder's defect) restructured for a tensor-produc
 The unit tube (radius 1, viscosity 1); the image of any tube is ``G(x / R) / (R mu)``. A source sits at
 ``(rho_s, 0, 0)``; a target at ``(rho_t, dphi, dz)`` in cylindrical coordinates. A block's rows are the velocity's
 cylindrical components at the target (radial, azimuthal, axial), its columns the force's at the source, as the table
-``mime.nodes.hydro.bem._tube`` reads holds them.
+``mime.nodes.hydro.mrs._tube`` reads holds them.
 
 **The restructuring.** The wall's Fourier coefficients depend only on the source's radius, so one source radius is one
 job. For each axial wavenumber ``k`` and angular mode ``n`` the wall condition fixes three coefficients per force
@@ -608,7 +608,7 @@ def knot_reciprocity(data: np.ndarray) -> np.ndarray:
     """Each knot's miss of reciprocity, ``(rho_t, rho_s, angle, along)``: the table's block ``G(t, s)`` against the
     transpose of ``G(s, t)`` (the radii exchanged at the same angle and offset, the entries odd in exactly one of the
     angle and the offset changing sign), over ``G(t, s)``'s largest entry. It is a check of the file's knots alone: the
-    tube's evaluator blends every read with its reciprocal (``mime.nodes.hydro.bem._tube``), so a read through it is
+    tube's evaluator blends every read with its reciprocal (``mime.nodes.hydro.mrs._tube``), so a read through it is
     reciprocal whatever the table holds."""
     sign = np.where(SIN_IN_ANGLE ^ SIN_ALONG, -1.0, 1.0)
     miss = np.empty(data.shape[:4])

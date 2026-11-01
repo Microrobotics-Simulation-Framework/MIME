@@ -103,7 +103,7 @@ def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ..
 
 def attached_validity(plan: EntryPlan) -> tuple[str, ...]:
     """An entry's declared validity lines, less those of its rungs other than the one attached: a line that starts
-    with another rung's name and a colon (``bem: ...`` beside an attached ``surrogate``) does not hold for this
+    with another rung's name and a colon (``mrs: ...`` beside an attached ``surrogate``) does not hold for this
     build."""
     cls = plan.registered.cls
     rung = getattr(plan.entry, "rung", None)

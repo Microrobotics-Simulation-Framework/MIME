@@ -235,13 +235,13 @@ def test_the_toy_family_page_prints_its_contract_its_members_and_a_comparison_wi
 
 
 def test_the_hydrodynamic_family_page_prints_its_contract_its_rungs_and_their_comparison(built):
-    """Its second built rung, the BEM, starts the comparison: a row for each rung, no cell blank."""
+    """Its second built rung, the MRS, starts the comparison: a row for each rung, no cell blank."""
     page = text_of(built, "pages/families/hydrodynamic.md")
     assert "the resistance dissipates" in page and "## Members" in page
     assert "[`surrogate`](../entries/interaction/drag.md#rung-surrogate)" in page
-    assert "[`bem`](../entries/interaction/drag.md#rung-bem)" in page
+    assert "[`mrs`](../entries/interaction/drag.md#rung-mrs)" in page
     rows = [line for line in page.split("## Comparison", 1)[1].splitlines() if line.startswith("| [")]
-    assert [row.split("`")[1] for row in rows] == ["drag surrogate", "drag bem"]
+    assert [row.split("`")[1] for row in rows] == ["drag surrogate", "drag mrs"]
     assert all(all(cell.strip() for cell in row.strip("|").split("|")) for row in rows)
 
 
@@ -256,7 +256,7 @@ def test_the_at_a_glance_block_links_the_other_homes_and_copies_none_of_them(bui
     page = text_of(built, "pages/entries/interaction/drag.md")
     glance = page.split("## At a glance", 1)[1].split("\n## ", 1)[0]
     assert "[`hydrodynamic`](../../families/hydrodynamic.md), with 2 built rungs among its members" in glance
-    assert "(../../nodes/SurrogateDragNode.md)" in glance and "(../../nodes/BEMDragNode.md#governing-equations)" in glance
+    assert "(../../nodes/SurrogateDragNode.md)" in glance and "(../../nodes/MRSDragNode.md#governing-equations)" in glance
     assert "Undocumented, so with no equations to link: [`SurrogateDragNode`](../../nodes/SurrogateDragNode.md)" in glance
     assert "$$" not in page
 
@@ -651,13 +651,13 @@ def rung_problems(entry_text: str, family_text: str, record: dict) -> list[str]:
 
 
 def test_each_rung_prints_its_own_status_and_only_its_own_switches(built, export):
-    """Drag's surrogate rung is ``piecewise_jump`` with its nine switches, its bem rung ``exact`` with none: each rung's
+    """Drag's surrogate rung is ``piecewise_jump`` with its nine switches, its mrs rung ``exact`` with none: each rung's
     section, the glance, the gradient section and the family page say so of each."""
     record = next(entry for entry in export["entries"] if entry["name"] == "drag")
     held = record["class_vars"]["rung_gradients"]["value"]
     assert {rung: value["differentiability"] for rung, value in held.items()} == {"surrogate": "piecewise_jump",
-                                                                                  "bem": "exact"}
-    assert len(held["surrogate"]["gradient"]["switches"]) == 9 and held["bem"]["gradient"] is None
+                                                                                  "mrs": "exact"}
+    assert len(held["surrogate"]["gradient"]["switches"]) == 9 and held["mrs"]["gradient"] is None
     problems = rung_problems(text_of(built, page_of(record)), text_of(built, "pages/families/hydrodynamic.md"),
                              record)
     assert problems == []
@@ -678,4 +678,4 @@ def test_control_pages_that_print_the_entrys_status_for_every_rung_fail(export, 
     context = Context(tuple(export["entries"]), {"hydrodynamic": hydrodynamic}, {}, {})
     problems = rung_problems(entry_page(record, context).text, family_page(hydrodynamic, context).text, record)
     print("\n" + "\n".join(problems))
-    assert any("bem" in problem for problem in problems)
+    assert any("mrs" in problem for problem in problems)

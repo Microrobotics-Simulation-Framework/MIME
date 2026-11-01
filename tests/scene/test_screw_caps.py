@@ -29,8 +29,8 @@ from mime.units import dimensionless, m
 
 #: The anomaly's closest pair on 0.1.0's caps, in spacings: the control's planted pair.
 CROWDED = 0.005
-#: A wall-table BEM's working spacings for FL-9 (7j-a's two and the convergence ladder's next), m.
-BEM_SPACINGS = (0.3e-3, 0.178e-3, 0.140e-3, 0.100e-3)
+#: A wall-table MRS's working spacings for FL-9 (7j-a's two and the convergence ladder's next), m.
+MRS_SPACINGS = (0.3e-3, 0.178e-3, 0.140e-3, 0.100e-3)
 EPS = float(np.finfo(np.float64).eps)
 
 
@@ -195,10 +195,10 @@ def test_control_a_cap_with_a_sample_dropped_fails_the_symmetry_check(starts):
     assert asymmetry(points[:, :-1], starts) > 1e-3
 
 
-@pytest.mark.parametrize("spacing", BEM_SPACINGS)
-def test_fl9_keeps_the_polar_grids_count_at_a_bems_spacings(spacing):
+@pytest.mark.parametrize("spacing", MRS_SPACINGS)
+def test_fl9_keeps_the_polar_grids_count_at_an_mrs_rungs_spacings(spacing):
     """FL-9's caps carry the polar grid's own count at every working spacing, ``outward x around`` less at most one
-    sample for its two starts' symmetry: a BEM's blob, set by the samples' mean spacing, is within a part in a
+    sample for its two starts' symmetry: an MRS's blob, set by the samples' mean spacing, is within a part in a
     thousand of the one 0.1.0 gave."""
     kind, held = kind_at(2, 0.33, 2.33)
     (total,) = kind.sample_counts(held, spacing, "caps")
@@ -245,7 +245,7 @@ def test_each_caps_area_and_moments_are_as_accurate_as_the_polar_grids(starts, m
     assert np.all(rings <= np.maximum(grid, floor_of(weights)))
 
 
-@pytest.mark.parametrize("spacing", BEM_SPACINGS)
+@pytest.mark.parametrize("spacing", MRS_SPACINGS)
 def test_control_the_outer_rings_weights_moved_by_a_part_in_a_billion_fail_the_moments(spacing):
     kind, held = kind_at(2, 0.33, 2.33)
     counts = kind.sample_counts(held, spacing, "caps")
@@ -273,7 +273,7 @@ def test_a_count_that_cannot_keep_the_sections_symmetry_is_refused():
         kind.samples(held, "caps", (302,))
 
 
-# -- the matrix a boundary-element solve factorises --------------------------------------------------------------------
+# -- the matrix an MRS solve factorises --------------------------------------------------------------------
 
 #: The least eigenvalue of one cap's free-space regularised-Stokeslet matrix over its largest, below which it reads as
 #: singular. A declaration: two orders under the rings' at FL-9 (4.7e-4 at 0.178 mm, 7.8e-4 at 0.3 mm, measured on the
@@ -284,8 +284,8 @@ CONDITIONED = 1e-5
 
 def conditioning(points: np.ndarray, kind, held, spacing) -> float:
     """``lambda_min / lambda_max`` of the regularised-Stokeslet matrix of ``points`` with the blob a closed surface at
-    ``spacing`` gives (0.5 of the samples' mean spacing), as a BEM would solve with."""
-    from mime.nodes.hydro.bem import stokeslet_matrix
+    ``spacing`` gives (0.5 of the samples' mean spacing), as an MRS would solve with."""
+    from mime.nodes.hydro.mrs import stokeslet_matrix
 
     lateral = kind.sample_counts(held, spacing, "lateral")
     count = math.prod(lateral) + 2 * math.prod(kind.sample_counts(held, spacing, "caps"))

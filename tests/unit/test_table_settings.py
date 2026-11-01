@@ -191,7 +191,7 @@ def test_a_scheme_per_axis_the_same_on_every_axis_is_that_scheme_bit_for_bit(nam
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
 def test_a_read_whose_arguments_share_a_coordinate_is_the_read_of_them_broadcast_bit_for_bit(dtype):
-    """The BEM's form: every pair of 24 points, the first two axes a point's own coordinate as a column and a row, the
+    """The MRS's form: every pair of 24 points, the first two axes a point's own coordinate as a column and a row, the
     others per pair. Value, flags, forward mode's derivative along every axis, and reverse mode's along each pair's
     own axes (a radius's reverse derivative sums its pairs', in an order of XLA's)."""
     table = case("cubic-4")

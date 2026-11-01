@@ -2,7 +2,7 @@
 from it as data. The domain's near-wall edge itself is **open, the maintainer's decision**; nothing here sets it.
 
 ``references/near_wall_check.json`` is the check ``mime.surrogates.generator`` declares (``NEAR_WALL_*``): FL-9 resting
-on the floor of the 1/4 in tube, its closed surface, at six spacings and nine gaps, through ``Drag.BEM`` in the tube
+on the floor of the 1/4 in tube, its closed surface, at six spacings and nine gaps, through ``Drag.MRS`` in the tube
 wall kind (the shipped table), in float64 on Modal CPU containers (``scripts/surrogate/modal_app.py``), with the commit
 and the table's sha256 recorded. ``wall_excess`` takes, at each spacing but the finest, the error at each gap beyond
 the error at the far gap (the body's own discretisation error, MIME-ANO-116, which the wall does not add to), the

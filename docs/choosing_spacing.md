@@ -1,7 +1,7 @@
 # Choosing `spacing` and `dt`
 
-Two numbers decide what a boundary-element run costs and what its answer is worth, and neither has a right value in
-general: **`spacing`**, how far apart the samples on the body's surface are (`Drag.BEM(spacing=...)`), and **`dt`**, the
+Two numbers decide what an MRS run costs and what its answer is worth, and neither has a right value in
+general: **`spacing`**, how far apart the samples on the body's surface are (`Drag.MRS(spacing=...)`), and **`dt`**, the
 base step. This page measures both on the two examples, [`examples/sphere_settling.py`](../examples/sphere_settling.py)
 and [`examples/screw_in_tube.py`](../examples/screw_in_tube.py), so that the choice is made from numbers and not from
 advice. Where `spacing` is left out, a first-look default is taken (`built.report.pending()` says so, and what was
@@ -120,7 +120,7 @@ a run, since a resistance costs seconds where the run costs minutes.
 
 ### The default, and a coarse ladder that stalls
 
-The default (`Drag.BEM()` with no `spacing`) is in the table: 0.829 mm, which differs from the 0.83 mm row by a tenth of
+The default (`Drag.MRS()` with no `spacing`) is in the table: 0.829 mm, which differs from the 0.83 mm row by a tenth of
 a per cent in spacing and by a good deal in the answer. The screw's samples are a ring of 16 round the turn at each of
 `ceil(length / spacing)` stations along the axis, and two caps of 31 samples each; the length is 7.47 mm, so 0.83 mm gives 9 stations
 (144 samples, 206 with the caps) and 0.829 mm gives 10 (160, 222). **The count of samples, not the spacing, sets the

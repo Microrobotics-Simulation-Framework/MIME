@@ -47,7 +47,7 @@ ball = exp.add_body(Body("ball", dynamics=RigidInertial(), initial=State(
     position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
     angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(10.0)))}))
 exp.declare("ball.parts.steel.density", kg_per_m3(7850.0))
-exp.attach(Drag.BEM(), body=ball, medium=water)
+exp.attach(Drag.MRS(), body=ball, medium=water)
 exp.attach(Gravity(), body=ball, medium=water)
 settling = exp.observe(SwimSpeed(ball, along=-Z, after=ms(2.0)))
 
@@ -59,7 +59,7 @@ built.save("settling_ball")
 ```
 
 The build took standard gravity by convention, the drag's wall kind from the medium (it fills no region, so free
-space), and the boundary-element drag's `spacing` and `blob` from their numerical defaults, each a stated rule and
+space), and the MRS drag's `spacing` and `blob` from their numerical defaults, each a stated rule and
 never a converged value. Stokes's law gives 1.493 mm/s for this ball at standard gravity (9.80665 m/s^2, the convention
 the build took); the run gives a speed within two per cent of it, and its result says at what Reynolds number it
 settled and that it is inside the range the model is declared for (the watch is in

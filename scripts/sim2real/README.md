@@ -8,7 +8,7 @@ a measurement: FL-9 (de Jongh et al. 2025) on the floor of the 1/4" water-filled
 |---|---|
 | `operating_point.py` | script A's reproduction arm with every declared value and setting as an argument (the drag's rung, the surrogate's weights, the lubrication, the contact margin, the time step, the moment, the field, the densities, the viscosity, the inertia); the floored pose from the graph's own leaves; the swim speeds read from a resistance (`axial`, `lateral_free`, `wall_held`); a run's steady speed by phase 0's rule |
 | `surrogate.py` | the surrogate's rungs on the CPU: its resistance alone and with its lubrication at the floored pose, the full dynamics with the lubrication on and off, the time step's convergence, the margin's sweep, the dynamics' finite differences across the budget's ranges (the rung is `piecewise_jump`), the coupling groups, and that the experiment is script A's |
-| `bem.py` | the BEM rung (`Drag.BEM` in the `tube` wall kind) at the floored pose over eight phases of the half turn: closed and lateral, two spacings, MIME-ANO-114's offsets with the surrogate beside, the blob, the margin, the table's read error, and the budget by `maddening.sysid.fim(..., scale="nominal")` with its finite-difference check |
+| `bem.py` | the BEM rung (`Drag.MRS` in the `tube` wall kind) at the floored pose over eight phases of the half turn: closed and lateral, two spacings, MIME-ANO-114's offsets with the surrogate beside, the blob, the margin, the table's read error, and the budget by `maddening.sysid.fim(..., scale="nominal")` with its finite-difference check |
 | `modal_app.py` | `bem.py`'s parts and the BEM rung's full dynamics on an A100, float64 at the highest matmul precision (`modal` is no dependency of MIME) |
 | `assemble.py` | the breakdown from the parts' JSON: the ladder, the model-internal gaps, the budget's bands, every control's verdict, the bit-for-bit check |
 | `prereg.py` | the preregistration: the commit, the scripts, the table, the weights and the meshes, hashed before any run |
@@ -17,6 +17,11 @@ a measurement: FL-9 (de Jongh et al. 2025) on the floor of the 1/4" water-filled
 | `capfix.py` | MIME-ANO-119's fix checked at A: the screw kind's ring caps against its earlier polar grid (rebuilt here, its hash checked against the preregistration's): the speed, the matrix's spectrum and Cholesky factor at each phase, the free-space resistance, the derivative's finite-difference check with its planted control, and the correction's fine scale scan |
 | `capfix_modal.py`, `capfix_launch.py` | `capfix.py`'s stages in one detached call on an A100-40GB, each stage's result written to a Volume as it finishes; the launcher starts it at most three times and never beside a running or started run |
 | `predictions_capfix.json` | committed before any of the fix's computations at A, never edited after a result |
+
+The library's rung `bem` is the rung `mrs` since the rename of 0.3.0's drag (the method of regularised Stokeslets). These
+scripts keep their own names for their arms and outputs (`bem.py`, `bem_*.json`, the arm `"bem"`), which the frozen
+predictions and the preregistration key on; only what calls the library (`Drag.MRS`, `mime.nodes.hydro.mrs`,
+`MRSDragNode`) was renamed, so these scripts' bytes are no longer the ones `preregistration_7ja.json` hashed.
 
 The surrogate's rows use `dejongh_mlp_v2`, trained through the 2026-05-21 tables (MIME-ANO-117) until phase 7i ships
 retrained weights; `--weights <asset>` re-runs every surrogate row with another (`surrogate.py`, `bem.py --part

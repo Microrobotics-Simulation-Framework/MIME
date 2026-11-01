@@ -14,7 +14,7 @@ import time
 
 #: One BLAS thread per process. JAX's CPU linear algebra (an LU, a Cholesky) runs through SciPy's OpenBLAS, whose
 #: threads wait by spinning: with pytest-xdist's workers on every core, a test of many small solves ran seven times
-#: slower than on one free core (the BEM's family suite, measured with three cores busy: 303 s, and 35 s with one
+#: slower than on one free core (the MRS's family suite, measured with three cores busy: 303 s, and 35 s with one
 #: thread). Set before SciPy is first imported, which is when OpenBLAS reads it; a value already set is kept.
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 #: The suite runs MIME's errors in full: every frame and every chained error, so that a failing test's error shows

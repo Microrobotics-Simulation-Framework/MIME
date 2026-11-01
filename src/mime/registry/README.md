@@ -79,7 +79,7 @@ geometry kind's region already exposes, or `None` for a medium that fills no reg
 reads (`reads`; the geometry kind stays the surface's one authority), its `form` (`analytic`, a correction to the
 free-space kernel, or `meshed`, the wall's own samples as unknowns, none built yet), its validity and its gradient
 status. What a solver does with a kind is the solver's, registered by the solver under the kind's name and version:
-the boundary-element method's correction (`mime.nodes.hydro.bem`). `wall_kinds_matching(shape)` lists the kinds that
+the MRS's correction (`mime.nodes.hydro.mrs`). `wall_kinds_matching(shape)` lists the kinds that
 match a region. MIME's kinds are in `mime.walls`.
 
 Since phase 7a2: **`ChainSegment`**, the dynamics base of a chain segment (its frames, commands and description in

@@ -12,12 +12,12 @@ from maddening.core.node import SimulationNode
 from typing_extensions import NoExtraItems
 
 import mime.nodes
-import mime.scene  # noqa: F401 - registers the sphere kind the boundary-element node is made with
+import mime.scene  # noqa: F401 - registers the sphere kind the MRS node is made with
 from mime.core import MimeNode
 from mime.core.multibody import read_urdf
 from mime.data import asset
 from mime.nodes import actuation, body, control, hydro, magnetic
-from mime.nodes.hydro import bem
+from mime.nodes.hydro import mrs
 
 DT = 1e-3
 TUBE = dict(surface_shape="cylinder", extent=1e-3, margin=1e-4, velocity_rule="remove_outward",
@@ -60,9 +60,9 @@ TYPED = [
      {"flux_density_r", "gradient_r", "points_r"}),
     (magnetic.MagneticForceNode("f", DT, moment=(0, 1e-3, 0), magnet_centre=(0, 0, 0)), body.Wrench,
      magnetic.MagneticForceInputs, set()),
-    (bem.BEMDragNode("e", DT, viscosity=1e-3, blob=0.5, kind="sphere", kind_version="0.1.0", patches=("surface",),
+    (mrs.MRSDragNode("e", DT, viscosity=1e-3, blob=0.5, kind="sphere", kind_version="0.1.0", patches=("surface",),
                      counts=((3, 5),), part_centre=(0.0, 0.0, 0.0), part_rotation=(1, 0, 0, 0, 1, 0, 0, 0, 1),
-                     wall_kind="free_space", wall_kind_version="0.1.0", shape_radius=1e-3), bem.BEMDragState, bem.BEMDragInputs, set()),
+                     wall_kind="free_space", wall_kind_version="0.1.0", shape_radius=1e-3), mrs.MRSDragState, mrs.MRSDragInputs, set()),
     (control.ControllerNode("k", DT, step=lambda state, reads: (state, {"angle": reads["pose"][4]}),
                             controller="toy 0.0.0", reads={"pose": ("m; 1", (7,))},
                             initial_state={"filtered": jnp.zeros(())}, initial_writes={"angle": jnp.zeros(())}),
