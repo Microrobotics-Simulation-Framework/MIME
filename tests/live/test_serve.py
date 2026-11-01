@@ -205,22 +205,27 @@ def test_stop_ends_a_long_step_within_a_chunk(folder, tmp_path):
     import threading
 
     process = started(folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
-    stepper, stopper = client(tmp_path / "ready.json"), client(tmp_path / "ready.json")
-    answers: list[dict] = []
-    thread = threading.Thread(target=lambda: answers.append(stepper.request("step", chunks=10 ** 9)))
-    thread.start()
-    stepper.frame()
-    stepper.frame()  # the first chunk compiled: the step is under way
-    assert stopper.request("status")["stepping"] > 0  # the server takes other requests during the step
-    asked = time.monotonic()
-    stopped = stopper.request("stop")
-    took = time.monotonic() - asked
-    thread.join(timeout=30)
-    assert stopped["state"] == "stopped" and took < 2.0, took
-    assert answers and answers[0]["ok"] and answers[0]["state"] == "stopped" and answers[0]["stepping"] == 0
-    assert process.wait(timeout=60) == 0
-    stepper.close()
-    stopper.close()
+    try:
+        stepper, stopper = client(tmp_path / "ready.json"), client(tmp_path / "ready.json")
+        answers: list[dict] = []
+        thread = threading.Thread(target=lambda: answers.append(stepper.request("step", chunks=10 ** 9)), daemon=True)
+        thread.start()
+        stepper.frame()
+        stepper.frame()  # the first chunk compiled: the step is under way
+        assert stopper.request("status")["stepping"] > 0  # the server takes other requests during the step
+        asked = time.monotonic()
+        stopped = stopper.request("stop")
+        took = time.monotonic() - asked
+        thread.join(timeout=30)
+        assert stopped["state"] == "stopped" and took < 2.0, took
+        assert answers and answers[0]["ok"] and answers[0]["state"] == "stopped" and answers[0]["stepping"] == 0
+        assert process.wait(timeout=60) == 0
+        stepper.close()
+        stopper.close()
+    finally:  # a server left stepping 10^9 chunks is stopped here, whatever failed
+        if process.poll() is None:
+            process.kill()
+            process.wait()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows has no SIGTERM to send a process")
@@ -228,17 +233,22 @@ def test_sigterm_ends_a_long_step_within_a_chunk(folder, tmp_path):
     import threading
 
     process = started(folder, tmp_path / "out", tmp_path / "ready.json", "--unpaced")
-    live = client(tmp_path / "ready.json")
-    thread = threading.Thread(target=lambda: live.request("step", chunks=10 ** 9), daemon=True)
-    thread.start()
-    live.frame()
-    live.frame()
-    asked = time.monotonic()
-    process.send_signal(signal.SIGTERM)
-    assert process.wait(timeout=60) == 0 and time.monotonic() - asked < 5.0
-    assert (tmp_path / "out" / "outputs.json").is_file()
-    thread.join(timeout=10)
-    live.close()
+    try:
+        live = client(tmp_path / "ready.json")
+        thread = threading.Thread(target=lambda: live.request("step", chunks=10 ** 9), daemon=True)
+        thread.start()
+        live.frame()
+        live.frame()
+        asked = time.monotonic()
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=60) == 0 and time.monotonic() - asked < 5.0
+        assert (tmp_path / "out" / "outputs.json").is_file()
+        thread.join(timeout=10)
+        live.close()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
 
 
 def test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole(folder, tmp_path):
