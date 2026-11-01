@@ -117,7 +117,7 @@ quadrature resolves the near field the point forces did not, at the same count o
 rises as the spacing falls: in the tube the speed at 0.3 mm (1714 force points) lies -1.8% from the speed at 0.16 mm (5984), and in free space the rows approach the reference from below and
 the finest passes it. **In the tube the rows lie further from the finest than the same rows in free space lie from the
 reference**: the wall's image is taken at the force points, which resolve it less well than the fine quadrature
-resolves the body's own near field, so the tube's own effect on the speed converges more slowly (MIME-ANO-129). A
+resolves the body's own near field, so the tube's own effect on the speed converges more slowly (MIME-ANO-130). A
 value to put in a paper needs a spacing at which the speed has stopped changing to the accuracy wanted; run the
 resistance in float64 at two or three spacings, as the script does, before a run, since a resistance costs seconds
 where the run in the tube costs minutes.

@@ -42,10 +42,35 @@ distance to the wall, which the force points resolve while the body is more than
 and any kind not measured) the count of force points 0.3.0 took, the blob a tenth of their spacing and the quadrature
 twenty times finer; for a screw the coarsest count that keeps its shape, the blob a quarter and the quadrature eight
 times finer. The quadrature's refinement, when not written, is two over the blob. The build refuses a free resistance whose
-symmetric part is not positive definite, or which is symmetric only to more than a hundredth of itself, and, with a
-wall, a resistance at the body's starting pose that is not positive definite (`drag.mrs-resistance`: a body within
-about a force spacing of the wall, MIME-ANO-129); and a force point with no quadrature point in its cell
+symmetric part is not positive definite, or which is symmetric only to more than a hundredth of itself (a check for
+gross defects only: the point forces are symmetric to rounding however far off they are), and, with a wall, a
+resistance at the body's starting pose that is not positive definite (`drag.mrs-resistance`); a refinement written
+below its rule's where the rule's quadrature moves the free resistance's significant entries by more than a twentieth
+(`drag.mrs-quadrature`: that move estimates the written quadrature's error, and it predicted the free-space misses
+measured, the point forces' at a small blob among them); and a force point with no quadrature point in its cell
 (`drag.empty-cell`).
+
+**Near a wall** (MIME-ANO-130 holds the numbers). The wall's image is a kernel between any targets and any source
+cells, the wall kind's own: the step integrates it over each force point's cell on a quadrature `wall_refinement` times
+finer than the force spacing, each cell's weights scaled to its area, as the free part is integrated (with a
+`wall_refinement` of one, the image at the force points, as before; the same kernel will take one body's force points against
+another's cells). Taken at the force points alone, the image left the confined resistance indefinite with the body
+close to the wall, on the point forces as on the separated quadrature, its sign changing with micrometres of the pose;
+integrated, it is definite further in, and still not at the closest gaps of a coarse spacing. So:
+
+- a confined body that a contact holds off the wall takes, by default, a force spacing no coarser than its closest
+  approach over `CONFINED_GAP` force spacings, the band the resistance was measured indefinite in, and the build report
+  states what that costs: the force points, the unknowns a step solves and the image's reads;
+- each step with a wall judges its resistance before the body takes it: one that is not positive definite (its least
+  eigenvalue, each row and column scaled by its diagonal, not above zero) is replaced by NaN and the run stops at that
+  step, `drag.mrs-indefinite`, naming the step, the pose, the body's least distance from the wall and a force spacing
+  that clears it; a step with the body within one force spacing of the wall raises the flag `near_wall`, and one whose
+  resistance is symmetric only to more than a twentieth of itself raises `asymmetric` (its error is at least half that
+  share). The check is on the resistance the node delivers, so it holds for any solve that delivers one.
+
+**Several bodies.** Each body's drag is computed alone, from its own pose and the medium's wall: a second body in the
+same medium changes neither's, on either rung, since no hydrodynamic interaction between bodies is built in MIME 0.3.0.
+The build report says which bodies share a medium.
 
 `wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
 no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.
@@ -55,10 +80,12 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
 - Where the cost matters near a wall: each step with a wall solves a dense system of three unknowns per force point,
   so its cost grows as the cube of their count; the coarsest spacing that resolves the body's shape is the one to
   write.
-- On its separated quadrature within about a force spacing of a wall: the wall's image is taken at the force points,
-  which do not resolve it there, and the resistance can be indefinite (a body resting on a tube's floor is refused when
-  built, MIME-ANO-129). Take the point forces there, a quadrature refinement of one, whose image and free part are taken at
-  the same points.
+- Within a fraction of a force spacing of a wall at a coarse spacing: the resistance can be indefinite there even
+  with the image integrated over each cell, and a run that reaches one stops (MIME-ANO-130). The point forces (a
+  quadrature refinement of one) are no way out: they were measured indefinite near the wall at every spacing mapped.
+  Write a finer force spacing, as the refusal says, or hold the body further from the wall. A definite resistance close
+  to the wall is not shown accurate.
+- On a laptop with less memory than script A's frozen point needs on this rung (MIME-ANO-130 states it).
 - For a body whose hull is several parts, or whose kind gives no samples: refused when planned.
 - Where the error must be bounded rather than estimated: the regularised method's error is measured, never bounded,
   against the sphere's exact regularised drag and Stokes's law, the prolate spheroid's closed form, Haberman and

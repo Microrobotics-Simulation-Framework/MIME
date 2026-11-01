@@ -71,11 +71,11 @@ class Chunks:
     cells: int
 
     @classmethod
-    def of(cls, owners: np.ndarray, cells: int, itemsize: int = 8) -> Chunks:
+    def of(cls, owners: np.ndarray, cells: int, itemsize: int = 8, pair_values: int = PAIR_VALUES) -> Chunks:
         """The chunks of a quadrature whose point ``q`` is in cell ``owners[q]`` of ``cells``: as many points to a
-        chunk as :data:`CHUNK_BYTES` holds against every force point."""
+        chunk as :data:`CHUNK_BYTES` holds against every force point, each pair ``pair_values`` floating values."""
         count = len(owners)
-        size = max(1, min(count, CHUNK_BYTES // (cells * PAIR_VALUES * itemsize)))
+        size = max(1, min(count, CHUNK_BYTES // (cells * pair_values * itemsize)))
         order = np.argsort(owners, kind="stable")
         chunks = -(-count // size)
         points = np.full(chunks * size, count, dtype=np.int32)
@@ -109,36 +109,70 @@ def cell_moments(points: Array, weights: Array, owners: np.ndarray, cells: int) 
     return area, first / area[:, None]
 
 
-def separated_matrix(force: Array, points: Array, weights: Array, chunks: Chunks, eps_squared: Any) -> Array:
-    """``A``, ``3N x 3N`` at unit viscosity: the velocity at each of the ``N`` force points per unit traction on each
-    cell, ``sum over q in cell n of S_eps(x_m, y_q) w_q``, from the quadrature's ``points`` and ``weights`` taken in
-    ``chunks`` (the module's docstring)."""
-    count = force.shape[0]
+#: A kernel between two point sets: the ``3 x 3`` block at each target per unit force at each source, ``(T, S, 3, 3)``
+#: from ``targets`` ``(T, 3)`` and ``sources`` ``(S, 3)``, and whether every evaluation was accepted (a wall's table read
+#: inside its range; always for a closed form).
+type Kernel = Callable[[Array, Array], tuple[Array, Array]]
+
+
+def cell_integrated(kernel: Kernel, targets: Array, points: Array, weights: Array, chunks: Chunks) -> tuple[
+        Array, Array]:
+    """A kernel integrated over source cells: ``3T x 3C``, the velocity at each of the ``T`` targets per unit traction on
+    each of the ``C`` cells, ``sum over q in cell c of K(x_t, y_q) w_q``, the quadrature's ``points`` and ``weights``
+    taken in ``chunks`` (each chunk's pairs with every target made, summed into the window of cells it covers and
+    dropped: never an array of every target against every source); and whether every evaluation was accepted. The seam
+    between any targets and any body's cells: the free part's matrix is the regularised Stokeslet's
+    (:func:`separated_matrix`, targets the body's own force points), a wall's image the wall's kernel
+    (``mime.nodes.hydro.mrs.cell_image``), and a body's cells against another body's force points the same call. The
+    chunks are cut for the kernel's temporaries (``Chunks.of``'s ``pair_values``: a tabulated kernel holds more)."""
+    count = targets.shape[0]
     held, mass = padded(points, weights)
-    eye = jnp.eye(3, dtype=force.dtype)
     width = chunks.width
 
-    def window(index: Array, slot: Array) -> Array:
-        y, w = held[index], mass[index]
-        r = force[None, :, :] - y[:, None, :]
-        r2 = jnp.sum(r * r, axis=-1)
-        s = w[:, None] / (8.0 * math.pi * (r2 + eps_squared) ** 1.5)
-        blocks = s[..., None, None] * (r[..., :, None] * r[..., None, :] + (r2 + 2.0 * eps_squared)[..., None, None]
-                                       * eye)
-        return _ops.segment_sum(blocks, slot, num_segments=width, indices_are_sorted=True)
+    def window(index: Array, slot: Array) -> tuple[Array, Array]:
+        blocks, accepted = kernel(targets, held[index])
+        weighted = (blocks * mass[index][None, :, None, None]).transpose(1, 0, 2, 3)
+        return _ops.segment_sum(weighted, slot, num_segments=width, indices_are_sorted=True), accepted
 
     made = checkpoint(window)
 
-    def add(matrix: Array, chunk: tuple[Array, Array, Array]) -> tuple[Array, None]:
+    def add(carry: tuple[Array, Array], chunk: tuple[Array, Array, Array]) -> tuple[tuple[Array, Array], None]:
+        matrix, accepted = carry
         index, slot, start = chunk
         zero = jnp.zeros((), dtype=start.dtype)
         held_window = _lax.dynamic_slice(matrix, (start, zero, zero, zero), (width, count, 3, 3))
-        return _lax.dynamic_update_slice(matrix, held_window + made(index, slot), (start, zero, zero, zero)), None
+        found, ok = made(index, slot)
+        return (_lax.dynamic_update_slice(matrix, held_window + found, (start, zero, zero, zero)),
+                accepted & ok), None
 
-    start = jnp.zeros((count, count, 3, 3), dtype=force.dtype)
-    by_column, _ = _lax.scan(add, start, (jnp.asarray(chunks.points), jnp.asarray(chunks.slots),
-                                          jnp.asarray(chunks.starts)))
-    return by_column.transpose(1, 2, 0, 3).reshape(3 * count, 3 * count)
+    start = (jnp.zeros((chunks.cells, count, 3, 3), dtype=targets.dtype), jnp.asarray(True))
+    (by_column, accepted), _ = _lax.scan(add, start, (jnp.asarray(chunks.points), jnp.asarray(chunks.slots),
+                                                      jnp.asarray(chunks.starts)))
+    return by_column.transpose(1, 2, 0, 3).reshape(3 * count, 3 * chunks.cells), accepted
+
+
+def regularised_stokeslet(eps_squared: Any) -> Kernel:
+    """The regularised Stokeslet at unit viscosity as a :data:`Kernel`, ``((r^2 + 2 eps^2) I + r r^T) / (8 pi (r^2 +
+    eps^2)^(3/2))``, ``r`` the target less the source."""
+
+    def kernel(targets: Array, sources: Array) -> tuple[Array, Array]:
+        r = targets[:, None, :] - sources[None, :, :]
+        r2 = jnp.sum(r * r, axis=-1)
+        s = 1.0 / (8.0 * math.pi * (r2 + eps_squared) ** 1.5)
+        eye = jnp.eye(3, dtype=targets.dtype)
+        blocks = s[..., None, None] * (r[..., :, None] * r[..., None, :] + (r2 + 2.0 * eps_squared)[..., None, None]
+                                       * eye)
+        return blocks, jnp.asarray(True)
+
+    return kernel
+
+
+def separated_matrix(force: Array, points: Array, weights: Array, chunks: Chunks, eps_squared: Any) -> Array:
+    """``A``, ``3N x 3N`` at unit viscosity: the velocity at each of the ``N`` force points per unit traction on each
+    cell, ``sum over q in cell n of S_eps(x_m, y_q) w_q``, from the quadrature's ``points`` and ``weights`` taken in
+    ``chunks`` (the module's docstring): the regularised Stokeslet integrated over the body's own cells
+    (:func:`cell_integrated`)."""
+    return cell_integrated(regularised_stokeslet(eps_squared), force, points, weights, chunks)[0]
 
 
 def turned(matrix: Array, rotation: Array) -> Array:
@@ -205,6 +239,16 @@ def held_or_made(make: Callable[[Mapping[str, Any]], Array], built: Mapping[str,
     return cast(Callable[[Mapping[str, Any], Array], Array], value)
 
 
+def scaled_least_eigenvalue(found: Array) -> Array:
+    """The least eigenvalue of a resistance's symmetric part with each row and column scaled by the square root of its
+    diagonal entry's magnitude: a force and a torque on one scale, and above zero exactly where the resistance is
+    positive definite (the scaling is a congruence, which keeps the signs of the eigenvalues, a negative diagonal entry
+    included). Not a number where a diagonal entry is zero."""
+    symmetric = (found + found.T) / 2.0
+    scale = jnp.sqrt(jnp.abs(jnp.diag(symmetric)))
+    return jnp.linalg.eigvalsh(symmetric / (scale[:, None] * scale[None, :]))[0]
+
+
 def asymmetry(found: Array) -> Array:
     """``|R - R^T| / |R|`` (Frobenius) of a resistance, the part its symmetric part drops, with each row and column
     scaled by the square root of its diagonal entry, so that a force and a torque are compared on one scale."""
@@ -213,5 +257,6 @@ def asymmetry(found: Array) -> Array:
     return jnp.linalg.norm(unit - unit.T) / jnp.linalg.norm(unit)
 
 
-__all__ = ["CHUNK_BYTES", "Chunks", "asymmetry", "cell_moments", "empty_cells", "held_or_made", "padded",
-           "separated_matrix", "separated_resistance", "turned", "turned_resistance", "unchanged"]
+__all__ = ["CHUNK_BYTES", "Chunks", "Kernel", "asymmetry", "cell_integrated", "cell_moments", "empty_cells",
+           "held_or_made", "padded", "regularised_stokeslet", "scaled_least_eigenvalue", "separated_matrix", "separated_resistance", "turned", "turned_resistance",
+           "unchanged"]

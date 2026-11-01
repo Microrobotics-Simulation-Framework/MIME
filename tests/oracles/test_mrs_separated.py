@@ -144,12 +144,52 @@ def test_the_node_is_its_formula_written_again():
     assert miss < FORMULA
 
 
+def pill_wall(built):
+    """The tube's correction as the node holds it, as a function of the force points in the world."""
+    from mime.nodes.hydro.mrs import WALL
+    from mime.nodes.hydro.mrs._tube import TUBE_CORRECTION
+
+    node = drag_node(built, "body")
+    held = node._step_constants(parameter_leaves(built.graph)["drag:body"])
+    parameters = {name: held[f"{WALL}{name}"] for name in TUBE_CORRECTION.parameters}
+    return lambda x: np.asarray(TUBE_CORRECTION.correction(jnp.asarray(x), parameters, MU).matrix)
+
+
+def wall_formula_miss(built, with_wall: bool = True) -> float:
+    """``formula_miss`` in the tube: the pill moved off the axis and turned, the wall's image at its force points in
+    the formula, each column times its cell's area."""
+    node = drag_node(built, "body")
+    blob = node.constants()["blob"]
+    refinement = math.ceil(2.0 / blob - 1e-9)
+    pose = (0.6e-3, -0.3e-3, 0.5e-3, *TURNED)
+    found = resistance_at(built, "body", pose)
+    expected = separated_oracle.resistance(
+        *separated_oracle.discretisation(PILL, PILL_SETTINGS, PILL_SPACING, refinement, tuple(PILL.patches)),
+        blob, MU, pose, pill_wall(built) if with_wall else None)
+    scale = np.sqrt(np.outer(np.abs(np.diag(expected)), np.abs(np.diag(expected))))
+    return float(np.max(np.abs(found - expected) / scale))
+
+
+def test_the_node_with_a_wall_is_its_formula_written_again_off_the_axis():
+    """With the wall's image at the force points (``wall_refinement`` 1); the image integrated over each cell has its
+    own rebuild (``test_mrs_near_wall.py``)."""
+    miss = wall_formula_miss(pill_in_a_tube(wall_refinement=1).build())
+    print(f"\nthe node in the tube, off its axis, against its formula in NumPy: {miss:.1e}")
+    assert miss < FORMULA
+
+
+def test_control_the_formula_without_the_wall_misses_the_node_in_the_tube():
+    miss = wall_formula_miss(pill_in_a_tube(wall_refinement=1).build(), with_wall=False)
+    print(f"\nthe formula without the wall: {miss:.1e}")
+    assert miss > 1e6 * FORMULA
+
+
 def test_control_the_maps_weights_made_uniform_are_caught_by_the_formula(monkeypatch):
     """Each quadrature point's weight replaced by their mean in the node (the formula keeps the kind's)."""
     real = MRSDragNode._quadrature_samples
 
-    def uniform(self, p):
-        held = real(self, p)
+    def uniform(self, p, counts=None):
+        held = real(self, p, counts)
         return dataclasses.replace(held, weights=jnp.full_like(held.weights, jnp.mean(held.weights)))
 
     monkeypatch.setattr(MRSDragNode, "_quadrature_samples", uniform)
@@ -298,7 +338,7 @@ def node_pose(built) -> np.ndarray:
     return np.asarray(node_state(built.graph, "body")["pose"], dtype=np.float64)
 
 
-def pill_in_a_tube() -> Experiment:
+def pill_in_a_tube(wall_refinement: int | None = None) -> Experiment:
     e = Experiment("confined_pill", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     e.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=mm(3.0), wall=mm(0.1),
                                                     length=mm(40.0))))
@@ -309,7 +349,8 @@ def pill_in_a_tube() -> Experiment:
                                   velocity=m_per_s((0.0, 0.0, 0.0)), angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     e.declare("body.mass", kg(1e-7), reason="a millimetre body's order")
     e.declare("body.inertia", kg_m2((1e-14, 1e-14, 1e-14)), reason="a millimetre body's order")
-    e.attach(Drag.MRS(spacing=mm(0.4), wall_kind="tube"), body="body", medium="water")
+    e.attach(Drag.MRS(spacing=mm(PILL_SPACING * 1e3), wall_kind="tube", wall_refinement=wall_refinement), body="body",
+             medium="water")
     return e
 
 
@@ -332,7 +373,7 @@ def test_control_the_held_value_read_in_the_wrong_frame_is_caught(pills, where, 
     monkeypatch.setattr(mrs_node, "turned_resistance", lambda resistance, rotation: resistance)
     miss = frame_miss(pills[where])
     print(f"\nin {where}, the held value not turned: {miss:.2e}")
-    assert miss > 1e3 * FRAME
+    assert not miss < 1e3 * FRAME, "NaN where the plant leaves the confined resistance indefinite, which the step stops"
 
 
 def moved_radius(built, factor: float, *, with_held: bool = True) -> np.ndarray:
@@ -409,6 +450,51 @@ def test_the_assembly_never_holds_every_pair_at_once():
     assert temporaries < pairs / 4
 
 
+def reverse_temporaries(force_count: int, quadrature_count: int) -> tuple[int, int]:
+    """``assembly_temporaries`` for the reverse mode: XLA's temporaries of the gradient of a sum of the matrix in the
+    force points' and the quadrature's positions, which the checkpoint makes keep each chunk's inputs, not its pairs."""
+    rng = np.random.default_rng(7)
+    force = rng.normal(size=(force_count, 3))
+    points = rng.normal(size=(quadrature_count, 3))
+    owners = np.sort(rng.integers(0, force_count, size=quadrature_count)).astype(np.int32)
+    owners[:force_count] = np.arange(force_count)
+    owners = np.sort(owners)
+    chunks = Chunks.of(owners, force_count)
+    gradient = jax.grad(lambda f, p, w: jnp.sum(separated_matrix(f, p, w, chunks, 0.01)), argnums=(0, 1))
+    compiled = jax.jit(gradient).lower(jnp.asarray(force), jnp.asarray(points), jnp.ones(quadrature_count)).compile()
+    return int(compiled.memory_analysis().temp_size_in_bytes), 9 * 8 * force_count * quadrature_count
+
+
+def test_the_reverse_mode_never_holds_every_pair_at_once():
+    """Measured 189 MiB against every pair's 1,099 MiB at this size (the review's W8)."""
+    temporaries, pairs = reverse_temporaries(400, 40_000)
+    print(f"\nthe reverse mode's temporaries {temporaries / 2**20:.0f} MiB against every pair's {pairs / 2**20:.0f} MiB")
+    assert temporaries < pairs / 4
+
+
+def test_control_one_chunk_of_the_whole_quadrature_holds_every_pair_in_the_reverse_mode_too(monkeypatch):
+    import mime.nodes.hydro.mrs._quadrature as quadrature
+
+    monkeypatch.setattr(quadrature, "CHUNK_BYTES", 1 << 40)
+    temporaries, pairs = reverse_temporaries(400, 40_000)
+    assert temporaries >= pairs
+
+
+def test_the_regularised_spheres_oracle_meets_stokes_law_as_its_blob_vanishes():
+    """``regularised_sphere``'s own control, its limit ``eps -> 0``, Stokes's law: at eps / a = 0.002 its drag and
+    rotational drag are 1 to the regularisation's first order (the review measured 1.00050 and 1.00150), and they
+    fall linearly towards it (slopes 0.251 and 0.751 per eps / a); its own quadrature has converged there (doubled
+    panels and points round move it by 1e-14)."""
+    small, smaller = (regularised_drag(0.004), regularised_rotational_drag(0.004)), (
+        regularised_drag(0.002), regularised_rotational_drag(0.002))
+    slopes = [(a - b) / 0.002 for a, b in zip(small, smaller, strict=True)]
+    fine = regularised_drag(0.002, per_panel=96, around=64)
+    print(f"\nat eps/a 0.002: {smaller}; slopes {np.round(slopes, 3)}; doubled panels {fine - smaller[0]:.1e}")
+    assert abs(smaller[0] - 1) < 1e-3 and abs(smaller[1] - 1) < 2e-3
+    assert slopes[0] == pytest.approx(0.25, abs=0.01) and slopes[1] == pytest.approx(0.75, abs=0.01)
+    assert abs(fine - smaller[0]) < 1e-10
+
+
 def test_control_one_chunk_of_the_whole_quadrature_holds_every_pair(monkeypatch):
     import mime.nodes.hydro.mrs._quadrature as quadrature
 
@@ -451,33 +537,3 @@ def test_a_free_resistance_that_is_not_positive_definite_is_refused_by_name(monk
         free(BALL).build()
     assert refused.value.codes() == ["drag.mrs-resistance"]
     assert "not positive definite" in refused.value.refusals[0].message
-
-
-def screw_near_the_floor(gap_mm: float):
-    """FL-9 in the walk's 1/4 in tube, along its axis and lowered to ``gap_mm`` above its floor, at the surrogate
-    generator's discretisation (0.6 mm, blob 0.5, the quadrature four times finer)."""
-    e = Experiment("near_the_floor", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
-    e.add_structure(Structure("tube", geometry=Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(3.175), wall=mm(0.5),
-                                                    length=mm(100.0))))
-    e.add_medium(Medium("water", fills="tube.lumen"))
-    e.declare("water.viscosity", mPa_s(1.0), reason="water")
-    drop = 3.175 - float(fl9().radius.value) * 1e3 - gap_mm
-    e.add_body(Body("body", dynamics=RigidInertial(), parts={"shell": Part(fl9())}, initial=State(
-        position=mm((0.0, 0.0, -drop)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
-    e.declare("body.mass", kg(1e-5), reason="a millimetre body's order")
-    e.declare("body.inertia", kg_m2((1e-11, 1e-11, 1e-11)), reason="a millimetre body's order")
-    e.attach(Drag.MRS(spacing=mm(0.6), blob=0.5, quadrature_refinement=4, wall_kind="tube"), body="body",
-             medium="water")
-    return e
-
-
-def test_a_resistance_not_positive_definite_at_the_starting_pose_near_the_wall_is_refused_by_name():
-    """The surrogate generator's case (FL-9 0.2 mm above the floor at 0.6 mm): the wall's image at force points a
-    spacing and more from the wall leaves the confined resistance indefinite there, and the build refuses it
-    (MIME-ANO-129). The control: the same screw on the axis builds."""
-    with pytest.raises(BuildRefused) as refused:
-        screw_near_the_floor(0.2).build()
-    assert refused.value.codes() == ["drag.mrs-resistance"]
-    assert "starting pose" in refused.value.refusals[0].message
-    screw_near_the_floor(3.175 - 1.56).build()

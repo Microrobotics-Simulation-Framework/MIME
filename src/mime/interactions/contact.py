@@ -46,6 +46,7 @@ class Contact(Interaction):
 
     name = "contact"
     version = "0.1.0"
+    holds_off = "margin"
     setting_roles = {
         "rung": DESIGN, "margin": NUMERICAL,
         "rule": convention(PHYSICAL, "a frictionless contact that does not bounce: the projection removes the "

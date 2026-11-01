@@ -60,7 +60,7 @@ def test_the_real_registry_passes(gate):
 def test_the_real_registry_keeps_every_entry_and_gives_each_a_status_and_a_range():
     anomalies = yaml.safe_load(REGISTRY.read_text())["anomalies"]
     assert [a["anomaly_id"] for a in anomalies] == (
-        [f"MIME-ANO-{n:03d}" for n in (1, 2, 3)] + [f"MIME-ANO-{n}" for n in range(100, 130)]
+        [f"MIME-ANO-{n:03d}" for n in (1, 2, 3)] + [f"MIME-ANO-{n}" for n in range(100, 131)]
     )
     assert all(a["resolution_status"] and a["affected_versions"] for a in anomalies)
 

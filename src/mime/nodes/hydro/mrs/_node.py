@@ -7,7 +7,7 @@ import dataclasses
 import math
 from collections.abc import Mapping, Sequence
 from functools import cached_property
-from typing import Any, cast, override
+from typing import Any, NamedTuple, cast, override
 
 import jax
 import numpy as np
@@ -26,13 +26,14 @@ from mime.nodes.hydro.mrs._quadrature import (
     cell_moments,
     empty_cells,
     held_or_made,
+    scaled_least_eigenvalue,
     separated_matrix,
     separated_resistance,
     turned,
     turned_resistance,
 )
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
-from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
+from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, wall_correction_named
 from mime.registry import Direction, EntryKind, Geometry, Problem, Registered, Samples, Sampling, lookup
 from mime.units import Quantity, unit_symbol
 
@@ -44,6 +45,8 @@ EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \ma
 
 #: ``jax.checkpoint``, whose hints leave its result partly unknown to a strict checker, and the pytree functions.
 checkpoint: Any = cast(Any, jax).checkpoint
+_lax: Any = cast(Any, jax).lax
+_ops: Any = cast(Any, jax).ops
 _tree_util: Any = cast(Any, jax).tree_util
 #: Where the symbol rows' functions are.
 _ADVANCE = "mime.nodes.hydro.mrs._node.MRSDragNode.advance"
@@ -53,17 +56,171 @@ SHAPE, WALL = "shape_", "wall_"
 #: The share of a separated quadrature's free resistance its symmetric part may drop before the build refuses it
 #: (``asymmetry``). A labelled decision of phase 7m-b: at every setting measured there it was below 1e-3 (2e-6 on the
 #: sphere at its default, 8e-4 on FL-9 at 206 force points and blob 1.0), and the rounding-dominated solves of the
-#: helix reference reached 2e-2; the limit catches the gross failures, not every solve that rounding has reached.
+#: helix reference reached 2e-2; the limit catches the gross failures (each quadrature point planted in its second
+#: nearest force point's cell, 3.5e-2), not every solve that rounding has reached, and is no measure of the
+#: discretisation's error: every setting of FL-9 measured in free space, blobs 0.1 to 2.0 and refinements 1 to 16, lay at
+#: 3.5e-4 to 8e-4 or, on the point forces, at rounding, whatever it missed by (to 72%). That is
+#: :data:`QUADRATURE_MOVE_LIMIT`'s (phase 7m-b's fix round, the review's W7).
 ASYMMETRY_LIMIT = 1e-2
 #: The ``params`` leaf holding, on a separated quadrature, the body-frame quantity made once per build: in free space
 #: the resistance about the body's origin (6 x 6), with a wall the free part's matrix (3N x 3N), at unit viscosity.
 HELD = "held_in_body_frame"
+#: The body's least distance from a wall, in force spacings, below which a step on a separated quadrature flags it
+#: (``near_wall``; MIME-ANO-130). A labelled decision of phase 7m-b's fix round. In the review's map (FL-9 in the 1/4 in
+#: tube, 297 poses: spacings 0.3 to 0.829 mm, five discretisations and 0.3.0's point forces, gaps 0.05 to 0.8 mm) every
+#: indefinite resistance, 53 of them, had a gap of at most half a force spacing (the largest exactly half: 0.6 mm at
+#: blob 0.5 and the quadrature four times finer, 0.3 mm from the wall); this round mapped 96 more poses between 0.55
+#: and one spacing, at eight rolls each (0.6 mm at the default and at that discretisation, 0.829 mm at the default),
+#: and every one was definite (the least +0.14, at 0.55), as was the 1 mm sphere at its default from a tenth of a
+#: spacing to one. The bound keeps a factor of two over the largest indefinite gap. A flag, never a stop: the stop is
+#: the resistance's own eigenvalue.
+NEAR_WALL = 1.0
+#: The gap to a wall, in force spacings, below which the resistance was measured indefinite with the wall's image
+#: integrated over each cell (MIME-ANO-130), with room: a confined body's default force spacing keeps its closest
+#: approach outside it (``Drag``'s rule), and a refusal or a stop near the wall names the spacing that does. A labelled
+#: decision of phase 7m-b's fix round (design #204).
+CONFINED_GAP = 0.36
+#: The time one read of a wall's table takes, for the build's estimate of a step's cost: measured on a 24-thread laptop
+#: CPU in float64 (phase 7m-b's fix round, FL-9 in the 1/4 in tube: 1.36 to 1.52 us over 0.9 to 6.4 million reads a
+#: step). An estimate for one machine, stated as one.
+READ_SECONDS = 1.5e-6
+#: The share of the confined resistance its symmetric part drops above which a step flags it (``asymmetric``): the
+#: dropped share bounds the resistance's error from below (its skew part is its distance from the nearest symmetric
+#: matrix, as the exact resistance is), so above this the step's resistance is wrong by at least half of it, 2.5%, in
+#: the norm the share is taken in. A labelled decision of phase 7m-b's fix round: measured 0.007 to 0.012 on the tube's
+#: axis (FL-9 at 0.6 and 0.829 mm, the free part's 4e-4: the image taken at the force points is the larger part), 0.01
+#: to 0.04 between 0.55 and one force spacing from the wall at the defaults (to 0.33 at blob 0.5), 0.24 to 0.46 on the
+#: floor at 0.829 mm (MIME-ANO-130). A report, never a stop or a refusal: a small share proves nothing (the point
+#: forces are symmetric to rounding whatever they miss).
+CONFINED_ASYMMETRY_LIMIT = 5e-2
+#: How far the free resistance's significant entries (those above a hundredth of their row's and column's diagonal
+#: scale) may move, each relative to itself, from a written quadrature_refinement below the rule's to the rule's
+#: (``reference_quadrature_counts``) before the build refuses the written one (``drag.mrs-quadrature``): the quadrature's
+#: own error, estimated by refining it. A labelled decision of phase 7m-b's fix round, on what predicts the miss
+#: (CLAUDE.md, "prefer the metric that predicts"): over fourteen refinements below the rule (FL-9 at 0.829 mm and the
+#: 1 mm sphere at 0.25 mm, blobs 0.1 to 1.0, float64) the move predicted the change the rule's quadrature makes in FL-9's
+#: free-space speed per turn, and in the sphere's drag and rotational drag, to within 1.25 times, from 0.001% to 71%
+#: (the point forces at blob 0.1, which miss the shipped reference by 72%), while the free part's asymmetry, 2e-17 to
+#: 5e-4, predicted none of it (the fix round's table, in its pull request); the limit lies between the largest move
+#: among those within 2% of the rule (1.8%, the sphere's point forces at blob 0.5) and the smallest beyond it (8.0%,
+#: the sphere's at blob 0.25).
+QUADRATURE_MOVE_LIMIT = 0.05
+#: The entries of a resistance the quadrature's move is judged on: those above this share of their row's and column's
+#: diagonal scale (an entry zero by the body's symmetry is rounding, and its relative move is noise).
+SIGNIFICANT_ENTRY = 1e-2
+
+
+class Built(NamedTuple):
+    """What a node on a separated quadrature makes once per build, in float64 at unit viscosity in the body's frame: the
+    held quantity (the resistance in free space, the free part's matrix with a wall); the free part's resistance's
+    asymmetry, its least eigenvalue each row and column scaled by its diagonal, and its symmetric part; and, where a
+    reference quadrature was given, how far its significant entries move from it (``QUADRATURE_MOVE_LIMIT``)."""
+
+    held: np.ndarray
+    asymmetry: float
+    least: float
+    free: np.ndarray
+    moved: float | None
+
+
+def quadrature_move(found: np.ndarray, reference: np.ndarray) -> float:
+    """How far ``found``'s significant entries lie from ``reference``'s, each relative to itself, the largest: an entry is
+    significant above :data:`SIGNIFICANT_ENTRY` of its row's and column's diagonal scale in ``reference``."""
+    scale = np.sqrt(np.outer(np.abs(np.diag(reference)), np.abs(np.diag(reference))))
+    significant = np.abs(reference) > SIGNIFICANT_ENTRY * scale
+    return float(np.max(np.abs(found[significant] - reference[significant]) / np.abs(reference[significant])))
 
 
 class MRSDragState(TypedDict, closed=True):
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Float[Array, "6"]]
     wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
+
+
+class SeparatedDragState(TypedDict, closed=True):
+    """The state of a node on a separated quadrature: the resistance, the background load and whether every read of
+    the wall's data was accepted, as on the point forces; the step's judgement of its resistance, its least eigenvalue
+    each row and column scaled by its diagonal and the share its symmetric part drops, with the flags they raise; and,
+    with a wall, the body's least distance from it (m) and the stop's record: the node's count of steps, and the step
+    (zero for none), pose, gap and least eigenvalue at which its resistance first turned indefinite."""
+
+    resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
+    background_load: ReadOnly[Float[Array, "6"]]
+    wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    least_eigenvalue: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    asymmetry: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    indefinite: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    near_wall: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    asymmetric: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    wall_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    steps: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    stopped_at: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    stopped_pose: NotRequired[ReadOnly[Float[Array, "7"]]]
+    stopped_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    stopped_least: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+
+
+def stops_where(accepted: Array, least: Array) -> Array:
+    """Where a step on a separated quadrature stops the run: the wall's reads accepted, and the resistance's least
+    eigenvalue (each row and column scaled by its diagonal) not above zero, NaN included. Where the reads were refused
+    the resistance is NaN already, and the run stops on it as on any state that is not finite."""
+    return accepted & jnp.logical_not(least > 0.0)
+
+
+def on_the_cells(weights: Array, owners: np.ndarray, area: Array) -> Array:
+    """A wall quadrature's weights scaled, cell by cell, so that each cell's sum is its area on the separated quadrature
+    (``area``): the image integrated over a cell is then the mean of the image over its wall points times the area
+    the free part and the wrench take, as the image at the force point is the point's value times it. A coarser wall
+    quadrature partitions the surface along other edges, and unscaled its cells' areas would differ from the free
+    part's by the edges' quantisation (by tens of per cent at a few points to a cell)."""
+    held = jnp.asarray(owners)
+    wall_area = _ops.segment_sum(weights, held, num_segments=area.shape[0])
+    return weights * (area / wall_area)[held]
+
+
+def least_distance(distances: Array) -> Array:
+    """The least of a body's points' distances from a wall, held out of every derivative: a report, which a flag reads
+    and no edge does."""
+    return _lax.stop_gradient(jnp.min(distances))
+
+
+def judged(found: Array, accepted: Array, gap: Array, within: float | None, state: Mapping[str, Array],
+           pose: Array) -> NodeFields:
+    """A step's resistance judged before the body takes it, as the node's state with a wall: ``found``, the raw
+    ``W^T A^-1 M``, its symmetric part delivered where it is positive definite or where the wall's reads were refused,
+    and NaN where it is not (the stop: :func:`stops_where`); its least eigenvalue scaled by its diagonal and the share
+    its symmetric part drops, each held out of every derivative (:func:`scaled_least_eigenvalue`, ``asymmetry``); the
+    flags ``indefinite``, ``near_wall`` (``gap`` below ``within``, m) and ``asymmetric``; and the stop's record, the
+    node's count of steps and, kept from the first step that stopped, its count, pose, gap and eigenvalue. Generic in
+    the resistance: any square resistance a solve delivers is judged the same way."""
+    dtype = pose.dtype
+    held = _lax.stop_gradient(found)
+    least, dropped = scaled_least_eigenvalue(held).astype(dtype), asymmetry(held).astype(dtype)
+    stopped = stops_where(accepted, least)
+    near = jnp.asarray(False) if within is None else gap < within
+    steps = state["steps"] + 1.0
+    first = stopped & (state["stopped_at"] == 0.0)
+    record = jnp.where(first, jnp.concatenate([steps[None], least[None], gap.astype(dtype)[None], pose]),
+                       jnp.concatenate([state["stopped_at"][None], state["stopped_least"][None],
+                                        state.get("stopped_gap", jnp.zeros((), dtype=dtype))[None],
+                                        state["stopped_pose"]]))
+    flags = jnp.stack([stopped, near, dropped > CONFINED_ASYMMETRY_LIMIT]).astype(dtype)
+    return node_fields(SeparatedDragState(
+        resistance=jnp.where(stopped, jnp.nan, (found + found.T) / 2.0).astype(dtype),
+        background_load=jnp.zeros(6, dtype=dtype), wall_accepted=accepted, least_eigenvalue=least, asymmetry=dropped,
+        indefinite=flags[0], near_wall=flags[1], asymmetric=flags[2], wall_gap=gap.astype(dtype), steps=steps,
+        stopped_at=record[0], stopped_least=record[1], stopped_gap=record[2], stopped_pose=record[3:]))
+
+
+class Judgement(NamedTuple):
+    """A step's judgement of its resistance on a separated quadrature with a wall, as numbers: whether the wall's reads
+    were accepted, the least eigenvalue each row and column scaled by its diagonal, the share its symmetric part
+    drops, and the body's least distance from the wall (m; ``None`` without a wall's distance)."""
+
+    accepted: bool
+    least: float
+    asymmetry: float
+    gap: float | None
 
 
 class MRSDragInputs(TypedDict, closed=True):
@@ -170,7 +327,15 @@ class MRSDragNode(MimeNode):
     (the kind's numbers, the part's placement and the blob) are as built, and it is made afresh from the leaves
     wherever one has moved, so that it is never stale; its derivative in those leaves is the made value's in both cases
     (``held_or_made``). The resistance held is the symmetric part of ``W^T A^-1 M``, which is symmetric only to the
-    discretisation's error; the build reports what it drops (``asymmetry``)."""
+    discretisation's error; the build reports what it drops (``asymmetry``).
+
+    **With a wall, each step judges its resistance before the body takes it** (MIME-ANO-130; :class:`SeparatedDragState`):
+    its least eigenvalue each row and column scaled by its diagonal, the share its symmetric part drops and the body's
+    least distance from the wall over its quadrature (``WallCorrection.distance``), each held out of every derivative.
+    A resistance that is not positive definite where the wall's reads were accepted is replaced by NaN, so that the
+    run stops at that step (``indefinite``; :meth:`stop_problem` says why, from the state's record of the first such
+    step); ``near_wall`` and ``asymmetric`` are reports against :data:`NEAR_WALL` force spacings and
+    :data:`CONFINED_ASYMMETRY_LIMIT`. The build reports the body's distance at its start (:meth:`built_lines`)."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-108",
@@ -203,7 +368,11 @@ class MRSDragNode(MimeNode):
                  part_rotation: Sequence[float], wall_kind: str, wall_kind_version: str,
                  sampling_chosen: np.ndarray | None = None, sampling_members: np.ndarray | None = None,
                  quadrature_counts: Sequence[Sequence[int]] | None = None,
-                 quadrature_owners: np.ndarray | None = None, **constants: object) -> None:
+                 quadrature_owners: np.ndarray | None = None, force_spacing: float | None = None,
+                 reference_quadrature_counts: Sequence[Sequence[int]] | None = None,
+                 reference_quadrature_owners: np.ndarray | None = None,
+                 wall_quadrature_counts: Sequence[Sequence[int]] | None = None,
+                 wall_quadrature_owners: np.ndarray | None = None, **constants: object) -> None:
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
                              f"more")
@@ -243,6 +412,28 @@ class MRSDragNode(MimeNode):
             if quadrature_counts is not None:
                 self._quadrature = tuple(tuple(int(c) for c in count) for count in quadrature_counts)
                 separated["quadrature_counts"] = self._quadrature
+        if force_spacing is not None:
+            separated["force_spacing"] = float(force_spacing)
+        if (reference_quadrature_counts is None) != (reference_quadrature_owners is None):
+            raise ValueError("a reference quadrature is its counts and its owner map, both or neither")
+        self._reference: tuple[tuple[tuple[int, ...], ...], np.ndarray] | None = None
+        if reference_quadrature_counts is not None and reference_quadrature_owners is not None:
+            counts_held = tuple(tuple(int(c) for c in count) for count in reference_quadrature_counts)
+            owners_held = np.asarray(reference_quadrature_owners, dtype=np.int32)
+            owners_held.flags.writeable = False
+            self._reference = (counts_held, owners_held)
+            separated["reference_quadrature_counts"] = counts_held
+            separated["reference_quadrature_owners"] = owners_held
+        if (wall_quadrature_counts is None) != (wall_quadrature_owners is None):
+            raise ValueError("a wall quadrature is its counts and its owner map, both or neither")
+        self._wall_quadrature: tuple[tuple[tuple[int, ...], ...], np.ndarray] | None = None
+        if wall_quadrature_counts is not None and wall_quadrature_owners is not None:
+            wall_counts = tuple(tuple(int(c) for c in count) for count in wall_quadrature_counts)
+            wall_owners = np.asarray(wall_quadrature_owners, dtype=np.int32)
+            wall_owners.flags.writeable = False
+            self._wall_quadrature = (wall_counts, wall_owners)
+            separated["wall_quadrature_counts"] = wall_counts
+            separated["wall_quadrature_owners"] = wall_owners
         super().__init__(name, timestep, viscosity=viscosity, blob=blob, kind=kind, kind_version=kind_version,
                          patches=tuple(patches), counts=held_counts, part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), wall_kind=wall_kind,
@@ -310,8 +501,21 @@ class MRSDragNode(MimeNode):
 
     @override
     def initial_state(self) -> NodeFields:
-        return node_fields(MRSDragState(resistance=as_run_array(jnp.zeros((6, 6))),
-                                        background_load=as_run_array(jnp.zeros(6)), wall_accepted=jnp.asarray(True)))
+        if self._owners is None:
+            return node_fields(MRSDragState(resistance=as_run_array(jnp.zeros((6, 6))),
+                                            background_load=as_run_array(jnp.zeros(6)),
+                                            wall_accepted=jnp.asarray(True)))
+        zero = as_run_array(jnp.zeros(()))
+        resistance, load, accepted = as_run_array(jnp.zeros((6, 6))), as_run_array(jnp.zeros(6)), jnp.asarray(True)
+        if self._free():
+            return node_fields(SeparatedDragState(resistance=resistance, background_load=load, wall_accepted=accepted,
+                                                  least_eigenvalue=zero, asymmetry=zero, indefinite=zero,
+                                                  near_wall=zero, asymmetric=zero))
+        state = node_fields(SeparatedDragState(resistance=resistance, background_load=load, wall_accepted=accepted,
+                                               least_eigenvalue=zero, asymmetry=zero, indefinite=zero, near_wall=zero,
+                                               asymmetric=zero, steps=zero, stopped_at=zero,
+                                               stopped_pose=as_run_array(jnp.zeros(7)), stopped_least=zero))
+        return state | ({"wall_gap": zero, "stopped_gap": zero} if self._wall().distance is not None else {})
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -367,34 +571,46 @@ class MRSDragNode(MimeNode):
             raise ValueError("a node on its samples alone has no separated quadrature")
         return Chunks.of(self._owners, self.sample_count)
 
+    @cached_property
+    def wall_chunks(self) -> Chunks | None:
+        """The wall quadrature taken in chunks by its force points, cut for the wall's image's pairs; ``None`` where
+        the wall's image is taken at the force points."""
+        if self._wall_quadrature is None:
+            return None
+        return Chunks.of(self._wall_quadrature[1], self.sample_count, pair_values=self._wall().pair_values)
+
     def body_leaf_names(self) -> tuple[str, ...]:
         """The leaves the body-frame quantity is made from: the kind's numbers, the part's placement and the blob."""
         return (*(f"{SHAPE}{name}" for name in self._traced), "part_rotation", "part_centre", "blob")
 
-    def _quadrature_samples(self, p: Mapping[str, Any]) -> Samples:
+    def _quadrature_samples(self, p: Mapping[str, Any],
+                            counts: tuple[tuple[int, ...], ...] | None = None) -> Samples:
         """The separated quadrature's points and weights in the body's frame: the kind's quadrature at
-        ``quadrature_counts``, placed as the samples are."""
-        if self._quadrature is None:
+        ``quadrature_counts`` (or at ``counts``), placed as the samples are."""
+        counts = counts if counts is not None else self._quadrature
+        if counts is None:
             return self.samples(p)
         constants = self.constants()
         parameters = {name: p[f"{SHAPE}{name}"] if name in self._traced else constants[f"{SHAPE}{name}"]
                       for name in (key.removeprefix(SHAPE) for key in constants if key.startswith(SHAPE))}
-        found = Sampling(self._sampling.patches, self._quadrature, "quadrature").samples(self._kind, parameters)
+        found = Sampling(self._sampling.patches, counts, "quadrature").samples(self._kind, parameters)
         dtype = jnp.asarray(p["blob"]).dtype
         turn = jnp.asarray(p["part_rotation"], dtype=dtype).reshape(3, 3)
         centre = jnp.asarray(p["part_centre"], dtype=dtype)
         return Samples(jnp.matmul(jnp.asarray(found.points, dtype=dtype), turn.T, precision=PRECISION) + centre, None,
                        jnp.asarray(found.weights, dtype=dtype))
 
-    def body(self, theta: Mapping[str, Any]) -> Body:
-        """The body's discretisation in its own frame from the leaves ``theta`` (:meth:`_theta_keys`)."""
+    def body(self, theta: Mapping[str, Any],
+             quadrature: tuple[tuple[tuple[int, ...], ...], np.ndarray] | None = None) -> Body:
+        """The body's discretisation in its own frame from the leaves ``theta`` (:meth:`body_leaf_names`), on the
+        node's separated quadrature or on ``quadrature`` (its counts and owner map)."""
         p = {**theta, "viscosity": jnp.asarray(theta["blob"])}
         force = self.samples(p).points
-        quadrature = self._quadrature_samples(p)
-        owners = cast(np.ndarray, self._owners)
-        area, centroid = cell_moments(quadrature.points, quadrature.weights, owners, self.sample_count)
+        counts, owners = quadrature if quadrature is not None else (None, cast(np.ndarray, self._owners))
+        held = self._quadrature_samples(p, counts)
+        area, centroid = cell_moments(held.points, held.weights, owners, self.sample_count)
         eps_squared = blob_squared(area, theta["blob"])
-        return Body(force, quadrature.points, quadrature.weights, area, centroid, eps_squared)
+        return Body(force, held.points, held.weights, area, centroid, eps_squared)
 
     def self_interaction(self, theta: Mapping[str, Any]) -> Array:
         """The free part's matrix, ``3N x 3N`` at unit viscosity in the body's frame, from the leaves ``theta``."""
@@ -422,39 +638,46 @@ class MRSDragNode(MimeNode):
         return {key: constants[key] for key in self.body_leaf_names()}
 
     @cached_property
-    def _built(self) -> tuple[np.ndarray, float, float]:
+    def _built(self) -> Built:
         """The body-frame quantity made once, from the node's constants in float64 whatever the run's precision (the
         resistance in free space, the free part's matrix with a wall), and what the build judges of the free part's
-        resistance: the share its symmetric part drops and its least eigenvalue, each row scaled by its diagonal."""
+        resistance (:class:`Built`)."""
         with cast(Any, jax).enable_x64(True):
             theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
             body = self.body(theta)
             matrix = separated_matrix(body.force, body.points, body.weights, self.chunks, body.eps_squared)
             found = separated_resistance(matrix, body.force, body.area, body.centroid, jnp.zeros(3, dtype=jnp.float64))
-            symmetric = (found + found.T) / 2.0
-            scale = jnp.sqrt(jnp.abs(jnp.diag(symmetric)))
-            least = float(jnp.min(jnp.linalg.eigvalsh(symmetric / (scale[:, None] * scale[None, :]))))
-            held = symmetric if self._free() else matrix
-            return np.asarray(held, dtype=np.float64), float(asymmetry(found)), least
+            symmetric = np.asarray((found + found.T) / 2.0, dtype=np.float64)
+            moved = None
+            if self._reference is not None:
+                reference = self.body(theta, self._reference)
+                held = separated_matrix(reference.force, reference.points, reference.weights,
+                                        Chunks.of(self._reference[1], self.sample_count), reference.eps_squared)
+                again = separated_resistance(held, reference.force, reference.area, reference.centroid,
+                                             jnp.zeros(3, dtype=jnp.float64))
+                moved = quadrature_move(symmetric, np.asarray((again + again.T) / 2.0, dtype=np.float64))
+            kept = symmetric if self._free() else np.asarray(matrix, dtype=np.float64)
+            return Built(kept, float(asymmetry(found)), float(scaled_least_eigenvalue(found)), symmetric, moved)
 
     @property
     def held_in_body_frame(self) -> np.ndarray:
         """The body-frame quantity made once (``HELD``): the resistance in free space, the free part's matrix with a
         wall, at unit viscosity, in float64."""
-        return self._built[0]
+        return self._built.held
 
     @property
     def free_asymmetry(self) -> float:
         """The share of the free part's resistance its symmetric part drops (``asymmetry``), as built."""
-        return self._built[1]
+        return self._built.asymmetry
 
     def built_problems(self, start: Mapping[str, Any] | None = None) -> list[Problem]:
         """What the build refuses of the resistance on a separated quadrature: a free part whose symmetric part is not
-        positive definite, or whose asymmetry is past :data:`ASYMMETRY_LIMIT`, each the sign of a discretisation that
-        no longer resolves its blob (a blob too large for its force spacing makes the matrix rounding-dominated) or a
-        quadrature too coarse for it; and, with a wall, the resistance at the body's starting pose (``start``'s
-        ``pose``) that is not positive definite, the wall's image taken at force points that do not resolve it (a
-        body within about a force spacing of the wall, MIME-ANO-129). A pose reached later is not checked."""
+        positive definite, or whose asymmetry is past :data:`ASYMMETRY_LIMIT` (a gross defect, not a measure of the
+        discretisation's error: the point forces are symmetric to rounding whatever they miss); and, with a wall, the
+        resistance at the body's starting pose (``start``'s ``pose``), where the wall's reads there are refused or
+        where it is not positive definite (the wall's image taken at force points that do not resolve it, a body
+        within about half a force spacing of the wall, MIME-ANO-130). A pose reached later is the step's to judge: a
+        step whose resistance is indefinite stops the run (:meth:`stop_problem`)."""
         if self._owners is None:
             return []
         empty = empty_cells(self._owners, self.sample_count)
@@ -463,10 +686,10 @@ class MRSDragNode(MimeNode):
                                                f"the quadrature nearest them (the first {empty[:5]}), so their cells "
                                                f"are empty and the matrix singular",
                             "write a larger quadrature_refinement: Drag.MRS(quadrature_refinement=...)")]
-        _, dropped, least = self._built
+        built = self._built
+        dropped, least = built.asymmetry, built.least
         found: list[Problem] = []
-        settings = (f"{self.sample_count} force points, a quadrature of {self.quadrature_count} points, blob "
-                    f"{self.constants()['blob']!r}")
+        settings = self._settings_text()
         if not (math.isfinite(dropped) and math.isfinite(least) and least > 0.0):
             found.append(Problem("drag.mrs-resistance", f"the free part's resistance ({settings}) is not positive "
                                                         f"definite: its least eigenvalue, scaled, is {least!r}",
@@ -478,23 +701,136 @@ class MRSDragNode(MimeNode):
                                                         f"discretisation does not resolve its blob",
                                  "write a smaller blob or a larger quadrature_refinement: Drag.MRS(blob=..., "
                                  "quadrature_refinement=...)"))
-        if not found and not self._free() and start is not None and "pose" in start:
-            pose = as_run_array(start["pose"])
-            resistance = np.asarray(self.update(self.initial_state(), {"pose": pose}, self.delta_t,
-                                                params=self.params_pytree())["resistance"], dtype=np.float64)
-            scale = np.sqrt(np.abs(np.diag(resistance)))
-            confined = float(np.linalg.eigvalsh(resistance / np.outer(scale, scale))[0]) if np.all(scale > 0.0) \
-                else float("nan")
-            if not (math.isfinite(confined) and confined > 0.0):
-                found.append(Problem(
-                    "drag.mrs-resistance", f"the resistance at the body's starting pose, the wall's correction in it "
-                                           f"({settings}), is not positive definite: its least eigenvalue, scaled, is "
-                                           f"{confined!r}; the wall's image is taken at the force points, which do not "
-                                           f"resolve it within about a force spacing of the wall (MIME-ANO-129)",
-                    "near a wall, take the point forces, whose wall image and free part are taken at the same points: "
-                    "Drag.MRS(quadrature_refinement=1); or write a smaller spacing, Drag.MRS(spacing=...), or start "
-                    "the body further from the wall"))
+        if not found and built.moved is not None and not built.moved <= QUADRATURE_MOVE_LIMIT:
+            reference = sum(int(np.prod(count)) for count in self._reference[0]) if self._reference else 0
+            found.append(Problem(
+                "drag.mrs-quadrature", f"the free part's resistance ({settings}) moves by {built.moved:.1%} of itself "
+                                       f"on the quadrature its blob's rule asks for ({reference} points), past "
+                                       f"{QUADRATURE_MOVE_LIMIT:.0%}: the quadrature does not resolve the blob, and that "
+                                       f"move estimates its error (a resistance symmetric to rounding, as the point "
+                                       f"forces' is, can be this far off)",
+                "leave quadrature_refinement out, for its rule's (two over the blob, rounded up), or write a larger "
+                "blob: Drag.MRS(blob=...)"))
+        if found or self._free() or start is None or "pose" not in start:
+            return found
+        judged = self.judged_at(start["pose"])
+        finer = self._finer(judged.gap)
+        if not judged.accepted:
+            found.append(Problem(
+                "drag.mrs-resistance", f"the wall's reads at the body's starting pose were refused ({settings}): a force "
+                                       f"point lies outside the wall's data, past the wall or past the table's reach",
+                "start the body inside the medium's region, clear of the wall: Body(..., initial=State(position=...))"))
+        elif not (math.isfinite(judged.least) and judged.least > 0.0):
+            found.append(Problem(
+                "drag.mrs-resistance", f"the resistance at the body's starting pose, the wall's image in it "
+                                       f"({settings}), is not positive definite: its least eigenvalue, each row and "
+                                       f"column scaled by its diagonal, is {judged.least:.3g}{self._gap_text(judged.gap)}; "
+                                       f"the force points do not resolve the wall's image there (MIME-ANO-130)",
+                f"write a force spacing of at most {finer:.3g} mm, the body's least distance from the wall over "
+                f"{CONFINED_GAP:g} (closer, the resistance was measured indefinite), Drag.MRS(spacing=mm({finer:.3g})); or "
+                f"start the body further from the wall, Body(..., initial=State(position=...)). The point forces "
+                f"(quadrature_refinement=1) are no way out: they are indefinite near the wall too (MIME-ANO-130)"))
         return found
+
+    def _finer(self, gap: float | None) -> float:
+        """The force spacing (mm) that keeps a body ``gap`` (m) from the wall outside the band where the resistance was
+        measured indefinite: the gap over :data:`CONFINED_GAP`; the node's own where the gap is unknown or none."""
+        spacing = self._force_spacing() or 0.0
+        return (gap / CONFINED_GAP if gap is not None and gap > 0.0 else spacing) * 1e3
+
+    def _settings_text(self) -> str:
+        return (f"{self.sample_count} force points, a quadrature of {self.quadrature_count} points, blob "
+                f"{self.constants()['blob']!r}")
+
+    def _force_spacing(self) -> float | None:
+        held = self.constants().get("force_spacing")
+        return float(held) if held is not None else None
+
+    def _gap_text(self, gap: float | None) -> str:
+        spacing = self._force_spacing()
+        if gap is None:
+            return ""
+        share = f", {gap / spacing:.3g} of its force spacing ({spacing * 1e3:.4g} mm)" if spacing else ""
+        return f", the body's least distance from the wall {gap * 1e3:.4g} mm{share}"
+
+    def judged_at(self, pose: Any) -> Judgement:
+        """The step's judgement of its resistance at ``pose`` with the node's built leaves: whether the wall's reads
+        were accepted, the resistance's least eigenvalue (each row and column scaled by its diagonal), the share its
+        symmetric part drops, and the body's least distance from the wall (m; ``None`` without a wall's distance)."""
+        out = self.update(self.initial_state(), {"pose": as_run_array(pose)}, self.delta_t, params=self.params_pytree())
+        return Judgement(bool(out["wall_accepted"]), float(out["least_eigenvalue"]), float(out["asymmetry"]),
+                         float(out["wall_gap"]) if "wall_gap" in out else None)
+
+    def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
+        """What the build reports of the body's distance from the wall (never a refusal): its least distance at the
+        start against the force spacing and the near-wall bound (:data:`NEAR_WALL`), and the force spacing the
+        experiment's closest approach needs (``closest_approach``, m: the margin a contact holds the body's hull off
+        the wall by, ``None`` where nothing holds it off)."""
+        spacing = self._force_spacing()
+        if self._owners is None or self._free() or self._wall().distance is None or spacing is None or \
+                start is None or "pose" not in start:
+            return []
+        judged = self.judged_at(start["pose"])
+        lines = [f"the body's least distance from the wall at its start is {(judged.gap or 0.0) * 1e3:.4g} mm, "
+                 f"{(judged.gap or 0.0) / spacing:.3g} of the force spacing ({spacing * 1e3:.4g} mm): a step with the "
+                 f"body within {NEAR_WALL:g} force spacing of the wall raises near_wall, and a step whose resistance "
+                 f"is indefinite stops the run (drag.mrs-indefinite); every indefinite resistance mapped lay within "
+                 f"half a force spacing of the wall (MIME-ANO-130)"]
+        if closest_approach is None:
+            lines.append("nothing in the experiment holds the body off the wall, so its closest approach is the wall "
+                         "itself, which no force spacing clears: the default force spacing is the body's family's")
+        else:
+            lines.append(f"the experiment's closest approach is {closest_approach * 1e3:.4g} mm, the margin a contact "
+                         f"holds the body's hull off the wall by: a force spacing of at most "
+                         f"{closest_approach / CONFINED_GAP * 1e3:.4g} mm keeps it {CONFINED_GAP:g} force spacings or "
+                         f"more from the wall, outside the band where the resistance was measured indefinite (a "
+                         f"spacing not written takes it, or the family's where that is finer); this experiment's is "
+                         f"{spacing * 1e3:.4g} mm")
+        count, reads = self.sample_count, self.wall_reads
+        lines.append(f"what a step costs at this force spacing: {count} force points, a dense solve of {3 * count} "
+                     f"unknowns (the free part's matrix held, {(3 * count) ** 2 * 8 / 2 ** 20:.4g} MiB in float64), "
+                     f"and {reads} reads of the wall's table ({self._wall_text()}); about {reads * READ_SECONDS:.2g} s "
+                     f"for the reads on the 24-thread laptop CPU the fix round of phase 7m-b measured "
+                     f"({READ_SECONDS * 1e6:.2g} us a read)")
+        return lines
+
+    @property
+    def wall_reads(self) -> int:
+        """The reads of the wall's table a step makes: every force point against every force point with the image at
+        the force points, else against every point of the wall quadrature, both ways for the reciprocal blend."""
+        if self._wall_quadrature is None:
+            return self.sample_count ** 2
+        return 2 * self.sample_count * len(self._wall_quadrature[1])
+
+    def _wall_text(self) -> str:
+        if self._wall_quadrature is None:
+            return "the image at the force points"
+        return (f"the image integrated over each cell on a wall quadrature of {len(self._wall_quadrature[1])} "
+                f"points")
+
+    def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
+        """Why the node stopped a run, from its state at the run's end: the step whose resistance turned indefinite
+        first, which the node replaced by NaN before the body took it, so that no energy went in; ``None`` where it
+        stopped none."""
+        if "stopped_at" not in state or not float(np.asarray(state["stopped_at"])) > 0.0:
+            return None
+        step = int(round(float(np.asarray(state["stopped_at"]))))
+        pose = np.asarray(state["stopped_pose"], dtype=np.float64)
+        gap = float(np.asarray(state["stopped_gap"])) if "stopped_gap" in state else None
+        least = float(np.asarray(state["stopped_least"]))
+        position = ", ".join(f"{c * 1e3:.5g}" for c in pose[:3])
+        turn = ", ".join(f"{c:.5g}" for c in pose[3:])
+        finer = self._finer(gap)
+        return Problem(
+            "drag.mrs-indefinite",
+            f"its resistance turned indefinite at its step {step} (t = {step * self.delta_t:.6g} s), and the run "
+            f"stopped there, before the body took it: its least eigenvalue, each row and column scaled by its "
+            f"diagonal, was {least:.3g} ({self._settings_text()}), at the pose ({position}) mm, quaternion ({turn})"
+            f"{self._gap_text(gap)}; the force points do not resolve the wall's image there (MIME-ANO-130)",
+            f"write a force spacing of at most {finer:.3g} mm, the body's least distance from the wall there over "
+            f"{CONFINED_GAP:g} (closer, the resistance was measured indefinite), Drag.MRS(spacing=mm({finer:.3g})); or "
+            f"hold the body further from the wall, Contact.Projection(margin=...). The point forces "
+            f"(quadrature_refinement=1) are no way out: they are indefinite near the wall too (MIME-ANO-130)")
 
     def _held_value(self, p: Mapping[str, Any]) -> Array:
         """The body-frame quantity at the step's leaves: the held one where they are as built (``held_or_made``),
@@ -504,32 +840,58 @@ class MRSDragNode(MimeNode):
             return self._make()(theta)
         return held_or_made(self._make(), self._built_theta())(theta, p[HELD])
 
-    def _separated_step(self, p: Mapping[str, Any], pose: Array) -> NodeFields:
+    def _separated_step(self, p: Mapping[str, Any], state: NodeFields, pose: Array) -> NodeFields:
+        """The step on a separated quadrature. In free space the held resistance turned to the pose, judged at build.
+        With a wall, the free part's matrix turned, the wall's image added and solved: integrated over each cell on the
+        wall quadrature (``wall_quadrature_counts``, :func:`cell_image`) where the node has one, else taken at the force
+        points, each column times its cell's area. Then the result judged before the body takes it (:func:`judged`): its
+        least eigenvalue each row and column scaled by its diagonal, the share its symmetric part drops, and the body's
+        least distance from the wall over its quadrature's points, each held out of every derivative. A resistance that
+        is not positive definite where the wall's reads were accepted is replaced by NaN, so that the run stops at that
+        step rather than taking energy from the drag (``indefinite``, with the step, pose, gap and eigenvalue recorded
+        once, at the first such step: :meth:`stop_problem`); ``near_wall`` and ``asymmetric`` are reports."""
         viscosity = p["viscosity"]
         held = self._held_value(p)
+        dtype = pose.dtype
+        zero = jnp.zeros((), dtype=dtype)
         if self._free():
             found = viscosity * turned_resistance(held, quaternion.rotation_matrix(pose[3:]))
-            return node_fields(MRSDragState(resistance=found.astype(pose.dtype),
-                                            background_load=jnp.zeros(6, dtype=pose.dtype),
-                                            wall_accepted=jnp.asarray(True)))
+            built = self._built
+            return node_fields(SeparatedDragState(
+                resistance=found.astype(dtype), background_load=jnp.zeros(6, dtype=dtype),
+                wall_accepted=jnp.asarray(True), least_eigenvalue=jnp.asarray(built.least, dtype=dtype),
+                asymmetry=jnp.asarray(built.asymmetry, dtype=dtype), indefinite=zero, near_wall=zero, asymmetric=zero))
         wall = self._wall()
         theta = {key: p[key] for key in self.body_leaf_names()}
         parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
+        distance, wall_quadrature, wall_chunks = wall.distance, self._wall_quadrature, self.wall_chunks
 
         def solved(held: Array, theta: Mapping[str, Any], viscosity: Array, pose: Array,
-                   parameters: Mapping[str, Any]) -> tuple[Array, Array]:
+                   parameters: Mapping[str, Any]) -> tuple[Array, Array, Array]:
             turn = quaternion.rotation_matrix(pose[3:])
             body = self.body(theta)
             force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
             centroid = pose[:3] + jnp.matmul(body.centroid, turn.T, precision=PRECISION)
-            corrected = wall.correction(force, parameters, viscosity)
-            matrix = turned(held, turn) / viscosity + corrected.matrix * jnp.repeat(body.area, 3)[None, :]
-            found = separated_resistance(matrix, force, body.area, centroid, pose[:3])
-            return (found + found.T) / 2.0, corrected.accepted
+            if wall_quadrature is None or wall_chunks is None:
+                corrected = wall.correction(force, parameters, viscosity)
+                image = Corrected(corrected.matrix * jnp.repeat(body.area, 3)[None, :], corrected.accepted)
+            else:
+                cells = self._quadrature_samples({**theta, "viscosity": jnp.asarray(theta["blob"])},
+                                                 wall_quadrature[0])
+                image = cell_image(wall, force, pose[:3] + jnp.matmul(cells.points, turn.T, precision=PRECISION),
+                                   on_the_cells(cells.weights, wall_quadrature[1], body.area), wall_chunks,
+                                   parameters, viscosity)
+            found = separated_resistance(turned(held, turn) / viscosity + image.matrix, force, body.area, centroid,
+                                         pose[:3])
+            points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
+            return found, image.accepted, zero if distance is None else least_distance(distance(points, parameters))
 
-        found, accepted = checkpoint(solved)(held, theta, viscosity, pose, parameters)
-        return node_fields(MRSDragState(resistance=found.astype(pose.dtype),
-                                        background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
+        found, accepted, gap = checkpoint(solved)(held, theta, viscosity, pose, parameters)
+        spacing = self._force_spacing()
+        within = None if distance is None or spacing is None else NEAR_WALL * spacing
+        fields = judged(found, accepted, gap, within, state, pose)
+        return node_fields(fields if distance is not None else
+                           {key: value for key, value in fields.items() if key not in ("wall_gap", "stopped_gap")})
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -537,7 +899,7 @@ class MRSDragNode(MimeNode):
         given = typed_view(MRSDragInputs, boundary_inputs)
         pose = given.get("pose", as_run_array(jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))))
         if self._owners is not None:
-            return self._separated_step(p, pose)
+            return self._separated_step(p, state, pose)
         held = self.samples(p)
         points = pose[:3] + jnp.matmul(held.points, quaternion.rotation_matrix(pose[3:]).T, precision=PRECISION)
         wall = self._wall()
@@ -564,5 +926,7 @@ def _units_of(held: Registered, name: str) -> str:
     return "1" if declared is None or declared.dimension is None else unit_symbol(declared.dimension)
 
 
-__all__ = ["ASYMMETRY_LIMIT", "EQUATIONS", "HELD", "SHAPE", "WALL", "Body", "MRSDragInputs", "MRSDragNode",
-           "MRSDragState", "kind_from_settings"]
+__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "NEAR_WALL",
+           "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "Body", "Built", "Judgement",
+           "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged", "kind_from_settings",
+           "least_distance", "on_the_cells", "quadrature_move", "stops_where"]

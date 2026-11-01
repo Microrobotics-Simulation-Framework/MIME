@@ -483,9 +483,10 @@ def _require_float64() -> None:
 def experiment(design: Design, tube: str, discretisation: Discretisation, *, wall_kind: str = "tube") -> Any:
     """``design`` resting in ``tube`` (along x, its floor at -z) in water, with ``Drag.MRS`` and nothing else, at its
     smallest training gap's pose; ``MRSEvaluator`` moves it to each case's. The drag is 0.3.0's point forces, kept
-    registered (``mime.interactions.KEPT``): the training data's discretisation, which its protocol names, and whose
-    resistance stays symmetric at the training gaps, where 0.4.0's separated quadrature takes the wall's image at force
-    points a spacing or more from the wall (MIME-ANO-129)."""
+    registered (``mime.interactions.KEPT``): the training data's discretisation, which its protocol names. Near the
+    wall the point forces' resistance can be indefinite too at a coarse spacing (MIME-ANO-130: FL-9 0.2 mm from the
+    wall at 0.6 mm, +0.79 on them and -6.80 on 0.4.0's separated quadrature, but negative on them at other gaps and
+    rolls), so each case's resistance is checked for it (``checks``), never assumed definite."""
     from mime.dynamics import RigidInertial
     from mime.experiment import Experiment
     from mime.interactions.hydrodynamic import PointForceDrag

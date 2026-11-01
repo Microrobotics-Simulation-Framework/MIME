@@ -20,6 +20,8 @@ from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import SurrogateDragNode
 from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
+from mime.nodes.hydro.mrs._node import CONFINED_GAP
+from mime.nodes.hydro.mrs._quadrature import empty_cells
 from mime.scene import quadrature_counts, quadrature_owners, sampled_points
 from mime.registry import (
     DESIGN,
@@ -278,6 +280,9 @@ class PointForceDrag(Interaction):
         ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="mrs"),
     )
     validity = (
+        "each body's drag is computed alone, from its own pose and the medium's wall: a second body in the same "
+        "medium does not change it, on either rung (no hydrodynamic interaction between bodies in MIME 0.3.0; the "
+        "build reports the bodies that share a medium)",
         "surrogate: quasi-steady Stokes flow (the limit of vanishing Reynolds number), as its training resistances were "
         "computed; the Reynolds number, by the body's translation and by its turning, is computed after each run "
         "(the post-run watch) and flagged past the bound the entry declares",
@@ -508,13 +513,17 @@ class PointForceDrag(Interaction):
                     for setting in dataclasses.fields(hull.kind)}
         sampling = hull.kind.sampling(hull.settings, spacing, patches)
         counts, owners = self._quadrature_arguments(hull, sampling, spacing)
+        reference_counts, reference_owners = self._reference_quadrature(hull, sampling, spacing)
+        wall_counts, wall_owners = self._wall_quadrature(hull, sampling, spacing)
         node = b.add_response_node(MRSDragNode(
             ctx.node_name(), ctx.timestep, viscosity=ctx.scalar_value("viscosity"), blob=float(self.blob),
             kind=hull.kind.name, kind_version=hull.kind.version, patches=patches, counts=sampling.counts,
             part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
             wall_kind=wall.name, wall_kind_version=wall.version, sampling_chosen=sampling.chosen,
             sampling_members=sampling.members, quadrature_counts=counts, quadrature_owners=owners,
-            **{f"{WALL}{name}": value for name, value in constants.items()},
+            force_spacing=self._judged_spacing(spacing), reference_quadrature_counts=reference_counts,
+            reference_quadrature_owners=reference_owners, wall_quadrature_counts=wall_counts,
+            wall_quadrature_owners=wall_owners, **{f"{WALL}{name}": value for name, value in constants.items()},
             **{f"{SHAPE}{name}": value for name, value in settings.items()}))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(node["resistance"], into=b.target("resistance"))
@@ -524,6 +533,22 @@ class PointForceDrag(Interaction):
             tuple[tuple[int, ...], ...] | None, np.ndarray | None]:
         """The node's separated quadrature, its counts and its owner map: none here, where the samples are the
         quadrature."""
+        return None, None
+
+    def _judged_spacing(self, spacing: float) -> float | None:
+        """The force spacing the node judges the body's distance from a wall against: none here, where nothing
+        judges it."""
+        return None
+
+    def _reference_quadrature(self, hull: Hull, sampling: Sampling, spacing: float) -> tuple[
+            tuple[tuple[int, ...], ...] | None, np.ndarray | None]:
+        """The quadrature the node judges its own against at build, its counts and owner map: none here."""
+        return None, None
+
+    def _wall_quadrature(self, hull: Hull, sampling: Sampling, spacing: float) -> tuple[
+            tuple[tuple[int, ...], ...] | None, np.ndarray | None]:
+        """The quadrature the wall's image is integrated over each cell on, its counts and owner map: none here, where
+        the image is taken at the force points."""
         return None, None
 
     @override
@@ -556,23 +581,44 @@ SEPARATED_COMPACT_SAMPLES = 338
 SEPARATED_BLOB: Mapping[str, float] = MappingProxyType({"sphere": 0.1, "screw": 0.25})
 SEPARATED_COMPACT_BLOB = 0.1
 #: The default quadrature's refinement is this over the blob, rounded up: the quadrature's spacing at most half the
-#: blob, at which both families' numbers had converged to within 0.1% (measured, phase 7m-b).
+#: blob, at which the sphere's drag had converged to within 0.01% and FL-9's speed to within 0.16% (refinement 8 to 16
+#: at blob 0.25; measured, phase 7m-b and its review).
 QUADRATURE_PER_BLOB = 2.0
+#: The wall image's refinement when none is written, for a body held off the wall: its quadrature over each cell this
+#: many times finer than the force spacing (MIME-ANO-130). A labelled decision of phase 7m-b's fix round (design #204),
+#: measured on FL-9 in the 1/4 in tube at the screw's defaults (float64): at 2 (on FL-9's grid 3, since 2 leaves cells
+#: empty) the speed per turn on the axis came within 0.5% (0.829 mm) and 0.2% (0.4 mm) of the image integrated on the
+#: whole quadrature, where the image at the force points was 4.6% and 1.0% below it, and on the floor a quarter of a
+#: spacing from the wall (0.4 mm) every roll was definite, as on the whole quadrature; 4, measured at 0.829 mm only,
+#: cost twice as much for 0.3% on the axis. At an eighth of a spacing (0.829 mm) no refinement measured made the floor
+#: definite (three of eight rolls indefinite at 2 and on the whole quadrature, seven at 4): the spacing's rule keeps a
+#: held body out of that band (CONFINED_GAP).
+WALL_REFINEMENT = 2
+WALL_REFINEMENT_MEASURED = (
+    "on FL-9 in the 1/4 in tube at the screw's defaults: on the axis the speed per turn 299.2 um at 0.829 mm and "
+    "311.5 um at 0.4 mm, against 297.6 and 312.1 with the image integrated on the whole quadrature and 283.8 and 308.9 "
+    "with it at the force points; a step 1.4 s and 27 s on a 24-thread laptop CPU, against 0.13 s and 1.8 s at the "
+    "force points; on the floor a quarter of a force spacing from the wall definite at every roll measured")
+
 #: What was measured at the defaults (``scripts/default_spacing_table.py``, float64 for the misses, on a 24-thread laptop
 #: CPU; phase 7m-b), as the stamp and ``mime pending`` state it.
 SEPARATED_SPACING_MEASURED = (
     "on the walk's T1 sphere (338 force points), its drag 0.50% and its rotational drag 1.45% above Stokes's law, "
-    "within 2e-4 of the exact regularised drag at its blob, T1's 1000 steps in 4.4 s; on FL-9 (222 force points), its "
-    "speed per turn 2.6% below the shipped free-space reference in free space and 11% below the finest spacing "
-    "measured on the walk's tube's axis (5984 force points), a run of T2's size in the tube (6000 steps) 12 minutes: "
-    "write spacing= for a number to use")
+    "within 2e-4 of the exact regularised drag at its blob, T1's 1000 steps in 4.4 s; on FL-9 (222 force points), "
+    "estimates: its speed per turn in free space 2.6% below the shipped free-space reference, itself known to 1.9%, a "
+    "point on a ladder that is not monotone (6.1%, 2.6%, 4.0%, 3.5% and 1.3% below from 206 to 567 force points), and "
+    "on the walk's tube's axis only 11% below the finest spacing measured (5984 force points), which is still moving "
+    "(about 12% below a fit of the ladder); near a wall no error is stated (MIME-ANO-130); a run of T2's size in the "
+    "tube (6000 steps) 12 minutes: write spacing= for a number to use")
 SEPARATED_BLOB_MEASURED = (
     "with the spacing's default, at this blob: the sphere's drag error, the regularisation's, nearly in proportion to "
     "the blob (0.25%, 0.50% and 0.75% at blobs 0.05, 0.1 and 0.15 and 338 force points); FL-9's speed moved by under "
     "1% over blobs 0.1 to 0.25 at 416 to 957 force points")
 SEPARATED_REFINEMENT_MEASURED = (
-    "at two over the blob, refining further moved the sphere's drag by under 0.01% and FL-9's speed by under 0.1%; "
-    "at blob 0.1 a refinement of 8, under one over the blob, moved the sphere's drag by 0.08% and FL-9's speed by 0.9%")
+    "at two over the blob, refining further moved the sphere's drag by under 0.01% and FL-9's speed by 0.16% (8 to 16 "
+    "at blob 0.25); at blob 0.1 a refinement of 8, under one over the blob, moved the sphere's drag by 0.08% and FL-9's "
+    "speed by 0.9%; a refinement written below the rule is refused where the rule's quadrature moves the resistance by "
+    "more than 5%")
 
 
 @register_interaction
@@ -632,10 +678,19 @@ class Drag(PointForceDrag):
     its path, the force points and the quadrature are smooth functions of the kind's numbers while the map is held, the
     held quantity's derivative is the one made from the leaves, and the solve is differentiated by the linear-solve
     rule. **Its symmetry and definiteness:** ``W^T A^-1 M`` is symmetric only to the discretisation's error (the
-    traction's columns carry the cells' areas), so the node holds its symmetric part, and the build checks, on the
-    free part, that the part it drops is small and that what it holds is positive definite, and with a wall that the
-    resistance at the body's starting pose is positive definite (``drag.mrs-resistance``, refused where it is not: a
-    body within about a force spacing of the wall, whose image the force points do not resolve, MIME-ANO-129).
+    traction's columns carry the cells' areas), so the node holds its symmetric part. The build checks the free part:
+    what it holds is positive definite, the part it drops is under a hundredth (a gross-defect check: the point forces
+    are symmetric to rounding whatever they miss), and a quadrature_refinement written below its rule's does not move
+    the free resistance's significant entries by more than 5% from the rule's quadrature (``drag.mrs-quadrature``: that
+    move is the quadrature's own error, estimated); with a wall, the resistance at the body's starting pose is positive
+    definite (``drag.mrs-resistance``), and the build reports the body's least distance from the wall against the force
+    spacing and the spacing the experiment's closest approach needs. **Near a wall each step judges its resistance
+    before the body takes it** (MIME-ANO-130): one that is not positive definite (its least eigenvalue, each row and
+    column scaled by its diagonal, not above zero) is replaced by NaN, so that the run stops at that step
+    (``drag.mrs-indefinite``, naming the step, the pose and the gap) rather than taking energy from the drag; a body
+    within one force spacing of the wall raises ``near_wall``, and a resistance symmetric only to more than a
+    twentieth of itself raises ``asymmetric``. Every indefinite resistance measured lay within half a force spacing of
+    the wall, on the point forces too.
 
     Each rung's status is its own (``rung_gradients``), and the build records the attached rung's: the surrogate's
     ``piecewise_jump``, with its switches, and the mrs's ``exact``. The entry's is the least of them.
@@ -662,6 +717,14 @@ class Drag(PointForceDrag):
             "smooth body's drag wants it small; a screw's swim speed barely depends on it and its quadrature costs "
             "the square of the blob's inverse (scripts/default_spacing_table.py)", by="default_blob",
             measured=SEPARATED_BLOB_MEASURED),
+        "wall_refinement": numerical_default(
+            "on the mrs rung, for a body a law holds off the wall of its medium's region (a contact), WALL_REFINEMENT: "
+            "the wall's image integrated over each force point's cell on the kind's quadrature that many times finer "
+            "than the force spacing; otherwise none, the image at the force points",
+            "chosen by measurement near the wall (MIME-ANO-130): the image taken at the force points left the "
+            "resistance indefinite within half a force spacing of the wall, and integrated over each cell it is "
+            "definite further in, at a step's cost that grows as the square of the refinement",
+            by="default_wall_refinement", measured=WALL_REFINEMENT_MEASURED),
         "quadrature_refinement": numerical_default(
             "on the mrs rung, two over the blob, rounded up: the quadrature's spacing at most half the blob",
             "chosen by measurement: finer, neither family's number moved by what the stamp states (the sphere's drag "
@@ -673,7 +736,19 @@ class Drag(PointForceDrag):
                   "Smith2018", "GallagherSmith2021")
     samples_by_family = SEPARATED_SAMPLES
     compact_samples = SEPARATED_COMPACT_SAMPLES
-    mrs_settings = (*PointForceDrag.mrs_settings, "quadrature_refinement")
+    mrs_settings = (*PointForceDrag.mrs_settings, "quadrature_refinement", "wall_refinement")
+    raises = (
+        *PointForceDrag.raises,
+        Flag("indefinite", "the step's resistance, the wall's correction in it, was not positive definite (its least "
+                           "eigenvalue, each row and column scaled by its diagonal, not above zero): the node replaced "
+                           "it by NaN before the body took it, so the run stopped there (drag.mrs-indefinite, "
+                           "MIME-ANO-130)", rung="mrs"),
+        Flag("near_wall", "the body lay within one force spacing of the wall (NEAR_WALL), where the resistance has been "
+                          "measured indefinite closer in (MIME-ANO-130) and a definite one is not shown accurate", rung="mrs"),
+        Flag("asymmetric", "the step's resistance, before its symmetric part was taken, was symmetric only to more than "
+                           "a twentieth of itself (CONFINED_ASYMMETRY_LIMIT), so its error is at least half that share "
+                           "(the share bounds it from below; a small share bounds nothing)", rung="mrs"),
+    )
     validity = (
         *(line for line in PointForceDrag.validity if not line.startswith("mrs: a medium at rest")
           and not line.startswith("mrs: on the de Jongh helix")),
@@ -683,11 +758,35 @@ class Drag(PointForceDrag):
         "the sphere's exact regularised drag and Stokes's law, the prolate spheroid's closed form, Haberman and "
         "Sayre's confined sphere and a de Jongh screw's shipped free-space reference by its oracle tests, not bounded "
         "here",
-        "mrs: a wall's correction is taken at the force points, which resolve the image while the body is more than "
-        "about a force spacing from the wall; in the tube the confinement's effect converges more slowly than the "
-        "free part (MIME-ANO-129), and within a force spacing of the wall the image's error is not measured",
+        "mrs: a wall's correction is taken at the force points, which do not resolve the image near the wall: within "
+        "half a force spacing of it the resistance was measured indefinite (a step whose resistance is indefinite "
+        "stops the run, drag.mrs-indefinite), within one a step raises near_wall, and there a definite resistance is "
+        "not shown accurate; in the tube the confinement's effect converges more slowly than the free part "
+        "(MIME-ANO-130)",
     )
     quadrature_refinement: int | None = None
+    wall_refinement: int | None = None
+
+    @override
+    def default_spacing(self, ctx: PlanContext) -> Quantity | None:
+        """The mrs rung's spacing when none is written: its family's (as 0.3.0's rule reads ``SEPARATED_SAMPLES``), and
+        for a body a law holds off the wall of the region its medium fills (a contact's margin, its closest approach:
+        ``PlanContext.approach``), no coarser than that approach over ``CONFINED_GAP``, so that its closest approach
+        lies outside the band where the resistance was measured indefinite with the wall's image in place
+        (MIME-ANO-130). A body nothing holds off the wall takes its family's, and the build reports that its closest
+        approach is the wall itself."""
+        family = super().default_spacing(ctx)
+        approach = ctx.approach(of="body")
+        if family is None or self.rung != "mrs" or ctx.region("medium") is None or approach is None or approach <= 0.0:
+            return family
+        held = float(cast(float, family.value))
+        confined = approach / CONFINED_GAP
+        if confined >= held:
+            return family
+        spacing = float(f"{confined:.3g}")
+        if spacing > confined:  # rounded up past the bound: one unit of the third figure below it
+            spacing = float(f"{spacing - 10.0 ** (math.floor(math.log10(spacing)) - 2):.3g}")
+        return m(spacing)
 
     @override
     def default_blob(self, ctx: PlanContext) -> float | None:
@@ -716,7 +815,61 @@ class Drag(PointForceDrag):
             found.append(f"quadrature_refinement is {refinement!r}, not a whole number of 1 or more: the quadrature's "
                          f"spacing is the spacing over it, so write quadrature_refinement=8 (or 1 for the force points "
                          f"themselves)")
+        wall = cast(object, self.wall_refinement)
+        if wall is not None and (isinstance(wall, bool) or not (isinstance(wall, int) and wall >= 1)):
+            found.append(f"wall_refinement is {wall!r}, not a whole number of 1 or more: the wall's image is integrated "
+                         f"over each cell on a quadrature that many times finer than the force spacing, so write "
+                         f"wall_refinement=4 (or 1 for the image at the force points)")
         return found
+
+    def default_wall_refinement(self, ctx: PlanContext) -> int | None:
+        """The mrs rung's wall refinement when none is written: ``WALL_REFINEMENT`` for a body a law holds off the
+        wall of the region its medium fills (a contact's margin, ``PlanContext.approach``), which the experiment keeps
+        near that wall; none otherwise, where the image is taken at the force points: in free space, which has no
+        image, and for a body nothing holds near the wall, for which the image's reads cost a step most and a step
+        near the wall raises ``near_wall``."""
+        if self.rung != "mrs" or ctx.region("medium") is None or ctx.approach(of="body") is None:
+            return None
+        return WALL_REFINEMENT
+
+    @override
+    def _judged_spacing(self, spacing: float) -> float | None:
+        return spacing
+
+    @override
+    def _reference_quadrature(self, hull: Hull, sampling: Sampling, spacing: float) -> tuple[
+            tuple[tuple[int, ...], ...] | None, np.ndarray | None]:
+        """Where the written quadrature_refinement is below its rule's (two over the blob, rounded up), the rule's
+        quadrature, or the next finer that leaves no cell empty, which the node assembles once more at build to
+        estimate the written one's error (``drag.mrs-quadrature``); none at or above the rule."""
+        written = int(cast(int, self.quadrature_refinement))
+        rule = max(1, math.ceil(QUADRATURE_PER_BLOB / float(cast(float, self.blob)) - 1e-9))
+        for refinement in range(rule, 2 * rule + 2):
+            if refinement <= written:
+                return None, None
+            counts = quadrature_counts(hull.kind, hull.settings, spacing / refinement, sampling.patches)
+            owners = quadrature_owners(hull.kind, hull.settings, sampling, counts)
+            if not empty_cells(owners, len(sampled_points(hull.kind, hull.settings, sampling))):
+                return counts, owners
+        return None, None
+
+    @override
+    def _wall_quadrature(self, hull: Hull, sampling: Sampling, spacing: float) -> tuple[
+            tuple[tuple[int, ...], ...] | None, np.ndarray | None]:
+        """With a wall_refinement above 1, the kind's quadrature that many times finer than the force spacing, or the
+        next finer that leaves no cell empty, and its owner map: the wall's image is integrated over each cell on it
+        (``mime.nodes.hydro.mrs.cell_image``). None at 1, where the image is taken at the force points, and in free
+        space."""
+        written = cast(object, self.wall_refinement)
+        if not isinstance(written, int) or written <= 1:
+            return None, None
+        cells = len(sampled_points(hull.kind, hull.settings, sampling))
+        for refinement in range(written, 2 * written + 2):
+            counts = quadrature_counts(hull.kind, hull.settings, spacing / refinement, sampling.patches)
+            owners = quadrature_owners(hull.kind, hull.settings, sampling, counts)
+            if not empty_cells(owners, cells):
+                return counts, owners
+        return None, None
 
     @override
     def _quadrature_arguments(self, hull: Hull, sampling: Sampling, spacing: float) -> tuple[

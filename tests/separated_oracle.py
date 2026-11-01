@@ -3,11 +3,12 @@ kind's force points and its quadrature ``refinement`` times finer placed by a po
 of the force point the map names, the regularised Stokeslet of every force point against every quadrature point summed
 over each cell (``numpy.add.at``), each cell's wrench from its area and centroid, and the dense solve. The map is the
 one ``mime.scene.quadrature_owners`` makes, which ``test_mrs_separated.py`` holds to a brute-force nearest search; the
-rest shares no code with the node. It bounds how far the node departs from its formula, not how far the formula
-departs from the flow."""
+rest shares no code with the node but, with a wall, the wall's correction itself (the node's, read at the force
+points the oracle places). It bounds how far the node departs from its formula, not how far the formula departs from
+the flow."""
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import jax.numpy as jnp
@@ -44,8 +45,11 @@ def discretisation(kind: Any, settings: Mapping[str, Any], spacing: float, refin
 
 
 def resistance(force: np.ndarray, points: np.ndarray, weights: np.ndarray, owners: np.ndarray, blob: float,
-               viscosity: float, pose: Sequence[float]) -> np.ndarray:
-    """The symmetric part of ``W^T A^-1 M`` about the pose's position, the body at the pose."""
+               viscosity: float, pose: Sequence[float],
+               wall: Callable[[np.ndarray], np.ndarray] | None = None) -> np.ndarray:
+    """The symmetric part of ``W^T A^-1 M`` about the pose's position, the body at the pose; with ``wall`` (the
+    wall's ``3N x 3N`` correction at the force points in the world, per unit force, the viscosity in it), each cell's
+    column of it times the cell's area added to ``A``: the wall's image at the force points, as the node takes it."""
     pose = np.asarray(pose, dtype=np.float64)
     turn = rotation(pose[3:])
     x = pose[:3] + force @ turn.T
@@ -64,6 +68,8 @@ def resistance(force: np.ndarray, points: np.ndarray, weights: np.ndarray, owner
                                      + r[..., :, None] * r[..., None, :])
         np.add.at(cells, (slice(None), owners[start:start + 4096]), pair)
     matrix = cells.transpose(0, 2, 1, 3).reshape(3 * count, 3 * count)
+    if wall is not None:
+        matrix = matrix + np.asarray(wall(x), dtype=np.float64) * np.repeat(area, 3)[None, :]
     wrench = motions_of(centroid, pose[:3]) * np.repeat(area, 3)[:, None]
     found = wrench.T @ np.asarray(jnp.linalg.solve(jnp.asarray(matrix), jnp.asarray(motions_of(x, pose[:3]))))
     return (found + found.T) / 2
