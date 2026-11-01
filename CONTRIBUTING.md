@@ -41,7 +41,7 @@ Never use `MADD-` prefixed IDs for MIME artifacts. Cross-reference upstream MADD
 A class is named for what it is, in a name that reads in its namespace (`mime.fields.PointDipole`,
 `Drag.Surrogate`). Rules 2 and 6 are enforced by `tests/test_naming_rules.py`, and so is rule 5 for one name: the
 method of regularised Stokeslets is the `MRS` rung, and its old generic name stays out of the repository, free for a
-boundary-element rung; the others are for review.
+rung that uses boundary elements; the others are for review.
 
 1. **Name a class for what it is,** not who published it or where it came from. Attribution goes in the docstring and
    the entry's `references`. A physical law or model universally known by a person's name (Stokeslet, Oseen, Faxén,
