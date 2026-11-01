@@ -26,6 +26,10 @@ sat 0.28% to 0.65% below and could not tell a 1% scale error in translation (+0.
 give a symmetric positive definite resistance; the pill moves most easily along its axis; the screw couples turning
 about its axis to moving along it, with the sign of its handedness.
 
+**The exact symmetries, on the kept versions**: the bounds a quasi-uniform sampling needs (the sphere's coupling, the
+mirrored screw's) pass errors the exact checks they replaced caught at rounding, so those checks are kept where the
+symmetry is still the discretisation's, on the grid sphere 0.1.0 and the screw 0.2.0.
+
 **The controls**, each failing on every run: the free-space wall replaced by a non-zero correction (a Stokeslet image
 of the body five radii below it); the sphere's radius read 1% too large, which moves the rotation 3%; the spheroid's
 semi-axes read 1% too large, which moves each translation entry by about 0.9%, three times the tolerance, so that the
@@ -36,6 +40,7 @@ check of its products' precision catches.
 filling a tube's lumen with the free-space wall; and settings of the other rung, a missing spacing or blob, and a wall
 kind not built."""
 
+import dataclasses
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,7 +65,7 @@ from mime.gradients import GradientStatus
 from mime.interactions import Drag
 from mime.nodes.hydro.mrs import MRSDragNode, Corrected, WallCorrection, blob_squared, resistance
 from mime.registry import Samples, Solid, register_geometry, uniform
-from mime.scene import Sphere, Tube, quadrature
+from mime.scene import KEPT, Sphere, Tube, quadrature
 from mime.things import Body, State, Structure
 from mime.units import Length, Quantity, dimensionless, mm
 from mime.vocabulary import register_namespace
@@ -83,10 +88,17 @@ def stokes(radius: float) -> np.ndarray:
     return np.array([6 * math.pi * MU * radius] * 3 + [8 * math.pi * MU * radius ** 3] * 3)
 
 
-def sphere_resistances(radius=BALL.radius) -> list[np.ndarray]:
+def kept(kind):
+    """``kind`` on the version kept from before quasi-uniform sampling (``mime.scene.KEPT``), whose sampling is its
+    quadrature: a grid with the body's exact symmetries."""
+    held = next(cls for (name, _), (cls, _) in KEPT.items() if name == kind.name)
+    return held(**{field.name: getattr(kind, field.name) for field in dataclasses.fields(kind)})
+
+
+def sphere_resistances(radius=BALL.radius, kind=Sphere) -> list[np.ndarray]:
     found = []
     for spacing in (COARSE, FINE):
-        built = free_space("sphere_oracle", {"ball": Sphere(radius=radius)}, mrs(spacing)).build()
+        built = free_space("sphere_oracle", {"ball": kind(radius=radius)}, mrs(spacing)).build()
         found.append(resistance_at(built, "ball"))
     return found
 
@@ -109,6 +121,14 @@ def test_the_sphere_converges_on_stokes_drag_and_torque():
     assert np.all(np.abs(each[1]) < np.abs(each[0])) and np.all(np.abs(each[1]) > SPHERE_TOLERANCE)
     assert np.all(np.abs(extrapolated) < SPHERE_TOLERANCE)
     assert coupling < SPHERE_COUPLING
+
+
+def test_the_kept_grid_sphere_couples_translation_and_rotation_only_at_rounding():
+    """The exact check ``SPHERE_COUPLING`` replaced, kept on the sphere 0.1.0, whose Gauss-Legendre grid is symmetric
+    through the centre: the bound passes a rotation centre placed up to about 2.3e-3 of the radius off (``R_FO`` is
+    about ``6 pi mu a delta``), which this catches at rounding."""
+    _, _, coupling = sphere_misses(sphere_resistances(kind=KEPT[("sphere", "0.1.0")][0]))
+    assert coupling < 1e-10
 
 
 register_namespace("oracle", "0.0.1")
@@ -275,6 +295,16 @@ def test_the_pill_moves_most_easily_along_its_axis_and_the_screw_couples_turning
     print(f"\nthe screw's axial coupling: right-handed {right[0, 3]:.6e}, left-handed {left[0, 3]:.6e}")
     assert left[0, 3] * right[0, 3] < 0.0
     assert abs(left[0, 3] + right[0, 3]) <= MIRRORED * abs(right[0, 3])
+
+
+def test_the_kept_grid_screws_mirror_image_reverses_its_coupling_to_rounding():
+    """The exact check ``MIRRORED`` replaced, kept on the screw 0.2.0, whose quadrature is its own mirror image's
+    mirrored: the band passes a handedness or an axis read wrong by up to its 15%, which this catches to 1e-9."""
+    identity = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+    right = resistance_at(free_space("screw", {"screw": kept(fl9())}, mrs(mm(0.9))).build(), "screw", identity)
+    left = resistance_at(free_space("screw", {"screw": kept(fl9(nu=-2.33))}, mrs(mm(0.9))).build(), "screw", identity)
+    assert abs(right[0, 3]) > 1e-3 * math.sqrt(right[0, 0] * right[3, 3])
+    assert math.isclose(left[0, 3], -right[0, 3], rel_tol=1e-9)
 
 
 def image_of_a_plane_below(points, parameters, viscosity):

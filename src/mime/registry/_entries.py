@@ -1251,7 +1251,7 @@ class WallKind(Entry):
         return WallDistance(-shape.signed_distance(parameters, point), -shape.outward_normal(parameters, point))
 
 
-type Tensor =tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
+type Tensor = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
 
 
 class Solid(Geometry):

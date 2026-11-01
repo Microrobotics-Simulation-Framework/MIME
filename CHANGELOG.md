@@ -30,9 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`Geometry.reach(parameters, direction)`, the hull query**: the largest `x . d` over the body, homogeneous of
     degree one in `d`, its gradient the farthest point (a face's, a segment's or a rim's middle where that is not one
     point); closed forms for the sphere, the capsule, the cylinder, the box, the ellipsoid and the tube, an envelope for
-    the screw (the cylinder of its crests, `reach_envelope` 0.15: on FL-9 it overstates by up to 0.138 of its enclosing
-    radius between its axis and across it, and by nothing along either), and `mime.scene.sampled_reach` from any kind's
-    samples. No node's step evaluates it yet; its kinks become declared switches with the containment contact (7o).
+    the screw (the cylinder of its crests, `reach_envelope` 0.16: on FL-9 it overstates by up to 0.1458 of its enclosing
+    radius, the supremum over every direction, 48 degrees from its axis, and by nothing along its axis or across it;
+    its farthest point is the envelope's, 1.1 to 1.7 mm from the body's), `mime.scene.sampled_reach` from any kind's
+    samples, and `mime.scene.body_reach`, the body's own reach from its quadrature, which never overstates it and whose
+    farthest point is a sample of the body, the one a contact takes; the sampling suite holds it to a dense quadrature
+    on every kind (`body_reach_problems`). No node's step evaluates a reach yet; its kinks become declared switches with
+    the containment contact (7o).
   - **`WallKind.distance(parameters, point)`**: a `WallDistance`, the wall's signed distance from a point of the medium
     (above zero in it) and its normal into it, by default minus the matched region's shape's, so the tube's is its
     radius less the point's distance from its axis, with the cylinder's switches; free space gives `None`.
@@ -54,6 +58,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     at the frozen 0.16 mm (5,984 samples) and blob 0.5: on the screw 0.3.0's sampling 2.9523 mm/s (-3.43% from the
     post hoc point), inside the preregistered band, and on the screw 0.2.0's quadrature 2.7979 mm/s (-8.48%), outside
     it, the control. An estimate against an extrapolated reference, not a bound on the model, and no measured speed.
+    It lies outside the post hoc band (3.0003 to 3.1143 mm/s); the preregistered band is the tolerance (labelled
+    decision D20), and the reproduction pin at 1e-4 is what a change of the sampler moves.
+  - **7j's frozen register keeps the versions it froze**: `scripts/sim2real/operating_point.py` builds every geometry
+    kind of its experiments at `FROZEN_VERSIONS` (the screw 0.2.0, the sphere and capsule 0.1.0, and the others at the
+    versions registered on 2026-10-31) through `pinned`, until a dated amendment of the register moves them; built on
+    the screw 0.3.0, script A's MRS arm at point A moved +15.6% (4.8233 to 5.5746 mm/s). `capfix.py` and `prereg.py`,
+    which rebuild the samples from the node's counts, refuse a node whose samples are a choice
+    (`require_quadrature`). `tests/differential/test_frozen_register_pins.py` fails on a script that builds a kind
+    unpinned, or an experiment of its own.
+  - **The exact symmetries are kept on the kept versions**: the sphere's coupling at rounding on the grid sphere 0.1.0,
+    the mirrored screw's coupling reversed to 1e-9 and the generator's half turn to 1e-6 on the screw 0.2.0, beside the
+    bounds a quasi-uniform sampling needs, which pass errors those caught.
 - **Terms and tiers** (push's first piece, P1, designs #198 and #199), all offline:
   - **Licences are SPDX expressions** (`mime.terms`): checked by `packaging.licenses` (the floor is now `packaging>=24.2`)
     and held to their canonical spelling; a licence of one's own is a `CustomLicence` (`LicenseRef-` with its title and
@@ -1483,6 +1499,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-128 (open, minor): the screw's hull query is the cylinder of its crests, which overstates FL-9's reach by up
+  to 0.1458 of its enclosing radius (the supremum over every direction, 48 degrees from the axis), and whose farthest
+  point lies 1.1 to 1.7 mm from the body's; a contact takes `mime.scene.body_reach` instead.
+- MIME-ANO-127 (open, minor): a quasi-uniform sampling chooses again when an experiment is rebuilt at a moved setting,
+  and the MRS resistance steps (0.37% of its diagonal on FL-9 for a wavenumber moved by 1e-5, a thousand times the
+  smooth change); within one build the choice is held and a derivative is exact.
+- MIME-ANO-126 (open, minor): on a smooth convex body the quasi-uniform sampling's MRS drag is further from the closed
+  form than the polar grid's at the same count (the sphere +1.78% against +1.30% at 338 samples); kept as a labelled
+  default (design #195), until phase 7m-b chooses again.
+- MIME-ANO-125 (resolved, minor): on a CPU with two sizes of core the MRS resistance's last bits depended on the kind
+  of core a process started on, for a body of more than 82 samples (Eigen blocks the force sums' 3N terms by the L1d it
+  reads, 48 KB or 32 KB), so a saved experiment's bitwise reproduction in a fresh process failed (the registry walk's
+  `mrs_solids`, 2 of 10 runs); pre-existing (on `v0.3` before 7m-a, 7 of 20 processes took the second pattern).
 - MIME-ANO-124 (open, major): a motor's unwrapped single-precision angle turns at a biased rate (5.4e-4 at 1 Hz over
   10 s, up to half a percent after a minute), doubling with each doubling of the angle; the rotor's frame, the magnet
   and the field share it. Planned: wrap the angle, or carry it compensated.
@@ -1525,6 +1554,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference does not carry the float32 rounding; the tag's run on 0.3.1 does.
 
 ### Fixed
+- **The MRS rung's force sums are the same on every core of a machine** (MIME-ANO-125): `mime.nodes.hydro.mrs.force_sums`
+  sums `M^T X` over the samples in pieces of at most `DEPTH` (248) terms, added in order. A sum of up to 248 terms is
+  the product it was, bit for bit (every result of a body of up to 82 samples, the saved-form fixtures among them);
+  a longer one moves at rounding, and is now the same in every process (50 of 50 fresh processes and 5 pinned to each
+  kind of core on a hybrid laptop, where before 9 of 20 differed). The cost is 0.1 ms a step at FL-9's 5,984 samples.
 - **The screw kind's caps no longer crowd their centres** (MIME-ANO-119; `screw` 0.2.0). Each cap is sampled in rings:
   a sample at its centre and rings out to the rim, each a copy of the section at a fraction of the way out, its count a
   multiple of the starts growing with its radius (above `4 starts + 2`, which the second moments need), equally spaced

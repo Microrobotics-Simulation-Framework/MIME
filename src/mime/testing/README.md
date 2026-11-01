@@ -186,7 +186,10 @@ spacing, its fifth percentile at least `NEAREST_FIFTH` and its least at least `N
 and any labelled region's share of the samples within `COVERAGE_BAND` of its share of the area; the weights summing to
 the area), keeps the MRS matrix conditioned at today's blob and at the larger fractions a smoother blob needs
 (`conditioning_problems`, `CONDITION_BOUNDS`), its `reach` holds its body and no more against a dense quadrature
-(`reach_problems`: an envelope may overstate by its declared share), and a wall kind's `distance` is its normal's
+(`reach_problems`: an envelope may overstate by its declared share), the body's own reach from its quadrature
+(`mime.scene.body_reach`) never passes its body, falls short of its farthest point by no more than that point lies
+from a sample, and has a sample (or the middle of those tied) for its gradient (`body_reach_problems`), and a wall
+kind's `distance` is its normal's
 potential and its closed form's (`distance_problems`). A kind's own quadrature fails the spacing check, and is its
 control. The kind-conformance harness checks a patch whose region no registered shape evaluates (the ellipsoid's)
 against a level set written from the kind's definition (`_LEVELS`).

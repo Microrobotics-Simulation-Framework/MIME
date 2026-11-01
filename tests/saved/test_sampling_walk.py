@@ -9,8 +9,8 @@ The controls, each failing on every run (nothing here is drawn): every current k
 sampling chooses from, fails the spacing check (it is what the MRS rung took before 7m-a); each kept version fails it
 too, and only those; a sampling that leaves out the screw's caps fails the coverage check while its spacing passes;
 the screw's quadrature fails the crests' and caps' coverage; the sphere's quadrature fails the conditioning bound; a
-reach planted short, long, or without a capsule's caps fails; a wall distance planted off, or with its normal
-reversed, fails.
+reach planted short, long, or without a capsule's caps fails; a body's own reach from samples pushed off the body, or
+without a capsule's caps, fails; a wall distance planted off, or with its normal reversed, fails.
 
 **What was measured** (float64, on the declared settings, at ``SUITE_SAMPLES`` and ``FINER_SAMPLES``; recorded so that
 a threshold's margin is known): the quasi-uniform samplings' 5th percentile of nearest neighbours over the mean spacing
@@ -29,11 +29,13 @@ from cases import CASES
 from mime.docs import load_namespaces
 from mime.registry import EntryKind, implements, lookup
 from mime.registry import registered as registered_entries
-from mime.scene import KEPT, Box, Capsule, Screw, Sphere, quadrature
+from mime.scene import KEPT, Box, Capsule, Screw, Sphere, quadrature, sampled_reach
 from mime.testing import (
+    BODY_REACH_SPACING,
     CONDITION_BOUNDS,
     FINER_SAMPLES,
     SUITE_SAMPLES,
+    body_reach_problems,
     condition_number,
     conditioning_problems,
     distance_problems,
@@ -232,6 +234,39 @@ def test_control_a_reach_planted_wrong_fails(plant):
 
     assert reach_problems(capsule, settings) == []
     assert reach_problems(capsule, settings, reach=planted) != []
+
+
+@pytest.mark.parametrize("name", WALKED)
+def test_every_kinds_own_body_reach_holds_its_body_from_its_samples(declared, sampling_classes, name):
+    """``mime.scene.body_reach``, the hull query a contact takes its point from: never past the body, short of its
+    farthest point by no more than that point lies from a sample, its gradient a sample."""
+    found = {}
+    for kind, settings in declarations(declared, sampling_classes, name):
+        problems = body_reach_problems(kind, settings)
+        if problems:
+            found[repr(sorted(settings.items()))] = problems[:3]
+    assert found == {}
+
+
+@pytest.mark.parametrize("plant", ["off_the_body", "no_caps"])
+def test_control_a_body_reach_planted_wrong_fails(plant):
+    """Its samples pushed off the body along their normals by 2e-3 of its size (four times the brute force's gap), or
+    its caps' samples left out (it falls short along the axis by the caps' height)."""
+    capsule = Capsule(radius=m(1.0e-3), height=m(2.0e-3), axis=(0.0, 0.6, 0.8))
+    settings = {"radius": 1.0e-3, "height": 2.0e-3, "axis": (0.0, 0.6, 0.8)}
+    size = capsule.enclosing_radius(settings)
+    spacing = size * BODY_REACH_SPACING
+    patches = ("lateral",) if plant == "no_caps" else tuple(capsule.patches)
+    counts = [tuple(capsule.sample_counts(settings, spacing, patch)) for patch in patches]
+    push = 0.0 if plant == "no_caps" else 2e-3 * size
+
+    def samples(parameters):
+        found = [capsule.samples(parameters, patch, count) for patch, count in zip(patches, counts, strict=True)]
+        points = jnp.concatenate([s.points + push * s.normals for s in found])
+        return type(found[0])(points, None, None)
+
+    assert body_reach_problems(capsule, settings) == []
+    assert body_reach_problems(capsule, settings, reach=sampled_reach(samples)) != []
 
 
 def tube_closed_form(centre, axis, radius):

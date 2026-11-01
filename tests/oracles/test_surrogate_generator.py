@@ -36,7 +36,8 @@ from mime import assets
 from mime.assets import DerivationInput
 from mime.build import BuildRefused
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE, shipped_unit_tube
-from mime.scene import Screw
+import mime.scene
+from mime.scene import KEPT, Screw
 from mime.surrogates import current_inputs
 from mime.surrogates import generator as g
 from mime.units import dimensionless, m
@@ -314,6 +315,20 @@ def test_a_half_turn_about_the_bodys_own_axis_leaves_the_resistance_unchanged_to
     apart = float(np.max(np.abs(turned - held)) / np.max(np.abs(held)))
     print(f"\nthe half turn's resistance apart from the unturned's by {apart:.3e} of its largest entry")
     assert 0.0 < apart <= HALF_TURN
+
+
+def test_on_the_kept_grid_screw_a_half_turn_leaves_the_resistance_unchanged_to_rounding(monkeypatch):
+    """The exact check ``HALF_TURN`` replaced, kept on the screw 0.2.0, whose quadrature the half turn maps onto
+    itself: under quasi-uniform sampling any roll moves the resistance, so the band passes a roll about another axis
+    or by another angle, which this catches."""
+    monkeypatch.setattr(mime.scene, "Screw", KEPT[("screw", "0.2.0")][0])
+    design = g.design_named("FL-9")
+    shell = g.experiment(design, "1/4 in", COARSE).document()["things"]["screw"]["parts"]["shell"]["solid"]
+    assert (shell["name"], shell["version"]) == ("screw", "0.2.0")
+    evaluator = g.MRSEvaluator(design, "1/4 in", COARSE)
+    case = g.Case(design, "1/4 in", 0.2e-3)
+    turned, held = evaluator(replace(case, roll=math.pi)).resistance, evaluator(case).resistance
+    assert np.max(np.abs(turned - held)) <= 1e-6 * np.max(np.abs(held))
 
 
 def test_the_derived_data_record_the_shipped_tables_hash_and_are_not_stale():

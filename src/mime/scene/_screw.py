@@ -106,11 +106,14 @@ class Screw(Solid):
     regions = ("screw", "span")
     region_shapes = {"screw": "screw", "span": "slab"}
     patches = {"lateral": "screw", "caps": "span"}
-    #: Its reach is the cylinder of its crests: measured on FL-9 over the sampling suite's directions, it overstates the
-    #: body's by up to 0.138 of its enclosing radius (0.58 mm, along a direction between the axis and across it, where
-    #: no crest meets a cap's rim), and by nothing along the axis or across it. A declaration, that measurement rounded
-    #: up.
-    reach_envelope = 0.15
+    #: Its reach is the cylinder of its crests, which holds the body and overstates its reach: on FL-9 by up to
+    #: 0.1458 of its enclosing radius (0.623 mm, 48 degrees from the axis, where no crest meets a cap's rim), and by
+    #: nothing along the axis or across it. That is the supremum over every direction, from the section's own support
+    #: turned along the body (tilts by a quarter degree and rolls by half a degree, the worst refined by local
+    #: maximisation, within 1.5e-5 of the size of a dense quadrature's brute force; phase 7m-a's fix round); the suite's
+    #: 75 directions see 0.138 of it. A declaration: that measurement with a tenth more, for a screw's settings near
+    #: FL-9's (MIME-ANO-128).
+    reach_envelope = 0.16
     radius: Annotated[Quantity, Length]
     length: Annotated[Quantity, Length]
     wavenumber: Annotated[Quantity, DIMENSIONLESS]
@@ -280,8 +283,11 @@ class Screw(Solid):
         holds the body. It is the body's own reach along the axis (the caps) and, where the crests turn through a
         ``starts``-th of a turn or more along its length (``|wavenumber| L / R >= 2 pi / starts``: FL-9's turn through
         11.2 rad), across it; between, it overstates the reach where no crest meets a cap's rim at the angle that
-        faces the direction, by up to ``reach_envelope`` of its enclosing radius on FL-9 (the sampling suite's
-        measurement)."""
+        faces the direction, by up to ``reach_envelope`` of its enclosing radius (on FL-9 0.1458, by tilt from the
+        axis 0.019 at 5 degrees, 0.057 at 15, 0.110 at 30, 0.145 at 45, 0.134 at 60, 0.087 at 75 and 0.035 at 85). It is
+        conservative: FL-9 floored in script A's tube may tilt 18.94 degrees by it and 18.95 to 21.56 by its body,
+        by roll. Its gradient is the envelope's farthest point, not the body's (on FL-9 1.1 to 1.7 mm from it at tilts
+        from 5 to 85 degrees), so a contact takes its point from ``mime.scene.body_reach``, and this as a bound."""
         d = jnp.asarray(direction)
         crest = parameters["radius"] * (1.0 + parameters["modulation"])
         return crest * length_of(d[1:]) + parameters["length"] / 2.0 * magnitude_of(d[0])

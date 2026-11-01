@@ -1729,7 +1729,9 @@ anomalies:
       - "tests/saved/test_sampling_walk.py::test_control_each_kept_version_fails_the_spacing_check_and_no_current_one_does"
       - "tests/saved/test_sampling_walk.py::test_control_the_spheres_quadrature_fails_the_conditioning_bound_at_todays_blob"
       - "tests/oracles/test_mrs_gradients.py::test_check_2_each_leafs_derivative_equals_the_difference_by_rebuilding_and_a_stopped_leaf_fails"
-    residual_risk: "The sphere 0.1.0 and the capsule 0.1.0, kept registered so that a folder saved with either reproduces, still sample by the crowded grid, and the sampling suite holds them to failing; the derivative checks run at the suite's few hundred samples, not at 0.1 mm or with the tube's wall correction"
+      - "tests/oracles/test_tube_kind.py::test_the_confined_matrix_stays_conditioned_and_its_radius_derivative_is_right_on_the_current_sampling"
+      - "tests/oracles/test_tube_kind.py::test_control_the_kept_grid_sphere_breaks_the_bound_in_the_tube"
+    residual_risk: "The sphere 0.1.0 and the capsule 0.1.0, kept registered so that a folder saved with either reproduces, still sample by the crowded grid, and the sampling suite holds them to failing (with the tube's correction too: the grid sphere's confined matrix at 0.1 mm breaks the free-space bound, 1.95e4 in phase 7m-a's review). With the wall's correction the current versions are checked at one spacing, 0.1 mm, and one place, 1.5 mm off the axis of a 5 mm tube (the confined condition at most 175 and the radius derivative within 4e-10 of central differences, measured in that review over 66 to 2,016 samples); nearer a wall, or at a finer spacing, is not checked"
     workaround: "Build new experiments with the current versions, which a script writing Sphere(...) or Capsule(...) gets; for a kept version's folder, read its forward values only"
     planned_resolution: "Done in dev1 phase 7m-a (designs #195, #196), by a remedy other than the one first planned: not rings at the poles, but the geometry protocol's quasi-uniform sampling of every kind (the sphere 0.2.0, the capsule 0.2.0), chosen from the quadrature by farthest points and Lloyd's relaxation. At the suite's 500 and 2,000 samples the 5th percentile of the nearest neighbours is 0.78 to 0.81 of the mean spacing and the closest pair 0.66 to 0.73 (the grid's 0.09 to 0.27), and the MRS matrix's condition at blob 0.5 is 108 to 121 (the sphere grid's 2.3e4); each leaf's derivative, the radius and the capsule's height among them, equals the difference by rebuilding with the choice held"
   - anomaly_id: MIME-ANO-124
@@ -1764,3 +1766,132 @@ anomalies:
     residual_risk: "Phase 7c2 reads every phase against the angle of the same run and gates the angle's own rounding to a derived bound (a0_dynamic_expected_differences_b.json), so its comparison is not moved by it; nothing bounds the bias in a run that is not compared against an emulation of the same accumulator"
     workaround: "Run in double precision (JAX_ENABLE_X64=1) where a run is long or its rate matters, or read rates from the motor's speed rather than from its angle"
     planned_resolution: "Wrap the angle (carry it modulo a turn, with the turns counted apart), or carry it compensated (a Kahan-style sum of the increments) or in double precision; a src change for the maintainer to triage, which changes nothing in 7c2's numbers"
+  - anomaly_id: MIME-ANO-125
+    title: "On a CPU with two sizes of core, the MRS resistance's last bits depend on which core a process started on"
+    description: >
+      The MRS rung's force sums, R = M^T (A^-1 M), sum over the body's 3N unknowns. XLA:CPU takes that product, over
+      both operands' first axis, through Eigen, which blocks a sum by the L1 data cache it reads off the core it first
+      runs on, once per process. On a CPU with two sizes of core (Intel's hybrid parts: on the laptop it was measured
+      on, the larger cores have a 48 KB L1d and the smaller 32 KB) a sum of more than 248 terms (more than 82 samples) was added in one block on one
+      kind of core and in two on the other, so the resistance took one of two bit patterns per process, about 1e-16
+      apart relative, and stayed with it for the process's life. A saved experiment then failed its bitwise reproduction
+      in a fresh process (mime verify, the registry walk's round trips): phase 7m-a's review saw mrs_solids (its
+      ellipsoid's 297 unknowns) fail 2 of 10 runs. Computed in phase 7m-a's fix round, each in fresh processes with one
+      BLAS thread: on v0.3 before 7m-a (4bc1ada), a ball at 1,014 unknowns and FL-9 at 1,701 took the second pattern
+      in 7 of 20 unpinned processes, and pinned to the P-cores 4 of 4 took one, to the E-cores 4 of 4 the other; on
+      7m-a before the fix, the same and the ellipsoid alike (9 of 20); mrs_solids saved on one kind of core and loaded
+      on the other failed 6 of 6. The core's kind decided it, not the CPU count (1, 4, 8 and 16 CPUs alike), the hash
+      seed, the sampler, or XLA's flags (multi-threaded Eigen off, fast math off, platform-dependent math off, XNNPACK
+      off: each left it). Every sum up to 248 terms matched across the core kinds and every one from 249 differed,
+      except at 377 and 384, where Eigen's blocking rule gives both the same blocks; that rule, with those two cache
+      sizes, predicts all twelve depths measured (the rule is inference from Eigen's published blocking heuristic; the
+      library inside jaxlib was not read). The rung's numbers are right to rounding either way; what failed is the
+      promise that a run reproduces bit for bit.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      No value moved beyond rounding (1e-16 relative), so no physical result is wrong. What it breaks is a check: a
+      bitwise reproduction (mime verify, a saved folder's round trip) failed on a correct result on a hybrid-core
+      machine, which teaches a user to ignore a reproduction failure; and a long or chaotic run can carry the first
+      difference far. Where a result is accepted on its bitwise reproduction, it depends on the machine.
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev0"
+    resolution_version: "0.3.0.dev1"
+    affected_components:
+      - "drag (rung mrs), MRSDragNode: mime.nodes.hydro.mrs.resistance's force sums"
+    verification:
+      - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_mrs_step_sums_at_most_depth_terms"
+      - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_resistance_sums_at_most_depth_terms"
+      - "tests/oracles/test_mrs_force_sums.py::test_a_sum_no_longer_than_depth_is_the_product_it_was_bit_for_bit"
+      - "tests/oracles/test_mrs_force_sums.py::test_a_longer_sum_equals_the_product_to_rounding"
+      - "tests/oracles/test_mrs_force_sums.py::test_control_the_product_taken_whole_is_found_by_the_scan"
+      - "tests/saved/test_registry_walk.py::test_every_case_round_trips_through_a_fresh_process"
+    residual_risk: "CI's runners have one size of core, so no test there can show that two processes' bits differ; the tests hold the cause (no product in the compiled MRS step sums more than 248 terms), and the cure was measured on a hybrid laptop (50 of 50 fresh processes, and 5 pinned to each kind of core, bitwise equal on all three bodies; mrs_solids saved on one kind and loaded on the other 10 of 10). 248 is the block Eigen takes in float64 with AVX2 on a 32 KB L1d (in float32 its block is longer); a CPU whose smaller cores had a smaller L1d, or wider vectors on both kinds, would need a shorter piece. The other products in MIME that contract over both operands' first axis (a chain's links, a 3 x 3 frame) sum a few terms, surveyed and not tested"
+    workaround: "Before the fix, pin a process to one kind of core (taskset) where its bits are compared with another's"
+    planned_resolution: "Done in phase 7m-a's fix round: mime.nodes.hydro.mrs.force_sums sums over the samples in pieces of at most DEPTH (248) terms, added in order, so a sum of up to 248 terms is the product it was, bit for bit, and a longer one is the same on either kind of core"
+  - anomaly_id: MIME-ANO-126
+    title: "On a smooth convex body the quasi-uniform sampling's MRS drag is further from the closed form than the polar grid's at the same count"
+    description: >
+      The sampling suite's spacing metric predicts the MRS matrix's conditioning, not its drag error. At the same count
+      and blob 0.5, in float64, the rung's drag on a sphere or an ellipsoid sampled quasi-uniformly (the sphere 0.2.0,
+      the ellipsoid 0.1.0) is further from its closed form than on the polar grid the sphere's first version sampled
+      by. Each figure is the mean of the diagonal's three entries against the closed form (Stokes's law; Oberbeck's and
+      Edwardes's for the ellipsoids, Kim and Karrila's chapter 3), computed in phase 7m-a's review, the grid's first:
+      the sphere in translation +2.41% against +3.13% at 128 samples, +1.30% against +1.78% at 338, +0.61% against
+      +0.90% at 1,152 and +0.34% against +0.52% at 3,160, in rotation +4.92% against +5.89% at 338; the ellipsoid of
+      semi-axes 0.5, 0.7 and 1.1 mm +1.68% against +2.25% at 252 and +0.52% against +0.77% at 1,692 (rotation +6.15%
+      against +6.88% at 252); that of 1, 0.6 and 0.25 mm +1.45% against +2.16% at 312 and +0.46% against +0.75% at 2,170.
+      The grid's miss is 0.61 to 0.77 times the quasi-uniform sampling's. It is not the grid's symmetry: the ratio is
+      the same on the triaxial ellipsoids, turning the quasi-uniform set changes nothing (0.01 points), and Fibonacci
+      points, which share no code with the sampler, give the quasi-uniform numbers to 0.03 points. In float32 neither
+      loses anything to its conditioning at this blob (both within 1e-6 of float64). On the screw, a body without that
+      smoothness, the quasi-uniform sampling is 2.5 times closer to a converged free-space reference (-3.4% against
+      -8.5%). The sphere's two-resolution extrapolation still meets Stokes's law within its oracle's 0.5%.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A smooth body's drag at a coarse spacing is a few tenths of a per cent further from its closed form than it was
+      before phase 7m-a, in the conservative direction (more drag), and it converges as the spacing falls. A result
+      read at one coarse spacing on a sphere or an ellipsoid carries that error, which a spacing ladder shows.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "the sphere 0.2.0 and the ellipsoid 0.1.0's sampling (mime.scene.quasi_uniform), read by the MRS rung"
+    verification: []
+    residual_risk: "Measured on the sphere and two triaxial ellipsoids in free space; the capsule's hemispherical caps and a smooth body near a wall were not measured"
+    workaround: "Read a smooth body's drag from a spacing ladder (the two-resolution extrapolation meets Stokes's law within 0.5%), not from one coarse spacing"
+    planned_resolution: "Kept as a labelled default of phase 7m-a's fix round (design #195: one sampler for every kind, the sphere the default sampler's only closed-form drag oracle), the maintainer's to overturn; the separated quadrature (phase 7m-b) chooses the defaults again"
+  - anomaly_id: MIME-ANO-127
+    title: "A quasi-uniform sampling chooses other samples when an experiment is rebuilt at a slightly moved setting, and the MRS resistance steps"
+    description: >
+      Quasi-uniform sampling's choice is discrete (each sample one of the quadrature's, chosen by farthest points and
+      Lloyd's relaxation), so it is not continuous in the kind's settings. On FL-9 at 416 samples (computed in phase
+      7m-a's review), its wavenumber moved by 1e-5 of itself chooses again, and the MRS resistance moves by 0.37% of
+      its diagonal, a thousand times its smooth change with the choice held (3e-6); within 1e-3 of the wavenumber the
+      steps reach 0.42%, and the modulation steps alike. The grid kept from before keeps its count and moves smoothly,
+      and the sphere's choice scales with its radius exactly, so it does not step. Within one build the choice is held
+      (the MRS node holds it as constructor data, as it holds its counts), so a derivative through the build is the
+      discretisation's, and exact.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A study that builds again at moved settings (an optimisation's outer loop, a sweep of rebuilt experiments, a
+      difference taken across two builds) sees steps a thousand times the smooth change, which can stall an optimiser
+      or read as a sensitivity that is the discretisation's.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "mime.scene.quasi_uniform; the sphere 0.2.0, the capsule 0.2.0, the screw 0.3.0, the cylinder, the box, the ellipsoid and labx.bead's sampling, read by the MRS rung"
+    verification: []
+    residual_risk: "Measured on FL-9's wavenumber and modulation at one count; other kinds and settings step alike by the same mechanism, unmeasured"
+    workaround: "Take derivatives within one build, through the node's params, where the choice is held; or read a rebuilt study's steps as the discretisation's error"
+    planned_resolution: "A design choice for the maintainer before the optimisation pilot (#179): carry one build's choice into another (nothing public does yet; the rebuild-by-difference checks hold it with a test's helper), or a sampler continuous in its settings (Lloyd's steps with an exact projection)"
+  - anomaly_id: MIME-ANO-128
+    title: "The screw's hull query is an envelope: it overstates the screw's reach, and its farthest point is not on the body"
+    description: >
+      The screw kind's reach is the cylinder of its crests, which holds the body: exact along its axis and across it,
+      and between them beyond the body. On FL-9 it overstates by up to 0.1458 of its enclosing radius (0.623 mm, 48
+      degrees from the axis), the supremum over every direction (computed in phase 7m-a's fix round from the section's
+      own support turned along the body: tilts by a quarter degree and rolls by half a degree, the worst refined by
+      local maximisation, within 1.5e-5 of the size of a 748,370-point quadrature's brute force; the review's grid of
+      81 tilts by 360 rolls found 0.1456, the sampling suite's 75 directions 0.138). By tilt from the axis, the worst
+      over roll is 0.019 at 5 degrees, 0.057 at 15, 0.110 at 30, 0.145 at 45, 0.134 at 60, 0.087 at 75, 0.035 at 85
+      and 0 at 90. The declared `reach_envelope` is 0.16, that supremum with a tenth more. Its gradient, the envelope's
+      farthest point, lies 1.1 to 1.7 mm from the body's own farthest point at tilts from 5 to 85 degrees (the review).
+      At script A's tube, FL-9 floored may tilt 18.94 degrees by the envelope and 18.95 to 21.56 by its body, by roll.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      As a bound it is conservative: a containment check by it refuses a tilt the body would fit. A contact that
+      applied its force at the envelope's farthest point would turn the body about a point off it, by a lever arm
+      wrong by up to 1.7 mm on FL-9.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "the screw kind's reach (mime.scene._screw), Geometry.reach"
+    verification:
+      - "tests/saved/test_sampling_walk.py::test_every_kind_reaches_as_far_as_its_body_and_no_further"
+      - "tests/saved/test_sampling_walk.py::test_every_kinds_own_body_reach_holds_its_body_from_its_samples"
+    residual_risk: "The supremum is FL-9's; another screw's settings may overstate by more than the declaration, which the suite checks only on the declared settings"
+    workaround: "Take a contact's point from mime.scene.body_reach (the body's own quadrature samples), which never overstates the reach and whose gradient is a sample of the body; use the envelope as a broad-phase bound"
+    planned_resolution: "The containment contact (phase 7o) takes body_reach, or an exact support function of the screw"

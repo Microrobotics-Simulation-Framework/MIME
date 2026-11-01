@@ -116,7 +116,9 @@ def sphere_in_a_tube(name: str, *, radius: float, spacing: Quantity, wall_kind: 
                      blob: float = 0.5, tube_radius: Quantity = TUBE_RADIUS, hull: Geometry | None = None) -> Experiment:
     """A sphere of ``radius`` (of the tube's) at rest on the axis of a straight tube along z, in water filling its
     lumen, unturned (its sampling's poles along the tube's axis), with ``Drag.MRS`` and nothing else; or ``hull``
-    there in its place. The sphere is sampled by its grid (:func:`grid_sphere`)."""
+    there in its place. The sphere is sampled by its grid (:func:`grid_sphere`), as the series table's oracles need
+    (labelled decision D23 of phase 7m-a); the shipped table reads on the axis, and its oracle passes the current
+    sphere as ``hull``."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_structure(Structure("tube", geometry=Tube(axis=(0.0, 0.0, 1.0), inner_radius=tube_radius,
                                                              wall=mm(0.5), length=mm(200.0))))

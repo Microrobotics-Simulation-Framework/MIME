@@ -1,6 +1,7 @@
 """Quasi-uniform surface sampling, built from a geometry kind's own quadrature, so that any kind that gives its samples
 at counts (``Geometry.samples`` and ``sample_counts``), MIME's or a lab's, gets it by one call
-(:func:`quasi_uniform`); and the hull query of any kind from its samples (:func:`sampled_reach`).
+(:func:`quasi_uniform`); and the hull query of any kind from its samples (:func:`sampled_reach`), its own body's from
+its quadrature (:func:`body_reach`).
 
 **Why.** A kind's quadrature is a tensor grid, exact for its integrals and crowded where its coordinates meet: a
 sphere's poles, a cap's centre, a cylinder's rims, the ends of Gauss-Legendre nodes. The method of regularised
@@ -36,7 +37,13 @@ the chosen indices), never silently.
 
 **What it costs.** The dense set has about ``REFINEMENT^2`` points per sample; the farthest-point pass is ``O(N M)``
 (compiled), the relaxation ``O(M log N)`` per step: about 0.2 s for a few hundred samples, and some 10 s for FL-9's
-5,984 (``tests/scene/test_sampling.py`` records the measured times)."""
+5,984 (``tests/scene/test_sampling.py`` records the measured times).
+
+**It is not continuous in the kind's settings.** The choice is discrete, so a small change of a setting can choose
+other samples and a result steps: on FL-9 at 416 samples the wavenumber moved by 1e-5 of itself moves the MRS
+resistance by 0.37% of its diagonal, a thousand times its smooth change, and by up to 0.42% within 1e-3 (measured in
+phase 7m-a's review; MIME-ANO-127). Within one build the choice is held, so a derivative is exact; a study that builds
+again at moved settings sees the steps (the package's README says more)."""
 
 from __future__ import annotations
 
@@ -262,6 +269,26 @@ def sampled_reach(samples: Callable[[Mapping[str, Any]], Samples]) -> Callable[[
     return reach
 
 
-__all__ = ["LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "length_of", "magnitude_of", "nearest",
-           "quadrature",
-           "quadrature_arrays", "quadrature_counts", "quasi_uniform", "sampled_reach"]
+def body_reach(kind: Geometry, settings: Mapping[str, Magnitude],
+               spacing: float) -> Callable[[Mapping[str, Any], Any], Any]:
+    """The hull query of ``kind``'s own body: :func:`sampled_reach` over its quadrature on every patch at ``spacing``,
+    the counts fixed at ``settings``. Each sample is a point of the body, so the reach never overstates the body's, and
+    its gradient, the farthest sample (the mean of those tied for farthest, the middle of a face or a segment, as the
+    closed forms take it), is a point of the body a contact can act at; it falls short of the body's reach by no more
+    than the body's farthest point lies from the nearest sample. Where a kind's own ``reach`` is an envelope
+    (the screw's: on FL-9 its gradient lies 1.1 to 1.7 mm from the body's farthest point at tilts from 5 to 85 degrees),
+    this is the one a contact's point is taken from (the containment contact, phase 7o)."""
+    patches = tuple(kind.patches)
+    counts = quadrature_counts(kind, settings, spacing, patches)
+
+    def samples(parameters: Mapping[str, Any]) -> Samples:
+        found = [kind.samples(parameters, patch, count) for patch, count in zip(patches, counts, strict=True)]
+        points = jnp.concatenate([jnp.reshape(jnp.asarray(s.points), (-1, 3)) for s in found])
+        return Samples(points, None, None)
+
+    return sampled_reach(samples)
+
+
+__all__ = ["LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach", "length_of",
+           "magnitude_of", "nearest", "quadrature", "quadrature_arrays", "quadrature_counts", "quasi_uniform",
+           "sampled_reach"]

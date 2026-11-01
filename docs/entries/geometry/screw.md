@@ -39,7 +39,10 @@ quasi-uniformly: as many samples as its quadrature has at that spacing, chosen f
 by farthest points and Lloyd's relaxation (`mime.scene.quasi_uniform`), each a quadrature sample with its cell's area as
 its weight, so that no two crowd. Its hull query, its reach in a direction, is an envelope, the cylinder of its crests,
 which holds the body: exact along its axis and across it, and between them beyond the body by up to the kind's
-`reach_envelope` of its enclosing radius.
+`reach_envelope` of its enclosing radius, a declaration from the supremum over every direction on de Jongh's design
+(MIME-ANO-128). It is conservative, and its farthest point is the envelope's, not the body's, so a contact takes its
+point from `mime.scene.body_reach`, the reach of the body's own samples, which never overstates it and whose farthest
+point is a sample.
 
 **Versions.** 0.3.0 (phase 7m-a) samples its thread and caps together quasi-uniformly: 0.2.0's sampling was its
 quadrature, which gives the caps several times their share of the area and leaves about a quarter of the samples

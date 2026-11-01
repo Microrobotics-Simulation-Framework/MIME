@@ -23,6 +23,12 @@ gap (its samples' distance from the farthest point), unless the kind declares it
 overstate by its declared share (``Geometry.reach_envelope``); and its gradient is the farthest point it reports,
 ``x . d`` of it the reach (it is homogeneous of degree one).
 
+**The body's own reach** (:func:`body_reach_problems`): ``mime.scene.body_reach``, the hull query from the kind's
+quadrature at ``BODY_REACH_SPACING`` of its size, against the same brute force: never above it by more than the brute
+force's own gap (it is a body's point, so it cannot overstate), never below it by more than the brute force's farthest
+point lies from the nearest of its own samples, and its gradient among the samples tied for farthest (the one sample,
+or their mean: the middle of a face or a segment, as the closed forms take it), reaching as far as it says.
+
 **Distance** (:func:`distance_problems`): a wall kind's signed distance and normal at points of the medium: the
 normal a unit vector and the distance's gradient, the distance against a closed form the caller writes from the wall's
 definition; free space has none."""
@@ -75,6 +81,9 @@ DIRECTIONS = 61
 #: allowed.
 REACH_SPACING = 1.0 / 120.0
 REACH_GAP = 8.0
+#: The spacing of the body's own reach the suite checks, over the kind's enclosing size: about the MRS rung's at the
+#: suite's few hundred samples, so its shortfall from the farthest point is many times the brute force's own gap.
+BODY_REACH_SPACING = 1.0 / 30.0
 
 
 #: The samples the suite asks of a kind (its quadrature's count at the spacing it samples at, ``suite_spacing``): a few
@@ -298,6 +307,64 @@ def reach_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
     return found
 
 
+def body_reach_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
+                        reach: Callable[[Mapping[str, Any], Any], Any] | None = None) -> list[str]:
+    """Every way ``kind``'s own body's reach (``mime.scene.body_reach`` at ``BODY_REACH_SPACING`` of its size, or
+    ``reach``, a control's, over the same samples) fails against a dense quadrature of the body over
+    :func:`directions`: above the body's farthest point by more than the brute force's own gap, below it by more than
+    that point lies from the nearest of its samples, or its gradient outside the samples tied for farthest or not
+    reaching as far as it says.
+    Nothing for a kind that samples no surface."""
+    from mime.scene import body_reach
+
+    if not kind.patches:
+        return []
+    coarse = _size(kind, settings)
+    if coarse is None:
+        return [f"{kind.label()}: it gives no size (an enclosing radius or a radial reach) to scale the brute force by"]
+    patches = tuple(kind.patches)
+    dense = coarse * REACH_SPACING
+    points, _, _ = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, dense, patches))
+    spacing = coarse * BODY_REACH_SPACING
+    own, _, _ = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))
+    gap = REACH_GAP * dense * dense / coarse
+    rounding = 64.0 * float(np.finfo(np.float64).eps) * coarse
+    label = kind.label()
+    found: list[str] = []
+    with cast(Any, jax).enable_x64(True):
+        parameters = _parameters(settings)
+        query = reach if reach is not None else body_reach(kind, settings, spacing)
+
+        def reached(d: Any) -> Any:
+            return query(parameters, d)
+
+        value_and_point = cast(Any, jax).jit(cast(Any, jax).value_and_grad(reached))
+        for d in cast(list[np.ndarray], list(directions())):
+            value, point = (np.asarray(x, dtype=np.float64) for x in value_and_point(jnp.asarray(d)))
+            projected = points @ d
+            farthest = points[int(np.argmax(projected))]
+            brute = float(projected.max())
+            offsets: np.ndarray = own - farthest[None, :]
+            nearest_own = float(np.sqrt(np.min(np.sum(offsets * offsets, axis=1))))
+            where = np.round(d, 3).tolist()
+            if not float(value) <= brute + gap + rounding:
+                found.append(f"{label}: its body's reach along {where} is {float(value):.9g} m, above its farthest "
+                             f"point {brute:.9g} m by more than the brute force's gap: it is no point of the body")
+            if not float(value) >= brute - nearest_own - rounding:
+                found.append(f"{label}: its body's reach along {where} is {float(value):.9g} m, below its farthest "
+                             f"point {brute:.9g} m by more than that point lies from its nearest sample "
+                             f"({nearest_own:.3g} m)")
+            tied = own[own @ d >= float(value) - rounding]
+            within = 1e-12 * coarse  # a mean's rounding over the tied samples, far below their spacing
+            if not (len(tied) and np.all(point >= tied.min(axis=0) - within)
+                    and np.all(point <= tied.max(axis=0) + within)):
+                found.append(f"{label}: along {where} its body's reach's gradient, {point.tolist()}, lies outside "
+                             f"the samples tied for farthest")
+            if not abs(float(point @ d) - float(value)) <= rounding + 1e-12 * abs(float(value)):
+                found.append(f"{label}: along {where} its body's reach's gradient does not reach as far as it says")
+    return found
+
+
 def distance_problems(wall: WallKind, parameters: Mapping[str, Any], points: np.ndarray,
                       closed_form: Callable[[np.ndarray], tuple[np.ndarray, np.ndarray]] | None) -> list[str]:
     """Every way ``wall``'s distance at ``points`` (each of the medium, world frame) fails: its normal not a unit
@@ -347,7 +414,7 @@ def distance_problems(wall: WallKind, parameters: Mapping[str, Any], points: np.
     return found
 
 
-__all__ = ["CONDITION_BOUNDS", "COVERAGE_BAND", "COVERAGE_LEAST", "DIRECTIONS", "FINER_SAMPLES", "NEAREST_FIFTH",
-           "NEAREST_LEAST", "REACH_GAP", "REACH_SPACING", "SEAM_WIDTH", "SUITE_SAMPLES", "quadrature_size",
-           "SamplingQuality", "condition_number", "conditioning_problems", "directions", "distance_problems",
-           "reach_problems", "sampled_points", "sampling_problems", "sampling_quality", "suite_spacing"]
+__all__ = ["BODY_REACH_SPACING", "CONDITION_BOUNDS", "COVERAGE_BAND", "COVERAGE_LEAST", "DIRECTIONS", "FINER_SAMPLES",
+           "NEAREST_FIFTH", "NEAREST_LEAST", "REACH_GAP", "REACH_SPACING", "SEAM_WIDTH", "SUITE_SAMPLES",
+           "quadrature_size", "SamplingQuality", "body_reach_problems", "condition_number", "conditioning_problems",
+           "directions", "distance_problems", "reach_problems", "sampled_points", "sampling_problems", "sampling_quality", "suite_spacing"]

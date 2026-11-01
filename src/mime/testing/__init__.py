@@ -97,6 +97,7 @@ from mime.testing._saved import (
     round_trip_failures,
 )
 from mime.testing._sampling_conformance import (
+    BODY_REACH_SPACING,
     CONDITION_BOUNDS,
     COVERAGE_BAND,
     COVERAGE_LEAST,
@@ -106,6 +107,7 @@ from mime.testing._sampling_conformance import (
     SEAM_WIDTH,
     SUITE_SAMPLES,
     SamplingQuality,
+    body_reach_problems,
     condition_number,
     conditioning_problems,
     distance_problems,
@@ -152,6 +154,7 @@ from mime.testing._switches import (
 )
 
 __all__ = [
+    "BODY_REACH_SPACING",
     "CONDITION_BOUNDS",
     "COVERAGE_BAND",
     "COVERAGE_LEAST",
@@ -161,6 +164,7 @@ __all__ = [
     "SEAM_WIDTH",
     "SUITE_SAMPLES",
     "SamplingQuality",
+    "body_reach_problems",
     "condition_number",
     "conditioning_problems",
     "distance_problems",

@@ -10,6 +10,15 @@ quasi-uniform sampling, -8.48% on the quadrature, each recorded in the file and 
 ``REPRODUCED``, so that a change of the sampler shows here as a change of that number. Nothing here compares the
 model with a measured speed.
 
+**Which band, and what discriminates.** The tolerance is the preregistered band (labelled decision D20 of phase 7m-a,
+the maintainer's to overturn), the reference's own rule, fixed before any of its solves; this test's use of it was
+written after the helix score had measured the quasi-uniform sampling's -3.5%. Against the post hoc band (3.0003 to
+3.1143 mm/s) the quasi-uniform result, 2.9523 mm/s, lies outside: that band is the reference's uncertainty about the
+free-space limit, and the rung at 0.16 mm is short of that limit by its own discretisation error, which no band on
+the limit is meant to hold. The reference's report says the preregistered band, +-4.8%, bounds little; so what this
+test discriminates is chiefly the reproduction pin at ``REPRODUCED``, which a change of the sampler or of the rung
+moves, and the control's -8.48%, outside both bands.
+
 The run's precision is the default, float32: the rung's speed there is within ``REPRODUCED`` of the float64 values the
 file records (the helix score measured float32 within 1e-6 of float64 on the same body)."""
 

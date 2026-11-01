@@ -5,8 +5,10 @@ kind), and the node that evaluates them at a body's pose (``MRSDragNode``)."""
 
 from mime.nodes.hydro.mrs._node import SHAPE, WALL, MRSDragInputs, MRSDragNode, MRSDragState, kind_from_settings
 from mime.nodes.hydro.mrs._solve import (
+    DEPTH,
     PRECISION,
     blob_squared,
+    force_sums,
     point_forces,
     resistance,
     rigid_motions,
@@ -30,8 +32,8 @@ from mime.nodes.hydro.mrs._walls import (
     wall_corrections,
 )
 
-__all__ = ["FREE_SPACE", "PRECISION", "SHAPE", "UNBOUNDED", "WALL", "MRSDragInputs", "MRSDragNode",
-           "MRSDragState", "Corrected", "WallCorrection", "blob_squared", "frame_across", "kind_from_settings",
-           "point_forces", "register_wall_correction", "resistance", "rigid_motions", "stokeslet_matrix",
-           "tube_correction", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table", "wall_correction_named",
-           "wall_corrections"]
+__all__ = ["DEPTH", "FREE_SPACE", "PRECISION", "SHAPE", "UNBOUNDED", "WALL", "MRSDragInputs", "MRSDragNode",
+           "MRSDragState", "Corrected", "WallCorrection", "blob_squared", "force_sums", "frame_across",
+           "kind_from_settings", "point_forces", "register_wall_correction", "resistance", "rigid_motions",
+           "stokeslet_matrix", "tube_correction", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table",
+           "wall_correction_named", "wall_corrections"]

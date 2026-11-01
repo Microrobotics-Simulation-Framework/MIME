@@ -144,6 +144,17 @@ Since phase 7m-a (designs #195, #196), **the geometry protocol's sampling and hu
   sample a quadrature sample with its cell's area as its weight. A `density` (a function of points, one where the
   samples are the spacing apart) grades it with no protocol change. The choice is made in float64 whatever the run's
   precision, and cached in the process.
+- **The choice is not continuous in the kind's settings**, and is not meant to be: it is discrete (each sample one of
+  the quadrature's, chosen by farthest points), so a small change of a setting can choose other samples, and a result
+  then steps, by far more than its smooth change with the choice held (MIME-ANO-127 holds the measured steps). The grid
+  kept from before keeps its count and moves smoothly, and the sphere's choice scales with its radius exactly, so it
+  does not step. Within one build the choice is held (the MRS node holds it as it holds its counts), so a derivative is
+  the discretisation's, exact; what sees the steps is a study that builds again at moved settings: an optimisation's
+  outer loop, a sweep of rebuilt experiments, a difference taken across two builds. Nothing public yet carries one
+  build's choice into another (the rebuild-by-difference checks hold it with a test's helper), so such a study takes
+  its derivatives within one build, or reads the steps as the discretisation's error. Carrying the choice, or a
+  sampler continuous in its settings (Lloyd's steps with an exact projection, which the helix score tried), is a
+  design choice not made here.
 - **Every solid kind samples**: the sphere 0.2.0, the capsule 0.2.0 and the screw 0.3.0 quasi-uniformly (their
   quadratures crowded: a quarter of the sphere's samples within half the mean spacing of another, the screw's caps
   several times their share of the area); the cylinder, the box and the ellipsoid gain a quadrature (the cylinder's caps in
@@ -155,7 +166,10 @@ Since phase 7m-a (designs #195, #196), **the geometry protocol's sampling and hu
   one in `d`, its gradient the farthest point (the middle of a face, a segment or a rim where that is not one point).
   Closed forms for the sphere, the capsule, the cylinder, the box, the ellipsoid and the tube; an envelope for the
   screw, the cylinder of its crests, which may overstate its reach by up to `reach_envelope` of its enclosing radius
-  between its axis and across it; `sampled_reach` for a kind from its samples. Its kinks are not yet switches of
+  between its axis and across it (a declaration from its supremum, MIME-ANO-128) and whose farthest point is the
+  envelope's, not the body's; `sampled_reach` for a kind from its samples, and `body_reach`, the body's own reach from
+  its quadrature at a spacing, which never overstates it and whose farthest point is a sample of the body (the point a
+  contact acts at). Its kinks are not yet switches of
   `mime.core.switch` (`length_of`, `magnitude_of`): no node's step evaluates a reach until the containment contact
   (phase 7o), which declares them.
 - A body's hull may now be a kind that samples but has no radial reach (a box, an ellipsoid): its extent is then not
