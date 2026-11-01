@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Fetch the upstream Annin AR4 (mk5) STL meshes.
 
-The committed ``ar4_meshes.usdc`` already contains baked meshes for the
-renderer, so an end-user does not need to run this script. Run it only
-if you want to re-bake from source (e.g. upstream meshes were updated)
-or you need the raw STLs for collision / inspection.
+The meshes are Annin Robotics' design files, which its licence does not
+let this repository redistribute, so ``ar4_meshes.usdc`` is not committed:
+run this script, then the bake script, to build it locally (see
+``AR4_MESHES.md``). Without it the scene opens with the arm drawn empty.
 
 Sources:
-  https://github.com/Annin-Robotics/ar4_ros_driver
+  https://github.com/Annin-Robotics/ar4_ros_driver (pinned to commit 6a3ebb1)
   └── annin_ar4_description/meshes/ar4_mk5/
 
 Usage:
@@ -25,7 +25,8 @@ from pathlib import Path
 ASSET_DIR = Path(__file__).resolve().parent
 MESH_DIR = ASSET_DIR / "meshes" / "ar4_mk5"
 BASE_URL = (
-    "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/main/"
+    "https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/"
+    "6a3ebb11cedab12cd1d29b41d63aa270a008ab8b/"
     "annin_ar4_description/meshes/ar4_mk5"
 )
 

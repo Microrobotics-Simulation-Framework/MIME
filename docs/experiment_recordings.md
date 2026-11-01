@@ -32,6 +32,10 @@ Keep recording geometry viewer-friendly:
   ≤ `TARGET_FACES` triangles (VTK quadric decimation) as part of baking.
   `world.usda` references that asset and `ar4_record_usdc.py` flattens it
   into the recording — so recordings come out viewer-friendly by default.
+  The baked file is built locally and never committed: the meshes are Annin
+  Robotics' design files, which its licence does not let us redistribute
+  (`experiments/ar4_helical_drive/assets/AR4_MESHES.md`). A recording that
+  flattens them is for your own use, not for sharing.
 
 - **`scripts/decimate_ar4_meshes.py`** decimates the meshes of an existing
   USD file in place — for a recording or asset that is already heavy (e.g.
