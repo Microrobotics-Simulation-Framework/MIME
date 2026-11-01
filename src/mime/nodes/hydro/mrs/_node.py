@@ -153,17 +153,17 @@ class SeparatedDragState(TypedDict, closed=True):
     background_load: ReadOnly[Float[Array, "6"]]
     wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
     least_eigenvalue: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    asymmetry: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    asymmetry: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     indefinite: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     near_wall: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     asymmetric: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     wall_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     wall_gap_spacings: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    steps: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    stopped_at: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    stopped_pose: NotRequired[ReadOnly[Float[Array, "7"]]]
+    steps: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    stopped_at: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    stopped_pose: ReadOnly[Float[Array, "7"]]
     stopped_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    stopped_least: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+    stopped_least: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
 
 
 def stops_where(accepted: Array, least: Array) -> Array:
@@ -519,8 +519,9 @@ class MRSDragNode(MimeNode):
         resistance, load, accepted = as_run_array(jnp.zeros((6, 6))), as_run_array(jnp.zeros(6)), jnp.asarray(True)
         if self._free():
             return node_fields(SeparatedDragState(resistance=resistance, background_load=load, wall_accepted=accepted,
-                                                  least_eigenvalue=zero, asymmetry=zero, indefinite=zero,
-                                                  near_wall=zero, asymmetric=zero))
+                                                  least_eigenvalue=zero, indefinite=zero, near_wall=zero,
+                                                  asymmetric=zero, steps=zero, stopped_at=zero,
+                                                  stopped_pose=as_run_array(jnp.zeros(7)), stopped_least=zero))
         state = node_fields(SeparatedDragState(resistance=resistance, background_load=load, wall_accepted=accepted,
                                                least_eigenvalue=zero, asymmetry=zero, indefinite=zero, near_wall=zero,
                                                asymmetric=zero, steps=zero, stopped_at=zero,
@@ -770,10 +771,21 @@ class MRSDragNode(MimeNode):
     def judged_at(self, pose: Any) -> Judgement:
         """The step's judgement of its resistance at ``pose`` with the node's built leaves: whether the wall's reads
         were accepted, the resistance's least eigenvalue (each row and column scaled by its diagonal), the share its
-        symmetric part drops, and the body's least distance from the wall (m; ``None`` without a wall's distance)."""
-        out = self.update(self.initial_state(), {"pose": as_run_array(pose)}, self.delta_t, params=self.params_pytree())
-        return Judgement(bool(out["wall_accepted"]), float(out["least_eigenvalue"]), float(out["asymmetry"]),
-                         float(out["wall_gap"]) if "wall_gap" in out else None)
+        symmetric part drops, and the body's least distance from the wall (m; ``None`` without a wall's distance).
+        Kept by pose, so that the build's check and its report take one step between them."""
+        key = np.asarray(pose, dtype=np.float64).tobytes()
+        held = self._judgements.get(key)
+        if held is None:
+            out = self.update(self.initial_state(), {"pose": as_run_array(pose)}, self.delta_t,
+                              params=self.params_pytree())
+            held = Judgement(bool(out["wall_accepted"]), float(out["least_eigenvalue"]), float(out["asymmetry"]),
+                             float(out["wall_gap"]) if "wall_gap" in out else None)
+            self._judgements[key] = held
+        return held
+
+    @cached_property
+    def _judgements(self) -> dict[bytes, Judgement]:
+        return {}
 
     def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
         """What the build reports of the body's distance from the wall (never a refusal): its least distance at the
@@ -834,6 +846,14 @@ class MRSDragNode(MimeNode):
         least = float(np.asarray(state["stopped_least"]))
         position = ", ".join(f"{c * 1e3:.5g}" for c in pose[:3])
         turn = ", ".join(f"{c:.5g}" for c in pose[3:])
+        if gap is None:
+            return Problem(
+                "drag.mrs-indefinite",
+                f"its resistance turned indefinite at its step {step} (t = {step * self.delta_t:.6g} s), and the run "
+                f"stopped there, before the body took it: its least eigenvalue, each row and column scaled by its "
+                f"diagonal, was {least:.3g} ({self._settings_text()}), at the pose ({position}) mm, quaternion "
+                f"({turn}), with no wall: the discretisation, as the study's leaves moved it, does not resolve its blob",
+                "write a smaller blob or a larger quadrature_refinement: Drag.MRS(blob=..., quadrature_refinement=...)")
         finer = self._finer(gap)
         return Problem(
             "drag.mrs-indefinite",
@@ -855,8 +875,8 @@ class MRSDragNode(MimeNode):
         return held_or_made(self._make(), self._built_theta())(theta, p[HELD])
 
     def _separated_step(self, p: Mapping[str, Any], state: NodeFields, pose: Array) -> NodeFields:
-        """The step on a separated quadrature. In free space the held resistance turned to the pose, judged at build.
-        With a wall, the free part's matrix turned, the wall's image added and solved: integrated over each cell on the
+        """The step on a separated quadrature. In free space the held resistance turned to the pose (its asymmetry judged at
+        build) and its least eigenvalue judged as with a wall, a study's leaves moving it included. With a wall, the free part's matrix turned, the wall's image added and solved: integrated over each cell on the
         wall quadrature (``wall_quadrature_counts``, :func:`cell_image`) where the node has one, else taken at the force
         points, each column times its cell's area. Then the result judged before the body takes it (:func:`judged`): its
         least eigenvalue each row and column scaled by its diagonal, the share its symmetric part drops, and the body's
@@ -870,11 +890,9 @@ class MRSDragNode(MimeNode):
         zero = jnp.zeros((), dtype=dtype)
         if self._free():
             found = viscosity * turned_resistance(held, quaternion.rotation_matrix(pose[3:]))
-            built = self._built
-            return node_fields(SeparatedDragState(
-                resistance=found.astype(dtype), background_load=jnp.zeros(6, dtype=dtype),
-                wall_accepted=jnp.asarray(True), least_eigenvalue=jnp.asarray(built.least, dtype=dtype),
-                asymmetry=jnp.asarray(built.asymmetry, dtype=dtype), indefinite=zero, near_wall=zero, asymmetric=zero))
+            fields = judged(found.astype(dtype), jnp.asarray(True), zero, None, state, pose)
+            return node_fields({key: value for key, value in fields.items()
+                                if key not in ("asymmetry", "wall_gap", "stopped_gap")})
         wall = self._wall()
         theta = {key: p[key] for key in self.body_leaf_names()}
         parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
