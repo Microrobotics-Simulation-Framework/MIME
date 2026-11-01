@@ -96,11 +96,14 @@ CENTRE_SWITCHES = (
 HULL_SWITCHES = (
     switch.Declaration(
         owner="contact.point",
-        indicator="the gap of a group's second nearest hull point to the shrunk surface less its nearest's, m (zero "
+        indicator="the gap of a group's second nearest candidate to the shrunk surface less its nearest's, m (zero "
                   "where two tie)",
         orders={"twist": -1, "pose": -1},
-        route="none: the body's point of contact moves from one of its samples to the next as it turns, where the "
-              "body's own moves continuously; the jump is the samples' spacing's, falling as it falls"),
+        route="none where the hull's kind has a support: the nearest candidate only seeds the body's own deepest point "
+              "near it, which two seeds of one surface's neighbourhood reach alike, so the step jumps only where two "
+              "of the body's own local deepest points tie (a screw's crest passes, a cylinder's ends), as the body's "
+              "contact does; for a kind held by its samples the point moves from one sample to the next, a jump "
+              "falling with the spacing"),
     switch.Declaration(
         owner="contact.gap",
         indicator="a held point's gap to the shrunk surface at the step's start, m (positive inside)",
@@ -129,21 +132,26 @@ class Contact(Interaction):
     """A body in contact with a surface (``surface=tube.inner_surface``), by the written rung.
 
     ``projection``: the body stays on the surface's free side (the side it faces: ``tube.inner_surface`` faces the
-    lumen) with every point of its hull at least ``margin`` from the surface, its orientation read. The hull's points
-    are its kind's own samples at ``spacing`` on every patch (``mime.scene.body_reach``'s: each a point of the body, so
-    they never reach further than it does). It builds no node: its record goes to the body's dynamics at construction,
-    which each step holds the points nearest the surface inside its implicit solve, the outward velocity at each
-    taken away with the body's rotation coupled in (so a turned body touching at two points takes the couple that
-    holds it), inelastic and frictionless, by projected Gauss-Seidel over the points, as a dynamic chain's joint stops
-    are solved; and projects the pose back after the step (``RigidInertialNode``). Projection, not penalty. Any
-    geometry kind whose samples it can take, against any surface whose shape evaluates many points at once (a wall
-    kind's distance and normal are that shape's): no code of its own for a body or a wall. A body with no hull (no
+    lumen), its every point at least ``margin`` from the surface, its orientation read. It builds no node: its record
+    goes to the body's dynamics at construction, which each step holds the body inside its implicit solve and projects
+    the pose back after it (``RigidInertialNode``). The hull's samples at ``spacing`` on every patch are split into
+    groups; each group's sample nearest the surface seeds a contact, and where the hull's kind answers the support
+    query (``Geometry.support``: a closed form for the sphere, the ellipsoid, the cylinder and the capsule, Newton's
+    steps on its own surface for the screw) the contact holds the body's own deepest point near it, so the touching
+    point moves continuously along the body as it turns and the hold takes no spin from a body of revolution; a kind
+    with neither (a lab's mesh) is held by its samples, which act as a friction set by the spacing (the validity line
+    and the flag ``held_by_samples``). At each point the outward velocity is taken away with the body's rotation
+    coupled in (so a turned body touching at two points takes the couple that holds it), inelastic and frictionless,
+    by projected Gauss-Seidel over the points, as a dynamic chain's joint stops are solved, the forces scaled to do no
+    work at the held twist, and the solve's residual reported. Against a surface whose shape declares its region convex
+    (the tube's lumen), each group's candidates are only its own convex hull's vertices, which choose as all its
+    points do. Projection, not penalty; no code of its own for a body or a wall, and the solve is laid out over contact
+    pairs (a hull against a wall; two bodies' hulls, by their supports, are the layout's next). A body with no hull (no
     parts, its extent declared) is held as a sphere of its extent about its centre, by 0.1.0's projection, which is
-    exact for one. One per body; only against a fixed structure's surface, since projection between two moving
-    things is reserved. Its derivative is piecewise: it jumps where a body's nearest point moves from one sample to
-    the next, or where a step changes the contact's branch, as its switches say. ``penalty`` (loads into each side's
-    applied wrench) is reserved. ``Contact.Projection(...)`` is ``Contact(rung="projection", ...)`` and saves
-    identically.
+    exact for one. One per body; only against a fixed structure's surface. Its derivative is piecewise: it jumps where
+    two of the body's own deepest points tie, or where a step changes the contact's branch, as its switches say.
+    ``penalty`` (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
+    ``Contact(rung="projection", ...)`` and saves identically.
 
     **Admissibility only.** The contact says where the body may be, and the force that keeps it there: it never adds
     near-wall lubrication, which a drag that includes it declares (``Interaction.includes_lubrication``), and the plan
@@ -152,10 +160,9 @@ class Contact(Interaction):
     rows, to which a traction law adds two along the surface at each point, bounded by its friction times the
     point's normal force.
 
-    Version 0.2.0 holds the hull's points, where 0.1.0 held the body's centre by its extent about its own axis and
-    never read its orientation, so a body that turned across a narrow tube passed through the wall. A body whose hull
-    no point reaches the margin of steps as the free body does, to the last bit, in both; a body that does is held
-    otherwise, its hull's points at the margin where 0.1.0 held its centre at its extent. 0.1.0 is kept registered
+    Version 0.2.0 holds the body's hull, where 0.1.0 held the body's centre by its extent about its own axis and never
+    read its orientation, so a body that turned across a narrow tube passed through the wall. A body whose hull no
+    point reaches the margin of steps as the free body does, to the last bit, in both. 0.1.0 is kept registered
     (``mime.interactions.KEPT``), so a folder saved with it loads and reproduces."""
 
     name = "contact"

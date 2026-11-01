@@ -2934,8 +2934,8 @@ class _Planner:
                     f"which fall up to {short * 1e6:.3g} um short of the body, past the "
                     + (f"margin of {margin * 1e3:.4g} mm" if margin > 0.0 else
                        f"thousandth of its size ({bound * 1e6:.3g} um) that a margin of zero allows"),
-                    (f"write spacing=mm({finer * 1e3:.4g}) or finer" if within else
-                     f"write a spacing finer than {finer * 1e3:.4g} mm") + ", or a larger margin")
+                    f"write spacing=mm({finer * 1e3:.4g}) or finer, or a larger margin=mm(...)" if within else
+                    f"write spacing=mm(...) below {finer * 1e3:.4g} mm, or a larger margin=mm(...)")
         return None
 
     def value_lines(self) -> tuple[ValueLine, ...]:
