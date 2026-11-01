@@ -41,8 +41,6 @@ from mime.nodes.body._contact import CONVERGED
 from mime.scene import Box, Cylinder, Sphere
 from mime.units import mm
 
-jax.config.update("jax_enable_x64", True)
-
 MASS, WEIGHT = 8.5e-5, 8.5e-5 * 9.81
 DT = 5e-4
 #: FL-9's crests' radius and length as a smooth cylinder, the review's control body of revolution.

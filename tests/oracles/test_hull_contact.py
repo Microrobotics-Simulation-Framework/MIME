@@ -614,8 +614,11 @@ def test_turning_the_tube_and_the_body_together_turns_the_step(draw, world):
     assert np.allclose(matrix @ np.asarray(out["pose"])[:3], np.asarray(there["pose"])[:3], rtol=0, atol=1e-12)
     assert np.allclose(block @ np.asarray(out["twist"]), np.asarray(there["twist"]), rtol=0, atol=1e-9 * speed)
     forces = np.asarray(out["contact_forces"])
-    assert np.allclose(forces, np.asarray(there["contact_forces"]), rtol=1e-6,
-                       atol=1e-9 * float(np.max(np.abs(forces), initial=0.0)))
+    # Judged on the scale the forces come from (the body's momentum over the step and the applied force), not on
+    # their own: a point that ends the step on the surface at rest takes a force of rounding in one frame and none in
+    # the other (a 1e-21 N row on a rod spinning at 1 rad/s, a stress run's draw).
+    scale = MASS * speed / draw["dt"] + float(np.max(np.abs(wrench[:3]))) + float(np.max(np.abs(forces), initial=0.0))
+    assert np.allclose(forces, np.asarray(there["contact_forces"]), rtol=1e-6, atol=1e-9 * scale)
 
 
 # -- admissibility only --------------------------------------------------------------------------------------------
