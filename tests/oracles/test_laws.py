@@ -8,7 +8,9 @@
   fuses each product into the subtraction (an FMA), so ``a x a`` leaves the first product's rounding error, about
   1e-23 for these magnitudes, where NumPy gives zero.
 
-The control: a torque law planted with its sign flipped fails the magnetic family's sign case and no other case.
+The controls: a torque law planted with its sign flipped fails the magnetic family's sign case and no other case; a
+gravity law planted with the couple's sign flipped, its orientation left out, or its offset turned the wrong way is
+caught by the couple's check on every draw of a fixed battery.
 """
 
 from dataclasses import dataclass
@@ -66,16 +68,38 @@ COUPLED = GravityNode("gravity", 1e-3, mass=MASS, buoyant_volume=VOLUME, fluid_d
 TORQUE = MagneticTorqueNode("torque", 1e-3, moment=(0.0, 1e-3, 0.0))
 
 
+BUOYANCY = -DENSITY * VOLUME * G
+
+#: The couple's rounding in units of ``eps |c| |B|``, the scale of the terms that cancel in it. The law and the closed
+#: form build the same ``R c x B`` with different compiled code (XLA fuses the products into FMAs, NumPy does not), so
+#: they differ by rounding alone, and a component of the lever or the couple that is small by cancellation is still
+#: rounded at the scale of the terms. A lever component is the dot product of a row of ``R`` (unit length, so
+#: ``sum |R_ij c_j| <= |c|``) with ``c``. Two evaluations of a 3-term dot product differ by at most ``2 gamma_3 |c|``,
+#: ``3 eps |c|`` (``gamma_3`` = 3 u, u = eps / 2). The entries of ``R`` come from two or three roundings each and may
+#: differ by 2 eps between the two, which moves the dot by at most ``2 eps |c|_1 <= 2 sqrt(3) eps |c|``, under 3.5 eps
+#: |c|. The cross product with ``B`` adds one rounding, ``eps |lever| |B|`` at most. In all 7.5, taken as 8. Over
+#: four million draws the largest difference was 2.7. A relative tolerance on the couple's component judged a 1e-11
+#: component, left by cancelling terms of 6e-4, against itself, and failed on about one random draw in 14000.
+COUPLE_ROUNDING = 8.0
+
+
+def couple_error(node: GravityNode, rotation: np.ndarray, centre: np.ndarray) -> float:
+    """The node's couple against ``(R c) x B`` in units of ``eps |c| |B|``; also checks the force."""
+    q = exponential(jnp.asarray(rotation))
+    pose = jnp.concatenate([jnp.asarray([0.1, -0.2, 0.3]), q])
+    wrench = np.asarray(node.update(node.initial_state(), {"pose": pose}, 1e-3,
+                                    params={"centre_of_buoyancy": jnp.asarray(centre)})["wrench"])
+    assert np.allclose(wrench[:3], (MASS - DENSITY * VOLUME) * G, rtol=1e-15, atol=0.0)
+    lever = np.asarray(rotation_matrix(q)) @ centre
+    difference = float(np.max(np.abs(wrench[3:] - np.cross(lever, BUOYANCY))))
+    scale = np.finfo(np.float64).eps * float(np.linalg.norm(centre) * np.linalg.norm(BUOYANCY))
+    return 0.0 if difference == 0.0 else difference / scale if scale > 0.0 else np.inf
+
+
 @settings(deadline=None)
 @given(rotation=vectors(3.0), centre=vectors(1e-3))
 def test_an_off_centre_buoyancy_gives_the_couple_at_the_bodys_orientation(rotation, centre):
-    q = exponential(jnp.asarray(rotation))
-    pose = jnp.concatenate([jnp.asarray([0.1, -0.2, 0.3]), q])
-    wrench = np.asarray(COUPLED.update(COUPLED.initial_state(), {"pose": pose}, 1e-3,
-                                       params={"centre_of_buoyancy": jnp.asarray(centre)})["wrench"])
-    lever = np.asarray(rotation_matrix(q)) @ centre
-    assert np.allclose(wrench[:3], (MASS - DENSITY * VOLUME) * G, rtol=1e-15, atol=0.0)
-    assert np.allclose(wrench[3:], np.cross(lever, -DENSITY * VOLUME * G), rtol=1e-12, atol=1e-30)
+    assert couple_error(COUPLED, rotation, centre) <= COUPLE_ROUNDING
 
 
 AXIS, START = unit(np.array([0.3, -0.2, 0.9])), np.array([1.0, 0.0, 0.0])
@@ -176,3 +200,38 @@ def test_a_planted_sign_flip_fails_the_magnetic_familys_sign_case_and_only_it():
                               CaseKind.GRADIENTS)])
     print("\n" + "\n".join(f"{case.value}: {result}" for case, result in results.items()))
     assert {case for case, result in results.items() if not result.passed} == {CaseKind.SIGN}
+
+
+class _SignFlippedCouple(GravityNode):
+    @override
+    def wrench(self, p: Any, pose: Any) -> Any:
+        return super().wrench(p, pose).at[3:].multiply(-1.0)
+
+
+class _OrientationLeftOut(GravityNode):
+    @override
+    def wrench(self, p: Any, pose: Any) -> Any:
+        return super().wrench(p, pose.at[3:].set(jnp.asarray([1.0, 0.0, 0.0, 0.0])))
+
+
+class _OffsetInTheWorldFrameTurnedBack(GravityNode):
+    @override
+    def wrench(self, p: Any, pose: Any) -> Any:
+        return super().wrench(p, pose.at[3:].set(quaternion.conjugate(pose[3:])))
+
+
+PLANTED_COUPLES = [_SignFlippedCouple, _OrientationLeftOut, _OffsetInTheWorldFrameTurnedBack]
+
+
+def test_a_planted_error_in_the_couple_fails_the_check_on_every_draw_of_a_fixed_battery():
+    """Each plant moves the couple by its own size, 1e12 times ``COUPLE_ROUNDING`` at the battery's smallest. On the
+    property's own draws, with their zero components, the sign flip is missed where the couple is zero (the offset
+    along the buoyancy, or none), and the other two where the rotation leaves the offset in place: a battery of
+    generic draws is what makes this control fail on every run."""
+    rng = np.random.default_rng(20261101)
+    battery = [(rng.uniform(-3.0, 3.0, 3), rng.uniform(-1e-3, 1e-3, 3)) for _ in range(64)]
+    for planted in PLANTED_COUPLES:
+        node = planted("gravity", 1e-3, mass=MASS, buoyant_volume=VOLUME, fluid_density=DENSITY, gravity=G,
+                       centre_of_buoyancy=(0.0, 0.0, 1e-4))
+        errors = [couple_error(node, rotation, centre) for rotation, centre in battery]
+        assert min(errors) > 1e3 * COUPLE_ROUNDING, (planted.__name__, min(errors))
