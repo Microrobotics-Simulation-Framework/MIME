@@ -123,12 +123,34 @@ class Recording:
     def __init__(self, inner: object) -> None:
         self.inner = inner
         self.shapes: list[dict[str, object]] = []
+        #: Each stored file's id, by record and key, from a published record's listing and a version's import: whether
+        #: a file linked into a new version is stored once (the same id) is a question only the service answers.
+        self.stored: dict[tuple[str, str], object] = {}
+        self.imported: dict[tuple[str, str], object] = {}
 
     def send(self, method: str, url: str, headers: Mapping[str, str], body: bytes | Path | None,
              token: Token) -> Answer:
         answer = self.inner.send(method, url, headers, body, token)  # type: ignore[attr-defined]
         self.shapes.append(shape(method, url, answer))
+        found = re.search(r"/records/(\d+)/(files|draft/actions/files-import)$", url)
+        if found is not None and answer.status < 300:
+            try:
+                entries = json.loads(answer.body).get("entries", [])
+            except (ValueError, AttributeError):
+                entries = []
+            held = self.stored if found.group(2) == "files" else self.imported
+            for entry in entries if isinstance(entries, list) else []:
+                if isinstance(entry, dict) and "key" in entry:
+                    held[(found.group(1), str(entry["key"]))] = entry.get("file_id")
         return answer
+
+    def stored_once(self) -> dict[str, bool]:
+        """For each file imported into a new version, whether its stored id is the published version's."""
+        found: dict[str, bool] = {}
+        for (record, key), value in self.imported.items():
+            before = [held for (other, name), held in self.stored.items() if name == key and other != record]
+            found[key] = value is not None and bool(before) and before[-1] == value
+        return found
 
 
 def _toy_demo(root: Path, steps: int | None = None) -> Path:
@@ -366,6 +388,11 @@ def compared(arguments: argparse.Namespace, folders: list[Path], token: Token, l
                                     declare=(lambda question: True) if arguments.dry_run else _declare)
                 finally:
                     lines += [{"folder": folder.name, "service": service.name, **each} for each in real.shapes]
+                    if real.imported:
+                        lines.append({"folder": folder.name, "service": service.name,
+                                      "linked_file_stored_once": real.stored_once()})
+                        print(f"files linked into the new version, each stored once (its file id the published "
+                              f"version's): {real.stored_once()}")
                 if arguments.publish and not arguments.dry_run and drafted is not None:
                     code = pulled(drafted.record, folder.parent)
                     lines.append({"folder": folder.name, "pulled": drafted.record, "verify_exit": code})
