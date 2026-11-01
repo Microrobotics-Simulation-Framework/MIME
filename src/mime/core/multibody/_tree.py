@@ -7,8 +7,8 @@ compares by value, and the saved form can record it."""
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
-from dataclasses import dataclass, field
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -178,7 +178,7 @@ class JointKind(StrEnum):
 class JointLimits:
     """Position limits (radians or metres; infinite where the joint has none, as a continuous joint), and the velocity
     and effort limits as declared (``None`` where none is). An effort limit is stored as its description gives it,
-    even where that is not positive (the AR4's file gives -1)."""
+    even where that is not positive (the AR4's file gives -1); so is a velocity limit, which :attr:`speed` reads."""
 
     lower: float = -math.inf
     upper: float = math.inf
@@ -189,6 +189,16 @@ class JointLimits:
         if math.isnan(self.lower) or math.isnan(self.upper) or self.lower > self.upper:
             raise InvalidDescription(f"a joint's lower limit must not be above its upper one: {self.lower}, "
                                      f"{self.upper}")
+
+    @property
+    def speed(self) -> float | None:
+        """The joint's speed limit (rad/s, or m/s on a prismatic joint): the magnitude of its declared velocity limit,
+        or ``None`` where it declares none or zero. Zero is no limit, as MoveIt reads a URDF (its robot model's
+        ``jointBoundsFromURDF`` takes the limit's magnitude and bounds the velocity only above rounding of zero), and
+        the value urdfdom's reader holds for a limit it was not given; a joint limited to no motion is a fixed joint."""
+        if self.velocity is None or not math.isfinite(self.velocity) or self.velocity == 0.0:
+            return None
+        return abs(self.velocity)
 
 
 @dataclass(frozen=True)
@@ -263,6 +273,33 @@ class LoopClosure:
 
 
 @dataclass(frozen=True)
+class Transmission:
+    """A simple transmission as its description gives it: the actuator ``actuator`` drives the joint ``joint`` through
+    ``reduction``, the actuator's turn per unit of the joint's motion (rad/rad on a revolute joint, rad/m on a
+    prismatic one, a lead screw's ``2 pi / lead``). A rotor of inertia ``J`` about its axis behind it reflects
+    ``reduction^2 J`` onto the joint, the joint's armature: kg m^2 on a revolute joint and kg on a prismatic one.
+
+    It is held as read, and judged only where it is used: ``faults`` are what its reader found wrong with it (a
+    reduction that is not a number, an element URDF does not define), and :meth:`MultibodyTree.transmission_faults`
+    adds what is wrong with it on its tree. A description whose transmissions no experiment uses reads as one that
+    holds none."""
+
+    name: str
+    joint: str
+    actuator: str
+    reduction: float
+    faults: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "reduction", float(self.reduction))
+        object.__setattr__(self, "faults", tuple(self.faults))
+
+    def reflected(self, rotor_inertia: float) -> float:
+        """The armature a rotor of ``rotor_inertia`` (kg m^2) about its axis gives the joint through this reduction."""
+        return self.reduction * self.reduction * rotor_inertia
+
+
+@dataclass(frozen=True)
 class DescriptionSource:
     """The description file a tree was read from: its format, its file name, and the SHA-256 of its bytes, which pins
     it."""
@@ -278,7 +315,8 @@ class MultibodyTree:
     each body's frame and each extra frame is named, in one namespace, for parts to mount on.
 
     Everything is expressed in the root's frame: a chain mounted elsewhere composes its base pose with the poses here,
-    and states gravity in the root's frame."""
+    and states gravity in the root's frame. ``transmissions`` are its description's simple transmissions as read,
+    each judged where it is used (:meth:`transmission_faults`)."""
 
     name: str
     root: str
@@ -287,9 +325,10 @@ class MultibodyTree:
     frames: tuple[Frame, ...] = ()
     closures: tuple[LoopClosure, ...] = ()
     source: DescriptionSource | None = None
+    transmissions: tuple[Transmission, ...] = ()
 
     def __post_init__(self) -> None:
-        for what in ("bodies", "joints", "frames", "closures"):
+        for what in ("bodies", "joints", "frames", "closures", "transmissions"):
             object.__setattr__(self, what, tuple(getattr(self, what)))
         _unique("body or frame", [b.name for b in self.bodies] + [f.name for f in self.frames])
         _unique("joint", [j.name for j in self.joints])
@@ -360,6 +399,30 @@ class MultibodyTree:
         """Every named frame: the bodies' own, in the order listed, then the extra frames."""
         return tuple(b.name for b in self.bodies) + tuple(f.name for f in self.frames)
 
+    def transmission_faults(self, transmission: Transmission) -> tuple[str, ...]:
+        """What is wrong with ``transmission``, one of this tree's, if anything: what its reader found, and on this
+        tree a reduction that is zero or not finite, a joint the tree does not move, and another transmission on the
+        same joint, of the same actuator or of the same name. Empty where it can be used."""
+        found = list(transmission.faults)
+        reduction = transmission.reduction
+        if reduction == 0.0 or math.isinf(reduction) or (math.isnan(reduction) and not found):
+            found.append(f"its reduction is {reduction:g}, not a finite number other than zero")
+        kinds = {j.name: j for j in self.joints}
+        if transmission.joint:
+            joint = kinds.get(transmission.joint)
+            if joint is None:
+                found.append(f"it drives {transmission.joint!r}, which is not a joint of {self.name}")
+            elif not joint.moves:
+                found.append(f"it drives {transmission.joint!r}, a fixed joint, which moves nothing to reflect a "
+                             f"rotor onto")
+        for what, key in (("joint", "joint"), ("actuator", "actuator"), ("name", "name")):
+            value = getattr(transmission, key)
+            others = [t.name for t in self.transmissions if t is not transmission and getattr(t, key) == value]
+            if value and others:
+                found.append(f"its {what} {value!r} is also {'driven by' if key == 'joint' else 'that of'} "
+                             f"transmission{'s' if len(others) > 1 else ''} {', '.join(repr(o) for o in others)}")
+        return tuple(found)
+
     @cached_property
     def articulation(self) -> Articulation:
         """The arrays the algorithms read, compiled once per tree."""
@@ -399,7 +462,22 @@ def graft(tree: MultibodyTree, payloads: tuple[Payload, ...] | list[Payload]) ->
             body, offset = payload.frame, payload.placement
         bodies.append(Body(payload.name, payload.inertial))
         joints.append(Joint(payload.name, JointKind.FIXED, body, payload.name, offset))
-    return MultibodyTree(tree.name, tree.root, tuple(bodies), tuple(joints), tree.frames, tree.closures, tree.source)
+    return MultibodyTree(tree.name, tree.root, tuple(bodies), tuple(joints), tree.frames, tree.closures, tree.source,
+                         tree.transmissions)
+
+
+def with_armatures(tree: MultibodyTree, armatures: Mapping[str, float]) -> MultibodyTree:
+    """``tree`` with the moving joints ``armatures`` names given those armatures (kg m^2 on a revolute joint, kg on a
+    prismatic one), every other joint as it was. Naming a joint the tree does not move is refused."""
+    if not armatures:
+        return tree
+    moving = {j.name for j in tree.joints if j.moves}
+    unknown = sorted(name for name in armatures if name not in moving)
+    if unknown:
+        raise InvalidDescription(f"armatures for {unknown}, which are not moving joints of {tree.name!r}; its moving "
+                                 f"joints are {sorted(moving)}")
+    joints = tuple(replace(j, armature=float(armatures[j.name])) if j.name in armatures else j for j in tree.joints)
+    return replace(tree, joints=joints)
 
 
 @dataclass(frozen=True)

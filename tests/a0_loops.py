@@ -28,7 +28,7 @@ import jax.numpy as jnp
 
 from mime.control import ArmTracking
 from mime.core import quaternion
-from mime.core.multibody import inverse_dynamics
+from mime.core.multibody import inverse_dynamics, with_armatures
 from mime.registry import ControlLaw, Controller, Signal, register_controller
 from mime.gradients import GradientStatus
 from mime.vocabulary import register_namespace
@@ -39,6 +39,9 @@ _F32 = jnp.float32
 #: The share of the gravity the joint loop compensates, 1 but for the controls' planted fault (``planted_gravity``):
 #: read when a law is made, so that the step it makes holds it as a constant.
 _GRAVITY_SHARE = [1.0]
+#: Whether the joint loop reads its tree with every joint's armature zeroed, a law written against the bare
+#: description (``planted_stale_model``): read when a law is made.
+_STALE = [False]
 
 
 @contextmanager
@@ -50,6 +53,18 @@ def planted_gravity(share: float) -> Iterator[None]:
         yield
     finally:
         _GRAVITY_SHARE[0] = held
+
+
+@contextmanager
+def planted_stale_model() -> Iterator[None]:
+    """Laws made inside read the built tree with every joint's armature zeroed: a controller whose model is the bare
+    description, the controls' fault in what the joint loop knows of the arm."""
+    held = _STALE[0]
+    _STALE[0] = True
+    try:
+        yield
+    finally:
+        _STALE[0] = held
 
 
 def _base_gravity(ctx: Any, orientation: tuple[float, float, float, float] | None) -> Any:
@@ -127,6 +142,8 @@ class ComputedTorqueTracking(ArmTracking):
 
     def joints(self, ctx: Any) -> ControlLaw:
         tree = ctx.models[self.arm]
+        if _STALE[0]:
+            tree = with_armatures(tree, {joint.name: 0.0 for joint in tree.joints if joint.moves})
         gravity = _GRAVITY_SHARE[0] * _base_gravity(ctx, self.orientation)
         return joint_loop(ArmTracking.law(self, ctx), tree, gravity, self.stiffness, self.rate_gain)
 
@@ -180,5 +197,5 @@ class A0Loops(ComputedTorqueTracking):
                                                      ctx.timestep))
 
 
-__all__ = ["A0Loops", "ComputedTorqueTracking", "RotorSpeedPI", "joint_loop", "planted_gravity", "rotor_loop",
-           "together"]
+__all__ = ["A0Loops", "ComputedTorqueTracking", "RotorSpeedPI", "joint_loop", "planted_gravity",
+           "planted_stale_model", "rotor_loop", "together"]
