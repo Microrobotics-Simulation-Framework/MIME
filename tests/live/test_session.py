@@ -209,14 +209,17 @@ def test_a_run_for_steps_whole_chunks_and_a_slow_pace_waits():
     frames = session.run_for(ms(60))
     assert len(frames) * session.chunk_steps * session.dt == pytest.approx(0.060, abs=session.chunk_steps * 0.001)
     paced = steered().build().live(pace=0.5)
-    paced.step(1)
+    paced.step(1)  # the compile, before pacing starts
+    began = time.monotonic()  # before the start: the session's clock starts no earlier
     paced.start()
-    began = time.monotonic()
     while paced.steps < paced.chunk_steps * 6:
         time.sleep(0.005)
     took = time.monotonic() - began
     paced.stop()
-    assert took >= 0.8 * (5 * paced.chunk_steps * paced.dt) / 0.5
+    # Five chunks after the start, the fifth begun no earlier than four chunks' time at half real time from the start
+    # (a session may run a chunk behind and catch up, never ahead), on any machine: load only makes it later. 5 ms for
+    # the clocks' readings.
+    assert took >= 4 * paced.chunk_steps * paced.dt / 0.5 - 0.005
 
 
 def test_a_frame_carries_the_selected_fields_in_the_schemas_order():
