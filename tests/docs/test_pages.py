@@ -343,9 +343,10 @@ def test_generated_pages_are_never_committed_the_output_directory_is_ignored():
     assert done.returncode == 0
 
 
-def test_a_build_clears_only_a_pages_directory_an_earlier_build_made(tmp_path):
+def test_a_build_clears_only_a_pages_directory_an_earlier_build_made(built, tmp_path):
+    """The earlier build is the module's own, copied: the real command made that directory and its marker."""
     out = tmp_path / "out"
-    assert build(ROOT, out).returncode == 0
+    shutil.copytree(built, out)
     (out / "pages" / "stale.md").write_text("an earlier build's page\n", encoding="utf-8")
     assert build(ROOT, out).returncode == 0
     assert not (out / "pages" / "stale.md").exists()
