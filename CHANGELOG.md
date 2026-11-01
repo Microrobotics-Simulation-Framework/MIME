@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`rigid_inertial` no longer gains energy from its gyroscopic term** (MIME-ANO-130): the term was an explicit load,
+  so a torque-free body of three different inertias gained 2.6 times its kinetic energy in a second at a 1 ms step
+  (first order in the step), and the live test rigs, a body in a rotating field with nothing to damp it, stopped being
+  finite after about 4.4 s. The term is now linearly implicit at the midpoint, `(M/dt + R - K/2) dV = F - R V`, as the
+  spinner's is by a Cayley step; the same body holds its kinetic energy and angular momentum to 3e-4 over a second at 1
+  ms (`tests/oracles/test_gyroscopic_energy.py`), and every live rig runs ten seconds with every field finite
+  (`tests/live/test_rigs_finite.py`). Made within `rigid_inertial` 0.2.0, which no release has carried: results of a
+  rotating body with unequal inertias move (the goldens of eleven entries were regenerated). The error corpus's
+  `nan_large_dt` example, a tumbling body at a step of 100 ms, no longer overflows, and is now a body declared with an
+  inertia of zero.
+
 ### Added
 - **`memory_heavy`, a marker for tests that peak above 2 GiB, which run one at a time across pytest-xdist's workers**
   (`tests/conftest.py`, `tests/memory_peaks.json`, `tests/test_memory_heavy.py`, `scripts/measure_test_memory.py`): the

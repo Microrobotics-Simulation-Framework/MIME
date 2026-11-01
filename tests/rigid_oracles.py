@@ -109,8 +109,9 @@ class ExplicitNode(RigidInertialNode):
     """The planted control: the resistance integrated explicitly, ``V' = V + dt M^-1 (F - R V)``, as 0.2 did."""
 
     @override
-    def velocities(self, mass_matrix: Array, resistance: Array, twist: Array, load: Array, dt: float) -> Array:
-        return twist + dt * jnp.linalg.solve(mass_matrix, load - resistance @ twist)
+    def velocities(self, system: Array, resistance: Array, twist: Array, load: Array) -> Array:
+        # The probe's inertia is isotropic, so the gyroscopic Jacobian is zero and the system is ``M/dt + R``.
+        return twist + jnp.linalg.solve(system - resistance, load - resistance @ twist)
 
 
 def body(dt: float, cls: type[RigidInertialNode] = RigidInertialNode) -> RigidInertialNode:

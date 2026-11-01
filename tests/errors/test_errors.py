@@ -58,15 +58,16 @@ from mime.units import kg, kg_m2, m3, m_per_s, m_per_s2, mm, ms, rad_per_s, s
 HERE = Path(__file__).resolve()
 
 
-def rod(dt: float = 1.0, spin: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> tuple[Experiment, Any]:
-    """A millimetre rod alone, its dynamics its own: the cheapest experiment that builds and runs; with a spin and a
-    base step far above its period, its explicit gyroscopic term grows without bound."""
+def rod(dt: float = 1.0, spin: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        inertia: tuple[float, float, float] = (1e-13, 2e-13, 3e-13)) -> tuple[Experiment, Any]:
+    """A millimetre rod alone, its dynamics its own: the cheapest experiment that builds and runs; with an inertia of
+    zero, a value that the step divides by."""
     exp = Experiment("drift", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(dt))
     exp.add_body(Body("rod", dynamics=RigidInertial(), initial=State(
         position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s(spin))))
     exp.declare("rod.mass", kg(1e-6), reason="a millimetre rod")
-    exp.declare("rod.inertia", kg_m2((1e-13, 2e-13, 3e-13)), reason="a millimetre rod, three different axes")
+    exp.declare("rod.inertia", kg_m2(inertia), reason="a millimetre rod, three different axes")
     return exp, exp.observe(SwimSpeed("rod", along=Z))
 
 
@@ -428,7 +429,7 @@ def test_a_results_lookups_are_refused_with_their_codes(built, tmp_path):
 
 
 def test_a_state_that_is_not_finite_names_its_first_step_thing_and_field_where_the_run_kept_them():
-    exp, _ = rod(dt=100.0, spin=(30.0, 20.0, 10.0))
+    exp, _ = rod(spin=(30.0, 20.0, 10.0), inertia=(0.0, 0.0, 0.0))
     kept = _raised(lambda: exp.build().run(s(5.0), history=True))
     assert isinstance(kept, RunFailed) and kept.codes() == ["run.non-finite"]
     said = kept.refusals[0].message
@@ -674,7 +675,7 @@ def test_mime_run_on_a_state_that_is_not_finite_writes_its_outputs_and_says_what
 
     monkeypatch.setenv(DIRECTORY_VARIABLE, str(tmp_path / "tracebacks"))
     monkeypatch.delenv(TRACEBACK_VARIABLE)
-    exp, _ = rod(dt=100.0, spin=(30.0, 20.0, 10.0))
+    exp, _ = rod(spin=(30.0, 20.0, 10.0), inertia=(0.0, 0.0, 0.0))
     exp.build().save(tmp_path / "saved", steps=2)
 
     def marked(out: Path) -> bool:
