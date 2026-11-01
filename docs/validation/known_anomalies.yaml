@@ -1929,7 +1929,9 @@ anomalies:
       **Nearer the wall the confined resistance can be indefinite.** The surrogate generator's case, FL-9 0.2 mm above
       the tube's floor at a spacing of 0.6 mm, blob 0.5 and the quadrature four times finer, gives a resistance whose
       least eigenvalue, each row and column scaled by its diagonal, is -0.64 (phase 7m-b, the generator's own check);
-      on drag 0.3.0's point forces at the same samples it is positive. The build checks the resistance at the body's
+      on drag 0.3.0's point forces at the same samples it is positive. Script A's floored FL-9 (phase 0's pose, the
+      1/4 in tube) at 0.4 mm is -6.6 on the separated quadrature and +0.83 on the point forces (phase 7m-b's budget
+      run). The build checks the resistance at the body's
       starting pose and refuses it where it is not positive definite (drag.mrs-resistance); a pose reached later in a
       run is not checked, and the surrogate generator keeps drag 0.3.0's point forces.
     severity: major
@@ -1946,5 +1948,5 @@ anomalies:
       - "tests/docs/test_spacing_tables.py::test_every_table_on_the_page_is_what_the_measurements_make"
       - "tests/oracles/test_mrs_separated.py::test_a_resistance_not_positive_definite_at_the_starting_pose_near_the_wall_is_refused_by_name"
     residual_risk: "Measured on one screw on one tube's axis and at one gap near its floor; a run whose body moves to within a force spacing of the wall after it starts is not checked"
-    workaround: "In a tube, read the speed from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing; the confined sphere on the axis meets Haberman and Sayre within 1.7% at two fifths of the radius"
+    workaround: "In a tube, read the speed from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing; the confined sphere on the axis meets Haberman and Sayre within 1.7% at two fifths of the radius. Near a wall take the point forces, Drag.MRS(quadrature_refinement=1), whose image and free part are taken at the same points and whose resistance stays definite there (script A's floored FL-9 at 0.4 mm: scaled least eigenvalue +0.83 on them, -6.6 on the separated quadrature)"
     planned_resolution: "A wall's image taken on a coarser sub-quadrature of each cell (a few points per cell, a step's reads that many times), or an analytic plane image near the nearest wall with a smooth tabulated remainder: measured against the tube's finest spacing before either is chosen"

@@ -70,10 +70,12 @@ def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
 
 
 def test_each_owner_is_declared_once_with_orders_per_output_group(records):
-    owners = [declared.owner for record in records if record.cls.gradient is not None
-              for declared in record.cls.gradient.switches]
+    unique = {id(declared): declared for record in records if record.cls.gradient is not None
+              for declared in record.cls.gradient.switches}
+    owners = [declared.owner for declared in unique.values()]
     owners += [declared.owner for name in shape_names() for declared in shape_switches(name)]
-    assert len(owners) == len(set(owners)) == 45
+    assert len(owners) == len(set(owners)) == 45, "a declaration an entry's versions share (drag 0.3.0's and 0.4.0's " \
+                                                  "surrogate rung) is one"
     tube = next(record for record in records if record.name == "tube" and record.kind is EntryKind.GEOMETRY)
     assert [d.owner for d in declared_switches(tube.cls)] == ["cylinder.axis", "cylinder.axis_norm"]
     for record in records:

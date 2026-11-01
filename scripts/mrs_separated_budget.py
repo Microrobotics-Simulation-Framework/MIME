@@ -2,7 +2,7 @@
 the defaults, and what a step costs on script A's MRS arm (A0's is the same body, tube and rung) on drag 0.4.0 against
 the point forces of 0.3.0 at the same spacing, with the compile.
 
-    JAX_PLATFORMS=cpu uv run --no-sync python scripts/mrs_separated_budget.py <out.json>
+    JAX_PLATFORMS=cpu uv run --no-sync python scripts/mrs_separated_budget.py <out.json> [assembly] [arm]
 
 Not collected by pytest. Each time is wall-clock, on this machine's CPU, in the precision a script runs in by default
 (float32) for a run, and in float64 for the assembly, which the build always makes in float64:
@@ -13,8 +13,9 @@ Not collected by pytest. Each time is wall-clock, on this machine's CPU, in the 
   build of the experiment whole.
 - ``arm``: script A's MRS arm (``scripts/sim2real/operating_point.py``'s ``experiment(rung="bem")``, FL-9 on the floor
   of the 1/4" tube) at ``ARM_SPACINGS_MM``, with its laws and kinds unpinned (the register's own arm stays drag 0.3.0 on
-  the screw 0.2.0): its build, its first run of ``SHORT`` steps (the compile and the steps), and the time per step from
-  a second run's steps; and the least eigenvalue of the resistance at the start, scaled, with the wall in it.
+  the screw 0.2.0): its build, its first run of short run (the compile and the steps), the time per step from warm
+  short and long runs (``STEPS``) (each length compiles a program of its own, so both are run once first),
+  and the least eigenvalue of the resistance at the start, scaled, with the wall in it.
 """
 
 from __future__ import annotations
@@ -35,8 +36,8 @@ sys.path.insert(0, str(ROOT / "scripts" / "sim2real"))
 
 #: The arm's spacings: the coarse one 7m-a measured, and the frozen point's.
 ARM_SPACINGS_MM = (0.4, 0.178)
-#: Steps of the arm's runs.
-SHORT, LONG = 3, 8
+#: Steps of the arm's short and long runs, by spacing: fewer at the frozen point, where a step takes tens of seconds.
+STEPS = {0.4: (3, 8), 0.178: (1, 3)}
 
 
 def _load(name: str, path: Path) -> Any:
@@ -96,6 +97,12 @@ def assembly() -> list[dict[str, Any]]:
     return rows
 
 
+def timed(run: Any) -> float:
+    started = time.perf_counter()
+    run()
+    return time.perf_counter() - started
+
+
 def least_eigenvalue(built: Any, node: Any) -> float:
     """The least eigenvalue of the resistance at the body's starting pose, the wall's correction in it, each row and
     column scaled by its diagonal: below zero, the confined resistance is not positive definite there."""
@@ -149,36 +156,35 @@ def arm() -> list[dict[str, Any]]:
             node = built.graph.get_node(op.DRAG_NODE)
             least = least_eigenvalue(built, node)
             dt = float(op.DT_MS) * 1e-3
+            short, long = STEPS[spacing]
             started = time.perf_counter()
-            built.run(s(SHORT * dt))
+            built.run(s(short * dt))
             first_s = time.perf_counter() - started
-            started = time.perf_counter()
-            built.run(s(LONG * dt))
-            long_s = time.perf_counter() - started
-            started = time.perf_counter()
-            built.run(s(SHORT * dt))
-            short_s = time.perf_counter() - started
-            per_step = max(long_s - short_s, 0.0) / (LONG - SHORT)
+            built.run(s(long * dt))  # each run's length compiles a program of its own: both are warm before timing
+            short_s, long_s = (min(timed(lambda n=n: built.run(s(n * dt))) for _ in range(2)) for n in (short, long))
+            per_step = max(long_s - short_s, 0.0) / (long - short)
             rows.append({"spacing_mm": spacing, "drag": version, "force_points": node.sample_count,
                          "quadrature_points": node.quadrature_count if node.separated else None, "blob": blob,
                          "least_scaled_eigenvalue_at_start": least, **refusal,
                          "build_s": build_s, "first_run_s": first_s, "per_step_s": per_step,
-                         "compile_s": max(first_s - SHORT * per_step, 0.0)})
+                         "compile_s": max(first_s - short * per_step, 0.0)})
             print(json.dumps(rows[-1]), flush=True)
     return rows
 
 
-def main(out: Path) -> None:
+def main(out: Path, parts: tuple[str, ...] = ("assembly", "arm")) -> None:
     import os
 
-    found: dict[str, Any] = {"machine": {"cpu": platform.processor(), "threads": os.cpu_count(),
-                                         "python": platform.python_version(), "jax": jax.__version__,
-                                         "load_1min": os.getloadavg()[0]}}
-    found["assembly"] = assembly()
-    found["arm"] = arm()
+    found: dict[str, Any] = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {}
+    found["machine"] = {"cpu": platform.processor(), "threads": os.cpu_count(), "python": platform.python_version(),
+                        "jax": jax.__version__, "load_1min": os.getloadavg()[0]}
+    if "assembly" in parts:
+        found["assembly"] = assembly()
+    if "arm" in parts:
+        found["arm"] = arm()
     found["machine"]["load_1min_after"] = os.getloadavg()[0]
     out.write_text(json.dumps(found, indent=1) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    main(Path(sys.argv[1]), tuple(sys.argv[2:]) or ("assembly", "arm"))

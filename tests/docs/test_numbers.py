@@ -42,7 +42,7 @@ def with_page(tmp_path, *lines: str, listed: str = LISTED) -> Path:
     root = copy_checkout(tmp_path)
     path = root / PAGE
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("---\ndescribes: 0.3.0\n---\n\n" + "".join(f"{line}\n" for line in lines), encoding="utf-8")
+    path.write_text("---\ndescribes: [\"0.3.0\", \"0.4.0\"]\n---\n\n" + "".join(f"{line}\n" for line in lines), encoding="utf-8")
     allowlist = root / ALLOWLIST
     allowlist.write_text(allowlist.read_text(encoding="utf-8") + listed, encoding="utf-8")
     return root

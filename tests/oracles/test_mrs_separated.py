@@ -58,8 +58,8 @@ REFERENCE = Path(__file__).parent / "references" / "helix_fl9_free_space.json"
 DISCRETISATION = 4e-4
 #: And against Stokes's law, which adds the regularisation's error: measured +0.50% and +1.45%; the larger with a tenth.
 REGULARISED = 0.016
-#: The prolate spheroid's diagonal against its closed form at the compact defaults: measured, with room.
-SPHEROID_MISS = 0.03
+#: The prolate spheroid's diagonal against its closed form at the compact defaults: measured +0.50% to +1.68%.
+SPHEROID_MISS = 0.02
 #: The confined sphere against Haberman & Sayre: measured +0.80% at a fifth of the radius and +1.72% at two fifths.
 CONFINED = {0.2: 0.01, 0.4: 0.02}
 #: FL-9 at the screw's default in free space against the shipped reference: measured -2.6%; drag 0.3.0 at the same
@@ -175,8 +175,12 @@ def test_control_each_quadrature_point_in_its_second_nearest_force_points_cell_i
         return owners
 
     monkeypatch.setattr(hydrodynamic, "quadrature_owners", second)
+    with pytest.raises(BuildRefused) as refused:
+        pill_free().build()
+    assert refused.value.codes() == ["drag.mrs-resistance"], "the build's asymmetry check catches it first"
+    monkeypatch.setattr(MRSDragNode, "built_problems", lambda self, start=None: [])
     miss = formula_miss(pill_free().build())
-    print(f"\nthe map's partition by the second nearest force point: {miss:.1e}")
+    print(f"\nthe map's partition by the second nearest force point, the build's check bypassed: {miss:.1e}")
     assert miss > 1e6 * FORMULA
 
 

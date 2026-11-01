@@ -55,8 +55,10 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
 - Where the cost matters near a wall: each step with a wall solves a dense system of three unknowns per force point,
   so its cost grows as the cube of their count; the coarsest spacing that resolves the body's shape is the one to
   write.
-- Within about a force spacing of a wall: the wall's image is taken at the force points, which do not resolve it
-  there; that error is not measured.
+- On its separated quadrature within about a force spacing of a wall: the wall's image is taken at the force points,
+  which do not resolve it there, and the resistance can be indefinite (a body resting on a tube's floor is refused when
+  built, MIME-ANO-129). Take the point forces there, a quadrature refinement of one, whose image and free part are taken at
+  the same points.
 - For a body whose hull is several parts, or whose kind gives no samples: refused when planned.
 - Where the error must be bounded rather than estimated: the regularised method's error is measured, never bounded,
   against the sphere's exact regularised drag and Stokes's law, the prolate spheroid's closed form, Haberman and

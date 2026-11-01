@@ -491,7 +491,9 @@ class MRSDragNode(MimeNode):
                                            f"({settings}), is not positive definite: its least eigenvalue, scaled, is "
                                            f"{confined!r}; the wall's image is taken at the force points, which do not "
                                            f"resolve it within about a force spacing of the wall (MIME-ANO-129)",
-                    "write a smaller spacing, Drag.MRS(spacing=...), or start the body further from the wall"))
+                    "near a wall, take the point forces, whose wall image and free part are taken at the same points: "
+                    "Drag.MRS(quadrature_refinement=1); or write a smaller spacing, Drag.MRS(spacing=...), or start "
+                    "the body further from the wall"))
         return found
 
     def _held_value(self, p: Mapping[str, Any]) -> Array:
