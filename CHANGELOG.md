@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Ctrl+C works on `mime run`.** A run was one compiled scan, and Python runs a signal handler between bytecodes, so a
   press waited for the scan to return, which for a duration with an extra zero is hours; further presses were ignored
-  as well. Now a run is split into compiled chunks (about 256 of one length: a divisor of the steps within a factor of
+  as well. Now a run is split into compiled chunks (about 64 of one length: a divisor of the steps within a factor of
   two of that where there is one, else a short first chunk and the rest, two compiled lengths; a controller's period or
   `--stage-every` still sets them where there is one) that change nothing it computes: the final state and every
   step's, bit for bit, in float32 and float64. The first Ctrl+C is answered at once, in one line, by a thread reading
@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime verify`, ends the command (130). A script's `built.run(...)` gets the chunks too, so a `KeyboardInterrupt`
   arrives between them (after one, build the experiment again). `ChunkedRun.run` takes `automatic=` and `stop=`; the
   manifest gains an optional `stopped` key and keeps its version (a reader that does not know it reads a run of the
-  steps reached); a chunk's cost is one dispatch and one wait, about 0.15 ms on a toy rig, 256 times a run.
+  steps reached); a boundary costs one dispatch and one wait, about 1.5 ms on script A0 (0.15 ms on a toy rig), so 64 of them are about 0.1 s a run: +2.9 % on an A0 run of 3.7 s (256 chunks were +9.5 %).
 - **`rigid_inertial` 0.3.0 no longer gains energy from its gyroscopic term** (MIME-ANO-129): the term was an explicit
   load, so a torque-free body of three different inertias gained 2.6 times its kinetic energy in a second at a 1 ms
   step (first order in the step), and the live test rigs, a body in a rotating field with nothing to damp it, stopped

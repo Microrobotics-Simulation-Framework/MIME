@@ -38,7 +38,7 @@
 
 - The graph sees SI floats only: a result's quantities hold arrays (`Quantity.of`), read in a unit by `.to(unit)`,
   which refuses a unit of another dimension. An array quantity is a result and never a declaration.
-- A run that records nothing keeps no step's state, and is split into compiled chunks, about 256 of one length, which
+- A run that records nothing keeps no step's state, and is split into compiled chunks, about 64 of one length, which
   change nothing it computes bit for bit (a script's Ctrl+C arrives between them). A run stopped by its `stop=` is a
   result of the steps it reached, with `stopped` (the reason and the steps asked for), written to `outputs.json` as
   `stopped` and read back from it. Recording keeps every step's state on the device in blocks, and only the recorded fields and the flags on the host.

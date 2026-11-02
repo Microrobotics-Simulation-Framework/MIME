@@ -58,9 +58,11 @@ class Progress:
 type StopRequest = Callable[[Progress], str | None]
 
 #: About how many compiled chunks a run takes when nothing asks for chunks of its own (:func:`automatic_chunks`). Each
-#: boundary costs one dispatch and a wait for the chunk (about 0.15 ms measured on a toy rig), so the cost of splitting
-#: a run is this many boundaries, whatever the run; and a stop request takes effect within one 256th of the run.
-TARGET_CHUNKS = 256
+#: boundary costs one dispatch and a wait for the chunk, about 1.4 to 1.7 ms on script A0 (MADDENING's per-call work
+#: grows with the graph; about 0.15 ms on a toy rig), so splitting a run costs this many boundaries whatever its length:
+#: A0 measured 64 chunks +2.9 % and 256 chunks +9.5 % on a run of 3.7 s. A stop request takes effect within a 64th of
+#: the run (a divisor within a factor of two of the aim can make it half or twice that).
+TARGET_CHUNKS = 64
 #: The shortest chunk the automatic rule makes: a scan of one step differed from the same steps in a longer scan in the
 #: history it kept (the MRS sphere, in float32 and in float64), the state at the end not; two steps and longer did not.
 MIN_CHUNK = 2

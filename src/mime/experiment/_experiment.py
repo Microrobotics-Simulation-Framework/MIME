@@ -752,7 +752,7 @@ class BuiltExperiment:
         (a ``KeyboardInterrupt`` arrives there, and a ``stop`` is asked). With a controller they are its control
         periods, with the controller called between them. ``hook`` is called after every chunk with a
         :class:`~mime.control.Chunk`, its end and the state there; without a controller the run is chunked for it in
-        chunks of ``chunk``. A run asked for neither is split into about 256 chunks of one length, a divisor of its
+        chunks of ``chunk``. A run asked for neither is split into about 64 chunks of one length, a divisor of its
         steps where one lies near; the chunks change nothing it computes, bit for bit. A run with a hook or a
         controller is a whole number of chunks. After a ``KeyboardInterrupt`` the built experiment is not run on:
         build it again.

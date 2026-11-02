@@ -112,7 +112,7 @@ def test_ctrl_c_in_process_stops_the_run_at_a_chunk_and_main_returns_130(saved, 
         timer.start()
 
     monkeypatch.setattr(Interrupt, "running", running)
-    steps = 10**9
+    steps = 64 * 4 * 10**6
     assert mime_main(["run", str(saved), "--duration", repr(steps * dt_of(saved)), "--out", str(out)]) == INTERRUPTED
     captured = capfd.readouterr()
     assert captured.err.count("Ctrl+C: stopping at the end of this chunk") == 1

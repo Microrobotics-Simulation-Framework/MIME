@@ -1,6 +1,6 @@
 """Ctrl+C on ``mime run``. A run is compiled scans, and Python runs a signal handler between bytecodes, so a SIGINT used
 to wait for the scan to return, which for a run with one extra zero in its duration is hours. Now a run is split into
-about 256 compiled chunks (``mime.control._run.automatic_chunks``), which change nothing it computes; the first Ctrl+C
+about 64 compiled chunks (``mime.control._run.automatic_chunks``), which change nothing it computes; the first Ctrl+C
 is acknowledged at once by a thread reading the signal's wakeup descriptor (``mime._interrupt``) and stops the run
 at its next chunk, written as the steps reached, marked stopped, exit 130; the second quits within a second wherever
 the main thread is, inside a compiled chunk too, leaving no ``outputs.json``.
@@ -116,7 +116,7 @@ def run_command(folder: Path, out: Path, duration: float) -> list[str]:
 
 #: A run of the toy rig long enough that its first chunk is about a second or more on any runner, and its whole run
 #: minutes to hours: stopping it any other way than at a chunk or by the second press would show.
-LONG_STEPS = 4 * 10**8
+LONG_STEPS = 64 * 4 * 10**6
 #: And one whose chunks are long on purpose, so that the second press arrives inside a compiled chunk (a chunk of
 #: 2e8 steps is minutes of the toy's 0.4 us steps).
 HUGE_STEPS = 5 * 10**10

@@ -83,7 +83,7 @@
   `BuiltExperiment.run_to`, which a script calls to write the same, and `mime.results.RunResult.read(<dir>)` reads the
   folder back. Exits zero, or two when the load, the build, the duration or what to record is refused.
 
-  **Ctrl+C.** A run is compiled chunks (about 256 of one length, a divisor of the steps where one lies near, else two
+  **Ctrl+C.** A run is compiled chunks (about 64 of one length, a divisor of the steps where one lies near, else two
   lengths; a controller's period or `--stage-every` sets them where there is one), which change nothing it computes
   bit for bit. The first press is answered at once with one line, and the run stops at the end of its chunk and writes
   its folder as the steps reached: `outputs.json` and `run.json` hold `stopped` (the reason, the steps and the time
