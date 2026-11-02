@@ -1,0 +1,47 @@
+{
+ "what": "every 100th row (steps 0, 100, ..., 10000: the first and the last among them) of the three arrays of script A's reproduction arm, float64 and float32, as the 7d freeze (script_a_7d_reproduction.json) froze them, cut from a run whose sha256 of each full array is that freeze's",
+ "source_commit": "7195e5811222a2fa402ca5ea49ec1a74a7221552",
+ "environment": {
+  "python": "3.14.5",
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "platform": "linux-x86_64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX"
+ },
+ "file": "script_a_7d_sample.npz",
+ "sha256": "e8e7ced937edb715992cd4fd66ef5e9e7ae12fd2d2fa49d201d9c971d1be1e9f",
+ "every": 100,
+ "full_array_digests": {
+  "f64": {
+   "umr/pose": "f4dcbeaf28e4bc5bb08edbe1a1aca9813bbbb9cf062467ff4b763788fc282e19",
+   "umr/twist": "5e8f7b4406601115484fa78a98468e32feb2c8b43b90aa05d6784432f23398a4",
+   "field/flux_density": "43acb3e15e663963e2ab7e2158a8084b5fdc688963180611acbc0981dd9ada90"
+  },
+  "f32": {
+   "umr/pose": "82e11ad12fecae7d1e07820a1f9eb3d37e3d88196c16ee7f7cd0c3b7fd495702",
+   "umr/twist": "52390ee8a0ee675379e93cdf522e9df458da34b669283e707d5b76b82af698a3",
+   "field/flux_density": "39096d8e99afb838223921000819091fa7db8e26c7b8a7276b01ac7922ae9bb8"
+  }
+ },
+ "tolerance_of_scale": {
+  "f64": 1e-12,
+  "f32": 0.0001
+ },
+ "tolerance_status": "a default, declared for the maintainer to set: scale is each array's largest absolute value in the sample; float64's is the bound the steady quantities are held to, about 300 times what 22fd495 moved; float32's is about 80 times what 22fd495 moved there",
+ "control_move_of_scale": {
+  "f64": 1e-10,
+  "f32": 0.01
+ },
+ "scale": {
+  "f64": {
+   "umr/pose": 1.0,
+   "umr/twist": 91.9983171665893,
+   "field/flux_density": 0.0012
+  },
+  "f32": {
+   "umr/pose": 1.0,
+   "umr/twist": 91.9981918334961,
+   "field/flux_density": 0.0012000000569969416
+  }
+ }
+}

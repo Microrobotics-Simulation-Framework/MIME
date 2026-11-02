@@ -15,6 +15,19 @@ control: 0.1.0's form, planted, takes the lag back beyond that tolerance.
 import jax
 import numpy as np
 import pytest
+from script_a_frozen import (
+    ARRAYS,
+    RECORD,
+    arrays_of,
+    digests_of,
+    digests_where_frozen,
+    frozen_digests,
+    moves,
+    planted,
+    report,
+    this_environment,
+    tolerance,
+)
 from script_a_runs import (
     DECLARED,
     GATED,
@@ -46,10 +59,15 @@ def x64():
 
 
 @pytest.fixture(scope="module")
-def at_10_hz():
+def history_at_10_hz():
     history = run(10.0)
     assert history.position.dtype.name == "float32"
-    return quantities(history, 10.0)
+    return history
+
+
+@pytest.fixture(scope="module")
+def at_10_hz(history_at_10_hz):
+    return quantities(history_at_10_hz, 10.0)
 
 
 def test_script_a_in_float32_matches_its_float32_reference_with_the_declared_differences(at_10_hz):
@@ -132,3 +150,29 @@ def test_with_the_normal_velocity_held_at_zero_the_float32_lag_misses_again(monk
     print(f"\nthe normal velocity held at zero: float32 lag - float64 lag {measured[LAG] - FLOAT64_LAG:+.4e} rad\n"
           + table([row]))
     assert not row.holds
+
+
+def test_the_float32_arm_is_the_frozen_sample_within_its_tolerance_on_every_machine(history_at_10_hz, record_property):
+    """The float32 arm's arrays against the sample cut from the 7d freeze's float32 run, on every machine (the digests
+    held for float32 were compared nowhere before MIME-ANO-133). The tolerance is float32's (``tolerance_of_scale``);
+    the arm runs on ``rigid_inertial`` 0.3.0 here and the freeze on 0.2.0, which give this isotropic body the same
+    arrays. Where the environment is the freeze's, the digests are asserted too."""
+    found = arrays_of(history_at_10_hz)
+    misses = moves(found, "f32")
+    report(record_property, "f32", misses)
+    held, frozen_in, source = frozen_digests("f32")
+    print(f"\nfloat32: the digests are {source}, frozen in {frozen_in}, running in {this_environment()}: "
+          f"bit for bit {'yes' if digests_of(found) == held else 'no'}")
+    print("float32: the largest move from the frozen sample, as a fraction of each array's scale (tolerance "
+          f"{tolerance('f32'):.0e}): " + ", ".join(f"{name} {miss:.2e} ({miss / tolerance('f32'):.2g} of it)"
+                                                   for name, miss in misses.items()))
+    digests_where_frozen("f32", found)
+    assert {name: miss for name, miss in misses.items() if miss > tolerance("f32")} == {}
+
+
+@pytest.mark.parametrize("name", ARRAYS)
+def test_control_a_planted_move_in_the_float32_arm_is_found_every_run(name, history_at_10_hz):
+    misses = moves(planted(arrays_of(history_at_10_hz), "f32", name), "f32")
+    assert misses[name] > tolerance("f32")
+    assert misses[name] == pytest.approx(RECORD["control_move_of_scale"]["f32"], rel=1e-3)
+    assert all(miss <= tolerance("f32") for other, miss in misses.items() if other != name)

@@ -99,7 +99,8 @@
   records and small experiments they share.
 - `differential/test_script_a_records.py`, phase 5's gate: the reproduction arm through the seam is phase 4's
   (`references/script_a_phase4_reproduction.json`, frozen before phase 5 changed anything; bit for bit in the
-  environment that froze it), with one inline value 1% off as the control; each record switch of the record arm
+  environment that froze it, and on every machine within a scale-relative tolerance of a shipped sample of the frozen
+  arrays, `references/script_a_7d_sample.npz`, MIME-ANO-133), with one inline value 1% off as the control; each record switch of the record arm
   changes A's steady quantities as `script_a_record_switches.json` predicted before the record arm existed
   (`predict_script_a_records.py`), and misses the other switches' predictions; the record arm differs from the
   reproduction only in what its report lists.

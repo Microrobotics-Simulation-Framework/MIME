@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own is as it was; [the compilation cache](docs/compilation_cache.md) shows the lines that turn it on.
 
 ### Fixed
+- **Script A's frozen comparison is one CI asserts** (MIME-ANO-133). A sample of the frozen arrays (every 100th step of
+  pose, twist and field, float64 and float32; `tests/differential/references/script_a_7d_sample.npz`, its sha256
+  recorded and tested) is held on every machine to a scale-relative tolerance (1e-12 of each array's scale in float64,
+  1e-4 in float32: defaults, the maintainer's to set), with a planted move a hundred times the tolerance found on
+  every run. The digests stay the truth of one environment and are re-frozen with the reason written down (the new
+  `freeze_script_a_reproduction.py --refreeze`); the float32 digests, compared nowhere before, are now compared.
 - **Ctrl+C works on `mime run`.** A run was one compiled scan, and Python runs a signal handler between bytecodes, so a
   press waited for the scan to return, which for a duration with an extra zero is hours; further presses were ignored
   as well. Now a run is split into compiled chunks (about 64 of one length: a divisor of the steps within a factor of
@@ -1665,6 +1671,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-133 (resolved, minor): an output of `SurrogateDragNode`'s step that feeds nothing (`bore_fired`, 22fd495)
+  moved script A's last bits (pose by about 5, twist by about 13 float64 roundings of their scale) with the derived
+  graph's hash unchanged, and CI asserted the frozen digests only on the machine that froze them. A matching derived
+  hash shows the declared graph, not the compiled program.
 - MIME-ANO-132 (open, minor): M1's margin to indefiniteness at A stays flat at about x1.03 along the convergence ladder
   (x1.025, x1.0325, x1.030, x1.030 from 0.2 to 0.1024 mm) while the gap grows from 0.50 to 0.98 spacings; by M1's rule
   the wall correction's assembly near the wall is suspect (a suspicion, not a finding). The 3/16 in tube's margin is

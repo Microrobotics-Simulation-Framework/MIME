@@ -1991,3 +1991,60 @@ anomalies:
       that change. If it stays flat, the tube table's near-wall resolution is next: a table rebuild with finer
       near-wall knots (dev2, lane S, the derived-asset builders). The measurement's scripts are not in the
       repository; they land with the A0f study.
+  - anomaly_id: MIME-ANO-133
+    title: "An output that feeds nothing moved script A's last bits with the derived graph's hash unchanged, and CI asserted the digests only on the machine that froze them"
+    description: >
+      Phase 7l-c (22fd495, PR #78, 2026-11-01) gave SurrogateDragNode's step a second output, bore_fired, that feeds no
+      edge and no other output. XLA compiles the step as one program, and the added arithmetic (a square root, a cross
+      product and a comparison whose result nothing reads) changed the rounding of the rigid body's update, so the run
+      came out a few units in the last place different: at script A's reproduction arm (10 Hz, 0.5 ms, 5 s) the pose by
+      at most 1.2e-15 (5.5 float64 roundings of its scale, 1.0) and the twist by at most 3.6e-13 (13 roundings of its
+      scale, 121.5), first at steps 52 and 6, flat over the run and not growing; in float32 by 4.5 and 10 float32
+      roundings; the field not at all. The steady quantities moved by at most 2.7e-16 against the 1e-12 they are held
+      to. The register's surrogate arm (the pinned screw 0.2.0 and rigid_inertial 0.2.0) has its trajectory digest
+      moved by the same commit, its swim speed by 1e-16 of itself. A bisect of the 96 commits from the freeze's merge
+      to the tip found no other; replacing bore_fired by zeros restores the frozen digests.
+
+      Two findings. (1) The derived graph's hash covers the declared parameters and structure of the nodes, not what a
+      node's step computes or outputs, so it passed through this change, and passes through any such change: a matching
+      derived hash does not show the compiled program is the same. Bit identity binds one tree in one environment.
+      (2) The frozen digests of script A were asserted only where the recorded environment (Python, JAX, jaxlib,
+      platform, processor model) equals the machine's, which no CI runner is, so CI printed them and could not fail: the
+      move was seen on the maintainer's laptop by chance, a day after it merged. The same holds for the float32 digests,
+      which no test compared at all.
+
+      This is rounding, not physics: the move is about 1/300 of the 1e-12 of scale the steady quantities are held to,
+      and no physics assertion approaches its tolerance.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The move is rounding, a few float64 units in the last place of script A's arrays, far inside every physics
+      tolerance of the suite and of the register. The weakness it exposed is in how a frozen comparison was checked,
+      not in a result; a downstream use that needs the bits themselves (a bit-for-bit claim across code versions) is
+      the one it concerns.
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    affected_components:
+      - "SurrogateDragNode (the step's unused output bore_fired)"
+      - "tests/differential/test_script_a_records.py (the digests asserted only in the environment that froze them)"
+    verification:
+      - "tests/differential/test_script_a_records.py::test_the_reproduction_arm_is_the_frozen_sample_within_its_tolerance_on_every_machine"
+      - "tests/differential/test_script_a_records.py::test_control_a_move_of_the_planted_size_in_one_array_is_found_every_run"
+      - "tests/differential/test_script_a_records.py::test_the_shipped_sample_is_the_file_recorded_and_the_freezes_arrays_are_the_ones_it_was_cut_from"
+      - "tests/differential/test_script_a_records.py::test_control_the_digest_gate_asserts_where_the_environment_is_the_freezes_and_not_elsewhere"
+      - "tests/differential/test_script_a_float32.py::test_the_float32_arm_is_the_frozen_sample_within_its_tolerance_on_every_machine"
+    residual_risk: >
+      What the comparison bounds: script A's sampled rows (every 100th step, the first and the last) of pose, twist
+      and field, float64 and float32, against the frozen sample, at 1e-12 (float64) and 1e-4 (float32) of each
+      array's scale, on every machine. A move on an unsampled row alone is not seen by it, and the tolerances are
+      defaults declared for the maintainer to set, not fitted: float64's is about 300 times, float32's about 80 times,
+      what 22fd495 moved. The digests still bind one environment and one tree; they are re-frozen at the tip with the
+      reason written down, and the unmoved frozen bits are kept in the sample. Only script A's arms are covered: A0's
+      references and the port references are compared at tolerances on every machine already, and the register's
+      own frozen digest is not in this repository (its surrogate arm moved by the same commit, as above).
+    workaround: "Read a matching derived hash as the declared graph and not the compiled program; hold a run to a tolerance of its frozen arrays' scale across code and machines, and re-freeze its digests with freeze_script_a_reproduction.py --refreeze and the reason when a deliberate change moves them"
+    planned_resolution: >
+      Done: the sample and its scale-relative tolerance asserted on every machine, a control that fails every run, the
+      digests re-frozen with the reason, and a sentence in the saved form's README on what a derived hash shows. The
+      tolerances are the maintainer's to set.

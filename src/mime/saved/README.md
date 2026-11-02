@@ -297,6 +297,13 @@ A CI test walks the registry in a fresh process and requires, for every register
 round-trip case: build, save, load in a fresh process, rebuild, then the same derived hash and bitwise-identical
 first steps. An entry added without one fails CI (`tests/saved/`).
 
+What a matching derived hash shows, and what it does not: the declared graph is the same (every node, edge and
+parameter). It does not show that the compiled program is. The hash covers what a node is declared to be, not what its
+step computes or outputs, so a node given an output that feeds nothing keeps the hash and can move the run's last
+bits (MIME-ANO-133: script A's pose and twist by a few float64 roundings of their scale). The bits therefore bind
+one environment and one tree; across code and machines a run is held to a tolerance of its frozen arrays' scale
+(`tests/differential/test_script_a_records.py`), which CI asserts.
+
 ## Status
 
 Landed in dev1's phase 3, on the toy entries.

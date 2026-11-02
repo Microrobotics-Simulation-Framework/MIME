@@ -60,5 +60,37 @@
    "steps": 10000,
    "dtype": "float32"
   }
- }
+ },
+ "refreezes": [
+  {
+   "date": "2026-11-02",
+   "commit": "77d3c7c6129878bc3ffb80149c824b772a5b43c0",
+   "reason": "22fd495 (PR #78, dev1 phase 7l-c) gave SurrogateDragNode's step an output, bore_fired, that feeds nothing, and the compiled program's last bits moved: script A's pose by at most 1.2e-15 (5.5 float64 roundings of its scale) and its twist by at most 3.6e-13 (13 roundings), float32's by 4.5 and 10 float32 roundings, the field's not at all, while the derived graph's hash did not move (MIME-ANO-133). The digests were not asserted off the freezing machine, so nothing failed. Re-frozen here, at the tip that followed; the unmoved frozen bits live on in script_a_7d_sample.npz, which every machine asserts within a scale-relative tolerance.",
+   "environment": {
+    "python": "3.14.5",
+    "jax": "0.12.0.1",
+    "jaxlib": "0.12.0.1",
+    "platform": "linux-x86_64",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX"
+   },
+   "runs": {
+    "f64": {
+     "derived_hash": "sha256:7d01854ecf850c5350cd23e3486f56d1294911a31a78ed138ffe7d974e641f8e",
+     "arrays": {
+      "umr/pose": "a6877d5cee4888b83e4fc7f5e9a1e39a06518bc41e4aab6f83c70c752a33e745",
+      "umr/twist": "983c5dba7ffeca5fba7bb754366be73da69b819e520d68c6b83e9d3557751148",
+      "field/flux_density": "43acb3e15e663963e2ab7e2158a8084b5fdc688963180611acbc0981dd9ada90"
+     }
+    },
+    "f32": {
+     "derived_hash": "sha256:7ea29086e612b501ffbf70f5f037be8075b08e05bf57e30967b060c996d1f61c",
+     "arrays": {
+      "umr/pose": "2a2a68eda0ee9ffaa89452470ad9720373b11421f4fee9e78384c0f79f781a7c",
+      "umr/twist": "3b824eaa7c2216205fbed5184c2f3b5a00296392f37f3334dae9775ad37ca71d",
+      "field/flux_density": "39096d8e99afb838223921000819091fa7db8e26c7b8a7276b01ac7922ae9bb8"
+     }
+    }
+   }
+  }
+ ]
 }

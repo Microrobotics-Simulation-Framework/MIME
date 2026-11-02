@@ -2,7 +2,8 @@
 
 **First, the reproduction arm through the seam is phase 4's arm exactly.** Its values are now read through
 ``mime.materials``; its derived graph (every node, edge and parameter, bit for bit) is the one phase 4 left, frozen
-before phase 5's seam was merged, and in the environment that froze it, so is every array of its 5 s run. Phase 4's
+before phase 5's seam was merged; every array of its 5 s run is the frozen bits in the environment that froze it, and
+within a scale-relative tolerance of a shipped sample of the frozen arrays on every machine (MIME-ANO-133). Phase 4's
 arm as it merged is in ``references/script_a_phase4_reproduction.json``; since phase 4c3 changed its physics (three
 declared changes), the arm is held to ``references/script_a_4c3_reproduction.json``, frozen on 4c3's head before it
 merged phase 5. Since phase 7d read the body's shape from its hull's kind, its graph and the last bits of its run are
@@ -33,19 +34,32 @@ declaration (its acceptances, with their reasons), and the dynamics' own error i
 import contextlib
 import hashlib
 import json
-import platform
 from pathlib import Path
 
 import numpy as np
 import pytest
 import script_a as script_a_module
 from script_a import ALL_RECORDS, DENSITY_RECORD, MAGNET_PARTS, VISCOSITY_RECORD, record_arm, reproduction_arm
+from script_a_frozen import (
+    ARRAYS,
+    RECORD,
+    REFERENCES,
+    SEVEN_D,
+    arrays_of,
+    digests_of,
+    digests_where_frozen,
+    frozen_digests,
+    moves,
+    planted,
+    report,
+    this_environment,
+    tolerance,
+)
 from script_a_runs import quantities, run_built
 from script_a_steady import GATED
 
 from mime import units
 from mime.dynamics.body import RigidInertialExplicit
-from mime.saved._record import environment
 
 HERE = Path(__file__).parent
 PREDICTED = json.loads((HERE / "script_a_record_switches.json").read_text())
@@ -53,7 +67,7 @@ FROZEN = json.loads((HERE / "references" / "script_a_4c3_reproduction.json").rea
 #: The arm as phase 7d left it: its body's shape read from its hull's kind, its extent the kind's radial reach (one
 #: unit in the last place from the value declared before), the drag's tube its region's shape. Its graph's hash and the
 #: last bits of its pose and twist changed; its steady quantities stay within 1e-12 of 4c3's.
-FROZEN_7D = json.loads((HERE / "references" / "script_a_7d_reproduction.json").read_text())
+FROZEN_7D = SEVEN_D
 TRANSIENT = "transient_speed_0_to_0.5_s_m_s"
 QUANTITIES = (*GATED, TRANSIENT)
 TOLERANCES = PREDICTED["tolerances"]["values"]
@@ -67,27 +81,6 @@ UNRESOLVABLE = frozenset({"water_density"})
 
 def change(name: str, value: float, against: float) -> float:
     return value - against if name == "phase_lag_field_minus_moment_rad" else (value - against) / abs(against)
-
-
-def array_digest(value) -> str:
-    array = np.ascontiguousarray(np.asarray(value))
-    return hashlib.sha256(f"{array.dtype.str}{array.shape}".encode() + array.tobytes()).hexdigest()
-
-
-def cpu_model() -> str:
-    try:
-        for line in Path("/proc/cpuinfo").read_text().splitlines():
-            if line.startswith("model name"):
-                return line.partition(":")[2].strip()
-    except OSError:
-        pass
-    return platform.processor()
-
-
-def this_environment() -> dict[str, str]:
-    held = environment()
-    return {"python": held["python"], "jax": held["jax"], "jaxlib": held["jaxlib"], "platform": held["platform"],
-            "cpu": cpu_model()}
 
 
 def run_arm(built):
@@ -118,21 +111,80 @@ def arms():
 
 
 def test_the_reproduction_arm_through_the_seam_is_phase_4s_arm_bit_for_bit(reproduction):
-    """Bit for bit against the arm as phase 7d froze it, and its steady quantities within 1e-12 of 4c3's."""
+    """The derived graph is phase 7d's, the arrays are its bits where the environment is the freeze's, and the steady
+    quantities are within 1e-12 of 4c3's. A derived hash that matches does not show the compiled program is the same
+    (MIME-ANO-133): the sample test below is what every machine asserts of the arrays."""
     built, history, found = reproduction
     frozen = FROZEN_7D["runs"]["f64"]
     assert built.record.hashes()["derived"] == frozen["derived_hash"]
-    digests = {"umr/pose": array_digest(np.concatenate([history.position, history.orientation], axis=1)),
-               "umr/twist": array_digest(np.concatenate([history.velocity, history.angular_velocity], axis=1)),
-               "field/flux_density": array_digest(history.field)}
-    same_environment = FROZEN_7D.get("environment") == this_environment()
-    print(f"\nthe derived graph is phase 7d's: {frozen['derived_hash']}\nfrozen in {FROZEN_7D.get('environment')}\n"
-          f"running in {this_environment()}\nthe run's arrays, bit for bit: "
-          f"{'yes' if digests == frozen['arrays'] else 'no'}")
-    if same_environment:
-        assert digests == frozen["arrays"]
+    digests = digests_of(arrays_of(history))
+    held, frozen_in, source = frozen_digests("f64")
+    print(f"\nthe derived graph is phase 7d's: {frozen['derived_hash']}\nthe digests are {source}\n"
+          f"frozen in {frozen_in}\nrunning in {this_environment()}\nthe run's arrays, bit for bit: "
+          f"{'yes' if digests == held else 'no'}")
+    digests_where_frozen("f64", arrays_of(history))
     for name in QUANTITIES:
         assert abs(change(name, found[name], FROZEN["runs"]["f64"]["steady"][name])) <= 1e-12, name
+
+
+def test_the_reproduction_arm_is_the_frozen_sample_within_its_tolerance_on_every_machine(reproduction,
+                                                                                         record_property):
+    """Asserted wherever it runs, which the digests are not: the sampled rows of pose, twist and field against the
+    sample cut from the freeze's own run, at ``tolerance_of_scale`` of each array's scale. The largest ratio is
+    printed, for the machine it runs on."""
+    _, history, _ = reproduction
+    misses = moves(arrays_of(history), "f64")
+    report(record_property, "f64", misses)
+    print("\nthe largest move from the frozen sample, as a fraction of each array's scale (tolerance "
+          f"{tolerance('f64'):.0e}): " + ", ".join(f"{name} {miss:.2e} ({miss / tolerance('f64'):.2g} of it)"
+                                                   for name, miss in misses.items()))
+    assert {name: miss for name, miss in misses.items() if miss > tolerance("f64")} == {}
+
+
+@pytest.mark.parametrize("name", ARRAYS)
+def test_control_a_move_of_the_planted_size_in_one_array_is_found_every_run(name, reproduction):
+    """The control: one element of one array on a sampled row moved by ``control_move_of_scale`` (a hundred times the
+    tolerance) is above the tolerance in that array and in no other."""
+    _, history, _ = reproduction
+    misses = moves(planted(arrays_of(history), "f64", name), "f64")
+    assert misses[name] > tolerance("f64")
+    assert misses[name] == pytest.approx(RECORD["control_move_of_scale"]["f64"], rel=1e-3)
+    assert all(miss <= tolerance("f64") for other, miss in misses.items() if other != name)
+
+
+def test_control_the_digest_gate_asserts_where_the_environment_is_the_freezes_and_not_elsewhere(reproduction):
+    """The digest comparison cannot run on CI's machines, so its gate is tested apart: in the freeze's environment a
+    run with one bit moved fails it, and in another environment the same run is not asserted."""
+    _, history, _ = reproduction
+    _, frozen_in, _ = frozen_digests("f64")
+    found = arrays_of(history)
+    moved = {name: np.array(value) for name, value in found.items()}
+    moved["umr/pose"][1, 0] = np.nextafter(moved["umr/pose"][1, 0], np.inf)
+    with pytest.raises(AssertionError, match="umr/pose"):
+        digests_where_frozen("f64", moved, here=frozen_in)
+    assert not digests_where_frozen("f64", moved, here={**frozen_in, "cpu": "another processor"})
+
+
+def test_the_shipped_sample_is_the_file_recorded_and_the_freezes_arrays_are_the_ones_it_was_cut_from(tmp_path):
+    """The file's sha256 is its record's; the record's digests of the full arrays are the 7d freeze's own; and a byte
+    changed in a copy is found."""
+    file = REFERENCES / RECORD["file"]
+    assert hashlib.sha256(file.read_bytes()).hexdigest() == RECORD["sha256"]
+    assert RECORD["full_array_digests"] == {label: FROZEN_7D["runs"][label]["arrays"] for label in ("f64", "f32")}
+    assert RECORD["every"] == 100
+    planted_copy = tmp_path / file.name
+    held = bytearray(file.read_bytes())
+    held[len(held) // 2] ^= 1
+    planted_copy.write_bytes(bytes(held))
+    assert hashlib.sha256(planted_copy.read_bytes()).hexdigest() != RECORD["sha256"]
+
+
+def test_every_refreeze_names_its_reason_its_commit_and_the_derived_graph_it_kept():
+    for entry in FROZEN_7D.get("refreezes", []):
+        assert entry["reason"].strip() and entry["commit"] and entry["date"]
+        for label, run in entry["runs"].items():
+            assert run["derived_hash"] == FROZEN_7D["runs"][label]["derived_hash"], "a refreeze keeps the graph"
+            assert set(run["arrays"]) == set(ARRAYS)
 
 
 def test_the_reproduction_control_one_inline_value_one_percent_off_changes_the_graph_and_the_run(reproduction):
