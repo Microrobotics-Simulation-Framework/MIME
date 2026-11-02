@@ -482,6 +482,9 @@ def finish(plan: Plan, state: DraftState, client: Client, say: Say, *, recorded:
     words = [f"its {label(name)} reads {plain(words_of(field_value(answer, name)))[:120]}" for name in otherwise]
     if recorded is None:
         words += _version_words(answer, state)
+        if not ours(answer, service, state):
+            words.append("push's identifier is not among its alternate identifiers, by which a later run knows the "
+                         "record is its own")
         published = Published(record, state.doi, page, state.concept, state.version, concept_doi_of(answer),
                               listed(files, plan), metadata_marks(answer), state.sent, dict(plan.publication or {}),
                               plan.card, [*otherwise])

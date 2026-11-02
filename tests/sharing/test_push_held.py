@@ -943,6 +943,24 @@ def test_a_field_the_service_normalises_at_publish_is_named_with_the_version_rec
     assert not pushed(folder, fake, service, again).changed and "is unchanged since" in again.said[-1]
 
 
+def test_an_identifier_the_service_drops_at_publish_is_named(toy: Path, tmp_path: Path,
+                                                             monkeypatch: pytest.MonkeyPatch):
+    fake, service = sandbox(monkeypatch)
+    folder = copy_of(toy, tmp_path)
+    pushed(folder, fake, service)
+    real = fake._published
+
+    def dropped(record: object) -> None:
+        real(record)  # type: ignore[arg-type]
+        record.body["metadata"]["identifiers"] = []  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(fake, "_published", dropped)
+    with pytest.raises(BuildRefused) as refused:
+        published(folder, fake, service, confirm=DOI)
+    assert refused.value.codes() == ["push.metadata-read-back"]
+    assert "push's identifier is not among its alternate identifiers" in refused.value.refusals[0].message
+
+
 def test_a_lock_owed_after_a_kill_is_said_and_a_later_command_writes_it_whatever_the_metadata_says(
         toy: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     fake, service = production(monkeypatch)

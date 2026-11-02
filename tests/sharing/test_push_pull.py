@@ -78,6 +78,20 @@ def test_a_published_sandbox_record_is_pulled_by_its_number_and_verifies(toy: Pa
         sandbox.records["629525"].files["full_toy.mimebundle"].data, "the pulled folder packs to the published bundle"
 
 
+def test_a_newer_version_the_service_does_not_name_sends_the_person_to_the_records_page(
+        toy: Path, sandbox: FakeRecords, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch):
+    folder = copy_of(toy, tmp_path)
+    service = push.SERVICES["zenodo-sandbox"]
+    push.push(folder, service, pause=0)
+    push.publish(folder, service, confirm="10.5072/zenodo.629525", pause=0)
+    monkeypatch.setattr(sandbox, "_latest", lambda parent: None)  # not the latest, and `versions/latest` names none
+    assert main(["pull", "--from", "zenodo-sandbox", "629525", "--into", str(tmp_path / "pulled")]) == 0
+    out = capsys.readouterr().out
+    assert f"! it is not the latest version: the record's page, {sandbox.site}/records/629525, names the latest" in out
+    assert "a newer one" not in out
+
+
 def test_a_draft_or_an_unknown_record_is_not_pulled(toy: Path, sandbox: FakeRecords, tmp_path: Path):
     folder = copy_of(toy, tmp_path)
     push.push(folder, push.SERVICES["zenodo-sandbox"], pause=0)
