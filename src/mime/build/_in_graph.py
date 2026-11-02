@@ -22,7 +22,8 @@ and its shapes are compared, and it is also the purity check's first program. Th
 check alone, of a function of its own, and compared with the first. The build's host-callback probe, which traces
 every other node's step code, leaves the controller's node to the first trace, whose search it repeats and whose
 refusal (``controller.untraceable``) comes first; what the node adds around the step is a cast of its writes. A step
-impure only from its third trace on is not caught (the probe's trace used to catch it, at about a quarter of A0's build)."""
+impure only from its third trace on is not caught (the probe's trace used to catch it, at about a quarter of A0's
+build)."""
 
 from __future__ import annotations
 
