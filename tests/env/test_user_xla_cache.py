@@ -5,6 +5,7 @@ bit-for-bit test runs the command in fresh processes, which is the only way a wa
 
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -181,10 +182,12 @@ def test_cache_clear_deletes_the_cache_and_says_how_much(home, capsys):
     assert clear_user_xla_cache(user_xla_cache_root()) == 0
 
 
-def mime_run(folder: Path, out: Path, steps: int, home: Path, *flags: str) -> subprocess.Popen[bytes]:
+def mime_run(folder: Path, out: Path, steps: int, home: Path, *flags: str,
+             **extra_environment: str) -> subprocess.Popen[bytes]:
     environment = {name: value for name, value in os.environ.items()
                    if not name.startswith(("JAX_COMPILATION_CACHE", "JAX_PERSISTENT_CACHE", "XDG_CACHE", "XLA_FLAGS"))}
     environment.update(HOME=str(home), USERPROFILE=str(home), LOCALAPPDATA=str(home), JAX_PLATFORMS="cpu")
+    environment.update(extra_environment)
     return subprocess.Popen([sys.executable, "-m", "mime.cli", "run", str(folder), "--duration",
                              duration_of(folder, steps), "--out", str(out), "--history", *flags], env=environment,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -199,9 +202,10 @@ def digest(out: Path) -> str:
     return held.hexdigest()
 
 
-def finished(process: subprocess.Popen[bytes]) -> None:
+def finished(process: subprocess.Popen[bytes]) -> str:
     text, _ = process.communicate(timeout=600)
     assert process.returncode == 0, text.decode(errors="replace")
+    return text.decode(errors="replace")
 
 
 def test_a_cold_and_a_warm_cache_give_the_bits_of_no_cache_and_a_changed_program_is_a_miss_not_a_stale_hit(
@@ -228,3 +232,40 @@ def test_a_cold_and_a_warm_cache_give_the_bits_of_no_cache_and_a_changed_program
     assert after_cold > 0 and after_warm == after_cold  # the warm run found every program it needed
     assert after_planted > after_warm  # the control: the changed program was compiled, not found
     assert digest(tmp_path / "planted") == digest(tmp_path / "planted-off") != digest(tmp_path / "off")
+
+
+def damage(home: Path, *, keep: float) -> int:
+    """Cut every entry under ``home`` to ``keep`` of its length (0 for an empty file): what a process killed in the
+    middle of a write leaves, JAX writing an entry in place; the number of entries cut."""
+    cut = [path for path in home.rglob("*-cache") if path.is_file()]
+    for path in cut:
+        content = path.read_bytes()
+        path.write_bytes(content[:int(len(content) * keep)])
+    return len(cut)
+
+
+def test_a_damaged_cache_entry_costs_a_warning_and_never_a_run_or_a_digest(saved, tmp_path):
+    """A second Ctrl+C can end a run mid-write, and the cache is on by default. Every entry of a filled cache cut to
+    half its length, and to nothing, is read back by the next run (JAX warns and compiles instead) and the run's
+    digest is the uncached run's. The control is the same damaged cache read with JAX told to raise on a cache error:
+    that run must fail, which shows the entries were read and were damaged, and that the success above is JAX's
+    tolerance and not a cache that was never read."""
+    filled = tmp_path / "filled"
+    filled.mkdir()
+    finished(mime_run(saved, tmp_path / "fill", 4, filled))
+    half, empty, raising = tmp_path / "half", tmp_path / "empty", tmp_path / "raising"
+    for copy in (half, empty, raising):
+        shutil.copytree(filled, copy)
+    assert damage(half, keep=0.5) == damage(raising, keep=0.5) == damage(empty, keep=0.0) > 0
+    bare = mime_run(saved, tmp_path / "off", 4, tmp_path / "unused", "--no-xla-cache")
+    cut_half = mime_run(saved, tmp_path / "out-half", 4, half)
+    cut_empty = mime_run(saved, tmp_path / "out-empty", 4, empty)
+    control = mime_run(saved, tmp_path / "out-raising", 4, raising, JAX_RAISE_PERSISTENT_CACHE_ERRORS="true")
+    finished(bare)
+    for output in (finished(cut_half), finished(cut_empty)):
+        assert "Error reading persistent compilation cache entry" in output  # the damaged entries were read
+        assert "Traceback" not in output
+        assert all("UserWarning" in line for line in output.splitlines() if "Error" in line)  # at most a warning
+    assert digest(tmp_path / "off") == digest(tmp_path / "out-half") == digest(tmp_path / "out-empty")
+    text, _ = control.communicate(timeout=600)
+    assert control.returncode != 0 and b"entry.defect" in text  # the read of a damaged entry raised, as told to

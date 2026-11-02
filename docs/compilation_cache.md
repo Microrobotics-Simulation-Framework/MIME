@@ -24,8 +24,10 @@ The numbers a run gives are the same with it and without it; what changes is the
   standard error and compiles without it.
 - **What it cannot do.** It holds compiled programs, not tracing: a second run still traces and lowers each program,
   and the first run of an experiment, or of a changed one, pays in full. JAX writes an entry in place, so a
-  process killed mid-write can leave a truncated one, which JAX is expected to warn about and recompile (MADDENING's CI
-  prunes such entries for that reason; MIME's tests do not exercise this); `mime cache clear` removes it.
+  process killed mid-write (a second Ctrl+C) can leave a truncated one. The next run that reads it gets a warning from
+  JAX and compiles instead: it succeeds and its numbers are those of a run with no cache (tested with entries cut to
+  half and to nothing). JAX does not rewrite an entry whose file exists, so the warning repeats on every run that
+  reads it, until `mime cache clear` removes it.
 
 ## In a script of your own
 
