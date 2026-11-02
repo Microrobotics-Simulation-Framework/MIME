@@ -103,6 +103,17 @@ plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default`
 behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
 count starts that count's caches cold.
 
+## CI: re-running one shard
+
+A failed shard job can be re-run alone (Actions, the run, Re-run failed jobs, or `gh run rerun --failed`), on a named
+cause (a runner, a flake whose test you have fixed or recorded), not to see green. Each shard job uploads its report as
+`...-shard-<n>-attempt-<k>`, `k` the run attempt, and the lane's job (`default (Python 3.x)`, `maddening-main`,
+`openmaterica-main`) keeps the newest attempt of each shard (`scripts/latest_attempt.py`) before it checks them, so the
+re-run's report replaces the first attempt's and the lane clears when the shard passes. It does not hide a failure that
+persists: the newest attempt's own outcome and JUnit report are what is read, and `default` also fails unless the run's
+list of jobs, at their latest attempts, shows that Python's shard jobs all concluded success. The manual run's `plant_shard_failure` input (a shard number) fails that shard of the Python
+3.12 default lane on the first attempt only, to show this on a run.
+
 ## CI: borderline tests
 
 A push to `v0.3` runs cold (an empty compilation cache) and a shard draws whichever runner class is free, so a test

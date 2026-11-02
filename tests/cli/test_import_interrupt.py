@@ -17,7 +17,7 @@ import pytest
 
 from _platform_support import needs_posix_sigint
 
-pytestmark = needs_posix_sigint
+pytestmark = [needs_posix_sigint, pytest.mark.own_child_cache]
 
 #: A process started in the background by a non-interactive shell inherits SIGINT ignored, and Python then leaves it so; the
 #: line below is what Python's start gives a process run from a terminal, so that the control means the same everywhere.

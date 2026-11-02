@@ -65,7 +65,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     """CI's plugins: ``--mime-shard i/N`` keeps one CI job's share of the test files (``tests/_sharding.py``), and
     ``MIME_TEST_JAX_TIMING=1`` records each test's JAX tracing, lowering, compiling and cache reads beside its times
-    (``tests/_jax_timing.py``), which ``scripts/report_test_durations.py`` reads."""
+    (``tests/_jax_timing.py``), which ``scripts/report_test_durations.py`` reads. A marked test's child
+    processes get a compilation cache of their own where CI sets a shared one (``tests/_child_cache.py``)."""
     spec = config.getoption("--mime-shard")
     if spec:
         import _sharding
@@ -75,6 +76,9 @@ def pytest_configure(config: pytest.Config) -> None:
         import _jax_timing
 
         _jax_timing.register(config)
+    import _child_cache
+
+    config.pluginmanager.register(_child_cache, "mime-child-cache")
 
 
 MEMORY_HEAVY = "memory_heavy"

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import _sharding
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,6 +31,8 @@ def _script(name: str):
 
 
 check_shards = _script("check_shards")
+latest_attempt = _script("latest_attempt")
+check_shard_jobs = _script("check_shard_jobs")
 cache_mode = _script("compilation_cache_mode")
 shard_weights = _script("shard_weights")
 #: The shard counts the recorded artifacts are made for: one, a pair, a count that does not divide the files, and
@@ -417,3 +420,151 @@ def test_the_weights_read_a_reports_node_ids_as_pytest_writes_them():
         'test_x.py" time="1"/></testsuite></testsuites>')
     assert [shard_weights.node_id(case) for case in report.iter("testcase")] == [
         "tests/saved/test_x.py::test_a[1-2]", "tests/saved/test_x.py::TestMachine::runTest"]
+
+
+# A re-run of one shard job (scripts/latest_attempt.py): the run then holds that shard's report twice, one per attempt.
+
+LANE = "durations-default-python-3.12"
+CI = ROOT / ".github" / "workflows" / "ci.yml"
+
+
+def _downloaded(tmp_path: Path, recorded: list[Path], attempts: dict[int, list[str]]) -> Path:
+    """What the lane's job downloads: a directory per shard and attempt. ``attempts[shard]`` lists the outcomes of the
+    shard's attempts, in order; a shard not in it ran once and passed. A failed attempt is a failed job's outcome and a
+    failing test in its report, as ``job.status`` and the JUnit report of a shard whose test failed."""
+    downloaded = tmp_path / "shards"
+    downloaded.mkdir()
+    for number, directory in enumerate(recorded, start=1):
+        for attempt, outcome in enumerate(attempts.get(number, ["success"]), start=1):
+            copy = _copy(directory, downloaded)
+            copy = copy.rename(downloaded / f"{LANE}-shard-{number}-attempt-{attempt}")
+            (copy / "outcome.txt").write_text(f"{outcome}\n", encoding="utf-8")
+            if outcome != "success":
+                _edit_report(copy, _fail_case)
+    return downloaded
+
+
+def _lane_passes(downloaded: Path, of: int) -> bool:
+    return check_shards.main(["--shards", str(of), "--max-skipped", "0",
+                              *map(str, sorted(path for path in downloaded.iterdir() if path.is_dir()))]) == 0
+
+
+def test_control_without_the_pruning_a_shard_re_run_alone_leaves_the_lane_red(recordings, tmp_path):
+    """The defect: shard 2 failed and passed on its re-run, and the lane checked both attempts' reports."""
+    downloaded = _downloaded(tmp_path, recordings(3), {2: ["failure", "success"]})
+    assert not _lane_passes(downloaded, 3)
+
+
+def test_a_shard_re_run_alone_clears_the_lane(recordings, tmp_path):
+    downloaded = _downloaded(tmp_path, recordings(3), {2: ["failure", "success"]})
+    assert latest_attempt.main([str(downloaded)]) == 0
+    assert sorted(path.name for path in downloaded.iterdir()) == [
+        f"{LANE}-shard-1-attempt-1", f"{LANE}-shard-2-attempt-2", f"{LANE}-shard-3-attempt-1"]
+    assert _lane_passes(downloaded, 3)
+
+
+@pytest.mark.parametrize("attempts", [["failure", "failure"], ["failure", "cancelled"], ["success", "failure"],
+                                      ["failure", "success", "failure"]],
+                         ids=lambda each: "-then-".join(each))
+def test_a_re_run_does_not_hide_a_failure_that_persists(attempts, recordings, tmp_path):
+    """The newest attempt is the one read: a shard whose newest attempt did not pass keeps the lane red, whatever an
+    older attempt did."""
+    downloaded = _downloaded(tmp_path, recordings(3), {2: attempts})
+    assert latest_attempt.main([str(downloaded)]) == 0
+    assert not _lane_passes(downloaded, 3)
+
+
+def test_the_newest_attempt_is_the_highest_number_not_the_last_name(recordings, tmp_path):
+    downloaded = _downloaded(tmp_path, recordings(2), {1: ["failure"] * 9 + ["success"]})
+    assert latest_attempt.main([str(downloaded)]) == 0
+    assert (downloaded / f"{LANE}-shard-1-attempt-10").is_dir()
+    assert sorted(path.name for path in downloaded.iterdir()) == [
+        f"{LANE}-shard-1-attempt-10", f"{LANE}-shard-2-attempt-1"]
+    assert _lane_passes(downloaded, 2)
+
+
+def test_a_report_it_cannot_place_fails_the_pruning(recordings, tmp_path):
+    downloaded = _downloaded(tmp_path, recordings(2), {})
+    (downloaded / f"{LANE}-shard-2-attempt-1").rename(downloaded / f"{LANE}-shard-2")
+    assert latest_attempt.main([str(downloaded)]) == 1
+    assert latest_attempt.main([str(downloaded / "absent")]) == 1
+
+
+def _steps(job: dict) -> list[dict]:
+    return job["steps"]
+
+
+# The pruning keeps the newest attempt of a shard that was re-run, and cannot see a re-run that failed before it
+# uploaded (the first attempt's report is then the newest): the default lane's job reads the shard jobs' result too.
+def _workflow_problems(workflow: dict) -> list[str]:
+    """What is wrong with how the workflow names a shard's report by attempt and prunes them in each lane's job."""
+    found: list[str] = []
+    jobs = workflow["jobs"]
+    for tests, lane in (("default-tests", "default"), ("openmaterica-main-tests", "openmaterica-main"),
+                        ("maddening-main-tests", "maddening-main")):
+        names = [step["with"]["name"] for step in _steps(jobs[tests]) if "upload-artifact" in step.get("uses", "")]
+        if len(names) != 1 or not names[0].endswith("-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}"):
+            found.append(f"{tests}: the shard's report is not named by the run attempt ({names})")
+        steps = _steps(jobs[lane])
+        pruning = [at for at, step in enumerate(steps) if "scripts/latest_attempt.py" in str(step.get("run", ""))]
+        checking = [at for at, step in enumerate(steps) if "scripts/check_shards.py" in str(step.get("run", ""))]
+        downloading = [at for at, step in enumerate(steps) if "download-artifact" in step.get("uses", "")]
+        if len(pruning) != 1 or len(checking) != 1 or len(downloading) != 1 or not downloading[0] < pruning[0] < checking[0]:
+            found.append(f"{lane}: the newest attempt is not kept between the download and the check")
+    default_steps = _steps(jobs["default"])
+    if not any("scripts/check_shard_jobs.py" in str(step.get("run", "")) and "filter=latest" in str(step.get("env", {}))
+               and "pipefail" in str(step.get("run", "")) and step.get("if") == "${{ !cancelled() }}"
+               for step in default_steps):
+        found.append("default: no step fails the lane when a shard job's latest attempt did not pass")
+    if (jobs["default"].get("permissions") or {}).get("actions") != "read":
+        found.append("default: cannot read the run's jobs (permissions: actions: read)")
+    return found
+
+
+def test_the_workflow_names_a_report_by_its_attempt_and_prunes_before_it_checks():
+    assert _workflow_problems(yaml.safe_load(CI.read_text(encoding="utf-8"))) == []
+
+
+@pytest.mark.parametrize("old, new, expected", [
+    ("-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}\n          path: ${{ runner.temp }}/report\n"
+     "          if-no-files-found: error\n\n  # The lane's result",
+     "-shard-${{ matrix.shard }}\n          path: ${{ runner.temp }}/report\n"
+     "          if-no-files-found: error\n\n  # The lane's result", "default-tests: the shard's report is not named"),
+    ("run: python3 scripts/latest_attempt.py \"$RUNNER_TEMP\"/shards\n      - name: Every shard job, at its latest",
+     "run: 'true'\n      - name: Every shard job, at its latest", "default: the newest attempt is not kept"),
+    ("run: |\n          set -o pipefail\n          gh api", "run: |\n          gh api",
+     "default: no step fails the lane when a shard job's latest attempt"),
+    ("      actions: read\n", "", "default: cannot read the run's jobs"),
+], ids=["a-report-named-without-its-attempt", "no-pruning", "the-jobs-pipe-without-pipefail", "no-permission-to-read-jobs"])
+def test_control_a_break_in_the_attempt_wiring_is_named(old, new, expected):
+    text = CI.read_text(encoding="utf-8")
+    assert text.count(old) == 1, old
+    found = _workflow_problems(yaml.safe_load(text.replace(old, new)))
+    assert any(expected in problem for problem in found), found
+
+
+def _jobs(conclusions: dict[int, str | None], python: str = "3.12", of: int = 9) -> list[str]:
+    lines = [json.dumps({"name": f"default tests (Python {python}, shard {n} of {of})", "conclusion": c})
+             for n, c in conclusions.items()]
+    return [*lines, json.dumps({"name": "default (Python 3.12)", "conclusion": None}),
+            json.dumps({"name": "shard count", "conclusion": "success"})]
+
+
+def test_the_shard_jobs_at_their_latest_attempts_all_passed():
+    assert check_shard_jobs.problems(_jobs({n: "success" for n in range(1, 10)}), "default tests (Python 3.12, ", 9) == []
+
+
+@pytest.mark.parametrize("bad", ["failure", "cancelled", "skipped", None], ids=str)
+def test_control_a_shard_job_that_did_not_pass_fails_the_lane_even_with_a_passing_report_beside_it(bad):
+    """The case the pruning cannot see: a re-run that failed before it uploaded leaves the first attempt's passing report
+    as the newest, and the job list says what the job ended as."""
+    found = check_shard_jobs.problems(_jobs({n: "success" if n != 7 else bad for n in range(1, 10)}),
+                                      "default tests (Python 3.12, ", 9)
+    assert any("shard 7 of 9" in problem and repr(bad) in problem for problem in found), found
+
+
+def test_another_pythons_failed_shard_does_not_fail_this_lane_and_a_missing_job_does():
+    lines = _jobs({n: "success" for n in range(1, 10)}) + _jobs({2: "failure"}, python="3.14")
+    assert check_shard_jobs.problems(lines, "default tests (Python 3.12, ", 9) == []
+    assert any("8 shard jobs" in problem for problem in check_shard_jobs.problems(
+        _jobs({n: "success" for n in range(1, 9)}), "default tests (Python 3.12, ", 9))

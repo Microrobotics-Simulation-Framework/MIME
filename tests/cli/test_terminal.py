@@ -26,7 +26,7 @@ from mime.cli._progress import RunState
 from mime.saved import read_folder
 from mime.testing.toys import full_toy
 
-pytestmark = needs_pty
+pytestmark = [needs_pty, pytest.mark.own_child_cache]
 
 
 @pytest.fixture(scope="module")
@@ -46,8 +46,9 @@ def plain_off():
 
 
 def child_environment(home: Path, **extra: str) -> dict[str, str]:
-    """A user's environment for a child: its own temporary HOME (the XLA cache and the tracebacks go there), a terminal
-    that is not dumb, none of the suite's own settings, and the CPU."""
+    """A user's environment for a child: its own temporary HOME (the tracebacks go there, and the XLA cache where CI has
+    set none; where it has, the test's own directory in its place, ``tests/_child_cache.py``), a terminal that is not
+    dumb, none of the suite's own settings, and the CPU."""
     held = {key: value for key, value in os.environ.items()
             if key not in ("MIME_TRACEBACK", "NO_COLOR", "FORCE_COLOR", "TERM")}
     return {**held, "HOME": str(home), "USERPROFILE": str(home), "XDG_CACHE_HOME": str(home / ".cache"),
