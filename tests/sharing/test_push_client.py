@@ -160,7 +160,8 @@ def test_an_upload_corrupted_every_time_is_refused_and_left_out_of_the_draft(tok
 
 def test_control_an_upload_whose_md5_differs_accepted_is_caught(token: str, tmp_path: Path,
                                                                 monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(_draft, "_entry_verified", lambda entry, file: entry.get("status") == "completed")
+    monkeypatch.setattr(_draft, "entry_verified", lambda entry, file: entry is not None and
+                        entry.get("status") == "completed")
     fake = FakeRecords(token)
     fake.plant("corrupt", lambda method, path: method == "PUT" and path.endswith("/b.bin/content"), times=99)
     drafted = a_draft(fake, tmp_path)
@@ -384,10 +385,10 @@ def test_the_same_token_held_for_both_services_is_refused_before_a_request(tmp_p
     fake = FakeRecords(same)
     plan = plan_of(fake, {"a.bin": b"a"}, tmp_path / "files")
     with pytest.raises(BuildRefused) as refused:
-        _draft._token(plan.service)  # type: ignore[attr-defined]
+        _draft.token_of(plan.service)
     assert refused.value.codes() == ["push.token"] and "the same token" in refused.value.refusals[0].message
     monkeypatch.setenv(credentials.SERVICES["zenodo"], a_token())
-    assert _draft._token(plan.service).length == 40  # type: ignore[attr-defined]
+    assert _draft.token_of(plan.service).length == 40
 
 
 # --- who owns a refused field, in any answer --------------------------------------------------------------------------

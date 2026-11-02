@@ -36,7 +36,7 @@ import stat
 import unicodedata
 import zipfile
 import zlib
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
@@ -400,7 +400,8 @@ def _reference_problem(file: str, problem: str) -> Refusal:
                    "pack <folder>`")
 
 
-def referenced_members(judged: FolderTerms, lock: Lock) -> tuple[dict[str, ReferencedFile], list[Refusal]]:
+def referenced_members(judged: FolderTerms, lock: Lock, own: frozenset[str] = frozenset()
+                       ) -> tuple[dict[str, ReferencedFile], list[Refusal]]:
     """The files that travel as references, each with its asset, judged twice and held to agree: by each file's terms
     now (a file that may not be redistributed always travels as one, whatever its size) and by the lock's
     ``referenced_files``; and each one's asset held to its terms, the asset's licence their licence and its locations
@@ -408,7 +409,8 @@ def referenced_members(judged: FolderTerms, lock: Lock) -> tuple[dict[str, Refer
     file that must travel as a reference and has no origin is refused (``bundle.no-location``); a file the lock lists
     whose terms give no origin, any other disagreement, or an asset whose bytes are not the file's, as
     ``bundle.lock-terms``; and a carried file whose bytes are a referenced file's, at whatever path and with whatever
-    terms, as ``bundle.referenced-copy``, naming both."""
+    terms, as ``bundle.referenced-copy``, naming both. ``own`` is where the record the lock names holds its files, as
+    ``mime push`` wrote each (:func:`_own_location`)."""
     listed = lock.get("referenced_files", {})
     assets = {held["name"]: held for held in lock.get("assets", [])}
     found: dict[str, ReferencedFile] = {}
@@ -440,7 +442,7 @@ def referenced_members(judged: FolderTerms, lock: Lock) -> tuple[dict[str, Refer
         elif held is not None and not must and file.size <= INLINE_LIMIT_BYTES:
             refusals.append(_reference_problem(file.path, "the lock says it travels as a reference, and its terms let "
                                                           "it travel in the bundle"))
-        elif held is not None and _restated(held, file):
+        elif held is not None and _restated(held, file, lock.get("publication"), own):
             refusals.append(_reference_problem(
                 file.path, f"the lock's asset {held['name']!r} states the licence {plain(held['licence'])!r} and the "
                            f"locations {', '.join(plain(each) for each in held['locations'])}, and the file's terms "
@@ -452,10 +454,37 @@ def referenced_members(judged: FolderTerms, lock: Lock) -> tuple[dict[str, Refer
     return found, refusals
 
 
-def _restated(held: RemoteAssetRecord, file: FileTerms) -> bool:
+def _restated(held: RemoteAssetRecord, file: FileTerms, publication: Mapping[str, object] | None = None,
+              own: frozenset[str] = frozenset()) -> bool:
     """Whether a reference's asset, as the lock holds it, states another licence or other locations than the file's
-    terms give (their licence, and their origin, primary first)."""
-    return (held["licence"], tuple(held["locations"])) != (file.licence, file.origin)
+    terms give (their licence, and their origin, primary first). A lock ``mime push`` wrote into a published bundle
+    names the record that holds the file first (its ``publication``): that one location is the record's, before the
+    origin."""
+    locations = tuple(held["locations"])
+    if publication is not None and locations and _own_location(locations[0], publication, own):
+        locations = locations[1:]
+    return (held["licence"], locations) != (file.licence, file.origin)
+
+
+#: A record's file, as one part of a location: no slash, and neither ``.`` nor ``..``.
+_RECORD_FILE = r"(?!\.\.?(?:/|$))[^/]+"
+
+
+def _own_location(location: str, publication: Mapping[str, object], own: frozenset[str] = frozenset()) -> bool:
+    """Whether ``location`` is exactly the published record's own, as ``mime push`` writes it (``mime.push._stage``):
+    ``doi:<its DOI>/<file>`` on Zenodo, the file's address in the sandbox's records API on the sandbox, a host fixed
+    here; or one of ``own``, the locations push itself wrote into the staged lock it is packing. No other host and no
+    other service's record passes. This holds what ``mime pack`` and ``mime push`` accept; what a bundle written by hand
+    says is held by each asset's hash when it is fetched."""
+    if location in own:
+        return True
+    record, doi = re.escape(str(publication.get("record"))), re.escape(str(publication.get("doi")))
+    if publication.get("service") == "zenodo":
+        return re.fullmatch(rf"doi:{doi}/{_RECORD_FILE}", location) is not None
+    if publication.get("service") == "zenodo-sandbox":
+        return re.fullmatch(rf"https://sandbox\.zenodo\.org/api/records/{record}/files/{_RECORD_FILE}/content",
+                            location) is not None
+    return False
 
 
 def _copy_problems(judged: FolderTerms, listed: set[str]) -> list[Refusal]:
@@ -501,7 +530,8 @@ def shipped_asset_problems(lock: Lock) -> list[Refusal]:
     return found
 
 
-def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None = None) -> Path:
+def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None = None,
+         own_locations: frozenset[str] = frozenset()) -> Path:
     """Write the bundle of the saved experiment in ``folder`` (by default ``<folder>.mimebundle`` beside it) and return
     its path. The folder must load (``Experiment.load``: a ``LoadRefused`` otherwise). A file that may not be
     redistributed is never carried, whatever its size: it travels as a reference to its origin, as the lock names it,
@@ -512,7 +542,8 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     be carried holds the bytes of one that travels as a reference, when an asset MIME ships is stated under another
     licence, when a licence names an id the installed packaging does not list, when a file is over the size limit and
     travels as no reference, or when the folder holds a link or a special file. The same folder makes the same bytes.
-    The experiment's own licence may be absent: ``pack`` never refuses that, and the ``NOTICE`` says so."""
+    The experiment's own licence may be absent: ``pack`` never refuses that, and the ``NOTICE`` says so.
+    ``own_locations`` is for ``mime push``, packing a staged lock: where the record it names holds its files."""
     from mime.experiment import Experiment
     from mime.saved._card import notice_text
 
@@ -536,7 +567,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
     refusals = judged.unlisted_refusals("mime pack")
     if refusals:
         raise BuildRefused(refusals)
-    referenced, refusals = referenced_members(judged, form.lock)
+    referenced, refusals = referenced_members(judged, form.lock, own_locations)
     refusals += shipped_asset_problems(form.lock)
     members: dict[str, bytes] = {}
     for member, path in files:

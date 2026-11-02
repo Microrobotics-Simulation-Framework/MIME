@@ -30,6 +30,7 @@ none of them reaches a traceback, so a traceback captured with its locals shows 
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -38,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from email.message import Message as HTTPMessage
 from typing import IO, BinaryIO, Protocol, cast, override
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -58,6 +59,8 @@ _TIMEOUT_SECONDS = 120.0
 _SAFE = frozenset({"GET", "DELETE"})
 #: What a gateway answers when it cannot tell whether the service behind it acted.
 _GATEWAY = frozenset({502, 503, 504})
+#: The answers that redirect, read for their ``Location`` and never followed with the token.
+_REDIRECTS = frozenset({301, 302, 303, 307, 308})
 #: The longest part of an answer a refusal quotes.
 _QUOTED = 400
 
@@ -119,7 +122,7 @@ class Transport(Protocol):
              token: Token) -> Answer: ...
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
+class NoRedirect(urllib.request.HTTPRedirectHandler):
     """A redirect is answered as what it is, never followed: following it would carry the token to its target."""
 
     @override
@@ -137,8 +140,8 @@ class HttpTransport:
 
     def __init__(self, timeout: float = _TIMEOUT_SECONDS) -> None:
         self.timeout = timeout
-        self.opener = urllib.request.build_opener(_NoRedirect())
-        self.direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+        self.opener = urllib.request.build_opener(NoRedirect())
+        self.direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
     def send(self, method: str, url: str, headers: Mapping[str, str], body: bytes | Path | None,
              token: Token) -> Answer:
@@ -246,7 +249,8 @@ class Client:
                 self._wait(reset - self.now(), "its rate limit is spent until its reset")
 
     def call(self, method: str, path: str, *, payload: object = None, content: Path | None = None,
-             expect: frozenset[int] = frozenset({200}), retry: bool | None = None, drops: bool = False) -> Answer:
+             expect: frozenset[int] = frozenset({200}), retry: bool | None = None, drops: bool = False,
+             raw: bool = False, once: bool = False) -> Answer:
         """One request to ``path`` below the service's API. Sent again after a ``429``, and a ``503`` that states its
         ``Retry-After`` (the service did not act), each for its ``Retry-After`` or a growing pause; where ``retry``
         (by default, for a request that changes nothing), also after a dropped connection and any ``502``, ``503`` or
@@ -254,7 +258,10 @@ class Client:
         come after the service acted) is never sent again: it is raised as :class:`Dropped` where ``drops`` (the
         caller reads the service's state again and goes on from it), and refused otherwise (``push.service``: the
         next run reads the draft first). An answer not in ``expect`` is refused by what it means; a 2xx is checked
-        for the records API's own content type, and for ``errors`` (:class:`Errors`)."""
+        for the records API's own content type, and for ``errors`` (:class:`Errors`), unless ``raw`` (a file's bytes,
+        or a redirect ``expect`` names, whose ``Location`` the caller reads and never follows). ``once`` (the publish, the
+        one request that cannot be undone) is sent again only after a ``429``, which refuses it unread: a ``503``, whatever
+        it states, is a lost answer."""
         url = self.service.api + path
         headers = {"Accept": RDM_TYPE}
         body: bytes | Path | None = None
@@ -279,7 +286,7 @@ class Client:
             self._after_limits(answer)
             status = answer.status
             after = _number(answer.headers.get("retry-after"))
-            if status == 429 or (status == 503 and after is not None) or (again and status in _GATEWAY):
+            if status == 429 or (status == 503 and after is not None and not once) or (again and status in _GATEWAY):
                 if attempt == RETRIES:
                     break
                 self._wait(after if after is not None else 2.0 ** attempt, f"it answered {status}")
@@ -289,6 +296,8 @@ class Client:
                     raise Dropped(f"a gateway's {status}")
                 raise self.lost(method, path, f"it answered {status}, which a gateway gives when it cannot tell "
                                                f"whether the service acted")
+            if raw and status in expect:
+                return answer
             return self._checked(method, path, answer, expect)
         raise BuildRefused([_refuse(
             "push.service", RefusalClass.ENVIRONMENT,
@@ -324,7 +333,7 @@ class Client:
                 if errors:
                     raise Errors(errors, cast(Json, held))
             return answer
-        if status == 404:
+        if status in (404, 410):
             raise Gone(said)
         if status == 401:
             raise BuildRefused([_refuse(
@@ -335,10 +344,9 @@ class Client:
         if status == 403:
             raise BuildRefused([_refuse(
                 "push.token-scope", RefusalClass.ENVIRONMENT,
-                f"{self.service.name} refused {method} {plain(path)} with this token (403: {said}): a draft needs "
-                f"the scope deposit:write",
-                f"make a token with the scope deposit:write on the service's site, then `mime credentials set "
-                f"{self.service.credential}`")])
+                f"{self.service.name} refused {method} {plain(path)} with this token (403: {said}): {_needs(path)}",
+                f"make a token with the scopes deposit:write and deposit:actions on the service's site, then `mime "
+                f"credentials set {self.service.credential}`")])
         if 300 <= status < 400:
             raise BuildRefused([_refuse(
                 "push.service", RefusalClass.ENVIRONMENT,
@@ -412,19 +420,8 @@ class Client:
 
     def files(self, record: str) -> dict[str, Json]:
         """The draft's file entries, by key."""
-        held = self._present(f"the draft {record}", lambda: self._coded(
-            "the listing of the draft's files", lambda: self.call("GET", f"/records/{_part(record)}/draft/files"))
-        ).json()
-        entries = cast(dict[str, object], held).get("entries") if isinstance(held, dict) else None
-        if not isinstance(entries, list):
-            raise _shape(self, "the draft's files", "an object with a list of entries")
-        found: dict[str, Json] = {}
-        for each in cast(list[object], entries):
-            if not isinstance(each, dict) or not isinstance(cast(dict[str, object], each).get("key"), str):
-                raise _shape(self, "a file entry", "an object with its key")
-            entry = cast(Json, each)
-            found[cast(str, entry["key"])] = entry
-        return found
+        return _entries(self, self._present(f"the draft {record}", lambda: self._coded(
+            "the listing of the draft's files", lambda: self.call("GET", f"/records/{_part(record)}/draft/files"))))
 
     def start_file(self, record: str, key: str) -> None:
         """Start the entry ``key``. :class:`Dropped` where the answer was lost (the caller reads the files again);
@@ -446,13 +443,19 @@ class Client:
             "run the same command again, `mime push <folder> --to <service>`; if it says this again, look at the draft "
             "on the service's site")])
 
-    def _present(self, what: str, request: Callable[[], Answer]) -> Answer:
+    def _present(self, what: str, request: Callable[[], Answer], *, publishing: bool = False) -> Answer:
         """``request``'s answer; a ``404`` where the thing must be there (deleted on the site while push ran) is
         refused, never left as an error MIME does not recognise."""
         try:
             return request()
         except Gone:
             pass
+        if publishing:
+            raise BuildRefused([_refuse(
+                "push.service", RefusalClass.ENVIRONMENT,
+                f"{what} is no longer on {self.service.name} (deleted on the site, or published there, while push ran?)",
+                "run the same command again, `mime push <folder> --to <service> --publish`, which reads the record first "
+                "and publishes nothing twice")])
         raise BuildRefused([_refuse(
             "push.service", RefusalClass.ENVIRONMENT,
             f"{what} is no longer on {self.service.name} (deleted on the site while push ran?)",
@@ -469,12 +472,101 @@ class Client:
         return _entry(self, self.call("POST", f"/records/{_part(record)}/draft/files/{_part(key)}/commit",
                                       expect=frozenset({200, 201}), retry=True))
 
+    def publish(self, record: str) -> Json:
+        """Publish the draft ``record``: the published record. Sent again only after a ``429``, which refuses it unread
+        (publishing is the one step that cannot be undone): any other answer lost is :class:`Dropped`, and the caller
+        reads the record before it does anything else. A 2xx that lists ``errors`` is :class:`Errors`, for the caller
+        to read the record too."""
+        return _draft(self, self._present(f"the draft {record}", lambda: self.call(
+            "POST", f"/records/{_part(record)}/draft/actions/publish", expect=frozenset({200, 202}), retry=False,
+            drops=True, once=True), publishing=True))
+
+    def new_version(self, record: str) -> Json:
+        """A new version of the published record ``record``: the draft of it (the concept's open one where there is
+        one). Never sent again: an answer lost is :class:`Dropped`; a record that is gone, :class:`Gone`; a 2xx that
+        lists ``errors``, :class:`Errors`."""
+        return _draft(self, self.call("POST", f"/records/{_part(record)}/versions", expect=frozenset({200, 201}),
+                                      retry=False, drops=True))
+
+    def import_files(self, record: str) -> dict[str, Json]:
+        """Link every file of the version before into the new version's draft ``record``: its file entries, by key."""
+        return _entries(self, self._present(f"the draft {record}", lambda: self._coded(
+            "the import of the previous version's files", lambda: self.call(
+                "POST", f"/records/{_part(record)}/draft/actions/files-import", expect=frozenset({200, 201}),
+                retry=False))))
+
+    def record_files(self, record: str) -> dict[str, Json]:
+        """The published record's file entries, by key."""
+        return _entries(self, self._present(f"the record {record}", lambda: self._coded(
+            "the listing of the record's files", lambda: self.call("GET", f"/records/{_part(record)}/files"))))
+
+    def download(self, record: str, key: str) -> bytes:
+        """The bytes of the published record's file ``key``. Where the service answers with a redirect to where it
+        stores the file, the redirect is read, never followed with the token: on the service's own host it is asked
+        through this client; elsewhere, with no token at all (a published file is public)."""
+        answer = self._present(f"the file {plain(key)} of the record {record}", lambda: self.call(
+            "GET", f"/records/{_part(record)}/files/{_part(key)}/content", raw=True,
+            expect=frozenset({200, *_REDIRECTS})))
+        if answer.status == 200:
+            return answer.body
+        target = answer.headers.get("location", "")
+        own = urlsplit(self.service.api)
+        found = urlsplit(target)
+        if (found.scheme, found.netloc) == (own.scheme, own.netloc) and found.path.startswith(own.path + "/"):
+            path = target[len(f"{own.scheme}://{own.netloc}{own.path}"):]
+            return self.call("GET", path, raw=True).body
+        return _public_bytes(self.service, target)
+
+    def latest(self, record: str) -> str:
+        """The id of the latest published version of ``record``'s concept: the service's redirect read, never
+        followed."""
+        answer = self._present(f"the record {record}", lambda: self.call(
+            "GET", f"/records/{_part(record)}/versions/latest", expect=frozenset({200, 301, 302, 303}), raw=True))
+        if answer.status == 200:
+            held = answer.json()
+            found = cast(dict[str, object], held).get("id") if isinstance(held, dict) else None
+        else:
+            target = answer.headers.get("location", "")
+            matched = re.fullmatch(re.escape(self.service.api) + r"/records/(\d+)", target)
+            found = matched.group(1) if matched is not None else None
+        if not isinstance(found, (str, int)) or not str(found).isdigit():
+            raise _shape(self, "the latest version", "a redirect to a record of its own API, or the record")
+        return str(found)
+
     def delete_file(self, record: str, key: str) -> None:
         try:
             self._coded(f"the deletion of {plain(key)}", lambda: self.call(
                 "DELETE", f"/records/{_part(record)}/draft/files/{_part(key)}", expect=frozenset({204})))
         except Gone:
             pass
+
+
+def _needs(path: str) -> str:
+    return ("publishing needs the scope deposit:actions, and a token with deposit:write alone makes drafts" if
+            path.endswith("/actions/publish") else "a draft needs the scope deposit:write")
+
+
+def _public_bytes(service: Service, url: str) -> bytes:
+    """A published file where its service stores it, fetched with no token over ``https`` (or to this machine), its
+    redirects followed: none of them can carry a token, since none is sent."""
+    parts = urlsplit(url)
+    if not (parts.scheme == "https" and parts.hostname) and not (parts.scheme == "http" and loopback(url)):
+        raise BuildRefused([_refuse(
+            "push.service", RefusalClass.ENVIRONMENT,
+            f"{service.name} answered a published file's download with a redirect to {plain(url)!r}, which is not an "
+            f"https:// address", "run the same command again later, `mime push <folder> --to <service> --publish`: it "
+                                  "checks the record and publishes nothing again")])
+    opener = urllib.request.build_opener(*([urllib.request.ProxyHandler({})] if loopback(url) else []))
+    try:
+        with opener.open(urllib.request.Request(url, method="GET"), timeout=_TIMEOUT_SECONDS) as response:
+            return response.read()
+    except (OSError, ValueError) as error:
+        raise BuildRefused([_refuse(
+            "push.service", RefusalClass.ENVIRONMENT,
+            f"a published file of {service.name} could not be downloaded from where it is stored "
+            f"({type(error).__name__})",
+            "run the same command again later, `mime push <folder> --to <service> --publish`: it checks the record and "
+            "publishes nothing again")]) from None
 
 
 def errors_of(held: object) -> list[object]:
@@ -573,6 +665,21 @@ def _checked_draft(client: Client, held: object) -> Json:
     return draft
 
 
+def _entries(client: Client, answer: Answer) -> dict[str, Json]:
+    """A listing's file entries, by key."""
+    held = answer.json()
+    entries = cast(dict[str, object], held).get("entries") if isinstance(held, dict) else None
+    if not isinstance(entries, list):
+        raise _shape(client, "a record's files", "an object with a list of entries")
+    found: dict[str, Json] = {}
+    for each in cast(list[object], entries):
+        if not isinstance(each, dict) or not isinstance(cast(dict[str, object], each).get("key"), str):
+            raise _shape(client, "a file entry", "an object with its key")
+        entry = cast(Json, each)
+        found[cast(str, entry["key"])] = entry
+    return found
+
+
 def _entry(client: Client, answer: Answer) -> Json:
     held = answer.json()
     if not isinstance(held, dict) or not isinstance(cast(dict[str, object], held).get("key"), str):
@@ -581,4 +688,4 @@ def _entry(client: Client, answer: Answer) -> Json:
 
 
 __all__ = ["LONGEST_WAIT_SECONDS", "PAUSE_SECONDS", "RDM_TYPE", "RETRIES", "Answer", "Client", "Dropped", "Errors",
-           "Gone", "HttpTransport", "Json", "Owner", "Transport", "Watch", "errors_of", "owned_refusals"]
+           "Gone", "HttpTransport", "Json", "NoRedirect", "Owner", "Transport", "Watch", "errors_of", "owned_refusals"]

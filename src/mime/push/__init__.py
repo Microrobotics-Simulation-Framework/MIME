@@ -8,8 +8,12 @@ credit) from what the folder knows; ``--status`` reads the draft as the service 
 (only a draft can be). ``--to`` is required: the sandbox and production are two services, each fixed in code, never
 one flag apart by accident. A push stopped at any request is resumed by running it again: what was uploaded and
 verified is not sent again. Push writes to, or deletes, only the draft it made (it marks each with an identifier of its
-own), and never writes over metadata edited on the site unless ``--overwrite-site-edits`` says so. Publishing, versions
-and communities come later. See the README.
+own), and never writes over metadata edited on the site unasked: each such edit is kept (written into
+``sharing.yaml``) or written over, field by field. ``--publish`` publishes the draft, the one irreversible step, after
+the plan, the confirmation in words, each declared permission asked on its own and the record number typed (or
+``--confirm <DOI>`` from a script); then checks the record as published and, on production, writes the staged lock
+into the folder, so ``mime pack <folder>`` makes the published bundle again. A changed folder's next push is a new
+version under the same concept DOI. See the README.
 """
 
 from mime.push._client import (
@@ -25,7 +29,22 @@ from mime.push._client import (
     HttpTransport,
     Transport,
 )
-from mime.push._draft import OVERWRITE_FLAG, UPLOAD_ATTEMPTS, Drafted, discard, edited_fields, init, push, send, status
+from mime.push._draft import (
+    FULL_FLAG,
+    KEEP_FLAG,
+    OVERWRITE_FLAG,
+    UPLOAD_ATTEMPTS,
+    Choices,
+    Drafted,
+    discard,
+    edited_fields,
+    init,
+    push,
+    send,
+    status,
+)
+from mime.push._publish import PRODUCTION_FACTS, SANDBOX_FACTS, publish
+from mime.push._records import PublicRecord, public_record
 from mime.push._owners import FIELD_OWNERS, field_owner
 from mime.push._plan import KEYWORD, MOST_BYTES, MOST_FILES, AssetChoice, Plan, RecordFile, card_html, make_plan
 from mime.push._service import SERVICES, TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
@@ -42,21 +61,34 @@ from mime.push._sharing import (
     orcid_problem,
     read_sharing,
 )
-from mime.push._state import DraftState, Uploaded, draft_identifier, metadata_marks, read_state, state_directory
+from mime.push._stage import own_location, staged_lock
+from mime.push._state import (
+    DraftState,
+    Published,
+    Uploaded,
+    draft_identifier,
+    metadata_marks,
+    read_state,
+    state_directory,
+)
 
 __all__ = [
     "CONTRIBUTOR_TYPES",
     "DEFAULT_LICENCE",
     "FIELD_OWNERS",
+    "FULL_FLAG",
+    "KEEP_FLAG",
     "KEYWORD",
     "LONGEST_WAIT_SECONDS",
     "MOST_BYTES",
     "MOST_FILES",
     "OVERWRITE_FLAG",
     "PAUSE_SECONDS",
+    "PRODUCTION_FACTS",
     "RDM_TYPE",
     "RELATION_TYPES",
     "RETRIES",
+    "SANDBOX_FACTS",
     "SERVICES",
     "SHARING_FILE",
     "SHARING_FORMAT",
@@ -66,6 +98,7 @@ __all__ = [
     "ZENODO_SANDBOX",
     "Answer",
     "AssetChoice",
+    "Choices",
     "Client",
     "DraftState",
     "Drafted",
@@ -75,6 +108,8 @@ __all__ = [
     "HttpTransport",
     "Person",
     "Plan",
+    "PublicRecord",
+    "Published",
     "RecordFile",
     "Related",
     "Service",
@@ -91,10 +126,14 @@ __all__ = [
     "make_plan",
     "metadata_marks",
     "orcid_problem",
+    "own_location",
+    "public_record",
+    "publish",
     "push",
     "read_sharing",
     "read_state",
     "send",
+    "staged_lock",
     "state_directory",
     "status",
 ]

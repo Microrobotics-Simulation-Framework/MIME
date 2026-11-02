@@ -3,10 +3,13 @@
 # table, nor a name by one of its rules (a registered entry's, a vocabulary interface's, a file's or a module's),
 # nor listed here; and on a listed name the source no longer needs the list for (delete its line). One per line,
 # `name  # what it names`.
+access.embargo  # a path in sharing.yaml, said by a refusal of its shape
 bath.density             # a typed path in a family's rig: the bath's density
 bulk.density             # an OpenMaterica record field a value is read from
 coils.magnetic           # a typed path in a family's rig: the coils' magnetic field
 commands.jsonl           # the command log a live session writes into its run folder (mime.live)
+doi.org  # a host doi.org answers to, compared with an address's
+dx.doi.org  # a host doi.org answers to, compared with an address's
 fluid.dynamic_viscosity  # an OpenMaterica record field a value is read from
 lubrication.epsilon      # a setting group's setting, as an entry reads it in SI
 magnetic.remanence       # an OpenMaterica record field a value is read from
@@ -23,3 +26,4 @@ toy.coupled_body         # a registration kind of the toys
 tube.inner_surface       # a typed path in a family's rig: the tube's inner surface
 tube.lumen               # a typed path in a family's rig: the tube's lumen
 water.viscosity          # a typed path in a family's rig: the water's viscosity
+www.doi.org  # a host doi.org answers to, compared with an address's

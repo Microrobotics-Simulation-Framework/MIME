@@ -194,7 +194,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before phase 7n) is rebuilt by it on load, held to its lock, and verifies; only a stage no writer writes is refused.
 - **A0's saved folder packs**: the AR4 URDF's xacro header, a comment, no longer names the machine it was generated on
   (`bundle.machine-path`); the 0.2 port's check reads the file as its pinned bytes with that one line restored.
-- **`mime push`, drafts** (push's P2a, designs #198 and #199; publishing comes with P2b): `mime push <folder> --to
+- **`mime push`, publishing** (push's P2b, designs #198, #199 and #202): `mime push <folder> --to <service>
+  --publish [--confirm <DOI>]` publishes the draft an earlier push made, the one step that cannot be undone, after the
+  plan, the confirmation in words (what cannot be undone, the files published as the uploader's own work under the
+  experiment's licence, the consent of everyone named), **each declared permission asked on its own, apt-style**,
+  worded as the public statement it becomes (`--yes` never answers one; without a terminal, only declarations
+  confirmed in a terminal for exactly these bytes go ahead, `push.permission-unconfirmed`), and **the record number
+  typed** (`--confirm <DOI>` from a script, which must be the draft's reserved DOI, `push.not-confirmed`). A folder
+  changed since its draft is not published (`push.folder-changed`); a publish whose answer was lost is never sent
+  again (the record is read, and a published one goes on to the checks). **After publishing**, the record is read again
+  and recorded as its own listing holds it, then held to what push sent (its DOI, each file's size and md5, the bundle
+  downloaded and its sha256; `push.after-publish` otherwise, and `--publish` again finishes), and on production the folder's lock is replaced by the **staged lock** the bundle
+  was packed with, which names its own record (`publication`, a new optional key of the lock outside the input hash,
+  and the record's location of each file it holds first), so `mime pack <folder>` makes the published bundle again,
+  byte for byte (`push.lock-changed` where the lock changed meanwhile, `push.lock-unwritten` where it cannot be written);
+  a sandbox record is never written into the folder. A field of the metadata that reads back otherwise than the draft
+  held it never holds the lock back: it is named (`push.metadata-read-back`) with the version recorded and the lock
+  written. **What is published is what was seen on the draft**: the record's description names the record (its version,
+  DOI, how to pull and cite it); the plan names the title and the contributors always; a script publishes what the
+  draft holds or nothing (`push.metadata-changed`), and a terminal shows each change by field before the number; the
+  draft is read again immediately before the request (`push.draft-moved`); an access or an embargo set on the draft's
+  page is a site edit (`access` in `sharing.yaml`); a folder whose lock names a published record push has no record of is
+  told, and not published as a second concept (`push.second-concept`). **Versions** under one concept DOI: once published, a push of a changed folder makes a new version, links
+  the files of the version before into it and uploads only what differs; of an unchanged folder, says `unchanged since
+  <DOI>` in one line. **Quieter output**: a private draft is made without a question; the plan is short by default
+  (what goes up, what travels as a reference, the licences and creators, warnings on lines that start `!`), the full
+  plan behind `--full-plan`, and a push with nothing to send is one line ending with the link. **Edits made on the site
+  are never lost**: each field edited since push last wrote it is shown against `sharing.yaml` and kept (written back
+  into it, its other lines kept, and read back, or put back as it was) or written over, field by field, in a terminal
+  or with `--keep-site-edits` / `--overwrite-site-edits`. **`sharing.yaml` gains `funding`** (funders with ROR ids and
+  awards), **`conference`** (Zenodo's meeting field) and **`fields`**, any other field of the record in the records
+  API's own names and shapes (subjects, dates, languages, references, additional titles and descriptions, Zenodo's
+  journal, imprint and thesis fields), each checked by its path. **`mime pull --from zenodo|zenodo-sandbox <record>`**
+  pulls a published record by its number at the service's records API, without a token; a DOI under the sandbox's
+  test prefix is never resolved through doi.org (`pull.sandbox-doi`, and an asset location under it is never tried
+  there); a concept DOI pulls the latest version and names it. The offline fake grows publishing, versions, the
+  import of a version's files and a published record's reading, each a guess the sandbox session checks.
+  Refusals: `push.no-draft`, `push.folder-changed`, `push.not-confirmed`, `push.permission-unconfirmed`,
+  `push.after-publish`, `push.lock-changed`, `pull.sandbox-doi`.
+- **`mime push`, drafts** (push's P2a, designs #198 and #199; publishing came with P2b): `mime push <folder> --to
   zenodo|zenodo-sandbox` shows the plan, computed offline (every record file, every file inside the bundle with its tier
   and verdict, every file that travels as a reference, each declared permission in #198's words, the metadata), asks,
   then makes or updates the experiment's draft through InvenioRDM's records API, reserves its DOI and uploads each file

@@ -86,7 +86,7 @@ class Seen:
         real = fake._handle
 
         def handled(*given: object) -> object:
-            self.events.append("request")
+            self.events.append(f"request {given[0]}")
             return real(*given)  # type: ignore[arg-type]
 
         fake._handle = handled  # type: ignore[method-assign]
@@ -102,8 +102,8 @@ class Seen:
 def pushed(folder: Path, fake: FakeRecords, *, service: push.Service | None = None, seen: Seen | None = None,
            **given: object) -> push.Drafted | None:
     held = seen or Seen(fake)
-    return push.push(folder, service or fake.service(), confirm=held.ask, say=held.say,
-                     transport=FakeTransport(fake), pause=0, sleep=lambda seconds: None, **given)  # type: ignore[arg-type]
+    return push.push(folder, service or fake.service(), say=held.say, transport=FakeTransport(fake), pause=0,
+                     sleep=lambda seconds: None, **given)  # type: ignore[arg-type]
 
 
 def codes(action: Callable[[], object]) -> list[str]:
@@ -116,29 +116,28 @@ def codes(action: Callable[[], object]) -> list[str]:
 
 
 def plan_comes_first(events: list[str]) -> list[str]:
-    """What is wrong with the order of a push's events: a request before the plan's last line, or before the
-    confirmation."""
-    first = next((index for index, event in enumerate(events) if event == "request"), len(events))
-    shown = [index for index, event in enumerate(events) if event.startswith("said Next: ")]
-    asked = [index for index, event in enumerate(events) if event.startswith("asked ")]
+    """What is wrong with the order of a push's events: a request before the plan's first line (the short plan's, or
+    the full plan's), or a question asked at all (a private draft asks none)."""
+    first = next((index for index, event in enumerate(events) if event.startswith("request")), len(events))
+    shown = [index for index, event in enumerate(events) if event.startswith(("said Pushing ", "said Plan for "))]
     problems = []
     if not shown or shown[0] > first:
         problems.append("a request before the plan was shown")
-    if not asked or asked[0] > first:
-        problems.append("a request before the plan was confirmed")
+    if any(event.startswith("asked ") for event in events):
+        problems.append("a question asked for a private draft")
     return problems
 
 
-def test_the_plan_is_shown_and_confirmed_before_the_first_request(toy: Path, token: str, tmp_path: Path):
+def test_the_plan_is_shown_before_the_first_request_and_a_draft_asks_nothing(toy: Path, token: str, tmp_path: Path):
     fake = FakeRecords(token)
     seen = Seen(fake)
-    drafted = pushed(copy_of(toy, tmp_path), fake, seen=seen)
+    drafted = pushed(copy_of(toy, tmp_path), fake, seen=seen, full=True)
     assert drafted is not None and plan_comes_first(seen.events) == []
     said = "\n".join(event for event in seen.events if event.startswith("said "))
     for line in ("Record files (2", "full_toy.mimebundle", "NOTICE", "Inside the bundle (4 files)",
                  "experiment.mime.yaml", "yours; permitted, open", "Referenced, not uploaded (0): none",
                  "The experiment's licence: CC-BY-4.0", "Creators: Carberry, Josiah",
-                 "Related: Requires and IsCompiledBy mime-engine", "nothing is published", "Title: full_toy",
+                 "Related: Requires and IsCompiledBy mime-engine", "Nothing is published", "Title: full_toy",
                  "Description: the card, as HTML (", "Publisher: Zenodo", "Publication date: 20",
                  "Resource type: dataset", "Access once published: the record public, its files public",
                  "Alternate identifier: a urn:uuid push makes for the draft"):
@@ -150,10 +149,10 @@ def test_the_plan_names_every_field_of_the_metadata_push_sends(toy: Path, token:
     what it is)."""
     fake = FakeRecords(token)
     seen = Seen(fake)
-    drafted = pushed(copy_of(toy, tmp_path), fake, seen=seen)
+    drafted = pushed(copy_of(toy, tmp_path), fake, seen=seen, full=True)
     assert drafted is not None
     said = "\n".join(event.removeprefix("said ") for event in seen.events if event.startswith("said "))
-    named = {"title": "Title:", "description": "Description:", "publisher": "Publisher:",
+    named = {"title": "Title:", "description": "Description:", "publisher": "Publisher:", "version": "Version:",
              "publication_date": "Publication date:", "resource_type": "Resource type:", "creators": "Creators:",
              "rights": "Licences on the record:", "subjects": "Keywords:", "related_identifiers": "Related:",
              "identifiers": "Alternate identifier:", "contributors": "Contributors:"}
@@ -165,21 +164,20 @@ def test_the_plan_names_every_field_of_the_metadata_push_sends(toy: Path, token:
 
 def test_control_a_push_whose_plan_is_planted_away_is_caught(toy: Path, token: str, tmp_path: Path,
                                                              monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(_plan.Plan, "lines", lambda self, state: [])
+    monkeypatch.setattr(_plan.Plan, "summary", lambda self, state, publishing=False: [])
     fake = FakeRecords(token)
     seen = Seen(fake)
     pushed(copy_of(toy, tmp_path), fake, seen=seen)
     assert "a request before the plan was shown" in plan_comes_first(seen.events)
 
 
-def test_without_a_terminal_or_yes_nothing_is_sent(toy: Path, token: str, tmp_path: Path):
+def test_a_private_draft_is_made_without_a_terminal_or_yes(toy: Path, token: str, tmp_path: Path):
     fake = FakeRecords(token)
     folder = copy_of(toy, tmp_path)
-    assert codes(lambda: push.push(folder, fake.service(), transport=FakeTransport(fake), pause=0)) == \
-        ["push.unconfirmed"]
-    declined = push.push(folder, fake.service(), confirm=lambda question: False, transport=FakeTransport(fake),
-                         pause=0)
-    assert declined is None and fake.requests == []
+    asked: list[str] = []
+    drafted = push.push(folder, fake.service(), confirm=lambda question: bool(asked.append(question)),
+                        transport=FakeTransport(fake), pause=0)
+    assert drafted.changed and asked == [] and len(fake.drafts()) == 1
 
 
 def test_a_push_makes_the_draft_reserves_its_doi_and_uploads_each_file_verified(toy: Path, token: str,
@@ -201,16 +199,14 @@ def test_a_push_makes_the_draft_reserves_its_doi_and_uploads_each_file_verified(
     assert held is not None and held.files["NOTICE"].md5 == record.files["NOTICE"].checksum.removeprefix("md5:")  # type: ignore[union-attr]
 
 
-def test_pushed_again_nothing_is_sent_again_and_the_metadata_is_written_again(toy: Path, token: str,
-                                                                              tmp_path: Path):
+def test_pushed_again_with_nothing_changed_nothing_is_written(toy: Path, token: str, tmp_path: Path):
     fake = FakeRecords(token)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake)
     before = len(fake.requests)
     again = pushed(folder, fake)
     assert again is not None and again.uploaded == () and set(again.kept) == {"full_toy.mimebundle", "NOTICE"}
-    later = [(method, path) for method, path, _, _ in fake.requests[before:]]
-    assert ("PUT", "/records/629525/draft") in later and not any(path.endswith("/content") for _, path in later)
+    assert not again.changed and {method for method, _, _, _ in fake.requests[before:]} == {"GET"}
     assert len(fake.drafts()) == 1
 
 
@@ -350,7 +346,7 @@ def test_a_production_service_that_reserves_a_test_prefix_doi_is_refused(toy: Pa
 def test_a_file_that_may_not_be_redistributed_never_reaches_the_bucket(ar4: Path, token: str, tmp_path: Path):
     fake = FakeRecords(token)
     seen = Seen(fake)
-    pushed(copy_of(ar4, tmp_path), fake, seen=seen)
+    pushed(copy_of(ar4, tmp_path), fake, seen=seen, full=True)
     from mime import assets
 
     forbidden = {ref.sha256 for ref in assets.folder_assets(ar4)}
@@ -388,8 +384,8 @@ def test_no_asset_whose_licence_forbids_it_is_ever_chosen_for_upload(drawn: list
 def test_control_a_choice_that_uploads_every_asset_is_caught_every_run(ar4: Path, token: str, tmp_path: Path,
                                                                        monkeypatch: pytest.MonkeyPatch):
     real = _plan.asset_choices
-    monkeypatch.setattr(_plan, "asset_choices", lambda refs, judged, lock: [
-        _plan.AssetChoice(each.ref, each.verdict, True, "planted") for each in real(refs, judged, lock)])
+    monkeypatch.setattr(_plan, "asset_choices", lambda refs, judged, lock, own=frozenset(): [
+        _plan.AssetChoice(each.ref, each.verdict, True, "planted") for each in real(refs, judged, lock, own)])
     import shutil
 
     from mime import assets
@@ -424,7 +420,8 @@ def resumed_problems(files: dict[str, bytes], kill_at: int, after: bool, verify:
         root = Path(directory)
         isolate(patch, root / "home")
         if not verify:
-            patch.setattr(_draft, "_entry_verified", lambda entry, file: entry.get("status") == "completed")
+            patch.setattr(_draft, "entry_verified", lambda entry, file: entry is not None and
+                          entry.get("status") == "completed")
         token = with_token(patch)
         fake = FakeRecords(token)
         count = [0]
@@ -450,7 +447,7 @@ def resumed_problems(files: dict[str, bytes], kill_at: int, after: bool, verify:
             problems.append(f"the draft holds {sorted(record.files)}, not exactly the planned bytes")
         orphan_possible = after and kill_at < stopped and fake.requests[kill_at][:2] == ("POST", "/records")
         if len(fake.drafts()) != 1 and not (orphan_possible and len(fake.drafts()) == 2 and
-                                            any(line.startswith("warning: an earlier push stopped") for line in said)):
+                                            any(line.startswith("! an earlier push stopped") for line in said)):
             problems.append(f"{len(fake.drafts())} drafts")
         resent = [path for method, path, _, _ in fake.requests[stopped:] if method == "PUT" and
                   path.endswith("/content") and path.split("/")[-2] in verified_before]
@@ -510,7 +507,8 @@ def test_no_token_is_refused_after_the_plan_and_before_a_request(toy: Path, tmp_
         pushed(copy_of(toy, tmp_path), fake, seen=seen)
     assert refused.value.codes() == ["push.token"] and "mime credentials set zenodo-sandbox" in \
         refused.value.refusals[0].action
-    assert "request" not in seen.events and any(event.startswith("said Next: ") for event in seen.events)
+    assert not any(event.startswith("request") for event in seen.events) and \
+        any(event.startswith("said Pushing ") for event in seen.events)
 
 
 def test_too_many_files_and_too_large_are_refused_in_the_plan(toy: Path, token: str, tmp_path: Path,
@@ -555,7 +553,7 @@ def test_a_permission_whose_grantee_is_not_the_uploader_is_refused(token: str, t
     sharing.write_text(sharing.read_text(encoding="utf-8").replace("Somebody, Else", "Carberry, Josiah"),
                        encoding="utf-8")
     seen = Seen(fake)
-    pushed(folder, fake, seen=seen)
+    pushed(folder, fake, seen=seen, full=True)
     said = "\n".join(seen.events)
     assert "You are declaring publicly, under your name, that Maker Ltd permitted you to redistribute this file" in said
     rights = fake.records["629525"].body["metadata"]["rights"]  # type: ignore[index]
@@ -875,7 +873,7 @@ def test_a_record_naming_another_experiments_draft_changes_and_deletes_nothing_i
 
 def test_control_without_the_identifier_check_another_experiments_draft_is_rewritten_and_deleted(
         tmp_path: Path, token: str, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(_draft, "_ours", lambda draft, service, state: True)
+    monkeypatch.setattr(_draft, "ours", lambda draft, service, state: True)
     fake = FakeRecords(token)
     other, mine = two_studies(tmp_path)
     theirs = pushed(other, fake)
@@ -947,7 +945,8 @@ def test_a_title_edited_on_the_site_stops_the_push_naming_both_values(toy: Path,
     held = refused.value.refusals
     assert [(r.code, r.category) for r in held] == [("push.metadata-edited", RefusalClass.USER)]
     assert "metadata.title on the site: Edited on the site; from sharing.yaml: full_toy" in held[0].message
-    assert "sharing.yaml's `title` and push again" in held[0].action and push.OVERWRITE_FLAG in held[0].action
+    assert "sharing.yaml's `title`" in held[0].action and push.OVERWRITE_FLAG in held[0].action
+    assert push.KEEP_FLAG in held[0].action
     assert record.revision == before, "nothing was written to the draft"
     said: list[str] = []
     push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
@@ -969,9 +968,8 @@ def test_an_edit_copied_into_sharing_yaml_goes_on_and_the_flag_writes_over_one_t
     assert codes(lambda: pushed(folder, fake)) == ["push.metadata-edited"]
     seen = Seen(fake)
     assert pushed(folder, fake, seen=seen, overwrite_site_edits=True) is not None
-    assert "version" not in record.body["metadata"]  # type: ignore[operator]
-    assert any("wrote over what was edited on the site (--overwrite-site-edits): version" in event
-               for event in seen.events)
+    assert record.body["metadata"]["version"] == "1"  # type: ignore[index]
+    assert any("wrote over what was edited on the site: metadata.version" in event for event in seen.events)
     assert pushed(folder, fake) is not None, "after the flag, what push wrote is the draft's again"
 
 
@@ -982,6 +980,9 @@ def test_control_without_the_check_of_what_push_last_wrote_a_site_edit_is_overwr
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake)
     fake.records["629525"].body["metadata"]["title"] = "Edited on the site"  # type: ignore[index]
+    sharing = folder / "sharing.yaml"  # a change of the author's own, so the push writes
+    sharing.write_text(sharing.read_text(encoding="utf-8").replace("keywords: []", "keywords: [helix]"),
+                       encoding="utf-8")
     pushed(folder, fake)
     assert fake.records["629525"].body["metadata"]["title"] == "full_toy", \
         "the planted push is not seen writing over the site's title"  # type: ignore[index]
@@ -996,14 +997,13 @@ def test_every_push_status_and_discard_ends_with_the_drafts_link(toy: Path, toke
     page = "https://zenodo-records.invalid/uploads/629525"
     seen = Seen(fake)
     pushed(folder, fake, seen=seen)
-    assert seen.events[-2].startswith("said The draft 629525") and seen.events[-1] == f"said {page}"
+    assert seen.events[-2].startswith("said Nothing is published") and seen.events[-1] == f"said {page}"
     said: list[str] = []
     push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     assert said[-1] == page
     said.clear()
-    push.push(folder, fake.service(), confirm=lambda question: False, say=said.append, transport=FakeTransport(fake),
-              pause=0)
-    assert said[-2:] == ["Not made: nothing was sent.", page]
+    push.push(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
+    assert said[-1].endswith(f"nothing was sent: {page}"), "a push with nothing changed: one line, the link last"
     fake.plant("status", lambda method, path: path.endswith("/content"), status=500, times=99)
     fake.records["629525"].files.clear()
     said.clear()

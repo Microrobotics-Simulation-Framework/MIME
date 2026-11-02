@@ -22,8 +22,23 @@ answering the same DOI; a file entry started twice refused with a 400; a commit 
 answer to a token that is not accepted (401) or lacks a scope (403); the content type of a file answer to a request
 without the records API's ``Accept``; an alternate identifier (push's ``urn:uuid`` mark of its draft) kept as sent and
 answered unchanged, as is every field of a draft's metadata from one answer to the next (push finds an edit made on the
-site by the change: the sandbox lane's second push of each folder is the check); and publishing, versions, communities
-and the vocabularies' contents (only the SPDX ids ``packaging`` lists, in lower case, are known here).
+site by the change: the sandbox lane's second push of each folder is the check), but for a person's display name,
+which it makes of the family and given names, as InvenioRDM does (recalled); a record's ``access`` answered with its
+``status`` and an embargo that is not active, and a draft's ``files`` with its ``default_preview`` (both recalled);
+communities and the vocabularies' contents (only the SPDX ids ``packaging`` lists, in lower case, are known here).
+
+**Publishing and versions are guesses too** (push's P2b, before the sandbox session that measures them): ``POST
+.../draft/actions/publish`` answers ``202`` with the published record, keeps the reserved DOI and mints the concept's
+DOI as ``<prefix>/zenodo.<parent id>``, and refuses a draft missing a field DataCite needs with a ``400`` naming it; a
+published record and its files are read by anyone, without a token (``GET /records/<id>``, ``/files``,
+``/files/<key>/content``); ``POST /records/<id>/versions`` answers ``201`` with a new draft of the same concept, its
+metadata copied whole (``publication_date`` and ``version`` included: which the service resets is the session's to
+measure), no DOI and no files, and its ``versions.index`` stated, or the concept's open new version where there is one;
+``POST .../draft/actions/files-import`` links every file of the version before it, its bytes stored once (the entry
+names the file it links, ``linked``); ``GET /records/<id>/versions/latest`` answers ``302`` to the latest version.
+**A published record's metadata and access read back as the draft held them**, and push's alternate identifier stays
+among them: where the sandbox answers otherwise, push names the field (``push.metadata-read-back``), with the version
+recorded and the folder's lock written, or stops at the identifier (``push.draft-foreign``).
 
 Faults are planted per request (:class:`Fault`): a dropped connection before or after the service acted, an upload cut
 off part way, a status (``429`` with its headers, a ``5xx``) before the service acts or after it acted (a gateway's
@@ -85,6 +100,8 @@ class Entry:
     data: bytes | None = None
     status: str = "pending"
     checksum: str | None = None
+    #: The record whose file this entry links (``files-import``), its bytes stored once; ``None`` for an upload.
+    linked: str | None = None
 
 
 @dataclass
@@ -96,6 +113,8 @@ class Record:
     files: dict[str, Entry] = field(default_factory=lambda: {})
     published: bool = False
     revision: int = 1
+    #: The version's number in its concept (``versions.index``).
+    index: int = 1
 
 
 def in_vocabulary(identifier: str) -> bool:
@@ -126,6 +145,22 @@ def _json(status: int, body: object, kind: str = "application/json") -> tuple[in
     return status, kind, json.dumps(body).encode("utf-8")
 
 
+def _access_answer(sent: object) -> dict[str, object]:
+    """A record's access as the service answers it: what it was sent, its ``status`` and an embargo, as InvenioRDM's
+    (recalled)."""
+    if not isinstance(sent, dict) or not sent:
+        return {}
+    held = dict(sent)
+    held.setdefault("embargo", {"active": False, "reason": None})
+    embargoed = held["embargo"].get("active") is True
+    restricted = "restricted" in (held.get("record"), held.get("files"))
+    return {**held, "status": "embargoed" if embargoed else "restricted" if restricted else "open"}
+
+
+def _chosen_preview(files: object) -> object:
+    return files.get("default_preview") if isinstance(files, dict) else None
+
+
 def _missing(message: str) -> tuple[int, str, bytes]:
     return _json(404, {"status": 404, "message": message})
 
@@ -151,6 +186,9 @@ class FakeRecords:
         self.faults: list[Fault] = []
         self.clock = 1_793_495_499
         self.lock = threading.Lock()
+        #: Where a published file's content is answered from, by a redirect (``None``: answered at once): this fake's
+        #: own ``<api>/store``, which it serves, or any other address, which it does not.
+        self.stored_at: str | None = None
 
     def service(self, name: str = "zenodo-sandbox", *, production: bool = False, credential: str | None = None
                 ) -> Service:
@@ -181,8 +219,28 @@ class FakeRecords:
         return {hashlib.sha256(each).hexdigest() for each in self.stored()}
 
     def publish(self, record: str) -> None:
-        """Mark a draft published, as a later MIME's publish would: push's P2a never does."""
-        self.records[record].published = True
+        """Mark a draft published, as the site's button would, without a request."""
+        self._published(self.records[record])
+
+    def puts(self, key: str | None = None) -> int:
+        """How many uploads (``PUT .../content``) the service was sent, of ``key`` or of any file."""
+        return sum(1 for method, path, _, _ in self.requests if method == "PUT" and path.endswith("/content")
+                   and (key is None or unquote(path.rsplit("/", 2)[-2]) == key))
+
+    def concept_doi(self, record: str) -> str:
+        return f"{self.prefix}/zenodo.{self.records[record].parent}"
+
+    def _published(self, record: Record) -> None:
+        record.published = True
+        record.pids.setdefault("doi", {"identifier": f"{self.prefix}/zenodo.{record.id}", "provider": "datacite",
+                                       "client": "datacite"})
+
+    def _versions_of(self, parent: str) -> list[Record]:
+        return sorted((each for each in self.records.values() if each.parent == parent), key=lambda each: each.index)
+
+    def _latest(self, parent: str) -> Record | None:
+        published = [each for each in self._versions_of(parent) if each.published]
+        return published[-1] if published else None
 
     def plant(self, kind: str, matches: Callable[[str, str], bool], **given: object) -> Fault:
         fault = Fault(kind, matches, **given)  # type: ignore[arg-type]
@@ -223,7 +281,7 @@ class FakeRecords:
                                 json.dumps(fault.body or {"status": fault.status, "message": "planted"}).encode(),
                                 fault.headers)
         if headers.get("authorization") != "Bearer " + (self._token.reveal() if isinstance(self._token, Token)
-                                                         else self._token):
+                                                         else self._token) and not self._public(method, path):
             self.requests.append((method, path, rdm, 403))
             return self._answer(*_json(403, {"status": 403, "message": "Permission denied."}))
         if kind == "cut" and method == "PUT" and path.endswith("/content"):
@@ -243,7 +301,16 @@ class FakeRecords:
             raise Killed(f"{method} {path}")
         if kind == "drop-after":
             raise Dropped("TimeoutError")
+        if status == 302:
+            return self._answer(status, content_type, b"", {"location": data.decode()})
         return self._answer(status, content_type, data)
+
+    def _public(self, method: str, path: str) -> bool:
+        """Whether anyone may make this request without a token: reading a published record and its files."""
+        found = re.fullmatch(r"/records/(\d+)(/files(/[^/]+/content)?|/versions/latest)?", path)
+        record = self.records.get(found.group(1)) if found is not None else None
+        return method == "GET" and record is not None and (record.published or found is not None and
+                                                           found.group(2) == "/versions/latest")
 
     def _answer(self, status: int, content_type: str, data: bytes, extra: Mapping[str, str] | None = None) -> Answer:
         self.clock += 1
@@ -259,6 +326,14 @@ class FakeRecords:
     def _route(self, method: str, path: str, rdm: bool, body: bytes, kind: str | None) -> tuple[int, str, bytes]:
         if path == "/records" and method == "POST":
             return self._create(body, rdm)
+        later = self._later_route(method, path, rdm)
+        if later is not None:
+            return later
+        stored = re.fullmatch(r"/store/(\d+)/([^/]+)", path)
+        if stored is not None and method == "GET" and stored.group(1) in self.records:
+            entry = self.records[stored.group(1)].files.get(unquote(stored.group(2)))
+            if entry is not None and entry.data is not None:
+                return 200, "application/octet-stream", entry.data
         found = re.fullmatch(r"/records/(\d+)(/draft(/pids/doi|/files)?)?", path)
         if found is not None:
             record = self.records.get(found.group(1))
@@ -290,6 +365,57 @@ class FakeRecords:
         if found is not None and found.group(1) in self.records and not self.records[found.group(1)].published:
             return self._file(self.records[found.group(1)], unquote(found.group(2)), found.group(3), method, body,
                               rdm, kind)
+        return _missing("The requested URL was not found on the server.")
+
+    def _later_route(self, method: str, path: str, rdm: bool) -> tuple[int, str, bytes] | None:
+        """Publishing, versions and a published record's files: P2b's routes, each a guess until the sandbox session
+        measures it (the module's docstring)."""
+        found = re.fullmatch(r"/records/(\d+)/(draft/actions/publish|draft/actions/files-import|versions|"
+                             r"versions/latest|files|files/([^/]+)/content)", path)
+        if found is None:
+            return None
+        record = self.records.get(found.group(1))
+        action = found.group(2)
+        if record is None:
+            return _missing("The persistent identifier does not exist.")
+        if action == "draft/actions/publish" and method == "POST" and not record.published:
+            metadata = record.body.get("metadata")
+            errors = required_errors(metadata if isinstance(metadata, dict) else {})  # type: ignore[arg-type]
+            if errors:
+                return _json(400, {"status": 400, "message": "A validation error occurred.", "errors": errors})
+            self._published(record)
+            return self._draft_answer(record, rdm, status=202)
+        if action == "versions" and method == "POST" and record.published:
+            open_draft = next((each for each in self._versions_of(record.parent) if not each.published), None)
+            if open_draft is not None:
+                return self._draft_answer(open_draft, rdm, status=201)  # a guess: the concept's open new version
+            body = json.loads(json.dumps(record.body))
+            draft = Record(str(self.next_id), record.parent, body, index=max(
+                each.index for each in self._versions_of(record.parent)) + 1)
+            self.next_id += 1
+            self.records[draft.id] = draft
+            return self._draft_answer(draft, rdm, status=201)
+        if action == "draft/actions/files-import" and method == "POST" and not record.published:
+            previous = self._latest(record.parent)
+            if previous is None:
+                return _json(400, {"status": 400, "message": "There is no previous version to import files from."})
+            for key, entry in previous.files.items():
+                record.files[key] = Entry(key, entry.data, "completed", entry.checksum, entry.linked or previous.id)
+            return self._files_answer(record, rdm, 201)
+        if action == "versions/latest" and method == "GET":
+            latest = self._latest(record.parent)
+            if latest is None:
+                return _missing("The persistent identifier does not exist.")
+            return 302, "text/html; charset=utf-8", f"{self.api}/records/{latest.id}".encode()
+        if action == "files" and method == "GET" and record.published:
+            return self._files_answer(record, rdm, 200)
+        if action.startswith("files/") and method == "GET" and record.published:
+            entry = record.files.get(unquote(found.group(3)))
+            if entry is None or entry.data is None:
+                return _missing("The file does not exist.")
+            if self.stored_at is not None:
+                return 302, "text/html; charset=utf-8", f"{self.stored_at}/{record.id}/{found.group(3)}".encode()
+            return 200, "application/octet-stream", entry.data
         return _missing("The requested URL was not found on the server.")
 
     def _validated(self, body: bytes) -> tuple[dict[str, object] | None, tuple[int, str, bytes] | None, list[object]]:
@@ -371,11 +497,13 @@ class FakeRecords:
                 "versions": f"{base}/versions"}
 
     def _entry_body(self, record: Record, entry: Entry, errors: list[object] | None = None) -> dict[str, object]:
-        base = f"{self.api}/records/{record.id}/draft/files/{entry.key}"
+        base = f"{self.api}/records/{record.id}{'' if record.published else '/draft'}/files/{entry.key}"
+        stored = hashlib.sha256(f"{entry.linked or record.id}/{entry.key}".encode()).hexdigest()[:32]
         held: dict[str, object] = {
             "key": entry.key, "mimetype": "application/octet-stream", "metadata": None, "access": {"hidden": False},
-            "links": {"self": base, "content": f"{base}/content", "commit": f"{base}/commit"},
-            "transfer": {"type": "L"}, "status": entry.status}
+            "links": {"self": base, "content": f"{base}/content", **({} if record.published else
+                                                                       {"commit": f"{base}/commit"})},
+            "transfer": {"type": "L"}, "status": entry.status, "file_id": stored}
         if entry.status == "completed" and entry.data is not None:
             held.update({"checksum": entry.checksum, "size": len(entry.data), "storage_class": "L"})
         if errors:
@@ -387,7 +515,8 @@ class FakeRecords:
         return _json(200, self._entry_body(record, entry, errors), RDM_TYPE if rdm else "application/json")
 
     def _files_answer(self, record: Record, rdm: bool, status: int) -> tuple[int, str, bytes]:
-        return _json(status, {"enabled": True, "links": {"self": f"{self.api}/records/{record.id}/draft/files"},
+        listing = f"{self.api}/records/{record.id}{'' if record.published else '/draft'}/files"
+        return _json(status, {"enabled": True, "links": {"self": listing},
                               "entries": [self._entry_body(record, entry) for entry in record.files.values()],
                               "default_preview": None, "order": []}, RDM_TYPE if rdm else "application/json")
 
@@ -409,14 +538,28 @@ class FakeRecords:
                 "status": "published" if record.published else "draft"}
             return _json(status, legacy)
         metadata["rights"] = rights
+        for role in ("creators", "contributors"):
+            people = [json.loads(json.dumps(each)) for each in metadata.get(role, [])]  # type: ignore[union-attr]
+            for each in people:
+                person = each.get("person_or_org", {})
+                if person.get("type") == "personal" and "name" not in person:  # a guess: the name InvenioRDM makes
+                    person["name"] = ", ".join(part for part in (person.get("family_name"), person.get("given_name"))
+                                               if part)
+            if people:
+                metadata[role] = people
         files = {entry.key: {"key": entry.key, "checksum": entry.checksum, "size": len(entry.data or b"")}
                  for entry in record.files.values() if entry.status == "completed"}
         held: dict[str, object] = {
             "id": record.id, "links": self._links(record), "revision_id": record.revision,
-            "parent": {"id": record.parent, "communities": {}, "pids": {}}, "versions": {"index": 1},
+            "parent": {"id": record.parent, "communities": {},
+                       "pids": {"doi": {"identifier": f"{self.prefix}/zenodo.{record.parent}", "provider": "datacite",
+                                        "client": "datacite"}} if self._latest(record.parent) is not None else {}},
+            "versions": {"index": record.index, "is_latest": self._latest(record.parent) is record},
             "is_published": record.published, "is_draft": not record.published, "pids": dict(record.pids),
-            "metadata": metadata, "access": record.body.get("access", {}),
-            "files": {"enabled": True, "order": [], "count": len(files), "entries": files},
+            "metadata": metadata, "access": _access_answer(record.body.get("access")),
+            "custom_fields": record.body.get("custom_fields", {}),
+            "files": {"enabled": True, "order": [], "count": len(files), "entries": files,
+                      "default_preview": _chosen_preview(record.body.get("files"))},
             "status": "published" if record.published else "draft"}
         if errors:
             held["errors"] = errors

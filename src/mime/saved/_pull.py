@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import unquote
 
 from mime import assets
 from mime._terminal import plain
@@ -34,6 +35,8 @@ ASSET_CONFIRM_BYTES = 1_000_000_000
 _RAISE_LIMIT = "if the bundle is that large on purpose, raise the limit: `mime pull --max-bundle-bytes <bytes>`"
 _DOI = re.compile(r"10\.\d{4,9}/\S+")
 _DOI_PREFIXES = ("doi:", "https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/")
+#: DataCite's test prefix, the Zenodo sandbox's: doi.org does not resolve it, so MIME never asks doi.org for one.
+TEST_PREFIX = "10.5072/"
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,13 @@ def parse_source(text: str) -> Source:
     if Path(text).is_file():
         return Source("file", text)
     bare = next((text.removeprefix(prefix) for prefix in _DOI_PREFIXES if text.startswith(prefix)), text)
+    if (_DOI.fullmatch(bare) and bare.startswith(TEST_PREFIX)) or assets.under_test_prefix(text):
+        number = re.search(r"zenodo\.(\d+)", unquote(bare))
+        raise _refuse("pull.sandbox-doi", RefusalClass.USER,
+                      f"{text!r} is under DataCite's test prefix 10.5072, the Zenodo sandbox's, which doi.org does not "
+                      f"resolve, so MIME does not ask doi.org for it",
+                      f"pull the record by its number on the sandbox, `mime pull --from zenodo-sandbox "
+                      f"{number.group(1) if number is not None else '<record>'}`")
     if _DOI.fullmatch(bare):
         doi, _, last = bare.rpartition("/")
         return Source("doi", doi, last) if last.endswith(BUNDLE_SUFFIX) and doi.count("/") >= 1 else Source("doi", bare)
@@ -93,9 +103,28 @@ def _stated_size(repository: Any, file: str) -> int | None:
     return None
 
 
-def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None]:
-    """The bundle file of the repository record ``doi`` names, the repository's checksum of it and the size it states (or
-    ``None``), through pooch's DOI support. The record must hold one ``.mimebundle`` file, or ``wanted`` names it."""
+def _version_words(doi: str, repository: Any) -> str | None:
+    """What the record a DOI resolved to is, where the repository says (Zenodo's record: its DOI, its concept's DOI
+    and its version): a concept DOI names every version, and resolves to the latest, which this names."""
+    try:
+        held = repository.api_response
+        found, concept = str(held.get("doi") or ""), str(held.get("conceptdoi") or "")
+        version = held.get("metadata", {}).get("version")
+    except Exception:  # noqa: BLE001 - a repository other than Zenodo has no such response; the words are a courtesy
+        return None
+    if concept and doi.lower() == concept.lower() and found:
+        return (f"{doi} is the concept DOI, which names every version; it resolved to the latest, "
+                f"{plain(found)}" + (f" (version {plain(str(version))})" if version else ""))
+    if found:
+        return f"{plain(found)}" + (f", version {plain(str(version))}" if version else "") + \
+            (f", of the concept {plain(concept)}" if concept else "")
+    return None
+
+
+def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None, str | None]:
+    """The bundle file of the repository record ``doi`` names, the repository's checksum of it, the size it states (or
+    ``None``) and the words naming the version it is, through pooch's DOI support. The record must hold one
+    ``.mimebundle`` file, or ``wanted`` names it."""
     import pooch
 
     try:
@@ -107,6 +136,7 @@ def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None]:
                 doi, headers=downloader.headers, timeout=downloader.timeout, **downloader.kwargs)
             repository.populate_registry(listing)
             registry: dict[str, str] = dict(listing.registry)
+            named = _version_words(doi, repository)
     except Exception as error:  # noqa: BLE001 - pooch and requests raise unrelated types for a record that can't be read
         raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
                       f"the record doi:{doi} could not be read: {plain(str(error))}",
@@ -119,7 +149,7 @@ def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None]:
                       f"the record doi:{doi} lists {len(bundles)} bundle files (its files: {held})",
                       f"name the one to pull: `mime pull doi:{doi}/<file>{BUNDLE_SUFFIX}`")
     checksum = registry[chosen[0]]
-    return chosen[0], checksum if ":" in checksum else f"md5:{checksum}", _stated_size(repository, chosen[0])
+    return chosen[0], checksum if ":" in checksum else f"md5:{checksum}", _stated_size(repository, chosen[0]), named
 
 
 def _limit(stated: int | None, allowed: int) -> int:
@@ -140,10 +170,32 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     if source.kind == "url":
         return assets.locate(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
                                              exceeded_action=_RAISE_LIMIT, report=say))
-    file, checksum, stated = _record_file(source.value, source.file)
+    file, checksum, stated, named = _record_file(source.value, source.file)
+    if named is not None and say is not None:
+        say(f"the record: {named}")
     limit = _limit(stated, max_bundle_bytes)
     return assets.locate(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum,
                                          max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say))
+
+
+def _from_service(service_name: str, record: str, say: Callable[[str], None] | None, max_bundle_bytes: int) -> Path:
+    """The bundle of the published record ``record`` on a service ``mime push`` publishes to, read by its number at the
+    service's records API, never through doi.org (the sandbox's DOIs do not resolve there)."""
+    from mime import push
+
+    service = push.SERVICES[service_name]
+    if assets.offline():
+        raise _offline_refusal(f"the record {record} on {service.name}")
+    found = push.public_record(service, record)
+    if say is not None:
+        say(f"the record: {found.words()}")
+        if found.latest is not None:
+            say(f"! it is not the latest version: `mime pull --from {service.name} {found.latest}` pulls the latest"
+                if found.latest else f"! it is not the latest version: the record's page, {service.site}/records/"
+                                     f"{found.record}, names the latest")
+    return assets.locate(assets.retrieve(found.url, name="bundle", known_hash=f"md5:{found.md5}",
+                                         max_bytes=_limit(found.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT,
+                                         report=say))
 
 
 def packages_needed(lock: Lock) -> list[tuple[str, str, str | None]]:
@@ -234,19 +286,23 @@ def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, confirm: Callable[[s
 
 def pull(source: str | os.PathLike[str], *, into: str | os.PathLike[str] | None = None, fetch_assets: bool = True,
          yes: bool = False, confirm: Callable[[str], bool] | None = None, say: Callable[[str], None] | None = None,
-         max_bundle_bytes: int = assets.RETRIEVE_LIMIT_BYTES) -> Path:
+         max_bundle_bytes: int = assets.RETRIEVE_LIMIT_BYTES, from_service: str | None = None) -> Path:
     """Get the bundle ``source`` names (a DOI, an address or a file), check its manifest's hashes, and unpack it into
     the new folder ``into`` (by default ``./<experiment name>/``); then, unless ``fetch_assets`` is false, fetch its
     assets as ``mime assets fetch <folder>`` does. A destination that cannot be unpacked to is refused before anything is
     downloaded; a bundle download stops once it passes the size its record states, or ``max_bundle_bytes`` where none is
     stated. Assets over :data:`ASSET_CONFIRM_BYTES` are fetched only with ``yes`` or when ``confirm`` (asked with a
     question) says so; with neither, the folder is complete except for them and a ``BuildRefused`` says the command
-    that fetches them. ``say`` receives progress lines and, last, the summary. Installs nothing."""
+    that fetches them. ``say`` receives progress lines and, last, the summary. Installs nothing. With
+    ``from_service`` (``zenodo-sandbox`` or ``zenodo``), ``source`` is a published record's number there, read at that
+    service's records API (a sandbox DOI never resolves through doi.org); a DOI under the sandbox's test prefix given
+    without it is refused (``pull.sandbox-doi``)."""
     if into is not None:
         refused = destination_problem(into)
         if refused is not None:
             raise refused
-    bundle = _bundle_file(parse_source(os.fspath(source)), say, max_bundle_bytes)
+    bundle = _from_service(from_service, os.fspath(source), say, max_bundle_bytes) if from_service is not None \
+        else _bundle_file(parse_source(os.fspath(source)), say, max_bundle_bytes)
     destination = Path(into) if into is not None else Path(bundle_name(bundle))
     unpacked: Unpacked = unpack(bundle, destination)
     needed = packages_needed(unpacked.lock)
