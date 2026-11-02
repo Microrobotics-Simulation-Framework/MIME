@@ -5,9 +5,11 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Annotated, Any, override
+from typing import Annotated, Any, cast, override
 
 import numpy as np
+
+import jax
 
 from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
@@ -21,6 +23,7 @@ from mime.registry import (
     Samples,
     Sampling,
     Solid,
+    Support,
     Tensor,
     register_geometry,
     uniform,
@@ -30,6 +33,9 @@ from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.scene._sampling import length_of, magnitude_of, quasi_uniform
 from mime.units import DIMENSIONLESS, Length, Magnitude, Quantity
 
+#: JAX's lax, whose loops carry no types (``mime.core._shapes`` takes it alike).
+lax: Any = cast(Any, jax).lax
+
 #: The starts, the modulation and the wavenumber the kind accepts: those its screw's root find was checked over
 #: against a brute-force minimum (``tests/scene/test_screw.py``). One start puts the centroid off the axis, and a
 #: modulation of zero makes every point of the circle nearest the axis.
@@ -38,6 +44,21 @@ LARGEST_MODULATION = 0.5
 LARGEST_WAVENUMBER = 4.0
 #: Points round a turn for the lateral patch's area, a periodic integral the trapezoid rule takes to rounding.
 AREA_POINTS = 4096
+#: The support's refinement (``Screw.support``): Newton's steps on the lateral surface, its gradients stopped, from the
+#: point it is given, then one with them flowing (the farthest point's derivatives, the implicit function's). The
+#: start is kept this share of the half length inside the rims, where a step along the axis has no slope, and each
+#: step is shortened smoothly to about ``SUPPORT_TRUST`` radians. Each step is lifted so that it climbs: by the
+#: Hessian's largest eigenvalue, smoothed at ``SUPPORT_SHARPNESS`` and floored at ``SUPPORT_FLOOR``, each in the
+#: objective's curvature (the direction's length times the radius); the flowing step by ``SUPPORT_HELD`` of it alone,
+#: which keeps it defined where the surface is straight along the direction (an untwisted screw's crests).
+#: Declarations: from a sample of the body at a spacing of a margin, the point converges to rounding in four steps
+#: (phase 7o's fix round, tests/scene/test_screw_support.py).
+SUPPORT_ITERATIONS = 4
+SUPPORT_INSIDE = 1e-3
+SUPPORT_TRUST = 0.5
+SUPPORT_SHARPNESS = 50.0
+SUPPORT_FLOOR = 1e-3
+SUPPORT_HELD = 1e-9
 #: No two samples of a cap lie closer than this many spacings. The polar grid of version 0.1.0 put its innermost
 #: ring's samples far closer, which made an MRS's matrix singular in float64 once a wall's correction was added
 #: (MIME-ANO-119). A declaration, above the closest pair of the lateral patch at FL-9's working spacing, on which a
@@ -114,6 +135,7 @@ class Screw(Solid):
     #: 75 directions see 0.138 of it. A declaration: that measurement with a tenth more, for a screw's settings near
     #: FL-9's (MIME-ANO-128).
     reach_envelope = 0.16
+    support_basis = "refined on its surface"
     radius: Annotated[Quantity, Length]
     length: Annotated[Quantity, Length]
     wavenumber: Annotated[Quantity, DIMENSIONLESS]
@@ -291,6 +313,93 @@ class Screw(Solid):
         d = jnp.asarray(direction)
         crest = parameters["radius"] * (1.0 + parameters["modulation"])
         return crest * length_of(d[1:]) + parameters["length"] / 2.0 * magnitude_of(d[0])
+
+    def _lateral(self, parameters: Mapping[str, Any], direction: Any, theta: Any, eta: Any) -> tuple[Any, ...]:
+        """The lateral surface at the section's angle ``theta`` and ``zeta = L sin(eta) / 2`` along the axis (``eta``
+        takes the rims, ``zeta = +-L/2``, as stationary points, so the farthest point needs no bound): its point, its
+        derivatives in ``theta`` and ``eta``, and the gradient and the Hessian of ``d . p`` in ``(theta, eta)``,
+        elementwise over the leading axes."""
+        d = jnp.asarray(direction)
+        radius, half = parameters["radius"], parameters["length"] / 2.0
+        epsilon, starts, k = parameters["modulation"], self.starts, parameters["wavenumber"] / parameters["radius"]
+        zeta = half * jnp.sin(eta)
+        rate, bend = half * jnp.cos(eta), -zeta
+        cos_turn, sin_turn = SCREW.turn(parameters, zeta)
+        c = jnp.cos(theta) * cos_turn - jnp.sin(theta) * sin_turn
+        s = jnp.sin(theta) * cos_turn + jnp.cos(theta) * sin_turn
+        rho = radius * (1.0 + epsilon * jnp.sin(starts * theta))
+        slope = radius * epsilon * starts * jnp.cos(starts * theta)
+        curve = -radius * epsilon * starts * starts * jnp.sin(starts * theta)
+        u = d[..., 1] * c + d[..., 2] * s
+        w = d[..., 2] * c - d[..., 1] * s
+        f_t, f_z = slope * u + rho * w, d[..., 0] + k * rho * w
+        f_tt, f_tz, f_zz = curve * u + 2.0 * slope * w - rho * u, k * (slope * w - rho * u), -k * k * rho * u
+        gradient = jnp.stack([f_t, f_z * rate], axis=-1)
+        hessian = jnp.stack([jnp.stack([f_tt, f_tz * rate], axis=-1),
+                             jnp.stack([f_tz * rate, f_zz * rate * rate + f_z * bend], axis=-1)], axis=-2)
+        point = jnp.stack([zeta, rho * c, rho * s], axis=-1)
+        along_theta = jnp.stack([jnp.zeros_like(rho), slope * c - rho * s, slope * s + rho * c], axis=-1)
+        along_eta = rate[..., None] * jnp.stack([jnp.ones_like(rho), -k * rho * s, k * rho * c], axis=-1)
+        return point, along_theta, along_eta, gradient, hessian
+
+    @staticmethod
+    def _climb(hessian: Any, gradient: Any, lift: Any) -> Any:
+        """The step ``-(H - lift I)^-1 g`` for 2 x 2 matrices, elementwise over the leading axes."""
+        a, b, d = hessian[..., 0, 0] - lift, hessian[..., 0, 1], hessian[..., 1, 1] - lift
+        determinant = a * d - b * b
+        return -jnp.stack([d * gradient[..., 0] - b * gradient[..., 1], a * gradient[..., 1] - b * gradient[..., 0]],
+                          axis=-1) / determinant[..., None]
+
+    @override
+    def support(self, parameters: Mapping[str, Any], direction: Any, near: Any) -> Support:
+        """Refined on its own surface: ``SUPPORT_ITERATIONS`` of Newton's steps climbing ``d . p`` over the lateral
+        surface's angle and axial place, from ``near`` (a sample: a cap's at its rim at the same angle), their
+        gradients stopped, then one with them flowing, so the point is the farthest the steps reach from ``near`` and
+        its derivatives the implicit function's (``-P H^-1 P^T`` in the direction, ``P`` the surface's derivatives). A
+        cap's farthest point along a direction off the axis is on its rim, which the lateral surface's ends are, so
+        the lateral surface alone is searched; along the axis the whole cap ties, and the point is the rim's at
+        ``near``'s angle. The point moves continuously along a crest as the body turns, where a sample's jumps by the
+        spacing (phase 7o's fix round, design #204)."""
+        d = jnp.asarray(direction)
+        scale = switch.nonzero_norm(d, axis=-1) * parameters["radius"]
+        held = lax.stop_gradient((d, near, scale, {name: parameters[name] for name in
+                                                    ("radius", "length", "wavenumber", "modulation")}))
+        d0, at, scale0, fixed = held
+        fixed = {**fixed, "starts": self.starts}
+        cos_turn, sin_turn = SCREW.turn(fixed, at[..., 0])
+        theta = jnp.arctan2(cos_turn * at[..., 2] - sin_turn * at[..., 1], cos_turn * at[..., 1] + sin_turn * at[..., 2])
+        inside = 1.0 - SUPPORT_INSIDE
+        eta = jnp.arcsin(jnp.clip(at[..., 0] / (fixed["length"] / 2.0), -inside, inside))
+
+        def climb(_: int, place: tuple[Any, Any]) -> tuple[Any, Any]:
+            _, _, _, gradient, hessian = self._lateral(fixed, d0, *place)
+            a, b, c = hessian[..., 0, 0], hessian[..., 0, 1], hessian[..., 1, 1]
+            largest = (a + c) / 2.0 + jnp.sqrt(((a - c) / 2.0) ** 2 + b * b)
+            lift = jnp.logaddexp(0.0, SUPPORT_SHARPNESS * largest / scale0) * scale0 / SUPPORT_SHARPNESS \
+                + SUPPORT_FLOOR * scale0
+            step = self._climb(hessian, gradient, lift)
+            step = step * lax.rsqrt(1.0 + jnp.sum(step * step, axis=-1, keepdims=True) / SUPPORT_TRUST ** 2)
+            return place[0] + step[..., 0], place[1] + step[..., 1]
+
+        theta, eta = lax.fori_loop(0, SUPPORT_ITERATIONS, climb, (theta, eta))
+        return self._settled(parameters, d, theta, eta, scale)
+
+    def _settled(self, parameters: Mapping[str, Any], d: Any, theta: Any, eta: Any, scale: Any) -> Support:
+        """The support from the stopped steps' place ``theta, eta``: one Newton step from it with the gradients
+        flowing, which carries the implicit function's derivatives into the point, and the point's derivative in the
+        direction, ``-P H^-1 P^T`` (``P`` the surface's derivatives in its two coordinates, ``H`` the Hessian there,
+        lifted by ``SUPPORT_HELD`` of the objective's curvature)."""
+        _, first, second, gradient, hessian = self._lateral(parameters, d, theta, eta)
+        step = self._climb(hessian, gradient, SUPPORT_HELD * scale)
+        point = self._lateral(parameters, d, theta + step[..., 0], eta + step[..., 1])[0]
+        a, b, c = (hessian[..., 0, 0] - SUPPORT_HELD * scale, hessian[..., 0, 1],
+                   hessian[..., 1, 1] - SUPPORT_HELD * scale)
+        determinant = a * c - b * b
+        jacobian = -(c[..., None, None] * first[..., :, None] * first[..., None, :]
+                     - b[..., None, None] * (first[..., :, None] * second[..., None, :]
+                                             + second[..., :, None] * first[..., None, :])
+                     + a[..., None, None] * second[..., :, None] * second[..., None, :]) / determinant[..., None, None]
+        return Support(point, jacobian)
 
     @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:

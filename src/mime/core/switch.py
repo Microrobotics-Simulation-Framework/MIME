@@ -9,7 +9,7 @@ indicator counts as zero. A core helper that evaluates a switch takes its owner 
 
 Each function returns its operation's value and JAX's derivative of it, ties included: ``maximum`` and ``minimum``
 take half of each derivative at a tie, ``absolute`` the derivative ``+1`` at zero, ``clip`` half at a bound, and
-``where`` the selected branch's; ``searchsorted``'s index, an integer, has none. ``norm`` is MIME's safe norm:
+``where`` the selected branch's; ``searchsorted``'s and ``argmin``'s indices, integers, have none. ``norm`` is MIME's safe norm:
 ``|x|``, with the derivative zero at ``x = 0`` where ``jnp.linalg.norm``'s is NaN. So writing a site through this
 module changes no program.
 
@@ -291,6 +291,19 @@ def predicate(condition: Any, *, owner: str, resolution: Lazy, indicator: Lazy) 
     return condition
 
 
+def argmin(x: Any, *, owner: str, resolution: Lazy, indicator: Lazy) -> Array:
+    """``jnp.argmin(x, axis=-1)``: the index of the least of each row of ``x``, the first of those tied. An index has
+    no derivative; what it selects is the caller's, and each tie is a jump in it. The branch: the least over the
+    next least of its row (forced false, the next least's index); the indicator, the caller's, the next least less
+    the least."""
+    index = jnp.argmin(x, axis=-1)
+    forced = _forced(owner)
+    if forced is not None:
+        return index if forced else jnp.argsort(x, axis=-1, stable=True)[..., 1].astype(index.dtype)
+    _collect(owner, "argmin", resolution, indicator, lambda: jnp.ones(jnp.shape(index), dtype=bool))
+    return index
+
+
 @dataclass(frozen=True, eq=False)
 class Buckets:
     """An index of an increasing array of breaks, made with them, that locates a query without a search. The
@@ -434,11 +447,12 @@ def without_slope(x: Any, mask: Any) -> Array:
 
 
 #: The functions a node's step evaluates switches through, by name: a call of one of these takes an owner.
-SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "predicate", "searchsorted")
+SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "predicate", "searchsorted",
+                    "argmin")
 #: The selections that are no switch.
 SELECTIONS = ("domain_guard", "nonzero_norm", "static_select", "without_slope")
 
 __all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Buckets", "Declaration", "Lazy", "Reached",
-           "Row", "absolute", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm",
+           "Row", "absolute", "argmin", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm",
            "norm", "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where",
            "without_slope"]

@@ -22,8 +22,8 @@ per module).
   would do at least as much work as the integrator leaves in the balance at its finest step, the plant above the
   oracle's resolution (the residual then holds the work gravity did, which does not shrink with ``dt``: log2 of its
   ratios falls below the band). The stops' control: a stop that, on each step that ends a joint on it, gives the arm
-  kinetic energy ``GIFT`` times the largest residual of the unplanted run's finest step, fails on every draw that
-  reaches a stop at all three step sizes. The head's stop that zeroed one joint's velocity on a coupled tree is
+  kinetic energy ``GIFT`` times the largest residual of the unplanted run at any of its step sizes (the coarsest's,
+  where the stop's own loss is largest), fails on every draw that reaches a stop at all three step sizes. The head's stop that zeroed one joint's velocity on a coupled tree is
   ``test_arm_impulses.py``'s.
 - **The kinematic arm against the dynamic one**, on A0's AR4 as the build makes each: driven by a stiff joint
   controller (proportional and derivative on each joint, its stiffness the joint's own inertia at the home pose times
@@ -166,7 +166,7 @@ def gives_energy(self, p, q, free, inverse, dt):
 BALANCES = {name: balance(tree, GRAVITY) for name, tree in TREES.items()}
 WEIGHTLESS = {name: balance(tree, np.zeros(3)) for name, tree in TREES.items()}
 GIVERS = {name: balance(tree, GRAVITY, gives_energy) for name, tree in TREES.items()}
-#: The planted stop's gift, in units of the largest residual of the unplanted run's finest step.
+#: The planted stop's gift, in units of the largest residual of the unplanted run at any of its step sizes.
 GIFT = 4.0
 
 
@@ -198,8 +198,9 @@ class Found(NamedTuple):
     stop, the order each halving shows, whether a stop was reached, at the finest step size gravity's summed work, the
     summed residual with the potential left out and the largest size of any step's residual, at each step size the
     largest residual (signed) of a step that ends on a stop (``-inf`` where none does), and the largest scale a
-    residual's terms come from, and at each step size the largest size of the residual of a step that does not end on a
-    stop."""
+    residual's terms come from, at each step size the largest size of the residual of a step that does not end on a
+    stop, and the largest size of any step's residual at any step size (the coarsest's, where a stop's own loss is
+    largest)."""
 
     sums: list[float]
     orders: list[float]
@@ -210,10 +211,11 @@ class Found(NamedTuple):
     stops: list[float]
     scale: float
     ordinary: list[float]
+    peak: float
 
 
 def orders(compiled, q0, qd0, tau, gift: float = 0.0) -> Found:
-    sums, stops, ordinary, stopped, work, kinetic, largest, scale = [], [], [], False, 0.0, 0.0, 0.0, 0.0
+    sums, stops, ordinary, stopped, work, kinetic, largest, scale, peak = [], [], [], False, 0.0, 0.0, 0.0, 0.0, 0.0
     for h in STEPS:
         total, at_stops, biggest, hit, work_done, left, terms, plain = compiled[h](
             jnp.asarray(q0), jnp.asarray(qd0), jnp.asarray(tau), gift)
@@ -222,8 +224,9 @@ def orders(compiled, q0, qd0, tau, gift: float = 0.0) -> Found:
         ordinary.append(float(plain))
         stopped, work, kinetic, largest, scale = stopped or bool(hit), float(work_done), float(left), \
             float(biggest), max(scale, float(terms))
+        peak = max(peak, float(biggest))
     found = [math.log2(a / b) if a > 0 and b > 0 else math.nan for a, b in zip(sums, sums[1:], strict=False)]
-    return Found(sums, found, stopped, work, kinetic, largest, stops, scale, ordinary)
+    return Found(sums, found, stopped, work, kinetic, largest, stops, scale, ordinary, peak)
 
 
 def stops_not_falling(found: Found) -> list[str]:
@@ -275,12 +278,16 @@ def test_control_the_arm_with_its_gravity_dropped_fails_the_balance_on_every_dra
 @given(st.sampled_from(sorted(TREES)).flatmap(runs))
 def test_control_a_stop_that_gives_energy_fails_the_balance_on_every_draw(drawn):
     """A run that reaches a stop at all three step sizes, with a residual the rounding does not hide (a gift of
-    ``GIFT`` times the unplanted run's largest, well above ``ROUNDING`` units in the last place of its terms): the
-    stop's gift is the same at every step size, so the largest residual at its steps does not fall."""
+    ``GIFT`` times the unplanted run's largest at any of its step sizes, well above ``ROUNDING`` units in the last place
+    of its terms): the stop's gift is the same at every step size, so the largest residual at its steps does not fall.
+    The gift is scaled to the coarsest step's residual, where the stop's own loss is largest: scaled to the finest's, it
+    lay below that loss on a draw CI found (the AR4 near its sixth joint's stop, its loss 2.3e-6 J at 1 ms against a
+    gift of 5.9e-7 J), so the planted stop's residual stayed negative at every step size and the oracle, which judges
+    only a residual above the integrator's own, could not see it: the plant below the oracle's resolution."""
     name, q0, qd0, tau = drawn
     plain = orders(BALANCES[name], q0, qd0, tau)
     assume(all(at_stops > -math.inf for at_stops in plain.stops) and plain.largest > 1e3 * ROUNDING * EPS * plain.scale)
-    planted = orders(GIVERS[name], q0, qd0, tau, GIFT * plain.largest)
+    planted = orders(GIVERS[name], q0, qd0, tau, GIFT * plain.peak)
     assert stops_not_falling(planted), f"{name}: at the stops, at each step size, {planted.stops}"
 
 

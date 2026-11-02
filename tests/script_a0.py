@@ -26,13 +26,14 @@ from script_a import (
     VISCOSITY,
     VOLUME,
     WATER,
+    CentreContact,
     fl9,
 )
 
 from mime import Body, Experiment, Medium, State, Structure
 from mime.data import asset
 from mime.dynamics import RigidInertial
-from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import Drag, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Scene, Tube, X, Z
 from mime.things import Part
@@ -69,7 +70,7 @@ def a0(name: str = "script_a0", *, frequency=Hz(3.0), dt=ms(0.5), mode: Any = "g
     exp.attach(Magnetic.Torque(), body=umr, field="rpm.magnetic")
     exp.attach(Magnetic.Force(), body=umr, field="rpm.magnetic")
     exp.attach(Gravity(), body=umr, medium=water)
-    exp.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    exp.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     exp.observe(SwimSpeed(umr, along=tube.axis))
     exp.set_controller(controller if controller is not None else tracking(**settings), reads=TRACKING_READS,
                        writes=TRACKING_WRITES, mode=mode, rate=rate if rate is not None else dt, latency=latency)

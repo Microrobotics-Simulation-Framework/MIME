@@ -36,7 +36,7 @@ from mime.core._shapes import _exact_sum as exact_sum
 from mime.data import asset as data_asset
 from mime.registry import Problem, Region
 from mime.dynamics import RigidInertial
-from mime.interactions import Contact, Drag
+from mime.interactions import KEPT, Contact, Drag
 from mime.scene import Capsule, Ellipsoid, Scene, Screw, Sphere, Tube, X, Z
 from mime.things import Part
 from mime.units import dimensionless, kg_m2, kg_per_m3, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
@@ -260,9 +260,13 @@ def test_a_body_value_its_hull_kind_gives_is_refused(name):
     assert "value.from-kind" in codes(experiment)
 
 
+CentreContact, _ = KEPT["contact", "0.1.0"]
+
+
 def experiment_with_parts(parts, *, extent: bool = False, drag: bool = False):
-    """A body of ``parts`` (each outside every other at the test's density) in A's tube, held by the contact, with the
-    surrogate drag where ``drag``."""
+    """A body of ``parts`` (each outside every other at the test's density) in A's tube, held by the contact 0.1.0,
+    the reader of a body's extent (0.2.0 holds the hull's points and reads none), with the surrogate drag where
+    ``drag``."""
     experiment = Experiment("parts", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5))
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                                     length=mm(100.0))))
@@ -275,7 +279,7 @@ def experiment_with_parts(parts, *, extent: bool = False, drag: bool = False):
             experiment.declare(f"umr.parts.{key}.density", kg_per_m3(1410.0), reason="the test's")
     if extent:
         experiment.declare("umr.extent", mm(2.07), reason="the test's")
-    experiment.attach(Contact.Projection(margin=mm(0.1)), body="umr", surface=tube.inner_surface)
+    experiment.attach(CentreContact.Projection(margin=mm(0.1)), body="umr", surface=tube.inner_surface)
     if drag:
         experiment.declare("water.viscosity", mPa_s(1.0), reason="water")
         experiment.attach(Drag.Surrogate(weights=data_asset("dejongh_mlp_v2")), body="umr", medium="water")

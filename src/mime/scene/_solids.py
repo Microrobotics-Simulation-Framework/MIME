@@ -12,7 +12,7 @@ from typing import Annotated, Any, override
 
 import numpy as np
 
-from mime.core import jnp, switch
+from mime.core import AXIS_ULPS, jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL
 from mime.registry import (
@@ -27,6 +27,7 @@ from mime.registry import (
     Samples,
     Sampling,
     Solid,
+    Support,
     Tensor,
     register_geometry,
     uniform,
@@ -52,6 +53,23 @@ def _length(settings: Mapping[str, Magnitude], name: str) -> float:
     if isinstance(value, tuple):
         raise TypeError(f"setting {name!r} is one length, not {value!r}")
     return value
+
+
+def _round(d: Any, scale: Any) -> Support:
+    """The support of a ball of radius ``scale`` about the origin along ``d`` (``(..., 3)``): ``r d / |d|``, and its
+    derivative in ``d``, ``r (I - u u^T) / |d|``."""
+    length = switch.nonzero_norm(d, axis=-1)[..., None]
+    unit = d / length
+    eye = jnp.eye(3, dtype=unit.dtype)
+    return Support(scale * unit, scale * (eye - unit[..., :, None] * unit[..., None, :]) / length[..., None])
+
+
+def _end(near: Any, axis: Any) -> Any:
+    """The end of a cylinder's or a capsule's axis that the body's point ``near`` lies towards: ``+1``, ``-1``, or ``0``
+    for a point on the mid-plane (the generator's middle, where the two ends tie). ``near`` is one of the kind's
+    samples, whose place along the axis is the length times a number fixed when the samples are made, so the end a
+    sample lies towards never changes along a study's derivative."""
+    return jnp.sign(jnp.sum(jnp.asarray(near) * axis, axis=-1))
 
 
 def _lengths(settings: Mapping[str, Magnitude], name: str) -> tuple[float, float, float]:
@@ -89,6 +107,17 @@ def _face_edges(patch: str) -> tuple[int, int]:
     return first, second
 
 
+#: The cylinder's support: a direction along its axis, where its whole cap is farthest and the support is the cap's
+#: centre, beside directions off it, whose support is a point of the rim.
+CYLINDER_SUPPORT = switch.Declaration(
+    owner="cylinder.support",
+    indicator="the length of the direction's part across the cylinder's axis, in the direction's units; along the "
+              "axis within AXIS_ULPS units in the last place of the direction's length (a band)",
+    orders={"support": -1},
+    route="none: along the axis the farthest set is the whole cap, so the farthest point jumps from the cap's centre "
+          "to its rim as the direction leaves the axis, as the body's own does")
+
+
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Cylinder(Solid):
@@ -105,7 +134,8 @@ class Cylinder(Solid):
     version = "0.1.0"
     setting_roles = dict.fromkeys(("radius", "length", "axis"), PHYSICAL)
     differentiability = GradientStatus.PIECEWISE_JUMP
-    gradient = GradientRecord()
+    gradient = GradientRecord(switches=(CYLINDER_SUPPORT,))
+    support_basis = "closed form"
     references = ("WeissteinCylinder",)
     builds = {"": ()}
     regions = ("side", "span")
@@ -216,6 +246,33 @@ class Cylinder(Solid):
         along = jnp.dot(d, axis)
         return parameters["radius"] * length_of(d - along * axis) + parameters["length"] / 2.0 * magnitude_of(along)
 
+    @override
+    def support(self, parameters: Mapping[str, Any], direction: Any, near: Any) -> Support:
+        """The farthest point along ``d`` of the rim at the end ``near`` lies towards: ``r u + e L a / 2``, ``u`` the
+        unit direction of ``d``'s part across the axis and ``e`` the end (``_end``), with the derivative ``r (I - a
+        a^T - u u^T) / |d_across|``. A cylinder's farthest points along any direction lie on its rims, so each end's
+        is the farthest point of its half; where ``d`` lies along the axis (within ``AXIS_ULPS`` units in the last
+        place of its length, so that rounding never turns the point about the rim) the whole cap ties, and the point is
+        the cap's centre, the switch ``cylinder.support``."""
+        d = jnp.asarray(direction)
+        axis = jnp.asarray(parameters["axis"], dtype=d.dtype)
+        axis = axis / switch.nonzero_norm(axis)
+        across = d - jnp.sum(d * axis, axis=-1)[..., None] * axis
+        squared = jnp.sum(across * across, axis=-1)
+        share = AXIS_ULPS * float(jnp.finfo(d.dtype).eps)
+        off = squared > share * share * jnp.sum(d * d, axis=-1)
+        length = jnp.sqrt(switch.domain_guard(off, squared, 1.0))
+        unit = switch.where(off[..., None], across / length[..., None], jnp.zeros_like(across),
+                            owner="cylinder.support", resolution=lambda: share * jnp.sqrt(jnp.sum(d * d, axis=-1)),
+                            indicator=lambda: jnp.sqrt(squared))
+        eye = jnp.eye(3, dtype=d.dtype)
+        bend = (eye - axis[:, None] * axis[None, :] - unit[..., :, None] * unit[..., None, :]) / length[..., None, None]
+        jacobian = switch.where(off[..., None, None], parameters["radius"] * bend, jnp.zeros_like(bend),
+                                owner="cylinder.support", resolution=lambda: share * jnp.sqrt(jnp.sum(d * d, axis=-1)),
+                                indicator=lambda: jnp.sqrt(squared))
+        end = _end(near, axis)
+        return Support(parameters["radius"] * unit + (end * parameters["length"] / 2.0)[..., None] * axis, jacobian)
+
 
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
@@ -231,6 +288,7 @@ class Ellipsoid(Solid):
     version = "0.1.0"
     setting_roles = {"semi_axes": PHYSICAL}
     differentiability = GradientStatus.EXACT
+    support_basis = "closed form"
     references = ("WeissteinEllipsoid",)
     builds = {"": ()}
     regions = ("solid",)
@@ -317,6 +375,16 @@ class Ellipsoid(Solid):
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
         """Its farthest point along ``d`` is ``A^2 d / |A d|``, ``A`` the diagonal of its semi-axes."""
         return switch.nonzero_norm(jnp.asarray(parameters["semi_axes"]) * jnp.asarray(direction))
+
+    @override
+    def support(self, parameters: Mapping[str, Any], direction: Any, near: Any) -> Support:
+        """``A^2 d / |A d|``, with the derivative ``(A^2 - s s^T) / |A d|``, ``s`` the point: one point along every
+        direction, so ``near`` is not read."""
+        d = jnp.asarray(direction)
+        axes = jnp.asarray(parameters["semi_axes"], dtype=d.dtype)
+        scale = switch.nonzero_norm(axes * d, axis=-1)[..., None]
+        point = axes * axes * d / scale
+        return Support(point, (jnp.diag(axes * axes) - point[..., :, None] * point[..., None, :]) / scale[..., None])
 
     @override
     def drawing(self, settings: Mapping[str, Magnitude], segments: int) -> Drawing:
@@ -474,6 +542,7 @@ class Sphere(Solid):
     setting_roles = {"radius": PHYSICAL}
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
+    support_basis = "closed form"
     references = ("WeissteinEllipsoid",)
     builds = {"": ()}
     regions = ("solid",)
@@ -546,6 +615,12 @@ class Sphere(Solid):
         return parameters["radius"] * switch.nonzero_norm(jnp.asarray(direction))
 
     @override
+    def support(self, parameters: Mapping[str, Any], direction: Any, near: Any) -> Support:
+        """``r d / |d|``, with the derivative ``r (I - u u^T) / |d|``: one point along every direction, so ``near`` is
+        not read."""
+        return _round(jnp.asarray(direction), parameters["radius"])
+
+    @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
 
@@ -593,6 +668,7 @@ class Capsule(Solid):
     setting_roles = dict.fromkeys(("radius", "height", "axis"), PHYSICAL)
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord()
+    support_basis = "closed form"
     references = ("WeissteinCylinder", "WeissteinEllipsoid")
     builds = {"": ()}
     regions = ("solid",)
@@ -713,6 +789,19 @@ class Capsule(Solid):
         axis = axis / switch.nonzero_norm(axis)
         return (parameters["radius"] * switch.nonzero_norm(d)
                 + parameters["height"] / 2.0 * magnitude_of(jnp.dot(d, axis)))
+
+    @override
+    def support(self, parameters: Mapping[str, Any], direction: Any, near: Any) -> Support:
+        """The farthest point along ``d`` of the hemisphere at the end ``near`` lies towards: ``e h a / 2 + r d / |d|``,
+        ``e`` the end (the cylinder's ``_end``; ``0`` on the mid-plane, the segment's middle), with the derivative
+        ``r (I - u u^T) / |d|``. A capsule's farthest points along any direction lie on its two hemispheres, so each
+        end's is the farthest point of its half, and a capsule lying along a wall is held at both."""
+        d = jnp.asarray(direction)
+        axis = jnp.asarray(parameters["axis"], dtype=d.dtype)
+        axis = axis / switch.nonzero_norm(axis)
+        held = _round(d, parameters["radius"])
+        end = _end(near, axis)
+        return Support(held.point + (end * parameters["height"] / 2.0)[..., None] * axis, held.jacobian)
 
     @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:

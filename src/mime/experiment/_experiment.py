@@ -569,6 +569,7 @@ def run_layout(plans: PlanSet) -> Layout:
         speed = speed_limit_flag(plans, plan)
         if speed is not None:
             flags.append(speed)
+        flags += contact_flags(plans, plan)
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
@@ -604,6 +605,60 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
                       f"joint{unlimited}), which the dynamic chain does not apply: the run went where the real "
                       f"mechanism would not. A backstop read after the run, never a refusal; a build check names a "
                       f"spinner that would drive a joint there, and its fix", SPEED_LIMIT, limits)
+
+
+#: The names of the flags a body held by its hull raises: where a point is held; where the solve's sweeps left more
+#: than ``CONVERGED`` of the free step's speed at the held points unmet; for a hull whose kind has no support query,
+#: where a point is held by its samples; and for one that has, where a held point stood shallower than the sample its
+#: support's steps started from, that sample near being held, by more than ``SUPPORT_SHORT`` of the margin.
+TOUCHING, UNCONVERGED, HELD_BY_SAMPLES, SUPPORT_SHORT_FLAG = ("touching", "unconverged", "held_by_samples",
+                                                              "support_short")
+
+
+def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
+    """The flags of each confinement a body's dynamics holds by the hull, each read from a field its node holds for
+    its own sake, so they add nothing to the graph: ``touching``, raised at a step where a point takes a force;
+    ``unconverged``, where the solve's residual passes ``CONVERGED``; ``held_by_samples``, where a point of a hull
+    held by its samples (a kind with no support query) takes a force; and, for a kind with one, ``support_short``,
+    where a held point stood shallower than its seed by more than ``SUPPORT_SHORT`` of the margin (of a thousandth of
+    the hull's size at a margin of zero). None for a dynamics that holds no hull."""
+    from mime.nodes.body._contact import CONVERGED, SUPPORT_SHORT
+    from mime.registry import implements
+
+    found: list[FlagLayout] = []
+    for confinement in plan.confinements:
+        if confinement.hull is None:
+            continue
+        owner = next((p for p in plans.entries if p.owner == confinement.id), None)
+        label = owner.registered.cls.label() if owner is not None else confinement.id
+        node = plan.node_name("")
+        found.append(FlagLayout(confinement.id, label, node, "contact_forces",
+                                f"a point of {confinement.subject}'s hull was held at {confinement.surface}, less the "
+                                f"margin, by a force: the contact held the body where it touches (the points and "
+                                f"forces are its state's contact_points and contact_forces)", TOUCHING))
+        found.append(FlagLayout(confinement.id, label, node, "contact_residual",
+                                f"the contact's solve left more than {CONVERGED:g} of the free step's speed at "
+                                f"{confinement.subject}'s held points unmet (contact_residual): the projection after "
+                                f"the step kept the margin, and the speeds at those points are off by up to that share "
+                                f"(each point's own force is not fixed where rows share a rim)",
+                                UNCONVERGED, (CONVERGED,)))
+        if implements(confinement.hull.kind, "support"):
+            size = float(cast(Any, confinement.hull.kind).enclosing_radius(confinement.hull.settings))
+            bound = confinement.margin if confinement.margin > 0.0 else 1e-3 * size
+            found.append(FlagLayout(confinement.id, label, node, "contact_short",
+                                    f"a point of {confinement.subject}'s hull the contact held stood more than "
+                                    f"{SUPPORT_SHORT * bound * 1e6:.3g} um shallower than the sample its support's "
+                                    f"steps started from, a sample within the margin of the wall shrunk by it "
+                                    f"(contact_short): the steps went the wrong way, and the body may have reached "
+                                    f"past the margin by up to how far", SUPPORT_SHORT_FLAG,
+                                    (SUPPORT_SHORT * bound,)))
+        else:
+            found.append(FlagLayout(confinement.id, label, node, "contact_forces",
+                                    f"a point of {confinement.subject}'s hull was held by its samples, its kind having "
+                                    f"no support query: a turning body's samples arrive at the wall off its line of "
+                                    f"contact, and the inelastic hold acts as a friction and a shaking set by the "
+                                    f"spacing", HELD_BY_SAMPLES))
+    return found
 
 
 def _not_writable(folder: Path, error: OSError) -> BaseException:

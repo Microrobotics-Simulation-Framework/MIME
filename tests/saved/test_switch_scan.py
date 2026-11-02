@@ -544,7 +544,8 @@ def test_a_labs_owner_carries_its_packages_name(records):
     assert declaration_problems([declaring("mime_lab_fixture.nudge.cap")]) == []
     (problem,) = declaration_problems([declaring("nudge.cap")])
     assert "does not start with its package's name, mime_lab_fixture." in problem
-    twice = declaration_problems([declaring("contact.band"), *[r for r in records if r.name == "contact"]])
+    twice = declaration_problems([declaring("contact.band"),
+                                  *[r for r in records if (r.name, r.version) == ("contact", "0.1.0")]])
     assert len(twice) == 2 and "does not start with its package's name" in twice[0], twice
     assert "interaction contact 0.1.0: the switch 'contact.band' is declared again, first by interaction labx.nudge" \
         in twice[1]

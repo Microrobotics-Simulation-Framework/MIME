@@ -58,7 +58,12 @@ construction, and not left to grow.
 
 **The control**: :func:`check_shape` with ``planted`` scales autodiff's tangent by ``1 + planted`` through a
 ``custom_jvp``; :data:`PLANTED_TANGENT`, by dtype, lies above that dtype's tolerance, which lies above its measured
-agreement, each by the margin its test records."""
+agreement, each by the margin its test records.
+
+**A convex declaration** (``convex = True``, which lets a contact keep only each group's hull vertices) is checked where
+a shape makes one: :func:`convexity_problem` refutes it at two drawn points (:func:`convexity_probes`) where the signed
+distance at their midpoint stands above their mean beyond rounding, since a convex region's signed distance is a convex
+function of the point. It can only refute: no draw proves a region convex."""
 
 from __future__ import annotations
 
@@ -82,6 +87,10 @@ type Placement = Callable[[Parameters, float, np.ndarray], np.ndarray]
 #: The relative agreement a probe must reach, by dtype, beyond the rounding floor: set from the agreement the suite
 #: measured over its stress runs (tests/saved/test_shape_suite.py records them), with the margin recorded there.
 SHAPE_TOLERANCE: Mapping[str, float] = MappingProxyType({"float64": 1e-6, "float32": 1e-4})
+#: How far a region's signed distance at the midpoint of two points may stand above their mean before its ``convex``
+#: declaration is refuted, in units in the last place of the points' scale (their largest distance from the origin
+#: plus the shape's size): the three evaluations' rounding.
+CONVEXITY_ULPS = 64.0
 #: The planted wrong tangent's relative error, by dtype: above that dtype's tolerance, so that a probe placed where the
 #: floor lies below it must reject it.
 PLANTED_TANGENT: Mapping[str, float] = MappingProxyType({"float64": 1e-4, "float32": 1e-2})
@@ -245,6 +254,39 @@ def moved_rate(case: ShapeCase, parameters: Parameters, name: str, rate: float, 
         omega = rate / size * _direction_from(draw)
         return 0.5 * np.concatenate([[-np.dot(q[1:], omega)], q[0] * omega + np.cross(q[1:], omega)])
     return rate / size if name in case.plain else rate
+
+
+@st.composite
+def convexity_probes(draw: Any, case: ShapeCase) -> tuple[Parameters, np.ndarray, np.ndarray, float]:
+    """Two points a shape's ``convex`` declaration is judged at: its parameters at physical scales, turned and moved as
+    a probe's, two points within two of its sizes of its own centre in the world, and its size."""
+    own = draw(case.parameters)
+    size = case.size(own)
+    turn = _turn_from(np.array(draw(st.tuples(*(st.floats(0.0, 1.0),) * 3))))
+    shift = np.array(draw(st.tuples(*(st.floats(-3.0, 3.0),) * 3))) * size
+    rotation = _rotation(turn)
+    first, second = (rotation @ (np.array(draw(st.tuples(*(st.floats(-2.0, 2.0),) * 3))) * size) + shift
+                     for _ in range(2))
+    return case.turned(own, turn, shift), first, second, size
+
+
+def convexity_problem(shape: str, parameters: Parameters, first: np.ndarray, second: np.ndarray,
+                      size: float) -> str | None:
+    """Where ``shape``'s region, declared convex, is not: its signed distance at the midpoint of the two points stands
+    above their mean by more than ``CONVEXITY_ULPS`` of their scale's rounding (a convex region's signed distance is a
+    convex function of the point, so it never does). ``None`` where the two points refute nothing, which proves
+    nothing."""
+    numeric, whole = _split(parameters, jnp.float64)
+    first, second = np.asarray(first, dtype=np.float64), np.asarray(second, dtype=np.float64)
+    at_first, at_second, at = (float(_value(shape, "distance", whole, numeric, jnp.asarray(point, dtype=jnp.float64)))
+                               for point in (first, second, (first + second) / 2.0))
+    mean = (at_first + at_second) / 2.0
+    scale = max(float(np.linalg.norm(first)), float(np.linalg.norm(second))) + size
+    rounding = CONVEXITY_ULPS * float(np.finfo(np.float64).eps) * scale
+    if at <= mean + rounding:
+        return None
+    return (f"{shape}: its signed distance at the midpoint of {first.tolist()} and {second.tolist()} is {at:.17g} m, "
+            f"above their mean {mean:.17g} m by {at - mean:.3g} m: a region declared convex is not")
 
 
 def capability(shape: Any, name: str) -> Callable[[Parameters, Any], Any]:
@@ -643,7 +685,7 @@ register_shape_case(ShapeCase(
 ))
 
 
-__all__ = ["DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "PLANTED_TANGENT", "PROBE_CLASSES", "ROUNDING_SHIFT_ULPS",
-           "SHAPE_CASES", "SHAPE_TOLERANCE", "ShapeCase", "ShapeCheck", "ShapeProbe", "SwitchSet", "capability",
-           "check_shape", "moved_rate", "register_shape_case", "screw_focus", "shape_probes", "switch_distances",
-           "uncased_shapes"]
+__all__ = ["CONVEXITY_ULPS", "DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "PLANTED_TANGENT", "PROBE_CLASSES",
+           "ROUNDING_SHIFT_ULPS", "SHAPE_CASES", "SHAPE_TOLERANCE", "ShapeCase", "ShapeCheck", "ShapeProbe", "SwitchSet",
+           "capability", "check_shape", "convexity_probes", "convexity_problem", "moved_rate", "register_shape_case",
+           "screw_focus", "shape_probes", "switch_distances", "uncased_shapes"]

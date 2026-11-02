@@ -295,10 +295,10 @@ def switch_problems(records: list[Registered], raw_switches: RatchetList, report
             problem = status_problem(held.differentiability, held.gradient.switches if held.gradient else (), cap)
             if problem is not None:
                 report.problems.append(f"{record.kind.value} {record.name} {record.version} rung {rung}: {problem}")
-    owners = declarations(records)
+    owners = {declared.owner: declarer.package for declarer, declared in declarations(records)}
     report.summary.append(f"switches: {len(owners)} owners declared ("
-                          + ", ".join(f"{label} {sum(1 for d, _ in owners if d.package == label)}"
-                                      for label in sorted({d.package for d, _ in owners})) + f"); "
+                          + ", ".join(f"{label} {sum(1 for package in owners.values() if package == label)}"
+                                      for label in sorted(set(owners.values()))) + f"); "
                           f"{len(raw_switches)} raw sites listed, {len(capped)} entries capped")
 
 

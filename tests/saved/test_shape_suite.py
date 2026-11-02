@@ -26,6 +26,10 @@ zero, and its derivative in the point, through a ``stop_gradient``, is the proje
 artefact (``artefacts/cylinder_in_band_jacobian.json``: float64, a point 1e-16 m off the axis, inside the 4096-ulp
 band). The control writes the in-band branch as the constant zero, whose Jacobian is zero, and fails.
 
+**A convex declaration** (``convex = True``): at two points drawn within two sizes of the shape, its signed distance at
+their midpoint never stands above their mean beyond rounding (``mime.testing.convexity_problem``). It can refute a
+declaration, not prove one. The control: the screw declared convex is refuted.
+
 **The screw's focal set**, where its seam ends: on it (the review's settings, FL-9's and the most twisted, each at a
 crest and a trough) the distance is exact with the normal its derivative; near it, off the crest's ray, the distance
 is the section's minimum to rounding; and the declared orders are measured along the ray. The control is the screw
@@ -40,12 +44,12 @@ from pathlib import Path
 import jax
 import numpy as np
 import pytest
-from hypothesis import event, given, settings
+from hypothesis import event, find, given, settings
 from hypothesis import strategies as st
 from scipy.optimize import minimize_scalar
 
 import mime.testing._shape_suite as suite
-from mime.core import AXIS_ULPS, CYLINDER, SCREW, Cylinder, Screw, jnp, switch
+from mime.core import AXIS_ULPS, CYLINDER, SCREW, Cylinder, Screw, jnp, shape_named, switch
 from mime.testing import (
     PLANTED_TANGENT,
     SHAPE_CASES,
@@ -53,6 +57,8 @@ from mime.testing import (
     ShapeCheck,
     ShapeProbe,
     check_shape,
+    convexity_problem,
+    convexity_probes,
     shape_probes,
     uncased_shapes,
 )
@@ -76,6 +82,29 @@ def test_control_a_shape_with_no_case_or_a_switch_its_case_does_not_place_is_nam
     assert uncased_shapes() == ["shape capsule: its switch capsule.end.low has no set in its case",
                                 "shape capsule: its switch capsule.end.high has no set in its case",
                                 "shape sphere: no case in the shape conformance suite"]
+
+
+#: The registered shapes that declare their region convex, so that a contact keeps only each group's hull vertices.
+CONVEX = sorted(name for name in SHAPE_CASES if getattr(shape_named(name), "convex", False))
+
+
+def test_the_cylinder_is_among_the_shapes_whose_convex_declaration_is_checked():
+    assert "cylinder" in CONVEX
+
+
+@pytest.mark.parametrize("shape", CONVEX)
+@settings(deadline=None)
+@given(data=st.data())
+def test_a_shape_declared_convex_is_not_refuted_at_any_two_drawn_points(shape, data):
+    problem = convexity_problem(shape, *data.draw(convexity_probes(SHAPE_CASES[shape])))
+    assert problem is None, problem
+
+
+def test_control_the_screw_declared_convex_is_refuted():
+    """The screw's region is not convex between its crests: the check finds two points that refute it."""
+    found = find(convexity_probes(SHAPE_CASES["screw"]), lambda probe: convexity_problem("screw", *probe) is not None,
+                 settings=settings(deadline=None, database=None))
+    assert convexity_problem("screw", *found) is not None
 
 
 @pytest.mark.parametrize(("shape", "name"), PAIRS)
@@ -388,8 +417,8 @@ class ConstantInBand(Cylinder):
 
     def outward_normal(self, parameters, point):
         radial, length, off = self._radial(parameters, point)
-        return switch.where(off, radial / switch.domain_guard(off, length, 1.0), jnp.zeros_like(radial),
-                            owner="cylinder.axis", resolution=0.0, indicator=length)
+        return switch.where(off[..., None], radial / switch.domain_guard(off, length, 1.0)[..., None],
+                            jnp.zeros_like(radial), owner="cylinder.axis", resolution=0.0, indicator=length)
 
 
 def test_control_the_normal_with_its_in_band_branch_the_constant_zero_fails():

@@ -152,6 +152,10 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("interaction", "contact", "0.1.0"): NodeCase(
         no_node="a projection: the body's dynamics takes its record at construction, and that node is "
                 "rigid_inertial's, verified under its own case"),
+    ("interaction", "contact", "0.2.0"): NodeCase(
+        no_node="a projection: the body's dynamics takes its record at construction, and that node is "
+                "rigid_inertial's, verified under its own case and, holding a hull, by "
+                "tests/oracles/test_hull_contact.py"),
     ("observation", "swim_speed", "0.1.0"): NodeCase(),
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
     ("dynamics", "arm", "0.1.0"): ARM,

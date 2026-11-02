@@ -23,13 +23,14 @@ from typing import Any
 from a0_loops import A0Loops
 from chain_cases import AR4, AR4_BASE, AR4_HOME, MAGNET_LENGTH, MAGNET_MOMENT, MAGNET_RADIUS, ROTOR_DAMPING, \
     ROTOR_INERTIA
-from script_a import EPSILON, INERTIA, MASS, MOMENT, REASON, REFERENCE_START, VISCOSITY, VOLUME, WATER, fl9
+from script_a import EPSILON, INERTIA, MASS, MOMENT, REASON, REFERENCE_START, VISCOSITY, VOLUME, WATER, \
+    CentreContact, fl9
 
 from mime import Body, Experiment, Medium, State, Structure
 from mime.data import asset
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import PointDipole
-from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import Drag, Gravity, Lubrication, Magnetic
 from mime.observations import SwimSpeed
 from mime.scene import Cylinder, Scene, Tube, X, Z
 from mime.scene import asset as file_asset
@@ -107,7 +108,7 @@ def a0_dynamic(name: str = "script_a0_dynamic", *, frequency=Hz(3.0), dt=ms(0.5)
     exp.attach(Magnetic.Torque(), body=umr, field="rpm.magnetic")
     exp.attach(Magnetic.Force(), body=umr, field="rpm.magnetic")
     exp.attach(Gravity(), body=umr, medium=water)
-    exp.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    exp.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     exp.observe(SwimSpeed(umr, along=tube.axis))
     exp.set_controller(controller if controller is not None else loops(frequency.value, **settings),
                        reads=DYNAMIC_READS, writes=DYNAMIC_WRITES, mode=mode, rate=rate if rate is not None else dt,

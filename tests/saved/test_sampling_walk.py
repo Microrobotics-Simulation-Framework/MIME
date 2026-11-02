@@ -27,7 +27,7 @@ import pytest
 from cases import CASES
 
 from mime.docs import load_namespaces
-from mime.registry import EntryKind, implements, lookup
+from mime.registry import EntryKind, Support, implements, lookup
 from mime.registry import registered as registered_entries
 from mime.scene import KEPT, Box, Capsule, Screw, Sphere, quadrature, sampled_reach
 from mime.testing import (
@@ -44,6 +44,7 @@ from mime.testing import (
     sampling_problems,
     sampling_quality,
     suite_spacing,
+    support_problems,
 )
 from mime.units import m
 
@@ -268,6 +269,51 @@ def test_control_a_body_reach_planted_wrong_fails(plant):
 
     assert body_reach_problems(capsule, settings) == []
     assert body_reach_problems(capsule, settings, reach=sampled_reach(samples)) != []
+
+
+@pytest.mark.parametrize("name", WALKED)
+def test_every_kinds_support_reaches_its_bodys_farthest_point_and_moves_as_its_derivative_says(declared,
+                                                                                                sampling_classes, name):
+    """The support query a contact holds a body by (``Geometry.support``), on every kind that answers it: its point
+    the body's farthest along each direction from the kind's own farthest sample, against a dense quadrature, a point
+    of the body, and its derivative in the direction the point's central difference where it moves smoothly."""
+    found = {}
+    for kind, settings in declarations(declared, sampling_classes, name):
+        problems = support_problems(kind, settings)
+        if problems:
+            found[repr(sorted(settings.items()))] = problems[:3]
+    assert found == {}
+
+
+def test_the_closed_forms_and_the_screws_refinement_answer_the_support_query_and_the_box_does_not():
+    """The kinds a contact holds at their own surface (option B of review 7o's F2): the sphere's, the ellipsoid's, the
+    cylinder's and the capsule's closed forms, the screw's refinement on its surface; the box has none, and is held
+    by its samples."""
+    from mime.scene import Cylinder, Ellipsoid
+
+    answered = {cls.name: (implements(cls, "support"), cls.support_basis)
+                for cls in (Sphere, Ellipsoid, Cylinder, Capsule, Screw, Box)}
+    assert answered == {"sphere": (True, "closed form"), "ellipsoid": (True, "closed form"),
+                        "cylinder": (True, "closed form"), "capsule": (True, "closed form"),
+                        "screw": (True, "refined on its surface"), "box": (False, "")}
+
+
+@pytest.mark.parametrize("plant", ["short", "long", "slope"])
+def test_control_a_support_planted_wrong_fails(plant):
+    """A capsule's support pulled in or pushed out by a hundredth of its radius along the direction, or with its derivative
+    doubled."""
+    capsule = Capsule(radius=m(1.0e-3), height=m(2.0e-3), axis=(0.0, 0.6, 0.8))
+    settings = {"radius": 1.0e-3, "height": 2.0e-3, "axis": (0.0, 0.6, 0.8)}
+
+    def planted(parameters, direction, near):
+        held = capsule.support(parameters, direction, near)
+        unit = direction / jnp.sqrt(jnp.sum(direction * direction, axis=-1, keepdims=True))
+        if plant == "slope":
+            return Support(held.point, 2.0 * held.jacobian)
+        return Support(held.point + (-1.0 if plant == "short" else 1.0) * 1e-5 * unit, held.jacobian)
+
+    assert support_problems(capsule, settings) == []
+    assert support_problems(capsule, settings, support=planted) != []
 
 
 def tube_closed_form(centre, axis, radius):

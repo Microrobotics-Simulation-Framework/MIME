@@ -55,6 +55,8 @@ geometry tube 0.1.0 wall                                 # physical: a fact abou
 geometry tube 0.1.0 length                               # physical: a fact about the setup, which MIME does not assume
 interaction contact 0.1.0 rung                           # design: the model is chosen explicitly, never picked
 interaction contact 0.1.0 margin                         # numerical: the contact's margin, with no default rule yet
+interaction contact 0.2.0 rung                           # design: the model is chosen explicitly, never picked
+interaction contact 0.2.0 margin                         # numerical: the contact's margin, with no default rule yet
 interaction drag 0.3.0 rung                              # design: the model is chosen explicitly, never picked
 interaction drag 0.3.0 weights                           # design: the surrogate's weights are named, never picked (its rung refuses none)
 observation swim_speed 0.1.0 along                       # design: the experimenter's choice

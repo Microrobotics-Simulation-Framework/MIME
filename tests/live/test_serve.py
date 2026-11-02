@@ -59,10 +59,27 @@ def client(ready: Path, timeout: float = 30.0) -> LiveClient:
     return LiveClient(endpoints["commands"], endpoints["frames"], timeout=timeout)
 
 
-def acts_at(answer: dict, chunk_steps: int) -> int:
-    """The step a ``stop`` or a ``pause`` acts at: where its reply says the session is, or, taken while a chunk ran
-    (its command pending), that chunk's end."""
-    return answer["step"] + (chunk_steps if answer["command"] in answer["pending"] else 0)
+def acts_within(answer: dict, chunk_steps: int) -> tuple[int, ...]:
+    """The steps a ``stop`` or a ``pause`` can act at, by its reply: where the reply says the session is; or, its
+    command pending, the end of the chunk in flight; or either, its command pending with no chunk in flight. The
+    server's loop reads a request while it holds a chunk, and the reply cannot tell the two moments that read alike: the
+    chunk just ended and the loop not yet looked (it acts at ``step``), and the chunk just handed to the worker and not
+    yet begun (it acts a chunk on)."""
+    step = answer["step"]
+    if answer["command"] not in answer["pending"]:
+        return (step,)
+    return (step + chunk_steps,) if answer["activity"] != "idle" else (step, step + chunk_steps)
+
+
+def settled(live: LiveClient) -> dict:
+    """The status once nothing is pending: a pending command has acted, at its chunk's end."""
+    deadline = time.monotonic() + HANG
+    while True:
+        status = live.request("status")
+        if not status["pending"]:
+            return status
+        assert time.monotonic() < deadline, "a pending command never acted"
+        time.sleep(0.01)
 
 
 def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(launch, folder, tmp_path):
@@ -81,9 +98,10 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(launch, f
     frames = [live.frame() for _ in range(40)]
     paused = live.request("pause")
     assert paused["state"] == "paused" or paused["pending"] == ["pause"]
-    while frames[-1].step < acts_at(paused, hello["chunk_steps"]):  # the frames sent before the pause took effect
+    held = settled(live)
+    assert held["state"] == "paused" and held["step"] in acts_within(paused, hello["chunk_steps"])
+    while frames[-1].step < held["step"]:  # the frames sent before the pause took effect
         frames.append(live.frame())
-    assert live.request("status")["state"] == "paused"
     before = len(frames)
     assert live.request("set", values={"offset": 0.002})["ok"]
     stepped = live.request("step", chunks=3)
@@ -231,6 +249,29 @@ def logged_stop(out: Path) -> tuple[list[str], int, list[int]]:
                                                                               if "reached" in line]
 
 
+def test_a_stop_read_either_side_of_a_chunk_reads_alike_and_acts_where_its_reply_allows(folder, tmp_path):
+    """Without threads, the two moments CI met: a chunk just over and the loop not yet looked, where the stop acts at
+    the reply's step; and a chunk handed to the worker and not yet begun, where it acts a chunk on. Their replies read
+    alike, no chunk in flight and the stop pending, so the reply allows both."""
+    from mime.experiment import Experiment
+    from mime.live._serve import _while_running
+
+    session = Experiment.load(folder).build().live(pace=None, out=tmp_path / "run")
+    session.advance()  # the chunk is over, and the loop has not looked
+    ended = _while_running(session, json.dumps({"command": "stop"}).encode())
+    assert ended is not None and (ended["pending"], ended["activity"]) == (["stop"], "idle")
+    assert session.steps == ended["step"] and session.steps in acts_within(ended, session.chunk_steps)
+    session.pending.clear()
+    begun = _while_running(session, json.dumps({"command": "stop"}).encode())  # handed over, and not begun
+    assert begun is not None and (begun["pending"], begun["activity"]) == (["stop"], "idle")
+    assert begun["step"] == ended["step"]
+    session.advance()
+    assert session.steps == begun["step"] + session.chunk_steps
+    assert session.steps in acts_within(begun, session.chunk_steps)
+    session.pending.clear()
+    session.stop()
+
+
 def test_stop_ends_a_long_step_at_the_next_chunk_boundary(launch, folder, tmp_path):
     """A ``step`` of 10^9 chunks (days of stepping) and, from a second client, a ``status`` answered while it runs and
     a ``stop``: the session stops at a chunk's end (the end of the chunk the stop came during, when it came during
@@ -251,7 +292,8 @@ def test_stop_ends_a_long_step_at_the_next_chunk_boundary(launch, folder, tmp_pa
     assert stopped["ok"] and answers and answers[0]["ok"] and answers[0]["state"] == "stopped"
     assert answers[0]["stepping"] == 0 and process.wait(timeout=HANG) == 0
     commands, at, reached = logged_stop(tmp_path / "out")
-    assert commands == ["step", "stop"] and reached[-1] == at == acts_at(stopped, stepper.hello["chunk_steps"])
+    assert commands == ["step", "stop"] and reached[-1] == at
+    assert at in acts_within(stopped, stepper.hello["chunk_steps"])
     assert at < 10 ** 9 * stepper.hello["chunk_steps"]  # the step cut short
     stepper.close()
     stopper.close()
