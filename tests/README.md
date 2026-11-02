@@ -514,7 +514,10 @@
 - `memory_heavy` tests peak above 2 GiB of their own process (`memory_peaks.json` lists what was measured, with the line
   and its basis; `scripts/measure_test_memory.py` measures). Under pytest-xdist they run one at a time across the
   workers, whatever `--dist` says, and give their free memory back when they end (`conftest.py`): CI's runner has 16 GB
-  for four workers, and the shard that ran the 8 GB arm battery beside the 6 GB helix reference peaked at 14.4 GB.
+  for four workers, and the shard that ran the 8 GB arm battery beside the 6 GB helix reference peaked at 14.4 GB. The
+  battery is no longer one test: it is one check to a test, with its worker held under a ceiling of 1.5 GiB of resident
+  memory by giving JAX's compiled programs back (`_cache_ceiling.py`), which a test can use when it makes a new program
+  for each of its examples.
   `test_memory_heavy.py` fails a listed test over the line that is unmarked; it cannot know a test nobody measured.
 - CI's lanes are: the default (Python 3.12 to 3.14, released dependencies), OpenMaterica `main`, MADDENING `main`, and
   a scheduled run against the newest usd-core. The last three report without blocking. Beside them, `typecheck`

@@ -187,5 +187,8 @@
   "tests/viz/test_meshes.py": 1,
   "tests/viz/test_recording.py": 38,
   "tests/viz/test_visuals.py": 3
+ },
+ "alone": {
+  "tests/oracles/test_arm_dynamics_battery.py": "nine tests of 15 to 320 s on CI, the three longest (params_effective, params_gradient_finite, gradient_finite) each a worker's share of the shard: beside other files they start last and leave three workers idle (utilisation 0.6 on CI with eight shards), so the file holds a shard of its own"
  }
 }

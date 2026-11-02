@@ -329,6 +329,22 @@ def test_the_deal_is_a_function_of_the_table_and_balanced():
         assert max(load) - min(load) <= max(weights.values())
 
 
+def test_a_file_the_table_gives_a_shard_of_its_own_has_it_to_itself_and_would_not_without():
+    """The arm battery's longest tests are a worker's share each; beside other files they start last and leave the
+    rest idle. The control: dealt by its seconds alone, the same file shares its shard."""
+    table = json.loads(_sharding.WEIGHTS_FILE.read_text(encoding="utf-8"))
+    alone = list(table["alone"])
+    assert alone and all(table["alone"][path] for path in alone), "each file that holds a shard says why"
+    weights = _sharding.load_weights()
+    for of in range(2, 13):
+        dealt = _sharding.deal(weights, of)
+        for path in alone:
+            assert [other for other, shard in dealt.items() if shard == dealt[path]] == [path]
+        assert set(dealt.values()) == set(range(1, of + 1))
+    plain = _sharding.deal(table["seconds"], 9)
+    assert any(shard == plain[alone[0]] and other != alone[0] for other, shard in plain.items())
+
+
 def test_a_files_tests_share_its_shard_and_a_file_outside_the_table_goes_by_its_hash():
     dealt = _sharding.deal(_sharding.load_weights(), 6)
     listed = next(iter(dealt))
@@ -344,7 +360,9 @@ def test_a_malformed_shard_is_a_usage_error(spec):
 
 
 def test_a_bad_table_is_an_error_never_an_unweighted_split(tmp_path):
-    for content in ("", "{}", '{"seconds": {}}', '{"seconds": {"a": 1.5}}', '{"seconds": {"a": 0}}'):
+    for content in ("", "{}", '{"seconds": {}}', '{"seconds": {"a": 1.5}}', '{"seconds": {"a": 0}}',
+                    '{"seconds": {"a": 1}, "alone": {"b": "x"}}', '{"seconds": {"a": 1}, "alone": {"a": ""}}',
+                    '{"seconds": {"a": 1}, "alone": ["a"]}'):
         (tmp_path / "w.json").write_text(content, encoding="utf-8")
         with pytest.raises(pytest.UsageError):
             _sharding.load_weights(tmp_path / "w.json")

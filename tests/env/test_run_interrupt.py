@@ -195,7 +195,8 @@ fed_inputs(graph, {})
 for _ in range(6):  # MADDENING waits for a graph's first few stored states, a wait a second press can interrupt
     scan_chunk(graph, 2, {})
 print("ready", flush=True)
-final = scan_chunk(graph, steps, {})  # one compiled scan, then the state on the host: what mime run did, whole
+final = scan_chunk(graph, steps, {})  # one compiled scan; it returns once compiled and running, its arrays still filling
+print("running", flush=True)
 {node: {name: np.asarray(value) for name, value in fields.items()} for node, fields in final.items()}
 """
 
@@ -205,11 +206,13 @@ final = scan_chunk(graph, steps, {})  # one compiled scan, then the state on the
 def test_control_without_the_handling_the_process_has_not_stopped_within_the_bound(saved, presses):
     """The same experiment as one compiled scan under Python's own handler (what ``mime run`` was) is still running
     ``QUIT_BOUND`` seconds after one press and after two, so the tests above can fail: they do not pass on a process that
-    stops by itself."""
+    stops by itself. The presses wait for the child's word that the scan is compiled and running, not for a time: a
+    press while it is still compiling (seconds on a loaded runner) ends the process, because Python's handler runs the
+    moment the compile returns, and that says nothing about a running scan."""
     child = Child(["-c", CONTROL, str(saved), str(10**9)])
     try:
-        child.wait_for_line("ready")
-        time.sleep(2.0)
+        child.wait_for_line("running")
+        time.sleep(0.5)  # the child's next call waits on the scan, in code that Python's handler cannot interrupt
         for _ in range(presses):
             child.process.send_signal(signal.SIGINT)
             time.sleep(0.5)

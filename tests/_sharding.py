@@ -6,6 +6,8 @@ file's shard is a function of its path and of the committed table ``shard_weight
 
 - the files the table lists, with their median seconds on CI, are dealt longest first, each onto the shard with the
   least time so far, ties broken on the path and the lower shard;
+- a file the table lists under ``alone`` (one whose slowest tests would leave the shard's other workers idle, with
+  the reason written beside it) is dealt first, to a shard that then holds no other listed file;
 - every other file goes by a hash of its path.
 
 Adding or deleting a test moves no file, and shard ``i`` of a pull request holds the files of shard ``i`` of its base
@@ -62,7 +64,25 @@ def load_weights(path: Path = WEIGHTS_FILE) -> dict[str, int]:
     bad = {k: v for k, v in seconds.items() if type(v) is not int or v <= 0}
     if bad:
         raise pytest.UsageError(f"{path}: every weight must be a positive whole number of seconds: {bad}")
-    return seconds
+    alone = load_alone(path)
+    missing = sorted(set(alone) - set(seconds))
+    if missing:
+        raise pytest.UsageError(f"{path}: 'alone' names files that 'seconds' does not list: {missing}")
+    # A file that holds a shard of its own weighs more than every other file together, so the deal, longest first,
+    # puts it on a shard by itself and never deals another file there.
+    heavier = sum(seconds.values()) + 1
+    return {path_: heavier if path_ in alone else weight for path_, weight in seconds.items()}
+
+
+def load_alone(path: Path = WEIGHTS_FILE) -> dict[str, str]:
+    """``{test file: why}`` for the files the table gives a shard of their own (the table's optional ``alone``)."""
+    try:
+        alone = json.loads(path.read_text(encoding="utf-8")).get("alone", {})
+    except (OSError, ValueError, AttributeError) as error:
+        raise pytest.UsageError(f"{path}: cannot read the shards' table ({error!r})") from None
+    if not isinstance(alone, dict) or not all(isinstance(k, str) and isinstance(v, str) and v for k, v in alone.items()):
+        raise pytest.UsageError(f"{path}: 'alone' must be a {{test file: reason}} table, each with a reason")
+    return alone
 
 
 def deal(weights: dict[str, int], of: int) -> dict[str, int]:

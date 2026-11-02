@@ -70,13 +70,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     times = medians(lanes)
     seconds = {path: max(1, round(t)) for path, t in times.items() if t >= args.over}
-    TABLE.write_text(json.dumps({"source": args.source, "over": args.over, "seconds": seconds}, indent=1) + "\n",
+    alone = {}
+    if TABLE.exists():  # the files that hold a shard of their own, and why, are kept while they are still listed
+        alone = {path: why for path, why in json.loads(TABLE.read_text(encoding="utf-8")).get("alone", {}).items()
+                 if path in seconds}
+    table = {"source": args.source, "over": args.over, "seconds": seconds, **({"alone": alone} if alone else {})}
+    TABLE.write_text(json.dumps(table, indent=1) + "\n",
                      encoding="utf-8")
     spec = importlib.util.spec_from_file_location("_sharding", ROOT / "tests" / "_sharding.py")
     assert spec is not None and spec.loader is not None
     sharding = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(sharding)
-    dealt = sharding.deal(seconds, args.shards)
+    dealt = sharding.deal(sharding.load_weights(), args.shards)
     load = [0.0] * args.shards
     for path, t in times.items():
         load[sharding.shard_of(path, args.shards, dealt) - 1] += t
