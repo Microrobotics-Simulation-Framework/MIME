@@ -28,6 +28,10 @@ What it writes:
   child's, a link's collision primitives);
 - the references to asset layers, by their path below the stage's folder.
 
+``/World`` is the only root prim the writer emits, and it is the ``defaultPrim``: every other root prim is reserved for
+MIME's overlays (a ghost of another drag rung could sit at ``/Compare/<rung>/<body>`` referencing ``/World/<body>``).
+Nothing inside ``/World`` is reserved, so no name a thing is given can collide with an overlay's.
+
 USD stores points as float32: a mesh's points stay in its own frame, near the origin, and the frame is placed by
 double-precision ``translate`` and ``orient`` ops. Display colours and opacities are primvars, with no material.
 """
