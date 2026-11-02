@@ -1,7 +1,8 @@
 """Errors from below, translated into MIME's terms, and the one rule for the rest: an error MIME raised without a
 code is a gap in MIME's codes (``error.uncoded``, to report), and any other is unrecognised, with the script's own line
-where there is one. Each keeps the class of the error it translates (:func:`standing_for`), so that a handler written
-for that error still catches it."""
+where there is one. A module that one of MIME's own requirements provides, not found, is the environment's
+(``env.missing``, with the command that installs it) and never a gap in MIME's codes. Each keeps the class of the
+error it translates (:func:`standing_for`), so that a handler written for it still catches it."""
 
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from mime.build._refusals import (
     UnrecognisedError,
 )
 from mime.errors._frames import Place, raised_by_mime, script_places
+from mime.errors._missing import missing_dependency
 
 #: The note JAX appends to an error whose frames it filtered: it names JAX's own switch, which MIME's short traceback
 #: replaces with its own.
@@ -119,7 +121,8 @@ def unit_error(error: BaseException) -> MimeError | None:
 
 
 #: The translations tried in order on an error from below; the first to answer gives the MIME error.
-TRANSLATIONS: Sequence[Callable[[BaseException], MimeError | None]] = (unit_error, out_of_memory)
+TRANSLATIONS: Sequence[Callable[[BaseException], MimeError | None]] = (unit_error, out_of_memory,
+                                                                       missing_dependency)
 
 #: The footer of an error MIME raised with no code: its message is MIME's own, and may say what to change.
 UNCODED = "MIME gave this error no code yet: report it"

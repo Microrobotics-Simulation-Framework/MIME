@@ -20,7 +20,10 @@ names its generated page. How to read one, and how to reach its full traceback:
   script's. An error was raised by MIME when the innermost frame that is MIME's or the script's is MIME's: the
   libraries' frames below it are what it called.
 - **The translations** (`_translate.py`). An error from below MIME recognises becomes its code: a device out of memory
-  as XLA reports it, `run.out-of-memory`; a value without its units, `call.units`. The errors of a controller's law are
+  as XLA reports it, `run.out-of-memory`; a value without its units, `call.units`; a module one of MIME's own
+  requirements provides, not found, `env.missing` with the requirement as declared, the MIME that requires it, the extra
+  that holds it where one does, and the command that installs it (`_missing.py`; the requirements are read from
+  `mime.data`'s `env/declared.json`, not the installed metadata, which an editable install keeps as it was installed). The errors of a controller's law are
   translated where MIME calls it: a traced value used as a Python value, `control.law-traced-branch`
   (`mime.build._in_graph`); a step that raises or returns other writes, `control.law-raised` and `control.law-writes`
   (`mime.control`). A state that is not finite at a run's end is `run.non-finite` (`mime.experiment`). The rest: an

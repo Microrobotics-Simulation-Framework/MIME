@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A missing requirement of MIME's is refused by name, with the command that installs it.** An environment installed in
+  place before a requirement was added (an editable install does not pick it up: `rich`, with the terminal display)
+  gave `error.uncoded: ... No module named 'rich'`, as if MIME had a gap in its codes. A module that one of
+  `mime-engine`'s requirements provides, not found, is now `env.missing`: the requirement as declared, the version of MIME
+  that requires it, the extra that holds it where one does, why, and the command (`uv sync`, `pip install -e <checkout>`,
+  `pip install --upgrade mime-engine`, or the package alone). A module no requirement names stays `error.uncoded`.
+  `mime env check` already names a core requirement missing from the environment, as the pins hold each one.
+
 ### Added
 - **The `mime` command, easier to use** (a first pass). On a terminal: `mime run` shows a spinner while it loads, builds
   and compiles, then the steps, the simulated time, the speed, the time remaining (an estimate: the speed since the

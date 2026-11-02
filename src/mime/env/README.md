@@ -60,7 +60,8 @@
 
 ## Refusals
 
-`env.missing`, `env.pin` and `env.unpinned` (the distributions), `env.python` and `env.os` (the base image),
+`env.missing`, `env.pin` and `env.unpinned` (the distributions; `env.missing` is also what a script or command gets
+when it imports a module that one of MIME's own requirements provides and the environment lacks it), `env.python` and `env.os` (the base image),
 `env.shadow` (a module imported from outside the environment), `env.device` (the devices), `env.gpu-type` (a loose or
 unknown GPU type), `env.variant`, `env.lock` (no precision to apply), `env.precision` (a GPU run whose lock records a
 matmul precision other than the highest), `env.lab` (a lab file that is not pins), `env.runner` (a `MIME_RUNNER` or

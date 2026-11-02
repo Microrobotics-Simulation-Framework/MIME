@@ -156,6 +156,15 @@ def test_a_missing_distribution_is_refused_naming_it():
     assert refusal[0] == "env.missing" and refusal[1].startswith("nvidia-cudnn-cu12 9.")
 
 
+def test_a_requirement_added_since_the_install_is_reported_missing_by_its_name():
+    """The case of an editable install that predates a requirement (``rich``): the pins hold every core requirement,
+    so the check names it with the command that rebuilds the environment."""
+    environment = pinned("cpu", base=False)
+    del environment["rich"]
+    (refusal,) = refused(variant="cpu", installed=environment, devices=CPU, system=base_system())
+    assert refusal[0] == "env.missing" and refusal[1].startswith("rich 15.")
+
+
 def test_an_unpinned_distribution_is_refused_and_an_installers_own_only_off_the_base():
     environment = {**pinned("cpu", base=False), "jax-cuda12-plugin": ("0.12.0.1",), "pip": ("1.0",)}
     codes = refused(variant="cpu", installed=environment, devices=CPU, system=base_system())

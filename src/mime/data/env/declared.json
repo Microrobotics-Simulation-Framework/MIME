@@ -1,0 +1,17 @@
+[
+  {"requirement": "maddening>=0.4.2,<0.5", "extra": null, "module": "maddening"},
+  {"requirement": "jax>=0.10,<0.13", "extra": null, "module": "jax"},
+  {"requirement": "openmaterica>=0.1.0.dev3", "extra": null, "module": "materica"},
+  {"requirement": "usd-core>=26.5", "extra": null, "module": "pxr"},
+  {"requirement": "typing_extensions>=4.16.0", "extra": null, "module": "typing_extensions"},
+  {"requirement": "jaxtyping>=0.3.11", "extra": null, "module": "jaxtyping"},
+  {"requirement": "pyyaml>=6.0", "extra": null, "module": "yaml"},
+  {"requirement": "scipy>=1.14", "extra": null, "module": "scipy"},
+  {"requirement": "pooch>=1.8", "extra": null, "module": "pooch"},
+  {"requirement": "platformdirs>=3", "extra": null, "module": "platformdirs"},
+  {"requirement": "packaging>=24.2", "extra": null, "module": "packaging"},
+  {"requirement": "rich>=13.9", "extra": null, "module": "rich"},
+  {"requirement": "hypothesis>=6.165", "extra": "verify", "module": "hypothesis"},
+  {"requirement": "maddening[verify]>=0.4.2,<0.5", "extra": "verify", "module": "maddening"},
+  {"requirement": "jax[cuda12]", "extra": "cuda12", "module": "jax"}
+]
