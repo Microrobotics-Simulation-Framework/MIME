@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`mime run` and `mime serve` keep XLA's compilation cache** in the user's cache directory, so that the second run of
+  an experiment compiles less and its numbers are the same: every program stored, the oldest entries pruned at a
+  command's start once the cache passes 2 GB, `--no-xla-cache` to leave it out, `mime cache clear` to delete it, and
+  a cache that cannot be written said once and compiled without. `mime verify` does not use it, and a script of your
+  own is as it was; [the compilation cache](docs/compilation_cache.md) shows the lines that turn it on.
+
 ### Fixed
 - **Ctrl+C works on `mime run`.** A run was one compiled scan, and Python runs a signal handler between bytecodes, so a
   press waited for the scan to return, which for a duration with an extra zero is hours; further presses were ignored

@@ -9,6 +9,11 @@
   does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report and the
   verdict, and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the load or the build is refused.
   Ctrl+C ends it (130), the second press at once.
+- `mime cache clear`: delete the XLA compilation cache that `mime run` and `mime serve` keep in the user's cache
+  directory, and say how much it held (see [the compilation cache](../../../docs/compilation_cache.md)). `mime run` and
+  `mime serve` use it by default, prune its oldest entries at their start once it passes its cap, and take
+  `--no-xla-cache`; `mime verify` never uses it. A cache JAX was already given (`JAX_COMPILATION_CACHE_DIR`) is left
+  alone, and one that cannot be written is said once and the command goes on without it.
 - `mime registry [--json]`: every registered entry, MIME's and each installed namespace's; with `--json`, the registry
   export the docs are generated from (see [`mime.docs`](../docs/README.md)). It runs on a base install, where a
   namespace that needs the `verify` extra is listed as not loaded.
