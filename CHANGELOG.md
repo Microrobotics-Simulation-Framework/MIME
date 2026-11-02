@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`mime run` and `mime serve` keep XLA's compilation cache** in the user's cache directory, so that the second run of
+  an experiment compiles less and its numbers are the same: every program stored, the oldest entries pruned at a
+  command's start once the cache passes 2 GB, `--no-xla-cache` to leave it out, `mime cache clear` to delete it, and
+  a cache that cannot be written said once and compiled without. `mime verify` does not use it, and a script of your
+  own is as it was; [the compilation cache](docs/compilation_cache.md) shows the lines that turn it on.
+
 ### Fixed
 - **`rigid_inertial` 0.3.0 no longer gains energy from its gyroscopic term** (MIME-ANO-129): the term was an explicit
   load, so a torque-free body of three different inertias gained 2.6 times its kinetic energy in a second at a 1 ms
