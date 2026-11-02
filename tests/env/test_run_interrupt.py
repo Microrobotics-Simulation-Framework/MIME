@@ -1,7 +1,7 @@
 """Ctrl+C on ``mime run``. A run is compiled scans, and Python runs a signal handler between bytecodes, so a SIGINT used
 to wait for the scan to return, which for a run with one extra zero in its duration is hours. Now a run is split into
 about 256 compiled chunks (``mime.control._run.automatic_chunks``), which change nothing it computes; the first Ctrl+C
-is acknowledged at once by a thread reading the signal's wakeup descriptor (``mime.cli._interrupt``) and stops the run
+is acknowledged at once by a thread reading the signal's wakeup descriptor (``mime._interrupt``) and stops the run
 at its next chunk, written as the steps reached, marked stopped, exit 130; the second quits within a second wherever
 the main thread is, inside a compiled chunk too, leaving no ``outputs.json``.
 
@@ -27,7 +27,7 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 from process_groups import stop_group
 
-from mime.cli._interrupt import INTERRUPTED, USER_STOP
+from mime._interrupt import INTERRUPTED, USER_STOP
 from mime.control._run import MIN_CHUNK, TARGET_CHUNKS, automatic_chunks
 from mime.experiment import Experiment
 from mime.results import RunResult

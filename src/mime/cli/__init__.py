@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mime._extras import VERIFY_EXTRA_MISSING
-from mime.cli._interrupt import INTERRUPTED, Interrupt
+from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
 from mime.assets import AssetRef
 from mime.build import BuildRefused, InternalError, Refusal, RefusalClass, RunFailed, UnrecognisedError
@@ -84,7 +84,7 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
          every: float | None = None, stage_every: float | None = None, commands: Path | None = None) -> int:
     """``mime run``. Ctrl+C: the first press, while the experiment loads and builds, ends the command (130, nothing
     written); once the run is under way it stops the run at its next chunk and the run folder is written as the steps
-    reached, marked stopped (130); the second quits at once, writing nothing (``mime.cli._interrupt``)."""
+    reached, marked stopped (130); the second quits at once, writing nothing (``mime._interrupt``)."""
     with Interrupt() as interrupt:
         try:
             return _ran(folder, duration, out, history, record, every, stage_every, commands, interrupt)

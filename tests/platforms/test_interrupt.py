@@ -1,4 +1,4 @@
-"""The machinery of Ctrl+C on ``mime run`` (``mime.cli._interrupt``) in this process, on every platform: the signal is
+"""The machinery of Ctrl+C on ``mime run`` (``mime._interrupt``) in this process, on every platform: the signal is
 raised with ``signal.raise_signal``, which Windows too runs through Python's own handler and wakeup descriptor, and the
 subprocess tests of the same behaviour (``tests/env/test_run_interrupt.py``) need a child to send SIGINT to and so run
 on POSIX only. What is not exercised here: a Windows console's CTRL_C_EVENT, and a terminal's keypress.
@@ -18,7 +18,7 @@ import jax
 import pytest
 
 from mime.cli import main as mime_main
-from mime.cli._interrupt import INTERRUPTED, USER_STOP, Interrupt
+from mime._interrupt import INTERRUPTED, USER_STOP, Interrupt
 from mime.control._run import automatic_chunks
 from mime.experiment import Experiment
 from mime.results import RunResult

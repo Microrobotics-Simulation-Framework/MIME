@@ -87,7 +87,7 @@
   the last file of a folder, so a run quit while it is written is not a folder that reads. A press while the
   experiment loads or builds ends the command (130, nothing written), as it does in `mime verify`; one in the first
   second or two, while `mime` itself is imported, is Python's own (a traceback). How it works, and what it cannot
-  do, is in [`_interrupt.py`](_interrupt.py).
+  do, is in [`mime/_interrupt.py`](../_interrupt.py).
 - `mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--mime-version <v>]
   [--xla-cache <dir>] [--record <file>]`: what a runner calls before a run (see [`mime.env`](../env/README.md)). It holds the installed
   distributions to the variant's pins and the lab's, MIME to `--mime-version` (the pinned wheel's; without it MIME is
