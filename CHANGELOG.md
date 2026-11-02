@@ -36,6 +36,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a spin that overflows the term, since the large step it showed no longer overflows.
 
 ### Added
+- **An orientation-aware containment contact: `Contact` 0.2.0 holds the body's hull** (dev1 phase 7o, designs #196
+  and #204; review 7l-c's F1, MIME-ANO-131): `Contact.Projection(margin=..., spacing=...)` keeps the body at least
+  `margin` from the surface, its orientation read. In the body's own update (`RigidInertialNode`), each step seeds a
+  contact from each of the hull's eight groups of samples at `spacing` (the margin by default, a numerical default),
+  the group's sample nearest the surface, and holds the body's own deepest point near it inside the implicit solve, the
+  outward velocity there taken away with the rotation coupled in, by projected Gauss-Seidel as a dynamic chain's
+  joint stops are solved (inelastic, frictionless, its forces never pulling), then projects the pose back after the
+  step. A turned body touching at two points takes the couple that holds it, and a screw whose axial moment is its
+  smallest, which turns broadside under a rotating field, is held at the bore's limit (20.45 degrees on review 7l-c's
+  arms, its body exactly the margin from the wall) instead of passing through the wall. Projection, not penalty; no
+  code of its own for a body or a wall, laid out over contact pairs (a hull against a wall; two bodies' hulls by their
+  supports are the layout's next, `mime.nodes.body._contact`). A body with no hull is held as a sphere of its extent,
+  by 0.1.0's projection. Where no point reaches the margin the step is the free body's to the last bit. The body's
+  state adds `contact_points`, `contact_forces` and `contact_residual`; a result raises `<body>.touching`,
+  `<body>.unconverged` (the solve's residual above `CONVERGED`, a thousandth of the free step's normal speeds) and, for
+  a kind with no support, `<body>.held_by_samples`; the build report states what the contact holds and how short its
+  samples fall. Refused when planned: a spacing for a body with no hull, a hull a dynamics cannot hold, a surface whose
+  shape takes one point at a time, and a spacing whose samples fall farther from the body than the margin, naming one
+  that keeps within it (`confinement.no-hull`, `confinement.hull-not-held`, `confinement.surface-shape`,
+  `confinement.spacing-short`); left unwritten, the spacing is the margin, no finer than `SPACING_FLOOR` of the hull's
+  size, and a spacing that takes more than `JUDGED_SAMPLES` to judge is refused before any sample is made.
+- **The support query on the geometry protocol** (review 7o's F2, option B; design #204): `Geometry.support(parameters,
+  direction, near)`, a body's farthest point along a direction and its derivative in the direction (`Support`),
+  reading no wall, in the order a kind can give it: a closed form for the sphere, the ellipsoid, the cylinder and the
+  capsule (a cylinder's and a capsule's for the end its point `near` lies at, so a body lying along a wall is held at
+  both ends; `cylinder.support`, a new switch, where the whole cap ties); Newton's steps on its own surface's
+  parameterisation from a sample for the screw (four, their gradients stopped, and one flowing, so its derivatives
+  are the implicit function's); and none for a kind with neither (the box, a lab's mesh), which the contact holds by
+  its samples. `support_basis` says which, and `support_error` how far a fitted stand-in may miss (zero for the
+  others); the conformance suite holds every kind to a dense quadrature (`mime.testing.support_problems`). The
+  contact finds the body's own deepest point against a wall from it, the fixed point `x = s(n(x))` by Newton's steps
+  with the wall's curvature (`Shape.curvature`, which the cylinder gives), so the touching point moves continuously
+  as the body turns and the hold takes no spin from a body of revolution: the review's smooth cylinder spun at 50 Hz
+  on the floor keeps its spin to the last bit over 2 s (it kept 113 of 314 rad/s held by its samples).
+- **The convex cut** (review 7o's F1): a shape whose region is convex declares `convex = True` (the cylinder, the
+  tube's lumen), and against it each group's candidates are its own convex hull's vertices
+  (`mime.nodes.body.convex_candidates`), which choose the step all its points choose, to the bit: 2,236 of FL-9's
+  15,327 samples at the default spacing. Against a surface that declares nothing every candidate is kept.
+- **The contact's solve does no positive work and reports its convergence** (review 7o's F7): the sweeps' forces are
+  scaled along their own ray to where they do no work on the motion they leave, so their power at the held twist is
+  never positive (on a long rod whose rows couple at +0.98 the sweeps alone left +1.3 % of the step's energy rate);
+  the residual is the state's `contact_residual`.
+- **A contact handles admissibility only** (design #196): `Interaction.includes_lubrication`, which
+  the drag's surrogate rung with `lubrication=` declares; the contact never adds it, and the plan refuses two laws on
+  one body that include it (`lubrication.twice`).
+- **`mime.core.switch.argmin`**, the index of a row's least, a switch with an owner (the contact's choice of each
+  group's seed, `contact.point`), and **the cylinder shape takes arrays of points** (`(..., 3)`), each evaluated as
+  alone, to the bit, and gives its normal's derivative (`curvature`, with the `cylinder.axis` switch).
 - **Four forward defences for the saved form and the stage; no format's bytes change.** (1) The contract is written in
   the `saved`, `scene` and `viz` READMEs: a saved folder never holds results or presentation, overlays live in run or
   study folders or the asset cache, and every layer MIME composes resolves inside its own folder. (2) `/World` is the
@@ -783,6 +831,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **`Contact.Projection` is the contact 0.2.0**, which holds the hull's points (above); the contact 0.1.0, which held
+  the body's centre by its extent and never read its orientation, stays registered (`mime.interactions.KEPT`), so that
+  a folder saved with it loads and reproduces, and the experiments whose comparisons were declared against it build
+  it: script A and A0 (`tests/script_a.py`, `tests/script_a0.py`, `tests/script_a0_dynamic.py`, `examples/script_a.py`)
+  and the frozen register's scripts (`scripts/sim2real/operating_point.py`, `FROZEN_INTERACTIONS`, held by
+  `tests/differential/test_frozen_register_pins.py`), so nothing preregistered moves. `rigid_inertial` 0.3.0 and the
+  kept 0.2.0 both gain the hull's hold (`Capability.HOLDS_HULL`; 0.3.0's solve takes its own, unsymmetric, step
+  matrix, the projection after it the mass matrix), and what each computed for a centre's confinement, or none, is
+  unchanged. The golden outputs of the cylinder 0.1.0 and the ellipsoid 0.1.0 were regenerated: their case
+  (`bound_robot_with_parts`) now holds its ellipsoid shell by its points, where 0.1.0 held its centre by a declared
+  extent of 2.07 mm against a shell of 1.56 mm, and its shell starts on the floor so that every leaf of the contact
+  acts in the case's steps.
 - **A controller inside the compiled step has its step traced twice at the build, not four times** (profiling pass
   candidate C2): the trace check's trace is also the purity check's first program, compared with one more of a function of
   its own, and the host-callback probe leaves the controller's node to the trace check's search of the first. The checks

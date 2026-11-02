@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 from mime.gradients import GradientStatus
-from mime.nodes.body import SURFACE, RigidInertialMidpointNode, RigidInertialNode
+from mime.nodes.body import HULL, SURFACE, RigidInertialMidpointNode, RigidInertialNode
 from mime.registry import BuildContext, Dynamics, Port, Problem, register_dynamics
 from mime.things import ThingKind
 from mime.units import DIMENSIONLESS, FREQUENCY, LENGTH, VELOCITY, Magnitude
@@ -54,7 +55,9 @@ class RigidInertial(Dynamics):
     It sums every applied wrench and background load, integrates every delivered resistance implicitly,
     ``(M/dt + R) dV = F - R V``, ``V' = V + dV`` (there is no explicit setting), takes the gyroscopic term linearly
     implicit at the midpoint (it keeps a torque-free body's kinetic energy and the magnitude of its angular momentum
-    to second order; MIME-ANO-129), and projects a confinement after the step.
+    to second order; MIME-ANO-129), and holds a confinement: its centre by its extent, projected after the step, or
+    its hull by impulses through the step's system and a projection after it (``Contact`` 0.2.0;
+    ``RigidInertialNode``), which needs nothing of a body's dynamics but this capability, so both versions hold both.
 
     Version 0.3.0 takes the gyroscopic term linearly implicit at the midpoint, where 0.2.0 took it explicit: the
     explicit term gained kinetic energy at every step for a body of three different moments, 2.6 times in a second at
@@ -81,7 +84,7 @@ class RigidInertial(Dynamics):
     builds = {"": (RigidInertialMidpointNode,)}
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,
-                       Capability.PROJECTS_CONFINEMENT})
+                       Capability.PROJECTS_CONFINEMENT, Capability.HOLDS_HULL})
     publishes = {POSE.name: Port("pose"), TWIST.name: Port("twist")}
     accepts = {APPLIED_WRENCH.name: Port("applied_wrench"), RESISTANCE.name: Port("resistance"),
                BACKGROUND_LOAD.name: Port("background_load"), CONFINEMENT.name: Port("confinement")}
@@ -123,7 +126,16 @@ class RigidInertial(Dynamics):
                             initial_twist=twist))
             return
         (held,) = ctx.confinements
+        hull: dict[str, Any] = {}
+        if held.hull is not None:
+            kind = held.hull.kind
+            settings = {setting.name: held.hull.settings.get(setting.name, getattr(kind, setting.name))
+                        for setting in dataclasses.fields(kind)}
+            hull = {"hull_kind": kind.name, "hull_kind_version": kind.version, "hull_patches": tuple(kind.patches),
+                    "hull_counts": held.counts, "hull_centre": held.hull.centre,
+                    "hull_rotation": tuple(c for row in held.hull.rotation for c in row),
+                    **{f"{HULL}{name}": value for name, value in settings.items()}}
+        surface: dict[str, Any] = {f"{SURFACE}{name}": value for name, value in held.parameters.items()}
         b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
                         initial_twist=twist, surface_shape=held.shape, extent=held.extent, margin=held.margin,
-                        velocity_rule=held.rule,
-                        **{f"{SURFACE}{name}": value for name, value in held.parameters.items()}))
+                        velocity_rule=held.rule, **hull, **surface))

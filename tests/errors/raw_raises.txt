@@ -59,12 +59,12 @@ nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 2  # a node's co
 nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_reaction.py::SourceReactionNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/hydro/mrs/_node.py::_registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/_kinds.py::registered_kind ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_tube.py::table_provenance ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_tube.py::unit_tube_table ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_walls.py::register_wall_correction ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded

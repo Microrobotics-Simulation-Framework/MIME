@@ -30,7 +30,7 @@ from mime import Apparatus, Body, Experiment, Medium, PermanentMagnet, State, St
 from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
-from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import KEPT, Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
 from mime.scene import Box, Scene, Screw, Tube, X, Z
@@ -58,6 +58,10 @@ from mime.units import (
 )
 
 REFERENCE = "the 0.2 line's script A (MIME-port041 at 6485516)"
+#: The reference held its body by its centre, its extent kept from the wall (the contact 0.1.0, which MIME keeps
+#: registered for reproductions like this one); a new experiment writes Contact.Projection(...), which holds the body's
+#: hull, its orientation read.
+CentreContact, _ = KEPT["contact", "0.1.0"]
 #: FL-9: R 1.56 mm, L 7.47 mm, nu 2.33, modulation 0.33, two starts (de Jongh et al. 2025, Table 1).
 FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
             starts=2)
@@ -99,7 +103,7 @@ def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
-    experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    experiment.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     experiment.observe(SwimSpeed(umr, along=tube.axis))
     return experiment
 
@@ -156,7 +160,7 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
-    experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    experiment.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     experiment.observe(SwimSpeed(umr, along=tube.axis))
     return experiment
 
@@ -191,7 +195,7 @@ def exploring_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
-    experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    experiment.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     experiment.observe(SwimSpeed(umr, along=tube.axis))
     return experiment
 

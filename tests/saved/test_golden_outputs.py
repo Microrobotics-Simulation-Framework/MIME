@@ -37,8 +37,10 @@ GOLDEN = Path(__file__).parent / "golden" / "outputs"
 STEPS = 8
 RTOL = 1e-10
 #: The least scale a field is judged against, by name: a difference over the step, one radian over the chain cases'
-#: 1 ms step (rad/s), so that the floor is the positions' 1e-10 tolerance carried over the step.
-FLOORS = {"frame_angular_velocities": 1e3}
+#: 1 ms step (rad/s), so that the floor is the positions' 1e-10 tolerance carried over the step; and the contact's
+#: residual, a share of the held points' speed, on the scale of that share (one): on a converged step it is rounding
+#: over a body's slow start, some 1e-13, which moves by its own size across machines (CI's lanes against a laptop).
+FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0}
 
 
 def path_of(key: tuple[str, str, str], rung: str = "") -> Path:

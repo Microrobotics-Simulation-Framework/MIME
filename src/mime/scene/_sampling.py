@@ -48,6 +48,7 @@ again at moved settings sees the steps (the package's README says more)."""
 from __future__ import annotations
 
 import importlib
+import math
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
@@ -289,6 +290,92 @@ def body_reach(kind: Geometry, settings: Mapping[str, Magnitude],
     return sampled_reach(samples)
 
 
-__all__ = ["LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach", "length_of",
-           "magnitude_of", "nearest", "quadrature", "quadrature_arrays", "quadrature_counts", "quasi_uniform",
-           "sampled_reach"]
+#: The directions a hull's samples' shortfall is taken over (:func:`samples_shortfall`): on a Fibonacci sphere, with
+#: the six axes and the eight diagonals; and how much finer the quadrature is that a kind with no support is judged
+#: against.
+SHORTFALL_DIRECTIONS = 2048
+SHORTFALL_REFINEMENT = 4
+#: The most samples the plan judges a hull's shortfall from (``judged_samples``). A declaration, so that a plan never
+#: takes more of a machine than a test does: measured at 1.3 million on a sphere, every sample a hull vertex, 2.7 GB and
+#: 47 s, and at 1.5 million on FL-9, 0.7 GB and 10 s; FL-9 at the default spacing has 15,327.
+JUDGED_SAMPLES = 2_000_000
+_DIRECTIONS_AT_ONCE = 64
+_shortfalls: dict[tuple[object, ...], float] = {}
+
+
+def shortfall_directions() -> np.ndarray:
+    i = np.arange(SHORTFALL_DIRECTIONS) + 0.5
+    polar = np.arccos(1.0 - 2.0 * i / SHORTFALL_DIRECTIONS)
+    turn = np.pi * (1.0 + np.sqrt(5.0)) * i
+    spread = np.stack([np.sin(polar) * np.cos(turn), np.sin(polar) * np.sin(turn), np.cos(polar)], axis=1)
+    corners = np.asarray([(x, y, z) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=np.float64)
+    return np.concatenate([spread, np.eye(3), -np.eye(3), corners / np.sqrt(3.0)])
+
+
+def _hull_points(points: np.ndarray) -> np.ndarray:
+    """The vertices of ``points``' convex hull (every point where there is none): the only points a support needs."""
+    from scipy.spatial import ConvexHull, QhullError
+
+    try:
+        return points[ConvexHull(points).vertices]
+    except QhullError:
+        return points
+
+
+def _farthest_along(points: np.ndarray, directions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Each direction's farthest of ``points`` and its reach along it, a few directions at a time: all of them at once
+    would hold a number per point and direction, 16 kB a point, and every sample of a round body is a hull vertex."""
+    index, reach = np.empty(len(directions), dtype=np.int64), np.empty(len(directions))
+    for start in range(0, len(directions), _DIRECTIONS_AT_ONCE):
+        along = points @ directions[start:start + _DIRECTIONS_AT_ONCE].T
+        index[start:start + _DIRECTIONS_AT_ONCE] = np.argmax(along, axis=0)
+        reach[start:start + _DIRECTIONS_AT_ONCE] = np.max(along, axis=0)
+    return index, reach
+
+
+def judged_samples(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float) -> int:
+    """About how many samples :func:`samples_shortfall` reads to judge ``spacing``, known before any is made (each
+    patch's counts' product, which a patch of two faces has twice of): its quadrature's at ``spacing``, and
+    ``SHORTFALL_REFINEMENT`` times finer for a kind with no support."""
+    from mime.registry import implements
+
+    finest = spacing if implements(kind, "support") else spacing / SHORTFALL_REFINEMENT
+    return sum(math.prod(counts) for counts in quadrature_counts(kind, settings, finest, tuple(kind.patches)))
+
+
+def samples_shortfall(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float) -> float:
+    """How far the body reaches past its quadrature's samples at ``spacing`` on every patch (m): the largest, over
+    ``shortfall_directions``, of its farthest point's reach less its farthest sample's. The body's reach is its
+    support's where its kind has one (from the farthest sample, exact), and its quadrature's at
+    ``SHORTFALL_REFINEMENT`` times finer spacing otherwise (its own shortfall about that factor squared smaller). An
+    estimate over finitely many directions, which may miss the largest by a little; a contact holding a body by its
+    samples keeps the body within the margin less this, so the plan refuses a spacing whose shortfall passes the
+    margin (``confinement.spacing-short``)."""
+    key = (type(kind).__name__, getattr(kind, "version", ""), tuple(sorted((k, repr(v)) for k, v in settings.items())),
+           spacing)
+    held = _shortfalls.get(key)
+    if held is not None:
+        return held
+    from mime.registry import implements
+
+    patches = tuple(kind.patches)
+    points = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))[0]
+    coarse = _hull_points(points)
+    directions = shortfall_directions()
+    index, sampled = _farthest_along(coarse, directions)
+    if implements(kind, "support"):
+        with cast(Any, jax).enable_x64(True):
+            found = kind.support(_parameters(settings), jnp.asarray(directions), jnp.asarray(coarse[index]))
+            body = np.einsum("ij,ij->i", np.asarray(found.point, dtype=np.float64), directions)
+    else:
+        fine = quadrature_arrays(kind, settings, patches,
+                                 quadrature_counts(kind, settings, spacing / SHORTFALL_REFINEMENT, patches))[0]
+        body = _farthest_along(_hull_points(fine), directions)[1]
+    held = max(float(np.max(body - sampled)), 0.0)
+    _shortfalls[key] = held
+    return held
+
+
+__all__ = ["JUDGED_SAMPLES", "LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach",
+           "judged_samples", "length_of", "magnitude_of", "nearest", "quadrature", "quadrature_arrays",
+           "quadrature_counts", "quasi_uniform", "sampled_reach", "samples_shortfall", "shortfall_directions"]

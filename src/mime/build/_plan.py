@@ -49,7 +49,7 @@ from mime.build._refusals import (
 )
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.build._watch import WATCHED_FAMILY, WatchPlan
-from mime.core import VELOCITY_RULES
+from mime.core import VELOCITY_RULES, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
@@ -107,6 +107,7 @@ from mime.scene import (
     valid_prim_path,
     world_frame,
 )
+from mime.scene._sampling import JUDGED_SAMPLES, judged_samples, quadrature_arrays, quadrature_counts, samples_shortfall
 from mime.things import (
     WORLD,
     Apparatus,
@@ -191,7 +192,9 @@ class ResolvedRead:
 class ResolvedConfinement:
     """A confinement addressed to a body's dynamics: the confining entry's id, the confined body, the surface it
     binds (``tube.inner_surface``), the shape that surface's free side is evaluated with and its parameters in SI,
-    the margin and the body's extent in metres, and the velocity rule."""
+    the margin and the body's extent in metres, and the velocity rule. A confinement that holds the body's hull
+    carries the hull (its kind, settings and placement in the body) and the counts of its samples on each of its
+    kind's patches at the confinement's spacing, and an extent of zero, which it does not read."""
 
     id: str
     subject: str
@@ -201,6 +204,8 @@ class ResolvedConfinement:
     margin: float
     extent: float
     rule: str
+    hull: Hull | None = None
+    counts: tuple[tuple[int, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -636,6 +641,7 @@ class _Planner:
         self.check_ids()
         self.resolve_values()
         self.plan_confinements()
+        self.plan_lubrication()
         self.collect_registrations_and_slots()
         self.check_readers_outside_parts()
         self.declare_controller()
@@ -2781,14 +2787,38 @@ class _Planner:
                             f"{', '.join(c.id for c in plan.confinements)}, so that one confinement, such as "
                             f"exp.attach(Contact.Projection(...), ...), binds the body")
 
+    def plan_lubrication(self) -> None:
+        """At most one law bound to a body includes near-wall lubrication (``Interaction.includes_lubrication``): a
+        drag that resolves the film declares so, and a contact handles admissibility alone and never adds it, so two
+        that include it count the film twice."""
+        including: dict[str, list[str]] = {}
+        for plan in self.readers:
+            law = plan.entry
+            if plan.section is not Section.INTERACTION or not isinstance(law, Interaction) \
+                    or not law.includes_lubrication():
+                continue
+            for role, kind in plan.reader_cls().roles.items():
+                if kind is RoleKind.BODY and role in plan.bindings:
+                    including.setdefault(plan.bindings[role], []).append(plan.owner)
+        for body, owners in including.items():
+            if len(owners) > 1:
+                self.refuse("lubrication.twice", RefusalClass.USER,
+                            f"body {body!r} is bound to {', '.join(owners)}, each of which includes near-wall "
+                            f"lubrication: the film between the body and the wall would be counted twice",
+                            f"keep the lubrication in one of them: the drag's (lubrication=Lubrication(...)), and a "
+                            f"contact that handles admissibility alone, such as exp.attach(Contact.Projection(...), "
+                            f"...)")
+
     def plan_confinement(self, plan: EntryPlan, confinement: Confinement) -> None:
         cls = plan.reader_cls()
         where = f"interaction {plan.owner}"
         declared_values: Mapping[str, Value] = plan.plan.values if plan.plan is not None else {}
+        holds_hull = confinement.spacing is not None
         if (cls.roles.get(confinement.role) is not RoleKind.BODY or cls.roles.get(confinement.surface)
-                is not RoleKind.SURFACE or confinement.extent not in declared_values):
-            self.defect(cls, "its confinement names a body role, a surface role and the label of the body's extent "
-                             "among its values")
+                is not RoleKind.SURFACE or (holds_hull != (confinement.extent is None))
+                or (not holds_hull and confinement.extent not in declared_values)):
+            self.defect(cls, "its confinement names a body role, a surface role and either the label of the body's "
+                             "extent among its values or the spacing of its hull's points, not both")
             return
         entry = self.interface(cls, confinement.target, (TargetKind,), "confines through")
         if entry is None:
@@ -2820,8 +2850,8 @@ class _Planner:
                         "write one of the built rules, rule=\"<rule>\". "
                         f"{did_you_mean(confinement.rule, VELOCITY_RULES)}")
             return
-        extent = plan.values.get(confinement.extent)
-        if extent is None:
+        extent = plan.values.get(confinement.extent) if confinement.extent is not None else None
+        if extent is None and not holds_hull:
             return  # refused as undeclared
         geometry = self.geometries[owner]
         shape = type(geometry.geometry).surfaces[part]
@@ -2830,9 +2860,95 @@ class _Planner:
         except Exception as error:  # noqa: BLE001
             self.defect(geometry.registered.cls, f"surface_parameters({part!r}) raised {error!r}", error)
             return
+        if not holds_hull:
+            dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
+                                                             confinement.margin, cast(float, cast(Any, extent).value),
+                                                             confinement.rule))
+            return
+        if Capability.HOLDS_HULL not in dynamics.record.flags:
+            self.refuse("confinement.hull-not-held", RefusalClass.USER,
+                        f"{where} holds {body!r}'s hull against {surface}, and its dynamics {dynamics.describe()} "
+                        f"holds only a centre by its extent", f"give {body!r} a dynamics that holds a hull, "
+                        f"dynamics=...: " + _qualifying(EntryKind.DYNAMICS, lambda r: Capability.HOLDS_HULL in r.flags))
+            return
+        hull = self.hull_of(body)
+        if hull is None or not implements(hull.kind, "samples"):
+            held = f"{body!r} has no hull" if hull is None else f"{hull.label()} gives no samples of its surface"
+            self.refuse("confinement.no-hull", RefusalClass.USER,
+                        f"{where} holds {body!r}'s hull against {surface}, and {held}, so there is no point of the "
+                        f"body to hold", f"give {body!r} one part outside every other whose kind samples its surface "
+                                         f"(a sphere, a capsule, a screw, a cylinder, a box, an ellipsoid): "
+                                         f"parts={{\"shell\": Part(Sphere(...))}}")
+            return
+        if not getattr(shape_named(shape), "takes_many", False):
+            self.refuse("confinement.surface-shape", RefusalClass.USER,
+                        f"{where} holds {body!r}'s hull against {surface}, whose shape {shape!r} evaluates one point "
+                        f"at a time, and the contact holds every point of the hull at once",
+                        "bind surface= a surface whose shape takes many points, such as surface=tube.inner_surface")
+            return
+        patches = tuple(hull.kind.patches)
+        spacing = cast(float, confinement.spacing)
+        short = self.spacing_short(plan.owner, hull, spacing, confinement.margin)
+        if short is None:
+            return
+        counts = quadrature_counts(hull.kind, hull.settings, spacing, patches)
         dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
-                                                         confinement.margin, cast(float, extent.value),
-                                                         confinement.rule))
+                                                         confinement.margin, 0.0, confinement.rule, hull, counts))
+        from mime.nodes.body._contact import CONVERGED
+
+        held = len(quadrature_arrays(hull.kind, hull.settings, patches, counts)[0])
+        convex = getattr(shape_named(shape), "convex", False)
+        basis = type(hull.kind).support_basis
+        seeds = (f"its {held:,} points at a spacing of {spacing * 1e3:.4g} mm"
+                 + (f" (each of its groups' cut to the vertices of its own convex hull, {surface}'s free side being "
+                    f"convex)" if convex else ""))
+        holding = (f"seeds each of its groups from {seeds} and holds the body's own deepest point near each, found by "
+                   f"its kind's support ({basis}), so the point moves continuously as the body turns"
+                   if implements(hull.kind, "support") else
+                   f"holds {seeds} (its kind has no support query, so the body is held by its samples: a turning "
+                   f"body's samples arrive at the wall off its line of contact, and the inelastic hold acts as a "
+                   f"friction and a shaking set by the spacing; the flag {body}.held_by_samples)")
+        line = (f"{holding}, keeping {hull.label()} {confinement.margin * 1e3:.4g} mm from {surface}, its orientation "
+                f"read; the samples fall up to {short * 1e6:.3g} um short of the body; inelastic, frictionless and "
+                f"adding no lubrication; the points it holds, their forces and the solve's residual are {body}'s "
+                f"state (contact_points, contact_forces, contact_residual), a step that holds one raises the flag "
+                f"{body}.touching, and one whose solve is left above {CONVERGED:g} of the free step's normal speeds "
+                f"raises {body}.unconverged")
+        self.checked = {**self.checked, plan.owner: (*self.checked.get(plan.owner, ()), line)}
+
+    def spacing_short(self, owner: str, hull: Hull, spacing: float, margin: float) -> float | None:
+        """How far ``hull``'s samples at ``spacing`` fall short of its body (``samples_shortfall``), or ``None`` where
+        that passes the margin (a thousandth of the hull's size at a margin of zero), which is refused
+        (``confinement.spacing-short``), naming the spacing that keeps within it. A spacing that takes more than
+        ``JUDGED_SAMPLES`` to judge is refused too, before any sample is made, and so the search for the finer one
+        stops there: they are what a machine's memory goes on."""
+        judged = judged_samples(hull.kind, hull.settings, spacing)
+        if judged > JUDGED_SAMPLES:
+            coarser = spacing * math.sqrt(judged / JUDGED_SAMPLES) * 1.01
+            self.refuse("confinement.spacing-short", RefusalClass.USER,
+                        f"interaction {owner} seeds {hull.label()} from its samples at a spacing of "
+                        f"{spacing * 1e3:.4g} mm, {judged:,} of them to judge, past the {JUDGED_SAMPLES:,} the plan "
+                        f"holds in memory for it", f"write spacing=mm({coarser * 1e3:.3g}) or coarser")
+            return None
+        size = float(cast(Any, hull.kind).enclosing_radius(hull.settings))
+        bound = margin if margin > 0.0 else 1e-3 * size
+        short = samples_shortfall(hull.kind, hull.settings, spacing)
+        if short <= bound:
+            return short
+        finer = spacing
+        while samples_shortfall(hull.kind, hull.settings, finer) > bound \
+                and judged_samples(hull.kind, hull.settings, finer / 2.0) <= JUDGED_SAMPLES:
+            finer /= 2.0
+        within = samples_shortfall(hull.kind, hull.settings, finer) <= bound
+        self.refuse("confinement.spacing-short", RefusalClass.USER,
+                    f"interaction {owner} seeds {hull.label()} from its samples at a spacing of {spacing * 1e3:.4g} mm, "
+                    f"which fall up to {short * 1e6:.3g} um short of the body, past the "
+                    + (f"margin of {margin * 1e3:.4g} mm" if margin > 0.0 else
+                       f"thousandth of its size ({bound * 1e6:.3g} um) that a margin of zero allows"),
+                    f"write spacing=mm({finer * 1e3:.4g}) or finer, or a larger margin=mm(...)" if within else
+                    f"write a larger margin=mm(...): a spacing of {finer * 1e3:.4g} mm, the finest the plan judges, is "
+                    f"still short of this one")
+        return None
 
     def value_lines(self) -> tuple[ValueLine, ...]:
         """Every value an entry reads, with its readers; every value declared in the experiment that none reads; and

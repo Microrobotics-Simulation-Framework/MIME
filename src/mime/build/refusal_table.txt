@@ -60,9 +60,13 @@ conditions.form               user
 conditions.tolerance          user
 conditions.units              user
 conditions.value              user
+confinement.hull-not-held     user
 confinement.more-than-one     user
 confinement.moving-surface    user
+confinement.no-hull           user
 confinement.rule              user
+confinement.spacing-short     user
+confinement.surface-shape     user
 control.law-raised            user
 control.law-traced-branch     user
 control.law-writes            user
@@ -182,6 +186,7 @@ load.stage-writer             environment
 load.units                    user
 load.unknown-entry            environment
 load.version                  environment
+lubrication.twice             user
 maddening.compile             internal
 maddening.dtype               internal
 maddening.error               internal

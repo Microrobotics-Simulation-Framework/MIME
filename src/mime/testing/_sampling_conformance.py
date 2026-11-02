@@ -29,6 +29,14 @@ force's own gap (it is a body's point, so it cannot overstate), never below it b
 point lies from the nearest of its own samples, and its gradient among the samples tied for farthest (the one sample,
 or their mean: the middle of a face or a segment, as the closed forms take it), reaching as far as it says.
 
+**Support** (:func:`support_problems`): the support query (``Geometry.support``) against the same brute force over
+:func:`directions`, from the kind's own sample farthest along each (``near``) at ``BODY_REACH_SPACING`` of its size:
+its point reaches no less far than the body's farthest dense point less the dense quadrature's own gap, and no
+further, each by no more than ``support_error`` of its size beyond that (a closed form's and a refinement's is zero);
+its point lies on the body (within two dense spacings of a dense sample, which no quadrature crowds closer at a pole); and its derivative in the direction is the central
+difference of its point, where the point moves smoothly (off a tie, read from the difference itself). A kind with no
+support passes untested (a contact holds it by its samples).
+
 **Distance** (:func:`distance_problems`): a wall kind's signed distance and normal at points of the medium: the
 normal a unit vector and the distance's gradient, the distance against a closed form the caller writes from the wall's
 definition; free space has none."""
@@ -365,6 +373,74 @@ def body_reach_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
     return found
 
 
+#: The step of the support's central difference in the direction, a share of its length.
+SUPPORT_STEP = 1e-6
+
+
+def support_problems(kind: Geometry, settings: Mapping[str, Magnitude], *,
+                     support: Callable[[Mapping[str, Any], Any, Any], Any] | None = None) -> list[str]:
+    """Every way ``kind``'s support query (or ``support``, a control's) fails against a dense quadrature of the body
+    over :func:`directions`, from the kind's own sample farthest along each; nothing for a kind with no support or
+    that samples no surface."""
+    if not kind.patches or (support is None and not implements(kind, "support")):
+        return []
+    coarse = _size(kind, settings)
+    if coarse is None:
+        return [f"{kind.label()}: it gives no size (an enclosing radius or a radial reach) to scale the brute force by"]
+    patches = tuple(kind.patches)
+    dense_spacing = coarse * REACH_SPACING
+    points, _, _ = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, dense_spacing, patches))
+    own, _, _ = quadrature_arrays(kind, settings, patches,
+                                  quadrature_counts(kind, settings, coarse * BODY_REACH_SPACING, patches))
+    gap = REACH_GAP * dense_spacing * dense_spacing / coarse
+    allowed = gap + float(type(kind).support_error) * coarse
+    rounding = 64.0 * float(np.finfo(np.float64).eps) * coarse
+    query = support if support is not None else kind.support
+    label = kind.label()
+    found: list[str] = []
+    held = directions()
+    near = own[np.argmax(own @ held.T, axis=0)]
+    with cast(Any, jax).enable_x64(True):
+        parameters = _parameters(settings)
+        def answered(d: Any, n: Any) -> Any:
+            return query(parameters, d, n)
+
+        answer = cast(Any, jax).jit(answered)
+
+        def point(d: np.ndarray) -> np.ndarray:
+            return np.asarray(answer(jnp.asarray(d), jnp.asarray(near)).point, dtype=np.float64)
+
+        result = answer(jnp.asarray(held), jnp.asarray(near))
+        reached = np.asarray(result.point, dtype=np.float64)
+        slope = np.asarray(result.jacobian, dtype=np.float64)
+        step = SUPPORT_STEP
+        moved = [(point(held + step * np.eye(3)[k]) - point(held - step * np.eye(3)[k])) / (2.0 * step) for k in range(3)]
+        across = np.stack(moved, axis=-1)
+        half = [(point(held + 0.5 * step * np.eye(3)[k]) - point(held - 0.5 * step * np.eye(3)[k])) / step
+                for k in range(3)]
+        finer = np.stack(half, axis=-1)
+    for i, d in enumerate(cast(list[np.ndarray], list(held))):
+        where = np.round(d, 3).tolist()
+        brute = float(np.max(points @ d))
+        value = float(reached[i] @ d)
+        if not value >= brute - allowed - rounding:
+            found.append(f"{label}: its support along {where} reaches {value:.9g} m, short of its body's farthest "
+                         f"{brute:.9g} m by {brute - value:.3g} m, beyond the {allowed:.3g} m allowed")
+        if not value <= brute + allowed + rounding:
+            found.append(f"{label}: its support along {where} reaches {value:.9g} m, past its body's farthest "
+                         f"{brute:.9g} m by {value - brute:.3g} m, beyond the {allowed:.3g} m allowed")
+        offsets: np.ndarray = points - reached[i][None, :]
+        nearest = float(np.sqrt(np.min(np.sum(offsets * offsets, axis=1))))
+        if not nearest <= 2.0 * dense_spacing + float(type(kind).support_error) * coarse:
+            found.append(f"{label}: its support along {where} is {nearest:.3g} m from its body's nearest dense point, "
+                         f"no point of its body")
+        smooth = np.max(np.abs(across[i] - finer[i])) <= 1e-4 * coarse
+        if smooth and not np.max(np.abs(slope[i] - across[i])) <= 1e-5 * coarse + 1e-3 * np.max(np.abs(across[i])):
+            found.append(f"{label}: along {where} its support's derivative in the direction differs from its point's "
+                         f"central difference by {np.max(np.abs(slope[i] - across[i])):.3g} m")
+    return found
+
+
 def distance_problems(wall: WallKind, parameters: Mapping[str, Any], points: np.ndarray,
                       closed_form: Callable[[np.ndarray], tuple[np.ndarray, np.ndarray]] | None) -> list[str]:
     """Every way ``wall``'s distance at ``points`` (each of the medium, world frame) fails: its normal not a unit
@@ -417,4 +493,5 @@ def distance_problems(wall: WallKind, parameters: Mapping[str, Any], points: np.
 __all__ = ["BODY_REACH_SPACING", "CONDITION_BOUNDS", "COVERAGE_BAND", "COVERAGE_LEAST", "DIRECTIONS", "FINER_SAMPLES",
            "NEAREST_FIFTH", "NEAREST_LEAST", "REACH_GAP", "REACH_SPACING", "SEAM_WIDTH", "SUITE_SAMPLES",
            "quadrature_size", "SamplingQuality", "body_reach_problems", "condition_number", "conditioning_problems",
-           "directions", "distance_problems", "reach_problems", "sampled_points", "sampling_problems", "sampling_quality", "suite_spacing"]
+           "directions", "distance_problems", "reach_problems", "sampled_points", "sampling_problems", "sampling_quality", "suite_spacing",
+           "support_problems"]

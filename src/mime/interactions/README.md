@@ -85,3 +85,28 @@ frozen reference hold.
 Since phase 7i, the surrogate rung reads its weights through the evaluator its surrogate's record names
 (`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
 is unchanged. The mrs rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.
+
+Since phase 7o, **`Contact.Projection`** (`contact` 0.2.0) holds the body's hull, its orientation read, each point
+kept `margin` from the surface, by impulses through the body's implicit solve with the rotation coupled in (projected
+Gauss-Seidel over one point per group of the hull's samples at `spacing`) and a projection of the pose after the step,
+inelastic and frictionless, in the body's own update (`RigidInertialNode`). The point each group holds is the body's
+own surface's deepest point near the group's nearest sample, found by the hull kind's **support query**
+(`Geometry.support`: a direction in, the farthest point and its derivative out, reading no wall; a closed form for the
+sphere, the ellipsoid, the cylinder and the capsule, Newton's steps on its own surface for the screw), so the touching
+point moves continuously as the body turns and the contact takes no spin from a body of revolution; a kind with no
+support (a lab's mesh) is held by its samples, which act as a friction set by the spacing, and raises
+`<body>.held_by_samples`. The solve is laid out over contact pairs (a body's hull against a wall; two bodies' hulls,
+by their supports, as GJK finds them, are the layout's next, `mime.nodes.body._contact`). Against a surface whose
+shape declares its region convex (the tube's lumen) each group's candidates are its own convex hull's vertices; the
+forces are scaled to do no work at the held twist; and the solve's residual is `<body>`'s state's `contact_residual`,
+flagged `unconverged` above `CONVERGED`. A spacing whose samples fall farther from the body than the margin, or that
+takes more than `JUDGED_SAMPLES` to judge, is refused (`confinement.spacing-short`); left unwritten, the spacing is the
+margin, no finer than `SPACING_FLOOR` of the hull's size. A turned body that touches at two points takes the
+couple that holds it, and a screw that turns broadside in a narrow tube is held at the bore's limit, where 0.1.0
+held its centre by its extent and let it through the wall. A body with no hull is held as a sphere of its extent, as
+before; a body whose hull no point reaches the margin steps as it did, to the last bit. 0.1.0 is kept registered
+(`mime.interactions.KEPT`) for folders saved with it and for the experiments whose comparisons were declared against
+it, script A's and A0's reproductions. **A contact handles admissibility only**: it never adds near-wall lubrication,
+which a drag that includes it declares (`Interaction.includes_lubrication`: the surrogate rung with `lubrication=`),
+and the plan refuses two laws on one body that include it (`lubrication.twice`). Friction at the contact is left to
+the near-contact physics' design; its seam is the sweeps' rows.

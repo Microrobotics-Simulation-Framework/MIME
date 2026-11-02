@@ -31,7 +31,7 @@ def test_the_refusal_list_holds_every_code_no_test_names_and_prints_its_length()
     held = read_lists(ROOT)["refusal_codes"]
     report = refusal_check(ROOT)
     assert report.problems == []
-    assert f"refusal table: 375 codes; {len(held)} that no test names" in report.summary
+    assert f"refusal table: 380 codes; {len(held)} that no test names" in report.summary
     assert len(held) > 0 and all(line.reason == "no test names it" for line in held.lines)
 
 

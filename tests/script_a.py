@@ -19,7 +19,7 @@ from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
-from mime.interactions import Contact, Drag, Gravity, Lubrication, Magnetic
+from mime.interactions import KEPT, Drag, Gravity, Lubrication, Magnetic
 from mime.materials import Acceptance, Nominal, Record, packaged_record
 from mime.observations import SwimSpeed
 from mime.registry import Interaction
@@ -44,6 +44,10 @@ from mime.units import (
     mT,
     rad_per_s,
 )
+
+#: The contact the 0.2 reference held its body with, the centre by its extent (the contact 0.1.0, kept registered), which
+#: every comparison of script A was declared against; ``Contact.Projection`` holds the body's hull's points (0.2.0).
+CentreContact, _ = KEPT["contact", "0.1.0"]
 
 #: The reference's recorded provenance: m_eff, I_eff and the volume; the moment is two magnets of 8.4e-4 A m^2; the
 #: extent is 1.33 times the body's 1.56 mm radius, which the helix's radial reach gives. The drag's: FL-9's nu and
@@ -145,7 +149,7 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
         experiment.attach(law if drag is True else drag, body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
-    experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
+    experiment.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     experiment.observe(SwimSpeed(umr, along=tube.axis))
     return experiment
 

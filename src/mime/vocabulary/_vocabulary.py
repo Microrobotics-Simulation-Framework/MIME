@@ -49,12 +49,16 @@ class Capability(Enum):
     names, so a lab's own dynamics is supported wherever its flags are. MIME maintains the list; a flag is added here,
     not by a lab.
 
-    ``UNIFORM``: a field provider whose field is the same at every point, so a reader's slot takes no points."""
+    ``UNIFORM``: a field provider whose field is the same at every point, so a reader's slot takes no points.
+    ``HOLDS_HULL``: a dynamics that holds a confinement's hull, every point of its kind's samples, orientation read; one
+    that projects a confinement without it holds only a centre by its extent, and a hull's confinement is refused
+    for it."""
 
     RIGID = "rigid"
     INERTIAL = "inertial"
     ACCEPTS_PART_TARGETS = "accepts_part_targets"
     PROJECTS_CONFINEMENT = "projects_confinement"
+    HOLDS_HULL = "holds_hull"
     HYDROSTATIC = "hydrostatic"
     RESISTANCE_IMPLICIT = "resistance_integration=implicit"
     RESISTANCE_EXPLICIT = "resistance_integration=explicit"

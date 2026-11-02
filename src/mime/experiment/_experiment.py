@@ -566,6 +566,7 @@ def run_layout(plans: PlanSet) -> Layout:
         speed = speed_limit_flag(plans, plan)
         if speed is not None:
             flags.append(speed)
+        flags += contact_flags(plans, plan)
         if plan.section is Section.OBSERVATION and issubclass(cls, Observation):
             observations.append(ObservationLayout(plan.owner, cls.label(), tuple(
                 OutputLayout(plan.owner, output.field, plan.node_name(output.node), output.field, output.kind,
@@ -601,6 +602,45 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
                       f"joint{unlimited}), which the dynamic chain does not apply: the run went where the real "
                       f"mechanism would not. A backstop read after the run, never a refusal; a build check names a "
                       f"spinner that would drive a joint there, and its fix", SPEED_LIMIT, limits)
+
+
+#: The names of the flags a body held by its hull raises: where a point is held; where the solve's sweeps left more
+#: than ``CONVERGED`` of the free step's normal speeds unmet; and, for a hull whose kind has no support query, where a
+#: point is held by its samples.
+TOUCHING, UNCONVERGED, HELD_BY_SAMPLES = "touching", "unconverged", "held_by_samples"
+
+
+def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
+    """The flags of each confinement a body's dynamics holds by the hull, each read from a field its node holds for
+    its own sake, so they add nothing to the graph: ``touching``, raised at a step where a point takes a force;
+    ``unconverged``, where the solve's residual passes ``CONVERGED``; and ``held_by_samples``, where a point of a hull
+    held by its samples (a kind with no support query) takes a force. None for a dynamics that holds no hull."""
+    from mime.nodes.body._contact import CONVERGED
+    from mime.registry import implements
+
+    found: list[FlagLayout] = []
+    for confinement in plan.confinements:
+        if confinement.hull is None:
+            continue
+        owner = next((p for p in plans.entries if p.owner == confinement.id), None)
+        label = owner.registered.cls.label() if owner is not None else confinement.id
+        node = plan.node_name("")
+        found.append(FlagLayout(confinement.id, label, node, "contact_forces",
+                                f"a point of {confinement.subject}'s hull was held at {confinement.surface}, less the "
+                                f"margin, by a force: the contact held the body where it touches (the points and "
+                                f"forces are its state's contact_points and contact_forces)", TOUCHING))
+        found.append(FlagLayout(confinement.id, label, node, "contact_residual",
+                                f"the contact's solve left more than {CONVERGED:g} of the free step's normal speeds at "
+                                f"{confinement.subject}'s held points unmet (contact_residual): the projection after "
+                                f"the step kept the margin, and the forces read from the state are short by about "
+                                f"that share", UNCONVERGED, (CONVERGED,)))
+        if not implements(confinement.hull.kind, "support"):
+            found.append(FlagLayout(confinement.id, label, node, "contact_forces",
+                                    f"a point of {confinement.subject}'s hull was held by its samples, its kind having "
+                                    f"no support query: a turning body's samples arrive at the wall off its line of "
+                                    f"contact, and the inelastic hold acts as a friction and a shaking set by the "
+                                    f"spacing", HELD_BY_SAMPLES))
+    return found
 
 
 def _not_writable(folder: Path, error: OSError) -> BaseException:

@@ -91,7 +91,8 @@ def bound_robot_with_parts(name: str = "bound_robot_with_parts") -> Experiment:
     """The test robot bound to its asset's prim with its parts declared: the shell, an ellipsoid of the sphere's
     radius at a declared density, and the magnet inside it, a cylinder of N45 (OpenMaterica's example record, at
     20 degC), placed and turned 90 degrees about the body's z by the asset's own transforms. Every value the laws
-    read but the extent comes from the parts."""
+    read comes from the parts, and the contact holds the shell's points: the shell starts a micrometre above the floor,
+    less the margin, and lands on it in the first steps, so that every leaf of the contact acts."""
     from script_a import CONDITIONS, N45_RECORD
 
     scene = Scene.new(up=Z, units="m")
@@ -105,11 +106,10 @@ def bound_robot_with_parts(name: str = "bound_robot_with_parts") -> Experiment:
                                    parts={"Shell": Part(Ellipsoid(semi_axes=mm((1.56, 1.56, 1.56)))),
                                           "Magnets": Part(Cylinder(radius=mm(0.5), length=mm(2.0), axis=Z),
                                                           material=N45_RECORD, inside="Shell")},
-                                   initial=State(position=mm((10.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                   initial=State(position=mm((10.0, 0.0, -1.514)), orientation=(1.0, 0.0, 0.0, 0.0),
                                                  velocity=m_per_s((1e-3, 0.0, 0.0)),
                                                  angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     experiment.declare(f"{umr.name}.parts.Shell.density", kg_per_m3(1410.0), reason="the test robot's mean density")
-    experiment.declare(f"{umr.name}.extent", mm(2.07), reason="the test robot")
     experiment.declare("water.density", kg_per_m3(1000.0), reason="water")
     coils = experiment.add_apparatus(Apparatus("coils", fields={"magnetic": UniformRotating(
         rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
