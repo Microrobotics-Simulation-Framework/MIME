@@ -57,6 +57,7 @@ from mime.docs._context import (
     family_path,
     kind_dir,
     mechanism_path,
+    newest_versions,
     node_path,
 )
 from mime.docs._export import export, load_namespaces, registry_export
@@ -257,7 +258,7 @@ def set_problems(built: Built, generated: Built, records: Sequence[Record], held
         if (text := text_of(family_path(name))) is None:
             continue
         pages[family_path(name)] = text
-        members = [record for record in records if class_var(record, "family") == name]
+        members = [record for record in newest_versions(records) if class_var(record, "family") == name]
         problems += family_problems(held.name, name, families[name], members, text)
         for member in members:
             if (member_text := text_of(entry_path(member))) is not None:

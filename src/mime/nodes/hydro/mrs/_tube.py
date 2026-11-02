@@ -283,6 +283,61 @@ def tube_reads(points: Array, parameters: Mapping[str, Any]) -> Reads:
     return Reads(world, squared, jnp.all(accepted))
 
 
+class PairReads(NamedTuple):
+    """The table's reads between two point sets: ``world[t, s]``, the image at target ``t`` per force at source ``s``
+    in the world's axes, at the tube's unit radius and viscosity, from the pair's read with ``t`` the target alone; each
+    target's and each source's squared distance from the axis; and whether every read was accepted."""
+
+    world: Array
+    squared_targets: Array
+    squared_sources: Array
+    accepted: Array
+
+
+def tube_pair_reads(targets: Array, sources: Array, parameters: Mapping[str, Any]) -> PairReads:
+    """``tube_reads`` between two point sets (world frame, m): each target against each source, unblended."""
+    table: TableArrays = parameters["table"]
+    frame = jnp.asarray(parameters["frame"], dtype=targets.dtype).reshape(3, 3)
+    radius = jnp.asarray(parameters["radius"], dtype=targets.dtype)
+    centre = jnp.asarray(parameters["centre"], dtype=targets.dtype)
+    at = jnp.matmul(targets - centre, frame.T, precision=PRECISION) / radius
+    of = jnp.matmul(sources - centre, frame.T, precision=PRECISION) / radius
+    squared_t, rho_t, direction_t = across_the_axis(at[:, :2])
+    squared_s, rho_s, direction_s = across_the_axis(of[:, :2])
+    cos_t, sin_t, cos_s, sin_s = direction_t[:, 0], direction_t[:, 1], direction_s[:, 0], direction_s[:, 1]
+    sine = sin_t[:, None] * cos_s[None, :] - cos_t[:, None] * sin_s[None, :]
+    cosine = cos_t[:, None] * cos_s[None, :] + sin_t[:, None] * sin_s[None, :]
+    block, accepted = pair_block(table, rho_t[:, None], rho_s[None, :], sine, cosine, at[:, None, 2] - of[None, :, 2])
+    basis = jnp.stack([cos_s[:, None] * frame[0] + sin_s[:, None] * frame[1],
+                       -sin_s[:, None] * frame[0] + cos_s[:, None] * frame[1],
+                       jnp.broadcast_to(frame[2], (sources.shape[0], 3))], axis=1)
+    turned = jnp.einsum("tsab,sbj->tsaj", block, basis, precision=PRECISION)
+    world = jnp.einsum("sai,tsaj->tsij", basis, turned, precision=PRECISION)
+    return PairReads(world, squared_t, squared_s, jnp.all(accepted))
+
+
+def weight_between(squared_targets: Array, squared_sources: Array) -> Array:
+    """``target_weight`` between two point sets: ``rho_s^2 / (rho_t^2 + rho_s^2)`` for each target against each
+    source, ``1/2`` for a pair both on the axis (``AXIS``)."""
+    total = squared_targets[:, None] + squared_sources[None, :]
+    held = total > 0
+    return switch.where(held, squared_sources[None, :] / switch.domain_guard(held, total, 1.0), 0.5, owner="tube.axis",
+                        resolution=lambda: switch.rounding(1.0), indicator=lambda: jnp.sqrt(0.5 * total))
+
+
+def tube_image(targets: Array, sources: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
+    """The tube's image at each of ``targets`` per unit force at each of ``sources`` (world frame, m), ``(T, S, 3, 3)``
+    blocks in m/(N s): the blend of each pair's read and its reciprocal's, as ``tube_correction`` blends them, which it
+    is with the targets the sources. Both reads are made, so a pair costs two reads where ``tube_correction``'s costs
+    one: the wall kind's kernel between arbitrary point sets, which a node integrates over a body's cells."""
+    forward = tube_pair_reads(targets, sources, parameters)
+    backward = tube_pair_reads(sources, targets, parameters)
+    radius = jnp.asarray(parameters["radius"], dtype=targets.dtype)
+    weight = weight_between(forward.squared_targets, forward.squared_sources)[..., None, None]
+    blended = weight * forward.world + (1.0 - weight) * backward.world.transpose(1, 0, 3, 2)
+    return Corrected(blended / (radius * viscosity), forward.accepted & backward.accepted)
+
+
 def tube_correction(points: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
     """The tube's image system at the samples ``points`` (world frame, m): its ``centre``, ``frame`` (rows, the last
     its axis), ``radius`` and its unit tube's compiled ``table``. Each pair is the blend of its read and its
@@ -297,6 +352,17 @@ def tube_correction(points: Array, parameters: Mapping[str, Any], viscosity: Any
     return Corrected(blended.transpose(0, 2, 1, 3).reshape(count, count) / (radius * viscosity), reads.accepted)
 
 
+def tube_distance(points: Array, parameters: Mapping[str, Any]) -> Array:
+    """Each of ``points``' (world frame, m) distance from the tube's wall, from the correction's ``centre``, ``frame``
+    and ``radius``: the radius less its distance from the axis, above zero inside the lumen. The tube wall kind's own
+    distance (``WallKind.distance``, minus the cylinder's signed distance) across its axis, read from the constants the
+    correction holds; a report, which no derivative is taken through (the node stops it)."""
+    frame = jnp.asarray(parameters["frame"], dtype=points.dtype).reshape(3, 3)
+    across = jnp.matmul(points - jnp.asarray(parameters["centre"], dtype=points.dtype), frame[:2].T,
+                        precision=PRECISION)
+    return jnp.asarray(parameters["radius"], dtype=points.dtype) - jnp.sqrt(jnp.sum(across * across, axis=-1))
+
+
 def tube_preparation(table: Callable[[], Table]) -> Callable[[Mapping[str, Any], Any], dict[str, object]]:
     """The tube's ``prepare``: the frame across its axis, held as built, and ``table()`` compiled for the run's
     dtype."""
@@ -308,6 +374,9 @@ def tube_preparation(table: Callable[[], Table]) -> Callable[[Mapping[str, Any],
     return prepare
 
 
+#: The floating values one pair of ``tube_image`` holds while a chunk is read, both reads and their blend: two
+#: gathered cells of the table's cubic, 4^4 coefficients for each of its nine values, and the read's own, with room.
+TABLE_PAIR_VALUES = 1024
 #: The tube's constants: its centre and radius (a study's leaves), its frame and its table (held as built).
 TUBE_PARAMETERS = ("centre", "frame", "radius", "table")
 TUBE_UNITS = {"centre": "m", "frame": "1", "radius": "m", "table": "1"}
@@ -337,7 +406,7 @@ def tube_wall(name: str, version: str, table: Callable[[], Table], assets: tuple
     method (``register_wall_correction``)."""
     return WallCorrection(name, version, TUBE_PARAMETERS, tube_correction, prepare=tube_preparation(table),
                           units=TUBE_UNITS, held=frozenset({"frame", "table"}), beyond=axial_reach(table),
-                          assets=assets)
+                          assets=assets, distance=tube_distance, image=tube_image, pair_values=TABLE_PAIR_VALUES)
 
 
 #: The shipped reference of the corrected table of the unit tube (MIME-ANO-117), and the tube wall kind's name and
@@ -359,7 +428,8 @@ TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped
 
 
 __all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "PROVENANCE_ARRAYS", "TABLE", "TUBE",
-           "TUBE_CORRECTION", "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "Reads", "across_the_axis",
+           "TABLE_PAIR_VALUES", "TUBE_CORRECTION", "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "PairReads",
+           "Reads", "across_the_axis",
            "axial_reach", "frame_across", "into_the_source_frame", "pair_block", "shipped_unit_tube",
-           "table_provenance", "target_weight", "tube_correction", "tube_preparation", "tube_reads", "tube_table_from",
-           "tube_wall", "unit_tube_table"]
+           "table_provenance", "target_weight", "tube_correction", "tube_distance", "tube_image", "tube_pair_reads",
+           "tube_preparation", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table", "weight_between"]

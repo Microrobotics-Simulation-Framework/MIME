@@ -944,13 +944,23 @@ class Declarer:
 
 def declarations(records: Sequence[Registered]) -> list[tuple[Declarer, Declaration]]:
     """Every switch declared, with its declarer: each registered entry's own (a geometry kind's inherited ones are its
-    shapes'), then each registered shape's."""
+    shapes'), then each registered shape's. A declaration an entry's versions share (a version kept registered, whose
+    rung the newer version took over unchanged) is one declaration, its declarer the newest version that holds it."""
     found: list[tuple[Declarer, Declaration]] = []
+    versions: list[tuple[int, ...]] = []
     for record in records:
         gradient = record.cls.gradient
+        version = tuple(int(part) if part.isdigit() else -1 for part in record.version.split("."))
         for declared in gradient.switches if gradient is not None else ():
-            found.append((Declarer(f"{record.kind.value} {record.name} {record.version}",
-                                   record.cls.__module__.split(".")[0]), declared))
+            declarer = Declarer(f"{record.kind.value} {record.name} {record.version}",
+                                record.cls.__module__.split(".")[0])
+            earlier = next((i for i, (_, held) in enumerate(found) if held is declared), None)
+            if earlier is not None:
+                if version > versions[earlier]:
+                    found[earlier], versions[earlier] = (declarer, declared), version
+                continue
+            found.append((declarer, declared))
+            versions.append(version)
     for name in shape_names():
         package = type(shape_named(name)).__module__.split(".")[0]
         found += [(Declarer(f"shape {name}", package), declared) for declared in shape_switches(name)]

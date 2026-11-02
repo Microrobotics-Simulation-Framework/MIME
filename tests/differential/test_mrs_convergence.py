@@ -3,7 +3,8 @@ the same counts: the 0.2 line's rule (flat triangles between vertices of the sur
 area the weight) and the kind's own samples through ``Drag.MRS``'s node. The measurement is recorded
 (``references/mrs_convergence.json``, written by ``measure_mrs_convergence.py``, not collected) at five levels, the
 0.2 rule's vertex grid 12 x 10 to 36 x 30, 216 to 2,088 samples, and the kind's lateral samples at the same counts
-(twice the grid's turn by one less than its length); FL-9, water, the blob half the mean spacing, float64.
+(twice the grid's turn by one less than its length); FL-9, water, the blob half the mean spacing, float64. The node is
+drag 0.3.0's, a point force at each sample (kept registered when 0.4.0 separated the quadrature).
 
 **The 0.2 rule here is independent of the kind's code**: its vertices come from de Jongh's Eq. 1 written again in
 this file, and at the 0.2 mesh's own grid they are the frozen 0.2 vertices, and the rule on them gives the frozen 0.2
@@ -33,7 +34,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from mrs_cases import mrs, drag_node, free_space
+from mrs_cases import drag_node, free_space, point_forces
 from script_a import fl9
 
 from mime.build._maddening import node_state
@@ -88,8 +89,10 @@ def the_02_rule(n_theta: int, n_zeta: int) -> np.ndarray:
 
 
 def lateral_rung():
-    """``Drag.MRS`` on FL-9's lateral patch in free space, built; the screw starts moved and turned."""
-    return free_space("convergence", {"screw": fl9()}, mrs(mm(1.0), patches=("lateral",))).build()
+    """``Drag.MRS`` on FL-9's lateral patch in free space, built; the screw starts moved and turned. The rung is drag
+    0.3.0's point forces, kept registered, which the record measured: the separated quadrature of 0.4.0 is another
+    discretisation, which ``test_mrs_separated.py`` holds to a converged reference."""
+    return free_space("convergence", {"screw": fl9()}, point_forces(mm(1.0), patches=("lateral",))).build()
 
 
 def through_the_node(built, n_theta: int, n_zeta: int, cls: type[MRSDragNode] = MRSDragNode) -> np.ndarray:

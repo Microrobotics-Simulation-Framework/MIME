@@ -122,7 +122,8 @@ def ball() -> Experiment:
     """The settling ball with a declared value, a source, a condition, a motion setting, a part placed and a nominal:
     sealed but for its numerical defaults, which it writes."""
     exp = settling_ball(Paperwork(profile="research", acceptance="water is Newtonian", density="steel",
-                                  spacing=mm(0.2, reason="converged"), blob=0.5, sources={"drag:ball.blob": "usual"}))
+                                  spacing=mm(0.2, reason="converged"), blob=0.5, quadrature_refinement=4,
+                                  sources={"drag:ball.blob": "usual", "drag:ball.quadrature_refinement": "usual"}))
     body = next(d.thing for d in exp._declarations if getattr(getattr(d, "thing", None), "name", None) == "ball")
     placed = dataclasses.replace(body, dynamics=RigidInertial(rate=ms(1.0)), parts={
         **body.parts, "bead": Part(Box(size=mm((0.1, 0.1, 0.1))), at=mm((0.1, 0.0, 0.0)), inside="shell")})

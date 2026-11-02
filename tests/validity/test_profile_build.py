@@ -16,7 +16,9 @@ from mime.validity import chosen, pending
 
 SEALED = Paperwork(profile="research", acceptance="water is Newtonian at a settling ball's shear rates",
                    density="a steel ball's density", spacing=mm(0.2, reason="converged at half this spacing"),
-                   blob=0.5, sources={"drag:ball.blob": "the regularised method's usual blob"})
+                   blob=0.5, quadrature_refinement=4,
+                   sources={"drag:ball.blob": "the regularised method's usual blob",
+                            "drag:ball.quadrature_refinement": "the quadrature's spacing half the blob"})
 
 
 def codes(paperwork: Paperwork) -> list[str]:
@@ -33,15 +35,16 @@ def test_exploratory_waives_what_a_new_user_leaves_unstated_and_says_so():
     assert {w.reasons for w in generated} == {(SHEAR,), ("default_numerical",)}
     taken = {d.path: (d.kind.value, d.value) for d in outcome.defaults}
     assert taken["drag:ball.spacing"] == ("numerical", m(0.000125)), "a compact body's 338 samples (D9)"
-    assert taken["drag:ball.blob"] == ("numerical", 0.5)
+    assert taken["drag:ball.blob"] == ("numerical", 0.1), "a compact body's blob (drag 0.4.0)"
+    assert taken["drag:ball.quadrature_refinement"] == ("numerical", 20), "two over the blob"
     assert taken["drag:ball.wall_kind"] == ("determined", "free_space")
     assert taken["gravity"][0] == "convention"
-    assert outcome.stamp().text().startswith("profile exploratory: 4 items pending, not sealed")
+    assert outcome.stamp().text().startswith("profile exploratory: 5 items pending, not sealed")
 
 
 def test_research_refuses_each_by_name():
-    assert codes(Paperwork(profile="research")) == ["record.unknown", "setting.numerical-default",
-                                                    "setting.numerical-default", "value.reason-pending"]
+    assert codes(Paperwork(profile="research")) == ["record.unknown", *["setting.numerical-default"] * 3,
+                                                    "value.reason-pending"]
 
 
 def test_the_control_the_same_experiment_sealed_builds_in_research():
@@ -217,7 +220,7 @@ def test_a_profile_changes_no_value_and_no_graph():
     # the defaults' values as the rule states them, written and built in research: a default nudged in exploratory's
     # builds alone moves the bare graph from this one
     written = settling_ball(replace(SEALED, spacing=m(0.000125, reason="the default's value, written"),
-                                    blob=0.5)).build()
+                                    blob=0.1, quadrature_refinement=20)).build()
     assert bare.record.hashes()["derived"] == written.record.hashes()["derived"]
 
 

@@ -141,6 +141,10 @@ OLD_NAME_LINES = [
      "where the file came from, in the 0.2 line's words"),
     (r"src/mime/data/__init__\.py", r"regularised-Stokeslet " + "BE" + "M resistances",
      "how the 0.2 line trained the weights, in its words"),
+    (r"scripts/mrs_separated_budget\.py", r'rung="b' + 'em"',
+     "script A's MRS arm, called by the name the frozen preregistration keys on, as its own scripts call it"),
+    (r"tests/oracles/test_mrs_near_wall\.py", r'rung="b' + 'em"',
+     "script A's MRS arm, the review's case, called by the name the frozen preregistration keys on"),
 ]
 SKIPPED_DIRECTORIES = {".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build", "site"}
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 from mime.docs._context import (
@@ -30,6 +30,7 @@ from mime.docs._context import (
     node_path,
     rung_record,
     rung_status,
+    version_key,
 )
 from mime.docs._markdown import Page, Writer, anchor, code, items, link, mapping, plural, strings
 from mime.docs._symbols import meta_of
@@ -542,22 +543,6 @@ def _family_members(context: Context, family: str) -> str:
 
 def anchor_link(rung: str) -> str:
     return f"[{code(rung)}](#{anchor(f'Rung {rung}')})"
-
-
-def version_key(version: str) -> tuple[int, ...]:
-    """A version's numeric parts, to order versions by: ``0.10.0`` after ``0.9.0``."""
-    return tuple(int(part) if part.isdigit() else -1 for part in version.split("."))
-
-
-def newest_versions(records: Sequence[Record]) -> list[Record]:
-    """Of each entry name's registered versions, the newest: the one whose page is written, the others named on it."""
-    newest: dict[tuple[object, object], Record] = {}
-    for record in records:
-        key = (record["kind"], record["name"])
-        held = newest.get(key)
-        if held is None or version_key(str(record["version"])) > version_key(str(held["version"])):
-            newest[key] = record
-    return [record for record in records if newest[(record["kind"], record["name"])] is record]
 
 
 def entry_page(record: Record, context: Context) -> Page:

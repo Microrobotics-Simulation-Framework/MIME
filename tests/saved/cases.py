@@ -13,10 +13,13 @@ from dataclasses import dataclass
 from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_solids, mrs_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, tracked_rpm
 from robot_asset import bound_robot, bound_robot_with_parts
-from script_a import ALL_RECORDS, fl9, script_a
+from script_a import ALL_RECORDS, EPSILON, fl9, script_a
 
+from mime.data import asset
 from mime.dynamics.body import RigidInertialExplicit
 from mime.experiment import Experiment
+from mime.interactions import Lubrication
+from mime.interactions.hydrodynamic import PointForceDrag
 from mime.scene import Capsule, Sphere
 from mime.testing.toys import (
     ToyAnchoredBody,
@@ -91,6 +94,21 @@ def script_a_with_drag() -> Experiment:
     return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
 
 
+def script_a_kept_drag() -> Experiment:
+    """Script A with the drag kept registered, 0.3.0 (its surrogate rung is 0.4.0's): what a folder saved before the
+    separated quadrature names."""
+    return script_a("script_a_kept", velocity=m_per_s((1e-3, 0.0, 0.0)),
+                    drag=PointForceDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(
+                        epsilon=EPSILON)))
+
+
+def mrs_point_forces() -> Experiment:
+    """The MRS rung's free-space case on drag 0.3.0, kept registered: a point force at each sample, as before the
+    separated quadrature, on the ball, the pill and the screw, so that its golden output is 0.3.0's own."""
+    return mrs_free_space(law=PointForceDrag.MRS(spacing=mm(1.5), blob=0.5, wall_kind="free_space"),
+                          name="mrs_point_forces")
+
+
 def script_a_records() -> Experiment:
     """Script A's record arm (water and N45 from OpenMaterica's example records, the body from its parts), the body
     moving as in the body side's case: the folder carries the record files, and the fresh process reads them there."""
@@ -127,6 +145,8 @@ def rigid_explicit() -> Experiment:
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
+    # Script A's surrogate on drag 0.3.0, kept registered: what a folder saved before the separated quadrature names.
+    Case("script_a_kept", script_a_kept_drag),
     Case("script_a_records", script_a_records),
     Case("coupled_toy", coupled_toy),
     Case("full_toy", full_toy),
@@ -160,6 +180,9 @@ CASES = (
     Case("massive_rpm", lambda: massive_rpm(extra=True)),
     # The drag's MRS rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
     Case("mrs_free_space", mrs_free_space),
+    # The same on drag 0.3.0, kept registered: a point force at each sample, what a folder saved before the separated
+    # quadrature names.
+    Case("mrs_point_forces", mrs_point_forces),
     # The rung on the kept versions of the ball, the pill and the screw, whose samples are their quadratures': what a
     # folder saved before quasi-uniform sampling names.
     Case("mrs_kept", mrs_kept),

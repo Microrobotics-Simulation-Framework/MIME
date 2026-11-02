@@ -13,9 +13,10 @@ run of that is flagged. At 1 Hz in glycerol (1.4 Pa s) it is a few hundredths, i
 
 **Starting sizes** (``docs/choosing_spacing.md`` holds the measured tables): ``dt`` 100 ms (ten steps per turn of the
 field) and a run of 3 s, the speed read over the last turn; ``spacing`` 0.7 mm, which gives the screw a few hundred
-samples. What that number is worth is in the table: the speed converges slowly in ``spacing`` (the helix's thin turns
-need fine samples) and is far below the finest spacing measured, so read the number as a first look, its sign and its
-order, and not as a result.
+force points, the blob a quarter of their mean spacing and the quadrature eight times finer (the rung's defaults for
+a screw, written out). What that number is worth is in the table: since the quadrature was separated from the force
+points (drag 0.4.0) the speed is within a few per cent of a converged free-space reference at a few hundred force
+points, and the table says how it moves with ``spacing``; read it as a first look, not as a result.
 
 **The inertia.** The screw's parts give an inertia tensor with a small product of inertia, which the build refuses to
 use as it is and prints (with the line to paste). Here the declaration below is that line; in this regime (viscous,
@@ -81,7 +82,8 @@ def screw_in_tube(spacing_mm: float = START_SPACING_MM, *, inertia: tuple[float,
     field = exp.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": Hz(FREQUENCY_HZ), "amplitude": mT(5.0)}))
-    exp.attach(Drag.MRS(spacing=mm(spacing_mm), blob=0.5, wall_kind="tube"), body=umr, medium=liquid)
+    exp.attach(Drag.MRS(spacing=mm(spacing_mm), blob=0.25, quadrature_refinement=8, wall_kind="tube"), body=umr,
+               medium=liquid)
     exp.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     exp.observe(SwimSpeed(umr, along=tube.axis, after=s(DURATION_S - 1.0 / FREQUENCY_HZ)))
     return exp

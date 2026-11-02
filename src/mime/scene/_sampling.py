@@ -180,17 +180,50 @@ def _relaxed(points: np.ndarray, mass: np.ndarray, chosen: np.ndarray, quantum: 
     return found
 
 
-def _members(points: np.ndarray, chosen: np.ndarray, quantum: float) -> np.ndarray:
-    """Each chosen sample's cell, the dense points nearest it (ties to the lower sample), as rows padded with
-    ``len(points)``."""
-    owner = _owners(points[chosen], points, quantum)
+def cells(generators: np.ndarray, points: np.ndarray, quantum: float) -> np.ndarray:
+    """Each generator's cell, the ``points`` nearest it (ties within ``quantum`` in squared distance to the lower
+    generator), as rows of indices into ``points`` in increasing order, padded with ``len(points)``: a row of padding
+    alone is a generator no point is nearest."""
+    owner = _owners(generators, points, quantum)
     order = np.argsort(owner, kind="stable")
-    sizes = np.bincount(owner, minlength=len(chosen))
-    rows = np.full((len(chosen), int(sizes.max())), len(points), dtype=np.int32)
+    sizes = np.bincount(owner, minlength=len(generators))
+    rows = np.full((len(generators), max(1, int(sizes.max()))), len(points), dtype=np.int32)
     starts = np.concatenate([[0], np.cumsum(sizes)[:-1]])
     for i, (start, size) in enumerate(zip(starts.tolist(), sizes.tolist(), strict=True)):
         rows[i, :size] = order[start:start + size]
     return rows
+
+
+def _members(points: np.ndarray, chosen: np.ndarray, quantum: float) -> np.ndarray:
+    """Each chosen sample's cell, the dense points nearest it (ties to the lower sample), as rows padded with
+    ``len(points)``."""
+    return cells(points[chosen], points, quantum)
+
+
+def tie_quantum(points: np.ndarray) -> float:
+    """The squared distance within which two distances from ``points`` are one tie: :data:`TIE` of the set's squared
+    size about its centroid."""
+    return TIE * float(np.max(np.sum((points - points.mean(axis=0)) ** 2, axis=1)))
+
+
+def sampled_points(kind: Geometry, settings: Mapping[str, Magnitude], sampling: Sampling) -> np.ndarray:
+    """The samples of ``sampling`` on ``kind`` at ``settings`` in SI, in the kind's own frame, in float64 whatever the
+    run's precision: what a choice made from them at build is made from."""
+    with cast(Any, jax).enable_x64(True):
+        return np.asarray(sampling.samples(kind, _parameters(settings)).points, dtype=np.float64).reshape(-1, 3)
+
+
+def quadrature_owners(kind: Geometry, settings: Mapping[str, Magnitude], sampling: Sampling,
+                      counts: Sequence[tuple[int, ...]]) -> np.ndarray:
+    """The nearest-neighbour map of a separated quadrature: for each point of the kind's quadrature on ``sampling``'s
+    patches at ``counts`` (the patches' concatenated in order), the sample of ``sampling`` nearest it, whose cell it is
+    in (ties within the tie rule to the lower sample, as every choice here breaks them). Made once, at build, in
+    float64 from the settings in SI: the map is then held, so that the quadrature's points move with the kind's
+    parameters and a study's derivative flows through them while the map does not change (Smith 2018, Gallagher &
+    Smith 2021). A sample no point is nearest has an empty cell, which the consumer refuses."""
+    force = sampled_points(kind, settings, sampling)
+    points, _, _ = quadrature_arrays(kind, settings, sampling.patches, counts)
+    return _owners(force, points, tie_quantum(points)).astype(np.int32)
 
 
 #: The samplings made in this process, by kind, settings, spacing, patches and density: a build asks once for its
@@ -233,7 +266,7 @@ def _quasi_uniform(kind: Geometry, settings: Mapping[str, Magnitude], spacing: f
     count = max(1, round(len(own) * float(np.sum(weights * held) / np.sum(weights))))
     if count > len(points):
         raise ValueError(f"{kind.label()}: {count} samples asked of a dense set of {len(points)}")
-    quantum = TIE * float(np.max(np.sum((points - points.mean(axis=0)) ** 2, axis=1)))
+    quantum = tie_quantum(points)
     chosen = _relaxed(points, weights * held, _farthest(points, held, count, quantum), quantum)
     members = _members(points, chosen, quantum)
     chosen = chosen.astype(np.int32)
@@ -289,6 +322,6 @@ def body_reach(kind: Geometry, settings: Mapping[str, Magnitude],
     return sampled_reach(samples)
 
 
-__all__ = ["LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach", "length_of",
-           "magnitude_of", "nearest", "quadrature", "quadrature_arrays", "quadrature_counts", "quasi_uniform",
-           "sampled_reach"]
+__all__ = ["LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach", "cells", "length_of",
+           "magnitude_of", "nearest", "quadrature", "quadrature_arrays", "quadrature_counts", "quadrature_owners",
+           "quasi_uniform", "sampled_points", "sampled_reach", "tie_quantum"]

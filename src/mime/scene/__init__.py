@@ -47,7 +47,10 @@ from mime.scene._sampling import (
     body_reach,
     length_of,
     quadrature,
+    quadrature_counts,
+    quadrature_owners,
     quasi_uniform,
+    sampled_points,
     sampled_reach,
 )
 from mime.scene._screw import Screw
@@ -94,8 +97,8 @@ __all__ = [
     "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
     "VectorPrim", "VisualFile", "VisualPrim", "VisualSet", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",
     "check_stage", "compose", "derived_findings", "geometry_schema_problems", "kind_frame", "length_of", "mesh_path",
-    "mesh_source", "meters_per_unit", "placed", "quadrature", "quasi_uniform", "read_kind", "register_shape",
-    "sampled_reach", "scene_up", "sha256_hex", "shape_settings", "stage_derived_findings", "stage_edits",
-    "stage_text", "unit_vector", "up_axis", "up_axis_problem", "valid_part_path", "valid_prim_path", "visual_sets",
-    "within", "world_frame",
+    "mesh_source", "meters_per_unit", "placed", "quadrature", "quadrature_counts", "quadrature_owners", "quasi_uniform",
+    "read_kind", "register_shape", "sampled_points", "sampled_reach", "scene_up", "sha256_hex", "shape_settings",
+    "stage_derived_findings", "stage_edits", "stage_text", "unit_vector", "up_axis", "up_axis_problem",
+    "valid_part_path", "valid_prim_path", "visual_sets", "within", "world_frame",
 ]

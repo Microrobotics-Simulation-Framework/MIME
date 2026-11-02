@@ -67,7 +67,7 @@ def pasted(items, reason: str = PENDING_PYTHON, profile: str = "exploratory") ->
 def test_the_report_prints_each_item_with_its_lines():
     report = settling_ball().build().report
     text = report.pending()
-    assert text.startswith("profile exploratory: 4 items pending")
+    assert text.startswith("profile exploratory: 5 items pending")
     for target in BARE_PENDING:
         assert target in text
     assert 'accept={"fluid.dynamic_viscosity": Acceptance(covers=("condition_unstated:shear_rate",), ' \
@@ -243,7 +243,7 @@ def pasted_bare(script: str, items, reason: str = PENDING_PYTHON, profile: str =
     return namespace["exp"]
 
 
-@pytest.mark.parametrize(("script", "count"), [(T1_BARE, 5), (T4_BARE, 4)], ids=["T1", "T4"])
+@pytest.mark.parametrize(("script", "count"), [(T1_BARE, 6), (T4_BARE, 4)], ids=["T1", "T4"])
 def test_the_walk_s_tasks_written_bare_reach_research_by_the_printed_lines_alone(script, count):
     """W1 and K3: each walk task, written with no paperwork, leaves one item per thing pending (T4's N45 read waives
     four reasons in one item, one acceptance); its printed lines, with the imports printed above them and nothing else

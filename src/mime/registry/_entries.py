@@ -253,9 +253,16 @@ class PlanContext:
     regions: Mapping[str, Region] = field(default_factory=dict[str, Region])
     hulls: Mapping[str, Hull] = field(default_factory=dict[str, Hull])
     reactions: Mapping[str, str] = field(default_factory=dict[str, str])
+    approaches: Mapping[str, float] = field(default_factory=dict[str, float])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
+
+    def approach(self, of: str) -> float | None:
+        """The closest approach of the body bound to the role ``of`` to the wall of the region the entry's medium fills
+        (m): the least margin by which a law attached in the experiment holds it off a surface of that structure
+        (``Interaction.holds_off``); ``None`` where none does, and the body may reach the wall."""
+        return self.approaches.get(of)
 
     def vector(self, name: str) -> tuple[float, ...]:
         return _vector(self.settings, name)
@@ -892,6 +899,10 @@ class Interaction(Entry):
 
     roles: ClassVar[Mapping[str, RoleKind]]
     family: ClassVar[str | None] = None
+    #: The setting, a length, by which the law holds the body bound to its body role off the surface bound to its
+    #: surface role (a contact's margin), or ``None``: the planner reads it as the body's closest approach to that
+    #: surface's wall (``PlanContext.approach``), which a law near the wall chooses its numbers by.
+    holds_off: ClassVar[str | None] = None
     id_roles: ClassVar[tuple[str, ...] | None] = None
     rungs: ClassVar[tuple[str, ...]] = ()
     reserved_rungs: ClassVar[Mapping[str, str]] = MappingProxyType({})

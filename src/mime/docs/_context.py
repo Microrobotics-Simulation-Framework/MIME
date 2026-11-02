@@ -4,7 +4,7 @@ function of its inputs and two builds of one checkout are the same text."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -109,6 +109,22 @@ def item_of(record: Record, tail: str = "") -> str:
                     if part)
 
 
+def version_key(version: str) -> tuple[int, ...]:
+    """A version's numeric parts, to order versions by: ``0.10.0`` after ``0.9.0``."""
+    return tuple(int(part) if part.isdigit() else -1 for part in version.split("."))
+
+
+def newest_versions(records: Sequence[Record]) -> list[Record]:
+    """Of each entry name's registered versions, the newest: the one whose page is written, the others named on it."""
+    newest: dict[tuple[object, object], Record] = {}
+    for record in records:
+        key = (record["kind"], record["name"])
+        held = newest.get(key)
+        if held is None or version_key(str(record["version"])) > version_key(str(held["version"])):
+            newest[key] = record
+    return [record for record in records if newest[(record["kind"], record["name"])] is record]
+
+
 @dataclass(frozen=True)
 class Context:
     """The inputs of every page.
@@ -137,6 +153,7 @@ class Context:
                 if dotted in nodes]
 
     def members(self, family: str) -> list[tuple[Record, str]]:
-        """The entries that declare ``family``, each with a rung it builds."""
-        return [(record, rung) for record in self.records if class_var(record, "family") == family
+        """The entries that declare ``family``, each at its newest registered version (a version kept registered so
+        that a saved folder loads is no member to compare), each with a rung it builds."""
+        return [(record, rung) for record in newest_versions(self.records) if class_var(record, "family") == family
                 for rung in built_rungs(record)]

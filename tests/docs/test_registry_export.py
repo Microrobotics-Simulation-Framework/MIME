@@ -31,7 +31,7 @@ def test_the_export_lists_every_installed_entry_with_its_fields():
     keys = {(e["kind"], e["name"], e["version"]) for e in exported["entries"]}
     assert keys == set(installed_entries()) and ("interaction", "drag", "0.3.0") in keys
     assert exported["not_loaded"] == {}
-    drag = next(e for e in exported["entries"] if e["name"] == "drag")
+    drag = next(e for e in exported["entries"] if e["name"] == "drag" and e["version"] == Drag.version)
     assert drag["class_vars"]["builds"]["value"] == {
         "surrogate": ["mime.nodes.hydro._surrogate_drag.SurrogateDragNode"],
         "mrs": ["mime.nodes.hydro.mrs._node.MRSDragNode"]}

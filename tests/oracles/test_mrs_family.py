@@ -11,7 +11,11 @@ the flow (``test_mrs.py`` holds that against closed forms). The swap replaces it
 radius.
 
 The family walk holds the drag entry to its surrogate rung, the first round-trip case's: this is the mrs rung's half
-(``docs/ratchets/builds_unchecked.txt``)."""
+(``docs/ratchets/builds_unchecked.txt``). It runs on both drag versions: 0.3.0's point forces, against the formula
+above, and 0.4.0's separated quadrature, against its own formula again in NumPy (the force points and the kind's
+quadrature four times finer placed by the pose, each quadrature point in the cell the node's map names, the matrix of
+every force point against every quadrature point summed over each cell, the cells' wrench): the map is the node's
+(``test_mrs_separated.py`` holds it to a brute-force nearest search), the rest is written again here."""
 
 import dataclasses
 import math
@@ -19,8 +23,10 @@ from functools import cache
 
 import jax.numpy as jnp
 import numpy as np
-from mrs_cases import mrs, free_space
+import pytest
+import separated_oracle
 from hydro_oracles import StokesSphere
+from mrs_cases import free_space, mrs, point_forces
 
 from mime.testing import NodeCase, assert_conforms, unit_quaternion
 from mime.testing._mime_families import HYDRODYNAMIC, PROBE, SCREW
@@ -53,8 +59,21 @@ def screw_samples() -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(held.points, dtype=np.float64), np.asarray(held.weights, dtype=np.float64)
 
 
+@cache
+def screw_discretisation() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The screw's force points, its quadrature four times finer and the map, as the node holds them."""
+    return separated_oracle.discretisation(SCREW, SETTINGS, SPACING.value, 4, ("lateral", "caps"))
+
+
+def separated_reference(read, settings) -> dict[str, np.ndarray]:
+    """The separated rung's resistance again, in float64 NumPy (``separated_oracle``), at the drawn pose."""
+    return {"resistance": separated_oracle.resistance(*screw_discretisation(), 0.5, settings["viscosity"],
+                                                      read["pose"]),
+            "background_load": np.zeros(6)}
+
+
 def mrs_reference(read, settings) -> dict[str, np.ndarray]:
-    """The rung's resistance again, in float64 NumPy, at the drawn pose."""
+    """The point-force rung's resistance again, in float64 NumPy, at the drawn pose."""
     pose = np.asarray(read["pose"], dtype=np.float64)
     held, weights = screw_samples()
     points = pose[:3] + held @ rotation(pose[3:]).T
@@ -75,5 +94,7 @@ NODE = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
                          "constrain_boundary": lambda given: {**given, "pose": unit_quaternion(given["pose"])}})
 
 
-def test_the_mrs_rung_conforms_to_the_hydrodynamic_family_in_free_space_and_swaps_with_the_stokes_sphere():
-    assert_conforms(mrs(SPACING), FREE, oracle=mrs_reference, swap_with=StokesSphere(), node_case=NODE)
+@pytest.mark.parametrize("version", ["0.3.0", "0.4.0"])
+def test_the_mrs_rung_conforms_to_the_hydrodynamic_family_in_free_space_and_swaps_with_the_stokes_sphere(version):
+    law, oracle = (point_forces(SPACING), mrs_reference) if version == "0.3.0" else (mrs(SPACING), separated_reference)
+    assert_conforms(law, FREE, oracle=oracle, swap_with=StokesSphere(), node_case=NODE)

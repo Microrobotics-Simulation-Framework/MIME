@@ -22,7 +22,7 @@ SHEAR = "condition_unstated:shear_rate"
 class Paperwork:
     """What the settling ball's script states: each ``None`` left out. ``acceptance`` is the water viscosity's
     acceptance reason, ``density`` the ball's declared density's reason (``"omit"`` leaves the reason off ``declare``),
-    ``spacing`` and ``blob`` the mrs rung's settings, ``sources`` the ``exp.source`` lines, ``require`` whether water's
+    ``spacing``, ``blob`` and ``quadrature_refinement`` the mrs rung's settings, ``sources`` the ``exp.source`` lines, ``require`` whether water's
     record is read with its test method stated."""
 
     profile: str = "exploratory"
@@ -30,6 +30,7 @@ class Paperwork:
     density: Basis | str | None = "omit"
     spacing: object = None
     blob: object = None
+    quadrature_refinement: object = None
     wall_kind: str | None = None
     sources: dict[str, Basis] = field(default_factory=dict)
     radius_reason: Basis | None = None
@@ -54,7 +55,8 @@ def settling_ball(paperwork: Paperwork = Paperwork()) -> Experiment:
     elif paperwork.density is not None:
         exp.declare("ball.parts.shell.density", kg_per_m3(7850.0), reason=paperwork.density)
     settings: dict[str, object] = {name: value for name, value in (
-        ("spacing", paperwork.spacing), ("blob", paperwork.blob), ("wall_kind", paperwork.wall_kind))
+        ("spacing", paperwork.spacing), ("blob", paperwork.blob),
+        ("quadrature_refinement", paperwork.quadrature_refinement), ("wall_kind", paperwork.wall_kind))
         if value is not None}
     exp.attach(Drag.MRS(**settings), body=ball, medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
@@ -65,5 +67,5 @@ def settling_ball(paperwork: Paperwork = Paperwork()) -> Experiment:
 
 
 #: Every item the bare settling ball leaves pending in exploratory, by its target, in the outcome's canonical order.
-BARE_PENDING = ("ball.parts.shell.density", "drag:ball.blob", "drag:ball.spacing",
+BARE_PENDING = ("ball.parts.shell.density", "drag:ball.blob", "drag:ball.quadrature_refinement", "drag:ball.spacing",
                 "material 'water' fluid.dynamic_viscosity")

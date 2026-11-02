@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import warnings
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 from maddening import GraphManager
@@ -14,14 +14,89 @@ from maddening.core.node import BoundaryInputSpec
 
 from mime.build._control import Mode, ReadClass
 from mime.build._maddening import edge_transform, external_inputs, inputs, node_dict, node_fields_of
-from mime.build._plan import PlanSet
+from mime.build._plan import PlanSet, Section
 from mime.things import did_you_mean
 from mime.build._refusals import MIME_DEFECT, Refusal, RefusalClass
 from mime.build._report import graph_config
+from mime.registry import Problem
 
 
 def _refuse(code: str, message: str) -> Refusal:
     return Refusal(code, RefusalClass.INTERNAL, message, MIME_DEFECT)
+
+
+def _starting_inputs(graph: GraphManager, name: str) -> dict[str, Any]:
+    """Each input of node ``name`` an edge feeds, at the start: its source node's initial state's field."""
+    found: dict[str, Any] = {}
+    for edge in graph.edges:
+        if edge.target_node == name:
+            source: Any = graph.get_node(edge.source_node)
+            state = cast(dict[str, Any], source.initial_state())
+            if edge.source_field in state:
+                found[edge.target_field] = state[edge.source_field]
+    return found
+
+
+def _node_refusals(graph: GraphManager, built_by: Callable[[str], str]) -> list[Refusal]:
+    """What a node finds of itself once built (``built_problems(start)``, where it has one, given its inputs at the
+    start: the MRS rung's resistance on a separated quadrature, judged on the free part it holds and at the body's
+    starting pose), each a refusal of the user's settings with its action."""
+    refusals: list[Refusal] = []
+    for name in graph.node_names:
+        check = getattr(graph.get_node(name), "built_problems", None)
+        if not callable(check):
+            continue
+        start = _starting_inputs(graph, name)
+        for problem in cast(Callable[[dict[str, Any]], list[Problem]], check)(start):
+            refusals.append(Refusal(problem.code, RefusalClass.USER, f"node {built_by(name)}: {problem.message}",
+                                    problem.action))
+    return refusals
+
+
+def closest_approach(plans: PlanSet, owner: str) -> float | None:
+    """The least margin (m) by which a confinement holds the body entry ``owner`` is bound to off a surface of the
+    structure whose region its medium fills: how near that wall the experiment lets the body come. ``None`` where
+    nothing holds it off."""
+    plan = next((held for held in plans.entries if held.owner == owner), None)
+    body = plan.bindings.get("body") if plan is not None else None
+    region = plan.regions.get("medium") if plan is not None else None
+    if body is None or region is None:
+        return None
+    structure = region.path.partition(".")[0]
+    margins = [confinement.margin for held in plans.entries if held.section is Section.DYNAMICS and held.thing == body
+               for confinement in held.confinements if confinement.surface.partition(".")[0] == structure]
+    return min(margins) if margins else None
+
+
+def node_lines(graph: GraphManager, plans: PlanSet) -> dict[str, tuple[str, ...]]:
+    """What each node reports of itself once built (``built_lines(start, closest_approach)``, where it has one: the
+    MRS rung's body's distance from the wall against its force spacing), by its entry's id: validity lines the build
+    computed, never a refusal."""
+    found: dict[str, tuple[str, ...]] = {}
+    for name in graph.node_names:
+        lines = getattr(graph.get_node(name), "built_lines", None)
+        owner = plans.owner_of(name)
+        if not callable(lines) or owner is None:
+            continue
+        held = cast(Callable[[dict[str, Any], float | None], list[str]], lines)(
+            _starting_inputs(graph, name), closest_approach(plans, owner))
+        if held:
+            found[owner] = (*found.get(owner, ()), *held)
+    return found
+
+
+def stopped_refusals(graph: GraphManager, final: Mapping[str, Mapping[str, Any]]) -> list[Refusal]:
+    """The refusals of the nodes that stopped a run on purpose (``stop_problem(state)``, where a node has one, from
+    its state at the run's end: the MRS rung's resistance turned indefinite), each naming its node."""
+    refusals: list[Refusal] = []
+    for name in graph.node_names:
+        stop = getattr(graph.get_node(name), "stop_problem", None)
+        if not callable(stop) or name not in final:
+            continue
+        problem = cast(Callable[[Mapping[str, Any]], Problem | None], stop)(final[name])
+        if problem is not None:
+            refusals.append(Refusal(problem.code, RefusalClass.USER, f"node {name}: {problem.message}", problem.action))
+    return refusals
 
 
 def _inputs(graph: GraphManager, node: str) -> dict[str, BoundaryInputSpec]:
@@ -156,6 +231,7 @@ def post_build_checks(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
                                     f"everything delivered into its field, so a target is never one"))
     refusals += _writer_refusals(graph, plans) + _read_refusals(graph, plans)
     refusals += _units_refusals(graph, built_by)
+    refusals += _node_refusals(graph, built_by)
     for name in graph.node_names:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")

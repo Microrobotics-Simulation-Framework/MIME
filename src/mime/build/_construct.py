@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from maddening import GraphManager
@@ -24,7 +24,7 @@ from mime.build._builders import (
     ProviderBuilder,
     RestrictedBuilder,
 )
-from mime.build._checks import post_build_checks
+from mime.build._checks import node_lines, post_build_checks
 from mime.build._control import Mode
 from mime.build._derived import DerivedGraph, derive
 from mime.build._in_graph import controller_nodes, in_graph_order, order_refusals
@@ -68,7 +68,8 @@ _REFUSED_ISSUES = {"ERROR": "maddening.error", "WARNING[units]": "maddening.unit
 def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] = (),
               external_inputs: tuple[str, ...] = (), reported: Sequence[ReportedWarning] = (),
               derived_hash: str | None = None, lags: Sequence[EdgeLag] = (),
-              models: tuple[str, ...] | None = None) -> BuildReport:
+              models: tuple[str, ...] | None = None,
+              computed: Mapping[str, tuple[str, ...]] | None = None) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name))
@@ -84,7 +85,9 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=(*plans.controller.lines(plans.dt), *model_lines(plans, models))
         if plans.controller is not None else (),
-        masses=plans.masses, profile=plans.profile, watches=plans.watches, checked=plans.checked)
+        masses=plans.masses, profile=plans.profile, watches=plans.watches,
+        checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
+                                                 for owner, lines in (computed or {}).items()}}.items())))
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -355,4 +358,5 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     if refusals:
         raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
-    return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models), derived
+    return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
+                            node_lines(graph, plans)), derived

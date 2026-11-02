@@ -23,9 +23,14 @@ version, until the law was given its own.
   (``tests/script_a.py``, the screw 0.3.0) node for node, edge for edge and leaf for leaf, bitwise
   (``same_as_script_a``): script A's and A0's preregistered comparisons run that rung and read no sampling, so they
   build the current kinds and nothing of theirs moved.
+- **The interactions too** (phase 7m-b): every law ``operating_point.experiment`` attaches names the version
+  ``operating_point.FROZEN_INTERACTIONS`` names, read from the document, and that table is the versions registered
+  when the register froze, each registered (the current version or one ``mime.interactions.KEPT`` keeps): drag 0.4.0
+  separated the MRS rung's quadrature, and the register's MRS arm keeps 0.3.0's point forces.
 - **Controls**, failing on every run: the experiment with the pin bypassed names the screw 0.3.0 and fails the first
-  check; a script that builds ``fl9()`` unpinned fails the source scan; the experiment with the dynamics' pin bypassed
-  names ``rigid_inertial`` 0.3.0, fails the dynamics check, and its transverse-inertia arm runs at 3.20747 mm/s.
+  check; a script that builds ``fl9()`` unpinned fails the source scan; the experiment with the law's pin bypassed
+  names drag 0.4.0; the experiment with the dynamics' pin bypassed names ``rigid_inertial`` 0.3.0, fails the dynamics
+  check, and its transverse-inertia arm runs at 3.20747 mm/s.
 
 Nothing here builds a graph or solves; the register's numbers are its scripts' to reproduce."""
 
@@ -38,6 +43,8 @@ import pytest
 
 from mime.dynamics.body import KEPT as KEPT_DYNAMICS
 from mime.dynamics.body import RigidInertial
+from mime.interactions import KEPT as KEPT_LAWS
+from mime.interactions import Contact, Drag, Gravity, Magnetic
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Screw, Sphere, Tube
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,6 +54,9 @@ REGISTER_FROZE = {"screw": "0.2.0", "sphere": "0.1.0", "capsule": "0.1.0", "box"
                   "ellipsoid": "0.1.0", "tube": "0.1.0"}
 REGISTER_FROZE_DYNAMICS = {"rigid_inertial": "0.2.0"}
 CURRENT = {cls.name: cls.version for cls in (Screw, Sphere, Capsule, Box, Cylinder, Ellipsoid, Tube)}
+#: The interactions' versions registered on 2026-10-31, and the current ones.
+REGISTER_FROZE_INTERACTIONS = {"drag": "0.3.0", "magnetic.torque": "0.1.0", "gravity": "0.1.0", "contact": "0.1.0"}
+CURRENT_INTERACTIONS = {cls.name: cls.version for cls in (Drag, Magnetic.Torque, Gravity, Contact)}
 #: What builds a geometry or an experiment in a script: a kind's class, script A's shell or arms, an experiment.
 BUILDERS = {cls.__name__ for cls in (Screw, Sphere, Capsule, Box, Cylinder, Ellipsoid, Tube)} | {
     held.__name__ for held, _ in KEPT.values()} | {"fl9", "script_a", "record_arm", "Experiment"} | {
@@ -104,6 +114,31 @@ def test_every_experiment_the_registers_scripts_build_names_the_versions_it_froz
     assert {kind for _, kind, _ in geometries(document)} == {"screw", "tube"}
     assert unfrozen(document) == []
     assert dynamics_of(document) == [("umr", "rigid_inertial", "0.2.0")] and unfrozen_dynamics(document) == []
+
+
+def laws(document: dict) -> list[str]:
+    return [f"{held['name']} {held['version']}, the register froze "
+            f"{op.FROZEN_INTERACTIONS.get(held['name'], 'none')}" for held in document["interactions"]
+            if op.FROZEN_INTERACTIONS.get(held["name"]) != held["version"]]
+
+
+@pytest.mark.parametrize("arm", ARMS, ids=lambda arm: "/".join(arm.values()))
+def test_every_law_the_registers_scripts_attach_names_the_version_it_froze(arm):
+    document = op.experiment(**arm).document()
+    assert {held["name"] for held in document["interactions"]} == set(REGISTER_FROZE_INTERACTIONS)
+    assert laws(document) == []
+
+
+def test_the_scripts_interactions_table_is_the_versions_registered_when_the_register_froze():
+    assert op.FROZEN_INTERACTIONS == REGISTER_FROZE_INTERACTIONS
+    for name, version in REGISTER_FROZE_INTERACTIONS.items():
+        assert CURRENT_INTERACTIONS[name] == version or (name, version) in KEPT_LAWS, f"{name} {version}"
+
+
+def test_control_the_experiment_with_the_laws_pin_bypassed_names_drag_0_4(monkeypatch):
+    monkeypatch.setattr(op, "pinned_law", lambda law: law)
+    assert laws(op.experiment(rung="bem").document()) == [f"drag {Drag.version}, the register froze 0.3.0"]
+    assert Drag.version != "0.3.0"
 
 
 def test_the_scripts_table_is_the_versions_registered_when_the_register_froze():

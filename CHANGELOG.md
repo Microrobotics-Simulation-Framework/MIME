@@ -29,6 +29,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a spin that overflows the term, since the large step it showed no longer overflows.
 
 ### Added
+- **Separated quadrature on the MRS rung: drag 0.4.0** (dev1 phase 7m-b, design #195). The rung's force points (the
+  kind's quasi-uniform sampling at `spacing`, one traction unknown at each, constant over its cell) are separated from
+  its quadrature (the kind's own quadrature `quadrature_refinement` times finer, each point in the cell of the force
+  point nearest it), the nearest-neighbour discretisation of Smith (2018) and Gallagher & Smith (2021); the blob,
+  `blob` times the force points' mean spacing, is set on its own, since the quadrature resolves a blob smaller than
+  the force spacing.
+  - **New settings and defaults, chosen by measurement per family** (`scripts/default_spacing_table.py`,
+    `docs/choosing_spacing.md`): `quadrature_refinement`, a whole number, two over the blob by default (`1` is the point
+    forces of 0.3.0); the blob a tenth of the force points' spacing for a compact body and a quarter for a screw; the
+    count of force points by family as before (338 for a compact body, the screw's coarsest that keeps its shape).
+    Measured (`docs/choosing_spacing.md`, float64): the sphere at 338 force points +0.50% from Stokes's law in drag and
+    +1.45% in rotation (0.3.0 at the same count: +1.78% and +5.92%), within 2e-4 of its exact regularised drag; FL-9
+    at the screw's default (222 force points) 2.6% below the shipped free-space reference (0.3.0: 16% below its own
+    finest) and 0.5% at 957, estimates against a reference itself known to 1.9%, on a ladder that is not monotone
+    (6.1%, 2.6%, 4.0%, 3.5% and 1.3% below from 206 to 567 force points); on the walk's tube's axis only, 11% below the
+    finest spacing measured, an estimate against a value still moving (about 12% below a fit of the ladder); the
+    confined sphere +0.80% and +1.72% from Haberman & Sayre at a fifth and two fifths of the radius. The walk's T1
+    runs in 4.4 s (was 22 s): a step in free space only turns the held resistance.
+  - **Assembled once per build and streamed** (`mime.nodes.hydro.mrs._quadrature`): the part of the matrix the body
+    makes with itself is the same at every pose, so it is assembled once per build, in the body's frame at unit
+    viscosity and in float64, over the quadrature in chunks sorted by force point (never every force point against
+    every quadrature point at once; each chunk checkpointed, so the reverse mode keeps no pairs either), and held as the
+    node's `params` leaf `held_in_body_frame`, an argument of the compiled step: in free space the whole resistance is
+    held and each step only turns it, with no solve; with a wall each step turns the matrix, adds the wall's correction
+    at the force points (each column times its cell's area) and solves. The held value is the step's wherever the
+    leaves it was made from are as built, and is made again from the leaves wherever a study has moved one, with the
+    made value's derivative either way, so it is never stale and the rung's derivative stays exact.
+  - **Every wall kind's correction is evaluated at the force points**, so the rung is the same for any wall kind: the
+    image system varies over the distance to the wall, which the force points resolve while the body is more than a
+    force spacing from it, and it is read at `N^2` pairs per step rather than `N` times the quadrature's count. A
+    correction may declare that it adds nothing (`WallCorrection.adds_nothing`, free space's), which is what lets the
+    node hold the whole resistance.
+  - **Symmetry and definiteness:** `W^T A^-1 M` is symmetric only to the discretisation's error, so the node holds its
+    symmetric part, and the build refuses a free part whose symmetric part is not positive definite or which is
+    symmetric only to more than a hundredth of itself (a gross-defect check: the point forces are symmetric to rounding
+    whatever they miss), a refinement written below its rule's where the rule's quadrature moves the free resistance's
+    significant entries by more than 5% (`drag.mrs-quadrature`: the move estimates the quadrature's error, and
+    predicted FL-9's free-space misses to within 1.2 times up to the point forces' 72% at blob 0.1, which the asymmetry
+    passes at 2e-17), with a wall a resistance at the body's starting pose that is not positive definite
+    (`drag.mrs-resistance`; MIME-ANO-130), and a force point whose cell is empty (`drag.empty-cell`), through a node's
+    own `built_problems(start)`, which the post-build checks call with the node's inputs at the start. The surrogate
+    generator keeps drag 0.3.0's point forces, its training data's discretisation, and checks each of its cases.
+  - **The wall's image integrated over each cell** (design #204; MIME-ANO-130, the review's W2): a wall correction
+    gives its image as a kernel between any targets and any source points (`WallCorrection.image`; the tube's,
+    `tube_image`, the blend of both reads, which with the targets the sources is `tube_correction`), and
+    `mime.nodes.hydro.mrs.cell_image` integrates it over source cells through the same streamed seam as the free part
+    (`_quadrature.cell_integrated`, which the regularised Stokeslet's matrix is now one use of): the same call takes one
+    body's force points against another body's cells, never a term of one body's own block. The new setting
+    `wall_refinement` integrates the image over each force point's cell on the kind's quadrature that many times
+    finer than the force spacing, each cell's weights scaled to its area (1: at the force points, as before); its
+    default is 2 for a body a contact holds off the wall, none otherwise. A confined body held off the wall takes by
+    default a force spacing no coarser than its closest approach (the contact's margin, `PlanContext.approach`, from a
+    law's `Interaction.holds_off`) over `CONFINED_GAP` spacings, and the build report states what a step then costs
+    (the force points, the unknowns, the held matrix's size and the wall's reads); a body in free space keeps its
+    family's defaults.
+  - **Near a wall every step judges its resistance before the body takes it** (MIME-ANO-130, the review's B1): the
+    resistance's least eigenvalue, each row and column scaled by its diagonal, and the share its symmetric part drops,
+    each in the node's state; one that is not positive definite is replaced by NaN, so that the run stops at that step
+    with `drag.mrs-indefinite`, naming the step, the pose, the body's least distance from the wall and a force spacing
+    that clears it (a node's `stop_problem(state)`, which a run that goes non-finite asks of every node). The flags
+    `indefinite`, `near_wall` (the body within one force spacing of the wall, over the node's quadrature, through the
+    wall correction's new `distance`, the tube wall kind's own) and `asymmetric` (the share dropped past a twentieth,
+    which bounds the error from below: 0.007 to 0.012 on the tube's axis, 0.24 to 0.46 on its floor at 0.829 mm) are reported on every window a run reads; the build report states the body's
+    distance from the wall at its start against the force spacing and the spacing the experiment's closest approach
+    (a contact's margin) needs (a node's `built_lines`). Script A's floored FL-9 at the screw's default builds and
+    stops at step 10, where without the stop the drag put energy in and the state went non-finite at step 13.
+  - **Each body's drag is computed alone** (design #204 item 4): a validity line on both rungs, and a line in the
+    build report for each drag whose medium another body with drag shares; no hydrodynamic interaction between bodies
+    is built in MIME 0.3.0.
+  - **Oracles with controls** (`tests/oracles/test_mrs_separated.py`): the sphere against its exact regularised drag
+    and rotational drag (`tests/regularised_sphere.py`, an independent computation) and Stokes's law, the prolate
+    spheroid against its closed form, the confined sphere against Haberman & Sayre, FL-9 in free space against the
+    shipped helix reference; plants of the cells' weights, the held value's frame and stale positions, each caught.
+  - **Drag 0.3.0 stays registered** (`mime.interactions.KEPT`, `PointForceDrag`), so a folder saved with it loads and
+    reproduces; 7j's frozen register's scripts build it (`operating_point.pinned_law`, with the test of its pins
+    extended to the interactions, and its control).
 - **`memory_heavy`, a marker for tests that peak above 2 GiB, which run one at a time across pytest-xdist's workers**
   (`tests/conftest.py`, `tests/memory_peaks.json`, `tests/test_memory_heavy.py`, `scripts/measure_test_memory.py`): the
   shard of CI's default lane that ran the dynamic arm's battery (8.3 GB) and the helix reference (5.7 GB) at once peaked
@@ -1627,6 +1703,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (x1.025, x1.0325, x1.030, x1.030 from 0.2 to 0.1024 mm) while the gap grows from 0.50 to 0.98 spacings; by M1's rule
   the wall correction's assembly near the wall is suspect (a suspicion, not a finding). The 3/16 in tube's margin is
   under +2%.
+- MIME-ANO-130 (open, major): on drag 0.4.0's separated quadrature a wall's image is taken at the force points: within
+  half a force spacing of the wall the confined resistance was measured indefinite (on 0.3.0's point forces too), and
+  in the tube the confinement's effect converges more slowly than the free part (FL-9's tube-over-free speed 0.971 at
+  206 force points to 1.027 at 1,714, still rising). A step whose resistance is indefinite stops the run.
 - MIME-ANO-128 (open, minor): the screw's hull query is the cylinder of its crests, which overstates FL-9's reach by up
   to 0.1458 of its enclosing radius (the supremum over every direction, 48 degrees from the axis), and whose farthest
   point lies 1.1 to 1.7 mm from the body's; a contact takes `mime.scene.body_reach` instead.

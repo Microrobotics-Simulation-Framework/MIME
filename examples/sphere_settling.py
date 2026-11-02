@@ -8,9 +8,10 @@ one of 50 um settles at 3.7, outside it: the run's result flags that, with the s
     python examples/sphere_settling.py                  # a sphere of 10 um radius
     python examples/sphere_settling.py --radius-um 50   # the same, past the rung's range: the flag is raised
 
-Starting sizes, measured on the CPU of a laptop and on CI's runners (see ``docs/choosing_spacing.md``): ``spacing`` a
-quarter of the radius and ``dt`` 0.1 ms, a run of 3 ms for a radius of 10 um (longer for a larger one); the table there says what a finer spacing costs and what it
-gains. Nothing here is a record: the steel's and the water's numbers are declared, each with its reason.
+Starting sizes, measured on the CPU of a laptop (see ``docs/choosing_spacing.md``): ``spacing`` a quarter of the
+radius, the blob a tenth of the samples' mean spacing and the quadrature twenty times finer (the rung's defaults for a
+compact body, written out), and ``dt`` 0.1 ms, a run of 3 ms for a radius of 10 um (longer for a larger one); the
+table there says what a finer spacing costs and what it gains. Nothing here is a record: the steel's and the water's numbers are declared, each with its reason.
 """
 
 import argparse
@@ -53,7 +54,8 @@ def sphere_settling(radius_um: float = 10.0, spacing_per_radius: float = 0.25, d
         position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(radius_um)))}))
     exp.declare("ball.parts.steel.density", kg_per_m3(STEEL), reason="steel")
-    exp.attach(Drag.MRS(spacing=um(radius_um * spacing_per_radius), blob=0.5), body=ball, medium=water)
+    exp.attach(Drag.MRS(spacing=um(radius_um * spacing_per_radius), blob=0.1, quadrature_refinement=20), body=ball,
+               medium=water)
     exp.attach(Gravity(), body=ball, medium=water)
     exp.observe(SwimSpeed(ball, along=-Z, after=ms(SETTLED_MS * scale(radius_um))))
     return exp

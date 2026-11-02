@@ -33,6 +33,7 @@ from mime.build import (
     plan_experiment,
     stage_spec,
 )
+from mime.build._checks import stopped_refusals
 from mime.build._construct import report_of
 from mime.build._report import NodeLine
 from mime.build._plan import EntryPlan, Section
@@ -795,7 +796,7 @@ class BuiltExperiment:
         if refusal is not None:
             if self._non_finite is None:
                 self._non_finite = NonFinite(first_non_finite(refusal), start + steps)
-            raise RunFailed([refusal], result)
+            raise RunFailed(stopped_refusals(self._graph, final) or [refusal], result)
         return result
 
     def result_of(self, start: int, steps: int, final: History, stacked: History | None = None,

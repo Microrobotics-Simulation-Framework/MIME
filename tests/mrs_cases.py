@@ -15,6 +15,7 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.dynamics import RigidInertial
 from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
+from mime.interactions.hydrodynamic import PointForceDrag
 from mime.nodes.hydro.mrs import MRSDragNode
 from mime.registry import Dynamics, Geometry, Interaction
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Scene, Sphere, Tube, Z
@@ -34,8 +35,15 @@ PLACES = {"ball": (mm((0.0, 0.0, 0.0)), (HALF, TURN, 0.0, 0.0)),
 
 
 def mrs(spacing: Quantity, **settings: object) -> Interaction:
-    """``Drag.MRS`` in free space with the 0.2 line's blob, half the mean spacing."""
-    return Drag.MRS(spacing=spacing, blob=settings.pop("blob", 0.5), wall_kind="free_space", **settings)
+    """``Drag.MRS`` in free space with the 0.2 line's blob, half the mean spacing, and the quadrature four times finer
+    (its default at that blob, written so that a blob moved by a study's difference keeps the quadrature)."""
+    return Drag.MRS(spacing=spacing, blob=settings.pop("blob", 0.5),
+                    quadrature_refinement=settings.pop("quadrature_refinement", 4), wall_kind="free_space", **settings)
+
+
+def point_forces(spacing: Quantity, **settings: object) -> Interaction:
+    """``mrs`` on drag 0.3.0, kept registered: a point force at each sample, the samples the quadrature."""
+    return PointForceDrag.MRS(spacing=spacing, blob=settings.pop("blob", 0.5), wall_kind="free_space", **settings)
 
 
 def free_space(name: str, kinds: Mapping[str, Geometry], law: Mapping[str, Interaction] | Interaction, *,
@@ -59,11 +67,12 @@ def free_space(name: str, kinds: Mapping[str, Geometry], law: Mapping[str, Inter
     return experiment
 
 
-def mrs_free_space() -> Experiment:
+def mrs_free_space(law: Interaction | None = None, name: str = "mrs_free_space") -> Experiment:
     """The round-trip case: a ball, a pill and a screw, each with the rung at its coarsest spacing, each moving and turning
     from the start, so that every leaf of every node acts within the walk's first steps."""
-    return free_space("mrs_free_space", KINDS, mrs(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
-                      velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
+    return free_space(name, KINDS, law if law is not None else mrs(mm(1.5)), mass=kg(1e-7),
+                      inertia=kg_m2((1e-14, 2e-14, 3e-14)), velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
+                      spin=rad_per_s((3.0, -1.0, 2.0)))
 
 
 def kept_kinds() -> dict[str, Geometry]:
@@ -86,9 +95,11 @@ SOLIDS: Mapping[str, Geometry] = {
 
 def mrs_kept() -> Experiment:
     """The round-trip case of the kept versions: ``mrs_free_space`` with each kind the version a folder saved before
-    quasi-uniform sampling names, so that a load of one rebuilds what it saved."""
-    return free_space("mrs_kept", kept_kinds(), mrs(mm(1.5)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
-                      velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
+    quasi-uniform sampling names, and the drag the version it names (0.3.0's point forces), so that a load of one
+    rebuilds what it saved."""
+    return free_space("mrs_kept", kept_kinds(), point_forces(mm(1.5)), mass=kg(1e-7),
+                      inertia=kg_m2((1e-14, 2e-14, 3e-14)), velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
+                      spin=rad_per_s((3.0, -1.0, 2.0)))
 
 
 def mrs_solids() -> Experiment:
@@ -114,6 +125,19 @@ def mrs_tube() -> Experiment:
     experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
     experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
     return experiment
+
+
+def prolate(a: float, b: float, mu: float = 1.0) -> np.ndarray:
+    """The diagonal of a prolate spheroid's resistance about its centre, its axis along x: Kim & Karrila's ``X^A``,
+    ``Y^A``, ``X^C``, ``Y^C`` with ``F = 6 pi mu a X^A U`` and ``T = 8 pi mu a^3 X^C Omega``, ``e`` the eccentricity."""
+    e = math.sqrt(1 - b * b / (a * a))
+    log = math.log((1 + e) / (1 - e))
+    xa = 8 / 3 * e ** 3 / (-2 * e + (1 + e * e) * log)
+    ya = 16 / 3 * e ** 3 / (2 * e + (3 * e * e - 1) * log)
+    xc = 4 / 3 * e ** 3 * (1 - e * e) / (2 * e - (1 - e * e) * log)
+    yc = 4 / 3 * e ** 3 * (2 - e * e) / (-2 * e + (1 + e * e) * log)
+    return np.array([6 * math.pi * mu * a * xa] + [6 * math.pi * mu * a * ya] * 2
+                    + [8 * math.pi * mu * a ** 3 * xc] + [8 * math.pi * mu * a ** 3 * yc] * 2)
 
 
 def drag_node(built: BuiltExperiment, body: str) -> MRSDragNode:

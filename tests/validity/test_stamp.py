@@ -22,7 +22,9 @@ from mime.validity import Stamp
 
 SEALED = Paperwork(profile="research", acceptance="water is Newtonian at a settling ball's shear rates",
                    density="a steel ball's density", spacing=mm(0.2, reason="converged at half this spacing"),
-                   blob=0.5, sources={"drag:ball.blob": "the regularised method's usual blob"})
+                   blob=0.5, quadrature_refinement=4,
+                   sources={"drag:ball.blob": "the regularised method's usual blob",
+                            "drag:ball.quadrature_refinement": "the quadrature's spacing half the blob"})
 
 
 @pytest.fixture(scope="module")
@@ -56,9 +58,9 @@ def test_every_output_carries_the_stamp_of_what_is_pending(runs):
     built, written, folder = runs["bare"]
     found, locked = stamps(built, written, folder)
     expected = built.report.profile.stamp().text()
-    assert expected.startswith("profile exploratory: 4 items pending, not sealed")
+    assert expected.startswith("profile exploratory: 5 items pending, not sealed")
     assert all(target in expected for target in BARE_PENDING)
-    assert ". Measured: " in expected and "drag:ball.spacing: on the walk's T1 sphere (338 samples)" in expected
+    assert ". Measured: " in expected and "drag:ball.spacing: on the walk's T1 sphere (338 force points)" in expected
     assert found == dict.fromkeys(found, expected)
     assert locked["profile"] == "exploratory"
     assert [item["target"] for item in locked["pending"]] == list(BARE_PENDING)
