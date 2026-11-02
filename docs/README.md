@@ -25,6 +25,9 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   its frames, the stage binding; printed among the pages.
 - [`recordings.md`](recordings.md): the recording layer in a run folder, the stage it is over, and the visuals MIME does
   not ship (the AR4's), fetched and baked into the asset cache; printed among the pages.
+- [`compilation_cache.md`](compilation_cache.md): the compilation cache `mime run` and `mime serve` keep in the user's
+  cache directory: what is stored, the cap, `mime cache clear`, `--no-xla-cache`, `mime verify` leaving it out, and the
+  lines that turn it on in a script of your own.
 - [`running_on_modal.md`](running_on_modal.md): running a saved experiment on Modal, with the environment built once
   per release and pinned by hash, and what that does and does not let a run claim.
 - [`validation/`](validation/): the known-anomalies registry.
