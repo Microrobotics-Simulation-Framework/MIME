@@ -342,11 +342,11 @@ def test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole(f
 #: ``mime serve`` with each chunk held until the file ``argv[1]`` exists (a long first compile, without the clock: the
 #: process is kept busy meanwhile, as tracing keeps it), the file ``<argv[1]>.held`` written when one is. ``argv[2]``
 #: is the mode: "threaded" as served, and for the controls "inline" (each chunk stepped on the loop's own thread, as
-#: before 7n-b), "fd" (a peer identified by its socket's descriptor, which the next connection reuses) and "single"
-#: (one slot for the step in hand, answered only when the loop finds no step in hand: the second step taken in a batch
-#: replacing the first). Then ``mime`` with the rest.
+#: before 7n-b), "fd" (a peer identified by a slot of its kind, which the next connection of the kind reuses, as it
+#: would a descriptor) and "single" (one slot for the step in hand, answered only when the loop finds no step in
+#: hand: the second step taken in a batch replacing the first). Then ``mime`` with the rest.
 GATED = """
-import concurrent.futures, pathlib, sys
+import concurrent.futures, itertools, pathlib, sys
 import mime.control._run as run
 import mime.live._serve as serve
 
@@ -369,7 +369,16 @@ if mode == "inline":
     serve.ThreadPoolExecutor = Inline
 if mode == "fd":
     import mime.live._zmtp as zmtp
-    zmtp.Server._identify = lambda self, sock: sock.fileno()
+
+    def reused(self, sock):
+        kind = next(kind for listener, kind in self.listeners.values()
+                    if listener.getsockname()[1] == sock.getsockname()[1])
+        slot = next(slot for slot in itertools.count() if 2 * slot + (kind == "PUB") not in self.identified)
+        with open(str(gate) + ".identities", "a") as written:
+            written.write(f"{kind} {2 * slot + (kind == 'PUB')}\\n")
+        return 2 * slot + (kind == "PUB")
+
+    zmtp.Server._identify = reused
 if mode == "single":
     add = serve._Steppers.add
     def single(self, peer):
@@ -485,8 +494,12 @@ def test_a_reply_held_across_a_chunk_goes_to_the_client_that_asked_never_to_its_
     (held) and hangs up; a second connects, which takes the descriptors the first freed, and asks ``set`` (held); the
     chunk is let go. The second is answered its own ``set``, and its next request its own answer. Machine-free: the
     chunk cannot end before the test lets it, and a status answered after a client's request was sent has seen it taken
-    (the request is readable before the status's is sent). The control: a server that identifies a peer by its
-    descriptor answers the second client's ``set`` with the first's ``record``."""
+    (the request is readable before the status's is sent). The control: a server that identifies a peer by a
+    slot the next connection takes over, as it would a descriptor, answers the second client's ``set`` with the first's
+    ``record``. The slot is the lowest identity of the peer's kind that no live peer holds, so that the second client
+    takes the first's whatever the kernel's choice of descriptors and the order in which the server accepts a client's
+    two connections (the control used the descriptor itself, and a client's frames connection accepted before or after
+    its commands one decided whether the second client's descriptor was the first's); the test checks it did."""
     import threading
 
     for mode in ("threaded", "fd"):
@@ -504,6 +517,10 @@ def test_a_reply_held_across_a_chunk_goes_to_the_client_that_asked_never_to_its_
         second = client(ready, timeout=HANG)
         sent(second, "set", values={"offset": 0.25})
         assert probe.request("status")["ok"]
+        if mode == "fd":  # the fault's condition, certain: the second client's identity is the first's
+            slots = [line.split() for line in Path(str(gate) + ".identities").read_text().splitlines()]
+            requests = [identity for kind, identity in slots if kind == "REP"]
+            assert len(requests) == 4 and requests[3] == requests[2], slots
         gate.touch()
         answer = json.loads(second.commands.receive())
         if mode == "threaded":
