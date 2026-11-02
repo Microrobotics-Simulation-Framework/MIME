@@ -347,8 +347,8 @@ def test_a_bundle_of_a_later_format_is_refused_first_with_the_advice_to_install_
         with pytest.raises(BuildRefused) as refused:
             action()
         (refusal,) = refused.value.refusals
-        assert refusal.code == "bundle.manifest" and "mime.bundle/3" in refusal.message, refusal
-        assert "install the MIME that packed it" in refusal.action and "do not unpack" not in refusal.action
+        assert refusal.code == "load.newer-form" and "mime.bundle/3" in refusal.message, refusal
+        assert "install the MIME that wrote it" in refusal.action and "do not unpack" not in refusal.action
     assert not (tmp_path / "a").exists() and not (tmp_path / "b").exists()
 
 

@@ -29,8 +29,11 @@ chunked for it, which changes nothing it computes, and keeps no step's state (no
   the state's metres divided by the stage's `metersPerUnit`, so that composed with it (as a viewer composes it) a
   prim is where the run put it, on a stage in millimetres as on one in metres.
 - **Its time code is the sample's index.** `timeCodesPerSecond` and `framesPerSecond` are the samples per simulated
-  second; `customLayerData` holds `mime:recording`, with the experiment's name and input hash, the base step, the
-  spacing, and every sample's step.
+  second, so a time code over `timeCodesPerSecond` is the simulated seconds since the layer's first sample, which is
+  the state where recording began (the run's start for `run_to`; for a live session, the step `record(True)` took
+  effect at). A live session that turns recording off and on joins its stretches with consecutive codes, so across the
+  gap the codes are not seconds. `customLayerData` holds `mime:recording`, with the experiment's name and input hash,
+  the base step, the spacing, and every sample's step.
 - **Crate 0.8.0**, the oldest version usd-core writes for what it holds, which older OpenUSD releases (MICROROBOTICA's)
   read; exported fresh, with no dead bytes of an earlier save.
 

@@ -34,9 +34,10 @@ from the script writes the current version."""
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
+from mime.build import Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
@@ -70,6 +71,33 @@ _PLAIN_POSSESSIVE = re.compile(r"\b(body|material) ([A-Za-z_][A-Za-z0-9_]*)'s\b"
 def version_of(schema: object, schemas: Mapping[int, str]) -> int | None:
     """The version whose schema string is ``schema``, or ``None``."""
     return next((version for version, text in schemas.items() if text == schema), None)
+
+
+#: A form's id of one family: ``mime.document/4`` is ``mime.document`` at version 4 (no sign, no leading zero).
+_FORM_ID = re.compile(r"mime\.(?P<family>[a-z_]+)/(?P<version>[1-9][0-9]*)")
+#: The longest version number compared as a number: a longer one is newer than any form MIME has written.
+_COMPARABLE_DIGITS = 9
+
+
+def newer_form_refusal(found: object, family: str, reads: Sequence[str], where: str) -> Refusal | None:
+    """The refusal ``load.newer-form`` when ``found`` (the schema or format id a file states) is of ``family``
+    (``document``, for ``mime.document/N``) at a version above the newest of ``reads`` (the ids this MIME reads), or
+    ``None``: an id of another family, a version this MIME reads and any other text are for the file's own check to
+    judge. ``where`` names the file."""
+    from mime import __version__
+
+    match = _FORM_ID.fullmatch(found) if isinstance(found, str) else None
+    if match is None or match["family"] != family:
+        return None
+    versions = [int(text.rpartition("/")[2]) for text in reads]
+    digits = match["version"]
+    if len(digits) <= _COMPARABLE_DIGITS and int(digits) <= max(versions):
+        return None
+    return Refusal(
+        "load.newer-form", RefusalClass.USER,
+        f"{where} was written by a newer MIME: its form is {found}, and this MIME ({__version__}) reads "
+        f"{', '.join(reads)}",
+        "install the MIME that wrote it, a later one (`pip install -U mime-engine`), then load it again")
 
 
 def _renamed_rungs(document: dict[str, object]) -> tuple[dict[str, object], tuple[str, ...]]:
@@ -208,5 +236,5 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
 
 
 __all__ = ["CURRENT", "DOCUMENT_SCHEMAS", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG", "OLD_RUNG", "PREVIOUS_PROFILE",
-           "RUNG_RENAMED", "TERMS_KEYS", "document_in_form", "physics_in_form", "resolved_in_form", "terms_keys_held",
-           "upgraded_document", "upgraded_lock", "version_of"]
+           "RUNG_RENAMED", "TERMS_KEYS", "document_in_form", "newer_form_refusal", "physics_in_form", "resolved_in_form",
+           "terms_keys_held", "upgraded_document", "upgraded_lock", "version_of"]

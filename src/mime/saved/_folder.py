@@ -42,6 +42,7 @@ from mime.saved._versions import (
     NEW_RUNG,
     OLD_RUNG,
     PREVIOUS_PROFILE,
+    newer_form_refusal,
     physics_in_form,
     resolved_in_form,
     terms_keys_held,
@@ -53,6 +54,8 @@ from mime.scene import LAYERS, STAGE_FILE, STAGE_WRITER, STAGE_WRITERS, sha256_h
 #: The resolved record's key for the profile's record, which MIME alone writes.
 _PROFILE_RECORD = "profile"
 
+#: The families whose ids a newer MIME may write at a version above this one's.
+DOCUMENT_FAMILY, LOCK_FAMILY = "document", "lock"
 DOCUMENT_FILE = "experiment.mime.yaml"
 LOCK_FILE = "mime.lock"
 REFERENCE_FILE = "reference.npz"
@@ -132,6 +135,13 @@ def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Ref
     return Refusal(code, category, message, action)
 
 
+def _newer(data: object, family: str, reads: tuple[str, ...], path: Path) -> Refusal | None:
+    """``load.newer-form`` when the file ``data`` was read from states a form of ``family`` above the newest of
+    ``reads``."""
+    schema = cast("dict[str, object]", data).get("schema") if isinstance(data, dict) else None
+    return newer_form_refusal(schema, family, reads, str(path))
+
+
 def read_document(path: Path) -> tuple[ExperimentDocument | None, list[Refusal]]:
     """The document at ``path``, checked against its schema, or every reason it is refused. A document of an earlier
     schema is read under the current one (``mime.saved._versions``)."""
@@ -163,6 +173,9 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
                                   "or save the experiment again with built.save(folder)")], CURRENT, ()
         return None, [_refuse("load.document-yaml", RefusalClass.USER, f"{path} is not a readable document: {error}",
                               "fix the YAML, or save the experiment again: built.save(folder)")], CURRENT, ()
+    newer = _newer(data, DOCUMENT_FAMILY, tuple(DOCUMENT_SCHEMAS.values()), path)
+    if newer is not None:
+        return None, [newer], CURRENT, ()
     upgraded, version, renamed = upgraded_document(data)
     document, problems = conforms(upgraded, ExperimentDocument)
     added = terms_keys_held(data) if version != CURRENT else []
@@ -291,25 +304,29 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
                                 "lock its build "
                                 "wrote"))
     else:
-        data, lock_version = upgraded_lock(data)
-        if document is not None and lock_version != version:
-            refusals.append(_refuse("load.lock-shape", RefusalClass.USER,
-                                    f"{folder}: the document and the lock are of different versions of the saved form "
-                                    f"(the document is version {version}, the lock version {lock_version})",
-                                    "save the experiment again from your script, built.save(folder), which writes "
-                                    "both"))
-        lock, problems = conforms(data, Lock)
-        added = terms_keys_held(data) if lock_version != CURRENT else []
-        if added:
-            problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version {CURRENT} of the "
-                        f"saved form added", *problems]
-        if lock is not None:
-            problems = lock_text_problems(lock)
-            lock = lock if not problems else None
-        refusals += [_refuse("load.lock-shape", RefusalClass.USER, f"{folder / LOCK_FILE}: {problem}",
-                             "save the experiment again from your script, built.save(folder), which writes a new "
-                             "lock; this folder cannot be loaded to do it, its lock being the problem")
-                    for problem in problems]
+        newer = _newer(data, LOCK_FAMILY, tuple(LOCK_SCHEMAS.values()), folder / LOCK_FILE)
+        if newer is not None:
+            refusals.append(newer)
+        else:
+            data, lock_version = upgraded_lock(data)
+            if document is not None and lock_version != version:
+                refusals.append(_refuse("load.lock-shape", RefusalClass.USER,
+                                        f"{folder}: the document and the lock are of different versions of the saved "
+                                        f"form (the document is version {version}, the lock version {lock_version})",
+                                        "save the experiment again from your script, built.save(folder), which writes "
+                                        "both"))
+            lock, problems = conforms(data, Lock)
+            added = terms_keys_held(data) if lock_version != CURRENT else []
+            if added:
+                problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version {CURRENT} of "
+                            f"the saved form added", *problems]
+            if lock is not None:
+                problems = lock_text_problems(lock)
+                lock = lock if not problems else None
+            refusals += [_refuse("load.lock-shape", RefusalClass.USER, f"{folder / LOCK_FILE}: {problem}",
+                                 "save the experiment again from your script, built.save(folder), which writes a new "
+                                 "lock; this folder cannot be loaded to do it, its lock being the problem")
+                         for problem in problems]
     reference: dict[str, np.ndarray] = {}
     if lock is not None:
         try:

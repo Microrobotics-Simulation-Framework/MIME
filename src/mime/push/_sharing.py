@@ -25,10 +25,12 @@ import yaml
 
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.saved._versions import newer_form_refusal
 from mime.terms import licence_problem
 
 SHARING_FILE = "sharing.yaml"
 SHARING_FORMAT = "mime.sharing/1"
+SHARING_FAMILY = "sharing"
 #: The licence ``--init`` writes where the experiment declares none: the coordinator's lean, agreed (#199 question 2).
 DEFAULT_LICENCE = "CC-BY-4.0"
 #: DataCite's contributor types (DataCite Metadata Schema 4.5, contributorType), which Zenodo's contributor roles are.
@@ -241,6 +243,10 @@ def sharing_path(folder: str | os.PathLike[str]) -> Path:
     return Path(os.path.abspath(folder)) / SHARING_FILE
 
 
+def _stated_format(loaded: object) -> object:
+    return cast("dict[str, object]", loaded).get("format") if isinstance(loaded, dict) else None
+
+
 def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
     """The ``sharing.yaml`` of a saved folder, checked: refused with every reason at once (``push.sharing-missing``,
     ``push.sharing``, ``push.creators``)."""
@@ -257,6 +263,8 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
     except (yaml.YAMLError, UnicodeDecodeError) as error:
         reader.problem("the file", f"is not YAML that reads ({type(error).__name__})", _LINE["title"])
         raise BuildRefused(reader.refusals) from None
+    if (newer := newer_form_refusal(_stated_format(loaded), SHARING_FAMILY, (SHARING_FORMAT,), path.name)) is not None:
+        raise BuildRefused([newer])
     held: Mapping[str, object] | None = reader.mapping(loaded, "", _TOP) if loaded is not None else {}
     if held is None:
         raise BuildRefused(reader.refusals)

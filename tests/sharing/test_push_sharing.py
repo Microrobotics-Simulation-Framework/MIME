@@ -99,7 +99,7 @@ def test_no_sharing_yaml_is_refused_with_init_as_the_line_to_run(toy: Path, tmp_
     ("related: [{identifier: 'not a doi', relation: Cites}]\n", "related[0].identifier: not a doi is neither"),
     ("related: [{identifier: 10.1234/x, relation: Likes}]\n", "related[0].relation: Likes is not one of"),
     ("licence: Creative Commons\n", "sharing.yaml, licence:"),
-    ("format: mime.sharing/9\n", "sharing.yaml, format: is 'mime.sharing/9'"),
+    ("format: other.sharing/9\n", "sharing.yaml, format: is 'other.sharing/9'"),
     ("creators: [{family: A, ror: x}]\n", "creators[0].ror: x is not a ROR identifier"),
     ("creators: [{organisation: A, orcid: 0000-0002-1825-0097}]\n", "creators[0].orcid: is an ORCID iD, which a"),
 ])
