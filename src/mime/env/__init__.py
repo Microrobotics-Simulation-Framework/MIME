@@ -55,7 +55,15 @@ from mime.env._pins import (
     requirements_name,
     series_of,
 )
-from mime.env._xla_cache import use_xla_cache, xla_cache_dir
+from mime.env._xla_cache import (
+    USER_CACHE_CAP_BYTES,
+    clear_user_xla_cache,
+    prune_to_cap,
+    use_xla_cache,
+    user_xla_cache,
+    user_xla_cache_root,
+    xla_cache_dir,
+)
 
 __all__ = [
     "DETERMINISTIC_FLAG",
@@ -65,6 +73,7 @@ __all__ = [
     "LOOSE_GPUS",
     "RUNNER_INFO_VARIABLE",
     "RUNNER_VARIABLE",
+    "USER_CACHE_CAP_BYTES",
     "VARIANTS",
     "Base",
     "CpuRecord",
@@ -78,6 +87,7 @@ __all__ = [
     "apply_lock_precision",
     "bases",
     "check",
+    "clear_user_xla_cache",
     "cpu_record",
     "deterministic",
     "environment_modules",
@@ -94,6 +104,7 @@ __all__ = [
     "modal_script",
     "parse_requirements",
     "pins",
+    "prune_to_cap",
     "requirements_bytes",
     "requirements_name",
     "runner_info",
@@ -101,6 +112,8 @@ __all__ = [
     "series_of",
     "shadow_refusals",
     "use_xla_cache",
+    "user_xla_cache",
+    "user_xla_cache_root",
     "with_deterministic",
     "xla_cache_dir",
     "xla_flags",

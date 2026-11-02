@@ -15,6 +15,7 @@ import pytest
 from chain_cases import tracked_rpm, tracking
 from control_cases import (
     IMPURE_CALLS,
+    STEP_TRACES,
     CalledBack,
     Counter,
     Follower,
@@ -22,6 +23,7 @@ from control_cases import (
     Growing,
     Impure,
     Ticker,
+    TracedOn,
     expected_angles,
     spun_magnet,
     watched_arm,
@@ -383,6 +385,53 @@ def untraceable_refusal(controller, said: str) -> list[str]:
     return ["built"]
 
 
+def build_traces(controller) -> int:
+    """How many times the build traces ``controller``'s step, for mode 1."""
+    STEP_TRACES[0] = 0
+    spun_magnet(controller=controller, mode="graph").build()
+    return STEP_TRACES[0]
+
+
+def test_the_build_traces_a_controllers_step_twice_in_all():
+    """The trace check's trace is the purity check's first, and the host-callback probe leaves the controller's node
+    to it: two traces where the build once took four. The control is a count of the traces, which a step that is the
+    same program on each does not change."""
+    assert build_traces(TracedOn()) == 2
+
+
+def test_a_host_callback_on_the_trace_the_probe_relies_on_is_refused_every_run():
+    """The shared-trace path's plant: a step whose callback is on its first trace only. That trace is the trace
+    check's, the purity check's first program and the one the probe relies on for the controller's node, and the
+    build refuses the step as untraceable, naming the callback, on every one of 20 runs."""
+    for _ in range(20):
+        STEP_TRACES[0] = 0
+        assert untraceable_refusal(TracedOn(calls_on=0), "its step calls the host (debug_callback)") == []
+
+
+def test_control_h_on_the_shared_trace_a_search_that_finds_nothing_leaves_the_callback_in_the_built_step(monkeypatch):
+    """Control (h) for the plant above: with the trace check's search blind (and the purity check, which would see the
+    callback as a difference between the two traces, blind too), nothing else looks at the controller's node, and the
+    step builds with its callback. That the plant is refused is the search on the shared trace, not a
+    second look at the node."""
+    monkeypatch.setattr(in_graph_module, "host_callbacks", lambda jaxpr: set())
+    monkeypatch.setattr(in_graph_module, "impure_problems", lambda step, state, reads, first: [])
+    STEP_TRACES[0] = 0
+    assert untraceable_refusal(TracedOn(calls_on=0), "its step calls the host (debug_callback)") == ["built"]
+
+
+def test_a_callback_on_the_purity_checks_second_trace_only_is_refused_as_impure_every_run():
+    """The other trace of the two: a callback on the second only makes the two programs differ, and the build refuses
+    it as impure, on every one of 20 runs."""
+    for _ in range(20):
+        STEP_TRACES[0] = 0
+        try:
+            spun_magnet(controller=TracedOn(calls_on=1), mode="graph").build()
+        except BuildRefused as caught:
+            assert caught.codes() == ["controller.impure"], caught.codes()
+        else:
+            raise AssertionError("built")
+
+
 def test_control_h_a_step_with_a_host_callback_accepted_for_mode_1_is_caught(monkeypatch):
     """Control (h): the trace check finds no host callback; the build is no longer refused as untraceable."""
     assert host_callback_accepted(monkeypatch) != []
@@ -421,7 +470,7 @@ def test_a_step_that_reads_state_its_own_calls_change_is_refused_for_mode_1_and_
 
 def test_control_j_a_step_that_changes_what_it_reads_between_calls_accepted_for_mode_1_is_caught(monkeypatch):
     """Control (j): the purity check finds nothing; the counter's step builds for mode 1, which freezes it."""
-    monkeypatch.setattr(in_graph_module, "impure_problems", lambda step, state, reads: [])
+    monkeypatch.setattr(in_graph_module, "impure_problems", lambda step, state, reads, first: [])
     IMPURE_CALLS[0] = 0
     assert impure_refusal() == ["built"]
 

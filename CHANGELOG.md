@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`mime run` and `mime serve` keep XLA's compilation cache** in the user's cache directory, so that the second run of
+  an experiment compiles less and its numbers are the same: every program stored, the oldest entries pruned at a
+  command's start once the cache passes 2 GB, `--no-xla-cache` to leave it out, `mime cache clear` to delete it, and
+  a cache that cannot be written said once and compiled without. `mime verify` does not use it, and a script of your
+  own is as it was; [the compilation cache](docs/compilation_cache.md) shows the lines that turn it on.
+
 ### Fixed
 - **`rigid_inertial` 0.3.0 no longer gains energy from its gyroscopic term** (MIME-ANO-129): the term was an explicit
   load, so a torque-free body of three different inertias gained 2.6 times its kinetic energy in a second at a 1 ms
@@ -776,6 +783,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **A controller inside the compiled step has its step traced twice at the build, not four times** (profiling pass
+  candidate C2): the trace check's trace is also the purity check's first program, compared with one more of a function of
+  its own, and the host-callback probe leaves the controller's node to the trace check's search of the first. The checks
+  keep their power on what two traces can see (an impure step is still refused as `controller.impure`, a step with a
+  callback as `controller.untraceable`), and one thing is given up: a step impure only from its third trace on, which
+  the probe's trace used to catch, is no longer caught; A0's build is faster by about a quarter and A0 dynamic's by little, and no result moves (the
+  state digests of A0 and A0 dynamic are equal before and after in both precisions).
 - **The sphere 0.2.0, the capsule 0.2.0 and the screw 0.3.0 sample their surfaces quasi-uniformly** (phase 7m-a), so
   every result of the MRS rung on them moves (the same count of samples, placed so that none crowd: on FL-9 in free
   space at 0.16 mm and blob 0.5 the swim speed rises from 2.7979 to 2.9523 mm/s against a reference of 3.057). Their
