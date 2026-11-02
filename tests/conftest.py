@@ -45,6 +45,18 @@ if sys.platform != "win32":
 CPU_AT_SETUP = pytest.StashKey[tuple[float, float | None]]()
 
 
+@pytest.fixture(autouse=True, scope="session")
+def user_xla_cache_in_the_sessions_own_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """``mime run`` and ``mime serve`` keep XLA's cache in the user's cache directory unless JAX's own setting is
+    already made, as CI's is. Run here without it, the suite's commands would fill the developer's real cache; they
+    fill the session's own directory instead. ``tests/env/test_user_xla_cache.py`` puts the real path back. Session
+    scoped, so that no property test sees a function-scoped fixture."""
+    with pytest.MonkeyPatch.context() as patch:
+        root = tmp_path_factory.mktemp("user-xla-cache")
+        patch.setattr("mime.env._xla_cache.user_xla_cache_root", lambda: root)
+        yield
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--mime-shard", metavar="i/N", help="keep CI shard i of N's test files (tests/_sharding.py)")
     parser.addoption("--mime-shard-record", metavar="FILE", help="write what the shard collected and kept, as JSON")

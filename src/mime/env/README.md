@@ -40,6 +40,10 @@
   capability (`sm_80` for both A100s) or, on a CPU, the first hex digits of the hash of its flags. JAX's cache key holds
   no CPU feature while XLA compiles for the host's, so an entry is never read on another CPU; on a GPU JAX's key still
   decides whether an entry is a hit. Without `--xla-cache` there is no persistent cache.
+- **The user's cache** (`user_xla_cache`, `user_xla_cache_root`, `prune_to_cap`, `clear_user_xla_cache`): what `mime run` and
+  `mime serve` keep in the user's cache directory, the same layout under `xla`, written with every program stored and
+  pruned of its oldest entries once it passes its cap, at the start of the command; see
+  [the compilation cache](../../../docs/compilation_cache.md).
 - **The GPU types** (`EXACT_GPUS`), as Modal names them. A name Modal may serve with another model (`A100`, `H100`,
   `B200+`) is refused with the exact names to use instead. The two A100 names are one family: Modal's guide names no
   way to stop an upgrade but `H100!`, and a measured run saw a request for the smaller A100 served by the larger card (see Running on
