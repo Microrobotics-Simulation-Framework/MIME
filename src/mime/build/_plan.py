@@ -107,7 +107,7 @@ from mime.scene import (
     valid_prim_path,
     world_frame,
 )
-from mime.scene._sampling import quadrature_arrays, quadrature_counts, samples_shortfall
+from mime.scene._sampling import JUDGED_SAMPLES, judged_samples, quadrature_arrays, quadrature_counts, samples_shortfall
 from mime.things import (
     WORLD,
     Apparatus,
@@ -2917,16 +2917,27 @@ class _Planner:
         self.checked = {**self.checked, plan.owner: (*self.checked.get(plan.owner, ()), line)}
 
     def spacing_short(self, owner: str, hull: Hull, spacing: float, margin: float) -> float | None:
-        """How far ``hull``'s samples at ``spacing`` fall short of its body (``samples_shortfall``), or ``None``
-        where that passes the margin (a thousandth of the hull's size at a margin of zero, the spacing's default
-        rule), which is refused (``confinement.spacing-short``), naming the spacing that keeps within it."""
+        """How far ``hull``'s samples at ``spacing`` fall short of its body (``samples_shortfall``), or ``None`` where
+        that passes the margin (a thousandth of the hull's size at a margin of zero), which is refused
+        (``confinement.spacing-short``), naming the spacing that keeps within it. A spacing that takes more than
+        ``JUDGED_SAMPLES`` to judge is refused too, before any sample is made, and so the search for the finer one
+        stops there: they are what a machine's memory goes on."""
+        judged = judged_samples(hull.kind, hull.settings, spacing)
+        if judged > JUDGED_SAMPLES:
+            coarser = spacing * math.sqrt(judged / JUDGED_SAMPLES) * 1.01
+            self.refuse("confinement.spacing-short", RefusalClass.USER,
+                        f"interaction {owner} seeds {hull.label()} from its samples at a spacing of "
+                        f"{spacing * 1e3:.4g} mm, {judged:,} of them to judge, past the {JUDGED_SAMPLES:,} the plan "
+                        f"holds in memory for it", f"write spacing=mm({coarser * 1e3:.3g}) or coarser")
+            return None
         size = float(cast(Any, hull.kind).enclosing_radius(hull.settings))
         bound = margin if margin > 0.0 else 1e-3 * size
         short = samples_shortfall(hull.kind, hull.settings, spacing)
         if short <= bound:
             return short
         finer = spacing
-        while finer > spacing / 64.0 and samples_shortfall(hull.kind, hull.settings, finer) > bound:
+        while samples_shortfall(hull.kind, hull.settings, finer) > bound \
+                and judged_samples(hull.kind, hull.settings, finer / 2.0) <= JUDGED_SAMPLES:
             finer /= 2.0
         within = samples_shortfall(hull.kind, hull.settings, finer) <= bound
         self.refuse("confinement.spacing-short", RefusalClass.USER,
@@ -2935,7 +2946,8 @@ class _Planner:
                     + (f"margin of {margin * 1e3:.4g} mm" if margin > 0.0 else
                        f"thousandth of its size ({bound * 1e6:.3g} um) that a margin of zero allows"),
                     f"write spacing=mm({finer * 1e3:.4g}) or finer, or a larger margin=mm(...)" if within else
-                    f"write spacing=mm(...) below {finer * 1e3:.4g} mm, or a larger margin=mm(...)")
+                    f"write a larger margin=mm(...): a spacing of {finer * 1e3:.4g} mm, the finest the plan judges, is "
+                    f"still short of this one")
         return None
 
     def value_lines(self) -> tuple[ValueLine, ...]:

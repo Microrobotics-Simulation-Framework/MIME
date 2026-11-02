@@ -99,8 +99,9 @@ support (a lab's mesh) is held by its samples, which act as a friction set by th
 by their supports, as GJK finds them, are the layout's next, `mime.nodes.body._contact`). Against a surface whose
 shape declares its region convex (the tube's lumen) each group's candidates are its own convex hull's vertices; the
 forces are scaled to do no work at the held twist; and the solve's residual is `<body>`'s state's `contact_residual`,
-flagged `unconverged` above `CONVERGED`. A spacing whose samples fall farther from the body than the margin is refused
-(`confinement.spacing-short`). A turned body that touches at two points takes the
+flagged `unconverged` above `CONVERGED`. A spacing whose samples fall farther from the body than the margin, or that
+takes more than `JUDGED_SAMPLES` to judge, is refused (`confinement.spacing-short`); left unwritten, the spacing is the
+margin, no finer than `SPACING_FLOOR` of the hull's size. A turned body that touches at two points takes the
 couple that holds it, and a screw that turns broadside in a narrow tube is held at the bore's limit, where 0.1.0
 held its centre by its extent and let it through the wall. A body with no hull is held as a sphere of its extent, as
 before; a body whose hull no point reaches the margin steps as it did, to the last bit. 0.1.0 is kept registered

@@ -48,7 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   samples fall. Refused when planned: a spacing for a body with no hull, a hull a dynamics cannot hold, a surface whose
   shape takes one point at a time, and a spacing whose samples fall farther from the body than the margin, naming one
   that keeps within it (`confinement.no-hull`, `confinement.hull-not-held`, `confinement.surface-shape`,
-  `confinement.spacing-short`).
+  `confinement.spacing-short`); left unwritten, the spacing is the margin, no finer than `SPACING_FLOOR` of the hull's
+  size, and a spacing that takes more than `JUDGED_SAMPLES` to judge is refused before any sample is made.
 - **The support query on the geometry protocol** (review 7o's F2, option B; design #204): `Geometry.support(parameters,
   direction, near)`, a body's farthest point along a direction and its derivative in the direction (`Support`),
   reading no wall, in the order a kind can give it: a closed form for the sphere, the ellipsoid, the cylinder and the

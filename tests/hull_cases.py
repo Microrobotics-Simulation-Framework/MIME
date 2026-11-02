@@ -69,7 +69,7 @@ def turned(angle: float) -> tuple[float, float, float, float]:
 
 
 def hull_contact(name: str = "hull_contact", *, angle: float = math.radians(12.0), gap: float = 1e-7,
-                 spacing: float = SPACING, part=None) -> Experiment:
+                 spacing: float = SPACING, margin: float = MARGIN, part=None) -> Experiment:
     """FL-9 turned ``angle`` across script A's tube and lowered until its hull's nearest point is ``gap`` from the
     wall less the margin, under gravity and the field turning at 10 Hz, moving down into the wall at 1 mm/s: held at
     its hull's points from the first steps. ``part``, a kind in FL-9's place (placed as FL-9 would be), for a plan's
@@ -91,7 +91,7 @@ def hull_contact(name: str = "hull_contact", *, angle: float = math.radians(12.0
         experiment.declare(path, value, reason="script A's values, FL-9's parts' diagonal inertia")
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
-    experiment.attach(Contact.Projection(margin=m(MARGIN), spacing=m(spacing)), body=umr, surface=tube.inner_surface)
+    experiment.attach(Contact.Projection(margin=m(margin), spacing=m(spacing)), body=umr, surface=tube.inner_surface)
     return experiment
 
 

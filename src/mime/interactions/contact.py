@@ -41,6 +41,15 @@ SPACING_MEASURED = ("de Jongh's FL-9 (radius 1.56 mm, length 7.47 mm), in any di
                     "0.2 mm, 68 um at 0.4 mm, 226 um at 0.8 mm and 544 um at 1.6 mm, the last two past the 0.1 mm "
                     "margin and refused; the body is held at its own surface, so the samples only seed it")
 
+#: The finest a hull's spacing goes when none is written, as a share of its size (its enclosing radius): a margin says
+#: how near the body may come, not how finely to seed it, and a margin of a thousandth of the body's size would ask for
+#: about ten million samples. FLOOR_MEASURED is its basis, against a thousandth of the size, the bound the plan holds a
+#: margin of zero to.
+SPACING_FLOOR = 1.0 / 64.0
+FLOOR_MEASURED = ("every kind's samples fall within a thousandth of its size at a 64th of it, the coarsest power of two "
+                  "that does: 7e-5 of it for a sphere, 8e-5 an ellipsoid, 3e-4 a cylinder and a box, 6e-4 FL-9 (34,494 "
+                  "samples) and 6.3e-4 a capsule, where a 32nd leaves the last four at 1.2e-3 to 2.2e-3")
+
 #: The switches of a body held by its centre: the hold in the solve, the band it starts in, and the projection after
 #: the step with its velocity rule (0.1.0's, and 0.2.0's for a body with no hull).
 CENTRE_SWITCHES = (
@@ -175,10 +184,12 @@ class Contact(Interaction):
                                      "velocity into the surface, a physical model of the contact, not a solver's "
                                      "choice"),
         "spacing": numerical_default(
-            "for a body with a hull, the contact's margin: the hull's points about a margin apart",
+            "for a body with a hull, the contact's margin, no finer than SPACING_FLOOR of the hull's size: the hull's "
+            "points about a margin apart",
             "a stated rule, never a converged value: the body reaches past its points by no more than its farthest "
             "point lies from the nearest of them, so a spacing of the margin keeps the body within the margin's "
-            "share of it", by="default_spacing", measured=SPACING_MEASURED),
+            "share of it, and a margin too small to say how finely to seed the body takes the floor",
+            by="default_spacing", measured=f"{SPACING_MEASURED}; {FLOOR_MEASURED}"),
     }
     differentiability = GradientStatus.PIECEWISE_JUMP
     gradient = GradientRecord(switches=(*CENTRE_SWITCHES, *HULL_SWITCHES))
@@ -239,13 +250,12 @@ class Contact(Interaction):
         return cls(rung="projection", **settings)
 
     def default_spacing(self, ctx: PlanContext) -> Quantity | None:
-        """The spacing of the hull's points when none is written, for a body with a hull: the margin, or a
-        thousandth of the hull's size where the margin is zero."""
+        """The spacing of the hull's points when none is written, for a body with a hull: the margin, no finer than
+        ``SPACING_FLOOR`` of the hull's size."""
         hull = ctx.geometry(of="body")
         if hull is None:
             return None
-        margin = ctx.scalar("margin")
-        return m(margin if margin > 0.0 else 1e-3 * float(hull.kind.enclosing_radius(hull.settings)))
+        return m(max(ctx.scalar("margin"), SPACING_FLOOR * float(hull.kind.enclosing_radius(hull.settings))))
 
     @override
     def plan(self, ctx: PlanContext) -> Plan:

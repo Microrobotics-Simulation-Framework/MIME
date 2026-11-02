@@ -23,6 +23,7 @@ with a control that fails on every run (nothing here is drawn but the cut's prop
   ``held_by_samples``."""
 
 import math
+import re
 from functools import cache
 
 import jax
@@ -33,9 +34,13 @@ from hull_cases import MARGIN, TUBE_RADIUS, hull_node, kind_points, rotation
 from hypothesis import find, given, settings
 from test_hull_contact import DRAWS, KINDS, SPACING, about_axis, held, near_the_wall, start
 
+import mime.build._plan as plan_module
+import mime.interactions.contact as contact_law
 import mime.nodes.body._contact as contact_module
 import mime.nodes.body._rigid_inertial as rigid_module
+from mime import Experiment
 from mime.build import BuildRefused
+from mime.interactions import Contact
 from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, convex_candidates, point_groups
 from mime.nodes.body._contact import CONVERGED
 from mime.scene import Box, Cylinder, Sphere
@@ -304,6 +309,63 @@ def test_control_the_cases_spacing_plans():
     from hull_cases import hull_contact
 
     assert hull_contact().plan() is not None
+
+
+def default_contact(margin) -> Experiment:
+    """The hull_contact case with its contact at ``margin`` and the spacing left to its default."""
+    from hull_cases import hull_contact
+
+    experiment = hull_contact()
+    experiment._declarations = [d for d in experiment._declarations if not isinstance(getattr(d, "law", None), Contact)]
+    experiment.attach(Contact.Projection(margin=margin), body="umr", surface="tube.inner_surface")
+    return experiment
+
+
+def samples_held(margin) -> int:
+    (line,) = [line for lines in default_contact(margin).plan().checked.values() for line in lines
+               if "at a spacing of" in line]
+    return int(re.search(r"its ([\d,]+) points at a spacing", line)[1].replace(",", ""))
+
+
+@pytest.mark.parametrize("margin_mm", [0.0, 1e-2])
+def test_a_margin_too_small_to_say_how_finely_to_seed_the_body_takes_the_floor_and_plans(margin_mm):
+    """A 64th of FL-9's size, 34,494 samples, whatever the margin below it: a thousandth of its size would take about
+    ten million, and the plan's guard goes through them all (CI's runner lost its 16 GB to a negative margin's)."""
+    assert samples_held(mm(margin_mm)) == 34_494
+
+
+def test_a_negative_margin_is_refused_for_itself_with_no_samples_to_pay():
+    with pytest.raises(BuildRefused) as refused:
+        default_contact(mm(-0.1)).plan()
+    assert "setting.value" in refused.value.codes()
+
+
+def test_the_margins_own_spacing_stands_above_the_floor():
+    assert samples_held(mm(0.1)) == 15_327
+
+
+def test_a_spacing_that_takes_more_samples_to_judge_than_the_plan_holds_is_refused_before_any_is_made(monkeypatch):
+    """The floor at the rule it replaced, a thousandth of the size: the refusal names a spacing, in a plan that makes
+    none of the millions of samples (the shortfall would raise, were it reached)."""
+    def reached(*_: object) -> float:
+        raise AssertionError("the shortfall was judged from every sample")
+
+    monkeypatch.setattr(contact_law, "SPACING_FLOOR", 1e-3)
+    monkeypatch.setattr(plan_module, "samples_shortfall", reached)
+    with pytest.raises(BuildRefused) as refused:
+        default_contact(mm(0.0)).plan()
+    (found,) = [r for r in refused.value.refusals if r.code == "confinement.spacing-short"]
+    assert "write spacing=mm(" in found.action and "of them to judge" in found.message
+
+
+def test_a_margin_no_spacing_can_reach_is_refused_within_what_the_plan_holds():
+    """A nanometre's margin, the search for a finer spacing stopping where the plan's memory does, says so."""
+    from hull_cases import hull_contact
+
+    with pytest.raises(BuildRefused) as refused:
+        hull_contact(margin=1e-9).plan()
+    (found,) = [r for r in refused.value.refusals if r.code == "confinement.spacing-short"]
+    assert "a larger margin=mm(...)" in found.action and "the finest the plan judges" in found.action
 
 
 def flag_names(part=None, spacing: float = SPACING) -> set[str]:
