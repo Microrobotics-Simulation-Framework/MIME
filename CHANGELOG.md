@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`mime run` and `mime serve` keep XLA's compilation cache** in the user's cache directory, so that the second run of
+  an experiment compiles less and its numbers are the same: every program stored, the oldest entries pruned at a
+  command's start once the cache passes 2 GB, `--no-xla-cache` to leave it out, `mime cache clear` to delete it, and
+  a cache that cannot be written said once and compiled without. `mime verify` does not use it, and a script of your
+  own is as it was; [the compilation cache](docs/compilation_cache.md) shows the lines that turn it on.
+
 ### Fixed
 - **`rigid_inertial` 0.3.0 no longer gains energy from its gyroscopic term** (MIME-ANO-129): the term was an explicit
   load, so a torque-free body of three different inertias gained 2.6 times its kinetic energy in a second at a 1 ms
@@ -29,6 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a spin that overflows the term, since the large step it showed no longer overflows.
 
 ### Added
+- **Four forward defences for the saved form and the stage; no format's bytes change.** (1) The contract is written in
+  the `saved`, `scene` and `viz` READMEs: a saved folder never holds results or presentation, overlays live in run or
+  study folders or the asset cache, and every layer MIME composes resolves inside its own folder. (2) `/World` is the
+  only root prim the stage writer emits; every other root prim is reserved for MIME's overlays, and a test holds the
+  writer to one root over Python-first, referenced-asset, A0 and script A scenes (`tests/scene/test_root_prims.py`).
+  (3) The recording layer's time base is stated and tested on both writers at two spacings: within one uninterrupted
+  stretch of samples a time code over `timeCodesPerSecond` is the simulated seconds since the layer's first sample.
+  A live session that records from mid-run starts its codes there, and one that turns recording off and on has codes
+  that are not seconds across the gap; its steps name each sample (`tests/viz/test_recording_time_base.py`). (4) A
+  document or lock (`mime.document/N`, `mime.lock/N`), a bundle (`mime.bundle/N`) or a `sharing.yaml`
+  (`mime.sharing/N`) written by a newer MIME is refused as `load.newer-form`, naming the file, the version found and
+  the versions this MIME reads, with the advice to upgrade `mime-engine`; a bundle of a later format was
+  `bundle.manifest`, and a document or lock of a later version a list of schema problems.
 - **`memory_heavy`, a marker for tests that peak above 2 GiB, which run one at a time across pytest-xdist's workers**
   (`tests/conftest.py`, `tests/memory_peaks.json`, `tests/test_memory_heavy.py`, `scripts/measure_test_memory.py`): the
   shard of CI's default lane that ran the dynamic arm's battery (8.3 GB) and the helix reference (5.7 GB) at once peaked
@@ -794,6 +814,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes +Z onto +Y, which is the part that shows its planted +z law.
 
 ### Changed
+- **A controller inside the compiled step has its step traced twice at the build, not four times** (profiling pass
+  candidate C2): the trace check's trace is also the purity check's first program, compared with one more of a function of
+  its own, and the host-callback probe leaves the controller's node to the trace check's search of the first. The checks
+  keep their power on what two traces can see (an impure step is still refused as `controller.impure`, a step with a
+  callback as `controller.untraceable`), and one thing is given up: a step impure only from its third trace on, which
+  the probe's trace used to catch, is no longer caught; A0's build is faster by about a quarter and A0 dynamic's by little, and no result moves (the
+  state digests of A0 and A0 dynamic are equal before and after in both precisions).
 - **The sphere 0.2.0, the capsule 0.2.0 and the screw 0.3.0 sample their surfaces quasi-uniformly** (phase 7m-a), so
   every result of the MRS rung on them moves (the same count of samples, placed so that none crowd: on FL-9 in free
   space at 0.16 mm and blob 0.5 the swim speed rises from 2.7979 to 2.9523 mm/s against a reference of 3.057). Their

@@ -42,6 +42,18 @@ Both files are described by closed TypedDicts (`ExperimentDocument`, `Lock`). A 
 so the loader checks what it reads against the same annotations, refusing an unknown key, a missing key or a value of
 another type by its path; a test keeps the two in step.
 
+## What a saved folder never holds
+
+A saved folder holds what reproduces the experiment and nothing else, never a result and never presentation:
+`layout_problem` refuses any other path in it, and the schema any other key. A run's results, a recording, a comparison
+with another rung, a measured track and a look-dev or preview layer are overlays, and an overlay lives in a run or study
+folder, or in the asset cache (`mime.viz`), never in the saved folder it is over.
+
+**Every layer MIME composes resolves inside its own folder**: a sublayer or a reference is a path below the folder that
+holds the layer, with no path out of it, so that a folder resolves again after it is moved, copied or published. A preview
+baked from an asset (a GLB, a decimated mesh) is a derived file: it carries that asset's licence tier (design #198) and
+is never pinned by its bytes in an experiment's lock (design #183).
+
 ## Loading
 
 `Experiment.load(folder)`:
@@ -49,10 +61,16 @@ another type by its path; a test keeps the two in step.
 1. reads the document with PyYAML's safe loader (a Python tag, or a key given twice, is refused) and the lock with
    `json`, so reading runs no code, and holds the stage and every asset layer to the hash the lock records (a changed
    asset is refused as `load.asset-changed`, a stage edited by hand as `load.stage-changed`);
-2. finds each entry among installed packages only, through the `mime.entries` entry point of its namespace, and never
+2. refuses a form written by a newer MIME before judging it: a document or a lock whose schema is `mime.document/N` or
+   `mime.lock/N` above the newest this MIME reads, a bundle of a later `mime.bundle/N` format and a `sharing.yaml` of a
+   later `mime.sharing/N` are each one refusal, `load.newer-form`, naming the file, the version found and the versions
+   this MIME reads, with the advice to upgrade `mime-engine`. An id of another family, and a version this MIME reads,
+   are not that refusal; the schema check judges them as it did. (A run folder's `outputs.json` of a later version is
+   refused as `result.format`, with the same advice.)
+3. finds each entry among installed packages only, through the `mime.entries` entry point of its namespace, and never
    imports a module the document names or installs anything. A missing entry, or another version, is refused with
    the line to install, taken from the lock;
-3. rebuilds, and makes three checks:
+4. rebuilds, and makes three checks:
    - **the input hash**, exactly: the document, the resolved record and the entries' names and versions. A difference
      is refused, naming the item that differs;
    - **the environment**, by report: every difference from the one the lock was written in, never a refusal;

@@ -12,8 +12,8 @@ redistributed travels as a reference to its origin, **whatever its size**, and n
 another path; so does a file over the size a bundle carries that has an origin (``mime.saved._terms``). Each reference's
 asset is held to the file's terms, and an asset MIME ships to its shipped licence: the lock is outside the hashed
 record. Format 1 (``mime.bundle/1``) still unpacks. A bundle of a format this MIME does not read (a later one) is
-refused first, before any other check, with the advice to install the MIME that packed it; a MIME before format 2
-(a development checkout) instead refuses one as not a bundle ``mime pack`` wrote, except ``mime pull`` without
+refused first, before any other check, as ``load.newer-form``, with the advice to install the MIME that wrote it; a MIME
+before format 2 (a development checkout) instead refuses one as not a bundle ``mime pack`` wrote, except ``mime pull`` without
 ``--into``, which reads the manifest first.
 
 ``pack`` writes one after checking that the folder loads, and refuses to carry a path of the machine that wrote it,
@@ -50,6 +50,7 @@ from mime.credentials import Token, held_tokens
 from mime.saved._folder import layout_problem, named_files, read_folder
 from mime.saved._schema import Lock, RemoteAssetRecord, conforms
 from mime.saved._terms import INLINE_LIMIT_BYTES, FileTerms, FolderTerms, folder_terms, place_referenced
+from mime.saved._versions import newer_form_refusal
 
 BUNDLE_SUFFIX = ".mimebundle"
 FORMAT = "mime.bundle/2"
@@ -62,7 +63,6 @@ FOLDER_PREFIX = "experiment/"
 #: refused, the one file of a folder that is not the saved form's and is not a stray (design #199, section 8 item 7).
 SHARING_FILE = "sharing.yaml"
 _MANIFEST_LIMIT_BYTES = 16_000_000
-_FORMAT_SHAPE = re.compile(r"mime\.bundle/[0-9]+")
 _CHUNK = 1 << 20
 _TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _MEMBER_MODE = 0o100644 << 16
@@ -674,8 +674,6 @@ def unknown_format(archive: zipfile.ZipFile) -> BuildRefused | None:
     names (a later format may add a member) are never judged as a hostile bundle's: the advice is to install the MIME
     that packed it. ``None`` for a known format, and for a manifest that cannot be read here, which the checks after
     refuse with their reasons."""
-    from mime import __version__
-
     try:
         info = archive.getinfo(MANIFEST_MEMBER)
     except KeyError:
@@ -686,13 +684,8 @@ def unknown_format(archive: zipfile.ZipFile) -> BuildRefused | None:
         held = _format_of(json.loads(archive.read(info)))
     except (ValueError, RecursionError, zipfile.BadZipFile, NotImplementedError, OSError):
         return None
-    if not isinstance(held, str) or not _FORMAT_SHAPE.fullmatch(held) or held in (FORMAT, FORMAT_1):
-        return None
-    return BuildRefused([_refuse(
-        "bundle.manifest", RefusalClass.USER,
-        f"the bundle is of the format {held}, which this MIME ({__version__}) does not read: it reads {FORMAT} and "
-        f"{FORMAT_1}", "install the MIME that packed it, a later one (`pip install -U mime-engine`, or `pip install "
-                       "mime-engine==<version>`), then unpack it again")])
+    return BuildRefused([refusal]) if (refusal := newer_form_refusal(held, "bundle", (FORMAT, FORMAT_1),
+                                                                      "the bundle")) is not None else None
 
 
 def read_manifest(archive: zipfile.ZipFile) -> Manifest | ManifestFormat1:

@@ -10,6 +10,7 @@ import os
 import sys
 import zipfile
 from collections.abc import Sequence
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 from mime._extras import VERIFY_EXTRA_MISSING
@@ -29,6 +30,30 @@ REFUSED, FAILED = 2, 3
 def _say(line: str) -> None:
     """A line of progress or of a summary, with anything a stranger's text could do to a terminal written out."""
     print(for_terminal(line), flush=True)
+
+
+def _warn(line: str) -> None:
+    print(for_terminal(line), file=sys.stderr, flush=True)
+
+
+def _xla_cache(arguments: argparse.Namespace) -> AbstractContextManager[object]:
+    """XLA's persistent compilation cache for ``mime run`` and ``mime serve``, in the user's cache directory, unless
+    ``--no-xla-cache``. ``mime verify`` does not use it: a verification compiles as a fresh process would."""
+    if arguments.no_xla_cache:
+        return nullcontext()
+    from mime.env import user_xla_cache
+
+    return user_xla_cache(say=_warn)
+
+
+def _cache_clear() -> int:
+    from mime.env import clear_user_xla_cache, user_xla_cache_root
+
+    root = user_xla_cache_root()
+    freed = clear_user_xla_cache(root)
+    _say(f"removed {freed} bytes of XLA's compilation cache from {root}" if freed else
+         f"no XLA compilation cache to remove at {root}")
+    return 0
 
 
 def _verify(folder: Path) -> int:
@@ -465,6 +490,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     of a document edited to seal it, which ``Experiment.from_document`` builds. Exits 0 when nothing is pending, 1 when
     something is, 2 when refused, 3 on a MIME defect or an error MIME does not recognise.
 
+    ``mime cache clear``: delete the XLA compilation cache ``mime run`` and ``mime serve`` keep in the user's cache
+    directory. They keep it unless ``--no-xla-cache``, with the oldest entries pruned at their start once it holds more
+    than its cap; ``mime verify`` never uses it.
+
     ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
 
     ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
@@ -518,7 +547,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                              "anywhere on the line)")
     commands = parser.add_subparsers(dest="command", required=True)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
-                                                "outputs")
+                                                "outputs; it keeps no XLA compilation cache, compiling as a fresh "
+                                                "process would",
+                            description="Load a saved experiment, rebuild it, check it against its lock and rerun "
+                                        "its reference steps. It keeps no XLA compilation cache, whatever mime run "
+                                        "does: a verification compiles as a fresh process would.")
     verify.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     pending = commands.add_parser("pending", help="what a saved experiment leaves pending, with the lines to paste "
                                                   "to seal it")
@@ -616,7 +649,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         problem = _credential_words_problem(words[1:])
         if problem is not None:
             parser.exit(2, f"mime credentials: {problem}\n{_CREDENTIAL_USAGE}\n")
+    held_cache = commands.add_parser("cache", help="the XLA compilation cache mime run and mime serve keep")
+    cache_commands = held_cache.add_subparsers(dest="cache_command", required=True)
+    cache_commands.add_parser("clear", help="delete the compilation cache in the user's cache directory")
+    no_cache_help = ("keep no XLA compilation cache: compile everything afresh (by default one is kept in the user's "
+                     "cache directory, capped in size, so that a second run of an experiment compiles less)")
     run = commands.add_parser("run", help="load a saved experiment, run it, and save the run beside its outputs")
+    run.add_argument("--no-xla-cache", action="store_true", help=no_cache_help)
     run.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     run.add_argument("--duration", type=float, default=None, help="seconds of simulated time, a whole number of the "
                                                                   "experiment's base steps (required, but with "
@@ -650,6 +689,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     serve = commands.add_parser("serve", help="serve a saved experiment's live session (mime.live/1, over ZMQ)")
     serve.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    serve.add_argument("--no-xla-cache", action="store_true", help=no_cache_help)
     serve.add_argument("--commands", default=DEFAULT_COMMANDS, metavar="ENDPOINT",
                        help=f"where to take commands, a REP socket (default: {DEFAULT_COMMANDS}; port 0 takes any "
                             "free one)")
@@ -738,10 +778,14 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "run":
-        return _run(arguments.folder, arguments.duration, arguments.out, arguments.history, arguments.record,
-                    arguments.every, arguments.stage_every, arguments.commands)
+        with _xla_cache(arguments):
+            return _run(arguments.folder, arguments.duration, arguments.out, arguments.history, arguments.record,
+                        arguments.every, arguments.stage_every, arguments.commands)
     if arguments.command == "serve":
-        return _serve(arguments)
+        with _xla_cache(arguments):
+            return _serve(arguments)
+    if arguments.command == "cache":
+        return _cache_clear()
     if arguments.command == "visuals":
         return _visuals(arguments)
     if arguments.command == "env":
