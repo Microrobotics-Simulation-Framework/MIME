@@ -517,7 +517,7 @@ class RigidInertialNode(MimeNode):
         coupling, free = found.rows @ response, found.rows @ moved
         start = free + closing / dt
         forces = no_work(coupling, start, self.sweeps(coupling, start, HULL_SWEEPS, owner="contact.impulse"))
-        return moved + response @ forces, found.points, forces, residual(coupling, start, forces, free)
+        return moved + response @ forces, found.points, forces, residual(coupling, start, forces, found.rows, moved)
 
     def hull_projected(self, p: Mapping[str, Any], body: Array, pose: Array, mass_matrix: Array) -> Array:
         """``pose`` moved back inside the shrunk surface by ``HULL_PASSES`` passes of the least change of pose in

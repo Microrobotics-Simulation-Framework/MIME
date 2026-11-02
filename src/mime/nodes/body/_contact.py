@@ -205,13 +205,20 @@ def no_work(coupling: Array, start: Array, forces: Array) -> Array:
     return forces * switch.domain_guard(taken, -(forces @ start) / switch.domain_guard(taken, stiffness, 1.0), 1.0)
 
 
-def residual(coupling: Array, start: Array, forces: Array, free: Array) -> Array:
+def residual(coupling: Array, start: Array, forces: Array, rows: Array, moved: Array) -> Array:
     """How far the solve is from its complementarity, a report: each row's ``min(f C_kk, b + C f)`` (m/s, zero at the
-    solution: a held point leaves at its allowance, a free one takes no force), its largest magnitude over the free
-    step's normal speeds at the held points."""
+    solution: a held point leaves at its allowance, a free one takes no force), its largest magnitude over the speed
+    the free step gives the held points, ``|v| + |r x n| |omega|`` at the fastest (the bound of each point's speed
+    along any direction): a share of the body's own motion there, not of its speed into the wall alone, which a body
+    resting on the wall has next to none of. Taken on stopped values: a report, through which no derivative passes."""
+    coupling, start, forces, rows, moved = lax.stop_gradient((coupling, start, forces, rows, moved))
     left = start + coupling @ forces
     unmet = jnp.minimum(forces * jnp.diagonal(coupling), left)
-    return jnp.max(jnp.abs(unmet)) / (jnp.max(jnp.abs(free)) + float(jnp.finfo(free.dtype).tiny))
+    linear = jnp.sqrt(jnp.sum(moved[:3] * moved[:3]))
+    angular = jnp.sqrt(jnp.sum(moved[3:] * moved[3:]))
+    lever = jnp.sqrt(jnp.sum(rows[:, 3:] * rows[:, 3:], axis=-1))
+    speed = jnp.max(linear + lever * angular)
+    return jnp.max(jnp.abs(unmet)) / (speed + float(jnp.finfo(moved.dtype).tiny))
 
 
 __all__ = ["CONTACT_NEWTON", "CONVERGED", "RELAXATION", "Contacts", "Hull", "Pair", "Wall", "deepest", "held_at",
