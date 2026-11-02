@@ -237,6 +237,15 @@ class ObservationOutputs:
         return self.text()
 
 
+@dataclass(frozen=True)
+class Stopped:
+    """A run that ended before the steps it was asked for, because it was told to (``stop=`` of :meth:`BuiltExperiment.run`;
+    Ctrl+C on ``mime run``): why, and the steps asked for. The steps reached are the result's ``steps``."""
+
+    reason: str
+    steps_asked: int
+
+
 class RunResult:
     """A run's result. ``steps`` is the steps it ran, ``final`` every node's fields after its last step and
     ``history``, when the run was asked for it, every field at every step, as before. Above them, by observation
@@ -252,8 +261,10 @@ class RunResult:
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
                  loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
                  clock: str | None = None, watches: Sequence[WatchRead] = (),
-                 report: Mapping[str, Any] | None = None) -> None:
+                 report: Mapping[str, Any] | None = None, stopped: Stopped | None = None) -> None:
         self.steps = steps
+        #: Set when the run ended before the steps it was asked for, told to: then ``steps`` are those it reached.
+        self.stopped = stopped
         self.final = final
         self.history = history
         self.layout = layout
@@ -470,7 +481,10 @@ class RunResult:
                           "array": flag_key(flag.path) if kept else None,
                           "was_raised": track.was_raised if track is not None else None,
                           "raised_at_last_step": track.at_last if track is not None else None})
-        return {"format": MANIFEST_FORMAT, "version": MANIFEST_VERSION, "experiment": self.layout.experiment,
+        stopped = {} if self.stopped is None else {"stopped": {
+            "reason": self.stopped.reason, "steps_reached": self.steps, "steps_asked": self.stopped.steps_asked,
+            "time_reached": self.steps * self.dt, "time_asked": self.stopped.steps_asked * self.dt}}
+        return {**stopped, "format": MANIFEST_FORMAT, "version": MANIFEST_VERSION, "experiment": self.layout.experiment,
                 "stamp": self.layout.stamp.record() if self.layout.stamp is not None else None,
                 "dt": self.dt, "clock": self.clock.name, "start_step": self.start_step, "steps": self.steps,
                 "start": self.start_step * self.dt, "end": self.end_step * self.dt,
@@ -512,6 +526,8 @@ class RunResult:
     def text(self) -> str:
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
+                 *([f"STOPPED, {self.stopped.reason}: {self.steps} of the {self.stopped.steps_asked} steps asked "
+                    f"for"] if self.stopped is not None else []),
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
@@ -578,7 +594,11 @@ class RunResult:
             raised = npz[key].astype(bool) if key is not None else None
             tracks[str(flag["path"])] = FlagTrack(raised, bool(flag.get("raised_at_last_step")))
         loader = {str(path): series_key(str(path)) for path in cast(list[str], manifest.get("recorded", []))}
+        held = manifest.get("stopped")
+        stopped = Stopped(str(cast(Mapping[str, Any], held)["reason"]), int(cast(Mapping[str, Any], held)["steps_asked"])) \
+            if isinstance(held, Mapping) else None
         return cls(int(manifest["steps"]), final, history, layout=layout, start_step=int(manifest["start_step"]),
+                   stopped=stopped,
                    tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz,
                    clock=cast(str | None, manifest.get("clock")),
                    watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))])
@@ -624,5 +644,5 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
 
 
 __all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "REPORT_FORMAT", "RUN_MANIFEST", "RUN_REPORT",
-           "ObservationOutputs", "OutputRef", "RunResult", "Samples", "flag_key", "layout_of", "read_report",
+           "ObservationOutputs", "OutputRef", "RunResult", "Samples", "Stopped", "flag_key", "layout_of", "read_report",
            "series_key"]

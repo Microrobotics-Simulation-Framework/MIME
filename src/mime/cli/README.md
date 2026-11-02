@@ -8,6 +8,7 @@
   steps (`Experiment.load(folder)`, then `.build().verify()`), in the precision the lock records (as `mime run`
   does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report and the
   verdict, and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the load or the build is refused.
+  Ctrl+C ends it (130), the second press at once.
 - `mime registry [--json]`: every registered entry, MIME's and each installed namespace's; with `--json`, the registry
   export the docs are generated from (see [`mime.docs`](../docs/README.md)). It runs on a base install, where a
   namespace that needs the `verify` extra is listed as not loaded.
@@ -76,6 +77,17 @@
   lock records the environment the run was made in. It prints the result's summary. It is thin over
   `BuiltExperiment.run_to`, which a script calls to write the same, and `mime.results.RunResult.read(<dir>)` reads the
   folder back. Exits zero, or two when the load, the build, the duration or what to record is refused.
+
+  **Ctrl+C.** A run is compiled chunks (about 256 of one length, a divisor of the steps where one lies near, else two
+  lengths; a controller's period or `--stage-every` sets them where there is one), which change nothing it computes
+  bit for bit. The first press is answered at once with one line, and the run stops at the end of its chunk and writes
+  its folder as the steps reached: `outputs.json` and `run.json` hold `stopped` (the reason, the steps and the time
+  reached and asked for), `RunResult.read(<dir>).stopped` says it, and the command exits 130. The second press quits
+  within a second wherever the process is, inside a compiled chunk or a compile, writing nothing: `outputs.json` is
+  the last file of a folder, so a run quit while it is written is not a folder that reads. A press while the
+  experiment loads or builds ends the command (130, nothing written), as it does in `mime verify`; one in the first
+  second or two, while `mime` itself is imported, is Python's own (a traceback). How it works, and what it cannot
+  do, is in [`_interrupt.py`](_interrupt.py).
 - `mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--mime-version <v>]
   [--xla-cache <dir>] [--record <file>]`: what a runner calls before a run (see [`mime.env`](../env/README.md)). It holds the installed
   distributions to the variant's pins and the lab's, MIME to `--mime-version` (the pinned wheel's; without it MIME is

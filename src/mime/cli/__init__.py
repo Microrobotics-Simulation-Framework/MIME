@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mime._extras import VERIFY_EXTRA_MISSING
+from mime.cli._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
 from mime.assets import AssetRef
 from mime.build import BuildRefused, InternalError, Refusal, RefusalClass, RunFailed, UnrecognisedError
@@ -32,6 +33,15 @@ def _say(line: str) -> None:
 
 
 def _verify(folder: Path) -> int:
+    with Interrupt():
+        try:
+            return _verified(folder)
+        except KeyboardInterrupt:
+            _say("interrupted; nothing was verified")
+            return INTERRUPTED
+
+
+def _verified(folder: Path) -> int:
     from mime.env import apply_lock_precision
 
     apply_lock_precision(folder)
@@ -72,6 +82,19 @@ def _pending(folder: Path) -> int:
 
 def _run(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str] = (),
          every: float | None = None, stage_every: float | None = None, commands: Path | None = None) -> int:
+    """``mime run``. Ctrl+C: the first press, while the experiment loads and builds, ends the command (130, nothing
+    written); once the run is under way it stops the run at its next chunk and the run folder is written as the steps
+    reached, marked stopped (130); the second quits at once, writing nothing (``mime.cli._interrupt``)."""
+    with Interrupt() as interrupt:
+        try:
+            return _ran(folder, duration, out, history, record, every, stage_every, commands, interrupt)
+        except KeyboardInterrupt:
+            _say("interrupted before the run began; nothing was written")
+            return INTERRUPTED
+
+
+def _ran(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str],
+         every: float | None, stage_every: float | None, commands: Path | None, interrupt: Interrupt) -> int:
     import time
 
     from mime.env import apply_lock_precision
@@ -93,18 +116,28 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
     if duration is None:
         raise BuildRefused([Refusal("run.duration", RefusalClass.USER, "mime run needs --duration, or --commands",
                                     "give the simulated time: mime run <folder> --duration <seconds> --out <dir>")])
+    interrupt.running()
+    _say(f"running {duration!r} s of simulated time; Ctrl+C stops it at the next chunk and writes the steps it "
+         "reached, twice quits at once")
     try:
         written = built.run_to(out, s(duration), history=history, record=list(record),
                                every=s(every) if every is not None else None, source=folder,
                                load_seconds=time.perf_counter() - started,
-                               stage_every=s(stage_every) if stage_every is not None else None)
+                               stage_every=s(stage_every) if stage_every is not None else None,
+                               stop=interrupt.stop)
     except RunFailed as failed:
         if "run.non-finite" not in failed.codes():
             raise
         raise _non_finite_here(failed, folder, duration, out, built.plans.dt) from failed
+    stopped = written.stopped
     print(f"ran {written.steps} steps; wrote {written.outputs}, {written.manifest}, {written.record_file} and the "
           f"run's saved form, {written.experiment}")
     print(written.result.text())
+    if stopped is not None:
+        print(f"{stopped.reason}: the folder holds the first {written.steps} of the {stopped.steps_asked} steps asked "
+              f"for ({written.steps * built.plans.dt:.6g} of {stopped.steps_asked * built.plans.dt:.6g} s), and "
+              "its outputs.json and run.json say it was stopped")
+        return INTERRUPTED
     return 0
 
 
@@ -462,7 +495,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     (``outputs.json``), its record, its topology, its build report's summary and the run's own saved form into
     ``<dir>``, which ``RunResult.read`` reads back, with the recording layer (``recording.usdc``) where
     ``--stage-every`` asks. ``mime run <folder> --commands <log> --out <dir>`` replays a live session from its command
-    log. Exits 0, or 2 when refused.
+    log. Exits 0, or 2 when refused, or 130 when Ctrl+C ended it: the first press stops the run at the end of its chunk
+    and writes it as the steps reached, marked stopped; the second quits at once, writing nothing.
 
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
     [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,

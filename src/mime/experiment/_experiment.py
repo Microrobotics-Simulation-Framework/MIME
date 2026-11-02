@@ -45,7 +45,7 @@ from mime.build._refusals import (
     entry_defect,
 )
 from mime.build import StageBinding, stage_binding
-from mime.control import Chunk, ChunkedRun, ChunkHook, law_and_models
+from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
 from mime.errors import public
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
@@ -61,6 +61,7 @@ from mime.results import (
     OutputRef,
     RunResult,
     Samples,
+    Stopped,
     read_watches,
 )
 from mime.saved import (
@@ -551,6 +552,8 @@ class RunWritten:
     result: RunResult
     #: The recording layer over the run's own stage, where ``stage_every=`` asked for one.
     recording: Path | None = None
+    #: Set when the run was ended before the steps it was asked for (``stop=``): why, and the steps asked for.
+    stopped: Stopped | None = None
 
 
 def run_layout(plans: PlanSet) -> Layout:
@@ -744,20 +747,26 @@ class BuiltExperiment:
     @public
     def run(self, duration: Quantity, *, history: bool = False,
             record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
-            hook: ChunkHook | None = None, chunk: Quantity | None = None) -> RunResult:
-        """Run for ``duration``, a whole number of base steps, as the report's run structure says: one compiled scan,
-        or compiled chunks of one control period with the controller called between them. ``hook`` is called after
-        every chunk with a :class:`~mime.control.Chunk`, its end and the state there; without a controller the run is
-        chunked for it in chunks of ``chunk``, which changes nothing it computes. A chunked run is a whole number of
-        chunks.
+            hook: ChunkHook | None = None, chunk: Quantity | None = None, stop: StopRequest | None = None) -> RunResult:
+        """Run for ``duration``, a whole number of base steps, in compiled chunks, between which Python regains control
+        (a ``KeyboardInterrupt`` arrives there, and a ``stop`` is asked). With a controller they are its control
+        periods, with the controller called between them. ``hook`` is called after every chunk with a
+        :class:`~mime.control.Chunk`, its end and the state there; without a controller the run is chunked for it in
+        chunks of ``chunk``. A run asked for neither is split into about 256 chunks of one length, a divisor of its
+        steps where one lies near; the chunks change nothing it computes, bit for bit. A run with a hook or a
+        controller is a whole number of chunks. After a ``KeyboardInterrupt`` the built experiment is not run on:
+        build it again.
+
+        ``stop`` is called after every chunk but the last and returns ``None`` to go on, or a reason to end the run
+        there: the result then holds the steps reached, and its ``stopped`` says why and how many were asked for
+        (``mime run`` passes one for Ctrl+C).
 
         The result (:class:`~mime.results.RunResult`) holds every output at the end each observation declares, and
         the series of the per-step outputs ``record`` names (``record=[swim.speed]``), one sample every ``every`` (a
         whole number of base steps, every step when not given), with every flag the entries raise at every step. A
-        run that records nothing scans as it did before, keeping no step's state, and knows each flag at its last step
-        only. ``history`` keeps every field at every step, and with it every per-step output is recorded. ``every``
-        spaces the samples kept and does not reduce the cost of recording, which is the whole state's history per
-        step whatever is kept."""
+        run that records nothing keeps no step's state, and knows each flag at its last step only. ``history`` keeps
+        every field at every step, and with it every per-step output is recorded. ``every`` spaces the samples kept
+        and does not reduce the cost of recording, which is the whole state's history per step whatever is kept."""
         steps = self.steps_in(duration)
         recorded = self._recording(record)
         if every is not None and not (recorded or history):
@@ -787,19 +796,24 @@ class BuiltExperiment:
         keep = None if history or not recorded else frozenset(
             {(output.node, output.field) for output in recorded}
             | {(flag.node, flag.field) for flag in self.layout.flags})
-        final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep)
-        result = self.result_of(start, steps, final, stacked, recorded if not history else self.layout.per_step(),
-                                spacing, history=history)
+        final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep,
+                                        automatic=hook is None and self._runs.chunk is None, stop=stop)
+        taken = self._runs.steps - start
+        why = self._runs.stopped
+        result = self.result_of(start, taken, final, stacked, recorded if not history else self.layout.per_step(),
+                                spacing, history=history,
+                                stopped=Stopped(why, steps) if why is not None else None)
         refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history,
                              already=self._non_finite)
         if refusal is not None:
             if self._non_finite is None:
-                self._non_finite = NonFinite(first_non_finite(refusal), start + steps)
+                self._non_finite = NonFinite(first_non_finite(refusal), start + taken)
             raise RunFailed([refusal], result)
         return result
 
     def result_of(self, start: int, steps: int, final: History, stacked: History | None = None,
-                  recorded: Sequence[OutputLayout] = (), spacing: int = 1, *, history: bool = False) -> RunResult:
+                  recorded: Sequence[OutputLayout] = (), spacing: int = 1, *, history: bool = False,
+                  stopped: Stopped | None = None) -> RunResult:
         """The result of ``steps`` steps from step ``start`` that ended at ``final``: the series ``recorded`` names from
         ``stacked`` (every step's kept state, where the run kept it), one every ``spacing``, and each flag over the
         steps kept, or at the last step alone."""
@@ -819,7 +833,7 @@ class BuiltExperiment:
         return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
                          watches=read_watches(self._plans.watches, final, stacked if history else None),
-                         report=self.report_summary())
+                         report=self.report_summary(), stopped=stopped)
 
     @public
     def binding(self) -> StageBinding:
@@ -908,7 +922,7 @@ class BuiltExperiment:
                record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
                source: str | PathLike[str] | None = None, load_seconds: float | None = None,
                hook: ChunkHook | None = None, chunk: Quantity | None = None,
-               stage_every: Quantity | None = None) -> RunWritten:
+               stage_every: Quantity | None = None, stop: StopRequest | None = None) -> RunWritten:
         """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
         last step, with ``history`` at every step, the series ``record`` names, one every ``every``, and the flags at
         every step when anything is recorded), ``outputs.json`` beside it (its manifest: every output with its unit,
@@ -921,7 +935,10 @@ class BuiltExperiment:
         whose state is not finite at its end is written all the same, its manifest and record saying so
         (``non_finite``), and then raises ``RunFailed`` (``run.non-finite``), what it wrote as its ``written``.
 
-        ``hook`` and ``chunk`` stream the run as :meth:`run` does. ``stage_every`` writes the recording layer,
+        ``hook`` and ``chunk`` stream the run as :meth:`run` does, and so does ``stop``: a run it ended is written as
+        the steps it reached, ``outputs.json`` and ``run.json`` holding ``stopped`` (the reason, the steps reached
+        and the steps and time asked for), and ``RunWritten.stopped`` set. ``outputs.json`` is written last, so that a
+        run quit part-way through writing is not a folder that reads. ``stage_every`` writes the recording layer,
         ``recording.usdc``: the bound prims' poses and vectors (:meth:`binding`) over the folder's own stage, at the
         run's start and every ``stage_every`` after it, a whole number of chunks (the run is chunked for it, which
         changes nothing it computes, and keeps no step's state). ``topology.json`` is written beside the outputs, and
@@ -934,7 +951,8 @@ class BuiltExperiment:
         failed: RunFailed | None = None
         samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:
-            result = self.run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk)
+            result = self.run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk,
+                              stop=stop)
         except RunFailed as error:
             if not isinstance(error.result, RunResult):
                 raise
@@ -944,14 +962,12 @@ class BuiltExperiment:
         ran = time.perf_counter()
         target = Path(out)
         target.mkdir(parents=True, exist_ok=True)
+        self.save(target / RUN_EXPERIMENT)
         np.savez(target / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
         manifest = result.manifest()
         refused = failed.refusals[0].message if failed is not None else None
         if refused is not None:
             manifest["non_finite"] = refused
-        (target / RUN_MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-                                           encoding="utf-8", newline="\n")
-        self.save(target / RUN_EXPERIMENT)
         (target / RUN_TOPOLOGY).write_text(json.dumps(self.topology(), indent=2, sort_keys=True) + "\n",
                                            encoding="utf-8", newline="\n")
         (target / RUN_REPORT).write_text(json.dumps(self.report_summary(), indent=2, sort_keys=True) + "\n",
@@ -972,9 +988,13 @@ class BuiltExperiment:
             "non_finite": refused,
             "stage_every": samples.every * self._plans.dt if samples is not None else None,
             "recording": recording.name if recording is not None else None}
+        if result.stopped is not None:
+            written["stopped"] = manifest["stopped"]
         (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        (target / RUN_MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+                                           encoding="utf-8", newline="\n")
         done = RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
-                          target / RUN_MANIFEST, RunResult.read(target), recording)
+                          target / RUN_MANIFEST, RunResult.read(target), recording, result.stopped)
         if failed is not None:
             failed.written = done
             raise failed

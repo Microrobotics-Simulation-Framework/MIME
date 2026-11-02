@@ -14,3 +14,4 @@ tests/sharing/test_referenced.py  # a sharing round trip (save, pack, unpack, a 
 tests/sharing/test_push_cli.py  # a push's round trip to the offline fake behind a local server, through the real HTTP transport: --init, the draft, the push again, --status, --discard, an upload cut and sent again, a refusal's shape
 tests/test_gitattributes.py  # the line-end rules cover every tracked file, so a checkout on Windows keeps the bytes a pinned hash was taken of
 tests/errors/test_corpus.py  # the error corpus: each planted mistake, short and in full, in a fresh process
+tests/platforms/test_interrupt.py  # Ctrl+C on `mime run` in process: the first press acknowledged and a stop asked, the second leaves, a press before the run raises, a run stopped by a real signal is written as stopped (the same behaviour in a child process is POSIX only, tests/env/test_run_interrupt.py)

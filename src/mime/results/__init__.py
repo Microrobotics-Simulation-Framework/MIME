@@ -15,10 +15,11 @@ from mime.results._result import (
     OutputRef,
     RunResult,
     Samples,
+    Stopped,
 )
 from mime.results._series import FlagRead, FlagTrack, NotInResult, NotRecorded, Reading, Series, Table
 from mime.results._watch import WatchRead, read_watches
 
 __all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "REPORT_FORMAT", "RUN_MANIFEST", "RUN_REPORT", "FlagLayout", "FlagRead", "FlagTrack", "Layout",
            "NoOutput", "NotARunFolder", "NotInResult", "NotRecorded", "ObservationLayout", "ObservationOutputs",
-           "OutputLayout", "OutputRef", "Reading", "RunResult", "Samples", "Series", "Table", "WatchRead", "read_watches"]
+           "OutputLayout", "OutputRef", "Reading", "RunResult", "Samples", "Series", "Stopped", "Table", "WatchRead", "read_watches"]

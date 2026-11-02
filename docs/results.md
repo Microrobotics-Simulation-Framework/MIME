@@ -119,3 +119,17 @@ part of the graph: the derived hash is what it would be without it.
   itself has not been run on one.
 - `run_to` and `mime run` write `outputs.json` beside `outputs.npz`: what every array is, each output's unit, window
   and flags, and each output at the end written out, so a run folder is readable without MIME.
+
+## A run that was stopped
+
+A run is compiled chunks, between which Python gets control back, so Ctrl+C reaches it. On `mime run` the first press
+stops the run at the end of its chunk and writes the folder as the steps it reached; `outputs.json` and `run.json` hold
+`stopped`, with the reason, the steps and the time reached and asked for, `RunResult.read(folder).stopped` says the
+same, and `result.text()` opens with a `STOPPED` line. The second press quits at once and writes nothing; `outputs.json`
+is the last file of a folder, so a folder quit part-way through is not one `RunResult.read` accepts. In a script,
+`built.run(...)` is chunked the same way: a `KeyboardInterrupt` arrives between chunks (build the experiment again after
+one), and `built.run(..., stop=f)` or `built.run_to(..., stop=f)` ends the run at the first chunk after which `f(progress)`
+returns a reason (a `mime.control.Progress`: the chunk's index, the steps taken, the time and the step the run ends at),
+writing it as a stopped run. A stopped run is a faithful run of the steps it reached, which is why the manifest keeps
+its version: a reader that does not know `stopped` reads those steps. A run with a controller or a hook is chunked as
+before, by its control period or by `chunk=`.
