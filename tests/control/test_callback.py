@@ -106,10 +106,10 @@ def test_control_a_hook_skipped_on_the_last_chunk_is_caught(monkeypatch):
 def hook_skipped_on_the_last_chunk(monkeypatch) -> list[str]:
     held = run_module.ChunkedRun.run
 
-    def skipping(self, steps, *, history, hook=None, chunk=None, keep=None):
+    def skipping(self, steps, *, history, hook=None, chunk=None, keep=None, **more):
         end = self.steps + steps
         given = None if hook is None else (lambda c: None if c.steps == end else hook(c))
-        return held(self, steps, history=history, hook=given, chunk=chunk, keep=keep)
+        return held(self, steps, history=history, hook=given, chunk=chunk, keep=keep, **more)
 
     monkeypatch.setattr(run_module.ChunkedRun, "run", skipping)
     seen, history, dt = hooked()
@@ -118,7 +118,8 @@ def hook_skipped_on_the_last_chunk(monkeypatch) -> list[str]:
 
 def test_a_hook_chunks_a_run_with_no_controller_and_changes_nothing_it_computes():
     """Script A (its 0.5 ms step), with no controller: run in chunks of 4 steps for a hook, its 16 steps are bit for
-    bit those of one compiled scan, and the hook sees each chunk."""
+    bit those of one compiled scan (``run`` with nothing asking for chunks splits a run of its own, so the scan is the
+    chunked run's own call), and the hook sees each chunk."""
     from script_a import script_a
 
     from mime.units import m_per_s
@@ -126,7 +127,7 @@ def test_a_hook_chunks_a_run_with_no_controller_and_changes_nothing_it_computes(
     def a():
         return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
 
-    whole = a().build().run(ms(8), history=True).history
+    _, whole = a().build()._runs.run(16, history=True)  # pyright: ignore[reportPrivateUsage]  # one compiled scan
     built = a().build()
     assert built.report.run.chunk is None
     seen: list[Chunk] = []

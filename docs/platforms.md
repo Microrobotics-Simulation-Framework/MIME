@@ -67,7 +67,10 @@ answer: a carriage return in every saved text file on Windows, a `ValueError` sh
   while that holds: a hash of the platform's feature set on macOS (`sysctl hw.optional`) and on Windows
   (`IsProcessorFeaturePresent`), which would say what makes two machines the same.
 - **Skipped on Windows:** the release test of the Modal script's generation, which starts a script with a shebang line
-  as `uv`; Windows starts only an `.exe`.
+  as `uv`; Windows starts only an `.exe`. And the three tests of Ctrl+C on `mime run` that send SIGINT to a child
+  process (`needs_posix_sigint`, `tests/_platform_support.py`): Windows delivers Ctrl+C to a console's process group.
+  The same behaviour is tested in process there (`tests/platforms/test_interrupt.py`, with `signal.raise_signal`); a
+  Windows console's own Ctrl+C event and a terminal's keypress were not exercised.
 
 ## What it does not test
 

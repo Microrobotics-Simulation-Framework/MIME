@@ -21,3 +21,10 @@ needs_readable_cpu_flags = pytest.mark.skipif(
 needs_posix_script_launch = pytest.mark.skipif(
     sys.platform == "win32",
     reason="needs a script with a shebang line to start as a program (Windows starts only an .exe); platforms route R2")
+
+#: A SIGINT sent to one child process. Windows delivers Ctrl+C to a console's process group (CTRL_C_EVENT), not to a
+#: process, so the tests of ``mime run``'s Ctrl+C that send one to a child are POSIX only; the machinery they test is
+#: also tested in process with ``signal.raise_signal``, which runs everywhere.
+needs_posix_sigint = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="sends SIGINT to a child process, which Windows delivers to a console's process group and not to one process")

@@ -169,6 +169,12 @@ def scan_chunk(graph: GraphManager, steps: int, fed: Fed) -> NodeFields:
     return cast(NodeFields, _held(graph).run_scan(steps, fed))
 
 
+def ready(state: NodeFields) -> None:
+    """Wait until ``state`` has been computed: a scan returns at once, with arrays still being filled, and a chunk's end
+    is where its last array is."""
+    _held(jax).block_until_ready(state)
+
+
 def scan_chunk_with_history(graph: GraphManager, steps: int, fed: Fed) -> tuple[NodeFields, NodeFields]:
     return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed))
 
