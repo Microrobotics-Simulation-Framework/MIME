@@ -72,14 +72,15 @@
 - `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.
-- `mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]`: load
+- `mime run <folder> --duration <time> --out <dir> [--history] [--record <output>]... [--every <time>] [--full]`: load
   and rebuild a saved experiment in the precision its lock records, run it, and write into `<dir>` its outputs
   (`outputs.npz`: every field after the last step, with `--history` at every step, each series `--record` names as
   `<observation id>.<output>`, one sample every `--every`, and every flag at every step when anything is recorded),
   their manifest beside them (`outputs.json`: each observation's outputs with their units, windows and flags, each
   output at the end written out, so the folder is readable without MIME), a record of the run (`run.json`: the steps,
   the time each stage took, the environment and the load report) and the run's own saved form (`experiment/`), whose
-  lock records the environment the run was made in. It prints the result's summary. It is thin over
+  lock records the environment the run was made in. It prints the result's summary (on a terminal, led by what needs
+  attention: see [On a terminal](#on-a-terminal)). A `<time>` is `10s`, `500ms`, `250us`, `2min` or `1h`; a bare number is seconds. It is thin over
   `BuiltExperiment.run_to`, which a script calls to write the same, and `mime.results.RunResult.read(<dir>)` reads the
   folder back. Exits zero, or two when the load, the build, the duration or what to record is refused.
 
@@ -113,6 +114,42 @@ Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
 - `mime new`: scaffold a new experiment folder (0.3.0).
 - `mime push --publish`: publish the draft, the one irreversible step, behind a typed record number (push's P2b).
+
+## On a terminal
+
+**When output is not going to a terminal it is byte for byte what it always was**: a pipe, a file, CI's log and Modal's
+are read by programs, and so are a terminal asked not to be drawn on (`--plain` anywhere on the line, `NO_COLOR` set and
+not empty, `TERM=dumb`). Each stream is judged alone: progress is on standard error and results on standard output, so
+`mime run ... | tee log` still shows its progress and the pipe gets what it always got, a line the run's own code prints to
+standard output included. Colour never carries what the words
+do not. `rich` is imported by one module, `mime/cli/_display.py`, and only to draw (a test holds both; `mime --help` never
+loads it).
+
+- **`mime run`'s progress** (standard error): a spinner naming the phase while the experiment loads, builds and compiles;
+  then the bar, the steps, the simulated time, the speed, **the time remaining**, the flags raised so far and "Ctrl+C
+  to stop", redrawn at most about four times a second. The time remaining is an **estimate**: the steps left over the
+  speed of the chunks since the last one that compiled finished (the first chunk, and in a run of two chunk lengths the
+  second as well), shown after a chunk that did not compile. A flag is
+  known at a chunk's last step, so it is "raised **by** step N", the end of the chunk it was first seen at; one raised and
+  gone again inside a chunk is not seen. The last chunk is not announced, so the run folder's writing (which can take
+  longer than a chunk) shows as "finishing the last chunk, then writing the run folder".
+- **The end of a run** leads with what needs attention (a stopped run, flags raised, post-run watches above their range or that could not be checked (no range declared, an input missing),
+  the validity lines the build computed, MADDENING's warnings counted, the profile's pending items counted, an
+  environment unlike the lock's), says what ran and how the time went, shows the first readings, the files written and
+  the commands for this folder (read it, verify it, serve it), and ends with where the rest is. `--full` adds the load
+  report, the build report's summary and every reading; the files hold all of it always. **What it cannot say:** a
+  validity line is free text with no "at its limit" status, so the lines listed are those the build *computed*, which it
+  gives when a model is at or past what it covers; MIME has no structured record of a fallback, so none is reported as
+  one.
+- **A refusal is a block**: its code and whose it is to fix, what is wrong, `what to do`, `why`, `where`, and the docs
+  address under it on one line to copy; the full traceback's file as before. `--traceback` is unchanged.
+- **A damaged compilation-cache entry**: JAX's warning is shown as it is, and once beside it a note that `mime cache
+  clear` removes the cache.
+- **`mime --help`** is grouped (Run, Share, Environment, Reference), each command has an example under its `--help`,
+  a bare `mime` says what one can do here (more in a saved experiment's folder or a run's), and a mistyped command or
+  flag is answered with the nearest (on every supported Python, a terminal or not).
+- **Ctrl+C while `mime` imports** (about the first second) ends it quietly, 130 (`mime/_import_guard.py`; installed only
+  when the process is the `mime` command, so a script that imports MIME keeps Python's handling).
 
 ## What goes online
 

@@ -12,7 +12,7 @@ written.recording                                              # a0_run/recordin
 ```
 
 ```sh
-mime run a0_saved --duration 2 --out a0_run --stage-every 0.0165
+mime run a0_saved --duration 2s --out a0_run --stage-every 16.5ms
 ```
 
 A live session records between `session.record(True)` and `session.record(False)` (the `record` command), a sample

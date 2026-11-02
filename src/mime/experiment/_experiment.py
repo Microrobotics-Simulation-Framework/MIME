@@ -1045,6 +1045,15 @@ class BuiltExperiment:
         return {name: {field: np.asarray(value) for field, value in node_state(self._graph, name).items()}
                 for name in self._graph.node_names}
 
+    def raised_flags(self) -> list[str]:
+        """The paths of the flags raised at the step the graph stands at, read from the device: what a display of a
+        run in progress (``mime run`` on a terminal) asks between chunks. It waits for the chunk's result and changes
+        nothing the run computes."""
+        from mime.build._maddening import node_state
+
+        return [flag.path for flag in self.layout.flags
+                if bool(flag.raised(np.asarray(node_state(self._graph, flag.node)[flag.field])[None])[0])]
+
     def _fresh_history(self, steps: int) -> History:
         """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in
         whole control periods, and the steps past ``steps`` dropped."""

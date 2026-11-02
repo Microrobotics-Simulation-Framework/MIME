@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The `mime` command, easier to use** (a first pass). On a terminal: `mime run` shows a spinner while it loads, builds
+  and compiles, then the steps, the simulated time, the speed, the time remaining (an estimate: the speed since the
+  first chunk, which also paid for compiling), the flags raised so far (known at the end of a chunk, so "by step N")
+  and "Ctrl+C to stop", drawn about four times a second on standard error; a refusal is a block (its code, what is
+  wrong, what to do, why, where, and the docs address under it); and the end of a run leads with what needs attention
+  (flags raised, post-run watches above their range, the validity lines the build computed, MADDENING's warnings, the
+  pending items counted, a stopped run), a short statement of what ran, the first readings and the next commands for
+  that folder, with `--full` for the load report, the build report's summary and every reading. **A pipe, a file,
+  `--plain`, `NO_COLOR` and `TERM=dumb` get what they always got, byte for byte** (a test holds it, with a control);
+  `rich` is imported by one module only, and only to draw. Without a terminal's help: `--duration`, `--every` and
+  `--stage-every` take `10s`, `500ms`, `250us`, `2min`, `1h` (a bare number is still seconds) and a refusal names the
+  forms; `mime --help` is grouped (Run, Share, Environment, Reference) with an example under every command; a bare `mime`
+  says what one can do here, and more in a saved experiment's folder or a run's; a mistyped command or flag is answered
+  with the nearest one, on every supported Python; JAX's warning of a damaged cache entry gets a note naming
+  `mime cache clear`, once, on a terminal. `rich` is a new dependency (with `markdown-it-py`, `mdurl` and `pygments`).
 - **`mime run` and `mime serve` keep XLA's compilation cache** in the user's cache directory, so that the second run of
   an experiment compiles less and its numbers are the same: every program stored, the oldest entries pruned at a
   command's start once the cache passes 2 GB, `--no-xla-cache` to leave it out, `mime cache clear` to delete it, and
@@ -15,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own is as it was; [the compilation cache](docs/compilation_cache.md) shows the lines that turn it on.
 
 ### Fixed
+- **Ctrl+C while `mime` is still importing** (about the first second) ends the command quietly, 130, where it was
+  Python's traceback of whatever import was under way. Only the `mime` command is changed, not a script that imports
+  MIME.
 - **Script A's frozen comparison is one CI asserts** (MIME-ANO-133). A sample of the frozen arrays (every 100th step of
   pose, twist and field, float64 and float32; `tests/differential/references/script_a_7d_sample.npz`, its sha256
   recorded and tested) is held on every machine to a scale-relative tolerance (1e-12 of each array's scale in float64,

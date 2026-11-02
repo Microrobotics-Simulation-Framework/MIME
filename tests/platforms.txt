@@ -15,3 +15,9 @@ tests/sharing/test_push_cli.py  # a push's round trip to the offline fake behind
 tests/test_gitattributes.py  # the line-end rules cover every tracked file, so a checkout on Windows keeps the bytes a pinned hash was taken of
 tests/errors/test_corpus.py  # the error corpus: each planted mistake, short and in full, in a fresh process
 tests/platforms/test_interrupt.py  # Ctrl+C on `mime run` in process: the first press acknowledged and a stop asked, the second leaves, a press before the run raises, a run stopped by a real signal is written as stopped (the same behaviour in a child process is POSIX only, tests/env/test_run_interrupt.py)
+tests/cli/test_durations.py  # a duration option's forms (10s, 500ms, 2min) are read through mime.units, a bare number stays seconds
+tests/cli/test_progress.py  # the arithmetic and the words of a run's progress line: the estimate leaves the compile out, a flag is "by" a step
+tests/cli/test_guide.py  # grouped --help, an example under every command, a bare `mime`, "did you mean", on this platform's argparse
+tests/cli/test_pipes.py  # output through a pipe is byte for byte what it always was, with a planted colour code found (every platform; a pipe is a pipe on Windows)
+tests/cli/test_terminal.py  # what mime draws on a terminal, through a pseudo-terminal: macOS runs it, Windows skips it (no pty module; stated in docs/platforms.md)
+tests/cli/test_import_interrupt.py  # Ctrl+C while the command imports exits quietly, 130 (POSIX only: SIGINT to a child)

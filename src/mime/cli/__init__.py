@@ -9,23 +9,61 @@ import json
 import os
 import sys
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from mime import _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
 from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
 from mime.assets import AssetRef
-from mime.build import BuildRefused, InternalError, Refusal, RefusalClass, RunFailed, UnrecognisedError
+from mime.build import BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
+from mime.cli import _durations, _guide
+from mime.cli._display import set_plain, styled
+from mime.cli._durations import FORMS, seconds
+from mime.cli._shell import quoted
 from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
 from mime.experiment import Experiment
 
+if TYPE_CHECKING:
+    from mime.cli._display import RunDisplay
+    from mime.control import Progress
+    from mime.experiment import BuiltExperiment, RunWritten
+    from mime.saved import LoadReport
+
 #: The flag that shows a refused command's full traceback, anywhere on the command line.
 TRACEBACK_FLAG = "--traceback"
+#: The flag that draws nothing but plain text, as when output is piped, anywhere on the command line.
+PLAIN_FLAG = "--plain"
+#: What the top of ``mime --help`` ends with: an example of the commonest command, and where the rest are.
+_ROOT_EXAMPLES = ("examples:\n  mime run my_experiment --duration 10s --out my_run\n"
+                  "  mime pull 10.5281/zenodo.1234567\n"
+                  "  mime <command> --help    one command's options, with an example")
 #: The exit code of a command refused for the user's or the environment's reason, and of one that met a MIME defect
 #: or an error MIME does not recognise.
 REFUSED, FAILED = 2, 3
+
+
+def option_seconds(option: str, text: str | None) -> float | None:
+    """The value of a duration option (``--duration``, ``--every``, ``--stage-every``) as seconds, ``None`` when it was
+    not given; a value that is not a duration is refused with its option's code, naming the forms that are."""
+    if text is None:
+        return None
+    value = seconds(text)
+    if value is not None:
+        return value
+    message = f"{option} {text} is not a duration"
+    action = f"write it with a unit, `mime run <folder> {option} 10s --out <dir>`; the forms are {FORMS}"
+    why = "a bare number is read as seconds, and a unit after it as written: s, ms, us, min or h"
+    if option == "--every":
+        refusal = Refusal("run.every", RefusalClass.USER, message, action, why=why)
+    elif option == "--stage-every":
+        refusal = Refusal("run.stage-every", RefusalClass.USER, message, action, why=why)
+    else:
+        refusal = Refusal("run.duration", RefusalClass.USER, message, action, why=why)
+    raise BuildRefused([refusal])
 
 
 def _say(line: str) -> None:
@@ -106,30 +144,51 @@ def _pending(folder: Path) -> int:
 
 
 def _run(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str] = (),
-         every: float | None = None, stage_every: float | None = None, commands: Path | None = None) -> int:
+         every: float | None = None, stage_every: float | None = None, commands: Path | None = None,
+         full: bool = False) -> int:
     """``mime run``. Ctrl+C: the first press, while the experiment loads and builds, ends the command (130, nothing
     written); once the run is under way it stops the run at its next chunk and the run folder is written as the steps
-    reached, marked stopped (130); the second quits at once, writing nothing (``mime._interrupt``)."""
-    with Interrupt() as interrupt:
+    reached, marked stopped (130); the second quits at once, writing nothing (``mime._interrupt``).
+
+    On a terminal (``mime.cli._display``) the run shows its progress on standard error and ends with what needs
+    attention first; ``full`` adds the rest. Anywhere else it prints what it always did."""
+    from mime.cli._display import RunDisplay, damaged_cache_note
+
+    display = RunDisplay(sys.stderr) if commands is None and styled(sys.stderr) else None
+    interrupt = Interrupt(leave=display.leave, say=display.say) if display is not None else Interrupt()
+    with damaged_cache_note(sys.stderr), interrupt:
         try:
-            return _ran(folder, duration, out, history, record, every, stage_every, commands, interrupt)
+            return _ran(folder, duration, out, history, record, every, stage_every, commands, interrupt, display, full)
         except KeyboardInterrupt:
+            if display is not None:
+                display.close()
             _say("interrupted before the run began; nothing was written")
             return INTERRUPTED
+        finally:
+            if display is not None:
+                display.close()
 
 
 def _ran(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str],
-         every: float | None, stage_every: float | None, commands: Path | None, interrupt: Interrupt) -> int:
+         every: float | None, stage_every: float | None, commands: Path | None, interrupt: Interrupt,
+         display: RunDisplay | None, full: bool) -> int:
     import time
 
     from mime.env import apply_lock_precision
     from mime.units import s
 
     started = time.perf_counter()
+    terminal = styled(sys.stdout)
+    if display is not None:
+        display.phase(f"loading {folder}: reading it, building it once and checking it against its lock")
     apply_lock_precision(folder)
     experiment = Experiment.load(folder)
+    if display is not None:
+        display.phase("building the graph to run it (compiling it, which can take many seconds)")
     built = experiment.build()
-    if experiment.load_report is not None:
+    if display is not None:
+        display.pause()
+    if experiment.load_report is not None and (not terminal or commands is not None):
         print(experiment.load_report.text())
     if commands is not None:
         from mime.live import replay
@@ -142,28 +201,88 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
         raise BuildRefused([Refusal("run.duration", RefusalClass.USER, "mime run needs --duration, or --commands",
                                     "give the simulated time: mime run <folder> --duration <seconds> --out <dir>")])
     interrupt.running()
-    _say(f"running {duration!r} s of simulated time; Ctrl+C stops it at the next chunk and writes the steps it "
-         "reached, twice quits at once")
+    if display is None or not terminal:
+        _say(f"running {duration!r} s of simulated time; Ctrl+C stops it at the next chunk and writes the steps it "
+             "reached, twice quits at once")
+    stop = interrupt.stop
+    if display is not None:
+        stop = _watched(built, display, built.steps_in(s(duration)), interrupt, time.perf_counter())
     try:
         written = built.run_to(out, s(duration), history=history, record=list(record),
                                every=s(every) if every is not None else None, source=folder,
                                load_seconds=time.perf_counter() - started,
                                stage_every=s(stage_every) if stage_every is not None else None,
-                               stop=interrupt.stop)
+                               stop=stop)
     except RunFailed as failed:
+        if display is not None:
+            display.close()
         if "run.non-finite" not in failed.codes():
             raise
         raise _non_finite_here(failed, folder, duration, out, built.plans.dt) from failed
+    finally:
+        if display is not None:
+            display.close()
     stopped = written.stopped
-    print(f"ran {written.steps} steps; wrote {written.outputs}, {written.manifest}, {written.record_file} and the "
-          f"run's saved form, {written.experiment}")
-    print(written.result.text())
-    if stopped is not None:
-        print(f"{stopped.reason}: the folder holds the first {written.steps} of the {stopped.steps_asked} steps asked "
-              f"for ({written.steps * built.plans.dt:.6g} of {stopped.steps_asked * built.plans.dt:.6g} s), and "
-              "its outputs.json and run.json say it was stopped")
-        return INTERRUPTED
-    return 0
+    if terminal:
+        _summarise(built, experiment.load_report, written, folder, out, started, full)
+    else:
+        print(f"ran {written.steps} steps; wrote {written.outputs}, {written.manifest}, {written.record_file} and the "
+              f"run's saved form, {written.experiment}")
+        print(written.result.text())
+        if stopped is not None:
+            print(f"{stopped.reason}: the folder holds the first {written.steps} of the {stopped.steps_asked} steps "
+                  f"asked for ({written.steps * built.plans.dt:.6g} of {stopped.steps_asked * built.plans.dt:.6g} s), "
+                  "and its outputs.json and run.json say it was stopped")
+    return INTERRUPTED if stopped is not None else 0
+
+
+def _watched(built: BuiltExperiment, display: RunDisplay, steps_asked: int, interrupt: Interrupt,
+             began: float) -> Callable[[Progress], str | None]:
+    """The ``stop=`` of a run that is drawn: it tells the display where each chunk ended (and, no oftener than a few
+    times a second, which flags are raised there) and then asks what Ctrl+C asks."""
+    import time
+
+    from mime.cli._display import FlagPoll
+    from mime.cli._progress import RunState
+
+    state = RunState(steps_asked, built.plans.dt, began)
+    poll = FlagPoll(built.raised_flags)
+    display.running(state)
+
+    def stop(progress: Progress) -> str | None:
+        now = time.perf_counter()
+        state.chunk(steps_asked - (progress.end - progress.steps), now, poll(now))
+        return interrupt.stop(progress)
+
+    return stop
+
+
+def _summarise(built: BuiltExperiment, load: LoadReport | None, written: RunWritten, folder: Path, out: Path,
+               started: float, full: bool) -> None:
+    """The end of ``mime run`` on a terminal: what needs attention first, a short statement of what ran, the readings
+    and the next steps; ``full`` adds the load report, the build report's summary and every reading."""
+    import time
+
+    from mime.cli import _summary
+    from mime.cli._display import show_summary
+
+    ended = time.perf_counter()
+    readings = _summary.reading_lines(written)
+    shown = readings if full else readings[:_summary.READINGS_SHOWN]
+    if len(shown) < len(readings):
+        shown = [*shown, f"... {len(readings) - len(shown)} more lines (--full prints them)"]
+    summary = _summary.RunSummary(
+        attention=tuple(_summary.attention_lines(built, written, load, folder)),
+        ran=tuple(_summary.what_ran(built, written, started, ended)), readings=tuple(shown),
+        wrote=tuple(_summary.wrote_lines(written, out)), next_steps=tuple(_summary.next_steps(folder, out)),
+        more=_summary.more_line(out))
+    sections: list[tuple[str, str]] = []
+    if full:
+        if load is not None:
+            sections.append(("Load report", load.text()))
+        sections.append(("Build report", built.report.text()))
+        sections.append(("Result", written.result.text()))
+    show_summary(summary, sys.stdout, full=sections)
 
 
 def _non_finite_here(failed: RunFailed, folder: Path, duration: float, out: Path, dt: float) -> RunFailed:
@@ -172,7 +291,7 @@ def _non_finite_here(failed: RunFailed, folder: Path, duration: float, out: Path
 
     from mime.saved import DOCUMENT_FILE
 
-    rerun = f"`mime run {folder} --duration {duration!r} --out <another folder> --history`"
+    rerun = f"`mime run {quoted(str(folder))} --duration {duration!r} --out <another folder> --history`"
     smaller = (f"give a smaller base step: in {folder / DOCUMENT_FILE}, set dt under run: to {dt / 10!r} s, then save "
                f"the folder again (Experiment.from_document(document).save(folder))")
     refusals: list[Refusal] = []
@@ -481,9 +600,24 @@ def refused(error: Exception, command: str) -> int:
         headline = f"mime {command} failed"
     else:
         headline = f"mime {command} is refused"
-    print(short_text(coded, None, frames=False, switch=TRACEBACK_FLAG, headline=headline), end="", file=sys.stderr)
+    if not (styled(sys.stderr) and _refusal_block(coded, headline)):
+        print(short_text(coded, None, frames=False, switch=TRACEBACK_FLAG, headline=headline), end="", file=sys.stderr)
     plain = all(r.category in (RefusalClass.USER, RefusalClass.ENVIRONMENT) for r in coded.refusals)
     return REFUSED if plain else FAILED
+
+
+def _refusal_block(error: MimeError, headline: str) -> bool:
+    """The refusal drawn as a block on a terminal: its code, what is wrong, what to do, why and where, then its docs
+    address and the footer the plain text ends with (whose defect it is, and the file the full traceback is in). ``False``
+    when it could not be drawn, and the plain text is printed instead."""
+    from mime.cli._display import show_refusal
+    from mime.errors._display import footer_lines
+
+    try:
+        show_refusal(error, headline, footer_lines(error, switch=TRACEBACK_FLAG), sys.stderr)
+    except ImportError:
+        return False
+    return True
 
 
 def _survive_a_narrow_stream() -> None:
@@ -495,71 +629,19 @@ def _survive_a_narrow_stream() -> None:
             stream.reconfigure(errors="backslashreplace")
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """``mime verify <folder>``: load a saved experiment, rebuild it, check it against its lock, and rerun its
-    reference steps. Exits 0 when reproduced, 1 when an output moved, 2 when the load or build is refused.
-
-    ``mime pending <folder>``: load and rebuild a saved experiment, and print each item its profile leaves pending (a
-    waiver, a reason, a numerical default), in plain words with the lines to paste in Python and in the document, and
-    each it lists. ``mime pending <folder>/experiment.mime.yaml`` plans the document as it is, with no lock: the check
-    of a document edited to seal it, which ``Experiment.from_document`` builds. Exits 0 when nothing is pending, 1 when
-    something is, 2 when refused, 3 on a MIME defect or an error MIME does not recognise.
-
-    ``mime cache clear``: delete the XLA compilation cache ``mime run`` and ``mime serve`` keep in the user's cache
-    directory. They keep it unless ``--no-xla-cache``, with the oldest entries pruned at their start once it holds more
-    than its cap; ``mime verify`` never uses it.
-
-    ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
-
-    ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
-    checkout of MIME; with ``--base``, the README start list against that revision's too. Exits 0 when every check
-    passes, 1 when one fails, 2 without the ``verify`` extra.
-
-    ``mime assets list | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
-    cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
-    corrupt).
-
-    ``mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]
-    [--stage-every <seconds>]``: load and rebuild a saved experiment, run it, and write its outputs, their manifest
-    (``outputs.json``), its record, its topology, its build report's summary and the run's own saved form into
-    ``<dir>``, which ``RunResult.read`` reads back, with the recording layer (``recording.usdc``) where
-    ``--stage-every`` asks. ``mime run <folder> --commands <log> --out <dir>`` replays a live session from its command
-    log. Exits 0, or 2 when refused, or 130 when Ctrl+C ended it: the first press stops the run at the end of its chunk
-    and writes it as the steps reached, marked stopped; the second quits at once, writing nothing.
-
-    ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
-    [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
-    frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command, a signal, or the exit of the
-    process that launched it (unless ``--outlive-launcher``); it writes a run folder when it stops.
-
-    ``mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]``:
-    hold this environment to MIME's pins and the GPU requested, then apply the precision the folder's lock records.
-    Exits 0, or 2 with every difference.
-
-    ``mime modal <folder> [--gpu <type>] [--deterministic] ...``: write the script that runs the saved experiment on
-    Modal, beside it. Exits 0, or 2 when refused.
-
-    ``mime visuals list | fetch <set> | view <target>``: the descriptions' meshes MIME does not ship, fetched from
-    their pinned upstreams into the asset cache only, and the layer that draws them on a stage or a recording.
-
-    ``mime pack <folder> [--out <file>]``: write the saved experiment in ``folder`` as one bundle file, a file its terms
-    do not let be redistributed travelling as a reference. ``mime card <folder> [--out <file>] [--notice]``: the
-    experiment's card, or its NOTICE, offline, as ``mime push`` will publish them. ``mime pull
-    <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
-    fetch its assets and say what to install. ``mime credentials set | status | remove <service>``: the token
-    ``push`` will use, kept where a commit cannot publish it. ``mime push <folder> --to zenodo|zenodo-sandbox
-    [--init | --status | --discard] [--yes] [--overwrite-site-edits]``: the plan, then the experiment's draft record
-    and its files; never published.
-
-    A refused command prints why, as a MIME error with its code, and exits 2; one that met a MIME defect, or an error
-    MIME does not recognise, exits 3. ``--traceback``, anywhere on the line, prints the full traceback first."""
-    if argv is None:
-        _survive_a_narrow_stream()
-    parser = argparse.ArgumentParser(prog="mime", description=__doc__)
+def build_parser() -> _guide.MimeParser:
+    """The ``mime`` command's parser: every command, grouped, with its example."""
+    parser = _guide.MimeParser(prog="mime", epilog=_ROOT_EXAMPLES,
+                               description="The mime command, a thin layer over the Python API: each command is one "
+                                           "call a script could make.")
+    _guide.MimeParser.top = parser
     parser.add_argument(TRACEBACK_FLAG, action="store_true",
                         help="print a refused command's full traceback, every frame and chained error (it may come "
                              "anywhere on the line)")
-    commands = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument(PLAIN_FLAG, action="store_true",
+                        help="draw nothing but plain text on a terminal, as when output is piped (NO_COLOR and "
+                             "TERM=dumb ask the same); it may come anywhere on the line")
+    commands = parser.add_subparsers(dest="command", required=False)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
                                                 "outputs; it keeps no XLA compilation cache, compiling as a fresh "
                                                 "process would",
@@ -641,13 +723,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                        ("status", "whether there is a token, where from, and its last four characters, if 32 or more")):
         each = credential_commands.add_parser(verb, help=what)
         each.add_argument("service", nargs="?" if verb == "status" else None, choices=list(credentials.SERVICES))
-    words = list(sys.argv[1:] if argv is None else argv)
-    full = TRACEBACK_FLAG in words
-    words = [word for word in words if word != TRACEBACK_FLAG]
-    if words[:1] == ["credentials"]:
-        problem = _credential_words_problem(words[1:])
-        if problem is not None:
-            parser.exit(2, f"mime credentials: {problem}\n{_CREDENTIAL_USAGE}\n")
     held_cache = commands.add_parser("cache", help="the XLA compilation cache mime run and mime serve keep")
     cache_commands = held_cache.add_subparsers(dest="cache_command", required=True)
     cache_commands.add_parser("clear", help="delete the compilation cache in the user's cache directory")
@@ -656,21 +731,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     run = commands.add_parser("run", help="load a saved experiment, run it, and save the run beside its outputs")
     run.add_argument("--no-xla-cache", action="store_true", help=no_cache_help)
     run.add_argument("folder", type=Path, help="a folder written by Experiment.save")
-    run.add_argument("--duration", type=float, default=None, help="seconds of simulated time, a whole number of the "
-                                                                  "experiment's base steps (required, but with "
-                                                                  "--commands)")
+    run.add_argument("--duration", default=None, metavar="DURATION",
+                     help=f"the simulated time, a whole number of the experiment's base steps ({_durations.FORMS}; "
+                          "required, but with --commands)")
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
     run.add_argument("--record", action="append", default=[], metavar="OUTPUT",
                      help="a per-step output to record as a series, <observation id>.<output> or an observation's id "
                           "for all of its own (repeat it for more)")
-    run.add_argument("--every", type=float, default=None, metavar="SECONDS",
+    run.add_argument("--every", default=None, metavar="DURATION",
                      help="the spacing of the recorded series' samples, a whole number of base steps (default: every "
-                          "step)")
-    run.add_argument("--stage-every", type=float, default=None, metavar="SECONDS",
+                          "step); a unit as for --duration")
+    run.add_argument("--stage-every", default=None, metavar="DURATION",
                      help="write the recording layer (recording.usdc, over the run's own stage) with a sample every "
-                          "SECONDS, a whole number of the run's chunks")
+                          "DURATION, a whole number of the run's chunks; a unit as for --duration")
+    run.add_argument("--full", action="store_true",
+                     help="on a terminal, also print the load report, the build report's summary and every reading "
+                          "(the summary leads with what needs attention and keeps the rest back; piped output is "
+                          "always whole, and so are the files)")
     run.add_argument("--commands", type=Path, default=None, metavar="LOG",
                      help="replay a live session from the command log it wrote (commands.jsonl): its run folder again, "
                           "in place of --duration")
@@ -751,7 +830,92 @@ def main(argv: Sequence[str] | None = None) -> int:
                                                                      "(default: 1)")
     modal.add_argument("--cpu", type=float, default=4.0, help="CPU cores to request (default: 4)")
     modal.add_argument("--memory", type=int, default=8192, help="MiB of memory to request (default: 8192)")
+    _guide.attach_examples(parser)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """``mime verify <folder>``: load a saved experiment, rebuild it, check it against its lock, and rerun its
+    reference steps. Exits 0 when reproduced, 1 when an output moved, 2 when the load or build is refused.
+
+    ``mime pending <folder>``: load and rebuild a saved experiment, and print each item its profile leaves pending (a
+    waiver, a reason, a numerical default), in plain words with the lines to paste in Python and in the document, and
+    each it lists. ``mime pending <folder>/experiment.mime.yaml`` plans the document as it is, with no lock: the check
+    of a document edited to seal it, which ``Experiment.from_document`` builds. Exits 0 when nothing is pending, 1 when
+    something is, 2 when refused, 3 on a MIME defect or an error MIME does not recognise.
+
+    ``mime cache clear``: delete the XLA compilation cache ``mime run`` and ``mime serve`` keep in the user's cache
+    directory. They keep it unless ``--no-xla-cache``, with the oldest entries pruned at their start once it holds more
+    than its cap; ``mime verify`` never uses it.
+
+    ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
+
+    ``mime docs check [--root <checkout>] [--base <revision>]``: the documentation's sources and their checks, in a
+    checkout of MIME; with ``--base``, the README start list against that revision's too. Exits 0 when every check
+    passes, 1 when one fails, 2 without the ``verify`` extra.
+
+    ``mime assets list | fetch <name>... | fetch --all | check``: the large files MIME references by sha256, in the
+    cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
+    corrupt).
+
+    ``mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]
+    [--stage-every <seconds>]``: load and rebuild a saved experiment, run it, and write its outputs, their manifest
+    (``outputs.json``), its record, its topology, its build report's summary and the run's own saved form into
+    ``<dir>``, which ``RunResult.read`` reads back, with the recording layer (``recording.usdc``) where
+    ``--stage-every`` asks. ``mime run <folder> --commands <log> --out <dir>`` replays a live session from its command
+    log. Exits 0, or 2 when refused, or 130 when Ctrl+C ended it: the first press stops the run at the end of its chunk
+    and writes it as the steps reached, marked stopped; the second quits at once, writing nothing.
+
+    ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
+    [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
+    frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command, a signal, or the exit of the
+    process that launched it (unless ``--outlive-launcher``); it writes a run folder when it stops.
+
+    ``mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]``:
+    hold this environment to MIME's pins and the GPU requested, then apply the precision the folder's lock records.
+    Exits 0, or 2 with every difference.
+
+    ``mime modal <folder> [--gpu <type>] [--deterministic] ...``: write the script that runs the saved experiment on
+    Modal, beside it. Exits 0, or 2 when refused.
+
+    ``mime visuals list | fetch <set> | view <target>``: the descriptions' meshes MIME does not ship, fetched from
+    their pinned upstreams into the asset cache only, and the layer that draws them on a stage or a recording.
+
+    ``mime pack <folder> [--out <file>]``: write the saved experiment in ``folder`` as one bundle file, a file its terms
+    do not let be redistributed travelling as a reference. ``mime card <folder> [--out <file>] [--notice]``: the
+    experiment's card, or its NOTICE, offline, as ``mime push`` will publish them. ``mime pull
+    <doi | url | file> [--into <folder>] [--no-assets] [--yes]``: get a bundle, check it, unpack it into a new folder,
+    fetch its assets and say what to install. ``mime credentials set | status | remove <service>``: the token
+    ``push`` will use, kept where a commit cannot publish it. ``mime push <folder> --to zenodo|zenodo-sandbox
+    [--init | --status | --discard] [--yes] [--overwrite-site-edits]``: the plan, then the experiment's draft record
+    and its files; never published.
+
+    A refused command prints why, as a MIME error with its code, and exits 2; one that met a MIME defect, or an error
+    MIME does not recognise, exits 3. ``--traceback``, anywhere on the line, prints the full traceback first."""
+    _import_guard.release()
+    if argv is None:
+        _survive_a_narrow_stream()
+    parser = build_parser()
+    words = list(sys.argv[1:] if argv is None else argv)
+    full = TRACEBACK_FLAG in words
+    set_plain(PLAIN_FLAG in words)
+    words = [word for word in words if word not in (TRACEBACK_FLAG, PLAIN_FLAG)]
+    try:
+        return _parsed(parser, words, full)
+    finally:
+        set_plain(False)  # --plain is for this command line, not for the next call in a process that calls main twice
+
+
+def _parsed(parser: argparse.ArgumentParser, words: list[str], full: bool) -> int:
+    _guide.MimeParser.words = words
+    if words[:1] == ["credentials"]:
+        problem = _credential_words_problem(words[1:])
+        if problem is not None:
+            parser.exit(2, f"mime credentials: {problem}\n{_CREDENTIAL_USAGE}\n")
     arguments = parser.parse_args(words)
+    if arguments.command is None:
+        print(for_terminal(_guide.bare(Path.cwd())))
+        return 0
     held = os.environ.get(TRACEBACK_VARIABLE)
     if full:
         os.environ[TRACEBACK_VARIABLE] = "full"
@@ -777,9 +941,12 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "run":
+        duration = option_seconds("--duration", arguments.duration)
+        every = option_seconds("--every", arguments.every)
+        stage_every = option_seconds("--stage-every", arguments.stage_every)
         with _xla_cache(arguments):
-            return _run(arguments.folder, arguments.duration, arguments.out, arguments.history, arguments.record,
-                        arguments.every, arguments.stage_every, arguments.commands)
+            return _run(arguments.folder, duration, arguments.out, arguments.history, arguments.record,
+                        every, stage_every, arguments.commands, arguments.full)
     if arguments.command == "serve":
         with _xla_cache(arguments):
             return _serve(arguments)

@@ -35,6 +35,11 @@ The full traceback is in ~/.cache/mime/tracebacks/mime-...-setting.value.txt; MI
 
 Several reasons are given at once: a build is refused with every reason it found.
 
+**On a terminal, the `mime` command draws a refusal as a block** (the same fields, in words rather than brackets: the
+code and whose to fix it, what is wrong, `what to do`, `why`, `where`, and the docs address under it on one line, to
+be copied). A pipe, a file, `--plain`, `NO_COLOR` and `TERM=dumb` get the text above, byte for byte, which is what a
+program reads.
+
 ## The four classes
 
 - **user**: the script can change it. The error says what to write.
@@ -84,7 +89,7 @@ it whenever you like.
 
 ```sh
 MIME_TRACEBACK=full python settle.py
-mime run <folder> --duration 1 --out run --traceback
+mime run <folder> --duration 1s --out run --traceback
 ```
 
 - **In Jupyter and IPython** the short form is shown for a MIME error a cell does not catch, through the shell's own

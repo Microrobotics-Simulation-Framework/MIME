@@ -129,6 +129,12 @@ def _footer(error: MimeError, written: Path | None, switch: str) -> list[str]:
     return lines
 
 
+def footer_lines(error: MimeError, *, switch: str = f"{TRACEBACK_VARIABLE}=full") -> list[str]:
+    """The lines under a short error: whose defect it is where it is one, and where its full chain is, written to its
+    file here. ``short_text`` ends with the same lines; a display that draws the error itself calls this for them."""
+    return _footer(error, write_traceback(error), switch)
+
+
 def short_text(error: MimeError, traceback_: TracebackType | None, *, frames: bool = True,
                switch: str = f"{TRACEBACK_VARIABLE}=full", headline: str | None = None) -> str:
     """The error as a script's user is shown it: the script's own frames (``frames=False`` for the CLI, whose user
@@ -202,5 +208,5 @@ def _install_in_ipython() -> None:
     shell.set_custom_exc((MimeError,), handler)
 
 
-__all__ = ["DIRECTORY_VARIABLE", "FULL", "KEPT", "NAME", "PREFIX", "TRACEBACK_VARIABLE", "full_mode", "install",
-           "report_text", "short_text", "traceback_directory", "write_traceback"]
+__all__ = ["DIRECTORY_VARIABLE", "FULL", "KEPT", "NAME", "PREFIX", "TRACEBACK_VARIABLE", "footer_lines", "full_mode",
+           "install", "report_text", "short_text", "traceback_directory", "write_traceback"]

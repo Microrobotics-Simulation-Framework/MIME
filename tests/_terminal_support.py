@@ -1,0 +1,182 @@
+"""A real pseudo-terminal for the tests of what ``mime`` draws on a terminal (POSIX; Windows has none, see
+``_platform_support.needs_pty``): a stream in this process whose ``isatty()`` is true, and a child process started with
+a terminal for its standard streams. What is drawn is read back as text with its control sequences; ``stripped`` removes
+them (so that a line the display drew and erased is still in what is read: the tests look for what was drawn, not for
+what is left on a screen)."""
+
+from __future__ import annotations
+
+import contextlib
+import os
+import re
+import select
+import struct
+import subprocess
+import sys
+import threading
+import time
+from collections.abc import Iterator, Mapping, Sequence
+from pathlib import Path
+from typing import IO
+
+if sys.platform != "win32":
+    import fcntl
+    import pty
+    import termios
+
+#: A control sequence: CSI (cursor, erase, colour, show/hide cursor) and OSC (title, link).
+CONTROL = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Za-z0-9]")
+
+
+def stripped(transcript: str) -> str:
+    """The transcript without control sequences, line ends as ``\\n`` (a terminal writes ``\\r\\n``)."""
+    return CONTROL.sub("", transcript).replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _size(fd: int, columns: int, rows: int) -> None:
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
+
+
+def _drain(master: int, wait: float = 0.0) -> bytes:
+    held = b""
+    while select.select([master], [], [], wait)[0]:
+        try:
+            more = os.read(master, 65536)
+        except OSError:
+            break
+        if not more:
+            break
+        held += more
+        wait = 0.0
+    return held
+
+
+class Terminal:
+    """A pseudo-terminal whose ``stream`` a program in this process writes to as to a terminal. ``transcript()`` is
+    everything written to it so far.
+
+    A thread reads the terminal's far end all the while: a pseudo-terminal holds only a little unread (about a kilobyte
+    on macOS), a write past that blocks, and a display drawing from its own thread while the test waits for it would
+    block for good."""
+
+    def __init__(self, columns: int = 100, rows: int = 30) -> None:
+        self._master, slave = pty.openpty()
+        _size(self._master, columns, rows)
+        self.stream: IO[str] = os.fdopen(slave, "w", buffering=1, encoding="utf-8", newline="")
+        self._held = bytearray()
+        self._lock = threading.Lock()
+        self._open = True
+        self._reader = threading.Thread(target=self._read, name="terminal-reader", daemon=True)
+        self._reader.start()
+
+    def _read(self) -> None:
+        while self._open:
+            try:
+                if not select.select([self._master], [], [], 0.02)[0]:
+                    continue
+                more = os.read(self._master, 65536)
+            except (OSError, ValueError):
+                return
+            if not more:
+                return
+            with self._lock:
+                self._held += more
+
+    def transcript(self) -> str:
+        self.stream.flush()
+        time.sleep(0.08)  # what was just written is on its way through the terminal to the reader
+        with self._lock:
+            return bytes(self._held).decode("utf-8", "replace")
+
+    def close(self) -> None:
+        self._open = False
+        self._reader.join(timeout=2)
+        with contextlib.suppress(OSError):
+            self.stream.close()
+        with contextlib.suppress(OSError):
+            os.close(self._master)
+
+
+@contextlib.contextmanager
+def terminal(columns: int = 100, rows: int = 30) -> Iterator[Terminal]:
+    held = Terminal(columns, rows)
+    try:
+        yield held
+    finally:
+        held.close()
+
+
+def run_on_terminal(argv: Sequence[str], *, env: Mapping[str, str], cwd: Path, columns: int = 100,
+                    timeout: float = 120.0) -> tuple[str, int]:
+    """``argv`` run with a terminal for its standard input, output and error: everything it wrote, and its exit code."""
+    master, slave = pty.openpty()
+    _size(master, columns, 30)
+    child = subprocess.Popen(list(argv), stdin=slave, stdout=slave, stderr=slave, env=dict(env), cwd=cwd,
+                             close_fds=True)
+    os.close(slave)
+    held, deadline = b"", time.monotonic() + timeout
+    try:
+        while True:
+            if time.monotonic() > deadline:
+                child.kill()
+                raise TimeoutError(f"{argv[0]} ran longer than {timeout} s; it wrote so far:\n"
+                                   f"{held.decode('utf-8', 'replace')}")
+            if select.select([master], [], [], 0.1)[0]:
+                try:
+                    more = os.read(master, 65536)
+                except OSError:  # EIO: the child closed its end
+                    break
+                if not more:
+                    break
+                held += more
+            elif child.poll() is not None:
+                held += _drain(master)
+                break
+        return held.decode("utf-8", "replace"), child.wait()
+    finally:
+        os.close(master)
+
+
+def run_with_streams(argv: Sequence[str], *, env: Mapping[str, str], cwd: Path, terminals: Sequence[str],
+                     columns: int = 100, timeout: float = 120.0) -> tuple[dict[str, str], int]:
+    """``argv`` run with some of its standard streams a terminal and the others pipes: ``terminals`` names which
+    (``"out"``, ``"err"``; standard input is the terminal when there is one). What each stream received, by name (``"tty"``
+    for the terminal, whichever streams it carries), and the exit code. The terminal is read while the child runs, so a
+    child writing more than a pseudo-terminal holds does not block."""
+    master, slave = pty.openpty()
+    _size(master, columns, 30)
+    child = subprocess.Popen(list(argv), stdin=slave, stdout=slave if "out" in terminals else subprocess.PIPE,
+                             stderr=slave if "err" in terminals else subprocess.PIPE, env=dict(env), cwd=cwd, close_fds=True)
+    os.close(slave)
+    open_ends: dict[int, str] = {master: "tty"}
+    for name, stream in (("out", child.stdout), ("err", child.stderr)):
+        if stream is not None:
+            open_ends[stream.fileno()] = name
+    held = {"tty": b"", "out": b"", "err": b""}
+    deadline = time.monotonic() + timeout
+    try:
+        while open_ends:
+            if time.monotonic() > deadline:
+                child.kill()
+                raise TimeoutError(f"{argv[0]} ran longer than {timeout} s")
+            ready = select.select(list(open_ends), [], [], 0.1)[0]
+            for fd in ready:
+                try:
+                    more = os.read(fd, 65536)
+                except OSError:  # EIO: the child closed its end of the terminal
+                    more = b""
+                if more:
+                    held[open_ends[fd]] += more
+                else:
+                    del open_ends[fd]
+            if not ready and child.poll() is not None:
+                for fd in list(open_ends):
+                    held[open_ends[fd]] += _drain(fd)
+                break
+        code = child.wait()
+    finally:
+        os.close(master)
+        for stream in (child.stdout, child.stderr):
+            if stream is not None:
+                stream.close()
+    return {name: data.decode("utf-8", "replace") for name, data in held.items()}, code

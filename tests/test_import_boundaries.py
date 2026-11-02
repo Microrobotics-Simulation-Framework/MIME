@@ -2,6 +2,10 @@
 ``mime.materials`` imports ``materica`` (OpenMaterica), by an import statement or by ``importlib.import_module``. The
 control: the scan finds each API's own importers, and finds a planted import in another package.
 
+Only one module imports ``rich`` (``mime/cli/_display.py``, what ``mime`` draws on a terminal), and a command that
+draws nothing never loads it. The controls: the scan finds a second importer planted in another module, and a fresh
+process that draws loads ``rich`` while one that does not, does not.
+
 Nothing in MIME imports ``modal``: the script ``mime modal`` writes is its only importer. The scan finds no importer,
 and a fresh process that imports ``mime`` and every submodule holds no ``modal`` module; the controls find a planted
 import in source, and a planted module that imports a stand-in ``modal`` in a fresh process.
@@ -143,3 +147,59 @@ def test_a_module_that_imports_modal_is_found_by_the_fresh_process(tmp_path):
     (tmp_path / "modal" / "__init__.py").write_text("")
     (tmp_path / "planted_modal_user.py").write_text("import modal\n")
     assert imported_modal("planted_modal_user", path=str(tmp_path))["modal"] == ["modal"]
+
+
+#: The one module that may import ``rich``, relative to the package.
+RICH_IMPORTER = "cli/_display.py"
+
+
+def rich_importers(package: Path) -> list[str]:
+    return [path.relative_to(package).as_posix() for path in sorted(package.rglob("*.py"))
+            if imports_api(path.read_text(encoding="utf-8"), "rich")]
+
+
+def test_only_the_display_module_imports_rich():
+    assert rich_importers(PACKAGE) == [RICH_IMPORTER], "the scan found no importer, or a second one"
+
+
+def test_the_scan_finds_a_planted_rich_import_and_a_second_importer(tmp_path):
+    for source in ("import rich", "from rich.console import Console", "import rich.live as live",
+                   "import importlib\nm = importlib.import_module('rich.text')"):
+        assert imports_api(source, "rich"), source
+    assert not imports_api("import richard\nfrom mime.cli import _display", "rich")
+    (tmp_path / "cli").mkdir()
+    (tmp_path / "cli" / "_display.py").write_text("from rich.console import Console\n")
+    (tmp_path / "errors").mkdir()
+    (tmp_path / "errors" / "_shape.py").write_text("def f():\n    import rich\n")
+    assert rich_importers(tmp_path) == [RICH_IMPORTER, "errors/_shape.py"] != [RICH_IMPORTER]
+
+
+LOADS_RICH = """
+import io, sys
+import mime.cli as cli
+for words in ({words}):
+    try:
+        cli.main(words)
+    except SystemExit:
+        pass
+print("rich" in sys.modules)
+"""
+
+
+def loaded_rich(words: str, draw: bool = False) -> bool:
+    body = LOADS_RICH.format(words=words) + ("from mime.cli import _display\n_display._console(sys.stdout)\n"
+                                              "print('rich' in sys.modules)\n" if draw else "")
+    done = subprocess.run([sys.executable, "-c", body], capture_output=True, text=True, timeout=300, check=False,
+                          env={**os.environ, "JAX_PLATFORMS": "cpu"})
+    assert done.returncode == 0, done.stderr
+    return done.stdout.split()[-1] == "True"
+
+
+def test_a_command_that_draws_nothing_never_loads_rich():
+    """Help, a bare ``mime``, a mistyped command and a refused duration, piped: none of them touches ``rich``."""
+    assert not loaded_rich('["--help"], [], ["verfy"], ["run", "--help"], ["run", "nowhere", "--duration", "10x", '
+                           '"--out", "nowhere-out"]')
+
+
+def test_the_control_a_process_that_draws_loads_rich():
+    assert loaded_rich('["--help"]', draw=True)

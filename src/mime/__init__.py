@@ -2,6 +2,12 @@
 
 __version__ = "0.3.0.dev0"
 
+# Ctrl+C while the `mime` command imports the rest of MIME ends it quietly (mime/_import_guard.py): first, because the
+# imports below are what takes the time.
+from mime import _import_guard  # noqa: E402
+
+_import_guard.guard()
+
 from mime import units  # noqa: E402
 from mime.errors import install as _install_errors  # noqa: E402
 from mime.experiment import Experiment  # noqa: E402

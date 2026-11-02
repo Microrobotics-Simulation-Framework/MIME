@@ -64,3 +64,22 @@ def test_from_script_as_own_start_the_same_runs_raise_nothing():
     assert built.run(ms(5), record=["swim_speed:umr.speed"]).flags == ()
     assert built.layout.flags[0].path == CLAMP, "the flag is declared, and not raised"
     assert "flags: none raised" in str(built.run(s(0.005), record=["swim_speed:umr.speed"])["swim_speed:umr"].speed)
+
+
+def test_a_flag_raised_at_the_step_the_graph_stands_at_is_read_back_without_touching_the_state(tmp_path):
+    """``BuiltExperiment.raised_flags`` is what ``mime run`` on a terminal asks between chunks. On a graph whose flag is
+    raised (one step from past the clamp) it names the flag and leaves every field of the state as it was; the control,
+    from script A's own start, names none, so the answer is the graph's and not a constant."""
+    import numpy as np
+
+    raised = script_a(start=PAST_THE_CLAMP).build()
+    raised.run_to(tmp_path / "raised", ms(0.5))
+    before = raised.current_state()
+    assert raised.raised_flags() == [CLAMP]
+    after = raised.current_state()
+    assert all(np.array_equal(before[node][name], after[node][name], equal_nan=True)
+               for node in before for name in before[node]), "reading the flags changed the state"
+    assert raised.raised_flags() == [CLAMP], "and asking again gives the same"
+    own = script_a().build()
+    own.run_to(tmp_path / "own", ms(0.5))
+    assert own.raised_flags() == []

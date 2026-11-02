@@ -81,5 +81,9 @@ answer: a carriage return in every saved text file on Windows, a `ValueError` sh
   runs on macOS or Windows. Float32 and float64 results on those platforms are not compared with Linux's.
 - **Intel Macs, Linux on aarch64 and WSL2** have no runner; the first has no wheel, the second has locked wheels, the
   third is Linux under Windows.
-- **Terminals.** The streams were tested redirected, which is where Windows differs. An interactive Windows console
-  writes Unicode and was not run.
+- **Terminals.** The streams were tested redirected, which is where Windows differs, and a pipe's output is tested
+  there to be exactly what it always was (`tests/cli/test_pipes.py`). What `mime` draws on a terminal (the progress
+  line, a refusal's block, `--plain`) is tested on Linux and macOS through a pseudo-terminal
+  (`tests/cli/test_terminal.py`); **Windows has no `pty` module, so those tests are skipped there** (`needs_pty`,
+  `tests/_platform_support.py`), and an interactive Windows console, which writes Unicode, was not run. Ctrl+C while
+  `mime` imports is tested on POSIX only, by a SIGINT to a child (`needs_posix_sigint`).

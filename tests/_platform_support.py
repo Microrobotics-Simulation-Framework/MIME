@@ -28,3 +28,11 @@ needs_posix_script_launch = pytest.mark.skipif(
 needs_posix_sigint = pytest.mark.skipif(
     sys.platform == "win32",
     reason="sends SIGINT to a child process, which Windows delivers to a console's process group and not to one process")
+
+#: A pseudo-terminal: `mime`'s display on a terminal is tested through a real one. Windows has no `pty` module (its
+#: console is another thing), so the tests of the progress line, the refusal block and `--plain` on a terminal do not run
+#: there; the tests that output through a pipe is what it always was run on every platform. platforms route R3.
+needs_pty = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="needs a pseudo-terminal (the pty module), which Windows does not have: what `mime` draws on a terminal is "
+           "not tested there, only that a pipe gets what it always got")
