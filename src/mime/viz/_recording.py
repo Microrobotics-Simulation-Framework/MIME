@@ -5,8 +5,11 @@ path inside the folder: the recording is its experiment's by construction, and t
 moved. It holds overs on the bound prims (``BuiltExperiment.binding``): a pose's ``translate`` and ``orient`` (double
 precision: a float32 state's values exactly), and a vector's ``mime:vector:value`` with its arrow (a metre long in the
 stage) placed at the body, turned along the vector and scaled, whole, to its length. Its time code is the sample's
-index; ``timeCodesPerSecond`` and ``framesPerSecond`` are the samples per simulated second, and ``customLayerData``
-holds ``mime:recording`` with every sample's step. It is written as the oldest crate version usd-core writes for what
+index; ``timeCodesPerSecond`` and ``framesPerSecond`` are the samples per simulated second, so within one
+uninterrupted stretch of samples a time code over ``timeCodesPerSecond`` is the simulated seconds since the layer's
+first sample (the state where recording began), and ``customLayerData`` holds ``mime:recording`` with every sample's
+step. A live session that turns recording off and on joins its stretches with consecutive codes: across the gap the
+codes are not seconds, and the steps name each sample. It is written as the oldest crate version usd-core writes for what
 it holds (0.8.0), which OpenUSD 24.08 reads, and exported fresh, with no bytes of an earlier save."""
 
 from __future__ import annotations
