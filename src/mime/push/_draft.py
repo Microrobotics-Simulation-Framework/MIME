@@ -16,9 +16,10 @@ reads the draft and, finding it as push left it, says so in one line, writing no
 the plan first. The plan is short by default (what goes up, what travels as a reference, warnings on lines of their
 own), and in full with ``full``.
 
-**The bundle names its record.** The draft is made and its DOI reserved before the bundle is packed with the staged
-lock that names that record (:mod:`mime.push._stage`), so a first push packs the folder twice: once for the plan, once
-with the reserved DOI.
+**The bundle and the description name the record.** The draft is made and its DOI reserved before the bundle is packed
+with the staged lock that names that record (:mod:`mime.push._stage`), and the description (the card) is written again
+naming it, so a first push packs the folder twice, once for the plan and once with the reserved DOI, and writes the
+metadata twice.
 
 **Versions.** Once a version is published, a push whose content changed makes a new version of it (``POST
 .../versions``), links the files of the version before into it (``files-import``) and uploads only what differs, so an
@@ -28,8 +29,11 @@ line.
 Before it writes to a draft or deletes one, push checks the draft is the one it made: the draft carries the identifier
 push wrote into it, a UUID of the service, the experiment's name and push's mark (``push.draft-foreign`` otherwise).
 Each field of its metadata edited on the site since push last wrote it is shown against what push would write, and
-kept (written into ``sharing.yaml``) or written over, field by field (:mod:`mime.push._edits`). Every push, ``--status``
-and ``--discard`` ends with a link on a line of its own.
+kept (written into ``sharing.yaml``) or written over, field by field (:mod:`mime.push._edits`). A new version's draft
+holds the service's copy of the published record: what was edited on the record's page is found against the published
+marks, and settled the same way, until it is settled, however often the same command runs; only the fields the service
+sets anew on a version (:data:`VERSION_RESETS`) are left out. An edit made while the files upload is not push's own: it
+is found by the next push. Every push, ``--status`` and ``--discard`` ends with a link on a line of its own.
 """
 
 from __future__ import annotations
@@ -46,12 +50,24 @@ from mime.assets import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
 from mime.push._client import Client, Dropped, Errors, Gone, Json, Owner, Transport, owned_refusals
-from mime.push._edits import SHARING_KEYS, as_yaml, differs, field_value, kept, shown, write_back, written_value
-from mime.push._owners import FIELD_OWNERS, field_owner
+from mime.push._edits import (
+    SHARING_KEYS,
+    apart,
+    as_yaml,
+    differs,
+    field_value,
+    kept,
+    words_of,
+    write_back,
+    written_value,
+)
+from mime.push._fields import access_words
+from mime.push._owners import ACCESS_FIELD, FIELD_OWNERS, field_owner
 from mime.push._plan import Plan, RecordFile, make_plan, restaged, with_sharing
 from mime.push._service import TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
 from mime.push._sharing import read_sharing, scaffold, sharing_path
 from mime.push._state import (
+    ACCESS,
     CUSTOM,
     MARK_SCHEME,
     DraftState,
@@ -76,6 +92,9 @@ OVERWRITE_FLAG = "--overwrite-site-edits"
 KEEP_FLAG = "--keep-site-edits"
 #: The flag that shows the full plan.
 FULL_FLAG = "--full-plan"
+#: The fields the service may set anew on a new version's copy of the published record, so no edit is read in them. Each
+#: other field of the copy is held to the published marks. Which fields these are is the sandbox session's to measure.
+VERSION_RESETS = frozenset({"publication_date", "version"})
 
 type Say = Callable[[str], None]
 type Ask = Callable[[str], bool]
@@ -236,21 +255,21 @@ def edited_fields(draft: Json, state: DraftState | Published) -> list[str]:
 
 
 def _source(name: str) -> str:
-    owner = FIELD_OWNERS.get(name, "sharing" if name.startswith(CUSTOM) else "mime")
+    owner = FIELD_OWNERS.get(name, "sharing" if name.startswith(CUSTOM) or name == ACCESS_FIELD else "mime")
     return "sharing.yaml" if owner == "sharing" else "the experiment" if owner == "experiment" else "MIME"
 
 
-def _label(name: str) -> str:
-    return name if name.startswith(CUSTOM) else f"metadata.{name}"
+def label(name: str) -> str:
+    return name if name.startswith(CUSTOM) or name == ACCESS else f"metadata.{name}"
 
 
 def site_edits(service: Service, record: str, fields: list[str], site: Json, ours_: Json) -> BuildRefused:
     """A refusal for each field edited on the site, with its value there and the value push would write."""
     found: list[Refusal] = []
     for name in fields:
+        on_site, from_ours = apart(words_of(field_value(site, name)), words_of(field_value(ours_, name)))
         message = (f"the draft {record} on {service.name} was edited on the site since push last wrote it, and push "
-                   f"would write over it: {_label(name)} on the site: {shown(field_value(site, name))}; from "
-                   f"{_source(name)}: {shown(field_value(ours_, name))}")
+                   f"would write over it: {label(name)} on the site: {on_site}; from {_source(name)}: {from_ours}")
         if name in SHARING_KEYS:
             action = (f"keep it, `mime push <folder> --to {service.name} {KEEP_FLAG}` (written into sharing.yaml's "
                       f"`{SHARING_KEYS[name]}`), or run push in a terminal, which asks; to drop it, write over it, "
@@ -265,6 +284,10 @@ def site_edits(service: Service, record: str, fields: list[str], site: Json, our
                       f"is and do not push it again")
         found.append(_refuse("push.metadata-edited", RefusalClass.USER, message, action))
     return BuildRefused(found)
+
+
+def errors_refusal(service: Service, record: str, what: str, errors: Errors, owner: Owner = field_owner) -> BuildRefused:
+    return _errors_refusal(service, record, what, errors, owner)
 
 
 def published_unrecorded(service: Service, record: str) -> BuildRefused:
@@ -367,16 +390,19 @@ class Drafting:
 
     # --- the edits made on the site ------------------------------------------------------------------------------
 
-    def settle(self, found: Json, since: DraftState | Published, record: str, *, authors_only: bool = False
-               ) -> list[str]:
-        """Each field of ``found`` edited on the site since ``since`` that push would write over, settled: kept
-        (written into sharing.yaml, the plan made again from it), written over, or the push stopped. The fields written
-        over. ``authors_only`` looks at the fields the author owns alone (a new version's draft, whose other fields the
-        service may set anew)."""
-        assert self.state is not None
-        body = self.payload(self.state)
-        edited = [name for name in edited_fields(found, since) if differs(name, found, body)
-                  and (not authors_only or _source(name) != "MIME")]
+    def settle(self, found: Json, record: str) -> list[str]:
+        """Each field of ``found`` edited on the site since push last wrote it that push would write over, settled:
+        kept (written into sharing.yaml, the plan made again from it), written over, or the push stopped. The fields
+        written over. A new version's draft whose metadata push has not written yet is the service's copy of the
+        published record, held to the published marks (:data:`VERSION_RESETS` aside), and its description to the
+        published card."""
+        state = self.state
+        assert state is not None
+        body = self.payload(state)
+        copied = state.published is not None and not state.sent
+        card = state.published.card if copied and state.published is not None else None
+        edited = [name for name in edited_fields(found, state) if differs(name, found, body)
+                  and not (copied and name in VERSION_RESETS)]
         if not edited:
             return []
         self.show()
@@ -385,7 +411,7 @@ class Drafting:
         over: list[str] = []
         stop: list[str] = []
         for name in edited:
-            updates = kept(name, found, self.plan)
+            updates = kept(name, found, self.plan, card)
             if self.choices.overwrite:
                 over.append(name)
                 continue
@@ -396,14 +422,16 @@ class Drafting:
             if self.choices.ask is None:
                 stop.append(name)
                 continue
-            self.say(f"! {_label(name)} was edited on the site since push last wrote it:")
+            self.say(f"! {label(name)} was edited on the site since push last wrote it:")
             if updates is not None:
                 for key, value in updates.items():
-                    self.say(f"    on the site:  {key}: {as_yaml(value)}")
-                    self.say(f"    sharing.yaml: {key}: {as_yaml(written_value(self.plan, key))}")
+                    on_site, in_file = apart(as_yaml(value), as_yaml(written_value(self.plan, key)))
+                    self.say(f"    on the site:  {key}: {on_site}")
+                    self.say(f"    sharing.yaml: {key}: {in_file}")
             else:
-                self.say(f"    on the site:  {shown(field_value(found, name))}")
-                self.say(f"    {_source(name)} writes: {shown(field_value(body, name))}")
+                on_site, ours_now = apart(words_of(field_value(found, name)), words_of(field_value(body, name)))
+                self.say(f"    on the site:  {on_site}")
+                self.say(f"    {_source(name)} writes: {ours_now}")
             if updates is not None:
                 if self.choices.ask("Write sharing.yaml's over the site's? (no keeps the site's, written into "
                                     f"sharing.yaml's `{SHARING_KEYS[name]}`)"):
@@ -419,9 +447,9 @@ class Drafting:
         if stop:
             raise site_edits(self.service, record, stop, found, body)
         if keep:
-            self.plan = write_back(self.plan, keep, kept_names, found)
+            self.plan = write_back(self.plan, keep, kept_names, found, card)
             self.say(f"kept what was edited on the site, written into {sharing_path(self.plan.folder)}: "
-                     f"{', '.join(_label(name) for name in kept_names)}")
+                     f"{', '.join(label(name) for name in kept_names)}")
         return over
 
     # --- the draft -----------------------------------------------------------------------------------------------
@@ -443,8 +471,8 @@ class Drafting:
                 self.state = state
             elif read[0].get("is_published") is True:
                 raise published_unrecorded(service, state.record)
-            elif not ours(read[0], service, state):
-                raise foreign(service, state)
+            elif not ours(read[0], service, state) and (state.published is None or state.sent):
+                raise foreign(service, state)  # a version's draft push has not written yet holds the service's copy
             else:
                 found = read[0]
         if state is None or state.record is None or found is None:
@@ -476,12 +504,18 @@ class Drafting:
                 f"rather than give a production record a DOI that does not resolve",
                 "look at the draft, `mime push <folder> --to zenodo --status`, and discard it, `mime push <folder> "
                 "--to zenodo --discard`")])
+        if state.doi is not None and doi != state.doi:
+            self.show()
+            self.say(f"! the draft holds the DOI {plain(doi)}, and push reserved {state.doi}: changed on the site, so "
+                     f"the bundle is packed again naming the draft's")
         state.doi = doi
         state.concept = parent_id(draft) or state.concept
         self.save()
         staged = publication(service, state)
         if staged is not None and self.plan.staging is not None and self.plan.publication != staged:
             self.plan = restaged(self.plan, staged)
+            if payload_identity(self.payload(state)) != state.sent:
+                self._write(record, draft, [])  # the card names the record now
         return state
 
     def _create(self) -> Json:
@@ -514,8 +548,9 @@ class Drafting:
 
     def _new_version(self) -> Json:
         """A new version of the published record: its draft (the concept's open one, where the service holds one),
-        the edits made on the site to the published record's metadata settled, the files of the version before
-        linked into it, and its metadata written."""
+        numbered as the service counts it where it says, the edits made on the site to the published record's metadata
+        settled, the files of the version before linked into it, and its metadata written. Push's record holds the
+        published marks until the edits are settled, so a push stopped at one stops at it again."""
         service, state = self.service, self.state
         assert state is not None and state.published is not None
         published = state.published
@@ -528,23 +563,48 @@ class Drafting:
             draft = self.client.new_version(published.record)
         except Dropped:
             raise self.client.lost("POST", f"/records/{published.record}/versions", "the connection dropped") from None
+        except Gone:
+            raise BuildRefused([_refuse(
+                "push.service", RefusalClass.ENVIRONMENT,
+                f"the published record {published.record} is no longer on {service.name} (deleted there, or a tombstone "
+                f"now), so a new version of it cannot be made", f"look at its page, {published.page}; to start again as "
+                f"a new concept, delete push's record, {state_directory(service, state.experiment)}, and run `mime "
+                f"push <folder> --to {service.name}`")]) from None
+        except Errors as answered:
+            raise _errors_refusal(service, published.record, "the new version", answered, self.plan.owner) from None
         record = str(draft["id"])
-        self.state = state = replace(fresh, record=record, concept=parent_id(draft) or published.concept,
-                                     page=page_of(draft, service, record), creating=False,
-                                     written=metadata_marks(draft))
+        number = version_index(draft, published)
+        if number != published.version + 1:
+            self.say(f"! {service.name} counts this as version {number}, and push's last was {published.version}: a "
+                     f"version was published on the site since")
+            self.plan = with_sharing(replace(self.plan, version=number), self.plan.sharing)
+        self.state = replace(fresh, record=record, concept=parent_id(draft) or published.concept,
+                             page=page_of(draft, service, record), creating=False, version=number,
+                             written=dict(published.written))
         self.save()
         self.made = self.wrote = True
-        over = self.settle(draft, published, record, authors_only=True)
-        imported = self.client.files(record) or self.client.import_files(record)
-        self.linked = sorted(imported)
-        for key, entry in imported.items():
+        return self.update(draft)
+
+    def _link_earlier_files(self, record: str) -> None:
+        """The files of the version before in a new version's draft: linked by an import where the draft holds no file;
+        where it holds some (the concept's open draft, or an import that was done), those that are the published
+        version's. A file added on the site is neither: :meth:`upload` refuses it (``push.draft-changed``)."""
+        state = self.state
+        assert state is not None and state.published is not None
+        published = state.published
+        held = self.client.files(record)
+        linked = {key: entry for key, entry in held.items() if key in published.files and
+                  (entry.get("size"), entry.get("checksum")) == (published.files[key].size,
+                                                                 f"md5:{published.files[key].md5}")} \
+            if held else self.client.import_files(record)
+        self.linked = sorted(linked)
+        for key, entry in linked.items():
             size, checksum = entry.get("size"), str(entry.get("checksum", ""))
             if isinstance(size, int) and checksum.startswith("md5:"):
                 state.files[key] = Uploaded(size, checksum.removeprefix("md5:"), "")
         self.save()
-        self.detail(f"linked the {len(imported)} files of version {published.version} into the draft {record}: "
-                    f"{', '.join(plain(key) for key in sorted(imported))}")
-        return self._write(record, draft, over)
+        self.detail(f"linked the {len(linked)} files of version {published.version} into the draft {record}: "
+                    f"{', '.join(plain(key) for key in sorted(linked))}")
 
     def update(self, found: Json, *, dated: bool = False) -> Json:
         """The draft push made earlier, its edits made on the site settled, and its metadata written where it differs
@@ -552,11 +612,21 @@ class Drafting:
         published)."""
         state = self.state
         assert state is not None and state.record is not None
-        over = self.settle(found, state, state.record)
+        copied = state.published is not None and not state.sent
+        over = self.settle(found, state.record)
+        if copied:
+            self._link_earlier_files(state.record)
+        return self.written_where_needed(found, over, dated=dated)
+
+    def written_where_needed(self, found: Json, over: list[str], *, dated: bool = False) -> Json:
+        """The draft's metadata written, where something was written over, or it is not what push last wrote, or (where
+        ``dated``) its publication date is not the day's."""
+        state = self.state
+        assert state is not None and state.record is not None
         date = metadata_of(found).get("publication_date") == metadata_of(self.plan.payload).get("publication_date")
         if not over and payload_identity(self.payload(state)) == state.sent and (date or not dated):
             return found
-        if not over and state.sent == "" and edited_fields(found, state) == [] and \
+        if not over and state.sent == "" and state.published is None and edited_fields(found, state) == [] and \
                 not any(differs(name, found, self.payload(state)) for name in SHARING_KEYS):
             state.sent = payload_identity(self.payload(state))  # a record of P2a's, which kept no identity
             self.save()
@@ -570,13 +640,17 @@ class Drafting:
         body = self.payload(state)
         identity = payload_identity(body)
         body["pids"] = found.get("pids", {})
+        chosen = found.get("files")
+        if isinstance(chosen, dict):  # a preview chosen on the draft's page: a PUT without it would reset it
+            body["files"] = {**cast(Json, body["files"]), **{
+                key: value for key, value in cast(Json, chosen).items() if key == "default_preview" and value}}
         draft, errors = self.client.update_draft(record, body)
         state.written = metadata_marks(draft)
         state.sent = identity
         self.save()
         self.wrote = True
         if over:
-            self.say(f"! wrote over what was edited on the site: {', '.join(_label(name) for name in over)}")
+            self.say(f"! wrote over what was edited on the site: {', '.join(label(name) for name in over)}")
         self.detail(f"wrote the metadata of the draft {record}, from sharing.yaml and the folder")
         if errors:
             raise _errors_refusal(self.service, record, "its metadata", errors, self.plan.owner)
@@ -699,8 +773,9 @@ class Drafting:
             "not sent again")])
 
     def check(self) -> None:
-        """The draft holds exactly the planned files, each verified, and push's identifier; what its metadata is now is
-        kept, for the next push to find what was edited on the site since."""
+        """The draft holds exactly the planned files, each verified, and push's identifier. What its metadata is now is
+        kept, for the next push to find what is edited on the site after this; a field that is not what push wrote was
+        edited while the files uploaded, and keeps its earlier mark, so the next push finds that too."""
         state = self.state
         assert state is not None and state.record is not None
         if not self.wrote:
@@ -713,7 +788,13 @@ class Drafting:
                 f"{'gone' if read is None else 'without the identifier push wrote into it'}",
                 "look at the draft on the service's site, then run the same command again, `mime push <folder> --to "
                 "<service>`")])
-        state.written = metadata_marks(read[0])
+        now, body = metadata_marks(read[0]), self.payload(state)
+        for name in set(now) | set(state.written):
+            if now.get(name) != state.written.get(name) and differs(name, read[0], body):
+                now.pop(name, None)
+                if name in state.written:
+                    now[name] = state.written[name]
+        state.written = now
         self.save()
         held = self.client.files(state.record)
         wrong = [file.key for file in self.plan.files if not entry_verified(held.get(file.key), file)]
@@ -724,6 +805,14 @@ class Drafting:
                 f"read again after the uploads, the draft {state.record} does not hold the plan's files: "
                 f"{', '.join(plain(key) for key in wrong + extra)} differ", "run the same command again, `mime push "
                                                                              "<folder> --to <service>`")])
+
+
+def version_index(draft: Json, published: Published) -> int:
+    """A new version's number: the service's, where its draft states one past the last push published; one past it
+    otherwise."""
+    versions = draft.get("versions")
+    index = cast(dict[str, object], versions).get("index") if isinstance(versions, dict) else None
+    return index if isinstance(index, int) and index > published.version else published.version + 1
 
 
 def parent_id(draft: Json) -> str | None:
@@ -784,14 +873,17 @@ def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False,
             if published.sent and payload_identity(marked(plan.payload, service, state)) != published.sent:
                 say("! sharing.yaml differs from the published record's metadata, which a later MIME updates "
                     "(`mime push --metadata`): until then, edit it on the record's page")
+            if service.production and plan.staged is not None and plan.lock != plan.staged:
+                say(f"! the folder's lock does not name the record yet: `mime push <folder> --to {service.name} "
+                    f"--publish` checks the record and writes it")
             say(f"{plain(experiment)!r} is unchanged since {published.doi} (version {published.version} on "
                 f"{service.name}), so no version is made: {published.page}")
             return Drafted(published.record, published.page, published.doi, published.concept, (), (), False,
                            published.version)
         bundle = replace(plan.files[0], what="the bundle, packed again once the new version's DOI is reserved, its "
                                              "lock naming that record")
-        plan = with_sharing(replace(plan, version=published.version + 1, files=(bundle, *plan.files[1:])),
-                            plan.sharing)
+        plan = with_sharing(replace(plan, version=published.version + 1, files=(bundle, *plan.files[1:]),
+                                    publication=None), plan.sharing)
     choices = Choices(confirm, overwrite_site_edits, keep_site_edits)
     holder = [plan]
     show = _show_plan(lambda: holder[0], state, say, full)
@@ -895,6 +987,8 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
     say(f"  title: {plain(str(held.get('title', '')))}")
     say(f"  creators: {'; '.join(_names(held.get('creators')))}")
     say(f"  licences: {'; '.join(_rights(held.get('rights')))}")
+    if draft.get(ACCESS):
+        say(f"  access once published: {access_words(cast(Json, draft[ACCESS]))}")
     communities = cast(dict[str, object], draft.get("parent") or {}).get("communities")
     if isinstance(communities, dict) and cast(dict[str, object], communities).get("ids"):
         say(f"  communities: {plain(str(cast(dict[str, object], communities)['ids']))}")
@@ -989,8 +1083,8 @@ def _rights(value: object) -> list[str]:
     return found or ["none"]
 
 
-__all__ = ["FULL_FLAG", "KEEP_FLAG", "OVERWRITE_FLAG", "UPLOAD_ATTEMPTS", "Choices", "Drafted", "Drafting",
-           "concept_doi_of", "doi_of", "marked", "page_of", "parent_id",
+__all__ = ["FULL_FLAG", "KEEP_FLAG", "OVERWRITE_FLAG", "UPLOAD_ATTEMPTS", "VERSION_RESETS", "Choices", "Drafted",
+           "Drafting", "concept_doi_of", "doi_of", "errors_refusal", "label", "marked", "page_of", "parent_id",
            "discard", "edited_fields", "entry_verified", "experiment_name", "foreign", "init", "metadata_of", "ours",
            "planned", "publication", "published_publication", "published_unrecorded", "push", "record_page", "send",
            "site_edits", "status", "token_of", "unchanged", "unconfirmed", "usable"]

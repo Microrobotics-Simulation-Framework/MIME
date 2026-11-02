@@ -25,7 +25,8 @@ permission lets travel, and one whose licence forbids redistribution, which trav
 5. with ``--discard``, the draft deleted; without it, kept, and its page printed, for a person to look at on the
    sandbox's site (the uploads page, ``https://sandbox.zenodo.org/me/uploads``);
 6. with ``--publish`` (the sandbox's records only): the draft published (``--confirm`` with its DOI; a declared
-   permission is asked in the terminal, as ``mime push --publish`` asks it), the record checked as published, pulled
+   permission is asked in the terminal, as ``mime push --publish`` asks it), the record checked as published (a field
+   that reads back otherwise than the draft held it is said, kept among the differences, and the lane goes on), pulled
    by its number into a fresh folder (``mime pull --from zenodo-sandbox <record>``) and verified (``mime verify``);
    for the toy, a new version (the toy saved with one reference step more), pushed and published; each answer's
    shape compared with the fake's, as the drafts' are.
@@ -212,10 +213,26 @@ def _declare(question: str) -> bool:
     return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
 
 
+def _published(folder: Path, service: push.Service, doi: str, declare: object, transport: object, pause: float,
+               noted: list[str]) -> None:
+    """A publish. A field that reads back from the published record otherwise than the draft held it is what this lane
+    is here to find: noted, and the lane goes on (the record is published and recorded)."""
+    try:
+        push.publish(folder, service, confirm=doi, ask=declare, say=print, transport=transport,  # type: ignore[arg-type]
+                     pause=pause)
+    except BuildRefused as refused:
+        if refused.codes() != ["push.metadata-read-back"]:
+            raise
+        print(f"read back otherwise: {refused.refusals[0].message}")
+        noted.append(refused.refusals[0].message)
+
+
 def cycle(folder: Path, service: push.Service, transport: object, discard: bool, publish: bool = False,
-          declare: object = _declare) -> push.Drafted | None:
+          declare: object = _declare, noted: list[str] | None = None) -> push.Drafted | None:
     """Push, read the draft, push again (nothing sent again), and discard or publish where asked: a second apart on
-    the sandbox, at once against a fake. Publishing, the toy's next version is pushed and published too."""
+    the sandbox, at once against a fake. Publishing, the toy's next version is pushed and published too. What reads back
+    otherwise from a published record is added to ``noted``."""
+    read_back = noted if noted is not None else []
     remote = isinstance(getattr(transport, "inner", transport), HttpTransport) and not loopback(service.api)
     pause = PAUSE if remote else 0.0
     first = push.push(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
@@ -226,13 +243,11 @@ def cycle(folder: Path, service: push.Service, transport: object, discard: bool,
         push.discard(folder, service, yes=True, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
     if publish:
         assert service.name != push.ZENODO.name and not service.production, "the lane publishes on the sandbox only"
-        push.publish(folder, service, confirm=first.doi, ask=declare, say=print, transport=transport,  # type: ignore[arg-type]
-                     pause=pause)
+        _published(folder, service, first.doi, declare, transport, pause, read_back)
         if folder.name == "mime_sandbox_toy":
             _toy_demo(folder.parent, steps=9)
             later = push.push(folder, service, say=print, transport=transport, pause=pause)  # type: ignore[arg-type]
-            push.publish(folder, service, confirm=later.doi, ask=declare, say=print, transport=transport,  # type: ignore[arg-type]
-                         pause=pause)
+            _published(folder, service, later.doi, declare, transport, pause, read_back)
     return first
 
 
@@ -383,10 +398,13 @@ def compared(arguments: argparse.Namespace, folders: list[Path], token: Token, l
                 real = Recording(transport)
                 start = folder.parent / f"{folder.name}.as-saved"
                 shutil.copytree(folder, start)
+                read_back: list[str] = []
                 try:
                     drafted = cycle(folder, service, real, arguments.discard, arguments.publish,
-                                    declare=(lambda question: True) if arguments.dry_run else _declare)
+                                    declare=(lambda question: True) if arguments.dry_run else _declare,
+                                    noted=read_back)
                 finally:
+                    found += [f"{folder.name}: published, and read back otherwise: {each}" for each in read_back]
                     lines += [{"folder": folder.name, "service": service.name, **each} for each in real.shapes]
                     if real.imported:
                         lines.append({"folder": folder.name, "service": service.name,

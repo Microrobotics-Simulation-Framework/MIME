@@ -329,6 +329,13 @@ def _card(folder: Path, out: Path | None, notice: bool) -> int:
     return 0
 
 
+def _a_terminal() -> bool:
+    """Whether a person can answer here: stdin is a terminal (Python leaves ``sys.stdin`` as ``None`` where it is
+    closed)."""
+    stdin = getattr(sys, "stdin", None)
+    return stdin is not None and bool(stdin.isatty())
+
+
 def _ask(question: str) -> bool:
     try:
         return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
@@ -347,7 +354,7 @@ def _pull(source: str, into: Path | None, no_assets: bool, yes: bool, max_bundle
           from_service: str | None = None) -> int:
     from mime import saved
 
-    saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes, confirm=_ask if sys.stdin.isatty() else None,
+    saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes, confirm=_ask if _a_terminal() else None,
                say=_say, max_bundle_bytes=max_bundle_bytes, from_service=from_service)
     return 0
 
@@ -358,7 +365,7 @@ def _push(arguments: argparse.Namespace) -> int:
 
     service = push.SERVICES[arguments.to]
     folder: Path = arguments.folder
-    ask = _ask if sys.stdin.isatty() else None
+    ask = _ask if _a_terminal() else None
     if arguments.confirm is not None and not arguments.publish:
         raise BuildRefused([Refusal("push.not-confirmed", RefusalClass.USER,
                                     "--confirm names the draft a publish publishes, and this is not a publish",
@@ -629,10 +636,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                                                             "publishes, declares a permission or settles a site edit)")
     pushing.add_argument(push.FULL_FLAG, dest="full_plan", action="store_true",
                          help="the full plan: every file inside the bundle with its tier and verdict, every field sent")
-    pushing.add_argument(push.KEEP_FLAG, dest="keep_site_edits", action="store_true",
+    site_edits = pushing.add_mutually_exclusive_group()
+    site_edits.add_argument(push.KEEP_FLAG, dest="keep_site_edits", action="store_true",
                          help="keep each edit made on the service's site that sharing.yaml can hold, written into it, "
                               "without asking")
-    pushing.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
+    site_edits.add_argument(push.OVERWRITE_FLAG, dest="overwrite_site_edits", action="store_true",
                          help="write the draft's metadata from sharing.yaml and the folder over what was edited on the "
                               "service's site since push last wrote it (without it, such an edit stops the push)")
     held_credentials = commands.add_parser("credentials", help="the access token mime push will use, kept where a "
@@ -810,7 +818,12 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "credentials":
         return _credentials(arguments.credentials_command, arguments.service)
     if arguments.command == "push":
-        return _push(arguments)
+        try:
+            return _push(arguments)
+        except KeyboardInterrupt:
+            print(for_terminal("interrupted: nothing more was sent, and the same command goes on from what the service "
+                               "holds"), file=sys.stderr)
+            return 130
     parser.error(f"unknown command {arguments.command!r}")
 
 

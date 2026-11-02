@@ -250,7 +250,7 @@ class Client:
 
     def call(self, method: str, path: str, *, payload: object = None, content: Path | None = None,
              expect: frozenset[int] = frozenset({200}), retry: bool | None = None, drops: bool = False,
-             raw: bool = False) -> Answer:
+             raw: bool = False, once: bool = False) -> Answer:
         """One request to ``path`` below the service's API. Sent again after a ``429``, and a ``503`` that states its
         ``Retry-After`` (the service did not act), each for its ``Retry-After`` or a growing pause; where ``retry``
         (by default, for a request that changes nothing), also after a dropped connection and any ``502``, ``503`` or
@@ -259,7 +259,9 @@ class Client:
         caller reads the service's state again and goes on from it), and refused otherwise (``push.service``: the
         next run reads the draft first). An answer not in ``expect`` is refused by what it means; a 2xx is checked
         for the records API's own content type, and for ``errors`` (:class:`Errors`), unless ``raw`` (a file's bytes,
-        or a redirect ``expect`` names, whose ``Location`` the caller reads and never follows)."""
+        or a redirect ``expect`` names, whose ``Location`` the caller reads and never follows). ``once`` (the publish, the
+        one request that cannot be undone) is sent again only after a ``429``, which refuses it unread: a ``503``, whatever
+        it states, is a lost answer."""
         url = self.service.api + path
         headers = {"Accept": RDM_TYPE}
         body: bytes | Path | None = None
@@ -284,7 +286,7 @@ class Client:
             self._after_limits(answer)
             status = answer.status
             after = _number(answer.headers.get("retry-after"))
-            if status == 429 or (status == 503 and after is not None) or (again and status in _GATEWAY):
+            if status == 429 or (status == 503 and after is not None and not once) or (again and status in _GATEWAY):
                 if attempt == RETRIES:
                     break
                 self._wait(after if after is not None else 2.0 ** attempt, f"it answered {status}")
@@ -331,7 +333,7 @@ class Client:
                 if errors:
                     raise Errors(errors, cast(Json, held))
             return answer
-        if status == 404:
+        if status in (404, 410):
             raise Gone(said)
         if status == 401:
             raise BuildRefused([_refuse(
@@ -342,10 +344,9 @@ class Client:
         if status == 403:
             raise BuildRefused([_refuse(
                 "push.token-scope", RefusalClass.ENVIRONMENT,
-                f"{self.service.name} refused {method} {plain(path)} with this token (403: {said}): a draft needs "
-                f"the scope deposit:write",
-                f"make a token with the scope deposit:write on the service's site, then `mime credentials set "
-                f"{self.service.credential}`")])
+                f"{self.service.name} refused {method} {plain(path)} with this token (403: {said}): {_needs(path)}",
+                f"make a token with the scopes deposit:write and deposit:actions on the service's site, then `mime "
+                f"credentials set {self.service.credential}`")])
         if 300 <= status < 400:
             raise BuildRefused([_refuse(
                 "push.service", RefusalClass.ENVIRONMENT,
@@ -442,13 +443,19 @@ class Client:
             "run the same command again, `mime push <folder> --to <service>`; if it says this again, look at the draft "
             "on the service's site")])
 
-    def _present(self, what: str, request: Callable[[], Answer]) -> Answer:
+    def _present(self, what: str, request: Callable[[], Answer], *, publishing: bool = False) -> Answer:
         """``request``'s answer; a ``404`` where the thing must be there (deleted on the site while push ran) is
         refused, never left as an error MIME does not recognise."""
         try:
             return request()
         except Gone:
             pass
+        if publishing:
+            raise BuildRefused([_refuse(
+                "push.service", RefusalClass.ENVIRONMENT,
+                f"{what} is no longer on {self.service.name} (deleted on the site, or published there, while push ran?)",
+                "run the same command again, `mime push <folder> --to <service> --publish`, which reads the record first "
+                "and publishes nothing twice")])
         raise BuildRefused([_refuse(
             "push.service", RefusalClass.ENVIRONMENT,
             f"{what} is no longer on {self.service.name} (deleted on the site while push ran?)",
@@ -466,18 +473,20 @@ class Client:
                                       expect=frozenset({200, 201}), retry=True))
 
     def publish(self, record: str) -> Json:
-        """Publish the draft ``record``: the published record. Never sent again by this call: an answer lost is
-        :class:`Dropped`, and the caller reads the record before it does anything else (publishing is the one step
-        that cannot be undone)."""
+        """Publish the draft ``record``: the published record. Sent again only after a ``429``, which refuses it unread
+        (publishing is the one step that cannot be undone): any other answer lost is :class:`Dropped`, and the caller
+        reads the record before it does anything else. A 2xx that lists ``errors`` is :class:`Errors`, for the caller
+        to read the record too."""
         return _draft(self, self._present(f"the draft {record}", lambda: self.call(
             "POST", f"/records/{_part(record)}/draft/actions/publish", expect=frozenset({200, 202}), retry=False,
-            drops=True)))
+            drops=True, once=True), publishing=True))
 
     def new_version(self, record: str) -> Json:
         """A new version of the published record ``record``: the draft of it (the concept's open one where there is
-        one). Never sent again: an answer lost is :class:`Dropped`."""
-        return _draft(self, self._present(f"the record {record}", lambda: self.call(
-            "POST", f"/records/{_part(record)}/versions", expect=frozenset({200, 201}), retry=False, drops=True)))
+        one). Never sent again: an answer lost is :class:`Dropped`; a record that is gone, :class:`Gone`; a 2xx that
+        lists ``errors``, :class:`Errors`."""
+        return _draft(self, self.call("POST", f"/records/{_part(record)}/versions", expect=frozenset({200, 201}),
+                                      retry=False, drops=True))
 
     def import_files(self, record: str) -> dict[str, Json]:
         """Link every file of the version before into the new version's draft ``record``: its file entries, by key."""
@@ -530,6 +539,11 @@ class Client:
                 "DELETE", f"/records/{_part(record)}/draft/files/{_part(key)}", expect=frozenset({204})))
         except Gone:
             pass
+
+
+def _needs(path: str) -> str:
+    return ("publishing needs the scope deposit:actions, and a token with deposit:write alone makes drafts" if
+            path.endswith("/actions/publish") else "a draft needs the scope deposit:write")
 
 
 def _public_bytes(service: Service, url: str) -> bytes:

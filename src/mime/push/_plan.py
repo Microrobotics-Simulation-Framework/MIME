@@ -12,7 +12,7 @@ record file: ``pack`` carries it as a reference, and so does the record.
 related works from ``sharing.yaml``; the rights holder (its credit) of each third-party file the record holds, and each
 permission's grantor, as a ``rightsholder`` contributor (a file that travels as a reference is not in the record: its
 rights holder is credited beside it in the NOTICE and the card, and is no contributor of the record); the card
-(``mime card``'s, the same function) as the description, in HTML; every licence of a file in the record or the bundle
+(``mime card``'s, the same function, given the record it is published as) as the description, in HTML; every licence of a file in the record or the bundle
 as a rights entry, an SPDX id as the vocabulary's id (lower case, as the
 sandbox's ``cc-by-4.0`` and ``mit`` are) and a custom ``LicenseRef-`` licence as an entry with its title and link and
 no ``id``, which the sandbox refuses for a ``LicenseRef-`` (a 400 naming no field); and the MIME release it was saved
@@ -37,12 +37,13 @@ from mime._terminal import plain
 from mime.assets import AssetRef, folder_assets, locate, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._client import Json
+from mime.push._fields import access_entry, access_words
 from mime.push._owners import FIELD_OWNERS, OWN_RELATED, field_owner
 from mime.push._service import Service
 from mime.push._sharing import Person, Sharing, sharing_path
 from mime.push._state import DraftState, metadata_marks
 from mime.saved._bundle import MANIFEST_MEMBER, NOTICE_MEMBER, read_manifest
-from mime.saved._card import availability, permission_words
+from mime.saved._card import CardFacts, availability, card_facts, card_of, permission_words
 from mime.saved._schema import Lock, PermissionDoc, PublicationRecord
 from mime.saved._terms import FileTerms, FolderTerms
 from mime.terms import CUSTOM_PREFIX, NO_ASSERTION, Verdict, ids_of, licence_verdict
@@ -180,6 +181,8 @@ class Plan:
     version: int = 1
     #: Where the staged bundle is written.
     staging: Path | None = None
+    #: What the card states of the folder, read once (``None`` for a plan of files alone).
+    facts: CardFacts | None = None
 
     @property
     def size(self) -> int:
@@ -229,7 +232,9 @@ class Plan:
                          f"public when the record is published:")
             for index, held_permission in enumerate(permissions, start=1):
                 lines += ["    " + line for line in declaring(index, held_permission, self.judged)]
+        second = self.second_concept(state)
         lines += [f"  Availability: {availability(self.judged)}",
+                  *([f"! {second}"] if second is not None else []),
                   f"Next: on {self.service.name}, the draft is made or updated, its DOI reserved, and each record file "
                   f"that differs from the draft's is uploaded and its md5 checked; nothing is published until "
                   f"`mime push <folder> --to {self.service.name} --publish` asks you."]
@@ -263,14 +268,20 @@ class Plan:
                 [f"{plain(file.path)} ({plain(file.licence or 'no licence')}, from "
                  f"{plain(file.origin[0]) if file.origin else 'no origin'})" for file in held] +
                 [f"the asset {plain(choice.ref.name)} ({choice.why.split(':')[0]})" for choice in held_assets]))
-        lines.append(f"  licences {', '.join(plain(each) for each in self._licences())}; creators "
-                     f"{'; '.join(plain(person.name()) for person in self.sharing.creators)}")
+        title = plain(str(_mapping(self.payload.get("metadata")).get("title", "")))
+        named = [plain(person.name()) for person in self.sharing.contributors] + \
+            [plain(name) for name in _rights_holders(self.judged)]
+        lines += [f"  title: {title}",
+                  f"  licences {', '.join(plain(each) for each in self._licences())}; creators "
+                  f"{'; '.join(plain(person.name()) for person in self.sharing.creators)}; contributors "
+                  f"{'; '.join(named) or 'none'}"]
         lines += [f"! {warning}" for warning in self.warnings(state)]
         return lines
 
     def warnings(self, state: DraftState | None) -> list[str]:
         """What the author should not miss: results that depend on a file the record does not hold, a permission
-        declared, a version that changes the title, the production service."""
+        declared, a version that changes the title, access that is not open, a second concept, the production
+        service."""
         found: list[str] = []
         depends = [file.path for file in self.judged.files
                    if (file.referenced is not None or not file.verdict.carried)
@@ -289,9 +300,31 @@ class Plan:
         if published is not None and state is not None and "title" in published.written and \
                 published.written["title"] != metadata_marks({"metadata": {"title": title}}).get("title"):
             found.append("the title differs from the published version's: indexes keep a concept's first title")
+        access = _mapping(self.payload.get("access"))
+        if set(access) - {"record", "files"} or {access.get("record"), access.get("files")} - {"public", None}:
+            found.append(f"access once published is not open: {access_words(access)} (sharing.yaml's `access`)")
+        second = self.second_concept(state)
+        if second is not None:
+            found.append(second)
         if self.service.production:
             found.append("production: a draft here is private, and a record published here is permanent")
         return found
+
+
+    def second_concept(self, state: DraftState | None) -> str | None:
+        """The words for a folder whose lock names a published record push has no record of here: what this push makes
+        is a first version of a new concept, not a new version of that record (design §2.4; ``--version-of`` comes
+        later)."""
+        from mime.push._stage import publication_of
+
+        named = publication_of(self.lock)
+        if named is None or (state is not None and (state.published is not None or state.record == named["record"])):
+            return None
+        same = named["service"] == self.service.name
+        return (f"the folder's lock names the published record {plain(named['doi'])} on {plain(named['service'])}, and "
+                f"push has no record of it here: this makes a first version of a new concept, not a new version of "
+                f"that record" + (", and --publish refuses it (a version of it comes with --version-of, later)" if same
+                                  else ""))
 
 
 def _built_lines(plan: Plan) -> list[str]:
@@ -312,8 +345,7 @@ def _built_lines(plan: Plan) -> list[str]:
             *([f"  Conference: {plain(plan.sharing.conference.get('title', ''))}"] if plan.sharing.conference else []),
             *([f"  Other fields: {', '.join(plain(name) for name in plan.sharing.fields)} (from sharing.yaml's "
                f"fields, as written)"] if plan.sharing.fields else []),
-            f"  Access once published: the record {plain(str(shown.get('record', '')))}, its files "
-            f"{plain(str(shown.get('files', '')))} (a draft is private)",
+            f"  Access once published: {access_words(shown)} (a draft is private)",
             "  Alternate identifier: a urn:uuid push makes for the draft, by which it knows the draft is its own"]
 
 
@@ -517,7 +549,7 @@ def payload_of(plan_parts: tuple[Sharing, FolderTerms, Sequence[str], str, str],
             metadata["subjects"] = [*cast(list[object], metadata["subjects"]), *cast(list[object], value)]
         else:
             metadata[name] = value
-    body: Json = {"metadata": metadata, "access": {"record": "public", "files": "public"}, "files": {"enabled": True}}
+    body: Json = {"metadata": metadata, "access": access_entry(sharing.access), "files": {"enabled": True}}
     if custom:
         body["custom_fields"] = custom
     return body
@@ -615,7 +647,7 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
                                     "again"))
     own_licence = licence or sharing.licence
     plan = Plan(service, name, root, tuple(files), judged, tuple(choices), own_licence, sharing, {}, version_of_mime,
-                lock_bytes, publication, staged_lock, "", version, staged)
+                lock_bytes, publication, staged_lock, "", version, staged, card_facts(root))
     plan = with_sharing(plan, sharing, today)
     refusals += scan_text("the record's metadata", json.dumps(plan.payload, sort_keys=True).encode("utf-8"),
                           held_tokens())
@@ -626,11 +658,8 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
 
 def with_sharing(plan: Plan, sharing: Sharing, today: datetime.date | None = None) -> Plan:
     """``plan`` with ``sharing.yaml`` read again (an edit made on the site kept, written into it): its card, which
-    names the creators, and its metadata payload made again from it."""
-    from mime.saved import card_text
-
-    card = card_html(card_text(plan.folder)) if plan.staging is not None else plan.card
-    plan = replace(plan, card=card)
+    names the creators and the record the plan is packed as, and its metadata payload made again from it."""
+    plan = replace(plan, card=card_html(card_of(plan.facts, plan.publication)) if plan.facts is not None else plan.card)
     description = plan.card
     if sharing.description:
         description = f"<p>{html.escape(sharing.description, quote=False)}</p>\n" + description
@@ -655,7 +684,7 @@ def _packed(root: Path, service: Service, staged: Path, bundle_name: str, lock: 
         own = {file.asset: own_location(service, publication["record"], publication["doi"], file.key)
                for file in assets if file.asset is not None}
         held = staged_lock(lock, publication, own)
-        bundle = pack_staged(root, held, staged, target)
+        bundle = pack_staged(root, held, staged, target, frozenset(own.values()))
     with zipfile.ZipFile(bundle) as archive:
         read_manifest(archive)
         notice = archive.read(NOTICE_MEMBER)
@@ -672,12 +701,12 @@ def _packed(root: Path, service: Service, staged: Path, bundle_name: str, lock: 
 
 def restaged(plan: Plan, publication: PublicationRecord) -> Plan:
     """``plan`` with its bundle packed again with the staged lock naming ``publication`` (a draft's DOI reserved once
-    its plan was shown): its bundle and NOTICE made again, the rest as it was."""
+    its plan was shown): its bundle, its NOTICE and its card, which names the record, made again; the rest as it was."""
     assert plan.staging is not None, "a plan of files alone is not packed"
     assets = [file for file in plan.files if file.asset is not None]
     packed, held = _packed(plan.folder, plan.service, plan.staging, plan.files[0].key, plan.lock, publication, assets)
     packed[0] = replace(packed[0], licence=plan.files[0].licence)
-    return replace(plan, files=(*packed, *assets), publication=publication, staged=held)
+    return with_sharing(replace(plan, files=(*packed, *assets), publication=publication, staged=held), plan.sharing)
 
 
 def _record_file(key: str, path: Path, licence: str | None, what: str, asset: str | None = None) -> RecordFile:

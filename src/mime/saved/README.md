@@ -26,7 +26,9 @@
   record it is (`publication`: the service, the version's record and DOI, its concept's record and DOI, its number),
   outside the input hash too, so the folder loads and verifies as before and `mime pack` makes the published bundle
   again. Such a lock names the record's own location of each file it holds first; a referenced file's asset may so
-  name the record before its origin.
+  name the record before its origin, and only exactly that: `doi:<its DOI>/<file>` on Zenodo, the file's address in the
+  sandbox's records API on the sandbox, no other host. `mime pack` holds a lock to this; a bundle written by hand is held
+  by each asset's hash when it is fetched.
 - **The resolved record**: every setting with its default, each body's initial state in SI, the nodes each entry
   built in the canonical order, the registrations, reader slots, coupling groups, and each entry's declared gradient
   status: the attached rung's, where the entry's rungs declare their own.
@@ -150,8 +152,8 @@ party's credit, role, origin and permissions in #198's words, each custom licenc
 licence that asks to travel with every copy (MIT and the BSD licences) under its file's credit, and the availability
 statement: "reproducible exactly from this bundle alone" only where the bundle carries every file, and otherwise each
 file it does not carry, with why, its licence, its role and where it is available from. `mime card <folder>`
-(`mime.saved.card_text`) writes the card, as `mime push` will write a record's description: every condition each
-file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
+(`mime.saved.card_text`) writes the card, as `mime push` writes a record's description, naming the record the lock's
+`publication` names (its version, its DOI, how to pull and cite it): every condition each file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
 says what `mime verify <folder>` would check (the card runs no check). Both are generated and the same bytes each
 time. **Credit** (the creators with their ORCIDs, the
 contributors and their roles) lives in `sharing.yaml` beside the saved form, which `mime push <folder> --to <service>

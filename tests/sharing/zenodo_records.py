@@ -23,17 +23,22 @@ answer to a token that is not accepted (401) or lacks a scope (403); the content
 without the records API's ``Accept``; an alternate identifier (push's ``urn:uuid`` mark of its draft) kept as sent and
 answered unchanged, as is every field of a draft's metadata from one answer to the next (push finds an edit made on the
 site by the change: the sandbox lane's second push of each folder is the check), but for a person's display name,
-which it makes of the family and given names, as InvenioRDM does (recalled); communities and the vocabularies'
-contents (only the SPDX ids ``packaging`` lists, in lower case, are known here).
+which it makes of the family and given names, as InvenioRDM does (recalled); a record's ``access`` answered with its
+``status`` and an embargo that is not active, and a draft's ``files`` with its ``default_preview`` (both recalled);
+communities and the vocabularies' contents (only the SPDX ids ``packaging`` lists, in lower case, are known here).
 
 **Publishing and versions are guesses too** (push's P2b, before the sandbox session that measures them): ``POST
 .../draft/actions/publish`` answers ``202`` with the published record, keeps the reserved DOI and mints the concept's
 DOI as ``<prefix>/zenodo.<parent id>``, and refuses a draft missing a field DataCite needs with a ``400`` naming it; a
 published record and its files are read by anyone, without a token (``GET /records/<id>``, ``/files``,
 ``/files/<key>/content``); ``POST /records/<id>/versions`` answers ``201`` with a new draft of the same concept, its
-metadata copied, no DOI and no files, or the concept's open new version where there is one; ``POST
-.../draft/actions/files-import`` links every file of the version before it, its bytes stored once (the entry names
-the file it links, ``linked``); ``GET /records/<id>/versions/latest`` answers ``302`` to the latest version.
+metadata copied whole (``publication_date`` and ``version`` included: which the service resets is the session's to
+measure), no DOI and no files, and its ``versions.index`` stated, or the concept's open new version where there is one;
+``POST .../draft/actions/files-import`` links every file of the version before it, its bytes stored once (the entry
+names the file it links, ``linked``); ``GET /records/<id>/versions/latest`` answers ``302`` to the latest version.
+**A published record's metadata and access read back as the draft held them**, and push's alternate identifier stays
+among them: where the sandbox answers otherwise, push names the field (``push.metadata-read-back``), with the version
+recorded and the folder's lock written, or stops at the identifier (``push.draft-foreign``).
 
 Faults are planted per request (:class:`Fault`): a dropped connection before or after the service acted, an upload cut
 off part way, a status (``429`` with its headers, a ``5xx``) before the service acts or after it acted (a gateway's
@@ -138,6 +143,22 @@ def required_errors(metadata: Mapping[str, object]) -> list[object]:
 
 def _json(status: int, body: object, kind: str = "application/json") -> tuple[int, str, bytes]:
     return status, kind, json.dumps(body).encode("utf-8")
+
+
+def _access_answer(sent: object) -> dict[str, object]:
+    """A record's access as the service answers it: what it was sent, its ``status`` and an embargo, as InvenioRDM's
+    (recalled)."""
+    if not isinstance(sent, dict) or not sent:
+        return {}
+    held = dict(sent)
+    held.setdefault("embargo", {"active": False, "reason": None})
+    embargoed = held["embargo"].get("active") is True
+    restricted = "restricted" in (held.get("record"), held.get("files"))
+    return {**held, "status": "embargoed" if embargoed else "restricted" if restricted else "open"}
+
+
+def _chosen_preview(files: object) -> object:
+    return files.get("default_preview") if isinstance(files, dict) else None
 
 
 def _missing(message: str) -> tuple[int, str, bytes]:
@@ -535,9 +556,10 @@ class FakeRecords:
                                         "client": "datacite"}} if self._latest(record.parent) is not None else {}},
             "versions": {"index": record.index, "is_latest": self._latest(record.parent) is record},
             "is_published": record.published, "is_draft": not record.published, "pids": dict(record.pids),
-            "metadata": metadata, "access": record.body.get("access", {}),
+            "metadata": metadata, "access": _access_answer(record.body.get("access")),
             "custom_fields": record.body.get("custom_fields", {}),
-            "files": {"enabled": True, "order": [], "count": len(files), "entries": files},
+            "files": {"enabled": True, "order": [], "count": len(files), "entries": files,
+                      "default_preview": _chosen_preview(record.body.get("files"))},
             "status": "published" if record.published else "draft"}
         if errors:
             held["errors"] = errors

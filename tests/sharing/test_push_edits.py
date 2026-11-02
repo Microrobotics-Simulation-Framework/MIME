@@ -177,7 +177,7 @@ def test_control_a_write_back_whose_reading_is_planted_away_is_caught_writing_sh
     assert "something else" in sharing_text(folder), "the planted write-back is not seen"
 
 
-TEXT = st.text(alphabet=st.characters(categories=("L", "N", "P", "Zs")), min_size=1, max_size=24)
+TEXT = st.text(min_size=1, max_size=24)
 
 
 @given(st.lists(TEXT, max_size=5), TEXT)

@@ -414,7 +414,7 @@ CASES = [[Spec("not permitted", NO_REDISTRIBUTION, 300, True, False)],
 def pack_carries_everything() -> Iterator[None]:
     """The plant: a pack whose judgement lets every file travel, and a save that writes no reference."""
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(_bundle, "referenced_members", lambda judged, lock: ({}, []))
+        patch.setattr(_bundle, "referenced_members", lambda judged, lock, own=frozenset(): ({}, []))
         patch.setattr(_record, "referenced_assets", lambda document, files, taken: [])
         yield
 
@@ -488,7 +488,7 @@ def pack_ignores_copies() -> Iterator[None]:
 def pack_trusts_the_lock() -> Iterator[None]:
     """The plant: a pack that takes the licence and locations a lock states for a reference's asset as they are."""
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(_bundle, "_restated", lambda held, file, publication=None: False)
+        patch.setattr(_bundle, "_restated", lambda held, file, publication=None, own=frozenset(): False)
         yield
 
 

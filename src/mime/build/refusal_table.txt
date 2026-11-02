@@ -257,10 +257,14 @@ push.checksum                 environment
 push.creators                 user
 push.draft-changed            user
 push.draft-foreign            user
+push.draft-moved              user
 push.folder-changed           user
 push.licence                  user
 push.lock-changed             user
+push.lock-unwritten           user
+push.metadata-changed         user
 push.metadata-edited          user
+push.metadata-read-back       environment
 push.no-draft                 user
 push.not-confirmed            user
 push.permission               user
@@ -268,6 +272,7 @@ push.permission-unconfirmed   user
 push.published                user
 push.rejected                 user internal
 push.sandbox-location         user
+push.second-concept           user
 push.service                  user environment
 push.sharing                  user
 push.sharing-missing          user

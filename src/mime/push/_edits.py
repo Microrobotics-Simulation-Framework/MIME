@@ -5,35 +5,43 @@ MIME's: a file added or changed on the site is refused (``push.draft-changed``),
 
 A field can be kept where ``sharing.yaml`` holds it: the title, the creators, the contributors (those push adds as
 rights holders from the files' terms stay push's), the keywords, the related works (push's own two stay push's), the
-funding, the conference, any field of ``fields:``, and the description's paragraph above the card. The licences are the
-files' (declared where the experiment is built), and the rest is what MIME builds: an edit of one of those is written
-over, or the push stops.
+funding, the conference, any field of ``fields:``, the record's access (who may read it and its files, an embargo), and
+the description's paragraph above the card. The licences are the files' (declared where the experiment is built), and
+the rest is what MIME builds: an edit of one of those is written over, or the push stops.
 
 **What the service adds is not an edit.** The service fills in what it is sent (a licence's title, a person's display
 name, a vocabulary entry's title), so two values are compared as the author writes them (:func:`reduced`): a
 vocabulary entry by its ``id`` alone, a person by their family and given names (not the display name the service
 makes of them).
 
-**The write-back is checked.** The key's lines in ``sharing.yaml`` are replaced (its other lines and comments kept), the
-file is read again, and the payload made from it must hold the site's value; if it does not, the file is put back as it
-was and the push stops, saying what to copy in by hand.
+**The write-back is checked.** The key's lines in ``sharing.yaml`` are replaced, atomically (its other lines and
+comments kept, line endings included; a comment inside the replaced lines goes with them), the file is read again, and
+the payload made from it must hold the site's value and every other key as it was; if it does not, the file is put back
+byte for byte and the push stops, saying what to copy in by hand.
+
+**A question shows where two values differ**: a long value is cut around the first difference (:func:`apart`), so its
+two lines never read the same.
 """
 
 from __future__ import annotations
 
 import html
+import os
 import re
+import secrets
+import shutil
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import cast
 
 import yaml
 
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.push._fields import CONFERENCE
+from mime.push._fields import ACCESS_LEVELS, CONFERENCE
 from mime.push._plan import KEYWORD, Plan, with_sharing
 from mime.push._sharing import CONTRIBUTOR_TYPES, RELATION_TYPES, read_sharing, sharing_path
-from mime.push._state import CUSTOM
+from mime.push._state import ACCESS, CUSTOM, access_of
 
 type Json = dict[str, object]
 
@@ -43,7 +51,8 @@ SHARING_KEYS: Mapping[str, str] = {
     "related_identifiers": "related", "funding": "funding", f"{CUSTOM}meeting:meeting": "conference",
     "description": "description", "dates": "fields", "languages": "fields", "references": "fields",
     "additional_titles": "fields", "additional_descriptions": "fields", f"{CUSTOM}journal:journal": "fields",
-    f"{CUSTOM}imprint:imprint": "fields", f"{CUSTOM}thesis:university": "fields", f"{CUSTOM}thesis:type": "fields"}
+    f"{CUSTOM}imprint:imprint": "fields", f"{CUSTOM}thesis:university": "fields", f"{CUSTOM}thesis:type": "fields",
+    ACCESS: "access"}
 #: The longest value a question quotes of a field.
 SHOWN = 160
 
@@ -86,7 +95,10 @@ def _nested(value: object) -> bool:
 
 
 def field_value(holder: Mapping[str, object], name: str) -> object:
-    """The field ``name`` of a draft or a payload (``custom_fields.<name>`` among its custom fields)."""
+    """The field ``name`` of a draft or a payload (``custom_fields.<name>`` among its custom fields; ``access`` as an
+    author sets it)."""
+    if name == ACCESS:
+        return access_of(holder.get(ACCESS))
     if name.startswith(CUSTOM):
         return _map(holder.get("custom_fields")).get(name.removeprefix(CUSTOM))
     return _map(holder.get("metadata")).get(name)
@@ -97,29 +109,50 @@ def differs(name: str, site: Mapping[str, object], ours: Mapping[str, object]) -
     return reduced(field_value(site, name)) != reduced(field_value(ours, name))
 
 
-def shown(value: object) -> str:
+def words_of(value: object) -> str:
+    """A field's value on one line, whole."""
     if value in (None, "", [], {}):
         return "nothing"
     import json
 
-    text = plain(value if isinstance(value, str) else json.dumps(reduced(value), sort_keys=True, ensure_ascii=False))
+    return plain(value if isinstance(value, str) else json.dumps(reduced(value), sort_keys=True, ensure_ascii=False))
+
+
+def shown(value: object) -> str:
+    text = words_of(value)
     return text if len(text) <= SHOWN else text[:SHOWN] + "..."
 
 
 def as_yaml(value: object) -> str:
-    """A value as sharing.yaml holds it, on one line, quoted where it is long."""
-    text = plain(yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10_000,
+    """A value as sharing.yaml holds it, on one line, whole."""
+    return plain(yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10_000,
                                 sort_keys=False).strip().removesuffix("\n...").strip())
-    return text if len(text) <= SHOWN else text[:SHOWN] + "..."
+
+
+def apart(site: str, ours: str) -> tuple[str, str]:
+    """Two values as a question shows them: each whole where both fit, and otherwise each cut around the first place
+    they differ, so the two lines never read the same."""
+    if len(site) <= SHOWN and len(ours) <= SHOWN:
+        return site, ours
+    first = next((index for index, (one, other) in enumerate(zip(site, ours, strict=False)) if one != other),
+                 min(len(site), len(ours)))
+    start = max(0, first - SHOWN // 4)
+
+    def cut(text: str) -> str:
+        return ("..." if start else "") + text[start:start + SHOWN] + ("..." if len(text) > start + SHOWN else "")
+
+    return cut(site), cut(ours)
 
 
 def written_value(plan: Plan, key: str) -> object:
-    """The value of ``key`` in ``sharing.yaml`` as it is written now, or ``None``."""
+    """The value of ``key`` in ``sharing.yaml`` as it is written now, or ``None``; the access a record has where
+    ``sharing.yaml`` says nothing of it, public."""
     try:
         held: object = yaml.safe_load(sharing_path(plan.folder).read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):
-        return None
-    return cast(Json, held).get(key) if isinstance(held, dict) else None
+        held = None
+    found = cast(Json, held).get(key) if isinstance(held, dict) else None
+    return {"record": "public", "files": "public"} if found is None and key == ACCESS else found
 
 
 # --- the site's value, as sharing.yaml writes it ---------------------------------------------------------------------
@@ -188,10 +221,26 @@ def _all(items: Sequence[Json | None]) -> list[Json] | None:
     return None if any(each is None for each in items) else [cast(Json, each) for each in items]
 
 
-def kept(name: str, site: Mapping[str, object], plan: Plan) -> dict[str, object] | None:
+def _access_back(value: object) -> dict[str, object] | None:
+    """The site's access as ``sharing.yaml`` writes it (public is left out), or ``None`` for a shape push does not
+    write."""
+    held = _map(value)
+    found: Json = {key: held[key] for key in ("record", "files") if held.get(key, "public") != "public"}
+    if any(each not in ACCESS_LEVELS for each in found.values()):
+        return None
+    if "embargo" in held:
+        terms = _map(held["embargo"])
+        if not isinstance(terms.get("until"), str):
+            return None
+        found["embargo"] = terms
+    return {ACCESS: found or None}
+
+
+def kept(name: str, site: Mapping[str, object], plan: Plan, card: str | None = None) -> dict[str, object] | None:
     """The ``sharing.yaml`` keys, with their new values, that keep the site's value of the field ``name``; ``None``
-    where ``sharing.yaml`` cannot hold it (a field MIME builds, the licences, a value of a shape push does not
-    write)."""
+    where ``sharing.yaml`` cannot hold it (a field MIME builds, the licences, a value of a shape push does not write).
+    ``card`` is the card the site's description holds, where it is not the plan's: a new version's copy of the published
+    record."""
     if name not in SHARING_KEYS:
         return None
     value = field_value(site, name)
@@ -236,7 +285,9 @@ def kept(name: str, site: Mapping[str, object], plan: Plan) -> dict[str, object]
         back = {key: meeting[field] for key, field in CONFERENCE.items() if isinstance(meeting.get(field), str)}
         return {"conference": back or None} if "title" in back or not meeting else None
     if name == "description":
-        return _paragraph(value, plan)
+        return _paragraph(value, plan.card if card is None else card)
+    if name == ACCESS:
+        return _access_back(value)
     short = name.removeprefix(CUSTOM)
     if value in (None, "", [], {}):
         fields.pop(short, None)
@@ -245,12 +296,12 @@ def kept(name: str, site: Mapping[str, object], plan: Plan) -> dict[str, object]
     return {"fields": fields}
 
 
-def _paragraph(value: object, plan: Plan) -> dict[str, object] | None:
+def _paragraph(value: object, card: str) -> dict[str, object] | None:
     """The description's paragraph above the card, where the site's description is a paragraph and then the card as
-    MIME writes it (or the card alone)."""
-    if not isinstance(value, str) or not value.endswith(plan.card):
+    MIME wrote it (or the card alone)."""
+    if not card or not isinstance(value, str) or not value.endswith(card):
         return None
-    head = value.removesuffix(plan.card)
+    head = value.removesuffix(card)
     if not head:
         return {"description": ""}
     found = re.fullmatch(r"<p>(.*)</p>\n", head, flags=re.DOTALL)
@@ -273,13 +324,23 @@ def _block(lines: list[str], key: str) -> tuple[int, int] | None:
     return start, end
 
 
+def _dumped(key: str, value: object) -> str:
+    """``key: value`` as YAML, in the person's own letters; where YAML would not read those back (it folds a U+0085 or a
+    U+2028 it wrote as it stands), escaped."""
+    plainly = yaml.safe_dump({key: value}, sort_keys=False, allow_unicode=True, width=10_000, default_flow_style=False)
+    if yaml.safe_load(plainly) == {key: value}:
+        return plainly
+    return yaml.safe_dump({key: value}, sort_keys=False, allow_unicode=False, width=10_000, default_flow_style=False)
+
+
 def written_text(text: str, updates: Mapping[str, object]) -> str:
     """``sharing.yaml``'s ``text`` with each key of ``updates`` written as its value (its lines replaced, or added at
-    the end), every other line as it was."""
-    lines = text.splitlines()
+    the end), every other line as it was, in the file's own line endings. Lines are YAML's, ended by a line feed: a
+    U+2028 or a form feed inside a value is no line's end."""
+    ending = "\r" if "\r\n" in text else ""
+    lines = text.removesuffix("\n").split("\n") if text else []
     for key, value in updates.items():
-        dumped = yaml.safe_dump({key: value}, sort_keys=False, allow_unicode=True, width=10_000,
-                                default_flow_style=False).rstrip("\n").splitlines()
+        dumped = [line + ending for line in _dumped(key, value).rstrip("\n").split("\n")]
         found = _block(lines, key)
         if found is None:
             lines += dumped
@@ -288,34 +349,74 @@ def written_text(text: str, updates: Mapping[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_back(plan: Plan, updates: Mapping[str, object], names: Sequence[str], site: Mapping[str, object]) -> Plan:
+def _replaced(path: Path, data: bytes) -> None:
+    """``path`` holding ``data``, whole or not at all."""
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}")
+    try:
+        temporary.write_bytes(data)
+        shutil.copymode(path, temporary)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _others(text: str, updates: Mapping[str, object]) -> Json:
+    held: object = yaml.safe_load(text)
+    return {key: value for key, value in cast(Json, held).items() if key not in updates} if isinstance(held, dict) else {}
+
+
+def _holds(name: str, site: Mapping[str, object], made: Plan, card: str | None) -> bool:
+    """Whether the plan made from ``sharing.yaml`` holds the site's ``name``. A description is held by its paragraph:
+    the card below it is the card of the version being made, which a published version's is not."""
+    if name != "description" or card is None:
+        return not differs(name, site, made.payload)
+    paragraph = _paragraph(field_value(site, name), card)
+    return paragraph is not None and paragraph["description"] == made.sharing.description
+
+
+def write_back(plan: Plan, updates: Mapping[str, object], names: Sequence[str], site: Mapping[str, object],
+               card: str | None = None) -> Plan:
     """Write ``updates`` into ``sharing.yaml``, read it again, and return the plan made from it, checked to hold the
-    site's value of each field ``names`` lists; otherwise ``sharing.yaml`` is put back as it was and the push stops
-    (``push.sharing``), with the lines to copy in by hand."""
+    site's value of each field ``names`` lists and every other key as it was; otherwise ``sharing.yaml`` is put back as
+    it was, byte for byte, and the push stops (``push.sharing``), with the lines to copy in by hand. ``card`` as
+    :func:`kept`'s."""
     path = sharing_path(plan.folder)
-    before = path.read_text(encoding="utf-8")
-    after = written_text(before, updates)
-    path.write_text(after, encoding="utf-8", newline="\n")
+    lines = plain(yaml.safe_dump(dict(updates), sort_keys=False, allow_unicode=True, width=10_000).strip())
+    by_hand = (f"copy the site's value in by hand, as these lines, in {path}: {lines}; then `mime push <folder> --to "
+               f"{plan.service.name}` again")
+    keeping = f"push wrote the site's {', '.join(names)} into it to keep {'them' if len(names) != 1 else 'it'}"
+    before = path.read_bytes()
+    text = before.decode("utf-8")
+    after = written_text(text, updates)
+    unwritten = None if os.access(path, os.W_OK) else "it is read-only"
+    if unwritten is None:
+        try:
+            _replaced(path, after.encode("utf-8"))
+        except OSError as error:
+            unwritten = type(error).__name__
+    if unwritten is not None:
+        raise BuildRefused([Refusal("push.sharing", RefusalClass.USER,
+                                    f"{path}: push could not write the site's {', '.join(names)} into it, to keep "
+                                    f"{'them' if len(names) != 1 else 'it'} ({unwritten}), and sent nothing", by_hand)])
     problem: str | None = None
     made = plan
     try:
         made = with_sharing(plan, read_sharing(plan.folder))
-        wrong = [name for name in names if differs(name, site, made.payload)]
+        wrong = [name for name in names if not _holds(name, site, made, card)]
         if wrong:
             problem = f"read again, it does not give the site's {', '.join(wrong)}"
+        elif _others(after, updates) != _others(text, updates):
+            problem = "read again, another of its keys is not what it was"
     except BuildRefused as refused:
         problem = "; ".join(each.message for each in refused.refusals)
     if problem is None:
         return made
-    path.write_text(before, encoding="utf-8", newline="\n")
-    lines = yaml.safe_dump(dict(updates), sort_keys=False, allow_unicode=True, width=10_000).strip()
-    raise BuildRefused([Refusal(
-        "push.sharing", RefusalClass.USER,
-        f"{path}: push wrote the site's {', '.join(names)} into it to keep {'them' if len(names) != 1 else 'it'}, and "
-        f"{problem}, so it put the file back as it was and sent nothing",
-        f"copy the site's value in by hand, as these lines, in {path}: {plain(lines)}; then `mime push <folder> --to "
-        f"{plan.service.name}` again")])
+    _replaced(path, before)
+    raise BuildRefused([Refusal("push.sharing", RefusalClass.USER,
+                                f"{path}: {keeping}, and {problem}, so it put the file back as it was and sent nothing",
+                                by_hand)])
 
 
-__all__ = ["SHARING_KEYS", "as_yaml", "differs", "field_value", "kept", "reduced", "shown", "write_back",
-           "written_text", "written_value"]
+__all__ = ["SHARING_KEYS", "apart", "as_yaml", "differs", "field_value", "kept", "reduced", "shown", "words_of",
+           "write_back", "written_text", "written_value"]

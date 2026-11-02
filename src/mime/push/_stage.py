@@ -28,6 +28,7 @@ from urllib.parse import quote
 
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._service import Service
+from mime.push._state import remove_tree, writable_tree
 from mime.saved._schema import PublicationRecord
 
 #: The folder push packs with the staged lock, below its staging directory.
@@ -73,34 +74,37 @@ def _linked(source: str, target: str) -> None:
         shutil.copy2(source, target)
 
 
-def pack_staged(folder: Path, lock: bytes, staging: Path, out: Path) -> Path:
+def pack_staged(folder: Path, lock: bytes, staging: Path, out: Path, own: frozenset[str] = frozenset()) -> Path:
     """Pack ``folder`` with ``lock`` in place of its own into ``out``, through a copy of the folder in ``staging``
-    (the folder's own ``sharing.yaml`` left out, as ``pack`` leaves it out). A refusal names the folder, never the
-    copy."""
+    (the folder's own ``sharing.yaml`` left out, as ``pack`` leaves it out). ``own`` is where the record holds its files,
+    as push wrote each into the lock. A refusal names the folder, never the copy. A read-only folder's copy is made
+    writable, as its lock is replaced in it."""
     from mime.push._sharing import SHARING_FILE
     from mime.saved import pack
     from mime.saved._folder import LOCK_FILE
 
     copy = staging / COPY
-    shutil.rmtree(copy, ignore_errors=True)
+    remove_tree(copy)
     shutil.copytree(folder, copy, symlinks=True, copy_function=_linked,
                     ignore=lambda directory, names: [SHARING_FILE] if Path(directory) == folder else [])
+    writable_tree(copy)
     target = copy / LOCK_FILE
     target.unlink(missing_ok=True)  # a link to the folder's own lock: never written through
     target.write_bytes(lock)
     try:
-        return pack(copy, out=out)
+        return pack(copy, out=out, own_locations=own)
     except BuildRefused as refused:
         raise BuildRefused([replace(each, message=each.message.replace(str(copy), str(folder)),
                                     action=each.action.replace(str(copy), str(folder)))
                             for each in refused.refusals]) from None
     finally:
-        shutil.rmtree(copy, ignore_errors=True)
+        remove_tree(copy)
 
 
 def rewrite_lock(folder: Path, before: bytes, staged: bytes) -> Refusal | None:
-    """Replace the folder's lock by the staged one, atomically, when it is still ``before`` (its bytes when the bundle
-    was packed); otherwise leave it and say why (``push.lock-changed``)."""
+    """Replace the folder's lock by the staged one, atomically and on the disk, when it is still ``before`` (its bytes
+    when the bundle was packed); otherwise leave it and say why (``push.lock-changed``, or ``push.lock-unwritten`` where
+    it cannot be written)."""
     from mime.saved._folder import LOCK_FILE
 
     path = folder / LOCK_FILE
@@ -118,12 +122,25 @@ def rewrite_lock(folder: Path, before: bytes, staged: bytes) -> Refusal | None:
                        "`mime pull` the record into a new folder")
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}")
     try:
-        temporary.write_bytes(staged)
+        with temporary.open("wb") as stream:
+            stream.write(staged)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
+    except OSError as error:
+        temporary.unlink(missing_ok=True)
+        return lock_unwritten(folder, type(error).__name__)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
     return None
 
 
-__all__ = ["COPY", "own_location", "pack_staged", "publication_of", "rewrite_lock", "staged_lock"]
+def lock_unwritten(folder: Path, why: str) -> Refusal:
+    return Refusal("push.lock-unwritten", RefusalClass.USER,
+                   f"the folder {folder} cannot be written ({why}), and after a production publish push replaces its "
+                   f"lock, so that it names the record", "make the folder writable, then `mime push <folder> --to "
+                                                         "zenodo --publish`: what is published is not published again")
+
+
+__all__ = ["COPY", "lock_unwritten", "own_location", "pack_staged", "publication_of", "rewrite_lock", "staged_lock"]

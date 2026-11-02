@@ -25,7 +25,7 @@ import yaml
 
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.push._fields import Funding, conference_problems, field_problems, funding_problems
+from mime.push._fields import Funding, access_problems, conference_problems, field_problems, funding_problems
 from mime.saved._versions import newer_form_refusal
 from mime.terms import licence_problem
 
@@ -50,7 +50,7 @@ _ORCID = re.compile(r"(?:https://orcid\.org/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])")
 _ROR = re.compile(r"(?:https://ror\.org/)?(0[a-z0-9]{6}\d{2})")
 _DOI = re.compile(r"10\.\d{4,9}/\S+")
 _TOP = ("format", "title", "description", "licence", "creators", "contributors", "keywords", "related", "uploader",
-        "funding", "conference", "fields")
+        "funding", "conference", "fields", "access")
 _PERSON = ("family", "given", "organisation", "orcid", "affiliation", "ror")
 _LINE = {
     "format": f"format: {SHARING_FORMAT}",
@@ -65,6 +65,7 @@ _LINE = {
     "funding": "funding: [{funder: <the funder's name>, ror: <its ROR id>, award: <number>, title: <its title>}]",
     "conference": "conference: {title: <the conference's name>, acronym: <...>, dates: <...>, place: <...>}",
     "fields": "fields: {languages: [{id: eng}]}",
+    "access": "access: {files: restricted, embargo: {until: 2030-01-01, reason: <why>}}",
 }
 
 
@@ -150,7 +151,8 @@ class Uploader:
 class Sharing:
     """``sharing.yaml`` as read: the record's title and its description's first paragraph, the licence the author states
     (held equal to the experiment's), the creators, the contributors, keywords, related works, the uploader, the
-    funding, a conference, and any other field of the record (:mod:`mime.push._fields`)."""
+    funding, a conference, any other field of the record (:mod:`mime.push._fields`), and who may read it where that is
+    not everyone."""
 
     title: str
     description: str
@@ -165,6 +167,8 @@ class Sharing:
     conference: Mapping[str, str] | None = None
     #: Any other field of the record, checked against its shape (:data:`mime.push._fields.SHAPES`).
     fields: Mapping[str, object] = field(default_factory=lambda: cast(Mapping[str, object], {}))
+    #: Who may read the record and its files once published, and an embargo; empty for public.
+    access: Mapping[str, object] = field(default_factory=lambda: cast(Mapping[str, object], {}))
 
 
 class _Reader:
@@ -323,6 +327,8 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
     problems += found
     fields: object = held.get("fields") or {}
     problems += field_problems(fields)
+    access, found_access = access_problems(held.get("access"))
+    problems += found_access
     for problem in problems:
         where, _, what = problem.partition(": ")
         reader.problem(where, what)
@@ -331,7 +337,7 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
     assert title is not None and licence is not None
     return Sharing(title, description, licence, tuple(p for p in creators if p is not None),
                    tuple(p for p in contributors if p is not None), tuple(k for k in keywords if k is not None),
-                   tuple(related), uploader, tuple(funding), conference, cast(Mapping[str, object], fields))
+                   tuple(related), uploader, tuple(funding), conference, cast(Mapping[str, object], fields), access)
 
 
 def scaffold(name: str, licence: str | None) -> str:

@@ -23,6 +23,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import uuid
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
@@ -45,6 +46,8 @@ STAGED = "staged"
 MARK_SCHEME = "urn"
 #: How a custom field is named among a draft's fields (``custom_fields.meeting:meeting``).
 CUSTOM = "custom_fields."
+#: How a record's access is named among a draft's fields: who may read it and its files, and an embargo.
+ACCESS = "access"
 _NAME_UNSAFE = re.compile(r"[^A-Za-z0-9._-]")
 #: The namespace of push's marks (a UUID 5 of MIME's PyPI address): the same service, experiment and mark always give
 #: the same identifier, and nothing else does.
@@ -68,8 +71,11 @@ class Uploaded:
 @dataclass
 class Published:
     """The latest version push published of an experiment on one service: its record, DOI, page, concept (its record
-    and, once minted, its DOI), its number, each file as the published record holds it, its metadata's marks as
-    published (:func:`metadata_marks`) and the identity of the metadata push wrote (``sent``)."""
+    and, once minted, its DOI), its number, each file as the record's own listing holds it (never the folder's, so
+    "unchanged" is true of the record), its metadata's marks as published (:func:`metadata_marks`) and the identity of
+    the metadata push wrote (``sent``). ``card`` is the card its description holds, by which the next version finds a
+    paragraph written above it on the record's page; ``differed``, the fields that read back from the published record
+    otherwise than the draft held them."""
 
     record: str
     doi: str
@@ -82,6 +88,8 @@ class Published:
     sent: str = ""
     #: The staged lock's ``publication`` the published bundle holds, as it holds it.
     publication: dict[str, object] = field(default_factory=lambda: cast(dict[str, object], {}))
+    card: str = ""
+    differed: list[str] = field(default_factory=lambda: cast(list[str], []))
 
 
 @dataclass
@@ -176,17 +184,33 @@ def _filled(value: object) -> bool:
     return value not in (None, "", [], {})
 
 
+def access_of(held: object) -> dict[str, object]:
+    """A record's access as an author sets it: who may read the record and its files, and an embargo while it is
+    active. What the service adds to it (its ``status``, an embargo that is not active) is left out."""
+    if not isinstance(held, dict):
+        return {}
+    access = cast(dict[str, object], held)
+    found: dict[str, object] = {key: access[key] for key in ("record", "files") if _filled(access.get(key))}
+    embargo = access.get("embargo")
+    if isinstance(embargo, dict) and cast(dict[str, object], embargo).get("active"):
+        terms = cast(dict[str, object], embargo)
+        found["embargo"] = {key: terms[key] for key in ("until", "reason") if _filled(terms.get(key))}
+    return found
+
+
 def metadata_marks(draft: Mapping[str, object]) -> dict[str, str]:
     """Each field of the draft's metadata as the service holds it, as the sha256 of its canonical JSON: what push
     compares, on its next run, with the draft then, to find what was edited on the site. Taken from the service's own
     answer, not from what push sent, since the service adds to what it is sent (a licence's title, a person's name). A
     field left empty is left out (the site's form may save one empty). A custom field (Zenodo's meeting, journal,
-    imprint, thesis) is named ``custom_fields.<name>``."""
+    imprint, thesis) is named ``custom_fields.<name>``, and the record's access (:func:`access_of`), set on the same
+    page, ``access``."""
     metadata = draft.get("metadata")
     held = cast(dict[str, object], metadata) if isinstance(metadata, dict) else {}
     custom = draft.get("custom_fields")
     held = {**held, **{f"{CUSTOM}{key}": value for key, value in cast(dict[str, object], custom).items()}} \
         if isinstance(custom, dict) else held
+    held = {**held, ACCESS: access_of(draft.get(ACCESS))}
     return {key: hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
                                            ensure_ascii=False).encode("utf-8")).hexdigest()
             for key, value in sorted(held.items()) if _filled(value)}
@@ -262,7 +286,8 @@ def _published_of(held: object) -> Published | None:
     return Published(str(found["record"]), str(found["doi"]), str(found["page"]), str(found["concept"]),
                      int(cast(int, found["version"])), _text(found.get("concept_doi")), _files_of(found.get("files")),
                      {str(key): str(value) for key, value in cast(dict[str, object], found.get("written", {})).items()},
-                     str(found.get("sent", "")), dict(cast(dict[str, object], found.get("publication") or {})))
+                     str(found.get("sent", "")), dict(cast(dict[str, object], found.get("publication") or {})),
+                     str(found.get("card", "")), [str(each) for each in cast(list[object], found.get("differed", []))])
 
 
 def write_state(service: Service, state: DraftState) -> Path:
@@ -280,20 +305,34 @@ def write_state(service: Service, state: DraftState) -> Path:
     return path
 
 
+def writable_tree(top: Path) -> None:
+    """Every directory below ``top`` made writable by its owner: a copy of a read-only folder keeps its modes."""
+    for directory, _, _ in os.walk(top):
+        os.chmod(directory, os.stat(directory).st_mode | stat.S_IRWXU)
+
+
+def remove_tree(top: Path) -> None:
+    """``top`` and what it holds removed, whatever modes its directories were copied with."""
+    if top.is_dir() and not top.is_symlink():
+        writable_tree(top)
+        shutil.rmtree(top, ignore_errors=True)
+
+
 def clear_state(service: Service, experiment: str) -> None:
     directory = state_directory(service, experiment)
     (directory / STATE_FILE).unlink(missing_ok=True)
-    shutil.rmtree(directory / STAGED, ignore_errors=True)
+    remove_tree(directory / STAGED)
 
 
 def staging(service: Service, experiment: str) -> Path:
     """An empty directory for the files this push stages, emptied of an earlier push's."""
     directory = state_directory(service, experiment) / STAGED
-    shutil.rmtree(directory, ignore_errors=True)
+    remove_tree(directory)
     directory.mkdir(parents=True)
     return directory
 
 
-__all__ = ["CUSTOM", "MARK_SCHEME", "OLD_FORMAT", "STAGED", "STATE_FILE", "STATE_FORMAT", "DraftState", "Published",
-           "Uploaded", "clear_state", "declaration_identity", "draft_identifier", "metadata_marks", "namespace",
-           "payload_identity", "read_state", "staging", "state_directory", "state_root", "write_state"]
+__all__ = ["ACCESS", "CUSTOM", "MARK_SCHEME", "OLD_FORMAT", "STAGED", "STATE_FILE", "STATE_FORMAT", "DraftState",
+           "Published", "Uploaded", "access_of", "clear_state", "declaration_identity", "draft_identifier",
+           "metadata_marks", "namespace", "payload_identity", "read_state", "remove_tree", "staging",
+           "state_directory", "state_root", "writable_tree", "write_state"]

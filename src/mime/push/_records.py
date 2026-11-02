@@ -133,7 +133,7 @@ def public_record(service: Service, record: str) -> PublicRecord:
         status, headers, _ = _get(service, f"/records/{record}/versions/latest")
         found = re.fullmatch(re.escape(service.api) + r"/records/(\d+)", headers.get("location", "")) \
             if status in (301, 302, 303) else None
-        latest = found.group(1) if found is not None else "a newer one"
+        latest = found.group(1) if found is not None else ""
     address = f"{service.api}/records/{record}/files/{quote(key, safe='')}/content"
     return PublicRecord(service, record, _doi(held), _doi(held.get("parent")),
                         index if isinstance(index, int) else None, key, address, checksum.removeprefix("md5:"), size,

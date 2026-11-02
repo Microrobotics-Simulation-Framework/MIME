@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import unquote
 
 from mime import assets
 from mime._terminal import plain
@@ -58,8 +59,8 @@ def parse_source(text: str) -> Source:
     if Path(text).is_file():
         return Source("file", text)
     bare = next((text.removeprefix(prefix) for prefix in _DOI_PREFIXES if text.startswith(prefix)), text)
-    if _DOI.fullmatch(bare) and bare.startswith(TEST_PREFIX):
-        number = re.search(r"zenodo\.(\d+)", bare)
+    if (_DOI.fullmatch(bare) and bare.startswith(TEST_PREFIX)) or assets.under_test_prefix(text):
+        number = re.search(r"zenodo\.(\d+)", unquote(bare))
         raise _refuse("pull.sandbox-doi", RefusalClass.USER,
                       f"{text!r} is under DataCite's test prefix 10.5072, the Zenodo sandbox's, which doi.org does not "
                       f"resolve, so MIME does not ask doi.org for it",
@@ -189,7 +190,9 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
     if say is not None:
         say(f"the record: {found.words()}")
         if found.latest is not None:
-            say(f"! it is not the latest version: `mime pull --from {service.name} {found.latest}` pulls the latest")
+            say(f"! it is not the latest version: `mime pull --from {service.name} {found.latest}` pulls the latest"
+                if found.latest else f"! it is not the latest version: the record's page, {service.site}/records/"
+                                     f"{found.record}, names the latest")
     return assets.locate(assets.retrieve(found.url, name="bundle", known_hash=f"md5:{found.md5}",
                                          max_bytes=_limit(found.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT,
                                          report=say))

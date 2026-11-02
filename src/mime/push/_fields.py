@@ -11,6 +11,11 @@ whole draft.
 **A conference** (``conference:``): Zenodo's meeting field (its custom field ``meeting:meeting``): title, acronym,
 dates, place, address, session and part.
 
+**Access** (``access:``): who may read the record and its files once it is published, and an embargo, as the service's
+draft page sets them. Left out, the record and its files are public. An edit made on the draft's page is settled as any
+other site edit is, and kept here; so an embargo set there is never written over unasked, and what the plan says is what
+is published.
+
 **Any other field** (``fields:``): a field of InvenioRDM's metadata MIME does not build (subjects, dates, languages,
 references, additional titles and descriptions) or a custom field of Zenodo's (``journal:journal``,
 ``imprint:imprint``, ``thesis:university``, ``thesis:type``), written as the records API holds it. Each is checked
@@ -22,6 +27,7 @@ recalled, not probed: the sandbox session checks each.
 
 from __future__ import annotations
 
+import datetime
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -37,6 +43,9 @@ DATE_TYPES = ("accepted", "available", "collected", "copyrighted", "created", "i
 _DATE = re.compile(r"\d{4}(-\d{2}(-\d{2})?)?(/\d{4}(-\d{2}(-\d{2})?)?)?")
 _LANGUAGE = re.compile(r"[a-z]{3}")
 _ROR = re.compile(r"(?:https://ror\.org/)?(0[a-z0-9]{6}\d{2})")
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+#: Who may read a record or its files.
+ACCESS_LEVELS = ("public", "restricted")
 
 
 def _kind(value: object) -> str:
@@ -228,6 +237,52 @@ def funding_problems(value: object) -> tuple[list[Funding], list[str]]:
         found.append(Funding(texts["funder"], matched.group(1) if matched else None, texts["award"], texts["title"],
                              texts["url"]))
     return found, problems
+
+
+def access_problems(value: object) -> tuple[dict[str, object], list[str]]:
+    """``access:`` read: who may read the record and its files where it is not everyone, an embargo's end and reason,
+    and every problem by its path."""
+    if value is None:
+        return {}, []
+    if not isinstance(value, dict):
+        return {}, [f"access: is {_kind(value)}, not a mapping of record, files, embargo"]
+    held = cast(dict[object, object], value)
+    problems = [f"access.{plain(str(key))}: is not a key it holds (it holds record, files, embargo)"
+                for key in held if key not in ("record", "files", "embargo")]
+    found: dict[str, object] = {}
+    for key in ("record", "files"):
+        if key in held:
+            _one_of(ACCESS_LEVELS)(held[key], f"access.{key}", problems)
+            found[key] = held[key]
+    embargo = held.get("embargo")
+    if embargo is not None:
+        until = cast(dict[str, object], embargo).get("until") if isinstance(embargo, dict) else None
+        terms: dict[str, object] = dict(cast(dict[str, object], embargo)) if isinstance(embargo, dict) else {}
+        if isinstance(until, datetime.date):  # YAML reads an unquoted day as a date
+            terms["until"] = until.isoformat()
+        _mapping({"until": (_matching(_DAY, "a day, 2030-01-01"), True), "reason": (_text, False)})(
+            terms if isinstance(embargo, dict) else embargo, "access.embargo", problems)
+        if "restricted" not in (found.get("record"), found.get("files")):
+            problems.append("access.embargo: holds back what is restricted, and neither the record nor its files are")
+        found["embargo"] = terms
+    return found, problems
+
+
+def access_entry(access: Mapping[str, object]) -> dict[str, object]:
+    """The records API's ``access`` from ``access:`` as read: public where it says nothing."""
+    found: dict[str, object] = {"record": access.get("record", "public"), "files": access.get("files", "public")}
+    embargo = access.get("embargo")
+    if isinstance(embargo, dict):
+        found["embargo"] = {"active": True, **cast(dict[str, object], embargo)}
+    return found
+
+
+def access_words(access: Mapping[str, object]) -> str:
+    """An ``access`` of the records API in words."""
+    embargo = access.get("embargo")
+    terms: dict[str, object] = cast(dict[str, object], embargo) if isinstance(embargo, dict) else {}
+    until = f", embargoed until {plain(str(terms.get('until')))}" if terms.get("active", bool(terms)) else ""
+    return f"the record {plain(str(access.get('record', '')))}, its files {plain(str(access.get('files', '')))}{until}"
 
 
 def conference_problems(value: object) -> tuple[dict[str, str] | None, list[str]]:

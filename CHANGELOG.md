@@ -188,12 +188,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   typed** (`--confirm <DOI>` from a script, which must be the draft's reserved DOI, `push.not-confirmed`). A folder
   changed since its draft is not published (`push.folder-changed`); a publish whose answer was lost is never sent
   again (the record is read, and a published one goes on to the checks). **After publishing**, the record is read again
-  and held to what push sent (its DOI, each file's size and md5, its metadata, the bundle downloaded and its sha256;
-  `push.after-publish` otherwise), and on production the folder's lock is replaced by the **staged lock** the bundle
+  and recorded as its own listing holds it, then held to what push sent (its DOI, each file's size and md5, the bundle
+  downloaded and its sha256; `push.after-publish` otherwise, and `--publish` again finishes), and on production the folder's lock is replaced by the **staged lock** the bundle
   was packed with, which names its own record (`publication`, a new optional key of the lock outside the input hash,
   and the record's location of each file it holds first), so `mime pack <folder>` makes the published bundle again,
-  byte for byte (`push.lock-changed` where the lock changed meanwhile); a sandbox record is never written into the
-  folder. **Versions** under one concept DOI: once published, a push of a changed folder makes a new version, links
+  byte for byte (`push.lock-changed` where the lock changed meanwhile, `push.lock-unwritten` where it cannot be written);
+  a sandbox record is never written into the folder. A field of the metadata that reads back otherwise than the draft
+  held it never holds the lock back: it is named (`push.metadata-read-back`) with the version recorded and the lock
+  written. **What is published is what was seen on the draft**: the record's description names the record (its version,
+  DOI, how to pull and cite it); the plan names the title and the contributors always; a script publishes what the
+  draft holds or nothing (`push.metadata-changed`), and a terminal shows each change by field before the number; the
+  draft is read again immediately before the request (`push.draft-moved`); an access or an embargo set on the draft's
+  page is a site edit (`access` in `sharing.yaml`); a folder whose lock names a published record push has no record of is
+  told, and not published as a second concept (`push.second-concept`). **Versions** under one concept DOI: once published, a push of a changed folder makes a new version, links
   the files of the version before into it and uploads only what differs; of an unchanged folder, says `unchanged since
   <DOI>` in one line. **Quieter output**: a private draft is made without a question; the plan is short by default
   (what goes up, what travels as a reference, the licences and creators, warnings on lines that start `!`), the full

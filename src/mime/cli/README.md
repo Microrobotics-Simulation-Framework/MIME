@@ -64,7 +64,7 @@
 - `mime push <folder> --to zenodo|zenodo-sandbox [--init | --status | --discard | --publish [--confirm <DOI>]] [--yes]
   [--full-plan] [--keep-site-edits | --overwrite-site-edits]`: the experiment as a record on Zenodo (see
   [`mime.push`](../push/README.md)). A push shows the plan, computed offline, short (what goes up, what travels as a
-  reference, the licences and creators, warnings on lines of their own that start `!`; the full plan, every file with
+  reference, the title, the licences, creators and contributors, warnings on lines of their own that start `!`; the full plan, every file with
   its tier and verdict and every field sent, with `--full-plan`), then makes or updates the private draft without a
   question, reserves its DOI and uploads each file that differs, its md5 checked against the service's; a push with
   nothing to send says so in one line. It writes to and deletes only the draft it made. A field edited on the site
@@ -72,8 +72,9 @@
   `sharing.yaml`, or written over); `--keep-site-edits` and `--overwrite-site-edits` answer without a terminal.
   `--publish` publishes the draft, the one step that cannot be undone: the confirmation in words, each declared
   permission asked on its own (`--yes` never answers one), then the record number typed, or `--confirm <DOI>` from a
-  script; afterwards the record is checked as published and, on production, the folder's lock names it, so `mime
-  pack <folder>` makes the published bundle again. Once published, a push of a changed folder makes a new version
+  script, which publishes only what the draft holds (a terminal shows each change first). The draft is read again
+  immediately before the request, and a draft that moved is not published. Afterwards the record is checked as
+  published and, on production, the folder's lock names it, so `mime pack <folder>` makes the published bundle again. Once published, a push of a changed folder makes a new version
   under the same concept DOI, its unchanged files linked; of an unchanged one, says so in one line. `--init` writes
   `sharing.yaml`, the record's credit; `--status` reads the draft as the service holds it; `--discard` deletes it,
   after asking. Each ends with a link. `--to` is required. A push stopped at any request is resumed by running it

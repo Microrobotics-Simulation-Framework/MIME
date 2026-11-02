@@ -44,6 +44,7 @@ each key explained; an existing one is never overwritten. It is read with YAML's
 | `uploader` | the person whose token pushes, and their institution: a declared permission's grantee must be one of them |
 | `funding` | each funder (`funder`, its `ror` where known: Zenodo's funders are ROR's) and its award (`award`, its number; `title`; `url`); the award is sent as the record's own (title and number), never as an id of Zenodo's awards vocabulary, which MIME cannot check offline |
 | `conference` | Zenodo's meeting field: `title`, `acronym`, `dates`, `place`, `url`, `session`, `part` |
+| `access` | who may read the record and its files once published, where that is not everyone: `record`, `files` (`public` or `restricted`), and `embargo` (`until`, a day; `reason`). An access set on the draft's page is a site edit, kept here; left out, both are public |
 | `fields` | any other field of the record, in the records API's own names and shapes, held to those shapes by path before anything is sent: `subjects`, `dates`, `languages`, `references`, `additional_titles`, `additional_descriptions`, and Zenodo's custom fields `journal:journal`, `imprint:imprint`, `thesis:university`, `thesis:type`; a field MIME builds, or one `sharing.yaml` has a key for, is refused here by name |
 
 A key missing, unknown or of another type is refused by its path (`push.sharing`); no creator, or an ORCID iD whose
@@ -56,7 +57,9 @@ Every push begins with the plan, computed offline after the folder loads, with e
 written to the service before it is shown. **By default it is short**: what goes up (each record file and its size),
 what travels as a reference and never goes up, the licences and creators, and each warning on a line of its own that
 starts `!` (results that depend on a file the record does not hold, a declared permission, which becomes public when
-published, a version that changes the title, the production service). **The full plan** (`--full-plan`) is every
+published, a version that changes the title, access that is not open, a lock naming a record push has no record of,
+the production service). **It always names the title and the contributors**, since the statement at a publish asks the
+person to vouch for them. **The full plan** (`--full-plan`) is every
 record file with its licence and why it is there, every file inside the bundle with its licence, whose it is and its
 verdict, every file that travels as a reference with its origin and sha256, the licences, the credit, each declared
 permission in #198's words ("You are declaring publicly, under your name, that ... permitted you to redistribute
@@ -67,7 +70,8 @@ since <DOI>` in one line, with no request.
 
 **The metadata** is InvenioRDM's: resource type `dataset`; the title, creators, contributors, keywords and related works
 from `sharing.yaml`; the publisher `Zenodo` and the date, which DataCite needs to register the DOI; the card
-(`mime card`'s) as the description, in HTML; every licence as a rights entry, an SPDX id as the vocabulary's id in
+(`mime card`'s, given the record it is published as: its version, DOI and how to pull and cite it, and its concept DOI
+from the second version on, a first version's being minted when it is published) as the description, in HTML; every licence as a rights entry, an SPDX id as the vocabulary's id in
 lower case and a `LicenseRef-` licence as a title, a link and what it allows with **no `id`** (the sandbox refuses a
 `LicenseRef-` id); the MIME release it was saved with as `requires` and `iscompiledby`; and push's identifier of the
 draft, a `urn:uuid` among its alternate identifiers (below). Each third-party file the record holds adds its rights
@@ -126,16 +130,21 @@ to a draft or deletes one, push reads the draft and refuses one that does not ca
 naming another experiment's draft, edited, or copied from elsewhere, changes and deletes nothing).
 
 **An edit made on the site is never lost.** Push keeps what the draft's metadata was, as the service held it, each
-time it wrote it (a hash of each field, custom fields included). The next push (and `--publish`) reads the draft
+time it wrote it (a hash of each field, custom fields and the record's access included; a field edited while the files
+upload keeps its earlier hash, so the next push finds it). The next push (and `--publish`) reads the draft
 first; each field that changed since, and that push would now write otherwise, is shown with its value on the site
 and the value from `sharing.yaml` (or MIME's), and settled field by field: **kept**, written back into `sharing.yaml`
-under its key (that key's lines replaced, every other line and comment kept), the file read again and the payload made
-from it held to the site's value, or put back as it was and the push stopped (`push.sharing`, with the lines to copy
-in by hand); or **written over**. In a terminal push asks (`Write sharing.yaml's over the site's? [y/N]`, so the
+under its key (that key's lines replaced, every other line and comment kept, its line endings too, a comment inside the
+replaced lines going with them), the file read again and the payload made from it held to the site's value and every
+other key as it was, or put back byte for byte and the push stopped (`push.sharing`, with the lines to copy in by
+hand); or **written over**. In a terminal push asks (`Write sharing.yaml's over the site's? [y/N]`, so the
 default keeps the site's); `--keep-site-edits` keeps every edit `sharing.yaml` can hold, `--overwrite-site-edits`
 writes over every one, and without either or a terminal an edit stops the push (`push.metadata-edited`). A field
 `sharing.yaml` cannot hold (the licences, which are the files'; the publisher, the date, the resource type, the card,
-push's identifier) is written over or stops the push. What the service adds to what it is sent (a person's display
+push's identifier) is written over or stops the push. A question shows a long value around the first place the two
+differ, so its two lines never read the same. **An access setting is one of these edits**: files embargoed or restricted
+on the draft's page are shown and settled like any other field (kept, into `sharing.yaml`'s `access`, so the plan says
+so and the record is published so), and a preview chosen there survives a write. What the service adds to what it is sent (a person's display
 name, a vocabulary entry's title) is not an edit: values are compared as the author writes them. Files stay MIME's: a
 file added on the site is refused (`push.draft-changed`). `--status` names the fields edited since.
 
@@ -143,8 +152,11 @@ file added on the site is refused (`push.draft-changed`). `--status` names the f
 
 `--publish` publishes the draft an earlier push made, and only it: the folder packed again must make the files the
 draft holds (`push.folder-changed` otherwise: push, look at the draft, then publish), and no draft is `push.no-draft`.
-The metadata is written once more where it differs (an edit settled as a push settles it, the day's publication
-date), the plan is shown as it is published, and then:
+Each edit on the site is settled as a push settles it. **What is published is what was seen on the draft:** a script
+(`--confirm`, or no terminal) publishes what the draft holds, the publication date aside, or nothing
+(`push.metadata-changed`, naming each field with both values); in a terminal each field `sharing.yaml` changed since the
+draft was written is shown by field, with its new value, and written to the draft. The plan is shown as it is
+published, and then:
 
 ```
 Publishing 'full_toy' on zenodo as 10.5281/zenodo.629525 (version 1 of a new concept).
@@ -164,13 +176,35 @@ of the whole declaration, its files' sha256 among them), and is refused otherwis
 be the draft's reserved DOI (`push.not-confirmed`, before any request), and without either nothing is published
 (`push.unconfirmed`).
 
+**Read again immediately before the request.** The prompt can wait for hours, and the plan's own advice is to look at
+the draft's page, so after the number, and before the one request that cannot be undone, the draft is read again: its
+DOI the reserved one (read at the start of the run too), its metadata what push last wrote, exactly the plan's files.
+Anything else publishes nothing (`push.draft-moved`, naming each). A draft published meanwhile is recorded, and no request
+sent; one discarded is `push.no-draft`.
+
+**A second concept is never made silently.** A folder whose lock names a published record push has no record of (a new
+machine, a cleared state, a pulled folder) is told at every push that it makes a first version of a new concept; where
+the record is on the same service, `--publish` refuses (`push.second-concept`) until `--version-of` comes, and saving the
+experiment again, whose lock names no record, makes a new concept on purpose. A sandbox record's lock going to production
+is told, and not refused.
+
 **Never sent twice.** An answer lost is followed by reading the record: published, push goes on to the checks; not, it
 stops, and the next run reads the record again first. A run that finds the draft already published (an earlier run's
-answer lost, or the site's button) goes straight to the checks and publishes nothing.
+answer lost, or the site's button) goes straight to the checks, once the record carries push's identifier
+(`push.draft-foreign` otherwise), and publishes nothing. The request is sent again only after an answer of too many
+requests, which refuses it unread; a service unavailable, whatever it states, is an answer lost. A folder that is read-only cannot have its lock written, and on
+production that is refused before the request (`push.lock-unwritten`).
 
-**The checks afterwards**: the record read again as published, its DOI the reserved one, each file's size and md5 the
-uploaded one's and no other file, the metadata push wrote, and the bundle downloaded and its sha256 the one packed
-(`push.after-publish` otherwise, the folder left as it was; `--publish` again checks again).
+**The checks afterwards.** The version is recorded first, each file as the record's own listing holds it, never as the
+folder holds it now: whatever the folder became, `unchanged since` is true of the record, and a re-saved folder's next
+push makes its next version. Then the record's DOI is held to the reserved one, each file's size and md5 to the uploaded
+one's with no other file, and the bundle, downloaded, to the sha256 packed; a difference stops here
+(`push.after-publish`, the folder's lock left, and `--publish` again checks again and finishes). **The metadata never
+holds the lock back**, which rests on the DOI and the bytes alone: each field is held to the draft as last read, by the
+service's own answers, never to today's `sharing.yaml`. That the service keeps a field as the draft held it is a guess
+the sandbox session measures, and a field that reads back otherwise is named (`push.metadata-read-back`) once the version
+is recorded and the lock written; a later `--publish` says it again, with what was edited on the record's page since, and
+refuses nothing. `mime push` of an unchanged folder says so where the lock is still owed.
 
 **The staged lock.** A bundle cannot name the record it is uploaded to unless the record's DOI is known first, so the
 draft is made and its DOI reserved before the bundle is packed with the staged lock: the folder's lock with a
@@ -184,9 +218,14 @@ folder names the record it is. A sandbox record is never written into the folder
 time.
 
 **Versions.** Push's record keeps the version last published. A push of a changed folder makes a new version of it
-(`POST .../versions`, the concept's open one where there is one), settles the edits made on the published record's
-page since, links the files of the version before into it (`files-import`) and uploads only what differs: an
-unchanged file is linked, never sent again. A push of an unchanged folder says `unchanged since <DOI>` (and, where
+(`POST .../versions`, the concept's open one where there is one), numbered as the service counts it where its draft says
+so, and settles the edits made on the published record's page since, every field but those the service sets anew on a
+version (`mime.push._draft.VERSION_RESETS`; which they are is the sandbox session's to measure): until they are settled,
+push's record holds the published marks, so the same command stops at the same edit however often it runs. A paragraph
+written above the card is kept above the new version's card. It links the files of the version before into it
+(`files-import`, or those of the concept's open draft that are the published version's: one added on the site is refused,
+`push.draft-changed`) and uploads only what differs: an unchanged file is linked, never sent again. A push of an unchanged
+folder says `unchanged since <DOI>` (and, where
 `sharing.yaml` changed, that a published record's metadata is updated on its page until `mime push --metadata`
 comes). `--discard` of a new version's draft keeps the published versions.
 
@@ -195,8 +234,9 @@ comes). `--discard` of a new version's draft keeps the published versions.
 `mime pull --from zenodo-sandbox <record>` (or `--from zenodo`) reads the published record by its number at the
 service's records API, with no token, and pulls its one bundle by its address there, held to the md5 and size the
 record states; it says which version it is and whether a newer one exists. A DOI under DataCite's test prefix (the
-sandbox's) is never resolved through doi.org: `mime pull` of one is refused with the `--from` command
-(`pull.sandbox-doi`), and an asset location under it is never tried there. A production DOI is pulled through doi.org
+sandbox's) is never resolved through doi.org, in any spelling of its address (`www.`, `dx.`, a port, an encoded slash):
+`mime pull` of one is refused with the `--from` command (`pull.sandbox-doi`), and an asset location under it is never
+tried there. A production DOI is pulled through doi.org
 as before; a concept DOI resolves to the latest version, which pull names.
 
 **What push remembers** is in the user's state directory (`platformdirs`), under
@@ -230,9 +270,10 @@ log of the answers' shapes, searched for the token before it is written, even wh
 run is documentation, not a test, so each run's log is kept beside the probe's. A dry run needs no token (it holds one
 of its own), compares the fake behind the real transport with the fake in this process and says it asked no sandbox,
 writes a log only where `--log` names, and removes what else it wrote. With `--publish` (the sandbox only), it
-publishes each draft (a declared permission asked in the terminal), pulls each record by its number into a fresh folder
-and verifies it, publishes the toy's next version, and says whether each file linked into that version is stored once
-(its file id the published version's), which only the service can answer.
+publishes each draft (a declared permission asked in the terminal), says what reads back otherwise than the draft held
+it and goes on, pulls each record by its number into a fresh folder and verifies it, publishes the toy's next version,
+and says whether each file linked into that version is stored once (its file id the published version's), which only the
+service can answer.
 
 ## Status
 
