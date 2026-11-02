@@ -5,6 +5,7 @@ them at. A per-chunk hook is called after every chunk with the chunk's end and t
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from maddening import GraphManager
 from mime.build import ControllerPlan, Mode, PlanSet
 from mime.build._in_graph import step_place
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass, RunFailed, standing_for
-from mime.build._maddening import Fed, NodeFields, fed_inputs, inputs, node_state, scan_chunk, \
+from mime.build._maddening import Fed, NodeFields, fed_inputs, inputs, node_state, ready, scan_chunk, \
     scan_chunk_with_history
 from mime.core import jnp
 from mime.registry import BuildContext, ControlLaw
@@ -38,6 +39,63 @@ class Chunk:
 
 
 type ChunkHook = Callable[[Chunk], None]
+
+
+@dataclass(frozen=True)
+class Progress:
+    """What a chunk reports to a caller that needs no state: the chunk's index in the ``run`` call, the base steps taken
+    since the graph's start at its end, the simulated time there (s), and the step the call ends at. It is built in one
+    place, :meth:`ChunkedRun.run`, for ``stop`` (and so for a progress display, which is a ``stop`` that returns
+    ``None``), and the hook's :class:`Chunk` holds the same numbers beside the state."""
+
+    index: int
+    steps: int
+    time: float
+    end: int
+
+
+#: Asked after every chunk but the last: the reason to stop the run there, or ``None`` to go on.
+type StopRequest = Callable[[Progress], str | None]
+
+#: About how many compiled chunks a run takes when nothing asks for chunks of its own (:func:`automatic_chunks`). Each
+#: boundary costs one dispatch and a wait for the chunk, about 1.4 to 1.7 ms on script A0 (MADDENING's per-call work
+#: grows with the graph; about 0.15 ms on a toy rig), so splitting a run costs this many boundaries whatever its length:
+#: A0 measured 64 chunks +2.9 % and 256 chunks +9.5 % on a run of 3.7 s. A stop request takes effect within a 64th of
+#: the run (a divisor within a factor of two of the aim can make it half or twice that).
+TARGET_CHUNKS = 64
+#: The shortest chunk the automatic rule makes: a scan of one step differed from the same steps in a longer scan in the
+#: history it kept (the MRS sphere, in float32 and in float64), the state at the end not; two steps and longer did not.
+MIN_CHUNK = 2
+
+
+def _divisors(n: int) -> list[int]:
+    found: set[int] = set()
+    d = 1
+    while d * d <= n:
+        if n % d == 0:
+            found.update((d, n // d))
+        d += 1
+    return sorted(found)
+
+
+def automatic_chunks(steps: int) -> tuple[int, ...]:
+    """The lengths, in order, of the compiled chunks a run of ``steps`` steps takes when nothing asks for chunks of its
+    own: about :data:`TARGET_CHUNKS` of them, so that a signal is seen between chunks and the run's cost is that many
+    boundaries. Every chunk but a short first one is of the same length, since each length is compiled once, and a
+    length is a divisor of ``steps`` within a factor of two of the aim when there is one (one length, one compile; the
+    run then takes between half and twice :data:`TARGET_CHUNKS` of them). Without one, the first chunk is the
+    remainder: two lengths. A run too short for two chunks is one. The chunks change nothing the run computes."""
+    if steps < 2 * MIN_CHUNK:
+        return (steps,) if steps > 0 else ()
+    aim = max(MIN_CHUNK, round(steps / TARGET_CHUNKS))
+    near = [d for d in _divisors(steps) if MIN_CHUNK <= d <= steps // 2 and aim / 2 <= d <= aim * 2]
+    if near:
+        size = min(near, key=lambda d: abs(math.log(d / aim)))
+        return (size,) * (steps // size)
+    count, rest = divmod(steps, aim)
+    if rest >= MIN_CHUNK:
+        return (rest,) + (aim,) * count
+    return (aim + rest,) + (aim,) * (count - 1)
 
 
 class ControllerError(RunFailed):
@@ -218,6 +276,8 @@ class ChunkedRun:
             if called and controller is not None and law is not None else None
         self.chunk = controller.period if self.callback is not None and controller is not None else None
         self.checked = False
+        #: Why the last :meth:`run` ended before its steps, or ``None`` if it took them all.
+        self.stopped: str | None = None
         self._block: int | None = None
         self._keep: frozenset[tuple[str, str]] | None = None
 
@@ -231,42 +291,61 @@ class ChunkedRun:
         return self._block
 
     def run(self, steps: int, *, history: bool, hook: ChunkHook | None = None, chunk: int | None = None,
-            keep: frozenset[tuple[str, str]] | None = None) -> tuple[History, History | None]:
+            keep: frozenset[tuple[str, str]] | None = None, automatic: bool = False,
+            stop: StopRequest | None = None) -> tuple[History, History | None]:
         """``steps`` base steps from where the graph stands, as compiled chunks of ``chunk`` steps (the control period
         when a controller is called between them), the hook called after each; or as one compiled scan when neither a
-        controller nor a hook asks for chunks. With ``history``, every step's state is kept, in scans of at most
-        :meth:`block` steps, and of it only the fields ``keep`` names (node, field) when it is given."""
+        controller nor a hook asks for chunks, unless ``automatic``, which splits it as :func:`automatic_chunks` does.
+        With ``history``, every step's state is kept, in scans of at most :meth:`block` steps, and of it only the
+        fields ``keep`` names (node, field) when it is given.
+
+        ``stop`` is asked after every chunk but the last, and a reason it returns ends the run there: the steps taken
+        are then :attr:`steps` less where it started, and the reason is :attr:`stopped`. The state is on the host only
+        where a hook, the end of the run or a stop needs it; between chunks it waits on the device."""
         size = self.chunk if self.chunk is not None else (chunk if hook is not None else None)
         stacked: list[History] = []
         self._keep = keep
-        if size is None:
-            final = self._scans(self.steps, self.steps + steps, history, stacked)
+        self.stopped = None
+        if size is None and not automatic:
+            final = _to_numpy(self._scans(self.steps, self.steps + steps, history, stacked))
             return final, (_stacked(stacked) if history else None)
-        if steps % size:
-            nearest = [k * size for k in (steps // size, steps // size + 1) if k > 0]
-            why = ("a controller called between compiled chunks is called once per chunk, its control period, so a "
-                   "run is whole periods") if self.chunk is not None else \
-                "a hook is called between compiled chunks of chunk= steps, so a run with one is whole chunks"
-            raise ArgumentRefused([Refusal(
-                "run.chunks", RefusalClass.USER,
-                f"a run of {steps} base steps ({steps * self.dt:.6g} s) is not a whole number of chunks of {size} "
-                "steps "
-                f"({size * self.dt:.6g} s)",
-                "run a whole number of chunks: run(s(...)) of " + " or ".join(f"{n * self.dt:.6g} s" for n in nearest),
-                why=why)])
+        if size is None:
+            lengths = automatic_chunks(steps)
+        else:
+            if steps % size:
+                nearest = [k * size for k in (steps // size, steps // size + 1) if k > 0]
+                why = ("a controller called between compiled chunks is called once per chunk, its control period, so a "
+                       "run is whole periods") if self.chunk is not None else \
+                    "a hook is called between compiled chunks of chunk= steps, so a run with one is whole chunks"
+                raise ArgumentRefused([Refusal(
+                    "run.chunks", RefusalClass.USER,
+                    f"a run of {steps} base steps ({steps * self.dt:.6g} s) is not a whole number of chunks of {size} "
+                    "steps "
+                    f"({size * self.dt:.6g} s)",
+                    "run a whole number of chunks: run(s(...)) of " + " or ".join(f"{n * self.dt:.6g} s" for n in nearest),
+                    why=why)])
+            lengths = (size,) * (steps // size)
         final: History = {}
-        for index in range(steps // size):
+        first = self.steps
+        for index, length in enumerate(lengths):
             start = self.steps
             if self.callback is not None:
                 self.callback.tick(self.graph, start)
-            final = self._scans(start, start + size, history, stacked)
+            there = self._scans(start, start + length, history, stacked)
+            where = Progress(index, self.steps, self.steps * self.dt, first + steps)
+            reason = stop(where) if stop is not None and index < len(lengths) - 1 else None
+            if hook is not None or reason is not None or index == len(lengths) - 1:
+                final = _to_numpy(there)
             if hook is not None:
-                hook(Chunk(index, self.steps, self.steps * self.dt, final))
+                hook(Chunk(where.index, where.steps, where.time, final))
+            if reason is not None:
+                self.stopped = reason
+                break
         return final, (_stacked(stacked) if history else None)
 
-    def _scans(self, start: int, end: int, history: bool, stacked: list[History]) -> History:
+    def _scans(self, start: int, end: int, history: bool, stacked: list[History]) -> NodeFields:
         """Steps ``start`` to ``end``, one compiled scan for each stretch through which the same writes act, each
-        stretch's history appended to ``stacked``."""
+        stretch's history appended to ``stacked``; the state at ``end``, computed, still on the device."""
         final: NodeFields = {}
         step = start
         while step < end:
@@ -284,7 +363,8 @@ class ChunkedRun:
                 final = scan_chunk(self.graph, stop - step, fed)
             self.steps += stop - step
             step = stop
-        return _to_numpy(final)
+        ready(final)
+        return final
 
 
 def _stacked(parts: list[History]) -> History:
@@ -295,5 +375,6 @@ def _stacked(parts: list[History]) -> History:
             for node, fields in parts[0].items()}
 
 
-__all__ = ["HISTORY_BLOCK_BYTES", "Callback", "Chunk", "ChunkHook", "ChunkedRun", "ControllerError", "ReadModels",
-           "control_context", "law_and_models", "make_law"]
+__all__ = ["HISTORY_BLOCK_BYTES", "MIN_CHUNK", "TARGET_CHUNKS", "Callback", "Chunk", "ChunkHook", "ChunkedRun",
+           "ControllerError", "Progress", "ReadModels", "StopRequest", "automatic_chunks", "control_context", "law_and_models",
+           "make_law"]
