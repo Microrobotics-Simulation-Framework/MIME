@@ -80,9 +80,9 @@ def automatic_chunks(steps: int) -> tuple[int, ...]:
     """The lengths, in order, of the compiled chunks a run of ``steps`` steps takes when nothing asks for chunks of its
     own: about :data:`TARGET_CHUNKS` of them, so that a signal is seen between chunks and the run's cost is that many
     boundaries. Every chunk but a short first one is of the same length, since each length is compiled once, and a
-    length is a divisor of ``steps`` within a factor of two of the aim when there is one (one length, one compile).
-    Without one, the first chunk is the remainder: two lengths. A run too short for two chunks is one. The chunks
-    change nothing the run computes."""
+    length is a divisor of ``steps`` within a factor of two of the aim when there is one (one length, one compile; the
+    run then takes between half and twice :data:`TARGET_CHUNKS` of them). Without one, the first chunk is the
+    remainder: two lengths. A run too short for two chunks is one. The chunks change nothing the run computes."""
     if steps < 2 * MIN_CHUNK:
         return (steps,) if steps > 0 else ()
     aim = max(MIN_CHUNK, round(steps / TARGET_CHUNKS))

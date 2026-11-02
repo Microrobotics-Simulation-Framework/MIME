@@ -23,7 +23,7 @@ import jax
 import numpy as np
 import pytest
 from _platform_support import needs_posix_sigint
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 from process_groups import stop_group
 
@@ -280,15 +280,16 @@ def plan_failures(steps: int, plan: tuple[int, ...]) -> list[str]:
         found.append(f"{len(set(plan))} compiled lengths")
     if steps >= 2 * MIN_CHUNK and min(plan) < MIN_CHUNK:
         found.append(f"a chunk of {min(plan)} step")
-    if steps >= 2 * TARGET_CHUNKS * MIN_CHUNK and len(plan) > 2 * TARGET_CHUNKS + 1:
-        found.append(f"{len(plan)} chunks")
     aim = max(MIN_CHUNK, round(steps / TARGET_CHUNKS))
+    if steps >= 2 * TARGET_CHUNKS * MIN_CHUNK and not steps / (2 * aim) <= len(plan) <= 2 * steps / aim + 1:
+        found.append(f"{len(plan)} chunks, where the aim is {steps / aim:.1f} and a length may be half to twice it")
     near = [d for d in range(max(MIN_CHUNK, -(-aim // 2)), 2 * aim + 1) if steps % d == 0 and d <= steps // 2]
     if near and len(set(plan)) > 1:
         found.append(f"two lengths where {near[0]} divides the steps")
     return found
 
 
+@example(1114)  # 557 chunks of two: a length at half the aim, the count at twice the aim (stress run, seed 238387334)
 @given(st.integers(min_value=0, max_value=3 * 10**6))
 def test_the_chunks_of_a_run_add_to_its_steps_in_at_most_two_lengths_and_one_where_a_divisor_lies_near(steps):
     assert plan_failures(steps, automatic_chunks(steps)) == []
@@ -299,4 +300,5 @@ def test_control_the_plan_check_finds_each_fault_planted_in_a_plan():
     assert any("compiled lengths" in line for line in plan_failures(1000, (2, 8) + (4,) * 247 + (2,)))
     assert any("a chunk of 1 step" in line for line in plan_failures(1001, (1,) + (4,) * 250))
     assert any("two lengths where" in line for line in plan_failures(1000, (8,) + (4,) * 248))
-    assert any("chunks" in line for line in plan_failures(10**6, (2,) * 500000))
+    assert any("chunks, where the aim" in line for line in plan_failures(10**6, (2,) * 500000))
+    assert any("chunks, where the aim" in line for line in plan_failures(10**6, (500000,) * 2))
