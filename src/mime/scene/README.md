@@ -20,6 +20,12 @@
 - **`StageIdentity`**, which pins a stage.
 - **The stage writer.** It writes the declared up axis, `metersPerUnit`, `/World` and a `defaultPrim`. Robot part
   prims carry a small `mime:` applied schema for design data, such as a magnet's magnetisation direction.
+- **`/World` is the only root prim the writer emits; every other root prim is reserved for MIME's overlays.** A ghost of
+  another drag rung could sit at `/Compare/<rung>/<body>`, referencing `/World/<body>`. Nothing inside `/World` is
+  reserved, so no name a thing is given can collide with an overlay's (a test holds the writer to one root).
+- **A saved folder's stage composes only inside its folder.** The layers it references are below `scene/layers/`;
+  overlays over it live in run or study folders or the asset cache, never in the saved folder (see
+  [`mime.saved`](../saved/README.md#what-a-saved-folder-never-holds)).
 - **The geometry rule.** Reads of geometry are static unless declared `moving`. A read that would silently go stale
   is refused instead.
 

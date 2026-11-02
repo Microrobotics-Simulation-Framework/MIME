@@ -232,7 +232,12 @@ def _compile(graph: GraphManager, reported: list[ReportedWarning]) -> list[Refus
 
 def _host_callback_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
     refusals: list[Refusal] = []
+    # A controller inside the compiled step has its step searched at the build's first trace of it (the trace check,
+    # which refuses it as untraceable before this runs), so its node is not traced a third time here.
+    searched = plans.controller.owner if plans.controller is not None and plans.controller.mode is Mode.GRAPH else None
     for name in graph.node_names:
+        if name == searched:
+            continue
         calls = node_host_callbacks(graph, name)
         if not calls:
             continue
