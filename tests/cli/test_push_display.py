@@ -365,25 +365,29 @@ def test_a_question_takes_the_progress_off_the_screen_and_a_later_report_draws_i
     assert any("files uploaded" in text for text in again)
 
 
+#: How many reports the rate test makes at least, so the limit, not the reports' count, keeps the frames down.
+REPORTS = 200
+
+
 def test_the_progress_is_drawn_about_four_times_a_second_however_often_it_is_told():
-    def drawn(display_type: type[TransferDisplay]) -> tuple[int, int]:
+    def drawn(display_type: type[TransferDisplay]) -> tuple[int, int, float]:
+        """Told at least ``REPORTS`` times over at least 1.25 s, however coarse the host's sleep (macOS runners told it
+        156 and 77 times in a fixed 1.25 s): the reports, the frames drawn, and the seconds it took."""
         with terminal(columns=120) as tty:
             display = display_type(tty.stream, "uploading", "uploaded")
             display.files([("a.bin", 1_000_000), ("b.bin", 1)])
             told, started = 0, time.perf_counter()
-            while time.perf_counter() - started < 1.25:
+            while time.perf_counter() - started < 1.25 or told < REPORTS:
                 told += 1
                 display.sending("a.bin", told, 1_000_000)
                 time.sleep(0.002)
+            elapsed = time.perf_counter() - started
             display.close()
             frames = stripped(tty.transcript()).count("files uploaded")
-        return told, frames
+        return told, frames, elapsed
 
-    limit = 4 * 1.25 + 3
-    told, frames = drawn(TransferDisplay)
-    # Told ten times the frames allowed, so the limit is what keeps the count down; a host's coarser sleep (a macOS
-    # runner told it 156 times in the 1.25 s) still exercises it.
-    assert told > 10 * limit and frames <= limit, (told, frames)
+    told, frames, elapsed = drawn(TransferDisplay)
+    assert frames <= 4 * elapsed + 3, (told, frames, elapsed)
 
     class Every(TransferDisplay):
         """The control: a display that draws on every report."""
@@ -392,8 +396,8 @@ def test_the_progress_is_drawn_about_four_times_a_second_however_often_it_is_tol
             super().sending(key, done, total)
             self._live.refresh()
 
-    told, frames = drawn(Every)
-    assert frames > limit, "the count would have caught a display drawing on every report"
+    told, frames, elapsed = drawn(Every)
+    assert frames > 4 * elapsed + 3, "the count would have caught a display drawing on every report"
 
 
 def test_a_fault_of_the_displays_own_turns_it_off_and_raises_nothing(monkeypatch):
