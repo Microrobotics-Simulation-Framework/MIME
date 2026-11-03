@@ -37,7 +37,16 @@ from mime.assets._derivation import (
     stale_inputs,
     working_state,
 )
-from mime.assets._fetch import RETRIEVE_LIMIT_BYTES, fetch, resolve, retrieve, under_test_prefix
+from mime.assets._fetch import (
+    RETRIEVE_LIMIT_BYTES,
+    announce_downloads,
+    downloads_doing,
+    fetch,
+    resolve,
+    retrieve,
+    under_test_prefix,
+    watching_downloads,
+)
 from mime.assets._known import known, reference
 from mime.assets._lock import folder_assets
 from mime.assets._reference import AssetRecord, AssetRef, location_problem
@@ -59,10 +68,12 @@ __all__ = [
     "DerivationRecord",
     "Json",
     "Produced",
+    "announce_downloads",
     "cache_dir",
     "check",
     "derivation_of",
     "derive",
+    "downloads_doing",
     "fetch",
     "file_path",
     "folder_assets",
@@ -71,6 +82,7 @@ __all__ = [
     "locate",
     "location_problem",
     "under_test_prefix",
+    "watching_downloads",
     "offline",
     "reference",
     "resolve",

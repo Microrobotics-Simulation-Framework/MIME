@@ -38,6 +38,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says what one can do here, and more in a saved experiment's folder or a run's; a mistyped command or flag is answered
   with the nearest one, on every supported Python; JAX's warning of a damaged cache entry gets a note naming
   `mime cache clear`, once, on a terminal. `rich` is a new dependency (with `markdown-it-py`, `mdurl` and `pygments`).
+- **`mime push` and `mime pull`, easier to read on a terminal.** The plan is one block, what goes up and what travels
+  as a reference in rows of their own and each warning below it; the publish step is a heavy frame with the sentence that
+  it cannot be undone reversed, each declared permission a frame of its own and every question set apart (the words of
+  every statement and every question are as they were, and `--yes` still answers none of them); a field edited on the
+  site is the side by side of the site's value and `sharing.yaml`'s, the differing stretches underlined; and uploads and
+  downloads have **one live line that stays when they are done** (`2/2 files uploaded`, with the bytes), the current
+  file's bar beneath it (the last bar stays), and, between the bars, what is under way (`waiting between requests, then ...`,
+  `Zenodo is committing ..., and its md5 is checked`) so that the screen is never silent, drawn about four times a second
+  on standard error. **A pipe, a file, `--plain`, `NO_COLOR` and `TERM=dumb` get what they always got, byte for byte**: a
+  session of nine commands is held to the transcript `mime push` printed before, with controls. A command a push prints
+  for pasting now quotes the folder's name (and the card's `mime pull` lines quote the record's). Three things moved on
+  a terminal or in a corner the nine commands do not reach, and are the only changes to what a pipe is told: a question
+  and its `[y/N]` or `>` are put together on the terminal the person answers at (standard output where that is one, else
+  standard error), where `input` put them on standard output, into the pipe of `mime push ... | tee log`, or on standard
+  error, into a file; a `mime pull` that is refused for an asset says its unpacking is not complete instead of ticking it;
+  and a 404 for an asset or a bundle says the file is not at that address instead of "check the network". The statement
+  of a `--confirm` publish is on the screen, whole, before the request is sent; a terminal that reports 0 columns is
+  drawn at 80; a hash or an address too wide for a frame is not folded; and a fault of the display's own never reaches
+  what push does about the service.
 - **`mime run` and `mime serve` keep XLA's compilation cache** in the user's cache directory, so that the second run of
   an experiment compiles less and its numbers are the same: every program stored, the oldest entries pruned at a
   command's start once the cache passes 2 GB, `--no-xla-cache` to leave it out, `mime cache clear` to delete it, and

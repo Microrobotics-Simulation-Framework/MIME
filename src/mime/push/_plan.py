@@ -33,6 +33,18 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
+from mime._said import (
+    PLAN_FIELD,
+    PLAN_HEAD,
+    PLAN_LINE,
+    PLAN_REFERENCE,
+    PLAN_SECTION,
+    PLAN_UP,
+    PLAN_WARNING,
+    Said,
+    ending,
+)
+from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets import AssetRef, folder_assets, locate, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -197,48 +209,51 @@ class Plan:
 
     def lines(self, state: DraftState | None) -> list[str]:
         """The plan as push prints it, before any request."""
-        lines = [f"Plan for {plain(self.experiment)!r} on {self.service.words}: {self.target(state)}",
-                 f"  Record files ({len(self.files)}, {size_text(self.size)}):"]
+        lines: list[str] = [
+            Said(f"Plan for {plain(self.experiment)!r} on {self.service.words}: {self.target(state)}", PLAN_HEAD),
+            Said(f"  Record files ({len(self.files)}, {size_text(self.size)}):", PLAN_SECTION)]
         width = max(len(plain(file.key)) for file in self.files)
-        lines += [f"    {plain(file.key):<{width}}  {size_text(file.size):>8}  {plain(file.licence or 'generated'):<14}"
-                  f"  {file.what}" for file in self.files]
+        lines += [Said(f"    {plain(file.key):<{width}}  {size_text(file.size):>8}  {plain(file.licence or 'generated'):<14}"
+                       f"  {file.what}", PLAN_UP) for file in self.files]
         inside = [file for file in self.judged.files if file.verdict.carried and file.referenced is None]
-        lines.append(f"  Inside the bundle ({len(inside)} files):")
-        lines += [f"    {plain(file.path)}  {size_text(file.size)}  {plain(file.licence or 'no licence')}  "
-                  f"{_whose(file)}; {file.verdict.words()}" for file in inside]
+        lines.append(Said(f"  Inside the bundle ({len(inside)} files):", PLAN_SECTION))
+        lines += [Said(f"    {plain(file.path)}  {size_text(file.size)}  {plain(file.licence or 'no licence')}  "
+                       f"{_whose(file)}; {file.verdict.words()}", PLAN_UP) for file in inside]
         held = [file for file in self.judged.files if file.referenced is not None or not file.verdict.carried]
         held_assets = [choice for choice in self.assets if not choice.upload and
                        choice.ref.name not in {file.referenced for file in held}]
-        lines.append(f"  Referenced, not uploaded ({len(held) + len(held_assets)}):" +
-                     ("" if held or held_assets else " none"))
-        lines += [f"    {plain(file.path)}  {size_text(file.size)}  licence {plain(file.licence or 'none')}, "
-                  f"{file.verdict.words()}, role {file.role or 'results'}, from "
-                  f"{plain(file.origin[0]) if file.origin else 'no origin'}, sha256 {file.sha256}" for file in held]
-        lines += [f"    the asset {plain(choice.ref.name)}  {size_text(choice.ref.size)}  licence "
-                  f"{plain(choice.ref.licence)}: {choice.why}, at {plain(choice.ref.locations[0])}"
+        lines.append(Said(f"  Referenced, not uploaded ({len(held) + len(held_assets)}):" +
+                          ("" if held or held_assets else " none"), PLAN_REFERENCE))
+        lines += [Said(f"    {plain(file.path)}  {size_text(file.size)}  licence {plain(file.licence or 'none')}, "
+                       f"{file.verdict.words()}, role {file.role or 'results'}, from "
+                       f"{plain(file.origin[0]) if file.origin else 'no origin'}, sha256 {file.sha256}", PLAN_REFERENCE)
+                  for file in held]
+        lines += [Said(f"    the asset {plain(choice.ref.name)}  {size_text(choice.ref.size)}  licence "
+                       f"{plain(choice.ref.licence)}: {choice.why}, at {plain(choice.ref.locations[0])}", PLAN_REFERENCE)
                   for choice in held_assets if choice.ref.locations]
-        lines += [f"  The experiment's licence: {plain(self.licence)}, bound to its files (sharing.yaml states the "
-                  f"same)",
-                  f"  Licences on the record: {', '.join(plain(each) for each in self._licences())} (the "
-                  f"NOTICE maps each file to its licence; Zenodo has no licence per file)",
-                  f"  Creators: {'; '.join(person.words() for person in self.sharing.creators)}",
-                  f"  Contributors: {'; '.join(_contributor_words(self)) or 'none'}",
-                  f"  Related: {'; '.join(_related_words(self))}",
-                  f"  Keywords: {', '.join(plain(each) for each in _keywords(self.sharing))}",
-                  *_built_lines(self)]
+        lines += [Said(line, PLAN_FIELD) for line in
+                  (f"  The experiment's licence: {plain(self.licence)}, bound to its files (sharing.yaml states the "
+                   f"same)",
+                   f"  Licences on the record: {', '.join(plain(each) for each in self._licences())} (the "
+                   f"NOTICE maps each file to its licence; Zenodo has no licence per file)",
+                   f"  Creators: {'; '.join(person.words() for person in self.sharing.creators)}",
+                   f"  Contributors: {'; '.join(_contributor_words(self)) or 'none'}",
+                   f"  Related: {'; '.join(_related_words(self))}",
+                   f"  Keywords: {', '.join(plain(each) for each in _keywords(self.sharing))}",
+                   *_built_lines(self))]
         permissions = self.judged.permissions
         if permissions:
-            lines.append(f"  Permissions you declare ({len(permissions)}); the draft is private, and each becomes "
-                         f"public when the record is published:")
+            lines.append(Said(f"  Permissions you declare ({len(permissions)}); the draft is private, and each becomes "
+                              f"public when the record is published:", PLAN_SECTION))
             for index, held_permission in enumerate(permissions, start=1):
-                lines += ["    " + line for line in declaring(index, held_permission, self.judged)]
+                lines += [Said("    " + line, PLAN_LINE) for line in declaring(index, held_permission, self.judged)]
         second = self.second_concept(state)
-        lines += [f"  Availability: {availability(self.judged)}",
-                  *([f"! {second}"] if second is not None else []),
-                  f"Next: on {self.service.name}, the draft is made or updated, its DOI reserved, and each record file "
-                  f"that differs from the draft's is uploaded and its md5 checked; nothing is published until "
-                  f"`mime push <folder> --to {self.service.name} --publish` asks you."]
-        return lines
+        lines += [Said(f"  Availability: {availability(self.judged)}", PLAN_FIELD),
+                  *([Said(f"! {second}", PLAN_WARNING)] if second is not None else []),
+                  Said(f"Next: on {self.service.name}, the draft is made or updated, its DOI reserved, and each record "
+                       f"file that differs from the draft's is uploaded and its md5 checked; nothing is published until "
+                       f"`mime push <folder> --to {self.service.name} --publish` asks you.", PLAN_LINE)]
+        return ending(lines)
 
     def target(self, state: DraftState | None) -> str:
         """What the push makes or updates, in words."""
@@ -257,26 +272,27 @@ class Plan:
         head = (f"Plan for {plain(self.experiment)!r} on {self.service.words}: the draft "
                 f"{state.record if state is not None else ''}, to publish" if publishing else
                 f"Pushing {plain(self.experiment)!r} to {self.service.words}: {self.target(state)}")
-        lines = [head,
-                 "  up: " + ", ".join(f"{plain(file.key)} {size_text(file.size)}" for file in self.files) +
-                 (f" ({size_text(self.size)} in all)" if len(self.files) > 2 else "")]
+        lines: list[str] = [Said(head, PLAN_HEAD),
+                 Said("  up: " + ", ".join(f"{plain(file.key)} {size_text(file.size)}" for file in self.files) +
+                      (f" ({size_text(self.size)} in all)" if len(self.files) > 2 else ""), PLAN_UP)]
         held = [file for file in self.judged.files if file.referenced is not None or not file.verdict.carried]
         held_assets = [choice for choice in self.assets if not choice.upload and
                        choice.ref.name not in {file.referenced for file in held}]
         if held or held_assets:
-            lines.append("  by reference, never uploaded: " + "; ".join(
+            lines.append(Said("  by reference, never uploaded: " + "; ".join(
                 [f"{plain(file.path)} ({plain(file.licence or 'no licence')}, from "
                  f"{plain(file.origin[0]) if file.origin else 'no origin'})" for file in held] +
-                [f"the asset {plain(choice.ref.name)} ({choice.why.split(':')[0]})" for choice in held_assets]))
+                [f"the asset {plain(choice.ref.name)} ({choice.why.split(':')[0]})" for choice in held_assets]),
+                PLAN_REFERENCE))
         title = plain(str(_mapping(self.payload.get("metadata")).get("title", "")))
         named = [plain(person.name()) for person in self.sharing.contributors] + \
             [plain(name) for name in _rights_holders(self.judged)]
-        lines += [f"  title: {title}",
-                  f"  licences {', '.join(plain(each) for each in self._licences())}; creators "
-                  f"{'; '.join(plain(person.name()) for person in self.sharing.creators)}; contributors "
-                  f"{'; '.join(named) or 'none'}"]
-        lines += [f"! {warning}" for warning in self.warnings(state)]
-        return lines
+        lines += [Said(f"  title: {title}", PLAN_FIELD),
+                  Said(f"  licences {', '.join(plain(each) for each in self._licences())}; creators "
+                       f"{'; '.join(plain(person.name()) for person in self.sharing.creators)}; contributors "
+                       f"{'; '.join(named) or 'none'}", PLAN_FIELD)]
+        lines += [Said(f"! {warning}", PLAN_WARNING) for warning in self.warnings(state)]
+        return ending(lines)
 
     def warnings(self, state: DraftState | None) -> list[str]:
         """What the author should not miss: results that depend on a file the record does not hold, a permission
@@ -618,7 +634,7 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
                 "push.checksum", RefusalClass.ENVIRONMENT,
                 f"the copy of the asset {plain(choice.ref.name)} at {source} is not its bytes (sha256 {held.sha256}, "
                 f"and the lock names {choice.ref.sha256})", f"hash the cache again, `mime assets check`, and fetch "
-                                                            f"it again, `mime assets fetch {plain(choice.ref.name)}`"))
+                                                            f"it again, `mime assets fetch {quoted(plain(choice.ref.name))}`"))
         assets.append(held)
     lock_bytes = (root / LOCK_FILE).read_bytes()
     bundle_name = f"{re.sub(r'[^A-Za-z0-9._-]', '_', name) or 'experiment'}.mimebundle"

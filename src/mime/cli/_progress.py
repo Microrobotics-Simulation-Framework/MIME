@@ -139,5 +139,57 @@ class RunState:
                 f"{simulated_text(self.time)} of {simulated_text(self.steps_asked * self.dt)} simulated")
 
 
+@dataclass
+class TransferState:
+    """A file going up or coming down: what it is called, the bytes so far, its size where that is known, and when it
+    began. Like :class:`RunState`, plain data: the arithmetic is tested without a terminal, and ``mime.cli._display``
+    draws it. The time remaining is an estimate from the speed since the file began, and is withheld for the first
+    second, when that speed says little. A file that is whole (:meth:`complete`) stops the clock: its speed is the one it
+    had, and no time remains."""
+
+    label: str
+    total: int | None
+    started: float
+    done: int = 0
+    ended: float | None = None
+
+    @property
+    def fraction(self) -> float | None:
+        return min(1.0, self.done / self.total) if self.total else None
+
+    def complete(self, now: float) -> None:
+        """The file is whole and checked at ``now``."""
+        self.ended = now
+        if self.total is not None:
+            self.done = self.total
+
+    def speed(self, now: float) -> float | None:
+        elapsed = (self.ended if self.ended is not None else now) - self.started
+        return self.done / elapsed if elapsed > 0.0 and self.done > 0 else None
+
+    def remaining(self, now: float) -> float | None:
+        speed = self.speed(now)
+        if speed is None or self.total is None or self.ended is not None or now - self.started < 1.0:
+            return None
+        return max(0.0, (self.total - self.done) / speed)
+
+    def text(self, now: float) -> str:
+        """The line beside the bar: the bytes so far (of the size, where it is known), the speed and the time left."""
+        from mime.assets import size_text
+
+        if self.ended is not None:
+            parts = [size_text(self.done)]
+        else:
+            parts = [f"{size_text(self.done)} of {size_text(self.total)}" if self.total is not None
+                     else size_text(self.done)]
+        speed = self.speed(now)
+        if speed is not None and (self.ended is None or self.ended - self.started >= 0.5):  # a blink says nothing of speed
+            parts.append(f"{size_text(round(speed))}/s")
+        left = self.remaining(now)
+        if left is not None and self.done < (self.total or 0):
+            parts.append(f"about {duration_text(left)} left (an estimate)")
+        return "  ·  ".join(parts)
+
+
 #: How often the flags are looked at, at most (seconds): reading them waits for the chunk's result on the device.
 FLAG_INTERVAL = 0.25

@@ -23,6 +23,7 @@ from typing import cast
 
 import yaml
 
+from mime._shell import quoted
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._fields import Funding, access_problems, conference_problems, field_problems, funding_problems
@@ -270,7 +271,7 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
         raise BuildRefused([_refuse(
             "push.sharing-missing", RefusalClass.USER,
             f"{path.parent.name} has no {SHARING_FILE} beside its saved form: the record's title, creators and "
-            f"licence are kept there", f"write it from what the folder knows, `mime push {path.parent} --to "
+            f"licence are kept there", f"write it from what the folder knows, `mime push {quoted(str(path.parent))} --to "
                                        f"<service> --init`, then edit its creators")])
     reader = _Reader(path)
     try:

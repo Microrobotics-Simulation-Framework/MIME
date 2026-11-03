@@ -28,6 +28,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets import size_text
 from mime.build import BuildRefused, BuildReport
@@ -309,8 +310,8 @@ def _pull_line(publication: PublicationRecord | None) -> str:
     if publication is None:
         return "mime pull <the record's DOI, or the bundle file>"
     if publication["service"] == "zenodo":
-        return f"mime pull {plain(publication['doi'])}"
-    return f"mime pull --from {plain(publication['service'])} {plain(publication['record'])}"
+        return f"mime pull {quoted(plain(publication['doi']))}"
+    return f"mime pull --from {quoted(plain(publication['service']))} {quoted(plain(publication['record']))}"
 
 
 def _cite_line(publication: PublicationRecord | None) -> str:

@@ -10,11 +10,14 @@ import re
 import shutil
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from mime._transfers import Transfers
 from mime.assets._cache import (
     DOWNLOADED,
     INCOMING_INFIX,
@@ -63,37 +66,92 @@ class _SizeExceeded(Exception):
         self.received = received
 
 
+#: Told how each download is going: the files to come, how much of each has arrived, when each is whole and checked,
+#: and what is under way between them. Set for the downloads made inside :func:`watching_downloads` (a terminal's
+#: progress); nothing else reads it.
+_watcher: ContextVar[Transfers | None] = ContextVar("mime_download_watcher", default=None)
+#: How many bytes arrive between two reports of a download's progress.
+_REPORT_BYTES = 128 * 1024
+
+
+@contextmanager
+def watching_downloads(progress: Transfers) -> Generator[None]:
+    """Inside this block ``progress`` is told how each download is going: its bytes so far (when it starts, about every
+    128 kB, and as it ends), when it is whole, and what is under way while no bytes arrive. The download itself is as
+    it was. A fault in ``progress`` is read, inside the download, as the download failing: a display catches its own."""
+    token = _watcher.set(progress)
+    try:
+        yield
+    finally:
+        _watcher.reset(token)
+
+
+def announce_downloads(files: Sequence[tuple[str, int | None]]) -> None:
+    """The files about to be downloaded, with their sizes, to whoever is watching: how many there are to count to."""
+    watching = _watcher.get()
+    if watching is not None:
+        watching.files(files)
+
+
+def downloads_doing(words: str) -> None:
+    """What is under way while no bytes arrive (a lookup, a hash, an unpacking), to whoever is watching."""
+    watching = _watcher.get()
+    if watching is not None:
+        watching.doing(words)
+
+
 class _Capped:
     """The file a download is written to, which refuses the chunk that takes it past ``limit``: a download stops where it
     is, whatever the server goes on to send, and what it wrote is discarded with its temporary file."""
 
-    def __init__(self, stream: Any, limit: int) -> None:
+    def __init__(self, stream: Any, limit: int, label: str = "", expected: int | None = None) -> None:
         self._stream = stream
         self._limit = limit
+        self._label = label
+        self._expected = expected
+        self._report = _watcher.get()
+        self._told = 0
         self.received = 0
+        if self._report is not None:
+            self._report.sending(label, 0, expected)
 
     def write(self, chunk: bytes) -> int:
         self.received += len(chunk)
         if self.received > self._limit:
             raise _SizeExceeded(self._limit, self.received)
-        return int(self._stream.write(chunk))
+        written = int(self._stream.write(chunk))
+        if self._report is not None and self.received - self._told >= _REPORT_BYTES:
+            self._told = self.received
+            self._report.sending(self._label, self.received, self._expected)
+        return written
 
     def flush(self) -> None:
         self._stream.flush()
+
+    def finish(self) -> None:
+        """The download ended: its last report, whatever was told since the one before."""
+        if self._report is not None:
+            if self.received != self._told:
+                self._report.sending(self._label, self.received, self._expected)
+            self._report.doing(f"checking the hash of {self._label}")
 
 
 class _CappedDownload:
     """A pooch downloader that is the one pooch would choose for the location, with its output held to a size."""
 
-    def __init__(self, inner: Any, limit: int) -> None:
+    def __init__(self, inner: Any, limit: int, label: str = "", expected: int | None = None) -> None:
         self._inner = inner
         self._limit = limit
+        self._label = label
+        self._expected = expected
 
     def __call__(self, url: str, output_file: str | Path, pooch: object, check_only: bool = False) -> Any:
         if check_only:
             return self._inner(url, output_file, pooch, check_only=True)
         with Path(output_file).open("w+b") as stream:
-            self._inner(url, _Capped(stream, self._limit), pooch)
+            capped = _Capped(stream, self._limit, self._label, self._expected)
+            self._inner(url, capped, pooch)
+            capped.finish()
         return None
 
 
@@ -113,7 +171,8 @@ def under_test_prefix(location: str) -> bool:
         unquote(parts.path).lstrip("/").startswith(TEST_DOI.removeprefix("doi:"))
 
 
-def _download_held_to(location: str, known_hash: str | None, fname: str, directory: Path, limit: int) -> Path:
+def _download_held_to(location: str, known_hash: str | None, fname: str, directory: Path, limit: int,
+                      label: str = "", expected: int | None = None) -> Path:
     """One location through pooch into ``directory``, which pooch fills through a temporary file moved into place only
     if its hash is ``known_hash`` (``sha256:...`` for an asset, the repository's ``md5:...`` for a bundle fetched by DOI,
     ``None`` for none). A ``doi:`` location is resolved by pooch to the repository's file URL. The download stops, and
@@ -125,14 +184,18 @@ def _download_held_to(location: str, known_hash: str | None, fname: str, directo
                          f"resolve, so MIME does not ask doi.org for it")
     # pooch types its path argument as a bare PathLike, which a strict checker reads as unknown.
     library = _held(pooch)
-    downloader = _CappedDownload(library.downloaders.choose_downloader(location), limit)
-    return Path(str(library.retrieve(url=location, known_hash=known_hash, fname=fname, path=directory,
-                                     downloader=downloader)))
+    downloader = _CappedDownload(library.downloaders.choose_downloader(location), limit, label or fname, expected)
+    arrived = Path(str(library.retrieve(url=location, known_hash=known_hash, fname=fname, path=directory,
+                                        downloader=downloader)))
+    watching = _watcher.get()
+    if watching is not None:
+        watching.sent(label or fname)
+    return arrived
 
 
 def _download(location: str, ref: AssetRef, directory: Path) -> Path:
     """One location of ``ref`` into ``directory``, held to the reference's sha256 and its declared size."""
-    return _download_held_to(location, f"sha256:{ref.sha256}", ref.sha256, directory, ref.size)
+    return _download_held_to(location, f"sha256:{ref.sha256}", ref.sha256, directory, ref.size, ref.name, ref.size)
 
 
 def _placed_file(ref: AssetRef, why: str, path: Path | None = None) -> BuildRefused:
@@ -241,6 +304,13 @@ def _place(ref: AssetRef, arrived: Path, *, replace: bool) -> None:
         arrived.replace(final)
 
 
+def _nothing_there(error: BaseException) -> bool:
+    """Whether the server answered that there is no file at the address (404, 410), which a network that works says as
+    plainly as one that does not: the address is wrong, or the file was moved."""
+    status = getattr(getattr(error, "response", None), "status_code", None)
+    return status in (404, 410)
+
+
 def _install(ref: AssetRef, arrived: Path, *, replace: bool) -> Path:
     _place(ref, arrived, replace=replace)
     write_record(ref, DOWNLOADED)
@@ -252,6 +322,7 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
     place and recorded."""
     failures: list[str] = []
     mismatched = oversize = False
+    not_there = 0
     for location in ref.locations:
         problem = location_problem(location)
         if problem is not None:  # a reference built around the check: the location is never contacted
@@ -266,6 +337,7 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
             except Exception as error:  # noqa: BLE001 - pooch, requests and the DOI resolvers raise unrelated types
                 wrong_bytes = isinstance(error, ValueError) and _POOCH_MISMATCH in str(error)
                 too_many = isinstance(error, _SizeExceeded)
+                not_there += _nothing_there(error)
                 mismatched = mismatched or wrong_bytes
                 oversize = oversize or too_many
                 failures.append(f"{location}: " + (
@@ -290,6 +362,13 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
             "asset.size-exceeded", RefusalClass.ENVIRONMENT,
             f"{ref.name} is declared as {size_text(ref.size)}, and no location served that size: {tried}",
             "check the reference's size and the locations (`mime assets list`); nothing was stored")])
+    if failures and not_there == len(failures):
+        where = "its location" if len(failures) == 1 else "any of its locations"
+        raise BuildRefused([Refusal(
+            "asset.unreachable", RefusalClass.ENVIRONMENT,
+            f"{ref.name} is not at {where}: the server answered, and has no file at that address ({tried})",
+            f"the address is wrong, or the file was moved: check the locations in the reference (`mime assets list`), "
+            f"or copy the file to {file_path(ref)} and run `{check_command()}`")])
     raise BuildRefused([Refusal(
         "asset.unreachable", RefusalClass.ENVIRONMENT, f"{ref.name} could not be downloaded from any location: {tried}",
         f"check the network, or copy the file to {file_path(ref)} and run `{check_command()}`")])
@@ -366,7 +445,8 @@ LIMIT_ACTION = ("check the address, and if the file is that large on purpose rai
 
 
 def retrieve(location: str, *, name: str, known_hash: str | None = None, max_bytes: int = RETRIEVE_LIMIT_BYTES,
-             exceeded_action: str = LIMIT_ACTION, report: Callable[[str], None] | None = None) -> AssetRef:
+             exceeded_action: str = LIMIT_ACTION, report: Callable[[str], None] | None = None,
+             size: int | None = None) -> AssetRef:
     """Store the file at one ``location`` whose sha256 nobody has said yet (a bundle named by its DOI), and return the
     reference to it that the hash makes: the file is in the cache under that hash, and :func:`locate` finds it.
 
@@ -374,7 +454,8 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     download to; it guards the transfer, and nothing else vouches for the bytes until someone pins their sha256 in a
     later :func:`resolve`. The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
     once it has passed ``max_bytes`` (the size a record states, or :data:`RETRIEVE_LIMIT_BYTES`), refused as
-    ``asset.size-exceeded`` with ``exceeded_action`` as what to do."""
+    ``asset.size-exceeded`` with ``exceeded_action`` as what to do. ``size``, where the record states one, is what a
+    terminal's progress counts towards (:func:`watching_downloads`); it holds the download to nothing."""
     problem = location_problem(location)
     if problem is not None:
         raise BuildRefused([Refusal(
@@ -391,8 +472,9 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     try:
         if report is not None:
             report(f"{name}: from {location}")
+        announce_downloads([(name, size)])
         try:
-            arrived = _download_held_to(location, known_hash, name, incoming, max_bytes)
+            arrived = _download_held_to(location, known_hash, name, incoming, max_bytes, name, size)
         except Exception as error:  # noqa: BLE001 - pooch, requests and the DOI resolvers raise unrelated types
             if isinstance(error, _SizeExceeded):
                 raise BuildRefused([Refusal(
@@ -405,6 +487,12 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
                     f"{name} from {location} has other bytes than the repository's checksum names",
                     "try again with `mime assets fetch <name>`; if it repeats, the record's file is not the one it "
                     "lists")]) from error
+            if _nothing_there(error):
+                raise BuildRefused([Refusal(
+                    "asset.unreachable", RefusalClass.ENVIRONMENT,
+                    f"{name} is not at {location}: the server answered, and has no file at that address ({error})",
+                    "the address is wrong, or the file was moved: check it, then `mime assets fetch <name>` again"
+                )]) from error
             raise BuildRefused([Refusal(
                 "asset.unreachable", RefusalClass.ENVIRONMENT, f"{name} could not be downloaded from {location}: {error}",
                 "check the network and the address, then `mime assets fetch <name>` again")]) from error

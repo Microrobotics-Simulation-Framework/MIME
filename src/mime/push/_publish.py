@@ -48,6 +48,20 @@ from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
+from mime._said import (
+    DONE,
+    LINK,
+    PERMISSION,
+    QUESTION_NUMBER,
+    QUESTION_PERMISSION,
+    STEP_HEAD,
+    STEP_IRREVERSIBLE,
+    STEP_LINE,
+    STEP_TRIAL,
+    STOPPED,
+    Said,
+    ending,
+)
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._client import Client, Dropped, Errors, Json, Transport
@@ -119,17 +133,20 @@ def _no_draft(service: Service, experiment: str, why: str) -> BuildRefused:
 
 
 def statement(plan: Plan, state: DraftState) -> list[str]:
-    """The words shown before the record number is asked: what is published, as what, and what cannot be undone."""
+    """The words shown before the record number is asked: what is published, as what, and what cannot be undone. The last
+    line ends the block, so that a terminal draws the whole of it when it is said, before any request, whether or not a
+    question follows."""
     published = state.published
     what = (f"version {state.version}, a new version of {published.doi}" if published is not None else
             "version 1 of a new concept")
     yours = [file for file in plan.judged.files if file.owner == "yours" and file.verdict.carried
              and file.referenced is None]
-    return [f"Publishing {plain(plan.experiment)!r} on {plan.service.name} as {state.doi} ({what}).",
-            PRODUCTION_FACTS if plan.service.production else SANDBOX_FACTS,
-            f"  You are publishing, under your name, {len(yours)} file{'s' if len(yours) != 1 else ''} as your own "
-            f"work (or your lab's), licensed {plain(plan.licence)}.",
-            "  You state that everyone named as a creator or contributor agreed to be named."]
+    head = Said(f"Publishing {plain(plan.experiment)!r} on {plan.service.name} as {state.doi} ({what}).", STEP_HEAD)
+    facts = Said(PRODUCTION_FACTS, STEP_IRREVERSIBLE) if plan.service.production else Said(SANDBOX_FACTS, STEP_TRIAL)
+    return ending([head, facts,
+                   Said(f"  You are publishing, under your name, {len(yours)} file{'s' if len(yours) != 1 else ''} as "
+                        f"your own work (or your lab's), licensed {plain(plan.licence)}.", STEP_LINE),
+                   Said("  You state that everyone named as a creator or contributor agreed to be named.", STEP_LINE)])
 
 
 def _permissions(plan: Plan, state: DraftState, ask: Ask | None, say: Say) -> bool:
@@ -153,11 +170,11 @@ def _permissions(plan: Plan, state: DraftState, ask: Ask | None, say: Say) -> bo
         return True
     for index, held in enumerate(declared, start=1):
         words = declaring(index, held, plan.judged)
-        say(f"  {words[0]}")
+        say(Said(f"  {words[0]}", PERMISSION))
         for line in words[1:]:
-            say(f"       {line.strip()}")
-        if not ask(f"Declare permission {index} publicly, under your name?"):
-            say(f"Not published: permission {index} was not declared.")
+            say(Said(f"       {line.strip()}", PERMISSION))
+        if not ask(Said(f"Declare permission {index} publicly, under your name?", QUESTION_PERMISSION)):
+            say(Said(f"Not published: permission {index} was not declared.", STOPPED))
             return False
         identity = declaration_identity(cast(dict[str, object], held))
         if identity not in state.confirmed:
@@ -175,10 +192,10 @@ def _number(state: DraftState, confirm: str | None, typed: Typed | None, say: Sa
         raise unconfirmed(f"publishing the draft {state.record}", f"type its number in a terminal, or pass its DOI "
                                                                   f"from a script, `mime push <folder> --to "
                                                                   f"{service.name} --publish --confirm {state.doi}`")
-    answer = typed(f"Type the record number to publish ({state.record}): ").strip()
+    answer = typed(Said(f"Type the record number to publish ({state.record}): ", QUESTION_NUMBER)).strip()
     if answer != state.record:
-        say(f"Not published: {plain(answer)!r} is not the record number {state.record}." if answer else
-            "Not published.")
+        say(Said(f"Not published: {plain(answer)!r} is not the record number {state.record}." if answer else
+                 "Not published.", STOPPED))
         return False
     return True
 
@@ -361,7 +378,7 @@ def publish(folder: str | os.PathLike[str], service: Service, *, confirm: str | 
     for line in statement(plan, state):
         say(line)
     if not _permissions(plan, state, ask, say) or not _number(state, confirm, typed, say, service):
-        say(str(state.page))
+        say(Said(str(state.page), LINK))
         return None
     if not _held_at_post(plan, state, client):
         say(f"the draft {state.record} was published while the question waited (the site's button): checking it, and "
@@ -495,11 +512,11 @@ def finish(plan: Plan, state: DraftState, client: Client, say: Say, *, recorded:
     else:
         published = recorded
     concept = f"; its concept, every version: {published.concept_doi}" if published.concept_doi else ""
-    say(f"published {plain(plan.experiment)!r} as {state.doi} (version {state.version}{concept})")
+    say(Said(f"published {plain(plan.experiment)!r} as {state.doi} (version {state.version}{concept})", DONE))
     bundle = client.download(record, plan.files[0].key)
     problems = _differences(plan, state, answer, files, bundle)
     if problems:
-        say(page)
+        say(Said(page, LINK))
         raise BuildRefused([_refuse(
             "push.after-publish", RefusalClass.ENVIRONMENT,
             f"the record {record} on {service.name} is published, and read back it differs from what push sent: "
@@ -523,7 +540,7 @@ def finish(plan: Plan, state: DraftState, client: Client, say: Say, *, recorded:
             f"{', '.join(label(name) for name in recorded.differed)}")
     if recorded is not None and otherwise:
         say(f"! edited on the record's page since it was published: {', '.join(label(name) for name in otherwise)}")
-    say(page)
+    say(Said(page, LINK))
     if refusal is not None:
         raise BuildRefused([refusal])
     if recorded is None and words:

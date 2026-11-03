@@ -21,6 +21,8 @@ from typing import Any, Literal
 from urllib.parse import unquote
 
 from mime import assets
+from mime._said import DONE, PLAN_LINE, QUESTION_CONFIRM, STOPPED, Said
+from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets._commands import fetch_command, folder_argument
 from mime.build import BuildRefused, Refusal, RefusalClass
@@ -170,12 +172,13 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     if source.kind == "url":
         return assets.locate(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
                                              exceeded_action=_RAISE_LIMIT, report=say))
+    assets.downloads_doing(f"reading the file list of the record doi:{source.value}")
     file, checksum, stated, named = _record_file(source.value, source.file)
     if named is not None and say is not None:
         say(f"the record: {named}")
     limit = _limit(stated, max_bundle_bytes)
     return assets.locate(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum,
-                                         max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say))
+                                         max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated))
 
 
 def _from_service(service_name: str, record: str, say: Callable[[str], None] | None, max_bundle_bytes: int) -> Path:
@@ -186,16 +189,17 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
     service = push.SERVICES[service_name]
     if assets.offline():
         raise _offline_refusal(f"the record {record} on {service.name}")
+    assets.downloads_doing(f"reading the record {record} on {service.name}")
     found = push.public_record(service, record)
     if say is not None:
         say(f"the record: {found.words()}")
         if found.latest is not None:
-            say(f"! it is not the latest version: `mime pull --from {service.name} {found.latest}` pulls the latest"
+            say(f"! it is not the latest version: `mime pull --from {service.name} {quoted(found.latest)}` pulls the latest"
                 if found.latest else f"! it is not the latest version: the record's page, {service.site}/records/"
                                      f"{found.record}, names the latest")
     return assets.locate(assets.retrieve(found.url, name="bundle", known_hash=f"md5:{found.md5}",
                                          max_bytes=_limit(found.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT,
-                                         report=say))
+                                         report=say, size=found.size))
 
 
 def packages_needed(lock: Lock) -> list[tuple[str, str, str | None]]:
@@ -265,15 +269,17 @@ def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, confirm: Callable[[s
         return _AssetOutcome(cached, 0, 0, len(absent))
     total = sum(ref.size for ref in absent)
     if say is not None:
-        say(f"Assets to download: {len(absent)} file{'s' if len(absent) != 1 else ''}, {assets.size_text(total)}")
+        say(Said(f"Assets to download: {len(absent)} file{'s' if len(absent) != 1 else ''}, "
+                 f"{assets.size_text(total)}", PLAN_LINE))
     if total > ASSET_CONFIRM_BYTES and not yes:
         if confirm is None:
             return _AssetOutcome(cached, 0, 0, len(absent), _refuse(
                 "pull.assets-large", RefusalClass.USER, f"the assets are {assets.size_text(total)}, over the "
                 f"{assets.size_text(ASSET_CONFIRM_BYTES)} MIME asks about, and this is not a terminal to ask in",
                 f"run `{fetch_command(folder=folder)}` to download them"))
-        if not confirm(f"Download {assets.size_text(total)} of assets now?"):
+        if not confirm(Said(f"Download {assets.size_text(total)} of assets now?", QUESTION_CONFIRM)):
             return _AssetOutcome(cached, 0, 0, len(absent))
+    assets.announce_downloads([(ref.name, ref.size) for ref in absent])
     stored = 0
     try:
         for ref in refs:
@@ -304,19 +310,28 @@ def pull(source: str | os.PathLike[str], *, into: str | os.PathLike[str] | None 
     bundle = _from_service(from_service, os.fspath(source), say, max_bundle_bytes) if from_service is not None \
         else _bundle_file(parse_source(os.fspath(source)), say, max_bundle_bytes)
     destination = Path(into) if into is not None else Path(bundle_name(bundle))
+    assets.downloads_doing("unpacking the bundle, and checking each file in it")
     unpacked: Unpacked = unpack(bundle, destination)
     needed = packages_needed(unpacked.lock)
     outcome = _fetch_assets(destination, wanted=fetch_assets, yes=yes, confirm=confirm, say=say)
+    assets.downloads_doing("placing the files that travel as references")
     placed = place_referenced(destination)
     referenced = _referenced_line(placed, destination)
-    lines = [f"\N{CHECK MARK} Bundle {unpacked.manifest['name']!r} unpacked to {folder_argument(destination)}",
+    name, folder = unpacked.manifest["name"], folder_argument(destination)
+    if outcome.stopped is None:
+        head, tail = f"\N{CHECK MARK} Bundle {name!r} unpacked to {folder}", f"Next: mime verify {folder}"
+    else:  # the refusal follows these lines: the summary does not say a thing is done that it says is not
+        head = (f"Bundle {name!r} unpacked to {folder}, but not complete: {outcome.not_downloaded} "
+                f"asset{'s' if outcome.not_downloaded != 1 else ''} could not be downloaded (the refusal says why)")
+        tail = f"Next: once that is dealt with, `{fetch_command(folder=destination)}`, then mime verify {folder}"
+    lines = [head,
              "  - Manifest, scene and records: OK",
              f"  - {_assets_line(outcome, destination)}",
              *([f"  - {referenced}"] if referenced is not None else []),
              f"  - {_packages_line(needed)}",
-             f"Next: mime verify {folder_argument(destination)}"]
+             tail]
     if say is not None:
-        say("\n".join(lines))
+        say(Said("\n".join(lines), DONE if outcome.stopped is None else STOPPED))
     if outcome.stopped is not None:
         raise outcome.stopped
     return destination

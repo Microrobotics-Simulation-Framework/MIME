@@ -119,6 +119,37 @@ def test_every_location_dead_is_refused_naming_each(rig: Rig):
     assert first in str(refused.value) and second in str(refused.value)
 
 
+def refusal_of(call):  # noqa: ANN001, ANN201
+    with pytest.raises(BuildRefused) as refused:
+        call()
+    return refused.value.refusals[0]
+
+
+def test_a_404_says_the_file_is_not_at_the_address_and_does_not_send_the_reader_to_the_network(rig: Rig):
+    ref = reference(PAYLOAD, rig.server.url("/gone"))
+    refusal = refusal_of(lambda: assets.fetch(ref))
+    assert refusal.code == "asset.unreachable" and "is not at its location" in refusal.message
+    assert "404" in refusal.message and rig.server.url("/gone") in refusal.message
+    assert "network" not in refusal.action and "address is wrong" in refusal.action
+    two = reference(PAYLOAD, rig.server.url("/gone"), rig.server.url("/also-gone"))
+    assert "is not at any of its locations" in refusal_of(lambda: assets.fetch(two)).message
+
+
+def test_the_control_where_the_network_is_the_cause_the_words_are_the_networks(rig: Rig):
+    """The same refusal for a connection refused, and for one location refused and another answering 404: not a
+    claim that the file is missing, since one location was never reached."""
+    for locations in ((dead_url(),), (dead_url(), rig.server.url("/gone"))):
+        refusal = refusal_of(lambda: assets.fetch(reference(PAYLOAD, *locations)))
+        assert "could not be downloaded from any location" in refusal.message and "check the network" in refusal.action
+
+
+def test_a_bundle_at_a_404_address_is_not_blamed_on_the_network_and_one_at_a_dead_address_is(rig: Rig):
+    gone = refusal_of(lambda: assets.retrieve(rig.server.url("/gone"), name="bundle"))
+    assert gone.code == "asset.unreachable" and "is not at" in gone.message and "network" not in gone.action
+    dead = refusal_of(lambda: assets.retrieve(dead_url(), name="bundle"))
+    assert "could not be downloaded from" in dead.message and "check the network" in dead.action
+
+
 def test_offline_refuses_and_makes_no_request(rig: Rig, monkeypatch: pytest.MonkeyPatch):
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))

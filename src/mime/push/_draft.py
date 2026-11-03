@@ -45,7 +45,18 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
+from mime._said import (
+    DONE,
+    EDIT_OURS,
+    EDIT_SITE,
+    LINK,
+    QUESTION_CONFIRM,
+    QUESTION_EDIT,
+    STOPPED,
+    Said,
+)
 from mime._terminal import plain
+from mime._transfers import Transfers
 from mime.assets import size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
@@ -426,21 +437,21 @@ class Drafting:
             if updates is not None:
                 for key, value in updates.items():
                     on_site, in_file = apart(as_yaml(value), as_yaml(written_value(self.plan, key)))
-                    self.say(f"    on the site:  {key}: {on_site}")
-                    self.say(f"    sharing.yaml: {key}: {in_file}")
+                    self.say(Said(f"    on the site:  {key}: {on_site}", EDIT_SITE))
+                    self.say(Said(f"    sharing.yaml: {key}: {in_file}", EDIT_OURS))
             else:
                 on_site, ours_now = apart(words_of(field_value(found, name)), words_of(field_value(body, name)))
-                self.say(f"    on the site:  {on_site}")
-                self.say(f"    {_source(name)} writes: {ours_now}")
+                self.say(Said(f"    on the site:  {on_site}", EDIT_SITE))
+                self.say(Said(f"    {_source(name)} writes: {ours_now}", EDIT_OURS))
             if updates is not None:
-                if self.choices.ask("Write sharing.yaml's over the site's? (no keeps the site's, written into "
-                                    f"sharing.yaml's `{SHARING_KEYS[name]}`)"):
+                if self.choices.ask(Said("Write sharing.yaml's over the site's? (no keeps the site's, written into "
+                                         f"sharing.yaml's `{SHARING_KEYS[name]}`)", QUESTION_EDIT)):
                     over.append(name)
                 else:
                     kept_names.append(name)
                     keep.update(updates)
-            elif self.choices.ask(f"sharing.yaml cannot hold it ({_source(name)} writes it): write over it? (no stops "
-                                  f"the push)"):
+            elif self.choices.ask(Said(f"sharing.yaml cannot hold it ({_source(name)} writes it): write over it? (no "
+                                       f"stops the push)", QUESTION_EDIT)):
                 over.append(name)
             else:
                 stop.append(name)
@@ -459,6 +470,7 @@ class Drafting:
         DOI; and pack the bundle with the staged lock naming it."""
         service, state = self.service, self.state
         found: Json | None = None
+        self.client.doing(f"making or updating the draft on {service.name}, and reserving its DOI")
         if state is not None and state.record is not None:
             read = self.client.read_draft(state.record)
             if read is None:
@@ -700,6 +712,8 @@ class Drafting:
                 f"{self.service.name} --discard`")])
         sent: list[str] = []
         kept_keys: list[str] = []
+        self.client.announce([(file.key, file.size) for file in self.plan.files
+                              if not entry_verified(held.get(file.key), file)])
         for key in strays:
             self.show()
             self.client.delete_file(record, key)
@@ -750,8 +764,11 @@ class Drafting:
         for _ in range(UPLOAD_ATTEMPTS):
             entry: Json | None = None
             try:
+                self.client.doing(f"asking {self.service.name} to start {file.key}")
                 self._start(record, file.key)
+                self.client.doing("")  # the bar says it: bytes are moving
                 entry = self.client.send_content(record, file.key, file.path)
+                self.client.doing(f"{self.service.name} is committing {file.key}, and its md5 is checked")
                 entry = self.client.commit_file(record, file.key)
             except Dropped:
                 problem, mismatch, entry = "its connection dropped, or its answer was lost", False, None
@@ -760,13 +777,16 @@ class Drafting:
             except Errors as answered:
                 problem, mismatch, entry = f"{self.service.name} answered {answered.words()}", False, None
             if entry is not None and entry_verified(entry, file):
+                self.client.uploaded(file.key)
                 return
             if entry is not None:
                 problem = (f"{self.service.name} states size {entry.get('size')} and "
                            f"{plain(str(entry.get('checksum')))}, and MIME sent {file.size} bytes of md5 {file.md5}")
                 mismatch = True
+            self.client.doing(f"reading the draft again, to see what {self.service.name} holds of {file.key}")
             now = self.client.files(record).get(file.key)
             if now is not None and entry_verified(now, file):
+                self.client.uploaded(file.key)
                 return
             if now is not None:
                 self.client.delete_file(record, file.key)
@@ -791,6 +811,7 @@ class Drafting:
         assert state is not None and state.record is not None
         if not self.wrote:
             return
+        self.client.doing("reading the draft again, to check that it holds each file")
         read = self.client.read_draft(state.record)
         if read is None or not ours(read[0], self.service, state):
             raise BuildRefused([_refuse(
@@ -865,13 +886,17 @@ def _show_plan(plan_of: Callable[[], Plan], state: DraftState | None, say: Say, 
 def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False, confirm: Ask | None = None,
          say: Say = _quiet, transport: Transport | None = None, pause: float | None = None,
          sleep: Callable[[float], None] = time.sleep, overwrite_site_edits: bool = False,
-         keep_site_edits: bool = False, full: bool = False) -> Drafted:
+         keep_site_edits: bool = False, full: bool = False,
+         progress: Transfers | None = None) -> Drafted:
     """Make or update the draft of the saved experiment in ``folder`` on ``service`` (a new version of it, once one is
     published and its content changed), reserve its DOI and upload its files; never publish. The plan is shown before
     anything is written (in full where ``full``), and a private draft asks no question. A push with nothing to write
     says so in one line. Each field edited on the site since push last wrote it is asked about in a terminal
     (``confirm``), kept (``keep_site_edits``) or written over (``overwrite_site_edits``), and otherwise stops the push
-    (``push.metadata-edited``); ``yes`` answers none of those questions."""
+    (``push.metadata-edited``); ``yes`` answers none of those questions. ``progress`` (:class:`mime._transfers.Transfers`) is
+    told which files go up, how much of each has gone (through the real transport), when each is whole and checked, and
+    what is under way between them (a wait, a commit, a check). It is only told: an exception it raises is read, inside a
+    request, as a dropped connection, so a display catches its own."""
     del yes  # a private draft asks nothing, and --yes never settles an edit made on the site
     usable(service)
     root = Path(os.path.abspath(folder))
@@ -904,6 +929,7 @@ def push(folder: str | os.PathLike[str], service: Service, *, yes: bool = False,
         show()
         show = _nothing
     client = Client(service, token_of(service), transport, pause=pause, sleep=sleep)
+    client.progress = progress
     return send(plan, state, client, say, choices=choices, show=show, full=full, holder=holder)
 
 
@@ -926,7 +952,7 @@ def send(plan: Plan, state: DraftState | None, client: Client, say: Say = _quiet
         drafting.check()
     except BaseException:
         if drafting.state is not None and drafting.state.page:
-            say(drafting.state.page)
+            say(Said(drafting.state.page, LINK))
         raise
     assert state.record is not None and state.page is not None and state.doi is not None
     service = plan.service.name
@@ -937,14 +963,14 @@ def send(plan: Plan, state: DraftState | None, client: Client, say: Say = _quiet
     if drafting.made:
         made = f"version {state.version} of {state.published.doi}'s concept" if state.published is not None else \
             "a first version"
-        say(f"made the draft {state.record} ({made}) and reserved its DOI {state.doi}")
+        say(Said(f"made the draft {state.record} ({made}) and reserved its DOI {state.doi}", DONE))
     linked = [key for key in kept_keys if key in drafting.linked]
-    say((f"uploaded {len(sent)} file{'s' if len(sent) != 1 else ''} "
-         f"({size_text(sum(file.size for file in drafting.plan.files if file.key in sent))})" if sent else
-         "no file sent") + (f", linked {len(linked)} from the version before" if linked else "") +
-        f"; the draft holds the {len(drafting.plan.files)} record files, each md5 verified")
+    say(Said((f"uploaded {len(sent)} file{'s' if len(sent) != 1 else ''} "
+              f"({size_text(sum(file.size for file in drafting.plan.files if file.key in sent))})" if sent else
+              "no file sent") + (f", linked {len(linked)} from the version before" if linked else "") +
+             f"; the draft holds the {len(drafting.plan.files)} record files, each md5 verified", DONE))
     say(f"Nothing is published: look at the draft, then `mime push <folder> --to {service} --publish`.")
-    say(state.page)
+    say(Said(state.page, LINK))
     return Drafted(state.record, state.page, state.doi, state.concept, tuple(sent), tuple(kept_keys), True,
                    state.version)
 
@@ -969,7 +995,7 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
                 f"{state_directory(service, experiment)})")
         else:
             say(f"no draft of a new version; a push of a changed folder makes one")
-            say(published.page)
+            say(Said(published.page, LINK))
         return state
     client = Client(service, token_of(service), transport, pause=pause)
     read = client.read_draft(state.record)
@@ -977,7 +1003,7 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
         if client.read_record(state.record) is not None:
             say(f"the draft {state.record} on {service.name} is published, and push has not recorded it: `mime push "
                 f"<folder> --to {service.name} --publish` checks it and records it")
-            say(record_page(service, state.record))
+            say(Said(record_page(service, state.record), LINK))
         else:
             say(f"the draft {state.record} MIME made is no longer on {service.name} (discarded on the site?); the next "
                 f"push makes a new one")
@@ -1017,7 +1043,7 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
         say(f"    {plain(key)}  {entry.get('size')} bytes  {plain(checksum)}  {verdict}")
     for key in sorted(set(state.files) - set(files)):
         say(f"    {plain(key)}: push uploaded it, and the draft no longer holds it")
-    say(page)
+    say(Said(page, LINK))
     return state
 
 
@@ -1053,14 +1079,14 @@ def discard(folder: str | os.PathLike[str], service: Service, *, yes: bool = Fal
     if not yes:
         if confirm is None:
             raise unconfirmed(f"the deletion of the draft {state.record}")
-        if not confirm(question):
-            say("Not deleted.")
-            say(page)
+        if not confirm(Said(question, QUESTION_CONFIRM)):
+            say(Said("Not deleted.", STOPPED))
+            say(Said(page, LINK))
             return False
     client.delete_draft(state.record)
     _forget(service, state)
-    say(f"deleted the draft {state.record} on {service.name}, and push's record of it")
-    say(f"{service.site}/me/uploads")
+    say(Said(f"deleted the draft {state.record} on {service.name}, and push's record of it", DONE))
+    say(Said(f"{service.site}/me/uploads", LINK))
     return True
 
 

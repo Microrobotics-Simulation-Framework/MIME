@@ -20,4 +20,5 @@ tests/cli/test_progress.py  # the arithmetic and the words of a run's progress l
 tests/cli/test_guide.py  # grouped --help, an example under every command, a bare `mime`, "did you mean", on this platform's argparse
 tests/cli/test_pipes.py  # output through a pipe is byte for byte what it always was, with a planted colour code found (every platform; a pipe is a pipe on Windows)
 tests/cli/test_terminal.py  # what mime draws on a terminal, through a pseudo-terminal: macOS runs it, Windows skips it (no pty module; stated in docs/platforms.md)
+tests/cli/test_push_display.py  # what mime push and mime pull draw on a terminal, through a pseudo-terminal: macOS runs it, Windows skips it (no pty module; stated in docs/platforms.md)
 tests/cli/test_import_interrupt.py  # Ctrl+C while the command imports exits quietly, 130 (POSIX only: SIGINT to a child)

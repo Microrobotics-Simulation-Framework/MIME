@@ -28,6 +28,7 @@ from mime.errors import TRACEBACK_VARIABLE, crossed, full_mode, short_text
 from mime.experiment import Experiment
 
 if TYPE_CHECKING:
+    from mime._transfers import Transfers
     from mime.cli._display import RunDisplay
     from mime.control import Progress
     from mime.experiment import BuiltExperiment, RunWritten
@@ -488,26 +489,108 @@ def _a_terminal() -> bool:
     return stdin is not None and bool(stdin.isatty())
 
 
+def _tty(stream: object) -> bool:
+    try:
+        return bool(stream.isatty())  # type: ignore[attr-defined]
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
+def _prompted(prompt: str) -> str:
+    """A line typed after ``prompt``, which is put on the terminal the person answers at: standard output where that is a
+    terminal, else standard error where that is one. ``input`` puts its prompt on standard output (a pipe, when the
+    output is piped and only the person's input is a terminal: the question went into the pipe, unseen) or, with both
+    ends terminals, on standard error (a file, when that is redirected). Where neither is a terminal the question goes
+    where it always went, to ``input``."""
+    stream = next((each for each in (sys.stdout, sys.stderr) if _tty(each)), None)
+    if stream is None:
+        return input(prompt)
+    stream.write(prompt)
+    stream.flush()
+    return input()
+
+
 def _ask(question: str) -> bool:
     try:
-        return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+        return _prompted(f"{question} [y/N] ").strip().lower() in ("y", "yes")
     except EOFError:
         return False
 
 
 def _typed(prompt: str) -> str:
     try:
-        return input(prompt)
+        return _prompted(prompt)
     except EOFError:
         return ""
 
 
+#: The past tense of what a progress display is doing, for its overall line (``2/2 files uploaded``).
+_PAST = {"uploading": "uploaded", "downloading": "downloaded"}
+
+
+class _Voice:
+    """What ``mime push`` and ``mime pull`` say, ask and show progress with. On a terminal not asked to be plain, a display
+    draws the plan, the publish step, the permissions and the site edits, and the files' progress is drawn on standard
+    error; anywhere else each is what it was before the display existed (:func:`_say`, :func:`_ask`, :func:`_typed`, no
+    progress). Each stream is judged alone, so ``mime push ... | tee`` still draws progress, and its lines are the
+    pipe's.
+
+    A fault in the display never changes what the command does: the lines fall back to :func:`_say`, and the progress
+    switches itself off (:class:`mime.cli._display.TransferDisplay`)."""
+
+    def __init__(self, verb: str) -> None:
+        self.say: Callable[[str], None] = _say
+        self.ask: Callable[[str], bool] = _ask
+        self.typed: Callable[[str], str] = _typed
+        self.progress: Transfers | None = None
+        self._open: list[Callable[[], None]] = []
+        self._abandoned = False
+        transfers = None
+        if styled(sys.stderr):
+            from mime.cli._display import TransferDisplay
+
+            transfers = TransferDisplay(sys.stderr, verb, _PAST[verb])
+            self.progress = transfers
+            self._open.append(transfers.finish)
+        if styled(sys.stdout):
+            from mime.cli._display import SaidDisplay
+
+            drawing = SaidDisplay(sys.stdout, transfers)
+            self.say, self.ask, self.typed = self._drawn(drawing.say), drawing.ask, drawing.typed
+            self._open.insert(0, drawing.close)
+
+    def _drawn(self, draw: Callable[[str], None]) -> Callable[[str], None]:
+        def say(line: str) -> None:
+            if not self._abandoned:
+                try:
+                    draw(line)
+                    return
+                except Exception:  # noqa: BLE001 - a display that cannot draw says its lines the old way, from here on
+                    self._abandoned = True
+            _say(line)
+
+        return say
+
+    def close(self) -> None:
+        for close in self._open:
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - closing a display is never why a command fails
+                pass
+
+
 def _pull(source: str, into: Path | None, no_assets: bool, yes: bool, max_bundle_bytes: int,
           from_service: str | None = None) -> int:
-    from mime import saved
+    from mime import assets, saved
 
-    saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes, confirm=_ask if _a_terminal() else None,
-               say=_say, max_bundle_bytes=max_bundle_bytes, from_service=from_service)
+    voice = _Voice("downloading")
+    try:
+        with assets.watching_downloads(voice.progress) if voice.progress is not None else nullcontext():
+            saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes,
+                       confirm=voice.ask if _a_terminal() else None, say=voice.say, max_bundle_bytes=max_bundle_bytes,
+                       from_service=from_service)
+    finally:
+        voice.close()
     return 0
 
 
@@ -517,11 +600,12 @@ def _push(arguments: argparse.Namespace) -> int:
 
     service = push.SERVICES[arguments.to]
     folder: Path = arguments.folder
-    ask = _ask if _a_terminal() else None
+    voice = _Voice("uploading")
+    ask = voice.ask if _a_terminal() else None
     if arguments.confirm is not None and not arguments.publish:
         raise BuildRefused([Refusal("push.not-confirmed", RefusalClass.USER,
                                     "--confirm names the draft a publish publishes, and this is not a publish",
-                                    f"`mime push {folder} --to {service.name} --publish --confirm <DOI>`")])
+                                    f"`mime push {quoted(str(folder))} --to {service.name} --publish --confirm <DOI>`")])
     if arguments.init:
         path, written, licence = push.init(folder)
         print(for_terminal(f"wrote {path}" if written else f"kept {path}, which exists: edit it, or delete it and "
@@ -529,22 +613,24 @@ def _push(arguments: argparse.Namespace) -> int:
         print(for_terminal(f"licence: {licence}, which the experiment declares" if licence else
                            f"licence: {DEFAULT_LICENCE}, pre-filled: the experiment declares none, and push asks it to "
                            f"declare the same, exp.licence(\"{DEFAULT_LICENCE}\"), then save"))
-        print(for_terminal(f"next: name the creators in it, then `mime push {folder} --to {service.name}`"))
+        print(for_terminal(f"next: name the creators in it, then `mime push {quoted(str(folder))} --to {service.name}`"))
         return 0
-    if arguments.status:
-        push.status(folder, service, say=_say)
-        return 0
-    if arguments.discard:
-        push.discard(folder, service, yes=arguments.yes, confirm=ask, say=_say)
-        return 0
-    if arguments.publish:
-        push.publish(folder, service, confirm=arguments.confirm, ask=ask, typed=_typed if ask is not None else None,
-                     say=_say, overwrite_site_edits=arguments.overwrite_site_edits,
-                     keep_site_edits=arguments.keep_site_edits, full=arguments.full_plan)
-        return 0
-    push.push(folder, service, yes=arguments.yes, confirm=ask, say=_say,
-              overwrite_site_edits=arguments.overwrite_site_edits, keep_site_edits=arguments.keep_site_edits,
-              full=arguments.full_plan)
+    try:
+        if arguments.status:
+            push.status(folder, service, say=voice.say)
+        elif arguments.discard:
+            push.discard(folder, service, yes=arguments.yes, confirm=ask, say=voice.say)
+        elif arguments.publish:
+            push.publish(folder, service, confirm=arguments.confirm, ask=ask,
+                         typed=voice.typed if ask is not None else None, say=voice.say,
+                         overwrite_site_edits=arguments.overwrite_site_edits,
+                         keep_site_edits=arguments.keep_site_edits, full=arguments.full_plan)
+        else:
+            push.push(folder, service, yes=arguments.yes, confirm=ask, say=voice.say,
+                      overwrite_site_edits=arguments.overwrite_site_edits, keep_site_edits=arguments.keep_site_edits,
+                      full=arguments.full_plan, progress=voice.progress)
+    finally:
+        voice.close()
     return 0
 
 

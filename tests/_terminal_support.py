@@ -33,6 +33,49 @@ def stripped(transcript: str) -> str:
     return CONTROL.sub("", transcript).replace("\r\n", "\n").replace("\r", "\n")
 
 
+def screen_of(transcript: str) -> list[str]:
+    """The lines on a screen after ``transcript``: what a person sees, with what a live display erased and drew again
+    resolved (``stripped`` keeps every frame that was ever drawn). It understands what ``rich`` writes to redraw a few
+    lines (carriage return, line feed, cursor up, erase the line, and colour and cursor visibility, which draw nothing)
+    and nothing else; a sequence it does not know raises, so a display that starts to write another is noticed here."""
+    rows: list[list[str]] = [[]]
+    row = col = 0
+    index = 0
+    while index < len(transcript):
+        char = transcript[index]
+        if char == "\x1b":
+            match = re.compile(r"\x1b\[([0-9;?]*)([A-Za-z])").match(transcript, index)
+            if match is None:
+                raise ValueError(f"an escape sequence screen_of does not know: {transcript[index:index + 12]!r}")
+            argument, final = match.group(1), match.group(2)
+            count = int(argument) if argument.isdigit() else 1
+            if final == "A":
+                row = max(0, row - count)
+            elif final == "K":
+                rows[row] = [] if argument == "2" else rows[row][:col]
+            elif final not in ("m", "h", "l"):
+                raise ValueError(f"a control sequence screen_of does not know: {match.group(0)!r}")
+            index = match.end()
+            continue
+        index += 1
+        if char == "\r":
+            col = 0
+        elif char == "\n":
+            row += 1
+            col = 0
+            while len(rows) <= row:
+                rows.append([])
+        else:
+            line = rows[row]
+            line.extend(" " * (col - len(line)))
+            if col < len(line):
+                line[col] = char
+            else:
+                line.append(char)
+            col += 1
+    return [text.rstrip() for text in ("".join(line) for line in rows)]
+
+
 def _size(fd: int, columns: int, rows: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
 
@@ -138,16 +181,19 @@ def run_on_terminal(argv: Sequence[str], *, env: Mapping[str, str], cwd: Path, c
 
 
 def run_with_streams(argv: Sequence[str], *, env: Mapping[str, str], cwd: Path, terminals: Sequence[str],
-                     columns: int = 100, timeout: float = 120.0) -> tuple[dict[str, str], int]:
+                     columns: int = 100, timeout: float = 120.0, typed: bytes = b"") -> tuple[dict[str, str], int]:
     """``argv`` run with some of its standard streams a terminal and the others pipes: ``terminals`` names which
     (``"out"``, ``"err"``; standard input is the terminal when there is one). What each stream received, by name (``"tty"``
     for the terminal, whichever streams it carries), and the exit code. The terminal is read while the child runs, so a
-    child writing more than a pseudo-terminal holds does not block."""
+    child writing more than a pseudo-terminal holds does not block. ``typed`` is what the person types, waiting in the
+    terminal's input for the child to read it (the terminal echoes it, so it is on the terminal's side of the transcript)."""
     master, slave = pty.openpty()
     _size(master, columns, 30)
     child = subprocess.Popen(list(argv), stdin=slave, stdout=slave if "out" in terminals else subprocess.PIPE,
                              stderr=slave if "err" in terminals else subprocess.PIPE, env=dict(env), cwd=cwd, close_fds=True)
     os.close(slave)
+    if typed:
+        os.write(master, typed)
     open_ends: dict[int, str] = {master: "tty"}
     for name, stream in (("out", child.stdout), ("err", child.stderr)):
         if stream is not None:

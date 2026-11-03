@@ -28,6 +28,7 @@ from bundles import contents, lock_with_assets, member, rewrite, write_bundle
 from fake_zenodo import DOI, RECORD, zenodo
 
 from mime import assets
+from mime._said import DONE, STOPPED, kind_of
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.experiment import Experiment
@@ -520,6 +521,33 @@ def test_an_asset_that_cannot_be_fetched_leaves_the_folder_and_says_which_comman
     assert codes_of(lambda: pull(with_assets(saved_toy, tmp_path, ref), into="out", **keywords)) == ["asset.unreachable"]  # type: ignore[arg-type]
     assert "  - Assets: 1 not downloaded: run `mime assets fetch ./out/`" in lines[-1]
     assert (tmp_path / "out" / "mime.lock").is_file()
+
+
+def test_the_summary_of_a_pull_that_is_refused_for_an_asset_does_not_say_the_bundle_is_done(
+        saved_toy: Path, tmp_path: Path, rig: Rig, monkeypatch: pytest.MonkeyPatch):
+    """A tick followed by a refusal reads as a contradiction (the sandbox session): the summary says the unpacking is
+    partial, and what finishes it, in the lines a pipe gets too. A pull that completes still gets the tick, which the
+    oracle of ``test_push_output`` holds."""
+    monkeypatch.chdir(tmp_path)
+    ref = table_reference(rig)
+    del rig.server.files["/t/table.bin"]
+    lines, keywords = said()
+    assert codes_of(lambda: pull(with_assets(saved_toy, tmp_path, ref), into="out", **keywords)) == ["asset.unreachable"]  # type: ignore[arg-type]
+    assert lines[-1].splitlines() == [
+        "Bundle 'full_toy' unpacked to ./out/, but not complete: 1 asset could not be downloaded (the refusal says why)",
+        "  - Manifest, scene and records: OK",
+        "  - Assets: 1 not downloaded: run `mime assets fetch ./out/`",
+        "  - Packages: all installed",
+        "Next: once that is dealt with, `mime assets fetch ./out/`, then mime verify ./out/"]
+    assert "\N{CHECK MARK}" not in lines[-1] and kind_of(lines[-1]) == STOPPED
+
+
+def test_the_control_a_pull_that_is_whole_still_gets_its_tick(saved_toy: Path, tmp_path: Path, rig: Rig,
+                                                                monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+    lines, keywords = said()
+    pull(with_assets(saved_toy, tmp_path, table_reference(rig)), into="out", **keywords)  # type: ignore[arg-type]
+    assert lines[-1].startswith("\N{CHECK MARK} Bundle 'full_toy' unpacked to ./out/") and kind_of(lines[-1]) == DONE
 
 
 # --- the size an asset download is asked about -------------------------------------------------------------------------------

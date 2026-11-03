@@ -43,10 +43,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from email.message import Message as HTTPMessage
-from typing import IO, BinaryIO, Protocol, cast, override
+from typing import IO, BinaryIO, Protocol, cast, override, runtime_checkable
 from urllib.parse import quote, urlsplit
 
 from mime._terminal import plain
+from mime._transfers import Transfers
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
 from mime.push._owners import field_owner
@@ -132,6 +133,14 @@ class Transport(Protocol):
              token: Token) -> Answer: ...
 
 
+@runtime_checkable
+class Reporting(Protocol):
+    """A transport that tells how much of a file it has sent: the real one. A test's transport has no ``on_sent``, and is
+    sent what it was always sent."""
+
+    on_sent: Callable[[int, int], None] | None
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     """A redirect is answered as what it is, never followed: following it would carry the token to its target."""
 
@@ -152,6 +161,9 @@ class HttpTransport:
         self.timeout = timeout
         self.opener = urllib.request.build_opener(NoRedirect())
         self.direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        #: Told how much of a file has gone out, and its size, while a file is streamed (a terminal's progress). Nothing
+        #: is read from, or changes in, what is sent.
+        self.on_sent: Callable[[int, int], None] | None = None
 
     def send(self, method: str, url: str, headers: Mapping[str, str], body: bytes | Path | None,
              token: Token) -> Answer:
@@ -159,7 +171,7 @@ class HttpTransport:
         stopped: BaseException | None = None
         opener = self.direct if loopback(url) else self.opener
         try:
-            return _exchange(opener, self.timeout, method, url, headers, body, token)
+            return _exchange(opener, self.timeout, method, url, headers, body, token, self.on_sent)
         except Exception as error:  # noqa: BLE001 - a request that failed, or whose answer was lost or cut short
             failure = type(error).__name__
         except BaseException as error:  # an interrupt: raised again below, by its type alone
@@ -170,13 +182,42 @@ class HttpTransport:
         raise Dropped(failure)
 
 
+class _Counted:
+    """A file as ``http.client`` reads it to send, reporting how much has been read. It reports about every
+    :data:`_REPORT_BYTES` and at the end, so that the report costs nothing next to the send."""
+
+    def __init__(self, stream: BinaryIO, total: int, report: Callable[[int, int], None]) -> None:
+        self._stream = stream
+        self._total = total
+        self._report = report
+        self._read = 0
+        self._told = 0
+
+    def read(self, size: int = -1) -> bytes:
+        block = self._stream.read(size)
+        self._read += len(block)
+        if self._read - self._told >= _REPORT_BYTES or (not block and self._told != self._read):
+            self._told = self._read
+            self._report(self._read, self._total)
+        return block
+
+
+#: How much of a file is read between two reports of its progress.
+_REPORT_BYTES = 256 * 1024
+
+
 def _exchange(opener: urllib.request.OpenerDirector, timeout: float, method: str, url: str,
-              headers: Mapping[str, str], body: bytes | Path | None, token: Token) -> Answer:
+              headers: Mapping[str, str], body: bytes | Path | None, token: Token,
+              on_sent: Callable[[int, int], None] | None = None) -> Answer:
     """One request and its whole answer, through ``opener``: every error the library raises passes out of here to
-    :meth:`HttpTransport.send`, which raises none of them on."""
+    :meth:`HttpTransport.send`, which raises none of them on. ``on_sent`` is told how much of a file body has gone out."""
     stream = body.open("rb") if isinstance(body, Path) else None
     try:
-        data: bytes | BinaryIO | None = stream if stream is not None else body if isinstance(body, bytes) else None
+        data: bytes | BinaryIO | _Counted | None = stream if stream is not None else body if isinstance(body, bytes) \
+            else None
+        if stream is not None and on_sent is not None and isinstance(body, Path):
+            on_sent(0, body.stat().st_size)
+            data = _Counted(stream, body.stat().st_size, on_sent)
         request = urllib.request.Request(url, data=data, method=method, headers=dict(headers))
         if isinstance(body, Path):
             request.add_header("Content-Length", str(body.stat().st_size))
@@ -222,6 +263,12 @@ class Client:
         self.now = now
         self.watch = watch
         self.owner: Owner = field_owner
+        #: Told what goes up and what is under way: a terminal's progress (:class:`mime._transfers.Transfers`). The bytes
+        #: of a file are told only with the real transport, which reports them; a transport of a test's is sent what it
+        #: was always sent.
+        self.progress: Transfers | None = None
+        self._uploading: str | None = None
+        self._doing = ""
         self._last = -float("inf")
         self.requests = 0
 
@@ -235,21 +282,56 @@ class Client:
                 "run the same command again later, `mime push <folder> --to <service>`: what was uploaded and "
                 "verified is not sent again")])
         if seconds > 0:
+            self.doing(f"waiting {seconds:.0f} s, {why}", resume=False)
             self.sleep(seconds)
+            self.doing(self._doing)
 
     def _paced(self) -> None:
         gap = self._last + self.pause - self.now()
         if gap > 0:
+            self.doing("waiting between requests" + (f", then {self._doing}" if self._doing else ""), resume=False)
             self.sleep(gap)
+            self.doing(self._doing)
         self._last = self.now()
+
+    # --- what a terminal is told ---------------------------------------------------------------------------------
+
+    def doing(self, words: str, *, resume: bool = True) -> None:
+        """Tell the progress what is under way. A wait is told too and then the words it interrupted again (``resume``
+        false: these are not the words to come back to)."""
+        if resume:
+            self._doing = words
+        if self.progress is not None:
+            self.progress.doing(words)
+
+    def announce(self, files: list[tuple[str, int | None]]) -> None:
+        """The files about to go up, before the first."""
+        if self.progress is not None:
+            self.progress.files(files)
+
+    def uploaded(self, key: str) -> None:
+        """The file ``key`` is whole and verified."""
+        if self.progress is not None:
+            self.progress.sent(key)
 
     def _send(self, method: str, url: str, headers: Mapping[str, str], body: bytes | Path | None) -> Answer:
         self._paced()
         self.requests += 1
-        answer = self.transport.send(method, url, headers, body, self._token)
+        answer = self._transported(method, url, headers, body)
         if self.watch is not None:
             self.watch(method, url, answer.status, answer.headers, answer.body)
         return answer
+
+    def _transported(self, method: str, url: str, headers: Mapping[str, str], body: bytes | Path | None) -> Answer:
+        transport, progress, key = self.transport, self.progress, self._uploading
+        if not (isinstance(transport, Reporting) and isinstance(body, Path) and progress is not None
+                and key is not None):
+            return self.transport.send(method, url, headers, body, self._token)
+        transport.on_sent = lambda sent, total: progress.sending(key, sent, total)
+        try:
+            return transport.send(method, url, headers, body, self._token)
+        finally:
+            transport.on_sent = None
 
     def _after_limits(self, answer: Answer) -> None:
         """A spent window (``X-RateLimit-Remaining: 0``) is waited out to its reset before the next request."""
@@ -476,8 +558,12 @@ class Client:
     def send_content(self, record: str, key: str, path: Path) -> Json:
         """The whole file ``path`` into the started entry ``key``: one ``PUT``, never sent again by this call (a second
         ``PUT`` to a completed file deletes it)."""
-        return _entry(self, self.call("PUT", f"/records/{_part(record)}/draft/files/{_part(key)}/content",
-                                      content=path, retry=False, drops=True))
+        self._uploading = key
+        try:
+            return _entry(self, self.call("PUT", f"/records/{_part(record)}/draft/files/{_part(key)}/content",
+                                          content=path, retry=False, drops=True))
+        finally:
+            self._uploading = None
 
     def commit_file(self, record: str, key: str) -> Json:
         return _entry(self, self.call("POST", f"/records/{_part(record)}/draft/files/{_part(key)}/commit",

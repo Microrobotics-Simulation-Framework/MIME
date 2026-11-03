@@ -155,6 +155,26 @@ loads it).
   one.
 - **A refusal is a block**: its code and whose it is to fix, what is wrong, `what to do`, `why`, `where`, and the docs
   address under it on one line to copy; the full traceback's file as before. `--traceback` is unchanged.
+- **`mime push` and `mime pull`** say the same words on a terminal, set differently (the lines themselves arrive tagged
+  with what they are, `mime/_said.py`, and a tag is invisible to a pipe, a file and a test). The plan is one block with
+  what goes up and what travels as a reference in rows of their own, and each warning (a line that starts `!`, as on a
+  pipe) below it, outside it. The **publish step** is a heavy frame, its sentence that the step cannot be undone
+  reversed on production (the sandbox's, which says the same of production, is bold) and each declared permission a frame
+  of its own, with its question below it set apart by a `?` and a blank line, answered at `[y/N]`; the record number is
+  typed after a `>`. Anything but `y` or `yes` is no, and the end of input is no, exactly as without the display; `--yes`
+  still answers nothing it did not, and `--confirm` still names the draft. A field edited on the site is **two values side
+  by side**, the site's and `sharing.yaml`'s, the stretches that differ underlined, then the question. **Uploads and
+  downloads** (`mime push`; `mime pull`, the bundle and each asset) are one line on standard error that stays when they
+  are done, `x/y files uploaded` with the bytes of the total, and under it the current file's bar with its name, bytes,
+  speed and the time remaining (an **estimate**, shown after the first second); a file whole stays as that bar until the next
+  starts, the last stays at the end, and a file of no stated size is counted without a bar. While no bytes are moving
+  the line says what is: `waiting between requests, then ...` (push spaces its requests), `Zenodo is committing ... and its md5 is
+  checked`, `checking the hash of ...`, `unpacking the bundle`; it is drawn about four times a second, takes itself off
+  the screen for a question, and a fault of its own turns it off without touching the command. The statement of a
+  publish is drawn whole when its last line is said, before the request; a terminal that reports no width is drawn at
+  the width `COLUMNS` names, or at a default; a frame that is too narrow for a hash or an address is left off, so the word is not folded. A
+  question and its hint are on the terminal the person answers at. A command printed for pasting
+  (`mime/_shell.py`) holds a folder's name as one word, quoted where a shell would read it as more.
 - **A damaged compilation-cache entry**: JAX's warning is shown as it is, and once beside it a note that `mime cache
   clear` removes the cache.
 - **`mime --help`** is grouped (Run, Share, Environment, Reference), each command has an example under its `--help`,
