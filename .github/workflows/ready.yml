@@ -1,0 +1,48 @@
+name: Ready
+
+# The label `ready` marks a pull request's head as final (CONTRIBUTING.md, "CI: the `ready` label"): adding it re-runs the
+# head's newest run of ci.yml and of platforms.yml, which read the label when a run starts and so take the full matrix
+# (scripts/ci_ready.py says which runs it re-runs and which it leaves). Neither of those workflows listens to `labeled`,
+# so a label starts no run of theirs: a run whose jobs are all skipped, the newest of ci.yml on the head, left the pull
+# request blocked with every required check green. This workflow's job runs for `ready` alone; for any other label it is
+# skipped, in a group of its own, and it bears no required check's name, so it blocks nothing and cancels nothing. A
+# re-run, unlike a manual run, gives checks that branch protection evaluates for the pull request: it is the pull
+# request's own run, on the same commit. A pull request from a fork gets a read-only token, so this fails there, and a
+# maintainer re-runs that run instead (Re-run all jobs), which reads the label too. tests/test_ci_ready_label.py reads
+# this.
+
+on:
+  pull_request:
+    branches: [main, v0.3]
+    types: [labeled]
+
+permissions:
+  contents: read
+
+# Two `ready` labellings of one pull request queue one behind the other; any other label's run has a group of its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.label.name == 'ready' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    name: the full matrix on the head (the label ready)
+    if: github.event.label.name == 'ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Re-run the head's newest CI and Platforms runs, which read the label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: >-
+          python3 scripts/ci_ready.py --repository "$REPOSITORY" --pull-request "$NUMBER"
+          --run "ci.yml=shard count" --run "platforms.yml=the run's mode"

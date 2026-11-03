@@ -36,16 +36,24 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 REQUIRED = ("default (Python 3.12)", "default (Python 3.13)", "default (Python 3.14)", "maddening-main",
             "openmaterica-main", "typecheck (pyright, Python 3.12)", "no private name or path")
 DOCS_CHECK, SCAN = "default (Python 3.12)", "no private name or path"
-EVENT_FILTER = "github.event_name != 'schedule'"
+SCHEDULE_FILTER = EVENT_FILTER = "github.event_name != 'schedule'"
 #: The ``if`` of a required job that waits on shard jobs: a red shard must not skip it, since a skipped job passes.
-AFTER_ITS_SHARDS = "${{ !cancelled() && github.event_name != 'schedule' }}"
+AFTER_ITS_SHARDS = f"${{{{ !cancelled() && {EVENT_FILTER} }}}}"
+#: The run's mode, read by the count job from the pull request's labels when the run starts (tests/test_ci_ready_label.py).
+FULL_MODE = "needs.shards.outputs.full == 'true'"
+#: The ``if`` of the shard jobs of the lanes that run in the full matrix alone.
+FULL_LANE_TESTS = f"${{{{ {SCHEDULE_FILTER} && {FULL_MODE} }}}}"
+#: A step that runs after a red one but, in a reduced run, only for the lanes that ran.
+LANE_RAN = "${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}"
+GROUP_LINE = ("  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && "
+              "github.event.pull_request.number || github.run_id }}\n")
 SHARD_CHECK = "scripts/check_shards.py"
 COUNT_JOB, COUNT_SCRIPT = "shards", "scripts/shard_matrix.py"
 SHARD_COUNT = "${{ needs.shards.outputs.count }}"
 SHARD_LIST = "${{ fromJSON(needs.shards.outputs.list) }}"
 #: What the count job outputs in the run the wiring is read for, and what the lanes' check must then be told.
 COUNTED = "6"
-STEP_IFS = (None, "${{ !cancelled() }}")
+STEP_IFS = (None, "${{ !cancelled() }}", LANE_RAN)
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 SECRET = "the-secret-stands-in"
 #: What a run's expressions are, for a pull request into v0.3 and for a push to it.
@@ -57,6 +65,9 @@ PULL_REQUEST = {"github.event_name": "pull_request", "github.head_ref": "a-branc
 PUSH = {**PULL_REQUEST, "github.event_name": "push", "github.head_ref": "", "github.base_ref": "",
         "github.ref_name": "v0.3", "github.event.before": "BEFORE", "github.sha": "AFTER",
         "github.event.pull_request.base.sha": "", "github.event.pull_request.head.sha": ""}
+#: A manual run on a pull request's branch: no pull request in its payload, its ref the branch.
+MANUAL = {**PUSH, "github.event_name": "workflow_dispatch", "github.ref_name": "a-branch", "github.event.before": "",
+          "github.sha": "TIP"}
 STUB = """#!/bin/sh
 { printf '%s' "${0##*/}"; for argument in "$@"; do printf '\\t%s' "$argument"; done
   printf '\\tkey=%s\\n' "${CONFIDENTIAL_SCAN_KEY-}"; } >> "$STUB_LOG"
@@ -192,8 +203,9 @@ def count_job_problems(name: str, workflow: dict[str, object], scratch: Path) ->
     found = []
     if job.get("if") not in (None, EVENT_FILTER):
         found.append(f"{name!r}: the {COUNT_JOB} job runs only if {job.get('if')!r}")
-    if set((job.get("outputs") or {})) != {"count", "list"}:
-        found.append(f"{name!r}: the {COUNT_JOB} job outputs {sorted(job.get('outputs') or {})}, not count and list")
+    if set((job.get("outputs") or {})) != {"count", "list", "full"}:
+        found.append(f"{name!r}: the {COUNT_JOB} job outputs {sorted(job.get('outputs') or {})}, not count, list and "
+                     f"full (the run's mode)")
     problems, step = one_step(f"{name}: the {COUNT_JOB} job", job, COUNT_SCRIPT)
     found += problems
     if step is not None:
@@ -219,7 +231,7 @@ def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object
         if needed_id == COUNT_JOB:
             continue
         shard_job = (workflow.get("jobs") or {}).get(needed_id) or {}
-        if shard_job.get("if") not in (None, EVENT_FILTER):
+        if shard_job.get("if") not in (None, SCHEDULE_FILTER, FULL_LANE_TESTS):
             found.append(f"{name!r}: the shard job {needed_id} runs only if {shard_job.get('if')!r}")
         if not isinstance(shard_job.get("timeout-minutes"), int):
             found.append(f"{name!r}: the shard job {needed_id} has no timeout-minutes; a hung shard holds the lane for "
@@ -280,7 +292,7 @@ def expression(text: str, context: dict[str, str]) -> str:
     def value(match: re.Match[str]) -> str:
         code = []
         for token in TOKEN.findall(match.group(1)):
-            code.append({"&&": " and ", "||": " or "}.get(token) or (
+            code.append({"&&": " and ", "||": " or ", "!": " not "}.get(token) or (
                 repr(context.get(token, "")) if re.fullmatch(r"[A-Za-z_][\w.]*", token) else token))
         result = eval("".join(code), {"__builtins__": {}}, {})  # noqa: S307 - a workflow file's own expression
         return str(result).lower() if isinstance(result, bool) else str(result)
@@ -349,9 +361,13 @@ def scan_problems(job: dict[str, object], scratch: Path) -> list[str]:
     found += step_problems(where, step) + exit_problems(where, step, PULL_REQUEST, scratch)
     if (step.get("env") or {}).get("CONFIDENTIAL_SCAN_KEY") != "${{ secrets.CONFIDENTIAL_SCAN_KEY }}":
         found.append(f"{where}: its environment does not set CONFIDENTIAL_SCAN_KEY from the secret")
+    # A manual run scans what a pull request of its head into v0.3 does (every commit v0.3 does not hold) and the
+    # branch's name, so its later green can never stand for a weaker scan of the same head.
     expected = {"pull request": (PULL_REQUEST, {("--messages", "BASE..HEAD"), ("--diffs", "BASE..HEAD"),
                                                 ("--ref-name", "a-branch")}),
-                "push": (PUSH, {("--messages", "BEFORE..AFTER"), ("--diffs", "BEFORE..AFTER")})}
+                "push": (PUSH, {("--messages", "BEFORE..AFTER"), ("--diffs", "BEFORE..AFTER")}),
+                "manual run": (MANUAL, {("--messages", "HEAD"), ("--diffs", "HEAD"), ("--public", "origin/v0.3"),
+                                        ("--ref-name", "a-branch")})}
     for event, (context, wanted) in expected.items():
         _, calls = run_step(step, context, 0, scratch / event.replace(" ", "-"))
         scans = [(arguments, key) for command, arguments, key in calls
@@ -362,8 +378,7 @@ def scan_problems(job: dict[str, object], scratch: Path) -> list[str]:
         arguments, key = scans[0]
         given = pairs(arguments)
         found += [f"{where}: on a {event}, does not pass {option} {value}" for option, value in sorted(wanted - given)]
-        found += [f"{where}: on a {event} into v0.3, passes {option} {value}"
-                  for option, value in sorted(given - wanted)]
+        found += [f"{where}: on a {event}, passes {option} {value}" for option, value in sorted(given - wanted)]
         if key != SECRET:
             found.append(f"{where}: on a {event}, the scan runs without the key's secret")
     return found
@@ -381,18 +396,18 @@ def test_a_copy_of_the_workflows_passes_too(tmp_path):
 
 DOCS_STEP = f"{DOCS_CHECK}: the step 'Docs check'"
 SCAN_STEP = f"{SCAN}: the step \"No private name or path in the tracked files, the commits or the branch's name\""
-SCAN_LINE = '            ${public:+--public "$public"} ${HEAD_REF:+--ref-name "$HEAD_REF"}\n'
-LANE_MATRIX = ('python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n      - uses: astral-sh')
-SHARD_LINE = ('        if: ${{ !cancelled() }}\n        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n')
+SCAN_LINE = '            ${public:+--public "$public"} ${name:+--ref-name "$name"}\n'
+LANE_MATRIX = 'python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n      # Python 3.12'
+SHARD_LINE = ('        if: ' + LANE_RAN + '\n        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n')
 
 #: Each plant: the text replaced in ci.yml, its replacement, and the problem it must raise.
 PLANTS = {
     "the-docs-check-step-if-false": (
-        "        if: ${{ !cancelled() }}\n        run: |\n          status=0\n",
+        f"        if: {LANE_RAN}\n        run: |\n          status=0\n",
         "        if: false\n        run: |\n          status=0\n",
         f"{DOCS_STEP}: runs only if False; it runs on every lane's run, or under !cancelled()"),
     "the-confidential-job-if-false": (
-        "    name: no private name or path\n    if: github.event_name != 'schedule'\n",
+        f"    name: no private name or path\n    if: {EVENT_FILTER}\n",
         "    name: no private name or path\n    if: false\n",
         "'no private name or path': runs only if False, and a skipped job passes a required check"),
     "messages-dropped": ('--messages "$range" --diffs', "--diffs",
@@ -421,9 +436,20 @@ PLANTS = {
         "ci.yml: the job default's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
         "specification and the anomaly registry cite"),
     "the-docs-step-continues-on-error": (
-        "        if: ${{ !cancelled() }}\n        run: |\n          status=0\n",
-        "        if: ${{ !cancelled() }}\n        continue-on-error: true\n        run: |\n          status=0\n",
+        f"        if: {LANE_RAN}\n        run: |\n          status=0\n",
+        f"        if: {LANE_RAN}\n        continue-on-error: true\n        run: |\n          status=0\n",
         f"{DOCS_STEP}: continue-on-error hides its failure from the job"),
+    "a-manual-run-scans-the-tree-alone": (
+        '            *) range="HEAD"; public="origin/v0.3"; name="$REF_NAME" ;;\n', '            *) range="" ;;\n',
+        f"{SCAN_STEP}: on a manual run, does not pass --messages HEAD"),
+    "a-manual-run-scans-v0.3-s-commits-too": (
+        '            *) range="HEAD"; public="origin/v0.3"; name="$REF_NAME" ;;\n',
+        '            *) range="HEAD"; name="$REF_NAME" ;;\n',
+        f"{SCAN_STEP}: on a manual run, does not pass --public origin/v0.3"),
+    "a-manual-run-without-the-branch-name": (
+        '            *) range="HEAD"; public="origin/v0.3"; name="$REF_NAME" ;;\n',
+        '            *) range="HEAD"; public="origin/v0.3" ;;\n',
+        f"{SCAN_STEP}: on a manual run, does not pass --ref-name a-branch"),
     "set-plus-e-in-the-scan": ("          public=\"\"\n", "          set +e\n          public=\"\"\n",
                                f"{SCAN_STEP}: its script holds an '|| true' or a 'set +e'"),
     "the-scan-job-renamed": ("    name: no private name or path\n", "    name: confidentiality\n",
@@ -432,11 +458,10 @@ PLANTS = {
         LANE_MATRIX, LANE_MATRIX.replace('["3.12", "3.13", "3.14"]', '["3.12", "3.13"]'),
         "'default (Python 3.14)': 0 jobs make this required check; one does"),
     "the-lane-job-skipped-after-a-red-shard": (
-        "    needs: [shards, default-tests]\n    if: ${{ !cancelled() && github.event_name != 'schedule' }}\n",
+        f"    needs: [shards, default-tests]\n    if: {AFTER_ITS_SHARDS}\n",
         "    needs: [shards, default-tests]\n    if: github.event_name != 'schedule'\n",
         "'default (Python 3.12)': runs only if \"github.event_name != 'schedule'\"; it waits on shard jobs, so it must "
-        "run after a red one too (${{ !cancelled() && github.event_name != 'schedule' }}), since a skipped job passes a "
-        "required check"),
+        f"run after a red one too ({AFTER_ITS_SHARDS}), since a skipped job passes a required check"),
     "the-shard-check-swallowed": (
         SHARD_LINE, SHARD_LINE.replace("/*/\n", "/*/ || true\n"),
         "default (Python 3.12): the step 'Every shard passed, and together they ran the lane': exits 0 when its "
@@ -448,9 +473,9 @@ PLANTS = {
         "list"),
     "a-lane-told-another-count-than-the-shards-ran": (
         'check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n      - name: Test durations\n'
-        '        if: ${{ !cancelled() }}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
+        f'        if: {LANE_RAN}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
         'check_shards.py --shards 4 --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n      - name: Test durations\n'
-        '        if: ${{ !cancelled() }}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
+        f'        if: {LANE_RAN}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
         "openmaterica-main: the step 'Every shard passed, and together they ran the lane': checks ['4'] shards; its "
         "shard jobs run 6"),
     "a-shard-job-not-waiting-on-the-count": (
@@ -470,9 +495,9 @@ PLANTS = {
     "the-shard-check-removed": (
         "      - name: Every shard passed, and together they ran the lane\n"
         "        run: python3 scripts/check_shards.py --shards \"${{ needs.shards.outputs.count }}\" --max-skipped 0 \"$RUNNER_TEMP\"/shards/*/\n"
-        "      - name: Test durations\n        if: ${{ !cancelled() }}\n        env:\n"
+        "      - name: Test durations\n        if: " + LANE_RAN + "\n        env:\n"
         "          TITLE: \"Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards\"\n",
-        "      - name: Test durations\n        if: ${{ !cancelled() }}\n        env:\n"
+        "      - name: Test durations\n        if: " + LANE_RAN + "\n        env:\n"
         "          TITLE: \"Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards\"\n",
         "maddening-main: 0 steps run scripts/check_shards.py; one does"),
     "a-skip-ceiling-above-the-suites-none": (
@@ -497,11 +522,11 @@ PLANTS = {
         "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n", "  cancel-in-progress: false\n",
         "ci.yml: pull request 30, run 1 does not cancel its group's older runs"),
     "one-group-for-every-run": (
-        "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}\n",
+        GROUP_LINE,
         "  group: ${{ github.workflow }}\n",
         "ci.yml: two pull requests share a group, so one cancels the other's run"),
     "pushes-to-a-branch-in-one-group": (
-        "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}\n",
+        GROUP_LINE,
         "  group: ${{ github.workflow }}-${{ github.ref }}\n",
         "ci.yml: a push, manual or scheduled run shares a group with another run, which could cancel it"),
     "no-pull-request-into-v0.3": (

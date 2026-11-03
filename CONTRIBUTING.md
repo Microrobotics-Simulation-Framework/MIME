@@ -103,6 +103,37 @@ plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default`
 behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
 count starts that count's caches cold.
 
+## CI: the `ready` label
+
+A run of the whole matrix is 53 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
+and an agent pushes two to four times a round. So `ci.yml` has two modes. The **full** matrix runs on a push to a branch
+(v0.3's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**. A pull
+request without it runs a **reduced** set of 17 jobs: `typecheck`, `no private name or path`, the docs check, and the
+`default` lane on Python 3.12 with all its shards.
+
+A required check never passes by being skipped. In a reduced run the required jobs it does not run for (`default (Python
+3.13)`, `default (Python 3.14)`, `maddening-main`, `openmaterica-main`) still run, and fail in their first step with "the
+full matrix has not run on this head: add the `ready` label". So a pull request is mergeable only on a full run of its
+head: add `ready` when the head is final, and merge when every required check is green on that run. Pushing while the
+label is on starts a full run of the new head.
+
+A run reads the mode when it starts, from the pull request's labels as they are then (the `shards` job's mode step),
+not from the event that started it. Neither `ci.yml` nor `platforms.yml` listens to `labeled`, so no label starts a run
+of theirs. Adding `ready` starts `ready.yml`, whose one job re-runs the head's newest run of each (`scripts/ci_ready.py`):
+a reduced run in flight is cancelled first, a run that has not read its mode yet is left to read it, and a full run in
+flight or a full run that passed is left alone. The re-run is the pull request's own run, on the same commit and in the
+same check suite, so branch protection counts its newest attempt; a newer push still cancels it. Re-running a run by
+hand (Re-run all jobs) reads the label too, which is the way for a pull request from a fork, whose token cannot re-run
+anything; Re-run failed jobs keeps the first attempt's mode, since the job that read it passed.
+
+Why not a run per label, or a manual run: a workflow listening to `labeled` starts a run for every label, its jobs all
+skipped for any label but `ready`, and that run, the newest of `ci.yml` on the head, left the pull request blocked with
+every required check green (pull request #128 has the runs). And GitHub evaluates for a pull request only the checks of
+runs started by `push`, `pull_request` and a few other events, not by a manual run (`workflow_dispatch`). Any other
+label (`stress` among them) starts only `ready.yml`'s skipped job, in a group of its own, under no required name, and the
+stress workflow's run. `platforms.yml` (not a required check) runs its mode job alone until `ready`.
+`tests/test_ci_ready_label.py` reads the three workflows for all of this, and `tests/test_ci_ready.py` the script.
+
 ## CI: re-running one shard
 
 A failed shard job can be re-run alone (Actions, the run, Re-run failed jobs, or `gh run rerun --failed`), on a named

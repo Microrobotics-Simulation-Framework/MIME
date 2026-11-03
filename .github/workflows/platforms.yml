@@ -12,6 +12,8 @@ name: Platforms
 on:
   pull_request:
     branches: [v0.3]
+    # No `labeled`: a label starts no run here (ready.yml re-runs this one for `ready`, as it does ci.yml's).
+    types: [opened, synchronize, reopened]
   push:
     branches: [v0.3]
   workflow_dispatch:
@@ -34,8 +36,41 @@ defaults:
     shell: bash
 
 jobs:
+  # Like CI's full matrix (ci.yml), the smoke jobs run on a push, a manual run and a pull request that carries the label
+  # `ready`, read when the run starts (so a re-run reads it too); a pull request without the label runs this job alone.
+  # Its last step runs only in the full matrix, so the run's jobs say which mode it took (scripts/ci_ready.py).
+  mode:
+    name: the run's mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      full: ${{ steps.mode.outputs.full }}
+    steps:
+      - name: The run's mode, from the pull request's labels as they are now
+        id: mode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PULL_REQUEST: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
+        run: |
+          full=true
+          if [ "$EVENT" = pull_request ]; then
+            full=$(gh api "$PULL_REQUEST" --jq 'any(.labels[].name; ascii_downcase == "ready")')
+          fi
+          case "$full" in
+            true|false) echo "full=$full" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::the pull request's labels could not be read ($full)"; exit 1 ;;
+          esac
+      - name: The full matrix runs
+        if: steps.mode.outputs.full == 'true'
+        run: echo "the full matrix runs on this head"
+
   smoke:
     name: smoke (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: mode
+    if: needs.mode.outputs.full == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:

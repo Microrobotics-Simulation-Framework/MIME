@@ -425,6 +425,8 @@ def test_the_weights_read_a_reports_node_ids_as_pytest_writes_them():
 # A re-run of one shard job (scripts/latest_attempt.py): the run then holds that shard's report twice, one per attempt.
 
 LANE = "durations-default-python-3.12"
+#: The step runs after a red shard, and in a reduced run only for the lane that ran (tests/test_ci_ready_label.py).
+LANE_RAN = "${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -513,7 +515,7 @@ def _workflow_problems(workflow: dict) -> list[str]:
             found.append(f"{lane}: the newest attempt is not kept between the download and the check")
     default_steps = _steps(jobs["default"])
     if not any("scripts/check_shard_jobs.py" in str(step.get("run", "")) and "filter=latest" in str(step.get("env", {}))
-               and "pipefail" in str(step.get("run", "")) and step.get("if") == "${{ !cancelled() }}"
+               and "pipefail" in str(step.get("run", "")) and step.get("if") in ("${{ !cancelled() }}", LANE_RAN)
                for step in default_steps):
         found.append("default: no step fails the lane when a shard job's latest attempt did not pass")
     if (jobs["default"].get("permissions") or {}).get("actions") != "read":

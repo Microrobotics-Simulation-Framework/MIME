@@ -11,10 +11,11 @@
 | `stress_select.py`, `stress_summary.py` | the stress workflow's two halves (`.github/workflows/stress.yml`, [`CONTRIBUTING.md`](../CONTRIBUTING.md#ci-stress-runs)): what to run, from the pull request's changed tests and a `stress:` line of its description (`runs=`, `python=`, `seed=`, `only`), and the caches to restore; then per test, how many runs passed, with the failures' seeds and Hypothesis blobs. They exit non-zero on a request they refuse and on a failed run; unlike the rows above, they run only when a pull request carries the label `stress` |
 | `zenodo_sandbox_lane.py` | `mime push`'s drafts against the Zenodo sandbox, **run by hand, never by CI** (CI never holds an upload token): each folder pushed, read back and pushed again (nothing sent again), the same against the offline fake, and the two compared answer by answer; drafts kept for a person to look at unless `--discard`; with `--publish` (the sandbox only) each draft published, pulled by its number and verified, and the toy's next version published, saying whether a file linked into it is stored once; a log of the answers' shapes, searched for the token before it is written. `--dry-run` replaces the sandbox by a fake of its own name, address and records (see [`mime.push`](../src/mime/push/README.md#testing-it)) |
 
-One script is read by the platforms workflow, not the lanes:
+Two scripts are read by the platforms workflow and the ready workflow, not the lanes:
 
 | Script | What it does |
 |---|---|
+| `ci_ready.py` | the ready workflow's one step (`.github/workflows/ready.yml`, [`CONTRIBUTING.md`](../CONTRIBUTING.md#ci-the-ready-label)): when a pull request gets the label `ready`, re-runs the head's newest CI and Platforms runs, which read the label as they start and so take the full matrix; a reduced run in flight is cancelled first, a run that has not read its mode yet or is full already is left alone. Exits 1 when a request fails (a pull request from a fork, whose token cannot re-run) |
 | `platforms_smoke.py` | runs the test files `tests/platforms.txt` names (one `path  # reason` a line) with pytest, with any further arguments passed on; the platforms workflow's macOS and Windows smoke jobs call it, so the selection has one home that `tests/test_platforms_selection.py` checks |
 
 Six scripts are a maintainer's tools, run by hand and never by CI:
