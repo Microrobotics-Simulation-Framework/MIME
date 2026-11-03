@@ -350,13 +350,17 @@ CHRISTOFFEL = {name: christoffel_terms(tree) for name, tree in TREES.items()}
 VELOCITY_PRODUCTS = {name: velocity_products(tree) for name, tree in TREES.items()}
 
 
+def velocity_scale(mass: np.ndarray, qd: np.ndarray) -> float:
+    """The size the velocity terms have before they cancel: the mass matrix's largest entry times the largest speed
+    squared. The terms cancel, to zero on a straight planar arm, however fast it turns, so the result is no scale."""
+    return largest(mass) * largest(qd) ** 2
+
+
 def velocity_misfit(name: str, recursion: Any, q: np.ndarray, qd: np.ndarray) -> float:
-    """Relative to the inputs' scale, the mass matrix's largest entry times the largest speed squared: the terms
-    cancel, to zero on a straight planar arm with only its last joint turning, so the result is no scale. At rest
-    both sides are exactly zero."""
+    """Relative to the inputs' scale, ``velocity_scale``. At rest both sides are exactly zero."""
     changing, gradient = (np.asarray(x) for x in CHRISTOFFEL[name](jnp.asarray(q), jnp.asarray(qd)))
     difference = largest(np.asarray(recursion(jnp.asarray(q), jnp.asarray(qd))) - (changing - gradient))
-    scale = largest(MASS[name](jnp.asarray(q))) * largest(qd) ** 2
+    scale = velocity_scale(np.asarray(MASS[name](jnp.asarray(q))), qd)
     return difference / scale if scale > 0 else difference
 
 
@@ -391,14 +395,16 @@ CONSISTENCY = {name: consistency(tree) for name, tree in TREES.items()}
 
 
 def consistency_misfits(name: str, run: Any, state: tuple[np.ndarray, np.ndarray, np.ndarray]) -> tuple[float, float]:
-    """How far inverse dynamics is from ``M qdd + h``, relative to the larger of its two parts, and how far forward
-    dynamics is from ``qdd``, relative to the accelerations' scale times the mass matrix's condition number, the
-    rounding a solve with it amplifies."""
+    """How far inverse dynamics is from ``M qdd + h``, relative to the largest of its two parts and ``velocity_scale``
+    (the velocity terms cancel inside ``h``, so a straight planar arm turning at 6 and 3 rad/s leaves 0.34 N m of
+    terms bounded by 241 N m, and the recursion's rounding of those was 67 roundings of what remained), and how far
+    forward dynamics is from ``qdd``, relative to the accelerations' scale times the mass matrix's condition number,
+    the rounding a solve with it amplifies."""
     q, qd, qdd = state
     tau, split, recovered = (np.asarray(x) for x in run(*(jnp.asarray(x) for x in (q, qd, qdd, GRAVITY))))
     mass = np.asarray(MASS[name](jnp.asarray(q)))
     bias = tau - mass @ qdd
-    torques = max(largest(mass @ qdd), largest(bias))
+    torques = max(largest(mass @ qdd), largest(bias), velocity_scale(mass, qd))
     accelerations = max(largest(qdd), largest(np.linalg.solve(mass, bias)))
     return largest(tau - split) / torques, largest(recovered - qdd) / (accelerations * float(np.linalg.cond(mass)))
 
@@ -409,6 +415,21 @@ def consistency_misfits(name: str, run: Any, state: tuple[np.ndarray, np.ndarray
 def test_inverse_dynamics_is_m_qdd_plus_h_and_forward_dynamics_inverts_it(name, data):
     split, inverted = consistency_misfits(name, CONSISTENCY[name],
                                           data.draw(cases.states(TREES[name], SPEED[name], ACCELERATION[name])))
+    assert split <= ROUNDINGS * EPS and inverted <= ROUNDINGS * EPS
+
+
+#: The two draws CI failed on (maddening-main, shard 9, one run and its re-run): the planar arm straight (q2 = q3 = 0)
+#: and turning, where the velocity terms cancel in ``h`` to the gravity moment alone. Judged on the torque that
+#: remained they missed by 67.1 and 68.1 roundings; the numbers are the same on every machine and Python measured.
+STRAIGHT_PLANAR_DRAWS = (
+    (np.array([2.09765625, 0.0, 0.0]), np.array([0.0, 6.0, 3.0]), np.array([0.0, 0.0, 1.0])),
+    (np.array([-1.0, 0.0, 0.0]), np.array([-4.0, -3.0, -2.0]), np.array([0.0, 0.0, 1.0])),
+)
+
+
+@pytest.mark.parametrize("state", STRAIGHT_PLANAR_DRAWS, ids=("first", "second"))
+def test_a_straight_planar_arm_turning_fast_is_judged_on_the_velocity_terms_that_cancelled(state):
+    split, inverted = consistency_misfits("planar", CONSISTENCY["planar"], state)
     assert split <= ROUNDINGS * EPS and inverted <= ROUNDINGS * EPS
 
 
