@@ -57,7 +57,7 @@ def test_the_lock_labels_each_value_and_pins_the_geometry_and_the_drive(tmp_path
     (lambda text: text.replace("    fills: tube.lumen", "    fills: tube.lumen\n    commands: {}"),
      "load.document-thing"),
     (lambda text: text.replace("name: tube\n", "name: tubing\n"), "load.unknown-entry"),
-])
+], ids=["a-declared-value-in-another-unit", "commands-on-a-medium", "an-entry-no-package-registers"])
 def test_a_load_refuses_an_edited_document_naming_what_to_do(tmp_path, edit, code):
     text = edit(dump_document(script_a().document()))
     assert parse_yaml(text) is not None

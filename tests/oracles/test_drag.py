@@ -42,6 +42,7 @@ from mime import asset as scene_asset
 from mime.build import BuildRefused
 from mime.core import register_shape
 from mime.data import Asset, AssetError, asset
+from mime.docs import claim
 from mime.dynamics import RigidInertial
 from mime.gradients import GradientStatus
 from mime.interactions import Drag, Lubrication
@@ -54,6 +55,7 @@ from mime.units import Length, Quantity, dimensionless, kg, kg_m2, m, m_per_s, m
 from mime.vocabulary import Interface, TargetKind, define, register_namespace
 
 REFERENCES = Path(__file__).parent / "references"
+ANOMALIES = Path(__file__).parents[2] / "docs" / "validation" / "known_anomalies.yaml"
 DT, MU, NU, LENGTH, RADIUS, TUBE, EPSILON = 5e-4, 1e-3, 2.33, 7.47e-3, 1.56e-3, 3.175e-3, 1.5e-4
 SHA = asset("dejongh_mlp_v2").sha256
 Z, X = (0.0, 0.0, 1.0), (1.0, 0.0, 0.0)
@@ -127,6 +129,10 @@ def test_the_surrogate_against_the_mrs_values_it_was_checked_against():
         errors[round(float(fraction), 2)] = abs(mlp - mrs) / abs(mrs)
     print(f"\nrelative swim-speed error against the MRS: {errors}")
     assert errors[0.3] < 0.05
+    # The largest over the five offsets to 0.32 R is a claim of the anomaly record, held there once and read here.
+    stated = claim("MIME-ANO-114.max_error", ANOMALIES)
+    assert stated.n == 5 and max(errors[o] for o in (0.2, 0.25, 0.28, 0.3, 0.32)) == pytest.approx(stated.value,
+                                                                                                    abs=1e-3)
     assert errors == pytest.approx({0.2: 0.0260, 0.25: 0.1620, 0.28: 0.1016, 0.3: 0.0028, 0.32: 0.0826, 0.35: 0.8346},
                                    abs=1e-3)
 

@@ -1,0 +1,31 @@
+# The 0.2 line's public names as the tag pre-0.3 holds them, with the module of each: written by
+# scripts/names_0_2.py, frozen. The migration table names each of them once (mime.docs._migration).
+CSFFlowNode  mime.nodes.environment.csf_flow
+CoilArrayFieldNode  mime.nodes.actuation.coil_array_field
+ConstantInputNode  mime.nodes.actuation.constant_input
+ContactFrictionNode  mime.nodes.environment.stokeslet.contact_friction_node
+DefectCorrectionFluidNode  mime.nodes.environment.defect_correction.fluid_node
+ExternalMagneticFieldNode  mime.nodes.actuation.external_magnetic_field
+FVMFluidNode  mime.nodes.environment.fvm.fluid_node
+FieldSuperpositionNode  mime.nodes.actuation.field_superposition
+FlexibleBodyNode  mime.nodes.robot.flexible_body
+GNNFluxCorrectedFVMNode  mime.nodes.environment.fvm.gnn
+GravityEffect  mime.effects.mechanical
+GravityNode  mime.nodes.environment.gravity_node
+HydrodynamicModel  mime.effects.hydrodynamic
+IBLBMFluidNode  mime.nodes.environment.lbm.fluid_node
+LBMFarFieldNode  mime.nodes.environment.lbm.far_field_node
+LubricationCorrectionNode  mime.nodes.environment.stokeslet.lubrication_node
+MLPResistanceNode  mime.nodes.environment.stokeslet.mlp_resistance_node
+MagneticModel  mime.effects.magnetic
+MagneticResponseNode  mime.nodes.robot.magnetic_response
+MotorNode  mime.nodes.actuation.motor
+PermanentMagnetNode  mime.nodes.actuation.permanent_magnet
+PermanentMagnetResponseNode  mime.nodes.robot.permanent_magnet_response
+PhaseTrackingNode  mime.nodes.robot.phase_tracking
+RigidBodyNode  mime.nodes.robot.rigid_body
+RobotArmEffect  mime.effects.mechanical
+RobotArmNode  mime.nodes.actuation.robot_arm
+StokesletFluidNode  mime.nodes.environment.stokeslet.fluid_node
+SuperparamagneticResponseNode  mime.nodes.robot.superparamagnetic_response
+SurfaceContactNode  mime.nodes.robot.surface_contact

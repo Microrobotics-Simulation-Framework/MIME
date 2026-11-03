@@ -149,11 +149,24 @@ def terminal(columns: int = 100, rows: int = 30) -> Iterator[Terminal]:
         held.close()
 
 
+def untranslated(fd: int) -> None:
+    """The terminal ``fd`` with its output processing off (``OPOST``), so that what a program writes reaches the far end
+    as written. On, a line end becomes a carriage return and a line feed, and macOS's terminal, where its output queue
+    fills between the two (2048 bytes into one write), writes the carriage return twice."""
+    attributes = termios.tcgetattr(fd)
+    attributes[1] &= ~termios.OPOST
+    termios.tcsetattr(fd, termios.TCSANOW, attributes)
+
+
 def run_on_terminal(argv: Sequence[str], *, env: Mapping[str, str], cwd: Path, columns: int = 100,
-                    timeout: float = 120.0) -> tuple[str, int]:
-    """``argv`` run with a terminal for its standard input, output and error: everything it wrote, and its exit code."""
+                    timeout: float = 120.0, translated: bool = True) -> tuple[str, int]:
+    """``argv`` run with a terminal for its standard input, output and error: everything it wrote, and its exit code.
+    Without ``translated``, the terminal's output processing is off and the transcript is the bytes the program wrote
+    (:func:`untranslated`): what a test comparing them with a pipe's byte for byte reads."""
     master, slave = pty.openpty()
     _size(master, columns, 30)
+    if not translated:
+        untranslated(slave)
     child = subprocess.Popen(list(argv), stdin=slave, stdout=slave, stderr=slave, env=dict(env), cwd=cwd,
                              close_fds=True)
     os.close(slave)

@@ -35,6 +35,8 @@ PAGE_DIRECTORIES = ("entries", "nodes", "families", "mechanisms", "assets")
 #: The hand-written files directly under ``docs/`` that are pages too: the concepts note, the note on reading a
 #: run's results, and the note on reading an error.
 TOP_LEVEL_SOURCES = NOTE_PATHS
+#: The hand-written specifications and references, each printed in its page.
+REFERENCE_SOURCES = ("specification/saved_form.md", "reference/mime_usd.md")
 #: The products a release is named after, each with the distribution whose versions are its releases.
 PRODUCTS = {"MIME": "mime", "MADDENING": "maddening", "OpenMaterica": "openmaterica", "Python": "python",
             "usd-core": "usd-core"}
@@ -110,11 +112,11 @@ _WORD_CUES = (
 def scoped_files(root: Path) -> list[Path]:
     """The files the rule reads under the checkout ``root``: every package README (``src/**/README*.md``) and every
     hand-written page source (``docs/<entries, nodes, families, mechanisms or assets>/**/*.md``), as paths relative to
-    ``root``, and the concepts note."""
+    ``root``, the notes, and the specifications and references."""
     found = set((root / "src").rglob("README*.md"))
     for directory in PAGE_DIRECTORIES:
         found |= set((root / "docs" / directory).rglob("*.md"))
-    found |= {root / "docs" / name for name in TOP_LEVEL_SOURCES}
+    found |= {root / "docs" / name for name in (*TOP_LEVEL_SOURCES, *REFERENCE_SOURCES)}
     return sorted(path.relative_to(root) for path in found if path.is_file())
 
 
@@ -501,7 +503,7 @@ def number_report(root: Path, base: str | None = None,
 
 
 __all__ = ["ALLOWLIST", "IDENTIFIERS", "IDIOMS", "INSTALLED", "PAGE_DIRECTORIES", "PRODUCTS", "README_START",
-           "START_REASON", "TOKEN_GRAMMAR", "TOP_LEVEL_SOURCES", "UNIT_LETTERS", "UNIT_NAMES", "UNIT_SYMBOLS",
+           "REFERENCE_SOURCES", "START_REASON", "TOKEN_GRAMMAR", "TOP_LEVEL_SOURCES", "UNIT_LETTERS", "UNIT_NAMES", "UNIT_SYMBOLS",
            "NumberReport", "NumeralWarning", "Occurrence", "Reading", "base_start_list", "fence_problems", "idiom_pattern",
            "is_readme", "key_of", "list_places", "number_item_form", "number_report", "number_tokens", "occurrences",
            "prose_lines", "read_idioms", "read_number_lists", "reading_of", "releases", "rendered_occurrences",

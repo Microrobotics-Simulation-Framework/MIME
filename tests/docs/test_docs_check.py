@@ -49,7 +49,7 @@ from mime.testing.toys._nodes import ToySpringNode
 
 
 def test_mime_docs_check_passes_on_the_checkout():
-    done = docs_check(hash_seeds=True)
+    done = docs_check(hash_seeds=True, evidence=True)
     print(f"\n{done.stdout}")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "every check passed" in done.stdout
@@ -71,7 +71,13 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"citations: \d+ in \d+ pages and sources, \d+ checked against \d+ bibliography entries, 0 not found",
               r"none declared in MIME's pages: \d+ fields, \d+ of the list's \d+ lines at the start reason; ",
               r"pages built in fresh processes under 8 hash seeds: byte-equal",
-              r"scripts/check_anomalies\.py: OK",
+              r"evidence: the test suite collected once, every marker kept: \d+ tests in [\d.]+ s",
+              r"docs/specification/saved_form\.md: \d+ normative statements, \d+ covered by a test CI runs, citing \d+ "
+              r"tests \(default lane .*\); 0 citing only tests CI does not run; ",
+              r"mime: reference: \d+ names documented; \d+ constants read from a stage by ",
+              r"migration table: \d+ rows, \d+ removed, each name on the list frozen from pre-0\.3",
+              r"scripts/check_anomalies\.py: OK: anomaly registry at .* is valid: \d+ anomalies; \d+ evidence ids "
+              r"collected \(default lane ",
               r"mime docs check: passed in [\d.]+ s"]
     assert [stage for stage in stages if not re.search(f"^{stage}", done.stdout, re.MULTILINE)] == []
 

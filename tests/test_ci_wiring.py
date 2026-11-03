@@ -10,6 +10,8 @@
 - a pull request's newer push cancels its older run, and nothing else is ever cancelled by a newer run (the workflow's
   ``concurrency``), read by evaluating its two expressions for each event;
 - the default lane runs ``mime docs check --base origin/v0.3`` with its exit status intact;
+- no step of any workflow runs ``mime docs check`` with ``--skip-evidence`` (``ci.yml``'s default lane and
+  ``platforms.yml``'s smoke jobs both run it, and one check reads every workflow file);
 - the ``confidential`` job runs ``scripts/check_confidential.py`` with the key's secret in its environment, and
   ``--messages``, ``--diffs`` and ``--ref-name``, with its exit status intact.
 
@@ -175,6 +177,7 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
               for problem in concurrency_problems(workflow)]
     if len(made.get(DOCS_CHECK, [])) == 1:
         found += docs_check_problems(made[DOCS_CHECK][0][1], scratch / "docs")
+    found += skip_evidence_problems(directory, scratch / "skip-evidence")
     if len(made.get(SCAN, [])) == 1:
         found += scan_problems(made[SCAN][0][1], scratch / "scan")
     return found
@@ -320,6 +323,24 @@ def docs_check_problems(job: dict[str, object], scratch: Path) -> list[str]:
     return found
 
 
+def skip_evidence_problems(directory: Path, scratch: Path) -> list[str]:
+    """Every step of every workflow in ``directory`` that runs ``mime docs check`` with ``--skip-evidence``, read from
+    its text and from its commands' arguments when it is run with them stubbed: CI resolves the evidence the
+    specification and the anomaly registry cite, wherever it runs the check."""
+    found: list[str] = []
+    for name, workflow in workflows(directory):
+        for job_id, job in (workflow.get("jobs") or {}).items():
+            for index, step in enumerate(job.get("steps") or []):
+                run = str(step.get("run", ""))
+                if "mime docs check" not in run:
+                    continue
+                _, calls = run_step(step, PULL_REQUEST, 0, scratch / f"{name}-{job_id}-{index}")
+                if "--skip-evidence" in run or any("--skip-evidence" in arguments for _, arguments, _ in calls):
+                    found.append(f"{name}: the job {job_id}'s step {step.get('name')!r}: passes --skip-evidence; CI "
+                                 f"resolves the evidence the specification and the anomaly registry cite")
+    return found
+
+
 def scan_problems(job: dict[str, object], scratch: Path) -> list[str]:
     found, step = one_step(SCAN, job, "scripts/check_confidential.py")
     if step is None:
@@ -395,6 +416,10 @@ PLANTS = {
     "the-docs-step-skips-the-hash-seed-builds-before-the-base": (
         "mime docs check --base origin/v0.3", "mime docs check --skip-hash-seed-builds --base origin/v0.3",
         f"{DOCS_STEP}: passes --skip-hash-seed-builds; CI runs the second build under another hash seed"),
+    "the-docs-step-skips-the-evidence": (
+        "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-evidence",
+        "ci.yml: the job default's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
+        "specification and the anomaly registry cite"),
     "the-docs-step-continues-on-error": (
         "        if: ${{ !cancelled() }}\n        run: |\n          status=0\n",
         "        if: ${{ !cancelled() }}\n        continue-on-error: true\n        run: |\n          status=0\n",
@@ -495,6 +520,24 @@ def test_a_break_in_the_wiring_fails_naming_it(tmp_path, plant):
     assert text.count(old) == 1, f"the plant's anchor {old!r} is not in ci.yml once"
     (copy / "ci.yml").write_text(text.replace(old, new), encoding="utf-8")
     assert problem in wiring_problems(copy, tmp_path / "scratch")
+
+
+@pytest.mark.parametrize("plant", ["--skip-evidence", "--skip-$PART"])
+def test_control_the_platforms_docs_check_skipping_the_evidence_fails(tmp_path, plant):
+    """The one check reads every workflow: platforms.yml's docs check passing --skip-evidence fails, written out and
+    built from a variable its step sets, which only running the step shows."""
+    copy = tmp_path / "workflows"
+    shutil.copytree(WORKFLOWS, copy)
+    text = (copy / "platforms.yml").read_text(encoding="utf-8")
+    old = "          uv run --no-sync mime docs check --base origin/v0.3\n"
+    assert text.count(old) == 1
+    new = old.replace("\n", f" {plant}\n")
+    if plant == "--skip-$PART":
+        new = "          PART=evidence\n" + new
+    (copy / "platforms.yml").write_text(text.replace(old, new), encoding="utf-8")
+    assert wiring_problems(copy, tmp_path / "scratch") == [
+        "platforms.yml: the job smoke's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
+        "specification and the anomaly registry cite"]
 
 
 def test_a_second_job_making_a_required_check_fails(tmp_path):

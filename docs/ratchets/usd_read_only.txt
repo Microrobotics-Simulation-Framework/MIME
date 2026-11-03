@@ -1,0 +1,2 @@
+# The names of the mime: USD schema that MIME reads from a stage and no fixture's stage authors, one a line with the
+# reason (docs/reference/mime_usd.md; tests/saved/test_usd_reference.py). A name a fixture's stage authors leaves the list.

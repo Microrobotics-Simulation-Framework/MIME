@@ -100,6 +100,9 @@ dev = [
     # libzmq itself, for the test that `mime serve`'s own ZMTP speaks with a real libzmq peer both ways
     # (tests/live/test_libzmq.py). `mime serve` never imports it.
     "pyzmq>=27.1",
+    # The saved form's JSON Schemas are checked against its loader by an independent validator
+    # (tests/saved/test_json_schema.py); the wheel only writes them.
+    "jsonschema>=4.18",
 ]
 
 [tool.hatch.version]

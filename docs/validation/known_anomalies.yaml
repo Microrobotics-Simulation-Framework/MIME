@@ -3,11 +3,14 @@
 # MIME's permanent record of known anomalies: one record across the 0.2 line and 0.3, updated with each release.
 # An entry is never renumbered or deleted; each carries its status for the version named in `mime_version`. Field
 # names are MADDENING's where it has them (resolution_status, affected_components, affected_versions,
-# resolution_version, verification). `planned_resolution` and `affected_verification_ids` are MIME's own.
-# `scripts/check_anomalies.py` validates the file. The file makes no claim of conformance to any standard.
+# resolution_version, verification). `planned_resolution`, `affected_verification_ids` and `claims` are MIME's own.
+# `scripts/check_anomalies.py` validates the file (docs/validation/README.md). The file makes no claim of conformance
+# to any standard.
 #
 # affected_versions is a PEP 440 range: ">=FIRST" for a defect still present, ">=FIRST, <FIX" for one the version in
-# `mime_version` does not carry. `verification` lists pytest node ids of tests in this tree.
+# `mime_version` does not carry. `verification` lists pytest node ids of tests in this tree, each resolved through
+# pytest's collection. affected_components names a registered component as "entry: <kind> <name> [<version>][, rung
+# <rung>][; <note>]" or "node: <class>[; <note>]"; another spelling is allowed only while it names nothing registered.
 
 schema_version: "2.0"
 mime_version: "0.3.0.dev1"
@@ -189,8 +192,8 @@ anomalies:
     affected_components:
       - "MIME-NODE-102"
       - "MIME-NODE-100"
-      - "mime.nodes.actuation.robot_arm"
-      - "mime.nodes.actuation.motor"
+      - "entry: dynamics arm; the 0.2 line's mime.nodes.actuation.robot_arm"
+      - "entry: dynamics motor; the 0.2 line's mime.nodes.actuation.motor"
     affected_verification_ids:
       - "MIME-VER-120"
       - "MIME-VER-121"
@@ -231,7 +234,7 @@ anomalies:
     affected_versions: ">=0.1.0"
     affected_components:
       - "MIME-NODE-100"
-      - "mime.nodes.actuation.motor"
+      - "entry: dynamics motor; the 0.2 line's mime.nodes.actuation.motor"
     affected_verification_ids:
       - "MIME-VER-100"
     workaround: "Bound torque-ripple uncertainty externally per motor specification."
@@ -270,8 +273,8 @@ anomalies:
     affected_components:
       - "MIME-NODE-100"
       - "MIME-NODE-102"
-      - "mime.nodes.actuation.motor"
-      - "mime.nodes.actuation.robot_arm"
+      - "entry: dynamics motor; the 0.2 line's mime.nodes.actuation.motor"
+      - "entry: dynamics arm; the 0.2 line's mime.nodes.actuation.robot_arm"
       - "MIME-NODE-109"
       - "MIME-NODE-110"
       - "MIME-NODE-111"
@@ -341,7 +344,7 @@ anomalies:
     affected_components:
       - "MICROROBOTICA/experiments/_template_helical_drive/control/controller.py"
       - "MICROROBOTICA/experiments/ar4_helical_drive/control/controller.py"
-      - "mime.control.ArmTracking"
+      - "entry: controller arm_tracking"
     workaround: "Replace controller's direct read of body.position with a sensor-node observation once the sensing plan lands."
     planned_resolution: >
       dev1 phase 7: a controller's reads are classed state or observation, and the build report lists
@@ -936,7 +939,7 @@ anomalies:
       - "tests/differential/test_script_a.py::test_script_a_matches_its_reference_with_exactly_the_declared_differences"
     affected_components:
       - "mlp_resistance (MLPResistanceNode)"
-      - "drag 0.1.0 (0.3.0.dev0, rung surrogate)"
+      - "entry: interaction drag 0.1.0, rung surrogate; in 0.3.0.dev0"
     workaround: "On the 0.2 line, read the surrogate's resistance as about the end of the body's axis; shift it by L/2 along the body's axis before using it about the centre"
     planned_resolution: "Done in drag 0.2.0; not fixed on the 0.2 line, which is frozen. Retraining about the centre is MIME-ANO-114's"
 
@@ -988,7 +991,8 @@ anomalies:
       - "tests/differential/test_script_a_float32.py::test_with_the_old_form_planted_the_float32_lag_misses_again"
       - "tests/differential/test_script_a.py::test_in_float64_the_increment_form_moves_a_by_rounding_only"
     affected_components:
-      - "rigid_inertial 0.1.0 (RigidInertialNode)"
+      - "entry: dynamics rigid_inertial 0.1.0"
+      - "node: RigidInertialNode"
     workaround: "None needed from rigid_inertial 0.2.0; with 0.1.0, study a locked body's phase lag in float64"
     planned_resolution: "Done in rigid_inertial 0.2.0: the step solved for the change in velocity"
 
@@ -1132,7 +1136,7 @@ anomalies:
     affected_versions: ">=0.1.0"
     affected_components:
       - "mlp_resistance (MLPResistanceNode)"
-      - "drag (rung surrogate, weights dejongh_mlp_v2)"
+      - "entry: interaction drag, rung surrogate; weights dejongh_mlp_v2"
     verification:
       - "tests/oracles/test_drag.py::test_the_surrogate_against_the_mrs_values_it_was_checked_against"
       - "tests/differential/test_near_wall_check.py::test_the_domains_recorded_edges_for_fl9_are_the_records_at_each_far_gap"
@@ -1140,6 +1144,21 @@ anomalies:
       - "tests/differential/test_near_wall_check.py::test_control_an_excess_planted_above_the_edge_moves_it"
       - "tests/oracles/test_surrogate_generator.py::test_control_the_generator_refuses_by_name_to_produce_data_while_the_edge_is_open"
       - "tests/oracles/test_surrogate_generator.py::test_every_case_lies_inside_the_domain_the_tables_readable_radius_and_its_axial_reach"
+    claims:
+      - id: max_error
+        quantity: "relative swim-speed error of the drag surrogate against the MRS values the 0.2 line checked it against (FL-9 in the 1/4 in tube, at 10 Hz)"
+        value: 0.162
+        unit: "1"
+        basis: computed
+        role: estimate
+        oracle_kind: software oracle
+        evidence:
+          - "tests/oracles/test_drag.py::test_the_surrogate_against_the_mrs_values_it_was_checked_against"
+        conditions:
+          region: "the body's offset from the tube's axis, 0.20 to 0.32 of the tube's radius"
+        domain: "offsets 0.20, 0.25, 0.28, 0.30 and 0.32 of the tube's radius"
+        n: 5
+        says: "the largest error over five offsets, against a float32 MRS whose wall table was not checked: it estimates the surrogate's error there and bounds nothing between or beyond those offsets, nor the error against the flow"
     workaround: "Read the surrogate's swim speed as known to about 16% between 0.2 and 0.32 of the tube's radius, and to its 0.28% only at 0.30; check a result that depends on it against the MRS"
     planned_resolution: "Done in phase 7i-a: the corrected table (MIME-ANO-117), the near-wall check through it and the generator with its held-out protocol (above), which refuses to produce data while the near-wall edge is open. Left, and blocked on the maintainer's decision of the edge: the near-wall check measured again on the screw kind 0.2.0's caps (the record is on 0.1.0's, MIME-ANO-119); a training spacing chosen by MIME-ANO-116's convergence (which a choice of spacing alone does not reach); the data on de Jongh's designs resting in his tubes; retraining under a new asset name, judged per use on the held-out sets, each over the gaps its use resolves. The order agreed (design #208): the near-wall edge is answered by a lubrication hand-over, designed at the FVM design pass (dev2); the surrogate is retrained after it, learning the far field with lubrication added analytically at run time. It is not retrained in dev1, and stays the 0.2 line's weights until then"
 
@@ -1241,7 +1260,8 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "drag (rung mrs, formerly the bem rung), MRSDragNode, on the de Jongh helix"
+      - "entry: interaction drag, rung mrs; formerly the bem rung, on the de Jongh helix"
+      - "node: MRSDragNode"
     verification:
       - "tests/differential/test_mrs_convergence.py::test_the_recorded_convergence_brackets_the_diagonal_and_the_kind_is_the_nearer_in_translation"
       - "tests/differential/test_mrs_convergence.py::test_the_kinds_path_through_the_node_is_bounded_by_the_02_rules_convergence"
@@ -1489,8 +1509,9 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "tube wall kind (mime.walls.TubeWall) on the shipped table unit_tube_R0.997"
-      - "drag (rung mrs, formerly the bem rung), MRSDragNode"
+      - "entry: wall_kind tube; on the shipped table unit_tube_R0.997"
+      - "entry: interaction drag, rung mrs; formerly the bem rung"
+      - "node: MRSDragNode"
       - "mime.surrogates.generator (its per-case checks)"
     verification: []
     residual_risk: "A jump confined to one spacing and gap passes every check of the generator; the pose is outside the protocol, so the risk is to a study that reaches it"
@@ -1576,8 +1597,9 @@ anomalies:
     affected_versions: ">=0.3.0.dev0, <0.3.0.dev1"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "the screw kind 0.1.0's closed-surface cap quadrature (mime.scene.Screw caps, read by mime.nodes.hydro.mrs)"
-      - "drag (rung mrs, formerly the bem rung), MRSDragNode, with the tube wall kind"
+      - "entry: geometry screw 0.1.0; its closed-surface cap quadrature (mime.scene.Screw caps, read by mime.nodes.hydro.mrs)"
+      - "entry: interaction drag, rung mrs; formerly the bem rung, with the tube wall kind"
+      - "node: MRSDragNode"
     verification:
       - "tests/scene/test_screw_caps.py::test_no_two_samples_of_a_cap_lie_closer_than_the_stated_separation"
       - "tests/scene/test_screw_caps.py::test_the_separation_holds_over_the_harness_grid"
@@ -1621,7 +1643,8 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "drag (rung mrs, formerly the bem rung), MRSDragNode, with the tube wall kind, on an open (lateral-only) surface"
+      - "entry: interaction drag, rung mrs; formerly the bem rung, with the tube wall kind, on an open (lateral-only) surface"
+      - "node: MRSDragNode"
     verification: []
     residual_risk: "A study on the lateral surface at a gap under about 0.14 mm of the open ends can read an indefinite resistance; nothing in the node reports it"
     workaround: "Check the smallest eigenvalue of the resistance in the non-dimensional form at each pose; use the closed surface's forward values or a larger gap where it is negative"
@@ -1648,8 +1671,9 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "drag (rung mrs, formerly the bem rung), MRSDragNode, wall_accepted"
-      - "mime.walls (the tube wall kind's documentation)"
+      - "entry: interaction drag, rung mrs; formerly the bem rung, its wall_accepted"
+      - "node: MRSDragNode"
+      - "entry: wall_kind tube; its documentation (mime.walls)"
     verification: []
     residual_risk: "Any run whose body reaches the readable edge of a wall table continues on NaN without a stop"
     workaround: "Read wall_accepted in the run's recorded outputs and discard a run where it is false"
@@ -1683,7 +1707,8 @@ anomalies:
     affected_components:
       - "MIME-NODE-110"
       - "MIME-NODE-109"
-      - "motor (rung dynamic), DynamicMotorNode"
+      - "entry: dynamics motor, rung dynamic"
+      - "node: DynamicMotorNode"
     verification:
       - "tests/oracles/test_spinner.py::test_the_axial_momentum_of_hub_and_rotor_is_conserved_to_the_integrators_order"
       - "tests/oracles/test_spinner.py::test_control_7a3s_relative_speed_fails_the_momentum_on_every_draw"
@@ -1728,8 +1753,10 @@ anomalies:
     affected_versions: ">=0.3.0.dev0"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "the capsule and sphere shapes' polar-grid sampling (mime.scene._solids), read by mime.nodes.hydro.mrs"
-      - "drag (rung mrs, formerly the bem rung), MRSDragNode"
+      - "entry: geometry capsule; its polar-grid sampling (mime.scene._solids), read by mime.nodes.hydro.mrs"
+      - "entry: geometry sphere; its polar-grid sampling (mime.scene._solids), read by mime.nodes.hydro.mrs"
+      - "entry: interaction drag, rung mrs; formerly the bem rung"
+      - "node: MRSDragNode"
     verification:
       - "tests/saved/test_sampling_walk.py::test_every_kind_that_samples_spreads_its_samples_evenly"
       - "tests/saved/test_sampling_walk.py::test_every_kind_that_samples_keeps_the_mrs_matrix_conditioned"
@@ -1768,7 +1795,8 @@ anomalies:
     affected_components:
       - "MIME-NODE-105"
       - "MIME-NODE-110"
-      - "motor (rungs kinematic and dynamic), the angle state"
+      - "entry: dynamics motor, rung kinematic; the angle state"
+      - "entry: dynamics motor, rung dynamic; the angle state"
     verification: []
     residual_risk: "Phase 7c2 reads every phase against the angle of the same run and gates the angle's own rounding to a derived bound (a0_dynamic_expected_differences_b.json), so its comparison is not moved by it; nothing bounds the bias in a run that is not compared against an emulation of the same accumulator"
     workaround: "Run in double precision (JAX_ENABLE_X64=1) where a run is long or its rate matters, or read rates from the motor's speed rather than from its angle"
@@ -1805,7 +1833,8 @@ anomalies:
     affected_versions: ">=0.3.0.dev0"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "drag (rung mrs), MRSDragNode: mime.nodes.hydro.mrs.resistance's force sums"
+      - "entry: interaction drag, rung mrs; mime.nodes.hydro.mrs.resistance's force sums"
+      - "node: MRSDragNode"
     verification:
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_mrs_step_sums_at_most_depth_terms"
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_resistance_sums_at_most_depth_terms"
@@ -1850,7 +1879,8 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "the sphere 0.2.0 and the ellipsoid 0.1.0's sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry sphere 0.2.0; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry ellipsoid 0.1.0; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
     verification: []
     residual_risk: "Measured on the sphere and two triaxial ellipsoids in free space; the capsule's hemispherical caps and a smooth body near a wall were not measured"
     workaround: "Read a smooth body's drag from a spacing ladder (the two-resolution extrapolation meets Stokes's law within 0.5%), not from one coarse spacing"
@@ -1875,7 +1905,13 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "mime.scene.quasi_uniform; the sphere 0.2.0, the capsule 0.2.0, the screw 0.3.0, the cylinder, the box, the ellipsoid and labx.bead's sampling, read by the MRS rung"
+      - "entry: geometry sphere 0.2.0; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry capsule 0.2.0; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry screw 0.3.0; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry cylinder; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry box; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry ellipsoid; its sampling (mime.scene.quasi_uniform), read by the MRS rung"
+      - "entry: geometry labx.bead; the lab fixture's kind, its sampling (mime.scene.quasi_uniform), read by the MRS rung"
     verification: []
     residual_risk: "Measured on FL-9's wavenumber and modulation at one count; other kinds and settings step alike by the same mechanism, unmeasured"
     workaround: "Take derivatives within one build, through the node's params, where the choice is held; or read a rebuilt study's steps as the discretisation's error"
@@ -1902,7 +1938,7 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "the screw kind's reach (mime.scene._screw), Geometry.reach"
+      - "entry: geometry screw; its reach (mime.scene._screw), Geometry.reach"
     verification:
       - "tests/saved/test_sampling_walk.py::test_every_kind_reaches_as_far_as_its_body_and_no_further"
       - "tests/saved/test_sampling_walk.py::test_every_kinds_own_body_reach_holds_its_body_from_its_samples"
@@ -1939,8 +1975,10 @@ anomalies:
     affected_versions: ">=0.3.0.dev0"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "dynamics rigid_inertial 0.2.0, RigidInertialNode"
-      - "dynamics rigid_inertial 0.3.0, RigidInertialMidpointNode"
+      - "entry: dynamics rigid_inertial 0.2.0"
+      - "node: RigidInertialNode"
+      - "entry: dynamics rigid_inertial 0.3.0"
+      - "node: RigidInertialMidpointNode"
     verification:
       - "tests/oracles/test_gyroscopic_energy.py::test_a_torque_free_body_keeps_its_energy_and_the_magnitude_of_its_angular_momentum"
       - "tests/oracles/test_gyroscopic_energy.py::test_control_the_term_taken_explicitly_gains_energy_on_every_spin"
@@ -2081,8 +2119,9 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "drag 0.4.0 (rung mrs), MRSDragNode on a separated quadrature, with a wall kind whose correction is not zero (the tube's)"
-      - "drag 0.3.0 (rung mrs, the point forces), near a wall, with no step check"
+      - "entry: interaction drag 0.4.0, rung mrs; on a separated quadrature, with a wall kind whose correction is not zero (the tube's)"
+      - "node: MRSDragNode; on a separated quadrature, with a wall kind whose correction is not zero (the tube's)"
+      - "entry: interaction drag 0.3.0, rung mrs; the point forces, near a wall, with no step check"
     verification:
       - "tests/docs/test_spacing_tables.py::test_every_table_on_the_page_is_what_the_measurements_make"
       - "tests/oracles/test_mrs_near_wall.py::test_script_as_floored_screw_builds_and_its_run_stops_at_the_first_indefinite_step_before_the_body_takes_it"
@@ -2126,8 +2165,9 @@ anomalies:
     affected_versions: ">=0.3.0.dev0"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "the contact 0.1.0 (mime.interactions, kept registered as mime.interactions.KEPT's contact 0.1.0)"
-      - "rigid_inertial's confinement (mime.nodes.body.RigidInertialNode)"
+      - "entry: interaction contact 0.1.0; kept registered as mime.interactions.KEPT's contact 0.1.0"
+      - "entry: dynamics rigid_inertial; its confinement"
+      - "node: RigidInertialNode; its confinement"
     verification:
       - "tests/oracles/test_hull_contact.py::test_no_hull_point_ends_past_the_wall_and_the_margin_is_kept_to_the_sweeps_convergence"
       - "tests/oracles/test_hull_contact.py::test_control_todays_contact_holding_the_centre_lets_the_hull_through_the_wall"
@@ -2180,7 +2220,7 @@ anomalies:
     resolution_status: open
     affected_versions: ">=0.3.0.dev1"
     affected_components:
-      - "the MRS rung (drag 0.3.0) with the tube wall kind's table, on the screw 0.2.0 floored in the tube"
+      - "entry: interaction drag 0.3.0, rung mrs; with the tube wall kind's table, on the screw 0.2.0 floored in the tube"
     verification: []
     residual_risk: >
       Measured at A on one ladder and in the other three tubes at one spacing. What it bounds: nothing about the
@@ -2231,7 +2271,7 @@ anomalies:
     affected_versions: ">=0.3.0.dev1"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "SurrogateDragNode (the step's unused output bore_fired)"
+      - "node: SurrogateDragNode; the step's unused output bore_fired"
       - "tests/differential/test_script_a_records.py (the digests asserted only in the environment that froze them)"
     verification:
       - "tests/differential/test_script_a_records.py::test_the_reproduction_arm_is_the_frozen_sample_within_its_tolerance_on_every_machine"
@@ -2282,8 +2322,8 @@ anomalies:
     affected_versions: ">=0.3.0.dev1"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "the contact 0.2.0 (mime.interactions.Contact as merged at 5d0f712, in no release), superseded by 0.3.0"
-      - "the hull contact's search (mime.nodes.body._contact.starts, kept), RigidInertialNode"
+      - "entry: interaction contact 0.2.0; mime.interactions.Contact as merged at 5d0f712, in no release, superseded by 0.3.0"
+      - "node: RigidInertialNode; the hull contact's search (mime.nodes.body._contact.starts, kept)"
     verification:
       - "tests/oracles/test_hull_contact.py::test_the_contact_holds_the_bodys_deepest_point_near_the_wall"
       - "tests/oracles/test_hull_contact.py::test_control_from_its_nearest_candidate_alone_the_contact_holds_a_shallower_point"
@@ -2337,8 +2377,8 @@ anomalies:
     affected_versions: ">=0.3.0.dev1"
     resolution_version: "0.3.0.dev1"
     affected_components:
-      - "the contact 0.2.0 (as merged at 5d0f712, in no release), superseded by 0.3.0"
-      - "the hull contact's search (mime.nodes.body._contact.searched, pair_contacts), RigidInertialNode"
+      - "entry: interaction contact 0.2.0; as merged at 5d0f712, in no release, superseded by 0.3.0"
+      - "node: RigidInertialNode; the hull contact's search (mime.nodes.body._contact.searched, pair_contacts)"
     verification:
       - "tests/oracles/test_hull_contact.py::test_the_stress_runs_unconverged_draw_turns_the_step_with_the_frame"
       - "tests/oracles/test_hull_contact.py::test_control_its_search_left_at_five_steps_and_held_where_they_end_turns_the_step_otherwise"

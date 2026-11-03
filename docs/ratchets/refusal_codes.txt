@@ -6,14 +6,7 @@ command.ambiguous         # no test names it
 dynamics.wrong-thing      # no test names it
 frame.gravity-invalid     # no test names it
 group.no-dynamics         # no test names it
-load.document-material    # no test names it
-load.id                   # no test names it
-load.lock                 # no test names it
-load.missing-file         # no test names it
 load.namespace-import     # no test names it
-load.reference-changed    # no test names it
-load.setting              # no test names it
-load.setting-unknown      # no test names it
 maddening.compile         # no test names it
 maddening.dtype           # no test names it
 maddening.shape           # no test names it

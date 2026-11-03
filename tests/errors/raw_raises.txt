@@ -37,6 +37,9 @@ core/tables/_table.py::query_range_problems ValueError 2  # invariant: MIME's ow
 credentials/_token.py::Token.__reduce__ TypeError 1  # protocol: a token refuses pickling, by design
 docs/_build.py::write_pages FileExistsError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_build.py::write_pages ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+docs/_evidence.py::claim KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+docs/_evidence.py::read_claims ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+docs/_schemas.py::_Converter.schema TypeError 2  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_symbols.py::read_frozen_ids ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_symbols.py::resolve_dotted ImportError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 drives.py::as_drive TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call

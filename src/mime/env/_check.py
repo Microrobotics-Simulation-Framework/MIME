@@ -28,6 +28,7 @@ import jax
 from packaging.markers import default_environment
 from packaging.utils import canonicalize_name
 
+from mime._lock_json import read_lock
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._refusals import SUBJECT_NAME, Subject
 from mime.build._maddening import devices as devices_of_jax
@@ -332,7 +333,7 @@ def _lock_environment(folder: str | Path) -> dict[str, object]:
         raise missing_folder(folder)
     path = Path(folder) / LOCK_FILE
     try:
-        lock: object = json.loads(path.read_text(encoding="utf-8"))
+        lock: object = read_lock(path)
     except (OSError, ValueError) as error:
         lock = error
     environment = cast(dict[str, object], lock).get("environment") if isinstance(lock, dict) else None

@@ -35,8 +35,14 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   lines that turn it on in a script of your own.
 - [`running_on_modal.md`](running_on_modal.md): running a saved experiment on Modal, with the environment built once
   per release and pinned by hash, and what that does and does not let a run claim.
-- [`validation/`](validation/): the known-anomalies registry.
-- [`data/`](data/): records no code owns, such as the 0.2 line's frozen algorithm ids.
+- [`specification/saved_form.md`](specification/saved_form.md): what a load of a saved folder checks and refuses,
+  each statement with the tests that hold it or "not yet covered"; its page carries the JSON Schemas of the document
+  and the lock, generated from the closed TypedDicts, and their known gaps.
+- [`reference/mime_usd.md`](reference/mime_usd.md): what each name of the `mime:` USD schema means; its page adds
+  each name's constant and each geometry kind's settings.
+- [`validation/`](validation/): the known-anomalies registry, with its claims and their evidence.
+- [`data/`](data/): records no code owns: the 0.2 line's frozen algorithm ids, its frozen public names, and the
+  migration table from them to 0.3's entries.
 - [`ratchets/`](ratchets/): the lists `mime docs check` reads, one item per line with its reason, each only shrinking.
 - [`unpaged.txt`](unpaged.txt): the ledger, each hand-written source that merged before the docs walk without it.
 - [`number_idioms.txt`](number_idioms.txt): the digit forms the number rule exempts, each with its reason.

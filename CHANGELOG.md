@@ -23,6 +23,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime env check` already names a core requirement missing from the environment, as the pins hold each one.
 
 ### Added
+- **The documentation's specifications, evidence and claims.** Evidence is resolved through pytest's own collection
+  (`mime.docs`: `collect`, `resolve`, a `Resolution` per id with its lane and, from named lanes' JUnit reports, its
+  outcome in each), replacing the anomaly script's text rule: a test renamed with its old name left in a comment, or
+  named only in a docstring, now fails. **Evidence is a test that ran and passed in a named lane**: a test marked
+  `skip`, `xfail`, `slow` or `gpu` prints "not run in CI" and never counts, so a claim, a specification's statement or
+  a resolved anomaly resting only on such tests is not covered. **A claim** is a field of an anomaly record
+  (`claims`), its basis deciding its roles (a declared claim is never a bound; an acceptance is measured; a bound
+  states its domain and the points it rests on, and rests on held-out evidence; without it a maximum over finitely
+  many points is an estimate; an implementation oracle is not accuracy evidence); MIME-ANO-114's largest error is the
+  first, and its test reads the number from the record (`claim`). The registry's `affected_components` name
+  registered components in a controlled form (`entry: <kind> <name>`, `node: <class>`): every legacy spelling that
+  uses a registered entry's or node class's name is converted, and a new one fails (the check matches names, so a 0.2
+  name whose counterpart is registered under another name stays a legacy spelling). The saved form's
+  **specification** (`docs/specification/saved_form.md`): what a load checks and refuses, every statement citing the
+  tests that hold it or listed as not yet covered. **A lock that holds a key twice is refused** (`load.lock`), through
+  one reader of the lock that every module reading one calls. **JSON Schemas** of the document and the lock, generated
+  from the closed TypedDicts for editors, with their known gaps against the loader (a repeated key, in the document and
+  in the lock, an integer written with a zero fractional part, a key that is not a string, a number that is not
+  finite, an earlier form, which the loader reads and a schema refuses, and what a value means), held once and asserted
+  by a differential over the committed folders, planted inputs and Hypothesis-drawn files; `jsonschema` is a new
+  development dependency. The **`mime:` USD schema's reference**, held in both directions to the names the fixtures'
+  stages author and the constants `scene/_compose.py` and `scene/_read.py` read a stage with. The **0.2 to 0.3
+  migration table**, each public name of the 0.2 line, frozen from
+  the tag `pre-0.3`, with its 0.3 entry or the reason it was removed. `mime docs build` writes the four pages under
+  `pages/reference/`; `mime docs check` collects the test suite once (`--skip-evidence` for the copies the tests of
+  the other checks run on).
 - **`mime completion bash|zsh|fish`, shell completion written from the command's own parser.** It prints a script to
   standard output; every command, flag and choice the parser holds is completed and none is listed by hand, a path
   argument completes as files, `--to`, `--from` and the like as their choices. The script is static, so Tab runs no

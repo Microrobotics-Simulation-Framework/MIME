@@ -8,11 +8,11 @@ needs no change: the build writes the key, and this finds it.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import cast
 
+from mime._lock_json import read_lock
 from mime.assets._reference import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
 
@@ -32,7 +32,7 @@ def folder_assets(folder: str | os.PathLike[str]) -> tuple[AssetRef, ...]:
     records none."""
     where = Path(folder)
     try:
-        lock: object = json.loads((where / LOCK_FILE).read_text(encoding="utf-8"))
+        lock: object = read_lock(where / LOCK_FILE)
     except (OSError, ValueError) as error:
         raise _unreadable(where, f"cannot be read as JSON ({error})") from error
     if not isinstance(lock, dict):

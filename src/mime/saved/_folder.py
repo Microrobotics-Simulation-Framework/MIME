@@ -28,6 +28,7 @@ import numpy as np
 import yaml
 from packaging.version import InvalidVersion, Version
 
+from mime._lock_json import read_lock
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._derived import array_record, sha256_of
 from mime.build._refusals import MIME_DEFECT
@@ -301,7 +302,7 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
                      for each in found]
     lock: Lock | None = None
     try:
-        data: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
+        data: object = read_lock(folder / LOCK_FILE)
     except (OSError, ValueError) as error:
         refusals.append(_refuse("load.lock", RefusalClass.USER, f"cannot read the lock {folder / LOCK_FILE}: {error}",
                                 "save the experiment again, built.save(folder): the document is checked against the "

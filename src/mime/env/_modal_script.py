@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from mime._lock_json import read_lock
 from mime.assets import folder_assets
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.env._check import (
@@ -128,7 +129,7 @@ def installed_checkout() -> Path | None:
 
 def _read_lock(folder: Path) -> dict[str, object]:
     try:
-        held: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
+        held: object = read_lock(folder / LOCK_FILE)
     except (OSError, ValueError) as error:
         raise _refuse("env.lock", RefusalClass.USER, f"{folder / LOCK_FILE} cannot be read as JSON ({error})",
                       "name the folder Experiment.save wrote, as in `mime run <folder> ...`") from error

@@ -803,7 +803,7 @@ def _credentials(command: str, service: str | None) -> int:
     return 0
 
 
-def _docs_check(root: Path, base: str | None, hash_seeds: bool) -> int:
+def _docs_check(root: Path, base: str | None, hash_seeds: bool, evidence: bool = True) -> int:
     try:
         from mime.docs._check import run_check
     except ImportError as error:
@@ -811,7 +811,7 @@ def _docs_check(root: Path, base: str | None, hash_seeds: bool) -> int:
             raise
         print(f"mime docs check: {error}", file=sys.stderr)
         return 2
-    return run_check(root, base, hash_seeds=hash_seeds)
+    return run_check(root, base, hash_seeds=hash_seeds, evidence=evidence)
 
 
 def _docs_build(root: Path, out: Path | None) -> int:
@@ -902,6 +902,10 @@ def build_parser() -> _guide.MimeParser:
     check.add_argument("--skip-hash-seed-builds", action="store_true",
                        help="do not build the pages in fresh processes under eight hash seeds (the tests of "
                             "the other checks pass it to stay fast; CI never does)")
+    check.add_argument("--skip-evidence", action="store_true",
+                       help="do not collect the test suite to resolve the evidence the specification and the anomaly "
+                            "registry cite (the tests of the other checks pass it, on copies of the checkout; CI "
+                            "never does)")
     build = docs_commands.add_parser("build", help="generate the pages (never committed) from the registry and the "
                                                    "hand-written sources")
     build.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to build from (default: here)")
@@ -1257,7 +1261,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "docs":
         if arguments.docs_command == "build":
             return _docs_build(arguments.root, arguments.out)
-        return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds)
+        return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds,
+                           not arguments.skip_evidence)
     if arguments.command == assets.GROUP:
         if arguments.assets_command == assets.FETCH and bool(arguments.names) == arguments.all:
             parser.error("fetch takes asset names, or --all")

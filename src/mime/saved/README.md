@@ -2,6 +2,11 @@
 
 **The saved form: what makes an experiment reproducible by someone else.**
 
+What a load checks and refuses is specified, statement by statement with the tests that hold each, in
+[`docs/specification/saved_form.md`](../../../docs/specification/saved_form.md); `mime docs build` writes the JSON
+Schemas of the document and the lock beside it, generated from the closed TypedDicts of `_schema.py`, for an editor.
+The loader is the authority, and the schemas' known gaps against it are listed on that page.
+
 ## What is here
 
 - **The document**, `experiment.mime.yaml`. It records what the experiment declares: the schema version, the MIME
@@ -60,8 +65,9 @@ is never pinned by its bytes in an experiment's lock (design #183).
 
 `Experiment.load(folder)`:
 
-1. reads the document with PyYAML's safe loader (a Python tag, or a key given twice, is refused) and the lock with
-   `json`, so reading runs no code, and holds the stage and every asset layer to the hash the lock records (a changed
+1. reads the document with PyYAML's safe loader (a Python tag, or a key given twice, is refused) and the lock as
+   JSON through the one reader every module that reads a lock calls (`mime._lock_json`: a key given twice is refused,
+   `load.lock`), so reading runs no code, and holds the stage and every asset layer to the hash the lock records (a changed
    asset is refused as `load.asset-changed`, a stage edited by hand as `load.stage-changed`);
 2. refuses a form written by a newer MIME before judging it: a document or a lock whose schema is `mime.document/N` or
    `mime.lock/N` above the newest this MIME reads, a bundle of a later `mime.bundle/N` format and a `sharing.yaml` of a

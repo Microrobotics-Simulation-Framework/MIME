@@ -9,9 +9,11 @@ build is refused with.
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 
+from mime._lock_json import read_lock
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.saved import DOCUMENT_FILE, LOCK_FILE
@@ -31,7 +33,7 @@ def main(argv: list[str]) -> int:
     experiment = Experiment.load(folder)
     built = experiment.build()
     report = experiment.load_report
-    steps = int(json.loads((folder / LOCK_FILE).read_text())["reference"]["steps"])
+    steps = int(cast(dict[str, Any], read_lock(folder / LOCK_FILE))["reference"]["steps"])
     history = first_steps(built, steps)
     np.savez(folder / "fresh_load.npz", allow_pickle=False,
              **{f"{node}/{name}": value for node, fields in history.items() for name, value in fields.items()})

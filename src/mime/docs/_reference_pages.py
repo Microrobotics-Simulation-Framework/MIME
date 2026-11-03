@@ -7,7 +7,7 @@ once the fixtures are shipped as data."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 
 from mime.docs._context import (
     CONCEPTS_PATH,
@@ -167,9 +167,18 @@ def _page_link(to_page: str, label: str) -> str:
     return f"[{label}]({_prefixed(to_page)})"
 
 
-def index_page(context: Context) -> Page:
-    """The generated index, a front door by goal. It is written to the output directory itself, so its links name the
-    pages directory."""
+#: The reference pages the index links where a build made them: their paths, the question each answers, and the link.
+REFERENCES = (("reference/saved_form.md", "What does a saved folder hold, and what does a load refuse?",
+               "The saved form's specification", ", with the JSON Schemas of its document and its lock."),
+              ("reference/mime_usd.md", "What does a `mime:` name on a stage mean?",
+               "The `mime:` USD schema", ": each attribute and applied schema MIME writes or reads."),
+              ("reference/migration.md", "What was a 0.2 name, in 0.3?",
+               "The migration table", ": each public name of the 0.2 line and what takes its place."))
+
+
+def index_page(context: Context, references: Collection[str] = frozenset()) -> Page:
+    """The generated index, a front door by goal, with the reference pages the build made (``references``). It is
+    written to the output directory itself, so its links name the pages directory."""
     w = Writer()
     w.heading(1, "MIME documentation")
     w.paragraph("Generated from the registry and the vocabulary."
@@ -225,8 +234,12 @@ def index_page(context: Context) -> Page:
                 "shape and sign.")
     w.heading(3, "What does a node do?")
     w.bullets(f"{_page_link(node_path(name), code(name))}" for name in sorted(context.node_names.values()))
+    for path, question, label, rest in REFERENCES:
+        if path in references:
+            w.heading(3, question)
+            w.paragraph(_page_link(path, label) + rest)
     return w.page(INDEX_PATH)
 
 
-__all__ = ["INTERFACE_HEADERS", "KIND_ORDER", "NO_HAND_WRITTEN", "index_page", "interfaces", "mechanism_page",
-           "vocabulary_page"]
+__all__ = ["INTERFACE_HEADERS", "KIND_ORDER", "NO_HAND_WRITTEN", "REFERENCES", "index_page", "interfaces",
+           "mechanism_page", "vocabulary_page"]

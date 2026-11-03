@@ -28,6 +28,7 @@ from mime.docs._markdown import Hatch, Page
 from mime.docs._node_page import node_page
 from mime.docs._numbers import PAGE_DIRECTORIES
 from mime.docs._reference_pages import index_page, mechanism_page, vocabulary_page
+from mime.docs._specification_pages import migration_page, saved_form_pages, usd_reference_page
 from mime.docs._walk import PageIds, page_sources, version_problems
 from mime.registry import Registered, registered
 from mime.testing import registered_families
@@ -211,12 +212,14 @@ def build_pages(root: Path) -> Built:
     made += [node_page(cls, dotted, context) for dotted, cls in sorted(nodes.items(), key=lambda p: p[1].__name__)]
     made += [family_page(family, context) for family in registered_families()]
     made += [mechanism_page(kind, context) for kind in TargetKind]
-    made += [vocabulary_page(context), index_page(context)]
+    references = [*saved_form_pages(root), *usd_reference_page(root), *migration_page(root, live)]
+    made += [vocabulary_page(context), index_page(context, {page.path for page in references})]
     made += [Page(note, hand[note].strip("\n") + "\n") for note in NOTE_PATHS if note in hand]
     if (root / "src" / "mime" / "build").is_dir():
         listed = read_list(docs / "ratchets" / "refusal_codes.txt").items() \
             if (docs / "ratchets" / "refusal_codes.txt").is_file() else set[str]()
         made += error_pages(root / "src" / "mime", listed)
+    made += references
     for page in made:
         page = Page(page.path, repository_relative(page.text, root), page.rendered, page.hatches)
         built.pages[out_path(page)] = page

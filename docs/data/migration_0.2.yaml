@@ -1,0 +1,84 @@
+# What each public name of the 0.2 line is in 0.3: the entry a 0.3 experiment writes in its place (`to`, an entry's kind
+# and name, with its rung where it has rungs), or `removed` with the reason. A 0.2 script built nodes and effect models
+# into a graph by hand; a 0.3 experiment declares things and attaches registered entries, which build their nodes.
+#
+# Every name of docs/data/names_0.2.txt (frozen from the tag pre-0.3) has one row here, and a row names nothing else:
+# `mime docs check` fails on a name not on that list (a typo), a name with no row, a `to` no registered entry answers to,
+# and a rung the entry does not have. The page built from it is the migration guide's table; the guide's prose is
+# not written yet.
+migration:
+  - name: CSFFlowNode
+    removed: no 0.3 counterpart
+  - name: CoilArrayFieldNode
+    removed: no 0.3 counterpart; a coil array's field provider returns with its calibration asset
+  - name: ConstantInputNode
+    to: drive drive.constant
+    note: a constant command is a drive of an apparatus's command
+  - name: ContactFrictionNode
+    removed: no 0.3 counterpart
+  - name: DefectCorrectionFluidNode
+    removed: no 0.3 counterpart
+  - name: ExternalMagneticFieldNode
+    to: field_provider uniform_rotating
+    note: its rotating field, with its frequency and amplitude in SI; the rotation axis and starting direction are
+      settings. The other mode its docstring names, a coil array's field from its currents, its update never computed,
+      and it has no counterpart here (a coil array's field provider returns with its calibration asset)
+  - name: FVMFluidNode
+    removed: no 0.3 counterpart
+  - name: FieldSuperpositionNode
+    removed: no 0.3 counterpart
+  - name: FlexibleBodyNode
+    removed: no 0.3 counterpart
+  - name: GNNFluxCorrectedFVMNode
+    removed: no 0.3 counterpart
+  - name: GravityEffect
+    to: interaction gravity
+  - name: GravityNode
+    to: interaction gravity
+    note: weight and buoyancy from the body's mass and buoyant volume and the medium's density
+  - name: HydrodynamicModel
+    to: interaction drag
+    note: its backends are the drag's rungs; the surrogate and the regularised Stokeslet rungs are built
+  - name: IBLBMFluidNode
+    removed: no 0.3 counterpart
+  - name: LBMFarFieldNode
+    removed: no 0.3 counterpart
+  - name: LubricationCorrectionNode
+    to: interaction drag
+    rung: surrogate
+    note: the lubrication is part of the surrogate rung's node, set by the drag's lubrication settings
+  - name: MLPResistanceNode
+    to: interaction drag
+    rung: surrogate
+    note: the weights are an asset pinned by its hash, and the resistance is about the centre of mass
+  - name: MagneticModel
+    to: interaction magnetic.torque
+    note: a field's gradient force on a magnet is interaction magnetic.force, attached beside it
+  - name: MagneticResponseNode
+    removed: no 0.3 counterpart; an induced moment, where 0.3's torque law takes a permanent one
+  - name: MotorNode
+    to: dynamics motor
+  - name: PermanentMagnetNode
+    to: field_provider point_dipole
+    note: the point dipole is the only field model carried
+  - name: PermanentMagnetResponseNode
+    to: interaction magnetic.torque
+    note: one moment vector, read at the body's pose; the torque in a wrench with no force
+  - name: PhaseTrackingNode
+    removed: no 0.3 counterpart
+  - name: RigidBodyNode
+    to: dynamics rigid_inertial
+    note: one inertial body with its resistance taken implicitly; the overdamped mode is not carried
+  - name: RobotArmEffect
+    to: dynamics arm
+  - name: RobotArmNode
+    to: dynamics arm
+  - name: StokesletFluidNode
+    to: interaction drag
+    rung: mrs
+    note: the regularised Stokeslet resistance, its wall by the wall kind
+  - name: SuperparamagneticResponseNode
+    removed: no 0.3 counterpart
+  - name: SurfaceContactNode
+    to: interaction contact
+    note: a projection in the body's dynamics, not its penalty force; its wall corrections are the drag's lubrication

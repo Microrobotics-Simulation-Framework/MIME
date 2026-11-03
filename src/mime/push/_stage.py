@@ -16,7 +16,6 @@ system allows (copied where it does not), its lock replaced; the folder itself i
 
 from __future__ import annotations
 
-import json
 import os
 import secrets
 import shutil
@@ -26,6 +25,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import quote
 
+from mime._lock_json import lock_data
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.push._service import Service
 from mime.push._state import remove_tree, writable_tree
@@ -48,7 +48,7 @@ def staged_lock(lock: bytes, publication: PublicationRecord, own: Mapping[str, s
     first, its others after it in their order."""
     from mime.saved._folder import lock_text
 
-    held = cast(dict[str, object], json.loads(lock))
+    held = cast(dict[str, object], lock_data(lock))
     held["publication"] = dict(publication)
     for asset in cast(list[dict[str, object]], held.get("assets", [])):
         mine = own.get(str(asset["name"]))
@@ -60,7 +60,7 @@ def staged_lock(lock: bytes, publication: PublicationRecord, own: Mapping[str, s
 def publication_of(lock: bytes) -> PublicationRecord | None:
     """The ``publication`` a lock's bytes hold, or ``None``."""
     try:
-        held: object = json.loads(lock)
+        held: object = lock_data(lock)
     except ValueError:
         return None
     found = cast(dict[str, object], held).get("publication") if isinstance(held, dict) else None

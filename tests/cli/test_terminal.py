@@ -295,11 +295,11 @@ def test_the_note_is_not_written_where_nothing_is_drawn(monkeypatch):
     assert "mime cache clear" not in caught.getvalue() and "persistent compilation cache entry" in caught.getvalue()
 
 
-def run_command(saved, tmp_path, *words, env=None, columns=100):
+def run_command(saved, tmp_path, *words, env=None, columns=100, translated=True):
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
     return run_on_terminal([sys.executable, "-m", "mime.cli", *words], env=child_environment(home, **(env or {})),
-                           cwd=tmp_path, columns=columns)
+                           cwd=tmp_path, columns=columns, translated=translated)
 
 
 def test_mime_run_on_a_terminal_draws_its_phases_and_ends_with_what_needs_attention_then_the_next_steps(saved, tmp_path):
@@ -332,9 +332,9 @@ def test_a_terminal_asked_to_be_plain_gets_exactly_what_a_pipe_gets(saved, tmp_p
                            env=child_environment(home), cwd=tmp_path)
     assert piped.returncode == 0 and piped.stderr == ""
     raw, code = run_command(saved, tmp_path, *words, "run", str(saved), "--duration", duration, "--out",
-                            str(tmp_path / "terminal"), env=env)
+                            str(tmp_path / "terminal"), env=env, translated=False)
     assert code == 0 and "\x1b" not in raw, "nothing is drawn: no control sequence at all"
-    assert raw.replace("\r\n", "\n").replace(str(tmp_path / "terminal"), str(tmp_path / "piped")) == piped.stdout
+    assert raw.replace(str(tmp_path / "terminal"), str(tmp_path / "piped")) == piped.stdout
 
 
 def test_a_refused_duration_on_a_terminal_is_a_block_and_names_the_forms(saved, tmp_path):
@@ -493,7 +493,37 @@ def test_env_check_asked_to_be_plain_gets_exactly_what_a_pipe_gets(saved, tmp_pa
     piped = subprocess.run([sys.executable, "-m", "mime.cli", *command], capture_output=True, text=True, check=False,
                            env=child_environment(home), cwd=tmp_path)
     assert piped.returncode == 2 and len(refusals_of_env_check(piped.stderr)) >= 2
-    raw, code = run_command(saved, tmp_path, *words, *command, env=env)
+    raw, code = run_command(saved, tmp_path, *words, *command, env=env, translated=False)
     assert code == 2 and "\x1b" not in raw and "╭" not in raw, "nothing is drawn"
     # a terminal has one stream for both; the pipe's standard error is what carries a refusal
-    assert traceback_file_removed(raw.replace("\r\n", "\n")) == traceback_file_removed(piped.stdout + piped.stderr)
+    assert traceback_file_removed(raw) == traceback_file_removed(piped.stdout + piped.stderr)
+
+
+#: Lines around the terminal's width (100 columns), and the 196 characters of the line whose end macOS doubled.
+WIDTHS = (99, 100, 101, 196, 200)
+
+
+def written(line_end_at: int) -> str:
+    """Text written in one go whose line ends, translated, fall on lines of every length in :data:`WIDTHS` and on the
+    byte ``line_end_at`` (its carriage return), then several kilobytes more."""
+    lines = [chr(ord("a") + index) * width for index, width in enumerate(WIDTHS * 2)]
+    translated = sum(len(line) + 2 for line in lines)
+    lines.append("y" * (line_end_at - translated))
+    lines += ["z" * width for width in WIDTHS * 4]
+    return "\n".join(lines) + "\n"
+
+
+@pytest.mark.parametrize("line_end_at", range(2040, 2057))
+def test_with_its_output_processing_off_a_terminal_carries_the_bytes_written_at_any_line_length(tmp_path, line_end_at):
+    """The plain tests compare a terminal's transcript with a pipe's byte for byte, read with the terminal's output
+    processing off: on, a line end becomes a carriage return and a line feed, and macOS's terminal, where its output
+    queue fills between the two (2048 bytes into one write: in ``mime env check``'s output, the line end 2030
+    characters in, past 17 translated line ends), wrote the carriage return twice. Lines at, below and above the width,
+    and a line end on each byte around the queue's edge, arrive as written; the control, with processing on, has every
+    line end translated, on every run."""
+    text = written(line_end_at)
+    program = [sys.executable, "-c", "import sys; sys.stdout.write(sys.argv[1]); sys.stdout.flush()", text]
+    raw, code = run_on_terminal(program, env=child_environment(tmp_path), cwd=tmp_path, translated=False)
+    assert code == 0 and raw == text
+    raw, code = run_on_terminal(program, env=child_environment(tmp_path), cwd=tmp_path)
+    assert code == 0 and raw != text and raw.count("\r\n") >= text.count("\n"), "the control: line ends translated"

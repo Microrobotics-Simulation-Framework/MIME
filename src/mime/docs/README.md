@@ -144,13 +144,65 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   (a file or directory named `_*` is a template, and `_build` the build's output). A lab's pages are counted and not
   judged: its bibliography is its own. A string from code that holds an `@` after a space and a word (`an @dataclass
   law`) reads as a citation of that word and fails the build; write it in backticks.
+- **The evidence resolver and the claims** (`_evidence.py`). A claim's evidence, or a `verification` id, is a pytest
+  node id or a MADDENING `@verification_benchmark` id, resolved through pytest's own collection, run in a fresh
+  interpreter with `-m ""`: an id that is not collected fails, so a test renamed with its old name left in a comment,
+  or a name written only in a docstring, fails, and a file that does not exist fails. **Evidence is a test that ran
+  and passed in a named lane** (`Resolution.counts`): with named lanes' JUnit reports, a pass in one of them, which
+  also shows a `pytest.skip()` in a body and a test the lane deselected; with the collection alone (`mime docs
+  check`), a test CI's lanes run. A test marked `skip`, `xfail` (as pytest evaluates the mark), `slow` or `gpu` prints
+  "not run in CI" with its reason, and does not count; a `skipif` counts, since CI's lanes allow no skipped test, and
+  says "skipped on this machine" where its condition holds where it is collected. A statement, a claim or a resolved
+  anomaly whose every cited test does not count is not covered. **What it does not see:** a test collected and
+  passing that tests nothing (a same-name helper, a body of `pass`, a threshold looser than its claim's) counts; a
+  threshold is held by one authority per number (the test reads its claim, `claim(...)`), the others by each test's
+  own control; nothing ties a cited test to what cites it. Its interface, small on purpose: `collect(root,
+  files=None)` gives a `Collection` (node ids with their markers, benchmark ids, errors, and pytest's own skip and
+  xfail evaluation; JSON both ways), `junit_outcomes(reports)` one lane's outcomes, and `resolve(ids, root,
+  collection, lanes={name: reports})` a `Resolution` for each id: its `problem`, `lane`, `runs_in_ci`, `outcomes` (each
+  named lane's) and `counts`. A **claim** is a field of the anomaly record, not a second
+  store: `claim_problems` holds its shape (the quantity, value and unit, basis, role, oracle kind, evidence,
+  conditions, a bound's domain, `n` and held-out evidence, a fit's dataset, and one line of what it bounds and
+  estimates), the basis deciding the roles: a declared claim is a limit or a rule; a computed one a bound, an
+  estimate or a limit, never a bound against an implementation oracle (the code's own formula again, which prints
+  "not accuracy evidence"); a measured one may also be an acceptance, which grounds sign, frame and units and claims no
+  accuracy. A bound of any basis carries its domain and the points it rests on, and held-out evidence (an id not among
+  its own evidence); without it a maximum over finitely many points is an estimate. A value is a finite number. `read_claims` and `claim` read them, and `claim_rows` lays them
+  out as a verification table, its labels as columns, for the evidence report. `scripts/check_anomalies.py` runs these
+  over the registry, with the controlled form of `affected_components`.
+- **The saved form's specification and schemas** (`_specification.py`, `_schemas.py`). The specification
+  (`docs/specification/saved_form.md`) is hand-written: what a load checks and what it refuses, each normative
+  statement a list item opening with its id and ending with its cases, the tests that hold it, or "not yet covered",
+  which `docs/ratchets/not_yet_covered.txt` lists until a test covers it; every case is resolved, and a statement whose
+  every case is a test CI does not run is listed there too. The JSON Schemas of
+  the document and the lock are generated from the closed TypedDicts of `mime.saved`, a second reader
+  of the one source the loader checks against, for an editor; the loader is the authority. Their known gaps are held
+  once (`GAPS`), and both each schema's description and the differential test (`tests/saved/test_json_schema.py`,
+  which runs both readers over the committed folders, planted inputs and files drawn from the TypedDicts with
+  Hypothesis) are made from it: the disagreements found must equal the gaps recorded as disagreements.
+- **The `mime:` USD schema's reference** (`_usd_reference.py`). Each name's meaning is hand-written
+  (`docs/reference/mime_usd.md`); its constant and each geometry kind's settings are generated. The names are partly
+  built where they are written, so the check reads them where they land, in both directions: every name a fixture's
+  stage authors (the round-trip cases', planned and written, no graph built: `tests/saved/test_usd_reference.py`, which
+  needs the fixtures' assets) and every constant `scene/_compose.py` and `scene/_read.py` read a stage with
+  (`mime docs check`) is documented, and every documented name is authored on some fixture's stage or listed as read
+  only (`docs/ratchets/usd_read_only.txt`). `scene/_derived.py` and `viz/_visuals.py` also read names from a stage and
+  are not scanned; a layer's metadata keys (`mime:recording`, `mime:visuals`) are outside the list.
+- **The migration table** (`_migration.py`). `docs/data/migration_0.2.yaml` gives each public name of the earlier
+  line (its node classes and effect models) the entry an experiment of this line writes in its place, or `removed`
+  with the reason. Its names are held to a list frozen from the earlier line's last tag (`docs/data/names_0.2.txt`,
+  held to its digest), so a typo fails; each has one row, and each target and rung is registered. Its page adds the
+  renames of entries during this line's development. The guide's prose is not written yet.
 - **`mime docs check`**: all of the above over a checkout (`--root`, and `--base` for the start list), the pages built
   in this process for the citation check and for the number rule's reading of the text they print from code (a
   validity line, a gradient record's text, a node's assumptions, an interface's description: the pages of MIME's
   namespace are judged, the others counted), the pages built in fresh processes under eight hash seeds, which must
   give byte-equal pages (that is all it bounds: a clock is kept out of the generators by a test of their imports, and
-  address-dependent order, directory order and locale are not bounded), then
-  `scripts/check_anomalies.py` unchanged. It builds no graph: the checks that need a built node run in the node walk.
+  address-dependent order, directory order and locale are not bounded), the test suite collected once to resolve the
+  specification's cases, then `scripts/check_anomalies.py`, handed that collection. `--skip-evidence` collects
+  nothing and resolves nothing: the tests of the other checks pass it on copies of the checkout, which hold the tests'
+  sources without their data, and CI never does (`tests/test_ci_wiring.py` reads every workflow file for it). It builds no graph: the checks that need a built node run in the
+  node walk.
   Its summary names every entry whose derivative is not exact, with its record, counts and names a lab's values not
   established, the keys it checks against the bibliography and a lab's it only counts, and prints the walk's counts,
   each list's length and the word-numeral warnings. It needs the `verify` extra, and without it exits naming it.
@@ -172,14 +224,18 @@ table with its constructor check, the lists, `mime docs check`, the docs walk wi
 Since the generators' phase: the page generators and `mime docs build`, the vocabulary, the index and the concepts
 note, the citation parser, and the number rule over the text the pages print.
 
+Since the specifications' phase: the evidence resolver with the claims' shape, the controlled form of
+`affected_components`, the saved form's specification with its JSON Schemas, the `mime:` reference, and the
+migration table, each page built by `mime docs build` under `pages/reference/`.
+
 Since phase 7e, a geometry kind's entry page has **capability rows**, generated from which of `Geometry`'s optional
 methods it implements (the export's `capabilities`), with its native form and its placement settings.
 
 Not yet generated: the plan-only items of an entry page (confinements, registrations and groups, which come from
 running `plan` on a test fixture), a worked fragment from the fixture CI builds, the state, parameter, input and output
 tables of a node page (they come from a built node), the performance profile and the claims citing a node (their
-records do not exist), the lag classes and group settings on a mechanism page, the asset card, the experiment card, and
-the index's part for scripts (the index lists entries by kind, by target and the families).
+records do not exist), the lag classes and group settings on a mechanism page, the asset card, the experiment card, the
+evidence report, and the index's part for scripts (the index lists entries by kind, by target and the families).
 
 Since the errors' phase, the **refusal catalogue**: a page for every code of the refusal table (`errors/<code>.md`) and
 their index, generated from the table and the scan of the source. Since docs phase D3, the page of a code on the refusal

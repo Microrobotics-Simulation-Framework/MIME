@@ -25,8 +25,9 @@ from mime._extras import VERIFY_EXTRA_MISSING
 from mime.units import m_per_s
 
 PACKAGE = Path(mime.__file__).parent
-#: What ``mime registry --json`` imports from ``mime.docs``.
-EXPORT_MODULES = ("__init__.py", "_export.py", "_lists.py", "_refusal_scan.py", "_symbols.py")
+#: What ``mime registry --json`` imports from ``mime.docs``: the export's modules, and the evidence resolver
+#: (``mime.docs.claim``), which needs nothing beyond MIME's base dependencies.
+EXPORT_MODULES = ("__init__.py", "_evidence.py", "_export.py", "_lists.py", "_refusal_scan.py", "_symbols.py")
 
 
 def _named(node: ast.AST, package: str) -> set[str]:

@@ -1,0 +1,4 @@
+# The statements of the specifications (docs/specification/) that no test CI runs covers, one statement id a line with
+# the reason: those not yet covered, and those whose every case is marked skip, xfail, slow or gpu. A statement that
+# gains a case CI runs leaves the list.
+rebuild.namespace  # no test installs a namespace whose package fails to import (load.namespace-import)

@@ -1,16 +1,19 @@
 """``mime docs check``: every check of the documentation's sources over a checkout of MIME (the sources' forms, the docs
-walk and its ledger, the number rule), and the anomaly script, unchanged. It builds no graph: the checks that
-need a built node (the ``builds`` comparison, a row's name and units) run in the node walk, where the cases are built,
-and this checks those lists' form.
+walk and its ledger, the number rule, the specifications and references), and the anomaly script, handed the one
+collection of the test suite the check makes to resolve evidence. It builds no graph: the checks that need a built node
+(the ``builds`` comparison, a row's name and units) run in the node walk, where the cases are built, and this checks
+those lists' form; the ``mime:`` reference's fixtures' stages are the round-trip cases' (its test).
 
 Each check fails naming what is wrong; the summary prints each list's length, every entry whose derivative is not
 exact, and the counts the checks are over."""
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
@@ -22,13 +25,20 @@ from mime.docs import _reproducible
 from mime.docs._build import Built, build_pages
 from mime.docs._citations import bibliography_keys as read_bibliography
 from mime.docs._citations import citation_report, hand_written_files
+from mime.docs._evidence import Collection as Collected
+from mime.docs._evidence import collect, components
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
 from mime.docs._lists import RatchetList, base_list, list_problems, read_list
+from mime.docs._migration import migration_report
 from mime.docs._numbers import number_item_form, number_report
 from mime.docs._refusal_scan import CODE_SHAPE, action_problems, derive, name_rule, scan_package
 from mime.docs._renames import ARROW, NAME, rename_problems
+from mime.docs._specification import STATEMENT_ID, specification_report
 from mime.docs._switches import caps, declaration_problems, declarations, item_form
 from mime.docs._symbols import FrozenId, read_frozen_ids, static_problems
+from mime.docs._usd_reference import NAME as USD_NAME
+from mime.docs._usd_reference import READERS, SOURCE as USD_SOURCE
+from mime.docs._usd_reference import documented, kind_settings, read_constants, reference_problems
 from mime.docs._walk import docs_walk
 from mime.gradients import GradientStatus, status_problem
 from mime.registry import (
@@ -75,6 +85,8 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
     "raw_switches": item_form,
     "renames": _form(rf"(?:{_KINDS}) {NAME}{re.escape(ARROW)}{NAME}", "an entry's kind, its old name, '->' and its new name"),
     "required_settings": _form(rf"{_ENTRY} [a-z_][a-z0-9_]*", "an entry's kind, name and version, then a setting"),
+    "not_yet_covered": _form(STATEMENT_ID.pattern, "a specification's statement id"),
+    "usd_read_only": _form(USD_NAME.pattern, "a name of the mime: USD schema"),
 }
 FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
 BIBLIOGRAPHY = Path("docs/bibliography.bib")
@@ -405,22 +417,61 @@ def bibliography_keys(root: Path) -> set[str]:
     return read_bibliography(path.read_text(encoding="utf-8")) if path.exists() else set()
 
 
-def run_scripts(root: Path, report: Report) -> None:
-    for script in SCRIPTS:
-        done = subprocess.run([sys.executable, script], cwd=root, capture_output=True, text=True, check=False)
-        output = (done.stdout + done.stderr).strip().splitlines()
-        if done.returncode != 0:
-            report.summary.append(f"{script}: exit {done.returncode}\n" + "\n".join(output))
-            report.problems.append(f"{script} failed (exit {done.returncode}); its output is above")
-        else:
-            report.summary.append(f"{script}: {output[-1] if output else 'no output'}")
+def run_scripts(root: Path, report: Report, collection: Collected | None = None,
+                records: list[Registered] | None = None) -> None:
+    """The compliance scripts, each in a fresh interpreter: the anomaly script is handed ``collection`` to resolve the
+    registry's evidence against, or told to resolve none where there is none, and the components of the registered
+    ``records``, so that it imports no MIME."""
+    with tempfile.TemporaryDirectory() as held:
+        given = ["--skip-evidence"]
+        if collection is not None:
+            path = Path(held) / "collection.json"
+            path.write_text(collection.to_json(), encoding="utf-8")
+            given = ["--collection", str(path)]
+        if records is not None:
+            path = Path(held) / "components.json"
+            path.write_text(json.dumps(components(records)), encoding="utf-8")
+            given += ["--components", str(path)]
+        for script in SCRIPTS:
+            done = subprocess.run([sys.executable, script, *given], cwd=root, capture_output=True, text=True,
+                                  check=False)
+            output = (done.stdout + done.stderr).strip().splitlines()
+            if done.returncode != 0:
+                report.summary.append(f"{script}: exit {done.returncode}\n" + "\n".join(output))
+                report.problems.append(f"{script} failed (exit {done.returncode}); its output is above")
+            else:
+                report.summary.append(f"{script}: {output[-1] if output else 'no output'}")
 
 
-def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Report:
+def reference_checks(root: Path, records: list[Registered], lists: Mapping[str, RatchetList], report: Report,
+                     collection: Collected | None) -> None:
+    """The saved form's specification (its statements, their cases resolved against ``collection``), the ``mime:``
+    reference against the constants the readers of a stage read with, and the migration table."""
+    specified = specification_report(root, collection, lists["not_yet_covered"])
+    report.problems += specified.problems
+    report.summary += specified.summary
+    source = root / USD_SOURCE
+    names, malformed = documented(source.read_text(encoding="utf-8"), USD_SOURCE) if source.is_file() else (
+        {}, [f"{USD_SOURCE}: the mime: reference's source is missing"])
+    report.problems += malformed
+    read = {path.as_posix(): read_constants(root / path) for path in READERS if (root / path).is_file()}
+    report.problems += reference_problems(names, read, lists["usd_read_only"], kind_settings())
+    report.summary.append(f"mime: reference: {len(names)} names documented; {sum(len(held) for held in read.values())} "
+                          f"constants read from a stage by {', '.join(read)}, each documented; "
+                          f"{len(lists['usd_read_only'])} listed read only (the fixtures' stages are its test's)")
+    rows, problems = migration_report(root, records)
+    report.problems += problems
+    report.summary.append(f"migration table: {len(rows)} rows, {sum(1 for row in rows if row.removed)} removed, "
+                          f"each name on the list frozen from pre-0.3")
+
+
+def check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evidence: bool = True) -> Report:
     """Every check over the checkout at ``root``, with MIME and every installed namespace loaded; with ``base``, a
     revision of its repository, the README start list against the base's too. The pages are built in this process for
     the citation check and the number rule's reading of what they print; with ``hash_seeds`` (the default, and what CI
-    runs), they are also built in fresh processes under eight hash seeds, and must be the same text."""
+    runs), they are also built in fresh processes under eight hash seeds, and must be the same text. With ``evidence``
+    (the default, and what CI runs), the test suite is collected once, and the evidence the specification and the
+    anomaly registry cite is resolved against it."""
     report = Report()
     missing = [str(root / path) for path in (PACKAGE, TESTS, FROZEN_IDS, *map(Path, SCRIPTS))
                if not (root / path).exists()]
@@ -484,14 +535,24 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> Re
         report.problems += unequal
         report.summary.append(f"pages built in fresh processes under {len(_reproducible.SEEDS)} hash seeds: "
                               + ("not equal" if unequal else "byte-equal"))
+    collection: Collected | None = None
+    if evidence:
+        started = time.perf_counter()
+        collection = collect(root)
+        report.problems += [f"pytest's collection of the test suite: {error}" for error in collection.errors]
+        report.summary.append(f"evidence: the test suite collected once, every marker kept: {len(collection.items)} "
+                              f"tests in {time.perf_counter() - started:.1f} s")
+    else:
+        report.summary.append("evidence: not resolved (--skip-evidence)")
+    reference_checks(root, records, lists, report, collection)
     report.summary.append("lists: " + ", ".join(f"{name} {len(held)}" for name, held in lists.items()))
-    run_scripts(root, report)
+    run_scripts(root, report, collection, records)
     return report
 
 
-def run_check(root: Path, base: str | None = None, *, hash_seeds: bool = True) -> int:
+def run_check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evidence: bool = True) -> int:
     started = time.perf_counter()
-    report = check(root.resolve(), base, hash_seeds=hash_seeds)
+    report = check(root.resolve(), base, hash_seeds=hash_seeds, evidence=evidence)
     print(report.text())
     print(f"mime docs check: {'failed' if report.problems else 'passed'} in {time.perf_counter() - started:.1f} s")
     return 1 if report.problems else 0

@@ -1,9 +1,21 @@
 """The documentation's machine-readable sources and their checks: the registry export (``mime registry --json``), the
-checks on a node's ``NodeMeta`` and symbol table, the refusal scan the refusal table is generated from, and the
-ratchets kept as lists. ``mime docs check`` runs them all over a checkout, and needs the ``verify`` extra; nothing
+checks on a node's ``NodeMeta`` and symbol table, the refusal scan the refusal table is generated from, the
+ratchets kept as lists, and the evidence resolver with the claims' shape (``mime.docs._evidence``), which the evidence
+report and ``scripts/check_anomalies.py`` read. ``mime docs check`` runs them all over a checkout, and needs the ``verify`` extra; nothing
 imported here needs it, so ``mime registry --json`` runs on a base install. The pages themselves are generated
 later, from these sources."""
 
+from mime.docs._evidence import (
+    Claim,
+    Collection,
+    Resolution,
+    claim,
+    claim_problems,
+    collect,
+    junit_outcomes,
+    read_claims,
+    resolve,
+)
 from mime.docs._export import (
     ENTRY_POINT_GROUP,
     Unencodable,
@@ -39,6 +51,15 @@ from mime.docs._symbols import (
 
 __all__ = [
     "CODE_SHAPE",
+    "Claim",
+    "Collection",
+    "Resolution",
+    "claim",
+    "claim_problems",
+    "collect",
+    "junit_outcomes",
+    "read_claims",
+    "resolve",
     "ENTRY_POINT_GROUP",
     "STRUCTURE",
     "Census",

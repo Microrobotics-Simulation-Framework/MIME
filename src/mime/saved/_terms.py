@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from mime._lock_json import read_lock
 from mime.assets import AssetRef, is_cached, location_problem
 from mime.assets import file_path as cached_file
 from mime.build import Refusal, RefusalClass
@@ -543,7 +544,7 @@ def _lock_of(folder: Path) -> dict[str, object]:
     from mime.saved._folder import LOCK_FILE
 
     try:
-        held: object = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
+        held: object = read_lock(folder / LOCK_FILE)
     except (OSError, ValueError):
         return {}
     return cast(dict[str, object], held) if isinstance(held, dict) else {}
