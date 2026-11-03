@@ -21,6 +21,8 @@ from typing import Any, cast
 from mime.docs._context import INDEX_PATH, NOTE_PATHS, Context, entry_path, newest_versions, node_path
 from mime.docs._entry_page import entry_page
 from mime.docs._error_pages import error_pages
+from mime.docs._evidence import Collection
+from mime.docs._evidence_page import Inputs, evidence_pages, lane_reports
 from mime.docs._export import export, load_namespaces
 from mime.docs._family_page import family_page
 from mime.docs._lists import read_list
@@ -71,6 +73,11 @@ class Built:
     pages: dict[str, Page] = field(default_factory=dict[str, Page])
     problems: list[str] = field(default_factory=list[str])
     stale: list[str] = field(default_factory=list[str])
+    #: Evidence the counts page could not resolve (a test not collected): ``mime docs check`` reports those itself, in
+    #: the anomaly script and the specification check, and a build fails on them too.
+    unresolved: list[str] = field(default_factory=list[str])
+    #: Lines for the summary that no page owns: what the evidence counts page was made from.
+    notes: list[str] = field(default_factory=list[str])
     #: The pages of entries and nodes outside the namespaces whose bibliography is MIME's, whose citations are counted.
     outside: set[str] = field(default_factory=set[str])
     seconds: float = 0.0
@@ -80,7 +87,7 @@ class Built:
     def failures(self) -> list[str]:
         """Everything that stops a build writing: a source that no longer resolves, and the other problems. The docs
         walk reports the first kind itself, so ``mime docs check`` takes ``problems`` alone."""
-        return [*self.stale, *self.problems]
+        return [*self.stale, *self.problems, *self.unresolved]
 
     def texts(self) -> dict[str, str]:
         return {path: page.text for path, page in sorted(self.pages.items())}
@@ -115,7 +122,7 @@ class Built:
                 f"text from the code of pages outside MIME, counted, not judged by the number rule: "
                 f"{self.rendered_outside()} strings",
                 "hatches printed: " + (", ".join(f"{kind} {count}" for kind, count in sorted(hatches.items()))
-                                       or "none")]
+                                       or "none"), *self.notes]
 
 
 def _category(path: str) -> str:
@@ -187,9 +194,10 @@ def absolute_path_problems(pages: Mapping[str, Page]) -> list[str]:
             if (match := _ABSOLUTE_PATH.search(page.text)) is not None]
 
 
-def build_pages(root: Path) -> Built:
+def build_pages(root: Path, evidence: Inputs = Inputs()) -> Built:
     """Every page of the checkout at ``root``, with MIME and every installed namespace loaded; the problems that stopped
-    the build are in ``Built.problems``, and no page is to be written for a build that has any."""
+    the build are in ``Built.problems``, and no page is to be written for a build that has any. The evidence counts
+    page resolves its evidence as ``evidence`` says (by default it resolves none, and every row reads "not read")."""
     started = time.perf_counter()
     built = Built()
     data = export(load_namespaces())
@@ -212,7 +220,11 @@ def build_pages(root: Path) -> Built:
     made += [node_page(cls, dotted, context) for dotted, cls in sorted(nodes.items(), key=lambda p: p[1].__name__)]
     made += [family_page(family, context) for family in registered_families()]
     made += [mechanism_page(kind, context) for kind in TargetKind]
-    references = [*saved_form_pages(root), *usd_reference_page(root), *migration_page(root, live)]
+    counted = evidence_pages(root, evidence)
+    built.problems += counted.problems
+    built.unresolved += counted.unresolved
+    built.notes += [counted.summary] if counted.summary else []
+    references = [*saved_form_pages(root), *usd_reference_page(root), *migration_page(root, live), *counted.pages]
     made += [vocabulary_page(context), index_page(context, {page.path for page in references})]
     made += [Page(note, hand[note].strip("\n") + "\n") for note in NOTE_PATHS if note in hand]
     if (root / "src" / "mime" / "build").is_dir():
@@ -260,10 +272,17 @@ def write_pages(built: Built, out: Path) -> list[Path]:
     return written
 
 
-def run_build(root: Path, out: Path | None) -> int:
-    """``mime docs build``: print the summary, write the pages when the build has no problem; exit 1 when it has."""
+def run_build(root: Path, out: Path | None, *, junit: Path | None = None, collection: Path | None = None,
+              skip_evidence: bool = False) -> int:
+    """``mime docs build``: print the summary, write the pages when the build has no problem; exit 1 when it has.
+    The evidence counts page resolves the evidence it cites against ``collection`` (a collection ``mime docs check``
+    wrote, as JSON) or, without one, against pytest's collection of the files it names, and reads the default lane's
+    JUnit reports under ``junit``; without ``junit`` every row reads "outcome not read (no lane report)", and with
+    ``skip_evidence`` nothing is collected."""
     root = root.resolve()
-    built = build_pages(root)
+    held = Collection.from_json(collection.read_text(encoding="utf-8")) if collection is not None else None
+    built = build_pages(root, Inputs(not skip_evidence, held,
+                                     lane_reports(junit) if junit is not None and not skip_evidence else None))
     for line in built.summary():
         print(line)
     if built.failures:

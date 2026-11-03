@@ -2109,6 +2109,13 @@ anomalies:
       starting pose (drag.mrs-resistance) and reports the body's distance from the wall at its start and the spacing
       the experiment's closest approach needs. Drag 0.3.0's point forces, kept for the frozen register and the
       surrogate generator, have no step check; the generator checks each of its cases.
+
+      **Post hoc (decision #223, from the drag 0.4.0 arm of M1 at A, run on Modal on 2026-11-03 at v0.3 5a47ef3); it
+      enters no verdict.** With the point image at blob 0.5, the floored speed drifts 16% across the spacing ladder
+      (7.12 to 6.12 mm/s from 0.2 to 0.1024 mm). The resistance's asymmetry reaches 0.17 at 0.181 mm and 0.43 at 0.16
+      mm; every other image and blob stays at or below 0.046. At blob 0.25, drag 0.4.0's default, the same speeds stay
+      within 2.6% (6.10 to 5.95 mm/s). The two blobs, and the two images, close to within 3% by 0.1024 mm. A guard on
+      the blob near walls is looked at in dev2.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >

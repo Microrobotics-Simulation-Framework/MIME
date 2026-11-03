@@ -36,7 +36,7 @@ PAGE_DIRECTORIES = ("entries", "nodes", "families", "mechanisms", "assets")
 #: run's results, and the note on reading an error.
 TOP_LEVEL_SOURCES = NOTE_PATHS
 #: The hand-written specifications and references, each printed in its page.
-REFERENCE_SOURCES = ("specification/saved_form.md", "reference/mime_usd.md")
+REFERENCE_SOURCES = ("specification/saved_form.md", "reference/mime_usd.md", "reference/evidence_counts.md")
 #: The products a release is named after, each with the distribution whose versions are its releases.
 PRODUCTS = {"MIME": "mime", "MADDENING": "maddening", "OpenMaterica": "openmaterica", "Python": "python",
             "usd-core": "usd-core"}

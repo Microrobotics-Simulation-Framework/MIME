@@ -209,18 +209,27 @@ def collect(root: Path, files: Sequence[str] | None = None) -> Collection:
     return Collection(items, benchmarks, tuple(cast(list[str], data["errors"])), tuple(files or ()), skipped, xfail)
 
 
+#: A test's outcomes in the order a repeated id takes the worse of: a node id in two cases of one report (pytest writes a
+#: second ``testcase`` for a passed test whose teardown errored) or in two reports (an old and a new one, read
+#: together) is never taken from the one that sorts last.
+_OUTCOME_ORDER = ("error", "failed", "xfailed", "skipped", "passed")
+
+
 def junit_outcomes(reports: Iterable[Path]) -> dict[str, str]:
     """Each test's outcome in one lane's JUnit reports (pytest's ``--junitxml``, either family; a sharded lane's
     reports together): ``passed``, ``failed``, ``error``, ``xfailed`` (an expected failure, which JUnit writes as a skip
-    of type ``pytest.xfail``) or ``skipped``, by node id."""
+    of type ``pytest.xfail``) or ``skipped``, by node id. A node id that appears more than once takes the worst of its
+    outcomes."""
     found: dict[str, str] = {}
     for report in reports:
         for case in ElementTree.parse(report).iter("testcase"):
             nodeid = _junit_nodeid(case.attrib)
             children = {child.tag: child.attrib for child in case}
-            found[nodeid] = ("error" if "error" in children else "failed" if "failure" in children
-                             else "xfailed" if children.get("skipped", {}).get("type") == "pytest.xfail"
-                             else "skipped" if "skipped" in children else "passed")
+            outcome = ("error" if "error" in children else "failed" if "failure" in children
+                       else "xfailed" if children.get("skipped", {}).get("type") == "pytest.xfail"
+                       else "skipped" if "skipped" in children else "passed")
+            before = found.get(nodeid)
+            found[nodeid] = outcome if before is None else min(before, outcome, key=_OUTCOME_ORDER.index)
     return found
 
 
@@ -506,11 +515,14 @@ def claim(claim_id: str, registry: Path) -> Claim:
 
 def claim_rows(claims: Iterable[Claim], resolutions: Mapping[str, Resolution]) -> list[tuple[str, ...]]:
     """The claims as a verification table, one row each, its labels as columns: id, quantity, value, role, basis,
-    oracle kind, evidence (each with its lane and outcome), and what it bounds and estimates."""
+    oracle kind, evidence (each with its lane and outcome, a held-out test last), and what it bounds and estimates."""
     rows: list[tuple[str, ...]] = []
     for held in sorted(claims, key=lambda c: (ROLES.index(c.role), c.key)):
         value = "" if held.value is None else f"{held.value:g}{f' {held.unit}' if held.unit else ''}"
         evidence = "; ".join(resolutions[e].text() if e in resolutions else e for e in held.evidence) or "none"
+        if held.held_out is not None:
+            out = resolutions[held.held_out].text() if held.held_out in resolutions else held.held_out
+            evidence += f"; held out: {out}"
         rows.append((held.key, held.quantity, value, held.role, held.basis, held.oracle_kind or "none",
                      evidence, held.label() + f". {held.says}"))
     return rows

@@ -173,7 +173,9 @@ REFERENCES = (("reference/saved_form.md", "What does a saved folder hold, and wh
               ("reference/mime_usd.md", "What does a `mime:` name on a stage mean?",
                "The `mime:` USD schema", ": each attribute and applied schema MIME writes or reads."),
               ("reference/migration.md", "What was a 0.2 name, in 0.3?",
-               "The migration table", ": each public name of the 0.2 line and what takes its place."))
+               "The migration table", ": each public name of the 0.2 line and what takes its place."),
+              ("reference/evidence_counts.md", "Which claims does a test back?",
+               "The evidence counts", ": every claim and specification statement, with its tests' outcomes."))
 
 
 def index_page(context: Context, references: Collection[str] = frozenset()) -> Page:

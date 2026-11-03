@@ -47,7 +47,7 @@ from mime.registry import GradientRecord
 
 
 def build(root: Path, out: Path | None = None, *extra: str) -> subprocess.CompletedProcess[str]:
-    command = [sys.executable, "-m", "mime.cli", "docs", "build", "--root", str(root), *extra]
+    command = [sys.executable, "-m", "mime.cli", "docs", "build", "--root", str(root), "--skip-evidence", *extra]
     return subprocess.run([*command, *(["--out", str(out)] if out is not None else [])], capture_output=True,
                           text=True, check=False)
 

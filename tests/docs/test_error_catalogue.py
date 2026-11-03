@@ -25,7 +25,7 @@ LIST = "docs/ratchets/refusal_codes.txt"
 def build(root, out) -> tuple[dict[str, str], str]:
     """The pages of the catalogue the real command writes for the checkout ``root`` in a fresh process (a registry other
     tests have planted entries in would add their pages), by path under ``pages/errors/``, and its summary."""
-    done = docs_run("build", "--root", str(root), "--out", str(out))
+    done = docs_run("build", "--root", str(root), "--out", str(out), "--skip-evidence")
     assert done.returncode == 0, done.stdout + done.stderr
     return ({path.relative_to(out / "pages" / "errors").as_posix(): path.read_text(encoding="utf-8")
              for path in sorted((out / "pages" / "errors").glob("*.md"))}, done.stdout)

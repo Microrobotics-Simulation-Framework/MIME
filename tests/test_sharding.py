@@ -532,8 +532,8 @@ def test_the_workflow_names_a_report_by_its_attempt_and_prunes_before_it_checks(
      "          if-no-files-found: error\n\n  # The lane's result",
      "-shard-${{ matrix.shard }}\n          path: ${{ runner.temp }}/report\n"
      "          if-no-files-found: error\n\n  # The lane's result", "default-tests: the shard's report is not named"),
-    ("run: python3 scripts/latest_attempt.py \"$RUNNER_TEMP\"/shards\n      - name: Every shard job, at its latest",
-     "run: 'true'\n      - name: Every shard job, at its latest", "default: the newest attempt is not kept"),
+    ("run: python3 scripts/latest_attempt.py \"$RUNNER_TEMP\"/shards\n      - name: Gather the default lane's JUnit",
+     "run: 'true'\n      - name: Gather the default lane's JUnit", "default: the newest attempt is not kept"),
     ("run: |\n          set -o pipefail\n          gh api", "run: |\n          gh api",
      "default: no step fails the lane when a shard job's latest attempt"),
     ("      actions: read\n", "", "default: cannot read the run's jobs"),

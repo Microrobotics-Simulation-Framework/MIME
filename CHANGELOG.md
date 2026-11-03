@@ -31,6 +31,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime env check` already names a core requirement missing from the environment, as the pins hold each one.
 
 ### Added
+- **The evidence counts, v0 (docs D4b, part two).** `mime docs build` writes `reference/evidence_counts.md`: every claim of
+  the anomaly registry and every normative statement of the saved form's specification, with the outcome of its tests in
+  the default lane's JUnit report read through the resolver (passed, failed, skipped, not run, or no test, and the
+  device), the counts and a table of them by role first, the claims grouped by role so that an acceptance record never
+  prints under an accuracy heading, a rule printed with its cases and no basis, the line "a test's body is not
+  checked", and the fixed sentence "This document is not a regulatory record or certificate; bounds and estimates are
+  as labelled." first. It is titled counts until it holds a claim with a `measured` basis. A floor on N
+  (`docs/ratchets/evidence_floor.txt`) fails the build when a pinned claim or statement is gone, and against
+  `--base` it only grows unless `evidence_floor_removed.txt` logs the removal with its reason; a claim whose cited
+  test is deleted fails its row; the page ends with a digest of itself, so a copy edited by hand fails, and a copy under
+  `docs/` fails `mime docs check`. `mime docs build` takes `--junit DIRECTORY` (the lane's reports), `--skip-evidence` and
+  `--collection FILE`; CI's default lane gathers the shards' reports first, uploads them as the
+  `junit-default-python-<version>` artifact and builds the pages from them. The full-lane version (`slow` and `gpu` run)
+  is 0.3.0's.
 - **`mime serve`'s live view, `--watch`, `--idle-timeout` and `--max-wall`, and three optional status keys** (design #214).
   On a terminal `mime serve` draws on standard error a strip (the state in a word, the step, the simulated time against the
   wall time, the speed against real time, the frames a second, the clients, recording, the flags and how to stop), a table

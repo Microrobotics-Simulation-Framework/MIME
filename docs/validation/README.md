@@ -54,3 +54,8 @@ an allowed legacy spelling.
 MADDENING's status values, no unknown field, every evidence id collected, each claim's shape, and the controlled form.
 Moving to MADDENING's validator waits for MADDENING to accept the fields of MIME's own. The code that 0.2-era entries
 name is at the tag `pre-0.3`.
+
+**The evidence counts** (`mime docs build` writes `reference/evidence_counts.md`) list every claim and every
+specification statement with the outcome of its tests in the default lane's JUnit report: counts first, grouped by role,
+with the line that a test's body is not checked. It is not a regulatory record or certificate. The pages are built and
+never committed (`src/mime/docs/README.md`).

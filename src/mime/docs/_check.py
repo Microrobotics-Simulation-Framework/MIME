@@ -27,6 +27,7 @@ from mime.docs._citations import bibliography_keys as read_bibliography
 from mime.docs._citations import citation_report, hand_written_files
 from mime.docs._evidence import Collection as Collected
 from mime.docs._evidence import collect, components
+from mime.docs._evidence_page import Inputs, committed_copy_problems, floor_base_problems, floor_form
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
 from mime.docs._lists import RatchetList, base_list, list_problems, read_list
 from mime.docs._migration import migration_report
@@ -87,6 +88,8 @@ LISTS: Mapping[str, Callable[[str], str | None]] = {
     "required_settings": _form(rf"{_ENTRY} [a-z_][a-z0-9_]*", "an entry's kind, name and version, then a setting"),
     "not_yet_covered": _form(STATEMENT_ID.pattern, "a specification's statement id"),
     "usd_read_only": _form(USD_NAME.pattern, "a name of the mime: USD schema"),
+    "evidence_floor": floor_form,
+    "evidence_floor_removed": floor_form,
 }
 FROZEN_IDS = Path("docs/data/node_ids_0.2.yaml")
 BIBLIOGRAPHY = Path("docs/bibliography.bib")
@@ -514,9 +517,20 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evide
     walk = docs_walk(root / "docs", records, nodes)
     report.problems += walk.problems
     report.summary += walk.summary
-    built = build_pages(root)
+    collection: Collected | None = None
+    collected_in = 0.0
+    if evidence:
+        started = time.perf_counter()
+        collection = collect(root)
+        collected_in = time.perf_counter() - started
+    built = build_pages(root, Inputs(evidence, collection))
     report.problems += built.problems
     report.summary += built.summary()
+    report.problems += committed_copy_problems(root / "docs")
+    floor_problems_, floor_summary = floor_base_problems(root, base, lists["evidence_floor"],
+                                                         lists["evidence_floor_removed"])
+    report.problems += floor_problems_
+    report.summary.append(floor_summary)
     empty_problems, empty_summary = none_declared_problems(
         root, lists["none_declared"], built, base, lists["renames"],
         {(record.kind.value.replace(" ", "_"), record.name) for record in records})
@@ -531,17 +545,21 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evide
     report.problems += citations.problems
     report.summary += citations.summary
     if hash_seeds:
-        unequal = _reproducible.reproducibility_problems(root, _reproducible.build_command)
+        with tempfile.TemporaryDirectory() as held:
+            given = ["--skip-evidence"]
+            if collection is not None:
+                path = Path(held) / "collection.json"
+                path.write_text(collection.to_json(), encoding="utf-8")
+                given = ["--collection", str(path)]
+            unequal = _reproducible.reproducibility_problems(
+                root, lambda source, out: _reproducible.build_command(source, out, *given))
         report.problems += unequal
         report.summary.append(f"pages built in fresh processes under {len(_reproducible.SEEDS)} hash seeds: "
                               + ("not equal" if unequal else "byte-equal"))
-    collection: Collected | None = None
-    if evidence:
-        started = time.perf_counter()
-        collection = collect(root)
+    if collection is not None:
         report.problems += [f"pytest's collection of the test suite: {error}" for error in collection.errors]
         report.summary.append(f"evidence: the test suite collected once, every marker kept: {len(collection.items)} "
-                              f"tests in {time.perf_counter() - started:.1f} s")
+                              f"tests in {collected_in:.1f} s")
     else:
         report.summary.append("evidence: not resolved (--skip-evidence)")
     reference_checks(root, records, lists, report, collection)

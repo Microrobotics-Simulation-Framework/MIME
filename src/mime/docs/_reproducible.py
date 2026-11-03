@@ -25,9 +25,10 @@ from pathlib import Path
 SEEDS = ("1", "2", "3", "4", "5", "6", "7", "8")
 
 
-def build_command(root: Path, out: Path) -> list[str]:
-    """The command that builds the pages of ``root`` into ``out``, as the CLI runs it."""
-    return [sys.executable, "-m", "mime.cli", "docs", "build", "--root", str(root), "--out", str(out)]
+def build_command(root: Path, out: Path, *more: str) -> list[str]:
+    """The command that builds the pages of ``root`` into ``out``, as the CLI runs it, with the options ``more``
+    (``mime docs check`` passes the collection it made, so that no build collects the suite again)."""
+    return [sys.executable, "-m", "mime.cli", "docs", "build", "--root", str(root), "--out", str(out), *more]
 
 
 def _read(directory: Path) -> dict[str, bytes]:

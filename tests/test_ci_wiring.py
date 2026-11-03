@@ -11,7 +11,9 @@
   ``concurrency``), read by evaluating its two expressions for each event;
 - the default lane runs ``mime docs check --base origin/v0.3`` with its exit status intact;
 - no step of any workflow runs ``mime docs check`` with ``--skip-evidence`` (``ci.yml``'s default lane and
-  ``platforms.yml``'s smoke jobs both run it, and one check reads every workflow file);
+  ``platforms.yml``'s smoke jobs both run it, and one check reads every workflow file), nor ``mime docs build`` with
+  any ``--skip-*`` flag (the published page is built with its evidence resolved), in any step of the job, written out
+  or built from a variable;
 - the ``confidential`` job runs ``scripts/check_confidential.py`` with the key's secret in its environment, and
   ``--messages``, ``--diffs`` and ``--ref-name``, with its exit status intact.
 
@@ -335,22 +337,47 @@ def docs_check_problems(job: dict[str, object], scratch: Path) -> list[str]:
     return found
 
 
+def docs_commands(run: str, calls: list[tuple[str, list[str], str]]) -> list[tuple[str, list[str]]]:
+    """The ``mime docs`` commands a step runs, each as its subcommand and the arguments after it: the step's text
+    (``uv run mime docs build ...``, ``mime docs check ...``) and the commands it makes when run with them stubbed, so
+    that a flag built from a variable shows too."""
+    found: list[tuple[str, list[str]]] = []
+    for line in run.replace("\\\n", " ").splitlines():
+        words = line.split()
+        for at in range(len(words) - 2):
+            if words[at] == "mime" and words[at + 1] == "docs":
+                found.append((words[at + 2], words[at + 3:]))
+    for command, arguments, _ in calls:
+        words = [command, *arguments]
+        for at in range(len(words) - 2):
+            if words[at] == "mime" and words[at + 1] == "docs":
+                found.append((words[at + 2], words[at + 3:]))
+    return found
+
+
 def skip_evidence_problems(directory: Path, scratch: Path) -> list[str]:
-    """Every step of every workflow in ``directory`` that runs ``mime docs check`` with ``--skip-evidence``, read from
-    its text and from its commands' arguments when it is run with them stubbed: CI resolves the evidence the
-    specification and the anomaly registry cite, wherever it runs the check."""
+    """Every step of every workflow in ``directory`` that runs ``mime docs`` with a flag that skips what the page or the
+    check resolves, read from its text and from its commands' arguments when it is run with them stubbed: CI resolves
+    the evidence the specification and the anomaly registry cite wherever it runs ``mime docs check`` (no
+    ``--skip-evidence``), and builds the published pages with every check on (no ``--skip-*`` of any name, so no page
+    is built that says its evidence was not resolved)."""
     found: list[str] = []
     for name, workflow in workflows(directory):
         for job_id, job in (workflow.get("jobs") or {}).items():
             for index, step in enumerate(job.get("steps") or []):
                 run = str(step.get("run", ""))
-                if "mime docs check" not in run:
+                if "mime docs" not in run:
                     continue
                 _, calls = run_step(step, PULL_REQUEST, 0, scratch / f"{name}-{job_id}-{index}")
-                if "--skip-evidence" in run or any("--skip-evidence" in arguments for _, arguments, _ in calls):
-                    found.append(f"{name}: the job {job_id}'s step {step.get('name')!r}: passes --skip-evidence; CI "
-                                 f"resolves the evidence the specification and the anomaly registry cite")
-    return found
+                where = f"{name}: the job {job_id}'s step {step.get('name')!r}"
+                for subcommand, arguments in docs_commands(run, calls):
+                    if subcommand == "check" and "--skip-evidence" in arguments:
+                        found.append(f"{where}: passes --skip-evidence; CI resolves the evidence the specification "
+                                     f"and the anomaly registry cite")
+                    if subcommand == "build":
+                        found += [f"{where}: passes {flag} to mime docs build; CI builds the published pages with "
+                                  f"nothing skipped" for flag in sorted({a for a in arguments if a.startswith("--skip")})]
+    return list(dict.fromkeys(found))
 
 
 def scan_problems(job: dict[str, object], scratch: Path) -> list[str]:
@@ -400,6 +427,14 @@ SCAN_LINE = '            ${public:+--public "$public"} ${name:+--ref-name "$name
 LANE_MATRIX = 'python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n      # Python 3.12'
 SHARD_LINE = ('        if: ' + LANE_RAN + '\n        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n')
 
+BUILD_RUN = "uv run --no-sync mime docs build --out"
+BUILD_JUNIT = '--junit "$RUNNER_TEMP/junit" \\\n'
+BUILD_SKIPS = ("ci.yml: the job default's step 'Build the documentation pages': passes --skip-evidence to mime docs "
+               "build; CI builds the published pages with nothing skipped")
+PRIVATE_STEP = "      - name: No private name or path in the built pages\n"
+SECOND_BUILD = ("      - name: A second build\n        run: uv run --no-sync mime docs build --out \"$RUNNER_TEMP/again\" "
+                "--skip-evidence\n")
+
 #: Each plant: the text replaced in ci.yml, its replacement, and the problem it must raise.
 PLANTS = {
     "the-docs-check-step-if-false": (
@@ -435,6 +470,16 @@ PLANTS = {
         "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-evidence",
         "ci.yml: the job default's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
         "specification and the anomaly registry cite"),
+    "the-build-step-skips-the-evidence": (
+        BUILD_JUNIT, BUILD_JUNIT.replace(' \\\n', ' --skip-evidence \\\n', 1), BUILD_SKIPS),
+    "the-build-step-skips-another-check": (
+        BUILD_JUNIT, BUILD_JUNIT.replace(' \\\n', ' --skip-citations \\\n', 1),
+        BUILD_SKIPS.replace("--skip-evidence", "--skip-citations")),
+    "the-build-step-skips-the-evidence-built-from-a-variable": (
+        BUILD_RUN, "PART=evidence; " + BUILD_RUN.replace("docs build", "docs build --skip-$PART", 1), BUILD_SKIPS),
+    "a-second-build-step-skips-the-evidence": (
+        PRIVATE_STEP, SECOND_BUILD + PRIVATE_STEP, BUILD_SKIPS.replace("Build the documentation pages",
+                                                                       "A second build")),
     "the-docs-step-continues-on-error": (
         f"        if: {LANE_RAN}\n        run: |\n          status=0\n",
         f"        if: {LANE_RAN}\n        continue-on-error: true\n        run: |\n          status=0\n",

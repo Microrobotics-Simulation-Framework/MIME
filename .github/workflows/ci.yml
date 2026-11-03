@@ -293,6 +293,29 @@ jobs:
         run: uv sync --locked --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      # The default lane's reports come first: the evidence counts page (docs build, below) reads each cited test's outcome
+      # in them, and they are uploaded as the lane's JUnit artifact, the very files the page read.
+      - name: Download the shards' reports
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: durations-default-python-${{ matrix.python-version }}-shard-*
+          path: ${{ runner.temp }}/shards
+      - name: Keep each shard's newest attempt
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        run: python3 scripts/latest_attempt.py "$RUNNER_TEMP"/shards
+      - name: Gather the default lane's JUnit reports
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/junit"
+          cp "$RUNNER_TEMP"/shards/*/test-results-shard*.xml "$RUNNER_TEMP/junit/"
+      - name: Upload the default lane's JUnit reports
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-default-python-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/junit
+          if-no-files-found: error
       # Every check of the documentation's sources (src/mime/docs/README.md): the sources' forms, the docs walk and
       # its ledger, the number rule, the citation check over the built pages, then scripts/check_anomalies.py,
       # unchanged. Its summary, each list's length, the entries whose derivative is not exact and the word-numeral
@@ -321,7 +344,8 @@ jobs:
         run: |
           failed=0
           started=$(date +%s%N)
-          uv run --no-sync mime docs build --out "$RUNNER_TEMP/docs-pages" > "$RUNNER_TEMP/docs-build.txt" 2>&1 \
+          uv run --no-sync mime docs build --out "$RUNNER_TEMP/docs-pages" --junit "$RUNNER_TEMP/junit" \
+            > "$RUNNER_TEMP/docs-build.txt" 2>&1 \
             || failed=$?
           echo "the command's wall time, start-up included: $(( ($(date +%s%N) - started) / 1000000 )) ms" \
             >> "$RUNNER_TEMP/docs-build.txt"
@@ -339,15 +363,6 @@ jobs:
           name: docs-pages-python-${{ matrix.python-version }}
           path: ${{ runner.temp }}/docs-pages
           if-no-files-found: error
-      - name: Download the shards' reports
-        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: durations-default-python-${{ matrix.python-version }}-shard-*
-          path: ${{ runner.temp }}/shards
-      - name: Keep each shard's newest attempt
-        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
-        run: python3 scripts/latest_attempt.py "$RUNNER_TEMP"/shards
       - name: Every shard job, at its latest attempt, passed
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         env:

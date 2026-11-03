@@ -35,6 +35,17 @@ def test_the_refusal_list_holds_every_code_no_test_names_and_prints_its_length()
     assert len(held) > 0 and all(line.reason == "no test names it" for line in held.lines)
 
 
+def test_the_evidence_floor_count_is_pinned_and_its_removals_are_none():
+    """The floor on the evidence counts' N is pinned here like the refusal table's count: a change that lowers it must
+    edit this number, and against ``--base`` the floor only grows (``test_evidence_counts.py``)."""
+    lists = read_lists(ROOT)
+    floor = lists["evidence_floor"]
+    assert floor.problems == () and lists["evidence_floor_removed"].problems == ()
+    claims = sum(line.item.startswith("claim ") for line in floor.lines)
+    assert (claims, len(floor) - claims) == (1, 38)
+    assert len(lists["evidence_floor_removed"]) == 0
+
+
 def test_w4_a_listed_code_a_test_now_names_fails_naming_the_line_to_delete(tmp_path):
     root, path = doctored(tmp_path)
     (root / "tests" / "test_planted_names.py").write_text(f'def test_it():\n    assert "{FIRST.item}"\n')

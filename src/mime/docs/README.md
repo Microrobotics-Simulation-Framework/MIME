@@ -193,6 +193,34 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   with the reason. Its names are held to a list frozen from the earlier line's last tag (`docs/data/names_0.2.txt`,
   held to its digest), so a typo fails; each has one row, and each target and rung is registered. Its page adds the
   renames of entries during this line's development. The guide's prose is not written yet.
+- **The evidence counts** (`_evidence_page.py`; the page `reference/evidence_counts.md`). Every claim of the anomaly
+  registry and every normative statement of a specification, with the outcome of its tests in the default lane's JUnit
+  report, read through the resolver (`resolve(..., lanes=...)`) and never resolved again: `passed`, `failed`, `skipped`,
+  `not run` (marked `skip`, `xfail`, `slow` or `gpu`), `no test` (a declared claim, a statement not yet covered) or
+  `not read` (no report was read, or the lane runs the test and no report holds it, as when a shard's report is
+  missing), and the device (`cpu`, declared by the workflow: `JAX_PLATFORMS` in `ci.yml`, which
+  `tests/test_ci_lane_junit.py` holds; a JUnit report records none, and the page says so). A row with several tests (a
+  bound's held-out test is one) takes the worst of them; a test id twice in the reports takes the worst
+  (`junit_outcomes`); only `passed`
+  counts as a test that ran and passed. The counts and a table of them by role lead the page, with the line "a test's
+  body is not checked" under them, and the claims are grouped by role (bound, estimate, acceptance, limit, rule), so an
+  acceptance record never prints under an accuracy heading; a `rule`, a claim of that role or a statement, prints with
+  its cases and no basis (#222). It opens with the fixed sentence of decision M (#115), exactly; the hand-written
+  source `docs/reference/evidence_counts.md` must open with it, and a test holds the page's first lines. The page is
+  titled *counts*, and is called a report once it holds a claim with a `measured` basis. **A floor on N**
+  (`docs/ratchets/evidence_floor.txt`, a list of the claims and statements that must stay, checked by
+  `floor_problems`): deleting a pinned claim or statement fails the build, and so does a claim whose cited test is
+  deleted, naming it. Against `--base` the floor only grows (`floor_base_problems`): a line gone from the base's floor
+  fails unless `docs/ratchets/evidence_floor_removed.txt` logs the item with a reason. A checkout that holds a registry
+  or a specification and no `docs/reference/evidence_counts.md` fails the build and the check. The page checks itself against the claims and statements it was made from (`page_problems`:
+  fixed sentence first, each row once under its role's heading) and ends with a digest of its text
+  (`generation_problems`), so a copy edited by hand fails; a generated page is never committed, and a copy of it under
+  `docs/` fails `mime docs check` (`committed_copy_problems`). `mime docs build --junit DIRECTORY` reads the lane's
+  reports (every `.xml` under it; a directory with none fails the build): CI passes the directory it uploads as the
+  `junit-default-python-<version>` artifact. Without it a local build prints every row as "outcome not read (no lane
+  report)", and `--skip-evidence` collects nothing (the tests of the other pages pass it). **What it bounds:** that every cited test is
+  collected by name and what a report says it did. **What it does not:** a test's body, whether a cited test
+  has anything to do with what cites it, and the full lane (`slow` and `gpu` run), which is 0.3.0's.
 - **`mime docs check`**: all of the above over a checkout (`--root`, and `--base` for the start list), the pages built
   in this process for the citation check and for the number rule's reading of the text they print from code (a
   validity line, a gradient record's text, a node's assumptions, an interface's description: the pages of MIME's

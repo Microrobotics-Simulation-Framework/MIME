@@ -29,7 +29,7 @@ def lined(text: str) -> str:
 
 
 def build(out, **kwargs):
-    return docs_run("build", "--root", str(ROOT), "--out", str(out), **kwargs)
+    return docs_run("build", "--root", str(ROOT), "--out", str(out), "--skip-evidence", **kwargs)
 
 
 def check(**kwargs):

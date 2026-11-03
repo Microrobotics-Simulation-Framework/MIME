@@ -1,0 +1,5 @@
+# The removals from the evidence floor (evidence_floor.txt), one `<item>  # <reason>` line each. The floor only grows
+# against the base revision (`mime docs check --base`): a pinned claim or statement is dropped from the floor only by
+# logging it here with the reason, which the check reads as an excuse. A line stays after the change has merged, as
+# the record of what was removed and why; an item logged here that is still on the floor fails. Empty: nothing has
+# been removed.

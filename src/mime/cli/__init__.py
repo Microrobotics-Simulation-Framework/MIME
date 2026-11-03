@@ -851,7 +851,8 @@ def _docs_check(root: Path, base: str | None, hash_seeds: bool, evidence: bool =
     return run_check(root, base, hash_seeds=hash_seeds, evidence=evidence)
 
 
-def _docs_build(root: Path, out: Path | None) -> int:
+def _docs_build(root: Path, out: Path | None, junit: Path | None = None, collection: Path | None = None,
+                skip_evidence: bool = False) -> int:
     try:
         from mime.docs._build import run_build
     except ImportError as error:
@@ -859,7 +860,7 @@ def _docs_build(root: Path, out: Path | None) -> int:
             raise
         print(f"mime docs build: {error}", file=sys.stderr)
         return 2
-    return run_build(root, out)
+    return run_build(root, out, junit=junit, collection=collection, skip_evidence=skip_evidence)
 
 
 def refused(error: Exception, command: str) -> int:
@@ -948,6 +949,17 @@ def build_parser() -> _guide.MimeParser:
     build.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to build from (default: here)")
     build.add_argument("--out", type=Path, help="the directory to write index.md and pages/ to (default: "
                                                 "<root>/docs/_build)")
+    build.add_argument("--junit", type=Path, metavar="DIRECTORY",
+                       help="the default lane's JUnit reports (every .xml under this directory): the evidence "
+                            "counts page reads each cited test's outcome there; without it every row prints "
+                            "'outcome not read (no lane report)' (CI passes it)")
+    build.add_argument("--collection", type=Path, metavar="FILE",
+                       help="a collection of the test suite, as mime docs check writes it (JSON), to resolve the "
+                            "evidence in (the hash-seed builds of mime docs check pass it; without it the files the "
+                            "evidence names are collected)")
+    build.add_argument("--skip-evidence", action="store_true",
+                       help="do not collect the tests the evidence counts page cites: every row reads 'not read' (the "
+                            "tests of the other pages pass it; CI never does)")
     from mime import assets
 
     held = commands.add_parser(assets.GROUP, help="large files referenced by sha256 and fetched on request")
@@ -1312,7 +1324,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _modal(arguments)
     if arguments.command == "docs":
         if arguments.docs_command == "build":
-            return _docs_build(arguments.root, arguments.out)
+            return _docs_build(arguments.root, arguments.out, arguments.junit, arguments.collection,
+                               arguments.skip_evidence)
         return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds,
                            not arguments.skip_evidence)
     if arguments.command == assets.GROUP:

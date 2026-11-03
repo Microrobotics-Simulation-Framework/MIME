@@ -45,7 +45,9 @@ write_pages(built, out)
 """
 
 
-def planted_command(root: Path, out: Path) -> list[str]:
+def planted_command(root: Path, out: Path, *more: str) -> list[str]:
+    """The plant, taking the options ``build_command`` takes (``mime docs check`` passes them; the plant has no use
+    for the collection)."""
     return [sys.executable, "-c", PLANTED, str(root), str(out)]
 
 
@@ -69,8 +71,13 @@ def test_w8_the_planted_set_order_makes_the_builds_differ_naming_the_page_once()
 
 
 def test_w8_the_real_generator_passes_the_same_comparison():
-    """The passing arm, which must pass on every run: the real command under the same seeds."""
-    assert reproducibility_problems(ROOT, build_command) == []
+    """The passing arm, which must pass on every run: the real command under the same seeds. It skips the evidence (a
+    build collects the tests it cites, which eight builds at once need not each do); ``mime docs check`` builds the
+    evidence counts page under the seeds with its own collection, and ``test_docs_check.py`` holds that."""
+    def quick(root: Path, out: Path) -> list[str]:
+        return build_command(root, out, "--skip-evidence")
+
+    assert reproducibility_problems(ROOT, quick) == []
 
 
 def test_w8_mime_docs_check_fails_on_a_planted_hash_order_dependence_and_passes_without_it():
