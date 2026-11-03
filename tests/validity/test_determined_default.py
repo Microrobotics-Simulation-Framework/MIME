@@ -21,7 +21,7 @@ def test_the_wall_kind_is_determined_in_every_profile():
     exploratory = settling_ball(Paperwork(density="steel", acceptance="Newtonian")).plan().profile
     with pytest.raises(BuildRefused) as refused:
         settling_ball(Paperwork(profile="research", density="steel", acceptance="Newtonian")).plan()
-    assert refused.value.codes() == ["setting.numerical-default", "setting.numerical-default"]
+    assert refused.value.codes() == ["setting.numerical-default"] * 3
     research = refused.value.report.profile
     for outcome in (exploratory, research):
         taken = {d.path: d for d in outcome.defaults}

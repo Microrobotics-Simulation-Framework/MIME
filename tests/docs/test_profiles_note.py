@@ -1,5 +1,5 @@
 """The profiles note's example runs (``docs/profiles.md``): its Python block, exactly as written, builds in exploratory
-and leaves pending the four items the note names; and each refusal code the note gives a section is a code of the
+and leaves pending the five items the note names; and each refusal code the note gives a section is a code of the
 refusal table, so the note cannot name a code MIME does not refuse with."""
 
 import re
@@ -15,7 +15,8 @@ def test_the_note_s_example_builds_and_leaves_pending_what_it_says():
     namespace: dict[str, object] = {}
     exec(compile(example, str(NOTE), "exec"), namespace)  # noqa: S102 - the note's own example
     pending = namespace["built"].report.profile.pending
-    assert [item.target for item in pending] == ["ball.parts.shell.density", "drag:ball.blob", "drag:ball.spacing",
+    assert [item.target for item in pending] == ["ball.parts.shell.density", "drag:ball.blob",
+                                                 "drag:ball.quadrature_refinement", "drag:ball.spacing",
                                                  "material 'water' fluid.dynamic_viscosity"]
 
 

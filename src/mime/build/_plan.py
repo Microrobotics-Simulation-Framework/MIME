@@ -656,6 +656,7 @@ class _Planner:
         self.check_rates()
         self.derive_seeds()
         self.finish_profile()
+        self.note_shared_media()
         if self.refusals or self.frame is None:
             raise BuildRefused(self.refusals, BuildReport(self.settings.experiment, self.dt or None,
                                                           vocabulary=vocabulary.versions(),
@@ -681,6 +682,63 @@ class _Planner:
                        controller, self.masses, dict(sorted(self.models.items())), self.outcome,
                        self.watch_plans(), checked=dict(sorted(self.checked.items())),
                        kicks=self.kicks)
+
+    def approaches(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, float]:
+        """The closest approach of each body an entry binds to the wall of the region its medium fills, by role
+        (:meth:`approach_of`), for ``PlanContext.approach``: its default rules and its plan read the same."""
+        media = [name for role, name in bindings.items() if roles[role] is RoleKind.MEDIUM]
+        return {role: approach for role, name in bindings.items() if roles[role] is RoleKind.BODY and media
+                for approach in (self.approach_of(name, media[0]),) if approach is not None}
+
+    def approach_of(self, body: str, medium: str) -> float | None:
+        """The least margin (m) by which a law attached in the experiment holds ``body`` off a surface of the structure
+        whose region ``medium`` fills (a law whose class names that setting, ``Interaction.holds_off``): the body's
+        closest approach to that wall. ``None`` where none does, or the medium fills no region."""
+        region = self.region_of(medium)
+        if region is None:
+            return None
+        structure = region.path.partition(".")[0]
+        found: list[float] = []
+        for declaration in self.declarations:
+            if not isinstance(declaration, Attachment):
+                continue
+            law = cast(object, declaration.law)  # a script is not type-checked
+            setting = getattr(type(law), "holds_off", None)
+            roles = cast(Mapping[str, RoleKind], getattr(type(law), "roles", {}))
+            if not isinstance(setting, str):
+                continue
+            bound = {role: binding_name(value) for role, value in declaration.bindings.items()}
+            held = [bound.get(role) for role, kind in roles.items() if kind is RoleKind.BODY]
+            surfaces = [bound.get(role) for role, kind in roles.items() if kind is RoleKind.SURFACE]
+            if body not in held or not any(str(surface).partition(".")[0] == structure for surface in surfaces):
+                continue
+            try:
+                margin = si(getattr(law, setting, None), LENGTH, what=f"{setting}=")
+            except (UnitError, TypeError):
+                continue  # refused where the law itself is planned
+            if isinstance(margin, float) and margin >= 0.0:
+                found.append(margin)
+        return min(found) if found else None
+
+    def note_shared_media(self) -> None:
+        """A validity line the build computes for each entry of the hydrodynamic family whose medium another body's
+        such entry shares: each body's drag is computed alone, so a second body in the same medium changes neither's
+        (no hydrodynamic interaction between bodies in MIME 0.3.0)."""
+        bodies: dict[str, list[EntryPlan]] = {}
+        for plan in self.readers:
+            if plan.section is Section.INTERACTION and getattr(plan.reader_cls(), "family", None) == WATCHED_FAMILY \
+                    and plan.bindings.get("medium") is not None and plan.bindings.get("body") is not None:
+                bodies.setdefault(plan.bindings["medium"], []).append(plan)
+        for medium, plans in bodies.items():
+            names = sorted({plan.bindings["body"] for plan in plans})
+            if len(names) < 2:
+                continue
+            for plan in plans:
+                others = ", ".join(repr(name) for name in names if name != plan.bindings["body"])
+                line = (f"the bodies {', '.join(repr(name) for name in names)} share the medium {medium!r}: "
+                        f"{plan.bindings['body']!r}'s drag is computed alone, as if {others} were absent, and no body "
+                        f"in it changes another's (no hydrodynamic interaction between bodies in MIME 0.3.0)")
+                self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), line)
 
     def watch_plans(self) -> tuple[WatchPlan, ...]:
         """The inputs of the post-run watch of every entry of the hydrodynamic family, from what the experiment
@@ -2281,7 +2339,7 @@ class _Planner:
         reactions = {role: mount.segment for role, name in bindings.items() if cls.roles[role] is RoleKind.FIELD
                      for mount in (self.source_mount(name),) if mount is not None}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
-                              hulls, reactions)
+                              hulls, reactions, approaches=self.approaches(cls.roles, bindings))
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:
@@ -2335,7 +2393,8 @@ class _Planner:
                               {role: region for role, name in given.items() if roles[role] is RoleKind.MEDIUM
                                for region in (self.region_of(name),) if region is not None},
                               {role: hull for role, name in given.items() if roles[role] is RoleKind.BODY
-                               for hull in (self.hull_of(name),) if hull is not None})
+                               for hull in (self.hull_of(name),) if hull is not None},
+                              approaches=self.approaches(roles, given))
         taken: dict[str, object] = {}
         for name, declared in sorted(record.roles.items()):
             if declared.by is None or getattr(entry, name, None) is not None:

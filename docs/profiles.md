@@ -45,15 +45,16 @@ print(built.report.pending())
 ```
 
 It builds. Gravity is standard gravity by convention, since the experiment states none, and the drag's wall kind is
-the one that matches a medium filling no region; the build report says both. Four things are pending, and
+the one that matches a medium filling no region; the build report says both. Five things are pending, and
 `built.report.pending()` names each in plain words, with the line to paste and the imports those lines need:
 
 - the ball's density was declared with no reason;
 - water's viscosity record states no shear rate, which exploratory waives as an assumption;
-- the MRS drag's `spacing` and `blob` took their numerical defaults, each a stated rule with its basis,
-  never a converged value. What was measured of the default is printed beside it, in numbers: how far a sphere's drag
-  at the default spacing is from Stokes's law, and how far a screw's speed per turn is from the finest spacing
-  measured, with how long a task of a first experiment's size takes at it.
+- the MRS drag's `spacing`, `blob` and `quadrature_refinement` took their numerical defaults, each a stated rule with
+  its basis, never a converged value. What was measured of the default is printed beside it, in numbers: how far a
+  sphere's drag at the default spacing is from Stokes's law, and how far a screw's speed per turn is from the shipped
+  free-space reference and from the finest spacing measured, with how long a task of a first experiment's size takes
+  at it.
 
 The one line of paperwork is the record's `require=`. "No paperwork" holds for what the experiment leaves unstated,
 not for what a read asks of its consumer: water's record holds viscosities measured by more than one method, and only

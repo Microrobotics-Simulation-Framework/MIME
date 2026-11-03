@@ -38,7 +38,7 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 import numpy as np
 import pytest
-from mrs_cases import BALL, PILL, mrs, drag_node, free_space, resistance_at
+from mrs_cases import BALL, PILL, drag_node, free_space, mrs, point_forces, resistance_at
 from rigid_oracles import ConstantWrench
 from script_a import fl9
 
@@ -228,13 +228,17 @@ def test_check_2_the_swimmers_derivative_in_its_wavenumber_equals_the_difference
 
 
 class _BakedBlobNode(MRSDragNode):
-    """Its blob fixed at construction, from the samples of the radius it was built with."""
+    """Its blob fixed at construction, from the samples of the radius it was built with: on a separated quadrature in
+    its body (whose derivative rule is traced after the step), on point forces in the step."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         built = self.samples({key: jnp.asarray(value) for key, value in self.constants().items()
                               if key.startswith(("shape_", "part_")) or key == "viscosity"})
         self._baked = float(blob_squared(built.weights, self.constants()["blob"]))
+
+    def body(self, theta):
+        return dataclasses.replace(super().body(theta), eps_squared=jnp.asarray(self._baked, dtype=theta["blob"].dtype))
 
     def advance(self, p, state, boundary_inputs, dt):
         from mime.nodes.hydro.mrs import _node
@@ -407,8 +411,10 @@ def primitives(jaxpr, name: str) -> int:
 def ball_loss():
     """A weighted sum of the ball's resistance through the shipped node at its starting pose (turned), each entry scaled
     by its size at the built radius, as a function of the radius leaf; and that radius. A solve planted in the shipped
-    one's place (``mime.nodes.hydro.mrs._solve.point_forces``, which ``resistance`` reads by name) is the node's."""
-    built = free_space("proposals", {"ball": BALL}, mrs(SPACING)).build()
+    one's place (``mime.nodes.hydro.mrs._solve.point_forces``, which ``resistance`` reads by name) is the node's. The
+    rung is drag 0.3.0's point forces, which solve at every step, as drag 0.4.0's separated quadrature does with a wall
+    (``test_mrs_separated.py`` checks its derivative there); in free space 0.4.0 holds the resistance and solves none."""
+    built = free_space("proposals", {"ball": BALL}, point_forces(SPACING)).build()
     node = drag_node(built, "ball")
     leaves = parameter_leaves(built.graph)["drag:ball"]
     pose = jnp.asarray(node_state(built.graph, "ball")["pose"], dtype=jnp.float64)
@@ -496,7 +502,7 @@ def test_the_shipped_solves_forward_and_reverse_modes_against_the_difference_and
 
 
 def residual_sizes(checkpointed: bool) -> list[int]:
-    built = free_space("residuals", {"ball": BALL}, mrs(SPACING)).build()
+    built = free_space("residuals", {"ball": BALL}, point_forces(SPACING)).build()
     node = built.graph.get_node("drag:ball")
     leaves = parameter_leaves(built.graph)["drag:ball"]
     state = node.initial_state()
@@ -516,7 +522,7 @@ def residual_sizes(checkpointed: bool) -> list[int]:
 
 
 def test_the_reverse_mode_keeps_no_matrix_between_its_passes_and_its_checkpoint_is_what_does_it():
-    built = free_space("count", {"ball": BALL}, mrs(SPACING)).build()
+    built = free_space("count", {"ball": BALL}, point_forces(SPACING)).build()
     count = drag_node(built, "ball").sample_count
     matrix = (3 * count) ** 2
     with_checkpoint, without = residual_sizes(True), residual_sizes(False)

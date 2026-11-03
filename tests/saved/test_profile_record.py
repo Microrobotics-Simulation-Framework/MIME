@@ -13,6 +13,7 @@ MIME's defect, refused as internal, never as the installed entries'."""
 import dataclasses
 import json
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 
@@ -69,10 +70,10 @@ def test_t1_bare_saves_a_folder_that_loads_pends_and_verifies(folders, capsys: p
     folder = folders["walk"]
     loaded = Experiment.load(folder)
     pending = [item.target for item in loaded.build().report.profile.pending]
-    assert pending == ["ball.parts.sphere.density", "drag:ball.blob", "drag:ball.spacing", "water.density",
-                       "water.viscosity"]
+    assert pending == ["ball.parts.sphere.density", "drag:ball.blob", "drag:ball.quadrature_refinement",
+                       "drag:ball.spacing", "water.density", "water.viscosity"]
     assert mime_main(["pending", str(folder)]) == 1
-    assert "5 items pending" in capsys.readouterr().out
+    assert "6 items pending" in capsys.readouterr().out
     assert mime_main(["verify", str(folder)]) == 0
 
 
@@ -117,12 +118,12 @@ def test_a_difference_in_mime_s_own_record_is_internal_and_an_entry_s_is_the_env
 
 def test_a_reworded_default_loads_and_a_changed_value_is_refused(folders, monkeypatch: pytest.MonkeyPatch):
     """K5: the blob's basis reworded in the code, its entry's version unchanged: the folder loads. The control: the
-    blob's default value changed is refused."""
+    blob's default value changed (drag 0.4.0's, by the hull's family) is refused."""
     roles = registration_of(Drag.MRS()).roles
     monkeypatch.setitem(roles, "blob", dataclasses.replace(roles["blob"], basis="the same claim, in other words"))
     report = Experiment.load(folders["walk"]).load_report
     assert report is not None and report.text().splitlines()[2] == "input hash: reproduced exactly"
-    monkeypatch.setattr(hydrodynamic, "DEFAULT_BLOB", 0.6)
+    monkeypatch.setattr(hydrodynamic, "SEPARATED_BLOB", MappingProxyType({**hydrodynamic.SEPARATED_BLOB, "sphere": 0.6}))
     with pytest.raises(BuildRefused) as refused:
         Experiment.load(folders["walk"])
     assert "load.input-hash" in refused.value.codes()

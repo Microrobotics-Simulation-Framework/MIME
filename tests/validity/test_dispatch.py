@@ -140,7 +140,9 @@ def test_the_review_s_rows_each_act(row):
     sealed = Paperwork(profile=profile.value, acceptance=None if name == "assumption" else "Newtonian",
                        density="steel", spacing=None if name == "numerical_default" else mm(0.2, reason="converged"),
                        blob=None if name == "numerical_default" else 0.5,
-                       sources={} if name == "numerical_default" else {"drag:ball.blob": "usual"})
+                       quadrature_refinement=None if name == "numerical_default" else 4,
+                       sources={} if name == "numerical_default" else {"drag:ball.blob": "usual",
+                                                                       "drag:ball.quadrature_refinement": "usual"})
     with using_tables(FINDING_CLASSES, rules_with(profile, name, action)):
         kind, held = outcome(lambda: settling_ball(sealed), profile)
     if code is not None:

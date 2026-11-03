@@ -90,13 +90,13 @@ def test_the_examples_starting_sizes_are_rows_of_the_tables(measurements):
 def test_a_changed_number_in_the_prose_is_refused(script, measurements):
     page = PAGE.read_text(encoding="utf-8")
     facts = script.facts(measurements)
-    stall = " ".join(facts["stall"].split())
+    stated = " ".join(facts["sphere_to_a_per_cent"].split())
     flowed = " ".join(page.split())
-    assert stall in flowed
-    first = re.search(r"\d+(\.\d+)?%", stall)
+    assert stated in flowed
+    first = re.search(r"\d+(\.\d+)?%", stated)
     assert first is not None
-    changed = flowed.replace(stall, stall.replace(first.group(0), "99.9%", 1), 1)
-    assert any("'stall'" in line for line in problems(script, measurements, changed))
+    changed = flowed.replace(stated, stated.replace(first.group(0), "99.9%", 1), 1)
+    assert any("'sphere_to_a_per_cent'" in line for line in problems(script, measurements, changed))
 
 
 def test_the_screws_samples_the_prose_explains_are_the_kinds_own():

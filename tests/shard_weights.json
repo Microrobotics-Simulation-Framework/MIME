@@ -1,7 +1,8 @@
 {
- "source": "CI runs 41297540882 (v0.3 at 21e98f5), 41304088034 (phase 7m-a at def14b3) and 41305301528 (phase 7n-b at 069a330), the median over their fifteen lanes",
+ "source": "CI runs 41297540882 (v0.3 at 21e98f5), 41304088034 (phase 7m-a at def14b3) and 41305301528 (phase 7n-b at 069a330), the median over their fifteen lanes; tests/oracles/test_mrs_near_wall.py added by hand at 1 s, which moves five other 1 s files and nothing larger, so that it leaves the arm battery's shard and the rest of the deal stays its base's: its true weight is about 600 s, for the table's next rebuild (by its hash the file fell on the battery's shard, and a local run under CI's cache settings has that shard's four workers past 16 GB at the battery's peak; re-dealt around its true weight the battery's shard took other heavy files and lost its runner too, runs 41394050318 and 41399776493)",
  "over": 1.0,
  "seconds": {
+  "tests/oracles/test_mrs_near_wall.py": 1,
   "tests/assets/test_asset_integrity.py": 31,
   "tests/assets/test_folder_assets.py": 1,
   "tests/assets/test_placed_by_name.py": 6,

@@ -70,8 +70,8 @@ def test_no_piecewise_remains_and_its_four_users_carry_their_statuses(records):
 
 
 def test_each_owner_is_declared_once_with_orders_per_output_group(records):
-    """A version kept registered beside its successor (the contact 0.1.0) lists the declarations the successor's
-    record holds, the same objects: each owner is declared once all the same."""
+    """A version kept registered beside its successor (the contact 0.1.0, the drag 0.3.0) lists the declarations the
+    successor's record holds, the same objects: each owner is declared once all the same."""
     declared = {id(declared): declared for record in records if record.cls.gradient is not None
                 for declared in record.cls.gradient.switches}
     declared |= {id(declared): declared for name in shape_names() for declared in shape_switches(name)}

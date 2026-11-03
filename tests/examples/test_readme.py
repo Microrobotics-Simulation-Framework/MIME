@@ -58,8 +58,8 @@ def test_the_shell_command_the_readme_gives_reads_the_folder_the_quickstart_save
     monkeypatch.chdir(folder)
     assert mime_main(commands[0].split()[1:]) == 1, "it exits with one while anything is pending"
     shown = capsys.readouterr().out
-    assert "5 items pending" in shown and "exp.declare(\"water.viscosity\"" in shown
-    assert "three reasons and two numerical defaults" in README
+    assert "6 items pending" in shown and "exp.declare(\"water.viscosity\"" in shown
+    assert "three reasons and three numerical defaults" in README
 
 
 def test_the_install_section_names_the_distribution_the_extras_and_the_branch_that_exist():

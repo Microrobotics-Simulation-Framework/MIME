@@ -72,8 +72,14 @@ def test_full_adds_the_load_report_the_build_reports_summary_and_the_whole_resul
         assert part in out, part
 
 
+#: The run keeps every step, so that each flag is known at every step: drag 0.4.0's MRS rung raises three flags
+#: (indefinite, near_wall, asymmetric), and a run that keeps the last step alone cannot say whether one was raised before
+#: it, which the summary lists as needing attention (phase 7m-b's second fix round, on merging the summary).
+EVERY_STEP = "--history"
+
+
 def test_a_run_with_nothing_raised_says_nothing_needs_attention(folders, tmp_path, capsys):
-    out = run(folders, "r10", "3ms", tmp_path, capsys)
+    out = run(folders, "r10", "3ms", tmp_path, capsys, EVERY_STEP)
     assert out.startswith("Nothing needs attention"), out.splitlines()[0]
     assert "post-run watch raised" not in out and "ran sphere_settling" in out
 
@@ -144,7 +150,7 @@ def sphere_without_a_density(radius_um: float = 10.0):
         position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, -1e-3)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"steel": Part(Sphere(radius=um(radius_um)))}))
     exp.declare("ball.parts.steel.density", kg_per_m3(7850.0), reason="steel")
-    exp.attach(Drag.MRS(spacing=um(radius_um / 4), blob=0.5), body=ball, medium=water)
+    exp.attach(Drag.MRS(spacing=um(radius_um / 4), blob=0.5, quadrature_refinement=4), body=ball, medium=water)
     return exp
 
 
@@ -161,7 +167,7 @@ def watch_folders(folders, tmp_path_factory):
 def test_a_watch_that_could_not_be_computed_is_listed_and_the_summary_does_not_say_nothing_needs_attention(
         watch_folders, tmp_path, capsys):
     """Run for real, not on a stub: the medium's density is declared nowhere, so the watch is ``not_computed``."""
-    out = run(watch_folders, "no_density", "1ms", tmp_path, capsys)
+    out = run(watch_folders, "no_density", "1ms", tmp_path, capsys, EVERY_STEP)
     lines = out.splitlines()
     assert lines[0].startswith("Needs attention (1)") and not out.startswith("Nothing needs attention"), lines[0]
     assert any(line.startswith("  ! post-run watch could not be checked: reynolds:drag:ball") and "not computed" in line

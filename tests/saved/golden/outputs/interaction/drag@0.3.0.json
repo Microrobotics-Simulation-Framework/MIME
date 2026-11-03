@@ -1,6 +1,6 @@
 {
  "entry": "interaction drag 0.3.0",
- "case": "script_a",
+ "case": "script_a_kept",
  "steps": 8,
  "outputs": {
   "drag:umr": {

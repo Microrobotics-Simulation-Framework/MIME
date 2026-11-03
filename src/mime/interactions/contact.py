@@ -178,8 +178,11 @@ class Contact(Interaction):
     all the points would (not measured). Projection, not penalty; no code of its own for a body or a wall, and the solve is laid out over contact
     pairs (a hull against a wall; two bodies' hulls, by their supports, are the layout's next). A body with no hull (no
     parts, its extent declared) is held as a sphere of its extent about its centre, by 0.1.0's projection, which is
-    exact for one. One per body; only against a fixed structure's surface. Its derivative is piecewise: it jumps where
-    two of the body's own deepest points tie, or where a step changes the contact's branch, as its switches say.
+    exact for one. Its ``margin`` is how near it lets the body come to the surface (``holds_off``), which the planner
+    gives a law near that wall as the body's closest approach (``PlanContext.approach``): the MRS rung's default force
+    spacing is taken from it. One per body; only against a fixed structure's surface. Its derivative is piecewise: it
+    jumps where two of the body's own deepest points tie, or where a step changes the contact's branch, as its switches
+    say.
     ``penalty`` (loads into each side's applied wrench) is reserved. ``Contact.Projection(...)`` is
     ``Contact(rung="projection", ...)`` and saves identically.
 
@@ -203,6 +206,7 @@ class Contact(Interaction):
 
     name = "contact"
     version = "0.3.0"
+    holds_off = "margin"
     setting_roles = {
         "rung": DESIGN, "margin": NUMERICAL,
         "rule": convention(PHYSICAL, "a frictionless contact that does not bounce: the projection removes the "

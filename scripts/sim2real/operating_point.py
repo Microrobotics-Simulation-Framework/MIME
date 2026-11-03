@@ -71,21 +71,23 @@ FROZEN_VERSIONS = {"screw": "0.2.0", "sphere": "0.1.0", "capsule": "0.1.0", "box
 #: register's x4.32 transverse-inertia arm (3.20686 to 3.20747 mm/s). Every body here is built at 0.2.0 until a dated
 #: amendment of the register moves it; ``tests/differential/test_frozen_register_pins.py`` fails on any other.
 FROZEN_DYNAMICS = {"rigid_inertial": "0.2.0"}
-#: The interactions' versions the register froze, where one has moved since: the contact 0.1.0, which holds the body's
-#: centre by its extent (0.2.0, phase 7o, holds its hull's points). Every experiment here attaches each law through
-#: ``pinned_law``; ``tests/differential/test_frozen_register_pins.py`` fails on any other version.
-FROZEN_INTERACTIONS = {"contact": "0.1.0"}
+#: The interactions' versions 7j's register froze (those registered on 2026-10-31), where one has moved since: the
+#: drag 0.3.0 (0.4.0, phase 7m-b, separated the MRS rung's quadrature) and the contact 0.1.0, which holds the body's
+#: centre by its extent (0.2.0, phase 7o, holds its hull's points). Every law attached here is built at these until a
+#: dated amendment moves them, through ``pinned_law``; ``tests/differential/test_frozen_register_pins.py`` fails on any
+#: other version.
+FROZEN_INTERACTIONS = {"drag": "0.3.0", "magnetic.torque": "0.1.0", "gravity": "0.1.0", "contact": "0.1.0"}
 
 
 def pinned_law(law: Any) -> Any:
-    """``law`` at the version :data:`FROZEN_INTERACTIONS` names for it: itself where it is that version or the table
-    names none, or the same settings on the version ``mime.interactions.KEPT`` keeps registered (a setting the kept
-    version does not have is refused, never dropped)."""
+    """``law`` at the version :data:`FROZEN_INTERACTIONS` names for it: itself where it is that version, or the same
+    settings on the version ``mime.interactions.KEPT`` keeps registered (a setting the kept version does not have is
+    refused, never dropped)."""
     from dataclasses import fields
 
     from mime.interactions import KEPT
 
-    version = FROZEN_INTERACTIONS.get(law.name, law.version)
+    version = FROZEN_INTERACTIONS[law.name]
     if law.version == version:
         return law
     held, _ = KEPT[(law.name, version)]
@@ -172,9 +174,9 @@ def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: 
         law = Drag.MRS(spacing=mm(spacing_mm), blob=blob, patches=PATCHES[patches], wall_kind="tube")
     else:
         raise ValueError(f"rung {rung!r} is neither 'surrogate' nor 'bem'")
-    built.attach(law, body=umr, medium=water)
-    built.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
-    built.attach(Gravity(), body=umr, medium=water)
+    built.attach(pinned_law(law), body=umr, medium=water)
+    built.attach(pinned_law(Magnetic.Torque()), body=umr, field=field.magnetic)
+    built.attach(pinned_law(Gravity()), body=umr, medium=water)
     built.attach(pinned_law(Contact.Projection(margin=mm(margin_mm))), body=umr, surface=tube.inner_surface)
     built.observe(SwimSpeed(umr, along=tube.axis))
     return built
