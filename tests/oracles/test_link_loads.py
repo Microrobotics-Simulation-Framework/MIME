@@ -11,7 +11,9 @@ and wrenches drawn on every named frame.
   force is held to a size where the term it drops stands above the comparison's rounding.
 
 The comparison allows ``ROUNDINGS`` float64 roundings of the larger side's scale: both sides sum a few dozen products of
-the same terms in other orders.
+the same terms in other orders. That scale includes ``velocity_scale``: the velocity terms are in both recursions, loaded
+and not, and cancel inside each (a straight planar arm's centripetal terms leave no moment), so the misfit is the rounding
+of terms up to the mass matrix's largest entry times the speed squared, not of either output.
 """
 
 import jax
@@ -22,7 +24,7 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
 import multibody_cases as cases
-from mime.core.multibody import frame_forces, frame_jacobian, inverse_dynamics
+from mime.core.multibody import frame_forces, frame_jacobian, inverse_dynamics, mass_matrix
 from mime.core.multibody._articulation import ROOT
 
 EPS = cases.EPS
@@ -53,7 +55,10 @@ def compiled(tree):
     def transposed(q, w):
         return sum(frame_jacobian(tree, q, f).T @ w[k] for k, f in enumerate(tree.frame_names))
 
-    return jax.jit(without), jax.jit(loaded), jax.jit(transposed)
+    def mass(q):
+        return mass_matrix(tree, q)
+
+    return jax.jit(without), jax.jit(loaded), jax.jit(transposed), jax.jit(mass)
 
 
 COMPILED = {name: compiled(tree) for name, tree in TREES.items()}
@@ -61,10 +66,11 @@ COMPILED = {name: compiled(tree) for name, tree in TREES.items()}
 
 def misfit(name, q, qd, w, gathered=None) -> tuple[float, float]:
     """The largest difference between the two routes, and the comparison's bound."""
-    without, loaded, transposed = COMPILED[name]
+    without, loaded, transposed, mass = COMPILED[name]
     by_rnea = np.asarray(without(q, qd)) - np.asarray(loaded(q, qd, w) if gathered is None else gathered(q, qd, w))
     by_jacobian = np.asarray(transposed(q, w))
-    scale = max(float(np.max(np.abs(by_jacobian))), float(np.max(np.abs(np.asarray(without(q, qd))))), 1e-300)
+    scale = max(float(np.max(np.abs(by_jacobian))), float(np.max(np.abs(np.asarray(without(q, qd))))), 1e-300,
+                cases.velocity_scale(np.asarray(mass(q)), qd))
     return float(np.max(np.abs(by_rnea - by_jacobian))), ROUNDINGS * EPS * scale
 
 
@@ -81,6 +87,16 @@ def test_loads_on_the_frames_enter_inverse_dynamics_as_the_jacobian_transpose_ma
     name, (q, qd, w) = drawn
     found, bound = misfit(name, q, qd, w)
     assert found <= bound, f"{name}: {found:.3g} > {bound:.3g}"
+
+
+#: The draw CI failed on (PR #128, shard 3): the planar arm straight, turning at 7 rad/s, one load component on frame 3.
+#: The velocity terms cancel in both recursions to the gravity moment alone, and the misfit, 1.61 times the bound
+#: judged on the larger output, is the rounding of terms of the size the mass matrix and the speed squared give.
+def test_a_straight_planar_arm_turning_fast_is_judged_on_the_velocity_terms_that_cancelled():
+    w = np.zeros((len(TREES["planar"].frame_names), 6))
+    w[3, 0] = 0.25
+    found, bound = misfit("planar", np.array([2.1171875, 0.0, 0.0]), np.array([7.0, 0.0, 0.0]), w)
+    assert found <= bound, f"planar: {found:.3g} > {bound:.3g}"
 
 
 def unmoved(tree):

@@ -31,6 +31,16 @@ PLANAR_LENGTHS = (1.0, 1.0, 0.5)
 EPS = float(np.finfo(np.float64).eps)
 
 
+def largest(x: object) -> float:
+    return float(np.max(np.abs(np.asarray(x))))
+
+
+def velocity_scale(mass: np.ndarray, qd: np.ndarray) -> float:
+    """The size the velocity terms have before they cancel: the mass matrix's largest entry times the largest speed
+    squared. The terms cancel, to zero on a straight planar arm, however fast it turns, so the result is no scale."""
+    return largest(mass) * largest(qd) ** 2
+
+
 def planar() -> MultibodyTree:
     return read_urdf(PLANAR_URDF).tree
 

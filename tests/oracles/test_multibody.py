@@ -74,8 +74,7 @@ def vee(skew: Any) -> Any:
     return jnp.stack([skew[2, 1], skew[0, 2], skew[1, 0]])
 
 
-def largest(x: Any) -> float:
-    return float(np.max(np.abs(np.asarray(x))))
+largest, velocity_scale = cases.largest, cases.velocity_scale
 
 
 FK = {name: jax.jit(lambda q, tree=tree: forward_kinematics(tree, q)) for name, tree in TREES.items()}
@@ -348,12 +347,6 @@ def velocity_products(tree: MultibodyTree):
 
 CHRISTOFFEL = {name: christoffel_terms(tree) for name, tree in TREES.items()}
 VELOCITY_PRODUCTS = {name: velocity_products(tree) for name, tree in TREES.items()}
-
-
-def velocity_scale(mass: np.ndarray, qd: np.ndarray) -> float:
-    """The size the velocity terms have before they cancel: the mass matrix's largest entry times the largest speed
-    squared. The terms cancel, to zero on a straight planar arm, however fast it turns, so the result is no scale."""
-    return largest(mass) * largest(qd) ** 2
 
 
 def velocity_misfit(name: str, recursion: Any, q: np.ndarray, qd: np.ndarray) -> float:
