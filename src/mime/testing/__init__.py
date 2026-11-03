@@ -128,6 +128,7 @@ from mime.testing._kind_conformance import (
     sampling_kinds,
 )
 from mime.testing._shape_suite import (
+    CONVEXITY_BAND_EVALUATIONS,
     CONVEXITY_ULPS,
     DIFFERENCE_FLOOR_ULPS,
     PLANTED_TANGENT,
@@ -179,6 +180,7 @@ __all__ = [
     "sampling_quality",
     "suite_spacing",
     "CONTACT",
+    "CONVEXITY_BAND_EVALUATIONS",
     "CONVEXITY_ULPS",
     "DIFFERENCE_FLOOR_ULPS",
     "FLOOR_ULPS",

@@ -89,8 +89,15 @@ type Placement = Callable[[Parameters, float, np.ndarray], np.ndarray]
 SHAPE_TOLERANCE: Mapping[str, float] = MappingProxyType({"float64": 1e-6, "float32": 1e-4})
 #: How far a region's signed distance at the midpoint of two points may stand above their mean before its ``convex``
 #: declaration is refuted, in units in the last place of the points' scale (their largest distance from the origin
-#: plus the shape's size): the three evaluations' rounding.
+#: plus the shape's size): the three evaluations' rounding. Measured on the cylinder over 9,000 evaluations (3,000
+#: probes) against 60-digit decimal arithmetic: at most 2.4 of these units, and 0.64 where the point is off its axis
+#: band (the rest is the band's, below).
 CONVEXITY_ULPS = 64.0
+#: The axis band's share of the allowance, in evaluations' worth of ``AXIS_ULPS`` units in the last place of the
+#: shape's size: a point within the band of a medial set has the set's value (the cylinder's minus its radius),
+#: wrong by up to the band's width, by the shape's declaration and not by rounding; the midpoint's and the mean's
+#: evaluations are each wrong by up to it.
+CONVEXITY_BAND_EVALUATIONS = 2
 #: The planted wrong tangent's relative error, by dtype: above that dtype's tolerance, so that a probe placed where the
 #: floor lies below it must reject it.
 PLANTED_TANGENT: Mapping[str, float] = MappingProxyType({"float64": 1e-4, "float32": 1e-2})
@@ -273,16 +280,18 @@ def convexity_probes(draw: Any, case: ShapeCase) -> tuple[Parameters, np.ndarray
 def convexity_problem(shape: str, parameters: Parameters, first: np.ndarray, second: np.ndarray,
                       size: float) -> str | None:
     """Where ``shape``'s region, declared convex, is not: its signed distance at the midpoint of the two points stands
-    above their mean by more than ``CONVEXITY_ULPS`` of their scale's rounding (a convex region's signed distance is a
-    convex function of the point, so it never does). ``None`` where the two points refute nothing, which proves
-    nothing."""
+    above their mean by more than ``CONVEXITY_ULPS`` of their scale's rounding and ``CONVEXITY_BAND_EVALUATIONS``
+    axis bands of the shape's size (a convex region's signed distance is a convex function of the point, so it never
+    does; a point within the band of the shape's axis has the axis's value, wrong by up to the band by declaration,
+    which a draw at the band's edge shows). ``None`` where the two points refute nothing, which proves nothing."""
     numeric, whole = _split(parameters, jnp.float64)
     first, second = np.asarray(first, dtype=np.float64), np.asarray(second, dtype=np.float64)
     at_first, at_second, at = (float(_value(shape, "distance", whole, numeric, jnp.asarray(point, dtype=jnp.float64)))
                                for point in (first, second, (first + second) / 2.0))
     mean = (at_first + at_second) / 2.0
     scale = max(float(np.linalg.norm(first)), float(np.linalg.norm(second))) + size
-    rounding = CONVEXITY_ULPS * float(np.finfo(np.float64).eps) * scale
+    eps = float(np.finfo(np.float64).eps)
+    rounding = CONVEXITY_ULPS * eps * scale + CONVEXITY_BAND_EVALUATIONS * AXIS_ULPS * eps * size
     if at <= mean + rounding:
         return None
     return (f"{shape}: its signed distance at the midpoint of {first.tolist()} and {second.tolist()} is {at:.17g} m, "
@@ -685,7 +694,7 @@ register_shape_case(ShapeCase(
 ))
 
 
-__all__ = ["CONVEXITY_ULPS", "DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "PLANTED_TANGENT", "PROBE_CLASSES",
+__all__ = ["CONVEXITY_BAND_EVALUATIONS", "CONVEXITY_ULPS", "DIFFERENCE_FLOOR_ULPS", "NOISE_FACTOR", "PLANTED_TANGENT", "PROBE_CLASSES",
            "ROUNDING_SHIFT_ULPS", "SHAPE_CASES", "SHAPE_TOLERANCE", "ShapeCase", "ShapeCheck", "ShapeProbe", "SwitchSet",
            "capability", "check_shape", "convexity_probes", "convexity_problem", "moved_rate", "register_shape_case",
            "screw_focus", "shape_probes", "switch_distances", "uncased_shapes"]

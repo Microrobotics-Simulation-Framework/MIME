@@ -100,6 +100,27 @@ def test_a_shape_declared_convex_is_not_refuted_at_any_two_drawn_points(shape, d
     assert problem is None, problem
 
 
+def test_the_cylinder_is_not_refuted_by_a_point_at_the_edge_of_its_axis_band():
+    """The drawn points (0, 0, 0.01) and (0, 0, 8.46e-15) of a radius of 0.01 m: the second is inside the cylinder's
+    axis band, where its signed distance is minus the radius, 8.5e-15 m below the exact value. That is the band's
+    declared value, 4.2e-15 m of mean and midpoint apart, and not rounding (CI failure of #100, a required lane)."""
+    parameters = {"centre": (0.0, 0.0, 0.0), "axis": (-1.0, 0.0, 0.0), "radius": 0.01}
+    first, second = np.array([0.0, 0.0, 0.01]), np.array([0.0, 0.0, 8.4646759011871600e-15])
+    assert convexity_problem("cylinder", parameters, first, second, 0.01) is None
+
+
+def test_the_allowance_for_the_axis_band_is_two_bands_and_no_more(monkeypatch):
+    """A midpoint standing above the mean by 1.9 bands of the size is not refuted, and by 2.1 bands is: the allowance
+    does not widen into a blind spot."""
+    band = AXIS_ULPS * float(np.finfo(np.float64).eps) * 0.01
+    parameters = {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": 0.01}
+    zero, one = np.zeros(3), np.array([0.0, 0.0, 1e-9])  # its own rounding: 1.4e-16 m
+    for excess, refuted in ((1.9 * band, False), (2.1 * band, True)):
+        values = iter((0.0, 0.0, excess))
+        monkeypatch.setattr(suite, "_value", lambda *_: next(values))
+        assert (convexity_problem("cylinder", parameters, zero, one, 0.01) is not None) is refuted
+
+
 def test_control_the_screw_declared_convex_is_refuted():
     """The screw's region is not convex between its crests: the check finds two points that refute it."""
     found = find(convexity_probes(SHAPE_CASES["screw"]), lambda probe: convexity_problem("screw", *probe) is not None,

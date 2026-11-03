@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The shape suite's convexity check no longer refutes a cylinder at the edge of its axis band.** A point within
+  `AXIS_ULPS` units in the last place of the radius of the cylinder's axis has the axis's signed distance, minus the
+  radius, wrong by up to the band's width (9e-15 m at a radius of 1 cm) by the shape's declaration: the check allowed
+  only rounding, and a draw at 8.5e-15 m from the axis was refuted by 4.2e-15 m. Measured against exact arithmetic,
+  the cylinder's formula is within 2.4 units in the last place of the points' scale (0.64 off the band), so it is
+  unchanged; the check adds two bands of the shape's size (`CONVEXITY_BAND_EVALUATIONS`), no absolute floor.
 - **A missing requirement of MIME's is refused by name, with the command that installs it.** An environment installed in
   place before a requirement was added (an editable install does not pick it up: `rich`, with the terminal display)
   gave `error.uncoded: ... No module named 'rich'`, as if MIME had a gap in its codes. A module that one of
