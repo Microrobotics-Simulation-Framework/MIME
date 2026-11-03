@@ -19,7 +19,7 @@ from mime.cli._shell import quoted
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Run", ("run", "serve", "verify", "pending")),
     ("Share", ("pack", "card", "pull", "push", "credentials")),
-    ("Environment", ("env", "modal", "cache", "assets", "visuals")),
+    ("Environment", ("env", "modal", "cache", "assets", "visuals", "completion")),
     ("Reference", ("registry", "docs")),
 )
 
@@ -54,10 +54,11 @@ EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("docs",): "mime docs check --base origin/v0.3",
     ("docs", "check"): "mime docs check --base origin/v0.3",
     ("docs", "build"): "mime docs build --out docs_pages",
+    ("completion",): "mime completion bash > ~/.local/share/bash-completion/completions/mime",
 }
 
 #: A help text starting with this is laid out as written, one example's line per line.
-_AS_WRITTEN = "example"
+_AS_WRITTEN = ("example", "install")
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -126,7 +127,8 @@ def attach_examples(parser: argparse.ArgumentParser, path: tuple[str, ...] = ())
     for name, child in _children(parser).items():
         here = (*path, name)
         if here in EXAMPLES:
-            child.epilog = f"{_AS_WRITTEN}:\n  {EXAMPLES[here]}"
+            held = f"{child.epilog}\n\n" if child.epilog else ""
+            child.epilog = f"{held}example:\n  {EXAMPLES[here]}"
         attach_examples(child, here)
 
 

@@ -139,6 +139,20 @@
   runs the saved experiment on Modal, by default into `<folder>-modal/` beside it, with MIME's requirements file
   for the variant copied byte for byte (see [Running on Modal](../../../docs/running_on_modal.md)). It never imports
   `modal`. A loose GPU type is refused, and so is `--deterministic` without a GPU. Exits zero, or two when refused.
+- `mime completion bash|zsh|fish`: print a completion script for the shell to standard output, written from the same
+  parser the command runs on, so every command, flag and choice is completed and none is listed by hand. The script is
+  static: pressing Tab runs the shell's own code and no Python (importing MIME imports JAX, which takes seconds), so it
+  answers at once. A flag whose value is a path (`--out`, `--into`, a saved folder) completes as files and folders, and
+  one with choices (`--to`, `--from`, `--variant`, a credentials service) as its choices, after `--to` or `--to=`.
+  Install it once, then open a new shell:
+  - bash: `mime completion bash > ~/.local/share/bash-completion/completions/mime` (loaded by the bash-completion package);
+  - zsh: `mime completion zsh > ~/.zfunc/_mime`, a file named `_mime` in a folder on `fpath`, which `.zshrc` sets before
+    `compinit` runs (`fpath=(~/.zfunc $fpath)`);
+  - fish: `mime completion fish > ~/.config/fish/completions/mime.fish`.
+
+  Write it again after upgrading MIME, since the script is a copy of what the parser held when it was written. The
+  generator is `mime/cli/_completion.py`; `tests/cli/test_completion.py` asks each script, in its shell, what it
+  completes at every command and compares that with the parser. Exits zero.
 
 Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).

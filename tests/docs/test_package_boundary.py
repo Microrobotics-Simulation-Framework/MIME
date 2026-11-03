@@ -102,8 +102,8 @@ def export_imports_beyond(package: Path) -> dict[str, set[str]]:
 
 def test_the_cli_imports_mime_docs_only_inside_a_function():
     assert {path.name for path in (PACKAGE / "cli").glob("*.py")} == {
-        "__init__.py", "__main__.py", "_display.py", "_durations.py", "_guide.py", "_progress.py", "_shell.py",
-        "_summary.py"}
+        "__init__.py", "__main__.py", "_completion.py", "_display.py", "_durations.py", "_guide.py", "_progress.py",
+        "_shell.py", "_summary.py"}
     assert cli_imports_of_docs(PACKAGE) == {}
     assert of(module_imports(PACKAGE / "cli" / "__init__.py", PACKAGE, in_functions=True), "mime.docs"), \
         "the scan found no import of mime.docs inside a function, so it could not tell one at module level"

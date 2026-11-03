@@ -20,7 +20,7 @@ from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
 from mime.assets import AssetRef
 from mime.build import BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
-from mime.cli import _durations, _guide
+from mime.cli import _completion, _durations, _guide
 from mime.cli._display import set_plain, styled
 from mime.cli._durations import FORMS, seconds
 from mime.cli._shell import quoted
@@ -1113,6 +1113,11 @@ def build_parser() -> _guide.MimeParser:
                                                                      "(default: 1)")
     modal.add_argument("--cpu", type=float, default=4.0, help="CPU cores to request (default: 4)")
     modal.add_argument("--memory", type=int, default=8192, help="MiB of memory to request (default: 8192)")
+    completion = commands.add_parser("completion", help="print a completion script for bash, zsh or fish",
+                                     epilog="install:\n" + "\n".join(
+                                         f"  {shell}: {_completion.INSTALL[shell]}{_completion.WHERE[shell]}"
+                                         for shell in _completion.SHELLS))
+    completion.add_argument("shell", choices=_completion.SHELLS, help="the shell to write the script for")
     _guide.attach_examples(parser)
     return parser
 
@@ -1130,6 +1135,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     ``mime cache clear``: delete the XLA compilation cache ``mime run`` and ``mime serve`` keep in the user's cache
     directory. They keep it unless ``--no-xla-cache``, with the oldest entries pruned at their start once it holds more
     than its cap; ``mime verify`` never uses it.
+
+    ``mime completion bash|zsh|fish``: a completion script for the shell, written to standard output from this parser
+    (every command, flag and choice in it), which runs no Python when Tab is pressed.
 
     ``mime registry [--json]``: every registered entry, MIME's and each installed namespace's, in a fresh process.
 
@@ -1239,6 +1247,9 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _cache_clear()
     if arguments.command == "visuals":
         return _visuals(arguments)
+    if arguments.command == "completion":
+        sys.stdout.write(_completion.script(arguments.shell, parser))
+        return 0
     if arguments.command == "env":
         return _env_check(arguments)
     if arguments.command == "modal":

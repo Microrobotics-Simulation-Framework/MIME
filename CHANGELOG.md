@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime env check` already names a core requirement missing from the environment, as the pins hold each one.
 
 ### Added
+- **`mime completion bash|zsh|fish`, shell completion written from the command's own parser.** It prints a script to
+  standard output; every command, flag and choice the parser holds is completed and none is listed by hand, a path
+  argument completes as files, `--to`, `--from` and the like as their choices. The script is static, so Tab runs no
+  Python (importing MIME imports JAX, which takes seconds). `mime completion --help` says where each shell reads it from.
 - **`mime env check` on a terminal groups its refusals.** An environment with many distributions nothing pins printed
   the same three lines for each; refusals about a subject that share a code, what is wrong, what to do, why and where
   are now one block with a row for each distribution (its version, and the pin and what pins it where there is one),

@@ -141,6 +141,8 @@ jobs:
         run: uv sync --locked --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
+        run: sudo apt-get install -y --no-install-recommends zsh fish
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -348,6 +350,8 @@ jobs:
             "openmaterica @ git+https://github.com/OpenMaterica/OpenMaterica@main"
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
+        run: sudo apt-get install -y --no-install-recommends zsh fish
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -475,6 +479,8 @@ jobs:
           git config --global --remove-section "${rewrite}"
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
+        run: sudo apt-get install -y --no-install-recommends zsh fish
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -583,6 +589,8 @@ jobs:
         run: uv sync --upgrade-package usd-core --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
+      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
+        run: sudo apt-get install -y --no-install-recommends zsh fish
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
