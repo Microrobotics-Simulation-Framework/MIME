@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime env check` already names a core requirement missing from the environment, as the pins hold each one.
 
 ### Added
+- **`mime env check` on a terminal groups its refusals.** An environment with many distributions nothing pins printed
+  the same three lines for each; refusals about a subject that share a code, what is wrong, what to do, why and where
+  are now one block with a row for each distribution (its version, and the pin and what pins it where there is one),
+  and the action once. No row is left out, and refusals whose actions differ are never merged. Piped, in a file, with
+  `--plain`, `NO_COLOR` or `TERM=dumb` the output is byte for byte what it was. The CLI's README names the commands
+  whose plain text is right (bare `mime`, `pack`, `card`, `credentials`, `cache clear`, `modal`) and why.
 - **The `mime` command, easier to use** (a first pass). On a terminal: `mime run` shows a spinner while it loads, builds
   and compiles, then the steps, the simulated time, the speed, the time remaining (an estimate: the speed since the
   first chunk, which also paid for compiling), the flags raised so far (known at the end of a chunk, so "by step N")

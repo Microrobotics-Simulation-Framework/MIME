@@ -378,3 +378,18 @@ def test_a_pythonpath_entry_that_shadows_a_pinned_package_is_refused_in_a_real_p
     planted = subprocess.run([sys.executable, "-c", SHADOW, unimported_module], capture_output=True, text=True,
                              check=True, env={**environment, "PYTHONPATH": str(shadow)})
     assert "MODULES True" in planted.stdout and f"[('env.shadow', True)]" in planted.stdout, planted.stdout
+
+
+def test_a_refusal_s_action_is_its_subjects_shared_action_with_the_name_in():
+    """Each of the three distribution refusals writes its action out for the docs lint to read, and carries the shared
+    action a terminal prints once; they are one text, or a grouped block would say what the pipe does not."""
+    from mime.env._check import Expected, distribution_refusals
+
+    refusals = distribution_refusals({"plain": ["1.0"], "split": ["1.0", "1.1"], "pip": ["24.0"]},
+                                     {"split": Expected("2.0", "the cpu pins"), "gone": Expected("3.0", "the cpu pins")})
+    assert sorted(r.code for r in refusals) == ["env.missing", "env.pin", "env.unpinned", "env.unpinned"]
+    for refusal in refusals:
+        assert refusal.subject is not None and refusal.subject.cells[0] in refusal.message
+        assert refusal.action == refusal.subject.acted(), refusal.code
+    assert [r.action for r in refusals if r.subject and r.subject.cells[0] == "pip"] == [
+        next(r.action for r in refusals if r.subject and r.subject.cells[0] == "plain").replace("plain", "pip")]

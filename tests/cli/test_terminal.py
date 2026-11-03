@@ -159,6 +159,93 @@ def test_a_refusal_is_a_block_with_its_code_what_is_wrong_what_to_do_why_and_whe
     assert len(docs) == 1 and docs[0].endswith("run.duration"), "the address is on one line, to be copied"
 
 
+def installed_and_pinned(unpinned: int, *, missing: int = 0, mispinned: int = 0):
+    """The refusals ``mime env check`` makes of an environment with ``unpinned`` distributions nothing pins, ``missing``
+    pinned ones not installed and ``mispinned`` installed at another version, from the function that makes them."""
+    from mime.env._check import Expected, distribution_refusals
+
+    installed = {f"extra{n:02d}": [f"1.{n}.0"] for n in range(unpinned)}
+    expected: dict[str, Expected] = {}
+    for n in range(missing):
+        expected[f"absent{n:02d}"] = Expected(f"2.{n}.0", "the cpu pins")
+    for n in range(mispinned):
+        installed[f"drift{n:02d}"] = [f"3.{n}.1"]
+        expected[f"drift{n:02d}"] = Expected(f"3.{n}.0", "the base image")
+    return distribution_refusals(installed, expected)
+
+
+def every_subject_is_shown(text: str, refusals) -> None:
+    """The count of subjects against the refusals: each refusal about a subject has one row of the drawn block whose
+    words are its cells in order, and no row is drawn more than once."""
+    rows = [line.strip("│ ╭╮╰╯─").split() for line in text.splitlines()]
+    for refusal in refusals:
+        assert refusal.subject is not None
+        cells = list(refusal.subject.cells)
+        words = [word for cell in cells for word in cell.split()]
+        found = [row for row in rows if any(row[i:i + len(words)] == words for i in range(len(row)))]
+        assert len(found) == 1, f"{refusal.code} {cells} is drawn on {len(found)} rows, not one"
+
+
+def drawn(refusals, columns=100) -> str:
+    error = BuildRefused(refusals)
+    with terminal(columns=columns, rows=200) as tty:
+        show_refusal(error, "mime env is refused", [], tty.stream)
+        return stripped(tty.transcript())
+
+
+def test_refusals_of_one_code_are_one_block_with_a_row_for_every_subject_and_the_action_once():
+    refusals = installed_and_pinned(15)
+    text = drawn(refusals)
+    assert len(refusals) == 15 and text.count("env.unpinned   (") == 1, "the code is the head of one block"
+    assert "15 installed distributions are pinned by nothing:" in text and "distribution" in text
+    assert text.count("what to do:") == 1 and "pip uninstall <name>" in text
+    assert text.count("docs for env.unpinned") == 1
+    every_subject_is_shown(text, refusals)
+
+
+def test_codes_are_blocks_in_the_order_of_their_first_refusal_and_each_has_its_own_columns():
+    refusals = installed_and_pinned(3, missing=2, mispinned=2)
+    assert [r.code for r in refusals] == ["env.missing", "env.missing", "env.pin", "env.pin", "env.unpinned",
+                                          "env.unpinned", "env.unpinned"]
+    text = drawn(refusals)
+    assert text.index("env.missing") < text.index("env.pin   (") < text.index("env.unpinned")
+    assert "pinned by" in text and "pinned at" in text
+    every_subject_is_shown(text, refusals)
+
+
+def test_refusals_whose_actions_differ_are_not_merged_and_a_lone_subject_is_the_old_sentence():
+    from mime.build._refusals import Subject
+
+    def refusal(name, action):
+        subject = Subject("things are wrong", ("thing",), (name,), action)
+        return Refusal("env.unpinned", RefusalClass.ENVIRONMENT, f"{name} is wrong", subject.acted(), subject=subject)
+
+    different = [refusal("a", "mend <name> this way"), refusal("b", "mend <name> that way")]
+    text = drawn(different)
+    assert "things are wrong" not in text and "a is wrong" in text and "b is wrong" in text
+    assert "what to do: mend a this way" in text and "what to do: mend b that way" in text
+    assert "a is wrong" in drawn(different[:1]) and "1 things" not in drawn(different[:1])
+
+
+def test_the_control_a_subject_dropped_from_a_group_is_found_by_the_count(monkeypatch):
+    """The check above fails for the thing it guards, every run: the table with its last row left out is caught."""
+    refusals = installed_and_pinned(6)
+    every_subject_is_shown(drawn(refusals), refusals)
+    original = _display._subjects
+    monkeypatch.setattr(_display, "_subjects", lambda block: original(block[:-1]))
+    with pytest.raises(AssertionError, match="is drawn on 0 rows"):
+        every_subject_is_shown(drawn(refusals), refusals)
+
+
+def test_every_refusal_is_in_exactly_one_block_whatever_the_mix():
+    refusals = installed_and_pinned(5, missing=3, mispinned=4)
+    plain = Refusal("env.lab", RefusalClass.USER, "the lab's file is not pins", "write pins")
+    mixed = [plain, *refusals, plain]
+    blocks = _display.refusal_groups(mixed)
+    assert sorted(id(r) for block in blocks for r in block) == sorted(id(r) for r in mixed)
+    assert [len(block) for block in blocks] == [1, 3, 4, 5, 1]
+
+
 def test_words_from_outside_are_text_in_a_block_never_markup_or_a_command_to_the_terminal(monkeypatch, tmp_path):
     monkeypatch.setenv("MIME_TRACEBACK_DIR", str(tmp_path))
     hostile = "[bold red]x[/] \x1b]0;pwned\x07 \x1b[31mred\x1b[0m"
@@ -362,3 +449,51 @@ def test_the_control_redirecting_standard_output_through_the_display_empties_the
     expected = side_lines
     got = lines_of_a_run_on(saved, tmp_path, ("err",), plant=True)
     assert got["out"].count("SIDE-LINE") == 0 != expected and got["tty"].count("SIDE-LINE") == expected
+
+
+def refusals_of_env_check(text: str) -> list[str]:
+    return [line for line in text.splitlines() if line.startswith("[environment] env.")]
+
+
+def traceback_file_removed(text: str) -> str:
+    return re.sub(r"mime-\d{8}T\d{6}\.\d{9}-\d+-", "mime-STAMP-", text)
+
+
+def test_env_check_on_a_terminal_is_one_block_per_code_and_every_package_the_pipe_names_is_a_row(saved, tmp_path):
+    import subprocess
+
+    home = tmp_path / "home"
+    home.mkdir()
+    words = [sys.executable, "-m", "mime.cli", "env", "check", "--variant", "cpu"]
+    piped = subprocess.run(words, capture_output=True, text=True, check=False, env=child_environment(home), cwd=tmp_path)
+    assert piped.returncode == 2
+    listed = refusals_of_env_check(piped.stderr)
+    assert len(listed) >= 2, "a development environment holds distributions nothing pins; the grouping needs two"
+    raw, code = run_command(saved, tmp_path, "env", "check", "--variant", "cpu")
+    text = stripped(raw)
+    assert code == 2, text
+    for line in listed:
+        name = line.split(": ", 1)[1].split(" ")[0]
+        assert any(row.strip("│ ").split()[:1] == [name] for row in text.splitlines()), f"{name} has no row"
+    codes = {line.split(" ")[1].rstrip(":") for line in listed}
+    assert len(codes) < len(listed), "the control: the pipe has more refusals than codes, so the blocks group"
+    assert text.count("what to do:") == len(codes) and text.count("docs for env.") == len(codes)
+    assert len(text.splitlines()) < len(piped.stderr.splitlines()), "grouped output is shorter than the pipe's"
+
+
+@pytest.mark.parametrize(("words", "env"), [
+    (["--plain"], {}), ([], {"NO_COLOR": "1"}), ([], {"TERM": "dumb"}),
+], ids=["--plain", "NO_COLOR", "TERM=dumb"])
+def test_env_check_asked_to_be_plain_gets_exactly_what_a_pipe_gets(saved, tmp_path, words, env):
+    import subprocess
+
+    home = tmp_path / "home"
+    home.mkdir()
+    command = ["env", "check", "--variant", "cpu"]
+    piped = subprocess.run([sys.executable, "-m", "mime.cli", *command], capture_output=True, text=True, check=False,
+                           env=child_environment(home), cwd=tmp_path)
+    assert piped.returncode == 2 and len(refusals_of_env_check(piped.stderr)) >= 2
+    raw, code = run_command(saved, tmp_path, *words, *command, env=env)
+    assert code == 2 and "\x1b" not in raw and "╭" not in raw, "nothing is drawn"
+    # a terminal has one stream for both; the pipe's standard error is what carries a refusal
+    assert traceback_file_removed(raw.replace("\r\n", "\n")) == traceback_file_removed(piped.stdout + piped.stderr)

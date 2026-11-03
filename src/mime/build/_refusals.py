@@ -120,6 +120,32 @@ class Explained(str):
         return held
 
 
+#: Where a refusal's action names the first of its subject's cells, in the action a group of like refusals shares.
+SUBJECT_NAME = "<name>"
+
+
+@dataclass(frozen=True)
+class Subject:
+    """What one of many like refusals is about, for a terminal to draw them as one block: ``finding`` says what is the
+    matter with all of them (a plural sentence without a count), ``columns`` name the cells (the first is the subject's
+    name), and ``action`` is what to do, with :data:`SUBJECT_NAME` where the name goes. Refusals of one code, one
+    ``finding``, the same columns, the same ``action`` (and the same why and where) are drawn as one block with a row
+    each; the refusal's own message and action are what a pipe, a file and a test read, as for any refusal."""
+
+    finding: str
+    columns: tuple[str, ...]
+    cells: tuple[str, ...]
+    action: str
+
+    def __post_init__(self) -> None:
+        if not self.cells or len(self.cells) != len(self.columns):
+            raise ValueError(f"a subject holds a cell for each of its columns, {self.columns}; it was given {self.cells}")
+
+    def acted(self) -> str:
+        """The action for this subject: its name where the shared action leaves it."""
+        return self.action.replace(SUBJECT_NAME, self.cells[0])
+
+
 @dataclass(frozen=True)
 class Refusal:
     """One reason a call is refused, in one shape: what happened (``message``, in the experiment's own names), why
@@ -136,6 +162,8 @@ class Refusal:
     where: str | None = None
     #: The package an internal refusal is the defect of, where it is not MIME (an entry a lab registered).
     owner: str | None = None
+    #: What the refusal is about, where many like it are drawn as one block on a terminal (:class:`Subject`).
+    subject: Subject | None = None
 
     def __post_init__(self) -> None:
         problem = catalogue_problem(self.code, self.category)

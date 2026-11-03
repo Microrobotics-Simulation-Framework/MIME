@@ -194,8 +194,24 @@ loads it).
   the width `COLUMNS` names, or at a default; a frame that is too narrow for a hash or an address is left off, so the word is not folded. A
   question and its hint are on the terminal the person answers at. A command printed for pasting
   (`mime/_shell.py`) holds a folder's name as one word, quoted where a shell would read it as more.
+- **`mime env check`'s refusals are grouped** where they share a code. An environment with many distributions nothing
+  pins refuses once for each, and the same sentence, three lines each, buried the list: on a terminal the refusals that
+  are about a subject (`env.unpinned`, `env.missing`, and `env.pin` for an installed distribution at another version) and
+  share their code, what is wrong, what to do, why and where are one block, with the code once, a table with a row for
+  every distribution (its version, and the pin and what pins it where there is one), and what to do once, `<name>` standing
+  where the row's distribution goes. Nothing is dropped: the rows are as many as the refusals (a test counts them, and
+  fails when one is left out). Refusals whose actions differ are never merged; a code is a block of its own for each
+  action. Piped, in a file, with `--plain`, `NO_COLOR` or `TERM=dumb`, each refusal is its three lines as before, in
+  the same order, and `--record` writes the same JSON.
 - **A damaged compilation-cache entry**: JAX's warning is shown as it is, and once beside it a note that `mime cache
   clear` removes the cache.
+- **Plain text is right for** bare `mime`, `mime pack`, `mime card`, `mime credentials`, `mime cache clear`, `mime modal` and
+  `mime registry --json`, and they are not drawn on, so nobody boxes them later. `pack` prints three lines whose point is a
+  path and a sha256 to copy; `card` is a document people redirect to a file; `credentials` asks for a token with a
+  hidden prompt; `cache clear` is one line; `modal` prints the commands to paste; bare `mime` is a list of commands, done
+  already; `registry --json` is read by a program. A box or a table around any of them adds width and takes away
+  selectability, which a person copies from. A command is drawn when its output is a list a table reads better, or a wait that a line
+  of progress shortens, and not otherwise.
 - **`mime --help`** is grouped (Run, Share, Environment, Reference), each command has an example under its `--help`,
   a bare `mime` says what one can do here (more in a saved experiment's folder or a run's), and a mistyped command or
   flag is answered with the nearest (on every supported Python, a terminal or not).

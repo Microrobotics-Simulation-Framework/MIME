@@ -13,6 +13,7 @@ build/_derived.py::plain TypeError 1  # invariant: MIME's own check, which no su
 build/_lags.py::latency_in_steps ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_refusals.py::Refusal.__post_init__ UncataloguedRefusal 1  # invariant: a refusal constructed with a code its table lacks; the refusal table's test holds every code
 build/_refusals.py::read_table ValueError 1  # invariant: the packaged refusal table's own form, read at import
+build/_refusals.py::Subject.__post_init__ ValueError 1  # invariant: a subject holds a cell for each column, built by MIME's own refusal sites, which a test holds
 build/_regions.py::HandedRegion.manifest_region ValueError 1  # OpenMaterica's region hand-off, a helper outside a script's public call
 cli/__init__.py::_credentials AssertionError 1  # invariant: argparse requires the service first
 cli/__main__.py::<module> SystemExit 1  # the command's exit code

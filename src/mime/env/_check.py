@@ -29,6 +29,7 @@ from packaging.markers import default_environment
 from packaging.utils import canonicalize_name
 
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import SUBJECT_NAME, Subject
 from mime.build._maddening import devices as devices_of_jax
 from mime.env._gpus import gpu_type, is_kind_of
 from mime.env._host import runner_record
@@ -179,18 +180,29 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
     for name, want in sorted(expected.items()):
         held = installed.get(name, ())
         if not held:
+            subject = Subject("pinned distributions are not installed", ("distribution", "pinned at", "pinned by"),
+                              (name, want.version, want.source), REBUILD)
             refusals.append(Refusal("env.missing", RefusalClass.ENVIRONMENT,
-                                    f"{name} {want.version}, pinned by {want.source}, is not installed", REBUILD))
+                                    f"{name} {want.version}, pinned by {want.source}, is not installed", REBUILD,
+                                    subject=subject))
         elif len(held) > 1 or not want.matches(held[0]):
+            subject = Subject("installed distributions differ from their pins",
+                              ("distribution", "installed", "pinned at", "pinned by"),
+                              (name, ", ".join(held), want.version, want.source), REBUILD)
             refusals.append(Refusal("env.pin", RefusalClass.ENVIRONMENT,
                                     f"{name} is installed at {', '.join(held)} and pinned at {want.version} by "
-                                    f"{want.source}", REBUILD))
+                                    f"{want.source}", REBUILD, subject=subject))
     for name, held in sorted(installed.items()):
         if name not in expected and name not in tolerated:
+            subject = Subject("installed distributions are pinned by nothing", ("distribution", "installed"),
+                              (name, ", ".join(held)),
+                              f"uninstall it (`pip uninstall {SUBJECT_NAME}`), or pin it in the lab's requirements "
+                              f"(--lab <file>); {REBUILD}")
+            # written out as the lint reads it; a test holds that it is the subject's shared action with the name in
             refusals.append(Refusal("env.unpinned", RefusalClass.ENVIRONMENT,
                                     f"{name} {', '.join(held)} is installed and nothing pins it",
                                     f"uninstall it (`pip uninstall {name}`), or pin it in the lab's requirements "
-                                    f"(--lab <file>); {REBUILD}"))
+                                    f"(--lab <file>); {REBUILD}", subject=subject))
     return refusals
 
 

@@ -257,29 +257,74 @@ _WHO = {"user": "yours to fix", "environment": "the environment's to fix", "inte
 def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream: IO[str]) -> None:
     """A refused command as a block on ``stream``: for each refusal its code and who can act, what is wrong, what to do,
     why and where; then the docs address of each code, unbroken so that it can be copied, and the footer
-    (the defect's owner and the full traceback's file) as the ordinary text gave it."""
+    (the defect's owner and the full traceback's file) as the ordinary text gave it. Refusals of one code that are
+    about a subject and share their finding, action, why and where (:func:`refusal_groups`) are one block: the code
+    once, what is wrong once, a row for each subject, what to do once."""
     from rich.console import Group
     from rich.panel import Panel
     from rich.text import Text
 
     console = _console(stream)
     parts: list[Any] = []
-    for index, refusal in enumerate(error.refusals):
+    blocks = refusal_groups(error.refusals)
+    for index, block in enumerate(blocks):
         if index:
             parts.append(Text(""))
-        parts.append(_head(refusal))
-        parts.append(_text(refusal.message))
-        for label, held in (("what to do", refusal.action), ("why", refusal.why), ("where", refusal.where)):
+        first = block[0]
+        parts.append(_head(first))
+        shared = first.subject if len(block) > 1 else None
+        if shared is None:
+            parts.append(_text(first.message))
+        else:
+            parts.append(_text(f"{len(block)} {shared.finding}:"))
+            parts.extend((_subjects(block), Text("")))
+        for label, held in (("what to do", first.action if shared is None else shared.action),
+                            ("why", first.why), ("where", first.where)):
             if held:
                 parts.append(_labelled(label, held))
     count = len(error.refusals)
     title = headline if count == 1 else f"{headline} for {count} reasons"
     console.print(Panel(Group(*parts), title=for_terminal(title), title_align="left", border_style="red", expand=False,
                         width=min(console.width, 100)))
-    for refusal in error.refusals:
-        console.print(_text(f"docs for {refusal.code}: {refusal.page}"), soft_wrap=True)
+    for block in blocks:
+        console.print(_text(f"docs for {block[0].code}: {block[0].page}"), soft_wrap=True)
     for line in footer:
         console.print(_text(line), soft_wrap=True)
+
+
+def refusal_groups(refusals: Sequence[Refusal]) -> list[list[Refusal]]:
+    """The refusals as the blocks a terminal draws them in, in the order of each block's first refusal: refusals about a
+    subject that share a code, a finding, the columns, the action and the why and where are one block, and every other
+    refusal is a block of its own, so that a code whose actions differ per item is never merged. Every refusal is in
+    exactly one block."""
+    blocks: list[list[Refusal]] = []
+    held: dict[tuple[object, ...], list[Refusal]] = {}
+    for refusal in refusals:
+        subject = refusal.subject
+        if subject is None:
+            blocks.append([refusal])
+            continue
+        key = (refusal.code, refusal.category, subject.finding, subject.columns, subject.action, refusal.why,
+               refusal.where)
+        if key not in held:
+            held[key] = []
+            blocks.append(held[key])
+        held[key].append(refusal)
+    return blocks
+
+
+def _subjects(block: Sequence[Refusal]) -> Any:
+    """The subjects of a block as a table, a row for each, the columns as the subject names them."""
+    from rich.table import Table
+
+    columns = block[0].subject.columns if block[0].subject is not None else ()
+    table = Table(box=None, show_header=True, header_style="dim", pad_edge=False, padding=(0, 2, 0, 0), expand=False)
+    for column in columns:
+        table.add_column(for_terminal(column), overflow="fold")
+    for refusal in block:
+        if refusal.subject is not None:
+            table.add_row(*(_text(cell) for cell in refusal.subject.cells))
+    return table
 
 
 def _head(refusal: Refusal) -> Any:

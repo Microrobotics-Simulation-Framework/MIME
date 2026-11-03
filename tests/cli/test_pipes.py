@@ -15,6 +15,7 @@ import jax
 import pytest
 
 import mime.cli
+import mime.env
 from mime.cli import main as mime_main
 from mime.env import apply_lock_precision
 from mime.experiment import Experiment
@@ -165,3 +166,50 @@ def test_the_control_a_pipe_drawn_for_because_force_colour_is_set_is_found(saved
     printed, error, out = printed_with({"FORCE_COLOR": "1"}, saved, capsys, tmp_path, monkeypatch, plant=True)
     assert printed != what_mime_run_printed_before(saved, out, 2 * dt_of(saved), 2)
     assert "Needs attention" in printed or "Nothing needs attention" in printed or planted_colour(error)
+
+
+def old_text_of(refusals, headline: str) -> str:
+    """``mime env check``'s refusal on standard error as the command wrote it before the display, one entry for each
+    refusal, written out here from the refusals' own fields."""
+    head = headline if len(refusals) == 1 else f"{headline} for {len(refusals)} reasons"
+    return head + ":\n" + "\n".join(f"[environment] {r.code}: {r.message}\n    do: {r.action}\n    see: {r.page}"
+                                    for r in refusals)
+
+
+def test_env_check_refused_on_a_pipe_is_the_old_text_one_entry_for_each_refusal_never_a_group(capsys, monkeypatch,
+                                                                                              tmp_path):
+    from mime.env import _check
+
+    monkeypatch.setenv("MIME_TRACEBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("MIME_TRACEBACK", raising=False)
+    installed = {f"extra{n}": [f"1.{n}.0"] for n in range(5)} | {"drift": ["3.0.1"]}
+    refusals = _check.distribution_refusals(installed, {"drift": _check.Expected("3.0.0", "the base image"),
+                                                        "absent": _check.Expected("2.0.0", "the cpu pins")})
+    assert [r.code for r in refusals] == ["env.missing", "env.pin"] + ["env.unpinned"] * 5
+    assert all(r.subject is not None for r in refusals), "the refusals are the ones a terminal would group"
+
+    def check(*args, **kwargs):
+        raise _check.EnvRefused(refusals)
+
+    monkeypatch.setattr(mime.env, "check", check)
+    assert mime_main(["env", "check", "--variant", "cpu"]) == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith(old_text_of(refusals, "mime env is refused") + "\n")
+    assert captured.err.count("[environment] env.unpinned: ") == 5
+    assert "docs for" not in captured.err and "╭" not in captured.err and not planted_colour(captured.err)
+
+
+def test_the_control_env_check_drawn_for_a_terminal_is_not_the_old_text(capsys, monkeypatch, tmp_path):
+    """The same refusal with the terminal's display forced on a captured stream: what it prints differs, so the
+    equality above is a test that a pipe is not drawn for."""
+    from mime.env import _check
+
+    monkeypatch.setenv("MIME_TRACEBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("MIME_TRACEBACK", raising=False)
+    refusals = _check.distribution_refusals({f"extra{n}": ["1.0.0"] for n in range(4)}, {})
+    monkeypatch.setattr(mime.env, "check", lambda *a, **k: (_ for _ in ()).throw(_check.EnvRefused(refusals)))
+    monkeypatch.setattr(mime.cli, "styled", lambda stream: True)
+    assert mime_main(["env", "check", "--variant", "cpu"]) == 2
+    err = capsys.readouterr().err
+    assert "docs for env.unpinned" in err and "4 installed distributions are pinned by nothing" in err
+    assert not err.startswith(old_text_of(refusals, "mime env is refused"))
