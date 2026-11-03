@@ -21,6 +21,8 @@ by farthest points and Lloyd's relaxation (`mime.scene.quasi_uniform`), each a q
 its weight, so that no two crowd. Its hull query, its reach in a direction, is the sphere's about the end of its segment
 that lies that way.
 
+**Regions, surfaces, directions and frames.** What a kind names and how a law or a stage reads it: [the scene note](../../scene.md).
+
 **Versions.** 0.2.0 (phase 7m-a) samples its surface quasi-uniformly; 0.1.0, the first (phase 7d), sampled it by its
 quadrature, whose polar grids crowd the caps' poles (MIME-ANO-123). 0.1.0 stays registered so that a folder saved with
 it loads and reproduces; a script that writes `Capsule(...)` gets 0.2.0. The quadrature, the shape and every closed form

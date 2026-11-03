@@ -28,5 +28,7 @@ quarters as much (the numbers are MIME-ANO-126's). The ellipsoid samples quasi-u
 does (design #195, a labelled default the maintainer may overturn); the separated quadrature (phase 7m-b) chooses the
 defaults again.
 
+**Regions, surfaces, directions and frames.** What a kind names and how a law or a stage reads it: [the scene note](../../scene.md).
+
 **Versions.** 0.1.0, its first version, gained its quadrature, its sampling and its regions in phase 7m-a, at the
 same version: before it the MRS rung refused it, so no result of it moved.

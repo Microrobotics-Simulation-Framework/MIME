@@ -44,6 +44,8 @@ which holds the body: exact along its axis and across it, and between them beyon
 point from `mime.scene.body_reach`, the reach of the body's own samples, which never overstates it and whose farthest
 point is a sample.
 
+**Regions, surfaces, directions and frames.** What a kind names and how a law or a stage reads it: [the scene note](../../scene.md).
+
 **Versions.** 0.3.0 (phase 7m-a) samples its thread and caps together quasi-uniformly: 0.2.0's sampling was its
 quadrature, which gives the caps several times their share of the area and leaves about a quarter of the samples
 closer than half the mean spacing to another; on de Jongh's design in free space at the frozen spacing the change moves the rung's

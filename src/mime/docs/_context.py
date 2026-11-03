@@ -46,8 +46,14 @@ PROFILES_PATH = "profiles.md"
 LIVE_PATH = "live.md"
 #: The hand-written note on recordings, the stage a recording is over, and the visuals MIME does not ship.
 RECORDINGS_PATH = "recordings.md"
+#: The hand-written concept notes that hold the definitions of the multibody library, of materials and of the scene,
+#: which the reference pages and the user guide link to and never redefine (design #220).
+MULTIBODY_PATH = "multibody.md"
+MATERIALS_PATH = "materials.md"
+SCENE_PATH = "scene.md"
 #: The hand-written notes that are pages as they are, at the pages' root.
-NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH, ERRORS_PATH, LIVE_PATH, RECORDINGS_PATH)
+NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH, ERRORS_PATH, LIVE_PATH, RECORDINGS_PATH, MULTIBODY_PATH,
+              MATERIALS_PATH, SCENE_PATH)
 INDEX_PATH = "index.md"
 
 
@@ -117,7 +123,9 @@ class Context:
     text of each page source (its path under ``docs/``, the front matter removed), ``nodes`` the node classes the
     entries build by dotted path, and ``unchecked`` the rungs the node walk cannot compare with a case. ``cited`` are
     the namespaces whose ``references`` are bibliography keys: a lab's are printed as written, since its bibliography
-    is its own."""
+    is its own. ``units_unchecked`` are the symbol rows whose units the code does not declare (``docs/ratchets/
+    symbol_units.txt``, each as ``<node class> <latex without spaces>``): a node page marks them, since its Units column
+    prints a declaration there and not a checked unit."""
 
     records: tuple[Record, ...]
     families: Mapping[str, Any]
@@ -125,6 +133,7 @@ class Context:
     nodes: Mapping[str, type]
     unchecked: frozenset[str] = frozenset()
     cited: frozenset[str] = frozenset({MIME_NAMESPACE})
+    units_unchecked: frozenset[str] = frozenset()
     node_names: Mapping[str, str] = field(init=False)
 
     def __post_init__(self) -> None:

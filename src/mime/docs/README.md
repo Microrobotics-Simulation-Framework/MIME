@@ -178,7 +178,16 @@ methods it implements (the export's `capabilities`), with its native form and it
 Not yet generated: the plan-only items of an entry page (confinements, registrations and groups, which come from
 running `plan` on a test fixture), a worked fragment from the fixture CI builds, the state, parameter, input and output
 tables of a node page (they come from a built node), the performance profile and the claims citing a node (their
-records do not exist), the lag classes and group settings on a mechanism page, the asset card, the experiment card, the
-refusal catalogue, and the index's part for scripts (the index lists entries by kind, by target and the families).
+records do not exist), the lag classes and group settings on a mechanism page, the asset card, the experiment card, and
+the index's part for scripts (the index lists entries by kind, by target and the families).
+
+Since the errors' phase, the **refusal catalogue**: a page for every code of the refusal table (`errors/<code>.md`) and
+their index, generated from the table and the scan of the source. Since docs phase D3, the page of a code on the refusal
+list (`docs/ratchets/refusal_codes.txt`) says that no test names it (a test may raise a code without naming it, so the page never says "raises"
+until D2's hook records what is raised), and the build counts it as a hatch; the catalogue's hand-written meanings wait for a lab's reading of the pages. D3 also wrote the
+sources of the ledger's entries and mechanisms other than the pilot's, the contact's among them (contact 0.3.0), and gave
+five node classes `NodeMeta` and a symbol table. Its fix round marked each row of a node page whose units the code does
+not declare (`units declared, not checked`), and wrote three concept notes (`docs/scene.md`, `docs/materials.md`,
+`docs/multibody.md`) that hold the definitions the user guide links to (design #220).
 
 Phases and releases are explained in the [package manifest](../README.md#status).

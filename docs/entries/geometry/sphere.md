@@ -30,6 +30,8 @@ maintainer may overturn): it is the only closed-form drag oracle the default sam
 without the sphere's smoothness, the same sampling comes far closer to a converged reference. The separated quadrature
 (phase 7m-b) chooses the defaults again.
 
+**Regions, surfaces, directions and frames.** What a kind names and how a law or a stage reads it: [the scene note](../../scene.md).
+
 **Versions.** 0.2.0 (phase 7m-a) samples its surface quasi-uniformly; 0.1.0, the first (phase 7d), sampled it by its
 quadrature, Gauss-Legendre in the cosine of the polar angle and even in azimuth, which put a quarter of its samples
 within half the mean spacing of another at the poles (MIME-ANO-123). 0.1.0 stays registered so that a folder saved with

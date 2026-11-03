@@ -26,5 +26,7 @@ with the torque's, against the force and torque of the body's dipole on the sour
   reaction is delivered only where the source's segment is on its dynamic rung (see MIME-ANO-103).
 - For an induced moment, which depends on the field: the moment here is permanent.
 
+**Where its values come from.** A declaration, a record or the body's parts, and what "declared" means: [the materials note](../../materials.md).
+
 **Versions.** `magnetic.force` 0.1.0 is its first; since dev1's phase 7a3 it delivers its reaction on a source
 mounted on a segment that takes loads, which no earlier experiment had, so what it computes elsewhere is unchanged.

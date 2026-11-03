@@ -13,6 +13,11 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   parses every citation of the built pages by Pandoc's grammar and checks that each resolves.
 - [`concepts.md`](concepts.md): the one hand-written note on the page types (entry, rung, node, family, mechanism)
   and how they link.
+- [`scene.md`](scene.md), [`materials.md`](materials.md) and [`multibody.md`](multibody.md): the three concept notes of
+  the scene (frames, regions, the stage), of materials (how a value reaches an entry, declared against fitted) and of the
+  multibody library (how a chain, its mounts and its armature are declared), printed among the pages. **They hold the
+  definitions that D4b's user guide links to** where a reader meets each idea, and never redefines (design #220); the
+  reference pages link to them, and they to the reference pages.
 - [`results.md`](results.md): reading a run's results, each observation's declared outputs by name with their
   units, series and windows by time, flags and the exports; printed among the pages beside the concepts note.
 - [`profiles.md`](profiles.md): the profiles' path for a new user, exploring with nothing stated, seeing what is

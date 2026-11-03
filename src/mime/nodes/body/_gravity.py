@@ -7,10 +7,29 @@ from typing import Any, override
 
 from jax import Array
 from jaxtyping import Float
+from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
+from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_fields, node_input, quaternion, typed_view
+from mime.core import (
+    MimeNode,
+    NodeFields,
+    Symbol,
+    SymbolKind,
+    as_run_array,
+    jnp,
+    node_fields,
+    node_input,
+    quaternion,
+    typed_view,
+)
+
+EQUATIONS = (r"\mathbf{F} = m \, \mathbf{g} - \rho_{f} V \, \mathbf{g}, \quad \boldsymbol{\tau} = R(\mathbf{q}) \, "
+             r"\mathbf{c}_{b} \times \left( -\rho_{f} V \, \mathbf{g} \right)")
+
+#: Where the symbol rows' functions are.
+_WRENCH = "mime.nodes.body._gravity.GravityNode.wrench"
 
 
 class Wrench(TypedDict, closed=True):
@@ -26,11 +45,38 @@ class GravityNode(MimeNode):
     wrench about the centre of mass carries the couple ``(R_q c) x (-rho_f V g)`` when the centre of buoyancy ``c``
     (body frame) is given; only then does it read the body's pose. ``gravity`` is the world's gravity vector."""
 
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-113",
+        description="Weight and buoyancy on a body in a medium at rest: the wrench about the centre of mass, with the "
+                    "buoyancy's couple where the centre of buoyancy is off it.",
+        governing_equations=EQUATIONS,
+        assumptions=("The medium is at rest and its density uniform: a flow that carries its own hydrostatic load "
+                     "would count the buoyancy twice",
+                     "The weight acts at the centre of mass and the buoyancy at the centre of buoyancy, both fixed "
+                     "in the body"),
+        references=(Reference("TatumClassicalMechanics", "weight, and the buoyant force of a displaced fluid"),),
+    )
+    symbols = (
+        Symbol(r"\mathbf{F}", SymbolKind.STATE, "wrench", "N; N m", _WRENCH),
+        Symbol(r"\boldsymbol{\tau}", SymbolKind.STATE, "wrench", "N; N m", _WRENCH),
+        Symbol("m", SymbolKind.PARAMETER, "mass", "kg", _WRENCH),
+        Symbol(r"\mathbf{g}", SymbolKind.PARAMETER, "gravity", "m/s^2", _WRENCH),
+        Symbol(r"\rho_{f}", SymbolKind.PARAMETER, "fluid_density", "kg/m^3", _WRENCH),
+        Symbol("V", SymbolKind.PARAMETER, "buoyant_volume", "m^3", _WRENCH),
+        Symbol(r"\mathbf{c}_{b}", SymbolKind.PARAMETER, "centre_of_buoyancy", "m", _WRENCH),
+    )
+
     def __init__(self, name: str, timestep: float, *, mass: float, buoyant_volume: float, fluid_density: float,
                  gravity: Sequence[float], centre_of_buoyancy: Sequence[float] | None = None) -> None:
         super().__init__(name, timestep, mass=mass, buoyant_volume=buoyant_volume, fluid_density=fluid_density,
                          gravity=tuple(gravity),
                          centre_of_buoyancy=None if centre_of_buoyancy is None else tuple(centre_of_buoyancy))
+
+    @override
+    def param_specs(self) -> dict[str, ParamSpec]:
+        return {**super().param_specs(), "mass": ParamSpec(units="kg"), "gravity": ParamSpec(units="m/s^2"),
+                "fluid_density": ParamSpec(units="kg/m^3"), "buoyant_volume": ParamSpec(units="m^3"),
+                "centre_of_buoyancy": ParamSpec(units="m")}
 
     def _couples(self) -> bool:
         return self.constants()["centre_of_buoyancy"] is not None

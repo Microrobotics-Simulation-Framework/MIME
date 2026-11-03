@@ -50,6 +50,8 @@ which the build report gives.
 - When a prescribed speed must hold its phase over a long run in single precision: the angle is a sum over steps, and
   its rounding grows with it.
 
+**Chains, mounts and armature.** How a segment is placed, what mounts on a frame and where a joint's armature comes from: [the multibody note](../../multibody.md).
+
 **Versions.** `motor` 0.1.0 was its first: the kinematic rung, and since dev1's phase 7a3 the dynamic rung. `motor`
 0.2.0, since dev1's phase 7a4 and before any release, carries the dynamic rotor's absolute spin, its parts' inertia,
 its inequality across its axis and its gyroscopic torque, and publishes both rungs' frames' angular velocities (the

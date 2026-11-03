@@ -13,7 +13,7 @@ from maddening.core.compliance.metadata import NodeMeta
 from mime.core import Symbol
 from mime.docs._context import Context, entry_path, node_path
 from mime.docs._markdown import Page, Writer, code, link
-from mime.docs._symbols import meta_of, rows_of
+from mime.docs._symbols import meta_of, row_key, rows_of
 
 NONE_DECLARED = "none declared"
 UNDOCUMENTED = "undocumented: this node class declares no `NodeMeta`, so there is nothing to print but where it is built."
@@ -69,14 +69,25 @@ def _bound(value: float | None) -> str:
     return "unbounded" if value is None else f"{value:g}"
 
 
-def _symbols(w: Writer, rows: tuple[Symbol, ...]) -> None:
+UNITS_UNCHECKED = "units declared, not checked"
+
+
+def _symbols(w: Writer, rows: tuple[Symbol, ...], node: type, context: Context) -> None:
     w.heading(2, "Symbols")
     if not rows:
         w.paragraph("No symbol table: the page cannot say which code each symbol is.")
         return
-    w.table(["Symbol", "Kind", "Name", "Units", "Implemented by"],
-            [[f"${row.latex}$", row.kind.value, code(row.name), row.units, code(row.implemented_by)]
-             for row in rows])
+    table: list[list[str]] = []
+    for row in rows:
+        units = row.units
+        if row_key(node, row) in context.units_unchecked:
+            units += f" ({UNITS_UNCHECKED})"
+            w.hatch(UNITS_UNCHECKED, f"node {node.__name__} {row.latex}")
+        table.append([f"${row.latex}$", row.kind.value, code(row.name), units, code(row.implemented_by)])
+    w.table(["Symbol", "Kind", "Name", "Units", "Implemented by"], table)
+    if any(row_key(node, row) in context.units_unchecked for row in rows):
+        w.paragraph(f"A row marked *{UNITS_UNCHECKED}* has the units its author wrote: the code declares none there, "
+                    f"so the node walk cannot compare them with anything.")
 
 
 def node_page(node: type, dotted: str, context: Context) -> Page:
@@ -93,7 +104,7 @@ def node_page(node: type, dotted: str, context: Context) -> Page:
         w.hatch("undocumented", f"node {name}")
     else:
         _meta_text(w, meta, name)
-        _symbols(w, rows_of(node))
+        _symbols(w, rows_of(node), node, context)
     w.heading(2, "Built by")
     builders = context.builders(dotted)
     if builders:
@@ -108,4 +119,4 @@ def node_page(node: type, dotted: str, context: Context) -> Page:
     return w.page(path)
 
 
-__all__ = ["NONE_DECLARED", "UNDOCUMENTED", "node_page"]
+__all__ = ["NONE_DECLARED", "UNDOCUMENTED", "UNITS_UNCHECKED", "node_page"]

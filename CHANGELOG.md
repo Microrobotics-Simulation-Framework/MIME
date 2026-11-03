@@ -33,6 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the action once. No row is left out, and refusals whose actions differ are never merged. Piped, in a file, with
   `--plain`, `NO_COLOR` or `TERM=dumb` the output is byte for byte what it was. The CLI's README names the commands
   whose plain text is right (bare `mime`, `pack`, `card`, `credentials`, `cache clear`, `modal`) and why.
+- **Docs phase D3: the catch-up for what merged before the docs walk.** Hand-written sources for `drive.constant`,
+  `rigid_inertial`, `uniform_rotating`, the geometry kinds `box`, `cylinder` and `tube`, `gravity`, `magnetic.torque` and
+  `swim_speed`, and for the mechanisms `equality_constraint`, `inequality_constraint`, `kinematic` and `registration`;
+  their ledger lines are deleted. `ConstantNode`, `GravityNode`, `MagneticTorqueNode`, `SwimSpeedNode` and
+  `UniformRotatingNode` carry `NodeMeta` and symbol tables (MIME-NODE-113 to 117) and declare their parameters' units.
+  The page of each refusal code on the refusal list now says that no test names it (a test may raise a code without
+  naming it, so the pages never say "raises" until D2's hook records what is raised), and the build counts each as a
+  hatch. A node page marks each row whose units the code does not declare as `units declared, not checked`, and the node
+  walk reads a law's, an observation's and a provider's units from the entry, which closed 14 such rows. The contact's page
+  (contact 0.3.0) is written, and three concept notes hold the definitions of the scene, of materials and of the multibody
+  library. `RigidInertialNode`'s and `SurrogateDragNode`'s tables and the `load` and `operator` pages stay on the ledger for
+  D2.
 - **The `mime` command, easier to use** (a first pass). On a terminal: `mime run` shows a spinner while it loads, builds
   and compiles, then the steps, the simulated time, the speed, the time remaining (an estimate: the speed since the
   first chunk, which also paid for compiling), the flags raised so far (known at the end of a chunk, so "by step N")

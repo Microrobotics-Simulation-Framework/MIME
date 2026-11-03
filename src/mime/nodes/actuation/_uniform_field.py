@@ -8,10 +8,20 @@ from typing import Any, cast, override
 
 from jax import Array
 from jaxtyping import Float, Int
+from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
+from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_input, typed_view
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_input, typed_view
+
+EQUATIONS = (r"\mathbf{B} = \frac{B_{0}}{\left\| \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) \mathbf{a} \right\|} "
+             r"\left( \cos(2 \pi f n h) \left( \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) \mathbf{a} \right) + "
+             r"\sin(2 \pi f n h) \, \mathbf{a} \times \mathbf{d} \right), \quad G = 0")
+
+#: Where the symbol rows' function is.
+_ADVANCE = "mime.nodes.actuation._uniform_field.UniformRotatingNode.advance"
+_FIELD = "mime.nodes.actuation._uniform_field.UniformRotatingNode.field_at"
 
 
 class UniformRotatingInputs(TypedDict, closed=True):
@@ -35,6 +45,31 @@ class UniformRotatingNode(MimeNode):
     rotation and normalised, is where it points at ``t = 0``). Its time is its step count times its timestep, never a
     sum of timesteps, which drifted in float32 in 0.2. Each reader slot reads the field and its gradient, zero."""
 
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-116",
+        description="A uniform magnetic field turning right-handed about a fixed axis at a commanded frequency and "
+                    "amplitude: the same at every point, with a zero gradient.",
+        governing_equations=EQUATIONS,
+        assumptions=("The field is uniform: it is the same at every point of every reader slot, and its gradient is "
+                     "zero",
+                     "The rotation axis in the equation is a unit vector: the node normalises `rotation_axis` before "
+                     "it reads it",
+                     "Time is the step count times the timestep, so the field's phase is exact however long the run "
+                     "and is not a sum of timesteps",
+                     "The frequency and amplitude commanded at a step are the ones that step's field is made with: "
+                     "the phase is the present frequency times the time since the start, not the integral of a "
+                     "frequency that changes"),
+    )
+    symbols = (
+        Symbol(r"\mathbf{B}", SymbolKind.STATE, "flux_density_{slot}", "T", _ADVANCE),
+        Symbol("G", SymbolKind.STATE, "gradient_{slot}", "T/m", _ADVANCE),
+        Symbol("B_{0}", SymbolKind.INPUT, "amplitude", "T", _ADVANCE),
+        Symbol("f", SymbolKind.INPUT, "frequency", "Hz", _ADVANCE),
+        Symbol(r"\mathbf{a}", SymbolKind.PARAMETER, "rotation_axis", "1", _FIELD),
+        Symbol(r"\mathbf{d}", SymbolKind.PARAMETER, "initial_direction", "1", _FIELD),
+        Symbol("n", SymbolKind.STATE, "steps", "1", _ADVANCE),
+    )
+
     def __init__(self, name: str, timestep: float, *, slots: Sequence[str], rotation_axis: Sequence[float],
                  initial_direction: Sequence[float]) -> None:
         axis = tuple(float(c) for c in rotation_axis)
@@ -54,6 +89,11 @@ class UniformRotatingNode(MimeNode):
             out[f"flux_density_{slot}"] = field
             out[f"gradient_{slot}"] = jnp.zeros((3, 3), dtype=field.dtype)
         return out
+
+    @override
+    def param_specs(self) -> dict[str, ParamSpec]:
+        return {**super().param_specs(), "rotation_axis": ParamSpec(units="1"),
+                "initial_direction": ParamSpec(units="1")}
 
     @override
     def initial_state(self) -> NodeFields:

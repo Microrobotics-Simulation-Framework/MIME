@@ -29,8 +29,10 @@ def listing(root, line):
 
 
 #: The lines added after the start, each a cut with its own reason, logged with the maintainer: the free-space wall
-#: kind's references (phase 7h), a definition that rests on no work.
-ADDED = {"wall_kind free_space 0.1.0 references"}
+#: kind's references (phase 7h), a definition that rests on no work, and the references of three nodes given their
+#: tables at docs phase D3, each a definition that rests on no work.
+ADDED = {"wall_kind free_space 0.1.0 references", "node ConstantNode references", "node SwimSpeedNode references",
+         "node UniformRotatingNode references"}
 
 
 def test_the_start_list_holds_exactly_the_empty_fields_of_mimes_own_entries():
@@ -38,7 +40,7 @@ def test_the_start_list_holds_exactly_the_empty_fields_of_mimes_own_entries():
     start = [line for line in held.lines if line.item not in ADDED]
     assert len(start) >= 4 and {line.reason for line in start} == {NONE_DECLARED_START}
     assert all(line.reason != NONE_DECLARED_START for line in held.lines if line.item in ADDED)
-    assert all(item.endswith(" references") for item in held.items()), "no MIME node has NodeMeta yet"
+    assert all(item.endswith(" references") for item in held.items())
 
 
 def test_a_new_empty_field_of_mimes_fails_naming_it_until_it_has_its_own_line(tmp_path):
@@ -49,7 +51,7 @@ def test_a_new_empty_field_of_mimes_fails_naming_it_until_it_has_its_own_line(tm
     listing(root, f"{EMPTY_ITEM}  # a plant, with its own reason")
     done = docs_check(root, plant="mime_empty")
     assert done.returncode == 0, done.stdout
-    assert re.search(r"none declared in MIME's pages: 6 fields, 4 of the list's 6 lines at the start reason", done.stdout)
+    assert re.search(r"none declared in MIME's pages: 9 fields, 4 of the list's 9 lines at the start reason", done.stdout)
 
 
 def test_a_listed_field_that_is_now_filled_fails_until_its_line_is_deleted(tmp_path):
@@ -65,9 +67,9 @@ def test_a_listed_field_that_is_now_filled_fails_until_its_line_is_deleted(tmp_p
 def test_a_field_of_a_lab_or_a_toy_is_outside_the_list_and_counted(tmp_path):
     done = docs_check(copy_checkout(tmp_path), plant="lab_numbered")
     assert done.returncode == 0, done.stdout
-    assert "none declared in MIME's pages: 5 fields" in done.stdout
+    assert "none declared in MIME's pages: 8 fields" in done.stdout
     assert re.search(r"none declared (\d+)", done.stdout) and int(re.search(r"none declared (\d+)",
-                                                                           done.stdout).group(1)) > 5
+                                                                           done.stdout).group(1)) > 8
 
 
 def test_a_new_line_with_the_shared_start_reason_fails_against_a_base_that_does_not_hold_it(tmp_path):
@@ -81,7 +83,7 @@ def test_a_new_line_with_the_shared_start_reason_fails_against_a_base_that_does_
     edit(path, f"{EMPTY_ITEM}  # {NONE_DECLARED_START}", f"{EMPTY_ITEM}  # its own reason")
     done = docs_check(root, plant="mime_empty", base="HEAD")
     assert done.returncode == 0, done.stdout
-    assert re.search(r"compared with HEAD's, 5 lines there and 6 here", done.stdout)
+    assert re.search(r"compared with HEAD's, 8 lines there and 9 here", done.stdout)
 
 
 def test_a_malformed_item_and_a_missing_list_fail(tmp_path):

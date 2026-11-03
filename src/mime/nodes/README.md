@@ -99,6 +99,10 @@ impulses through the step's system by projected Gauss-Seidel sweeps) and `Dynami
 its mount, `reaction`), each first order in time; and `SourceReactionNode`, a law's wrench on a body as its reaction
 on the field's source, moved to the frame the source is mounted on. Each with `NodeMeta` and its symbol table.
 
+Since docs phase D3, `ConstantNode`, `GravityNode`, `MagneticTorqueNode`, `SwimSpeedNode` and `UniformRotatingNode`
+carry `NodeMeta` and their symbol tables too, each declaring the units of its parameters, so that the node walk checks
+them.
+
 Since phase 7a4, every segment node publishes `frame_angular_velocities` beside `frame_poses`, and reads its mount's
 as `mount_rates`, this step's (the kinematic arm's from its joints' rates over the step, the dynamic arm's from its
 forward pass; a kinematic node computes them only where the build finds a reader, its `rates`); the arm nodes take

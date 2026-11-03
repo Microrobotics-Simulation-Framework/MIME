@@ -106,6 +106,8 @@ the saved form carries it.
 - When the commanded motion is faster than the real arm can follow: the kinematic rung follows its command whatever
   its speed; the watch on joint speeds and accelerations against the description's limits comes with validity lines.
 
+**Chains, mounts and armature.** How a segment is placed, what mounts on a frame and where a joint's armature comes from: [the multibody note](../../multibody.md).
+
 **Versions.** `arm` 0.1.0 is its first: the kinematic rung, and since dev1's phase 7a3 the dynamic rung, added before
 any release with no change to what the kinematic rung computes. Since dev1's phase 7a4, before any release, both rungs
 publish their frames' angular velocities, their commands are typed by joint kind, and the dynamic rung carries what is

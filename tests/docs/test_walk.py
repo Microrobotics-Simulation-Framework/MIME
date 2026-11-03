@@ -65,6 +65,17 @@ def paid(root, item: str, source: str, text: str):
     return root
 
 
+def unpaid(root, item: str, source: str):
+    """``root`` with ``item`` unpaid, as the ledger once held every entry: its source deleted and its line on the ledger
+    (what the checkout is left with when the item has been paid since, so that a control of the walk's does not wait on
+    a particular item being unpaid)."""
+    (root / "docs" / source).unlink(missing_ok=True)
+    if not any(line.split("  #")[0].strip() == item for line in ledger(root).read_text(encoding="utf-8").splitlines()):
+        ledger(root).write_text(ledger(root).read_text(encoding="utf-8") + f"{item}  # planted, unpaid\n",
+                                encoding="utf-8")
+    return root
+
+
 def missing(root, item: str, source: str) -> str:
     return (f"{item}: its hand-written source ({source}) is missing and {ledger(root)} does not list it; write it (the "
             f"ledger holds what merged before the walk, and a line added needs its reason logged)")
@@ -82,10 +93,10 @@ def walked_counts(entries: int = 0, nodes: int = 0, present: int = 0) -> str:
 
 
 def test_w1_an_entry_file_written_and_its_ledger_line_deleted_passes(tmp_path):
-    done = docs_check(paid(copy_checkout(tmp_path), "entry interaction gravity", "entries/interaction/gravity.md",
-                           page("0.1.0")))
+    root = unpaid(copy_checkout(tmp_path), "entry interaction gravity", "entries/interaction/gravity.md")
+    done = docs_check(paid(root, "entry interaction gravity", "entries/interaction/gravity.md", page("0.1.0")))
     assert done.returncode == 0, done.stdout + done.stderr
-    assert walked_counts(present=1) in done.stdout
+    assert walked_counts(present=0) in done.stdout
 
 
 def test_w1_a_deleted_entry_file_fails_naming_it(tmp_path):
@@ -105,7 +116,7 @@ def test_w2_an_entry_of_mimes_registered_without_its_file_fails_naming_it():
     ("asset dejongh_mlp_v2", "assets/dejongh_mlp_v2.md", "A reader's note.\n"),
 ], ids=["an-entry", "a-mechanism", "an-asset"])
 def test_w3_a_ledger_item_that_gained_its_source_fails_naming_the_line_to_delete(tmp_path, item, source, text):
-    root = copy_checkout(tmp_path)
+    root = unpaid(copy_checkout(tmp_path), item, source)
     write(root, source, text)
     assert failures(docs_check(root)) == [
         f"{ledger(root)}:{ledger_line(root, item)}: {item!r} has its source now ({source}); delete this line"]
@@ -140,9 +151,9 @@ def test_w3_a_node_of_mimes_on_the_ledger_given_its_table_fails_naming_the_line_
 
 def test_a_node_of_mimes_without_its_table_and_not_on_the_ledger_fails_naming_it(tmp_path):
     root = copy_checkout(tmp_path)
-    unlist(root, "node GravityNode")
-    assert failures(docs_check(root)) == [missing(root, "node GravityNode", "NodeMeta and a symbol table on "
-                                                                          "mime.nodes.body._gravity.GravityNode")]
+    unlist(root, "node RigidInertialNode")
+    assert failures(docs_check(root)) == [missing(root, "node RigidInertialNode", "NodeMeta and a symbol table on "
+                                                  "mime.nodes.body._rigid_inertial.RigidInertialNode")]
 
 
 EMPTIED = ("import mime.docs._check, mime.testing\nfrom mime.registry import _registry\n"

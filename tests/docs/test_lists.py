@@ -122,3 +122,16 @@ def test_w4_a_bare_count_fails_on_the_ledger_and_the_start_list(tmp_path, listed
     lines = len(path.read_text(encoding="utf-8").splitlines())
     assert failures(docs_check(root)) == [f"{path}:{lines}: '{count}' is a count, and a list stores no count: list the "
                                           f"items themselves"]
+
+
+def test_every_symbol_units_line_and_every_node_reference_line_names_a_route_to_closing_it():
+    """#133: a ratchet line that is a cut carries its route to exact in the file. The units list is wholly such lines;
+    the other lists' lines that this phase added are named, so a new one cannot ride without its route."""
+    units = read_list(list_path(ROOT, "symbol_units"), LISTS["symbol_units"])
+    assert units.lines and [line.item for line in units.lines if "route:" not in line.reason] == []
+    nodes = [line for line in read_list(list_path(ROOT, "none_declared"), LISTS["none_declared"]).lines
+             if line.item.startswith("node ")]
+    assert nodes and [line.item for line in nodes if "route:" not in line.reason] == []
+    indices = read_list(list_path(ROOT, "symbol_indices"), LISTS["symbol_indices"])
+    added = {"GravityNode R", "GravityNode q", "MagneticTorqueNode R", "SwimSpeedNode h", "UniformRotatingNode h"}
+    assert {line.item for line in indices.lines if "route:" in line.reason} == added

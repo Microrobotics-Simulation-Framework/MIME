@@ -45,7 +45,7 @@ from mime.testing.toys import ToyBody, ToyDrag, ToySpring, coupled_toy
 from mime.testing.toys._entries import _respond
 from mime.testing.toys._nodes import ToyDragNode, ToyRegionProbeNode, ToySpringNode
 from mime.things import Body, State
-from mime.units import m, m_per_s
+from mime.units import m, m_per_s, unit_symbol
 from mime.vocabulary import lookup as interface_named
 from mime.vocabulary import register_namespace
 
@@ -139,11 +139,17 @@ def rungs_declared(case: Case, key) -> set[str]:
 
 
 def published_units(built, key, node_name: str) -> dict[str, str]:
-    """The units of each state field of ``node_name`` that the dynamics ``key`` publishes, from the vocabulary: on the
-    rung the case built, as its capability record states it (a dynamic arm publishes its joint velocities)."""
+    """The units of each state field of ``node_name`` that its entry declares an interface for, from the vocabulary.
+
+    A dynamics: each state field it publishes, on the rung the case built, as its capability record states it (a dynamic
+    arm publishes its joint velocities). A law: the field it delivers into a target, in that target's units. An
+    observation: each output, in the dimension it declares. A field provider: the slot fields of what it publishes.
+    Only a state the node holds is named, so a node of the entry that holds none of these reads nothing."""
     record = lookup(EntryKind(key[0]), key[1], key[2])
-    if record is None or not issubclass(record.cls, Dynamics):
+    if record is None:
         return {}
+    if not issubclass(record.cls, Dynamics):
+        return _declared_state_units(record.cls, set(nodes_by_entry(built)[key][node_name].initial_state()))
     plan = next(plan for plan in built.plans.entries if node_name in plan.node_names())
     local = node_name.removeprefix(plan.owner).removeprefix(".")
     publishes = plan.record.publishes if plan.record is not None else record.cls.publishes
@@ -152,6 +158,26 @@ def published_units(built, key, node_name: str) -> dict[str, str]:
         held = interface_named(interface)
         if port.node == local and held is not None:
             found[port.field] = held.units
+    return found
+
+
+def _declared_state_units(entry: type, states: set[str]) -> dict[str, str]:
+    """The units of the ``states`` of a node that a law, an observation or a field provider declares: the target of a
+    delivery, the dimension of an output, the interface a provider publishes (its slot fields are
+    ``<field>_<slot>``)."""
+    found: dict[str, str] = {}
+    for label, delivery in getattr(entry, "delivers", {}).items():
+        held = interface_named(delivery.target)
+        if label in states and held is not None:
+            found[label] = held.units
+    for output in getattr(entry, "outputs", ()):
+        if output.field in states:
+            found[output.field] = unit_symbol(output.dimension)
+    for name, prefix in getattr(entry, "publishes", {}).items():
+        held = interface_named(name)
+        for state in states:
+            if held is not None and state.startswith(f"{prefix}_"):
+                found[state] = held.units
     return found
 
 
@@ -373,6 +399,37 @@ def test_the_walk_checks_the_symbol_rows_of_a_node_an_entry_builds(tmp_path):
         f"node's are ['x']"]
     assert walk_failures(built_with(TabledSpring()), ("interaction", "nodewalk.tabled_spring", "0.1.0"), {""},
                          held) == []
+
+
+@pytest.mark.parametrize(("key", "latex", "wrong"), [
+    (("interaction", "gravity", "0.1.0"), r"\mathbf{F}", "kg"),
+    (("interaction", "magnetic.torque", "0.1.0"), r"\boldsymbol{\tau}", "T"),
+    (("interaction", "magnetic.force", "0.1.0"), r"\boldsymbol{\tau}", "kg"),
+    (("observation", "swim_speed", "0.1.0"), "D", "s"),
+    (("field provider", "uniform_rotating", "0.1.0"), "G", "T"),
+    (("field provider", "point_dipole", "0.1.0"), r"\mathbf{B}", "Hz")], ids=lambda value: str(value))
+def test_a_wrong_unit_on_a_row_whose_units_the_entry_declares_fails_the_walk_and_the_right_one_passes(
+        key, latex, wrong, monkeypatch):
+    """The rows of a law's delivered wrench, an observation's output and a provider's slot fields were once listed as
+    declared, not checked; the walk reads their units from the entry's ``delivers``, ``outputs`` and ``publishes`` now.
+    The control is the same node with the row's units as written (nothing fails) against the row's units changed."""
+    units = read_list(list_path(ROOT, "symbol_units"), LISTS["symbol_units"])
+    record = lookup(EntryKind(key[0]), key[1], key[2])
+    built = cases_using(key)[0].make().build()
+    planted_nodes = 0
+    for name, node in nodes_by_entry(built)[key].items():
+        cls, rows = type(node), rows_of(type(node))
+        if not any(row.latex == latex for row in rows):
+            continue
+        published = published_units(built, key, name)
+        assert instance_problems(node, settings=record.settings, published=published, units=units) == []
+        monkeypatch.setattr(cls, "symbols", tuple(replace(r, units=wrong) if r.latex == latex else r for r in rows))
+        problems = instance_problems(node, settings=record.settings, published=published, units=units)
+        monkeypatch.undo()
+        assert any(f"the row {latex!r}: units {wrong!r}, and the code declares" in problem for problem in problems), \
+            problems
+        planted_nodes += 1
+    assert planted_nodes >= 1
 
 
 def _with(*entries):

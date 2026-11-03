@@ -2,6 +2,12 @@
 # braced subscript (a bare i in a sum, an unbraced x_i). Letters inside a braced subscript, x_{i}, are indices and
 # need no line. `NodeClass  symbol  # reason`; `mime docs check` fails on a symbol with no row that is not listed, and
 # on a listed one that now has a row or is gone (delete its line).
+# Routes to closing a line (#133), by the reason it gives: "defined in the equations, held by no field" closes by writing the
+# definition into the equation where it is used (docs phase D3 did, for the lever and the time and the direction of
+# GravityNode and UniformRotatingNode); "the step's own timestep" closes by a row kind for the step's dt, which the checker
+# binds to `advance`'s argument (none exists yet); "a function of a row's symbol" (R) closes by a function convention in the
+# checker, which takes `R(.)` of a row's symbol as covered (none exists yet); an input declared only on a condition
+# (`GravityNode q`) closes by extending `held_where_read`, which covers states only, to inputs.
 KinematicArmNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 KinematicMotorNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 PointDipoleNode r  # the reader's point less the magnet's centroid, x - c, and its length: defined in the equations, held by no field
@@ -34,3 +40,8 @@ KinematicArmNode R  # the rotation matrix of a pose, R(.) of the base's pose in 
 KinematicMotorNode R  # the rotation matrix of a pose, R(.) of the base's pose in the rows: a function of rows' symbols
 DynamicArmNode R  # the rotation matrix of a pose, R(.) of the base's pose in the rows: a function of rows' symbols
 RigidInertialMidpointNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
+GravityNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol; route: the function convention
+GravityNode q  # the body's orientation, an input the node declares only where the centre of buoyancy is off the centre of mass, so no row can name it for every build; route: `held_where_read` extended to inputs
+MagneticTorqueNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol; route: the function convention
+SwimSpeedNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+UniformRotatingNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt

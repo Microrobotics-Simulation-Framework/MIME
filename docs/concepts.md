@@ -50,4 +50,13 @@ vocabulary page defines every interface name the others use, and the index is a 
 Each of those links is generated from the registry export, and the number rule and the citation check run over the
 generated pages as well as the hand-written ones. A number a page needs is a claim record's, named by its identifier,
 and the page prints it with its basis. The checks bound names, units, links and existence. They say nothing of whether
-a hand-written paragraph is true or useful.
+a hand-written paragraph is true or useful, and a node's symbol table is checked against the code's names and units,
+never its equation against the code's arithmetic (a flipped sign passes the table): a node's oracle test shows the
+arithmetic.
+
+## Three notes that hold definitions
+
+Three further notes define ideas that several pages share, so that each page links to one definition and none repeats
+it: [the scene](scene.md) (frames, regions, surfaces and directions, and the stage), [materials](materials.md) (how a
+value reaches an entry from a declaration, a record or a body's parts, and what declared against fitted means) and
+[the multibody library](multibody.md) (how a chain, its mounts and its armature are declared).

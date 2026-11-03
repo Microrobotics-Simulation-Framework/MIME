@@ -42,7 +42,7 @@ from mime.docs._context import Context
 from mime.docs._entry_page import entry_page
 from mime.docs._export import encode, registry_export
 from mime.docs._markdown import Page, anchor, cell
-from mime.docs._node_page import node_page
+from mime.docs._node_page import UNITS_UNCHECKED, node_page
 from mime.registry import GradientRecord
 
 
@@ -94,7 +94,8 @@ def test_every_page_the_build_wrote_is_an_entry_a_node_a_family_a_mechanism_or_a
     rest = {"/".join(path.split("/")[:2]) if path.count("/") > 1 else path for path in found - entries}
     assert rest == {"index.md", "pages/nodes", "pages/families", "pages/mechanisms", "pages/vocabulary.md",
                     "pages/concepts.md", "pages/results.md", "pages/profiles.md", "pages/errors.md", "pages/errors",
-                    "pages/live.md", "pages/recordings.md"}
+                    "pages/live.md", "pages/recordings.md", "pages/multibody.md", "pages/materials.md",
+                    "pages/scene.md"}
 
 
 def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, export):
@@ -291,6 +292,35 @@ def test_the_drag_rung_is_a_section_with_its_nodes_and_its_support(built):
 def test_a_rung_no_round_trip_case_builds_prints_declared_unchecked(built):
     page = text_of(built, "pages/entries/interaction/toy.twist.md")
     assert "declared, unchecked" in page
+
+
+def test_a_row_the_units_list_names_is_marked_on_its_node_page_and_no_other_is(tmp_path):
+    """A node page's Units column prints a declaration on a row the code declares no units for, exactly as it prints a
+    checked unit, unless the page says which. The control is the same page generated without the list."""
+    key = "PlantedNode " + "".join(r"\mathbf{F}".split())
+    plain = node_page(PlantedNode, "planted_nodes.PlantedNode", Context((), {}, {}, {}))
+    marked = node_page(PlantedNode, "planted_nodes.PlantedNode",
+                       Context((), {}, {}, {}, units_unchecked=frozenset({key})))
+    assert UNITS_UNCHECKED not in plain.text and all(h.kind != UNITS_UNCHECKED for h in plain.hatches)
+    rows = [line for line in marked.text.splitlines() if UNITS_UNCHECKED in line and line.startswith("|")]
+    assert len(rows) == 1 and r"$\mathbf{F}$" in rows[0] and "N; N m (" in rows[0], rows
+    assert [(h.kind, h.item) for h in marked.hatches if h.kind == UNITS_UNCHECKED] == [(UNITS_UNCHECKED, r"node PlantedNode \mathbf{F}")]
+
+
+def test_every_line_of_the_units_list_is_marked_on_the_page_of_its_node(built):
+    """The list is read from the checkout the pages are built from: each of its lines is one marked row of its node's
+    page, and a page marks nothing the list does not name."""
+    lines = [line.split("#")[0].split(None, 1) for line in
+             (ROOT / "docs" / "ratchets" / "symbol_units.txt").read_text(encoding="utf-8").splitlines()
+             if line.strip() and not line.startswith("#")]
+    wanted: dict[str, list[str]] = {}
+    for node, latex in lines:
+        wanted.setdefault(node, []).append("".join(latex.split()))
+    for page in sorted((built / "pages" / "nodes").glob("*.md")):
+        marked = ["".join(row.split("|")[1].strip().strip("$").split()) for row in
+                  page.read_text(encoding="utf-8").splitlines() if row.startswith("|") and UNITS_UNCHECKED in row]
+        assert sorted(marked) == sorted(wanted.pop(page.stem, [])), page.name
+    assert wanted == {}, f"lines of the units list for nodes with no page: {sorted(wanted)}"
 
 
 def test_the_vocabulary_lists_every_name_of_a_fresh_process(built):

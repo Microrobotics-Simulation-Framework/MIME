@@ -203,8 +203,10 @@ def build_pages(root: Path) -> Built:
     hand, built.sources = _hand_written(docs, ids, by_entry, built.stale)
     unchecked = read_list(docs / "ratchets" / "builds_unchecked.txt").items() \
         if (docs / "ratchets" / "builds_unchecked.txt").is_file() else set[str]()
+    units_list = docs / "ratchets" / "symbol_units.txt"
+    units_unchecked = read_list(units_list).items() if units_list.is_file() else set[str]()
     context = Context(records, {family.name: family for family in registered_families()}, hand, nodes,
-                      frozenset(unchecked))
+                      frozenset(unchecked), units_unchecked=frozenset(units_unchecked))
     made: list[Page] = [entry_page(record, context) for record in newest_versions(records)]
     made += [node_page(cls, dotted, context) for dotted, cls in sorted(nodes.items(), key=lambda p: p[1].__name__)]
     made += [family_page(family, context) for family in registered_families()]
@@ -212,7 +214,9 @@ def build_pages(root: Path) -> Built:
     made += [vocabulary_page(context), index_page(context)]
     made += [Page(note, hand[note].strip("\n") + "\n") for note in NOTE_PATHS if note in hand]
     if (root / "src" / "mime" / "build").is_dir():
-        made += error_pages(root / "src" / "mime")
+        listed = read_list(docs / "ratchets" / "refusal_codes.txt").items() \
+            if (docs / "ratchets" / "refusal_codes.txt").is_file() else set[str]()
+        made += error_pages(root / "src" / "mime", listed)
     for page in made:
         page = Page(page.path, repository_relative(page.text, root), page.rendered, page.hatches)
         built.pages[out_path(page)] = page

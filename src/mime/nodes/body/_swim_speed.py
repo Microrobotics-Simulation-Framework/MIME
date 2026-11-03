@@ -7,10 +7,29 @@ from typing import Any, override
 
 from jax import Array
 from jaxtyping import Float, Int
+from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
+from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, as_run_array, jnp, node_fields, node_input, switch, typed_view
+from mime.core import (
+    MimeNode,
+    NodeFields,
+    Symbol,
+    SymbolKind,
+    as_run_array,
+    jnp,
+    node_fields,
+    node_input,
+    switch,
+    typed_view,
+)
+
+EQUATIONS = (r"s = \mathbf{v} \cdot \mathbf{e}, \quad D = \sum_{k : t_{k} > t_{a}} s_{k} \, h, \quad "
+             r"T = \sum_{k : t_{k} > t_{a}} h, \quad \bar{s} = D / T")
+
+#: Where the symbol rows' function is.
+_ADVANCE = "mime.nodes.body._swim_speed.SwimSpeedNode.advance"
 
 
 class SwimSpeedState(TypedDict, closed=True):
@@ -31,8 +50,34 @@ class SwimSpeedNode(MimeNode):
     step count times its timestep. The time observed is zero or at least one timestep, so the mean is taken from
     half a timestep on, which keeps its derivative finite however the state is drawn."""
 
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-115",
+        description="A body's velocity along a direction each step, and its mean over the steps that end after a "
+                    "start time, kept in the node's own state.",
+        governing_equations=EQUATIONS,
+        assumptions=("The body's velocity read at a step holds over that step, so the distance is the sum of the "
+                     "speed times the timestep",
+                     "The time of a step is its count times the timestep, and a step counts whole once its end lies "
+                     "after the start time"),
+        limitations=("The window's edge is a switch: the distance and the time observed move in jumps of a step as "
+                     "the start time moves, and the mean is zero until some time has been observed",),
+    )
+    symbols = (
+        Symbol("s", SymbolKind.STATE, "speed", "m/s", _ADVANCE),
+        Symbol("D", SymbolKind.STATE, "distance", "m", _ADVANCE),
+        Symbol("T", SymbolKind.STATE, "observed", "s", _ADVANCE),
+        Symbol(r"\bar{s}", SymbolKind.STATE, "mean_speed", "m/s", _ADVANCE),
+        Symbol(r"\mathbf{v}", SymbolKind.INPUT, "twist", "m/s; rad/s", _ADVANCE),
+        Symbol(r"\mathbf{e}", SymbolKind.PARAMETER, "along", "1", _ADVANCE),
+        Symbol("t_{a}", SymbolKind.PARAMETER, "after", "s", _ADVANCE),
+    )
+
     def __init__(self, name: str, timestep: float, *, along: Sequence[float], after: float = 0.0) -> None:
         super().__init__(name, timestep, along=tuple(along), after=after)
+
+    @override
+    def param_specs(self) -> dict[str, ParamSpec]:
+        return {**super().param_specs(), "along": ParamSpec(units="1"), "after": ParamSpec(units="s")}
 
     @override
     def initial_state(self) -> NodeFields:

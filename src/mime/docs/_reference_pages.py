@@ -14,9 +14,12 @@ from mime.docs._context import (
     ERRORS_PATH,
     INDEX_PATH,
     LIVE_PATH,
+    MATERIALS_PATH,
+    MULTIBODY_PATH,
     PROFILES_PATH,
     RECORDINGS_PATH,
     RESULTS_PATH,
+    SCENE_PATH,
     VOCABULARY_PATH,
     Context,
     Record,
@@ -181,7 +184,11 @@ def index_page(context: Context) -> Page:
                    else "")
                 + (f" To watch a run as it runs, {_page_link(LIVE_PATH, 'live sessions and the protocol')}"
                    + (f", and to replay one, {_page_link(RECORDINGS_PATH, 'recordings')}"
-                      if RECORDINGS_PATH in context.hand else "") + "." if LIVE_PATH in context.hand else ""))
+                      if RECORDINGS_PATH in context.hand else "") + "." if LIVE_PATH in context.hand else "")
+                + (f" The ideas the entries share: {_page_link(SCENE_PATH, 'the scene')} (frames, regions, the stage), "
+                   f"{_page_link(MATERIALS_PATH, 'materials')} (how a value reaches an entry, declared against "
+                   f"fitted) and {_page_link(MULTIBODY_PATH, 'the multibody library')} (chains, mounts, armature)."
+                   if {SCENE_PATH, MATERIALS_PATH, MULTIBODY_PATH} <= set(context.hand) else ""))
     w.heading(2, "By goal")
     w.heading(3, "What can act on a body?")
     w.paragraph("A body takes deliveries into its targets; the mechanism page of each target kind says how they "

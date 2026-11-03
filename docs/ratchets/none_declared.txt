@@ -11,3 +11,6 @@ field_provider uniform_rotating 0.1.0 references  # present at D1b
 geometry tube 0.1.0 references  # present at D1b
 observation swim_speed 0.1.0 references  # present at D1b
 wall_kind free_space 0.1.0 references  # a definition, no wall: it adds nothing to the kernel and rests on no work (phase 7h)
+node ConstantNode references  # a definition: the value it was built with, resting on no work (docs phase D3); route: none to close unless the node grows past a stored value, when a `Reference` on the class closes it; until then the line records that one was looked for
+node SwimSpeedNode references  # a definition: a projection of the velocity on a direction and a running sum, resting on no work (docs phase D3); route: none to close unless the node takes a modelled quantity, when a `Reference` on the class closes it; until then the line records that one was looked for
+node UniformRotatingNode references  # a definition: a uniform field turning at a commanded rate, given by its formula and resting on no work (docs phase D3); route: a `Reference` for the rotating-field formula on the class, added with the entry's own line above (field_provider uniform_rotating 0.1.0 references), as GravityNode and MagneticTorqueNode carry theirs
