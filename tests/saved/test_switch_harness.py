@@ -106,7 +106,7 @@ def graph():
 def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
     found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
-    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "contact", "0.2.0"),
+    for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "contact", "0.3.0"),
                                 ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
                                 ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
@@ -723,47 +723,83 @@ def ball_step(groups, pose, twist=(0.0,) * 6, held_passes: int | None = None):
     return {"pose": out["pose"], "twist": out["twist"]}
 
 
-def tied(offset: float) -> np.ndarray:
-    """The ball's pose with its two lowest points, ``first`` and ``second``, the nearest the shrunk wall and on it,
-    ``second`` ``offset`` further from it: turned about the line across both and the vertical, by the angle (found by
-    bisection, in the bracket of a coarse scan that holds it) that sets ``second``'s gap."""
-    first, second = lowest_two()
-    points = ball_points()
-    across = np.cross(points[second] - points[first], (0.0, 0.0, 1.0))
-    across = across / np.linalg.norm(across)
+@cache
+def rod_points() -> np.ndarray:
+    return kind_points(ROD, ROD_SETTINGS, BALL_SPACING)
 
-    def pose_at(angle: float) -> np.ndarray:
-        """The ball turned by ``angle``, its own lowest point (the sphere's support straight down) on the shrunk wall,
-        so that the step holds it where it is and every evaluation of the choice reads the row's offset."""
-        turn = (math.cos(angle / 2), *(float(c) for c in math.sin(angle / 2) * across))
-        return np.asarray((ALONG, 0.0, -(TUBE_RADIUS - HULL_MARGIN - BALL_SETTINGS["radius"]), *turn))
 
-    def excess(angle: float) -> float:
-        held = pose_at(angle)
-        return ball_gap(second, held) - ball_gap(first, held)
+def rod_ends() -> list[int]:
+    """The rod's sample lowest in its frame beyond a quarter of its length from its centre at +x, and the same at -x:
+    one group's two starts, farther apart than the starts' least separation, each taken to its own end's rim (the
+    cylinder's support answers for the end its start lies towards)."""
+    points = rod_points()
+    quarter = ROD_SETTINGS["length"] / 4
+    ends = []
+    for side in (1.0, -1.0):
+        beyond = np.flatnonzero(side * points[:, 0] > quarter)
+        ends.append(int(beyond[np.argmin(points[beyond, 2])]))
+    return ends
 
-    angles = np.linspace(-0.6, 0.6, 25)
-    values = [excess(float(angle)) for angle in angles]
-    k = next(k for k in range(len(angles) - 1) if (values[k] - offset) * (values[k + 1] - offset) < 0)
-    low, high = (float(angles[k]), float(angles[k + 1])) if values[k] < offset else (float(angles[k + 1]),
-                                                                                       float(angles[k]))
-    for _ in range(200):
-        middle = 0.5 * (low + high)
-        low, high = (middle, high) if excess(middle) < offset else (low, middle)
-    return pose_at(high)
+
+def rims_apart(offset: float) -> np.ndarray:
+    """The rod's pose with the lowest points of its two rims, ``(L/2, 0, -r)`` and ``(-L/2, 0, -r)`` in its frame, the
+    +x one on the shrunk wall and the -x one ``offset`` further from it: tilted about y by ``asin(offset / L)``, its
+    centre below the tube's axis, where the wall's normal at both points is straight down, so that both starts reach
+    their rims and every evaluation of the choice reads the row's offset."""
+    length, radius = ROD_SETTINGS["length"], ROD_SETTINGS["radius"]
+    tilt = math.asin(offset / length)
+    depth = TUBE_RADIUS - HULL_MARGIN - length / 2 * math.sin(tilt) - radius * math.cos(tilt)
+    return np.asarray((ALONG, 0.0, -depth, math.cos(tilt / 2), 0.0, math.sin(tilt / 2), 0.0))
+
+
+def rod_step(groups, pose, twist=(0.0,) * 6):
+    """The held rod's pose and twist after one step from ``pose`` and ``twist``, with no load."""
+    node = hull_node(ROD, ROD_SETTINGS, BALL_SPACING, groups=groups, mass=HULL_MASS, pose=tuple(pose))
+    state = {**node.initial_state(), "pose": jnp.asarray(pose), "twist": jnp.asarray(twist)}
+    out = node.fresh_update(state, {"applied_wrench": jnp.zeros(6), "resistance": jnp.zeros((6, 6)),
+                                    "background_load": jnp.zeros(6)}, DT)
+    return {"pose": out["pose"], "twist": out["twist"]}
+
+
+def unsearched(offset: float) -> dict:
+    """The held rod after one step, its one group of one start (its sample lowest beyond a quarter of its length at
+    +x, on the generator that lies on the shrunk wall) searched by no step at all, so that its search stands as far
+    from the support at its direction as the start from its rim's lowest point, and the tolerance set ``offset`` above
+    that distance: ``contact.search``'s indicator ``offset`` at the step's start and, the rod moving into the wall at
+    0.1 um/s, within a part in 1e3 of it at the projection's (its branches: the rim's lowest point, or the start)."""
+    import mime.nodes.body._contact as contact
+
+    start = rod_ends()[0]
+    pose = rims_apart(0.0)
+    node = hull_node(ROD, ROD_SETTINGS, BALL_SPACING, groups=[[start]], mass=HULL_MASS, pose=tuple(pose))
+    pair = node.contact_pairs(node._step_constants(None), node.hull_points(node._step_constants(None), jnp.float64),
+                              jnp.asarray(pose))[0]
+    local = jnp.asarray(rod_points()[[start]])
+    _, reached = contact.climbed(pair, local, 0)
+    distance = float(jnp.sqrt(jnp.sum((reached - local) ** 2)))
+    steps, tolerance = contact.CONTACT_NEWTON, contact.search_tolerance
+    contact.CONTACT_NEWTON = 0
+    contact.search_tolerance = lambda dtype, size: distance + offset
+    try:
+        return rod_step([[start]], pose, (0.0, 0.0, -1e-7, 0.0, 0.0, 0.0))
+    finally:
+        contact.CONTACT_NEWTON, contact.search_tolerance = steps, tolerance
 
 
 def hull_rows(declared) -> list[SwitchRow]:
-    """The hull contact's four switches, each placed on a held ball whose groups hold only the points the row needs, so
-    that every evaluation of its owner over the sweeps is at the row's offset: ``contact.point`` its two lowest points
-    in one group, ``offset`` apart in their gaps, the lowest on the shrunk wall and the ball moving into it at
-    0.1 um/s (so that the choice reaches the twist, and the ball moves too little in the step for the projection's
-    choice to read another offset); ``contact.gap`` the lowest point straight below the centre, ``offset`` from the
-    shrunk wall, the ball moving into it at 1 mm/s; ``contact.impulse`` that point on the wall, the ball moving into it
-    at the speed whose stopping takes a force of ``offset``; ``contact.push`` that point past the wall by the depth
-    whose projection's multiplier is ``offset``, the ball at rest, its projection one pass (the second's multiplier is
-    what the first leaves, which no row can place at the same offset)."""
-    first, second = lowest_two()
+    """The hull contact's five switches, each placed on a held body whose groups hold only the points the row needs, so
+    that every evaluation of its owner over the sweeps is at the row's offset: ``contact.point`` on a rod, one group of
+    a start at each end, whose rims' lowest points are ``offset`` apart in their gaps, the lower on the shrunk wall and
+    the rod moving into it at 0.1 um/s (so that the choice reaches the twist, and the rod moves too little in the step
+    for the projection's choice to read another offset); ``contact.search`` on the same rod lying on the shrunk wall,
+    one group of one start, its tolerance ``offset`` above how far its search stands from the support (``unsearched``);
+    on a held ball, ``contact.gap`` its lowest point straight
+    below the centre, ``offset`` from the shrunk wall, the ball moving into it at 1 mm/s; ``contact.impulse`` that
+    point on the wall, the ball moving into it at the speed whose stopping takes a force of ``offset``;
+    ``contact.push`` that point past the wall by the depth whose projection's multiplier is ``offset``, the ball at
+    rest, its projection one pass (the second's multiplier is what the first leaves, which no row can place at the
+    same offset)."""
+    first, _ = lowest_two()
     down = upright(first)
     alone = [[first]]
 
@@ -771,7 +807,8 @@ def hull_rows(declared) -> list[SwitchRow]:
         return (0.0, 0.0, -speed, 0.0, 0.0, 0.0)
 
     return [
-        SwitchRow(declared["contact.point"], lambda o: ball_step([[first, second]], tied(o), pressed(1e-7)), 1e-6),
+        SwitchRow(declared["contact.point"], lambda o: rod_step([rod_ends()], rims_apart(o), pressed(1e-7)), 1e-6),
+        SwitchRow(declared["contact.search"], unsearched, 1e-6),
         SwitchRow(declared["contact.gap"], lambda o: ball_step(alone, ball_below(first, o, down), pressed(1e-3)),
                   1e-8),
         SwitchRow(declared["contact.impulse"],
@@ -790,9 +827,10 @@ def all_rows(graph) -> dict[str, SwitchRow]:
 
 
 OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.closing", "contact.scale",
-                 "contact.project", "contact.rule", "contact.rule_outward", "contact.point", "contact.gap",
-                 "contact.impulse", "contact.push", "cylinder.axis", "cylinder.axis_norm", "cylinder.support",
-                 "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp", "drag.clamp_divisor",
+                 "contact.project", "contact.rule", "contact.rule_outward", "contact.point", "contact.search",
+                 "contact.gap", "contact.impulse", "contact.push", "cylinder.axis", "cylinder.axis_norm",
+                 "cylinder.support", "drag.axis", "drag.across", "drag.end", "drag.room", "drag.clamp",
+                 "drag.clamp_divisor",
                  "drag.feature_gap_floor", "drag.gap_floor", "drag.log_floor", "swim.window", "swim.mean",
                  "sphere.centre", "capsule.segment", "capsule.end.low", "capsule.end.high", "slab.mid",
                  "screw.seam", "screw.focus", "arm.limit.low", "arm.limit.high", "arm.stop.low", "arm.stop.high",

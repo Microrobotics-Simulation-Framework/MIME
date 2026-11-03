@@ -33,9 +33,23 @@ from mime.core import (
     typed_view,
 )
 from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
-from mime.nodes.body._contact import Contacts, Hull, Pair, Wall, held_at, joined, no_work, pair_contacts, residual
+from mime.nodes.body._contact import (
+    START_APART,
+    Contacts,
+    Hull,
+    Pair,
+    Wall,
+    held_at,
+    joined,
+    no_work,
+    pair_contacts,
+    residual,
+    spacing_of,
+    start_count,
+)
 from mime.nodes.body._contact import sweeps as _sweeps
 from mime.registry import Geometry, implements
+from mime.units import Magnitude
 
 
 def gyroscopic_jacobian(rotation: Array, moments: Array, omega: Array) -> Array:
@@ -224,11 +238,18 @@ class RigidInertialNode(MimeNode):
     ``margin``, its orientation read, laid out over contact pairs (``_contact``: the hull against the confining
     surface; two bodies' hulls are the layout's next). The hull's samples (``N x 3`` in its frame) are split into groups
     (``point_groups``), each group's candidates cut to the vertices of its own convex hull where the shape declares its
-    region convex (``convex_candidates``); each step each group's candidate nearest the surface seeds a contact, taken
-    to the body's own deepest point near it by the hull kind's support (``_contact.deepest``: the touching point on its
-    own surface, which moves continuously as the body turns), or held where it is for a kind with no support. Each has
-    its gap ``g`` (positive inside), the normal ``n`` into the region and its arm ``r`` from the centre of mass: the row
-    ``J = [n; r x n]``. A turned body touching at two points takes the couple that holds it.
+    region convex (``convex_candidates``); each step each group's search starts from its candidate nearest the surface
+    and from each next nearest apart from those taken (``_contact.starts``, among the group's own convex hull's
+    vertices against a convex region), as many as the hull's shape can hold local deepest points against a flat wall
+    (``_contact.start_count``, counted when the node is built from the samples' shortfall,
+    ``mime.scene._sampling.hull_shortfall``), each start climbs towards the body's own deepest point near it by the
+    hull kind's support, the group keeps the start that climbs deepest (``_contact.kept``), and its search is run to
+    convergence, bounded (``_contact.searched``), and taken to the body's own point (``_contact.deepest``: the
+    touching point on its own surface, which moves continuously as the body turns), or, where it has not converged,
+    the group holds its nearest candidate (``contact.search``): a group can hold several of the body's local deepest
+    points (a screw's crest passes and its rims), which its samples' gaps do not order. A kind with no support is held
+    at its nearest candidate, where it is. Each has its gap ``g`` (positive inside), the normal ``n`` into the region
+    and its arm ``r`` from the centre of mass: the row ``J = [n; r x n]``. A turned body touching at two points takes the couple that holds it.
 
     - *In the solve.* The twist is the one nearest the solve's ``V'`` in ``A``'s norm, ``A = M'/dt + R`` the step's own
       system (``stepped``), among those that move no point towards the surface by more than it can close in the step:
@@ -257,9 +278,10 @@ class RigidInertialNode(MimeNode):
       angular velocity of a body with unequal moments met a pose turned under it, which put energy into a body spun on
       the floor a step at a time (review 7o's G1: a rod spun at 50 Hz gained 57 % of its spin energy in 2 s).
     - The state adds ``contact_points``, each row's point at the step's start, ``contact_forces``, the force each took,
-      ``contact_short``, how far each stood shallower than the sample its support's steps started from
-      (``_contact.shallower``), and ``contact_residual``, how far the sweeps left the solve from its complementarity
-      (``_contact.residual``).
+      ``contact_short``, how far the body may reach past each, its group's nearest candidate near being held
+      (``_contact.shallower``: how far it stood shallower than that candidate, at least the samples' shortfall where
+      its search did not converge and held the candidate), and ``contact_residual``, how far the sweeps left the solve
+      from its complementarity (``_contact.residual``).
       Where no point is held or projected, the step is the free body's to the last bit.
     """
 
@@ -307,13 +329,26 @@ class RigidInertialNode(MimeNode):
             if len(hull_patches) != len(hull_counts) or not hull_patches:
                 raise ValueError(f"hull patches {hull_patches!r} and counts {hull_counts!r} name one count per patch, "
                                  f"and one patch or more")
+            body = self._body_points(hull, settings)
+            convex = bool(surface_shape) and getattr(shape_named(surface_shape), "convex", False)
             if hull_groups is None:
-                body = self._body_points(hull, settings)
                 held = point_groups(body, HULL_GROUPS)
-                if getattr(shape_named(surface_shape), "convex", False):
+                if convex:
                     held = convex_candidates(body, held)
+                self._places = np.asarray(held, dtype=np.int32)
             else:
                 held = hull_groups
+                self._places = convex_candidates(body, held) if convex else np.asarray(held, dtype=np.int32)
+            self._apart = START_APART * spacing_of(body)
+            self._size = float(np.max(np.linalg.norm(body, axis=1)))
+            self._shortfall, self._starts = 0.0, 1
+            if implements(self._hull, "support"):
+                from mime.scene._sampling import hull_shortfall
+
+                self._shortfall = hull_shortfall(self._hull, cast(Mapping[str, Magnitude], settings),
+                                                 tuple(hull_patches),
+                                                 [tuple(int(c) for c in count) for count in hull_counts])
+                self._starts = start_count(body, self._places, self._apart, self._shortfall)
             hull["hull_groups"] = np.asarray(held, dtype=np.int32)
         super().__init__(name, timestep, mass=mass, inertia=tuple(inertia), initial_pose=tuple(initial_pose),
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
@@ -493,12 +528,13 @@ class RigidInertialNode(MimeNode):
     def contact_pairs(self, p: Mapping[str, Any], body: Array, pose: Array) -> list[Pair]:
         """The pairs the contact's solve is laid out over: the body's hull against its confining surface (one pair; a
         pair of two bodies' hulls is the layout's next)."""
-        hull = Hull(body, self.groups, pose, self._hull if self.supported else None, self.hull_parameters(p))
+        hull = Hull(body, self.groups, pose, self._hull if self.supported else None, self.hull_parameters(p),
+                    self._places, self._apart, self._shortfall, self._size, self._starts)
         return [Pair(hull, self.wall(p))]
 
     def contacts(self, p: Mapping[str, Any], body: Array, pose: Array) -> Contacts:
-        """Every pair's rows at ``pose`` (``_contact.pair_contacts``): each group's nearest candidate, taken to the
-        body's own deepest point near it where the hull's kind has a support query."""
+        """Every pair's rows at ``pose`` (``_contact.pair_contacts``): where the hull's kind has a support query, the
+        body's own deepest point each group's starts reach; otherwise each group's nearest candidate."""
         return joined([pair_contacts(pair, p["margin"]) for pair in self.contact_pairs(p, body, pose)])
 
     def contacts_at(self, p: Mapping[str, Any], body: Array, pose: Array, local: Array) -> Contacts:

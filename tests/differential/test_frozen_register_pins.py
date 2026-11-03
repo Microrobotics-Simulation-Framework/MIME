@@ -27,7 +27,7 @@ version, until the law was given its own.
   names, 0.1.0 (the body's centre held by its extent), through ``pinned_law``, kept registered after 0.2.0 held the
   hull's points (phase 7o).
 - **Controls**, failing on every run: the experiment with the pin bypassed names the screw 0.3.0 and fails the first
-  check; with the law's pin bypassed it names the contact 0.2.0; a script that builds ``fl9()`` unpinned fails the
+  check; with the law's pin bypassed it names the contact 0.3.0; a script that builds ``fl9()`` unpinned fails the
   source scan; the experiment with the dynamics' pin bypassed names ``rigid_inertial`` 0.3.0, fails the dynamics
   check, and its transverse-inertia arm runs at 3.20747 mm/s.
 

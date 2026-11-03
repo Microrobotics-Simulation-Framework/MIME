@@ -17,9 +17,9 @@ with a control that fails on every run (nothing here is drawn but the cut's prop
 - **No positive power** (F7). A long rod with a light transverse inertia, its two rows coupled positively (+0.85 and
   +0.98), pressed into both walls: the forces' power at the held twist is never positive, however far the sweeps got.
   The control: the sweeps' forces unscaled give positive power. **The residual**: a fat cylinder (2.6 by 3.5 mm)
-  wedged at its tilt limit, its rims' rows strongly coupled, is left above ``CONVERGED`` by the sweeps (6.7 %) and
-  raises the flag; the long rod, converged, does not; and script A's arm, every step held, stays under it by half. The
-  control: a flag set below that run rises on it.
+  wedged at its tilt limit, its rims' rows strongly coupled, is left above ``CONVERGED`` by five sweeps and raises the
+  flag (its twenty converge it, since the contact 0.3.0's searches do); the long rod, converged, does not; and script
+  A's arm, every step held, stays under it by half. The control: a flag set below that run rises on it.
 - **The convex cut** (F1). Each group's dropped points lie inside the group's kept hull, and a step chosen from the
   cut candidates is the step from all of them, bit for bit (Hypothesis, near the wall). The control: a cut that drops
   a hull vertex changes a step.
@@ -31,7 +31,8 @@ with a control that fails on every run (nothing here is drawn but the cut's prop
   ``support_short``, and one whose kind has none (a box) ``held_by_samples``.
 - **A held point never shallower than its seed** (review 7o's G4). On the round-trip case, FL-9 held from its first
   step, no point the support's steps reach stands shallower than the sample they started from. The control: a search
-  that ends shallower raises ``support_short``."""
+  that ends shallower raises ``support_short``; and so does one that does not converge, holding its group's nearest
+  sample, by the samples' shortfall (MIME-ANO-135)."""
 
 import math
 import re
@@ -43,7 +44,7 @@ import numpy as np
 import pytest
 from hull_cases import MARGIN, TUBE_RADIUS, hull_node, kind_points, rotation
 from hypothesis import find, given, settings
-from test_hull_contact import DRAWS, KINDS, ROD_DRAWS, SPACING, about_axis, held, near_the_wall, start
+from test_hull_contact import DRAWS, KINDS, ROD_DRAWS, SPACING, SPACINGS, about_axis, held, near_the_wall, start
 
 import mime.build._plan as plan_module
 import mime.interactions.contact as contact_law
@@ -346,7 +347,13 @@ def test_control_the_sweeps_forces_unscaled_do_positive_work(monkeypatch):
     assert power > 1e-6 * rate
 
 
-def test_a_wedged_body_is_left_unconverged_and_reports_it():
+def test_a_wedged_body_is_left_unconverged_and_reports_it(monkeypatch):
+    """The flag's upper side: a fat cylinder (2.6 by 3.5 mm) wedged at its tilt limit, eight rows sharing its rims,
+    given five sweeps, which leave its solve unconverged (1.6e-2). With its twenty it read 6.7e-2 under the contact
+    0.2.0, a figure of the searches that contact left unconverged (MIME-ANO-135); under 0.3.0 they converge it to
+    7.9e-8, and of the wedges measured only the long rod with a hundredth of its transverse moments passes the
+    threshold, by a third (6.5e-3)."""
+    monkeypatch.setattr(rigid_module, "HULL_SWEEPS", 5)
     forces, _, left, _ = wedged(2.6, 3.5, (1.3e-10, 4.6e-10, 4.6e-10))
     assert np.sum(forces > 0) >= 2
     assert left > CONVERGED, f"the residual {left:.3g} is within {CONVERGED}: the flag would not rise"
@@ -358,7 +365,7 @@ def test_control_the_long_rod_converges_and_does_not_report_it():
 
 
 def script_as_arm_held_by_its_hull(monkeypatch):
-    """Script A's reproduction arm with the contact 0.2.0 at its default spacing, 2 s of it."""
+    """Script A's reproduction arm with the contact 0.3.0 at its default spacing, 2 s of it."""
     import script_a
 
     monkeypatch.setattr(script_a, "CentreContact", Contact)
@@ -391,7 +398,7 @@ def inside_problems(name: str, candidates) -> list[str]:
     from scipy.spatial import ConvexHull
 
     kind, settings_ = KINDS[name]
-    points = kind_points(kind, settings_, SPACING)
+    points = kind_points(kind, settings_, SPACINGS.get(name, SPACING))
     groups = point_groups(points, 8)
     found = []
     for row, kept in zip(groups, candidates, strict=True):
@@ -409,7 +416,7 @@ def inside_problems(name: str, candidates) -> list[str]:
 def halved(name: str) -> np.ndarray:
     """The control's cut: each group's kept hull vertices with every other one dropped."""
     kind, settings_ = KINDS[name]
-    points = kind_points(kind, settings_, SPACING)
+    points = kind_points(kind, settings_, SPACINGS.get(name, SPACING))
     rows = convex_candidates(points, point_groups(points, 8))
     cut = np.full_like(rows, -1)
     for g, row in enumerate(rows):
@@ -430,9 +437,10 @@ def test_control_a_cut_that_drops_hull_vertices_leaves_points_outside():
 @cache
 def uncut(name: str, rows: tuple | None = None) -> RigidInertialNode:
     kind, settings_ = KINDS[name]
-    points = kind_points(kind, settings_, SPACING)
+    points = kind_points(kind, settings_, SPACINGS.get(name, SPACING))
     groups = point_groups(points, 8) if rows is None else np.asarray(rows)
-    return hull_node(kind, settings_, SPACING, mass=8.5e-5, inertia=(1.3e-10, 4.6e-10, 4.6e-10), groups=groups)
+    return hull_node(kind, settings_, SPACINGS.get(name, SPACING), mass=8.5e-5, inertia=(1.3e-10, 4.6e-10, 4.6e-10),
+                     groups=groups)
 
 
 def cut_changes(draw: dict, node: RigidInertialNode) -> list[str]:
@@ -570,3 +578,22 @@ def test_the_support_never_leaves_a_held_point_shallower_than_its_seed():
 def test_control_a_search_that_ends_shallower_than_its_seed_raises_support_short(monkeypatch):
     short, _, raised = held_short(monkeypatch, pulled=5e-3)
     assert short > 1e-6 and raised == ["umr.support_short"]
+
+
+def test_a_search_that_does_not_converge_holds_its_nearest_sample_and_raises_support_short(monkeypatch):
+    """The round-trip case with the search given no steps, so that none converges: each group holds its nearest
+    sample (``contact.search``), and where that sample is near being held the body may reach past it by up to the
+    samples' shortfall, which ``contact_short`` reads and ``support_short`` raises. Beside the test above, whose
+    search converges and raises nothing, the same case, this is the flag's two sides."""
+    from hull_cases import FL9_SETTINGS
+    from hull_cases import SPACING as CASE_SPACING
+    from script_a import fl9
+
+    from mime.scene._sampling import hull_shortfall, quadrature_counts
+
+    monkeypatch.setattr(contact_module, "CONTACT_NEWTON", 0)
+    short, _, raised = held_short()
+    kind = fl9()
+    patches = tuple(kind.patches)
+    expected = hull_shortfall(kind, FL9_SETTINGS, patches, quadrature_counts(kind, FL9_SETTINGS, CASE_SPACING, patches))
+    assert short >= expected and raised == ["umr.support_short"]

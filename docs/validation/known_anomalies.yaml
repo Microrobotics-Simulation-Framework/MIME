@@ -1980,9 +1980,9 @@ anomalies:
       - "tests/oracles/test_hull_contact_screws.py::test_an_anisotropic_screw_turns_broadside_and_is_held_at_the_bores_limit"
       - "tests/oracles/test_hull_contact_screws.py::test_control_without_the_contact_the_screw_goes_through_the_wall"
       - "tests/oracles/test_hull_contact_screws.py::test_the_isotropic_screw_runs_as_with_no_contact_to_the_last_bit"
-    residual_risk: "Where the hull's kind has a support query (the sphere, the ellipsoid, the cylinder, the capsule, the screw), the contact holds the body's own surface; a kind with none (the box, a lab's mesh) is held by its samples, which a turning body meets off its line of contact, so the inelastic hold acts as a friction and a shaking set by the spacing (the review's smooth cylinder spun at 50 Hz on the floor kept 117.5 of 314 rad/s over 2 s held by its samples at 0.1 mm, and its spin to the last bit by its support under either rigid_inertial; in script A's reproduction arm, by its samples at 0.1 mm the contact carried 5.3e-9 N m about the screw's axis, 29 % of the field's torque in that run, and shook it at 1.2 mm/s rms vertically, by its support 7.1, 5.8 and 5.1e-11 N m (0.30, 0.25 and 0.22 %) and 0.065, 0.049 and 0.043 mm/s at 0.1, 0.05 and 0.025 mm, still falling with the spacing, by 28 % and 34 % across it; phase 7o's fix rounds), flagged held_by_samples. A screw held by its support still loses spin rolling on the floor, which a smooth cylinder does not: FL-9 spun at 50 Hz kept 245, 236 and 249 of 314 rad/s over 2 s at 0.1, 0.07 and 0.05 mm (not monotone in the spacing; 175, 153 and 179 while the projection after the step left the angular velocity in the world), tilting up to 0.8 degrees and hopping 10 to 15 um; its cause is not shown. Where the support's steps leave a held point shallower than its seed, the seed within the margin, the flag support_short rises (none did in script A's 5 s at 0.1 mm; from a start 0.8 mm off FL-9's own farthest point, 1 of 1,500 directions ended 4.3 mm shallower than its start). Each step holds one point of each of eight groups, by a fixed count of sweeps: a body pressed into both walls with strongly coupled rows is left unconverged (a 2.6 by 3.5 mm cylinder wedged at its tilt limit, at 6.7 % of the free step's speed at the held points), which the residual reports and the flag unconverged raises above 5e-3, the projection after the step keeping the margin; it reads the motion, and the drive, not each point's force. A screw lying on the floor touches along several crest passes, and a group holds only its deepest; the contact 0.1.0 stays registered, and script A, A0 and the frozen register's scripts build it, so a run of theirs that turned its body would pass through the wall as before: their bodies are isotropic and do not turn"
-    workaround: "Write Contact.Projection(...), which builds the contact 0.2.0"
-    planned_resolution: "Done in dev1 phase 7o (designs #196 and #204): the contact 0.2.0 holds the body's own deepest point near each group's nearest sample, by its kind's support query, by impulses through the body's implicit solve and a projection of the pose after the step. On review 7l-c's arms (float32, phase 7o's fix round) every arm whose axial moment is its smallest still turns and is stopped at 20.45 degrees, its body the margin from the wall; the isotropic arm runs as it did with no contact, to the last bit. Friction at the contact, and its meeting with the near-contact physics (lubrication, a compliant wall), are decided with that physics' design"
+    residual_risk: "Where the hull's kind has a support query (the sphere, the ellipsoid, the cylinder, the capsule, the screw), the contact holds the body's own surface; a kind with none (the box, a lab's mesh) is held by its samples, which a turning body meets off its line of contact, so the inelastic hold acts as a friction and a shaking set by the spacing (the review's smooth cylinder spun at 50 Hz on the floor kept 117.5 of 314 rad/s over 2 s held by its samples at 0.1 mm, and its spin to the last bit by its support under either rigid_inertial, its twist across its axis to rounding; in script A's reproduction arm, by its samples at 0.1 mm the contact carried 5.3e-9 N m about the screw's axis, 29 % of the field's torque in that run, and shook it at 1.2 mm/s rms vertically, by its support, the contact 0.3.0, 2.1, 3.0 and 3.3e-11 N m (0.09, 0.13 and 0.14 %) and 0.025, 0.024 and 0.025 mm/s at 0.1, 0.05 and 0.025 mm, flat in the spacing (the hull contact's fix round; the 0.2.0's 7.1, 5.8 and 5.1e-11 N m and 0.065, 0.049 and 0.043 mm/s, falling with the spacing, were its searches left unconverged, MIME-ANO-135), flagged held_by_samples. A screw held by its support still loses spin rolling on the floor, which a smooth cylinder does not: FL-9 spun at 50 Hz kept 276, 276 and 279 of 314 rad/s over 2 s at 0.1, 0.07 and 0.05 mm under the contact 0.3.0, tilting up to 0.4 degrees and hopping 3.8 um (the 0.2.0 kept 245, 236 and 249, hopping 10 to 15 um; 175, 153 and 179 while the projection after the step left the angular velocity in the world); its cause is not shown. Where the support's steps leave a held point shallower than its group's nearest sample, or a search does not converge and holds that sample, the sample within the margin, the flag support_short rises (none did in script A's 5 s at 0.1 mm; from a start 0.8 mm off FL-9's own farthest point, 1 of 1,500 directions ended 4.3 mm shallower than its start). Each step holds one point of each of eight groups, by a fixed count of sweeps: a body pressed into both walls with strongly coupled rows can be left unconverged (a 2.6 by 3.5 mm cylinder wedged at its tilt limit read 6.7 % of the free step's speed at the held points under the contact 0.2.0, whose searches were unconverged, and 7.9e-8 under 0.3.0; 1.6 % given five sweeps), which the residual reports and the flag unconverged raises above 5e-3, the projection after the step keeping the margin; it reads the motion, and the drive, not each point's force. A screw lying on the floor touches along several crest passes, and a group holds only its deepest; the contact 0.1.0 stays registered, and script A, A0 and the frozen register's scripts build it, so a run of theirs that turned its body would pass through the wall as before: their bodies are isotropic and do not turn"
+    workaround: "Write Contact.Projection(...), which builds the contact 0.3.0"
+    planned_resolution: "Done in dev1 phase 7o (designs #196 and #204): the contact 0.2.0 holds the body's own deepest point near each group's nearest sample (since the hull contact's fix round the contact 0.3.0 starts each group from as many places as its shape needs and holds only a converged search's point: MIME-ANO-134, MIME-ANO-135), by its kind's support query, by impulses through the body's implicit solve and a projection of the pose after the step. On review 7l-c's arms (float32, phase 7o's fix round) every arm whose axial moment is its smallest still turns and is stopped at 20.45 degrees, its body the margin from the wall; the isotropic arm runs as it did with no contact, to the last bit. Friction at the contact, and its meeting with the near-contact physics (lubrication, a compliant wall), are decided with that physics' design"
   - anomaly_id: MIME-ANO-132
     title: "M1's margin to indefiniteness at A stays flat at about x1.03 along the convergence ladder, while the gap grows from 0.50 to 0.98 spacings"
     description: >
@@ -2090,3 +2090,110 @@ anomalies:
       Done: the sample and its scale-relative tolerance asserted on every machine, a control that fails every run, the
       digests re-frozen with the reason, and a sentence in the saved form's README on what a derived hash shows. The
       tolerances are the maintainer's to set.
+  - anomaly_id: MIME-ANO-134
+    title: "The hull contact's search started from too few places: a group holding several of a screw's local deepest points held the shallower, and the body passed the margin by up to the samples' shortfall"
+    description: >
+      The contact 0.2.0 (as merged at 5d0f712, #95) took each group of the hull's samples to the body's own deepest
+      point near the group's nearest sample, by the kind's support. A group can hold several of the body's local
+      deepest points (a screw's crest passes and its rims), and the samples' gaps do not order them: each sample falls
+      short of the body by up to the samples' shortfall, so the climb from the nearest sample alone could end on the
+      shallower. Hypothesis found it on PR #94's CI (run 41520717709): FL-9 lying along the tube at the test's 0.4 mm
+      spacing, held at a crest pass while its rim stood 9.1 um deeper, ended 8.42 um past the wall shrunk by the
+      margin. Over 20,000 poses of FL-9 at 0.4 mm within 30 um of the shrunk wall, 50 held a point more than 1 um
+      shallower than the body's deepest, by up to 26 um; at the default 0.1 mm none by 0.5 um. The first fix (#116 at
+      b4b6682) started each group from two places, its nearest and the next nearest apart from it, and kept the
+      deeper: enough for FL-9, not for every screw the kind admits at a spacing the guard admits. Over 10,000 poses each
+      (its review, H1), two starts a group missed a four-start screw's deepest point (wavenumber 4, modulation 0.25) at
+      0.4 mm at 214 poses, by up to 17.6 um, and a three-start screw's at 0.35 mm at 30, by up to 18.8 um. The miss is
+      bounded by the samples' shortfall, which the spacing's guard keeps within the margin, so the body never reached
+      the wall itself; it reached into the margin, silently, the validity line stating the condition in words with no
+      flag.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The margin is the declared clearance of the body from the wall; a body that silently takes up to the samples'
+      shortfall of it (17.6 um of a 0.1 mm margin on the four-start screw at an admitted spacing) is nearer the wall
+      than the experiment says, which a near-wall drag or a clearance read from the run would take for true. The wall
+      itself was never passed.
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    affected_components:
+      - "the contact 0.2.0 (mime.interactions.Contact as merged at 5d0f712, in no release), superseded by 0.3.0"
+      - "the hull contact's search (mime.nodes.body._contact.starts, kept), RigidInertialNode"
+    verification:
+      - "tests/oracles/test_hull_contact.py::test_the_contact_holds_the_bodys_deepest_point_near_the_wall"
+      - "tests/oracles/test_hull_contact.py::test_control_from_its_nearest_candidate_alone_the_contact_holds_a_shallower_point"
+      - "tests/oracles/test_hull_contact.py::test_control_from_two_starts_a_group_the_contact_misses_the_four_start_screws_deepest_point"
+      - "tests/oracles/test_hull_contact.py::test_the_counterexample_keeps_the_margin"
+      - "tests/oracles/test_hull_contact.py::test_control_from_its_nearest_candidate_alone_the_counterexample_passes_the_margin"
+      - "tests/oracles/test_hull_contact.py::test_no_hull_point_ends_past_the_wall_and_the_margin_is_kept_to_the_sweeps_convergence"
+    residual_risk: >
+      What the oracles bound: at 2,000 fixed poses of each of FL-9, a three-start and a four-start screw (wavenumber 4)
+      within 30 um of the shrunk wall at spacings the guard admits (0.4, 0.35 and 0.4 mm), the held points include
+      the body's own deepest (its dense quadrature) to 1 um, where one start a group missed FL-9's at 3 and two missed
+      the four-start screw's at 33 (by up to 14 um). What was measured beyond them (the fix round, 0.3.0's search at
+      the starts its nodes take, six for each screw there, three for a rod): over 110,000 poses of four screws (FL-9, and
+      two, three and four starts at a wavenumber of 4), a rod and a capsule within -20 to +30 um of the shrunk wall at
+      the coarsest spacings the guard admits (0.3 to 0.4 mm, and the default 0.1 mm for FL-9 and the four-start screw),
+      none missed its body's deepest point by 0.3 um, where two starts a group missed the four-start screw's at 189
+      of 10,000 poses at 0.4 mm (by up to 18 um) and the three-start screw's at 30 at 0.35 mm. The starts are counted against
+      a flat wall, over directions, as places within the samples' shortfall apart from each other; against the tube's
+      curved wall more places can stand within the shortfall, and nothing reports a group with more than its starts:
+      the bound is that the miss never exceeds the samples' shortfall, which the spacing's guard keeps within the
+      margin. The count is of places, not of the body's distinct deepest points: a cap facing the wall within a few
+      degrees of the body's axis lifts FL-9's count from three or four to six at every spacing, which costs starts
+      (script A's step costs 2.4 times the first fix's) and misses nothing.
+    workaround: "Use the contact 0.3.0 (Contact.Projection), or a spacing whose samples' shortfall is within the clearance you need"
+    planned_resolution: "Done in the contact 0.3.0 (the hull contact's fix round): each group's search starts from as many places as the hull's shape can hold within the samples' shortfall against a flat wall (mime.nodes.body._contact.start_count, counted when the node is built), each start climbing two stopped steps and the group keeping the deepest; samples_shortfall climbs the support from four samples apart along each direction, where it read up to 8.6 % low from the farthest alone. Open, as a refinement: counting the body's distinct deepest points rather than places would cut the starts a cap or a long crest adds, and with them the cost"
+  - anomaly_id: MIME-ANO-135
+    title: "The hull contact held the point of a search left unconverged, set by the rounding, which could take the force: a step's result moved with its frame, and script A's shaking and torque with the spacing"
+    description: >
+      The contact 0.2.0 (5d0f712) and the first fix (#116 at b4b6682) took each group's search a fixed five Newton
+      steps, with their gradients stopped, and one more with them flowing, and held the support at the last step's
+      direction however far the steps had got. A search started far from its point (a group's nearest sample on the
+      far side of the body, the wall's normal turning across the tube's axis) need not converge in five: at the frame
+      property's draw that a stress run found (run 41539574970, run 10; FL-9 tilted 0.29 rad near the wall, pushed in
+      by 0.78 mN), a group started 804 um from the wall had its iterates at 1669, 752, 1159, 456 and 7.5 um, stopped
+      there against -4.11 um converged, and that row took all the force (79.6 uN, where the converged step puts 73.6
+      on another group): the twist moved by 8 % (-0.469 against -0.431 rad/s), and in the world turned by 1 rad it
+      differed by about 3e-9 rad/s against the check's 4.7e-10, on v0.3 alone and on the first fix. Over 400 poses
+      with such a group the first fix failed the frame check at 2 (5.5e4 times its tolerance), at none of 400 without
+      one (its review, H3). The same unconverged searches drove script A's lateral shaking and the contact's axial
+      torque (H2): 0.069 to 0.072 mm/s and -1.6e-10 N m at 0.05 mm on the first fix, 0.020 to 0.022 on its base, both
+      moving with the spacing, where converged searches give 0.012 to 0.013 mm/s and -3.3e-11 N m at 0.1, 0.05 and
+      0.025 mm alike. No flag rose.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A held point set by the rounding takes a force where the body does not touch, which moves the body's twist (8 %
+      at the stress run's draw) and makes a result depend on its frame and on the spacing (script A's shaking moved
+      by a factor of three to four); nothing in a run said so. The body still kept the margin where a converged group
+      held its deepest point.
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1"
+    resolution_version: "0.3.0.dev1"
+    affected_components:
+      - "the contact 0.2.0 (as merged at 5d0f712, in no release), superseded by 0.3.0"
+      - "the hull contact's search (mime.nodes.body._contact.searched, pair_contacts), RigidInertialNode"
+    verification:
+      - "tests/oracles/test_hull_contact.py::test_the_stress_runs_unconverged_draw_turns_the_step_with_the_frame"
+      - "tests/oracles/test_hull_contact.py::test_control_its_search_left_at_five_steps_and_held_where_they_end_turns_the_step_otherwise"
+      - "tests/oracles/test_hull_contact.py::test_turning_the_tube_and_the_body_together_turns_the_step"
+      - "tests/oracles/test_hull_contact_support.py::test_a_search_that_does_not_converge_holds_its_nearest_sample_and_raises_support_short"
+      - "tests/saved/test_switch_harness.py::test_each_switch_measures_within_its_declared_order"
+    residual_risk: >
+      What is bounded: the frame check passes at all 400 of the review's poses with an unconverged far-started group
+      (worst 0.0086 of its tolerance) and at its 400 controls, where the first fix's search (five steps, held where
+      they end) fails at 2 (5.5e4 of the tolerance); script A's shaking is 0.024 to 0.025 mm/s vertically and 0.012 to
+      0.013 laterally at 0.1, 0.05 and 0.025 mm, flat in the spacing and unmoved by an initial roll of 1e-6 or 1e-3
+      rad, and its contact's axial torque -2.1, -3.0 and -3.3e-11 N m; the same search left at five steps and held where
+      they end shakes it at 0.056 and 0.020 mm/s (0.05 mm). A search not converged within twelve steps holds its group's nearest sample, a point of
+      the body, and the body may then reach past the margin by up to the samples' shortfall there, which raises
+      support_short where that sample is within the margin: none did in script A's 5 s at 0.1, 0.05 and 0.025 mm.
+      The bound is a declaration, from the review's measurement (a search started within the margin converged in at
+      most 9 to 11 steps; one started farther off, whose point reached the wall, in 16 at the 99th percentile, some
+      never within 30); a search held at its sample is a jump of the step, the switch contact.search. The searches
+      run unrolled, twelve steps each, whatever their convergence.
+    workaround: "Use the contact 0.3.0 (Contact.Projection)"
+    planned_resolution: "Done in the contact 0.3.0 (the hull contact's fix round): the kept start's search runs twelve stopped steps (CONTACT_NEWTON) and counts as converged where its point stands within the square root of the dtype's resolution of the hull's size of the support at its direction; one that has not holds the group's nearest sample (the switch contact.search, declared and measured in the switch harness) and contact_short reads at least the samples' shortfall where that sample is within the margin, raising support_short"

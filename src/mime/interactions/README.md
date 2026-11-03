@@ -86,16 +86,21 @@ Since phase 7i, the surrogate rung reads its weights through the evaluator its s
 (`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
 is unchanged. The mrs rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.
 
-Since phase 7o, **`Contact.Projection`** (`contact` 0.2.0) holds the body's hull, its orientation read, each point
+Since phase 7o, **`Contact.Projection`** (`contact` 0.3.0 since its fix round; 0.2.0, in no release, is not kept)
+holds the body's hull, its orientation read, each point
 kept `margin` from the surface, by impulses through the body's implicit solve with the rotation coupled in (projected
 Gauss-Seidel over one point per group of the hull's samples at `spacing`) and a projection of the pose after the step,
 inelastic and frictionless, in the body's own update (`RigidInertialNode`). The point each group holds is the body's
-own surface's deepest point near the group's nearest sample, found by the hull kind's **support query**
+own surface's point that the search from the deepest of its starts converges to: its nearest sample and each next
+nearest apart from those taken, as many as the hull's shape can hold local deepest points that its samples' gaps do
+not order (a screw's crest passes and its rims; counted when the experiment is built); a search that does not
+converge within its bound holds the group's nearest sample (MIME-ANO-134, MIME-ANO-135). The point is
+found by the hull kind's **support query**
 (`Geometry.support`: a direction in, the farthest point and its derivative out, reading no wall; a closed form for the
 sphere, the ellipsoid, the cylinder and the capsule, Newton's steps on its own surface for the screw), so the touching
 point moves continuously as the body turns and the contact takes no spin from a body of revolution (a point the
-support's steps leave shallower than the sample they started from is the state's `contact_short`, flagged
-`<body>.support_short`); a kind with no support (a lab's mesh) is held by its samples, which act as a friction set by
+support's steps leave shallower than the sample they started from, or the samples' shortfall where the search did
+not converge and held its nearest sample, is the state's `contact_short`, flagged `<body>.support_short`); a kind with no support (a lab's mesh) is held by its samples, which act as a friction set by
 the spacing, and raises `<body>.held_by_samples`. The solve is laid out over contact pairs (a body's hull against a wall; two bodies' hulls,
 by their supports, as GJK finds them, are the layout's next, `mime.nodes.body._contact`). Against a surface whose
 shape declares its region convex (the tube's lumen) each group's candidates are its own convex hull's vertices, fixed

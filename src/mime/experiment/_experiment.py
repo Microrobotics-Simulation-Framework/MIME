@@ -609,8 +609,9 @@ def speed_limit_flag(plans: PlanSet, plan: EntryPlan) -> FlagLayout | None:
 
 #: The names of the flags a body held by its hull raises: where a point is held; where the solve's sweeps left more
 #: than ``CONVERGED`` of the free step's speed at the held points unmet; for a hull whose kind has no support query,
-#: where a point is held by its samples; and for one that has, where a held point stood shallower than the sample its
-#: support's steps started from, that sample near being held, by more than ``SUPPORT_SHORT`` of the margin.
+#: where a point is held by its samples; and for one that has, where the body may reach past a held point, its group's
+#: nearest sample near being held, by more than ``SUPPORT_SHORT`` of the margin: the point stood shallower than that
+#: sample, or its search did not converge and held the sample (by up to the samples' shortfall).
 TOUCHING, UNCONVERGED, HELD_BY_SAMPLES, SUPPORT_SHORT_FLAG = ("touching", "unconverged", "held_by_samples",
                                                               "support_short")
 
@@ -620,8 +621,8 @@ def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
     its own sake, so they add nothing to the graph: ``touching``, raised at a step where a point takes a force;
     ``unconverged``, where the solve's residual passes ``CONVERGED``; ``held_by_samples``, where a point of a hull
     held by its samples (a kind with no support query) takes a force; and, for a kind with one, ``support_short``,
-    where a held point stood shallower than its seed by more than ``SUPPORT_SHORT`` of the margin (of a thousandth of
-    the hull's size at a margin of zero). None for a dynamics that holds no hull."""
+    where the body may reach past a held point by more than ``SUPPORT_SHORT`` of the margin (of a thousandth of the
+    hull's size at a margin of zero; ``_contact.shallower``). None for a dynamics that holds no hull."""
     from mime.nodes.body._contact import CONVERGED, SUPPORT_SHORT
     from mime.registry import implements
 
@@ -646,12 +647,14 @@ def contact_flags(plans: PlanSet, plan: EntryPlan) -> list[FlagLayout]:
             size = float(cast(Any, confinement.hull.kind).enclosing_radius(confinement.hull.settings))
             bound = confinement.margin if confinement.margin > 0.0 else 1e-3 * size
             found.append(FlagLayout(confinement.id, label, node, "contact_short",
-                                    f"a point of {confinement.subject}'s hull the contact held stood more than "
-                                    f"{SUPPORT_SHORT * bound * 1e6:.3g} um shallower than the sample its support's "
-                                    f"steps started from, a sample within the margin of the wall shrunk by it "
-                                    f"(contact_short): the steps went the wrong way, and the body may have reached "
-                                    f"past the margin by up to how far", SUPPORT_SHORT_FLAG,
-                                    (SUPPORT_SHORT * bound,)))
+                                    f"{confinement.subject}'s body may have reached more than "
+                                    f"{SUPPORT_SHORT * bound * 1e6:.3g} um past a point of its hull the contact held, "
+                                    f"its group's nearest sample within the margin of the wall shrunk by it "
+                                    f"(contact_short, how far): the point stood shallower than that sample (the "
+                                    f"search went the wrong way), or the search did not converge within its bound "
+                                    f"and held that sample (the body may then reach past the margin by up to the "
+                                    f"samples' shortfall)",
+                                    SUPPORT_SHORT_FLAG, (SUPPORT_SHORT * bound,)))
         else:
             found.append(FlagLayout(confinement.id, label, node, "contact_forces",
                                     f"a point of {confinement.subject}'s hull was held by its samples, its kind having "

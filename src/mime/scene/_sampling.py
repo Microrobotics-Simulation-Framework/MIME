@@ -54,6 +54,7 @@ from typing import Any, cast
 
 import jax
 import numpy as np
+from numpy.typing import NDArray
 
 from mime.core import jnp
 from mime.registry import Density, Geometry, Samples, Sampling, uniform
@@ -295,6 +296,14 @@ def body_reach(kind: Geometry, settings: Mapping[str, Magnitude],
 #: against.
 SHORTFALL_DIRECTIONS = 2048
 SHORTFALL_REFINEMENT = 4
+#: The starts a kind's support climbs from along each direction (:func:`hull_shortfall`): the farthest sample, then each
+#: the farthest farther than ``SHORTFALL_APART`` of the samples' spacing from every start taken. A body can hold two
+#: local farthest points along a direction (a screw's crest passes, its rims) that its samples do not order, and the
+#: climb from the farthest sample alone can reach the nearer: so read, FL-9's shortfall was up to 8.6 % low (226 um
+#: against 245 at 0.8 mm; 1.4 % at 0.4 mm). Declarations: against the climb from each of the 64 farthest samples and a
+#: quadrature at 1/200 of the body's size, four starts read every kind of the hull contact's fix round alike, to 0.1 um.
+SHORTFALL_STARTS = 4
+SHORTFALL_APART = 3.0
 #: The most samples the plan judges a hull's shortfall from (``judged_samples``). A declaration, so that a plan never
 #: takes more of a machine than a test does: measured at 1.3 million on a sphere, every sample a hull vertex, 2.7 GB and
 #: 47 s, and at 1.5 million on FL-9, 0.7 GB and 10 s; FL-9 at the default spacing has 15,327.
@@ -346,36 +355,83 @@ def judged_samples(kind: Geometry, settings: Mapping[str, Magnitude], spacing: f
 def samples_shortfall(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float) -> float:
     """How far the body reaches past its quadrature's samples at ``spacing`` on every patch (m): the largest, over
     ``shortfall_directions``, of its farthest point's reach less its farthest sample's. The body's reach is its
-    support's where its kind has one (from the farthest sample, exact), and its quadrature's at
-    ``SHORTFALL_REFINEMENT`` times finer spacing otherwise (its own shortfall about that factor squared smaller). An
-    estimate over finitely many directions, which may miss the largest by a little; a contact holding a body by its
-    samples keeps the body within the margin less this, so the plan refuses a spacing whose shortfall passes the
-    margin (``confinement.spacing-short``)."""
+    support's where its kind has one (:func:`hull_shortfall`), and its quadrature's at ``SHORTFALL_REFINEMENT`` times
+    finer spacing otherwise (its own shortfall about that factor squared smaller). An estimate over finitely many
+    directions, which may miss the largest by a little; a contact holding a body by its samples keeps the body within
+    the margin less this, so the plan refuses a spacing whose shortfall passes the margin
+    (``confinement.spacing-short``)."""
+    from mime.registry import implements
+
+    patches = tuple(kind.patches)
+    if implements(kind, "support"):
+        return hull_shortfall(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))
     key = (type(kind).__name__, getattr(kind, "version", ""), tuple(sorted((k, repr(v)) for k, v in settings.items())),
            spacing)
     held = _shortfalls.get(key)
     if held is not None:
         return held
-    from mime.registry import implements
-
-    patches = tuple(kind.patches)
     points = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))[0]
-    coarse = _hull_points(points)
     directions = shortfall_directions()
-    index, sampled = _farthest_along(coarse, directions)
-    if implements(kind, "support"):
-        with cast(Any, jax).enable_x64(True):
-            found = kind.support(_parameters(settings), jnp.asarray(directions), jnp.asarray(coarse[index]))
-            body = np.einsum("ij,ij->i", np.asarray(found.point, dtype=np.float64), directions)
-    else:
-        fine = quadrature_arrays(kind, settings, patches,
-                                 quadrature_counts(kind, settings, spacing / SHORTFALL_REFINEMENT, patches))[0]
-        body = _farthest_along(_hull_points(fine), directions)[1]
+    sampled = _farthest_along(_hull_points(points), directions)[1]
+    fine = quadrature_arrays(kind, settings, patches,
+                             quadrature_counts(kind, settings, spacing / SHORTFALL_REFINEMENT, patches))[0]
+    body = _farthest_along(_hull_points(fine), directions)[1]
     held = max(float(np.max(body - sampled)), 0.0)
     _shortfalls[key] = held
     return held
 
 
+def hull_shortfall(kind: Geometry, settings: Mapping[str, Magnitude], patches: Sequence[str],
+                   counts: Sequence[tuple[int, ...]]) -> float:
+    """How far a body whose kind has a support reaches past its quadrature's samples at ``counts`` on ``patches`` (m):
+    the largest, over ``shortfall_directions``, of the farthest of its support's climbs from ``SHORTFALL_STARTS``
+    samples along a direction (the farthest, then each the farthest farther than ``SHORTFALL_APART`` of the samples'
+    spacing from those taken) less its farthest sample's reach. What the hull contact's search reads when its node is
+    built, from the counts it holds, and what the plan's guard reads, one number."""
+    key = (type(kind).__name__, getattr(kind, "version", ""), tuple(sorted((k, repr(v)) for k, v in settings.items())),
+           tuple(patches), tuple(tuple(int(c) for c in count) for count in counts))
+    held = _shortfalls.get(key)
+    if held is not None:
+        return held
+    points = quadrature_arrays(kind, settings, patches, counts)[0]
+    coarse = _hull_points(points)
+    directions = shortfall_directions()
+    apart = SHORTFALL_APART * float(np.median(nearest(points, points, k=2)[0][:, 1]))
+    starts, sampled = _spread_farthest(coarse, directions, apart, SHORTFALL_STARTS)
+    with cast(Any, jax).enable_x64(True):
+        along = jnp.asarray(np.broadcast_to(directions[:, None, :], (*starts.shape, 3)))
+        found = kind.support(_parameters(settings), along, jnp.asarray(coarse[starts]))
+        reach = np.asarray(np.einsum("ijk,ik->ij", np.asarray(found.point, dtype=np.float64), directions),
+                           dtype=np.float64)
+    held = max(float(np.max(np.max(reach, axis=1) - sampled)), 0.0)
+    _shortfalls[key] = held
+    return held
+
+
+def _spread_farthest(points: np.ndarray, directions: np.ndarray, apart: float,
+                     count: int) -> tuple[NDArray[np.int64], np.ndarray]:
+    """Along each direction, ``count`` of ``points``: the farthest, then each the farthest farther than ``apart`` from
+    those taken, a direction with none left repeating its last (``D x count`` indices), and the farthest's reach
+    (``D``), a few directions at a time."""
+    index = np.empty((len(directions), count), dtype=np.int64)
+    reach = np.empty(len(directions))
+    squared = np.sum(points * points, axis=1)
+    for start in range(0, len(directions), _DIRECTIONS_AT_ONCE):
+        along = (points @ directions[start:start + _DIRECTIONS_AT_ONCE].T).T
+        reach[start:start + _DIRECTIONS_AT_ONCE] = np.max(along, axis=1)
+        taken = np.argmax(along, axis=1)
+        index[start:start + _DIRECTIONS_AT_ONCE, 0] = taken
+        for k in range(1, count):
+            picked = points[taken]
+            near = squared[None, :] - 2.0 * (picked @ points.T) + squared[taken][:, None] <= apart * apart
+            along[near] = -np.inf
+            left = np.isfinite(np.max(along, axis=1))
+            taken = np.where(left, np.argmax(along, axis=1), taken)
+            index[start:start + _DIRECTIONS_AT_ONCE, k] = taken
+    return index, reach
+
+
 __all__ = ["JUDGED_SAMPLES", "LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach",
-           "judged_samples", "length_of", "magnitude_of", "nearest", "quadrature", "quadrature_arrays",
-           "quadrature_counts", "quasi_uniform", "sampled_reach", "samples_shortfall", "shortfall_directions"]
+           "hull_shortfall", "judged_samples", "length_of", "magnitude_of", "nearest", "quadrature",
+           "quadrature_arrays", "quadrature_counts", "quasi_uniform", "sampled_reach", "samples_shortfall",
+           "shortfall_directions"]

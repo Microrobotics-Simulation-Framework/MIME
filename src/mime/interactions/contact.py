@@ -1,5 +1,5 @@
 """The contact family: a body against a surface. Here now: projection against a fixed structure's surface, of the
-body's hull points (``Contact`` 0.2.0), or of its centre by its extent (0.1.0, kept registered:
+body's hull points (``Contact`` 0.3.0), or of its centre by its extent (0.1.0, kept registered:
 ``mime.interactions.KEPT``)."""
 
 from __future__ import annotations
@@ -34,11 +34,13 @@ if TYPE_CHECKING:
 
 
 #: What was measured of the spacing's default (the margin), its basis: how far FL-9's samples fall short of its body
-#: in any direction (``mime.scene.samples_shortfall``, against its support, over 2,062 directions; phase 7o's fix
-#: round): the shortfall in any direction, which a tilted body needs, not across the axis alone.
+#: in any direction (``mime.scene.samples_shortfall``, against its support climbed from four of its samples apart along
+#: each of 2,062 directions; phase 7o's fix round, and the hull contact's, whose climbs from more than the farthest
+#: sample read 0.8 mm's 8.6 % higher): the shortfall in any direction, which a tilted body needs, not across the axis
+#: alone.
 SPACING_MEASURED = ("de Jongh's FL-9 (radius 1.56 mm, length 7.47 mm), in any direction: its farthest point lies up to "
                     "1.4 um beyond its samples at a spacing of 0.05 mm, 4.5 um at 0.1 mm (15,327 samples), 20 um at "
-                    "0.2 mm, 68 um at 0.4 mm, 226 um at 0.8 mm and 544 um at 1.6 mm, the last two past the 0.1 mm "
+                    "0.2 mm, 69 um at 0.4 mm, 245 um at 0.8 mm and 544 um at 1.6 mm, the last two past the 0.1 mm "
                     "margin and refused; the body is held at its own surface, so the samples only seed it")
 
 #: The finest a hull's spacing goes when none is written, as a share of its size (its enclosing radius): a margin says
@@ -107,14 +109,24 @@ CENTRE_SWITCHES = (
 HULL_SWITCHES = (
     switch.Declaration(
         owner="contact.point",
-        indicator="the gap of a group's second nearest candidate to the shrunk surface less its nearest's, m (zero "
-                  "where two tie)",
+        indicator="for a kind with a support, the gap of the deepest point a group's starts reach apart from the one it "
+                  "keeps, less the kept one's; for a kind held by its samples, the gap of a group's second nearest "
+                  "candidate to the shrunk surface less its nearest's; m (zero where two tie)",
         orders={"twist": -1, "pose": -1},
-        route="none where the hull's kind has a support: the nearest candidate only seeds the body's own deepest point "
-              "near it, which two seeds of one surface's neighbourhood reach alike, so the step jumps only where two "
-              "of the body's own local deepest points tie (a screw's crest passes, a cylinder's ends), as the body's "
-              "contact does; for a kind held by its samples the point moves from one sample to the next, a jump "
-              "falling with the spacing"),
+        route="none where the hull's kind has a support: each start only seeds the body's own deepest point near it, "
+              "which two starts of one surface's neighbourhood reach alike, and the group keeps the deepest point its "
+              "starts reach, so the step jumps only where two of the body's own local deepest points tie (a screw's "
+              "crest passes and rims, a cylinder's ends), as the body's contact does; for a kind held by its samples "
+              "the point moves from one sample to the next, a jump falling with the spacing"),
+    switch.Declaration(
+        owner="contact.search",
+        indicator="for a kind with a support, how far within its tolerance (the square root of the dtype's resolution "
+                  "of the hull's size) a group's search, after its bounded steps, stands of the support at its "
+                  "direction, m (negative where it has not converged)",
+        orders={"twist": -1, "pose": -1},
+        route="none: a search that has not converged within its bounded steps has no point of its own to hold, its "
+              "last step's point set by the rounding, so the group holds its nearest place, a point of the body; a "
+              "longer bound moves where the switch lies, not its jump"),
     switch.Declaration(
         owner="contact.gap",
         indicator="a held point's gap to the shrunk surface at the step's start, m (positive inside)",
@@ -146,10 +158,14 @@ class Contact(Interaction):
     lumen), its every point at least ``margin`` from the surface, its orientation read. It builds no node: its record
     goes to the body's dynamics at construction, which each step holds the body inside its implicit solve and projects
     the pose back after it (``RigidInertialNode``). The hull's samples at ``spacing`` on every patch are split into
-    groups; each group's sample nearest the surface seeds a contact, and where the hull's kind answers the support
-    query (``Geometry.support``: a closed form for the sphere, the ellipsoid, the cylinder and the capsule, Newton's
-    steps on its own surface for the screw) the contact holds the body's own deepest point near it, so the touching
-    point moves continuously along the body as it turns and the hold takes no spin from a body of revolution; a kind
+    groups; each group's search starts from its sample nearest the surface and from each next nearest apart from those
+    taken, as many as its shape can hold local deepest points within the samples' shortfall that its samples do not
+    order (counted when the experiment is built), and where the hull's kind answers the support query
+    (``Geometry.support``: a closed form for the sphere, the ellipsoid, the cylinder and the capsule, Newton's steps on
+    its own surface for the screw) the contact holds the body's own point that the search from the deepest of those
+    starts converges to (a group can hold several of a screw's crest passes and its rims, which its samples' gaps do not
+    order), so the touching point moves continuously along the body as it turns and the hold takes no spin from a body
+    of revolution; a search that does not converge within its bound holds the group's nearest sample; a kind
     with neither (a lab's mesh) is held by its samples, which act as a friction set by the spacing (the validity line
     and the flag ``held_by_samples``). At each point the outward velocity is taken away with the body's rotation
     coupled in (so a turned body touching at two points takes the couple that holds it), inelastic and frictionless,
@@ -174,13 +190,19 @@ class Contact(Interaction):
     rows, to which a traction law adds two along the surface at each point, bounded by its friction times the
     point's normal force.
 
-    Version 0.2.0 holds the body's hull, where 0.1.0 held the body's centre by its extent about its own axis and never
-    read its orientation, so a body that turned across a narrow tube passed through the wall. A body whose hull no
-    point reaches the margin of steps as the free body does, to the last bit, in both. 0.1.0 is kept registered
-    (``mime.interactions.KEPT``), so a folder saved with it loads and reproduces."""
+    Version 0.3.0 starts each group's search from as many places as the hull's shape needs and holds the point only of a
+    search that converged, where 0.2.0 (in no release) climbed a fixed count of steps from the group's nearest sample:
+    a group holding two of a screw's crest passes or a pass and a rim held the shallower when its samples ordered them
+    so, and the body passed the margin by up to the samples' shortfall (MIME-ANO-134); and a search left unconverged
+    held a point set by the rounding, which could take the force, so a step's result moved with its frame and script
+    A's shaking and torque with the spacing (MIME-ANO-135). Version 0.2.0 held the body's hull, where 0.1.0 held the
+    body's centre by its extent about its own axis and never read its orientation, so a body that turned across a
+    narrow tube passed through the wall. A body whose hull no point reaches the margin of steps as the free body does,
+    to the last bit, in every version. 0.1.0 is kept registered (``mime.interactions.KEPT``), so a folder saved with it
+    loads and reproduces; 0.2.0, which nothing saved or frozen names, is not."""
 
     name = "contact"
-    version = "0.2.0"
+    version = "0.3.0"
     setting_roles = {
         "rung": DESIGN, "margin": NUMERICAL,
         "rule": convention(PHYSICAL, "a frictionless contact that does not bounce: the projection removes the "
@@ -207,18 +229,24 @@ class Contact(Interaction):
     validity = (
         "projection: a rigid body against a fixed surface, each point at least the margin from it: where the hull's kind "
         "answers the support query (the sphere, the ellipsoid, the cylinder, the capsule: closed forms; the screw: "
-        "Newton's steps on its own surface), at the body's own deepest point near each group's nearest sample, so "
-        "the body keeps the margin to the support's convergence (rounding); a kind with neither (the box, a lab's "
-        "mesh) at its samples, so the body reaches past them by up to their shortfall (the build report states it, "
-        "and a spacing whose shortfall passes the margin is refused)",
+        "Newton's steps on its own surface), at the body's own point the search from the deepest of each group's "
+        "starts converges to (its nearest sample and each next nearest apart from those taken, as many as the hull's "
+        "shape can hold local deepest points against a flat wall), so the body keeps the margin to "
+        "the support's convergence (rounding); within the samples' shortfall where a group's search does not converge "
+        "within its bound and the group holds its nearest sample, raising support_short when that sample is within "
+        "the margin; the starts are counted against a flat wall, and against a curved one more of a group's places "
+        "can stand within the shortfall, unflagged (measured on screws at the coarsest spacings the guard admits, "
+        "MIME-ANO-134 records how often); a kind with "
+        "neither (the box, a lab's mesh) at its samples, so the body reaches past them by up to their shortfall (the "
+        "build report states it, and a spacing whose shortfall passes the margin is refused)",
         "projection: a kind held by its samples is held at them, not at its line of contact, and a turning body's "
         "samples arrive at the wall off it: the inelastic hold acts as a friction and a shaking set by the spacing, "
         "which a body of revolution spun on the floor shows by losing most of its spin, and script A's screw by a "
         "contact that carries a share of the field's torque (MIME-ANO-131 records the measurements, by samples and "
         "by support), raising the flag held_by_samples",
         "projection: a screw held by its support still loses part of its spin rolling on the floor, where a smooth "
-        "cylinder keeps it to the last bit, by an amount not monotone in the spacing (MIME-ANO-131 records it), its "
-        "cause not shown",
+        "cylinder keeps its spin to the last bit, by an amount nearly flat in the spacing (MIME-ANO-131 records it), "
+        "its cause not shown",
         "projection: the margin is kept to what a fixed count of sweeps leaves: two points whose rows are coupled at "
         "c converge by c squared a sweep, and a body pressed into both walls with short levers is held to that, the "
         "pose projected back after the step taking the rest; the solve's residual is the state's contact_residual, "
@@ -230,10 +258,12 @@ class Contact(Interaction):
         "projection: admissibility only: it adds no near-wall lubrication, which a drag that includes it declares, "
         "and the plan refuses a second law on the body that includes it",
         "projection: a rigid surface and a rigid body: no compliance of the wall or the body",
-        "projection: each step it holds one point of each of the hull's eight groups, the body's deepest near that "
-        "group's nearest sample: a body touching in more places than its groups (a screw lying along the floor on "
+        "projection: each step it holds one point of each of the hull's eight groups, the deepest its starts reach: "
+        "a body touching in more places than its groups (a screw lying along the floor on "
         "several crest passes in one group) is held at the group's deepest of them, the rest taken by the projection "
         "after the step when they pass the margin",
+        "projection: the starts a group takes, its places and the samples' shortfall are counted from the hull's "
+        "settings as built, as its candidates are: a study that moves a setting far keeps them",
         "projection: a body with no hull is held as a sphere of its declared extent about its centre",
     )
     rung: str | None = None

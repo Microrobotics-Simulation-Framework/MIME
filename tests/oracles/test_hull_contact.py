@@ -1,12 +1,19 @@
-"""The containment contact 0.2.0, which holds a body's hull points (``Contact.Projection``; the body's node,
+"""The containment contact 0.3.0, which holds a body's hull points (``Contact.Projection``; the body's node,
 ``RigidInertialNode``'s hull contact), against its oracles, each with a control that fails it on every run:
 
-- **Never past the wall.** A capped cylinder and FL-9's screw in script A's tube, drawn turned within what the bore
-  admits and placed anywhere it admits, moving, turning and driven by a force and a torque at a millimetre body's
-  scales, for four steps: no hull point ends past the wall, beyond the rounding of a position, nor past the wall
-  shrunk by the margin by more than the sweeps leave of a wedged body (``HELD_WITHIN``). The control: today's
-  contact, 0.1.0's, which holds the centre by the hull's radial reach, on the same draws, lets the hull through the
-  wall.
+- **Never past the wall.** A capped cylinder, FL-9's screw and two screws of three and four starts at the most twist
+  the kind admits (a wavenumber of 4), each at a spacing the guard admits, in script A's tube, drawn turned within
+  what the bore admits and placed anywhere it admits, moving, turning and driven by a force and a torque at a
+  millimetre body's scales, for four steps: no hull point ends past the wall, beyond the rounding of a position, nor
+  past the wall shrunk by the margin by more than the sweeps leave of a wedged body (``HELD_WITHIN``). The control:
+  today's contact, 0.1.0's, which holds the centre by the hull's radial reach, on the same draws, lets the hull
+  through the wall.
+- **The deepest of a group's places.** A group can hold several of the body's own local deepest points, which its
+  samples' gaps do not order: the property's counterexample (FL-9 lying along the tube, held at a crest pass while its
+  rim went 8.4 um past the shrunk wall) keeps the margin, and at 2,000 fixed poses of each screw near the wall the
+  contact's held points include the body's own deepest (its dense quadrature). The controls: the search started from
+  each group's nearest candidate alone, phase 7o's, lets the counterexample past and misses on FL-9; two starts, the
+  first fix's count, miss on the four-start screw.
 - **Two-point statics.** A long cylinder turned across the tube until its two hull points farthest across its axis,
   one at each end, touch the shrunk wall, under a torque about the axis across both: each point's force is the couple's,
   ``tau / (2 (x cos(a) - y sin(a)))`` for a point at ``(x, y)`` in the body's frame turned by ``a``, equal and opposite,
@@ -19,13 +26,16 @@
 - **Unchanged where nothing touches.** Where no hull point can reach the shrunk wall in the step, the step is the
   free body's to the last bit (``np.array_equal``). The control: a contact that keeps a force of one part in 1e15.
 - **The frame.** Turning the tube and the body's state together turns the step, off the ties of two of a group's
-  points, where the step jumps by the choice of point (``contact.point``).
+  points, where the step jumps by the choice of point (``contact.point``); and at the draw of the stress run that
+  found a group's unconverged search taking the force. The control: that search left at five steps and held where
+  they end, as the first fix held it, turns the step otherwise.
 - **Admissibility only.** A contact that adds lubrication beside a drag that includes it is refused
   (``lubrication.twice``); either alone builds.
 
 The draws are in float64, the node's dtype here, at physical scales: positions inside the tube, speeds up to 2 cm/s
 and turning up to 50 rad/s about the body's axis and 10 rad/s across it, forces up to 1 mN and torques up to 10 nN m
-on a body of 85 ug (CLAUDE.md's property-test causes: draw what a body can have)."""
+on a body of 85 ug, of the kinds a body can have: no kind with fins exists yet, and the box and a lab's mesh have no
+support, so their samples hold them (CLAUDE.md's property-test causes: draw what a body can have)."""
 
 import math
 from functools import cache
@@ -38,9 +48,10 @@ from hull_cases import FL9_SETTINGS, MARGIN, TUBE_RADIUS, hull_node, kind_points
 from hypothesis import assume, find, given, settings
 from hypothesis import strategies as st
 
+import mime.nodes.body._contact as contact_module
 import mime.nodes.body._rigid_inertial as rigid
 from mime.build import BuildRefused
-from mime.core import quaternion
+from mime.core import quaternion, switch
 from mime.interactions import Contact
 from mime.nodes.body import RigidInertialNode
 from mime.scene import Cylinder, Screw
@@ -51,9 +62,22 @@ ROD = (Cylinder(radius=mm(1.0), length=mm(6.0), axis=(1.0, 0.0, 0.0)),
        {"radius": 1e-3, "length": 6e-3, "axis": (1.0, 0.0, 0.0)})
 SCREW = (Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
                starts=2), FL9_SETTINGS)
-#: The hull's points at a coarse spacing, so that a draw's four steps are cheap: 280 of the rod's, 957 of FL-9's.
+
+
+def screw(starts: int, modulation: float):
+    """A screw of FL-9's radius and length with ``starts`` crests and the most twist the kind admits (a wavenumber of
+    4): more crest passes in each group than FL-9's."""
+    held = {**FL9_SETTINGS, "wavenumber": 4.0, "modulation": modulation, "starts": starts}
+    return Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(4.0),
+                 modulation=dimensionless(modulation), starts=starts), held
+
+
+#: The hull's points at a coarse spacing the guard admits at the 0.1 mm margin, so that a draw's four steps are cheap:
+#: 280 of the rod's, 957 of FL-9's. The screws of three and four starts fall up to 89 and 88 um short of their bodies
+#: at 0.35 and 0.4 mm (the four-start's at 0.4 mm missed its deepest point by up to 18 um with two starts a group).
 SPACING = 4e-4
-KINDS = {"rod": ROD, "screw": SCREW}
+SPACINGS = {"s3k4": 3.5e-4}
+KINDS = {"rod": ROD, "screw": SCREW, "s3k4": screw(3, 0.33), "s4k4": screw(4, 0.25)}
 #: The statics' rod, long and thin, so that turned across the tube until both ends touch, its two points' rows are
 #: coupled at 0.1 and the sweeps converge to rounding (a rod pressed in at a steep tilt, its levers short, couples them
 #: more closely: the property's rod, 1 mm by 6 mm, at 0.89, takes 0.8% less than its couple after the solve's sweeps).
@@ -68,13 +92,13 @@ POSITION_ULPS = 64
 @cache
 def points(name: str) -> np.ndarray:
     kind, held = ALL_KINDS[name]
-    return kind_points(kind, held, SPACING)
+    return kind_points(kind, held, SPACINGS.get(name, SPACING))
 
 
 @cache
 def held(name: str) -> RigidInertialNode:
     kind, settings_ = ALL_KINDS[name]
-    return hull_node(kind, settings_, SPACING, mass=MASS, inertia=INERTIA)
+    return hull_node(kind, settings_, SPACINGS.get(name, SPACING), mass=MASS, inertia=INERTIA)
 
 
 @cache
@@ -212,6 +236,89 @@ def test_no_hull_point_ends_past_the_wall_and_the_margin_is_kept_to_the_sweeps_c
     least, rounding = deepest(draw, held(draw["kind"]))
     assert least + MARGIN >= -rounding, f"a hull point ended {-(least + MARGIN):.3g} m past the wall"
     assert least >= -HELD_WITHIN, f"a hull point ended {-least:.3g} m past the wall shrunk by the margin"
+
+
+# -- each group holds the deepest of the body's points its starts reach ---------------------------------------------
+
+#: The containment property's counterexample (Hypothesis on CI, 2026-11-02): FL-9 lying along the tube, turning at
+#: 3 rad/s across its axis and pushed into the wall by 0.73 mN with no resistance. Its group nearest the wall held a
+#: crest pass 2 mm from its rim, whose sample stood 1.4 um nearer the wall than the rim's sample, while the body's
+#: deepest point was on the rim, 9.1 um deeper: the fourth step ended 8.42e-06 m past the wall shrunk by the margin.
+COUNTEREXAMPLE = {"kind": "screw", "spin": 5.625, "tilt": 0.0, "about": 0.0, "towards": 0.0, "share": 0.9375,
+                  "velocity": (0.0, 0.0, 0.0), "spinning": 0.0, "turning": (3.0, 0.0),
+                  "force": (0.0, 0.0007344930510551819, 0.0), "torque": (0.0, 0.0, 0.0), "resisted": False,
+                  "dt": 0.0007676768217005557}
+
+
+def started(monkeypatch, count: int, name: str = "screw") -> RigidInertialNode:
+    """A control's node: each group's search started from ``count`` places, whatever the hull's shape holds (one: the
+    contact as phase 7o built it; two: the first fix's), a node of its own so that its step is traced with it."""
+    monkeypatch.setattr(rigid, "start_count", lambda *_: count)
+    kind, settings_ = ALL_KINDS[name]
+    return hull_node(kind, settings_, SPACINGS.get(name, SPACING), mass=MASS, inertia=INERTIA)
+
+
+def test_the_counterexample_keeps_the_margin():
+    least, _ = deepest(COUNTEREXAMPLE, held("screw"))
+    assert least >= -HELD_WITHIN, f"a hull point ended {-least:.3g} m past the wall shrunk by the margin"
+
+
+def test_control_from_its_nearest_candidate_alone_the_counterexample_passes_the_margin(monkeypatch):
+    least, _ = deepest(COUNTEREXAMPLE, started(monkeypatch, 1))
+    assert least < -5e-6
+
+
+#: The poses the search is judged at alone: each screw within 30 um of the shrunk wall, placed as the property's draws
+#: are (``admitted``), every other one within 0.05 rad of lying along the tube (where its crest passes stand nearest
+#: alike), drawn once from a fixed seed so that the controls' misses are the same on every run.
+NEAR_POSES, POSES_SEED = 2000, 20261102
+SCREWS = ("screw", "s3k4", "s4k4")
+
+
+@cache
+def near_poses(name: str) -> tuple[np.ndarray, ...]:
+    rng = np.random.default_rng(POSES_SEED)
+    found = []
+    for k in range(NEAR_POSES):
+        draw = {"kind": name, "spin": rng.uniform(0, 2 * math.pi),
+                "tilt": rng.uniform(0, 0.05) if k % 2 else rng.uniform(0, 1.5), "about": rng.uniform(0, 2 * math.pi),
+                "towards": rng.uniform(0, 2 * math.pi), "share": 1.0}
+        pose = admitted(name, draw)
+        pose[:3] -= rng.uniform(0, 30e-6) * np.array([0.0, math.cos(draw["towards"]), math.sin(draw["towards"])])
+        found.append(pose)
+    return tuple(found)
+
+
+def search_misses(node: RigidInertialNode, name: str) -> list[float]:
+    """How far the contact's held points stand shallower than the body's own deepest point (its dense quadrature,
+    ``body_gap``), at each of ``near_poses`` where that passes ``HELD_WITHIN``."""
+    p = node._step_constants(None)
+    body = node.hull_points(p, jnp.float64)
+    least = jax.jit(jax.vmap(lambda pose: jnp.min(node.contacts(p, body, pose).gaps)))
+    held_ = np.asarray(least(jnp.asarray(np.stack(near_poses(name)))))
+    misses = [float(gap) - body_gap(name, pose) for gap, pose in zip(held_, near_poses(name), strict=True)]
+    return [miss for miss in misses if miss > HELD_WITHIN]
+
+
+@pytest.mark.parametrize("name", SCREWS)
+def test_the_contact_holds_the_bodys_deepest_point_near_the_wall(name):
+    """At every one of the poses the contact's held points include the body's own deepest point, to the dense
+    quadrature's shortfall: a group whose samples order its crest passes or rims otherwise than they lie holds the
+    deepest its starts reach, and it takes as many starts as its shape can hold such points."""
+    assert search_misses(held(name), name) == []
+
+
+def test_control_from_its_nearest_candidate_alone_the_contact_holds_a_shallower_point(monkeypatch):
+    """The contact as phase 7o built it misses FL-9's deepest point at some of the poses (measured: 3 of the 2,000, by
+    up to 10 um; the poses are fixed, so on every run)."""
+    assert search_misses(started(monkeypatch, 1), "screw")
+
+
+def test_control_from_two_starts_a_group_the_contact_misses_the_four_start_screws_deepest_point(monkeypatch):
+    """Two starts a group, the first fix's count, miss the four-start screw's deepest point at some of the poses
+    (measured: 33 of the 2,000, by up to 14 um, where the six its shape takes miss none; the three-start screw's, 7;
+    the poses are fixed, so on every run)."""
+    assert search_misses(started(monkeypatch, 2, "s4k4"), "s4k4")
 
 
 class Sampled(RigidInertialNode):
@@ -585,23 +692,34 @@ def tied(name: str, node: RigidInertialNode, pose) -> bool:
     return False
 
 
-@settings(deadline=None)
-@given(DRAWS, st.tuples(st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi)))
-def test_turning_the_tube_and_the_body_together_turns_the_step(draw, world):
-    """Judged off the contact's choice of each group's point: where two of a group's points tie the step jumps
-    (``contact.point``, a declared jump), and the turned world's rounding may choose the other, which is the switch
-    and not the frame."""
+@cache
+def kept_apart(name: str):
+    """The least magnitude, over the step's every evaluation of ``contact.point`` (the hold's at the step's start, the
+    projection's at its end), of the switch's own indicator: how far the deepest point a group's starts reach apart
+    from the one it keeps stands from it (two of a screw's crest passes standing equally deep, as a draw lying along
+    the tube places them, tie). Read through the switch's collector in a step traced once per kind."""
+    node = held(name)
+
+    @jax.jit
+    def least(state, inputs, dt):
+        with switch.collecting() as rows:
+            node.fresh_update(state, inputs, dt)
+        return jnp.min(jnp.stack([jnp.min(jnp.abs(row.indicator)) for row in rows if row.owner == "contact.point"]))
+
+    return least
+
+
+def frame_problems(node: RigidInertialNode, draw: dict, world) -> list[str]:
+    """How the step of ``draw`` (near the wall) and the same step with the tube, the body's state and its load turned
+    by ``world`` (a rotation vector) disagree, turned back: the pose to 1e-12 m, the twist to 1e-9 of its largest
+    component (plus 1e-6), the forces to 1e-6 of the scale they come from."""
     draw = near_the_wall(draw)
-    node = held(draw["kind"])
     state, inputs = start(draw, node)
-    assume(not tied(draw["kind"], node, np.asarray(state["pose"])))
-    assume(not tied(draw["kind"], node, np.asarray(node.update(state, inputs, draw["dt"])["pose"])))
     turn = quaternion.exponential(jnp.asarray(world))
     matrix = np.asarray(quaternion.rotation_matrix(turn))
     pose, twist = np.asarray(state["pose"]), np.asarray(state["twist"])
     wrench = np.asarray(inputs["applied_wrench"])
-    other = node
-    moved = {**other.initial_state(),
+    moved = {**node.initial_state(),
              "pose": jnp.asarray(np.concatenate([matrix @ pose[:3], np.asarray(quaternion.multiply(turn, pose[3:]))])),
              "twist": jnp.asarray(np.concatenate([matrix @ twist[:3], matrix @ twist[3:]]))}
     block = np.kron(np.eye(2), matrix)
@@ -611,14 +729,58 @@ def test_turning_the_tube_and_the_body_together_turns_the_step(draw, world):
     out, there = node.update(state, inputs, draw["dt"]), node.update(moved, other_inputs, draw["dt"],
                                                                       params=turned_axis)
     speed = float(np.max(np.abs(np.asarray(out["twist"])))) + 1e-6
-    assert np.allclose(matrix @ np.asarray(out["pose"])[:3], np.asarray(there["pose"])[:3], rtol=0, atol=1e-12)
-    assert np.allclose(block @ np.asarray(out["twist"]), np.asarray(there["twist"]), rtol=0, atol=1e-9 * speed)
+    found = []
+    if not np.allclose(matrix @ np.asarray(out["pose"])[:3], np.asarray(there["pose"])[:3], rtol=0, atol=1e-12):
+        found.append("the positions differ")
+    if not np.allclose(block @ np.asarray(out["twist"]), np.asarray(there["twist"]), rtol=0, atol=1e-9 * speed):
+        found.append(f"the twists differ by {np.max(np.abs(block @ np.asarray(out['twist']) - there['twist'])):.3g}, "
+                     f"against {1e-9 * speed:.3g}")
     forces = np.asarray(out["contact_forces"])
     # Judged on the scale the forces come from (the body's momentum over the step and the applied force), not on
     # their own: a point that ends the step on the surface at rest takes a force of rounding in one frame and none in
     # the other (a 1e-21 N row on a rod spinning at 1 rad/s, a stress run's draw).
     scale = MASS * speed / draw["dt"] + float(np.max(np.abs(wrench[:3]))) + float(np.max(np.abs(forces), initial=0.0))
-    assert np.allclose(forces, np.asarray(there["contact_forces"]), rtol=1e-6, atol=1e-9 * scale)
+    if not np.allclose(forces, np.asarray(there["contact_forces"]), rtol=1e-6, atol=1e-9 * scale):
+        found.append("the forces differ")
+    return found
+
+
+@settings(deadline=None)
+@given(DRAWS, st.tuples(st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi)))
+def test_turning_the_tube_and_the_body_together_turns_the_step(draw, world):
+    """Judged off the contact's choice of each group's point: where two of a group's points tie the step jumps
+    (``contact.point``, a declared jump), and the turned world's rounding may choose the other, which is the switch
+    and not the frame."""
+    node = held(draw["kind"])
+    state, inputs = start(near_the_wall(draw), node)
+    assume(not tied(draw["kind"], node, np.asarray(state["pose"])))
+    assume(not tied(draw["kind"], node, np.asarray(node.update(state, inputs, draw["dt"])["pose"])))
+    assume(float(kept_apart(draw["kind"])(state, inputs, near_the_wall(draw)["dt"])) >= TIE)
+    assert frame_problems(node, draw, world) == []
+
+
+#: The draw of the stress run on the first fix (#116, run 41539574970, run 10) whose frame check failed on that head and
+#: on ``v0.3`` alone: FL-9 tilted 0.29 rad near the wall, at rest, pushed into it by 0.78 mN with no resistance, the
+#: world turned 1 rad about z. A group started 804 um from the wall, its search left unconverged at its fifth step
+#: 7.5 um from it, took all the force, and its point moved with the frame's rounding: the twists differed by about
+#: 3e-9 rad/s against 4.7e-10.
+UNCONVERGED_DRAW = {"kind": "screw", "spin": 0.01954408654866934, "tilt": 0.2945318562447091, "about": 0.01,
+                    "towards": 1.2639936003334982, "share": 0.0, "velocity": (0.0, 0.0, 0.0), "spinning": 0.0,
+                    "turning": (0.0, 0.0), "force": (0.0, 0.0007811438474619502, 0.0), "torque": (0.0, 0.0, 0.0),
+                    "resisted": False, "dt": 0.0009891493437811753}
+UNCONVERGED_WORLD = (0.0, 0.0, 1.0)
+
+
+def test_the_stress_runs_unconverged_draw_turns_the_step_with_the_frame():
+    assert frame_problems(held("screw"), UNCONVERGED_DRAW, UNCONVERGED_WORLD) == []
+
+
+def test_control_its_search_left_at_five_steps_and_held_where_they_end_turns_the_step_otherwise(monkeypatch):
+    """The first fix's search: two starts a group, five stopped steps, every search counted converged, so the group
+    holds where they end."""
+    monkeypatch.setattr(contact_module, "CONTACT_NEWTON", 5)
+    monkeypatch.setattr(contact_module, "search_tolerance", lambda dtype, size: math.inf)
+    assert frame_problems(started(monkeypatch, 2), UNCONVERGED_DRAW, UNCONVERGED_WORLD)
 
 
 # -- admissibility only --------------------------------------------------------------------------------------------

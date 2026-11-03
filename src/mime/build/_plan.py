@@ -2910,9 +2910,13 @@ class _Planner:
         seeds = (f"its {held:,} points at a spacing of {spacing * 1e3:.4g} mm"
                  + (f" (each of its groups' cut to the vertices of its own convex hull, {surface}'s free side being "
                     f"convex)" if convex else ""))
-        holding = (f"seeds each of its groups from {seeds} and holds the body's own deepest point near each, found by "
-                   f"its kind's support ({basis}), so the point moves continuously as the body turns (a point left "
-                   f"shallower than its seed is the state's contact_short, and raises {body}.support_short)"
+        holding = (f"starts each of its groups' search from {seeds}, at its nearest and at each next nearest apart "
+                   f"from those taken, as many as the hull's shape can hold local deepest points against a flat wall, "
+                   f"and holds the body's own point the search from the deepest of them converges to, found by its "
+                   f"kind's support ({basis}), so the point moves continuously as the body turns (a search that does not "
+                   f"converge within its bound holds the group's nearest sample; how far the body may reach past a "
+                   f"held point, up to the samples' shortfall where a search held its sample, is the state's "
+                   f"contact_short, and raises {body}.support_short)"
                    if implements(hull.kind, "support") else
                    f"holds {seeds} (its kind has no support query, so the body is held by its samples: a turning "
                    f"body's samples arrive at the wall off its line of contact, and the inelastic hold acts as a "

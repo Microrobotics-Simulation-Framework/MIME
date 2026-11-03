@@ -64,6 +64,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own is as it was; [the compilation cache](docs/compilation_cache.md) shows the lines that turn it on.
 
 ### Fixed
+- **The contact 0.3.0: each group's search starts from as many places as the hull's shape needs, and holds only a
+  point it converged to** (MIME-ANO-134, MIME-ANO-135). The contact 0.2.0 climbed from each group's nearest sample
+  alone, and a group can hold several of the body's own local deepest points (a screw's crest passes and its rims)
+  that the samples' gaps do not order: Hypothesis found FL-9 lying along the tube 8.4 um past the wall shrunk by the
+  margin at the test's 0.4 mm spacing (never the wall itself: the miss is bounded by the samples' shortfall, which the
+  spacing's guard keeps within the margin). Two starts a group, the first fix, were enough for FL-9 and not for a
+  screw of four starts at the twist the kind admits, which they missed by up to 17.6 um at an admitted spacing. Now
+  each group starts from its nearest candidate and each next nearest of its convex hull's vertices apart from those
+  taken (`START_APART`), as many as the hull's shape can hold within the samples' shortfall along any direction
+  against a flat wall, counted when the node is built (`_contact.start_count`: six for FL-9 at 0.4 mm and at its
+  default 0.1 mm, six for the four-start screw at 0.4 mm, three for a rod); each start climbs two stopped steps
+  (`SCREEN_STEPS`) and the group keeps the deepest (`contact.point`). Over 110,000 poses of four screws, a
+  rod and a capsule at the coarsest spacings the guard admits, none missed its body's deepest point by 0.3 um. And the kept
+  start's search runs to convergence, bounded (`CONTACT_NEWTON`, 12 stopped steps, then one flowing): 0.2.0 took five
+  and held the support wherever they ended, a point set by the rounding that could take the force (a group started
+  804 um off ended 7.5 um from the wall and took all of it, turning the step's twist by 8 % and its frame by 3e-9
+  rad/s). A search that has not converged holds its group's nearest sample (a new switch, `contact.search`, a jump),
+  and where that sample is within the margin `contact_short` reads at least the samples' shortfall and raises
+  `support_short`. Script A's shaking is now 0.024 to 0.025 mm/s vertically and 0.012 to 0.013 laterally at 0.1, 0.05
+  and 0.025 mm, where it moved with the spacing (0.05 to 0.09 vertically on the first fix). `samples_shortfall` climbs the support from four samples apart along each direction: it read up to
+  8.6 % low from the farthest alone (FL-9 at 0.8 mm, 226 against 245 um). The law is a new version, `contact` 0.3.0;
+  0.2.0, in no release and named by nothing saved or frozen (the frozen register and scripts A and A0 build 0.1.0), is
+  not kept. A held body's step costs more: script A's reproduction arm, float64 at the default spacing, 1,990 us a
+  step against the first fix's 830 and `v0.3`'s 550 (2.4 and 3.6 times), its first run 21 s against 11; the starts a
+  group takes (six on FL-9, from its cap's ties within a few degrees of its axis) and the twelve steps are the cost.
 - **CI's default-lane shards have headroom, and the Ctrl+C control no longer races a compile.** The shard holding the
   dynamic arm's battery peaked at 18.0 GB on a 16 GB runner (the battery was one test of 541 s holding 8.1 GB at its end
   in a single process, almost all of it compiled programs of its `params_effective` check). The battery is now one
@@ -1837,6 +1862,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schema.
 
 ### Known Anomalies
+- MIME-ANO-135 (resolved, major): the hull contact held the point of a search left unconverged after five steps, set
+  by the rounding, which could take the force: a step moved with its frame (by 3e-9 rad/s against a check of
+  4.7e-10), and script A's shaking and contact torque with the spacing. Fixed in the contact 0.3.0.
+- MIME-ANO-134 (resolved, major): the hull contact's search started from too few places (one in 0.2.0, two in its first
+  fix), so a group holding several of a screw's local deepest points held the shallower and the body passed the
+  margin by up to the samples' shortfall (17.6 um on a four-start screw at an admitted spacing). Fixed in the contact
+  0.3.0.
 - MIME-ANO-133 (resolved, minor): an output of `SurrogateDragNode`'s step that feeds nothing (`bore_fired`, 22fd495)
   moved script A's last bits (pose by about 5, twist by about 13 float64 roundings of their scale) with the derived
   graph's hash unchanged, and CI asserted the frozen digests only on the machine that froze them. A matching derived

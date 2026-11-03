@@ -1,4 +1,4 @@
-"""Bodies held by their hulls' points (the contact 0.2.0): FL-9 in script A's tube, turned and placed so that its hull's
+"""Bodies held by their hulls' points (the contact 0.3.0): FL-9 in script A's tube, turned and placed so that its hull's
 points are at the wall from the first step, which the registry walk, the golden outputs and the switch scan run; and
 the placement that puts a hull's nearest point a given gap from the wall less the margin.
 
@@ -127,7 +127,7 @@ def hull_node(kind, settings, spacing: float, *, groups=None, mass: float = 1e-5
               inertia=(1e-11, 1e-11, 1e-11), pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dt: float = 5e-4,
               margin: float = MARGIN, radius: float = TUBE_RADIUS):
     """A body's node held by ``kind``'s hull points (its quadrature at ``spacing``) in a tube along x through the
-    origin, as the contact 0.2.0 builds it; ``groups``, rows of the points' indices, in place of the node's own."""
+    origin, as the contact 0.3.0 builds it; ``groups``, rows of the points' indices, in place of the node's own."""
     from mime.nodes.body import HULL, RigidInertialNode
 
     patches = tuple(kind.patches)

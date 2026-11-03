@@ -17,16 +17,22 @@ from numpy.typing import NDArray
 from mime.core import jnp, quaternion, switch
 from mime.registry import Geometry
 
-#: The Newton steps that take each group's nearest sample to the body's own deepest point near it against a wall, the
-#: point where the wall's outward normal is the body's (``x = s(n(x))``, ``s`` the hull's support): its gradients
-#: stopped, then one step with them flowing, so the point's derivatives are the implicit function's. A declaration:
-#: from a sample at a spacing of a margin the point converges to rounding in two (phase 7o's fix round).
-CONTACT_NEWTON = 5
+#: The most of the search's Newton steps, their gradients stopped, that take each group's kept start (``kept``) towards
+#: the body's own deepest point near it against a wall, the point where the wall's outward normal is the body's
+#: (``x = s(n(x))``, ``s`` the hull's support), before one step with them flowing, so the point's derivatives are the
+#: implicit function's (``deepest``). Unrolled, a step each, since a loop's body may hold no switch. A declaration,
+#: measured on the review of the first fix (#116): a search started within the margin of the shrunk wall converged in
+#: 4 steps at the 99th percentile and in at most 9 to 11; one started farther off whose point still reached the wall,
+#: in 16 at the 99th percentile, some never within 30. A search that has not converged after them holds its group's
+#: nearest place (``contact.search``).
+CONTACT_NEWTON = 12
 #: The solve's residual (``residual``) above which a step is reported unconverged: the share of the free step's speed
 #: at the held points that its sweeps left unmet. Set by measurement (phase 7o's fix round), above a healthy run's and
 #: below a wedged body's: script A's reproduction arm at 5 to 20 Hz, dt 0.25 to 1 ms and spacings 0.05 to 0.2 mm peaks at
 #: 2.5e-3 in either precision, with 60 sweeps moving its speed by 0.02 %; F1's arms peak at 1e-4; a 2.6 by 3.5 mm cylinder
-#: wedged at its tilt limit reads 6.7e-2. **What it says:** below it, the held points' normal speeds are within this
+#: wedged at its tilt limit read 6.7e-2 (the contact 0.2.0, whose searches it held unconverged; 7.9e-8 under 0.3.0,
+#: and 1.6e-2 given five sweeps, the flag's test), and a 0.5 by 8 mm rod wedged with a hundredth of its transverse
+#: moments 6.5e-3 under 0.3.0. **What it says:** below it, the held points' normal speeds are within this
 #: share of the free step's speed, and the forces' net moment within about twice it (over 28 wedged steps, against the
 #: dual's own solution, the residual stood at 1 to 27 times the speeds' error). **What else it reads:** the drive, since
 #: what is left unmet is set by the rows' allowances (gap / dt) while the speed under it grows with the drive, so that
@@ -43,6 +49,16 @@ SUPPORT_SHORT = 1e-2
 #: Seidel; between one and two: successive over-relaxation, which a symmetric positive definite problem still
 #: converges under, each update still lowering its dual).
 RELAXATION = 1.0
+#: The least separation of two starts of one group, in units of the hull's spacing (the median distance from a sample
+#: to its nearest neighbour, ``spacing_of``): a start's neighbours lie on its own crest or rim, which its search
+#: reaches anyway, and a second start among them would only repeat it. A declaration, far below the separation of two
+#: of a screw's crest passes (2.1 mm on FL-9) or a rod's rims; measured on the first fix (#116), 1.5 spacings left 6
+#: of 20,000 poses of FL-9 at 0.4 mm missing its deepest point, 2.5 and 4 none.
+START_APART = 3.0
+#: The search's stopped steps every start takes before its group keeps the deepest (``kept``): enough to rank two of the
+#: body's local deepest points apart by more than a micrometre (a climb from a sample a margin's spacing from its point
+#: reaches rounding in two). The kept start then takes the search's own steps from the start.
+SCREEN_STEPS = 2
 
 
 class Wall(NamedTuple):
@@ -67,13 +83,22 @@ class Wall(NamedTuple):
 class Hull(NamedTuple):
     """A body's hull as a pair's side: its points in the body's frame (``points``, ``N x 3``), the rows of the
     points each group chooses its nearest from (``candidates``, padded with ``-1``), the body's pose, and, for a kind
-    with a support query, the kind and its parameters (``kind`` is ``None`` for a kind held by its samples)."""
+    with a support query, the kind and its parameters (``kind`` is ``None`` for a kind held by its samples), the rows
+    of the points each group's further starts are chosen from (``places``: its own convex hull's vertices against a
+    convex region, whatever its candidates), the least separation of two starts (``apart``, m), how far the body
+    reaches past its samples (``shortfall``, m: ``mime.scene._sampling.hull_shortfall``), the farthest of its points
+    from the body's origin (``size``, m) and the starts each group's search takes (``starts``: ``start_count``)."""
 
     points: Array
     candidates: NDArray[np.int32]
     pose: Array
     kind: Geometry | None
     parameters: Mapping[str, Any]
+    places: NDArray[np.int32]
+    apart: float
+    shortfall: float
+    size: float
+    starts: int
 
     def rotation(self) -> Array:
         return quaternion.rotation_matrix(self.pose[3:])
@@ -101,6 +126,18 @@ class Contacts(NamedTuple):
     short: Array
 
 
+def spacing_of(points: np.ndarray) -> float:
+    """The hull's spacing as its points have it: the median distance from a point to its nearest other (m), zero for
+    fewer than two points."""
+    from scipy.spatial import KDTree
+
+    held = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(held) < 2:
+        return 0.0
+    nearest = np.asarray(cast(Any, KDTree(held)).query(held, k=2)[0], dtype=np.float64)
+    return float(np.median(nearest[:, 1]))
+
+
 def joined(found: Sequence[Contacts]) -> Contacts:
     """The rows of several pairs as one solve's."""
     if len(found) == 1:
@@ -125,38 +162,114 @@ def nearest_samples(pair: Pair, margin: Any) -> Array:
     return jnp.asarray(rows)[jnp.arange(len(rows)), index]
 
 
-def deepest(pair: Pair, seeds: Array) -> Array:
-    """Each seed (a point of the hull, in the body's frame) taken to the body's own deepest point near it against the
-    wall: the fixed point ``x = s(R^T n(p + R x))`` of the hull's support ``s`` (from the seed) along the wall's outward
-    normal ``n``, by Newton's steps on ``x - s`` with the derivative ``I - S R^T N R`` (``S`` the support's derivative
-    in its direction, ``N`` the normal's in the point), ``CONTACT_NEWTON`` with the gradients stopped and one with them
-    flowing; the point is the support at the last step's direction, a point of the body however far the steps got,
-    whose derivatives are the implicit function's (``(I - S R^T N R)^-1`` of the support's own). A kind with a support
-    (a closed form, or a refinement on its own surface) is held at its own surface's point, which moves continuously
-    as the body turns."""
+def deepest(pair: Pair, local: Array) -> Array:
+    """The body's own deepest point against the wall from ``local`` (each group's, in the body's frame), where a search
+    converged: one of the search's Newton steps on ``x - s`` (``x = s(R^T n(p + R x))``, ``s`` the hull's support,
+    ``n`` the wall's outward normal) with the gradients flowing, its derivative ``I - S R^T N R`` (``S`` the support's
+    derivative in its direction, ``N`` the normal's in the point), and the support at its direction: a point of the
+    body, whose derivatives are the implicit function's (``(I - S R^T N R)^-1`` of the support's own) where ``local``
+    is the fixed point. A kind with a support (a closed form, or a refinement on its own surface) is held at its own
+    surface's point, which moves continuously as the body turns."""
     hull, wall = pair.body, pair.other
-    kind = cast(Geometry, hull.kind)
+    return _supported(pair, _step(pair, lax.stop_gradient(local), hull.pose, hull.parameters, wall), hull.pose,
+                      hull.parameters, wall)[0]
+
+
+def climbed(pair: Pair, seeds: Array, count: int) -> tuple[Array, Array]:
+    """``count`` of the search's Newton steps (``deepest``) from each of ``seeds`` (points of the hull in the body's
+    frame, any leading axes), on stopped values (the pose, the kind's and the wall's numbers and the seeds held as
+    values, so no derivative passes through them): the steps' point, and the body's own point there, the support at
+    its direction (the steps' point itself need not lie on the body)."""
+    hull, wall = pair.body, pair.other
     held = lax.stop_gradient((seeds, hull.pose, _numbers(hull.parameters), _numbers(wall.parameters), wall.margin))
-
-    def supported(x: Array, pose: Array, parameters: Mapping[str, Any], surface: Wall) -> tuple[Array, Array, Array]:
-        """The support along the wall's outward normal at ``x``, from ``x`` (each step's start is the last's point,
-        so a kind refined on its surface starts where it last arrived), and the derivative of ``x - s`` in ``x``."""
-        turn = quaternion.rotation_matrix(pose[3:])
-        world = pose[:3] + jnp.matmul(x, turn.T)
-        found = kind.support(parameters, jnp.matmul(-surface.normals(world), turn), lax.stop_gradient(x))
-        bend = jnp.matmul(jnp.matmul(turn.T, surface.curvature(world)), turn)
-        return found.point, jnp.eye(3, dtype=x.dtype) - jnp.matmul(found.jacobian, bend), turn
-
-    def step(x: Array, pose: Array, parameters: Mapping[str, Any], surface: Wall) -> Array:
-        point, slope, _ = supported(x, pose, parameters, surface)
-        return x - _solved(slope, x - point)
-
     x, pose, parameters = held[0], held[1], {**hull.parameters, **held[2]}
     surface = Wall(wall.shape, {**wall.parameters, **held[3]}, held[4])
-    for _ in range(CONTACT_NEWTON):
-        x = step(x, pose, parameters, surface)
-    return supported(step(lax.stop_gradient(x), hull.pose, hull.parameters, wall), hull.pose, hull.parameters,
-                     wall)[0]
+    for _ in range(count):
+        x = _step(pair, x, pose, parameters, surface)
+    return x, _supported(pair, x, pose, parameters, surface)[0]
+
+
+def _supported(pair: Pair, x: Array, pose: Array, parameters: Mapping[str, Any], surface: Wall) -> tuple[Array, Array]:
+    """The support along the wall's outward normal at ``x`` (a point in the body's frame), from ``x`` (each step's
+    start is the last's point, so a kind refined on its surface starts where it last arrived), and the derivative of
+    ``x - s`` in ``x``."""
+    kind = cast(Geometry, pair.body.kind)
+    turn = quaternion.rotation_matrix(pose[3:])
+    world = pose[:3] + jnp.matmul(x, turn.T)
+    found = kind.support(parameters, jnp.matmul(-surface.normals(world), turn), lax.stop_gradient(x))
+    bend = jnp.matmul(jnp.matmul(turn.T, surface.curvature(world)), turn)
+    return found.point, jnp.eye(3, dtype=x.dtype) - jnp.matmul(found.jacobian, bend)
+
+
+def _step(pair: Pair, x: Array, pose: Array, parameters: Mapping[str, Any], surface: Wall) -> Array:
+    """One of the search's Newton steps on ``x - s(x)``."""
+    point, slope = _supported(pair, x, pose, parameters, surface)
+    return x - _solved(slope, x - point)
+
+
+def starts(pair: Pair) -> tuple[Array, Array]:
+    """Each group's places to start its search from, ``G x starts x 3`` in the body's frame (``Hull.starts``), and which
+    of them are taken: its candidate nearest the wall, then each the nearest of its ``places`` farther than the hull's
+    ``apart`` from every place taken, a group with none left leaving the rest untaken (each untaken place repeats the
+    last taken). Chosen on stopped values: where the search starts, which no derivative passes through; the step jumps
+    where the group's kept point changes (``kept``, ``contact.point``)."""
+    hull, wall = pair.body, pair.other
+
+    def gaps_at(rows: NDArray[np.int32]) -> tuple[Array, Array]:
+        local = hull.points[np.maximum(rows, 0)]
+        local, gaps = lax.stop_gradient((local, wall.gaps(hull.pose[:3] + jnp.matmul(local, hull.rotation().T))))
+        return local, switch.static_select(rows >= 0, gaps, jnp.inf)
+
+    def nearest(local: Array, gaps: Array) -> Array:
+        return jnp.take_along_axis(local, jnp.argmin(gaps, axis=-1)[:, None, None], axis=1)[:, 0]
+
+    candidates = gaps_at(hull.candidates)
+    place = nearest(*candidates)
+    found, taken = [place], [jnp.ones(place.shape[:1], dtype=bool)]
+    local, gaps = candidates if np.array_equal(hull.places, hull.candidates) else gaps_at(hull.places)
+    while True:
+        gaps = jnp.where(jnp.sum((local - place[:, None, :]) ** 2, axis=-1) > hull.apart ** 2, gaps, jnp.inf)
+        if len(found) == hull.starts:
+            return jnp.stack(found, axis=1), jnp.stack(taken, axis=1)
+        open_ = jnp.isfinite(jnp.min(gaps, axis=-1))
+        place = jnp.where(open_[:, None], nearest(local, gaps), place)
+        found.append(place)
+        taken.append(open_)
+
+
+def kept(pair: Pair, places: Array, taken: Array, margin: Any) -> Array:
+    """Each group's start (of ``places``, ``starts``'s) whose body point after ``SCREEN_STEPS`` of the search's
+    stopped steps (``climbed``: the support at the steps' direction, a point of the body) is deepest: the switch
+    ``contact.point``, its indicator the gap of the deepest point reached apart from that one (farther than the hull's
+    ``apart`` from it) less its own, so that two starts that reach one point are one."""
+    hull, wall = pair.body, pair.other
+    _, reached = climbed(pair, places, SCREEN_STEPS)
+    gaps = jnp.where(taken, lax.stop_gradient(wall.gaps(hull.pose[:3] + jnp.matmul(reached, hull.rotation().T))),
+                     jnp.inf)
+
+    def runner_up() -> Array:
+        best = jnp.take_along_axis(reached, jnp.argmin(gaps, axis=-1)[:, None, None], axis=1)
+        apart = jnp.sum((reached - best) ** 2, axis=-1) > pair.body.apart ** 2
+        return jnp.min(jnp.where(apart, gaps, jnp.inf), axis=-1) - jnp.min(gaps, axis=-1)
+
+    index = switch.argmin(gaps, owner="contact.point", resolution=lambda: switch.rounding(margin),
+                          indicator=runner_up)
+    return jnp.take_along_axis(places, index[:, None, None], axis=1)[:, 0]
+
+
+def search_tolerance(dtype: Any, size: float) -> float:
+    """How near its point a search must stand to the support at its direction (``|x - s(x)|``, m) to count as
+    converged: the square root of the dtype's resolution, of the hull's ``size``, so that the flowing step after it
+    takes the point to rounding (Newton's steps square the error)."""
+    return float(np.sqrt(np.finfo(dtype).eps)) * size
+
+
+def searched(pair: Pair, seeds: Array) -> tuple[Array, Array]:
+    """Each group's search from its kept start (``seeds``): its point after ``CONTACT_NEWTON`` stopped steps
+    (``climbed``), and how far within ``search_tolerance`` that point stands of the support at its direction (m,
+    negative where the search has not converged): ``contact.search``'s indicator. On stopped values."""
+    x, reached = climbed(pair, seeds, CONTACT_NEWTON)
+    return x, search_tolerance(x.dtype, pair.body.size) - jnp.sqrt(jnp.sum((x - reached) ** 2, axis=-1))
 
 
 def _solved(matrix: Array, vector: Array) -> Array:
@@ -174,32 +287,69 @@ def _numbers(parameters: Mapping[str, Any]) -> dict[str, Any]:
     return {name: value for name, value in parameters.items() if not isinstance(value, (bool, int, str))}
 
 
+def start_count(points: np.ndarray, places: NDArray[np.int32], apart: float, shortfall: float) -> int:
+    """The starts each group's search takes (``starts``), from the hull's own shape, when it is built: the most of a
+    group's ``places`` that stand within ``shortfall`` of its farthest along any of ``mime.scene``'s shortfall
+    directions (its spread over the sphere; not the axes and diagonals it adds, along which a flat face, a screw's or
+    a cylinder's cap, ties whole, a set every start on it climbs out of to one point), each farther than ``apart``
+    from those taken before it, nearest first, as ``starts`` takes them against a flat wall: a group can hold that
+    many of the body's own local deepest points that its samples' gaps do not order (a screw's crest passes and its
+    rims). Against a curved wall more can stand within the shortfall, unreported: MIME-ANO-134 records how often a
+    search so started missed its body's deepest point. A count of places, not of the body's distinct deepest points:
+    a long tie (a crest lying along the wall, a cap facing it) counts several, which costs starts and misses
+    nothing."""
+    from mime.scene._sampling import SHORTFALL_DIRECTIONS, shortfall_directions
+
+    rows = np.maximum(np.asarray(places), 0)
+    valid = np.asarray(places) >= 0
+    held = np.asarray(points, dtype=np.float64)[rows]
+    directions = shortfall_directions()[:SHORTFALL_DIRECTIONS]
+    most = 1
+    for start in range(0, len(directions), 64):
+        along = np.where(valid[None], np.einsum("gpi,di->dgp", held, directions[start:start + 64]), -np.inf)
+        open_ = along >= np.max(along, axis=-1, keepdims=True) - shortfall
+        count = np.zeros(open_.shape[:2], dtype=np.int64)
+        while open_.any():
+            pick = np.argmax(np.where(open_, along, -np.inf), axis=-1)
+            count += open_.any(axis=-1)
+            picked = np.take_along_axis(held[None], pick[..., None, None], axis=2)
+            open_ &= np.sum((held[None] - picked) ** 2, axis=-1) > apart * apart
+        most = max(most, int(count.max()))
+    return most
+
+
 def pair_contacts(pair: Pair, margin: Any) -> Contacts:
-    """A pair's rows: each group's nearest candidate, taken to the body's own deepest point near it where the hull's
-    kind has a support query (``deepest``), with how far that point stands shallower than its seed (``shallower``),
-    or held where it is."""
+    """A pair's rows: where the hull's kind has a support query, each group's start (``starts``) whose climb goes
+    deepest (``kept``), searched (``searched``) and taken to the body's own deepest point there (``deepest``), or,
+    where the search has not converged, its nearest place held where it is (``contact.search``); with how far the body
+    may reach past it (``shallower``). For a kind with none, each group's nearest candidate, held where it is."""
     hull = pair.body
-    seeds = hull.points[nearest_samples(pair, margin)]
     if hull.kind is None:
-        return held_at(pair, seeds)
-    found = held_at(pair, deepest(pair, seeds))
-    return found._replace(short=shallower(pair, seeds, found.gaps))
+        return held_at(pair, hull.points[nearest_samples(pair, margin)])
+    places, taken = starts(pair)
+    x, within = searched(pair, kept(pair, places, taken, margin))
+    found = held_at(pair, switch.where(
+        (within >= 0.0)[:, None], deepest(pair, x), places[:, 0], owner="contact.search",
+        resolution=lambda: switch.rounding(search_tolerance(x.dtype, hull.size)), indicator=within))
+    return found._replace(short=shallower(pair, places[:, 0], found.gaps, within < 0.0))
 
 
-def shallower(pair: Pair, seeds: Array, gaps: Array) -> Array:
-    """How far each row's point, at ``gaps`` from the shrunk wall, stands shallower than the sample its support's steps
-    started from, where that sample is within the margin of it (m; zero where the point is as deep or deeper, or the
-    sample farther off): the steps went the wrong way where a row is near being held, so the body may reach past the
-    margin by up to that. The point's gap is counted up to the margin, so a row whose seed is farther off reads zero:
-    there the steps may end anywhere on the body (a seed on the far side of a body in a tube meets the wall's normal
-    turning across the axis), and the row holds nothing. Measured (phase 7o's second fix round): no row whose seed is
-    within the margin ended shallower over script A's 5 s at 0.1 mm (8,142 rows) or the round-trip case's 20 steps,
-    while rows seeded 0.64 mm or more off ended up to 1.5 mm shallower. A report on stopped values, which the flag
-    ``support_short`` reads: no derivative passes through it (review 7o's G4)."""
+def shallower(pair: Pair, nearest: Array, gaps: Array, unconverged: Array) -> Array:
+    """How far the body may reach past each row's point, at ``gaps`` from the shrunk wall, where the group's sample
+    nearest the wall (``nearest``) is within the margin of it (m; zero elsewhere): how far the point stands shallower
+    than that sample, a point of the body, where the search went the wrong way; and, where the search has not
+    converged (``unconverged``) and the group holds that sample, at least the samples' shortfall, the most a sample
+    falls short of the body. The point's gap is counted up to the margin, so a row whose sample is farther off reads
+    zero: there the search may end anywhere on the body (a sample on the far side of a body in a tube meets the wall's
+    normal turning across the axis), and the row holds nothing. Measured (phase 7o's second fix round): no row whose
+    seed is within the margin ended shallower over script A's 5 s at 0.1 mm (8,142 rows) or the round-trip case's 20
+    steps, while rows seeded 0.64 mm or more off ended up to 1.5 mm shallower. A report on stopped values, which the
+    flag ``support_short`` reads: no derivative passes through it (review 7o's G4)."""
     hull, wall = pair.body, pair.other
-    seeds, gaps, pose, margin = lax.stop_gradient((seeds, gaps, hull.pose, wall.margin))
-    started = wall.gaps(pose[:3] + jnp.matmul(seeds, quaternion.rotation_matrix(pose[3:]).T))
-    return jnp.maximum(jnp.minimum(gaps, margin) - started, 0.0)
+    nearest, gaps, pose, margin = lax.stop_gradient((nearest, gaps, hull.pose, wall.margin))
+    started = wall.gaps(pose[:3] + jnp.matmul(nearest, quaternion.rotation_matrix(pose[3:]).T))
+    wrong = jnp.maximum(jnp.minimum(gaps, margin) - started, 0.0)
+    return jnp.where(unconverged & (started <= margin), jnp.maximum(wrong, hull.shortfall), wrong)
 
 
 def held_at(pair: Pair, local: Array) -> Contacts:
@@ -259,5 +409,7 @@ def residual(coupling: Array, start: Array, forces: Array, rows: Array, moved: A
     return jnp.max(jnp.abs(unmet)) / (speed + float(jnp.finfo(moved.dtype).tiny))
 
 
-__all__ = ["CONTACT_NEWTON", "CONVERGED", "RELAXATION", "SUPPORT_SHORT", "Contacts", "Hull", "Pair", "Wall", "deepest",
-           "held_at", "joined", "nearest_samples", "no_work", "pair_contacts", "residual", "shallower", "sweeps"]
+__all__ = ["CONTACT_NEWTON", "CONVERGED", "RELAXATION", "SCREEN_STEPS", "START_APART", "SUPPORT_SHORT", "Contacts",
+           "Hull", "Pair", "Wall", "climbed", "deepest", "held_at", "joined", "kept", "nearest_samples", "no_work",
+           "pair_contacts", "residual", "search_tolerance", "searched", "shallower", "spacing_of", "start_count",
+           "starts", "sweeps"]
