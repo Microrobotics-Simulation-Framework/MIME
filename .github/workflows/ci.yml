@@ -35,8 +35,10 @@ name: CI
 # JAX's persistent compilation cache, per lane, shard, jaxlib and runner CPU model: a pull request restores its base's
 # and never saves, a push starts empty and saves (scripts/compilation_cache_mode.py). setup-uv's own cache is saved the
 # same way, by pushes only: pull requests and branches each saved a copy of about 0.5 GB, which filled GitHub's 10 GB
-# per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`, about 3.5
-# times the longest of 150 shard jobs measured (5.7 min). A pull request's newer push cancels its older run
+# per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`; a shard's is
+# 20. The longest of the 45 shard jobs of run 41650113431 (a push, so every shard cold) took 18.4 min, a margin of 1.09
+# (the limit was set at about 3.5 times the 5.7 min measured then); tests/shard_weights.json is rebuilt from a full
+# run's reports (scripts/shard_weights.py) when the suite has grown. A pull request's newer push cancels its older run
 # (`concurrency` below).
 # Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix (every lane and Python, 53 jobs) runs on a push to
 # a branch, a manual run, and a pull request that carries the label `ready`. A pull request without the label runs a
