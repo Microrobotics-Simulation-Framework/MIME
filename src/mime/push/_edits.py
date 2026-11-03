@@ -311,9 +311,14 @@ def _paragraph(value: object, card: str) -> dict[str, object] | None:
 # --- writing sharing.yaml ------------------------------------------------------------------------------------------
 
 
+def key_line(lines: Sequence[str], key: str) -> int | None:
+    """The index of the line the top-level ``key`` starts on, or ``None``."""
+    return next((index for index, line in enumerate(lines) if re.match(rf"{re.escape(key)}\s*:", line)), None)
+
+
 def _block(lines: list[str], key: str) -> tuple[int, int] | None:
     """The lines of the top-level ``key`` (its line and those that continue it), or ``None``."""
-    start = next((index for index, line in enumerate(lines) if re.match(rf"{re.escape(key)}\s*:", line)), None)
+    start = key_line(lines, key)
     if start is None:
         return None
     end = start + 1
@@ -418,5 +423,5 @@ def write_back(plan: Plan, updates: Mapping[str, object], names: Sequence[str], 
                                 by_hand)])
 
 
-__all__ = ["SHARING_KEYS", "apart", "as_yaml", "differs", "field_value", "kept", "reduced", "shown", "words_of",
-           "write_back", "written_text", "written_value"]
+__all__ = ["SHARING_KEYS", "apart", "as_yaml", "differs", "field_value", "kept", "key_line", "reduced", "shown",
+           "words_of", "write_back", "written_text", "written_value"]

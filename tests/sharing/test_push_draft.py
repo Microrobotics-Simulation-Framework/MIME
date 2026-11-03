@@ -190,7 +190,7 @@ def test_a_push_makes_the_draft_reserves_its_doi_and_uploads_each_file_verified(
     assert drafted is not None and drafted.doi == "10.5072/zenodo.629525" and drafted.concept == "629524"
     assert drafted.page == "https://zenodo-records.invalid/uploads/629525"
     record = fake.records[drafted.record]
-    assert set(record.files) == {"full_toy.mimebundle", "NOTICE"}
+    assert set(record.files) == {"full_toy.mimebundle", "NOTICE.txt"}
     staged = _state.state_directory(fake.service(), "full_toy") / _state.STAGED
     for key, entry in record.files.items():
         assert entry.data == (staged / key).read_bytes() and entry.status == "completed"
@@ -198,7 +198,7 @@ def test_a_push_makes_the_draft_reserves_its_doi_and_uploads_each_file_verified(
     assert metadata["rights"] == [{"id": "cc-by-4.0"}] and metadata["resource_type"] == {"id": "dataset"}  # type: ignore[index]
     assert metadata["description"].startswith("<h1>full_toy</h1>")  # type: ignore[index]
     held = push.read_state(fake.service(), "full_toy")
-    assert held is not None and held.files["NOTICE"].md5 == record.files["NOTICE"].checksum.removeprefix("md5:")  # type: ignore[union-attr]
+    assert held is not None and held.files["NOTICE.txt"].md5 == record.files["NOTICE.txt"].checksum.removeprefix("md5:")  # type: ignore[union-attr]
 
 
 def test_a_draft_written_before_its_files_listing_files_enabled_goes_on_to_the_upload(toy: Path, token: str,
@@ -210,7 +210,7 @@ def test_a_draft_written_before_its_files_listing_files_enabled_goes_on_to_the_u
     assert drafted is not None
     record = fake.records[drafted.record]
     assert {key: entry.status for key, entry in record.files.items()} == {"full_toy.mimebundle": "completed",
-                                                                          "NOTICE": "completed"}
+                                                                          "NOTICE.txt": "completed"}
 
 
 def test_control_files_enabled_read_as_a_refusal_stops_the_first_push(toy: Path, token: str, tmp_path: Path,
@@ -229,7 +229,7 @@ def test_pushed_again_with_nothing_changed_nothing_is_written(toy: Path, token: 
     pushed(folder, fake)
     before = len(fake.requests)
     again = pushed(folder, fake)
-    assert again is not None and again.uploaded == () and set(again.kept) == {"full_toy.mimebundle", "NOTICE"}
+    assert again is not None and again.uploaded == () and set(again.kept) == {"full_toy.mimebundle", "NOTICE.txt"}
     assert not again.changed and {method for method, _, _, _ in fake.requests[before:]} == {"GET"}
     assert len(fake.drafts()) == 1
 
@@ -253,7 +253,7 @@ def test_status_reads_the_draft_as_the_service_holds_it(toy: Path, token: str, t
     push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     assert said and said[0].startswith("no draft of 'full_toy' on zenodo-sandbox that MIME knows of")
     pushed(folder, fake)
-    fake.records["629525"].files["extra.txt"] = type(fake.records["629525"].files["NOTICE"])("extra.txt")
+    fake.records["629525"].files["extra.txt"] = type(fake.records["629525"].files["NOTICE.txt"])("extra.txt")
     said.clear()
     push.status(folder, fake.service(), say=said.append, transport=FakeTransport(fake), pause=0)
     text = "\n".join(said)
@@ -293,7 +293,7 @@ def test_a_file_added_on_the_site_is_refused_and_one_push_uploaded_earlier_is_de
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake)
     record = fake.records["629525"]
-    record.files["notes.txt"] = type(record.files["NOTICE"])("notes.txt", b"mine", "completed", "md5:x")
+    record.files["notes.txt"] = type(record.files["NOTICE.txt"])("notes.txt", b"mine", "completed", "md5:x")
     assert codes(lambda: pushed(folder, fake)) == ["push.draft-changed"]
     held = push.read_state(fake.service(), "full_toy")
     assert held is not None
@@ -923,7 +923,7 @@ def test_names_that_differ_only_in_case_have_records_apart_on_any_file_system(tm
     second = pushed(saved_named(tmp_path / "b", "toy"), fake)
     assert first is not None and second is not None and first.record != second.record
     assert fake.records[first.record].body["metadata"]["title"] == "Toy"  # type: ignore[index]
-    assert sorted(fake.records[first.record].files) == ["NOTICE", "Toy.mimebundle"]
+    assert sorted(fake.records[first.record].files) == ["NOTICE.txt", "Toy.mimebundle"]
 
 
 def test_a_record_whose_experiment_differs_even_in_case_is_refused(tmp_path: Path, token: str):

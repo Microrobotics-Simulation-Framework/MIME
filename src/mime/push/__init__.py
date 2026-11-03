@@ -43,8 +43,10 @@ from mime.push._draft import (
     send,
     status,
 )
+from mime.push._defaults import DEFAULTS_FILE, defaults_lines, defaults_path, read_defaults, write_defaults
 from mime.push._publish import PRODUCTION_FACTS, SANDBOX_FACTS, publish
-from mime.push._records import PublicRecord, public_record, record_number
+from mime.push._records import PublicRecord, ShareLink, public_record, record_number, share_link
+from mime.push._setup import setup
 from mime.push._owners import FIELD_OWNERS, field_owner
 from mime.push._plan import KEYWORD, MOST_BYTES, MOST_FILES, AssetChoice, Plan, RecordFile, card_html, make_plan
 from mime.push._service import SERVICES, TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
@@ -66,7 +68,9 @@ from mime.push._state import (
     DraftState,
     Published,
     Uploaded,
+    confirmation,
     draft_identifier,
+    fingerprint,
     metadata_marks,
     read_state,
     state_directory,
@@ -74,6 +78,7 @@ from mime.push._state import (
 
 __all__ = [
     "CONTRIBUTOR_TYPES",
+    "DEFAULTS_FILE",
     "DEFAULT_LICENCE",
     "FIELD_OWNERS",
     "FULL_FLAG",
@@ -113,15 +118,20 @@ __all__ = [
     "RecordFile",
     "Related",
     "Service",
+    "ShareLink",
     "Sharing",
     "Transport",
     "Uploaded",
     "Uploader",
     "card_html",
+    "confirmation",
+    "defaults_lines",
+    "defaults_path",
     "discard",
     "draft_identifier",
     "edited_fields",
     "field_owner",
+    "fingerprint",
     "init",
     "make_plan",
     "metadata_marks",
@@ -131,10 +141,14 @@ __all__ = [
     "record_number",
     "publish",
     "push",
+    "read_defaults",
     "read_sharing",
     "read_state",
     "send",
+    "setup",
+    "share_link",
     "staged_lock",
     "state_directory",
     "status",
+    "write_defaults",
 ]

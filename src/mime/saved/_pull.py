@@ -17,7 +17,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import unquote
 
 from mime import assets
@@ -25,10 +25,15 @@ from mime._said import DONE, PLAN_LINE, QUESTION_CONFIRM, STOPPED, Said
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets._commands import fetch_command, folder_argument
+from mime.assets._reference import carries_key, redacted
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.credentials import Token
 from mime.saved._bundle import BUNDLE_SUFFIX, Unpacked, bundle_name, destination_problem, unpack
 from mime.saved._schema import Lock
 from mime.saved._terms import Placed, place_referenced
+
+if TYPE_CHECKING:
+    from mime.push._client import Access
 
 #: Assets whose download is larger than this are asked about first (an interactive terminal), or need ``--yes``. A
 #: choice: about what a session on a laptop's connection should not start without being told.
@@ -64,8 +69,8 @@ def parse_source(text: str) -> Source:
     if (_DOI.fullmatch(bare) and bare.startswith(TEST_PREFIX)) or assets.under_test_prefix(text):
         number = re.search(r"zenodo\.(\d+)", unquote(bare))
         raise _refuse("pull.sandbox-doi", RefusalClass.USER,
-                      f"{text!r} is under DataCite's test prefix 10.5072, the Zenodo sandbox's, which doi.org does not "
-                      f"resolve, so MIME does not ask doi.org for it",
+                      f"{redacted(text)!r} is under DataCite's test prefix 10.5072, the Zenodo sandbox's, which "
+                      f"doi.org does not resolve, so MIME does not ask doi.org for it",
                       f"pull the record by its number on the sandbox, `mime pull --from zenodo-sandbox "
                       f"{number.group(1) if number is not None else '<record>'}`")
     if _DOI.fullmatch(bare):
@@ -74,11 +79,11 @@ def parse_source(text: str) -> Source:
     if text.startswith(("https://", "http://")):
         problem = assets.location_problem(text)
         if problem is not None:
-            raise _refuse("pull.source", RefusalClass.USER, f"{text!r}: {problem}",
+            raise _refuse("pull.source", RefusalClass.USER, f"{redacted(text)!r}: {problem}",
                           "give an https:// address, a DOI, or a file: `mime pull <doi | url | file>`")
         return Source("url", text)
     raise _refuse("pull.source", RefusalClass.USER,
-                  f"{text!r} is not a file on this machine, a DOI or an https:// address",
+                  f"{redacted(text)!r} is not a file on this machine, a DOI or an https:// address",
                   "give the bundle's DOI, its address, or its file: `mime pull 10.5281/zenodo.1234567`")
 
 
@@ -129,6 +134,9 @@ def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None, st
     ``.mimebundle`` file, or ``wanted`` names it."""
     import pooch
 
+    registry: dict[str, str] = {}
+    named: str | None = None
+    repository: Any = None
     try:
         with tempfile.TemporaryDirectory() as scratch:
             library = _held(pooch)
@@ -137,12 +145,19 @@ def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None, st
             repository = library.downloaders.doi_to_repository(
                 doi, headers=downloader.headers, timeout=downloader.timeout, **downloader.kwargs)
             repository.populate_registry(listing)
-            registry: dict[str, str] = dict(listing.registry)
+            registry = dict(listing.registry)
             named = _version_words(doi, repository)
     except Exception as error:  # noqa: BLE001 - pooch and requests raise unrelated types for a record that can't be read
-        raise _refuse("pull.record", RefusalClass.ENVIRONMENT,
-                      f"the record doi:{doi} could not be read: {plain(str(error))}",
-                      "check the DOI and the network, then `mime pull <doi>` again") from error
+        failed: BuildRefused | None = _refuse(
+            "pull.record", RefusalClass.ENVIRONMENT,
+            f"the record doi:{redacted(doi)} could not be read: {plain(redacted(str(error)))}",
+            "check the DOI and the network, then `mime pull <doi>` again")
+        if not carries_key(doi):
+            raise failed from error
+    else:
+        failed = None
+    if failed is not None:  # a DOI that carries a key: raised here, chained to no error that quotes it
+        raise failed from None
     bundles = sorted(name for name in registry if name.endswith(BUNDLE_SUFFIX))
     chosen = [wanted] if wanted in bundles else bundles
     if len(chosen) != 1:
@@ -168,7 +183,7 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
     if source.kind == "file":
         return Path(source.value)
     if assets.offline():
-        raise _offline_refusal(source.value)
+        raise _offline_refusal(redacted(source.value))
     if source.kind == "url":
         return assets.locate(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
                                              exceeded_action=_RAISE_LIMIT, report=say))
@@ -181,16 +196,19 @@ def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_b
                                          max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated))
 
 
-def _from_service(service_name: str, record: str, say: Callable[[str], None] | None, max_bundle_bytes: int) -> Path:
+def _from_service(service_name: str, record: str, say: Callable[[str], None] | None, max_bundle_bytes: int,
+                  access: Access | None = None) -> Path:
     """The bundle of the published record ``record`` on a service ``mime push`` publishes to, read by its number at the
-    service's records API, never through doi.org (the sandbox's DOIs do not resolve there)."""
+    service's records API, never through doi.org (the sandbox's DOIs do not resolve there); with ``access``, let in by
+    the token stored for the service or a share link's key, which go to the service's own host alone."""
     from mime import push
+    from mime.push._records import downloader
 
     service = push.SERVICES[service_name]
     if assets.offline():
         raise _offline_refusal(f"the record {record} on {service.name}")
     assets.downloads_doing(f"reading the record {record} on {service.name}")
-    found = push.public_record(service, record)
+    found = push.public_record(service, record, access)
     if say is not None:
         say(f"the record: {found.words()}")
         if found.latest is not None:
@@ -199,7 +217,70 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
                                      f"{found.record}, names the latest")
     return assets.locate(assets.retrieve(found.url, name="bundle", known_hash=f"md5:{found.md5}",
                                          max_bytes=_limit(found.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT,
-                                         report=say, size=found.size))
+                                         report=say, size=found.size,
+                                         fetcher=downloader(service, found.record, access) if access is not None
+                                         else None))
+
+
+def _signed_in(service_name: str) -> Access:
+    """The token ``mime credentials`` stored for the service, for ``--signed-in``; refused where none is."""
+    from mime import credentials, push
+    from mime.push._client import Access
+
+    service = push.SERVICES[service_name]
+    found = credentials.token(service.credential)
+    if found is None:
+        raise _refuse("pull.token", RefusalClass.ENVIRONMENT,
+                      f"--signed-in sends the token `mime credentials` stored for {service.name}, and none is stored; "
+                      f"nothing was sent", f"make a personal access token of the account the record is shared with "
+                                           f"on {service.site} and store it, `mime credentials set "
+                                           f"{service.credential}`, then pull again")
+    return Access(token=found)
+
+
+def _kept_secret(source: str | os.PathLike[str] | Token) -> str | Token:
+    """``source`` as pull holds it: a text that carries an access key (an address's ``token`` parameter: a share link)
+    as a :class:`~mime.credentials.Token` from here on, so that no frame below holds the key under a name; anything else
+    as its text. It returns before anything can raise with the text in hand."""
+    from mime.push._records import SHARE_LINK
+
+    if isinstance(source, Token):
+        return source
+    return Token(SHARE_LINK, os.fspath(source)) if carries_key(os.fspath(source)) else os.fspath(source)
+
+
+def _bundle_from(source: str | Token, say: Callable[[str], None] | None, max_bundle_bytes: int,
+                 from_service: str | None, signed_in: bool) -> Path:
+    """The bundle ``source`` names: a share link's record (let in by its key), a record's number on ``from_service``
+    (signed in where asked), or a DOI, an address or a file. A source held as a secret (:func:`_kept_secret`) is read as
+    a link first, and no refusal quotes the key it carries; one that is not a service's link is an address elsewhere,
+    pulled as it was, its key hidden wherever the address is said."""
+    from mime.push._client import Access
+    from mime.push._records import share_link
+
+    link = share_link(source) if isinstance(source, Token) else None
+    if link is not None:
+        if signed_in or (from_service is not None and from_service != link.service.name):
+            raise _refuse("pull.source", RefusalClass.USER,
+                          f"a share link of the record {link.record} on {link.service.name} carries its own key"
+                          + (", and is pulled without --signed-in" if signed_in else
+                             f", and is pulled from {link.service.name}, not from {from_service}"),
+                          "pull the link alone, `mime pull '<the link>'`")
+        return _from_service(link.service.name, link.record, say, max_bundle_bytes, Access(key=link.key))
+    if isinstance(source, Token) and (from_service is not None or signed_in):
+        raise _refuse("pull.source", RefusalClass.USER,
+                      "with --from or --signed-in, pull takes a record's number, and this is an address that carries "
+                      "an access key (its token parameter) and is no share link of either service; nothing was sent",
+                      "pull the record by its number, `mime pull --from <service> <record>`, or the address alone")
+    if from_service is not None:
+        assert not isinstance(source, Token)
+        return _from_service(from_service, source, say, max_bundle_bytes,
+                             _signed_in(from_service) if signed_in else None)
+    if signed_in:
+        raise _refuse("pull.source", RefusalClass.USER,
+                      "--signed-in sends the token stored for the service --from names, and no --from is given",
+                      "pull the record by its number from its service, `mime pull --from zenodo <record> --signed-in`")
+    return _bundle_file(parse_source(source.reveal() if isinstance(source, Token) else source), say, max_bundle_bytes)
 
 
 def packages_needed(lock: Lock) -> list[tuple[str, str, str | None]]:
@@ -290,9 +371,10 @@ def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, confirm: Callable[[s
     return _AssetOutcome(cached, len(absent), total, 0)
 
 
-def pull(source: str | os.PathLike[str], *, into: str | os.PathLike[str] | None = None, fetch_assets: bool = True,
-         yes: bool = False, confirm: Callable[[str], bool] | None = None, say: Callable[[str], None] | None = None,
-         max_bundle_bytes: int = assets.RETRIEVE_LIMIT_BYTES, from_service: str | None = None) -> Path:
+def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str] | None = None,
+         fetch_assets: bool = True, yes: bool = False, confirm: Callable[[str], bool] | None = None,
+         say: Callable[[str], None] | None = None, max_bundle_bytes: int = assets.RETRIEVE_LIMIT_BYTES,
+         from_service: str | None = None, signed_in: bool = False) -> Path:
     """Get the bundle ``source`` names (a DOI, an address or a file), check its manifest's hashes, and unpack it into
     the new folder ``into`` (by default ``./<experiment name>/``); then, unless ``fetch_assets`` is false, fetch its
     assets as ``mime assets fetch <folder>`` does. A destination that cannot be unpacked to is refused before anything is
@@ -302,13 +384,20 @@ def pull(source: str | os.PathLike[str], *, into: str | os.PathLike[str] | None 
     that fetches them. ``say`` receives progress lines and, last, the summary. Installs nothing. With
     ``from_service`` (``zenodo-sandbox`` or ``zenodo``), ``source`` is a published record's number there, read at that
     service's records API (a sandbox DOI never resolves through doi.org); a DOI under the sandbox's test prefix given
-    without it is refused (``pull.sandbox-doi``)."""
+    without it is refused (``pull.sandbox-doi``). ``signed_in`` (with ``from_service``) sends the token ``mime
+    credentials`` stored for that service, for a record or files shared with its account; without it, pull sends no
+    token. A record's share link (``<site>/records/<record>?token=...``) is pulled by the key it carries, which is
+    never printed, logged or written, and goes to its service's own host alone. Either travels as push's token does
+    (:mod:`mime.push._records`). ``source`` may be a :class:`~mime.credentials.Token` holding the link (as ``mime pull
+    --link`` reads it, with no echo), so that no frame holds it as text; a text that carries a key is held so from the
+    moment pull takes it. An address elsewhere that carries a ``token`` parameter is pulled as it was, the parameter's
+    value hidden wherever the address is said."""
+    source = _kept_secret(source)
     if into is not None:
         refused = destination_problem(into)
         if refused is not None:
             raise refused
-    bundle = _from_service(from_service, os.fspath(source), say, max_bundle_bytes) if from_service is not None \
-        else _bundle_file(parse_source(os.fspath(source)), say, max_bundle_bytes)
+    bundle = _bundle_from(source, say, max_bundle_bytes, from_service, signed_in)
     destination = Path(into) if into is not None else Path(bundle_name(bundle))
     assets.downloads_doing("unpacking the bundle, and checking each file in it")
     unpacked: Unpacked = unpack(bundle, destination)

@@ -258,8 +258,10 @@ pull.record                   environment
 pull.restricted               user
 pull.sandbox-doi              user
 pull.source                   user
+pull.token                    environment
 push.after-publish            environment
 push.checksum                 environment
+push.confirm-stale            user
 push.creators                 user
 push.draft-changed            user
 push.draft-foreign            user
@@ -280,6 +282,7 @@ push.rejected                 user internal
 push.sandbox-location         user
 push.second-concept           user
 push.service                  user environment
+push.setup                    user
 push.sharing                  user
 push.sharing-missing          user
 push.state                    environment

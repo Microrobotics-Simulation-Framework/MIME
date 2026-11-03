@@ -1,47 +1,48 @@
 $ mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox
 Pushing 'full_toy' to the fake of zenodo-sandbox: a new draft, its DOI reserved
-  up: full_toy.mimebundle <size>, NOTICE <size>
+  up: full_toy.mimebundle <size>, NOTICE.txt <size>
   title: full_toy
   licences CC-BY-4.0; creators Carberry, Josiah; contributors none
 made the draft 629525 (a first version) and reserved its DOI 10.5072/zenodo.629525
 uploaded 2 files (<size>); the draft holds the 2 record files, each md5 verified
-Nothing is published: look at the draft, then `mime push <folder> --to zenodo-sandbox --publish`.
+Nothing is published: look at the draft, then `mime push <folder> --to zenodo-sandbox --publish` (a script confirms this draft, as it is now, with `--confirm 10.5072/zenodo.629525@<fingerprint>`).
 <fake>/uploads/629525
 [exit 0]
 $ mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox
-'full_toy' is unchanged: the draft 629525 on zenodo-sandbox holds it as it is, and nothing was sent: <fake>/uploads/629525
+'full_toy' is unchanged (a script publishes it with `--confirm 10.5072/zenodo.629525@<fingerprint>`): the draft 629525 on zenodo-sandbox holds it as it is, and nothing was sent: <fake>/uploads/629525
 [exit 0]
 $ mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox --keep-site-edits
 Pushing 'full_toy' to the fake of zenodo-sandbox: the draft 629525, updated
-  up: full_toy.mimebundle <size>, NOTICE <size>
+  up: full_toy.mimebundle <size>, NOTICE.txt <size>
   title: full_toy
   licences CC-BY-4.0; creators Carberry, Josiah; contributors none
 kept what was edited on the site, written into <tmp>/mime_sandbox_toy/sharing.yaml: metadata.creators, metadata.title
 no file sent; the draft holds the 2 record files, each md5 verified
-Nothing is published: look at the draft, then `mime push <folder> --to zenodo-sandbox --publish`.
+Nothing is published: look at the draft, then `mime push <folder> --to zenodo-sandbox --publish` (a script confirms this draft, as it is now, with `--confirm 10.5072/zenodo.629525@<fingerprint>`).
 <fake>/uploads/629525
 [exit 0]
 $ mime push <tmp>/mime_sandbox_terms --to zenodo-sandbox
 Pushing 'mime_sandbox_terms' to the fake of zenodo-sandbox: a new draft, its DOI reserved
-  up: mime_sandbox_terms.mimebundle <size>, NOTICE <size>
+  up: mime_sandbox_terms.mimebundle <size>, NOTICE.txt <size>
   by reference, never uploaded: scene/layers/arm_visual.usda (LicenseRef-Robot-Maker-NonCommercial, from https://example.org/robot-maker/6a3ebb1/arm_visual.usda)
   title: mime_sandbox_terms
   licences CC-BY-4.0, LicenseRef-Example-Maker-1.0, MIT; creators Carberry, Josiah; contributors Copyright (c) 2021 A. Driver (synthetic); Example Maker Ltd (synthetic)
 ! 1 permission declared: each becomes public, under your name, when the record is published, and --publish asks you to declare it (the full plan: --full-plan)
 made the draft 629527 (a first version) and reserved its DOI 10.5072/zenodo.629527
 uploaded 2 files (<size>); the draft holds the 2 record files, each md5 verified
-Nothing is published: look at the draft, then `mime push <folder> --to zenodo-sandbox --publish`.
+Nothing is published: look at the draft, then `mime push <folder> --to zenodo-sandbox --publish` (a script confirms this draft, as it is now, with `--confirm 10.5072/zenodo.629527@<fingerprint>`).
 <fake>/uploads/629527
 [exit 0]
 $ mime push <tmp>/mime_sandbox_terms --to zenodo-sandbox --status
 The draft 629527 on zenodo-sandbox (version 1): <fake>/uploads/629527
   status: draft, published: False; reserved DOI: 10.5072/zenodo.629527; concept: 629526
+  a script publishes it, as push last wrote and checked it, with `--confirm 10.5072/zenodo.629527@<fingerprint>`
   title: mime_sandbox_terms
   creators: Carberry, Josiah
   licences: cc-by-4.0; Example Maker Licence 1.0; mit
   access once published: the record public, its files public
   files (2):
-    NOTICE  <size>  md5:<md5>  as push uploaded and verified it
+    NOTICE.txt  <size>  md5:<md5>  as push uploaded and verified it
     mime_sandbox_terms.mimebundle  <size>  md5:<md5>  as push uploaded and verified it
 <fake>/uploads/629527
 [exit 0]
@@ -49,7 +50,7 @@ $ mime push <tmp>/mime_sandbox_terms --to zenodo-sandbox --full-plan --publish -
 Plan for 'mime_sandbox_terms' on the fake of zenodo-sandbox: the draft 629527, updated
   Record files (2, <size>):
     mime_sandbox_terms.mimebundle     <size>  CC-BY-4.0       the bundle, its lock naming the record 10.5072/zenodo.629527
-    NOTICE                             <size>  generated       each file's licence, credit, verdict and declared permission (the bundle carries it too)
+    NOTICE.txt                         <size>  generated       each file's licence, credit, verdict and declared permission: the NOTICE the bundle carries, under a name Zenodo previews
   Inside the bundle (6 files):
     experiment.mime.yaml  <size>  CC-BY-4.0  yours; permitted, open
     mime.lock  <size>  CC-BY-4.0  yours; permitted, open
@@ -80,6 +81,9 @@ Plan for 'mime_sandbox_terms' on the fake of zenodo-sandbox: the draft 629527, u
           MIME checked that the declaration is complete and bound it to these bytes; it does not and cannot check that it is true.
   Availability: Reproducible exactly, given 1 file the bundle does not carry, which `mime assets fetch <folder>` fetches and places: scene/layers/arm_visual.usda (may not be redistributed; licence LicenseRef-Robot-Maker-NonCommercial; presentation (results do not depend on it); available from https://example.org/robot-maker/6a3ebb1/arm_visual.usda). Not checked since the folder was saved: the availability check comes later.
 Next: on zenodo-sandbox, the draft is made or updated, its DOI reserved, and each record file that differs from the draft's is uploaded and its md5 checked; nothing is published until `mime push <folder> --to zenodo-sandbox --publish` asks you.
+NOTICE.txt is the record's preview, shown on its page (a preview chosen there is kept)
+wrote the metadata of the draft 629527, from sharing.yaml and the folder
+wrote the draft's metadata again, as the plan shows it: <fake>/uploads/629527
 Publishing 'mime_sandbox_terms' on zenodo-sandbox as 10.5072/zenodo.629527 (version 1 of a new concept).
 This is the sandbox, a test service: its DOI does not resolve, and the sandbox can be cleaned at any time. On Zenodo itself this step cannot be undone, and the same words are asked there.
   You are publishing, under your name, 4 files as your own work (or your lab's), licensed CC-BY-4.0.
@@ -92,10 +96,20 @@ mime push is refused:
 The full traceback is in <file>; --traceback shows it here.
 [exit 2]
 $ mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox --publish --confirm 10.5072/zenodo.629525
+[stderr]
+mime push is refused:
+[user] push.confirm-stale: --confirm names the DOI 10.5072/zenodo.629525 alone, which confirms the draft 629525 only as the push that first printed that DOI left it, and a push changed the draft since: a script publishes only what it was shown; nothing was sent
+    do: read the draft as it is now, `mime push <folder> --to zenodo-sandbox --status`, which prints the fingerprint beside its DOI as every push does, then pass both, `--confirm 10.5072/zenodo.629525@<fingerprint>`
+    see: https://microrobotica.org/mime/<release>/pages/errors/push.confirm-stale
+The full traceback is in <file>; --traceback shows it here.
+[exit 2]
+$ mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox --publish --confirm 10.5072/zenodo.629525@<fingerprint>
 Plan for 'full_toy' on the fake of zenodo-sandbox: the draft 629525, to publish
-  up: full_toy.mimebundle <size>, NOTICE <size>
+  up: full_toy.mimebundle <size>, NOTICE.txt <size>
   title: A title corrected on the site
   licences CC-BY-4.0; creators Carberry, J.; contributors none
+NOTICE.txt is the record's preview, shown on its page (a preview chosen there is kept)
+wrote the draft's metadata again, as the plan shows it: <fake>/uploads/629525
 Publishing 'full_toy' on zenodo-sandbox as 10.5072/zenodo.629525 (version 1 of a new concept).
 This is the sandbox, a test service: its DOI does not resolve, and the sandbox can be cleaned at any time. On Zenodo itself this step cannot be undone, and the same words are asked there.
   You are publishing, under your name, 4 files as your own work (or your lab's), licensed CC-BY-4.0.
@@ -118,4 +132,53 @@ $ mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox --init
 kept <tmp>/mime_sandbox_toy/sharing.yaml, which exists: edit it, or delete it and run --init again
 licence: CC-BY-4.0, which the experiment declares
 next: name the creators in it, then `mime push <tmp>/mime_sandbox_toy --to zenodo-sandbox`
+[exit 0]
+$ mime push --defaults
+no sharing defaults are saved; they would be in <config>/sharing-defaults.yaml
+`mime push <folder> --setup` asks, at its end, whether to save what it set as them; or write that file by hand, with sharing.yaml's keys creators, contributors, keywords, uploader and funding
+[exit 0]
+$ mime push <tmp>/mime_sandbox_toy --setup
+[stderr]
+mime push is refused:
+[user] push.setup: --setup asks for sharing.yaml's fields one at a time, and there is no terminal to ask in; nothing was written
+    do: write sharing.yaml from what the folder knows and your defaults, `mime push <tmp>/mime_sandbox_toy --to <service> --init`, then edit it by hand
+    see: https://microrobotica.org/mime/<release>/pages/errors/push.setup
+The full traceback is in <file>; --traceback shows it here.
+[exit 2]
+$ mime push --defaults
+your sharing defaults, in <config>/sharing-defaults.yaml (`--init` fills a new sharing.yaml from them, and `--setup` offers each for a new one):
+  creators: [{family: Carberry, given: Josiah, orcid: 0000-0002-1825-0097}]
+  keywords: [helices]
+[exit 0]
+$ mime push <tmp>/mime_sandbox_new --to zenodo-sandbox --init
+wrote <tmp>/mime_sandbox_new/sharing.yaml
+licence: CC-BY-4.0, which the experiment declares
+filled from your sharing defaults (<config>/sharing-defaults.yaml): creators, keywords
+next: check what your defaults filled in it, then `mime push <tmp>/mime_sandbox_new --to zenodo-sandbox`
+[exit 0]
+$ mime pull --from zenodo-sandbox 629525 --into <tmp>/kept_back
+[stderr]
+mime pull is refused:
+[user] pull.restricted: zenodo-sandbox keeps the record 629525 from anyone it is not shared with (403): it is a draft, or a restricted record, and pull reads with no token unless asked
+    do: if it is shared with your account, pull it signed in, `mime pull --from zenodo-sandbox 629525 --signed-in`, which sends the token `mime credentials` stored for zenodo-sandbox; or download its bundle from its page signed in, <fake>/records/629525, then `mime pull <the .mimebundle file>`; a share link, `mime pull --link -`, which asks for it with no echo; a draft, publish it first; otherwise ask its owner for access
+    see: https://microrobotica.org/mime/<release>/pages/errors/pull.restricted
+The full traceback is in <file>; --traceback shows it here.
+[exit 2]
+$ mime pull --from zenodo-sandbox 629525 --signed-in --into <tmp>/signed_in
+the record: the record 629525 on zenodo-sandbox (version 1, 10.5072/zenodo.629525; its concept, every version: 10.5072/zenodo.629524)
+bundle: from <fake>/api/records/629525/files/full_toy.mimebundle/content
+✓ Bundle 'full_toy' unpacked to <tmp>/signed_in/
+  - Manifest, scene and records: OK
+  - Assets: none referenced
+  - Packages: all installed
+Next: mime verify <tmp>/signed_in/
+[exit 0]
+$ mime pull --link env --into <tmp>/linked
+the record: the record 629525 on zenodo-sandbox (version 1, 10.5072/zenodo.629525; its concept, every version: 10.5072/zenodo.629524)
+bundle: from <fake>/api/records/629525/files/full_toy.mimebundle/content
+✓ Bundle 'full_toy' unpacked to <tmp>/linked/
+  - Manifest, scene and records: OK
+  - Assets: none referenced
+  - Packages: all installed
+Next: mime verify <tmp>/linked/
 [exit 0]

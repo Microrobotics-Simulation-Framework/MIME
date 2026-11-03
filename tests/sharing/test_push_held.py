@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 from collections.abc import Callable
@@ -314,11 +315,11 @@ def test_a_preview_chosen_on_the_page_survives_a_write(toy: Path, tmp_path: Path
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
-    fake.records[NUMBER].body["files"] = {"enabled": True, "default_preview": "NOTICE"}
+    fake.records[NUMBER].body["files"] = {"enabled": True, "default_preview": "NOTICE.txt"}
     rewritten(folder, 'description: ""', 'description: "A paragraph."')
     pushed(folder, fake, service)
     assert "A paragraph." in str(metadata(fake)["description"])
-    assert fake.records[NUMBER].body["files"] == {"enabled": True, "default_preview": "NOTICE"}
+    assert fake.records[NUMBER].body["files"] == {"enabled": True, "default_preview": "NOTICE.txt"}
 
 
 @pytest.mark.parametrize(("lines", "where"), [
@@ -579,8 +580,12 @@ def test_a_script_publishes_only_what_the_draft_holds(toy: Path, tmp_path: Path,
         published(folder, fake, service, confirm=DOI)
     assert refused.value.codes() == ["push.metadata-changed"] and word in refused.value.refusals[0].message
     assert publishes(fake) == 0 and fake.records[NUMBER].revision == revision, "nothing written, nothing published"
-    pushed(folder, fake, service)
-    assert published(folder, fake, service, confirm=DOI) is not None and fake.records[NUMBER].published
+    person = Terminal()
+    pushed(folder, fake, service, person)
+    assert codes(lambda: published(folder, fake, service, confirm=DOI)) == ["push.confirm-stale"], \
+        "the DOI alone was printed for the draft before this push changed it (design #212 (5))"
+    shown = re.findall(r"--confirm (\S+@[0-9a-f]+)`", person.text())
+    assert published(folder, fake, service, confirm=shown[-1]) is not None and fake.records[NUMBER].published
     assert word in json.dumps(metadata(fake))
 
 
@@ -610,6 +615,8 @@ def test_a_script_is_refused_writing_over_a_site_edit_but_may_keep_one(toy: Path
 def test_control_no_hold_on_what_a_script_publishes_is_caught_naming_a_new_creator(toy: Path, tmp_path: Path,
                                                                                    monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(_publish, "changed_since_draft", lambda found, body, state: [])
+    # the confirmation's binding, held again before the request, would catch it too (the review of #112, F2)
+    monkeypatch.setattr(_publish, "_bound_at_post", lambda plan, state, confirm, service, sent: None)
     fake, service = sandbox(monkeypatch)
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)

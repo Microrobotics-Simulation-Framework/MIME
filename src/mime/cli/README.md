@@ -60,10 +60,19 @@
   continues. Each asset download is held to the size its lock declares. A concept DOI resolves to its latest version,
   which pull names. `mime pull --from zenodo|zenodo-sandbox <record>` pulls a published record by its number, read at
   that service's records API with no token: a sandbox DOI is under DataCite's test prefix, which doi.org does not
-  resolve, so MIME never asks doi.org for one (`pull.sandbox-doi` says the command). Exits zero, or two when refused.
+  resolve, so MIME never asks doi.org for one (`pull.sandbox-doi` says the command). `--signed-in` sends the token `mime
+  credentials` stored for that service, for a record or files shared with that account, and `mime pull '<share link>'`
+  the key a record's share link carries (a link is given in quotes, which keep a shell from reading its `?`); either goes
+  to the service's own host alone, as push's token does, and is never printed, logged or written (`pull.restricted`
+  names the route that works). A link is read by its parts: one on a service's host in another scheme, port or host
+  name, or with a user part, is refused without its key, and a `token` parameter is hidden in every address pull prints.
+  `--link -` asks for the link with no echo and `--link env` reads it from `MIME_SHARE_LINK`, so that its key is in
+  neither the shell's history nor the process's arguments, which other accounts on the machine can read (`ps`,
+  `/proc/<pid>/cmdline`) unless `/proc` is mounted with `hidepid`. Exits zero, or two when refused.
   Pulling a stranger's bundle: see [the saved form](../saved/README.md#the-bundle).
-- `mime push <folder> --to zenodo|zenodo-sandbox [--init | --status | --discard | --publish [--confirm <DOI>]] [--yes]
-  [--full-plan] [--keep-site-edits | --overwrite-site-edits]`: the experiment as a record on Zenodo (see
+- `mime push <folder> --to zenodo|zenodo-sandbox [--init | --setup | --status | --discard | --publish [--confirm
+  <DOI>[@<fingerprint>]]] [--yes] [--full-plan] [--keep-site-edits | --overwrite-site-edits]`, and `mime push
+  --defaults`: the experiment as a record on Zenodo (see
   [`mime.push`](../push/README.md)). A push shows the plan, computed offline, short (what goes up, what travels as a
   reference, the title, the licences, creators and contributors, warnings on lines of their own that start `!`; the full plan, every file with
   its tier and verdict and every field sent, with `--full-plan`), then makes or updates the private draft without a
@@ -73,13 +82,23 @@
   `sharing.yaml`, or written over); `--keep-site-edits` and `--overwrite-site-edits` answer without a terminal.
   `--publish` publishes the draft, the one step that cannot be undone: the confirmation in words, each declared
   permission asked on its own (`--yes` never answers one), then the record number typed, or `--confirm <DOI>` from a
-  script, which publishes only what the draft holds (a terminal shows each change first). The draft is read again
-  immediately before the request, and a draft that moved is not published. Afterwards the record is checked as
+  script, which publishes only what the draft holds (a terminal shows each change first); once a push has changed the
+  draft after the push that reserved its DOI, or where that push came before the fingerprint, a script confirms with the
+  fingerprint the last push printed beside it, `--confirm <DOI>@<fingerprint>`, and the DOI alone is refused
+  (`push.confirm-stale`). The draft is read again immediately before the request, and a draft that moved, or no longer
+  holds what the confirmation's fingerprint was printed for, is not published. Afterwards the record is checked as
   published and, on production, the folder's lock names it, so `mime pack <folder>` makes the published bundle again. Once published, a push of a changed folder makes a new version
   under the same concept DOI, its unchanged files linked; of an unchanged one, says so in one line. `--init` writes
-  `sharing.yaml`, the record's credit; `--status` reads the draft as the service holds it; `--discard` deletes it,
-  after asking. Each ends with a link. `--to` is required. A push stopped at any request is resumed by running it
-  again. Exits zero, two when refused, three when the service refuses a field MIME builds.
+  `sharing.yaml`, the record's credit, filled from the person's sharing defaults; `--setup` makes or edits it a field
+  at a time in a terminal (Enter skips a field, `use <value>? [Y/n]` keeps one it holds, or a default where the file is
+  new, an invalid value is asked again; an existing file is edited in its own line endings, through its link where it
+  is one, and a read-only one is refused; with both outputs redirected to files its questions go to the terminal),
+  then asks whether to save the person's own values as their defaults, which live in MIME's config directory
+  and never in a folder (`mime push --defaults` shows them and where); `--setup` and `--defaults` take no flag of a
+  push or a publish; `--status` reads the draft as the service holds
+  it; `--discard` deletes it, after asking. Each ends with a link. `--to` is required, but for `--setup` and
+  `--defaults`. A push stopped at any request is resumed by running it again. Exits zero, two when refused, three when
+  the service refuses a field MIME builds.
 - `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.

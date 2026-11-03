@@ -6,6 +6,7 @@ same function, with the same cache, offline switch, hash check, refusal codes an
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import tempfile
@@ -14,7 +15,7 @@ from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 from urllib.parse import unquote, urlsplit
 
 from mime._transfers import Transfers
@@ -38,7 +39,7 @@ from mime.assets._cache import (
 )
 from mime.assets._commands import check_command, fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
-from mime.assets._reference import AssetRef, location_problem
+from mime.assets._reference import AssetRef, carries_key, location_problem, redacted
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.terms import NO_ASSERTION
 
@@ -155,6 +156,9 @@ class _CappedDownload:
         return None
 
 
+#: A downloader as pooch calls one: the address, the file to write (an object with ``write``), and pooch.
+type Fetcher = Callable[[str, Any, object], None]
+
 #: A ``doi:`` location under DataCite's test prefix: never resolved through doi.org, which does not resolve it.
 TEST_DOI = "doi:10.5072/"
 #: The names doi.org answers to.
@@ -171,12 +175,29 @@ def under_test_prefix(location: str) -> bool:
         unquote(parts.path).lstrip("/").startswith(TEST_DOI.removeprefix("doi:"))
 
 
+class _KeysHidden(logging.Filter):
+    """pooch's own log lines (it logs each address it downloads), every address in them with its key hidden
+    (:func:`~mime.assets._reference.redacted`)."""
+
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = redacted(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(redacted(each) if isinstance(each, str) else each for each in record.args)
+        return True
+
+
+_KEYS_HIDDEN = _KeysHidden()
+
+
 def _download_held_to(location: str, known_hash: str | None, fname: str, directory: Path, limit: int,
-                      label: str = "", expected: int | None = None) -> Path:
+                      label: str = "", expected: int | None = None, fetcher: Fetcher | None = None) -> Path:
     """One location through pooch into ``directory``, which pooch fills through a temporary file moved into place only
     if its hash is ``known_hash`` (``sha256:...`` for an asset, the repository's ``md5:...`` for a bundle fetched by DOI,
     ``None`` for none). A ``doi:`` location is resolved by pooch to the repository's file URL. The download stops, and
-    raises :class:`_SizeExceeded`, once it has passed ``limit`` bytes."""
+    raises :class:`_SizeExceeded`, once it has passed ``limit`` bytes. ``fetcher``, where given, is the downloader in
+    place of the one pooch would choose for the location."""
     import pooch
 
     if under_test_prefix(location):
@@ -184,7 +205,11 @@ def _download_held_to(location: str, known_hash: str | None, fname: str, directo
                          f"resolve, so MIME does not ask doi.org for it")
     # pooch types its path argument as a bare PathLike, which a strict checker reads as unknown.
     library = _held(pooch)
-    downloader = _CappedDownload(library.downloaders.choose_downloader(location), limit, label or fname, expected)
+    logger: logging.Logger = library.get_logger()
+    if _KEYS_HIDDEN not in logger.filters:
+        logger.addFilter(_KEYS_HIDDEN)
+    inner = fetcher if fetcher is not None else library.downloaders.choose_downloader(location)
+    downloader = _CappedDownload(inner, limit, label or fname, expected)
     arrived = Path(str(library.retrieve(url=location, known_hash=known_hash, fname=fname, path=directory,
                                         downloader=downloader)))
     watching = _watcher.get()
@@ -444,9 +469,36 @@ LIMIT_ACTION = ("check the address, and if the file is that large on purpose rai
                 "`mime pull --max-bundle-bytes <bytes>`; nothing was stored")
 
 
+def _download_refused(error: Exception, name: str, shown: str, max_bytes: int,
+                      exceeded_action: str = LIMIT_ACTION) -> tuple[BuildRefused, Exception | None]:
+    """The refusal of a download that failed with ``error``, saying the address as ``shown`` (its key hidden, where it
+    carries one), and the error it is chained to (``None`` for none)."""
+    if isinstance(error, _SizeExceeded):
+        return BuildRefused([Refusal(
+            "asset.size-exceeded", RefusalClass.ENVIRONMENT,
+            f"{name} from {shown} is larger than the {size_text(max_bytes)} it may be, and the download was "
+            f"stopped there", exceeded_action)]), None
+    if isinstance(error, ValueError) and _POOCH_MISMATCH in str(error):
+        return BuildRefused([Refusal(
+            "asset.hash-mismatch", RefusalClass.ENVIRONMENT,
+            f"{name} from {shown} has other bytes than the repository's checksum names",
+            "try again with `mime assets fetch <name>`; if it repeats, the record's file is not the one it "
+            "lists")]), error
+    if _nothing_there(error):
+        return BuildRefused([Refusal(
+            "asset.unreachable", RefusalClass.ENVIRONMENT,
+            f"{name} is not at {shown}: the server answered, and has no file at that address ({redacted(str(error))})",
+            "the address is wrong, or the file was moved: check it, then `mime assets fetch <name>` again"
+        )]), error
+    return BuildRefused([Refusal(
+        "asset.unreachable", RefusalClass.ENVIRONMENT,
+        f"{name} could not be downloaded from {shown}: {redacted(str(error))}",
+        "check the network and the address, then `mime assets fetch <name>` again")]), error
+
+
 def retrieve(location: str, *, name: str, known_hash: str | None = None, max_bytes: int = RETRIEVE_LIMIT_BYTES,
              exceeded_action: str = LIMIT_ACTION, report: Callable[[str], None] | None = None,
-             size: int | None = None) -> AssetRef:
+             size: int | None = None, fetcher: Fetcher | None = None) -> AssetRef:
     """Store the file at one ``location`` whose sha256 nobody has said yet (a bundle named by its DOI), and return the
     reference to it that the hash makes: the file is in the cache under that hash, and :func:`locate` finds it.
 
@@ -455,11 +507,14 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     later :func:`resolve`. The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
     once it has passed ``max_bytes`` (the size a record states, or :data:`RETRIEVE_LIMIT_BYTES`), refused as
     ``asset.size-exceeded`` with ``exceeded_action`` as what to do. ``size``, where the record states one, is what a
-    terminal's progress counts towards (:func:`watching_downloads`); it holds the download to nothing."""
+    terminal's progress counts towards (:func:`watching_downloads`); it holds the download to nothing. ``fetcher``, where
+    given, downloads the location in place of pooch's own downloader (``mime pull --signed-in``: the token goes to the
+    service's own host alone), as pooch calls a downloader, and a refusal it raises is raised as it is."""
+    shown, keyed = redacted(location), carries_key(location)
     problem = location_problem(location)
     if problem is not None:
         raise BuildRefused([Refusal(
-            "asset.reference", RefusalClass.USER, f"{name}: location {location!r}: {problem}",
+            "asset.reference", RefusalClass.USER, f"{name}: location {shown!r}: {problem}",
             "give an https:// URL or a doi: URL in the reference's locations=(...)")])
     if offline():
         raise BuildRefused([Refusal(
@@ -471,31 +526,21 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     incoming = Path(tempfile.mkdtemp(prefix=_UNHASHED, dir=cache_dir()))
     try:
         if report is not None:
-            report(f"{name}: from {location}")
+            report(f"{name}: from {shown}")
         announce_downloads([(name, size)])
+        arrived: Path | None = None
+        refused: tuple[BuildRefused, Exception | None] | None = None
         try:
-            arrived = _download_held_to(location, known_hash, name, incoming, max_bytes, name, size)
+            arrived = _download_held_to(location, known_hash, name, incoming, max_bytes, name, size, fetcher)
         except Exception as error:  # noqa: BLE001 - pooch, requests and the DOI resolvers raise unrelated types
-            if isinstance(error, _SizeExceeded):
-                raise BuildRefused([Refusal(
-                    "asset.size-exceeded", RefusalClass.ENVIRONMENT,
-                    f"{name} from {location} is larger than the {size_text(max_bytes)} it may be, and the download was "
-                    f"stopped there", exceeded_action)]) from None
-            if isinstance(error, ValueError) and _POOCH_MISMATCH in str(error):
-                raise BuildRefused([Refusal(
-                    "asset.hash-mismatch", RefusalClass.ENVIRONMENT,
-                    f"{name} from {location} has other bytes than the repository's checksum names",
-                    "try again with `mime assets fetch <name>`; if it repeats, the record's file is not the one it "
-                    "lists")]) from error
-            if _nothing_there(error):
-                raise BuildRefused([Refusal(
-                    "asset.unreachable", RefusalClass.ENVIRONMENT,
-                    f"{name} is not at {location}: the server answered, and has no file at that address ({error})",
-                    "the address is wrong, or the file was moved: check it, then `mime assets fetch <name>` again"
-                )]) from error
-            raise BuildRefused([Refusal(
-                "asset.unreachable", RefusalClass.ENVIRONMENT, f"{name} could not be downloaded from {location}: {error}",
-                "check the network and the address, then `mime assets fetch <name>` again")]) from error
+            if isinstance(error, BuildRefused) and fetcher is not None:
+                raise
+            refused = _download_refused(error, name, shown, max_bytes, exceeded_action)
+        if refused is not None:
+            # Raised here, outside the handler: for an address that carries a key, the library's error, which quotes the
+            # address whole, is chained to nothing, as cause or as context.
+            raise refused[0] from (None if keyed else refused[1])
+        assert arrived is not None
         ref = AssetRef(name, sha256_of_file(arrived), arrived.stat().st_size, NO_ASSERTION, (location,))
         with exclusive(lock_path(ref)):
             if cheap_problem(ref) is None:

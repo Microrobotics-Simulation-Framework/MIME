@@ -9,8 +9,8 @@ import json
 import os
 import sys
 import zipfile
-from collections.abc import Callable, Sequence
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Callable, Generator, Sequence
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,6 +29,7 @@ from mime.experiment import Experiment
 
 if TYPE_CHECKING:
     from mime._transfers import Transfers
+    from mime.credentials import Token
     from mime.cli._display import RunDisplay
     from mime.control import Progress
     from mime.experiment import BuiltExperiment, RunWritten
@@ -517,6 +518,49 @@ def _ask(question: str) -> bool:
         return False
 
 
+def _controlling_terminal() -> io.TextIOBase | None:
+    """The terminal this process answers at (``/dev/tty``), open for writing, or ``None`` where it has none."""
+    try:
+        return open("/dev/tty", "w", encoding="utf-8")
+    except OSError:
+        return None
+
+
+@contextmanager
+def _setup_questions(voice: _Voice) -> Generator[tuple[Callable[[str], str] | None, Callable[[str], bool] | None]]:
+    """Where ``--setup`` asks its questions: through the display's own question path where the person can answer (a
+    terminal at standard input) and sees a terminal at standard output or standard error, as every other question; on
+    the controlling terminal (``/dev/tty``) where both go to files (``> log 2>&1``), so that no question goes into the
+    file to be answered blind; and nowhere (``push.setup``, which names ``--init``) without a terminal to answer at or
+    one to show the questions on."""
+    if not _a_terminal():
+        yield None, None
+        return
+    if _tty(sys.stdout) or _tty(sys.stderr):
+        yield voice.typed, voice.ask
+        return
+    terminal = _controlling_terminal()
+    if terminal is None:
+        yield None, None
+        return
+
+    def typed(prompt: str) -> str:
+        terminal.write(prompt)
+        terminal.flush()
+        try:
+            return input()
+        except EOFError:
+            return ""
+
+    def ask(question: str) -> bool:
+        return typed(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+
+    try:
+        yield typed, ask
+    finally:
+        terminal.close()
+
+
 def _typed(prompt: str) -> str:
     try:
         return _prompted(prompt)
@@ -579,8 +623,48 @@ class _Voice:
                 pass
 
 
-def _pull(source: str, into: Path | None, no_assets: bool, yes: bool, max_bundle_bytes: int,
-          from_service: str | None = None) -> int:
+#: The variable ``mime pull --link env`` reads a record's share link from.
+SHARE_LINK_VARIABLE = "MIME_SHARE_LINK"
+
+
+def _pull_source(arguments: argparse.Namespace) -> str | Token:
+    """What ``mime pull`` pulls: the source as given, or a share link read by ``--link`` (with no echo, or from
+    :data:`SHARE_LINK_VARIABLE`) into a :class:`~mime.credentials.Token` the moment it is read. A ``--link`` that is
+    neither is refused without its value: it may be the link itself."""
+    from mime.credentials import Token
+    from mime.push._records import SHARE_LINK
+
+    parser: argparse.ArgumentParser = arguments.pull_parser
+    if arguments.link is None:
+        if arguments.source is None:
+            parser.error("the following arguments are required: source")
+        return arguments.source
+    if arguments.source is not None:
+        parser.error("--link reads a share link in place of the source: give one or the other")
+    if arguments.link not in ("-", "env"):
+        parser.error(f"--link takes - (the link asked for with no echo) or env (the link read from "
+                     f"{SHARE_LINK_VARIABLE}); a link itself is the source, in quotes")
+    if arguments.link == "env":
+        held = Token(SHARE_LINK, os.environ.get(SHARE_LINK_VARIABLE, "").strip())
+        what = f"{SHARE_LINK_VARIABLE} holds no share link"
+    else:
+        import getpass
+
+        try:
+            held = Token(SHARE_LINK, getpass.getpass("share link (not shown): ").strip())
+        except EOFError:
+            held = Token(SHARE_LINK, "")
+        what = "no share link was typed"
+    if held.length == 0:
+        raise BuildRefused([Refusal("pull.source", RefusalClass.USER, f"--link {arguments.link}: {what}; nothing was "
+                                                                      f"sent",
+                                    f"`mime pull --link -`, then paste the link the record's page gives; or set "
+                                    f"{SHARE_LINK_VARIABLE} to it, then `mime pull --link env`")])
+    return held
+
+
+def _pull(source: str | Token, into: Path | None, no_assets: bool, yes: bool, max_bundle_bytes: int,
+          from_service: str | None = None, signed_in: bool = False) -> int:
     from mime import assets, saved
 
     voice = _Voice("downloading")
@@ -588,18 +672,56 @@ def _pull(source: str, into: Path | None, no_assets: bool, yes: bool, max_bundle
         with assets.watching_downloads(voice.progress) if voice.progress is not None else nullcontext():
             saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes,
                        confirm=voice.ask if _a_terminal() else None, say=voice.say, max_bundle_bytes=max_bundle_bytes,
-                       from_service=from_service)
+                       from_service=from_service, signed_in=signed_in)
     finally:
         voice.close()
     return 0
+
+
+def _push_arguments(arguments: argparse.Namespace) -> None:
+    """What argparse cannot require of ``mime push`` once ``--defaults`` (no folder, no service) and ``--setup`` (no
+    service) are among its modes: the folder and ``--to`` everywhere else, said as argparse says a missing argument."""
+    from mime import push
+
+    parser: argparse.ArgumentParser = arguments.push_parser
+    if arguments.defaults or arguments.setup:
+        ignored = [flag for flag, given in (("--confirm", arguments.confirm is not None), ("--yes", arguments.yes),
+                                            (push.FULL_FLAG, arguments.full_plan),
+                                            (push.KEEP_FLAG, arguments.keep_site_edits),
+                                            (push.OVERWRITE_FLAG, arguments.overwrite_site_edits)) if given]
+        if ignored:
+            what = ("--defaults shows your own sharing defaults" if arguments.defaults else
+                    "--setup asks for sharing.yaml's fields")
+            parser.error(f"{what}, and pushes and publishes nothing: it takes no {', '.join(ignored)}")
+    if arguments.defaults:
+        if arguments.folder is not None or arguments.to is not None:
+            parser.error("--defaults shows your own sharing defaults, and takes no folder and no --to")
+        return
+    missing = [name for name, held in (("folder", arguments.folder), ("--to", arguments.to))
+               if held is None and not (name == "--to" and arguments.setup)]
+    if missing:
+        parser.error(f"the following arguments are required: {', '.join(missing)}")
 
 
 def _push(arguments: argparse.Namespace) -> int:
     from mime import push
     from mime.push._sharing import DEFAULT_LICENCE
 
-    service = push.SERVICES[arguments.to]
+    _push_arguments(arguments)
+    if arguments.defaults:
+        for line in push.defaults_lines():
+            print(for_terminal(line))
+        return 0
     folder: Path = arguments.folder
+    if arguments.setup:
+        voice = _Voice("uploading")
+        with _setup_questions(voice) as (typed, ask):
+            try:
+                push.setup(folder, typed=typed, ask=ask, say=voice.say, service=arguments.to)
+            finally:
+                voice.close()
+        return 0
+    service = push.SERVICES[arguments.to]
     voice = _Voice("uploading")
     ask = voice.ask if _a_terminal() else None
     if arguments.confirm is not None and not arguments.publish:
@@ -613,7 +735,12 @@ def _push(arguments: argparse.Namespace) -> int:
         print(for_terminal(f"licence: {licence}, which the experiment declares" if licence else
                            f"licence: {DEFAULT_LICENCE}, pre-filled: the experiment declares none, and push asks it to "
                            f"declare the same, exp.licence(\"{DEFAULT_LICENCE}\"), then save"))
-        print(for_terminal(f"next: name the creators in it, then `mime push {quoted(str(folder))} --to {service.name}`"))
+        filled = list(push.read_defaults()) if written else []
+        if filled:
+            print(for_terminal(f"filled from your sharing defaults ({push.defaults_path()}): {', '.join(filled)}"))
+        print(for_terminal(f"next: check what your defaults filled in it, then `mime push {quoted(str(folder))} --to "
+                           f"{service.name}`" if filled else
+                           f"next: name the creators in it, then `mime push {quoted(str(folder))} --to {service.name}`"))
         return 0
     try:
         if arguments.status:
@@ -804,11 +931,22 @@ def build_parser() -> _guide.MimeParser:
 
     pull = commands.add_parser("pull", help="get a bundle by DOI, address or file, unpack it into a new folder, and "
                                             "fetch its assets")
-    pull.add_argument("source", help="a DOI (10.5281/zenodo.1234567; a concept DOI pulls the latest version), an "
-                                     "https:// address, a bundle file, or with --from a record's number")
+    pull.set_defaults(pull_parser=pull)
+    pull.add_argument("source", nargs="?",
+                      help="a DOI (10.5281/zenodo.1234567; a concept DOI pulls the latest version), an https:// "
+                           "address, a bundle file, a record's share link (in quotes; --link keeps it out of sight), "
+                           "or with --from a record's number")
+    pull.add_argument("--link", metavar="{-,env}",
+                      help="a record's share link, read in place of the source: `--link -` asks for it with no echo, "
+                           f"`--link env` reads it from {SHARE_LINK_VARIABLE}. A link given as the source stays in "
+                           "your shell's history and, while pull runs, in its arguments, which any account on this "
+                           "machine can read (ps, /proc/<pid>/cmdline) unless /proc is mounted with hidepid")
     pull.add_argument("--from", dest="from_service", choices=list(push.SERVICES), metavar="SERVICE",
                       help="read the published record of this number at the service's records API (zenodo-sandbox: "
                            "its DOIs do not resolve through doi.org)")
+    pull.add_argument("--signed-in", action="store_true",
+                      help="with --from, send the token `mime credentials` stored for that service, for a record or "
+                           "files shared with your account (without it, pull sends no token)")
     pull.add_argument("--into", type=Path, help="the new folder (default: ./<the experiment's name>/)")
     pull.add_argument("--no-assets", action="store_true", help="unpack only; fetch the assets later with "
                                                                "`mime assets fetch <folder>`")
@@ -816,22 +954,40 @@ def build_parser() -> _guide.MimeParser:
     pull.add_argument("--max-bundle-bytes", type=int, default=assets.RETRIEVE_LIMIT_BYTES, metavar="BYTES",
                       help="the most a bundle may be when nothing states its size (default: "
                            f"{assets.size_text(assets.RETRIEVE_LIMIT_BYTES)})")
-    pushing = commands.add_parser("push", help="show the plan, then make or update the experiment's draft record on "
-                                               "Zenodo and upload its files (nothing is published)")
-    pushing.add_argument("folder", type=Path, help="a folder written by Experiment.save")
-    pushing.add_argument("--to", required=True, choices=list(push.SERVICES),
-                         help="the service: zenodo, or zenodo-sandbox to try it on Zenodo's test service (required)")
+    pushing = commands.add_parser(
+        "push", help="show the plan, then make or update the experiment's draft record on Zenodo and upload its files "
+                     "(nothing is published)",
+        usage="%(prog)s [-h] --to {zenodo,zenodo-sandbox} [--init | --setup | --status | --discard | --publish]\n"
+              "                 [--confirm DOI[@FINGERPRINT]] [--yes] [--full-plan]\n"
+              "                 [--keep-site-edits | --overwrite-site-edits]\n"
+              "                 folder\n"
+              "       %(prog)s folder --setup [--to {zenodo,zenodo-sandbox}]\n"
+              "       %(prog)s --defaults")
+    pushing.set_defaults(push_parser=pushing)
+    pushing.add_argument("folder", type=Path, nargs="?", help="a folder written by Experiment.save")
+    pushing.add_argument("--to", choices=list(push.SERVICES),
+                         help="the service: zenodo, or zenodo-sandbox to try it on Zenodo's test service (required, "
+                              "but for --setup and --defaults)")
     pushing_mode = pushing.add_mutually_exclusive_group()
     pushing_mode.add_argument("--init", action="store_true", help="write sharing.yaml, the record's credit and "
-                                                                  "description, from what the folder knows")
+                                                                  "description, from what the folder knows and your "
+                                                                  "sharing defaults")
+    pushing_mode.add_argument("--setup", action="store_true",
+                              help="make or edit sharing.yaml a field at a time, in a terminal: each field explained, "
+                                   "Enter skips it or keeps the value shown; then save your defaults if you like")
+    pushing_mode.add_argument("--defaults", action="store_true",
+                              help="show your sharing defaults (your name, ORCID iD, affiliation and the rest you "
+                                   "repeat from record to record) and where they live; takes no folder")
     pushing_mode.add_argument("--status", action="store_true", help="the draft as the service holds it, against what "
                                                                     "push uploaded")
     pushing_mode.add_argument("--discard", action="store_true", help="delete the draft (only a draft can be deleted)")
     pushing_mode.add_argument("--publish", action="store_true",
                               help="publish the draft, the one step that cannot be undone: the plan, the confirmation "
                                    "in words, each declared permission asked, then the record number typed")
-    pushing.add_argument("--confirm", metavar="DOI", help="with --publish, from a script: the draft's reserved DOI, in "
-                                                          "place of the record number typed (it must be that draft's)")
+    pushing.add_argument("--confirm", metavar="DOI[@FINGERPRINT]",
+                         help="with --publish, from a script: the draft's reserved DOI, in place of the record number "
+                              "typed (it must be that draft's); once a push changed the draft after first printing its "
+                              "DOI, the DOI and the fingerprint the last push printed beside it")
     pushing.add_argument("--yes", action="store_true", help="delete the draft with --discard without asking (it never "
                                                             "publishes, declares a permission or settles a site edit)")
     pushing.add_argument(push.FULL_FLAG, dest="full_plan", action="store_true",
@@ -1100,8 +1256,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "card":
         return _card(arguments.folder, arguments.out, arguments.notice)
     if arguments.command == "pull":
-        return _pull(arguments.source, arguments.into, arguments.no_assets, arguments.yes, arguments.max_bundle_bytes,
-                     arguments.from_service)
+        return _pull(_pull_source(arguments), arguments.into, arguments.no_assets, arguments.yes,
+                     arguments.max_bundle_bytes, arguments.from_service, arguments.signed_in)
     if arguments.command == "credentials":
         return _credentials(arguments.credentials_command, arguments.service)
     if arguments.command == "push":

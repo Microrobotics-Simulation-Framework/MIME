@@ -29,11 +29,13 @@ host: a redirect is never followed (``urllib`` would carry the header to whereve
 machine is reached without the environment's proxy (to which plain ``http`` would carry the header in clear), and
 whatever stops a request inside the standard library (an error, an interrupt) is caught at the transport and raised
 again as a fresh error from a frame that holds no token: the library's own frames hold the request's headers, and
-none of them reaches a traceback, so a traceback captured with its locals shows no token.
+none of them reaches a traceback, so a traceback captured with its locals shows no token. A pull let in to a record that
+is not public (:func:`fetched`: the token stored for its service, or a share link's key) travels the same way.
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import time
@@ -230,6 +232,103 @@ def _exchange(opener: urllib.request.OpenerDirector, timeout: float, method: str
     finally:
         if stream is not None:
             stream.close()
+
+
+# --- a pull let in: signed in, or by a share link's key ---------------------------------------------------------------
+
+#: The records API's parameter a share link's key is sent as: InvenioRDM's secret links read ``token`` from a request's
+#: arguments, as the record's page link carries it. **Recalled, not measured: a guess until a sandbox session makes a
+#: share link and pulls it.**
+LINK_PARAMETER = "token"
+#: How much of a file is read at a time, and handed on, while it is downloaded.
+_BLOCK = 256 * 1024
+
+
+@dataclass(frozen=True)
+class Access:
+    """What lets a pull read a record that is not public: the token ``mime credentials`` stored for its service
+    (``token``, in the ``Authorization`` header, as push sends it), or a share link's key (``key``, as the records API's
+    :data:`LINK_PARAMETER`). Each is a :class:`~mime.credentials.Token`, masked wherever it is printed."""
+
+    token: Token | None = None
+    key: Token | None = None
+
+
+def _keyed(url: str, key: Token | None) -> str:
+    return url if key is None else f"{url}{'&' if '?' in url else '?'}{LINK_PARAMETER}={quote(key.reveal(), safe='')}"
+
+
+def _let_in(opener: urllib.request.OpenerDirector, timeout: float, url: str, accept: str, access: Access,
+            into: Callable[[bytes], object] | None) -> tuple[Answer, BaseException | None]:
+    """One GET and its answer, through ``opener``, the token and the key put on the request here and nowhere else: every
+    error the library raises passes out of here to :func:`fetched`. A 200's body is handed to ``into`` block by block
+    where it is given; an error ``into`` raises is returned, never raised through the library's frames."""
+    request = urllib.request.Request(_keyed(url, access.key), method="GET", headers={"Accept": accept})
+    if access.token is not None:
+        request.add_header("Authorization", "Bearer " + access.token.reveal())
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            headers = {k.lower(): v for k, v in response.headers.items()}
+            if into is None or response.status != 200:
+                return Answer(response.status, headers, response.read()), None
+            while block := response.read(_BLOCK):
+                try:
+                    into(block)
+                except BaseException as error:  # noqa: BLE001 - the caller's own (a size passed, a display's): its to raise
+                    return Answer(response.status, headers), error
+            return Answer(response.status, headers), None
+    except urllib.error.HTTPError as error:
+        return Answer(error.code, {k.lower(): v for k, v in error.headers.items()}, error.read()), None
+
+
+def fetched(service: Service, path: str, access: Access, *, accept: str = RDM_TYPE,
+            into: Callable[[bytes], object] | None = None, timeout: float = _TIMEOUT_SECONDS) -> Answer:
+    """One GET of ``path`` below ``service``'s API for a pull let in by ``access``: the token or the key travels as push's
+    token does, to the service's own host alone (``service`` pairs a real service's credential with its host,
+    :meth:`Service.problem`), a redirect read and never followed (:class:`NoRedirect`), a service on this machine
+    reached without the environment's proxy, and whatever stops the request inside the standard library raised again,
+    fresh, from this frame (a lost or cut answer as :class:`Dropped`, an interrupt as itself), so no traceback holds the
+    library's frames. A 200's body is handed to ``into`` block by block, where given, and the answer holds none; an
+    error ``into`` raises (a size passed) is raised as it is."""
+    problem = service.problem()
+    if problem is not None:
+        raise BuildRefused([_refuse("pull.source", RefusalClass.USER, problem,
+                                    "pull from a service by its name, `mime pull --from zenodo-sandbox <record>`")])
+    url = service.api + path
+    transport = HttpTransport(timeout)
+    opener = transport.direct if loopback(url) else transport.opener
+    failure: str | None = None
+    stopped: BaseException | None = None
+    try:
+        answer, raised = _let_in(opener, timeout, url, accept, access, into)
+    except Exception as error:  # noqa: BLE001 - a request that failed, or whose answer was lost or cut short
+        failure = type(error).__name__
+    except BaseException as error:  # an interrupt: raised again below, by its type alone
+        stopped = _fresh(error)
+    else:
+        if raised is not None:
+            raise raised
+        return answer
+    if stopped is not None:
+        raise stopped
+    raise Dropped(failure)
+
+
+def public_into(url: str, into: Callable[[bytes], object], timeout: float = _TIMEOUT_SECONDS) -> None:
+    """A file where its service stores it (a redirect read from the records API), fetched with nothing of a token or a
+    key: over ``https`` (or to this machine, without the proxy), its own redirects followed, since there is nothing they
+    could carry. Its body is handed to ``into`` block by block. :class:`Dropped` where it could not be fetched, saying
+    nothing of the address, which may hold a signature of the store's."""
+    parts = urlsplit(url)
+    if not (parts.scheme == "https" and parts.hostname) and not (parts.scheme == "http" and loopback(url)):
+        raise Dropped("a redirect to an address that is not https://")
+    opener = urllib.request.build_opener(*([urllib.request.ProxyHandler({})] if loopback(url) else []))
+    try:
+        with opener.open(urllib.request.Request(url, method="GET"), timeout=timeout) as response:
+            while block := response.read(_BLOCK):
+                into(block)
+    except (OSError, ValueError, http.client.HTTPException) as error:
+        raise Dropped(type(error).__name__) from None
 
 
 def _fresh(error: BaseException) -> BaseException:
@@ -800,5 +899,6 @@ def _entry(client: Client, answer: Answer) -> Json:
     return cast(Json, held)
 
 
-__all__ = ["LONGEST_WAIT_SECONDS", "PAUSE_SECONDS", "RDM_TYPE", "RETRIES", "Answer", "Client", "Dropped", "Errors",
-           "Gone", "HttpTransport", "Json", "NoRedirect", "Owner", "Transport", "Watch", "errors_of", "owned_refusals"]
+__all__ = ["ANY_TYPE", "LINK_PARAMETER", "LONGEST_WAIT_SECONDS", "PAUSE_SECONDS", "RDM_TYPE", "RECORD_FILES_TYPE",
+           "RETRIES", "Access", "Answer", "Client", "Dropped", "Errors", "Gone", "HttpTransport", "Json", "NoRedirect",
+           "Owner", "Transport", "Watch", "errors_of", "fetched", "owned_refusals", "public_into"]

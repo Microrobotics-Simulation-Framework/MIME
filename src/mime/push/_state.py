@@ -40,6 +40,9 @@ STATE_FORMAT = "mime.push-state/2"
 #: The record before push marked its drafts and kept their metadata: read only to refuse it, by name.
 OLD_FORMAT = "mime.push-state/1"
 STATE_FILE = "state.json"
+#: How many hex digits of a draft's fingerprint are printed and confirmed: enough that two states of one draft are told
+#: apart, short enough to copy.
+FINGERPRINT_LENGTH = 8
 #: Where the files a push uploads are staged (the bundle and the NOTICE it packs), beside the record.
 STAGED = "staged"
 #: The scheme of push's mark in a draft's alternate identifiers.
@@ -102,7 +105,10 @@ class DraftState:
     ``published``, the latest version published before it (``None`` for a first version); ``confirmed``, the
     declared permissions a person confirmed in a terminal for this draft, each by :func:`declaration_identity`;
     ``import_refused``, that the service refused to link the version before's files into this draft, so a second
-    refusal uploads them rather than stopping for good."""
+    refusal uploads them rather than stopping for good; ``shown``, the draft's DOI and :func:`fingerprint` as the push
+    that reserved that DOI, the first to print it, left the draft (``<DOI>@<fingerprint>``), by which ``--confirm
+    <DOI>`` alone is held to the draft that push showed: empty for a draft whose DOI a push reserved before this record
+    was kept, which only ``<DOI>@<fingerprint>`` confirms."""
 
     service: str
     api: str
@@ -120,6 +126,28 @@ class DraftState:
     published: Published | None = None
     confirmed: list[str] = field(default_factory=lambda: cast(list[str], []))
     import_refused: bool = False
+    shown: str = ""
+
+
+def fingerprint(state: DraftState) -> str:
+    """A short fingerprint of what the draft holds as push last wrote and checked it (:func:`fingerprint_of` its
+    ``sent`` and ``files``). Every push prints it beside the draft's DOI, and ``--confirm <DOI>@<fingerprint>``
+    publishes the draft only while it holds exactly that."""
+    return fingerprint_of(state.sent, state.files)
+
+
+def fingerprint_of(sent: str, files: Mapping[str, Uploaded]) -> str:
+    """The fingerprint of a draft's content: the identity of its metadata (its publication date aside,
+    :func:`payload_identity`) and each file's key, size, md5 and sha256. A publish computes it again from what it is
+    about to publish, and holds a script's confirmation to it immediately before the request."""
+    held = sorted([key, each.size, each.md5, each.sha256] for key, each in files.items())
+    return hashlib.sha256(json.dumps({"sent": sent, "files": held}, sort_keys=True,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()[:FINGERPRINT_LENGTH]
+
+
+def confirmation(state: DraftState) -> str:
+    """What ``--confirm`` takes to publish the draft as push last wrote and checked it: its DOI and its fingerprint."""
+    return f"{state.doi}@{fingerprint(state)}"
 
 
 def payload_identity(payload: Mapping[str, object]) -> str:
@@ -269,7 +297,7 @@ def read_state(service: Service, experiment: str) -> DraftState | None:
                           _text(found.get("page")), bool(found.get("creating", False)), files, str(found["mark"]),
                           written, str(found.get("sent", "")), int(cast(int, found.get("version", 1))), published,
                           [str(each) for each in cast(list[object], found.get("confirmed", []))],
-                          bool(found.get("import_refused", False)))
+                          bool(found.get("import_refused", False)), str(found.get("shown", "")))
     except (KeyError, TypeError, ValueError, AttributeError):
         raise _unreadable(path, "is missing a part or holds one of another type") from None
 
@@ -336,7 +364,8 @@ def staging(service: Service, experiment: str) -> Path:
     return directory
 
 
-__all__ = ["ACCESS", "CUSTOM", "MARK_SCHEME", "OLD_FORMAT", "STAGED", "STATE_FILE", "STATE_FORMAT", "DraftState",
-           "Published", "Uploaded", "access_of", "clear_state", "declaration_identity", "draft_identifier",
-           "metadata_marks", "namespace", "payload_identity", "read_state", "remove_tree", "staging",
-           "state_directory", "state_root", "writable_tree", "write_state"]
+__all__ = ["ACCESS", "CUSTOM", "FINGERPRINT_LENGTH", "MARK_SCHEME", "OLD_FORMAT", "STAGED", "STATE_FILE",
+           "STATE_FORMAT", "DraftState", "Published", "Uploaded", "access_of", "clear_state", "confirmation",
+           "declaration_identity", "draft_identifier", "fingerprint", "fingerprint_of", "metadata_marks", "namespace",
+           "payload_identity", "read_state", "remove_tree", "staging", "state_directory", "state_root", "writable_tree",
+           "write_state"]

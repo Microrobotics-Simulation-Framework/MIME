@@ -54,10 +54,13 @@ def test_a_round_trip_through_the_real_transport(toy: Path, fake: FakeRecords, t
     page = f"{fake.site}/uploads/629525"
     assert out.splitlines()[-1] == page, "a push ends with the draft's link on a line of its own"
     record = fake.records["629525"]
-    assert set(record.files) == {"full_toy.mimebundle", "NOTICE"}
+    assert set(record.files) == {"full_toy.mimebundle", "NOTICE.txt"}
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--full-plan")
-    assert code == 0 and out.splitlines() == [f"'full_toy' is unchanged: the draft 629525 on zenodo-sandbox holds it "
-                                              f"as it is, and nothing was sent: {page}"]
+    held = push.read_state(fake.service(), "full_toy")
+    assert held is not None and code == 0
+    assert out.splitlines() == [f"'full_toy' is unchanged (a script publishes it with `--confirm "
+                                f"{push.confirmation(held)}`): the draft 629525 on zenodo-sandbox holds it as it is, and "
+                                f"nothing was sent: {page}"]
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--status")
     assert code == 0 and "reserved DOI: 10.5072/zenodo.629525" in out and "as push uploaded and verified it" in out
     assert out.splitlines()[-1] == page

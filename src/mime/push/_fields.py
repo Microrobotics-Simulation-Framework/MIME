@@ -42,7 +42,11 @@ DATE_TYPES = ("accepted", "available", "collected", "copyrighted", "created", "i
               "updated", "valid", "withdrawn")
 _DATE = re.compile(r"\d{4}(-\d{2}(-\d{2})?)?(/\d{4}(-\d{2}(-\d{2})?)?)?")
 _LANGUAGE = re.compile(r"[a-z]{3}")
-_ROR = re.compile(r"(?:https://ror\.org/)?(0[a-z0-9]{6}\d{2})")
+#: A ROR identifier, bare or as https://ror.org/ gives it: every digit an ASCII one (``\d`` takes any script's
+#: digits, as the ORCID iD's check did). :func:`ror_identifier` reads it for every reader of an identifier.
+_ROR = re.compile(r"(?:https://ror\.org/)?(0[a-z0-9]{6}[0-9]{2})")
+#: What a ROR identifier is, as a refusal says it.
+ROR_FORM = "0 and eight letters and digits, each digit an ASCII one, as https://ror.org/ lists it"
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 #: Who may read a record or its files.
 ACCESS_LEVELS = ("public", "restricted")
@@ -200,6 +204,13 @@ class Funding:
 _FUNDING_KEYS = ("funder", "ror", "award", "title", "url")
 
 
+def ror_identifier(text: str) -> str | None:
+    """The bare ROR identifier ``text`` is, or ``None``: the one check of an identifier, in ``sharing.yaml``, the
+    defaults and ``--setup`` alike."""
+    found = _ROR.fullmatch(text)
+    return found.group(1) if found is not None else None
+
+
 def funding_problems(value: object) -> tuple[list[Funding], list[str]]:
     """``funding:`` read: each funder, and every problem by its path."""
     found: list[Funding] = []
@@ -227,15 +238,14 @@ def funding_problems(value: object) -> tuple[list[Funding], list[str]]:
             problems.append(f"{where}.funder: is missing (the funder's name)")
             continue
         ror = texts["ror"]
-        matched = _ROR.fullmatch(ror) if ror is not None else None
-        if ror is not None and matched is None:
-            problems.append(f"{where}.ror: {plain(ror)} is not a ROR identifier (0 and eight letters and digits)")
+        identifier = ror_identifier(ror) if ror is not None else None
+        if ror is not None and identifier is None:
+            problems.append(f"{where}.ror: {plain(ror)} is not a ROR identifier ({ROR_FORM})")
         if texts["award"] is None and (texts["title"] or texts["url"]):
             problems.append(f"{where}: names an award's title or address without its number, award: <number>")
         if texts["url"] is not None and not texts["url"].startswith("https://"):
             problems.append(f"{where}.url: is not an https:// address")
-        found.append(Funding(texts["funder"], matched.group(1) if matched else None, texts["award"], texts["title"],
-                             texts["url"]))
+        found.append(Funding(texts["funder"], identifier, texts["award"], texts["title"], texts["url"]))
     return found, problems
 
 
@@ -310,5 +320,5 @@ def conference_problems(value: object) -> tuple[dict[str, str] | None, list[str]
     return meeting, problems
 
 
-__all__ = ["BUILT", "CONFERENCE", "DATE_TYPES", "SHAPES", "Funding", "conference_problems", "field_problems",
-           "funding_problems"]
+__all__ = ["BUILT", "CONFERENCE", "DATE_TYPES", "ROR_FORM", "SHAPES", "Funding", "conference_problems",
+           "field_problems", "funding_problems", "ror_identifier"]

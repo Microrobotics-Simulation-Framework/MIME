@@ -26,7 +26,15 @@ import yaml
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
-from mime.push._fields import Funding, access_problems, conference_problems, field_problems, funding_problems
+from mime.push._fields import (
+    ROR_FORM,
+    Funding,
+    access_problems,
+    conference_problems,
+    field_problems,
+    funding_problems,
+    ror_identifier,
+)
 from mime.saved._versions import newer_form_refusal
 from mime.terms import licence_problem
 
@@ -47,8 +55,9 @@ RELATION_TYPES = ("IsCitedBy", "Cites", "IsSupplementTo", "IsSupplementedBy", "I
                   "References", "IsDocumentedBy", "Documents", "IsCompiledBy", "Compiles", "IsVariantFormOf",
                   "IsOriginalFormOf", "IsIdenticalTo", "IsReviewedBy", "Reviews", "IsDerivedFrom", "IsSourceOf",
                   "IsRequiredBy", "Requires", "IsObsoletedBy", "Obsoletes")
-_ORCID = re.compile(r"(?:https://orcid\.org/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])")
-_ROR = re.compile(r"(?:https://ror\.org/)?(0[a-z0-9]{6}\d{2})")
+#: An ORCID iD: ASCII digits alone, each group's and the check character's (``\d`` and ``int`` would take any script's
+#: digits, a full-width one a CJK input method types among them, which read as digits on a terminal).
+_ORCID = re.compile(r"(?:https://orcid\.org/)?([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])")
 _DOI = re.compile(r"10\.\d{4,9}/\S+")
 _TOP = ("format", "title", "description", "licence", "creators", "contributors", "keywords", "related", "uploader",
         "funding", "conference", "fields", "access")
@@ -79,7 +88,8 @@ def orcid_problem(text: str) -> str | None:
     form), the last a check digit by ISO 7064 MOD 11-2 (ORCID's own documentation of the iD's structure)."""
     found = _ORCID.fullmatch(text)
     if found is None:
-        return "an ORCID iD is four groups of four, 0000-0000-0000-000X, the last character a digit or X"
+        return ("an ORCID iD is four groups of four, 0000-0000-0000-000X, the last character a digit or X, each digit "
+                "an ASCII one (0 to 9)")
     digits = found.group(1).replace("-", "")
     total = 0
     for character in digits[:-1]:
@@ -239,9 +249,9 @@ class _Reader:
                 self.problem(f"{where}.orcid", "is an ORCID iD, which a person holds and an organisation does not")
             orcid = bare_orcid(orcid)
         ror = self.text(held, "ror", f"{where}.")
-        if ror is not None and _ROR.fullmatch(ror) is None:
-            self.problem(f"{where}.ror", f"{plain(ror)} is not a ROR identifier (0 and eight letters and digits, as "
-                                         "https://ror.org/ lists it)", "ror: 05xxxxx00")
+        identifier = ror_identifier(ror) if ror is not None else None
+        if ror is not None and identifier is None:
+            self.problem(f"{where}.ror", f"{plain(ror)} is not a ROR identifier ({ROR_FORM})", "ror: 05xxxxx00")
         affiliation = self.text(held, "affiliation", f"{where}.")
         if ror is not None and affiliation is None:
             self.problem(f"{where}.ror", "is given without the affiliation it identifies", "affiliation: <its name>")
@@ -251,8 +261,7 @@ class _Reader:
             if role is not None and role not in CONTRIBUTOR_TYPES:
                 self.problem(f"{where}.type", f"{plain(role)} is not one of DataCite's contributor types "
                                               f"({', '.join(CONTRIBUTOR_TYPES)})", "type: DataCurator")
-        found = _ROR.fullmatch(ror) if ror is not None else None
-        return Person(family, given, organisation, orcid, affiliation, found.group(1) if found else None, role)
+        return Person(family, given, organisation, orcid, affiliation, identifier, role)
 
 
 def sharing_path(folder: str | os.PathLike[str]) -> Path:
@@ -291,16 +300,13 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
     licence = reader.text(held, "licence", "", required=True)
     if licence is not None and (problem := licence_problem(licence)) is not None:
         reader.problem("licence", plain(problem))
-    creators = [reader.person(each, f"creators[{index}]", contributor=False)
-                for index, each in enumerate(reader.items(held, "creators"))]
+    creators = people(reader, held, "creators")
     if held.get("creators") in (None, []):
         reader.refusals.append(_refuse(
             "push.creators", RefusalClass.USER, f"{path.name} names no creator: a record names the people who made it",
             f"name each, `{_LINE['creators']}` in {path}"))
-    contributors = [reader.person(each, f"contributors[{index}]", contributor=True)
-                    for index, each in enumerate(reader.items(held, "contributors"))]
-    keywords = [reader.text({"keyword": each}, "keyword", f"keywords[{index}].")
-                for index, each in enumerate(reader.items(held, "keywords"))]
+    contributors = people(reader, held, "contributors")
+    keywords = keyword_list(reader, held)
     related: list[Related] = []
     for index, each in enumerate(reader.items(held, "related")):
         entry = reader.mapping(each, f"related[{index}]", ("identifier", "relation"))
@@ -317,12 +323,7 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
                                                          f"(IsSupplementTo, References, Cites, IsDerivedFrom, ...)")
         if identifier is not None and relation is not None:
             related.append(Related(identifier, relation))
-    uploader = None
-    if held.get("uploader") is not None:
-        entry = reader.mapping(held["uploader"], "uploader", ("name", "institution"))
-        name = reader.text(entry, "name", "uploader.", required=True) if entry is not None else None
-        if entry is not None and name is not None:
-            uploader = Uploader(name, reader.text(entry, "institution", "uploader."))
+    uploader = uploader_of(reader, held)
     funding, problems = funding_problems(held.get("funding"))
     conference, found = conference_problems(held.get("conference"))
     problems += found
@@ -341,53 +342,140 @@ def read_sharing(folder: str | os.PathLike[str]) -> Sharing:
                    tuple(related), uploader, tuple(funding), conference, cast(Mapping[str, object], fields), access)
 
 
-def scaffold(name: str, licence: str | None) -> str:
+def people(reader: _Reader, held: Mapping[str, object], key: str) -> list[Person | None]:
+    """``creators`` or ``contributors`` (``key``) read, each by :meth:`_Reader.person`."""
+    return [reader.person(each, f"{key}[{index}]", contributor=key == "contributors")
+            for index, each in enumerate(reader.items(held, key))]
+
+
+def keyword_list(reader: _Reader, held: Mapping[str, object]) -> list[str | None]:
+    """``keywords`` read: each a word or a phrase."""
+    return [reader.text({"keyword": each}, "keyword", f"keywords[{index}].")
+            for index, each in enumerate(reader.items(held, "keywords"))]
+
+
+def uploader_of(reader: _Reader, held: Mapping[str, object]) -> Uploader | None:
+    """``uploader`` read: the person whose token pushes, and their institution."""
+    if held.get("uploader") is None:
+        return None
+    entry = reader.mapping(held["uploader"], "uploader", ("name", "institution"))
+    name = reader.text(entry, "name", "uploader.", required=True) if entry is not None else None
+    if entry is None or name is None:
+        return None
+    return Uploader(name, reader.text(entry, "institution", "uploader."))
+
+
+def ror_problem(text: str) -> str | None:
+    """Why ``text`` is not a ROR identifier, or ``None``."""
+    return None if ror_identifier(text) is not None else f"{plain(text)} is not a ROR identifier ({ROR_FORM})"
+
+
+def identifier_problem(text: str) -> str | None:
+    """Why ``text`` is not a related work's identifier (a DOI or an ``https://`` address), or ``None``."""
+    if _DOI.fullmatch(text) or (text.startswith("https://") and " " not in text):
+        return None
+    return f"{plain(text)} is neither a DOI (10.xxxx/...) nor an https:// address"
+
+
+def value_line(key: str, value: object) -> str:
+    """``key: value`` as ``sharing.yaml`` holds it, on one line where YAML reads that line back as ``value`` (its flow
+    form), and in YAML's block form where it does not."""
+    flow = yaml.safe_dump({key: value}, default_flow_style=True, allow_unicode=True, width=1_000_000,
+                          sort_keys=False).strip()
+    if flow.startswith("{") and flow.endswith("}"):
+        flow = flow[1:-1].strip()
+    try:
+        if "\n" not in flow and yaml.safe_load(flow) == {key: value}:
+            return flow
+    except yaml.YAMLError:
+        pass
+    return yaml.safe_dump({key: value}, default_flow_style=False, allow_unicode=False, width=1_000_000,
+                          sort_keys=False).rstrip("\n")
+
+
+def scaffold(name: str, licence: str | None, values: Mapping[str, object] | None = None) -> str:
     """The text ``--init`` writes: the experiment's name as the title, its licence (``CC-BY-4.0`` where it declares
-    none), no creator yet, each key explained where it stands."""
+    none), no creator yet, each key explained where it stands. ``values`` (a person's defaults, or what ``--setup``
+    asked) fills a key where it stands, under its explanation; without them the text is the scaffold as it always
+    was."""
+    held: Mapping[str, object] = values or {}
+
+    def line(key: str, otherwise: str) -> str:
+        return value_line(key, held[key]) if key in held else otherwise
+
     title = yaml.safe_dump(name, default_style='"', width=10_000).strip()
-    return "\n".join([
+    lines = [
         "# The record's metadata for `mime push`: credit and description, kept beside the saved form and never in",
         "# it (a change here is a metadata edit of the record, not a new version). `mime pack` neither carries nor",
         "# refuses this file. Edit it by hand; push reads it with YAML's safe loader against a closed schema.",
         f"format: {SHARING_FORMAT}",
-        f"title: {title}",
+        line("title", f"title: {title}"),
         "# A paragraph shown above the card, which is the record's description; empty for the card alone.",
-        "description: \"\"",
+        line("description", "description: \"\""),
         "# The experiment's own licence, which covers its files: it must equal the licence the experiment declares",
         "# (exp.licence(...), bound to its files when it is saved). " +
         (f"The experiment declares {licence}." if licence else
          f"The experiment declares none: {DEFAULT_LICENCE} is MIME's suggestion, and push asks the experiment to "
          f"declare it too."),
-        f"licence: {licence or DEFAULT_LICENCE}",
+        line("licence", f"licence: {licence or DEFAULT_LICENCE}"),
         "# Each person who made the experiment, as the record names them: family and given names, an ORCID iD where",
         "# they have one, an affiliation (with its ROR identifier where you know it). Everyone named must have agreed",
         "# to be named. For example:",
         "#   - {family: Carberry, given: Josiah, orcid: 0000-0002-1825-0097, affiliation: Brown University}",
-        "creators: []",
+        line("creators", "creators: []"),
         "# Others credited, each with a DataCite contributor type (DataCurator, Supervisor, HostingInstitution, ...).",
         "# The rights holder of each third-party file the record holds is added by push from the files' terms.",
-        "contributors: []",
+        line("contributors", "contributors: []"),
         "# Searchable words; push adds mime-experiment.",
-        "keywords: []",
+        line("keywords", "keywords: []"),
         "# Papers and other works: a DOI or an https:// address, and DataCite's relation (IsSupplementTo for a paper",
         "# the experiment supports, References, IsDerivedFrom, ...). push adds the MIME release it requires.",
-        "related: []",
+        line("related", "related: []"),
         "# The person whose token pushes, and their institution: a declared permission's grantee must be one of them.",
-        "# uploader: {name: \"<family name>, <given name>\", institution: <your institution>}",
+        line("uploader", "# uploader: {name: \"<family name>, <given name>\", institution: <your institution>}"),
         "# Who funded the work: each funder's name (with its ROR identifier where you know it), and the award's number",
         "# and title. For example:",
         "#   - {funder: European Commission, ror: 00k4n6c32, award: \"101001234\", title: <the award's title>}",
-        "funding: []",
+        line("funding", "funding: []"),
         "# A conference the experiment was shown at (Zenodo's meeting field): title, acronym, dates, place, url,",
         "# session, part. For example:",
-        "# conference: {title: <the conference's name>, acronym: <...>, dates: 3-7 May 2027, place: <city>}",
+        line("conference", "# conference: {title: <the conference's name>, acronym: <...>, dates: 3-7 May 2027, "
+                           "place: <city>}"),
         "# Any other field of the record, in the records API's own names and shapes, checked before anything is sent:",
         "# subjects, dates, languages, references, additional_titles, additional_descriptions, and Zenodo's own",
         "# journal:journal, imprint:imprint, thesis:university and thesis:type. For example:",
         "#   fields: {languages: [{id: eng}], dates: [{date: 2026-10, type: {id: collected}}]}",
-        "fields: {}",
-        ""])
+        line("fields", "fields: {}")]
+    if "access" in held:
+        lines += ["# Who may read the record and its files once published, where that is not everyone (public, or",
+                  "# restricted), and an embargo's end and reason.", value_line("access", held["access"])]
+    return "\n".join([*lines, ""])
 
 
-__all__ = ["CONTRIBUTOR_TYPES", "DEFAULT_LICENCE", "RELATION_TYPES", "SHARING_FILE", "SHARING_FORMAT", "Person",
-           "Related", "Sharing", "Uploader", "bare_orcid", "orcid_problem", "read_sharing", "scaffold", "sharing_path"]
+#: The keys of ``sharing.yaml`` a person repeats from record to record, which their defaults hold (:mod:`mime.push._defaults`).
+DEFAULT_KEYS = ("creators", "contributors", "keywords", "uploader", "funding")
+
+
+def defaults_refusals(held: object, path: Path, form: str) -> list[Refusal]:
+    """Every problem of a person's defaults (``held``, read from ``path``), each by its path, checked as ``sharing.yaml``
+    checks the same keys (an ORCID iD by its check digit): a key it does not hold, a value of another shape."""
+    reader = _Reader(path)
+    mapping = reader.mapping(held, "", ("format", *DEFAULT_KEYS))
+    if mapping is None:
+        return reader.refusals
+    if mapping.get("format") != form:
+        reader.problem("format", f"is {plain(repr(mapping.get('format')))}, and this MIME reads {form}", f"format: {form}")
+    people(reader, mapping, "creators")
+    people(reader, mapping, "contributors")
+    keyword_list(reader, mapping)
+    uploader_of(reader, mapping)
+    for problem in funding_problems(mapping.get("funding"))[1]:
+        where, _, what = problem.partition(": ")
+        reader.problem(where, what)
+    return reader.refusals
+
+
+__all__ = ["CONTRIBUTOR_TYPES", "DEFAULT_KEYS", "DEFAULT_LICENCE", "RELATION_TYPES", "SHARING_FILE", "SHARING_FORMAT",
+           "Person", "Related", "Sharing", "Uploader", "bare_orcid", "defaults_refusals", "identifier_problem",
+           "keyword_list", "orcid_problem", "people", "read_sharing", "ror_problem", "scaffold", "sharing_path",
+           "uploader_of", "value_line"]

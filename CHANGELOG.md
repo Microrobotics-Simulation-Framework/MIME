@@ -57,6 +57,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of a `--confirm` publish is on the screen, whole, before the request is sent; a terminal that reports 0 columns is
   drawn at 80; a hash or an address too wide for a frame is not folded; and a fault of the display's own never reaches
   what push does about the service.
+- **`mime push` and `mime pull`, easier to use** (design #212). `mime pull --from <service> <record> --signed-in` pulls
+  a record or files shared with your account, with the token `mime credentials` stored for that service, and `mime pull
+  '<share link>'` one shared by a link, with the key it carries (the link's form on the records API is a guess until a
+  sandbox session measures it); either goes to the service's own host alone, never on a redirect or through a proxy to
+  this machine, and is never printed, logged or written, and without the flag pull sends no token, its refusal naming
+  the route that works (`pull.token` where none is stored). `mime push <folder> --setup` makes or edits `sharing.yaml` a
+  field at a time in a terminal (Enter skips, `use <value>? [Y/n]` keeps, an invalid value is asked again; an existing
+  file is edited, never replaced without a word; `push.setup` without a terminal), and saves your own values (name,
+  ORCID iD, affiliation, uploader, funding) as **sharing defaults** in MIME's config directory, never in a folder, which
+  `--init` and `--setup` fill a new `sharing.yaml` from and `mime push --defaults` shows. **The NOTICE is `NOTICE.txt`
+  on a record**, which Zenodo previews, and a publish makes it the record's preview (one chosen on the draft's page is
+  kept); the bundle's member keeps its name. **A script's `--confirm` is bound to what it was shown**: every push prints
+  `--confirm <DOI>@<fingerprint>`, the DOI alone publishes a draft unchanged since the push that reserved that DOI (a
+  draft whose DOI was reserved before takes the fingerprint), a stale one is refused before any request
+  (`push.confirm-stale`), and the fingerprint is held once more immediately before the publish request, so that a push
+  landing while a publish reads the draft is caught. **A share link is read by its parts**: one on a service's host in
+  another scheme, port, host name or with a user part is refused without a word of its key, a `token` parameter is
+  hidden in every address MIME prints, quotes or logs, and `mime pull --link -` (asked with no echo) or `--link env`
+  (`MIME_SHARE_LINK`) keeps a link out of the shell's history and the process's arguments, which other accounts on the
+  machine can read. An ORCID iD and a ROR identifier are taken in ASCII digits alone, and `--setup` keeps a file's line
+  endings and the comment that ends a line it rewrites, edits a linked `sharing.yaml` through its link, refuses a
+  read-only one, and asks on the terminal where both outputs go to files.
 - **`mime run` and `mime serve` keep XLA's compilation cache** in the user's cache directory, so that the second run of
   an experiment compiles less and its numbers are the same: every program stored, the oldest entries pruned at a
   command's start once the cache passes 2 GB, `--no-xla-cache` to leave it out, `mime cache clear` to delete it, and

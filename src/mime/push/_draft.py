@@ -74,7 +74,7 @@ from mime.push._edits import (
 )
 from mime.push._fields import access_words
 from mime.push._owners import ACCESS_FIELD, FIELD_OWNERS, field_owner
-from mime.push._plan import Plan, RecordFile, make_plan, restaged, with_sharing
+from mime.push._plan import NOTICE_KEY, Plan, RecordFile, make_plan, restaged, with_sharing
 from mime.push._service import TEST_PREFIX, ZENODO, ZENODO_SANDBOX, Service
 from mime.push._sharing import read_sharing, scaffold, sharing_path
 from mime.push._state import (
@@ -85,6 +85,7 @@ from mime.push._state import (
     Published,
     Uploaded,
     clear_state,
+    confirmation,
     draft_identifier,
     metadata_marks,
     payload_identity,
@@ -200,8 +201,10 @@ def unconfirmed(what: str, action: str = "read it, then run the same command aga
 
 
 def init(folder: str | os.PathLike[str]) -> tuple[Path, bool, str | None]:
-    """Write ``sharing.yaml`` beside the saved form from what the folder knows: its path, whether it was written (an
+    """Write ``sharing.yaml`` beside the saved form from what the folder knows and the person's sharing defaults
+    (:func:`mime.push._defaults.read_defaults`, each key filled where it stands): its path, whether it was written (an
     existing one is never overwritten), and the licence the experiment declares."""
+    from mime.push._defaults import read_defaults
     from mime.saved import read_folder
 
     root = Path(os.path.abspath(folder))
@@ -210,7 +213,7 @@ def init(folder: str | os.PathLike[str]) -> tuple[Path, bool, str | None]:
     licence = document.get("licence")
     if path.exists():
         return path, False, licence
-    path.write_text(scaffold(document["experiment"], licence), encoding="utf-8", newline="\n")
+    path.write_text(scaffold(document["experiment"], licence, read_defaults()), encoding="utf-8", newline="\n")
     return path, True, licence
 
 
@@ -378,7 +381,12 @@ class Drafting:
         self.shown = False
         self.wrote = False
         self.made = False
+        self.reserved = False
         self.linked: list[str] = []
+        self.deleted: list[str] = []
+        #: Whether a publish's write sets the record's preview: not where the publish cannot be confirmed (no terminal
+        #: and no --confirm), which writes only what it wrote before the preview was set (the review of #112, I7).
+        self.previewing = True
 
     def show(self) -> None:
         if not self.shown:
@@ -507,8 +515,10 @@ class Drafting:
                     "push.service", RefusalClass.ENVIRONMENT,
                     f"{service.name} answered the DOI's reservation for the draft {record} with no DOI",
                     "run the same command again, `mime push <folder> --to <service>`")])
-            self.wrote = True
+            self.wrote = self.reserved = True
             self.detail(f"reserved the DOI {doi} for the draft {record} (registered only when it is published)")
+        elif self.made:
+            self.reserved = True  # made with its DOI: no push printed it before this one
         if service.production and doi.startswith(TEST_PREFIX):
             raise BuildRefused([_refuse(
                 "push.service", RefusalClass.ENVIRONMENT,
@@ -647,31 +657,40 @@ class Drafting:
         state = self.state
         assert state is not None and state.record is not None
         date = metadata_of(found).get("publication_date") == metadata_of(self.plan.payload).get("publication_date")
-        if not over and payload_identity(self.payload(state)) == state.sent and (date or not dated):
+        preview = dated and self.previewing and NOTICE_KEY in state.files and not chosen_preview(found)
+        if not over and payload_identity(self.payload(state)) == state.sent and (date or not dated) and not preview:
             return found
         if not over and state.sent == "" and state.published is None and edited_fields(found, state) == [] and \
-                not any(differs(name, found, self.payload(state)) for name in SHARING_KEYS):
+                not preview and not any(differs(name, found, self.payload(state)) for name in SHARING_KEYS):
             state.sent = payload_identity(self.payload(state))  # a record of P2a's, which kept no identity
             self.save()
             return found
-        return self._write(state.record, found, over)
+        return self._write(state.record, found, over, preview=preview)
 
-    def _write(self, record: str, found: Json, over: list[str]) -> Json:
+    def _write(self, record: str, found: Json, over: list[str], *, preview: bool = False) -> Json:
+        """The draft's metadata written. With ``preview`` (a publish, the NOTICE in the draft, which a preview may name
+        only once it holds it), the NOTICE is the record's preview; one chosen on the draft's page is kept, since a PUT
+        without it would reset it."""
         state = self.state
         assert state is not None
         self.show()
         body = self.payload(state)
         identity = payload_identity(body)
         body["pids"] = found.get("pids", {})
+        files = dict(cast(Json, body["files"]))
+        if preview:
+            files["default_preview"] = NOTICE_KEY
         chosen = found.get("files")
-        if isinstance(chosen, dict):  # a preview chosen on the draft's page: a PUT without it would reset it
-            body["files"] = {**cast(Json, body["files"]), **{
-                key: value for key, value in cast(Json, chosen).items() if key == "default_preview" and value}}
+        if isinstance(chosen, dict):
+            files.update({key: value for key, value in cast(Json, chosen).items() if key == "default_preview" and value})
+        body["files"] = files
         draft, errors = self.client.update_draft(record, body)
         state.written = metadata_marks(draft)
         state.sent = identity
         self.save()
         self.wrote = True
+        if preview and chosen_preview(draft) == NOTICE_KEY:
+            self.say(f"{NOTICE_KEY} is the record's preview, shown on its page (a preview chosen there is kept)")
         if over:
             self.say(f"! wrote over what was edited on the site: {', '.join(label(name) for name in over)}")
         self.detail(f"wrote the metadata of the draft {record}, from sharing.yaml and the folder")
@@ -720,6 +739,7 @@ class Drafting:
             state.files.pop(key, None)
             self.save()
             self.wrote = True
+            self.deleted.append(key)
             self.detail(f"{key}: deleted from the draft (push put it there earlier, and this plan does not hold it)")
         for file in self.plan.files:
             entry = held.get(file.key)
@@ -847,6 +867,13 @@ def version_index(draft: Json, published: Published) -> int:
     return index if isinstance(index, int) and index > published.version else published.version + 1
 
 
+def chosen_preview(draft: Json) -> str | None:
+    """The file the draft's page previews (``files.default_preview``), or ``None``."""
+    files = draft.get("files")
+    chosen = cast(dict[str, object], files).get("default_preview") if isinstance(files, dict) else None
+    return chosen if isinstance(chosen, str) and chosen else None
+
+
 def parent_id(draft: Json) -> str | None:
     parent = draft.get("parent")
     found = cast(dict[str, object], parent).get("id") if isinstance(parent, dict) else None
@@ -956,20 +983,26 @@ def send(plan: Plan, state: DraftState | None, client: Client, say: Say = _quiet
         raise
     assert state.record is not None and state.page is not None and state.doi is not None
     service = plan.service.name
+    if drafting.reserved:
+        state.shown = confirmation(state)  # the draft as the push that reserved its DOI, the first to print it, left it
+        drafting.save()
     if not drafting.wrote:
-        say(f"{plain(plan.experiment)!r} is unchanged: the draft {state.record} on {service} holds it as it is, and "
-            f"nothing was sent: {state.page}")
+        say(f"{plain(plan.experiment)!r} is unchanged (a script publishes it with `--confirm {confirmation(state)}`): "
+            f"the draft {state.record} on {service} holds it as it is, and nothing was sent: {state.page}")
         return Drafted(state.record, state.page, state.doi, state.concept, (), tuple(kept_keys), False, state.version)
     if drafting.made:
         made = f"version {state.version} of {state.published.doi}'s concept" if state.published is not None else \
             "a first version"
         say(Said(f"made the draft {state.record} ({made}) and reserved its DOI {state.doi}", DONE))
     linked = [key for key in kept_keys if key in drafting.linked]
+    deleted = (f", deleted {', '.join(plain(key) for key in drafting.deleted)}, which push put in the draft earlier "
+               f"and this plan does not hold" if drafting.deleted else "")
     say(Said((f"uploaded {len(sent)} file{'s' if len(sent) != 1 else ''} "
               f"({size_text(sum(file.size for file in drafting.plan.files if file.key in sent))})" if sent else
-              "no file sent") + (f", linked {len(linked)} from the version before" if linked else "") +
+              "no file sent") + (f", linked {len(linked)} from the version before" if linked else "") + deleted +
              f"; the draft holds the {len(drafting.plan.files)} record files, each md5 verified", DONE))
-    say(f"Nothing is published: look at the draft, then `mime push <folder> --to {service} --publish`.")
+    say(f"Nothing is published: look at the draft, then `mime push <folder> --to {service} --publish` (a script "
+        f"confirms this draft, as it is now, with `--confirm {confirmation(state)}`).")
     say(Said(state.page, LINK))
     return Drafted(state.record, state.page, state.doi, state.concept, tuple(sent), tuple(kept_keys), True,
                    state.version)
@@ -1021,6 +1054,8 @@ def status(folder: str | os.PathLike[str], service: Service, *, say: Say = _quie
             f"asks about each in a terminal; {KEEP_FLAG} keeps them, {OVERWRITE_FLAG} writes over them)")
     say(f"  status: {plain(str(draft.get('status', 'draft')))}, published: {draft.get('is_published') is True}; "
         f"reserved DOI: {doi_of(draft) or 'none'}; concept: {parent_id(draft) or 'none'}")
+    if state.doi is not None and doi_of(draft) == state.doi:
+        say(f"  a script publishes it, as push last wrote and checked it, with `--confirm {confirmation(state)}`")
     say(f"  title: {plain(str(held.get('title', '')))}")
     say(f"  creators: {'; '.join(_names(held.get('creators')))}")
     say(f"  licences: {'; '.join(_rights(held.get('rights')))}")

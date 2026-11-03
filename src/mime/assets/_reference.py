@@ -40,6 +40,24 @@ def _invalid(name: str, problem: str) -> BuildRefused:
         "sha256=..., size=..., licence=..., locations=(...))")])
 
 
+#: An access key an address carries as its ``token`` parameter (a record's share link's, or a service's own form): never
+#: printed, quoted or logged with the address.
+_KEY_PARAMETER = re.compile(r"([?&;]token=)[^&#\s'\"]*", re.IGNORECASE)
+#: What an access key is said as.
+KEY_HIDDEN = "<hidden>"
+
+
+def redacted(text: str) -> str:
+    """``text`` with the value of every ``token`` parameter of an address in it hidden: what a line, a refusal or a log
+    says of an address, which may carry an access key."""
+    return _KEY_PARAMETER.sub(lambda found: found.group(1) + KEY_HIDDEN, text)
+
+
+def carries_key(text: str) -> bool:
+    """Whether ``text`` holds an address's ``token`` parameter, which :func:`redacted` hides."""
+    return _KEY_PARAMETER.search(text) is not None
+
+
 def location_problem(location: str) -> str | None:
     """Why ``location`` is not a form pooch is handed, or ``None``: an ``https://`` URL with a host, or
     ``doi:<doi>/<file>``, or ``http://`` to a loopback host (``127.0.0.1``, ``localhost`` or ``[::1]``).

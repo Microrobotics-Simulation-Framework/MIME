@@ -9,14 +9,19 @@ concept DOI.**
 
 ```
 mime push <folder> --to zenodo|zenodo-sandbox            # the plan, then the draft and its files (no question)
-mime push <folder> --to <service> --publish [--confirm <DOI>]   # publish the draft: cannot be undone
+mime push <folder> --to <service> --publish [--confirm <DOI>[@<fingerprint>]]   # publish the draft: cannot be undone
 mime push <folder> --to <service> --init                 # write sharing.yaml, the record's credit
+mime push <folder> --setup                               # make or edit sharing.yaml a field at a time, in a terminal
+mime push --defaults                                     # your sharing defaults, and where they live
 mime push <folder> --to <service> --status               # the draft as the service holds it
 mime push <folder> --to <service> --discard              # delete the draft (only a draft can be deleted)
 mime push <folder> --to <service> --full-plan            # the full plan: every file and every field
 mime push <folder> --to <service> --keep-site-edits      # keep each edit made on the site, into sharing.yaml
 mime push <folder> --to <service> --overwrite-site-edits # write over each edit made on the site
 mime pull --from zenodo|zenodo-sandbox <record>          # a published record, by its number
+mime pull --from <service> <record> --signed-in          # one shared with your account, with its stored token
+mime pull '<site>/records/<record>?token=...'            # one shared by a link, with the key it carries
+mime pull --link -                                       # the same, the link asked for with no echo
 ```
 
 A private draft is made without a question (the plan is shown first, `--discard` undoes it). `--yes` answers
@@ -48,8 +53,33 @@ each key explained; an existing one is never overwritten. It is read with YAML's
 | `fields` | any other field of the record, in the records API's own names and shapes, held to those shapes by path before anything is sent: `subjects`, `dates`, `languages`, `references`, `additional_titles`, `additional_descriptions`, and Zenodo's custom fields `journal:journal`, `imprint:imprint`, `thesis:university`, `thesis:type`; a field MIME builds, or one `sharing.yaml` has a key for, is refused here by name |
 
 A key missing, unknown or of another type is refused by its path (`push.sharing`); no creator, or an ORCID iD whose
-form or check digit is wrong, as `push.creators`. `pack` neither carries nor refuses the file, and `mime card` names
+form or check digit is wrong, as `push.creators`. An ORCID iD's digits are ASCII ones, and a ROR identifier's: a
+full-width or another script's digit, which a terminal shows as a digit, is refused wherever either is read
+(`sharing.yaml`, the defaults, `--setup`). `pack` neither carries nor refuses the file, and `mime card` names
 its creators.
+
+**`--setup`** walks through it a field at a time, in the order above, each with one line on what it is for, in a
+terminal only (`push.setup` otherwise, naming `--init`), through the command line's own question path. **Enter skips** a
+field; **a field that holds a value already** (what the file holds, or a default where the file is new) is asked as
+`use <value>? [Y/n]`: Enter or `y` keeps it, `n` asks for another; **a value that is not valid is said and asked
+again**, by the same checks (an ORCID iD by its check digit, a ROR identifier by its form, DataCite's contributor types
+and relations, the experiment's own licence). `fields` is written by hand, and said so. At the end a new file is written
+as `--init` writes one, each value in its place; an existing file is edited key by key, every other line and comment
+kept (the comment that ends a changed key's own line is kept on its new one; a comment inside its old value goes with
+it), and the keys it changed are said. An existing file keeps its line endings (CRLF stays CRLF), one that is a link is
+edited through its link, which stays a link, and a read-only one is refused before anything is asked (`push.sharing`):
+it is never replaced. With standard output and standard error both redirected to files, the questions go to the
+terminal (`/dev/tty`), never into the file; with no terminal to show them on, it is refused (`push.setup`). Defaults
+are offered for a new file only: an existing file's empty fields are asked as empty. `--setup` takes no flag of a push
+or a publish (`--confirm`, `--yes`, `--full-plan`, the site-edit flags), nor does `--defaults`. What push would refuse
+in it as it stands is said, not refused.
+
+**Sharing defaults.** A person's own values, the ones repeated from record to record (`creators`, `contributors`,
+`keywords`, `uploader`, `funding`, in `sharing.yaml`'s shapes and held to its checks, an ORCID iD by its check digit), are
+kept once, in MIME's config directory (`platformdirs`, `sharing-defaults.yaml` beside the credentials file), never in an
+experiment's folder. `--init` fills a new `sharing.yaml` from them, `--setup` offers each for a new one (an existing
+file's empty fields are asked as empty) and asks at its end whether to save what it set as them (`[y/N]`), and `mime
+push --defaults` shows them and where they live. A token MIME holds is never saved in them.
 
 ## The plan
 
@@ -174,7 +204,19 @@ declarations a person confirmed in a terminal for exactly these bytes (push's re
 of the whole declaration, its files' sha256 among them), and is refused otherwise (`push.permission-unconfirmed`).
 **The record number is typed** (never `y`, which a hand types by habit); a script passes `--confirm <DOI>`, which must
 be the draft's reserved DOI (`push.not-confirmed`, before any request), and without either nothing is published
-(`push.unconfirmed`).
+(`push.unconfirmed`). **A script's confirmation is bound to what it was shown** (design #212): every push prints,
+beside the DOI, a short fingerprint of what the draft holds as it left it (the identity of its metadata, the
+publication date aside, and each file's size, md5 and sha256), as `--confirm <DOI>@<fingerprint>`, and `--status`
+prints it too. The DOI alone confirms the draft as the push that reserved that DOI, the first to print it, left it, as
+#171 asked; once a push has changed the draft (the folder pushed again, a site edit kept), the DOI alone is refused
+before any request (`push.confirm-stale`), as is a fingerprint the draft no longer holds, and the refusal names no
+fingerprint a script could retry with unseen. A draft whose DOI was reserved before push kept a record of what it
+showed (#100's pushes) is confirmed by `<DOI>@<fingerprint>` alone, changed or not: no later push stands for the one
+that printed its DOI. The fingerprint is held to push's record of the draft, and the checks above hold the draft to
+it: the folder's files (`push.folder-changed`) and `sharing.yaml` (`push.metadata-changed`) as push last wrote them.
+**It is held once more immediately before the request**, computed from what the publish is about to publish (the files
+the draft, read again, holds, and the metadata push writes as the publish read the folder; an edit made on the site is
+held by its own flags): a push that lands while the publish reads the draft is refused there (`push.confirm-stale`).
 
 **Read again immediately before the request.** The prompt can wait for hours, and the plan's own advice is to look at
 the draft's page, so after the number, and before the one request that cannot be undone, the draft is read again: its
@@ -194,6 +236,15 @@ answer lost, or the site's button) goes straight to the checks, once the record 
 (`push.draft-foreign` otherwise), and publishes nothing. The request is sent again only after an answer of too many
 requests, which refuses it unread; a service unavailable, whatever it states, is an answer lost. A folder that is read-only cannot have its lock written, and on
 production that is refused before the request (`push.lock-unwritten`).
+
+**The NOTICE as the record's preview.** The record holds the bundle's `NOTICE` as `NOTICE.txt`: Zenodo picks a
+previewer by a file's extension (its plain text one takes `.txt`, its Markdown one `.md`), and a `NOTICE` with none was
+shown no preview (the maintainer's sandbox session); the NOTICE is plain text, whose indented lines a Markdown renderer
+would run together. The bundle's member keeps its name, so `mime pack` makes the bundle it always made. A publish makes
+it the record's preview (`files.default_preview`), written with the publish's own write of the draft, since the records
+API refuses a preview naming a file the draft does not hold yet (InvenioRDM's source reads so; not measured); a preview
+chosen on the draft's page is kept. `mime pull` downloads the bundle alone, which carries the same NOTICE, held to its
+hash; `NOTICE.txt` is not downloaded, and `mime card <folder> --notice` writes it again, byte for byte.
 
 **The checks afterwards.** The version is recorded first, each file as the record's own listing holds it, never as the
 folder holds it now: whatever the folder became, `unchanged since` is true of the record, and a re-saved folder's next
@@ -233,7 +284,24 @@ comes). `--discard` of a new version's draft keeps the published versions.
 
 `mime pull --from zenodo-sandbox <record>` (or `--from zenodo`) reads the published record by its number at the
 service's records API, with no token, and pulls its one bundle by its address there, held to the md5 and size the
-record states; it says which version it is and whether a newer one exists. A DOI under DataCite's test prefix (the
+record states; it says which version it is and whether a newer one exists. **A record not public** is read only when
+asked: `--signed-in` sends the token `mime credentials` stored for that service (a record or files shared with that
+account), and `mime pull '<site>/records/<record>?token=...'` the key a record's share link carries. Either travels as
+push's token does: to the service's own API host alone, never on a redirect (a file's store is asked with nothing of
+either), never through a proxy to a service on this machine, and never in a refusal, a traceback, a log, a printed
+line or a file; a link is said by its record, and held as a `Token` from the moment pull takes it, so that no frame
+below the caller holds it as text. **A link is read by its parts**, never its spelling: an address that carries a key
+on a service's host, a name below it (`www.`) or the DOI resolver's, and is not a record's link in that service's own
+scheme, host and port (`http://` for `https://`, another port or host name, a user part), is refused without its key
+(`pull.source`); a written-out default port, an upper-case scheme or host and a trailing dot are the same address. An
+address elsewhere that carries a `token` parameter is pulled as it was, its value hidden (`token=<hidden>`) in every
+line, refusal and log line that says it. **`mime pull --link -`** asks for the link with no echo, and **`--link env`**
+reads it from `MIME_SHARE_LINK`: a link given as an argument stays in the shell's history and, while pull runs, in its
+arguments, which other accounts on the machine can read unless `/proc` is mounted with `hidepid`. **That the records
+API takes a link's key as the parameter `token` is a guess** (InvenioRDM's, recalled) until a sandbox session makes a
+link and pulls it. Without either, `pull.restricted`
+names `--signed-in` where a token is stored, and how to store one where none is. An asset the record holds beside the
+bundle is fetched as before, with no token. A DOI under DataCite's test prefix (the
 sandbox's) is never resolved through doi.org, in any spelling of its address (`www.`, `dx.`, a port, an encoded slash):
 `mime pull` of one is refused with the `--from` command (`pull.sandbox-doi`), and an asset location under it is never
 tried there. A production DOI is pulled through doi.org

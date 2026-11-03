@@ -73,7 +73,11 @@ DOI_FIELDS = ("publisher", "publication_date", "creators", "title", "resource_ty
 
 #: The keyword every record push makes carries: the uncurated index of MIME's experiments (design §4).
 KEYWORD = "mime-experiment"
-NOTICE_KEY = "NOTICE"
+#: The record file that holds the bundle's ``NOTICE``, byte for byte. Zenodo chooses a previewer by a file's extension
+#: (its plain text one takes ``.txt``, its Markdown one ``.md``), and a ``NOTICE`` with none was shown no preview (the
+#: sandbox session, 2026-11-02). The NOTICE is plain text, indented lines a Markdown renderer would run together, so
+#: ``.txt``. The bundle's member keeps its name.
+NOTICE_KEY = "NOTICE.txt"
 _CHUNK = 1 << 20
 _ZENODO_LOCATION = re.compile(r"doi:10\.(?:5281|5072)/zenodo\.\d+/|https://(?:sandbox\.)?zenodo\.org/")
 _SANDBOX_LOCATION = re.compile(r"doi:10\.5072/|https://sandbox\.zenodo\.org/")
@@ -711,7 +715,8 @@ def _packed(root: Path, service: Service, staged: Path, bundle_name: str, lock: 
         if publication is None else f"the bundle, its lock naming the record {publication['doi']}"
     return [_record_file(bundle.name, bundle, None, what),
             _record_file(NOTICE_KEY, notice_path, None,
-                         "each file's licence, credit, verdict and declared permission (the bundle carries it too)")
+                         "each file's licence, credit, verdict and declared permission: the NOTICE the bundle carries, "
+                         "under a name Zenodo previews")
             ], held
 
 

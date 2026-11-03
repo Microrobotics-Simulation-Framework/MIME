@@ -445,7 +445,7 @@ def test_the_checks_after_publishing_find_a_record_that_differs(toy: Path, tmp_p
     def tampered(record) -> None:  # noqa: ANN001
         real(record)
         record.body["metadata"]["title"] = "Changed in publishing"
-        record.files["NOTICE"].data = b"other bytes"
+        record.files["NOTICE.txt"].data = b"other bytes"
 
     monkeypatch.setattr(fake, "_published", tampered)
     with pytest.raises(BuildRefused) as refused:
@@ -488,7 +488,7 @@ def test_a_changed_folder_is_a_new_version_whose_unchanged_files_are_linked(toy:
     service = fake.service()
     folder = copy_of(toy, tmp_path)
     pushed(folder, fake, service)
-    assert set(fake.records[NUMBER].files) == {"full_toy.mimebundle", "NOTICE", with_asset}
+    assert set(fake.records[NUMBER].files) == {"full_toy.mimebundle", "NOTICE.txt", with_asset}
     published(folder, fake, service, Terminal(typed=(NUMBER,)))
     person = Terminal()
     same = pushed(folder, fake, service, person)
@@ -501,7 +501,7 @@ def test_a_changed_folder_is_a_new_version_whose_unchanged_files_are_linked(toy:
     assert drafted.version == 2 and version.parent == fake.records[NUMBER].parent and version.index == 2
     assert fake.puts(with_asset) == 1 and version.files[with_asset].data == TABLE, \
         "the unchanged asset is linked from version 1, never uploaded again"
-    assert version.files[with_asset].linked == NUMBER and fake.puts("NOTICE") == 2, "the changed NOTICE is sent"
+    assert version.files[with_asset].linked == NUMBER and fake.puts("NOTICE.txt") == 2, "the changed NOTICE is sent"
     assert published(folder, fake, service, Terminal(typed=(drafted.record,))) is not None
     lock = _stage.publication_of(_lock_in(held_bundle(fake, drafted.record)))
     assert lock is not None and lock["version"] == 2 and lock["concept_doi"] == fake.concept_doi(NUMBER)

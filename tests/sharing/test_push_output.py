@@ -1,8 +1,13 @@
 """What ``mime push`` and ``mime pull`` print when output is not going to a terminal is byte for byte what #100 printed:
-a script, CI's log and Modal read it. The oracle is a transcript of a session of nine commands (two pushes of a toy,
-a site edit kept, a push of a toy with three layers, its status, a publish refused for want of a terminal, a publish by
-number, a pull and ``--init``), written from the commit before the display existed (``push_output_piped.txt``); the
-session is run again here against the offline fake, and compared as it stands.
+a script, CI's log and Modal read it. The oracle is a transcript of a session of ten commands (two pushes of a toy,
+a site edit kept, a push of a toy with three layers, its status, a publish refused for want of a terminal, a publish
+refused for a stale ``--confirm``, a publish by the confirmation the last push printed, a pull and ``--init``), written
+from the commit before the display existed (``push_output_piped.txt``) and extended since by what the pushes and pulls
+added that no display draws (the NOTICE as ``NOTICE.txt`` and the record's preview, the ``--confirm`` every push prints
+and the stale confirmation's refusal; then, from the review of #112, the sharing defaults shown, ``--setup`` with no
+terminal, ``--init`` from the defaults, and the record restricted and pulled with no token, signed in and by its share
+link read from the environment, seven commands more); the session is run again here against the offline fake, and
+compared as it stands.
 
 Controls, each caught on every run:
 
@@ -32,7 +37,7 @@ import pytest
 from _platform_support import needs_pty
 from _terminal_support import screen_of, stripped, terminal
 from push_cases import copy_of, with_token
-from push_output_scenario import Run, build, session
+from push_output_scenario import LINK_KEY, Run, build, session
 from zenodo_records import FakeRecords, served
 
 import mime.cli
@@ -93,8 +98,10 @@ def test_the_oracle_holds_what_it_is_the_oracle_of():
     for words in ("Pushing 'full_toy' to the fake of zenodo-sandbox", "  by reference, never uploaded: scene/layers/arm_visual.usda",
                   "! 1 permission declared", "Publishing 'full_toy' on zenodo-sandbox as 10.5072/zenodo.629525",
                   "push.permission-unconfirmed", "kept what was edited on the site", "Bundle 'full_toy' unpacked",
-                  "[exit 0]", "[exit 2]", "<fake>/uploads/629525"):
+                  "[exit 0]", "[exit 2]", "<fake>/uploads/629525", "your sharing defaults", "push.setup",
+                  "filled from your sharing defaults", "pull.restricted", "--signed-in", "$ mime pull --link env"):
         assert words in text, words
+    assert LINK_KEY not in text, "a share link's key is in no line"
     assert "\x1b" not in text
 
 
@@ -325,7 +332,7 @@ def test_every_word_the_pipe_gets_is_on_the_terminal_too_in_the_whole_session(bu
     with on_terminals(monkeypatch) as run:
         shown = session(work, fake, run)
     expected = ORACLE.read_text(encoding="utf-8")
-    assert len(blocks(shown)) == len(blocks(expected)) == 9
+    assert len(blocks(shown)) == len(blocks(expected)) == 17
     for drawn, piped in zip(blocks(shown), blocks(expected), strict=True):
         text = words(stripped(drawn))
         for line in piped.split("[stderr]")[0].splitlines():
@@ -549,7 +556,7 @@ def test_a_display_that_raises_does_not_refuse_the_push_it_is_drawing(built: Pat
         display.close()
     assert display.failed and len(drafted.uploaded) == 2
     assert {key: entry.data for key, entry in fake.records["629525"].files.items()}.keys() == {
-        "full_toy.mimebundle", "NOTICE"}
+        "full_toy.mimebundle", "NOTICE.txt"}
 
 
 # --- a stranger's name on a terminal --------------------------------------------------------------------------------

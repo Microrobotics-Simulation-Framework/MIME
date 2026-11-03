@@ -30,6 +30,17 @@ which it makes of the family and given names, as InvenioRDM does (recalled); a r
 ``status`` and an embargo that is not active, and a draft's ``files`` with its ``default_preview`` (both recalled);
 communities and the vocabularies' contents (only the SPDX ids ``packaging`` lists, in lower case, are known here).
 
+**Reading what is not public** (``mime pull --signed-in`` and share links): a published record whose ``access`` keeps the
+record or its files restricted answers anyone else a ``403`` (its files' listing measured on the sandbox, 2026-11-02;
+the record's own reading and a file's content alike, guesses), and is read by the owner's token, by a token in
+``readers`` (an account it is shared with: a guess at how a share with a person reads through the API), and by a
+request whose ``token`` parameter is the record's share link's key, in ``links`` (**a guess**: InvenioRDM's secret
+links read ``token`` from a request's arguments, recalled, not measured; a sandbox session makes a link and pulls it).
+Every request's method, path, parameters and ``Authorization`` header are kept in ``seen``, so a test can say where a
+token or a key went. **A draft's ``files.default_preview`` naming a file the draft does not hold** is refused with a
+``400`` naming the field: InvenioRDM's ``FilesManager`` raises for a key it does not hold, read in its source
+(invenio-records-resources), not measured.
+
 **Publishing and versions are guesses too** (push's P2b, before the sandbox session that measures them): ``POST
 .../draft/actions/publish`` answers ``202`` with the published record, keeps the reserved DOI and mints the concept's
 DOI as ``<prefix>/zenodo.<parent id>``, and refuses a draft missing a field DataCite needs with a ``400`` naming it; a
@@ -63,7 +74,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 
@@ -190,6 +201,12 @@ class FakeRecords:
         self.next_id = first
         self.records: dict[str, Record] = {}
         self.requests: list[tuple[str, str, bool, int | str]] = []
+        #: Every request's method, path, parameters (the query) and ``Authorization`` header, as it came.
+        self.seen: list[tuple[str, str, str, str | None]] = []
+        #: Tokens of the accounts a published record is shared with, which read it where it is restricted.
+        self.readers: set[str] = set()
+        #: Each record's share link's key, by the record's id.
+        self.links: dict[str, str] = {}
         self.faults: list[Fault] = []
         self.clock = 1_793_495_499
         self.lock = threading.Lock()
@@ -272,6 +289,8 @@ class FakeRecords:
     def _handle(self, method: str, url: str, headers: dict[str, str], body: bytes | None) -> Answer:
         assert url.startswith(self.api + "/"), f"a request to {url}, outside the fake's API"
         path = urlsplit(url).path.removeprefix(urlsplit(self.api).path)
+        query = urlsplit(url).query
+        self.seen.append((method, path, query, headers.get("authorization")))
         rdm = headers.get("accept") == RDM_TYPE
         fault = self._fault(method, path)
         kind = fault.kind if fault is not None else None
@@ -288,7 +307,8 @@ class FakeRecords:
                                 json.dumps(fault.body or {"status": fault.status, "message": "planted"}).encode(),
                                 fault.headers)
         if headers.get("authorization") != "Bearer " + (self._token.reveal() if isinstance(self._token, Token)
-                                                         else self._token) and not self._public(method, path):
+                                                         else self._token) and not self._public(method, path) and \
+                not self._shared(method, path, query, headers.get("authorization")):
             self.requests.append((method, path, rdm, 403))
             return self._answer(*_json(403, {"status": 403, "message": "Permission denied."}))
         if kind == "cut" and method == "PUT" and path.endswith("/content"):
@@ -315,7 +335,8 @@ class FakeRecords:
     def _public(self, method: str, path: str) -> bool:
         """Whether anyone may make this request without a token: reading a published record and its files, unless the
         record keeps its files restricted (a 403 to its listing, measured on the sandbox, 2026-11-02; its content alike,
-        a guess). Anything else is a 403 without the token, a draft's reading among them (a guess, not measured)."""
+        a guess), or itself (its reading too, a guess). Anything else is a 403 without the token, a draft's reading
+        among them (a guess, not measured)."""
         found = re.fullmatch(r"/records/(\d+)(/files(/[^/]+/content)?|/versions/latest)?", path)
         record = self.records.get(found.group(1)) if found is not None else None
         if method == "GET" and found is not None and found.group(2) is None and record is None:
@@ -326,7 +347,22 @@ class FakeRecords:
         files_restricted = isinstance(access, dict) and "restricted" in (access.get("record"), access.get("files"))
         if found is not None and (found.group(2) or "").startswith("/files") and files_restricted:
             return False
+        if found is not None and found.group(2) is None and isinstance(access, dict) and \
+                access.get("record") == "restricted":
+            return False
         return record.published or found is not None and found.group(2) == "/versions/latest"
+
+    def _shared(self, method: str, path: str, query: str, authorization: str | None) -> bool:
+        """Whether a published record (and its files) is shared with this request: a token of an account it is shared
+        with (``readers``), or the record's share link's key as the ``token`` parameter (``links``, a guess)."""
+        found = re.fullmatch(r"/records/(\d+)(/files(/[^/]+/content)?|/versions/latest)?", path)
+        record = self.records.get(found.group(1)) if found is not None else None
+        if method != "GET" or record is None or not record.published:
+            return False
+        if authorization is not None and authorization.removeprefix("Bearer ") in self.readers:
+            return True
+        keys = parse_qs(query).get("token", [])
+        return record.id in self.links and keys == [self.links[record.id]]
 
     def _answer(self, status: int, content_type: str, data: bytes, extra: Mapping[str, str] | None = None) -> Answer:
         self.clock += 1
@@ -406,6 +442,8 @@ class FakeRecords:
             if open_draft is not None:
                 return self._draft_answer(open_draft, rdm, status=201)  # a guess: the concept's open new version
             body = json.loads(json.dumps(record.body))
+            if isinstance(body.get("files"), dict):  # InvenioRDM copies a preview only where the copy holds its file (read)
+                body["files"]["default_preview"] = None
             draft = Record(str(self.next_id), record.parent, body, index=max(
                 each.index for each in self._versions_of(record.parent)) + 1)
             self.next_id += 1
@@ -417,6 +455,9 @@ class FakeRecords:
                 return _json(400, {"status": 400, "message": "There is no previous version to import files from."})
             for key, entry in previous.files.items():
                 record.files[key] = Entry(key, entry.data, "completed", entry.checksum, entry.linked or previous.id)
+            chosen = _chosen_preview(previous.body.get("files"))
+            if chosen in record.files and isinstance(record.body.get("files"), dict):  # copied with its file (read)
+                record.body["files"]["default_preview"] = chosen  # type: ignore[index]
             return self._files_answer(record, rdm, 201)
         if action == "versions/latest" and method == "GET":
             latest = self._latest(record.parent)
@@ -467,6 +508,12 @@ class FakeRecords:
         if refused is not None:
             return refused
         assert held is not None
+        files_held = held.get("files")
+        preview = files_held.get("default_preview") if isinstance(files_held, dict) else None
+        if preview and preview not in record.files:  # InvenioRDM's FilesManager raises for a key it does not hold (read)
+            return _json(400, {"status": 400, "message": "A validation error occurred.",
+                               "errors": [{"field": "files.default_preview",
+                                           "messages": [f'No file with key "{preview}"']}]})
         record.body = held
         record.revision += 2
         if "pids" not in held:
@@ -494,6 +541,9 @@ class FakeRecords:
         if action is None:
             if method == "DELETE":
                 del record.files[key]
+                files = record.body.get("files")
+                if isinstance(files, dict) and files.get("default_preview") == key:  # as InvenioRDM's delete does (read)
+                    files["default_preview"] = None
                 return 204, "text/html; charset=utf-8", b""
             return self._entry_answer(record, entry, rdm)
         if action == "/content" and method == "PUT":

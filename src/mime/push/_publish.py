@@ -18,7 +18,14 @@ apt-style** (``y`` to declare it), worded as the public statement it becomes, in
 answers one, and a publish without a terminal goes ahead only for declarations confirmed in a terminal for exactly
 these bytes (``push.permission-unconfirmed`` otherwise). **The publish itself is behind the record number, typed**
 (never ``y``, which a hand types by habit), or ``--confirm <DOI>`` from a script, which must be the draft's reserved
-DOI (``push.not-confirmed``), so a script cannot publish another draft than the one it was shown.
+DOI (``push.not-confirmed``), so a script cannot publish another draft than the one it was shown. **A script's
+confirmation is bound to what it was shown** (design #212 (5)): the DOI alone confirms the draft as the push that
+reserved that DOI, the first to print it, left it; once a push has changed it, or where the DOI was reserved before
+push kept that record, ``--confirm <DOI>@<fingerprint>``, with the fingerprint every push prints beside the DOI
+(:func:`mime.push._state.fingerprint`), and nothing else (``push.confirm-stale``, before any request). The fingerprint
+is computed once more from what the publish is about to publish (the files the draft, just read again, holds, and the
+metadata push writes as the publish read the folder), and held to the confirmation immediately before the request: a
+push that lands while the publish reads the draft is caught there.
 
 **Never sent twice.** An answer lost is followed by reading the record: published, push goes on to the checks; not, it
 stops, and the next run reads the record again before it does anything. A run that finds the draft already published
@@ -42,6 +49,7 @@ and what was edited on the record's page since, and refuses nothing.
 from __future__ import annotations
 
 import os
+import re
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -95,10 +103,14 @@ from mime.push._stage import lock_unwritten, publication_of, rewrite_lock
 from mime.push._state import (
     ACCESS,
     CUSTOM,
+    FINGERPRINT_LENGTH,
     DraftState,
     Published,
     Uploaded,
+    confirmation,
     declaration_identity,
+    fingerprint,
+    fingerprint_of,
     metadata_marks,
     payload_identity,
     read_state,
@@ -106,6 +118,9 @@ from mime.push._state import (
 )
 
 type Typed = Callable[[str], str]
+
+#: A fingerprint as ``--confirm <DOI>@<fingerprint>`` gives it.
+_FINGERPRINT = re.compile(rf"[0-9A-Fa-f]{{{FINGERPRINT_LENGTH}}}")
 
 #: What publishing means on production, in Zenodo's own terms (its API and help pages, read 2026-11-01).
 PRODUCTION_FACTS = ("This cannot be undone. The DOI is registered for good. Zenodo lets the record's owner delete it "
@@ -191,7 +206,8 @@ def _number(state: DraftState, confirm: str | None, typed: Typed | None, say: Sa
     if typed is None:
         raise unconfirmed(f"publishing the draft {state.record}", f"type its number in a terminal, or pass its DOI "
                                                                   f"from a script, `mime push <folder> --to "
-                                                                  f"{service.name} --publish --confirm {state.doi}`")
+                                                                  f"{service.name} --publish --confirm "
+                                                                  f"{_confirmed_by(state)}`")
     answer = typed(Said(f"Type the record number to publish ({state.record}): ", QUESTION_NUMBER)).strip()
     if answer != state.record:
         say(Said(f"Not published: {plain(answer)!r} is not the record number {state.record}." if answer else
@@ -200,14 +216,83 @@ def _number(state: DraftState, confirm: str | None, typed: Typed | None, say: Sa
     return True
 
 
+def _parts(confirm: str) -> tuple[str, str | None]:
+    """``--confirm``'s DOI and its fingerprint (``<DOI>@<fingerprint>``), or the whole of it and ``None``."""
+    given = confirm.strip()
+    named, at, mark = given.rpartition("@")
+    return (named, mark.lower()) if at and _FINGERPRINT.fullmatch(mark) else (given, None)
+
+
 def _held_to(state: DraftState, confirm: str | None, service: Service) -> None:
-    if confirm is not None and confirm.strip() not in (state.doi, f"https://doi.org/{state.doi}"):
+    if confirm is not None and _parts(confirm)[0] not in (state.doi, f"https://doi.org/{state.doi}"):
         raise BuildRefused([_refuse(
             "push.not-confirmed", RefusalClass.USER,
             f"--confirm names {plain(confirm)}, and the draft push would publish on {service.name} reserved "
             f"{state.doi}: a script publishes only the draft it was shown; nothing was sent",
             f"pass the draft's DOI, `--confirm {state.doi}`, after reading its plan, `mime push <folder> --to "
             f"{service.name} --status`")])
+    if confirm is not None:
+        _stale(state, confirm, service)
+
+
+def _first_shown(state: DraftState) -> str | None:
+    """The draft's fingerprint as the push that first printed its DOI left it, or ``None`` where push has no record of
+    it."""
+    return state.shown.removeprefix(f"{state.doi}@") if state.shown.startswith(f"{state.doi}@") else None
+
+
+def _confirmed_by(state: DraftState) -> str:
+    """What ``--confirm`` takes for the draft as it is: its DOI alone while it is what the push that first printed that
+    DOI left, and its DOI and fingerprint once a push changed it."""
+    return str(state.doi) if _first_shown(state) == fingerprint(state) else confirmation(state)
+
+
+def _stale(state: DraftState, confirm: str, service: Service) -> None:
+    """A ``--confirm`` bound to what was shown (design #212 (5)): the DOI alone confirms the draft as the push that first
+    printed that DOI left it, and ``<DOI>@<fingerprint>`` the draft that holds exactly what that fingerprint was printed
+    for. Any other is refused before any request (``push.confirm-stale``): the draft changed since the confirmation was
+    printed, and a script publishes only what it was shown."""
+    _, mark = _parts(confirm)
+    now = fingerprint(state)
+    if mark is not None and mark == now:
+        return
+    if mark is None and _first_shown(state) == now:
+        return
+    if mark is not None:
+        why = (f"--confirm names {state.doi} with the fingerprint {mark}, and the draft {state.record} on "
+               f"{service.name} no longer holds what that fingerprint was printed for: a push changed it since")
+    elif _first_shown(state) is None:
+        why = (f"--confirm names the DOI {state.doi} alone, which confirms the draft {state.record} only as the push "
+               f"that first printed that DOI left it, and push has no record of the draft as it was then")
+    else:
+        why = (f"--confirm names the DOI {state.doi} alone, which confirms the draft {state.record} only as the push "
+               f"that first printed that DOI left it, and a push changed the draft since")
+    raise BuildRefused([_refuse(
+        "push.confirm-stale", RefusalClass.USER,
+        f"{why}: a script publishes only what it was shown; nothing was sent",
+        f"read the draft as it is now, `mime push <folder> --to {service.name} --status`, which prints the fingerprint "
+        f"beside its DOI as every push does, then pass both, `--confirm {state.doi}@<fingerprint>`")])
+
+
+def _bound_at_post(plan: Plan, state: DraftState, confirm: str, service: Service, sent: str) -> None:
+    """A script's confirmation held once more, immediately before the publish request, to the fingerprint of what the
+    publish is about to publish, as a fingerprint covers it: the plan's files, which :func:`_held_at_post` has just
+    found the draft holding, and ``sent``, the identity of the metadata push writes as the publish read the folder
+    (an edit made on the site, which a fingerprint does not cover, is held by its own flags). A push that landed while
+    the publish read the draft changed what the confirmation was printed for, and nothing is published
+    (``push.confirm-stale``)."""
+    _, mark = _parts(confirm)
+    bound = mark if mark is not None else _first_shown(state)
+    now = fingerprint_of(sent, {file.key: Uploaded(file.size, file.md5, file.sha256) for file in plan.files})
+    if bound == now:
+        return
+    raise BuildRefused([_refuse(
+        "push.confirm-stale", RefusalClass.USER,
+        f"--confirm names {state.doi}" + (f" with the fingerprint {mark}" if mark is not None else " alone") +
+        f", and the draft {state.record} on {service.name}, read again immediately before the publish, no longer holds "
+        f"what that confirmation was printed for: a push changed it while this publish read it; nothing was published",
+        f"read the draft as it is now, `mime push <folder> --to {service.name} --status`, which prints the fingerprint "
+        f"beside its DOI as every push does, then pass both, `--confirm {state.doi}@<fingerprint>`")])
 
 
 def _named(names: list[str], found: Json, body: Json) -> list[str]:
@@ -323,6 +408,7 @@ def publish(folder: str | os.PathLike[str], service: Service, *, confirm: str | 
         raise _no_draft(service, experiment, f"the draft {state.record} has no DOI yet, its push having stopped")
     _held_to(state, confirm, service)
     plan = planned(root, service, state)
+    sent = payload_identity(marked(plan.payload, plan.service, state))
     client = Client(service, token_of(service), transport, pause=pause, sleep=sleep)
     read = client.read_draft(state.record)
     if read is None or read[0].get("is_published") is True:
@@ -361,6 +447,7 @@ def publish(folder: str | os.PathLike[str], service: Service, *, confirm: str | 
             say(line)
 
     drafting = Drafting(client, plan, state, say, Choices(ask, overwrite_site_edits, keep_site_edits), show, full)
+    drafting.previewing = confirm is not None or typed is not None
     over = drafting.settle(read[0], state.record)
     changes = changed_since_draft(read[0], drafting.payload(state), state)
     if (changes or over) and (confirm is not None or typed is None):
@@ -384,6 +471,8 @@ def publish(folder: str | os.PathLike[str], service: Service, *, confirm: str | 
         say(f"the draft {state.record} was published while the question waited (the site's button): checking it, and "
             f"publishing nothing")
         return finish(plan, state, client, say)
+    if confirm is not None:
+        _bound_at_post(plan, state, confirm, service, sent)
     try:
         client.publish(state.record)
     except Dropped:
