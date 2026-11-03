@@ -374,8 +374,18 @@ def tube_preparation(table: Callable[[], Table]) -> Callable[[Mapping[str, Any],
     return prepare
 
 
-#: The floating values one pair of ``tube_image`` holds while a chunk is read, both reads and their blend: two
-#: gathered cells of the table's cubic, 4^4 coefficients for each of its nine values, and the read's own, with room.
+#: The floating values a chunk of the integrated image is cut for, a pair of ``tube_image`` (both reads and their
+#: blend): declared as two gathered cells of the table's cubic, 4^4 coefficients for each of its nine values, and the
+#: read's own, with room. Measured, XLA holds 48 to 64 a pair beside the result's nine (its account of the kernel's
+#: program, 2 to 128 sources against 960 targets, float32 and float64, on a CPU: the profiling pass's stage 2b, held
+#: by ``tests/oracles/test_tube_pair_values.py``), since the read sums its 64 corners in a loop and gathers one window
+#: at a time; and the node cuts the chunks against its budget of cells where the kernel reads every force point
+#: (``MRSDragNode.wall_chunks``). So a chunk holds about a quarter (float64) or an eighth (float32) of
+#: ``CHUNK_BYTES``: 2 to 8 points at 0.2 to 0.1024 mm on FL-9, 3,600 to 33,000 chunks a step. The A100 timings of
+#: M1's convergence ladder fit a cost of 1.2 to 1.5 ms a chunk beside the reads, about half of the integrated image's
+#: time there (an inference from its timings, not a GPU profile); a CPU shows none (chunks four and sixteen times
+#: larger within 5 %). The figure is kept: a chunk's size decides how a cell's points are summed, so a change moves
+#: the image's rounding (3.5e-8 of its largest entry at 0.3 mm, float32), a proposal for dev2.
 TABLE_PAIR_VALUES = 1024
 #: The tube's constants: its centre and radius (a study's leaves), its frame and its table (held as built).
 TUBE_PARAMETERS = ("centre", "frame", "radius", "table")

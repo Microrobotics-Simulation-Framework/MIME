@@ -17,12 +17,13 @@ One script is read by the platforms workflow, not the lanes:
 |---|---|
 | `platforms_smoke.py` | runs the test files `tests/platforms.txt` names (one `path  # reason` a line) with pytest, with any further arguments passed on; the platforms workflow's macOS and Windows smoke jobs call it, so the selection has one home that `tests/test_platforms_selection.py` checks |
 
-Five scripts are a maintainer's tools, run by hand and never by CI:
+Six scripts are a maintainer's tools, run by hand and never by CI:
 
 | Script | What it does |
 |---|---|
 | `measure_test_memory.py` | each test's peak memory, from a pytest run it wraps or a file of runs' lines (`--merge`), written to `tests/memory_peaks.json` for `tests/test_memory_heavy.py`'s guard of the `memory_heavy` marker (the tests that run one at a time across xdist's workers); Linux only |
 | `mrs_separated_budget.py` | the MRS rung's separated quadrature's budget: its assembly once per build at the defaults, and the per-step cost and compile on script A's MRS arm on drag 0.4.0 against 0.3.0's point forces, with the confined resistance's least eigenvalue at the start; on the CPU, by hand |
+| `mrs_step_split.py` | where a confined step on the MRS rung spends its time, on drag 0.4.0 at its defaults and on whatever device JAX runs on: FL-9 on the floor of the 1/4 in tube (script A's operating point) or on its axis, each piece of the step timed alone (the free part turned, the wall's image, the solve, the judging), the node's update, XLA's account of their temporaries, the graph's step in a run and the graph without the drag; and the integrated wall image's (`wall_refinement=2`) chunks, reads and time against the image at the force points, with its chunks cut for another `pair_values` and whether that is bit for bit (the profiling pass's stage 2b) |
 | `live_pace_benchmark.py` | whether A0 served live keeps up with real time on the machine it runs on: unpaced and paced at real time through `mime serve`, timed from the first frame after the compile, with the machine, as JSON. A measurement for `docs/live.md`, never a CI check (CI holds only what pacing guarantees on any machine: no frame ahead of real time) |
 | `names_0_2.py` | writes `docs/data/names_0.2.txt`, the 0.2 line's public names (its node classes and effect models) as the tag `pre-0.3` holds them, which the migration table is held to; run once, the list frozen by its digest in `mime.docs._migration` |
 | `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
