@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 
 import jax
@@ -17,6 +18,7 @@ from maddening.core.edge import EdgeSpec
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.params import ParamSpec
 from maddening.core.schedule import topological_sort
+from numpy.typing import NDArray
 
 type NodeFields = dict[str, dict[str, Array]]
 
@@ -167,6 +169,106 @@ def scan_chunk(graph: GraphManager, steps: int, fed: Fed) -> NodeFields:
     """``steps`` steps as one compiled scan, ``fed`` held through them: a chunk of a run whose inputs
     :func:`fed_inputs` has checked once, at its start."""
     return cast(NodeFields, _held(graph).run_scan(steps, fed))
+
+
+@dataclass(frozen=True)
+class FlagTest:
+    """What makes a flag raised at a step, as a scan evaluates it: the node and state field that hold it and, for a flag
+    read from a field against limits, those limits (one per component): raised where any component's magnitude is above
+    its limit. Without limits a flag is raised where any component of its field is not zero."""
+
+    node: str
+    field: str
+    limits: tuple[float, ...] | None = None
+
+
+@dataclass(frozen=True)
+class FlagTally:
+    """What a scan reduced of each flag it was asked to test, in the order it was given them: the steps at which the
+    flag was raised (``count``), and the first and the last of those, as step counts (-1 for a flag never raised): from
+    the scan's start, the first step being 1, as the scan returns them, or from the graph's start once :meth:`shifted`."""
+
+    count: NDArray[np.int64]
+    first: NDArray[np.int64]
+    last: NDArray[np.int64]
+
+    @staticmethod
+    def none(flags: int) -> FlagTally:
+        return FlagTally(np.zeros(flags, np.int64), np.full(flags, -1, np.int64), np.full(flags, -1, np.int64))
+
+    def shifted(self, steps: int) -> FlagTally:
+        """The tally of a scan that began ``steps`` steps into the run, counted from the run's start."""
+        return FlagTally(self.count, np.where(self.first >= 0, self.first + steps, -1),
+                         np.where(self.last >= 0, self.last + steps, -1))
+
+    def then(self, later: FlagTally) -> FlagTally:
+        """This tally followed by the one of the steps after it."""
+        first = np.where(self.first >= 0, self.first, later.first)
+        last = np.where(later.last >= 0, later.last, self.last)
+        return FlagTally(self.count + later.count, first, last)
+
+
+def _threshold(limit: float, dtype: np.dtype[Any]) -> float:
+    """The largest value ``dtype`` holds that is not above ``limit``: a ``dtype`` value is above ``limit`` exactly when it
+    is above this, so a scan comparing in ``dtype`` decides as the host's comparison in float64 does."""
+    held = dtype.type(limit)
+    if np.isfinite(limit) and float(held) > limit:
+        held = np.nextafter(held, dtype.type(-np.inf))
+    return float(held)
+
+
+def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed,
+                       tests: Sequence[FlagTest]) -> tuple[NodeFields, FlagTally]:
+    """:func:`scan_chunk` that also reduces each flag of ``tests`` over its steps, inside the scan, alongside the state
+    and with no per-step output: how many steps raised it and the first and last, counted from the scan's start. The state it returns is the step function's, the one :func:`scan_chunk` runs; only the carry
+    holds more. It does what MADDENING's ``run_scan`` does around its scan, because that has nowhere to carry more."""
+    held = _held(graph)
+    jnp = _held(jax.numpy)
+    held._recover_from_escaped_tracers()  # noqa: SLF001
+    held._check_static_data_dirty()  # noqa: SLF001
+    if held._dirty or held._compiled_step is None:  # noqa: SLF001
+        held.compile()
+    held._refuse_xla_loop_hazards("run_scan", scan=True)  # noqa: SLF001
+    external = held._resolve_external_inputs(dict(fed))  # noqa: SLF001
+    params = held._params_or_default(None)  # noqa: SLF001
+    count = len(tests)
+
+    def build() -> Callable[..., Any]:
+        step_fn = held._build_step_fn()  # noqa: SLF001
+
+        def raised_by(state: Mapping[str, Mapping[str, Array]], test: FlagTest) -> Array:
+            values = jnp.reshape(state[test.node][test.field], (-1,))
+            if test.limits is None:
+                return jnp.any(values != 0)
+            limits = jnp.asarray([_threshold(limit, np.dtype(values.dtype)) for limit in test.limits],
+                                       dtype=values.dtype)
+            return jnp.any(jnp.abs(values) > limits)
+
+        def scan(state: Any, ext: Any, parameters: Any) -> tuple[Any, Any]:
+            held._count_scan_trace()  # noqa: SLF001
+
+            def body(carry: Any, _: Any) -> tuple[Any, None]:
+                state, counted, first, last, at = carry
+                state = step_fn(state, ext, parameters)
+                at = at + 1
+                raised = jnp.stack([raised_by(state, test) for test in tests])
+                return (state, counted + raised.astype(counted.dtype), jnp.where(raised & (first < 0), at, first),
+                        jnp.where(raised, at, last), at), None
+
+            none = FlagTally.none(count)
+            init = (state, jnp.asarray(none.count, jnp.int32), jnp.asarray(none.first, jnp.int32),
+                    jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
+            (final, counted, first, last, _), _ = _held(jax).lax.scan(body, init, None, length=int(steps))
+            return final, (counted, first, last)
+
+        return _held(jax).jit(scan)
+
+    key = ("mime_run_scan_tallied", int(steps), tuple(tests))
+    program = held._cached_scan(key, build)  # noqa: SLF001
+    final, reduced = held._call_surfacing_strict(program, held._state, external, params)  # noqa: SLF001
+    held._store_state(final)  # noqa: SLF001
+    counted, first, last = (np.asarray(each, np.int64) for each in reduced)
+    return cast(NodeFields, held._user_state(final)), FlagTally(counted, first, last)  # noqa: SLF001
 
 
 def ready(state: NodeFields) -> None:

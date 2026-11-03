@@ -23,9 +23,11 @@
   end, a time written as a multiple of the base step, is that step's end.
 - **Flags** (`Flag`, declared by the entry whose node raises it, `raises` in the registry): on every reading, series
   and table row, in every export and printout, over the window it covers, and never blocking a read. A run that
-  records anything records every flag at every step; one that records nothing knows each flag at its last step only,
-  and says so: a flag not raised at the last step is *unknown* before it (`was_raised` is `null` in the manifest),
-  never read as clean.
+  records anything records every flag at every step; one that records nothing reduces each flag over its steps as it
+  runs (`FlagWhole`: steps raised, first and last, carried inside the compiled scan beside the state, no history), so
+  that a flag raised at any step is reported raised. A part of the run, or a result without the reduction, knows a flag
+  at its last step only, and says so: a flag not raised there is *unknown* before it (`was_raised` is `null` in the
+  manifest), never read as clean.
 - **The exports**: `table()`, a mapping of columns whose names carry their units (`time [s]`,
   `swim_speed:umr.speed [m/s]`), with a flags column, which `pandas.DataFrame` and `polars.DataFrame` take as it is
   (MIME depends on neither); `to_csv(path)`, the table with its units in its header; `to_npz(path)`, every array with

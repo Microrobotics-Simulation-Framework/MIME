@@ -10,7 +10,9 @@ a model is at or past what it covers; the declared ones (assumptions every run c
 build report, behind ``--full``, not in the lead. A post-run watch is silent only when it is within its range: one that
 is raised, or that could not be checked (no range declared, an input missing), is listed, since "could not check" is not
 "fine". A flag a run kept no
-per-step record of is unknown between steps: it is said to be, not read as "not raised". MIME has no structured record
+per-step record of is read from what the run reduced of it as it ran (how many steps raised it, the first and the last:
+``mime.results.FlagWhole``), and is unknown between steps only where the run reduced none: it is said to be, not read as
+"not raised". MIME has no structured record
 of a fallback, so none is reported as one."""
 
 from __future__ import annotations

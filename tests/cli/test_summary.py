@@ -72,16 +72,24 @@ def test_full_adds_the_load_report_the_build_reports_summary_and_the_whole_resul
         assert part in out, part
 
 
-#: The run keeps every step, so that each flag is known at every step: drag 0.4.0's MRS rung raises three flags
-#: (indefinite, near_wall, asymmetric), and a run that keeps the last step alone cannot say whether one was raised before
-#: it, which the summary lists as needing attention (phase 7m-b's second fix round, on merging the summary).
-EVERY_STEP = "--history"
-
-
 def test_a_run_with_nothing_raised_says_nothing_needs_attention(folders, tmp_path, capsys):
-    out = run(folders, "r10", "3ms", tmp_path, capsys, EVERY_STEP)
+    """Without ``--history``: the flags are known over the whole run (reduced as it ran), so a free-space run does not
+    open with flags it cannot speak for."""
+    out = run(folders, "r10", "3ms", tmp_path, capsys)
     assert out.startswith("Nothing needs attention"), out.splitlines()[0]
-    assert "post-run watch raised" not in out and "ran sphere_settling" in out
+    assert "post-run watch raised" not in out and "ran sphere_settling" in out and "not known" not in out
+
+
+def test_control_without_the_carry_the_same_run_opens_with_the_flags_it_cannot_speak_for(
+        folders, tmp_path, capsys, monkeypatch):
+    """The control: with the whole-run carry removed the same run lists its three flags as not known between steps, so
+    the assertions above are the carry's, on every run."""
+    from mime.experiment import BuiltExperiment
+
+    monkeypatch.setattr(BuiltExperiment, "_flag_tests", lambda self: ())
+    out = run(folders, "r10", "3ms", tmp_path, capsys)
+    assert out.splitlines()[0].startswith("Needs attention (1)"), out.splitlines()[0]
+    assert any(line.startswith("  ! 3 flags not known between steps") for line in out.splitlines())
 
 
 def test_nothing_is_dropped_from_the_files_whatever_the_summary_leads_with(folders, tmp_path, capsys):
@@ -167,7 +175,7 @@ def watch_folders(folders, tmp_path_factory):
 def test_a_watch_that_could_not_be_computed_is_listed_and_the_summary_does_not_say_nothing_needs_attention(
         watch_folders, tmp_path, capsys):
     """Run for real, not on a stub: the medium's density is declared nowhere, so the watch is ``not_computed``."""
-    out = run(watch_folders, "no_density", "1ms", tmp_path, capsys, EVERY_STEP)
+    out = run(watch_folders, "no_density", "1ms", tmp_path, capsys)
     lines = out.splitlines()
     assert lines[0].startswith("Needs attention (1)") and not out.startswith("Nothing needs attention"), lines[0]
     assert any(line.startswith("  ! post-run watch could not be checked: reynolds:drag:ball") and "not computed" in line

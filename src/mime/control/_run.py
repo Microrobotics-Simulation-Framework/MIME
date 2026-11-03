@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast, override
 
@@ -17,8 +17,8 @@ from maddening import GraphManager
 from mime.build import ControllerPlan, Mode, PlanSet
 from mime.build._in_graph import step_place
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass, RunFailed, standing_for
-from mime.build._maddening import Fed, NodeFields, fed_inputs, inputs, node_state, ready, scan_chunk, \
-    scan_chunk_with_history
+from mime.build._maddening import FlagTally, FlagTest, Fed, NodeFields, fed_inputs, inputs, node_state, ready, \
+    scan_chunk, scan_chunk_tallied, scan_chunk_with_history
 from mime.core import jnp
 from mime.registry import BuildContext, ControlLaw
 
@@ -280,6 +280,10 @@ class ChunkedRun:
         self.stopped: str | None = None
         self._block: int | None = None
         self._keep: frozenset[tuple[str, str]] | None = None
+        self._tests: tuple[FlagTest, ...] = ()
+        #: What the last :meth:`run` reduced of the flags it was given to test, inside its compiled scans (``None`` for
+        #: a run that was given none to test): each one's steps raised, and its first and last, from the graph's start.
+        self.tally: FlagTally | None = None
 
     def block(self) -> int:
         """The most steps one scan that keeps every step's state holds on the device: :data:`HISTORY_BLOCK_BYTES` over
@@ -292,7 +296,7 @@ class ChunkedRun:
 
     def run(self, steps: int, *, history: bool, hook: ChunkHook | None = None, chunk: int | None = None,
             keep: frozenset[tuple[str, str]] | None = None, automatic: bool = False,
-            stop: StopRequest | None = None) -> tuple[History, History | None]:
+            stop: StopRequest | None = None, tests: Sequence[FlagTest] = ()) -> tuple[History, History | None]:
         """``steps`` base steps from where the graph stands, as compiled chunks of ``chunk`` steps (the control period
         when a controller is called between them), the hook called after each; or as one compiled scan when neither a
         controller nor a hook asks for chunks, unless ``automatic``, which splits it as :func:`automatic_chunks` does.
@@ -301,7 +305,12 @@ class ChunkedRun:
 
         ``stop`` is asked after every chunk but the last, and a reason it returns ends the run there: the steps taken
         are then :attr:`steps` less where it started, and the reason is :attr:`stopped`. The state is on the host only
-        where a hook, the end of the run or a stop needs it; between chunks it waits on the device."""
+        where a hook, the end of the run or a stop needs it; between chunks it waits on the device.
+
+        ``tests`` are flags to reduce over the run's steps inside its scans when no history is kept (:attr:`tally`): the
+        scan then carries a count and the first and last step of each beside the state, and keeps nothing of any step."""
+        self._tests = tuple(tests) if not history else ()
+        self.tally = FlagTally.none(len(self._tests)) if self._tests else None
         size = self.chunk if self.chunk is not None else (chunk if hook is not None else None)
         stacked: list[History] = []
         self._keep = keep
@@ -359,6 +368,9 @@ class ChunkedRun:
                 stop = min(stop, step + self.block())
                 final, held = scan_chunk_with_history(self.graph, stop - step, fed)
                 stacked.append(_to_numpy(held, self._keep))
+            elif self._tests:
+                final, reduced = scan_chunk_tallied(self.graph, stop - step, fed, self._tests)
+                self.tally = (self.tally or FlagTally.none(len(self._tests))).then(reduced.shifted(step))
             else:
                 final = scan_chunk(self.graph, stop - step, fed)
             self.steps += stop - step

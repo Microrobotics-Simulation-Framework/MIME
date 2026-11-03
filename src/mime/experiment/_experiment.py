@@ -47,6 +47,7 @@ from mime.build._refusals import (
 )
 from mime.build import StageBinding, stage_binding
 from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
+from mime.build._maddening import FlagTally, FlagTest
 from mime.errors import public
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
@@ -56,6 +57,7 @@ from mime.results import (
     RUN_REPORT,
     FlagLayout,
     FlagTrack,
+    FlagWhole,
     Layout,
     ObservationLayout,
     OutputLayout,
@@ -679,6 +681,14 @@ def _not_writable(folder: Path, error: OSError) -> BaseException:
     return standing_for(refused, error) or error
 
 
+def _whole_run(tally: FlagTally | None, index: int) -> FlagWhole | None:
+    """The ``index``-th flag's reduction over the run's steps, or ``None`` for a run that reduced none."""
+    if tally is None:
+        return None
+    first, last = int(tally.first[index]), int(tally.last[index])
+    return FlagWhole(int(tally.count[index]), first if first >= 0 else None, last if last >= 0 else None)
+
+
 class BuiltExperiment:
     """A built experiment: its report, its graph's canonical text, its saved form's record, and runs. A run
     continues from where the last one left the graph."""
@@ -823,7 +833,8 @@ class BuiltExperiment:
         The result (:class:`~mime.results.RunResult`) holds every output at the end each observation declares, and
         the series of the per-step outputs ``record`` names (``record=[swim.speed]``), one sample every ``every`` (a
         whole number of base steps, every step when not given), with every flag the entries raise at every step. A
-        run that records nothing keeps no step's state, and knows each flag at its last step only. ``history`` keeps
+        run that records nothing keeps no step's state, and reduces each flag over its steps as it runs (how many raised
+        it, the first and the last), so a flag raised at any step is known. ``history`` keeps
         every field at every step, and with it every per-step output is recorded. ``every`` spaces the samples kept
         and does not reduce the cost of recording, which is the whole state's history per step whatever is kept."""
         steps = self.steps_in(duration)
@@ -856,12 +867,13 @@ class BuiltExperiment:
             {(output.node, output.field) for output in recorded}
             | {(flag.node, flag.field) for flag in self.layout.flags})
         final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep,
-                                        automatic=hook is None and self._runs.chunk is None, stop=stop)
+                                        automatic=hook is None and self._runs.chunk is None, stop=stop,
+                                        tests=self._flag_tests())
         taken = self._runs.steps - start
         why = self._runs.stopped
         result = self.result_of(start, taken, final, stacked, recorded if not history else self.layout.per_step(),
                                 spacing, history=history,
-                                stopped=Stopped(why, steps) if why is not None else None)
+                                stopped=Stopped(why, steps) if why is not None else None, tally=self._runs.tally)
         refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history,
                              already=self._non_finite)
         if refusal is not None:
@@ -870,12 +882,17 @@ class BuiltExperiment:
             raise RunFailed(stopped_refusals(self._graph, final) or [refusal], result)
         return result
 
+    def _flag_tests(self) -> tuple[FlagTest, ...]:
+        """Each flag of the layout as a scan tests it, for a run that keeps no step's state to reduce them over."""
+        return tuple(FlagTest(flag.node, flag.field, flag.limits) for flag in self.layout.flags)
+
     def result_of(self, start: int, steps: int, final: History, stacked: History | None = None,
                   recorded: Sequence[OutputLayout] = (), spacing: int = 1, *, history: bool = False,
-                  stopped: Stopped | None = None) -> RunResult:
+                  stopped: Stopped | None = None, tally: FlagTally | None = None) -> RunResult:
         """The result of ``steps`` steps from step ``start`` that ended at ``final``: the series ``recorded`` names from
         ``stacked`` (every step's kept state, where the run kept it), one every ``spacing``, and each flag over the
-        steps kept, or at the last step alone."""
+        steps kept; or, where none were, over all of them as the run reduced it (``tally``, in the order of the layout's
+        flags), or at the last step alone."""
         tracks: dict[str, FlagTrack] = {}
         series: dict[str, Samples] = {}
         if stacked is not None:
@@ -887,8 +904,9 @@ class BuiltExperiment:
                 raised = flag.raised(stacked[flag.node][flag.field])
                 tracks[flag.path] = FlagTrack(raised, bool(raised[-1]))
         else:
-            tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]))
-                      for flag in self.layout.flags}
+            tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]),
+                                           _whole_run(tally, index))
+                      for index, flag in enumerate(self.layout.flags)}
         return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
                          watches=read_watches(self._plans.watches, final, stacked if history else None),

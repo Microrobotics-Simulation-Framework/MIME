@@ -66,10 +66,14 @@ A result's quantities are SI arrays: `.to(unit)` reads one in any unit of its di
 An entry declares the flags its nodes raise (the surrogate drag's `clamp_fired` and `tilt_fired` are two: the first for
 a body clamped near the wall, the second for a body whose axis has left the tube's by more than the bore allows). Every reading and series
 carries the flags raised over its window, and every export and printout shows them; a flag never blocks a read. A
-run that records anything records every flag at every step. A run that records nothing knows each flag at its last
-step only: what it says of a flag is **unknown** before that step, never "not raised" (the manifest's `was_raised` is
-`null`, with `raised_at_last_step` beside it for what is known), because a flag that fired earlier and is clear at the
-last step looks the same at the last step. Record the run to know.
+run that records anything records every flag at every step. A run that records nothing keeps no step's state, and
+reduces each flag over its steps as it runs, inside the compiled scans beside the state: how many steps raised it, and
+the first and the last (the manifest's `whole_run`, with `recorded` saying "the whole run"). A flag raised at any step
+is reported raised, with its count and its first step, whether or not it is clear at the last; one raised at none is
+not shown. That reduction answers for the run's own steps only, so a window that is a part of them reads a flag
+**unknown** (the manifest's `was_raised` is `null`, with `raised_at_last_step` beside it for what is known), never "not
+raised": a flag that fired earlier and is clear at the last step looks the same at the last step. The same holds for a
+result without the reduction (a run folder written before it, a live session's). Record the run to know a window.
 
 A segment whose dynamics carry a tree raises one flag more where its description limits its joints' speeds:
 `<segment>.beyond_speed_limit`, at a step where a joint's speed is above its limit. It is read after the run from the

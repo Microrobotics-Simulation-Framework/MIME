@@ -26,6 +26,7 @@ from mime.results._series import (
     FlagRead,
     FlagSource,
     FlagTrack,
+    FlagWhole,
     RECORDED_ONLY,
     NotInResult,
     NotRecorded,
@@ -473,12 +474,15 @@ class RunResult:
         for flag in self.layout.flags:
             track = self.tracks.get(flag.path)
             kept = track is not None and track.raised is not None
+            whole = track.whole if track is not None else None
             flags.append({"path": flag.path, "entry": flag.owner, "label": flag.entry, "node": flag.node,
                           "field": flag.field, "meaning": flag.meaning, "name": flag.name,
                           "limits": [limit if math.isfinite(limit) else None for limit in flag.limits]
                           if flag.limits is not None else None,
-                          "recorded": "every step" if kept else "the last step",
+                          "recorded": "every step" if kept else "the whole run" if whole is not None
+                          else "the last step",
                           "array": flag_key(flag.path) if kept else None,
+                          "whole_run": whole.manifest() if whole is not None else None,
                           "was_raised": track.was_raised if track is not None else None,
                           "raised_at_last_step": track.at_last if track is not None else None})
         stopped = {} if self.stopped is None else {"stopped": {
@@ -592,7 +596,10 @@ class RunResult:
         for flag in cast(list[dict[str, Any]], manifest["flags"]):
             key = cast(str | None, flag.get("array"))
             raised = npz[key].astype(bool) if key is not None else None
-            tracks[str(flag["path"])] = FlagTrack(raised, bool(flag.get("raised_at_last_step")))
+            whole = flag.get("whole_run")
+            tracks[str(flag["path"])] = FlagTrack(raised, bool(flag.get("raised_at_last_step")),
+                                                  FlagWhole.from_manifest(cast(Mapping[str, Any], whole))
+                                                  if isinstance(whole, Mapping) else None)
         loader = {str(path): series_key(str(path)) for path in cast(list[str], manifest.get("recorded", []))}
         held = manifest.get("stopped")
         stopped = Stopped(str(cast(Mapping[str, Any], held)["reason"]), int(cast(Mapping[str, Any], held)["steps_asked"])) \

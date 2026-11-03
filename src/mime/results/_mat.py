@@ -139,12 +139,15 @@ def _flag_variable(result: RunResult, names: Mapping[str, str]) -> Struct:
         entry: Struct = {"path": flag.path, "entry": flag.owner, "label": flag.entry, "node": flag.node,
                          "field": flag.field, "meaning": flag.meaning,
                          "recorded": "every step" if track is not None and track.raised is not None
-                         else "the last step",
+                         else "the whole run" if track is not None and track.whole is not None else "the last step",
                          "was_raised": _tri(track.was_raised if track is not None else None),
                          "raised_at_last_step": _tri(track.at_last if track is not None else None)}
         if track is not None and track.raised is not None:
             steps = result.start_step + 1 + np.flatnonzero(track.raised).astype(np.int64)
             entry.update(raised_steps=steps, raised_times=steps.astype(np.float64) * result.dt, time_unit="s")
+        elif track is not None and track.whole is not None:
+            entry.update(raised_count=_number(track.whole.raised), first_step=_number(track.whole.first_step),
+                         last_step=_number(track.whole.last_step))
         held[names[flag.path]] = entry
     return held
 

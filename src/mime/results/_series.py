@@ -64,13 +64,35 @@ def inside(steps: NDArray[np.int64], start: float, end: float, dt: float,
 
 
 @dataclass(frozen=True)
+class FlagWhole:
+    """A flag over the whole of a run that kept no step's state, reduced inside the run's compiled scans: the steps it was
+    raised at, and the first and the last of them, as step counts from the graph's start (``None`` when it was raised at
+    none). The run's own steps are the window it holds for; it cannot say anything of a part of them."""
+
+    raised: int
+    first_step: int | None
+    last_step: int | None
+
+    def manifest(self) -> dict[str, int | None]:
+        return {"raised_steps": self.raised, "first_step": self.first_step, "last_step": self.last_step}
+
+    @staticmethod
+    def from_manifest(held: Mapping[str, Any]) -> FlagWhole:
+        first, last = held.get("first_step"), held.get("last_step")
+        return FlagWhole(int(held["raised_steps"]), int(first) if first is not None else None,
+                         int(last) if last is not None else None)
+
+
+@dataclass(frozen=True)
 class FlagTrack:
     """A flag over one run: whether it was raised at each of the run's steps (``raised``, one per step from its first
-    on) when the run recorded anything, and whether it was raised at its last step, which is all a run that recorded
-    nothing knows."""
+    on) when the run recorded anything, and whether it was raised at its last step. A run that recorded nothing carries
+    ``whole`` instead, the flag reduced over all its steps as it ran (:class:`FlagWhole`); without that, which is a run
+    from before it or a flag read from a live session, the last step is all it knows."""
 
     raised: NDArray[np.bool_] | None
     at_last: bool
+    whole: FlagWhole | None = None
 
     @property
     def was_raised(self) -> bool | None:
@@ -78,6 +100,8 @@ class FlagTrack:
         raised there."""
         if self.raised is not None:
             return bool(self.raised.any())
+        if self.whole is not None:
+            return self.whole.raised > 0
         return True if self.at_last else None
 
 
@@ -158,6 +182,15 @@ class FlagSource:
         found: list[FlagRead] = []
         for flag in self.flags:
             track = self.tracks.get(flag.path)
+            if track is not None and track.raised is None and track.whole is not None and len(steps) and held.all():
+                whole = track.whole  # the window is the run's own, which is all a whole-run reduction holds for
+                if whole.raised or partial:
+                    found.append(FlagRead(flag, start, end, whole.raised, len(steps),
+                                          whole.first_step * self.dt if whole.first_step is not None else None,
+                                          whole.last_step * self.dt if whole.last_step is not None else None,
+                                          bool(track.at_last) if reaches_last else None,
+                                          self.start_step * self.dt if partial else None))
+                continue
             if track is None or track.raised is None:
                 at_last = (track.at_last if track is not None else None) if reaches_last else None
                 found.append(FlagRead(flag, start, end, None, None, None, None, at_last))

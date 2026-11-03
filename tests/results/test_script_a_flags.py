@@ -38,8 +38,22 @@ def test_the_clamp_raised_in_the_first_step_is_on_every_window_that_holds_it_and
     for output in manifest["observations"][0]["outputs"]:
         if output["kind"] == "at_end":
             assert [f["flag"] for f in output["flags"]] == [CLAMP], output["name"]
-    later = clamped.run(ms(5))
-    (read, *others) = later.flags  # the clamp, and the two tilt flags, none of them known before the last step
+    later = script_a(start=PAST_THE_CLAMP).build().run(ms(5))
+    (read,) = later.flags  # the clamp, raised at the first step: the run reduced it as it ran, and the tilt flags raised none
+    assert (read.path, read.was_raised, read.raised, read.steps) == (CLAMP, True, 1, 10)
+    assert read.first == pytest.approx(5e-4) and "unknown" not in str(later)
+    assert later.manifest()["run_flags"][0]["was_raised"] is True
+    assert later.manifest()["flags"][0]["whole_run"] == {"raised_steps": 1, "first_step": 1, "last_step": 1}
+
+
+def test_control_without_the_carry_a_run_that_records_nothing_cannot_see_the_clamp_it_raised_at_its_first_step(monkeypatch):
+    """The clamp is raised at the first step and clear at the last, so a run that reduces nothing as it runs reads it,
+    and the tilt flags, as unknown: the case above, with the carry removed."""
+    from mime.experiment import BuiltExperiment
+
+    monkeypatch.setattr(BuiltExperiment, "_flag_tests", lambda self: ())
+    later = script_a(start=PAST_THE_CLAMP).build().run(ms(5))
+    (read, *others) = later.flags
     assert [r.path for r in others] == TILT_FLAGS and all(r.raised is None for r in others)
     assert read.raised is None and read.was_raised is None and "unknown, not recorded per step" in str(later)
     assert "not raised" in str(later) and "before it is unknown" in str(later)
@@ -48,15 +62,16 @@ def test_the_clamp_raised_in_the_first_step_is_on_every_window_that_holds_it_and
 
 def test_a_run_that_records_nothing_reports_a_flag_raised_at_its_last_step_as_raised(tmp_path):
     """Through ``run()``'s own path: one step from past the clamp, the only step is the last, and it clamps. The
-    control, from script A's own start, reads the same step as clear at the last step and unknown before it."""
+    control, from script A's own start, reads the same step as clear: not raised at the last step or any before it."""
     fresh = script_a(start=PAST_THE_CLAMP).build()
     written = fresh.run_to(tmp_path / "run", ms(0.5))
     for result in (written.result, RunResult.read(tmp_path / "run")):
         read = next(r for r in result.flags if r.path == CLAMP)
-        assert (read.at_last, read.was_raised) == (True, True) and "at the run's last step it was raised" in str(result)
+        assert (read.at_last, read.was_raised, read.raised, read.steps) == (True, True, 1, 1)
+        assert "raised at 1 of 1 steps" in str(result)
     assert json.loads((tmp_path / "run" / RUN_MANIFEST).read_text())["flags"][0]["raised_at_last_step"] is True
     own = script_a().build().run(ms(0.5))
-    assert (own.flags[0].path, own.flags[0].at_last, own.flags[0].was_raised) == (CLAMP, False, None)
+    assert own.flags == () and own.tracks[CLAMP].at_last is False and own.tracks[CLAMP].was_raised is False
 
 
 def test_from_script_as_own_start_the_same_runs_raise_nothing():

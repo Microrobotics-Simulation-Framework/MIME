@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **A run that keeps no history knows each flag over the whole run.** Each flag is reduced inside the run's compiled
+  scans, beside the state (steps raised, the first and the last: `mime.results.FlagWhole`, the manifest's `whole_run`),
+  so `mime run` no longer opens with "N flags not known between steps" for a run that raised none, and a flag raised
+  at a middle step and clear at the end is reported raised with its count and first step. Nothing the run computes
+  moves (the final state is bit for bit the same with and without the reduction); a flag stays unknown only for a
+  part of the run, or a result written before the reduction.
+
 ### Fixed
 - **The shape suite's convexity check no longer refutes a cylinder at the edge of its axis band.** A point within
   `AXIS_ULPS` units in the last place of the radius of the cylinder's axis has the axis's signed distance, minus the
