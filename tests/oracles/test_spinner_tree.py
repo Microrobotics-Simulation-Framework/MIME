@@ -19,10 +19,13 @@ the host, on the hub; the gyroscopic torque's sign flipped, on the gimbal.
 
 With armature on the host's joints (phase 7a5: a geared drive's rotor reflected onto them, half to five times each
 joint's own inertia, in the spinner's host and in the tree's), the hub and the gimbal still converge at first order;
-the control, the armature left out of the spinner's host while the tree carries it, does not. Each leaves an error the step does not
-shrink. The swing sees none of the three (its joint is across the axis, so the rotor's axial moment, its drive's
-reaction and its gyroscopic torque all lie along or across the bearing that takes them), and holds the rotor's
-inequality across its axis under gravity.
+the control, the armature left out of the spinner's host while the tree carries it, does not. Each leaves an error the
+step does not shrink. On the hub the control is run where the spinner's own error at the coarse step is under a fifth of
+the scale (:data:`RESOLVED`): where the host's torque cancels the reaction of the drive's net torque the scale is small
+and the step error is not, and a fault of the scale cannot be told from it. (The gimbal's step error stayed under 0.015
+over 300 draws, so its control always runs.) The swing sees none of the three (its joint is across the axis, so the
+rotor's axial moment, its drive's reaction and its gyroscopic torque all lie along or across the bearing that takes
+them), and holds the rotor's inequality across its axis under gravity.
 """
 
 import dataclasses
@@ -34,7 +37,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from chain_cases import HOSTS, MAGNET_DENSITY, MAGNET_LENGTH, MAGNET_RADIUS, ROTOR_INERTIA, spinning_host
-from hypothesis import given, settings
+from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from mime.core import quaternion
@@ -55,6 +58,13 @@ ANGLES = {"hub": (0.0,), "swing": (0.5,), "gimbal": (0.0, 0.0)}
 FINER = 4
 #: The most a halving of the step may leave of the error, for it to converge: an order of 0.74 or more.
 HALVED = 0.6
+#: The most the spinner's own error at the coarse step may be, as a fraction of the scale it is judged on, for a planted
+#: fault to be a control on that draw. The armature left out leaves an error of that scale (0.15 to 1.2 of it over 830
+#: hub draws); the spinner's step error adds to it, and where the two are as large (a host torque that cancels the
+#: reaction of the rotor's net torque leaves a small scale, and the step error reached 7.6 times it over 459 such draws)
+#: the halving of the step cannot tell them apart. Over the 830 draws none at or under 0.3 missed (the smallest ratio
+#: 0.77, against the 0.6 it must exceed); a fifth leaves the margin (0.88).
+RESOLVED = 0.2
 #: The magnet's axis in the rotor's frame, for each host: along the spin axis (symmetric) or across it (unequal).
 MAGNETS = {"hub": {"symmetric": (0.0, 0.0, 1.0), "unequal": (1.0, 0.0, 0.0)},
            "swing": {"symmetric": (0.0, 0.0, 1.0), "unequal": (1.0, 0.0, 0.0)},
@@ -228,6 +238,13 @@ def converges(coarse: float, fine: float) -> bool:
     return fine <= HALVED * coarse
 
 
+def resolves_the_plant(coarse: float) -> bool:
+    """Whether the spinner's own error at the coarse step, from the same draw without the fault, is small enough for
+    the halving of the step to show the fault: the control's precondition, taken from the unplanted run, never from
+    the planted one."""
+    return coarse <= RESOLVED
+
+
 @st.composite
 def runs(draw, host: str):
     """The host's joint torques (a fifth to all of :data:`TORQUES` either way, per joint), a drive of A0's scale, a
@@ -287,15 +304,24 @@ def armed_runs(draw, host: str):
     return run, kind, factors * host_inertias(host)
 
 
+#: A draw the hub's control once missed (CI): the drive of 5e-4 N m against a bearing's 4.94e-4 at the slowest spin, and
+#: a host torque that cancels the reaction of what is left, so the host's rates are small (2.2e-3 rad/s) and the
+#: spinner's step error at 1 ms is half of them.
+CANCELLING = ((np.asarray([-5.15625e-06]), -0.0005, 4.943398835290657e-05, -10.0), "symmetric", np.asarray([2.43e-06]))
+
+
 @PROPERTY
 @given(armed_runs("hub"))
+@example(CANCELLING)
 def test_with_armature_on_its_joint_the_hub_converges_to_the_jointed_rotor_and_without_it_in_the_spinner_does_not(
         drawn):
     run, kind, armature = drawn
     coarse, fine = errors("hub", kind, run, armature=armature)
     assert converges(coarse, fine), (coarse, fine)
-    coarse_p, fine_p = errors("hub", kind, run, "unarmed", armature=armature)
-    assert not converges(coarse_p, fine_p), ("unarmed", coarse_p, fine_p)
+    event(f"the control {'run' if resolves_the_plant(coarse) else 'not resolved'}")
+    if resolves_the_plant(coarse):
+        coarse_p, fine_p = errors("hub", kind, run, "unarmed", armature=armature)
+        assert not converges(coarse_p, fine_p), ("unarmed", coarse_p, fine_p)
 
 
 @PROPERTY
@@ -306,6 +332,17 @@ def test_with_armature_on_its_joints_the_gimbal_converges_to_the_jointed_rotor_a
     assert converges(coarse, fine), (coarse, fine)
     coarse_p, fine_p = errors("gimbal", kind, run, "unarmed", armature=armature)
     assert not converges(coarse_p, fine_p), ("unarmed", coarse_p, fine_p)
+
+
+def test_where_the_hosts_torque_cancels_the_reaction_the_halving_cannot_show_the_missing_armature():
+    """The draw the control missed: the spinner converges, and the spinner without the armature does as well, at the
+    two steps (0.9962 then 0.4982: a fault of the scale of the step error, the two summing to a halving), so the draw
+    is not one the control may judge, and the unplanted run's error says so."""
+    run, kind, armature = CANCELLING
+    coarse, fine = errors("hub", kind, run, armature=armature)
+    assert converges(coarse, fine), (coarse, fine)
+    assert not resolves_the_plant(coarse), coarse
+    assert converges(*errors("hub", kind, run, "unarmed", armature=armature))
 
 
 @pytest.mark.parametrize("host", sorted(HOSTS))
