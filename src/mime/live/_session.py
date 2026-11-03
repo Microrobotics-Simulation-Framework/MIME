@@ -47,6 +47,9 @@ LOG_FORMAT = "mime.commands/1"
 #: A log line that is no command: the step the session reached after a chunk.
 REACHED = "reached"
 
+#: How many of the commands taken a status reports as ``recent``.
+RECENT_COMMANDS = 5
+
 READY, RUNNING, PAUSED, STOPPED = "ready", "running", "paused", "stopped"
 #: What the session is doing (``activity`` in every status): its first chunk running, which compiles the run's programs
 #: (in a process that has not compiled them for an earlier session of the same built experiment), a later chunk
@@ -70,6 +73,36 @@ def _units(built: BuiltExperiment) -> dict[tuple[str, str], str]:
     for flag in built.layout.flags:
         found[(flag.node, flag.field)] = "1"
     return found
+
+
+def _selection(built: BuiltExperiment, select: Sequence[str] | None, state: History) -> list[tuple[str, str]]:
+    """The fields the frames carry: those ``select`` names, or every bound field, per-step observation output and
+    flag, each once."""
+    if select is None:
+        chosen = dict.fromkeys(built.binding().fields())
+        chosen.update(dict.fromkeys((o.node, o.field) for o in built.layout.per_step()))
+        chosen.update(dict.fromkeys((f.node, f.field) for f in built.layout.flags))
+        return list(chosen)
+    found: list[tuple[str, str]] = []
+    paths = {f"{node}.{name}": (node, name) for node, fields in state.items() for name in fields}
+    for path in select:
+        if path not in paths:
+            from mime.things import did_you_mean
+
+            raise ArgumentRefused([Refusal(
+"live.select", RefusalClass.USER, f"select= names {path!r}, which is no field of the state",
+                f"name fields as select=[\"<node>.<field>\", ...]. {did_you_mean(path, paths)}")])
+        found.append(paths[path])
+    return list(dict.fromkeys(found))
+
+
+def frame_schema(built: BuiltExperiment, select: Sequence[str] | None = None) -> FrameSchema:
+    """The schema of the frames a session of ``built`` sends with this ``select``: what the session's own is, before the
+    session exists (``mime serve`` checks what ``--watch`` names against it before it opens a run folder)."""
+    current = built.current_state()
+    units = _units(built)
+    return FrameSchema.of([(node, name, current[node][name], units.get((node, name)))
+                           for node, name in _selection(built, select, current)])
 
 
 class LiveSession:
@@ -137,10 +170,7 @@ class LiveSession:
         self._log_file: TextIO | None = None
         current = built.current_state()
         self._final: History = current
-        units = _units(built)
-        chosen = self._selection(select, current)
-        self.schema = FrameSchema.of([(node, name, current[node][name], units.get((node, name)))
-                                      for node, name in chosen])
+        self.schema = frame_schema(built, select)
         self.controller = built.plans.controller
         callback = built._runs.callback  # pyright: ignore[reportPrivateUsage]
         self._callback = callback
@@ -149,6 +179,8 @@ class LiveSession:
         #: Each live input at its declared default, as the step reads it until a session sets it.
         self.defaults = {label: cast(np.ndarray, live_default(held)) for label, held in self.live_inputs.items()}
         self._topology = built.topology()
+        #: Who is connected, as ``clients`` in a status: set by a server, which alone knows (``(commands, frames)``).
+        self.clients: Callable[[], tuple[int, int]] | None = None
         self._started = time.perf_counter()
         self._refuse_an_older_stage()
         if out is not None:
@@ -199,26 +231,6 @@ class LiveSession:
 "live.pace", RefusalClass.USER, f"pace is {pace!r}, not a real-time factor above zero",
                 "give a factor of real time, pace=1.0 (real time) or pace=None (as fast as it runs)")])
         return float(pace)
-
-    def _selection(self, select: Sequence[str] | None, state: History) -> list[tuple[str, str]]:
-        """The fields the frames carry: those ``select`` names, or every bound field, per-step observation output and
-        flag, each once."""
-        if select is None:
-            chosen = dict.fromkeys(self.built.binding().fields())
-            chosen.update(dict.fromkeys((o.node, o.field) for o in self.built.layout.per_step()))
-            chosen.update(dict.fromkeys((f.node, f.field) for f in self.built.layout.flags))
-            return list(chosen)
-        found: list[tuple[str, str]] = []
-        paths = {f"{node}.{name}": (node, name) for node, fields in state.items() for name in fields}
-        for path in select:
-            if path not in paths:
-                from mime.things import did_you_mean
-
-                raise ArgumentRefused([Refusal(
-"live.select", RefusalClass.USER, f"select= names {path!r}, which is no field of the state",
-                    f"name fields as select=[\"<node>.<field>\", ...]. {did_you_mean(path, paths)}")])
-            found.append(paths[path])
-        return list(dict.fromkeys(found))
 
     # -- subscribers and frames -------------------------------------------------------------------------------------
 
@@ -527,6 +539,11 @@ class LiveSession:
                 "missing": found.missing, "notice": found.notices}
 
     @property
+    def wall_time(self) -> float:
+        """The seconds since the session opened (the build before it not counted): ``wall_time`` in every status."""
+        return time.perf_counter() - self._started
+
+    @property
     def activity(self) -> str:
         """What the session is doing: :data:`COMPILING`, :data:`STEPPING` or :data:`IDLE`."""
         if not self._in_flight:
@@ -534,9 +551,22 @@ class LiveSession:
         return COMPILING if self.chunks == 0 else STEPPING
 
     def _status(self) -> dict[str, Any]:
-        return {"state": self.state, "step": self.steps, "time": self.steps * self.dt, "frames": self.frames,
-                "pace": self.pace, "recording": self._recording is not None, "non_finite": self.non_finite,
-                "stepping": self.stepping, "activity": self.activity, "pending": list(self.pending)}
+        status: dict[str, Any] = {
+            "state": self.state, "step": self.steps, "time": self.steps * self.dt, "frames": self.frames,
+            "pace": self.pace, "recording": self._recording is not None, "non_finite": self.non_finite,
+            "stepping": self.stepping, "activity": self.activity, "pending": list(self.pending),
+            "wall_time": self.wall_time, "recent": self._recent()}
+        if self.clients is not None:
+            commanders, viewers = self.clients()
+            status["clients"] = {"commands": commanders, "frames": viewers}
+        return status
+
+    def _recent(self) -> list[dict[str, Any]]:
+        """The last few commands taken: each its name, its arguments and the step it took effect at, from the log, which
+        holds only commands the session accepted. Nothing of who sent one."""
+        return [{"command": line["command"], "arguments": {key: value for key, value in line.items()
+                                                           if key not in ("command", "step")}, "step": line["step"]}
+                for line in self.log[-RECENT_COMMANDS:]]
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -760,4 +790,4 @@ def replay(built: BuiltExperiment, log: Path, out: Path | None, *,
 
 
 __all__ = ["COMMAND_LOG", "COMPILING", "FRAMES_PER_SECOND", "IDLE", "LOG_FORMAT", "PAUSED", "READY", "REACHED",
-           "RUNNING", "STEPPING", "STOPPED", "LiveSession", "read_log", "replay"]
+           "RUNNING", "STEPPING", "STOPPED", "LiveSession", "frame_schema", "read_log", "replay"]

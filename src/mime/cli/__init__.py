@@ -21,6 +21,7 @@ from mime._terminal import for_terminal
 from mime.assets import AssetRef
 from mime.build import BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
 from mime.cli import _completion, _durations, _guide
+from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._display import set_plain, styled
 from mime.cli._durations import FORMS, seconds
 from mime.cli._shell import quoted
@@ -48,8 +49,13 @@ _ROOT_EXAMPLES = ("examples:\n  mime run my_experiment --duration 10s --out my_r
 REFUSED, FAILED = 2, 3
 
 
+#: The duration options of ``mime serve`` that stop the session.
+LIVE_TIMEOUTS = ("--idle-timeout", "--max-wall")
+
+
 def option_seconds(option: str, text: str | None) -> float | None:
-    """The value of a duration option (``--duration``, ``--every``, ``--stage-every``) as seconds, ``None`` when it was
+    """The value of a duration option (``--duration``, ``--every``, ``--stage-every``, and ``mime serve``'s
+    ``--idle-timeout`` and ``--max-wall``) as seconds, ``None`` when it was
     not given; a value that is not a duration is refused with its option's code, naming the forms that are."""
     if text is None:
         return None
@@ -59,7 +65,10 @@ def option_seconds(option: str, text: str | None) -> float | None:
     message = f"{option} {text} is not a duration"
     action = f"write it with a unit, `mime run <folder> {option} 10s --out <dir>`; the forms are {FORMS}"
     why = "a bare number is read as seconds, and a unit after it as written: s, ms, us, min or h"
-    if option == "--every":
+    if option in LIVE_TIMEOUTS:
+        refusal = Refusal("live.timeout", RefusalClass.USER, message,
+                          f"write it with a unit, `mime serve <folder> {option} 15min`; the forms are {FORMS}", why=why)
+    elif option == "--every":
         refusal = Refusal("run.every", RefusalClass.USER, message, action, why=why)
     elif option == "--stage-every":
         refusal = Refusal("run.stage-every", RefusalClass.USER, message, action, why=why)
@@ -312,15 +321,43 @@ def _non_finite_here(failed: RunFailed, folder: Path, duration: float, out: Path
 
 
 def _serve(arguments: argparse.Namespace) -> int:
+    """``mime serve``. On a terminal (``mime.cli._display``) it shows the live view on standard error; anywhere else it
+    prints what it always printed, its two lines on standard output."""
     from mime.live import serve
     from mime.units import s
 
-    serve(arguments.folder, commands=arguments.commands, frames=arguments.frames,
-          chunk=s(arguments.chunk) if arguments.chunk is not None else None,
-          pace=None if arguments.unpaced else arguments.pace, out=arguments.out,
-          select=arguments.select or None, json_frames=arguments.json_frames, start=arguments.start,
-          remote=arguments.remote, ready_file=arguments.ready_file, say=_say,
-          outlive_launcher=arguments.outlive_launcher)
+    idle_timeout = option_seconds("--idle-timeout", arguments.idle_timeout)
+    max_wall = option_seconds("--max-wall", arguments.max_wall)
+    display = None
+    if styled(sys.stderr):
+        from mime.cli._display import ServeDisplay
+
+        display = ServeDisplay(sys.stderr)
+    # serve's own lines never wait on a terminal: on the view's terminal they go through the view's bounded stream, and
+    # anywhere else through a bounded stream of standard output's own
+    lines = None if display is not None and display.shares_stdout else BoundedWriter(sys.stdout)
+
+    def say(line: str) -> None:
+        if lines is None:
+            assert display is not None
+            display.say(line)
+        else:
+            lines.write(for_terminal(line) + "\n")
+            lines.flush()
+
+    try:
+        serve(arguments.folder, commands=arguments.commands, frames=arguments.frames,
+              chunk=s(arguments.chunk) if arguments.chunk is not None else None,
+              pace=None if arguments.unpaced else arguments.pace, out=arguments.out,
+              select=arguments.select or None, json_frames=arguments.json_frames, start=arguments.start,
+              remote=arguments.remote, ready_file=arguments.ready_file, say=say,
+              outlive_launcher=arguments.outlive_launcher, watch=arguments.watch or None, view=display,
+              idle_timeout=idle_timeout, max_wall=max_wall)
+    finally:
+        if display is not None:
+            display.close()
+        if lines is not None:
+            lines.drain(CLOSE_WAIT)
     return 0
 
 
@@ -1080,6 +1117,18 @@ def build_parser() -> _guide.MimeParser:
     serve.add_argument("--outlive-launcher", action="store_true",
                        help="serve on when the process that launched it is gone (by default the session stops then, "
                             "writing its run folder, as on SIGTERM)")
+    serve.add_argument("--idle-timeout", default=None, metavar="DURATION",
+                       help="stop, writing the run folder, when no client has been connected that long (10min, 2h; "
+                            "default: never). Like --max-wall, it stops at the end of the chunk in hand")
+    serve.add_argument("--max-wall", default=None, metavar="DURATION",
+                       help="stop, writing the run folder, when the session has run that long, wall time from when "
+                            "it opened (default: never). The chunk in hand is finished first, as for SIGTERM: the "
+                            "stop comes at the end of the chunk in hand, later than the limit by what is left of it "
+                            "(the first compiles)")
+    serve.add_argument("--watch", action="append", default=[], metavar="PATH",
+                       help="a row of the live view's table of values, <node>.<field> or <node>.<field>[0:3] (repeat "
+                            "it; all, or none to hide the table; default: each scalar output, each flag and each "
+                            "body's position). It chooses what is shown and adds nothing to the frames")
     from mime.env import EXACT_GPUS, VARIANTS
 
     held_env = commands.add_parser("env", help="the environment a run is made in")
@@ -1164,7 +1213,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ``mime serve <folder> [--commands <endpoint>] [--frames <endpoint>] [--chunk <seconds>] [--pace <factor>]
     [--out <dir>] [--start]``: the saved experiment's live session, speaking ``mime.live/1`` over ZMQ (commands on a REP,
     frames on a PUB), bound to localhost unless ``--remote``, until a ``stop`` command, a signal, or the exit of the
-    process that launched it (unless ``--outlive-launcher``); it writes a run folder when it stops.
+    process that launched it (unless ``--outlive-launcher``), or ``--idle-timeout`` with no client connected, or
+    ``--max-wall`` (each at the end of the chunk in hand); it writes a run folder when it stops, and says why. On a terminal it draws a live view on standard
+    error (the state, the step, the speed, the clients, a table of values chosen by ``--watch``, and the commands
+    clients ask); anywhere else it prints its two lines on standard output and nothing more.
 
     ``mime env check [<folder>] --variant cpu|cuda12 [--gpu <type>] [--base] [--lab <file>] [--xla-cache <dir>]``:
     hold this environment to MIME's pins and the GPU requested, then apply the precision the folder's lock records.

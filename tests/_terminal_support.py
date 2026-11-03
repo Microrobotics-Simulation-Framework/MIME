@@ -94,6 +94,41 @@ def _drain(master: int, wait: float = 0.0) -> bytes:
     return held
 
 
+def fill_unread(far: str) -> int:
+    """Write to the far side of a pseudo-terminal, ``far`` its path (``os.ttyname`` of its slave: ``os.ptsname`` is Python
+    3.13's), which nobody is reading, until it takes no more; the bytes it took. From then on a write to the terminal blocks until something reads it. The kernel moves
+    what was written to the reading end after the write returns, which makes room again, so the filling goes on until
+    several passes, a little apart, find no room."""
+    fd = os.open(far, os.O_WRONLY | os.O_NONBLOCK | os.O_NOCTTY)
+    taken, barren = 0, 0
+    try:
+        while barren < 4:
+            before = taken
+            for size in (1024, 64, 1):  # what a size leaves, the next smaller one fills
+                while True:
+                    try:
+                        taken += os.write(fd, b"x" * size)
+                    except BlockingIOError:
+                        break
+            barren = barren + 1 if taken == before else 0
+            time.sleep(0.05)
+        return taken
+    finally:
+        os.close(fd)
+
+
+def is_full(far: str) -> bool:
+    """Whether a write to the pseudo-terminal whose far side is the path ``far`` would block now."""
+    fd = os.open(far, os.O_WRONLY | os.O_NONBLOCK | os.O_NOCTTY)
+    try:
+        os.write(fd, b"x")
+    except BlockingIOError:
+        return True
+    finally:
+        os.close(fd)
+    return False
+
+
 class Terminal:
     """A pseudo-terminal whose ``stream`` a program in this process writes to as to a terminal. ``transcript()`` is
     everything written to it so far.

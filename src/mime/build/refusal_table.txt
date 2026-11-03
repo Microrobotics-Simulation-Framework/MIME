@@ -162,7 +162,9 @@ live.stage-writer             user
 live.state                    user
 live.step                     user
 live.stopped                  user
+live.timeout                  user
 live.transport                environment
+live.watch                    user
 load.asset-changed            user
 load.assets                   user environment
 load.code-in-document         user

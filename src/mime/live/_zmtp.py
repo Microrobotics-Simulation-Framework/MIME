@@ -54,6 +54,21 @@ HANDSHAKE_SECONDS = 10.0
 ACCEPT_REST_SECONDS = 0.1
 
 
+#: What a peer of each of our socket types is called to a person watching: a REP's peer sends commands, a PUB's receives
+#: frames.
+_ROLE = {"REP": "commands", "PUB": "frames"}
+
+
+def _address(sock: socket.socket) -> str:
+    """Where a connection came from, as ``host:port``; empty if the connection is already gone."""
+    try:
+        peer = sock.getpeername()
+    except OSError:
+        return ""
+    host, port = str(peer[0]), peer[1]
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
 class ProtocolError(ConnectionError):
     """A peer that does not speak ZMTP 3 with the NULL mechanism, or a socket type ours cannot speak with."""
 
@@ -157,6 +172,24 @@ class _Reader:
         return found
 
 
+@dataclass(frozen=True)
+class PeerEvent:
+    """A peer arriving or leaving, for a view of the server (``mime serve``'s): ``what`` is ``connected`` (its handshake
+    finished), ``left`` (a peer that had connected, closed by either side) or ``refused`` (a peer that closed without
+    finishing its handshake: not ZMTP, too slow, or a socket type this one cannot speak with); ``role`` is ``commands``
+    (a requester) or ``frames`` (a subscriber); ``address`` is where its connection came from, which the transport gave
+    and the peer did not write; ``dropped`` the frames it lost, for a subscriber that left."""
+
+    what: str
+    role: str
+    address: str
+    dropped: int = 0
+
+
+#: The peer events a server holds for its caller to take before the oldest are dropped.
+EVENT_LIMIT = 1024
+
+
 @dataclass
 class _Peer:
     sock: socket.socket
@@ -174,6 +207,7 @@ class _Peer:
     envelope: list[bytes] | None = None
     dropped: int = 0
     opened: float = field(default_factory=time.monotonic)
+    address: str = ""
 
     def wants(self) -> bool:
         return bool(self.out or self.queue)
@@ -214,6 +248,8 @@ class Server:
         #: Listeners resting after the process ran out of descriptors, with when they listen again.
         self.resting: dict[int, float] = {}
         self.endpoints: dict[str, str] = {}
+        #: Who arrived and who left since the caller last took them (:meth:`take_events`).
+        self.events: deque[PeerEvent] = deque(maxlen=EVENT_LIMIT)
         self._spare = _spare()
         self._waker, self._wakes = socket.socketpair()
         for end in (self._waker, self._wakes):
@@ -247,6 +283,17 @@ class Server:
         except OSError:  # its buffer full (a wake is waiting already) or the server closed
             pass
 
+    def take_events(self) -> list[PeerEvent]:
+        """The peers that connected, left or were refused since the last call, oldest first."""
+        taken = list(self.events)
+        self.events.clear()
+        return taken
+
+    def counts(self) -> tuple[int, int]:
+        """The peers connected now (handshake finished): requesters, then subscribers."""
+        ready = [peer.kind for peer in self.peers.values() if peer.ready]
+        return ready.count("REP"), ready.count("PUB")
+
     def _accept(self, listener: socket.socket, kind: str) -> None:
         try:
             sock, _ = listener.accept()
@@ -267,7 +314,7 @@ class Server:
             sock.setblocking(False)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             peer = _Peer(sock, kind, self._identify(sock), _Reader(
-                limit=REQUEST_LIMIT if kind == "REP" else SUBSCRIPTION_LIMIT))
+                limit=REQUEST_LIMIT if kind == "REP" else SUBSCRIPTION_LIMIT), address=_address(sock))
             self.selector.register(sock, selectors.EVENT_READ)
         except (OSError, ValueError):
             sock.close()
@@ -304,8 +351,10 @@ class Server:
                 self._close(peer)
 
     def _close(self, peer: _Peer) -> None:
+        if self.identified.pop(peer.ident, None) is not None:  # a peer is closed once, whoever closes it
+            self.events.append(PeerEvent("left" if peer.ready else "refused", _ROLE[peer.kind], peer.address,
+                                         peer.dropped))
         self.peers.pop(peer.sock.fileno(), None)
-        self.identified.pop(peer.ident, None)
         try:
             self.selector.unregister(peer.sock)
         except (KeyError, ValueError):
@@ -348,6 +397,8 @@ class Server:
                     raise ProtocolError(f"a {peer_type} socket cannot speak with this {peer.kind}")
                 peer.reader.peer_type = peer_type
                 peer.out += ready(peer.kind)
+                if not peer.ready:
+                    self.events.append(PeerEvent("connected", _ROLE[peer.kind], peer.address))
                 peer.ready = True
             elif name == b"PING":
                 context = body[1 + size + 2:] if len(body) >= 3 + size else b""
@@ -569,5 +620,5 @@ class Client:
 
 
 __all__ = ["ACCEPT_REST_SECONDS", "GREETING", "HANDSHAKE_SECONDS", "LOOPBACK", "PARTS_LIMIT", "PENDING_LIMIT",
-           "QUEUE_LIMIT", "REPLY_BUFFER_LIMIT", "REQUEST_LIMIT", "SUBSCRIPTION_LIMIT", "Client", "ProtocolError", "Server",
-           "frame", "is_loopback", "message", "parse_endpoint", "ready"]
+           "QUEUE_LIMIT", "REPLY_BUFFER_LIMIT", "REQUEST_LIMIT", "SUBSCRIPTION_LIMIT", "Client", "PeerEvent",
+           "ProtocolError", "Server", "frame", "is_loopback", "message", "parse_endpoint", "ready"]

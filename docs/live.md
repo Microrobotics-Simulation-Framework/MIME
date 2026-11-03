@@ -91,6 +91,7 @@ of one whose stage lacks a prim the binding moves is refused (`live.stage-writer
 mime serve a0_saved                       # commands on tcp://127.0.0.1:5555, frames on tcp://127.0.0.1:5556
 mime serve a0_saved --commands tcp://127.0.0.1:0 --frames tcp://127.0.0.1:0 --ready-file ready.json
 mime serve a0_saved --start --unpaced --out runs/a0_live
+mime serve a0_saved --idle-timeout 15min --max-wall 2h --watch umr.pose[0:3]
 ```
 
 It loads and builds the saved folder, opens its session and serves it until a `stop` command, SIGTERM or SIGINT, all
@@ -106,6 +107,69 @@ the same.
 ```sh
 ssh -L 5555:localhost:5555 -L 5556:localhost:5556 <host>     # then connect to localhost as if it ran here
 ```
+
+### The ready file
+
+`--ready-file <file>` is how a program that starts `mime serve` learns where to connect, whatever the server prints: it is
+written as one JSON object once the sockets listen. Its format is part of `mime.live/1` and follows the protocol's rule
+below, that fields may be added and a reader ignores what it does not know.
+
+| Key | What it holds |
+|---|---|
+| `protocol` | `mime.live/1` |
+| `commands` | the endpoint the commands are sent to, `tcp://<host>:<port>` (the port that was bound, when any free one was asked for) |
+| `frames` | the endpoint the frames are received on |
+| `out` | the run folder the session writes when it stops |
+
+**A key that is absent means what it meant before it existed.** The transport's security is the first: an absent
+`mechanism` means NULL, the mechanism a session speaks today (no authentication; reach a remote one through an SSH
+tunnel). Two keys are **reserved and not written yet**, for a later session that serves with CurveZMQ, where the
+server proves who it is and a client is known by its key: `mechanism`, which is `curve` there, and `server_key`, the
+server's long-term public key as Z85 text of 40 characters (as `zmq_curve_keypair` writes it and a libzmq client takes it),
+present only when
+`mechanism` is `curve`. A client that finds a `mechanism` it cannot speak refuses; it never falls back to
+connecting without the security the server asked for. The key travels in this file, or in a client's own settings for an
+address it was given by hand, and never in `hello`, which goes over the connection the key secures.
+
+### What the terminal shows
+
+On a terminal, `mime serve` draws a live view on standard error (anywhere else it prints what it always printed: the load
+report, the line when it listens and the line when it stops, on standard output, byte for byte; `--plain`, `NO_COLOR` and
+`TERM=dumb` ask for the same). It is a strip of a few lines: the state in a word (`READY`, `COMPILING`, `RUNNING`,
+`PAUSED`, `STOPPING`), the step, the simulated time against the wall time, the speed as a multiple of real time and the
+frames a second (over the last few seconds), the clients, whether it is recording and the flags seen raised, and how to stop.
+Above it the scrollback keeps an event for each client that connects or leaves and each command with what came of it (a
+connection that is refused before its handshake is counted and said once with the others, not one by one). It is drawn about
+four times a second whatever the frame rate: the loop that answers clients only stores into a plain record of the
+session's state, and the view reads it. **A terminal that is not read never keeps the server from stopping**: serve writes to
+it through a writer of its own that waits a quarter of a second for it once and then not at all, and drops what the terminal
+does not take (the view says how many writes it dropped, if the terminal takes that), so `--max-wall`, `--idle-timeout`,
+SIGTERM and Ctrl+C each write the run folder and exit whatever the terminal does (Ctrl+S, a stalled ssh session, a
+launcher that never drains its pseudo-terminal). There are no keys; a client is how a session is steered (a command is logged and
+replays like any other).
+
+Under the strip is a table of values: by default each scalar output of an observation, each flag, and the position, the
+first three numbers of the pose, of each body the stage binds; at most twelve rows, fewer in a short window, the rest said in
+one line. `--watch <path>` (repeatable) names the rows instead: a field of the frames, with an index where it is not one
+number, `<node>.<field>[<low>:<high>]`, one integer or slice for each leading dimension of the field; `all` adds every scalar and three-number field; `none` hides the
+table. A name the frames do not carry is refused (`live.watch`) with the nearest name, and **`--watch` adds nothing to the
+frames and changes none**: they are what `--select` makes them. A row of one number shows its unit as the schema states it
+(or says it declares none), its value now, its **minimum and maximum over every frame the server published** (a frame is
+the state at a chunk's end, so these are not the extremes over steps), and the last ten seconds as a sparkline of the values
+drawn. A row of two or three numbers shows them and no extremes. At a narrow width the sparkline goes first, then the minimum
+and maximum, then the unit, and no number is ever wrapped.
+
+`--idle-timeout <duration>` stops the session when no client has been connected for that long (counted from when it
+listens, and again from the last client to leave), and `--max-wall <duration>` when its wall time reaches it (counted from
+when the session opened, as `wall_time` in the status is, so the loading and building before it are not). Each stops it as
+SIGTERM does, writing the run folder, and says why on standard output (`mime serve: no client has been connected for
+<seconds> s (--idle-timeout); stopping`). A duration is written as `mime run`'s `--duration` is, with a unit or as seconds;
+one that is not above zero is refused (`live.timeout`). **Neither limit stops a session at the second**:
+as SIGTERM does, it finishes the chunk in hand and stops at its end, so the stop comes at the end of the chunk in
+hand, later than the limit by what is left of that chunk (the first chunk compiles, which can take many seconds, and a limit that
+comes while it is in hand is passed by them). A session
+that is not stepping (ready, paused) has no chunk in hand and stops at the limit. Both limits are for a session that
+nobody is watching: a forgotten one, or one on a machine that is billed by the second.
 
 **It never goes silent.** Each chunk runs on a thread of its own while the server's loop moves bytes and answers, so a
 client is answered while a chunk compiles or steps:
@@ -145,13 +209,26 @@ A request is a JSON object, `{"command": "<name>", ...}` (with `"protocol": "mim
 JSON object with `protocol`, `ok` and `command`; on success the session's status (`state`, `step`, `time`, `frames`,
 `pace`, `recording`, `non_finite`; `stepping`, the chunks a step in hand has still to take; `activity`, what the
 session is doing, `compiling`, `stepping` or `idle`; and `pending`, the commands taken while a chunk runs that act at
-its end, in order); on a refusal,
+its end, in order; and three optional keys below); on a refusal,
 `errors`, each in the shape of [MIME's errors](errors.md): `code`, `class`, `message`, `why`, `action`, `where` and
 `page`. A request a client gets wrong is refused with its code (an argument of the wrong type included: `live.step`,
 `live.input-value`, `live.record`, `live.pace`), and the session goes on; an error of MIME's own inside a command is
 answered in the same shape, the session going on. The server never stops for one peer's bytes: a peer that does not
 speak ZMTP, does not finish its handshake in time, sends a message over its socket's limit, or sends requests without
 reading their replies is closed, and the others are served on (the limits are `mime.live._zmtp`'s constants).
+
+**Three optional keys of the status**, which `mime serve` always sends and a client that does not read them is unaffected by:
+
+| Key | What it holds |
+|---|---|
+| `wall_time` | the seconds since the session opened (the loading and building before it are not counted) |
+| `clients` | `{"commands": n, "frames": n}`: the requesters and the subscribers connected now, whose handshake finished |
+| `recent` | the last five commands the session took, oldest first, each `{"command", "arguments", "step"}`: its name, its arguments as the command log holds them and the step it took effect at |
+
+They carry **no address of a peer and no text of a peer's but what the session accepted**: `recent` is read from the
+session's command log, which holds only commands that were accepted, so a request that was refused is not in it, and a
+connection is a count. A session that has no server (`built.live()` in a script) has no `clients`. A watcher that renders
+the view from `status` and the frames shows what these keys let it, and no more than a server tells every client.
 
 | Command | Arguments | What it does |
 |---|---|---|

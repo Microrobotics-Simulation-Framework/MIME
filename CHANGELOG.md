@@ -23,6 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime env check` already names a core requirement missing from the environment, as the pins hold each one.
 
 ### Added
+- **`mime serve`'s live view, `--watch`, `--idle-timeout` and `--max-wall`, and three optional status keys** (design #214).
+  On a terminal `mime serve` draws on standard error a strip (the state in a word, the step, the simulated time against the
+  wall time, the speed against real time, the frames a second, the clients, recording, the flags and how to stop), a table
+  of values under it (by default each scalar output, each flag and each body's position; `--watch <path>` names the rows,
+  and a name the frames do not carry is refused by `live.watch` with the nearest name; `--watch` never changes the frames,
+  a test compares them byte for byte), and above it, in the scrollback, an event for each client that connects or leaves
+  and each command with what came of it. It is drawn about four times a second whatever the frame rate; a row's minimum and
+  maximum are over every frame the server published, not the frames drawn. `--idle-timeout` stops a session no client has
+  been connected to for that long and `--max-wall` one whose wall time reaches it, each writing the run folder and saying
+  why. `mime.live/1`'s status gains the optional keys `wall_time`, `clients` and `recent` (no peer address, nothing a peer
+  wrote but a command the session accepted), and `docs/live.md` states the ready file's four keys and reserves
+  `mechanism` and `server_key` for a later CURVE session. Serve's two lines on standard output are byte for byte what they
+  were, and a pipe, `--plain`, `NO_COLOR` and `TERM=dumb` get no view.
+  A terminal nobody reads never keeps serve from stopping: what it writes to a terminal goes through a bounded writer
+  (`mime.cli._bounded`) that drops what the terminal does not take, so each stop writes the run folder and exits; both
+  limits stop the session at the end of the chunk in hand, which `--help` and `docs/live.md` say.
 - **The documentation's specifications, evidence and claims.** Evidence is resolved through pytest's own collection
   (`mime.docs`: `collect`, `resolve`, a `Resolution` per id with its lane and, from named lanes' JUnit reports, its
   outcome in each), replacing the anomaly script's text rule: a test renamed with its old name left in a comment, or

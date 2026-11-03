@@ -18,11 +18,12 @@ import functools
 import os
 import re
 import sys
+import threading
 import time
 import warnings
 from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
-from typing import IO, TYPE_CHECKING, Any, Concatenate, TextIO
+from typing import IO, TYPE_CHECKING, Any, Concatenate, TextIO, cast
 
 from mime._said import (
     DONE,
@@ -45,11 +46,15 @@ from mime._said import (
     ends_block,
     kind_of,
 )
-from mime._terminal import for_terminal
+from mime._terminal import for_terminal, plain
+from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._progress import FLAG_INTERVAL, RunState, TransferState, duration_text
+from mime.cli._serve_view import FALLBACK_ROWS, event_line, stopped_lines, strip_lines, table_lines
 
 if TYPE_CHECKING:
     from rich.console import Console
+
+    from mime.live import ServeState
 
     from mime.build import MimeError, Refusal
     from mime.cli._summary import RunSummary
@@ -124,6 +129,15 @@ def _text(line: str, style: str = "") -> Any:
     from rich.text import Text
 
     return Text(for_terminal(line), style=style, no_wrap=False, overflow="fold")
+
+
+def _line(line: str, style: str = "") -> Any:
+    """One line of the serve view, as text: from a peer, a name or a number, whatever it holds is written out as the
+    escape that names it, a newline included (:func:`_text` keeps those, for a message that is made of lines), so that a
+    peer's words are never a command to the terminal and never a second line."""
+    from rich.text import Text
+
+    return Text(plain(line), style=style, no_wrap=False, overflow="fold")
 
 
 class RunDisplay:
@@ -202,6 +216,148 @@ class RunDisplay:
         yield grid
         yield _text(state.estimate_line(now), "dim")
         yield _text(state.flags_line(), "dim")
+
+
+#: How often the live view of ``mime serve`` is drawn (seconds): about four a second whatever the frame rate.
+SERVE_DRAW_EVERY = 0.25
+
+
+class ServeDisplay:
+    """The live view of ``mime serve`` on a terminal: a spinner while the experiment loads and builds, then a strip of
+    three or four lines (the state, the step, the simulated time against the wall time, the speed, the clients, whether it
+    records, the flags and how to stop) and the table of values under it, with the events (a client connecting or
+    leaving, each command and what came of it) printed above it, so the scrollback keeps them.
+
+    It is drawn about four times a second by a thread of its own, whatever the frame rate: the serve loop only stores into
+    a :class:`~mime.live.ServeState`, and this reads it. A draw that waited on the terminal waits on that thread, never on
+    the loop that answers clients. What is drawn is made by ``mime.cli._serve_view`` from the state alone.
+
+    Everything it writes goes through a :class:`~mime.cli._bounded.BoundedWriter`, so that a terminal nobody reads
+    (Ctrl+S, a stalled ssh session) holds up neither a draw for long nor the serve loop's own lines nor :meth:`close`: what
+    the terminal does not take is dropped, and :attr:`dropped` counts it."""
+
+    def __init__(self, stream: IO[str]) -> None:
+        from rich.live import Live
+
+        self._stream = stream
+        self._writer = BoundedWriter(stream)
+        self._console = _console_of(cast("IO[str]", self._writer))  # all a console asks of its file, which it has
+        self._phase = ""
+        self._phase_started = time.perf_counter()
+        self._state: ServeState | None = None
+        #: Whether standard output is the terminal this draws on, so that serve's lines are printed through it.
+        self.shares_stdout = _shares_a_terminal(sys.stdout, stream)
+        self._live = Live(self, console=self._console, auto_refresh=False, transient=True,
+                          redirect_stdout=self.shares_stdout, redirect_stderr=True)
+        self._running = False
+        self._guard = threading.RLock()
+        self._ending = threading.Event()
+        self._thread: threading.Thread | None = None
+        #: How many times the view has been drawn.
+        self.draws = 0
+
+    @property
+    def dropped(self) -> int:
+        """The writes the terminal did not take in time, which were dropped."""
+        return self._writer.dropped
+
+    def say(self, line: str) -> None:
+        """A line of serve's own above the view (or alone, where the view is off the screen), bounded like the view."""
+        self._console.print(_text(line))
+        self._writer.flush()
+
+    def phase(self, text: str) -> None:
+        """Name what is under way (a spinner and the seconds it has taken), starting the view if it is stopped."""
+        self._phase, self._phase_started = text, time.perf_counter()
+        self._start()
+
+    def running(self, state: ServeState) -> None:
+        """From here the view shows the session ``state`` describes."""
+        self._state = state
+        self._start()
+
+    def pause(self) -> None:
+        """Take the view off the screen (before something is printed in its place)."""
+        with self._guard:
+            if self._running:
+                self._running = False
+                self._live.stop()
+
+    def _start(self) -> None:
+        with self._guard:
+            if not self._running:
+                self._running = True
+                self._live.start()
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._draw_often, name="mime-serve-view", daemon=True)
+                self._thread.start()
+
+    def _draw_often(self) -> None:
+        while not self._ending.wait(SERVE_DRAW_EVERY):
+            self.draw()
+
+    def _size(self) -> tuple[int, int]:
+        """The terminal's columns and lines as they are now: a resize is followed, and an unsized pseudo-terminal reads
+        as the fallback and not as nothing."""
+        try:
+            lines = os.get_terminal_size(self._stream.fileno()).lines
+        except (AttributeError, ValueError, OSError):
+            lines = 0
+        return _columns_of(self._stream), lines if lines > 0 else FALLBACK_ROWS
+
+    def draw(self) -> None:
+        """One draw: the events since the last printed above, then the view redrawn. The state is sampled here, once, so
+        the sparklines and the events follow the draws and not the frames."""
+        with self._guard:
+            if not self._running:
+                return
+            state = self._state
+            if state is not None:
+                state.sample()
+                for event in state.drain(time.monotonic()):
+                    self._console.print(_line(event_line(event)), soft_wrap=True)
+            self._live.refresh()
+            self.draws += 1
+
+    def close(self) -> None:
+        """End the view: the last events, then the view off the screen and, where the session stopped, the block that
+        says how and what to do next. Safe to call again."""
+        self._ending.set()
+        thread, self._thread = self._thread, None
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2)
+        with self._guard:
+            state = self._state
+            if state is not None and self._running:
+                for event in state.drain(float("inf")):
+                    self._console.print(_line(event_line(event)), soft_wrap=True)
+            self.pause()
+            if state is not None:
+                lines = stopped_lines(state)
+                for index, line in enumerate(lines):
+                    self._console.print(_line(line, "bold" if index == 0 else ""), soft_wrap=True)
+                self._state = None
+            if self.dropped:
+                self._console.print(_line(f"{self.dropped} writes to this terminal were dropped: it was not taking them"),
+                                    soft_wrap=True)
+        self._writer.drain(CLOSE_WAIT)
+
+    def __rich_console__(self, console: Console, options: Any) -> Iterator[Any]:
+        from rich.spinner import Spinner
+
+        columns, lines = self._size()
+        console.width, console.height = columns, lines
+        state = self._state
+        if state is None:
+            unicode = (console.encoding or "").lower().startswith("utf")
+            yield Spinner("dots" if unicode else "line",
+                          text=_line(f"{self._phase}  ({duration_text(time.perf_counter() - self._phase_started)})"))
+            return
+        unicode = (console.encoding or "").lower().startswith("utf")
+        for index, line in enumerate(strip_lines(state, columns, time.monotonic(), unicode)):
+            yield _line(line, "bold" if index == 0 else "")
+        for index, line in enumerate(table_lines(state, columns, lines, unicode)):
+            yield _line(line, "dim" if index == 0 and state.table else "")
 
 
 class FlagPoll:

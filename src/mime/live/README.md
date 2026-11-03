@@ -24,6 +24,12 @@
   PUB for frames), bound to localhost unless asked otherwise, each chunk run on a thread of its own while the loop
   answers: `hello` and `status` at once, `stop` and `pause` at once and acting at the chunk's end (`pending`), the
   other commands at the chunk's end, in the order they came; `LiveClient` is its Python client.
+- **The view's state** (`_state.py`): `ServeState`, plain data (no terminal, no `rich`, no session): the session's status as
+  a client reads it, the rows of the table of values (a name `--watch` takes, a field of the frames and an index), each
+  one-number row's minimum and maximum over every frame taken, the flags seen raised, the events not yet shown and how the
+  session stopped. `mime serve` fills it, and `mime.cli._serve_view` and `mime.cli._display.ServeDisplay` draw it. It reads
+  the frame schema and cannot change it, so `--watch` never changes a frame. A client that fills the same state from
+  `status` and the frames it receives draws the same view.
 - **ZMTP** (`_zmtp.py`): ZMQ's wire protocol with the NULL mechanism, spoken by MIME itself, so that serving needs no
   extra package; a libzmq peer connects as it would to libzmq's own sockets. A peer that does not speak it, finishes no
   handshake, oversteps a size limit or never reads its replies is closed, and the others are served on. Its tests
@@ -41,6 +47,8 @@
 Since dev1's phase 7n (design #197): the in-process session, `mime serve` over ZMQ, replay from the command log.
 Since phase 7n-b: no recompile on a live input, a server that answers while a chunk runs, and the build report's
 summary in `hello` and in every run folder.
+Since the serve view (design #214): a live view on a terminal, `--watch`, `--idle-timeout` and `--max-wall`, and the optional
+status keys `wall_time`, `clients` and `recent`.
 Later: a WebSocket transport (the same messages), and pixel streaming of the stage, which is MADDENING's.
 
 Phases and releases are explained in the [package manifest](../README.md#status).

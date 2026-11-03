@@ -208,6 +208,16 @@ loads it).
   the width `COLUMNS` names, or at a default; a frame that is too narrow for a hash or an address is left off, so the word is not folded. A
   question and its hint are on the terminal the person answers at. A command printed for pasting
   (`mime/_shell.py`) holds a folder's name as one word, quoted where a shell would read it as more.
+- **`mime serve`'s live view** (standard error): a spinner while the experiment loads and builds, then a strip of a few
+  lines (the state in a word, the step, the simulated time against the wall time, the speed, the frames a second, the
+  clients, recording and the flags, and how to stop) with a table of values under it, and an event above it, in the
+  scrollback, for each client that connects or leaves and each command with what came of it. It is drawn about four times a
+  second whatever the frame rate, from a plain record of the session (`mime.live.ServeState`) the serve loop only stores into,
+  so a later `mime watch` fills the same record from a server's status and frames and draws the same view. A peer's words are
+  written out as plain text on one line, never markup and never a command to the terminal. Standard output stays the two lines
+  a launcher reads, byte for byte, whatever standard error is. The text is `mime/cli/_serve_view.py`, which no terminal is
+  needed to test; the drawing is `ServeDisplay` in `_display.py`. Everything serve writes to a terminal goes through `BoundedWriter` in
+  `_bounded.py`, so a terminal nobody reads delays no stop: a write it does not take is dropped and counted.
 - **`mime env check`'s refusals are grouped** where they share a code. An environment with many distributions nothing
   pins refuses once for each, and the same sentence, three lines each, buried the list: on a terminal the refusals that
   are about a subject (`env.unpinned`, `env.missing`, and `env.pin` for an installed distribution at another version) and
