@@ -1,6 +1,7 @@
 """``mime push`` on the command line, through the real transport (the standard library's HTTP client) to the offline
-fake behind a server on this machine: a round trip of ``--init``, the push, the push again, ``--status`` and
-``--discard``, an upload cut part way that is sent again whole, and the refusals in 7l-b's shape (the command named
+fake behind a server on this machine: a round trip of ``--init``, the push, the push again (one line), ``--status``,
+a site edit written over and one kept, ``--discard``, ``--publish --confirm <DOI>``, ``pull --from`` and a push with
+nothing changed since publishing; an upload cut part way that is sent again whole, and the refusals in 7l-b's shape (the command named
 on the first line, each reason as ``[class] code: what happened`` with ``do:`` and ``see:``, exit 2). The fake is
 injected through Python (the service's entry in ``mime.push.SERVICES``), never through the environment.
 
@@ -47,15 +48,16 @@ def test_a_round_trip_through_the_real_transport(toy: Path, fake: FakeRecords, t
     folder = copy_of(toy, tmp_path)
     assert run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--init")[0] == 0
     write_sharing(folder)
-    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
-    assert code == 0 and "Plan for 'full_toy'" in out and "made the draft 629525" in out
-    assert out.index("Next: ") < out.index("made the draft"), "the plan is shown before the draft is made"
+    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox")
+    assert code == 0 and "Pushing 'full_toy'" in out and "made the draft 629525" in out
+    assert out.index("  up: ") < out.index("made the draft"), "the plan is shown before the draft is made"
     page = f"{fake.site}/uploads/629525"
     assert out.splitlines()[-1] == page, "a push ends with the draft's link on a line of its own"
     record = fake.records["629525"]
     assert set(record.files) == {"full_toy.mimebundle", "NOTICE"}
-    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes")
-    assert code == 0 and out.count("not sent again") == 2 and out.splitlines()[-1] == page
+    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--full-plan")
+    assert code == 0 and out.splitlines() == [f"'full_toy' is unchanged: the draft 629525 on zenodo-sandbox holds it "
+                                              f"as it is, and nothing was sent: {page}"]
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--status")
     assert code == 0 and "reserved DOI: 10.5072/zenodo.629525" in out and "as push uploaded and verified it" in out
     assert out.splitlines()[-1] == page
@@ -64,9 +66,22 @@ def test_a_round_trip_through_the_real_transport(toy: Path, fake: FakeRecords, t
     assert code == 2 and "[user] push.metadata-edited" in err and out.splitlines()[-1] == page
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--yes", "--overwrite-site-edits")
     assert code == 0 and record.body["metadata"]["title"] == "full_toy"  # type: ignore[index]
+    record.body["metadata"]["title"] = "Kept from the site"  # type: ignore[index]
+    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--keep-site-edits")
+    assert code == 0 and 'title: Kept from the site' in (folder / "sharing.yaml").read_text(encoding="utf-8")
     code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--discard", "--yes")
     assert code == 0 and "deleted the draft 629525" in out and fake.drafts() == []
     assert out.splitlines()[-1] == f"{fake.site}/me/uploads"
+    assert run(capsys, "push", str(folder), "--to", "zenodo-sandbox")[0] == 0
+    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--publish", "--confirm",
+                       "10.5072/zenodo.629527")
+    assert code == 0 and fake.records["629527"].published and out.splitlines()[-1] == f"{fake.site}/records/629527"
+    into = tmp_path / "pulled"
+    code, out, _ = run(capsys, "pull", "--from", "zenodo-sandbox", "629527", "--into", str(into))
+    assert code == 0 and (into / "mime.lock").is_file()
+    code, out, _ = run(capsys, "push", str(folder), "--to", "zenodo-sandbox")
+    assert code == 0 and out.splitlines() == [f"'full_toy' is unchanged since 10.5072/zenodo.629527 (version 1 on "
+                                              f"zenodo-sandbox), so no version is made: {fake.site}/records/629527"]
 
 
 def test_an_upload_cut_part_way_through_the_real_transport_is_sent_again_whole(toy: Path, fake: FakeRecords,
@@ -97,11 +112,14 @@ def test_a_refusal_is_in_7l_bs_shape_and_exits_two(toy: Path, fake: FakeRecords,
     assert fake.requests == []
 
 
-def test_without_a_terminal_and_without_yes_nothing_is_sent(toy: Path, fake: FakeRecords, tmp_path: Path,
-                                                             capsys: pytest.CaptureFixture[str],
-                                                             monkeypatch: pytest.MonkeyPatch):
+def test_without_a_terminal_a_draft_is_made_and_a_publish_is_not(toy: Path, fake: FakeRecords, tmp_path: Path,
+                                                                   capsys: pytest.CaptureFixture[str],
+                                                                   monkeypatch: pytest.MonkeyPatch):
     folder = copy_of(toy, tmp_path)
     write_sharing(folder)
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox")
-    assert code == 2 and "Plan for 'full_toy'" in out and "[user] push.unconfirmed" in err and fake.requests == []
+    assert code == 0 and "made the draft 629525" in out
+    code, out, err = run(capsys, "push", str(folder), "--to", "zenodo-sandbox", "--publish", "--yes")
+    assert code == 2 and "[user] push.unconfirmed" in err and not fake.records["629525"].published
+    assert "--confirm 10.5072/zenodo.629525" in err

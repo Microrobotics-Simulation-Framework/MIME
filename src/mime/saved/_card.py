@@ -10,8 +10,11 @@ availability statement. A bundle carries it (format 2), and ``mime push`` will u
 **The card** is Markdown, offline (``mime card <folder>``): what the experiment is, what it bounds and estimates (no
 evidence record until a1), what ``mime verify <folder>`` would check (the card runs no check), its validity lines, its
 licences and credit with every condition each file's licence or permission carries (non-commercial, share-alike,
-no-derivatives), its availability, and how to reproduce and cite it, exactly as ``mime push`` will write it as a
-record's description. Both refuse a licence that names an id the installed packaging does not list
+no-derivatives), its availability, and how to reproduce and cite it, exactly as ``mime push`` writes it as a record's
+description. **The record it is published as** (its version, DOI and, once minted, concept DOI, and so its pull and cite
+lines) comes from the ``publication`` of the lock it is written for: ``mime card`` reads the folder's own lock, and
+``mime push`` gives it the staged lock's, so a published record's description says what the record is. A first version's
+concept DOI is minted when it is published, so its card names it from version 2 on. Both refuse a licence that names an id the installed packaging does not list
 (``terms.unlisted-licence``), whose verdict this packaging cannot give. **Credit** (the creators with
 their ORCIDs, the contributors and their roles) is kept in ``sharing.yaml`` beside the saved form, which ``mime push
 <folder> --to <service> --init`` writes: the card names its creators (and its contributors) where it holds one, and
@@ -22,13 +25,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from mime._terminal import plain
 from mime.assets import size_text
-from mime.build import BuildRefused
+from mime.build import BuildRefused, BuildReport
 from mime.saved._folder import named_files, read_folder
-from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc
+from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc, PublicationRecord
 from mime.saved._terms import FileTerms, FolderTerms, folder_terms
 from mime.saved._versions import CURRENT, DOCUMENT_SCHEMAS
 from mime.terms import (
@@ -268,20 +272,68 @@ def _credit_lines(root: Path) -> list[str]:
     return lines
 
 
-def card_text(folder: str | os.PathLike[str]) -> str:
-    """The card of a saved folder as Markdown: it loads and builds the experiment (``Experiment.load``) for what the
-    build declares, and reads the rest from the saved form. Deterministic within one environment."""
+@dataclass(frozen=True)
+class CardFacts:
+    """What a card states that one push settles once: the build's report, and the folder's terms, document and lock.
+    ``sharing.yaml`` and the publication are read as the card is written, since an edit kept from the site and a reserved
+    DOI change them during a push."""
+
+    root: Path
+    report: BuildReport
+    judged: FolderTerms
+    document: ExperimentDocument
+    lock: Lock
+
+
+def card_facts(folder: str | os.PathLike[str]) -> CardFacts:
+    """The facts of a saved folder's card: it loads and builds the experiment (``Experiment.load``) for what the build
+    declares, and reads the rest from the saved form."""
     from mime.experiment import Experiment
 
     root = Path(os.path.abspath(folder))
-    experiment = Experiment.load(root)
-    report = experiment.build().report
+    report = Experiment.load(root).build().report
     judged, document, lock = judged_folder(root)
+    return CardFacts(root, report, judged, document, lock)
+
+
+def _publication_lines(publication: PublicationRecord | None) -> list[str]:
+    if publication is None:
+        return ["- **Version:** not published (no record yet)",
+                "- **DOI:** none yet; `mime push` reserves one when the experiment is published"]
+    concept = publication.get("concept_doi")
+    return [f"- **Version:** {publication['version']}", f"- **DOI:** {plain(publication['doi'])}",
+            *([f"- **Concept DOI (every version):** {plain(concept)}"] if concept else [])]
+
+
+def _pull_line(publication: PublicationRecord | None) -> str:
+    if publication is None:
+        return "mime pull <the record's DOI, or the bundle file>"
+    if publication["service"] == "zenodo":
+        return f"mime pull {plain(publication['doi'])}"
+    return f"mime pull --from {plain(publication['service'])} {plain(publication['record'])}"
+
+
+def _cite_line(publication: PublicationRecord | None) -> str:
+    if publication is None:
+        return "No DOI yet: cite the record's DOI once `mime push` publishes it; `mime cite` comes later."
+    concept = publication.get("concept_doi")
+    every = f", and every version by its concept DOI, {plain(concept)}" if concept else ""
+    return f"Cite this version by its DOI, {plain(publication['doi'])}{every}; `mime cite` comes later."
+
+
+def card_text(folder: str | os.PathLike[str]) -> str:
+    """The card of a saved folder as Markdown, naming the record its lock's ``publication`` names, or none.
+    Deterministic within one environment."""
+    facts = card_facts(folder)
+    return card_of(facts, facts.lock.get("publication"))
+
+
+def card_of(facts: CardFacts, publication: PublicationRecord | None) -> str:
+    """The card from its ``facts``, as the description of the record ``publication`` (``None``: of no record yet)."""
+    root, report, judged, document, lock = facts.root, facts.report, facts.judged, facts.document, facts.lock
     name = plain(document["experiment"])
     licences = sorted({file.licence for file in judged.files if file.licence is not None})
-    lines = [f"# {name}", "",
-             "- **Version:** not published (no record yet)",
-             "- **DOI:** none yet; `mime push` reserves one when the experiment is published",
+    lines = [f"# {name}", "", *_publication_lines(publication),
              "- **Licence:** " + (plain(judged.licence) if judged.licence
                                   else "none declared (mime push will ask for one)"),
              f"- **Licences of its files:** {', '.join(plain(each) for each in licences) or 'none declared'}",
@@ -336,12 +388,12 @@ def card_text(folder: str | os.PathLike[str]) -> str:
     distributions = sorted({(entry["distribution"], entry["distribution_version"]) for entry in lock["entries"]
                             if entry["distribution"] != "mime-engine"})
     lines += [f"pip install {plain(each)}=={plain(version)}" for each, version in distributions]
-    lines += ["mime pull <the record's DOI, or the bundle file>", f"mime verify ./{name}/", "```", "",
-              "## How to cite", "",
-              "No DOI yet: cite the record's DOI once `mime push` publishes it; `mime cite` comes later.", ""]
+    lines += [_pull_line(publication), f"mime verify ./{name}/", "```", "", "## How to cite", "",
+              _cite_line(publication), ""]
     return "\n".join(lines)
 
 
-__all__ = ["CONDITION_WORDS", "CREDIT_HOME", "LICENCE_TEXTS", "NO_EVIDENCE", "NO_LICENCE", "availability", "card_text",
+__all__ = ["CONDITION_WORDS", "CREDIT_HOME", "LICENCE_TEXTS", "NO_EVIDENCE", "NO_LICENCE", "CardFacts", "availability",
+           "card_facts", "card_of", "card_text",
            "file_lines",
            "judged_folder", "notice", "notice_text", "own_licence_text", "permission_words"]

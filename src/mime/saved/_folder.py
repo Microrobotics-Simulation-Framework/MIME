@@ -91,6 +91,11 @@ def arrays_hash(arrays: Mapping[str, np.ndarray]) -> str:
     return sha256_of({key: array_record(value) for key, value in sorted(arrays.items())})
 
 
+def lock_text(lock: Lock | Mapping[str, object]) -> str:
+    """The lock as ``save`` writes it, and as ``mime push`` writes the lock it packs into a published bundle."""
+    return json.dumps(lock, indent=1, sort_keys=True, allow_nan=False) + "\n"
+
+
 def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mapping[str, np.ndarray]],
                  steps: int) -> Lock:
     """Write the document, the lock and the reference outputs (``history``, every field over ``steps`` steps,
@@ -121,8 +126,7 @@ def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mappin
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
     (folder / DOCUMENT_FILE).write_text(dump_document(record.document), encoding="utf-8", newline="\n")
-    (folder / LOCK_FILE).write_text(json.dumps(lock, indent=1, sort_keys=True, allow_nan=False) + "\n",
-                                    encoding="utf-8", newline="\n")
+    (folder / LOCK_FILE).write_text(lock_text(lock), encoding="utf-8", newline="\n")
     return lock
 
 
@@ -792,7 +796,7 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
     return VerifyReport(steps, same, rtol, atol, device, tuple(moved))
 
 
-__all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport",
+__all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport", "lock_text",
            "SavedForm", "VerifyReport", "absent_referenced_files", "asset_refusals", "check_load", "differences",
            "environment_differences", "missing_referenced",
            "layout_problem", "lock_text_problems", "named_files", "read_document", "read_document_version",

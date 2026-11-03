@@ -15,10 +15,12 @@ DOI = f"10.5281/zenodo.{RECORD}"
 
 
 @contextmanager
-def zenodo(rig: Rig, files: dict[str, bytes], *, legacy: bool = True, checksums: dict[str, str] | None = None
-           ) -> Iterator[None]:
+def zenodo(rig: Rig, files: dict[str, bytes], *, legacy: bool = True, checksums: dict[str, str] | None = None,
+           concept: str | None = None, version: str | None = None) -> Iterator[None]:
     """A fake of Zenodo's record API on the rig's server. ``requests.get`` is told that ``doi.org`` and ``zenodo.org`` are
-    that server, and answers a request to the landing page with the address pooch expects to be redirected to."""
+    that server, and answers a request to the landing page with the address pooch expects to be redirected to. With
+    ``concept``, the record is the latest version of that concept DOI, which resolves to it as Zenodo's concept DOIs
+    resolve to their latest version (the record states its DOI, its concept's and its ``version``)."""
     listed = []
     for name, data in files.items():
         checksum = (checksums or {}).get(name, hashlib.md5(data).hexdigest())
@@ -29,12 +31,15 @@ def zenodo(rig: Rig, files: dict[str, bytes], *, legacy: bool = True, checksums:
         else:
             listed.append({"filename": name, "checksum": checksum, "filesize": len(data)})
             rig.server.files[f"/zenodo/records/{RECORD}/files/{name}?download=1"] = data
-    rig.server.files[f"/zenodo/api/records/{RECORD}"] = json.dumps({"id": RECORD, "files": listed}).encode()
+    held: dict[str, object] = {"id": RECORD, "files": listed}
+    if concept is not None:
+        held.update({"doi": DOI, "conceptdoi": concept, "metadata": {"version": version}})
+    rig.server.files[f"/zenodo/api/records/{RECORD}"] = json.dumps(held).encode()
     rig.server.files["/landing"] = b"<html></html>"
     real = requests.get
 
     def routed(url: str, *args: object, **keywords: object) -> requests.Response:
-        if url == f"https://doi.org/{DOI}":
+        if url in (f"https://doi.org/{DOI}", f"https://doi.org/{concept}"):
             local, reported = rig.server.url("/landing"), f"https://zenodo.org/records/{RECORD}"
         elif url.startswith("https://zenodo.org/"):
             local, reported = rig.server.url("/zenodo/" + url.removeprefix("https://zenodo.org/")), url

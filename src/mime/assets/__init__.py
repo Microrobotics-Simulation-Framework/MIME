@@ -37,7 +37,7 @@ from mime.assets._derivation import (
     stale_inputs,
     working_state,
 )
-from mime.assets._fetch import RETRIEVE_LIMIT_BYTES, fetch, resolve, retrieve
+from mime.assets._fetch import RETRIEVE_LIMIT_BYTES, fetch, resolve, retrieve, under_test_prefix
 from mime.assets._known import known, reference
 from mime.assets._lock import folder_assets
 from mime.assets._reference import AssetRecord, AssetRef, location_problem
@@ -70,6 +70,7 @@ __all__ = [
     "known",
     "locate",
     "location_problem",
+    "under_test_prefix",
     "offline",
     "reference",
     "resolve",
