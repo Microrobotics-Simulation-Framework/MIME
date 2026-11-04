@@ -32,8 +32,12 @@ def problems(root: Path, version: str = mime.__version__) -> list[str]:
     names = [f"{held.get('given-names')} {held.get('family-names')}" for held in citation.get("authors", [])]
     if names != [author]:
         found.append(f"CITATION.cff's authors are {names}, not pyproject.toml's {author}")
-    if citation.get("license") != project["license"] or zenodo.get("license") != project["license"]:
-        found.append(f"the licence is not pyproject.toml's {project['license']} in both")
+    # Both state MIME's own licence, the expression's first identifier: CITATION.cff reads a list of licences as a
+    # choice (OR) and Zenodo takes one, while the parts MIME carries under other licences (the glTF converter, the
+    # viewer's bundle) keep theirs in their files and in NOTICE, and the wheel's metadata holds the whole expression.
+    own = project["license"].split(" AND ")[0].strip("() ")
+    if citation.get("license") != own or zenodo.get("license") != own:
+        found.append(f"the licence is not MIME's own, {own} (pyproject.toml's first), in both")
     creators = [held.get("name") for held in zenodo.get("creators", [])]
     if creators != [f"{held.get('family-names')}, {held.get('given-names')}" for held in citation.get("authors", [])]:
         found.append(f".zenodo.json's creators are {creators}, not CITATION.cff's authors")

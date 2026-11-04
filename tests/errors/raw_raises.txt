@@ -172,10 +172,13 @@ units.py::parse_unit UnitError 2  # construction: raised where the script makes 
 units.py::si UnitError 3  # coded at the boundary as call.units, keeping its class
 validity/_profiles.py::FindingClasses.read ValueError 3  # invariant: the packaged profile tables' own form, read at import, which their tests hold
 validity/_profiles.py::ProfileRules.read ValueError 2  # invariant: the packaged profile tables' own form, read at import, which their tests hold
+viz/_gltf/_writer.py::Buffers.accessor ValueError 1  # invariant: the converter hands the container float32 and unsigned integer arrays only, which the container tests hold
+viz/_gltf/_writer.py::read_glb ValueError 3  # a GLB read back by the tests and the page's check; outside every public call of an experiment
 viz/_meshes.py::_ascii_corners ValueError 1  # an STL file's text that is not whole triangles: caught where a set is baked and coded there (visuals.convert)
 viz/_meshes.py::read_stl ValueError 1  # an STL file with no triangles: caught where a set is baked and coded there (visuals.convert)
 viz/_meshes.py::write_mesh OSError 1  # usd-core could not write a baked mesh into the asset cache: the file system's own error class, as save.not-writable keeps it
 viz/_recording.py::write_recording OSError 1  # usd-core could not write the recording into the run folder: the file system's own error class, as save.not-writable keeps it
+viz/_web.py::viewer_bytes ValueError 1  # invariant: the packaged viewer's bytes against their pinned sha256, which the packaging and viewer tests hold
 vocabulary/_vocabulary.py::Interface.__post_init__ TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::Interface.__post_init__ ValueError 5  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::define ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call

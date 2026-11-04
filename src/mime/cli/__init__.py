@@ -393,9 +393,30 @@ def _visuals(arguments: argparse.Namespace) -> int:
         print(f"{', '.join(names)}: baked into the asset cache, at {viz.visuals_dir()}; never into a saved or run "
               f"folder")
         return 0
+    if arguments.visuals_command == "web":
+        return _visuals_web(arguments)
     path, found = viz.view(arguments.target)
     print(for_terminal(found.text()))
     print(path)
+    return 0
+
+
+def _visuals_web(arguments: argparse.Namespace) -> int:
+    import webbrowser
+
+    from mime import viz
+
+    written, result = viz.web(arguments.target, arguments.out, cdn=arguments.cdn, caption=arguments.caption,
+                              slow=arguments.slow_motion, glb=arguments.glb)
+    for line in result.lines():
+        print(for_terminal(line))
+    size = written.stat().st_size
+    viewer = "the viewer from jsDelivr, held to its hash" if arguments.cdn else "the viewer inlined: no network needed"
+    print(for_terminal(f"{written}: {size / 1e6:.2f} MB, {result.triangles} triangles, {viewer}"))
+    if arguments.glb is not None:
+        print(for_terminal(f"{arguments.glb}: the GLB alone, {len(result.glb) / 1e6:.2f} MB"))
+    if arguments.open:
+        webbrowser.open(written.resolve().as_uri())
     return 0
 
 
@@ -1155,6 +1176,23 @@ def build_parser() -> _guide.MimeParser:
     visuals_view = visual_commands.add_parser("view", help="the layer that opens a stage, a recording or a folder's "
                                                            "with the baked meshes drawn, for any USD viewer")
     visuals_view.add_argument("target", type=Path, help="a stage or recording file, a run folder or a saved folder")
+    visuals_web = visual_commands.add_parser("web", help="one web page of a stage, a recording or a folder's, to "
+                                                         "open in a browser or share: the scene, its recording and "
+                                                         "the meshes whose terms let them be shared")
+    visuals_web.add_argument("target", type=Path, help="a stage or recording file, a run folder or a saved folder")
+    visuals_web.add_argument("--out", type=Path, default=None, metavar="FILE",
+                             help="the page to write (default: <the experiment's name>.html here); never inside a "
+                                  "saved or run folder")
+    visuals_web.add_argument("--glb", type=Path, default=None, metavar="FILE",
+                             help="also write the scene alone as a glTF binary file")
+    visuals_web.add_argument("--slow-motion", type=float, default=None, metavar="FACTOR",
+                             help="display seconds per simulated second (default: a recording shorter than 4 s "
+                                  "slowed to about 8 s)")
+    visuals_web.add_argument("--caption", default=None, metavar="TEXT", help="a line shown above the page's notes")
+    visuals_web.add_argument("--cdn", action="store_true",
+                             help="load the viewer from jsDelivr, held to its hash, rather than inline it (1.4 MB "
+                                  "smaller; the page then needs the network)")
+    visuals_web.add_argument("--open", action="store_true", help="open the page in the default browser")
     from mime.live import DEFAULT_COMMANDS, DEFAULT_FRAMES
 
     serve = commands.add_parser("serve", help="serve a saved experiment's live session (mime.live/1, over ZMQ)")
@@ -1294,8 +1332,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ``mime modal <folder> [--gpu <type>] [--deterministic] ...``: write the script that runs the saved experiment on
     Modal, beside it. Exits 0, or 2 when refused.
 
-    ``mime visuals list | fetch <set> | view <target>``: the descriptions' meshes MIME does not ship, fetched from
-    their pinned upstreams into the asset cache only, and the layer that draws them on a stage or a recording.
+    ``mime visuals list | fetch <set> | view <target> | web <target> [--out <file>] [--glb <file>] [--slow-motion
+    <factor>] [--caption <text>] [--cdn] [--open]``: the descriptions' meshes MIME does not ship, fetched from their
+    pinned upstreams into the asset cache only; the layer that draws them on a stage or a recording; and one web page
+    of it to share, holding only the meshes whose terms let them be shared.
 
     ``mime pack <folder> [--out <file>]``: write the saved experiment in ``folder`` as one bundle file, a file its terms
     do not let be redistributed travelling as a reference. ``mime card <folder> [--out <file>] [--notice]``: the

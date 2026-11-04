@@ -109,19 +109,29 @@ def test_the_wheel_ships_the_package_and_not_only_the_marker(wheel):
     assert len(modules) > 40 and "mime/saved/_schema.py" in modules and "mime/testing/_fresh_load.py" in modules
 
 
-def test_the_wheel_declares_its_licence_by_expression_and_ships_both_licence_files(wheel):
-    """PEP 639: the licence is an SPDX expression and its files are listed and shipped, with no licence classifier
-    beside them."""
+#: The licence files the wheel lists: MIME's, the copy of usd2gltf's (MIT) and the inlined viewer's parts'.
+LICENCE_FILES = ["LICENSE", "NOTICE", "src/mime/viz/_gltf/LICENSE",
+                 *(f"src/mime/viz/_viewer/LICENSE.{part}" for part in ("fflate", "gainmap-js", "lit", "model-viewer",
+                                                                      "three"))]
+
+
+def test_the_wheel_declares_its_licence_by_expression_and_ships_every_licence_file(wheel):
+    """PEP 639: the licence is an SPDX expression (MIME's Apache-2.0, the MIT of the code derived from usd2gltf and of
+    the viewer's three.js, fflate and gainmap-js, the BSD-3-Clause of its lit) and its files are listed and shipped,
+    with no licence classifier beside them."""
     (metadata,) = [name for name in wheel.namelist() if name.endswith(".dist-info/METADATA")]
     headers = wheel.read(metadata).decode().partition("\n\n")[0].splitlines()
-    assert "License-Expression: Apache-2.0" in headers
-    assert [line for line in headers if line.startswith("License-File:")] == ["License-File: LICENSE",
-                                                                              "License-File: NOTICE"]
+    assert "License-Expression: Apache-2.0 AND MIT AND BSD-3-Clause" in headers
+    assert [line for line in headers if line.startswith("License-File:")] == [f"License-File: {name}"
+                                                                              for name in LICENCE_FILES]
     assert not [line for line in headers if line.startswith(("License:", "Classifier: License ::"))]
     licences = f"{metadata.rpartition('/')[0]}/licenses/"
-    assert {name.removeprefix(licences) for name in wheel.namelist() if name.startswith(licences)} == {"LICENSE",
-                                                                                                     "NOTICE"}
-    assert wheel.read(licences + "LICENSE") == (ROOT / "LICENSE").read_bytes()
+    assert {name.removeprefix(licences) for name in wheel.namelist() if name.startswith(licences)} == set(
+        LICENCE_FILES)
+    for name in LICENCE_FILES:
+        assert wheel.read(licences + name) == (ROOT / name).read_bytes(), name
+    for name in ("mime/viz/_gltf/LICENSE", "mime/viz/_viewer/model-viewer.min.js", "mime/viz/_viewer/LICENSE.lit"):
+        assert wheel.read(name) == (ROOT / "src" / name).read_bytes(), name
 
 
 def test_the_wheel_declares_the_command_and_the_toy_namespace(wheel):

@@ -19,6 +19,12 @@ MIME does.
   on a laptop at light load); `--radius-um 50` makes
   the sphere one whose Reynolds number is past the model's range, and the result flags it with the size of the inertia
   the model leaves out. `tests/examples/test_sphere_settling.py` runs it.
+- `sphere_settling_tube.py`: the same steel sphere released at the centre of a closed horizontal tube of water (60 um
+  in radius), its drag the MRS rung with the tube's wall kind from the shipped table, held off the floor by the contact:
+  it settles across the tube and comes to rest on its floor, and its early speed sits well below Stokes's free-space
+  speed. Its docstring states where the drag's wall stops (about one sample spacing from it) and why the drawn end
+  caps do not matter; `python examples/sphere_settling_tube.py` (after `mime assets fetch unit_tube_R0.997`) runs it
+  and writes its view as a web page. `tests/examples/test_sphere_settling_tube.py` runs it.
 - `screw_in_tube.py`: a de Jongh FL-9 screw swimming along a tube of glycerol, turned by a field rotating at 1 Hz, with
   no material records: every value is declared, and the inertia is the diagonal a research build prints when it refuses the
   parts' own tensor (an exploratory build uses it and stamps it pending). `python examples/screw_in_tube.py` runs it in a few seconds more (7 s, measured the same way); `--spacing-mm` sets how fine the

@@ -24,7 +24,7 @@ Two scripts are read by the platforms workflow and the ready workflow, not the l
 | `ci_ready.py` | the ready workflow's one step (`.github/workflows/ready.yml`, [`CONTRIBUTING.md`](../CONTRIBUTING.md#ci-the-ready-label)): when a pull request gets the label `ready`, re-runs the head's newest CI and Platforms runs, which read the label as they start and so take the full matrix; a reduced run in flight is cancelled first, a run that has not read its mode yet or is full already is left alone. Exits 1 when a request fails (a pull request from a fork, whose token cannot re-run) |
 | `platforms_smoke.py` | runs the test files `tests/platforms.txt` names (one `path  # reason` a line) with pytest, with any further arguments passed on; the platforms workflow's macOS and Windows smoke jobs call it, so the selection has one home that `tests/test_platforms_selection.py` checks |
 
-Six scripts are a maintainer's tools, run by hand and never by CI:
+Seven scripts are a maintainer's tools, run by hand and never by CI:
 
 | Script | What it does |
 |---|---|
@@ -33,6 +33,7 @@ Six scripts are a maintainer's tools, run by hand and never by CI:
 | `mrs_step_split.py` | where a confined step on the MRS rung spends its time, on drag 0.4.0 at its defaults and on whatever device JAX runs on: FL-9 on the floor of the 1/4 in tube (script A's operating point) or on its axis, each piece of the step timed alone (the free part turned, the wall's image, the solve, the judging), the node's update, XLA's account of their temporaries, the graph's step in a run and the graph without the drag; and the integrated wall image's (`wall_refinement=2`) chunks, reads and time against the image at the force points, with its chunks cut for another `pair_values` and whether that is bit for bit (the profiling pass's stage 2b) |
 | `live_pace_benchmark.py` | whether A0 served live keeps up with real time on the machine it runs on: unpaced and paced at real time through `mime serve`, timed from the first frame after the compile, with the machine, as JSON. A measurement for `docs/live.md`, never a CI check (CI holds only what pacing guarantees on any machine: no frame ahead of real time) |
 | `names_0_2.py` | writes `docs/data/names_0.2.txt`, the 0.2 line's public names (its node classes and effect models) as the tag `pre-0.3` holds them, which the migration table is held to; run once, the list frozen by its digest in `mime.docs._migration` |
+| `offline_view_proof.py` | that the page `mime visuals web` writes draws with no network: the page with the viewer inlined opened in headless Chrome (WebGL through SwiftShader) with every request sent to a closed port, passing when `<model-viewer>` reports its animation's duration and the network log holds no request of the page's; the control, the same page with the viewer from jsDelivr, must fail to load under the same block. A manual check before a release, never a test (CI has no WebGL) |
 | `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
 
 `check_anomalies.py` runs inside `mime docs check` (see
