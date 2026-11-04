@@ -11,7 +11,7 @@ Python (``default tests (Python 3.12, ``): the matrix job's own result is one fo
 for another Python's shard.
 
     gh api ".../jobs?filter=latest&per_page=100" --paginate --jq '.jobs[] | {name, conclusion}' \\
-        | python3 scripts/check_shard_jobs.py --prefix "default tests (Python 3.12, " --shards 9
+        | python3 scripts/check_shard_jobs.py --prefix "default tests (Python 3.12, " --shards 10
 
 Exits 0 when they all passed, 1 naming each that did not.
 """

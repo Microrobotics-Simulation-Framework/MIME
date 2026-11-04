@@ -1,5 +1,5 @@
 """How many shards a lane runs as (``scripts/shard_matrix.py``, the ``shards`` job of ``.github/workflows/ci.yml``): the
-repository variable ``MIME_CI_SHARDS``, a manual run's input over it, else 9; a whole number from 1 to 12, and anything
+repository variable ``MIME_CI_SHARDS``, a manual run's input over it, else 10; a whole number from 1 to 12, and anything
 else refused by name. The split and the completeness check work for each count in the bounds (``tests/_sharding.py``,
 ``tests/test_sharding.py``)."""
 
@@ -18,11 +18,11 @@ spec.loader.exec_module(shard_matrix)
 
 
 def test_the_bounds_and_the_default_are_one_to_twelve_and_nine():
-    assert (shard_matrix.MINIMUM, shard_matrix.MAXIMUM, shard_matrix.DEFAULT) == (1, 12, 9)
+    assert (shard_matrix.MINIMUM, shard_matrix.MAXIMUM, shard_matrix.DEFAULT) == (1, 12, 10)
 
 
 @pytest.mark.parametrize("variable, manual, expected", [
-    ("", "", 9), ("  ", "", 9), ("", "  ", 9), ("4", "", 4), (" 4 ", "", 4), ("", "3", 3), ("4", "3", 3),
+    ("", "", 10), ("  ", "", 10), ("", "  ", 10), ("4", "", 4), (" 4 ", "", 4), ("", "3", 3), ("4", "3", 3),
     ("4", "", 4), ("1", "", 1), ("12", "", 12), ("", "12", 12), ("06", "", 6), ("4", " ", 4),
 ])
 def test_the_input_overrides_the_variable_which_overrides_the_default(variable, manual, expected):

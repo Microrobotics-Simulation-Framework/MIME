@@ -225,7 +225,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in a single process, almost all of it compiled programs of its `params_effective` check). The battery is now one
   check to a test, and `tests/_cache_ceiling.py` gives JAX's programs back when a test's worker grows by 1 GiB, which
   changes no result and holds the file's tests to 1.8 GB each; a guard fails the battery without it. Each lane runs as
-  nine shards by default instead of six, the arm battery on a shard of its own (the repository variable `MIME_CI_SHARDS` still overrides it). The control of
+  nine shards by default instead of six (ten since the suite grew again), the arm battery on a shard of its own (the repository variable `MIME_CI_SHARDS` still overrides it). The control of
   `tests/env/test_run_interrupt.py` pressed Ctrl+C 2.5 s after "ready" and failed when the long scan was still
   compiling; it now waits for the child's word that the scan is running.
 - **Ctrl+C while `mime` is still importing** (about the first second) ends the command quietly, 130, where it was

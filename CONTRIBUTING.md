@@ -88,10 +88,10 @@ uv run python scripts/typing_check.py    # pyright, strict over src/mime, at zer
 CI runs each test lane (`default` on three Pythons, `maddening-main` and `openmaterica-main`) as several shard jobs,
 split by test file (`tests/_sharding.py`), and the lane's own job, which branch protection requires, waits for them and
 checks that together they ran every collected test, with none failed or skipped (`scripts/check_shards.py`). How many
-shards is a setting, **nine unless set**:
+shards is a setting, **ten unless set**:
 
 - the repository variable **`MIME_CI_SHARDS`** (Settings, Secrets and variables, Actions, Variables) sets it for every
-  run; unset or empty means 9;
+  run; unset or empty means 10;
 - a manual run's **`shards`** input (Actions, CI, Run workflow) sets it for that run and wins over the variable;
 - it is a whole number from **1 to 12**. Anything else fails the `shard count` job by name, and the lanes with it, so
   no run starts on a count nobody chose.
@@ -99,16 +99,16 @@ shards is a setting, **nine unless set**:
 The trade-off: every shard job costs about the same job-minutes whatever the count (its own setup is about 20 s), so
 more shards shorten a run's wall time and put more jobs against the organisation's concurrent limit (60 on the Team
 plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default` on three Pythons, `maddening-main`,
-`openmaterica-main`) plus 8 other jobs: 53 jobs at the default 9 and 18 at 2. Lower the count when several runs queue
+`openmaterica-main`) plus 8 other jobs: 58 jobs at the default 10 and 18 at 2. Lower the count when several runs queue
 behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
 count starts that count's caches cold.
 
 ## CI: the `ready` label
 
-A run of the whole matrix is 53 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
+A run of the whole matrix is 58 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
 and an agent pushes two to four times a round. So `ci.yml` has two modes. The **full** matrix runs on a push to a branch
 (v0.3's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**. A pull
-request without it runs a **reduced** set of 17 jobs: `typecheck`, `no private name or path`, the docs check, and the
+request without it runs a **reduced** set of 18 jobs: `typecheck`, `no private name or path`, the docs check, and the
 `default` lane on Python 3.12 with all its shards.
 
 A required check never passes by being skipped. In a reduced run the required jobs it does not run for (`default (Python

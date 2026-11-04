@@ -12,7 +12,7 @@ name: CI
 # `typecheck` blocks: pyright, pinned, strict over src/mime at zero errors, on a run that must be trustworthy.
 # `confidential` blocks: the confidentiality scan over the tracked tree and its paths, the commits' diffs and messages
 # and the branch's name.
-# `default`, `openmaterica-main` and `maddening-main` each run their tests as shard jobs (`<lane>-tests`), nine unless
+# `default`, `openmaterica-main` and `maddening-main` each run their tests as shard jobs (`<lane>-tests`), ten unless
 # the repository variable MIME_CI_SHARDS or a manual run's `shards` input says otherwise (the `shards` job,
 # scripts/shard_matrix.py, CONTRIBUTING.md). The split is in tests/_sharding.py, by file and stable. The job under the
 # lane's own name, which branch protection requires, passes only when every shard passed, their selections partition
@@ -36,14 +36,15 @@ name: CI
 # and never saves, a push starts empty and saves (scripts/compilation_cache_mode.py). setup-uv's own cache is saved the
 # same way, by pushes only: pull requests and branches each saved a copy of about 0.5 GB, which filled GitHub's 10 GB
 # per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`; a shard's is
-# 20. The longest of the 45 shard jobs of run 41650113431 (a push, so every shard cold) took 18.4 min, a margin of 1.09
-# (the limit was set at about 3.5 times the 5.7 min measured then); tests/shard_weights.json is rebuilt from a full
-# run's reports (scripts/shard_weights.py) when the suite has grown. A pull request's newer push cancels its older run
+# 20. The longest of the 45 shard jobs of run 41724784021 (a push at nine shards, so every shard cold) took 18.7 min, a
+# margin of 1.07 (the limit was set at about 3.5 times the 5.7 min measured then); the tenth shard was added to move
+# that margin, and tests/shard_weights.json is rebuilt from a full run's reports (scripts/shard_weights.py) when the
+# suite has grown. A pull request's newer push cancels its older run
 # (`concurrency` below).
-# Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix (every lane and Python, 53 jobs) runs on a push to
+# Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix (every lane and Python, 58 jobs) runs on a push to
 # a branch, a manual run, and a pull request that carries the label `ready`. A pull request without the label runs a
 # reduced set: `typecheck`, `no private name or path`, the docs check and the default lane on Python 3.12 with all its
-# shards (17 jobs), and the required jobs it does not run for (`default` on 3.13 and 3.14, `maddening-main`,
+# shards (18 jobs), and the required jobs it does not run for (`default` on 3.13 and 3.14, `maddening-main`,
 # `openmaterica-main`) still run and fail with "the full matrix has not run on this head: add the `ready` label", so
 # that no required check passes by being skipped. An agent adds `ready` when its head is final.
 # The mode is read when the run starts, from the pull request's labels as they are then (the `shards` job), not from the
@@ -81,7 +82,7 @@ on:
         type: string
         default: ""
       shards:
-        description: "Shards per lane for this run, 1 to 12 (empty: the repository variable MIME_CI_SHARDS, else 9; scripts/shard_matrix.py)"
+        description: "Shards per lane for this run, 1 to 12 (empty: the repository variable MIME_CI_SHARDS, else 10; scripts/shard_matrix.py)"
         type: string
         default: ""
       compilation_cache:
@@ -109,7 +110,7 @@ env:
   MIME_CI_PLANT_SHARD_FAILURE: ${{ inputs.plant_shard_failure }}
 
 jobs:
-  # How many shards each lane runs as: the repository variable MIME_CI_SHARDS, a manual run's `shards` input over it, or 9
+  # How many shards each lane runs as: the repository variable MIME_CI_SHARDS, a manual run's `shards` input over it, or 10
   # (scripts/shard_matrix.py, CONTRIBUTING.md). A count outside 1 to 12 fails this job by name, and every job that needs
   # it, the lanes' required jobs included, then fails too.
   # And the run's mode (`full`): the full matrix on a push or a manual run, and on a pull request whose labels, read
