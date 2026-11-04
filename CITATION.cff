@@ -10,7 +10,6 @@ type: software
 authors:
   - given-names: Nicholas Ehsan
     family-names: Roy
-    affiliation: "Microrobotics Simulation Framework"
 keywords:
   - microrobotics
   - field-actuated microrobots
