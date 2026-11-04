@@ -10,6 +10,7 @@ type: software
 authors:
   - given-names: Nicholas Ehsan
     family-names: Roy
+    orcid: "https://orcid.org/0009-0000-5470-9136"
 keywords:
   - microrobotics
   - field-actuated microrobots
