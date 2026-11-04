@@ -39,7 +39,7 @@ CONCEPTS_PATH = "concepts.md"
 #: The hand-written note on reading a run's results, beside the concepts note.
 RESULTS_PATH = "results.md"
 #: The hand-written note on reading an error and reaching its full traceback, beside them.
-ERRORS_PATH = "errors.md"
+ERRORS_PATH = "reading_errors.md"
 #: The hand-written note on the profiles' path: explore, see what is pending, seal.
 PROFILES_PATH = "profiles.md"
 #: The hand-written note on live sessions, ``mime serve`` and the ``mime.live`` protocol.

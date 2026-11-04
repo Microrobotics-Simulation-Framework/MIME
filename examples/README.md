@@ -28,7 +28,8 @@ MIME does.
 - `screw_in_tube.py`: a de Jongh FL-9 screw swimming along a tube of glycerol, turned by a field rotating at 1 Hz, with
   no material records: every value is declared, and the inertia is the diagonal a research build prints when it refuses the
   parts' own tensor (an exploratory build uses it and stamps it pending). `python examples/screw_in_tube.py` runs it in a few seconds more (7 s, measured the same way); `--spacing-mm` sets how fine the
-  samples are, which `docs/choosing_spacing.md` prices and judges. `tests/examples/test_screw_in_tube.py` runs it.
+  samples are, which `docs/choosing_spacing.md` prices and judges. It reads the tube's table, which a build never
+  downloads: fetch it once first, `mime assets fetch unit_tube_R0.997`. `tests/examples/test_screw_in_tube.py` runs it.
 - `tutorial_a.py` and `tutorial_a0.py`: the runs the user guide's tutorials print the output of
   ([tutorial A](../docs/guide/tutorial_a.md), [tutorial A0](../docs/guide/tutorial_a0.md)). The first builds script A's two
   arms from `script_a.py` and runs each for a short time; the second is A0, the same screw driven by a magnet on an AR4

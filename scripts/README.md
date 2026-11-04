@@ -11,6 +11,12 @@
 | `stress_select.py`, `stress_summary.py` | the stress workflow's two halves (`.github/workflows/stress.yml`, [`CONTRIBUTING.md`](../CONTRIBUTING.md#ci-stress-runs)): what to run, from the pull request's changed tests and a `stress:` line of its description (`runs=`, `python=`, `seed=`, `only`), and the caches to restore; then per test, how many runs passed, with the failures' seeds and Hypothesis blobs. They exit non-zero on a request they refuse and on a failed run; unlike the rows above, they run only when a pull request carries the label `stress` |
 | `zenodo_sandbox_lane.py` | `mime push`'s drafts against the Zenodo sandbox, **run by hand, never by CI** (CI never holds an upload token): each folder pushed, read back and pushed again (nothing sent again), the same against the offline fake, and the two compared answer by answer; drafts kept for a person to look at unless `--discard`; with `--publish` (the sandbox only) each draft published, pulled by its number and verified, and the toy's next version published, saying whether a file linked into it is stored once; a log of the answers' shapes, searched for the token before it is written. `--dry-run` replaces the sandbox by a fake of its own name, address and records (see [`mime.push`](../src/mime/push/README.md#testing-it)) |
 
+One script is the release workflow's (`.github/workflows/publish.yml`), run when a GitHub release is published:
+
+| Script | What it does |
+|---|---|
+| `release.py` | `check-tag`: the release's tag is `v` and the version `src/mime/__init__.py` states, and the wheel and sdist built from it are of that version (read from their metadata), or nothing is published; a manual run from a branch is refused. `find-pages`: the documentation pages of the tagged commit's own CI run (the artifact `docs-pages-python-3.12`, built with the default lane's JUnit reports), if a run still holds them. `pack-pages`: the release asset `mime-docs-<version>.tar.gz` (one folder `mime-docs-<version>/` of `index.md`, `pages/` and a README saying where the pages came from) and its `.sha256`, a name and layout the site that renders them relies on. Standard library only; `tests/test_release_workflow.py` runs each and the workflow's steps |
+
 Two scripts are read by the platforms workflow and the ready workflow, not the lanes:
 
 | Script | What it does |

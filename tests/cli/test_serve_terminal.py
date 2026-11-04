@@ -80,6 +80,8 @@ class Served:
             env=child_environment(home, **(env or {})), cwd=tmp, close_fds=True, start_new_session=True)
         os.close(slave)
         self._open = True
+        #: Whether ``finish`` saw the reader end at the terminal's end (False: it gave up after :data:`END_WITHIN`).
+        self.reader_saw_the_end: bool | None = None
         self._reader = threading.Thread(target=self._read, daemon=True)
         self._reader.start()
         self.piped: tuple[str, str] | None = None
@@ -139,6 +141,7 @@ class Served:
         # event is the terminal's own end, which the reader returns on once it has taken everything before it. A reader
         # that was stopped on purpose (``stop_reading``) is already over, and this returns at once.
         self._reader.join(timeout=END_WITHIN)
+        self.reader_saw_the_end = not self._reader.is_alive()
         self._open = False
         self._reader.join(timeout=2)
         return (out or b"").decode("utf-8"), (err or b"").decode("utf-8"), self.process.returncode
@@ -212,6 +215,15 @@ def test_a_scripted_session_on_a_terminal_shows_each_event_once_above_a_strip_th
     _, _, code = child.finish()
     raw = child.tty
     final = screen_of(raw)
+    try:
+        the_end_as_a_person_sees_it(child, code, raw, final, step)
+    except AssertionError as failed:
+        raise AssertionError(f"{failed}\n{what_the_terminal_had(child, raw, final)}") from None
+
+
+def the_end_as_a_person_sees_it(child: Served, code: int, raw: str, final: list[str], step: int) -> None:
+    """The session test's checks of the screen after the stop: each event once and in order, no escape of the client's,
+    no live region, and the block that says how it stopped."""
     text = "\n".join(final)
     assert code == 0 and (child.out_dir / "outputs.json").is_file()
     events = [line[10:] for line in final if len(line) > 10 and line[2] == ":" and line[5] == ":" and line[8:10] == "  "]
@@ -232,6 +244,22 @@ def test_a_scripted_session_on_a_terminal_shows_each_event_once_above_a_strip_th
     places = {part: next(i for i, line in enumerate(final) if part in line) for part in (
         "viewer connected", "command: start", "commander left", "STOPPED  stopped by Ctrl+C")}
     assert list(places.values()) == sorted(places.values()), places
+
+
+#: The most of each part of what the terminal had that a failure of the session test shows (characters).
+SHOWN = 4000
+
+
+def what_the_terminal_had(child: Served, raw: str, final: list[str]) -> str:
+    """For a failure's message, so that one on a runner shows what happened: the screen after the stop, its lines
+    numbered, and what the terminal received (its control sequences written out) where the strip was first drawn and at
+    its end, each part bounded by :data:`SHOWN`."""
+    screen = "\n".join(f"{index:3d} | {line}" for index, line in enumerate(final))
+    first = max(0, raw.find("READY") - SHOWN // 4)
+    return (f"the screen after the stop ({len(final)} lines; its last {SHOWN} characters):\n{screen[-SHOWN:]}\n"
+            f"what the terminal received ({len(raw)} characters; the reader "
+            f"{'saw' if child.reader_saw_the_end else 'did not see'} the terminal's end), where the strip was first "
+            f"drawn:\n{raw[first:first + SHOWN]!r}\nand at its end:\n{raw[-SHOWN:]!r}")
 
 
 # -- what a launcher and a plain terminal get ----------------------------------------------------------------------------

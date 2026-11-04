@@ -40,8 +40,8 @@ def planted_checkout(into: Path, files: dict[str, str]) -> Path:
 
 def copy_checkout(into: Path) -> Path:
     """The package's sources, READMEs and refusal table, the tests' sources, ``docs/``, the examples and the lab fixture
-    the guides include from, the compliance script and ``pyproject.toml`` (whose pins name releases), under ``into``;
-    returns ``into``."""
+    the guides include from, the compliance script, ``pyproject.toml`` (whose pins name releases) and the changelog (a
+    release's development record under ``docs/development/`` links it), under ``into``; returns ``into``."""
     sources = [*(ROOT / "src/mime").rglob("*.py"), *(ROOT / "tests").rglob("*.py"), *(ROOT / "src").rglob("README*.md")]
     for source in sources:
         target = into / source.relative_to(ROOT)
@@ -50,6 +50,7 @@ def copy_checkout(into: Path) -> Path:
     shutil.copyfile(ROOT / "src/mime/build/refusal_table.txt", into / "src/mime/build/refusal_table.txt")
     shutil.copyfile(ROOT / "pyproject.toml", into / "pyproject.toml")
     shutil.copyfile(ROOT / "README.md", into / "README.md")
+    shutil.copyfile(ROOT / "CHANGELOG.md", into / "CHANGELOG.md")
     shutil.copytree(ROOT / "docs", into / "docs", ignore=shutil.ignore_patterns("_build"))
     for directory in ("examples", "lab_fixture"):
         shutil.copytree(ROOT / directory, into / directory, ignore=shutil.ignore_patterns("__pycache__"))

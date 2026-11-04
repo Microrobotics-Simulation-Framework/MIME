@@ -4,7 +4,7 @@
 `load`, `verify`, a result's accessors, the `mime` command) is a `MimeError` with a code, in one shape: what happened in
 the experiment's names, why, what to do (pasteable where it can be), where (the script's line), and the code, which
 names its generated page. How to read one, and how to reach its full traceback:
-[`docs/errors.md`](../../../docs/errors.md).
+[`docs/reading_errors.md`](../../../docs/reading_errors.md).
 
 ## What is here
 
@@ -33,7 +33,7 @@ names its generated page. How to read one, and how to reach its full traceback:
   which a test holds to the source.
 - **The display** (`_display.py`). An uncaught MIME error is shown short: in a script through `sys.excepthook`, in
   IPython and Jupyter through the shell's handler of MIME's errors, in the CLI by the command itself (with no frames,
-  and the exit code [`docs/errors.md`](../../../docs/errors.md) lists). The full chain is written to a file under
+  and the exit code [`docs/reading_errors.md`](../../../docs/reading_errors.md) lists). The full chain is written to a file under
   `$MIME_TRACEBACK_DIR` or `tracebacks` in MIME's cache directory when it is shown, readable by its user alone and named
   `mime-<stamp>-<pid>-<code>.txt`; only the newest `KEPT` of that name are kept, and no other file is touched. A hook
   set before MIME's is handed a MIME error after its short form, unless it is Python's own.

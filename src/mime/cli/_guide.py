@@ -91,7 +91,7 @@ class MimeParser(argparse.ArgumentParser):
         if self is not MimeParser.top:
             return super().format_help()
         formatter = self._get_formatter()
-        formatter.add_usage("%(prog)s [-h] [--traceback] [--plain] <command> [<args>]", [], [])
+        formatter.add_usage("%(prog)s [-h] [-V] [--traceback] [--plain] <command> [<args>]", [], [])
         formatter.add_text(self.description)
         held = _subparsers_of(self)
         listed = {action.dest: action for action in (held._get_subactions() if held is not None else [])}

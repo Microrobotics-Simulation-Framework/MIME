@@ -14,7 +14,7 @@ from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
-from mime import _import_guard
+from mime import __version__, _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
 from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
@@ -968,6 +968,8 @@ def build_parser() -> _guide.MimeParser:
     parser.add_argument(PLAIN_FLAG, action="store_true",
                         help="draw nothing but plain text on a terminal, as when output is piped (NO_COLOR and "
                              "TERM=dumb ask the same); it may come anywhere on the line")
+    parser.add_argument("-V", "--version", action="version", version=f"mime {__version__}",
+                        help="print MIME's version and exit")
     commands = parser.add_subparsers(dest="command", required=False)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
                                                 "outputs; it keeps no XLA compilation cache, compiling as a fresh "

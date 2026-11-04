@@ -26,7 +26,7 @@ the concept pages, which this guide links to where you meet each idea and does n
 
 [The scene](../scene.md) (frames, regions, the stage), [materials](../materials.md) (how a value reaches an entry, declared
 against fitted), [the multibody library](../multibody.md) (chains, mounts, armature), [the profiles](../profiles.md),
-[reading a run's results](../results.md), and [reading an error](../errors.md).
+[reading a run's results](../results.md), and [reading an error](../reading_errors.md).
 
 ## Terms
 
