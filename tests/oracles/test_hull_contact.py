@@ -61,17 +61,27 @@ from mime.nodes.body import RigidInertialNode
 from mime.scene import Cylinder, Screw
 from mime.units import dimensionless, mm
 
-#: How far above where its worker stands a test of this file lets resident memory grow before it gives its compiled
-#: programs back (tests/_cache_ceiling.py): each hull node compiles the support's Newton steps and the sweeps, a property
-#: test compiles them again for the examples that change a parameter, and a worker that ran the file's tests one after
-#: another held 5 to 6 GB of programs at its end (four workers filled CI's 16 GB runner and its 3 GB of swap).
-HEADROOM_MIB = 512
+#: How far above where a worker stands after giving its compiled programs back this file's tests let its resident memory
+#: grow before the next gives them back again (tests/_cache_ceiling.py). Each hull node compiles the support's Newton steps
+#: and the sweeps, and a property test compiles them again for the examples that change a parameter, so a worker that
+#: ran the file's tests one after another held 5 to 6 GB of programs at its end, and four workers filled CI's 16 GB
+#: runner and its 3 GB of swap. Giving them back before every test (``_cache_ceiling.under_ceiling``) kept the shard
+#: under 10 GB but recompiled the file's shared nodes in each test and ran the shard past its 20 minutes.
+HEADROOM_MIB = 1024
+LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
 
 
 @pytest.fixture(autouse=True)
 def programs_given_back():
-    with _cache_ceiling.under_ceiling(HEADROOM_MIB):
-        yield
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB:
+        LIMIT_MIB.append(now + HEADROOM_MIB)
+    elif now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[0] = (_cache_ceiling.resident_mib() or now) + HEADROOM_MIB
 
 
 MASS, INERTIA = 8.5e-5, (1.3e-10, 4.6e-10, 4.6e-10)
