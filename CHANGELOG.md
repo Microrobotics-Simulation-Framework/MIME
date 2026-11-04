@@ -45,6 +45,11 @@ stated default, and the build report says which.
   CSV, NPZ and MATLAB files.
 - **Live sessions and recordings**: `built.live()` and `mime serve` speak the `mime.live/1` protocol over ZMQ to a viewer
   such as MICROROBOTICA, and `mime run --stage-every` records a USD layer of the run.
+- **A recording in a browser**: `mime visuals web <folder>` writes one self-contained page, the viewer inside it, so it
+  needs no network (`--open` opens it), and `mime.viz.display(folder)` shows the same view in a notebook such as
+  Colab. A mesh whose licence forbids redistribution (the AR4's) is never put into a page: simple shapes are drawn
+  in its place, and the page says so. `examples/sphere_settling_tube.py`, a steel ball settling across a tube of
+  water onto its floor, is made to be viewed.
 - **Sharing**: `mime pack` writes a saved experiment as one bundle, `mime pull` checks a bundle and unpacks it, and
   `mime push --to zenodo` publishes one as a record with its card.
 - **Assets by hash**: a large file is referenced by its sha256 with its licence and fetched on request
@@ -66,7 +71,9 @@ stated default, and the build report says which.
 ### Changed
 
 - **Licence: Apache-2.0** from 0.3 on. The 0.2 line (the tag `pre-0.3` and earlier) keeps the licence it was
-  distributed under, LGPL-3.0-or-later, as `NOTICE` says.
+  distributed under, LGPL-3.0-or-later, as `NOTICE` says. The wheel also carries the glTF converter derived from usd2gltf (MIT) and the
+  viewer's bundle (model-viewer, Apache-2.0, holding three.js, fflate and gainmap-js under MIT and lit under
+  BSD-3-Clause), each with its licence, so its licence expression is `Apache-2.0 AND MIT AND BSD-3-Clause`.
 - **Requirements**: Python 3.12 to 3.14 (0.2: 3.10 or later), MADDENING 0.4.2 or later within 0.4 (0.2.0: MADDENING 0.2.1 or
   later within 0.2; the tag `pre-0.3`: 0.3.x), and OpenMaterica.
 - **0.2's nodes and effect models are entries.** The
@@ -114,6 +121,10 @@ claim: a declared limit is a statement, not a measurement, and agreement with th
   by the next, so keep the script that built it and save it again with the new release. That holds of a saved folder in every
   use (load, verify, run, pack), of the folder a bundle unpacks to, and of the `experiment/` folder inside a run
   folder; a run folder's outputs still read.
+- Saving a run (`run_to`, or `built.save`) builds the experiment again, then compiles and runs the reference steps
+  that `mime verify` checks against: a cost of about ten seconds on a laptop's CPU, and up to about two minutes on a
+  Colab GPU, mostly compiling, whatever the run's length. A run that is not saved (`built.run`) does not pay it. A
+  cheaper save is planned for a later development release.
 - Off Linux, a run is verified within its lock's tolerances, not bit for bit, and there is no GPU build for macOS or
   native Windows ([platforms](https://github.com/Microrobotics-Simulation-Framework/MIME/blob/v0.3.0.dev1/docs/platforms.md)).
 - The open anomalies are in the
