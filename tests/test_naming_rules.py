@@ -131,6 +131,8 @@ OLD_NAME_FILES = {
     r"tests/differential/test_frozen_register_pins\.py": "the tests of those scripts, which call their arm by the name "
                                                          "the frozen preregistration keys on",
     r"tests/docs/pages_0\.2_prose\.txt": "the 0.2 line's pages, quoted as they were",
+    r"src/mime/viz/_viewer/model-viewer\.min\.js": "Google's model-viewer bundle, vendored byte for byte (its sha256 "
+                                                  "pinned): its minified names spell the letters by chance",
     r"tests/differential/references/(mrs_convergence|port_mrs_provenance|port_mrs_full_provenance)\.json":
         "a frozen record of what ran under the old name, its bytes pinned",
 }

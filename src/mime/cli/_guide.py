@@ -52,6 +52,7 @@ EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("visuals", "list"): "mime visuals list",
     ("visuals", "fetch"): "mime visuals fetch examples/descriptions/ar4/",
     ("visuals", "view"): "mime visuals view my_run",
+    ("visuals", "web"): "mime visuals web my_run --open",
     ("registry",): "mime registry --json",
     ("docs",): "mime docs check --base origin/v0.3",
     ("docs", "check"): "mime docs check --base origin/v0.3",
