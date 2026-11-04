@@ -174,9 +174,9 @@ def test_an_angular_rate_is_refused_in_the_other_angle_unit_naming_both_and_the_
     assert rate.to(rad_per_s) == pytest.approx(2.0 * math.pi)
     assert Hz(1.0).to(Hz) == pytest.approx(1.0) and Hz(1000.0).to(kHz) == pytest.approx(1.0)
     assert Hz((1.0, 2.0)).to(kHz) == pytest.approx((1e-3, 2e-3))
-    assert Quantity.of([1.0, 2.0], rate.dimension).to(Hz) == pytest.approx([1.0, 2.0])
-    assert (rad_per_s(1.0) + Hz(1.0)).angle is None
-    assert (rad_per_s(1.0) + Hz(1.0)).to(rad_per_s) == pytest.approx(2.0), "unknown is not refused, as before"
+    assert Quantity.of([1.0, 2.0], rate.dimension).to(Hz) == pytest.approx([1.0, 2.0]), "unknown is not refused"
+    with pytest.raises(UnitError, match="differ by 2 pi"):
+        rad_per_s(1.0) + Hz(1.0)
 
 
 def test_an_offset_unit_is_refused_by_to_with_the_reason_and_the_kelvin_it_reads_in_is_not():

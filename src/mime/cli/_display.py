@@ -437,6 +437,34 @@ def damaged_cache_note(stream: IO[str]) -> Generator[None]:
         warnings.showwarning = shown
 
 
+@contextmanager
+def short_description_warnings(stream: IO[str]) -> Generator[None]:
+    """A description's warnings (:class:`~mime.core.multibody.DescriptionWarning`, an element of an arm's file read
+    past: the build report's lines) in MIME's short form, ``mime: warning: <text>`` on ``stream``, each once in the
+    command however many times it builds (a load builds once to check its lock, and a run again), with no source line;
+    every other warning shown as it was."""
+    from mime.core.multibody import DescriptionWarning
+
+    shown = warnings.showwarning
+    said: set[str] = set()
+
+    def show(message: Warning | str, category: type[Warning], filename: str, lineno: int, file: TextIO | None = None,
+             line: str | None = None) -> None:
+        if not issubclass(category, DescriptionWarning):
+            shown(message, category, filename, lineno, file, line)
+            return
+        text = str(message)
+        if text not in said:
+            said.add(text)
+            (file or stream).write(f"mime: warning: {for_terminal(text)}\n")
+
+    warnings.showwarning = show
+    try:
+        yield
+    finally:
+        warnings.showwarning = shown
+
+
 _WHO = {"user": "yours to fix", "environment": "the environment's to fix", "internal": "a defect, not yours",
         "unrecognised": "an error from below that MIME does not recognise"}
 

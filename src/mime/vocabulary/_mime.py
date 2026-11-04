@@ -48,7 +48,7 @@ JOINT_POSITIONS = define(Interface(
                 "The radian is dimensionless in MIME; a prismatic joint's position is a length in metres that this "
                 "unit cannot tell from an angle, so a controller declared in this unit takes revolute joints only"))
 JOINT_VELOCITIES = define(Interface(
-    "apparatus.joint_velocities", ReadKind.STATE, "Hz", None, (-1,), magnitude=1.0,
+    "apparatus.joint_velocities", ReadKind.STATE, "rad/s", None, (-1,), magnitude=1.0,
     description="the rates of a chain segment's moving joints, in the order its description lists them: radians per "
                 "second, or metres per second on a prismatic joint, which this unit cannot tell from an angular "
                 "rate; a dynamic segment publishes them, a kinematic one does not"))

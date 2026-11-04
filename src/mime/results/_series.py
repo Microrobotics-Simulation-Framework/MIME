@@ -241,29 +241,54 @@ def quantity_of(values: NDArray[Any], dimension: Any) -> Quantity:
 class Reading:
     """One value of a run with its window and the flags raised over it: an output the graph reduced, or a series
     reduced over a window (``rule``, from ``samples`` samples). ``to(unit)`` reads it in a unit; it prints with its
-    window and its flags, which never block the read."""
+    window and its flags, which never block the read. An output at the end whose window starts at or after the run's
+    end (``observed`` false) observed nothing: reading its value, its quantity or its unit's reading is refused
+    (``run.window-past-end``), never read as the zero its node holds, and it prints as nothing observed."""
 
     name: str
-    quantity: Quantity
+    held: Quantity
     start: float
     end: float
     flags: tuple[FlagRead, ...]
     rule: Reduction | None = None
     samples: int | None = None
+    observed: bool = True
+
+    def _refuse_unobserved(self) -> None:
+        if not self.observed:
+            raise ArgumentRefused([Refusal(
+                "run.window-past-end", RefusalClass.USER,
+                f"{self.name}'s window starts at {_seconds(self.start)}, at or after the run's end at "
+                f"{_seconds(self.end)}: no step of the run ended inside it, so it observed nothing, and the zero its "
+                f"node holds is no value",
+                f"run past the window's start, longer than {_seconds(self.start)} from the graph's start: "
+                f"run(s(...)), or `mime run <folder> --duration <seconds>s`; or start the window earlier in the "
+                f"observation (after=s(...) for SwimSpeed)",
+                why="an output at the end reduces the steps that end after its window's start, and a run that ends "
+                    "there gives it none")])
+
+    @property
+    def quantity(self) -> Quantity:
+        """Its value as a quantity; refused where it observed nothing."""
+        self._refuse_unobserved()
+        return self.held
 
     @property
     def value(self) -> Values:
-        """Its magnitude in SI."""
+        """Its magnitude in SI; refused where it observed nothing."""
         return self.quantity.value
 
     @property
     def unit(self) -> str:
-        return unit_symbol(self.quantity.dimension)
+        return unit_symbol(self.held.dimension)
 
     def to(self, unit: Unit) -> Values:
         return self.quantity.to(unit)
 
     def text(self) -> str:
+        if not self.observed:
+            return (f"{self.name}: nothing observed: its window starts at {_seconds(self.start)}, at or after the "
+                    f"run's end at {_seconds(self.end)}; run longer to read it")
         how = f", {self.rule.value} of {self.samples} samples" if self.rule is not None and self.samples else ""
         return f"{self.name}{how} = {self.quantity} over {window_text(self.start, self.end)}; {flags_text(self.flags)}"
 

@@ -50,7 +50,7 @@ from mime.build._refusals import (
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.build._steps import whole_runs_either_side, whole_steps
 from mime.build._watch import WATCHED_FAMILY, WatchPlan
-from mime.core import VELOCITY_RULES, shape_named
+from mime.core import VELOCITY_RULES, jnp, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
 from mime.core.multibody import Inertial, MultibodyTree, Payload, RigidTransform
@@ -130,7 +130,8 @@ from mime.things import (
     did_you_mean,
     prim_path_of,
 )
-from mime.units import FREQUENCY, LENGTH, TIME, Dimension, Magnitude, Quantity, UnitError, si, unit_symbol
+from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnitude, Quantity, UnitError, \
+    rate_symbol, says_its_angle, si, unit_symbol
 from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
     Capability, ReadKind, TargetKind
@@ -605,6 +606,8 @@ class _Planner:
         #: The commands the controller writes, by apparatus and command, each to its write label and path as written.
         self.written: dict[str, dict[str, tuple[str, str]]] = {}
         self.writes: dict[str, ResolvedWrite] = {}
+        #: The units each write's signal is declared in: its command's, with rad/s for an angular velocity.
+        self.write_units: dict[str, str] = {}
         self.work = ProfileWork(DEFAULT_PROFILE)
         self.outcome = ProfileOutcome(DEFAULT_PROFILE)
 
@@ -640,6 +643,7 @@ class _Planner:
                 observation = declaration.observation
                 self.plan_reader(observation, observation.bindings(), index, Section.OBSERVATION)
         self.check_ids()
+        self.check_bodies_start_inside()
         self.resolve_values()
         self.plan_confinements()
         self.plan_lubrication()
@@ -917,8 +921,9 @@ class _Planner:
             else:
                 period = si(rate, TIME, what=f"the rate of {what}")
         except UnitError as error:
+            instead = error.instead(lambda q: f"rate={q}")
             self.refuse("run.rate-units", RefusalClass.USER, str(error),
-                        "write a rate as a period, such as ms(2), or a frequency, such as Hz(500)")
+                        f"write a rate as a period, such as ms(2), or a frequency, such as Hz(500){instead}")
             return 1
         ratio = period / self.dt if isinstance(period, float) else math.nan
         whole = round(ratio) if math.isfinite(ratio) else 0
@@ -1562,8 +1567,9 @@ class _Planner:
             try:
                 values[key] = si(value, wanted[key], what=f"body {thing.name!r}'s initial {key}")
             except UnitError as error:
-                self.refuse("state.units", RefusalClass.USER, str(error), f"write State({key}=...) in units of "
-                                                                          f"{wanted[key]}")
+                instead = error.instead(lambda q: f"State({key}={q})")
+                self.refuse("state.units", RefusalClass.USER, str(error),
+                            f"write State({key}=...) in units of {wanted[key]}{instead}")
             except TypeError as error:
                 self.refuse("state.value", RefusalClass.USER, f"body {thing.name!r}'s initial {key}: {error}",
                             f"write State({key}=...) as a quantity of {wanted[key]}")
@@ -1917,11 +1923,12 @@ class _Planner:
         return "; ".join(f"{owner}: {why}" for owner, why in reasons)
 
     def settings_in_si(self, entry: Entry, record: Registered, where: str, *,
-                       commanded: Dimension | None = None) -> dict[str, Magnitude]:
+                       commanded: Dimension | None = None, command: str | None = None) -> dict[str, Magnitude]:
         """Each dimensioned setting of ``entry`` checked against the dimension its annotation declares and turned
         into SI; a setting of another dimension, or a bare number where a quantity is needed, is refused. A
         direction becomes a unit vector, and a drive's commanded quantity is checked against ``commanded``, the
-        dimension of the command it drives. A geometry's own directions are left to :meth:`plan_geometry`."""
+        dimension of the command it drives (``command``, named in the refusal's line to write). A geometry's own
+        directions are left to :meth:`plan_geometry`."""
         values: dict[str, Magnitude] = {}
         for name, declared in record.settings.items():
             value: object = setting_value(entry, name)
@@ -1940,8 +1947,10 @@ class _Planner:
             try:
                 values[name] = si(value, dimension, what=what)
             except UnitError as error:
+                instead = error.instead(lambda q: f"commands={{{command!r}: {q}}}") if command is not None and \
+                    declared.kind is Commanded else error.instead(lambda q: f"{name}={q}")
                 self.refuse("setting.units", RefusalClass.USER, str(error),
-                            f"write {name}= as a quantity of {dimension}")
+                            f"write {name}= as a quantity of {dimension}{instead}")
             except TypeError as error:
                 self.refuse("setting.value", RefusalClass.USER, f"{what}: {error}",
                             f"write {name}= as a quantity of {dimension}")
@@ -2023,6 +2032,10 @@ class _Planner:
         for plan in self.segments.get(apparatus.name, []):
             held: Mapping[str, Command] = plan.segment.commands if plan.segment is not None else {}
             for command, spec in held.items():
+                if not says_its_angle(spec.dimension):
+                    self.defect(plan.registered.cls, f"its segment's command {command!r} is declared with a rate per "
+                                                     f"second that says neither turns nor radians: {SAY_THE_ANGLE}")
+                    continue
                 taken[f"{plan.owner.partition('.')[2]}.{command}"] = (plan, spec)
         for command, drive in apparatus.commands.items():
             where = f"apparatus {apparatus.name!r}'s command {command!r}"
@@ -2039,7 +2052,7 @@ class _Planner:
             plan = EntryPlan(Section.DRIVE, f"drive:{apparatus.name}.{command}", cast(Drive, drive), record, ("",), 1,
                              index, thing=apparatus.name, thing_kind=ThingKind.APPARATUS,
                              settings=self.settings_in_si(cast(Drive, drive), record, where,
-                                                          commanded=spec.dimension),
+                                                          commanded=spec.dimension, command=command),
                              command=ResolvedCommand(provider.node_name(), spec.port, command,
                                                      unit_symbol(spec.dimension)))
             self.setting_problems(cast(Drive, drive), plan.settings, where)
@@ -2065,6 +2078,7 @@ class _Planner:
             plan, spec = taken[command]
             self.writes[label] = ResolvedWrite(label, path, plan.node_name(), spec.port, unit_symbol(spec.dimension),
                                                spec.shape)
+            self.write_units[label] = rate_symbol(spec.dimension)
         for command in taken:
             if command not in apparatus.commands and command not in written:
                 spec = taken[command][1]
@@ -2210,11 +2224,16 @@ class _Planner:
             write = self.writes.get(label)
             if write is None:
                 continue
-            if signal.units != write.units or not _fits(signal.shape, write.shape):
+            units = self.write_units.get(label, write.units)
+            if signal.units != units or not _fits(signal.shape, write.shape):
+                other = {"Hz": "rad/s", "rad/s": "Hz"}.get(units)
+                angle = (f": {units} and {other} share a dimension and differ by 2 pi, which MIME does not assume, so "
+                         f"a law that writes {other} writes another number" if signal.units == other else "")
                 self.refuse("controller.signal", RefusalClass.USER,
                             f"{where} writes {label!r} in {signal.units!r} with shape {signal.shape}, and "
-                            f"{write.path} takes {write.units!r} with shape {write.shape}",
-                            f"bind {label!r} to a command in its units and shape, in set_controller(writes=...)")
+                            f"{write.path} takes {units!r} with shape {write.shape}{angle}",
+                            f"bind {label!r} to a command in its units and shape, in set_controller(writes=...)" +
+                            (f"; or declare the write Signal({units!r}, ...) and convert in the law" if angle else ""))
                 continue
             writes.append(write)
         for read, reason in refused_reads(None, reads):
@@ -2776,6 +2795,12 @@ class _Planner:
                                   declared_item(path, declaration.value, "declared in the experiment with its reason "
                                                                          "pending"))
             self.values[path] = held
+            kind = materials.kind_of_path(materials.ValuePath.parse(path), kinds)
+            resolved = materials.resolve_declared(held, kind) if kind is not None else None
+            below = materials.not_above_zero(path, kind, resolved.value, resolved.source) \
+                if kind is not None and resolved is not None else None
+            if below is not None:
+                self.refuse_problems([below])
 
     def hull_of(self, body: str) -> Hull | None:
         """The hull of ``body``: its one part outside every other, when that part's kind gives its radial reach or
@@ -2855,6 +2880,10 @@ class _Planner:
                         f"{sources + ', and ' if sources else ''}the experiment declares no value",
                         f"declare it with its reason: exp.declare({path!r}, {quantity}, reason=\"...\")")
             return
+        below = materials.not_above_zero(path, materials.VALUE_KINDS[held.kind][name], found.value.value,
+                                         found.value.source)
+        if below is not None:
+            self.refuse_problems([below])
         plan.values[label] = found.value
 
     def resolve_values(self) -> None:
@@ -2890,6 +2919,59 @@ class _Planner:
             return
         for problem in problems:
             self.refuse(problem.code, RefusalClass.USER, f"body {plan.thing!r}: {problem.message}", problem.action)
+
+    def check_bodies_start_inside(self) -> None:
+        """Each body an interaction binds to a medium that fills a region, refused once where its centre starts
+        outside that region: every law that binds the two reads the body as in the medium, and nothing outside the
+        region holds it (a law's own clamp near the wall would describe a body inside)."""
+        seen: set[tuple[str, str]] = set()
+        for plan in self.readers:
+            if plan.section is not Section.INTERACTION:
+                continue
+            roles = cast(type[Interaction], plan.reader_cls()).roles
+            bodies = [plan.bindings[r] for r, kind in roles.items() if kind is RoleKind.BODY and r in plan.bindings]
+            media = [plan.bindings[r] for r, kind in roles.items() if kind is RoleKind.MEDIUM and r in plan.bindings]
+            for body in bodies:
+                for medium in media:
+                    if (body, medium) not in seen:
+                        seen.add((body, medium))
+                        self.check_body_inside(body, medium, plan.owner)
+
+    def check_body_inside(self, body: str, medium: str, law: str) -> None:
+        dynamics = self.dynamics.get(body)
+        held: object = dynamics.initial.get("position") if dynamics is not None else None
+        region = self.region_of(medium)
+        if region is None or not isinstance(held, tuple):
+            return
+        position = tuple(float(c) for c in cast(tuple[float, ...], held))
+        if len(position) != 3:
+            return
+        shape = shape_named(region.shape)
+        try:
+            point = jnp.asarray(position)
+            beyond = float(shape.signed_distance(region.parameters, point))
+            axis, through = shape.axis(region.parameters), shape.axis_point(region.parameters)
+        except Exception as error:  # noqa: BLE001 - a shape's defect becomes a refusal naming its kind
+            owner = self.geometries.get(region.path.partition(".")[0])
+            if owner is not None:
+                self.defect(owner.registered.cls, f"the shape {region.shape!r} of {region.path} raised {error!r} at a "
+                                                  f"body's initial position", error)
+            return
+        if not beyond > 0.0:
+            return
+        inside = ""
+        if axis is not None and through is not None:
+            direction, start = np.asarray(axis, dtype=np.float64), np.asarray(through, dtype=np.float64)
+            offset = np.asarray(position, dtype=np.float64) - start
+            nearest = start + float(offset @ direction) * direction
+            written = ", ".join(f"{float(c) * 1e3:.6g}" for c in nearest)
+            inside = f": State(position=mm(({written}))) starts it on {region.path}'s axis, its nearest point there"
+        where = ", ".join(f"{c * 1e3:.6g}" for c in position)
+        self.refuse("state.outside-region", RefusalClass.USER,
+                    f"body {body!r} starts at ({where}) mm, outside {region.path}, the region {medium!r} fills, "
+                    f"{beyond * 1e3:.4g} mm beyond its wall, and {law} reads it as in {medium!r}",
+                    f"give the body an initial position inside {region.path}, Body(..., initial=State(position="
+                    f"...)){inside}; or bind it to a medium it is in")
 
     def plan_confinements(self) -> None:
         for plan in self.readers:

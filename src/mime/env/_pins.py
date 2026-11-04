@@ -34,6 +34,15 @@ EXPORT_ARGUMENTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     variant: ("export", "--frozen", "--no-dev", "--no-emit-project", "--no-header", "--format", "requirements.txt",
               *(("--extra", variant) if variant != "cpu" else ()))
     for variant in VARIANTS})
+#: MIME's own extras that are no variant, and its dependency groups: what a checkout's ``uv sync --locked`` installs
+#: beside a variant's pins (the dev group by default, ``--extra verify`` for the harnesses). Their pins are
+#: ``OPTIONAL_FILE``, the lock's export with them: the check accepts one of them installed at its pin, never at another
+#: version, and requires none.
+OPTIONAL_EXTRAS, OPTIONAL_GROUPS = ("verify",), ("dev",)
+OPTIONAL_FILE = "requirements-optional.txt"
+OPTIONAL_EXPORT_ARGUMENTS = ("export", "--frozen", "--no-emit-project", "--no-header", "--format", "requirements.txt",
+                             *(word for extra in OPTIONAL_EXTRAS for word in ("--extra", extra)),
+                             *(word for group in OPTIONAL_GROUPS for word in ("--group", group)))
 
 
 class Base(TypedDict, closed=True):
@@ -149,6 +158,13 @@ def pins(variant: str) -> tuple[Pin, ...]:
 
 
 @cache
+def optional_pins() -> tuple[Pin, ...]:
+    """The pins of MIME's own extras and groups that are no variant (:data:`OPTIONAL_FILE`), as MIME ships them."""
+    text = (importlib.resources.files("mime.data") / ENV_FOLDER / OPTIONAL_FILE).read_text(encoding="utf-8")
+    return tuple(parse_requirements(text))
+
+
+@cache
 def bases() -> Mapping[str, Base]:
     """Each Python series' base image, by series (``"3.14"``)."""
     text = (importlib.resources.files("mime.data") / ENV_FOLDER / BASES_FILE).read_text(encoding="utf-8")
@@ -185,6 +201,7 @@ def applicable(held: Sequence[Pin], environment: Mapping[str, str] | None = None
     return found
 
 
-__all__ = ["BASES_FILE", "ENV_FOLDER", "EXPORT_ARGUMENTS", "UV_FILE", "VARIANTS", "Base", "Pin", "UvImage",
-           "applicable", "bases", "parse_requirements", "pins", "requirements_bytes", "requirements_name",
+__all__ = ["BASES_FILE", "ENV_FOLDER", "EXPORT_ARGUMENTS", "OPTIONAL_EXPORT_ARGUMENTS", "OPTIONAL_EXTRAS",
+           "OPTIONAL_FILE", "OPTIONAL_GROUPS", "UV_FILE", "VARIANTS", "Base", "Pin", "UvImage",
+           "applicable", "bases", "optional_pins", "parse_requirements", "pins", "requirements_bytes", "requirements_name",
            "same_version", "series_of", "uv_digest", "uv_image"]

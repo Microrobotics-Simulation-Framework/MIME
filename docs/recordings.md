@@ -102,8 +102,9 @@ mime visuals view a0_run                        # the layer that opens the run's
   holds none of its bytes. A saved stage's names are its pins: loaded, the experiment's stage names each mesh as it was
   saved, whatever manifest is beside its description now, and the build report says where one names another file. When it is opened through `mime visuals view` or `mime.viz.open_stage`, or by a client from the overlay
   `hello` names, an overlay in the cache references each baked mesh into its prim and hides the bones. Without it, the
-  links are drawn as bones, and `mime visuals view` and `hello` say which sets are missing and how to fetch them, with
-  each set's notice (its credit and terms) whether it is drawn or not.
+  links are drawn as bones, and `mime visuals view` and `hello` say which sets are missing and how to fetch them (in
+  `hello`, `visuals.fetch`: the command for each missing set, its folder quoted for a shell), with each set's notice
+  (its credit and terms) whether it is drawn or not.
 - **Nothing of it is ever written into a saved folder or a run folder**, so `mime pack` cannot carry it: a test packs
   A0's saved folder and a live session's run folder with a stand-in baked in the cache, and finds none of its bytes.
   `mime assets audit` finds a baked mesh copied anywhere (a tree, a wheel), by its hash, and `mime pack` and `mime push`

@@ -37,7 +37,9 @@ The small form:
 Annotated[Quantity, Length]`, with the markers of `mime.units`. Registration reads the annotations
 (`dimensioned_settings`, recorded on `Registered.settings`) and refuses a `Quantity` setting with no marker (`rate`
 excepted, a period or a frequency with its own rule), a marker on a setting that holds no `Quantity`, and a default of
-another dimension. Phase 1 refuses a setting of another dimension, naming the entry, the setting and both dimensions,
+another dimension. A rate per second, as a setting, a command (`Command.dimension`) or an initial state, is
+`Frequency` (Hz, turns) or `AngularVelocity` (rad/s, radians), never a rate that says neither (`rate_problems`), so
+that phase 1 refuses one of the other kind. Phase 1 refuses a setting of another dimension, naming the entry, the setting and both dimensions,
 and hands the entry its settings in SI through its context: `ctx.scalar("margin")`, `ctx.vector("x0")`.
 
 **drives** (`Drive`, `register_drive`: a command generator, one node and one exclusive edge into its

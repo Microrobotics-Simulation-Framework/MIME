@@ -10,7 +10,7 @@ from mime.gradients import GradientStatus
 from mime.nodes.body import HULL, SURFACE, RigidInertialMidpointNode, RigidInertialNode
 from mime.registry import BuildContext, Dynamics, Port, Problem, register_dynamics
 from mime.things import ThingKind
-from mime.units import DIMENSIONLESS, FREQUENCY, LENGTH, VELOCITY, Magnitude
+from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, LENGTH, VELOCITY, Magnitude
 from mime.vocabulary import (
     APPLIED_WRENCH,
     BACKGROUND_LOAD,
@@ -89,7 +89,7 @@ class RigidInertial(Dynamics):
     accepts = {APPLIED_WRENCH.name: Port("applied_wrench"), RESISTANCE.name: Port("resistance"),
                BACKGROUND_LOAD.name: Port("background_load"), CONFINEMENT.name: Port("confinement")}
     initial_state = {"position": LENGTH, "orientation": DIMENSIONLESS, "velocity": VELOCITY,
-                     "angular_velocity": FREQUENCY}
+                     "angular_velocity": ANGULAR_VELOCITY}
     values = {"mass": "mass", "inertia": "inertia"}
 
     @override

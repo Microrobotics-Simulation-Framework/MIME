@@ -11,7 +11,8 @@ from mime.nodes.actuation import DynamicMotorNode, KinematicMotorNode
 from mime.registry import DESIGN, PHYSICAL, convention
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, Port, Problem, Segment, \
     Spinner, register_dynamics
-from mime.units import DIMENSIONLESS, FREQUENCY, MOMENT_OF_INERTIA, ROTATIONAL_DAMPING, TORQUE, Magnitude, Quantity
+from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, MOMENT_OF_INERTIA, ROTATIONAL_DAMPING, TORQUE, Magnitude, \
+    Quantity
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_WRENCH, Capability
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 _IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 #: What each prescription commands, and the command's dimension: an angle (rad), or a speed (rad/s).
-PRESCRIPTIONS = {"angle": DIMENSIONLESS, "velocity": FREQUENCY}
+PRESCRIPTIONS = {"angle": DIMENSIONLESS, "velocity": ANGULAR_VELOCITY}
 KINEMATIC_LIMITS = (
     "an ideal source of the prescribed motion, with no cogging, imbalance or thermal terms (MIME-ANO-102, as it "
     "applies to a prescribed motion)",
@@ -57,7 +58,9 @@ class Motor(ChainSegment):
     ``kinematic`` (``Motor.Kinematic(...)``): its motion is prescribed, ``prescribed="angle"`` by the command
     ``<segment>.angle`` (rad), or ``prescribed="velocity"`` by ``<segment>.velocity`` (rad/s, integrated over each
     step), from ``initial_angle``. An ideal source of that motion: no rotor inertia, cogging, imbalance or thermal
-    terms, and no load taken.
+    terms, and no load taken. The graph's edge into that velocity is still labelled ``Hz``, its dimension's SI symbol,
+    for the rad/s it takes, as the drives' edges into it are: a command or a controller's write is checked as rad/s
+    (``Signal("rad/s")``), and the label is left for a later release to change with them.
 
     ``dynamic`` (``Motor.Dynamic(...)``): its rotor, of ``inertia`` about the axis, is turned by the torque commanded
     (``<segment>.torque``, N m) against its bearing's viscous ``damping`` and the loads on it about the axis, from
@@ -91,10 +94,10 @@ class Motor(ChainSegment):
     axis: tuple[float, float, float]
     prescribed: str | None = None
     initial_angle: Annotated[Quantity, DIMENSIONLESS]
-    initial_velocity: Annotated[Quantity | None, FREQUENCY] = None
+    initial_velocity: Annotated[Quantity | None, ANGULAR_VELOCITY] = None
     inertia: Annotated[Quantity | None, MOMENT_OF_INERTIA] = None
     damping: Annotated[Quantity | None, ROTATIONAL_DAMPING] = None
-    top_speed: Annotated[Quantity | None, FREQUENCY] = None
+    top_speed: Annotated[Quantity | None, ANGULAR_VELOCITY] = None
 
     @classmethod
     def Kinematic(cls, **settings: Any) -> Motor:  # noqa: N802 - a rung's alias reads as a class

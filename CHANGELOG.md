@@ -24,6 +24,9 @@ stated default, and the build report says which.
 - **Experiments as declarations**: `mime.Experiment` with `Body`, `Medium`, `Structure`, `Apparatus` and `State`;
   laws are registered entries attached with `exp.attach(...)`, and observations are added with `exp.observe(...)`.
 - **Quantities checked by dimension** (`mime.units`: `mm(...)`, `Hz(...)`, `mT(...)`), turned into SI at the build.
+  A frequency in `Hz` counts turns and an angular velocity in `rad_per_s` radians: each site says which it takes
+  and refuses the other with both conversions to write, and arithmetic keeps what a quantity counts
+  (`Hz(5.0) * (2 * pi)` is still in Hz; write `rad_per_s(2 * pi * 5.0)`).
 - **Profiles**: `exploratory`, the default, runs with nothing stated and lists what it left pending (`mime pending`);
   `research` asks for every reason and refuses a pending one by name. `strict` is reserved, and refused until it is built.
 - **Saved experiments that reproduce**: `built.save(folder)` writes the experiment's document, a lock that pins every
@@ -49,7 +52,12 @@ stated default, and the build report says which.
   from their owner), and `mime assets audit` checks a package for one.
 - **The `mime` command**: `run`, `serve`, `verify`, `pending`, `pack`, `pull`, `push`, `card`, `env check`, `modal`,
   `assets`, `visuals`, `registry`, `docs`, `completion`, and `mime --version`.
-- **Errors with codes**: every refusal has a code, what to change, and its own documentation page.
+- **Errors with codes**: every refusal has a code, what to change, and its own documentation page. Three inputs
+  that would give a number are refused in every profile: a dynamic viscosity of zero or less
+  (`value.not-positive`), a body whose centre starts outside the region its medium fills (`state.outside-region`),
+  and a reading of an observation whose window starts at or after the run's end (`run.window-past-end`). A
+  renamed entry says its new name (`call.renamed`, as for the drag's `Drag.MRS`), and an entry made without a
+  required setting names it and why it has no default (`Screw`'s `starts`, `call.missing-setting`).
 - **Extending MIME**: a lab's package registers its own entries through the `mime.entries` entry point, and tests them
   with `mime.testing`'s harnesses.
 - **Generated documentation**: entry, node, error and reference pages generated from the code, and a user guide whose

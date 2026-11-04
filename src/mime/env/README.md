@@ -10,6 +10,10 @@
     environment marker and its hashes; the `cuda12` variant adds JAX's CUDA plugin, its PJRT and every `nvidia-*`
     library, locked through the `cuda12` extra. `EXPORT_ARGUMENTS` holds the command, and a test regenerates both
     files from the lock and compares their bytes, so a lock changed without them fails.
+  - `requirements-optional.txt`: the same export with MIME's own extras that are no variant and its groups
+    (`OPTIONAL_EXTRAS`, `verify`; `OPTIONAL_GROUPS`, `dev`; `OPTIONAL_EXPORT_ARGUMENTS`): what a checkout's
+    `uv sync --locked` installs beside a variant's pins. The check accepts each of them installed at its pin, refuses
+    one at another version, and requires none; a distribution in neither file is still refused as pinned by nothing.
   - `bases.json`: for each Python series MIME supports, the base image (`python:<series>-slim-<debian>`) pinned by the
     digest of its index, with its linux/amd64 manifest's digest, its Python version, its Debian release and point
     version, its glibc and the distributions it ships. `scripts/bump_bases.py` reads them from the image itself; a
@@ -23,7 +27,8 @@
     to `sys.path`) with the variant's pins whose markers hold here, MIME at the version of the pinned wheel
     (`--mime-version`; without it MIME is present but held to no version, since its own metadata would be compared with
     itself), the lab's pins and, with `--base`, the base image's own; each one missing, at another version or pinned by
-    nothing is refused, naming it;
+    nothing is refused, naming it; one of MIME's own extras or groups (`requirements-optional.txt`) is accepted at its
+    pin, so that the documented installs (`uv sync --locked`, with or without `--extra verify`) pass;
   - it then reads where Python imports each of those distributions' top-level modules from and refuses any found
     outside this environment's site-packages (a `PYTHONPATH` entry, the user site), naming the folder and the modules
     (`env.shadow`); a distribution installed in place from a checkout is left out;

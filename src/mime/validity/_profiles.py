@@ -48,8 +48,9 @@ def profile_of(value: object) -> tuple[Profile | None, tuple[str, str, str] | No
                       f"pass profile= one of {names} (exploratory when not given)")
     if found not in BUILT:
         return None, ("profile.reserved",
-                      "the strict profile holds a higher evidence standard, which MIME builds in a1: a strict build "
-                      "now could apply only research's rules, and would claim a standard it does not apply",
+                      "the strict profile holds a higher evidence standard, which MIME builds in a later release: a "
+                      "strict build now could apply only research's rules, and would claim a standard it does not "
+                      "apply",
                       "build with profile=\"research\" until then; strict confers nothing by itself")
     return found, None
 

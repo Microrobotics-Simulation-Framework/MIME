@@ -117,7 +117,8 @@ def _output(result: RunResult, output: OutputLayout, names: Mapping[str, str]) -
         held.update(rule=output.rule.value)
     if output.kind is OutputKind.AT_END:
         reading = cast(Reading, result.output(output))
-        held.update(value=np.array(reading.value, dtype=np.float64), window=np.array([reading.start, reading.end]),
+        held.update(value=np.array(reading.quantity.value if reading.observed else np.nan, dtype=np.float64),
+                    window=np.array([reading.start, reading.end]),
                     window_unit="s", flags_text=flags_text(reading.flags), **_flags_of(reading.flags, names))
     elif output.path in result.recorded:
         series = cast(Series, result.output(output))

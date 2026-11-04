@@ -60,14 +60,29 @@ class RecordField:
 
 
 @dataclass(frozen=True)
+class AboveZero:
+    """A value that is above zero by what it is: why, and how a script writes one, its unit's constructor in
+    ``mime.units`` with that unit's SI factor and a typical value in it, with what it is typical of."""
+
+    why: str
+    unit: str
+    factor: float
+    typical: float
+    typical_of: str
+
+
+@dataclass(frozen=True)
 class ValueKind:
-    """What a value of a thing is: its dimension, its shape (``()`` or ``(3,)``) and what it means, and the record
-    field it is read from when the thing's material is a record (``None``: no record holds it)."""
+    """What a value of a thing is: its dimension, its shape (``()`` or ``(3,)``) and what it means, the record field
+    it is read from when the thing's material is a record (``None``: no record holds it), and, for a value that is
+    above zero by what it is, why (``above_zero``): one of zero or less is refused in every profile, wherever it comes
+    from."""
 
     dimension: Dimension
     shape: tuple[int, ...]
     meaning: str
     record: RecordField | None = None
+    above_zero: AboveZero | None = None
 
 
 _APPARENT: Mapping[str, tuple[str, ...]] = MappingProxyType({"density_kind": ("apparent",)})
@@ -103,7 +118,9 @@ VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
     ThingKind.MEDIUM: {
         "density": ValueKind(DENSITY, (), "the medium's mass density", RecordField("bulk.density", "kg/m3", _APPARENT)),
         "viscosity": ValueKind(DYNAMIC_VISCOSITY, (), "the medium's dynamic viscosity",
-                               RecordField("fluid.dynamic_viscosity", "Pa.s")),
+                               RecordField("fluid.dynamic_viscosity", "Pa.s"), AboveZero(
+                                   "a fluid's viscosity is above zero: at zero a drag vanishes, and below it a drag "
+                                   "puts energy into the body it resists", "mPa_s", 1e-3, 1.0, "water near 20 degC")),
     },
 }
 
@@ -263,6 +280,24 @@ def declaration_problems(declared: Declared, things: Mapping[str, ThingKind], di
         return [("value.units", problem, f"declare {declared.path} as {kind.meaning}, in units of {kind.dimension}: "
                                          f"exp.declare({declared.path!r}, ...)")]
     return []
+
+
+def not_above_zero(path: str, kind: ValueKind, value: Magnitude, source: str) -> tuple[str, str, str] | None:
+    """The refusal of ``value`` (SI, from ``source``) at ``path`` where its kind is above zero by what it is and the
+    value is zero or less, or not finite, as ``(code, message, action)``; ``None`` where it is a value the kind can
+    have. The line to write is the magnitude written, where it is below zero, or a typical value."""
+    held = kind.above_zero
+    if held is None or isinstance(value, tuple) or (math.isfinite(value) and value > 0.0):
+        return None
+    signed = math.isfinite(value) and value < 0.0
+    written = -value / held.factor if signed else held.typical
+    typical = (f" if the minus sign was the slip ({held.typical_of} is about {held.typical:g} in it)" if signed else
+               f" ({held.typical_of} is about {held.typical:g} in it)")
+    return ("value.not-positive",
+            f"{path} is {value!r} {unit_symbol(kind.dimension)} ({source}), {kind.meaning} of zero or less: "
+            f"{held.why}",
+            f"declare it above zero, in its unit: exp.declare({path!r}, {held.unit}({written!r}), reason=\"...\")"
+            f"{typical}")
 
 
 def resolve_declared(held: Declared, kind: ValueKind, directed: Directed | None = None) -> ResolvedValue | None:

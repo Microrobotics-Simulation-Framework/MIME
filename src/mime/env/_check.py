@@ -34,7 +34,7 @@ from mime.build._refusals import SUBJECT_NAME, Subject
 from mime.build._maddening import devices as devices_of_jax
 from mime.env._gpus import gpu_type, is_kind_of
 from mime.env._host import runner_record
-from mime.env._pins import Pin, applicable, bases, parse_requirements, pins, same_version, series_of
+from mime.env._pins import Pin, applicable, bases, optional_pins, parse_requirements, pins, same_version, series_of
 from mime.env._xla_cache import use_xla_cache
 
 LOCK_FILE = "mime.lock"
@@ -173,11 +173,25 @@ def expected_distributions(variant: str, system: System, *, base: Mapping[str, s
     return found, refusals
 
 
+#: Where an optional pin comes from, as a refusal names it.
+OPTIONAL_SOURCE = "MIME's lock, for its own extras and groups"
+
+
+def optional_expected(expected: Mapping[str, Expected], markers: Mapping[str, str]) -> dict[str, Expected]:
+    """The pins of MIME's own extras and groups whose markers hold, for the distributions ``expected`` does not pin:
+    what a checkout's ``uv sync --locked`` installs beside them, accepted at these versions and required nowhere."""
+    return {name: Expected(pin.version, OPTIONAL_SOURCE) for name, pin in applicable(optional_pins(), markers).items()
+            if name not in expected}
+
+
 def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapping[str, Expected], *,
-                          tolerated: frozenset[str] = frozenset()) -> list[Refusal]:
-    """A refusal for each pinned distribution missing or at another version, and each installed one nothing pins
-    (``tolerated`` names aside)."""
+                          tolerated: frozenset[str] = frozenset(),
+                          optional: Mapping[str, Expected] | None = None) -> list[Refusal]:
+    """A refusal for each pinned distribution missing or at another version, each installed one nothing pins
+    (``tolerated`` names aside), and each of ``optional`` (MIME's own extras' and groups' pins, accepted where they are
+    installed) at another version than its pin."""
     refusals: list[Refusal] = []
+    held_optional = dict(optional or {})
     for name, want in sorted(expected.items()):
         held = installed.get(name, ())
         if not held:
@@ -194,6 +208,16 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
                                     f"{name} is installed at {', '.join(held)} and pinned at {want.version} by "
                                     f"{want.source}", REBUILD, subject=subject))
     for name, held in sorted(installed.items()):
+        allowed = held_optional.get(name)
+        if name not in expected and allowed is not None and name not in tolerated:
+            if len(held) > 1 or not allowed.matches(held[0]):
+                subject = Subject("installed distributions differ from their pins",
+                                  ("distribution", "installed", "pinned at", "pinned by"),
+                                  (name, ", ".join(held), allowed.version, allowed.source), REBUILD)
+                refusals.append(Refusal("env.pin", RefusalClass.ENVIRONMENT,
+                                        f"{name} is installed at {', '.join(held)} and pinned at {allowed.version} by "
+                                        f"{allowed.source}", REBUILD, subject=subject))
+            continue
         if name not in expected and name not in tolerated:
             subject = Subject("installed distributions are pinned by nothing", ("distribution", "installed"),
                               (name, ", ".join(held)),
@@ -463,7 +487,8 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     found = installed if installed is not None else installed_distributions()
     refusals += conflicts
     tolerated = frozenset(() if base else INSTALLERS) | frozenset(() if mime_version is not None else (DISTRIBUTION,))
-    refusals += distribution_refusals(found, expected, tolerated=tolerated)
+    refusals += distribution_refusals(found, expected, tolerated=tolerated,
+                                      optional=optional_expected(expected, held_system.markers))
     held_modules = modules if modules is not None else (environment_modules() if installed is None else None)
     if held_modules is not None:
         refusals += shadow_refusals(held_modules)

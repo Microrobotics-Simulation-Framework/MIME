@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -237,6 +238,10 @@ def _notice(name: str, indexes: dict[str, dict[str, Any]], manifests: dict[str, 
             f"built from")
 
 
+#: What a fetch command names where the description's folder is not known: a placeholder, never quoted.
+UNKNOWN_FOLDER = "<the description's folder>"
+
+
 @dataclass
 class Overlay:
     """What the cache holds for a stage: the overlay's path (``None`` when it holds nothing the stage names), the
@@ -259,6 +264,17 @@ class Overlay:
     #: Each set's notice (the entries of ``notices``), by set.
     terms: dict[str, str] = field(default_factory=dict[str, str])
 
+    def fetch_command(self, name: str) -> str:
+        """The command that fetches the set ``name``, its argument quoted for a shell (a folder with a space in its
+        path pastes whole), or with the placeholder where the description's folder is not known."""
+        held = self.fetch.get(name)
+        argument = shlex.quote(held) if held is not None and held != UNKNOWN_FOLDER else UNKNOWN_FOLDER
+        return f"mime visuals fetch {argument}"
+
+    def fetch_commands(self) -> dict[str, str]:
+        """The command that fetches each missing set, by set: what ``hello`` sends a client beside the counts."""
+        return {name: self.fetch_command(name) for name in sorted(self.missing)}
+
     def text(self) -> str:
         lines = [f"{self.drawn} meshes drawn from the asset cache" + (f" ({self.path})" if self.path else "")]
         for name, count in sorted(self.withheld.items()):
@@ -267,8 +283,7 @@ class Overlay:
                          f"drawn in their place (a USD viewer draws them on this machine: mime visuals view <target>)")
         for name, count in sorted(self.missing.items()):
             lines.append(f"{count} meshes of {name} are not in the asset cache: drawn as simple shapes from the "
-                         f"description's frames; to draw them, `mime visuals fetch "
-                         f"{self.fetch.get(name, '<the description' + chr(39) + 's folder>')}`")
+                         f"description's frames; to draw them, `{self.fetch_command(name)}`")
         return "\n".join(lines + self.notices)
 
 
@@ -345,7 +360,7 @@ def overlay(stage_path: Path, *, tiers: frozenset[str] | None = None) -> Overlay
     found.terms = {name: _notice(name, indexes, manifests) for name in named}
     found.notices = [found.terms[name] for name in named]
     found.fetch = {name: (f"{folder}/" if folder is not None and name in manifests else
-                          name if name in visual_sets() else "<the description's folder>") for name in named}
+                          name if name in visual_sets() else UNKNOWN_FOLDER) for name in named}
     if not found.drawn:
         return found
     used = sorted({name for _, layer, name in wanted if layer is not None})

@@ -35,7 +35,8 @@ from mime.build import (
     stage_spec,
 )
 from mime.build._checks import stopped_refusals
-from mime.build._construct import report_of
+from mime.build._construct import description_warnings, report_of
+from mime.core.multibody import DescriptionWarning
 from mime.build._report import NodeLine
 from mime.build._plan import EntryPlan, Section
 from mime.build._steps import whole_runs_either_side, whole_steps
@@ -254,8 +255,8 @@ class Experiment:
 
     ``profile`` is how much the build asks (``mime.validity.Profile``): ``"exploratory"`` (the default) waives what
     the experiment leaves unstated with a pending reason, recorded in the saved form and stamped on every output;
-    ``"research"`` needs each with its reason and refuses a pending one by name; ``"strict"`` is a1's and refused
-    until then. Validity limits and input errors are refused in every profile. ``built.report.pending()`` and
+    ``"research"`` needs each with its reason and refuses a pending one by name; ``"strict"`` is a later release's
+    and refused until then. Validity limits and input errors are refused in every profile. ``built.report.pending()`` and
     ``mime pending <folder>`` list what is pending, with the lines to paste.
     """
 
@@ -440,6 +441,8 @@ class Experiment:
             report = replace(report, stage_hash=record.stage_hash, assets=pins.lines())
         for text in report.range_warnings():
             warnings.warn(text, UserWarning, stacklevel=3)
+        for text in description_warnings(plans):
+            warnings.warn(text, DescriptionWarning, stacklevel=3)
         load_report = None
         if self._saved is not None:
             # A saved folder's stage is rebuilt by the writer that wrote it, to be held to its lock; a save writes the

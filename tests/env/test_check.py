@@ -30,6 +30,7 @@ from mime.env import (
     gpu_type,
     installed_distributions,
     is_kind_of,
+    optional_pins,
     pins,
     shadow_refusals,
 )
@@ -171,6 +172,31 @@ def test_an_unpinned_distribution_is_refused_and_an_installers_own_only_off_the_
     assert codes == [("env.unpinned", "jax-cuda12-plugin 0.12.0.1 is installed and nothing pins it")]
     codes = refused(variant="cpu", base=True, installed=environment, devices=CPU, system=base_system())
     assert {code for code, _ in codes} == {"env.unpinned", "env.pin"}
+
+
+def checkout(variant: str = "cpu") -> dict[str, tuple[str, ...]]:
+    """What a checkout's documented install holds, ``uv sync --locked --extra verify``: the variant's pins, MIME, and
+    the pins of MIME's own extras and groups (the verify extra and the dev group's tools) at the lock's versions."""
+    held = {name: (pin.version,) for name, pin in applicable(optional_pins()).items()}
+    return held | pinned(variant, base=False)
+
+
+def test_a_checkouts_documented_install_passes_with_its_dev_tools_and_the_verify_extra():
+    environment = checkout()
+    assert {"pytest", "pyright", "hatchling", "pyzmq", "hypothesis", "sortedcontainers"} <= set(environment)
+    report = check(variant="cpu", installed=environment, devices=CPU, system=base_system())
+    assert report.variant == "cpu"
+    without_verify = {name: held for name, held in environment.items() if name != "sortedcontainers"}
+    check(variant="cpu", installed=without_verify, devices=CPU, system=base_system())  # the dev group alone
+
+
+def test_a_dev_tool_at_another_version_than_the_lock_is_refused_and_a_distribution_in_no_file_still_is():
+    environment = {**checkout(), "pytest": ("1.0",), "requests-toolbelt": ("1.0.0",)}
+    codes = refused(variant="cpu", installed=environment, devices=CPU, system=base_system())
+    assert ("env.pin", f"pytest is installed at 1.0 and pinned at {checkout()['pytest'][0]} by MIME's lock, for its "
+                       "own extras and groups") in codes
+    assert ("env.unpinned", "requests-toolbelt 1.0.0 is installed and nothing pins it") in codes and len(codes) == 2
+    assert "jax-cuda12-plugin" not in {pin.name for pin in optional_pins()}, "a variant's own pins stay its own"
 
 
 def test_another_python_is_refused():

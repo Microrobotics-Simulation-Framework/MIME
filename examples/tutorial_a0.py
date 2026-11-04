@@ -69,7 +69,8 @@ def rotor_magnet_on_an_arm() -> Apparatus:
 
 # region: experiment
 def a0() -> Experiment:
-    experiment = Experiment("tutorial_a0", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5))
+    experiment = Experiment("tutorial_a0", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5),
+                            duration=SHORT)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                                     length=mm(100.0))))
     water = experiment.add_medium(Medium("water", fills=tube.lumen))

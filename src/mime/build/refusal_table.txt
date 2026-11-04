@@ -39,6 +39,8 @@ bundle.stray-file             user
 bundle.unreadable             user
 bundle.unsafe                 user
 bundle.unscannable            user
+call.missing-setting          user
+call.renamed                  user
 call.units                    user
 call.wrong-type               user
 chain.armature                user
@@ -343,6 +345,7 @@ run.record                    user
 run.seed                      user
 run.stage-every               user
 run.unfed-input               internal
+run.window-past-end           user
 rung.missing                  user
 rung.reserved                 user
 rung.unknown                  user
@@ -374,6 +377,7 @@ source.pending                user
 source.reason                 user
 source.unknown                user
 state.missing                 user
+state.outside-region          user
 state.units                   user
 state.unknown                 user
 state.value                   user

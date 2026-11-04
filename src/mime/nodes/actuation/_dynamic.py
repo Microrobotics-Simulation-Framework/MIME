@@ -180,7 +180,7 @@ class DynamicArmNode(SegmentNode):
         Symbol("l", SymbolKind.PARAMETER, "lower", "1", f"{_ARM}.constrained"),
         Symbol("h", SymbolKind.PARAMETER, "upper", "1", f"{_ARM}.constrained"),
         Symbol(r"\theta", SymbolKind.STATE, "joint_positions", "1", f"{_ARM}.advance"),
-        Symbol(r"\dot{\theta}", SymbolKind.STATE, "joint_velocities", "Hz", f"{_ARM}.advance"),
+        Symbol(r"\dot{\theta}", SymbolKind.STATE, "joint_velocities", "rad/s", f"{_ARM}.advance"),
         Symbol(r"\mathbf{P}", SymbolKind.STATE, "frame_poses", POSE_UNITS, f"{_ARM}.advance"),
         Symbol(r"\boldsymbol{\Omega}", SymbolKind.STATE, "frame_angular_velocities", RATE_UNITS, f"{_ARM}.advance"),
         Symbol(r"\mathbf{O}", SymbolKind.PARAMETER, "placement", POSE_UNITS, f"{_MOUNTED}.base"),
@@ -518,7 +518,7 @@ class DynamicMotorNode(SegmentNode):
     )
     symbols = (
         Symbol(r"\phi", SymbolKind.STATE, "angle", "1", f"{_MOTOR}.advance"),
-        Symbol(r"\Omega", SymbolKind.STATE, "spin", "Hz", f"{_MOTOR}.advance"),
+        Symbol(r"\Omega", SymbolKind.STATE, "spin", "rad/s", f"{_MOTOR}.advance"),
         Symbol(r"\tau", SymbolKind.INPUT, "torque", "N m", f"{_MOTOR}.advance"),
         Symbol("J", SymbolKind.PARAMETER, "inertia", "kg m^2", f"{_MOTOR}.advance"),
         Symbol("b", SymbolKind.PARAMETER, "damping", "N m s", f"{_MOTOR}.advance"),

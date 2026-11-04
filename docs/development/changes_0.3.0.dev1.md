@@ -3,7 +3,8 @@
 This is the record of the work that made 0.3.0.dev1, every change as it was logged while the 0.3 rewrite was built, in
 its own order and words. It stood under the changelog's Unreleased heading until the release, and was moved here
 unchanged but for its one link, which now points from here; the summary for a user is the release's entry in
-[the changelog](../../CHANGELOG.md).
+[the changelog](../../CHANGELOG.md). The entries for the last fixes before the release, made after the move, were added
+here at the head of the first Changed and Fixed sections.
 
 It still carries the labels of the work that made it: phase names, design rows, short work labels and the release
 stages they were planned for. They are cleaned in a later release. An `MIME-ANO-` number names an entry of the anomaly
@@ -11,6 +12,16 @@ registry, [`docs/validation/known_anomalies.yaml`](../validation/known_anomalies
 repository's history before that history was rewritten on 2026-11-04, and does not resolve in it now.
 
 ### Changed
+- **Drag 0.4.0 moves the MRS rung's results against drag 0.3.0**, at the same written settings: the separated
+  quadrature (below) changes what `spacing` and `blob` resolve. A free 100 um steel sphere settling in water at
+  `spacing=um(20)`, `blob=0.5` (a step of 2.5 ms, a run of 75 ms, its speed read from 50 ms) moved
+  from 0.03647 to 0.03565 m/s (-2.3 %; its ratio to Stokes's law from 0.977 to 0.955, outside the rung's declared
+  range, so neither says which is nearer the truth), on the sphere 0.1.0 and 0.2.0 alike. The old forces are drag
+  0.3.0's point forces on the sphere 0.1.0's samples, and both stay registered:
+  `mime.interactions.KEPT[("drag", "0.3.0")][0].MRS(...)` with `mime.scene.KEPT[("sphere", "0.1.0")][0](...)` gives
+  0.03647 m/s again (drag 0.3.0 on the sphere 0.2.0 gives 0.03620), and a folder saved with them loads and
+  reproduces. `examples/drag_change_sphere.py` runs the four, and `tests/examples/test_drag_change_sphere.py` holds
+  these numbers to it.
 - **Asset records travel with what needs them, and the library knows how to fetch a file, never what or from where.**
   One record type (`mime.assets.AssetRef`) serves every asset: beside its sha256, size, licence and locations it states,
   where known, its credit, role, kind (with a derived asset's derivation record by hash), notice, custom licences,
@@ -58,6 +69,57 @@ repository's history before that history was rewritten on 2026-11-04, and does n
   part of the run, or a result written before the reduction.
 
 ### Fixed
+- **A frequency and an angular velocity are no longer taken for each other.** `Hz` and `rad_per_s` share a dimension
+  and differ by 2 pi, and the sites that take one checked the dimension alone: `commands={"frequency": rad_per_s(5.0)}`
+  ran as 5 Hz, and `State(angular_velocity=Hz(...))` as rad/s. Every site that takes a rate per second now says which
+  it counts (`mime.units.Frequency`, in Hz, or `mime.units.AngularVelocity`, in rad/s: a field's command, a motor's
+  prescribed velocity, `top_speed` and `initial_velocity`, an arm's `initial_velocities`, a body's initial
+  `angular_velocity`, a rate, a controller's write), and refuses the other kind in every profile with both
+  conversions to write (`setting.units`, `state.units`, `run.rate-units`, `controller.signal`); an entry that declares
+  a rate per second saying neither is refused at registration. A rad/s quantity prints in rad/s. Nothing a run
+  computes moves, and the saved form writes both as it did (`Hz`, the same SI number). A dynamic segment's joint
+  velocities (`apparatus.joint_velocities`) and a motor's spin read in rad/s, the unit their numbers are in, where they
+  said Hz, so a controller reads and writes a motor's rate under one name (`Signal("rad/s")`); the graph's edge into a
+  kinematic motor's velocity keeps the label `Hz` for the rad/s it takes, as the drives' edges into it do, which a
+  later release relabels together.
+- **Arithmetic keeps what a rate counts.** A sum of `rad_per_s(1.0)` and `Hz(1.0)` was 2.0 with neither, and a
+  product with a dimensionless quantity dropped it too, so either was taken by any site. Now a sum, a difference or
+  an order of a turn and a radian is refused, as `.to` refuses one, and the two are never equal; a number or a
+  dimensionless quantity multiplies or divides a rate and leaves it counting what it counted, and so do negation,
+  NumPy's sums and means over a sequence, an array quantity's products and `1 / ...`; a rate times a time counts
+  turns or radians, and that over a time is a rate of its kind again (`rad` and `deg` count radians, so `rad(2 * pi)
+  / s(1)` is an angular velocity); a product of two quantities that count an angle, or a ratio of a turn and a
+  radian, is refused. A site that takes a number refuses a number of turns (`Hz(5.0) * s(1.0)`), since MIME counts an
+  angle in radians. A quantity that knows neither (a result, or one loaded) takes the other operand's kind.
+- **The refusal's line to write is the value meant when the rate was already converted.** `Hz(5.0) * (2 * pi)` is
+  31.4 Hz, refused where an angular velocity goes, and its first line was `rad_per_s(2 * pi * 31.4...)`, 2 pi too
+  fast. A quantity now holds the number arithmetic multiplied it by since it was written (`Quantity.scale`); a
+  frequency multiplied by 2 pi, or an angular velocity divided by it, is given the one line of its number in the
+  other unit (`rad_per_s(31.41592653589793)`), and the refusal says that a number leaves a quantity in its unit.
+- **Three input errors that gave a number are refused in every profile**: a dynamic viscosity of zero or less
+  (`value.not-positive`); a body whose centre starts outside the region the medium it is bound to fills
+  (`state.outside-region`, with the line that starts it on the region's axis); and an observation's window that starts
+  at or after the run's end (`run.window-past-end`), which read as a mean of zero: its reading is refused, its
+  `value`, its `quantity` and `to(...)` alike, its text says nothing was observed, `outputs.json` writes no number for
+  it, and `outputs.npz` and the `.mat` file hold NaN for it. A later run of the same graph that reaches the window
+  reads it.
+- **A name 0.3.0 changed says so**: `Drag.BEM(...)` is refused naming `Drag.MRS` (`call.renamed`), and an entry made
+  without a required setting names it and why it has no default (`call.missing-setting`; `Screw` without `starts`,
+  which earlier development versions took as 2). The MRS rung's advice when a run stops on an indefinite resistance
+  with the body's hull on or through the wall gives the contact's margin that clears it at the spacing it ran with,
+  where it repeated that spacing. A traceback file names MIME's distribution and version, or the source tree it runs
+  from, where it said "mime not installed"; `strict`'s refusal says a later release.
+- **The documented installs pass `mime env check`.** `uv sync --locked` installs the dev group, and the check refused
+  the twenty distributions it adds as pinned by nothing (`env.unpinned`), and Hypothesis and sortedcontainers with the
+  `verify` extra. MIME's own extras that are no variant and its groups are pinned in
+  `mime/data/env/requirements-optional.txt`, the lock's export with them, held to the lock byte for byte like the
+  variants' files: the check accepts each of them installed at its pin, refuses one at another version (`env.pin`), and
+  requires none. A distribution in no file is refused as before.
+- **`mime visuals view` quotes its folder for a shell**, so a path with a space pastes whole, and `hello`'s `visuals`
+  carries that command for each missing set (`fetch`), as `docs/recordings.md` said it did. An arm's description's
+  warnings are given once each, at the line that built the experiment, where every read of the file gave them again
+  at MIME's own line (five times in one `mime run`); `mime`'s commands show them as `mime: warning: ...`, once each.
+  The A0 tutorial's experiment declares its run length, so `mime run` on its saved folder needs no `--duration`.
 - **`mime serve`'s live view leaves no frame of itself behind and erases no line of anyone else's.** A line printed
   through the view (serve's own, or what another thread writes to a redirected standard stream) found the top of the
   live region from the height it was last drawn at, under `rich`'s lock, and drew the region again only after letting

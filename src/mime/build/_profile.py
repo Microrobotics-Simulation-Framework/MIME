@@ -657,7 +657,8 @@ class ProfileWork:
             self._listed(site, SOURCE_MISSING, what, "no source",
                          ("setting.source-required", f"{site.path}: {what}", _source_line(site.path)))
         elif held is Role.NUMERICAL:
-            what = "a numerical value with no reason: its convergence evidence, until a1's evidence records"
+            what = ("a numerical value with no reason: its convergence evidence, until a later release's evidence "
+                    "records")
             self._listed(site, EVIDENCE_MISSING, what, "no convergence evidence",
                          ("setting.evidence-required", f"{site.path}: {what}", _source_line(site.path)))
 
