@@ -56,7 +56,7 @@ stated default, and the build report says which.
   that would give a number are refused in every profile: a dynamic viscosity of zero or less
   (`value.not-positive`), a body whose centre starts outside the region its medium fills (`state.outside-region`),
   and a reading of an observation whose window starts at or after the run's end (`run.window-past-end`). A
-  renamed entry says its new name (`Drag.BEM` is `Drag.MRS`, `call.renamed`), and an entry made without a
+  renamed entry says its new name (`call.renamed`, as for the drag's `Drag.MRS`), and an entry made without a
   required setting names it and why it has no default (`Screw`'s `starts`, `call.missing-setting`).
 - **Extending MIME**: a lab's package registers its own entries through the `mime.entries` entry point, and tests them
   with `mime.testing`'s harnesses.
