@@ -47,6 +47,9 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   (the profiles and the declared limits, generated). `guide/lab_author.md` includes the CI-built `lab_fixture/` and nothing
   else. MIME keeps no glossary: the guide links the stack's.
 - [`validation/`](validation/): the known-anomalies registry, with its claims and their evidence.
+- [`development/`](development/): each release's development record, every change as it was logged, moved out of
+  the changelog when the release is cut ([`changes_0.3.0.dev1.md`](development/changes_0.3.0.dev1.md), the record
+  of 0.3.0.dev1). The changelog's entry for a release is its summary for a user.
 - [`data/`](data/): records no code owns: the 0.2 line's frozen algorithm ids, its frozen public names, and the
   migration table from them to 0.3's entries.
 - [`ratchets/`](ratchets/): the lists `mime docs check` reads, one item per line with its reason, each only shrinking.
@@ -91,4 +94,8 @@ process.
 
 CI builds the pages, scans the built directory for a private name or path (`scripts/check_confidential.py
 --directory`), and only then uploads it as a run artifact named `docs-pages-python-<version>`; download it from the
-run page to read them. A page you change is read the same way, by building locally.
+run page to read them. A page you change is read the same way, by building locally. A release attaches its pages
+to its GitHub release as `mime-docs-<version>.tar.gz`, with its sha256 beside it (`.github/workflows/publish.yml`):
+one folder, `mime-docs-<version>/`, holding `index.md`, `pages/` and a README saying whether the pages are the tagged
+commit's own CI pages or pages the release built without the lane's reports. The site renders the release's pages
+from it, so its name and layout do not change.

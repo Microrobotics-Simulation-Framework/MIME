@@ -16,7 +16,7 @@ from mime.docs._refusal_scan import Site, scan_package
 ERRORS_DIRECTORY = "errors"
 ERRORS_INDEX = f"{ERRORS_DIRECTORY}/index.md"
 #: The hand-written note on reading an error and reaching its full traceback, a page beside the concepts note.
-READING_ERRORS = "errors.md"
+READING_ERRORS = "reading_errors.md"
 #: What a page says of a code on the refusal list, and the hatch it counts: no file under ``tests/`` names the code,
 #: which is all the list reads. A test can raise a code without naming it (two listed codes were found raised by passing
 #: tests that assert something else), so the claim is about names and never about what is raised.

@@ -141,8 +141,8 @@ def cli_reference(_root: Path) -> str:
     parser = build_parser()
     out = ["# The `mime` command line", "",
            "Generated from the command line's own parser by `mime docs build`; nothing here is written by hand. "
-           "A flag accepted anywhere on the line comes first, then each command, grouped as `mime --help` groups "
-           "them.", "", "## Options accepted anywhere", ""]
+           "The flags of `mime` itself come first (each says whether it may come anywhere on the line), then each "
+           "command, grouped as `mime --help` groups them.", "", "## Options of `mime` itself", ""]
     for option in parser._actions:
         if option.option_strings and option.help != argparse.SUPPRESS and "-h" not in option.option_strings:
             out.append(_item(", ".join(f"`{s}`" for s in option.option_strings), _help(parser, option)))

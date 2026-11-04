@@ -121,7 +121,8 @@ OLD_NAME = re.compile("BE" + "M|Be" + "m|be" + "m")
 KEPT_KEYS = re.compile("R_BE" + "Ms|v_BE" + "M_mm_s")
 #: A file whose own text may hold the old tokens, with why. A path is a regular expression matched whole.
 OLD_NAME_FILES = {
-    r"CHANGELOG\.md": "history: the entries of the release say what they said when they were written",
+    r"docs/development/changes_[^/]+\.md": "history: a release's development record, moved out of the changelog, says "
+                                            "what each entry said when it was written",
     r"src/mime/saved/_versions\.py": "the reader of the saved form's version 2, which still accepts the old rung",
     r"tests/saved/previous/.*": "saved folders of versions 1 and 2, written before the rename",
     r"tests/saved/test_form_v2\.py": "the tests of that reader",
