@@ -25,11 +25,11 @@ release, so either side sees the other's breakage within a day.
 
 ## Status
 
-Since phase 4b, the inline floor: `VALUE_KINDS` names every value of a thing laws read (a body's `mass`, `inertia`,
+The inline floor: `VALUE_KINDS` names every value of a thing laws read (a body's `mass`, `inertia`,
 `buoyant_volume`, `centre_of_buoyancy`, `magnetic_moment` and `extent`; a medium's `density` and `viscosity`),
 with its dimension, shape and meaning. Phase 1 reads every value through here, and nowhere else.
 
-Since phase 5, records from OpenMaterica (dev3), and the part resolver's inputs:
+Records from OpenMaterica (dev3), and the part resolver's inputs:
 
 - **Where a value comes from**, in this order: a declaration in the experiment, which takes the place of anything
   else and the report says of what; a medium's record (`Medium(material=Record(...))`), read at the experiment's
@@ -40,7 +40,7 @@ Since phase 5, records from OpenMaterica (dev3), and the part resolver's inputs:
   field (`RecordField`: `bulk.density`, `fluid.dynamic_viscosity`, `magnetic.remanence`), the experiment's
   conditions with their tolerances, the tokens the value's meaning fixes (a density is `apparent`) and those the
   material requires. MIME passes the verdict and its reasons through unchanged; what the build does with them,
-  under the experiment's profile (since phase 7l-a; a1's will refine it): `met` builds; `not_met` is refused in every
+  under the experiment's profile (a1's will refine it): `met` builds; `not_met` is refused in every
   profile; `unknown` builds when each reason is covered, by the material's `Acceptance` for that field (by code or
   `code:condition`, its reason a text or `pending()`) or by a waiver the profile generates for the reason's class
   (exploratory, for an assumption: an unstated condition, a value stated without its origin), and is refused
@@ -62,7 +62,7 @@ reads `want: value` and so returns no bounds to record); the lock records OpenMa
 record, and every read as sent and answered in its resolved record, so a load under a reader that answers
 differently is refused.
 
-Since phase 7f, **a record's table for the table evaluator** (`evaluator_table`, `_tables.py`): the table a read
+**a record's table for the table evaluator** (`evaluator_table`, `_tables.py`): the table a read
 returns, member for member, as `mime.core.tables` reads it during a step, with the experiment's `constant`
 extrapolation of the field; a `linear` one is the consumer's law, computed beside the evaluator, and waits for
 `MaterialAt`'s first consumer. OpenMaterica's table-evaluation cases reach the evaluator through it.
@@ -70,4 +70,4 @@ extrapolation of the field; a `linear` one is the consumer's law, computed besid
 Later: per-region values once OpenMaterica's scenes land; materials read from bindings on the USD stage; writing
 OpenMaterica's plain scene manifest through its region writer; mixing rules; `MaterialAt`.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

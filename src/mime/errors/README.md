@@ -44,4 +44,4 @@ The classes themselves (`MimeError`, `BuildRefused`, `ArgumentRefused`, `RunFail
 
 ## Status
 
-Built in dev1, phase 7l-b. Phases and releases are explained in the [package manifest](../README.md#status).
+Built in 0.3.0.dev1. Releases are explained in the [package manifest](../README.md#status).

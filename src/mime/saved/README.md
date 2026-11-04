@@ -10,7 +10,7 @@ The loader is the authority, and the schemas' known gaps against it are listed o
 ## What is here
 
 - **The document**, `experiment.mime.yaml`. It records what the experiment declares: the schema version, the MIME
-  version and the experiment's name; the run settings (`dt`, the seed); the world frame (until the scene holds it);
+  version and the experiment's name; the run settings (`dt`, the seed, and the run's `duration` where the experiment declares one); the world frame (until the scene holds it);
   every thing with its kind, its dynamics by registered name and version, its settings and initial state; every
   interaction and observation by registered name and version, with its settings and its bindings by name. An alias
   such as `ToyDrag.Quadratic()` saves as its family with the rung among its settings. Settings left at their defaults
@@ -58,8 +58,8 @@ folder, or in the asset cache (`mime.viz`), never in the saved folder it is over
 
 **Every layer MIME composes resolves inside its own folder**: a sublayer or a reference is a path below the folder that
 holds the layer, with no path out of it, so that a folder resolves again after it is moved, copied or published. A preview
-baked from an asset (a GLB, a decimated mesh) is a derived file: it carries that asset's licence tier (design #198) and
-is never pinned by its bytes in an experiment's lock (design #183).
+baked from an asset (a GLB, a decimated mesh) is a derived file: it carries that asset's licence tier and
+is never pinned by its bytes in an experiment's lock.
 
 ## Loading
 
@@ -102,7 +102,7 @@ way, and a setting the document cannot hold.
 
 ## Terms and tiers
 
-**Who may hold which bytes** is the document's to say (designs #198 and #199), and `pack` obeys it. The words are in
+**Who may hold which bytes** is the document's to say, and `pack` obeys it. The words are in
 [`mime.terms`](../terms.py):
 
 - **A licence is an SPDX licence expression** in its canonical spelling, checked by the packaging standards' own parser;
@@ -154,7 +154,7 @@ does not hold, for other bytes, or without credit or role (`terms.file`), an ori
 
 **The NOTICE and the card.** `mime card <folder> --notice` (`mime.saved.notice`) writes the NOTICE: the experiment's
 licence, every file the folder names with its sha256, size, owner, licence, verdict and where its bytes live, a third
-party's credit, role, origin and permissions in #198's words, each custom licence with its link, the text of each
+party's credit, role, origin and permissions in the words of the terms module, each custom licence with its link, the text of each
 licence that asks to travel with every copy (MIT and the BSD licences) under its file's credit, and the availability
 statement: "reproducible exactly from this bundle alone" only where the bundle carries every file, and otherwise each
 file it does not carry, with why, its licence, its role and where it is available from. `mime card <folder>`
@@ -319,23 +319,23 @@ one environment and one tree; across code and machines a run is held to a tolera
 
 ## Status
 
-Landed in dev1's phase 3, on the toy entries.
+Built first on the toy entries.
 
-Since phase 4b the document holds a structure's geometry kind (by name and version, with its settings), the region a
+The document holds a structure's geometry kind (by name and version, with its settings), the region a
 medium fills, each command's drive, typed paths as their strings (`rotation_axis: tube.axis`), and `declared`: every
 value declared in the experiment, in SI with its unit and its reason. The lock's resolved record lists each value read
 with its source ("declared in the experiment"), reason and readers, the geometry kinds, the fills and the gathered
-node order; its entries pin the geometry kinds and drives with their distributions. Material references (phase 5),
-the scene's root, layers and variants (phase 6) and the controller (phase 7) join the document as they land; the
+node order; its entries pin the geometry kinds and drives with their distributions. Material references,
+the scene's root, layers and variants and the controller join the document as they land; the
 experiment folder and `pack` come at 0.3.0.
 
-Since phase 6 the document holds the scene (`up`, `units`, and each reference's prim, its file below the folder and
+The document holds the scene (`up`, `units`, and each reference's prim, its file below the folder and
 its SHA-256) in place of the stand-in frame, gravity's magnitude, every thing's prim path beside its name, and a
 body's magnet roles. The lock holds the stage (its file and hash, and each layer's hash), the resolved scene (up,
 units, every thing's prim, the bound things, each magnet's direction in its part's frame and its body's, and where
 it came from), and usd-core's version in the environment.
 
-Since phase 5 the document holds the experiment's `conditions`, each value with its tolerance; `materials`, each a
+The document holds the experiment's `conditions`, each value with its tolerance; `materials`, each a
 reference to its record (the file below the folder, its SHA-256, the record's id, version and content hash) with the
 experiment's own terms for reading it (required tokens, acceptances, nominal values, extrapolations, each with its
 reason), never a value from the record; a medium's material by name; and a body's parts (each solid by name and
@@ -344,20 +344,20 @@ record's pins, every read as sent and answered (OpenMaterica's status and reason
 part as resolved; each value records its inputs (`details`). `save` writes the record files under `records/`, the
 lock pins them (`records`), and a load refuses a file changed by so much as a byte (`load.record-changed`).
 
-Since phase 7a2 the document holds an apparatus's chain (a list of segments, in order, each by name and version
+The document holds an apparatus's chain (a list of segments, in order, each by name and version
 with its settings), its parts with their mounts and its magnets; a file an entry reads (a robot's description) is
 written by its path below the folder, `descriptions/<sha256 prefix>-<file>` (so that two files of one name keep their
 own copies), with its sha256, and `save` writes it there. The lock's resolved record holds each segment's description
 as read (`descriptions`: every element by group, what was read past and why, the links read as massless).
 
-Since the sharing piece (after the assets) `mime pack` and `mime pull` make and read the bundle, ahead of `mime push`.
-Since phase 7e a stage edited after its lock was written is judged against the stage the rebuild writes from the
+`mime pack` and `mime pull` make and read the bundle, ahead of `mime push`.
+A stage edited after its lock was written is judged against the stage the rebuild writes from the
 same document: an edit confined to its derived prims (a kind's drawn mesh, a region's primitive), output only and
 written again by every build, is reported in the load report (`derived_prims_edited`), and any other edit is refused
 (`load.stage-changed`), as before. Profiles do not judge stage edits in dev1 (exploratory and research report a
 derived prims' edit alike); a1's `strict` may refuse the first too, at that seam (`stage_change_refusals`).
 
-Since phase 7l-a the saved form has been in its second version (the third is below), as the document's and the lock's
+The saved form has been in its second version since the profiles (the third is below), as the document's and the lock's
 schemas say. The document holds the `profile`, `sources` (each `exp.source`), a quantity's reason beside its value (`{value, unit, reason}`), and a reason
 keyed by its kind (a text as it is, `{pending: true}`, `{chosen: ...}`); gravity is absent where the experiment states
 none, standard by convention; a condition's and a nominal's reason are held beside them. The lock's resolved record
@@ -379,4 +379,4 @@ rung by its old name reads as naming `mrs`, and the load report says so), and th
 into the version its lock was written in (`document_in_form`, `resolved_in_form`, `physics_in_form`) and hashed there,
 so an old lock is compared with the form it was hashed in. Saving it again writes the third.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

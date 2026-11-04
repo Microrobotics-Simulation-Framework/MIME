@@ -205,7 +205,7 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   counts as a test that ran and passed. The counts and a table of them by role lead the page, with the line "a test's
   body is not checked" under them, and the claims are grouped by role (bound, estimate, acceptance, limit, rule), so an
   acceptance record never prints under an accuracy heading; a `rule`, a claim of that role or a statement, prints with
-  its cases and no basis (#222). It opens with the fixed sentence of decision M (#115), exactly; the hand-written
+  its cases and no basis. It opens with a fixed sentence, exactly; the hand-written
   source `docs/reference/evidence_counts.md` must open with it, and a test holds the page's first lines. The page is
   titled *counts*, and is called a report once it holds a claim with a `measured` basis. **A floor on N**
   (`docs/ratchets/evidence_floor.txt`, a list of the claims and statements that must stay, checked by
@@ -246,17 +246,17 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
 
 ## Status
 
-Since dev1's first documentation phase: the export, the entry fields declared for every registered entry, `NodeMeta`
+The export, the entry fields declared for every registered entry, `NodeMeta`
 and the symbol-table form with their checks (on test-only nodes until the first node's table lands), the refusal
 table with its constructor check, the lists, `mime docs check`, the docs walk with its ledger, and the number rule.
-Since the generators' phase: the page generators and `mime docs build`, the vocabulary, the index and the concepts
+The page generators and `mime docs build`, the vocabulary, the index and the concepts
 note, the citation parser, and the number rule over the text the pages print.
 
-Since the specifications' phase: the evidence resolver with the claims' shape, the controlled form of
+The evidence resolver with the claims' shape, the controlled form of
 `affected_components`, the saved form's specification with its JSON Schemas, the `mime:` reference, and the
 migration table, each page built by `mime docs build` under `pages/reference/`.
 
-Since phase 7e, a geometry kind's entry page has **capability rows**, generated from which of `Geometry`'s optional
+A geometry kind's entry page has **capability rows**, generated from which of `Geometry`'s optional
 methods it implements (the export's `capabilities`), with its native form and its placement settings.
 
 Not yet generated: the plan-only items of an entry page (confinements, registrations and groups, which come from
@@ -265,13 +265,13 @@ tables of a node page (they come from a built node), the performance profile and
 records do not exist), the lag classes and group settings on a mechanism page, the asset card, the experiment card, the
 evidence report, and the index's part for scripts (the index lists entries by kind, by target and the families).
 
-Since the errors' phase, the **refusal catalogue**: a page for every code of the refusal table (`errors/<code>.md`) and
-their index, generated from the table and the scan of the source. Since docs phase D3, the page of a code on the refusal
+The **refusal catalogue**: a page for every code of the refusal table (`errors/<code>.md`) and
+their index, generated from the table and the scan of the source. The page of a code on the refusal
 list (`docs/ratchets/refusal_codes.txt`) says that no test names it (a test may raise a code without naming it, so the page never says "raises"
-until D2's hook records what is raised), and the build counts it as a hatch; the catalogue's hand-written meanings wait for a lab's reading of the pages. D3 also wrote the
-sources of the ledger's entries and mechanisms other than the pilot's, the contact's among them (contact 0.3.0), and gave
-five node classes `NodeMeta` and a symbol table. Its fix round marked each row of a node page whose units the code does
-not declare (`units declared, not checked`), and wrote three concept notes (`docs/scene.md`, `docs/materials.md`,
-`docs/multibody.md`) that hold the definitions the user guide links to (design #220).
+until a hook records what is raised), and the build counts it as a hatch; the catalogue's hand-written meanings wait for a lab's reading of the pages. The ledger's
+entries and mechanisms other than the pilot's have their sources, the contact's among them (contact 0.3.0); five node classes carry
+`NodeMeta` and a symbol table. Each row of a node page whose units the code does
+not declare is marked (`units declared, not checked`), and three concept notes (`docs/scene.md`, `docs/materials.md`,
+`docs/multibody.md`) hold the definitions the user guide links to.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

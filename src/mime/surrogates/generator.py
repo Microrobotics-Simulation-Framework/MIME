@@ -1,4 +1,4 @@
-"""The generator of a screw surrogate's training data, and its held-out protocol (phase 7i).
+"""The generator of a screw surrogate's training data, and its held-out protocol.
 
 **What it computes.** The MRS resistance of de Jongh's screw bodies resting on the floor of a straight
 tube, through ``Drag.MRS`` in the ``tube`` wall kind, which reads the corrected table of the unit tube's image system
@@ -320,7 +320,7 @@ class Domain:
 #: the edges may move. The record is not regenerated while the edge is open, since the generator refuses data then.
 _RECORD = ("computed from tests/differential/references/near_wall_check.json (six spacings, 0.30 to 0.10 mm, the "
            "finest the reference)")
-_REVIEW = ("computed by the review of PR #60 on Modal (float64; spacings 0.19, 0.15, 0.12, 0.10 mm for FL-1, 0.10 mm "
+_REVIEW = ("computed by the review on Modal (float64; spacings 0.19, 0.15, 0.12, 0.10 mm for FL-1, 0.10 mm "
            "the reference); the samples are not in this repository")
 MEASURED_NEAR_WALL_EDGES: tuple[Mapping[str, Json], ...] = (
     *({"design": "FL-9", "tube": "1/4 in", "far_gap_mm": far, "use": use, "edge_spacings": edge, "source": _RECORD}
@@ -342,16 +342,16 @@ MEASURED_NEAR_WALL_NOTES: tuple[str, ...] = (
     "speed 2.50, against FL-9's 0.625); a fixed number of spacings is not what the data show.",
     "FL-1 in the 1/4 in tube, spacing 0.15 mm: the swim speed's excess over the far gap, at gaps 0.03 (inferred "
     "position), 0.05, 0.075, 0.1, 0.15, 0.2, 0.3 and 0.5 mm, is 4.9, 4.1, 3.9, 3.6, 3.0, 2.4, 1.3 and 0 per cent "
-    "(review of PR #60; it falls smoothly with the gap all the way out to the far gap).",
+    "(the review; it falls smoothly with the gap all the way out to the far gap).",
     "FL-9, 1/4 in, whole resistance at 1.25 to 1.33 spacings from the wall: the excess is 1.26% (0.12 mm), 2.0% (0.15 "
     "mm) and 2.29% (0.24 mm), not constant in the ratio; the plateau of 0.6 to 2.3% holds at 0.12 and 0.15 mm only, "
-    "and is 1.85 to 7.2% at 0.19 to 0.30 mm (review of PR #60, computed).",
+    "and is 1.85 to 7.2% at 0.19 to 0.30 mm (the review, computed).",
     "The swim speed's own edge on FL-9 is noise-limited: its excess is not monotone (0.28 to 1.43% between 0.26 and "
     "0.53 spacings), so the tolerance moves it (0.789 at 0.8 to 0.9%, 0.625 at 1.0 to 1.1%, 0.500 at 1.2%, 0.250 at "
-    "1.5%); with 0.12 mm as the reference it is 0.500 (review of PR #60, computed).",
+    "1.5%); with 0.12 mm as the reference it is 0.500 (the review, computed).",
     "The translation normal to the wall and the pitching rotation fail the criterion; every other entry's own edge is "
     "0.40 to 0.53 spacings. Replacing those two entries by the reference's changes the held swim speed by at most "
-    "0.011% and the free swim speed by at most 0.12% (review of PR #60, computed): they do not matter to the swim "
+    "0.011% and the free swim speed by at most 0.12% (the review, computed): they do not matter to the swim "
     "speed, and they do matter to the dynamics on the floor, which the node delivers.",
     "The swim-speed-only edge (0.625 spacings) was read after the check ran, from the same data; it is not the "
     "declared criterion and is not a training edge.",
@@ -359,7 +359,7 @@ MEASURED_NEAR_WALL_NOTES: tuple[str, ...] = (
 #: The near-wall edge is the maintainer's decision, open (7i-a review of PR #60, finding B1).
 OPEN_NEAR_WALL_EDGE = OpenEdge(
     decision="Where the method of regularised Stokeslets resolves the wall at a spacing, so that data may be drawn from it, is "
-             "open: it is the maintainer's decision, and 7i-b is blocked on it.",
+             "open: it is the maintainer's decision, and the surrogate's training data is blocked on it.",
     options=(
         "a near-contact boundary-element capability (a method that resolves the gap at the spacing)",
         "a declared accuracy per use, with its edge measured before a run, per design, tube and far gap",

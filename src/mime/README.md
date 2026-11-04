@@ -4,8 +4,8 @@ MIME (MIcrorobotics Multiphysics Engine) simulates field-actuated microrobots, m
 confined, low-Reynolds-number flows such as vessels and channels. Gradients run through the whole simulation, so the
 same experiment that predicts a result can also be fitted to measurements.
 
-This package is **MIME 0.3, a full rewrite**. Every folder exists and says what it is for, and the code arrives phase
-by phase (see [Status](#status)): so far the core that turns a declared experiment into a graph, tested on toy entries
+This package is **MIME 0.3, a full rewrite**. Every folder exists and says what it is for, and the code arrives in
+stages (see [Status](#status)): so far the core that turns a declared experiment into a graph, tested on toy entries
 with no physics, and the first experiment's body side (a rigid inertial body in a tube, a uniform rotating field, the
 magnetic torque, gravity and contact), and the scene written as a USD stage. The 0.2 line is preserved at the git
 tag `pre-0.3`.
@@ -106,44 +106,44 @@ experiment  ->  build  ->  dynamics, fields, interactions, observations, control
 
 | Package | What it is for | Origin | Lands in |
 |---|---|---|---|
-| [`vocabulary/`](vocabulary/) | the names of every interface (kind, units, frame, shape, sign); capability flags; reserved names | new | dev1, phase 2 |
-| [`things/`](things/) | `Structure`, `Medium`, `Body`, `Apparatus`; parts, roles and state; handles | new | dev1, phase 2 |
-| [`registry/`](registry/) | registration of every kind of entry, keyed by name and version | new | dev1, phase 2 |
-| [`build/`](build/) | the two phases, the canonical order, restricted builders, post-build checks, the build report | new | dev1, phase 2 |
-| [`experiment/`](experiment/) | `Experiment` and `BuiltExperiment`; run settings | new | dev1, phase 2 |
-| [`saved/`](saved/) | the document, the lock, loading, `verify`; later the experiment folder | new | dev1, phase 3 (landed) |
-| [`testing/`](testing/) | harnesses labs call from their own tests | new | dev1, phases 1 to 4 |
-| [`cli/`](cli/) | the `mime` command, thin over the Python API | new | dev1, phase 3 (`mime verify`) |
-| [`docs/`](docs/) | the documentation's machine-readable sources and their checks: the registry export, the symbol-table checks, the refusal scan, the ratchet lists, `mime docs check` | new | dev1, the first documentation phase |
-| [`dynamics/`](dynamics/) | how bodies, flows and apparatus evolve | new | dev1, phases 4 and 7 |
-| [`fields/`](fields/) | field providers | new | dev1, phases 4 and 7 |
-| [`interactions/`](interactions/) | physical laws, one module per family | new | dev1, phase 4 |
-| [`observations/`](observations/) | what an experiment measures | new | dev1, phase 4 |
-| [`errors/`](errors/) | the boundary of the public calls: every error a MIME error with a code in one shape (what, why, what to do, where, its page), errors from below translated, the script's own frames shown and the full chain kept, written to a file and shown with `MIME_TRACEBACK=full` | new | dev1, phase 7l-b |
-| [`results/`](results/) | a run's result, from a run and from a run's folder: each observation's declared outputs by name with their units, series with their time axes, windows by time, the flags raised over them, and the exports (a table, CSV, NPZ, a run folder's manifest) | new | dev1, phase 7k |
-| [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1, phases 4 and 7 |
-| [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state (phase 4a); `multibody/`, the rigid-body library (phase 7a1); `tables/`, the table evaluator (phase 7f) | ported | dev1, phases 4 and 7 |
-| [`surrogates/`](surrogates/) | learned models that nodes evaluate: a surrogate as a type naming its evaluator (phase 7i), the generator of training data and its held-out protocol (phase 7i) | ported | dev1, phases 4 and 7 |
-| [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1, phase 4 |
+| [`vocabulary/`](vocabulary/) | the names of every interface (kind, units, frame, shape, sign); capability flags; reserved names | new | dev1 |
+| [`things/`](things/) | `Structure`, `Medium`, `Body`, `Apparatus`; parts, roles and state; handles | new | dev1 |
+| [`registry/`](registry/) | registration of every kind of entry, keyed by name and version | new | dev1 |
+| [`build/`](build/) | the two phases, the canonical order, restricted builders, post-build checks, the build report | new | dev1 |
+| [`experiment/`](experiment/) | `Experiment` and `BuiltExperiment`; run settings | new | dev1 |
+| [`saved/`](saved/) | the document, the lock, loading, `verify`; later the experiment folder | new | dev1 |
+| [`testing/`](testing/) | harnesses labs call from their own tests | new | dev1 |
+| [`cli/`](cli/) | the `mime` command, thin over the Python API | new | dev1 |
+| [`docs/`](docs/) | the documentation's machine-readable sources and their checks: the registry export, the symbol-table checks, the refusal scan, the ratchet lists, `mime docs check` | new | dev1 |
+| [`dynamics/`](dynamics/) | how bodies, flows and apparatus evolve | new | dev1 |
+| [`fields/`](fields/) | field providers | new | dev1 |
+| [`interactions/`](interactions/) | physical laws, one module per family | new | dev1 |
+| [`observations/`](observations/) | what an experiment measures | new | dev1 |
+| [`errors/`](errors/) | the boundary of the public calls: every error a MIME error with a code in one shape (what, why, what to do, where, its page), errors from below translated, the script's own frames shown and the full chain kept, written to a file and shown with `MIME_TRACEBACK=full` | new | dev1 |
+| [`results/`](results/) | a run's result, from a run and from a run's folder: each observation's declared outputs by name with their units, series with their time axes, windows by time, the flags raised over them, and the exports (a table, CSV, NPZ, a run folder's manifest) | new | dev1 |
+| [`nodes/`](nodes/) | the MADDENING nodes underneath the entries | ported; the fluid solver rewritten | dev1 |
+| [`core/`](core/) | the base node class, quaternion helpers, shapes; typed node state; `multibody/`, the rigid-body library; `tables/`, the table evaluator | ported | dev1 |
+| [`surrogates/`](surrogates/) | learned models that nodes evaluate: a surrogate as a type naming its evaluator, the generator of training data and its held-out protocol | ported | dev1 |
+| [`data/`](data/) | small package data: surrogate weights, calibrations | ported | dev1 |
 | [`env/`](env/) | the environment a run is made in: each variant's hashed pins and the base images, `mime env check`, what the lock records of what no pin holds, XLA's cache directory, and the Modal script's generator | new | dev1, with the Modal template |
-| [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references; derived assets' derivation records (phase 7i) | new | dev1, before phase 7h |
+| [`assets/`](assets/) | large files referenced by sha256 and fetched on request: the cache, the one resolver, the wall tables' references; derived assets' derivation records | new | dev1 |
 | [`credentials/`](credentials/) | the token `mime push` uses, kept where a commit cannot publish it and shown nowhere | new | dev1, after the assets |
-| [`push/`](push/) | `mime push`: `sharing.yaml`, the plan shown first, a draft record on Zenodo with its DOI reserved and its files uploaded and checked, resumable; nothing published yet | new | dev1, push's P2a (publishing in P2b) |
-| [`materials/`](materials/) | the seam to OpenMaterica | new | dev1, phase 5 |
-| [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1, phase 6 (landed) |
-| [`control/`](control/) | the controller declaration and its modes: the callback and the chunked run (phase 7b1), the mode inside the compiled step (phase 7b2) | rewritten | dev1, phase 7 |
+| [`push/`](push/) | `mime push`: `sharing.yaml`, the plan shown first, a draft record on Zenodo with its DOI reserved and its files uploaded and checked, resumable; nothing published yet | new | dev1 |
+| [`materials/`](materials/) | the seam to OpenMaterica | new | dev1 |
+| [`scene/`](scene/) | the USD stage: frames, prim paths, geometry, the stage writer | new | dev1 |
+| [`control/`](control/) | the controller declaration and its modes: the callback and the chunked run, the mode inside the compiled step | rewritten | dev1 |
 | [`mappings/`](mappings/) | transfers between discretisations | new | with the first such transfer |
 | [`study/`](study/) | sweeps, fits and sensitivities over experiments | new | dev2 (sweeps), a1 (fits) |
 | [`validity/`](validity/) | validity lines, watches, evidence, profiles | new | a1 |
 | [`gradients/`](gradients/) | gradient statuses and their checks | new | declared from dev1; checked in a1 |
-| [`viz/`](viz/) | the recording layer over a run folder's stage; descriptions' meshes baked in the asset cache, and the overlay that draws them | new | dev1, phase 7n |
-| [`live/`](live/) | live sessions (`built.live()`), `mime serve` and the `mime.live` protocol, ZMQ spoken by MIME itself | new | dev1, phase 7n |
+| [`viz/`](viz/) | the recording layer over a run folder's stage; descriptions' meshes baked in the asset cache, and the overlay that draws them | new | dev1 |
+| [`live/`](live/) | live sessions (`built.live()`), `mime serve` and the `mime.live` protocol, ZMQ spoken by MIME itself | new | dev1 |
 
 Three modules sit beside the packages: `units.py` (SI quantities such as `mm(...)`, `Hz(...)`, `mT(...)`, checked by
-dimension in phase 1 and turned into plain SI floats, landed in phase 2; the dimension markers an entry's settings
-declare in their annotations, `Annotated[Quantity, Length]`, since phase 4a) and `drives.py` (command generators,
+dimension in the build's phase 1 and turned into plain SI floats; the dimension markers an entry's settings
+declare in their annotations, `Annotated[Quantity, Length]`) and `drives.py` (command generators,
 each a node whose numbers are `params` leaves with an exclusive edge into an apparatus's command: the constant drive
-since phase 4b, the ramps in dev2) and, since phase 7h, `walls.py` (wall kinds: how a confining wall reaches a solver
+first, the ramps in dev2) and `walls.py` (wall kinds: how a confining wall reaches a solver
 of the flow; free space and the tube, the plane reserved).
 
 The toy entries the build is tested on are in `mime.testing.toys`, so a lab's tests can use them too, with the toy
@@ -151,9 +151,8 @@ family, the family suites' control.
 
 ## Status
 
-The rewrite moves through releases: `0.3.0.dev1`, `dev2`, `a1`, `a2`, then `0.3.0`. Each release is split into
-phases when it is next. Every phase ends at a gate: a test that can fail, plus a control showing that it can. dev1's
-phases are:
+The rewrite moves through releases: `0.3.0.dev1`, `dev2`, `a1`, `a2`, then `0.3.0`. Each stage of a release ends at a gate:
+a test that can fail, plus a control showing that it can. The first release's work, in the order it was done:
 
 1. Skeleton and CI. **Done.**
 2. The core (declarations, registry, both build phases, the canonical order), tested on toy entries with no physics.
@@ -161,35 +160,33 @@ phases are:
 3. The saved form on those toys: save, load, rebuild, the same result; type checking in CI; units labels on every
    edge. **Done.**
 4. The first experiment's physics, node by node: a magnetic helical robot swimming in a tube, compared with frozen
-   outputs of the 0.2 code. In three parts: 4a, the infrastructure every physics entry uses (MADDENING 0.4.2, the
-   Apache-2.0 licence, test durations on every CI lane, units declared in settings' annotations, typed node state,
-   and the family suites' harness with the node walk), **done**; 4b, the body-side entries (the rigid inertial body
-   with implicit resistance and confinement by projection, the tube, values declared in the experiment, the uniform
-   rotating field and the constant drive, the magnetic torque, gravity, contact, the swim speed, the magnetic,
-   gravity and contact families, and lag accounting), **done**; 4c1, drag (the surrogate's port with its fixes, the
-   `Drag` entry and the hydrodynamic family), **done**; 4c2, the phase's gate, **done**: script A, built through
-   the public API, against its frozen reference, with every expected difference declared before the run, the two
-   graphs' lag structures compared, and stateful tests of the `Experiment` API; 4c3, three structural corrections,
-   each a declared change measured against its prediction (the step solved for the change in velocity, the contact
-   held in the implicit solve, the surrogate's resistance about the centre), **done**: every quantity of A, in
-   float64 and in float32, the float32 phase lag included, holds its declared prediction within its tolerance.
-   **Phase 4 is closed.**
+   outputs of the 0.2 code. In parts: the infrastructure every physics entry uses (MADDENING 0.4.2, the Apache-2.0
+   licence, test durations on every CI lane, units declared in settings' annotations, typed node state, and the family
+   suites' harness with the node walk), **done**; the body-side entries (the rigid inertial body with implicit
+   resistance and confinement by projection, the tube, values declared in the experiment, the uniform rotating field
+   and the constant drive, the magnetic torque, gravity, contact, the swim speed, the magnetic, gravity and contact
+   families, and lag accounting), **done**; drag (the surrogate's port with its fixes, the `Drag` entry and the
+   hydrodynamic family), **done**; the gate, **done**: script A, built through the public API, against its frozen
+   reference, with every expected difference declared before the run, the two graphs' lag structures compared, and
+   stateful tests of the `Experiment` API; and three structural corrections, each a declared change measured against
+   its prediction (the step solved for the change in velocity, the contact held in the implicit solve, the
+   surrogate's resistance about the centre), **done**: every quantity of A, in float64 and in float32, the float32
+   phase lag included, holds its declared prediction within its tolerance. **This stage is closed.**
 5. Materials from OpenMaterica records. **Done**: records read at the experiment's conditions through
    `mime.materials`, OpenMaterica's verdict passed through (`met` builds, `not_met` is refused, `unknown` needs an
    acceptance with its reason), records pinned as files, a body's parts and the part resolver, and script A's record
    arm, each record switch's change predicted before the run and measured within its stated tolerance; the
-   reproduction arm, through the seam, is phase 4's bit for bit (since 4c3, the arm 4c3 left, with each switch's
-   change predicted again on 4c3's physics).
-6. The scene: the USD stage writer and frames. **Done**, before phase 5 (the two are independent): `Scene.new`,
-   the stage written beside the document and the lock, robot assets referenced by hash, bodies bound to their
-   prims, the `mime:` schema for a magnet's direction, the frame proposals and the two frontier rules.
-7. The same robot driven by a magnet on a robot arm, closed loop. In parts: phase 7a1, the rigid-body library
-   (`mime.core.multibody`), **done**; phase 7a2, the kinematic apparatus chain (the arm and the motor as chain
-   segments with their kinematic rungs, mounts, the point-dipole field and the force of its gradient,
-   `Magnetic.Force`), **done**; phase 7b1, the controller's declaration and its callback mode, **done**; phase 7b2,
-   the controller inside the compiled step, **done**; phase 7a3, the dynamic arm and motor, their loads and the
-   magnetic laws' reactions on the source (MIME-ANO-103), **done**; phase 7a4, mounted mass and spinners on dynamic
-   hosts (MIME-ANO-122), **done**; then the experiment's gate.
+   reproduction arm, through the seam, is the physics stage's bit for bit (with each switch's change predicted again
+   on the corrected physics).
+6. The scene: the USD stage writer and frames. **Done**, independently of the materials: `Scene.new`, the stage written
+   beside the document and the lock, robot assets referenced by hash, bodies bound to their prims, the `mime:` schema
+   for a magnet's direction, the frame proposals and the two frontier rules.
+7. The same robot driven by a magnet on a robot arm, closed loop. In parts: the rigid-body library
+   (`mime.core.multibody`), **done**; the kinematic apparatus chain (the arm and the motor as chain segments with
+   their kinematic rungs, mounts, the point-dipole field and the force of its gradient, `Magnetic.Force`), **done**;
+   the controller's declaration and its callback mode, **done**; the controller inside the compiled step, **done**;
+   the dynamic arm and motor, their loads and the magnetic laws' reactions on the source (MIME-ANO-103), **done**;
+   mounted mass and spinners on dynamic hosts (MIME-ANO-122), **done**; then the experiment's gate.
 8. The `0.3.0.dev1` release.
 
 Nothing here is stable until 0.3.0. Even then, `mime.nodes` stays outside the 0.3.x stability promise.

@@ -18,9 +18,10 @@ a screw, written out). What that number is worth is in the table: since the quad
 points (drag 0.4.0) the speed is within a few per cent of a converged free-space reference at a few hundred force
 points, and the table says how it moves with ``spacing``; read it as a first look, not as a result.
 
-**The inertia.** The screw's parts give an inertia tensor with a small product of inertia, which the build refuses to
-use as it is and prints (with the line to paste). Here the declaration below is that line; in this regime (viscous,
-Reynolds number a few hundredths) the speed does not depend on it, which the example's test checks.
+**The inertia.** The screw's parts give an inertia tensor with a small product of inertia. Left alone, an exploratory
+build uses its diagonal and stamps that pending, and a research build refuses it and prints the line to paste. Here the
+declaration below is that line; in this regime (viscous, Reynolds number a few hundredths) the speed does not depend on
+it, which the example's test checks.
 """
 
 import argparse
@@ -89,7 +90,7 @@ def screw_in_tube(spacing_mm: float = START_SPACING_MM, *, inertia: tuple[float,
     return exp
 
 
-#: The diagonal of the parts' inertia tensor (kg m^2): what the refusal of the parts' own tensor prints to paste.
+#: The diagonal of the parts' inertia tensor (kg m^2): what a research build's refusal of the parts' own tensor prints to paste.
 INERTIA = (1.3043197461318855e-10, 4.631130043564001e-10, 4.570054968582633e-10)
 
 

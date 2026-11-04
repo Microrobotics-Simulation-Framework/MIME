@@ -102,8 +102,9 @@
 - `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.
-- `mime run <folder> --duration <time> --out <dir> [--history] [--record <output>]... [--every <time>] [--full]`: load
-  and rebuild a saved experiment in the precision its lock records, run it, and write into `<dir>` its outputs
+- `mime run <folder> [--duration <time>] --out <dir> [--history] [--record <output>]... [--every <time>] [--full]`: load
+  and rebuild a saved experiment in the precision its lock records, run it for `--duration`, or for the length the
+  experiment declared (`Experiment(..., duration=...)`, saved as `run.duration`) when none is given, and write into `<dir>` its outputs
   (`outputs.npz`: every field after the last step, with `--history` at every step, each series `--record` names as
   `<observation id>.<output>`, one sample every `--every`, and every flag at every step when anything is recorded),
   their manifest beside them (`outputs.json`: each observation's outputs with their units, windows and flags, each
@@ -158,7 +159,7 @@ Planned:
 - `mime status <folder>`: the experiment's validity and evidence (a1).
 - `mime new`: scaffold a new experiment folder (0.3.0).
 - `mime push --metadata`, `mime cite`, `mime search`: a published record's metadata updated, its citation, and the
-  community's index (push's P3).
+  community's index (later).
 
 ## On a terminal
 
@@ -263,10 +264,10 @@ now. It doubles as a testbed for MADDENING's design. MIME 0.4.0 moves onto MADDE
 
 ## Status
 
-`mime verify` landed in dev1's phase 3; `mime registry` and `mime docs check` in the first documentation phase;
-`mime docs build` in the generators' phase; `mime assets` before phase 7h; `mime run`, `mime env check` and `mime modal`
-with the Modal template; `mime pack`, `mime pull` and `mime credentials` with the sharing piece; `mime card`, and the
-terms `pack` reads, with push's first piece, terms and tiers; `mime push` (drafts) with its second, P2a; `--publish`,
-versions and `pull --from` with P2b; the rest grows with the features it wraps.
+`mime verify` landed with the saved form; `mime registry`, `mime docs check` and `mime docs build` with the documentation;
+`mime assets` with the wall tables; `mime run`, `mime env check` and `mime modal`
+with the Modal template; `mime pack`, `mime pull` and `mime credentials` with sharing; `mime card`, and the
+terms `pack` reads, with terms and tiers; `mime push` (drafts) after them; `--publish`,
+versions and `pull --from` later still; the rest grows with the features it wraps.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

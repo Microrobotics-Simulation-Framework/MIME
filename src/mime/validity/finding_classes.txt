@@ -17,3 +17,4 @@ numerical_default   waiver    default_numerical
 undeclared_default  waiver    default_undeclared
 unsourced           source    source_missing
 unevidenced         evidence  evidence_missing
+simplification      waiver    inertia_products_dropped

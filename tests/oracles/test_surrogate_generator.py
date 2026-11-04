@@ -82,7 +82,7 @@ def test_the_domain_is_de_jonghs_seventeen_designs_in_the_four_tubes_and_its_nea
 def test_the_open_edge_is_recorded_with_its_options_its_criterion_and_the_measured_edges_as_data():
     record = g.DOMAIN.as_json()["near_wall"]
     assert isinstance(record, dict) and record["status"] == "open" and "maintainer" in str(record["decision"])
-    assert "7i-b is blocked" in str(record["decision"])
+    assert "the surrogate's training data is blocked" in str(record["decision"])
     assert len(record["options"]) == 4
     assert record["criterion"] == {"quantities": list(g.NEAR_WALL_USES["resistance"]), "tolerance": 0.01,
                                    "committed_at": "fd6519d"} and len(record["criterion"]["quantities"]) == 8
@@ -182,7 +182,8 @@ def test_control_the_generator_refuses_by_name_to_produce_data_while_the_edge_is
     with pytest.raises(BuildRefused) as refused:
         g.TrainingData().produce(parameters, {"wall:tube": TABLE})
     message = str(refused.value)
-    assert "near-wall edge is open" in message and "maintainer" in message and "7i-b is blocked" in message
+    assert "near-wall edge is open" in message and "maintainer" in message
+    assert "the surrogate's training data is blocked" in message
 
 
 @pytest.mark.parametrize("case", [

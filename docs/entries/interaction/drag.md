@@ -67,7 +67,7 @@ image's. So:
   (MIME-ANO-130 has the figures), a price worth reading before the run: write a coarser spacing for a look, and expect
   the stop below if the body reaches the band;
 - on a machine with a laptop's memory, write `wall_refinement`. The default was chosen by a rule fixed before its
-  measurement (design #210) that weighed a step's time alone, not memory, and memory is where the two differ: at a
+  measurement that weighed a step's time alone, not memory, and memory is where the two differ: at a
   millimetre screw's usual margin, the integrated image's coarser spacing took a step about as long as the default's
   and under a third of its memory, and was definite on every floor roll measured, as the default was. The build report
   names the refinement to write and the memory below which it is the option, beside the run's memory, and
@@ -111,7 +111,7 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
 
 ## Versions
 
-Version 0.4.0 (phase 7m-b) separates the mrs rung's quadrature from its force points and chooses the rung's defaults
+Version 0.4.0 separates the mrs rung's quadrature from its force points and chooses the rung's defaults
 again by measurement; its surrogate rung computes what 0.3.0's did. 0.3.0 stays registered so that a folder saved with
 it loads and reproduces (the frozen sim2real register's experiments build it): its mrs rung puts a point force at each
 sample, the samples its quadrature, with the blob half their mean spacing, which a quadrature refinement of one on

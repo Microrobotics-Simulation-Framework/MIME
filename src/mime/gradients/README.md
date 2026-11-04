@@ -22,9 +22,9 @@ controls.
 
 ## Status
 
-`GradientStatus` landed in dev1's phase 2: every registered entry declares one. Since phase 7s, `piecewise` is split
+`GradientStatus`: every registered entry declares one. `piecewise` is split
 into `piecewise_kink` and `piecewise_jump`, and `status_of_switches`, `derived_status` and `status_problem` give the
 status an entry's switches and its listed raw sites allow, which `mime docs check` holds every entry to. Composition,
 the map and the checks arrive with the first fit, in a1.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

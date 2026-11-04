@@ -7,11 +7,12 @@ example's speed at its starting spacing is far below the finest spacing the tabl
 spacing is itself no converged value (``docs/choosing_spacing.md``). The number the example prints is held to the
 table's row at the same spacing (a run that drifted from the table fails here), not to a reference.
 
-**The inertia.** The screw's parts give a tensor with a small product of inertia, which the build refuses and prints.
-The example declares the diagonal the refusal prints: a test reads it back from the refusal and holds the example's
-constant to it, so that the example cannot drift from what the build says. In a viscous regime the answer does not
+**The inertia.** The screw's parts give a tensor with a small product of inertia: ``exploratory`` uses the diagonal and
+stamps it pending, ``research`` refuses it and prints the diagonal to declare. The example declares the diagonal the
+refusal prints: a test reads it back from the research refusal and holds the example's constant to it, so that the example cannot drift from what the build says. In a viscous regime the answer does not
 depend on the inertia (the last test, at the coarsest spacing of the table, where the control is cheap)."""
 
+import dataclasses
 import importlib.util
 import json
 import re
@@ -74,6 +75,7 @@ def test_the_parts_own_tensor_is_refused_with_the_declaration_the_example_uses(e
             radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
             starts=2))}))
     exp.declare("umr.parts.shell.density", kg_per_m3(1410.0), reason="FL-9 resin plus its magnets, mean density")
+    exp._settings = dataclasses.replace(exp._settings, profile="research")
     with pytest.raises(BuildRefused) as refused:
         exp.build()
     (refusal,) = [r for r in refused.value.refusals if r.code == "parts.inertia-axes"]

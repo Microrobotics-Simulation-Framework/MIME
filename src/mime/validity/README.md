@@ -17,11 +17,11 @@ evidence standard. It confers nothing by itself.
 
 ## Status
 
-Since phase 7l-a (designs #190 and #191), **the profiles and the tables they act by**, built on a1's seams:
+**The profiles and the tables they act by**, built on a1's seams:
 
 - `Profile`: `exploratory` (the default), `research`; `strict` refused by name (`profile.reserved`) until a1.
 - **Classes as data** (`finding_classes.txt`, `FindingClasses`): each finding code's class, and each class with what
-  covers it (design #188's covered-by column). dev1 classes the codes MIME meets today: OpenMaterica's
+  covers it (the covered-by column). dev1 classes the codes MIME meets today: OpenMaterica's
   `condition_unstated` and `stated_without_origin` are assumptions; a pending reason, a numerical default taken, a
   default its entry declares nothing of (`undeclared`), a physical value with no source (a physical convention taken
   included) and a numerical value with no evidence are the build's own. Every other code keeps its behaviour from
@@ -44,4 +44,4 @@ Since phase 7l-a (designs #190 and #191), **the profiles and the tables they act
 
 Validity lines, watches and evidence records are a1's.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

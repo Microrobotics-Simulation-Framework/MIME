@@ -19,4 +19,4 @@
 
 Empty. Sweeps land in dev2, and fits in a1.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

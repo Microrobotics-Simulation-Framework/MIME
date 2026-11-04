@@ -5,11 +5,22 @@ Every experiment is built under a **profile**, which says how much the build ask
 
 - **exploratory**, the default, is for getting something running. What your experiment leaves unstated (a reason for a
   number, a condition a record does not state, a solver setting you did not choose) is waived with a *pending* reason.
-  Each waiver is recorded in the saved form and stamped on every output, so nothing is silent.
-- **research** asks for each of those reasons, and refuses a pending one by name. It also lists, and never refuses,
-  what a reviewer would ask about: a physical value with no source, a numerical value with no convergence evidence.
+  Each waiver is recorded in the saved form and stamped on every output, so nothing is silent. The stamp is one short
+  line, the profile and the name of each pending item, with a pointer to `mime pending <folder>`, which prints each in
+  full: what was measured of it, and the line that seals it.
+- **research** asks for each of those reasons, and refuses a pending one by name. It also refuses what exploratory
+  simplifies and stamps: a body whose parts give an inertia tensor with products of inertia (a screw's, small beside its
+  moments) has its diagonal used in exploratory, the products dropped, and the item `<body>.inertia` stamped pending with
+  the products' size; research refuses it, and prints the declaration of the diagonal to paste with its reason. It
+  also lists, and never refuses, what a reviewer would ask about: a physical value with no source, a numerical value
+  with no convergence evidence.
 - **strict** holds a higher evidence standard, and confers nothing by itself. It is not built yet: MIME refuses it by
   name, since a strict build now could apply only research's rules and would claim a standard it does not apply.
+
+Before a run, the build warns, in every profile, when the operating point the experiment declares is past a law's
+declared range and the build can compute it: the turning Reynolds number of a body that follows a field turning at a
+declared frequency, against the number the drag's rung is declared up to. The warning (a `UserWarning` at the line that
+built the experiment, and a line in the build report that says what it was computed from) is never a refusal.
 
 No profile relaxes a validity limit or an input error: a value in the wrong unit, a read a record does not cover, a
 body outside a model's domain are refused in every profile, each refusal saying what to change.
@@ -206,10 +217,10 @@ entry), so nothing says what the default claims. State the value with its source
 
 ### `setting.source-required`
 
-A profile whose rule refuses a physical value with no source found one (no dev1 profile does: research lists it).
+A profile whose rule refuses a physical value with no source found one (no profile of 0.3.0 does: research lists it).
 Give it its source.
 
 ### `setting.evidence-required`
 
-A profile whose rule refuses a numerical value with no evidence found one (no dev1 profile does: research lists it).
+A profile whose rule refuses a numerical value with no evidence found one (no profile of 0.3.0 does: research lists it).
 Give it its reason, with its evidence.

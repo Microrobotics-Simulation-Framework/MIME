@@ -24,8 +24,8 @@ class Profile(Enum):
     """How much a build asks of an experiment. ``exploratory`` (the default): what an experiment leaves unstated is
     waived with a pending reason, recorded and stamped on every output, so a first run needs no paperwork; validity
     limits and input errors are refused as in every profile. ``research``: each of those needs its reason, and a
-    pending one is refused by name. ``strict`` holds a higher evidence standard, and confers nothing; it is a1's, and
-    refused in dev1."""
+    pending one is refused by name. ``strict`` holds a higher evidence standard, and confers nothing; it is not built yet, and
+    refused in 0.3.0."""
 
     EXPLORATORY = "exploratory"
     RESEARCH = "research"
@@ -64,7 +64,7 @@ class Action(Enum):
 
 
 class Cover(Enum):
-    """What covers a class of finding (design #188's covered-by column)."""
+    """What covers a class of finding (the profile rules' covered-by column)."""
 
     WAIVER = "waiver"
     SOURCE = "source"
@@ -277,7 +277,7 @@ def decide(judge: Judge, finding: Finding, baseline: Action | None) -> Decision:
 def waivers_alone(classes: FindingClasses, rules: ProfileRules) -> list[str]:
     """Every way a rule covers a finding with something other than a waiver: a ``generate`` or ``basis`` rule on a
     class no waiver covers (a validity limit, an uncovered read), or a ``generate`` rule whose product is not a
-    :class:`Waiver` of the finding. Empty when profiles act on waivers alone (design #184 item 1)."""
+    :class:`Waiver` of the finding. Empty when profiles act on waivers alone."""
     found: list[str] = []
     for (profile, name), rule in sorted(rules.rules.items(), key=lambda item: (item[0][0].value, item[0][1])):
         allowed = _COVERED_BY_ACTION.get(rule.action)

@@ -35,8 +35,7 @@ apart by accident. The token is the one `mime credentials set <service>` stored,
 ## `sharing.yaml`
 
 The record's credit and description, beside the saved form (`<folder>/sharing.yaml`) and never in it: Zenodo keeps a
-record's metadata editable and its files immutable, so a misspelt name is a metadata edit, never a new version (design
-#199). `--init` writes it from what the folder knows (the experiment's name as the title, its licence), with
+record's metadata editable and its files immutable, so a misspelt name is a metadata edit, never a new version. `--init` writes it from what the folder knows (the experiment's name as the title, its licence), with
 each key explained; an existing one is never overwritten. It is read with YAML's safe loader against a closed schema:
 
 | key | what |
@@ -92,7 +91,7 @@ the production service). **It always names the title and the contributors**, sin
 person to vouch for them. **The full plan** (`--full-plan`) is every
 record file with its licence and why it is there, every file inside the bundle with its licence, whose it is and its
 verdict, every file that travels as a reference with its origin and sha256, the licences, the credit, each declared
-permission in #198's words ("You are declaring publicly, under your name, that ... permitted you to redistribute
+permission in its fixed words ("You are declaring publicly, under your name, that ... permitted you to redistribute
 ..."), each field of the metadata MIME builds on a line of its own, and the availability statement. **A push with
 nothing to send** (the folder and `sharing.yaml` as push last sent them, the draft as push left it) reads the draft and
 says so in one line, ending with its link; a published experiment unchanged since its last version says `unchanged
@@ -204,14 +203,13 @@ declarations a person confirmed in a terminal for exactly these bytes (push's re
 of the whole declaration, its files' sha256 among them), and is refused otherwise (`push.permission-unconfirmed`).
 **The record number is typed** (never `y`, which a hand types by habit); a script passes `--confirm <DOI>`, which must
 be the draft's reserved DOI (`push.not-confirmed`, before any request), and without either nothing is published
-(`push.unconfirmed`). **A script's confirmation is bound to what it was shown** (design #212): every push prints,
+(`push.unconfirmed`). **A script's confirmation is bound to what it was shown**: every push prints,
 beside the DOI, a short fingerprint of what the draft holds as it left it (the identity of its metadata, the
 publication date aside, and each file's size, md5 and sha256), as `--confirm <DOI>@<fingerprint>`, and `--status`
-prints it too. The DOI alone confirms the draft as the push that reserved that DOI, the first to print it, left it, as
-#171 asked; once a push has changed the draft (the folder pushed again, a site edit kept), the DOI alone is refused
+prints it too. The DOI alone confirms the draft as the push that reserved that DOI, the first to print it, left it; once a push has changed the draft (the folder pushed again, a site edit kept), the DOI alone is refused
 before any request (`push.confirm-stale`), as is a fingerprint the draft no longer holds, and the refusal names no
 fingerprint a script could retry with unseen. A draft whose DOI was reserved before push kept a record of what it
-showed (#100's pushes) is confirmed by `<DOI>@<fingerprint>` alone, changed or not: no later push stands for the one
+showed (an earlier push's) is confirmed by `<DOI>@<fingerprint>` alone, changed or not: no later push stands for the one
 that printed its DOI. The fingerprint is held to push's record of the draft, and the checks above hold the draft to
 it: the folder's files (`push.folder-changed`) and `sharing.yaml` (`push.metadata-changed`) as push last wrote them.
 **It is held once more immediately before the request**, computed from what the publish is about to publish (the files
@@ -309,8 +307,7 @@ as before; a concept DOI resolves to the latest version, which pull names.
 
 **What push remembers** is in the user's state directory (`platformdirs`), under
 `push/<service>/<experiment>-<hash>/state.json`, keyed by the service and the experiment's exact name (the hash is of
-the name, so `Toy` and `toy` have two records on a file system that folds case; this changes design #171, which keyed
-it by the bundle's hash): the draft's id, its concept, its reserved DOI, its page, push's mark, the hashes of the
+the name, so `Toy` and `toy` have two records on a file system that folds case; the record is not keyed by the bundle's hash): the draft's id, its concept, its reserved DOI, its page, push's mark, the hashes of the
 metadata it last wrote, and each file it uploaded and verified with its size, md5 and sha256. Any service that is not
 one of the two fixed in code (a test's fake, a dry run, whatever its name) has a namespace of its own
 (`push/other/<name>-<hash>/`), so a record made against a stand-in is never read or written for a real service; a
@@ -321,7 +318,7 @@ before push marked its drafts (push's first record format), which says what to d
 
 The tests run against an offline fake of the records API (`tests/sharing/zenodo_records.py`), matched to the probe's
 answers and replayed against them request by request (`tests/sharing/test_push_fidelity.py`, which names what the
-replay cannot show). CI never holds an upload token (design #171).
+replay cannot show). CI never holds an upload token.
 
 **The sandbox lane** is run by hand, on a machine where `mime credentials set zenodo-sandbox` stored a sandbox token:
 
@@ -345,10 +342,10 @@ service can answer.
 
 ## Status
 
-Push's draft piece, P2a (designs #198, #199), after terms and tiers (P1): `sharing.yaml` and `--init`, the client, the
-plan, drafts, `--status` and `--discard`, the offline fake and the sandbox lane. Its publishing piece, P2b (#199, #202):
-the quieter plan, `--publish` with its confirmation, the staged lock and the checks afterwards, versions, edits made on
+Push's draft side is built, after terms and tiers: `sharing.yaml` and `--init`, the client, the
+plan, drafts, `--status` and `--discard`, the offline fake and the sandbox lane. Its publishing side comes
+next: the quieter plan, `--publish` with its confirmation, the staged lock and the checks afterwards, versions, edits made on
 the site kept or written over, funding, conferences and `fields`, and `mime pull --from`. Metadata updates of a
-published record, communities, `--version-of` and asset records come with P3.
+published record, communities, `--version-of` and asset records come later.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

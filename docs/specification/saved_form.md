@@ -62,7 +62,20 @@ refusal table's (`mime/build/refusal_table.txt`).
   its form had; a key that a later form added is refused in it.
   *Cases:* `tests/saved/test_previous_form.py::test_a_previous_folder_loads_as_exploratory`,
   `tests/saved/test_previous_form.py::test_the_control_a_previous_document_holding_a_key_of_version_two_is_refused`,
-  `tests/saved/test_terms_saved.py::test_an_earlier_version_given_a_terms_key_is_refused`.
+  `tests/saved/test_terms_saved.py::test_an_earlier_version_given_a_terms_key_is_refused`,
+  `tests/saved/test_duration_saved.py::test_the_control_an_earlier_form_holding_the_key_of_version_five_is_refused`.
+- **[document.duration]** The run's length, where the experiment declares one (`Experiment(..., duration=...)`), is
+  saved as `run.duration` and is part of the hashed input: a duration edited after its lock was written is refused as
+  `load.input-hash`. `mime run` on the folder runs that long when it is given no `--duration`, and the option still
+  overrides it; a folder with none declared needs the option, and is refused as `run.duration` without it. A duration
+  that is not a finite time above zero, or not a whole number of base steps, is refused when the experiment is built,
+  never saved. A document of an earlier form declares none and loads as it did.
+  *Cases:* `tests/saved/test_duration_saved.py::test_a_saved_folder_runs_as_long_as_it_declared_with_no_duration_given`,
+  `tests/saved/test_duration_saved.py::test_an_override_beats_the_saved_length`,
+  `tests/saved/test_duration_saved.py::test_the_control_a_saved_duration_edited_after_its_lock_is_refused`,
+  `tests/saved/test_duration_saved.py::test_the_control_a_folder_with_no_duration_still_needs_one`,
+  `tests/saved/test_duration_saved.py::test_an_earlier_form_loads_without_a_duration_and_still_needs_one`,
+  `tests/saved/test_duration_saved.py::test_the_control_a_duration_a_run_would_refuse_is_refused_at_the_build_and_never_saved`.
 - **[document.terms]** The document's licence, custom licences, terms and permissions are read in the form `save`
   writes them; terms in any other form are refused by their own codes.
   *Cases:* `tests/saved/test_terms_saved.py::test_terms_edited_by_hand_are_refused_at_load_by_their_code`.

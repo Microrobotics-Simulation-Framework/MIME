@@ -188,7 +188,7 @@ The commands taken while a chunk runs act at its end in the order they came, so 
 order at the chunk's end step. Measured by `scripts/live_responsiveness.py` on a laptop's i7-12850HX (JAX on its CPU),
 A0 with its controller called back, three runs: while its first chunk compiled (3.3 s), the server answered 252 to 265
 `status` requests, the median in 0.4 ms and the slowest in 82 to 97 ms, so within 0.1 s; the step after its first
-`set` took 3.5 to 3.9 ms, as any later step does. Before phase 7n-b the first `set` compiled the controller again: in a
+`set` took 3.5 to 3.9 ms, as any later step does. Earlier in development the first `set` compiled the controller again: in a
 script on the same laptop, A0's apparatus closed by `ArmTracking` took 1.9 s for the chunk after it. These are a
 machine's measurements, never a CI check; a test holds the server answering `status`, `hello` and `pause` while a
 first chunk is held open, and its control, a server stepping on its loop's own thread, answering none.

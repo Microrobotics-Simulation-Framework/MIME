@@ -26,7 +26,7 @@ from typing import Any, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from mime.build._watch import WatchPlan
+from mime.build._watch import WatchPlan, turning_reynolds
 
 #: A sphere's neglected inertia in the drag, Oseen's first correction, by the Reynolds number of its translation.
 OSEEN = 3.0 / 16.0
@@ -163,7 +163,7 @@ def read_watch(plan: WatchPlan, final: Final, history: Final | None) -> WatchRea
         return _unknown(plan, tuple(missing))
     scale = plan.density * plan.diameter / plan.viscosity
     surface = turning_rate * plan.diameter / 2.0
-    translation, turning = scale * speed, scale * surface
+    translation, turning = scale * speed, turning_reynolds(plan.density, plan.diameter, plan.viscosity, turning_rate)
     size, inertia_text = inertia_of(plan, translation, turning)
     status = NO_RANGE if plan.upper is None else ABOVE if max(translation, turning) > plan.upper else WITHIN
     return WatchRead(plan.owner, plan.entry, plan.rung, plan.body, plan.medium, status, translation, turning, speed,

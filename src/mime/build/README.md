@@ -53,7 +53,7 @@ Entries never see the graph itself, only a restricted builder.
 
 ## Status
 
-Landed in dev1's phase 2, tested on toy entries with no physics:
+The first form, tested on toy entries with no physics:
 - phase 1 (`plan_experiment`): handles, typed paths and strings resolved, with suggestions; every read and target
   checked against the vocabulary and the bound dynamics; rungs against support tables; rates against `dt`;
   registrations, reader slots, coupling groups (merged requests), ids and seeds; every refusal at once;
@@ -65,7 +65,7 @@ Landed in dev1's phase 2, tested on toy entries with no physics:
   and MADDENING's base step is `dt`;
 - the build report and the graph's canonical text.
 
-Since phase 3:
+Also:
 - the restricted builders label every edge with the vocabulary's units (`source_units` and `target_units`, spelt as
   the vocabulary spells them; MIME uses no edge transforms, so both ends carry the same label), and a post-build
   check refuses an edge without labels, a label that differs from its target input's `expected_units`, and a node
@@ -87,7 +87,7 @@ MADDENING's and JAX's calls whose hints leave a type unknown go through `_madden
 package is checked strictly. The operating point, material reads and the other probes come with physics and
 materials.
 
-Since phase 4b:
+Also:
 - **declared values** (`exp.declare("umr.mass", kg(...), reason=...)`) checked in phase 1 against the things declared
   (a value the thing has, in its units and shape, with a reason, declared once) and read through `mime.materials`,
   each entry receiving the values its plan reads in SI (`ctx.values`); an undeclared read is refused with the line
@@ -113,10 +113,10 @@ Since phase 4b:
   read a step late) is refused as `lag.unplanned` unless a coupling group closes its loop. After `compile()` the
   classification is checked against MADDENING's compiled schedule (its back edges, less a group's internal edges)
   and `validate()`'s loop lines, a disagreement refused as `lag.cross-check`. `latency_in_steps` counts a path's
-  previous-step reads; a controller inside the compiled step (phase 7b2) takes one, its start-of-step read, and its
+  previous-step reads; a controller inside the compiled step takes one, its start-of-step read, and its
   latency's steps are its delay line's.
 
-Since phase 6:
+Also:
 - **the world frame from the scene**: phase 1 takes up from `Scene.new(up=..., units=...)`, once, and refuses an
   experiment's own `up=`; it composes the scene's references (`mime.scene.compose`), places every thing at its prim
   (refusing a missing, taken or shared prim, and a name held twice), and reads each magnet's design data, a
@@ -126,14 +126,14 @@ Since phase 6:
 - **the report** has the scene's line, one orientation line per thing (`OrientationLine`) and the stage's hash;
   `stage_spec(plans)` is what the stage writer is given.
 
-Since the first documentation phase, **the refusal table**: every code MIME constructs, with the classes it is refused
+**The refusal table**: every code MIME constructs, with the classes it is refused
 in, is a row of `refusal_table.txt` beside this module, generated from a scan of the source (`mime.docs`) and checked
 against it by `mime docs check`. A `Refusal` constructed with a MIME code the table does not hold, or in a class it
 does not give the code, raises `UncataloguedRefusal`; a code whose first word is a registered namespace (`labx.`) is
 that namespace's own, accepted and `uncatalogued`. A problem an entry's plan returns with a code it cannot be refused
 with is refused as that entry's defect (`entry.defect`), so a lab's code never crashes a build.
 
-Since phase 7a2, **chains**: each segment planned in chain order (its rung, its settings, what they make it), each
+**chains**: each segment planned in chain order (its rung, its settings, what they make it), each
 after the first mounted on a frame of the one before it by an edge the build derives (`b.mount`), the world poses
 of every frame at the start composed along the chain; an apparatus's parts resolved onto their mounts, a provider
 reading its part's pose by the same edge (`b.part`); each segment's commands driven as `<segment>.<command>`; a law
@@ -141,7 +141,7 @@ delivering into a chain that takes no load refused (`target.kinematic-chain`); t
 segments in chain order. The report lists each segment's description as read, every element not used or read past,
 and the stage holds the chain's prims and its parts.
 
-Since phase 7a3, **loads on a chain**: a mount names the loads port of the segment it is on where that segment takes
+**loads on a chain**: a mount names the loads port of the segment it is on where that segment takes
 loads (`ResolvedMount.loads`, a dynamic segment's `apparatus.link_wrench`). A law delivers its reaction on a field's
 source with `Delivery("field", "apparatus.link_wrench")`, planned where `PlanContext.reaction(role)` names the segment
 the source's part is mounted on; its builder wires the segment's frame poses into its own node (`b.mount(label, ...)`)
@@ -149,7 +149,7 @@ and one of its nodes' outputs into another's (`b.connect`). A chain segment pass
 mounted on with `b.reaction`, an edge the lag accounting plans a step late (`REACTION`), the report noting the
 staggered coupling. A law naming an apparatus and no link is refused (`target.chain-link`).
 
-Since phase 7a4, **mounted mass** (`_masses.py`): every mass on a chain (a part with a density or a declared mass, a
+**mounted mass** (`_masses.py`): every mass on a chain (a part with a density or a declared mass, a
 spinner's rotor, a segment's own massive links) is walked from its frame to what carries it: welded on a dynamic
 segment's frame (`EntryPlan.mounted`, the arm's grafted tree), part of a spinner's rotor (`EntryPlan.spin_inertia`),
 riding on a segment's base towards its mount, or nothing on a prescribed motion. A rotor unequal across its axis has
@@ -163,7 +163,7 @@ the planner's `settle_rates`: a controller's or observation's read, a spinner, a
 its own); and a segment may mount on a frame of any earlier one (`mount="<segment>.<frame>"`). The controller's context
 holds the carried trees (`models`), and the report names those its law read.
 
-Since phase 7e, **the stage side of the geometry kinds**: `stage_spec(plans, segments=...)` gives the writer each
+**the stage side of the geometry kinds**: `stage_spec(plans, segments=...)` gives the writer each
 structure's kind and each part's of a body written Python-first (`kind_prim`: its shape settings, its transform, its
 native form or its drawing at the writer's resolution, its regions' prims), a kind's defect in drawing refused as
 `entry.defect`; and **what MIME hands OpenMaterica's region-writing helper**, `region_handoff(plans)`: each region of a
@@ -174,4 +174,4 @@ its reason (`RefusedRegion`). Each primitive is checked by MIME's own check of w
 OpenMaterica states no tolerance), and a kind giving a malformed one is refused, never handed over. The
 helper itself is OpenMaterica's, and does not exist yet.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

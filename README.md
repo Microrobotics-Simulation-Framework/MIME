@@ -5,7 +5,7 @@ MIcrorobotics Multiphysics Engine, on [MADDENING](https://microrobotica.org/madd
 **MIME 0.3 is being rebuilt on the `v0.3` branch.** So far it holds the core that turns a declared experiment into a
 MADDENING graph, the saved form, the scene, the profiles, and the physics of its first experiments: a sphere settling
 in free space, a magnetic screw swimming in a tube (script A, held to frozen outputs of the 0.2 code with every
-difference declared before the comparison ran). More physics arrives phase by phase.
+difference declared before the comparison ran). More physics arrives with each release.
 
 The 0.2 line (the last release on MADDENING 0.3.x, with its nodes, experiments, docs and verification
 scripts) is preserved at the tag [`pre-0.3`](https://github.com/Microrobotics-Simulation-Framework/MIME/tree/pre-0.3).

@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`exploratory` waives the inertia tensor's products, and the stamp is short.** A body whose parts give
+  an inertia tensor with products of inertia (a screw's, 0.11% of its largest moment) is no longer refused in
+  `exploratory`: the diagonal is used with the products dropped, and the build stamps `umr.inertia` pending with the
+  products' size (the largest as a share of the largest moment, the axes' angle, the moments' shift), through the
+  profile rules' waiver for the new class `simplification`. `research` keeps the refusal and its line to paste. The stamp
+  every output carries is the profile, the number of items and their names, and a pointer to `mime pending`, which
+  prints what was measured of each item; it no longer holds their measured words, and no text a user reads carries a label
+  from the work that made it.
+- **The saved form is version 5: the run's length is saved with the experiment.** `Experiment(..., duration=s(3))` saves
+  `run.duration`, and `mime run <folder>` needs no `--duration` (the option still overrides it). Version 5 adds that one
+  key; a folder of version 4 or earlier loads as it did and still needs `--duration`. Saving a folder again under version 5
+  moves its `document` and `input` hashes (the schema string is inside what is hashed); its `derived` and
+  `observations` hashes are unchanged, and no arithmetic of a run is touched.
 - **A run that keeps no history knows each flag over the whole run.** Each flag is reduced inside the run's compiled
   scans, beside the state (steps raised, the first and the last: `mime.results.FlagWhole`, the manifest's `whole_run`),
   so `mime run` no longer opens with "N flags not known between steps" for a run that raised none, and a flag raised
@@ -31,6 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime env check` already names a core requirement missing from the environment, as the pins hold each one.
 
 ### Added
+- **A warning before the run when the declared operating point is past a law's declared range.** The build computes
+  the turning Reynolds number of a body that follows a field turning at a declared constant frequency (from the
+  frequency, the hull's diameter and the medium's density and viscosity, as the post-run watch computes it) and warns
+  when it is past the number the drag's rung is declared up to: a `UserWarning` at the line that built the experiment, a
+  line in the build report that says what it was computed from, and a line among what `mime run` says needs attention.
+  It is a warning in every profile, never a refusal. `FieldProvider.turns_at` names the command a field turns at. The
+  number is the turning Reynolds number at the drive's rate: a body held by contact can turn faster than its drive
+  (one screw's run peaked at about 2.2 times it), and the post-run watch reads the number the run
+  reached. Script A's arms (`examples/script_a.py`, `tests/script_a.py`: 10 Hz in water against the surrogate rung's
+  declared 0.1, about 540) now warn on every build; the statement is true, and no arithmetic changes.
 - **The evidence counts, v0 (docs D4b, part two).** `mime docs build` writes `reference/evidence_counts.md`: every claim of
   the anomaly registry and every normative statement of the saved form's specification, with the outcome of its tests in
   the default lane's JUnit report read through the resolver (passed, failed, skipped, not run, or no test, and the
@@ -264,10 +287,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     +1.45% in rotation (0.3.0 at the same count: +1.78% and +5.92%), within 2e-4 of its exact regularised drag; FL-9
     at the screw's default (222 force points) 2.6% below the shipped free-space reference (0.3.0: 16% below its own
     finest) and 0.5% at 957, estimates against a reference itself known to 1.9%, on a ladder that is not monotone
-    (6.1%, 2.6%, 4.0%, 3.5% and 1.3% below from 206 to 567 force points); on the walk's tube's axis only, 11% below the
+    (6.1%, 2.6%, 4.0%, 3.5% and 1.3% below from 206 to 567 force points); on the axis of a 1/4 in tube only, 11% below the
     finest spacing measured, an estimate against a value still moving (about 12% below a fit of the ladder); the
-    confined sphere +0.80% and +1.72% from Haberman & Sayre at a fifth and two fifths of the radius. The walk's T1
-    runs in 4.4 s (was 22 s): a step in free space only turns the held resistance.
+    confined sphere +0.80% and +1.72% from Haberman & Sayre at a fifth and two fifths of the radius. A 100 um steel sphere's
+    1000 steps run in 4.4 s (was 22 s): a step in free space only turns the held resistance.
   - **Assembled once per build and streamed** (`mime.nodes.hydro.mrs._quadrature`): the part of the matrix the body
     makes with itself is the same at every pose, so it is assembled once per build, in the body's frame at unit
     viscosity and in float64, over the quadrature in chunks sorted by force point (never every force point against
@@ -455,8 +478,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     at the frozen 0.16 mm (5,984 samples) and blob 0.5: on the screw 0.3.0's sampling 2.9523 mm/s (-3.43% from the
     post hoc point), inside the preregistered band, and on the screw 0.2.0's quadrature 2.7979 mm/s (-8.48%), outside
     it, the control. An estimate against an extrapolated reference, not a bound on the model, and no measured speed.
-    It lies outside the post hoc band (3.0003 to 3.1143 mm/s); the preregistered band is the tolerance (labelled
-    decision D20), and the reproduction pin at 1e-4 is what a change of the sampler moves.
+    It lies outside the post hoc band (3.0003 to 3.1143 mm/s); the preregistered band is the tolerance, and the
+    reproduction pin at 1e-4 is what a change of the sampler moves.
   - **7j's frozen register keeps the versions it froze**: `scripts/sim2real/operating_point.py` builds every geometry
     kind of its experiments at `FROZEN_VERSIONS` (the screw 0.2.0, the sphere and capsule 0.1.0, and the others at the
     versions registered on 2026-10-31) through `pinned`, until a dated amendment of the register moves them; built on
@@ -700,7 +723,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     post-run section; never a refusal, and no part of the graph: the derived hash is the same with and without it.
   - **`parts.inertia-axes` prints the derived tensor**: in the body's frame with its units, its principal moments and
     axes, and the `exp.declare("<body>.inertia", ...)` line, reason included, that declares its diagonal.
-  - `scripts/inertia_arms.py`, which measured friction 4c of the first-hour walk: a screw whose axial moment is its
+  - `scripts/inertia_arms.py`, which shows that a screw whose axial moment is its
     smallest (as a real screw's is) turns broadside about half a second into a rotating field and, in a bore narrower
     than it is long, goes through the tube's wall, which the surrogate cannot see (its resistance reads the body's
     centre and which way its axis points along the tube, and nothing else of the orientation).

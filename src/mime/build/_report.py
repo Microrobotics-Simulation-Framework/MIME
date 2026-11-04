@@ -121,6 +121,14 @@ class BuildReport:
     #: report's post-run section.
     watches: tuple[WatchPlan, ...] = ()
 
+    def range_warnings(self) -> list[str]:
+        """The warnings before any run: each place the operating point the experiment declares lies past a law's
+        declared range, with what it was computed from. In every profile, and never a refusal."""
+        return [text for watch in self.watches if (text := watch.range_warning()) is not None]
+
+    def range_warning_lines(self) -> list[str]:
+        return [f"warning before the run: {text}" for text in self.range_warnings()]
+
     def watch_lines(self) -> list[str]:
         """The report's post-run section: what each run is compared with after it, and what is missing for it."""
         if not self.watches:
@@ -182,6 +190,7 @@ class BuildReport:
             lines += self.profile.report_lines()
             if self.profile.items:
                 lines.append("  built.report.pending() prints each with the lines to paste")
+        lines += self.range_warning_lines()
         owners: dict[str, str] = {}
         for node in self.nodes:
             owners.setdefault(node.owner, node.entry)
@@ -229,6 +238,7 @@ class BuildReport:
             lines += self.profile.report_lines()
             if self.profile.items:
                 lines.append("  built.report.pending() prints each with the lines to paste")
+        lines += self.range_warning_lines()
         lines.append("nodes, in the order added:")
         for n in self.nodes:
             rate = "every step" if n.divider == 1 else f"every {n.divider} steps"

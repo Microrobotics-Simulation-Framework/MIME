@@ -73,7 +73,8 @@ GAPS: tuple[Gap, ...] = (
         "(and any key the current form renamed)."),
     Gap("meaning", ("document", "lock"), "accepts", "accepts",
         "A value of the right shape that names nothing or the wrong thing: a unit, a registered entry and its "
-        "version, a setting, a record or a file, a lock's file names and package names. The shape is all either "
+        "version, a setting, a record or a file, a lock's file names and package names, a run's duration that is "
+        "not a whole number of base steps. The shape is all either "
         "reader checks; the load refuses these later, each by its own code."),
 )
 

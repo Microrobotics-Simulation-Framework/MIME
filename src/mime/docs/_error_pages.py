@@ -23,7 +23,7 @@ READING_ERRORS = "errors.md"
 NO_TEST = "no test names this code"
 _NO_TEST_TEXT = (f"**On the refusal list: {NO_TEST}**, since no file under `tests/` names it. A test may still raise "
                  f"it without naming it, and none asserts it: what its message and action say is read from the source "
-                 f"below. The hook that records which codes a test raises has not landed (D2's), so until it does the "
+                 f"below. The hook that records which codes a test raises has not landed, so until it does the "
                  f"list says names and never raises. The list (`docs/ratchets/refusal_codes.txt`) only shrinks.")
 
 CLASS_TEXT: Mapping[RefusalClass, str] = {
@@ -86,7 +86,7 @@ def error_page(code: str, classes: frozenset[RefusalClass], sites: Sequence[Site
 def index_of_errors(table: Mapping[str, frozenset[RefusalClass]], unraised: Collection[str] = ()) -> Page:
     lines = ["# MIME's errors", "", "Every code MIME gives, by its class. Each error's last line names its page. A code "
              f"marked *{NO_TEST}* is one no file under `tests/` names; a test may raise it without naming it, and until "
-             f"the hook that records what a test raises lands (D2's), the mark says names, never raises.", ""]
+             f"the hook that records what a test raises lands, the mark says names, never raises.", ""]
     for held in _ORDER:
         codes = sorted(code for code, classes in table.items() if held in classes)
         lines += [f"## {held.value}", "", CLASS_TEXT[held][:1].upper() + CLASS_TEXT[held][1:] + ".", ""]

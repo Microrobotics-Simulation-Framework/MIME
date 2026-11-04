@@ -1,7 +1,8 @@
 """One dispatcher for every action at every site (design #190 item 3): each class of finding a build gives, under each
 action a profile rule can name (``generate``, ``basis``, ``list``, ``refuse``) and under none, does what the rule says,
 the same at every site: a read's unknown reason, a pending reason, a numerical default taken, a physical value with no
-source, a numerical value with no evidence, a default its entry declares nothing of. A row no site can apply (a
+source, a numerical value with no evidence, a default its entry declares nothing of, and an inertia whose products the
+derivation dropped (design #225). A row no site can apply (a
 ``generate`` on what no waiver covers, a ``list`` of what only a declaration covers, a class with no code) refuses the
 build by name, ``profile.tables``. The review's five rows (a1's strict rows and other actions on dev1's classes) are
 among the cases, so the seam holds for the rows a1 will add, not for one combination."""
@@ -11,7 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import pytest
-from profile_cases import Paperwork, settling_ball
+from profile_cases import Paperwork, parts_screw, settling_ball
 
 from mime.build import BuildRefused
 from mime.observations import SwimSpeed
@@ -78,6 +79,7 @@ SITES = {
     "unsourced": (lambda: settling_ball(STEEL), "ball.parts.shell.radius", "setting.source-required", None),
     "unevidenced": (lambda: settling_ball(STEEL), "dt", "setting.evidence-required", None),
     "undeclared_default": (labbed, "labdispatch.speed:ball.smoothing", "setting.undeclared-default", None),
+    "simplification": (parts_screw, "umr.inertia", "parts.inertia-axes", Action.REFUSE),
 }
 ACTIONS = [*Action, None]
 

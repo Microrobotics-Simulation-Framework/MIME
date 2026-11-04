@@ -39,6 +39,7 @@ class UniformRotating(FieldProvider):
     flags = frozenset({Capability.PROVISION_EVALUATED, Capability.UNIFORM})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}
     commands = {"frequency": Command("frequency", FREQUENCY), "amplitude": Command("amplitude", MAGNETIC_FLUX_DENSITY)}
+    turns_at = "frequency"
     rotation_axis: Annotated[DirectionLike, Direction]
     initial_direction: Annotated[DirectionLike, Direction]
 

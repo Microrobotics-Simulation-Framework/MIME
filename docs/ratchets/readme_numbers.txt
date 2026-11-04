@@ -8,15 +8,6 @@
 # printed, never stored.
 src/mime/README.md  0.2  #1                                                                        # present at D1-min
 src/mime/README.md  0.3  #1                                                                        # present at D1-min
-src/mime/README.md  4  #1                                                                          # present at D1-min
-src/mime/README.md  0.2 4a  #1                                                                     # present at D1-min
-src/mime/README.md  2.0  #1                                                                        # present at D1-min
-src/mime/README.md  4b  #1                                                                         # present at D1-min
-src/mime/README.md  4c1  #1                                                                        # present at D1-min
-src/mime/README.md  4c2  #1                                                                        # present at D1-min
-src/mime/README.md  4c3  #1                                                                        # present at D1-min
-src/mime/README.md  4c3 4c3  #1                                                                    # present at D1-min
-src/mime/README.md  4c3  #2                                                                        # present at D1-min
 src/mime/README.md  0.3  #2                                                                        # present at D1-min
 src/mime/build/README.md  0  #1                                                                    # present at D1-min
 src/mime/cli/README.md  0 1 2  #1                                                                  # present at D1-min
@@ -41,7 +32,6 @@ src/mime/docs/README.md  0.2  #1                                                
 src/mime/docs/README.md  0.3  #1                                                                   # present at D1-min
 src/mime/docs/README.md  0.2 0.2  #1                                                               # present at D1-min
 src/mime/dynamics/README.md  0.3  #1                                                               # present at D1-min
-src/mime/dynamics/README.md  4b  #1                                                                # present at D1-min
 src/mime/fields/README.md  0.2  #1                                                                 # present at D1-min
 src/mime/fields/README.md  1e-4  #1                                                                # present at D1-min
 src/mime/interactions/README.md  0.2 1  #1                                                         # present at D1-min

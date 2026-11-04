@@ -17,4 +17,4 @@
 
 Empty. It lands with the first interaction that transfers between discretisations.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

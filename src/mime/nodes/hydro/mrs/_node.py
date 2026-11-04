@@ -989,12 +989,12 @@ class MRSDragNode(MimeNode):
                               f"a force spacing of at most {closest_approach / INTEGRATED_GAP * 1e3:.4g} mm clears this "
                               f"approach, at a step about as long and less memory: {WALL_IMAGE_MEMORY}; the option on "
                               f"a machine with 16 GB of memory or less, since the default was chosen on a step's time "
-                              f"alone, not its memory (design #210)")
+                              f"alone, not its memory")
         count, reads = self.sample_count, self.wall_reads
         lines.append(f"what a step costs at this force spacing: {count} force points, a dense solve of {3 * count} "
                      f"unknowns (the free part's matrix held, {(3 * count) ** 2 * 8 / 2 ** 20:.4g} MiB in float64), "
                      f"and {reads} reads of the wall's table ({self._wall_text()}); about {reads * READ_SECONDS:.2g} s "
-                     f"for the reads on the 24-thread laptop CPU the fix round of phase 7m-b measured "
+                     f"for the reads on the 24-thread laptop CPU it was measured on "
                      f"({READ_SECONDS * 1e6:.2g} us a read; {STEP_MEASURED}); and about {run_gib(count):.2g} GiB for "
                      f"the run in float64 ({RUN_GIB_BASIS})")
         if integrated is not None:

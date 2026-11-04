@@ -2000,7 +2000,7 @@ anomalies:
       force points, and adds a wall's correction at the force points alone, each cell's force placed at its force
       point (the cost of a step is the wall's reads at every pair of force points and the solve). Measured in phase
       7m-b (scripts/default_spacing_table.py, float64, the blob a quarter of the force spacing, the quadrature eight
-      times finer): FL-9 on the axis of the walk's 1/4 in tube, its speed per turn in the tube over its speed in free
+      times finer): FL-9 on the axis of a 1/4 in tube, its speed per turn in the tube over its speed in free
       space at the same force points is 0.9707 at 206 force points (0.83 mm), 0.9738 at 283, 0.9884 at 416, 0.9979
       at 567, 1.0154 at 957 and 1.0273 at 1,714 (0.3 mm), still rising; over the same counts the free-space speed
       meets the shipped free-space reference within -6.1% to +0.1%. So at the coarse counts a first run takes, the
@@ -2155,7 +2155,7 @@ anomalies:
     description: >
       Contact 0.1.0's projection keeps the body's centre the extent of its hull about its own axis, plus the margin,
       from the surface, whatever the body's orientation: a sphere of the extent about the centre. A body whose axis
-      leaves the tube's reaches past that sphere. Review 7l-c (F1) found it on the walk's T4 screw: FL-9 with its parts'
+      leaves the tube's reaches past that sphere. Review 7l-c (F1) found it on a screw: FL-9 with its parts'
       inertia, its axial moment the smallest as any real screw's is, under the surrogate drag and a field turning at
       5 Hz in the quarter-inch tube, turns broadside within about half a second (its tilt passes 10 degrees at 0.47 to
       0.49 s and reaches 83 to 107 degrees by 0.6 s) and, at 0.98 mm off the axis, reaches 4.7 mm from it, 1.5 mm

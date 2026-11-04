@@ -215,7 +215,7 @@ def _written_default(cls: type, name: str) -> object:
 
 
 def role_problems(cls: type) -> list[str]:
-    """Every way ``cls``'s role declarations contradict themselves (design #191 item 5's consistency): a role for
+    """Every way ``cls``'s role declarations contradict themselves (the consistency of the roles): a role for
     something that is no setting; a default on a physical or design setting that is not a convention or determined;
     a written default with no declared kind; a numerical default on a setting that is not numerical, or without its
     rule, its basis or the method computing it; a convention without its basis or a value."""

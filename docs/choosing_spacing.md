@@ -7,7 +7,7 @@ and [`examples/screw_in_tube.py`](../examples/screw_in_tube.py), so that the cho
 advice. Where `spacing` is left out, a first-look default is taken (`built.report.pending()` says so, and what was
 measured of it); the numbers here are what a user needs to leave the default.
 
-**Since drag 0.4.0 (phase 7m-b) the rung separates its quadrature from its force points**: the unknowns sit at the
+**Since drag 0.4.0 the rung separates its quadrature from its force points**: the unknowns sit at the
 force points, `spacing` apart, and the integral is taken on the kind's own quadrature `quadrature_refinement` times
 finer, so that the blob (`blob` times the force points' mean spacing) can be smaller than the force spacing and
 still be resolved. Every row here is at the family's defaults for the other two settings: for the sphere the blob a
@@ -22,7 +22,7 @@ as one in free space (below).
   run one after another in one process, so the first row of each table also carries the compile. The laptop was shared
   with other work while the runs were taken (its one-minute load average was between 4 and 15; every row of `docs/data/spacing_tables.json` records it),
   so a time on it is neither a floor nor a bound for an unloaded laptop, and two rows close in `spacing` can come out
-  of order. A run on your machine is another. The point-force runs that phase 7l-c took on CI's runner are not retaken
+  of order. A run on your machine is another. The point-force runs taken earlier on CI's runner are not retaken
   here, so the page no longer carries CI's times.
 - **Accuracy columns marked float64** are computed from the rung's 6 x 6 resistance in float64, so that the number is
   the discretisation's and not float32's rounding (`scripts/default_spacing_table.py`). The sphere's reference is
@@ -112,7 +112,7 @@ size is `spacing` 0.7 mm, `dt` 100 ms, a run of three turns. The tube's wall kin
 | 0.16 | 5984 | not run | not run | 320.1 | the reference | +0.7% (at 0.15 mm) |
 
 **This is the number to take away**: at the example's starting size the speed is -10.7% from the finest in the tube, and the same screw in free space -4.0% from the shipped reference, and the default (222 force points) is -2.6% from the shipped reference in free space. Before drag 0.4.0 the same
-rows, on point forces at the samples, lay far further below (this page's version of phase 7m-a): the separated
+rows, on point forces at the samples, lay far further below (this page's earlier version): the separated
 quadrature resolves the near field the point forces did not, at the same count of unknowns. The speed still
 rises as the spacing falls: in the tube the speed at 0.3 mm (1714 force points) lies -1.8% from the speed at 0.16 mm (5984), and in free space the rows approach the reference from below and
 the finest passes it. **In the tube the rows lie further from the finest than the same rows in free space lie from the
@@ -158,7 +158,7 @@ field at once, so the step only has to resolve the field's turn: **ten steps to 
 run costs what its steps do. The example's test holds that the speed does not depend on the inertia declared either.
 
 The same is not true where the body's inertia and the fluid's matter, and a step is chosen for the regime: the post-run
-watch says which regime a run was in. A screw turned at 5 Hz in water, as the first-hour walk's was, is in the hundreds
+watch says which regime a run was in. A screw turned at 5 Hz in water is in the hundreds
 of the turning Reynolds number, far past the rung's range, and the watch flags it. It is also not a body the surrogate
 drag describes: with its axial moment the smallest, as a real screw's is, it turns broadside about half a second into
 the rotating field, and in a tube narrower than it is long that is through the wall (`tilt_fired` is raised as the tilt

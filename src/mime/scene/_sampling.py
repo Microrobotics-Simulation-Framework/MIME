@@ -114,7 +114,7 @@ def quadrature_counts(kind: Geometry, settings: Mapping[str, Magnitude], spacing
 
 
 def quadrature(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str]) -> Sampling:
-    """The kind's own quadrature at ``spacing`` as its sampling: what MIME's kinds gave the MRS rung before 7m-a, and
+    """The kind's own quadrature at ``spacing`` as its sampling: what MIME's kinds gave the MRS rung before drag 0.4.0, and
     what each version kept registered from then gives, so that a folder saved with it reproduces."""
     return Sampling(tuple(patches), quadrature_counts(kind, settings, spacing, patches), QUADRATURE)
 
@@ -280,7 +280,7 @@ def _quasi_uniform(kind: Geometry, settings: Mapping[str, Magnitude], spacing: f
 def length_of(v: Any) -> Any:
     """``|v|`` for a reach's part across an axis, zero with a zero derivative where ``v`` is zero: there the farthest
     set is a whole face (a cap), and the derivative is its middle. Not yet a switch of ``mime.core.switch``: no node's
-    step evaluates a reach in 7m-a, and the contact that will (7o) declares the reach's kinks with their owners."""
+    step evaluates a reach that way, and the contact, which does, declares the reach's kinks with their owners."""
     squared = jnp.sum(jnp.asarray(v) * jnp.asarray(v))
     held = squared > 0.0
     return jnp.where(held, jnp.sqrt(jnp.where(held, squared, 1.0)), 0.0)
@@ -312,7 +312,7 @@ def body_reach(kind: Geometry, settings: Mapping[str, Magnitude],
     closed forms take it), is a point of the body a contact can act at; it falls short of the body's reach by no more
     than the body's farthest point lies from the nearest sample. Where a kind's own ``reach`` is an envelope
     (the screw's: on FL-9 its gradient lies 1.1 to 1.7 mm from the body's farthest point at tilts from 5 to 85 degrees),
-    this is the one a contact's point is taken from (the containment contact, phase 7o)."""
+    this is the one a contact's point is taken from (the containment contact)."""
     patches = tuple(kind.patches)
     counts = quadrature_counts(kind, settings, spacing, patches)
 

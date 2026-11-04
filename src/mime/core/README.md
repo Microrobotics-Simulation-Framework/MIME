@@ -92,13 +92,13 @@ entry's round-trip case is enough; a node no case builds needs a configuration o
 (owner, indicator, resolution, branch) per evaluation, or the test-only setting, `forcing({owner: branch})` and
 `replacing_fallbacks(scale)`. It is read while a step is traced, so whatever reads it traces the step afresh inside
 it (`MimeNode.fresh_update`, or a new `jax.jit`); `update`'s compiled step was traced once and sees nothing. The
-switch log that the collector feeds is a later phase's.
+switch log that the collector feeds comes later.
 
 ## Status
 
-Since phase 4a: the typed node state helpers.
+The typed node state helpers.
 
-Since phase 4b:
+Also:
 - **`MimeNode`**: every constructor argument kept in `params`; `constants(params)` gives what a step reads, the
   graph's live leaves over the constructor's; a node writes its step as `advance(p, state, inputs, dt)`, and
   `update` runs it compiled once per node, so the verification battery's eager calls are one call each and the
@@ -111,27 +111,27 @@ Since phase 4b:
   `shape_named`; and the confinements' velocity rules
   (`VELOCITY_RULES`: `remove_outward`). Node metadata (MADDENING's `NodeMeta`) is not carried over from 0.2.
 
-Since the first documentation phase: **the symbol table's form**, `Symbol` and `SymbolKind`, and `MimeNode.symbols`.
+**The symbol table's form**, `Symbol` and `SymbolKind`, and `MimeNode.symbols`.
 `NodeMeta` returns as the node pages' source, its checks in `mime.docs`; no node carries either yet.
 
-Since phase 7s: **`mime.core.switch`**, the switch functions, `nonzero_norm`, their declarations and their one
+**`mime.core.switch`**, the switch functions, `nonzero_norm`, their declarations and their one
 context; every node site written through it (the rotation's exponential, the field's unit vector and drag's clamp
 flag stay raw, listed); `MimeNode.fresh_update`; a shape's switch table (`shape_switches`).
 
-Since phase 7f: **`tables`**, the table evaluator (see its [README](tables/README.md)), and the switch function
+**`tables`**, the table evaluator (see its [README](tables/README.md)), and the switch function
 `searchsorted`, its cell lookup, whose raw forms (`jnp.searchsorted`, `digitize`, `interp`, `histogram`, `bincount`,
 `unique`, `argwhere`, `lax.sort`, a floor division, a cast to an integer dtype) the switch scan refuses in a step;
 and `without_slope`, the one selection that makes a derivative NaN on purpose (a table's one-point readable range).
 
-Since phase 7d: **the solids' shapes**, `sphere`, `capsule`, `slab` (between two parallel planes) and `screw`
+**the solids' shapes**, `sphere`, `capsule`, `slab` (between two parallel planes) and `screw`
 (de Jongh's screw surface, unbounded along its axis: its distance by a root find whose gradients are stopped, polished,
 then a Newton step with them flowing, not taken on its focal set, where the step is singular), each declaring its
 switches beside it; and `nearest_point`, the point less its signed
 distance along its normal. Within a band about a medial set (a centre, a segment, a mid-plane) the distance is its value
 there and the normal zero, each with the derivative zero in the point; the cylinder keeps its own.
 
-Since phase 7a1: **`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
+**`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
 reader sorting every element into read, recognised and not used, or refused, and the rigid-body maths in pure JAX,
 ported from the 0.2 line's `control/kinematics/` with its oracles (see its [README](multibody/README.md)).
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

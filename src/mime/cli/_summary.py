@@ -52,6 +52,7 @@ def attention_lines(built: BuiltExperiment, written: RunWritten, load: LoadRepor
     if written.stopped is not None:
         lines.append(f"STOPPED: {written.stopped.reason}; the run folder holds the first {written.steps} of the "
                      f"{written.stopped.steps_asked} steps asked for")
+    lines += report.range_warning_lines()
     raised = [read for read in result.flags if read.was_raised]
     lines += [f"flag raised: {read.text(meaning=True)}" for read in raised]
     unknown = [read for read in result.flags if read.was_raised is None]

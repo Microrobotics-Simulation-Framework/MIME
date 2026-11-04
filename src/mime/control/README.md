@@ -66,7 +66,7 @@ The rigid-body maths a controller uses (forward and inverse kinematics, Jacobian
 
 ## Status
 
-The callback (dev1, phase 7b1) and the mode inside the compiled step (phase 7b2) are built, and give the same writes
+The callback and the mode inside the compiled step are built, and give the same writes
 at the same steps. The external client and the FMU come in a2.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

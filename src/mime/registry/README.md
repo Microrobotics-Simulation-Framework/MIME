@@ -25,7 +25,7 @@ editing MIME.
 
 ## Status
 
-Landed in dev1's phase 2, the small form:
+The small form:
 - the five `register_*` functions, keyed by (name, version), which refuse a malformed entry at registration;
 - the entry bases (`Interaction`, `Observation`, `Dynamics`, `FieldProvider`, `Controller`): frozen dataclasses whose
   fields are their settings, each declaring what it applies to (roles, or thing kinds), what it reads, publishes,
@@ -33,14 +33,14 @@ Landed in dev1's phase 2, the small form:
 - plans as data (`Plan`, `Read`, `Delivery`, `Registration`, `GroupRequest`) and capability records;
 - support tables as predicates over capability records (`requires`, `SupportRow`), with no default rung.
 
-Since phase 4a, **units in annotations**: an entry's dimensioned setting declares its dimension once, `margin:
+**units in annotations**: an entry's dimensioned setting declares its dimension once, `margin:
 Annotated[Quantity, Length]`, with the markers of `mime.units`. Registration reads the annotations
 (`dimensioned_settings`, recorded on `Registered.settings`) and refuses a `Quantity` setting with no marker (`rate`
 excepted, a period or a frequency with its own rule), a marker on a setting that holds no `Quantity`, and a default of
 another dimension. Phase 1 refuses a setting of another dimension, naming the entry, the setting and both dimensions,
 and hands the entry its settings in SI through its context: `ctx.scalar("margin")`, `ctx.vector("x0")`.
 
-Since phase 4b: **drives** (`Drive`, `register_drive`: a command generator, one node and one exclusive edge into its
+**drives** (`Drive`, `register_drive`: a command generator, one node and one exclusive edge into its
 command) and **geometry kinds** (`Geometry`, `register_geometry`: regions, surfaces and directions, with each surface's
 shape and parameters) are entries like the others, saved and loaded by name and version. A plan reads **values** of
 the things it binds (`Plan.values`, `Value(role, name)`; a dynamics' `values` reads its own thing's), may hold
@@ -50,7 +50,7 @@ marked `Direction` (a thing's direction by reference, or three numbers; the entr
 (`setting_problems`), and a dynamics its initial state (`initial_problems`). A field provider declares its
 `commands`. `RoleKind.SURFACE` binds a surface of a thing's geometry.
 
-Since the first documentation phase, **the fields the docs are generated from**, on every entry: `builds`, each
+**The fields the docs are generated from**, on every entry: `builds`, each
 rung's node classes, which the node walk checks against what a case builds; `gradient`, a `GradientRecord` of where
 the derivative is not exact, why, and the route to `exact`, for every status but `exact`; `references`, bibliography
 keys; and an interaction's `family`. A value the code does not establish is `NOT_ESTABLISHED`, listed with its reason
@@ -61,7 +61,7 @@ record (`RungGradient`): the lock records the attached rung's, the pages print e
 declaration whose rungs are not the entry's built ones, whose entry status is not the least of its rungs', or whose
 switches are not the entry's.
 
-Since phase 7d, **a geometry kind's build-side capabilities**, each an optional method on `Geometry` a kind
+**a geometry kind's build-side capabilities**, each an optional method on `Geometry` a kind
 implements or leaves (`implements(kind, "samples")`; `CAPABILITIES`): `samples(parameters, patch, counts)`, its surface
 by named patch (`patches`, each mapped to the region whose boundary it lies on) as points, normals and weights, a JAX
 function of its parameters so that a shape's derivatives flow through it, with `sample_counts` for a spacing; `area`;
@@ -73,7 +73,7 @@ A name outside a registered namespace is MIME's, and is refused from a module ou
 with their first use. Namespace ownership through entry points, code fingerprints and claim
 records come later.
 
-Since phase 7h, **wall kinds** (`WallKind`, `register_wall_kind`): how a confining wall reaches a solver of the
+**wall kinds** (`WallKind`, `register_wall_kind`): how a confining wall reaches a solver of the
 flow, declared once for every solver family: the shape of the region it matches exactly (`matches`, the name the
 geometry kind's region already exposes, or `None` for a medium that fills no region), the parameters of that shape it
 reads (`reads`; the geometry kind stays the surface's one authority), its `form` (`analytic`, a correction to the
@@ -82,16 +82,16 @@ status. What a solver does with a kind is the solver's, registered by the solver
 the MRS's correction (`mime.nodes.hydro.mrs`). `wall_kinds_matching(shape)` lists the kinds that
 match a region. MIME's kinds are in `mime.walls`.
 
-Since phase 7a2: **`ChainSegment`**, the dynamics base of a chain segment (its frames, commands and description in
+**`ChainSegment`**, the dynamics base of a chain segment (its frames, commands and description in
 a `Segment`, its placement on its mount, why it takes no load), which a lab subclasses for a mechanism of its own; a
 dynamics' `rungs`, `reserved_rungs` and `limits`; a field provider's `parts` and `values`; and a solid's
 `enclosing_radius`.
 
-Since phase 7a3, `PlanContext.reaction(role)`: the segment that takes the reaction on the source of a bound field,
+`PlanContext.reaction(role)`: the segment that takes the reaction on the source of a bound field,
 for a law that delivers one. A chain segment's capability record may differ by rung (`capabilities()`): a dynamic
 segment accepts `apparatus.link_wrench`.
 
-Since phase 7a4, a chain segment says what carries the mass mounted on it: `carries_mass()` (its dynamics, a dynamic
+A chain segment says what carries the mass mounted on it: `carries_mass()` (its dynamics, a dynamic
 arm's; the build grafts each rigid body mounted on its frames, `ctx.mounted`), `riding()` (its frames fixed to its
 base, whose mounted mass rides on its mount), `spinner(settings)` (a `Spinner`: the rotor it carries by its absolute
 spin, its frame, axis, own inertia and top speed; the build passes its whole moment about the axis as
@@ -100,7 +100,7 @@ built tree a controller reads, `ctx.models`) and `reads_mount_rates(settings, pu
 angular velocities of the frame it mounts on; `ctx.rates_read` says whether anything reads its own). A `Segment` gives its frames' angular
 velocities at the start (`initial_rates`) and whether its own description has mass its joints move (`massive`).
 
-Since phase 7e, **a geometry kind's stage-side capabilities**: `native`, a class variable (a `Native`: one of USD's
+**a geometry kind's stage-side capabilities**: `native`, a class variable (a `Native`: one of USD's
 own primitives and which setting each of its length attributes holds; the choice is by kind, and a reader needs it
 before it has the settings); `placement`, the settings that place the kind rather than shape it; `drawing(settings,
 segments)`, a closed `Drawing` in the kind's own frame at a writer's resolution; and `region_primitive(region,
@@ -108,7 +108,7 @@ settings)`, a region as one of OpenMaterica's primitives (`REGION_PRIMITIVES`: s
 `geometry.md` defines them) or `NoPrimitive` with its reason. `CAPABILITIES` lists them with the earlier ones and
 `mass_properties`, and the geometry-kind entry pages' capability rows are generated from `implements`.
 
-Since phase 7m-a, two more capabilities and a wall's distance: **`sampling(settings, spacing, patches, density)`**, a
+Two more capabilities and a wall's distance: **`sampling(settings, spacing, patches, density)`**, a
 kind's surface sampled for a solver whose unknowns sit at the samples, as a `Sampling` (a choice among its quadrature's
 samples at counts, fixed at the build, with each sample's cell for its weight; `Density` and `uniform` the grading it
 takes); **`reach(parameters, direction)`**, the hull query, with `reach_envelope`, the share by which a kind's reach
@@ -116,7 +116,7 @@ may overstate its body's (an envelope's; zero for a closed form); and **`WallKin
 `WallDistance` (the signed distance, above zero in the medium, and the normal into it), by default minus the matched
 region's shape's, and `None` for free space.
 
-Since phase 7l-a, **roles and defaults** (design #191): every setting declares its role (`Role`: design,
+**roles and defaults**: every setting declares its role (`Role`: design,
 physical, numerical, standard) and its default's kind (`DefaultKind`: determined, convention, numerical, none; the build
 reports a written default whose setting declares nothing as `undeclared`, stamped in exploratory and refused in
 research) in
@@ -127,4 +127,4 @@ that is not a convention or determined, a numerical default without its rule and
 method. A determined or numerical default that depends on other inputs is the entry's method `by`, called with the
 plan's context for an interaction's or observation's setting; the build records each default it takes.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

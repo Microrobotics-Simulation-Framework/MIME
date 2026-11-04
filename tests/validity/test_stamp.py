@@ -60,7 +60,9 @@ def test_every_output_carries_the_stamp_of_what_is_pending(runs):
     expected = built.report.profile.stamp().text()
     assert expected.startswith("profile exploratory: 5 items pending, not sealed")
     assert all(target in expected for target in BARE_PENDING)
-    assert ". Measured: " in expected and "drag:ball.spacing: on the walk's T1 sphere (338 force points)" in expected
+    assert "Measured" not in expected and len(expected) < 700, "the stamp is item names and a pointer, not their numbers"
+    assert "`mime pending <saved folder>`" in expected
+    assert built.report.profile.stamp().measured, "what was measured of an item is kept, for mime pending and the record"
     assert found == dict.fromkeys(found, expected)
     assert locked["profile"] == "exploratory"
     assert [item["target"] for item in locked["pending"]] == list(BARE_PENDING)
@@ -104,3 +106,14 @@ def test_the_stamp_reads_back_from_its_record():
     stamp = Stamp("exploratory", ("drag:ball.spacing (a numerical default)",), ("drag:ball.spacing: measured",))
     assert Stamp.from_record(json.loads(json.dumps(stamp.record()))) == stamp
     assert replace(stamp, pending=()).text() == "profile exploratory: nothing pending"
+
+
+def test_mime_pending_prints_what_was_measured_of_each_item_which_the_stamp_leaves_out(runs, capsys):
+    built, _, folder = runs["bare"]
+    assert mime_main(["pending", str(folder / "saved")]) == 1
+    printed = capsys.readouterr().out
+    stamp = built.report.profile.stamp()
+    assert stamp.measured
+    for held in stamp.measured:
+        words = held.partition(": ")[2]
+        assert words in printed and words not in stamp.text()

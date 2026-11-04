@@ -25,10 +25,10 @@ query, its reach along `d`, is the length of `(a d_x, b d_y, c d_z)`.
 (Oberbeck's and Edwardes's, as Kim and Karrila give it) on the quasi-uniform sampling than on its quadrature's grid,
 in translation and in rotation, on the two triaxial ellipsoids measured: the grid misses by three fifths to three
 quarters as much (the numbers are MIME-ANO-126's). The ellipsoid samples quasi-uniformly all the same, as every kind
-does (design #195, a labelled default the maintainer may overturn); the separated quadrature (phase 7m-b) chooses the
+does (a labelled default the maintainer may overturn); the separated quadrature chooses the
 defaults again.
 
 **Regions, surfaces, directions and frames.** What a kind names and how a law or a stage reads it: [the scene note](../../scene.md).
 
-**Versions.** 0.1.0, its first version, gained its quadrature, its sampling and its regions in phase 7m-a, at the
+**Versions.** 0.1.0, its first version, gained its quadrature, its sampling and its regions before any release, at the
 same version: before it the MRS rung refused it, so no result of it moved.

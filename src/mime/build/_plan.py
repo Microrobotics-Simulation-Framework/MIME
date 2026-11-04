@@ -48,6 +48,7 @@ from mime.build._refusals import (
     entry_defect,
 )
 from mime.build._report import BuildReport, OrientationLine, RunStructure
+from mime.build._steps import whole_runs_either_side, whole_steps
 from mime.build._watch import WATCHED_FAMILY, WatchPlan
 from mime.core import VELOCITY_RULES, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
@@ -765,13 +766,42 @@ class _Planner:
                 (f"{body}'s hull gives a radial reach (its hull is not one part of a kind that does)", diameter is None),
                 (f"{medium}.density is declared or read: exp.declare('{medium}.density', ..., reason=...)",
                  density is None or not isinstance(density.value, float))) if absent)
+            turning = self.turning_rate_of(body)
             found.append(WatchPlan(
                 plan.owner, cls.label(), rung, body, medium, dynamics.node_name(port.node), port.field,
                 hull.kind.name if hull is not None else None, diameter,
                 float(density.value) if density is not None and isinstance(density.value, float) else None,
                 float(viscosity.value) if viscosity is not None and isinstance(viscosity.value, float) else None,
-                range_.upper if range_ is not None else None, range_.basis if range_ is not None else None, missing))
+                range_.upper if range_ is not None else None, range_.basis if range_ is not None else None, missing,
+                turning[0] if turning is not None else None, turning[1] if turning is not None else ""))
         return tuple(found)
+
+    def turning_rate_of(self, body: str) -> tuple[float, str] | None:
+        """The rate (rad/s) at which the fields acting on ``body`` turn a body that follows them, where an interaction
+        binds the body to a field that turns at a command (``FieldProvider.turns_at``) and a constant drive declares
+        that command, and what it was computed from; ``None`` where the experiment declares none. The largest where
+        several fields do."""
+        from mime.drives import Constant
+
+        found: list[tuple[float, str]] = []
+        for plan in self.readers:
+            cls = plan.reader_cls()
+            if plan.section is not Section.INTERACTION or plan.bindings.get("body") != body:
+                continue
+            for role, kind in cast(type[Interaction], cls).roles.items():
+                provider = self.providers.get(plan.bindings.get(role, "")) if kind is RoleKind.FIELD else None
+                command = getattr(provider.registered.cls, "turns_at", None) if provider is not None else None
+                if provider is None or command is None:
+                    continue
+                apparatus = plan.bindings[role].partition(".")[0]
+                drive = next((d for d in self.drives if d.owner == f"drive:{apparatus}.{command}"), None)
+                if drive is None or not isinstance(drive.entry, Constant):
+                    continue
+                turns = drive.settings.get("value")
+                if isinstance(turns, float) and math.isfinite(turns) and turns > 0.0:
+                    found.append((2.0 * math.pi * turns, f"{apparatus}.{command} is declared {turns:g} Hz, a rate of "
+                                                         f"2 pi x {turns:g} rad/s"))
+        return max(found, default=None)
 
     # -- run settings -----------------------------------------------------------------------------------------
 
@@ -813,9 +843,36 @@ class _Planner:
                         "pass a positive dt, such as ms(1)")
             return
         self.dt = value
+        self.plan_duration(value)
         if not isinstance(self.settings.seed, int) or isinstance(self.settings.seed, bool):
             self.refuse("run.seed", RefusalClass.USER, f"seed={self.settings.seed!r} is not an integer",
                         "pass an integer seed: Experiment(..., seed=0)")
+
+    def plan_duration(self, dt: float) -> None:
+        """The run length the experiment declares, if it does: a finite time above zero, a whole number of base steps
+        (the rule a run holds its duration to), so that the saved experiment never carries one a run would refuse."""
+        duration = self.settings.duration
+        if duration is None:
+            return
+        try:
+            seconds = si(duration, TIME, what="duration")
+        except UnitError as error:
+            self.refuse("run.duration", RefusalClass.USER, str(error), "write duration as a time, such as s(3)")
+            return
+        if isinstance(seconds, tuple):
+            self.refuse("run.duration", RefusalClass.USER,
+                        f"duration = {duration} holds {len(seconds)} times, and a run has one length",
+                        "pass one time, such as s(3), or none")
+            return
+        if not (math.isfinite(seconds) and seconds > 0.0):
+            self.refuse("run.duration", RefusalClass.USER, f"duration = {duration} is not a finite time above zero",
+                        "pass a positive duration, such as s(3), or none")
+            return
+        if whole_steps(seconds, dt) is None:
+            lower, upper = whole_runs_either_side(seconds, dt)
+            self.refuse("run.duration", RefusalClass.USER,
+                        f"duration = {seconds!r} s is not a whole number of base steps of {dt!r} s",
+                        f"declare a whole number of steps: duration=s({lower!r}) or s({upper!r}), or change dt=")
 
     def plan_scene(self) -> tuple[float, float, float] | None:
         """The scene's up, once checked, with its units and its references composed; or the refusals. Up is declared
@@ -2426,6 +2483,7 @@ class _Planner:
         # the reads the build's values rest on, not every value of a bound thing the planner resolved
         reads = self.materials_plan(self.value_lines()).reads if self.resolver is not None else ()
         self.work.reads(self.materials, reads, self.resolver.every_read() if self.resolver is not None else ())
+        self.work.simplifications(self.resolver.simplified() if self.resolver is not None else ())
         self.work.nominals(self.materials)
         sources = [(d.path, d.reason) for d in self.declarations if isinstance(d, SourceDeclaration)]
         roots: list[tuple[str, object]] = [(f"{type(thing).__name__.lower()} {getattr(thing, 'name', '?')!r}", thing)
@@ -2437,6 +2495,7 @@ class _Planner:
         if controller is not None:
             roots.append(("the controller", controller))
         roots += [("the experiment's conditions", self.settings.conditions), ("the experiment's dt", self.settings.dt),
+                  ("the experiment's duration", self.settings.duration),
                   ("the experiment's gravity", self.settings.gravity)]
         declared = [d.value for d in self.declarations if isinstance(d, ValueDeclaration)]
         self.outcome = self.work.finish(experiment_sites(things, reader_sites(self.declarations, entry_id), controller),

@@ -25,14 +25,14 @@ Every MIME node also passes `maddening.testing.verify_node`.
 
 ## Status
 
-Wired to `maddening.testing` in dev1's phase 1. Since phase 2:
+Wired to `maddening.testing`. Also:
 - the graph-invariant helpers: `graph_snapshot` (a built graph's canonical text), and order invariance
   (`Declare`, `declare_in_order`, `order_reference`, `order_invariance_failures`, `assert_order_invariant`, and
   `declaration_orders` for a Hypothesis property);
 - `mime.testing.toys`: toy entries with no physics under the `toy` namespace, and the toy experiments MIME's build
   tests use. They live here, not in `tests/`, so a lab's tests can build the same toys.
 
-Since phase 3:
+Also:
 - `round_trip_failures(experiment, folder)`: build, save, load in a fresh process, rebuild; every difference in the
   derived hash or, bit for bit, the first steps. `refused_round_trip_failures` does the same for an experiment whose
   build is refused, through its document. `installed_entries()` lists, in a fresh process, every entry MIME and the
@@ -43,7 +43,7 @@ Since phase 3:
   MADDENING's scan counter must not move. An initial condition (`initial_*`) reaches the run through the state
   instead, and is not asked.
 
-Since phase 4a:
+Also:
 - **the family suites' harness.** A `Family` states, over the vocabulary's interfaces rather than one law's labels,
   its sign rule (`SignRule`, or `opposes(delivered, reading)`), the settings that stand for a material's properties,
   the pairs a two-way law delivers equal and opposite, a reference member a swap replaces, and a rig, the smallest
@@ -66,7 +66,7 @@ Since phase 4a:
 - **the toy family** (`mime.testing.toys.TOY_FAMILY`, name `toy`), the control: the toy drag's two rungs conform, and
   in MIME's tests a planted law fails each case.
 
-Since phase 4b:
+Also:
 - **MIME's families**: `MAGNETIC`, `GRAVITY` and `CONTACT` (names `magnetic`, `gravity`, `contact`), each with its
   rig (`magnetic_rig`, `gravity_rig`, `contact_rig`), its sign rule (the torque turns the moment toward the field;
   weight minus buoyancy lies along gravity with the excess density's sign; a projected body moves no further out),
@@ -94,7 +94,7 @@ Since phase 4b:
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
 
-Since phase 4c1:
+Also:
 - **rounding floors per field and per part.** Each field a law delivers has its own floor, and a composite one
   (`parts_of`: a pose's position and its quaternion, a pair of vectors' two, an operator's four blocks) a floor per
   part, each from that part's own movement under the 64-ulp nudge; each input part is nudged on the scale of its own
@@ -120,7 +120,7 @@ Since phase 4c1:
   tests only and passed as `swap_with=`;
 - **check_units** reaches a group's settings (`lubrication.epsilon`).
 
-Since phase 7s, **the switch harness**: `classify(SwitchRow(declaration, evaluate, delta), KINK_LIMIT)` places a point
+**the switch harness**: `classify(SwitchRow(declaration, evaluate, delta), KINK_LIMIT)` places a point
 a quarter of a step from an owner's switch (in the indicator's units), forces the owner's branch each way there in a
 step traced afresh, and compares each output's forced-branch difference at the step and at a tenth of it: a kink's
 shrinks, a jump's does not. A row passes when every group it declares continuous measures so, every group it declares
@@ -136,7 +136,7 @@ itself) where its condition is false, finds any value or derivative that changes
 `nonzero_norm` it reached, by call site. A lab gives each owner it declares a row (MIME's are in
 `tests/saved/test_switch_harness.py`).
 
-Since phase 7d, **the geometry suites**. `kind_problems(kind, settings, spacing, counts=None)`, the kind-conformance
+**the geometry suites**. `kind_problems(kind, settings, spacing, counts=None)`, the kind-conformance
 harness: each patch's samples lie on the boundary of the region it names and on or inside a solid's other regions
 (its body is their intersection), their normals are the shape's (to the rounding of both: a position rounded at the
 sample's rounding length, the helix's distance from its axis, carried through the normal's sensitivity, and the
@@ -151,7 +151,7 @@ control, by dtype. Near a set the float32 comparison resolves its floor, not its
 states. A registered shape with no case fails (`uncased_shapes`). `toy.region_probe`
 evaluates the region a medium fills at a toy body, so that a step evaluates every solid's shape.
 
-Since phase 7e, **the drawing check**, `drawing_problems(kind, settings, segments)`: a kind's drawing is a closed,
+**the drawing check**, `drawing_problems(kind, settings, segments)`: a kind's drawing is a closed,
 consistently oriented mesh facing outward; every vertex lies on the body's boundary to rounding (the kind's regions'
 shapes, or for the tube, the box and the ellipsoid a surface the harness writes from their definitions, not from their
 drawings); and the mesh's volume and area converge on the closed forms at second order (at twice the segments the
@@ -175,11 +175,11 @@ in every run, and is otherwise the profile Hypothesis would load (its `ci` profi
 MADDENING's `verify_node`, which catches its property's failure and keeps the drawn counterexample, not the exception
 the blob is attached to: for those, the counterexample is the reproduction.
 
-Since phase 7a2, the **magnetic family** holds `Magnetic.Force` beside the torque: its sign rule's clause for a law
+The **magnetic family** holds `Magnetic.Force` beside the torque: its sign rule's clause for a law
 that reads a gradient pulls the moment up the gradient of its alignment (`F . (G^T m)` is not negative), and its rig takes a
 fixed magnet (a point dipole) for such a law. `covered` counts a chain's segments.
 
-Since phase 7m-a, **the sampling conformance suite** (`_sampling_conformance.py`), which
+**the sampling conformance suite** (`_sampling_conformance.py`), which
 `tests/saved/test_sampling_walk.py` runs on every registered kind, MIME's and every installed namespace's: a kind's
 `sampling` spreads its samples evenly (`sampling_problems`: each sample's nearest neighbour over the samples' mean
 spacing, its fifth percentile at least `NEAREST_FIFTH` and its least at least `NEAREST_LEAST`; each patch's, the seams'
@@ -194,4 +194,4 @@ potential and its closed form's (`distance_problems`). A kind's own quadrature f
 control. The kind-conformance harness checks a patch whose region no registered shape evaluates (the ellipsoid's)
 against a level set written from the kind's definition (`_LEVELS`).
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

@@ -14,7 +14,16 @@ from mime.things._handles import (
     TypedPath,
     did_you_mean,
 )
-from mime.things._parts import DERIVED, Derived, Part, PartMass, derive, magnetisation
+from mime.things._parts import (
+    DERIVED,
+    INERTIA_PRODUCTS_DROPPED,
+    Derived,
+    Part,
+    PartMass,
+    Simplification,
+    derive,
+    magnetisation,
+)
 from mime.things._prims import WORLD, PrimPath
 from mime.things._things import (
     Apparatus,
@@ -30,6 +39,7 @@ from mime.things._things import (
 
 __all__ = [
     "DERIVED",
+    "INERTIA_PRODUCTS_DROPPED",
     "Apparatus",
     "ApparatusHandle",
     "Body",
@@ -46,6 +56,7 @@ __all__ = [
     "PermanentMagnet",
     "PrimPath",
     "RegionPath",
+    "Simplification",
     "State",
     "Structure",
     "StructureHandle",

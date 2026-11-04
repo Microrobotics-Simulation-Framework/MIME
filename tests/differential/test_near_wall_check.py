@@ -90,7 +90,7 @@ def test_the_edges_move_with_the_far_gap_in_the_record_itself():
 def test_the_review_labels_the_entries_the_record_does_not_hold():
     for each in g.MEASURED_NEAR_WALL_EDGES:
         if each["design"] != "FL-9" or each["tube"] != "1/4 in":
-            assert "review of PR #60" in str(each["source"]) or "cannot run" in str(each["source"]), each
+            assert "computed by the review on Modal" in str(each["source"]) or "cannot run" in str(each["source"]), each
     criterion = json.loads(json.dumps(g.OPEN_NEAR_WALL_EDGE.as_json()))["criterion"]
     assert criterion["committed_at"] == g.NEAR_WALL_CRITERION_COMMIT and criterion["tolerance"] == g.NEAR_WALL_TOLERANCE
 

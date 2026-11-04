@@ -536,6 +536,15 @@ class ProfileWork:
                 for decision in listed:
                     self.record(decision, held)
 
+    def simplifications(self, found: Sequence[Any]) -> None:
+        """Each value the build used with something left out of it (``found``, the resolver's ``Simplified``), as its
+        profile decided: a waiver with a pending basis in exploratory, one item stamped, whose line declares the value
+        used with its reason's slot, and in research no item (the build is refused, saying what to declare)."""
+        for held in found:
+            self.record(held.decision, simplification_item(
+                held.path, Quantity(held.value, held.dimension), held.kind, held.text, held.measured, held.size,
+                held.decision.finding.code))
+
     def nominals(self, materials: Mapping[str, Any]) -> None:
         """Each material's nominal value with a pending reason, which behaves as a pending acceptance does."""
         for name, material in sorted(materials.items()):
@@ -722,6 +731,14 @@ def declared_item(path: str, value: Quantity, what: str) -> PendingItem:
                        f"exp.declare({_quote(path)}, {quantity_line(value, None)}, reason={REASON})",
                        {"declared": {path: quantity_doc(value)}}, kind="its reason pending", codes=(BASIS_PENDING,),
                        imports=quantity_imports(value))
+
+
+def simplification_item(path: str, value: Quantity, kind: str, what: str, measured: str, size: str,
+                        code: str) -> PendingItem:
+    """A value used with something left out, waived with a pending reason: written as the declaration of the value
+    used, in place of the derivation, with the reason's slot; the size of what was left out is in the item's kind, and
+    in numbers in what it measured."""
+    return replace(declared_item(path, value, what), kind=f"{kind}, {size}", codes=(code,), measured=measured)
 
 
 def source_item(path: str, what: str, *, kind: str = "its source pending",

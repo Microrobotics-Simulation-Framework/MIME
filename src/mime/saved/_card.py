@@ -35,7 +35,7 @@ from mime.build import BuildRefused, BuildReport
 from mime.saved._folder import named_files, read_folder
 from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc, PublicationRecord
 from mime.saved._terms import FileTerms, FolderTerms, folder_terms
-from mime.saved._versions import CURRENT, DOCUMENT_SCHEMAS
+from mime.saved._versions import DOCUMENT_SCHEMAS, TERMS_ADDED
 from mime.terms import (
     CUSTOM_PREFIX,
     NO_DERIVATIVES,
@@ -123,7 +123,7 @@ def own_licence_text(judged: FolderTerms) -> str:
     if judged.licence is not None:
         return (f"{judged.licence}. It covers the experiment's own files: those MIME wrote, and those its author "
                 f"brought without declaring their terms.")
-    if judged.version != CURRENT:
+    if judged.version < TERMS_ADDED:
         return (f"none: the folder is of {DOCUMENT_SCHEMAS[judged.version]}, a form before licences, so it declares "
                 f"no licence, terms or permission. " + NO_LICENCE)
     return "none. " + NO_LICENCE

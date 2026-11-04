@@ -24,3 +24,5 @@ exploratory  undeclared_default generate
 research     undeclared_default refuse
 research     unsourced          list
 research     unevidenced        list
+exploratory  simplification     generate
+research     simplification     refuse

@@ -186,7 +186,7 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
     import time
 
     from mime.env import apply_lock_precision
-    from mime.units import s
+    from mime.units import TIME, s, si
 
     started = time.perf_counter()
     terminal = styled(sys.stdout)
@@ -208,13 +208,21 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
         print(f"replayed {commands}: {session.steps - session.start_step} steps in chunks of {session.chunk_steps}; "
               f"wrote the session's run folder, {out}")
         return 0
+    held = si(built.duration, TIME, what="the experiment's duration") if built.duration is not None else None
+    declared = held if isinstance(held, float) else None
+    if duration is None and declared is not None:
+        duration = declared
     if duration is None:
-        raise BuildRefused([Refusal("run.duration", RefusalClass.USER, "mime run needs --duration, or --commands",
-                                    "give the simulated time: mime run <folder> --duration <seconds> --out <dir>")])
+        raise BuildRefused([Refusal("run.duration", RefusalClass.USER,
+                                    "mime run needs --duration, or --commands: this experiment declares no run length",
+                                    "give the simulated time: mime run <folder> --duration <seconds> --out <dir>; or "
+                                    "declare it where the experiment is made, Experiment(..., duration=s(3)), and "
+                                    "save it again")])
     interrupt.running()
     if display is None or not terminal:
-        _say(f"running {duration!r} s of simulated time; Ctrl+C stops it at the next chunk and writes the steps it "
-             "reached, twice quits at once")
+        own = declared is not None and duration == declared
+        _say(f"running {duration!r} s of simulated time{' (the length the experiment declares)' if own else ''}; "
+             "Ctrl+C stops it at the next chunk and writes the steps it reached, twice quits at once")
     stop = interrupt.stop
     if display is not None:
         stop = _watched(built, display, built.steps_in(s(duration)), interrupt, time.perf_counter())
@@ -500,7 +508,7 @@ def _pack(folder: Path, out: Path | None) -> int:
     print(for_terminal(f"licence: {licence}" if licence else
                        "licence: none declared (packing never refuses that; mime push will ask for one: "
                        "exp.licence(\"CC-BY-4.0\"), then save)"))
-    if form.previous and any(each.startswith((f"{SCENE_FOLDER}/{LAYERS}/", f"{DESCRIPTIONS}/"))
+    if form.predates_terms and any(each.startswith((f"{SCENE_FOLDER}/{LAYERS}/", f"{DESCRIPTIONS}/"))
                              for each in named_files(form)):
         print("this folder predates terms: a third party's file in it is carried as yours; declare its terms and "
               "save again")
@@ -1068,8 +1076,9 @@ def build_parser() -> _guide.MimeParser:
     run.add_argument("--no-xla-cache", action="store_true", help=no_cache_help)
     run.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     run.add_argument("--duration", default=None, metavar="DURATION",
-                     help=f"the simulated time, a whole number of the experiment's base steps ({_durations.FORMS}; "
-                          "required, but with --commands)")
+                     help=f"the simulated time, a whole number of the experiment's base steps ({_durations.FORMS}); "
+                          "the length the saved experiment declares when not given (required, with --commands "
+                          "the exception, when it declares none)")
     run.add_argument("--out", type=Path, required=True, help="the folder to write the outputs, the record and the "
                                                              "run's saved form to")
     run.add_argument("--history", action="store_true", help="write every step's fields, not only the last")
@@ -1214,11 +1223,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     cache. ``fetch`` stores them (and refuses with 2), ``check`` re-hashes the cached ones in full (1 when one is
     corrupt).
 
-    ``mime run <folder> --duration <seconds> --out <dir> [--history] [--record <output>]... [--every <seconds>]
+    ``mime run <folder> [--duration <seconds>] --out <dir> [--history] [--record <output>]... [--every <seconds>]
     [--stage-every <seconds>]``: load and rebuild a saved experiment, run it, and write its outputs, their manifest
     (``outputs.json``), its record, its topology, its build report's summary and the run's own saved form into
     ``<dir>``, which ``RunResult.read`` reads back, with the recording layer (``recording.usdc``) where
-    ``--stage-every`` asks. ``mime run <folder> --commands <log> --out <dir>`` replays a live session from its command
+    ``--stage-every`` asks. The run is as long as the experiment declared (``Experiment(..., duration=...)``) unless
+    ``--duration`` says another. ``mime run <folder> --commands <log> --out <dir>`` replays a live session from its command
     log. Exits 0, or 2 when refused, or 130 when Ctrl+C ended it: the first press stops the run at the end of its chunk
     and writes it as the steps reached, marked stopped; the second quits at once, writing nothing.
 

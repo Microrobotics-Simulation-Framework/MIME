@@ -29,36 +29,36 @@ any graph exists.
 
 ## Status
 
-Landed in dev1's phase 2:
+The first form:
 - `Interface` entries with kind, units, frame, shape, sign, dtype and typical magnitude; `define` and `lookup`;
 - namespaces with their vocabulary versions (`register_namespace`, `versions`); MIME's own names are unprefixed;
 - the six target kinds (`TargetKind`) and the two read kinds (`ReadKind`);
 - the closed list of capability flags (`Capability`);
 - reserved entries, whose use the build refuses as "reserved, not built".
 
-Since phase 4b, MIME's own names for a body and the magnetic field (`_mime.py`): `body.pose` `(7,)` and `body.twist`
+MIME's own names for a body and the magnetic field (`_mime.py`): `body.pose` `(7,)` and `body.twist`
 `(6,)` (state); `body.applied_wrench` and `body.background_load` (loads, `(6,)`), `body.resistance` (an operator,
 `(6, 6)`) and `body.confinement` (an inequality constraint); `field.magnetic.flux_density` `(3,)` and
 `field.magnetic.gradient` `(3, 3)`. Every one is in the world frame, a body's wrench and twist about its centre of
 mass; a composite's units list its parts (`N; N m`). And the flag `Capability.UNIFORM`, for a field that is the same
 everywhere. Contribution classes come with the families that need them.
 
-Since dev1's first documentation phase, `register_namespace` refuses a name that is the first word of one of MIME's
+`register_namespace` refuses a name that is the first word of one of MIME's
 refusal codes (`load`, `drag`): the namespace would take those codes for its own, and a refusal under them would no
 longer be checked against MIME's refusal table. And, since its follow-ups, a name that is the first word of one of
 MIME's registered entries (`gravity`, `magnetic`), which `namespace_of` would then answer for that entry.
 
-Since phase 7a2, `apparatus.frame_poses` (state: a row per frame a chain segment names, in its order, each a pose)
+`apparatus.frame_poses` (state: a row per frame a chain segment names, in its order, each a pose)
 and `apparatus.link_wrench` (a load on a chain's link, reserved for the dynamic arm).
 
-Since phase 7a3, `apparatus.link_wrench` is built: a load target, a row per frame of the segment, each a force and a
+`apparatus.link_wrench` is built: a load target, a row per frame of the segment, each a force and a
 torque about the frame's origin, which a dynamic segment accepts; and `apparatus.joint_velocities` (state, a dynamic
 segment's joint rates).
 
-Since phase 7a4, `apparatus.frame_angular_velocities` (state: a row per frame a chain segment names, its angular
+`apparatus.frame_angular_velocities` (state: a row per frame a chain segment names, its angular
 velocity in the world, `rad/s`), which every MIME segment publishes on every rung and a mounted spinner reads; and two
 operators a dynamic segment takes from a spinner mounted on it, `apparatus.link_momentum` (a row per frame, the
 rotors' momentum about their axes, `N m s`, whose gyroscopic torque the segment applies) and `apparatus.link_inertia`
 (a row per frame, the rotors' inertia beyond the frame's own at the step's start and end, in kg m²).
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

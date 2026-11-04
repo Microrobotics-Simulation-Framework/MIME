@@ -135,7 +135,7 @@ whose terms let no bundle carry it, which the lock's `referenced_files` names wi
 
 ## Derived assets
 
-Design #181: an asset's truth is authored (true by declaration), measured (a fact with an uncertainty) or derived (a
+An asset's truth is authored (true by declaration), measured (a fact with an uncertainty) or derived (a
 cached computation: a wall table, a surrogate's weights, its training data). The reference is the same for all three;
 a derived asset adds a **derivation record** (`DerivationRecord`): its builder and the commit it ran at, the sha256 of
 each source file it ran and whether the tree was dirty (`working_state`; `None` where a build ran outside the
@@ -172,7 +172,7 @@ then dropped.
 
 ## Status
 
-Landed before phase 7h, which wires the wall tables. `mime pack` and `mime pull` are built on this module (`retrieve`, the file placed under a name); `mime push` will be. The corrected unit-tube table is shipped as a reference and the tube's wall kind reads it through `locate`; CI stores it once per job (`.github/actions/unit-tube`) and the tests never download it. Since phase 7i, a saved experiment's lock records the assets its entries read, and
+The wall tables are wired to it. `mime pack` and `mime pull` are built on this module (`retrieve`, the file placed under a name); `mime push` will be. The corrected unit-tube table is shipped as a reference and the tube's wall kind reads it through `locate`; CI stores it once per job (`.github/actions/unit-tube`) and the tests never download it. A saved experiment's lock records the assets its entries read, and
 derived assets carry derivation records (above).
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

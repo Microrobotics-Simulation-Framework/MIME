@@ -44,11 +44,11 @@
 
 ## Status
 
-Since dev1's phase 7n (design #197): the in-process session, `mime serve` over ZMQ, replay from the command log.
-Since phase 7n-b: no recompile on a live input, a server that answers while a chunk runs, and the build report's
+The in-process session, `mime serve` over ZMQ, replay from the command log.
+No recompile on a live input, a server that answers while a chunk runs, and the build report's
 summary in `hello` and in every run folder.
-Since the serve view (design #214): a live view on a terminal, `--watch`, `--idle-timeout` and `--max-wall`, and the optional
+A live view on a terminal, `--watch`, `--idle-timeout` and `--max-wall`, and the optional
 status keys `wall_time`, `clients` and `recent`.
 Later: a WebSocket transport (the same messages), and pixel streaming of the stage, which is MADDENING's.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

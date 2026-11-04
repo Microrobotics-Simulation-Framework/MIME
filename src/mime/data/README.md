@@ -20,18 +20,18 @@ stops tracking one or ignores it, and `tests/test_packaging.py` if a built distr
 
 ## Status
 
-Since phase 4c1, **`mlp_cholesky_weights_v2.npz`** (151,887 bytes, sha256 `ac1fca5c...0a345`), the drag
+**`mlp_cholesky_weights_v2.npz`** (151,887 bytes, sha256 `ac1fca5c...0a345`), the drag
 surrogate's weights, as the asset **`dejongh_mlp_v2`**. `asset(name)` names a packaged asset with the sha256 MIME pins
 for it; `asset_bytes` reads its contents and refuses a file whose sha256 is not the one asked for.
 The saved form writes an asset by name and sha256, the lock records its source and sha256, and a load refuses an
 installation that ships other contents under the name. This is the smallest form of the design's `asset(...)`:
-assets by name from MIME's own package. `mime.asset` (phase 6's, in `mime.scene`) names a file by its path, a USD
+assets by name from MIME's own package. `mime.asset` (in `mime.scene`) names a file by its path, a USD
 layer the scene references, pinned the same way; the two meet when assets by name, DOI or URL, an experiment folder's
 own, and assets that cannot be redistributed land.
 
-Since phase 5, **`records/`**: copies of OpenMaterica's example records `example/water` and `example/ndfeb_n45`, as
+**`records/`**: copies of OpenMaterica's example records `example/water` and `example/ndfeb_n45`, as
 the assets `openmaterica_example_water` and `openmaterica_example_ndfeb_n45`, which `mime.materials.packaged_record`
 names. Their values are CC0-1.0, their origin OpenMaterica's tag `openmaterica-v0.1.0.dev3`; they are examples, not
 reviewed library data, and are never edited here (`records/README.md`).
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

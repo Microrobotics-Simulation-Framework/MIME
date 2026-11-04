@@ -159,9 +159,10 @@ def _item_lines(number: int, item: PendingItem, reason: str | None = None) -> li
 
 @dataclass(frozen=True)
 class Stamp:
-    """What every output of a build carries: the profile it was built under and each item left pending, one line
-    each, with what was measured of an item (a numerical default's miss, in numbers). Empty ``pending`` is a sealed
-    build's."""
+    """What every output of a build carries: the profile it was built under and each item left pending, one name
+    each with its kind, and where the rest is (``mime pending``). Empty ``pending`` is a sealed build's. What was
+    measured of an item (a numerical default's miss, in numbers) is kept in ``measured`` and in the record, and printed
+    by ``mime pending`` beside the item, not in the stamp's one line."""
 
     profile: str
     pending: tuple[str, ...] = ()
@@ -170,9 +171,9 @@ class Stamp:
     def text(self) -> str:
         if not self.pending:
             return f"profile {self.profile}: nothing pending"
-        text = (f"profile {self.profile}: {len(self.pending)} item{'s' if len(self.pending) != 1 else ''} pending, "
-                f"not sealed: " + "; ".join(self.pending))
-        return text + (f". Measured: {'; '.join(self.measured)}" if self.measured else "")
+        return (f"profile {self.profile}: {len(self.pending)} item{'s' if len(self.pending) != 1 else ''} pending, "
+                f"not sealed: " + "; ".join(self.pending) + ". `mime pending <saved folder>` lists each with what was "
+                                                             "measured of it and the lines to seal it")
 
     def record(self) -> dict[str, Any]:
         return {"profile": self.profile, "pending": list(self.pending), "measured": list(self.measured)}

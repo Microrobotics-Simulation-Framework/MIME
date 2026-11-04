@@ -153,8 +153,7 @@ def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock,
         elif on_zenodo(ref, own):
             found.append(AssetChoice(ref, verdict, False, "already on Zenodo: the record references it"))
         else:
-            found.append(AssetChoice(ref, verdict, True, f"{verdict.words()}; no Zenodo location yet, so uploaded "
-                                                         f"(#171)"))
+            found.append(AssetChoice(ref, verdict, True, f"{verdict.words()}; no Zenodo location yet, so uploaded"))
     return found
 
 

@@ -191,9 +191,9 @@ SURROGATE_SWITCHES = (
 
 #: The mrs rung's default count of samples on the hull kind's grid (the sum over its patches of the products of
 #: ``sample_counts``), by the kind (a numerical default: a first look, not a converged one), chosen by measurement
-#: (``scripts/default_spacing_table.py``, labelled decision D9): for a compact body the most whose run of the walk's T1
-#: stays within about 30 s on a laptop's CPU (a sphere's 338 samples: 512 take 50 s); for a screw, where no count does
-#: (a run of the walk's T2 size in a tube takes minutes at the coarsest), the coarsest that keeps its shape (FL-9's 222
+#: (``scripts/default_spacing_table.py``): for a compact body the most whose run of a 100 um steel sphere settling for
+#: 1000 steps stays within about 30 s on a laptop's CPU (a sphere's 338 samples: 512 take 50 s); for a screw, where no
+#: count does (6000 steps in a tube take minutes at the coarsest), the coarsest that keeps its shape (FL-9's 222
 #: samples, its two caps sampled alike, at 0.829 mm). A kind not measured takes the compact bodies' count.
 DEFAULT_SAMPLES: Mapping[str, int] = MappingProxyType({"sphere": 338, "screw": 191})
 COMPACT_SAMPLES = 338
@@ -216,17 +216,17 @@ DEFAULT_BLOB = 0.5
 #: sampling's (phase 7m-a: the sphere's drag 1.3% and 5.2% above on its earlier grid, the screw's speed 63% and 61%
 #: below); the run times were taken on the earlier grid, at the same counts, and the sampling adds well under a second
 #: to a build at them.
-SPACING_MEASURED = ("on the walk's T1 sphere (338 samples), its drag 1.8% and its rotational drag 5.9% above Stokes's "
-                    "law, T1's 1000 steps in 22 s; on FL-9 (222 samples), its speed per turn 23% below the finest "
-                    "spacing measured on the walk's tube's axis (5984 samples) and 16% below it in free space (6784), "
-                    "a run of T2's size in the tube (6000 steps) 11 minutes: write spacing= for a number to use")
+SPACING_MEASURED = ("on a 100 um steel sphere settling in still water (338 samples), its drag 1.8% and its rotational "
+                    "drag 5.9% above Stokes's law, 1000 steps of it in 22 s; on FL-9 (222 samples), its speed per turn "
+                    "23% below the finest spacing measured on the axis of a 1/4 in tube (5984 samples) and 16% below "
+                    "it in free space (6784), 6000 steps in the tube 11 minutes: write spacing= for a number to use")
 
 
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class PointForceDrag(Interaction):
-    """The drag 0.3.0, kept registered so that a folder saved with it loads and reproduces (7j's frozen register's
-    experiments name it): its ``mrs`` rung puts a point force at each sample, the samples its own quadrature, with the
+    """The drag 0.3.0, kept registered so that a folder saved with it loads and reproduces (the frozen
+    register's experiments name it): its ``mrs`` rung puts a point force at each sample, the samples its own quadrature, with the
     blob half their mean spacing and its count of samples by family (``DEFAULT_SAMPLES``), as before the separated
     quadrature of 0.4.0 (``Drag``); its ``surrogate`` rung is 0.4.0's. A script that writes ``Drag.MRS(...)`` gets
     0.4.0; a document naming 0.3.0 gets this. Version 0.3.0 read the body's shape from its hull's kind, not from
@@ -602,15 +602,16 @@ SEPARATED_COMPACT_BLOB = 0.1
 #: at blob 0.25; measured, phase 7m-b and its review).
 QUADRATURE_PER_BLOB = 2.0
 #: What was measured at the defaults (``scripts/default_spacing_table.py``, float64 for the misses, on a 24-thread laptop
-#: CPU; phase 7m-b), as the stamp and ``mime pending`` state it.
+#: CPU; phase 7m-b), as ``mime pending`` states it.
 SEPARATED_SPACING_MEASURED = (
-    "on the walk's T1 sphere (338 force points), its drag 0.50% and its rotational drag 1.45% above Stokes's law, "
-    "within 2e-4 of the exact regularised drag at its blob, T1's 1000 steps in 4.4 s; on FL-9 (222 force points), "
+    "on a 100 um steel sphere settling in still water (338 force points), its drag 0.50% and its rotational drag "
+    "1.45% above Stokes's law, within 2e-4 of the exact regularised drag at its blob, 1000 steps of it in 4.4 s; on "
+    "FL-9 (222 force points), "
     "estimates: its speed per turn in free space 2.6% below the shipped free-space reference, itself known to 1.9%, a "
     "point on a ladder that is not monotone (6.1%, 2.6%, 4.0%, 3.5% and 1.3% below from 206 to 567 force points), and "
-    "on the walk's tube's axis only 11% below the finest spacing measured (5984 force points), which is still moving "
-    "(about 12% below a fit of the ladder); near a wall no error is stated (MIME-ANO-130); a run of T2's size in the "
-    "tube (6000 steps) 12 minutes: write spacing= for a number to use")
+    "on the axis of a 1/4 in tube only 11% below the finest spacing measured (5984 force points), which is still "
+    "moving (about 12% below a fit of the ladder); near a wall no error is stated (MIME-ANO-130); 6000 steps in the "
+    "tube 12 minutes: write spacing= for a number to use")
 SEPARATED_BLOB_MEASURED = (
     "with the spacing's default, at this blob: the sphere's drag error, the regularisation's, nearly in proportion to "
     "the blob (0.25%, 0.50% and 0.75% at blobs 0.05, 0.1 and 0.15 and 338 force points); FL-9's speed moved by under "
@@ -637,8 +638,8 @@ class Drag(PointForceDrag):
     trained on, the de Jongh helix, along the body's x axis: its ``nu``, ``R`` and ``L`` are the features, and its
     radial reach the outer radius the gap is measured from. A body or tube outside the surrogate's training data in
     ``nu``, ``kappa = R / R_tube`` or ``L / R``, or of another modulation or number of starts, is refused when the
-    experiment is planned, in every profile (a value outside them is a model change, a1's declared clamp, design #184
-    item 2, which no profile relaxes);
+    experiment is planned, in every profile (a value outside them is a model change, a declared clamp, which no profile
+    relaxes);
     the offset from the axis moves during the run and is clamped, as the 0.2 line did, with ``clamp_fired`` in the
     node's state, ``tilt_fired`` where the body's axis has left the tube's by more than the tilt the surrogate is
     declared valid to, and ``bore_fired`` where it has left it by more than the bore allows (the surrogate cannot see a
@@ -700,7 +701,7 @@ class Drag(PointForceDrag):
     Each rung's status is its own (``rung_gradients``), and the build records the attached rung's: the surrogate's
     ``piecewise_jump``, with its switches, and the mrs's ``exact``. The entry's is the least of them.
 
-    Version 0.4.0 (phase 7m-b) separates the mrs rung's quadrature from its force points and chooses its defaults
+    Version 0.4.0 separates the mrs rung's quadrature from its force points and chooses its defaults
     again; its surrogate rung is 0.3.0's. Version 0.3.0 (``PointForceDrag``, kept registered so that a folder saved
     with it reproduces) put a point force at each sample."""
 
@@ -726,8 +727,7 @@ class Drag(PointForceDrag):
             measured=SEPARATED_BLOB_MEASURED),
         "wall_refinement": convention(
             NUMERICAL, "none, the image at the force points: integrating it over each cell is written where it is wanted "
-                       "(MIME-ANO-130; design #210's rule, fixed before its measurement, took it as a default only at a "
-                       "step of a third of the point image's)"),
+                       "(MIME-ANO-130)"),
         "quadrature_refinement": numerical_default(
             "on the mrs rung, two over the blob, rounded up: the quadrature's spacing at most half the blob",
             "chosen by measurement: finer, neither family's number moved by what the stamp states (the sphere's drag "

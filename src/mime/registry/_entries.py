@@ -391,7 +391,7 @@ class DimensionedSetting:
 
 
 class Role(Enum):
-    """What a setting is (design #191): ``design``, chosen by the experimenter (a command, an initial state, a
+    """What a setting is: ``design``, chosen by the experimenter (a command, an initial state, a
     window); ``physical``, a fact about the setup (a geometry, a fixed apparatus's placement, local gravity);
     ``numerical``, a solver's choice (a sample spacing, a regulariser, a step); ``standard``, a constant whose
     definition MIME builds in. A value may be given as the experimenter's own choice (``reason=chosen(...)``), which
@@ -404,7 +404,7 @@ class Role(Enum):
 
 
 class DefaultKind(Enum):
-    """What a setting's default claims (design #191 item 4): ``determined``, the one right answer from other inputs
+    """What a setting's default claims: ``determined``, the one right answer from other inputs
     (the wall kind from the region the medium fills), resolved in every profile and reported; ``convention``, what
     anyone assumes untold (the window from the run's start), the setting's written default, taken in every profile and
     reported; ``numerical``, a stated rule with its own basis (a sample spacing from the body's size), taken in
@@ -873,7 +873,7 @@ class FieldProvider(Entry):
     pose through its mount (``ctx.parts``, ``b.part``). ``values`` reads values of its apparatus (label to value
     name), as a dynamics' do. ``outside_parts`` says the field is evaluated outside the parts it names (a point dipole's
     is singular at its centre): the build refuses a reader whose initial position lies inside the smallest sphere
-    that holds one."""
+    that holds one. ``turns_at`` names the command, a frequency, that is the rate the field turns at."""
 
     flags: ClassVar[frozenset[Capability]]
     publishes: ClassVar[Mapping[str, str]]
@@ -881,6 +881,9 @@ class FieldProvider(Entry):
     parts: ClassVar[Mapping[str, str | None]] = MappingProxyType({})
     values: ClassVar[Mapping[str, str]] = MappingProxyType({})
     outside_parts: ClassVar[bool] = False
+    #: The command whose value, in turns per second, is the rate the field turns at, or ``None``: what the build reads
+    #: to estimate the rate a body that follows the field turns at, from the command's declared constant drive.
+    turns_at: ClassVar[str | None] = None
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags),

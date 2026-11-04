@@ -37,7 +37,7 @@
 
 ## Status
 
-Since phase 4b, the analytic geometry kind **`Tube`** (`tube` 0.1.0): axis, inner radius, wall thickness, length
+The analytic geometry kind **`Tube`** (`tube` 0.1.0): axis, inner radius, wall thickness, length
 and centre; regions `lumen` and `wall`, the surface `inner_surface` (facing the lumen, evaluated as an unbounded
 cylinder, so a contact with it bounds a body radially and its ends bound nothing), and the direction `axis`, each a
 typed path from the structure's handle. A geometry kind is a contract a lab implements: a registered
@@ -45,7 +45,7 @@ typed path from the structure's handle. A geometry kind is a contract a lab impl
 (`region_shapes`) evaluated by a `Shape` (the protocol: signed distance, outward normal, the axis and a point on it)
 registered in `mime.core`. `X`, `Y` and `Z` are signed axes (`+X`, `-Z`).
 
-Since phase 6:
+Also:
 
 - **`Scene.new(up=+Z, units="m")`**, given to `Experiment(scene=...)`. `up` is +Y or +Z (any other direction raises
   `ValueError` at the declaration, and a saved document declaring one is refused at load, `frame.up-not-y-or-z`);
@@ -78,16 +78,16 @@ Since phase 6:
   runs; the older Python `ComplianceChecker` is gone from usd-core 26) and returns their findings.
 - The world frame (`WorldFrame`, `world_frame`) moved here from the build.
 
-Since phase 4c1, the tube's `lumen` is a region with a shape, the inside of the cylinder: a law reads the region a
+The tube's `lumen` is a region with a shape, the inside of the cylinder: a law reads the region a
 medium fills (`Medium(..., fills=tube.lumen)`) through the protocol, as the drag reads the tube's axis, a point on it
 and its radius (minus the signed distance there). A region with an axis is taken to be uniform along it.
 
-Since phase 5, **solids**, the geometry kinds a body's part is: `Cylinder` (radius, length, axis),
+**solids**, the geometry kinds a body's part is: `Cylinder` (radius, length, axis),
 `Ellipsoid` (semi-axes) and `Box` (edges), each a registered `mime.registry.Solid` with a closed-form
 volume and inertia per unit mass about its centroid, in the part's frame. `Composition.placement` gives a bound
 part's origin and rotation in its body's frame from the asset's transforms, and refuses one that scales or shears.
 
-Since phase 7d, **solid kinds with run-time shapes**: `Sphere` (radius), `Capsule` (radius, height between its caps'
+**solid kinds with run-time shapes**: `Sphere` (radius), `Capsule` (radius, height between its caps'
 centres as USD's `Capsule` counts it, axis) and `Screw` (de Jongh's screw: radius, length, wavenumber,
 modulation and starts, along its frame's x and centred on its centroid, the earlier line's body moved half its length
 with its turn kept). Each gives its surface samples by named patch, its area, family parameters and radial reach, and
@@ -95,12 +95,12 @@ the helix its thread as a tangent; a body whose one bulk part is one of them tak
 shape values from the kind, never declared beside it. The tube reads `piecewise_jump`: its in-band derivative is held
 by a standing test.
 
-Since phase 7a2, the stage holds an apparatus's chain: each segment a prim below the apparatus's, placed at its
+The stage holds an apparatus's chain: each segment a prim below the apparatus's, placed at its
 base's pose at the start, each frame a part is mounted on below its segment's, and each part below that frame with its
 authored transform, a magnet part with `MimeMagnetAPI` and its direction. A solid gives the radius of the smallest
 sphere about its centroid that holds it (`enclosing_radius`).
 
-Since phase 7e, **the USD side of the geometry kinds**:
+**the USD side of the geometry kinds**:
 
 - **One authority per authoring mode.** Python-first, the document is the authority and the stage is derived from it,
   its hash in the lock. Stage-first, where the prim is the authority, comes with OpenMaterica's USD support:
@@ -138,7 +138,7 @@ Since phase 7e, **the USD side of the geometry kinds**:
   square of the drawing's segments (its sections scale with them); the resolution is a writer setting, not yet a
   field of the document, and when it becomes one, its cost in the saved folder is a reason to choose it.
 
-Since phase 7m-a (designs #195, #196), **the geometry protocol's sampling and hull query**:
+**The geometry protocol's sampling and hull query**:
 
 - **`Geometry.sampling(settings, spacing, patches, density=uniform)`** samples a kind's surface for a solver whose
   unknowns sit at the samples (the MRS rung, which takes it by default and refuses a kind without it by name): a
@@ -176,11 +176,11 @@ Since phase 7m-a (designs #195, #196), **the geometry protocol's sampling and hu
   envelope's, not the body's; `sampled_reach` for a kind from its samples, and `body_reach`, the body's own reach from
   its quadrature at a spacing, which never overstates it and whose farthest point is a sample of the body (the point a
   contact acts at). Its kinks are not yet switches of
-  `mime.core.switch` (`length_of`, `magnitude_of`): no node's step evaluates a reach until the containment contact
-  (phase 7o), which declares them.
+  `mime.core.switch` (`length_of`, `magnitude_of`): no node's step evaluates a reach until the containment contact,
+  which declares them.
 - A body's hull may now be a kind that samples but has no radial reach (a box, an ellipsoid): its extent is then not
   the kind's, and is declared if a law reads it.
-Since phase 7n (design #197), **the stage a live client and a recording read**:
+**the stage a live client and a recording read**:
 
 - **Every frame of every chain segment is a prim** below its segment's, named by the frame (a name USD does not take
   as a prim's written with `_` for each such character, the frame's own name kept as `mime:frame`), and placed in the
@@ -197,4 +197,4 @@ Since phase 7n (design #197), **the stage a live client and a recording read**:
   writer's resolution would hold more is drawn at fewer facets a turn, and its proxy records the facets it was drawn
   at. The screw's proxy was nearly all of A0's saved stage.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

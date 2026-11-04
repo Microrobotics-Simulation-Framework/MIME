@@ -274,12 +274,13 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
     run = document["run"]
     try:
         dt = decode_setting(run["dt"])
+        duration = decode_setting(run["duration"]) if "duration" in run else None
         gravity = decode_setting(document["gravity"]) if "gravity" in document else CONVENTIONAL_GRAVITY
     except ValueError as error:
         reader.refuse("load.units", f"the run settings: {error}", "write units as experiment.save() writes them")
-        dt = gravity = None
+        dt = gravity = duration = None
     if reader.refusals:
         raise LoadRefused(reader.refusals)
     scene = scene_from(document, held)
     return RunSettings(document["experiment"], scene, gravity, dt, run["seed"], None, conditions or None,
-                       document["profile"]), declarations
+                       document["profile"], duration), declarations

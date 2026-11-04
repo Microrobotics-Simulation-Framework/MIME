@@ -25,8 +25,8 @@ from mime.materials._values import (
     resolve_declared,
 )
 from mime.things import DERIVED, Derived, PartMass, ThingKind, derive, magnetisation
-from mime.units import unit_symbol
-from mime.validity import Judge
+from mime.units import Dimension, Magnitude, unit_symbol
+from mime.validity import Action, Decision, Finding, Judge, decide
 
 if TYPE_CHECKING:
     from materica.core.record import RecordStore
@@ -44,6 +44,23 @@ class PartPlan:
     material: Record | None = None
     direction: Vector | None = None
     direction_source: str = ""
+
+
+@dataclass(frozen=True)
+class Simplified:
+    """A value the build used with something left out (an inertia, its products of inertia dropped), and what its
+    profile decided of that: the value's path, the value, the finding's words, how large what was left out is, and the
+    decision. The profile records it (a waiver with a pending basis in exploratory); a decision that stops it has the
+    build refused as the derivation's own problem says."""
+
+    path: str
+    value: Magnitude
+    dimension: Dimension
+    kind: str
+    text: str
+    measured: str
+    size: str
+    decision: Decision
 
 
 @dataclass(frozen=True)
@@ -82,6 +99,7 @@ class Resolver:
         self._values: dict[str, Resolution] = {}
         self._reads: dict[tuple[str, str], ReadOutcome] = {}
         self._derived: dict[str, tuple[dict[str, Derived], dict[str, Resolution]]] = {}
+        self._simplified: dict[str, Simplified] = {}
 
     def every_read(self) -> tuple[ReadOutcome, ...]:
         """Every read made so far, refused or not, in a canonical order."""
@@ -142,7 +160,8 @@ class Resolver:
             if derived.value is None:
                 return "the value its parts would give (none: " + "; ".join(p[1] for p in derived.problems) + ")"
             shown = _vec(derived.value) if isinstance(derived.value, tuple) else f"{derived.value!r}"
-            return f"the value its parts give, {shown} {unit_symbol(kind.dimension)}"
+            cut = ", its products of inertia dropped" if derived.simplified is not None else ""
+            return f"the value its parts give, {shown} {unit_symbol(kind.dimension)}{cut}"
         return None
 
     def _read(self, material: Record, record_field: RecordField, path: str, kind: ValueKind) -> Resolution:
@@ -206,6 +225,17 @@ class Resolver:
         if derived.value is None or problems or blocked:
             return Resolution(None, problems or (() if blocked else derived.problems), blocked, reads)
         details = list(derived.details)
+        left_out = derived.simplified
+        if left_out is not None:
+            decision = decide(self.judge, Finding(f"{path.thing}.{path.name}", left_out.code, left_out.text),
+                              Action.REFUSE)
+            self._simplified[f"{path.thing}.{path.name}"] = Simplified(
+                f"{path.thing}.{path.name}", derived.value, kind.dimension, left_out.kind, left_out.text,
+                left_out.measured, left_out.size, decision)
+            if not decision.proceeds:
+                return Resolution(None, (left_out.problem,), reads=reads)
+            details.append(f"{left_out.text}; waived by the {self.judge.profile.value} profile with its reason "
+                           f"pending: {left_out.measured}")
         for key, held in used.items():
             if held.value is not None:
                 details.append(f"{key} = {held.value.value!r} {held.value.unit}, {held.value.source} (its own line)")
@@ -221,5 +251,9 @@ class Resolver:
     def reads(self) -> list[ReadOutcome]:
         return [self._reads[key] for key in sorted(self._reads)]
 
+    def simplified(self) -> tuple[Simplified, ...]:
+        """Every value resolved so far with something left out, by path: what the profile decided of each."""
+        return tuple(self._simplified[path] for path in sorted(self._simplified))
 
-__all__ = ["DECLARED_IN_THE_EXPERIMENT", "PartPlan", "Resolution", "Resolver"]
+
+__all__ = ["DECLARED_IN_THE_EXPERIMENT", "PartPlan", "Resolution", "Resolver", "Simplified"]

@@ -9,9 +9,9 @@ from mime.dynamics import RigidInertial
 from mime.interactions import Drag, Gravity
 from mime.materials import Acceptance, Record, packaged_record
 from mime.observations import SwimSpeed
-from mime.scene import Scene, Sphere, Z
+from mime.scene import Scene, Screw, Sphere, Z
 from mime.things import Part
-from mime.units import degC, kg_per_m3, m_per_s, mm, ms, rad_per_s, s
+from mime.units import degC, dimensionless, kg_per_m3, m_per_s, m_per_s2, mm, ms, rad_per_s, s
 from mime.validity import Basis
 
 WATER = "openmaterica_example_water"
@@ -35,12 +35,13 @@ class Paperwork:
     sources: dict[str, Basis] = field(default_factory=dict)
     radius_reason: Basis | None = None
     require: bool = True
+    duration: object = None
 
 
 def settling_ball(paperwork: Paperwork = Paperwork()) -> Experiment:
     """A steel ball of 0.5 mm radius settling in water at 20 degC under the mrs drag, in free space."""
     exp = Experiment("settling_ball", scene=Scene.new(up=Z, units="m"), dt=ms(1.0), profile=paperwork.profile,
-                     conditions={"temperature": degC(20.0, plus_minus=0.5)})
+                     conditions={"temperature": degC(20.0, plus_minus=0.5)}, duration=paperwork.duration)
     accept = {} if paperwork.acceptance is None else {
         "fluid.dynamic_viscosity": Acceptance((SHEAR,), reason=paperwork.acceptance)}
     require = {"test_method": ("reference_formulation",)} if paperwork.require else {}
@@ -69,3 +70,16 @@ def settling_ball(paperwork: Paperwork = Paperwork()) -> Experiment:
 #: Every item the bare settling ball leaves pending in exploratory, by its target, in the outcome's canonical order.
 BARE_PENDING = ("ball.parts.shell.density", "drag:ball.blob", "drag:ball.quadrature_refinement", "drag:ball.spacing",
                 "material 'water' fluid.dynamic_viscosity")
+
+
+def parts_screw(profile: str = "exploratory") -> Experiment:
+    """A screw (FL-9's shape) whose parts give a tensor with a small product of inertia and whose inertia is declared
+    nowhere: the body the second walk's task built. Nothing else is needed to build it."""
+    exp = Experiment("screw", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1.0), profile=profile)
+    exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(Screw(
+            radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+            starts=2))}))
+    exp.declare("umr.parts.shell.density", kg_per_m3(1410.0), reason="FL-9 resin plus magnets, mean density")
+    return exp

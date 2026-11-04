@@ -19,7 +19,7 @@ class RunSettings:
     """The experiment's settings as written, before phase 1 checks them: a script is not type-checked, so each may
     hold anything until then. ``up`` is held only to be refused: up is declared on the scene. ``conditions`` are the
     operating conditions every record is read at; ``profile`` the profile it is built under (``exploratory`` when
-    not given)."""
+    not given); ``duration`` the length of a run of it, which a saved experiment carries (``None``: none stated)."""
 
     experiment: Any
     scene: Any
@@ -29,6 +29,7 @@ class RunSettings:
     up: Any = None
     conditions: Any = None
     profile: Any = DEFAULT_PROFILE.value
+    duration: Any = None
 
 
 @dataclass(frozen=True)

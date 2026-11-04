@@ -108,9 +108,9 @@ the saved form carries it.
 
 **Chains, mounts and armature.** How a segment is placed, what mounts on a frame and where a joint's armature comes from: [the multibody note](../../multibody.md).
 
-**Versions.** `arm` 0.1.0 is its first: the kinematic rung, and since dev1's phase 7a3 the dynamic rung, added before
-any release with no change to what the kinematic rung computes. Since dev1's phase 7a4, before any release, both rungs
+**Versions.** `arm` 0.1.0 is its first: the kinematic rung, and then the dynamic rung, added before
+any release with no change to what the kinematic rung computes. Also before any release, both rungs
 publish their frames' angular velocities, their commands are typed by joint kind, and the dynamic rung carries what is
-mounted on its links; what the kinematic rung computed is unchanged to the last bit on A0. Since dev1's phase 7a5,
-before any release, the dynamic rung takes each joint's armature (`armature=`, `actuators=`); with none, what it
+mounted on its links; what the kinematic rung computed is unchanged to the last bit on A0. Also before any release,
+the dynamic rung takes each joint's armature (`armature=`, `actuators=`); with none, what it
 computes is unchanged to the last bit.

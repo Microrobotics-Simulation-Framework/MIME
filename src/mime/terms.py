@@ -1,4 +1,4 @@
-"""Licences and terms: under what a file may be shared, and so where its bytes may live (designs #198, #199).
+"""Licences and terms: under what a file may be shared, and so where its bytes may live.
 
 **A licence is an SPDX licence expression** (``CC0-1.0``, ``MIT OR Apache-2.0``), checked by the packaging standards'
 own parser (``packaging.licenses``, which the build already depends on) and held to its canonical spelling, so that
@@ -20,7 +20,7 @@ name.
 ``not_permitted`` or ``unknown`` (its fourth, ``values_only``, describes a record's values, not a file's bytes). Only a
 licence on MIME's open or conditional lists, or a declared permission that grants redistribution, makes a file
 ``permitted``; every other licence is ``unknown`` until a person declares otherwise, and a :class:`CustomLicence` may
-say ``not_permitted`` (a person may always say no; a yes needs a permission with its evidence). **The tier**, #198's,
+say ``not_permitted`` (a person may always say no; a yes needs a permission with its evidence). **The tier**
 says where the bytes live: ``open`` and ``conditional`` travel inside a bundle (the conditions said in its NOTICE and
 on its card); ``referenced`` travels as a reference to its origin, whatever its size, and is never packed; ``carried``
 is the author's own file under a licence that is on neither list, or under none: carried because its author packs it,

@@ -21,6 +21,7 @@ src/mime/cli/README.md  130  #2  # the exit code of a command that Ctrl+C ended,
 src/mime/cli/README.md  130  #3  # the exit code of a command that Ctrl+C ended, a shell's convention (128 plus SIGINT's number), not a measurement (mime._interrupt.INTERRUPTED)
 src/mime/cli/README.md  10s 500ms 250us 2min 1h  #1  # the forms a duration option takes, a syntax (a number and a unit), not a measurement: mime.cli._durations.FORMS
 src/mime/cli/README.md  130  #4  # the exit code of a command that Ctrl+C ended, a shell's convention (128 plus SIGINT's number), not a measurement (mime._import_guard.INTERRUPTED)
+src/mime/README.md  0.2 2.0  #1  # the version of the frozen reference (the 0.2 code) and of the licence (Apache-2.0), names and not measurements
 src/mime/results/README.md  64  #1  # about how many chunks a run is split into: the declared constant mime.control._run.TARGET_CHUNKS, a choice and not a measurement
 src/mime/core/tables/README.md  6.5  #1  # float32_values: the largest derivative difference measured from the float64-valued read on plain tables, in float32 roundings of the read's largest value over the axis's smallest cell, stated as a measurement, not a bound (the performance pass's review fixes, Q-7)
 src/mime/core/tables/README.md  21  #1  # float32_values: the same measurement on cholesky tables, whose product L L^T multiplies the factor's rounding, stated as a measurement, not a bound (the performance pass's review fixes, Q-7)

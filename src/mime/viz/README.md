@@ -18,8 +18,8 @@
 - **The contract for every overlay.** A saved folder never holds results or presentation: overlays (recordings,
   comparisons, measured tracks, look-dev, previews) live in run or study folders or in the asset cache. Every layer MIME
   composes resolves inside its own folder, with no path out of it, so a folder resolves after it is moved or published.
-  A preview baked from an asset is a derived file that carries the asset's licence tier (design #198) and is never
-  pinned by its bytes in an experiment's lock (design #183). Root prims other than `/World` are reserved for these
+  A preview baked from an asset is a derived file that carries the asset's licence tier and is never
+  pinned by its bytes in an experiment's lock. Root prims other than `/World` are reserved for these
   overlays (see [`mime.scene`](../scene/README.md)).
 - **Meshes** (`_meshes.py`): an STL file read (binary or ASCII) and welded, decimated by vertex clustering to a
   triangle budget (`TriangleBudget`, a presentation setting with its basis), its distance to the original measured
@@ -37,7 +37,7 @@
 
 ## Status
 
-Since dev1's phase 7n (design #197): the recording layer, the mesh importer and the visuals in the asset cache.
+The recording layer, the mesh importer and the visuals in the asset cache.
 Viewports stay with the clients.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

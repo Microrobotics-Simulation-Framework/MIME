@@ -1,6 +1,6 @@
 """Live sessions: a built experiment stepped in chunks of one fixed size, its frames streamed, its controller's live
 inputs set between ticks and its commands logged for replay (``built.live()``); served over a transport in
-``mime.live/1`` (``mime serve <folder>``, ZMQ in dev1, bound to localhost by default)."""
+``mime.live/1`` (``mime serve <folder>``, ZMQ in 0.3.0, bound to localhost by default)."""
 
 from mime.live._protocol import (
     COMMANDS,

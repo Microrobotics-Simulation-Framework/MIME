@@ -43,6 +43,9 @@ from mime.saved._versions import (
     NEW_RUNG,
     OLD_RUNG,
     PREVIOUS_PROFILE,
+    TERMS_ADDED,
+    added_after,
+    duration_held,
     newer_form_refusal,
     physics_in_form,
     resolved_in_form,
@@ -183,11 +186,15 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
         return None, [newer], CURRENT, ()
     upgraded, version, renamed = upgraded_document(data)
     document, problems = conforms(upgraded, ExperimentDocument)
-    added = terms_keys_held(data) if version != CURRENT else []
-    if added:
-        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds {', '.join(added)}, which version {CURRENT} of the "
-                    f"saved form added: a document of an earlier version declares no licence, terms or permission",
+    added = added_after(data, version)
+    terms = [key for key in added if key in terms_keys_held(data)]
+    if terms:
+        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds {', '.join(terms)}, which version {TERMS_ADDED} of "
+                    f"the saved form added: a document of an earlier version declares no licence, terms or permission",
                     *problems]
+    if duration_held(data) and version < CURRENT:
+        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds run.duration, which version {CURRENT} of the saved "
+                    f"form added: a document of an earlier version declares no run length", *problems]
     return document, [_refuse("load.document-shape", RefusalClass.USER, f"{path}: {problem}",
                               "write the document as experiment.save() writes it")
                       for problem in problems], version, renamed
@@ -215,6 +222,11 @@ class SavedForm:
     @property
     def previous(self) -> bool:
         return self.version != CURRENT
+
+    @property
+    def predates_terms(self) -> bool:
+        """Whether the form is one before licences and terms, which declares none."""
+        return self.version < TERMS_ADDED
 
 
 def layout_problem(name: str) -> str | None:
@@ -296,7 +308,7 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
 
     document, refusals, version, renamed = read_document_version(folder / DOCUMENT_FILE)
     notes: tuple[str, ...] = ()
-    if document is not None and version == CURRENT:
+    if document is not None and version >= TERMS_ADDED:
         found, notes = read_check(document)
         refusals += [replace(each, message=f"{folder / DOCUMENT_FILE}: {each.message}", action=_EDITED_TERMS_ACTION)
                      for each in found]
@@ -321,10 +333,10 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
                                         "save the experiment again from your script, built.save(folder), which writes "
                                         "both"))
             lock, problems = conforms(data, Lock)
-            added = terms_keys_held(data) if lock_version != CURRENT else []
+            added = terms_keys_held(data) if lock_version < TERMS_ADDED else []
             if added:
-                problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version {CURRENT} of "
-                            f"the saved form added", *problems]
+                problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version "
+                            f"{TERMS_ADDED} of the saved form added", *problems]
             if lock is not None:
                 problems = lock_text_problems(lock)
                 lock = lock if not problems else None
@@ -427,7 +439,7 @@ def stage_change_refusals(form: SavedForm, record: SavedRecord, compare: bool,
     same document (``compare``; without it, as after a changed document, any change is refused), by the stage writer
     that wrote it (``rebuilt``; the record's own stage when not given). An edit confined to
     derived prims (a kind's drawn mesh, a region's primitive) is reported, one line each: they are output only, read
-    by nothing, and every build writes them again; every dev1 profile reports it, and a1's ``strict`` may refuse such
+    by nothing, and every build writes them again; every profile of 0.3.0 reports it, and ``strict`` may refuse such
     an edit here. Any other edit is refused."""
     found = form.stage_found
     if found is None:
@@ -564,7 +576,7 @@ class LoadReport:
     derived: str
     derived_differences: tuple[str, ...] = ()
     derived_prims_edited: tuple[str, ...] = ()
-    #: The saved form's version (``mime.document/4``), and the profile the experiment is read under.
+    #: The saved form's version (``mime.document/5``), and the profile the experiment is read under.
     schema: str = DOCUMENT_SCHEMA
     profile: str = PREVIOUS_PROFILE
     version: int = CURRENT
@@ -579,6 +591,11 @@ class LoadReport:
     def previous(self) -> bool:
         return self.version != CURRENT
 
+    @property
+    def predates_terms(self) -> bool:
+        """Whether the form is one before licences and terms, which declares none."""
+        return self.version < TERMS_ADDED
+
     def form_line(self) -> str:
         """The saved form's version and the profile it is read under, with why for a previous form."""
         if not self.previous:
@@ -592,7 +609,9 @@ class LoadReport:
         if self.renamed:
             line += (f"; the rung {OLD_RUNG} of {', '.join(self.renamed)} is read as {NEW_RUNG}: the rung was renamed "
                      f"for its method, and is the same")
-        return line + "; it declares no licence, terms or permission, being of a form before them"
+        if self.predates_terms:
+            line += "; it declares no licence, terms or permission, being of a form before them"
+        return line
 
     def text(self) -> str:
         lines = [f"load report: {self.folder}", self.form_line(), "input hash: reproduced exactly", *self.notes]

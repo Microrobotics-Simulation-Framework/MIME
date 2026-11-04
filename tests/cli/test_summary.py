@@ -202,7 +202,22 @@ def test_every_status_but_within_reaches_the_attention_list(status):
 
     watch = WatchRead("drag:ball", "drag", "stokes", "ball", "water", status, 0.5, 0.1, 1.0, 1.0, 1e-4, 1000.0, 1e-3, 0.1, "b",
                       True, 0.1, "", ("the medium's density is not declared",) if status == "not_computed" else ())
-    report = types.SimpleNamespace(checked={}, refusals=(), warnings=(), profile=None)
+    report = types.SimpleNamespace(checked={}, refusals=(), warnings=(), profile=None, range_warning_lines=lambda: [])
     written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=(watch,)), stopped=None)
     lines = _summary.attention_lines(types.SimpleNamespace(report=report), written, None, Path("exp"))
     assert bool(lines) == (status != "within"), lines
+
+
+def test_a_warning_the_build_gave_before_the_run_leads_what_needs_attention_after_it():
+    """The warning before the run is repeated where the run ends, so that a run's reader meets it with the numbers;
+    the control is the same report with none, which is silent."""
+    import types
+
+    def lines_of(warnings):
+        report = types.SimpleNamespace(checked={}, refusals=(), warnings=(), profile=None,
+                                       range_warning_lines=lambda: list(warnings))
+        written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=()), stopped=None)
+        return _summary.attention_lines(types.SimpleNamespace(report=report), written, None, Path("exp"))
+
+    planted = "warning before the run: drag:ball: a planted turning Reynolds number of 270"
+    assert lines_of([planted]) == [planted] and lines_of([]) == []

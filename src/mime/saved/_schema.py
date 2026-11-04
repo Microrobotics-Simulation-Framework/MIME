@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/4"
-LOCK_SCHEMA = "mime.lock/4"
+DOCUMENT_SCHEMA = "mime.document/5"
+LOCK_SCHEMA = "mime.lock/5"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -46,6 +46,14 @@ class QuantityDoc(TypedDict, closed=True):
     value: ReadOnly[float | list[float]]
     unit: ReadOnly[str]
     reason: NotRequired[ReadOnly[ReasonDoc]]
+
+
+class DurationDoc(TypedDict, closed=True):
+    """The run's length as SI value and SI unit symbol (``{value: 3.0, unit: s}``): a quantity with no reason, since
+    nothing about the length of a run is a physical value or a numerical choice a profile judges."""
+
+    value: ReadOnly[float]
+    unit: ReadOnly[str]
 
 
 class AssetDoc(TypedDict, closed=True):
@@ -215,8 +223,12 @@ class MaterialDoc(TypedDict, closed=True):
 
 
 class RunDoc(TypedDict, closed=True):
+    """The run settings: the base step, the seed, and, where the experiment declares one (version 5), the length of a
+    run of it (``mime run`` on the folder runs that long unless it is told another)."""
+
     dt: QuantityDoc
     seed: int
+    duration: NotRequired[DurationDoc]
 
 
 class ReferenceDoc(TypedDict, closed=True):
@@ -311,9 +323,11 @@ class ExperimentDocument(TypedDict, closed=True):
     Version 4 adds what may be shared, each absent where nothing is declared: ``licence``, the experiment's own (an
     SPDX expression; absent, it declares none, which ``save`` and ``pack`` never refuse and ``push`` will); ``licences``,
     each custom licence named, by its ``LicenseRef-`` id; ``terms``, each third-party file's, by its path below the
-    folder; and ``permissions``, each declared permission (``mime.terms``)."""
+    folder; and ``permissions``, each declared permission (``mime.terms``).
 
-    schema: ReadOnly[Literal["mime.document/4"]]
+    Version 5 adds ``run.duration``, the length of a run of the experiment, absent where it declares none."""
+
+    schema: ReadOnly[Literal["mime.document/5"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     profile: ReadOnly[Literal["exploratory", "research", "strict"]]
@@ -713,7 +727,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/4"]]
+    schema: ReadOnly[Literal["mime.lock/5"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -857,7 +871,8 @@ __all__ = [
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
     "ControllerDoc", "ControllerReadRecord", "ControllerWriteRecord", "CpuRecordDoc", "DeclaredDoc", "DerivedRecord",
-    "DescriptionRecord", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord", "ExperimentDocument",
+    "DescriptionRecord", "DurationDoc", "DynamicsDoc", "EntryDoc", "EntryRecord", "EnvironmentRecord",
+    "ExperimentDocument",
     "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GpuRecordDoc", "GroupDoc", "GroupRecord", "GroupedValue",
     "HashRecord", "Json",
     "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc",

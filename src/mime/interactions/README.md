@@ -24,7 +24,7 @@
 
 ## Status
 
-Since phase 4b:
+Also:
 - **`magnetic.py`**: `Magnetic.Torque()` (`magnetic.torque` 0.1.0), `tau = m x B` on the body's permanent moment
   turned by its orientation, from a uniform field; it reads the pose at the start of the step, a one-step lag of
   `omega dt` in phase that lag accounting shows;
@@ -38,7 +38,7 @@ Since phase 4b:
 
 Each passes its family's suite (`mime.testing.MAGNETIC`, `GRAVITY`, `CONTACT`).
 
-Since phase 4c1:
+Also:
 - **`hydrodynamic.py`**: `Drag(rung="surrogate")` (`drag` 0.1.0), `Drag.Surrogate(...)` its alias, which saves
   identically. The Cholesky MLP's resistance for a de Jongh screw body in a straight tube, from
   `weights=mime.data.asset("dejongh_mlp_v2")`, with `lubrication=Lubrication(epsilon=...)` blended in as one model
@@ -51,7 +51,7 @@ Since phase 4c1:
   (zero in a medium at rest). A body or tube outside the surrogate's training data in `nu`, `kappa` (up to 0.655, the
   largest trained value) or `L / R` (2.65 to 6.24) is refused at plan time, naming the entry, the value, the range and where the range comes from; recording an acceptance instead
   is for a1's profiles. The offset from the axis keeps the 0.2 line's clamp, reported as `clamp_fired` in the node's
-  state. `drag` 0.2.0 (phase 4c3) moves the surrogate's resistance from the end of the body's axis, about which it
+  state. `drag` 0.2.0 moves the surrogate's resistance from the end of the body's axis, about which it
   was trained, to the centre of mass, `L / 2` along the body's x axis taken as the helix's (MIME-ANO-112, resolved);
   0.1.0 delivered it about the end. Its accuracy against the MRS it was checked against is MIME-ANO-114's: up to 16%
   in swim speed between 0.2 and 0.32 of the tube's radius. `Lubrication` is a group of settings (`mime.registry.SettingGroup`),
@@ -60,21 +60,21 @@ Since phase 4c1:
 It passes the hydrodynamic family's suite (`mime.testing.HYDRODYNAMIC`), whose analytic oracle and second member, a
 Stokes sphere, is registered by MIME's tests only; no public `Drag.Stokes` is built yet.
 
-Since phase 7a2, **`Magnetic.Force`** (`magnetic.force` 0.1.0): the force of a field's gradient on a body's
+**`Magnetic.Force`** (`magnetic.force` 0.1.0): the force of a field's gradient on a body's
 permanent moment, `F = G^T m`, read at the body's centre of mass, acting at its magnet's centroid (`magnet_centre`),
 so with its torque. It is in the magnetic family, whose sign rule holds both its laws, and its pair law, the equal and
 opposite force between two point dipoles, is tested on the law alone. Its reaction on the source is not delivered.
 
-Since phase 7a3, **the magnetic laws' reactions**: where the field's source is a part mounted on a segment that takes
+**the magnetic laws' reactions**: where the field's source is a part mounted on a segment that takes
 loads (a dynamic one), `Magnetic.Torque` and `Magnetic.Force` each deliver the reaction of their wrench on the body to
 the frame the source is mounted on, equal and opposite and moved to that frame's origin (`SourceReactionNode`); the
 two together are what the body's dipole exerts on a point dipole source. Elsewhere they build what they built.
 **`Magnetic.Torque`** reads a field that varies in space at the body's centre of mass, by a second support row; a
 uniform field is read as before.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).
 
-Since phase 7d, the drag reads the body's shape from its hull's kind (`ctx.geometry(of="body")`), not from declared
+The drag reads the body's shape from its hull's kind (`ctx.geometry(of="body")`), not from declared
 values: the kind must be the one its surrogate was trained on (`screw`, at the surrogate's modulation and
 starts, along the body's x and centred on its origin), refused otherwise (`drag.body-kind`, `drag.outside-training`).
 Its node evaluates the tube by the region's registered shape (the body's offset, the direction across the tube and the
@@ -82,11 +82,11 @@ lubrication's gap come from the cylinder's distance and normal) and takes the bo
 radial reach, so it holds no formula of either's. What it computes is unchanged: script A's golden outputs and its
 frozen reference hold.
 
-Since phase 7i, the surrogate rung reads its weights through the evaluator its surrogate's record names
+The surrogate rung reads its weights through the evaluator its surrogate's record names
 (`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
 is unchanged. The mrs rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.
 
-Since phase 7o, **`Contact.Projection`** (`contact` 0.3.0 since its fix round; 0.2.0, in no release, is not kept)
+**`Contact.Projection`** (`contact` 0.3.0 since its fix round; 0.2.0, in no release, is not kept)
 holds the body's hull, its orientation read, each point
 kept `margin` from the surface, by impulses through the body's implicit solve with the rotation coupled in (projected
 Gauss-Seidel over one point per group of the hull's samples at `spacing`) and a projection of the pose after the step,

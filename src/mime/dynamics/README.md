@@ -27,8 +27,8 @@ constructed with the bodies it must include.
 
 ## Status
 
-Since phase 4b, **`body.RigidInertial`** (`rigid_inertial` 0.3.0 since the gyroscopic fix, MIME-ANO-129; 0.2.0, which
-takes the gyroscopic term explicit, stays registered in `body.KEPT`; 0.2.0 dates from phase 4c3, 0.1.0 from 4b): a rigid
+**`body.RigidInertial`** (`rigid_inertial` 0.3.0 since the gyroscopic fix, MIME-ANO-129; 0.2.0, which
+takes the gyroscopic term explicit, stays registered in `body.KEPT`; 0.2.0 is the first corrected version, 0.1.0 the first): a rigid
 body with mass and inertia (principal moments about the body axes), its state the pose and twist of its centre of mass.
 It sums every applied wrench and background load, integrates every delivered resistance implicitly, solved for the
 change in velocity, `(M/dt + R) dV = F - R V` (0.1.0 solved `(M/dt + R) V' = (M/dt) V + F`, which float32 rounded,
@@ -38,10 +38,9 @@ and it is not symmetric for unequal moments. It turns by the exponential of
 `dt omega'`, holds its confinement inside the solve while the body starts a step on its surface moving outward (from
 0.2.0), and projects it after the step. A moment of inertia that is not above zero is refused when the experiment is
 built (`value.not-positive`). Its node declares first order in time, which the node walk measures. It reads its body's
-`mass` and `inertia` (declared in the experiment until the part resolver lands). The rest land in dev1's phase 7 (the
-arm and motor) and a1 (the rewritten flow solver).
+`mass` and `inertia` (declared in the experiment until the part resolver lands). The arm and the motor are described below, and the rest land in a1 (the rewritten flow solver).
 
-Since phase 7a2, an apparatus's **chain segments** (`apparatus/`), each a `mime.registry.ChainSegment` that publishes
+An apparatus's **chain segments** (`apparatus/`), each a `mime.registry.ChainSegment` that publishes
 the world pose of every frame it names (`apparatus.frame_poses`), alike under every rung, and mounts on a frame of the
 segment before it:
 - **`apparatus.Arm`** (`arm` 0.1.0), general over its URDF file, with its `kinematic` rung: its joint
@@ -54,7 +53,7 @@ segment before it:
 Each states its limits in its capability record: rigid joints and links, an ideal source of its motion, and no load
 applied.
 
-Since phase 7a3, their **dynamic rungs**:
+Their **dynamic rungs**:
 - **`Arm.Dynamic`**: joint torques in (`<segment>.joint_torques`), against the mass matrix and the bias of
   `mime.core.multibody` (gravity, velocity products and the loads on its frames, `apparatus.link_wrench`, which it
   accepts), each joint's damping (implicit) and Coulomb friction from the description, its limits rigid, inelastic
@@ -69,11 +68,11 @@ Since phase 7a3, their **dynamic rungs**:
   stator passes the drive's reaction and the rotor's loads across its axis to the frame it is mounted on, which a
   dynamic segment takes a step late (`b.reaction`; MIME-ANO-103).
 
-Since phase 7a4 (`motor` 0.2.0): **`Motor.Dynamic`** is a spinner, carrying its rotor's absolute spin, with the parts
+**`Motor.Dynamic`** (`motor` 0.2.0) is a spinner, carrying its rotor's absolute spin, with the parts
 on its rotor adding their moment about its axis, its momentum and its inequality across the axis handed to its mount,
 and `top_speed` to judge a rotor's imbalance or tilt; **`Arm.Dynamic`** carries what is mounted on its links, welded on
 at build, the spinners' gyroscopic torques and turning inertia, and refuses an articulated payload and an imbalance or
 a tilt beyond a residue, which the kinematic rung takes. Both rungs of both publish their frames' angular velocities
 (the kinematic ones where something reads them), and the arm's commands are typed by joint kind.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

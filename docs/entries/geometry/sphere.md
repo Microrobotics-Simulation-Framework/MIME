@@ -25,14 +25,14 @@ quasi-uniform sampling than on the grid of its first version, in translation and
 from about a hundred samples to a few thousand: the grid misses by two thirds to three quarters as much. It is not the
 grid's symmetry (the same holds on triaxial ellipsoids, and a uniform set that shares no code with the sampler gives the
 sampler's numbers); the numbers are MIME-ANO-126's. The sphere's two-resolution extrapolation still meets Stokes's law
-within the oracle's tolerance. The sphere samples quasi-uniformly all the same (design #195, a labelled default the
+within the oracle's tolerance. The sphere samples quasi-uniformly all the same (a labelled default the
 maintainer may overturn): it is the only closed-form drag oracle the default sampler has, and on the screw, the body
 without the sphere's smoothness, the same sampling comes far closer to a converged reference. The separated quadrature
-(phase 7m-b) chooses the defaults again.
+chooses the defaults again.
 
 **Regions, surfaces, directions and frames.** What a kind names and how a law or a stage reads it: [the scene note](../../scene.md).
 
-**Versions.** 0.2.0 (phase 7m-a) samples its surface quasi-uniformly; 0.1.0, the first (phase 7d), sampled it by its
+**Versions.** 0.2.0 samples its surface quasi-uniformly; 0.1.0, the first, sampled it by its
 quadrature, Gauss-Legendre in the cosine of the polar angle and even in azimuth, which put a quarter of its samples
 within half the mean spacing of another at the poles (MIME-ANO-123). 0.1.0 stays registered so that a folder saved with
 it loads and reproduces; a script that writes `Sphere(...)` gets 0.2.0. The quadrature, the shape and every closed form

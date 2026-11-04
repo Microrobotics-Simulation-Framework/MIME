@@ -15,6 +15,6 @@ MIME does.
   the sphere one whose Reynolds number is past the model's range, and the result flags it with the size of the inertia
   the model leaves out. `tests/examples/test_sphere_settling.py` runs it.
 - `screw_in_tube.py`: a de Jongh FL-9 screw swimming along a tube of glycerol, turned by a field rotating at 1 Hz, with
-  no material records: every value is declared, and the inertia is the diagonal the build prints when it refuses the
-  parts' own tensor. `python examples/screw_in_tube.py` runs it in a few seconds more (7 s, measured the same way); `--spacing-mm` sets how fine the
+  no material records: every value is declared, and the inertia is the diagonal a research build prints when it refuses the
+  parts' own tensor (an exploratory build uses it and stamps it pending). `python examples/screw_in_tube.py` runs it in a few seconds more (7 s, measured the same way); `--spacing-mm` sets how fine the
   samples are, which `docs/choosing_spacing.md` prices and judges. `tests/examples/test_screw_in_tube.py` runs it.

@@ -87,11 +87,11 @@ TOKEN_GRAMMAR = (
     "a number token is a run of digits, with a sign directly before it (-, + or \u2212) where it does not follow a "
     "word, digit groups (151,887), a decimal part (0.95, .5, 0\u00b795), an exponent (1e-5, 10\u207b\u00b3), a "
     "vulgar fraction (\u00bd, 1\u00bd) and a per cent sign (16%), and the letters or digits glued after it (4D, 5mm, "
-    "4c1). Not tokens: a digit inside a word (float32, sha256, dev1, x_0, m\u00b2); an identifier, one of "
-    f"{', '.join(IDENTIFIERS)} and three digits (MIME-ANO-114), or a numbered reference (#146); a version (0.3.0, "
+    "4c1). Not tokens: a digit inside a word (float32, sha256, x_0, m\u00b2); an identifier, one of "
+    f"{', '.join(IDENTIFIERS)} and three digits (MIME-ANO-114), or a numbered reference (a hash sign and its digits); a version (0.3.0, "
     "v0.2, 0.3.0.dev1); a release the code reads (listed below), after its product's name and before no unit or per "
     "cent sign (MIME 0.3); a phase name after 'phase' or 'phases', a digit with at most a letter and a digit, before "
-    "no unit (phase 4b, phase 7a2, phases 4 and 7); an ordered list item's number where it is 1 or counts its list "
+    "no unit (phase 1, phases 1 and 2); an ordered list item's number where it is 1 or counts its list "
     "from 1 by one; a section number (\u00a73.18); a URL; a code fence; and an idiom of docs/number_idioms.txt, "
     "removed before the line is keyed. A heading's number is a token, and so is a list item's out of its list's count")
 

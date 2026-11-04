@@ -61,7 +61,7 @@ answer: a carriage return in every saved text file on Windows, a `ValueError` sh
   tolerance" and never "bit for bit", and the guard that a factory building another graph under the same version is
   refused cannot fire. The smoke holds the diagnosis (the flags are the only difference), and five tests that need a
   readable hash are skipped there (`needs_readable_cpu_flags`, `tests/_platform_support.py`). The maintainer decided
-  (2026-10-31, "within tolerances is fine off Linux for now") that for dev1 this stands: **verification off Linux is
+  (2026-10-31, "within tolerances is fine off Linux for now") that for 0.3.0 this stands: **verification off Linux is
   within the lock's tolerances, by decision, and exact replication is had by running in the cloud** (`mime modal`,
   [Running on Modal](running_on_modal.md)), where the environment is Linux and recorded. Not built, and not needed
   while that holds: a hash of the platform's feature set on macOS (`sysctl hw.optional`) and on Windows

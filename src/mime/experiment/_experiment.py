@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
@@ -37,6 +38,7 @@ from mime.build._checks import stopped_refusals
 from mime.build._construct import report_of
 from mime.build._report import NodeLine
 from mime.build._plan import EntryPlan, Section
+from mime.build._steps import whole_runs_either_side, whole_steps
 from mime.build._refusals import (
     ArgumentRefused,
     ArgumentTypeRefused,
@@ -246,7 +248,9 @@ class Experiment:
     says so), ``m_per_s2(0)`` for none. ``up=`` given here is refused: up is declared on the scene. ``dt`` is the base
     step, with no default; an entry's own ``rate=`` is a whole multiple of it. ``conditions`` are the operating
     conditions every material record is read at, each with its tolerance (``{"temperature": degC(20,
-    plus_minus=0.5)}``).
+    plus_minus=0.5)}``). ``duration`` is the length of a run of this experiment, a whole number of base steps, which
+    a saved experiment carries: ``mime run`` on its folder runs that long unless ``--duration`` says another
+    (``built.duration`` reads it; ``built.run(duration)`` always takes its own).
 
     ``profile`` is how much the build asks (``mime.validity.Profile``): ``"exploratory"`` (the default) waives what
     the experiment leaves unstated with a pending reason, recorded in the saved form and stamped on every output;
@@ -258,10 +262,10 @@ class Experiment:
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
                  dt: Quantity | None = None, seed: int = 0, up: Any = None,
                  conditions: Mapping[str, Condition] | None = None,
-                 profile: str | Profile = DEFAULT_PROFILE.value) -> None:
+                 profile: str | Profile = DEFAULT_PROFILE.value, duration: Quantity | None = None) -> None:
         self.name = name
         self._settings = RunSettings(name, scene, gravity, dt, seed, up, conditions,
-                                     profile.value if isinstance(profile, Profile) else profile)
+                                     profile.value if isinstance(profile, Profile) else profile, duration)
         self._declarations: list[Declaration] = []
         self._saved: SavedForm | None = None
         self.load_report: LoadReport | None = None
@@ -269,7 +273,8 @@ class Experiment:
     @classmethod
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
-                         seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile)
+                         seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile,
+                         duration=settings.duration)
         experiment._declarations = list(declarations)
         return experiment
 
@@ -430,6 +435,8 @@ class Experiment:
         stage = stage_text(stage_spec(plans))
         record = record_of(self._settings, self._declarations, plans, derived, stage)
         report = replace(report, stage_hash=record.stage_hash)
+        for text in report.range_warnings():
+            warnings.warn(text, UserWarning, stacklevel=3)
         load_report = None
         if self._saved is not None:
             # A saved folder's stage is rebuilt by the writer that wrote it, to be held to its lock; a save writes the
@@ -740,14 +747,25 @@ class BuiltExperiment:
         declarations."""
         return self.record.stage
 
+    @property
+    def duration(self) -> Quantity | None:
+        """The run length the experiment declared (``Experiment(..., duration=...)``, or a saved experiment's), or
+        ``None`` where it declared none. ``run`` always takes the length of its own."""
+        from mime.units import s
+
+        declared = self._plans.settings.duration
+        if declared is None:
+            return None
+        seconds = si(declared, TIME, what="the experiment's duration")
+        return s(seconds) if isinstance(seconds, float) else None
+
     @public
     def steps_in(self, duration: Quantity) -> int:
         seconds = si(duration, TIME, what="the run's duration")
         dt = self._plans.dt
-        ratio = float(seconds) / dt if isinstance(seconds, float) else math.nan
-        steps = round(ratio) if math.isfinite(ratio) else 0
-        if steps < 1 or not math.isclose(ratio, steps, rel_tol=1e-9):
-            lower, upper = max(1, math.floor(ratio)) * dt, max(1, math.ceil(ratio)) * dt
+        steps = whole_steps(seconds, dt)
+        if steps is None:
+            lower, upper = whole_runs_either_side(seconds, dt)
             raise ArgumentRefused([Refusal(
                 "run.duration", RefusalClass.USER,
                 f"a run of {seconds!r} s is not a whole number of base steps of {dt!r} s",

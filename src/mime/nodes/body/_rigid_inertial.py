@@ -276,7 +276,7 @@ class RigidInertialNode(MimeNode):
       changes neither the rotational kinetic energy nor the angular momentum's magnitude: it moves the pose by the
       drift of a step, the square of its turning, and the next step's hold takes the rest. Left in the world, the
       angular velocity of a body with unequal moments met a pose turned under it, which put energy into a body spun on
-      the floor a step at a time (review 7o's G1: a rod spun at 50 Hz gained 57 % of its spin energy in 2 s).
+      the floor a step at a time (a rod spun at 50 Hz gained 57 % of its spin energy in 2 s).
     - The state adds ``contact_points``, each row's point at the step's start, ``contact_forces``, the force each took,
       ``contact_short``, how far the body may reach past each, its group's nearest candidate near being held
       (``_contact.shallower``: how far it stood shallower than that candidate, at least the samples' shortfall where
@@ -599,8 +599,7 @@ class RigidInertialNode(MimeNode):
         velocity turned with it, so that the angular velocity in the body's frame, and with it the rotational kinetic
         energy and the angular momentum's magnitude, are the solve's; the velocity of the centre of mass as it was.
         Left in the world as it was, a turned pose with unequal moments changes ``omega . I(q) omega`` by about
-        ``(I_t - I_a) |omega|^2`` times the turn, which a body spinning on the floor gains a step at a time (review
-        7o's G1). An unturned body (``turn`` the identity) keeps its twist to the last bit."""
+        ``(I_t - I_a) |omega|^2`` times the turn, which a body spinning on the floor gains a step at a time. An unturned body (``turn`` the identity) keeps its twist to the last bit."""
         return jnp.concatenate([twist[:3], quaternion.rotate(turn, twist[3:])])
 
     def stepped(self, p: Mapping[str, Any], pose: Array, twist: Array, given: Mapping[str, Array],

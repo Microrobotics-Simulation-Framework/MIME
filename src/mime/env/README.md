@@ -72,4 +72,4 @@ matmul precision other than the highest), `env.lab` (a lab file that is not pins
 Landed in dev1 with the Modal template. Prebuilt images on GitHub's container registry and memory snapshots come
 later.
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

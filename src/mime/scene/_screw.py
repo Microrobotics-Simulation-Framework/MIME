@@ -359,7 +359,7 @@ class Screw(Solid):
         cap's farthest point along a direction off the axis is on its rim, which the lateral surface's ends are, so
         the lateral surface alone is searched; along the axis the whole cap ties, and the point is the rim's at
         ``near``'s angle. The point moves continuously along a crest as the body turns, where a sample's jumps by the
-        spacing (phase 7o's fix round, design #204)."""
+        spacing."""
         d = jnp.asarray(direction)
         scale = switch.nonzero_norm(d, axis=-1) * parameters["radius"]
         held = lax.stop_gradient((d, near, scale, {name: parameters[name] for name in

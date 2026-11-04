@@ -64,18 +64,18 @@ and publishes the same frame poses as MIME's chains, so that mounts and everythi
 
 ## Status
 
-Since phase 7a1: the tree, the URDF reader and the maths. The MJCF reader, with MuJoCo as the oracle of both readers
+The tree, the URDF reader and the maths. The MJCF reader, with MuJoCo as the oracle of both readers
 and the maths, comes in dev2.
 
-Since phase 7a2, the kinematic arm (`mime.dynamics.Arm`) reads its description with this reader and computes
+The kinematic arm (`mime.dynamics.Arm`) reads its description with this reader and computes
 its frames with this library's forward kinematics; its node takes the articulation's arrays as its parameters.
 
-Since phase 7a3, **loads on the links**: `frame_forces` gathers wrenches given on the named frames (a force and a
+**loads on the links**: `frame_forces` gathers wrenches given on the named frames (a force and a
 torque about each frame's origin) into a spatial force on each rigid body, and `inverse_dynamics` and
 `forward_dynamics` take them (`link_forces`) as the recursion's external forces, equal to the Jacobian transpose's
 mapping (its oracle); `cholesky_solve` is public. The dynamic arm steps on them.
 
-Since phase 7a4, **mounted mass**: `graft(tree, payloads)` welds each `Payload` (a body of its own, the frame it is
+**mounted mass**: `graft(tree, payloads)` welds each `Payload` (a body of its own, the frame it is
 fixed to, its placement there and its inertial) to its frame's body by a fixed joint, never editing the link's own
 inertial, so that the articulation combines them as it combines every welded body; `articulate(tree, frames=...)`
 keeps a description's frames when payloads add bodies; `frame_motions` gives every frame's pose and angular velocity
@@ -85,4 +85,4 @@ as a number and as a matrix, how far its centre of mass lies off the axis and ho
 for a spinner. Grafting a jointed sub-tree on a link is the same operation with moving joints,
 logged for later.
 
-Phases and releases are explained in the [package manifest](../../README.md#status).
+Releases are explained in the [package manifest](../../README.md#status).

@@ -173,7 +173,7 @@ class Contact(Interaction):
     work at the held twist, and the solve's residual reported. Against a surface whose shape declares its region convex
     (the tube's lumen), each group's candidates are only its own convex hull's vertices, which choose as all its
     points do. The groups and their candidates are fixed when the experiment is built, from the hull kind's settings
-    as built, while the points are evaluated each step from the live settings (phase 7o's D3): a study's derivative in
+    as built, while the points are evaluated each step from the live settings: a study's derivative in
     a setting keeps them, and one that moves a setting far keeps the old vertices, which may then seed otherwise than
     all the points would (not measured). Projection, not penalty; no code of its own for a body or a wall, and the solve is laid out over contact
     pairs (a hull against a wall; two bodies' hulls, by their supports, are the layout's next). A body with no hull (no
@@ -188,7 +188,7 @@ class Contact(Interaction):
 
     **Admissibility only.** The contact says where the body may be, and the force that keeps it there: it never adds
     near-wall lubrication, which a drag that includes it declares (``Interaction.includes_lubrication``), and the plan
-    refuses two laws on a body that include it. **Frictionless in dev1**: friction at the contact (a traction law,
+    refuses two laws on a body that include it. **Frictionless in 0.3.0**: friction at the contact (a traction law,
     Coulomb's with static friction among it) is to be decided with the near-contact physics; its seam is the sweeps'
     rows, to which a traction law adds two along the surface at each point, bounded by its friction times the
     point's normal force.

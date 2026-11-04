@@ -29,7 +29,13 @@ the keys version 2 added taken off for version 1; the rung, the node type and th
 wrote them, for versions 1 and 2) and hashed there. Its schema check is the current one, run on the upgraded form, so
 the two cannot drift apart. A version 2 source whose name is not an identifier (a material named with spaces or
 quotes) was quoted differently, and is not written back: such a document's input hash is refused, and saving it again
-from the script writes the current version."""
+from the script writes the current version.
+
+**Version 5** (``mime.document/5``, ``mime.lock/5``) adds one key to the document, ``run.duration``, the length of a run
+of the experiment, written only where the experiment declares one. Nothing else changed. A document of an earlier version
+declares no duration, and ``mime run`` on its folder needs ``--duration``, as before. One of an earlier version that holds
+the key is refused, never read as declaring it. The lock holds no new key; its schema moves with the document's, as at
+every version."""
 
 from __future__ import annotations
 
@@ -41,16 +47,22 @@ from mime.build import Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 4
+CURRENT = 5
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
-                                       CURRENT: DOCUMENT_SCHEMA}
-LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", CURRENT: LOCK_SCHEMA}
+                                       4: "mime.document/4", CURRENT: DOCUMENT_SCHEMA}
+LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
+                                   CURRENT: LOCK_SCHEMA}
+#: The version that added licences and terms, and the version that added the run's duration.
+TERMS_ADDED = 4
+DURATION_ADDED = 5
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
 #: licence, no terms and no permission.
 TERMS_KEYS: tuple[str, ...] = ("licence", "licences", "terms", "permissions")
 LOCK_TERMS_KEY = "referenced_files"
+#: The key version 5 added, below the document's ``run``.
+DURATION_KEY = "duration"
 
 #: The profile a version 1 document is read under, and the keys version 2 added, with the values a version 1 form holds.
 PREVIOUS_PROFILE = "exploratory"
@@ -127,18 +139,31 @@ def terms_keys_held(data: object) -> list[str]:
     return [key for key in (*TERMS_KEYS, LOCK_TERMS_KEY) if key in held]
 
 
+def duration_held(data: object) -> list[str]:
+    """``["run.duration"]`` where ``data`` (a document) holds the key version 5 added, and none otherwise."""
+    run = cast("dict[str, object]", data).get("run") if isinstance(data, dict) else None
+    return [f"run.{DURATION_KEY}"] if isinstance(run, dict) and DURATION_KEY in cast("dict[str, object]", run) else []
+
+
+def added_after(data: object, version: int) -> list[str]:
+    """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
+    terms keys in one of an earlier version, version 5's duration in one earlier than it."""
+    found = terms_keys_held(data) if version < TERMS_ADDED else []
+    return found + (duration_held(data) if version < DURATION_ADDED else [])
+
+
 def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
     """``data`` as the current schema reads it, the version it was written in (the current one for a document that is
     not of an earlier version, which the schema check judges), and the ids of the drags that named the old rung. A
     document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's in any
-    earlier) is left as it is, for the schema check to refuse."""
+    earlier, version 5's in any earlier) is left as it is, for the schema check to refuse."""
     if not isinstance(data, dict):
         return data, CURRENT, ()
     held = dict(cast("dict[str, object]", data))
     version = version_of(held.get("schema"), DOCUMENT_SCHEMAS)
     if version is None or version == CURRENT:
         return held, CURRENT, ()
-    if terms_keys_held(held):
+    if added_after(held, version):
         return held, version, ()
     if version == 1:
         if any(key in held for key in _DOCUMENT_ADDED):
@@ -160,7 +185,7 @@ def upgraded_lock(data: object) -> tuple[object, int]:
     version = version_of(held.get("schema"), LOCK_SCHEMAS)
     if version is None or version == CURRENT:
         return held, CURRENT
-    if LOCK_TERMS_KEY in held:
+    if LOCK_TERMS_KEY in held and version < TERMS_ADDED:
         return held, version
     resolved = held.get("resolved")
     if version == 1 and isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
@@ -174,7 +199,11 @@ def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any
     held = dict(document)
     if version == CURRENT:
         return held
-    held = {key: value for key, value in held.items() if key not in TERMS_KEYS}
+    if version < TERMS_ADDED:
+        held = {key: value for key, value in held.items() if key not in TERMS_KEYS}
+    run = held.get("run")
+    if isinstance(run, dict):
+        held["run"] = {key: value for key, value in cast("dict[str, Any]", run).items() if key != DURATION_KEY}
     interactions = held.get("interactions")
     if version < RUNG_RENAMED and isinstance(interactions, list):
         held["interactions"] = [_with_rung(item, NEW_RUNG, OLD_RUNG) for item in cast("list[Any]", interactions)]
@@ -235,6 +264,7 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
     return held
 
 
-__all__ = ["CURRENT", "DOCUMENT_SCHEMAS", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG", "OLD_RUNG", "PREVIOUS_PROFILE",
-           "RUNG_RENAMED", "TERMS_KEYS", "document_in_form", "newer_form_refusal", "physics_in_form", "resolved_in_form",
+__all__ = ["CURRENT", "DOCUMENT_SCHEMAS", "DURATION_ADDED", "DURATION_KEY", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
+           "OLD_RUNG", "PREVIOUS_PROFILE", "RUNG_RENAMED", "TERMS_ADDED", "TERMS_KEYS", "added_after",
+           "document_in_form", "duration_held", "newer_form_refusal", "physics_in_form", "resolved_in_form",
            "terms_keys_held", "upgraded_document", "upgraded_lock", "version_of"]

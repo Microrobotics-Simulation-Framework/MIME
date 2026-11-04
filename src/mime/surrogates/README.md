@@ -21,14 +21,14 @@ is refused.
 
 ## Status
 
-Since phase 4c1:
+Also:
 - **the Cholesky MLP** (`read_cholesky_mlp`, `predict_resistance`): the network's 21 outputs are the lower triangle
   of a Cholesky factor, its diagonal through a softplus plus 1e-5, so the 6 x 6 resistance `L L^T` is symmetric
   positive definite by construction. Plain JAX, ported from the 0.2 line; the training script stays there. `L` is
   built whole-array (a gather through a constant index map and two `jnp.where`s), not by 21 single-entry writes;
 - **what each packaged surrogate was trained on** (`SURROGATES`, `DEJONGH_MLP_V2`): de Jongh's screw bodies (the
   cross-section modulation 0.33 and two starts fixed in training), with the ranges a build checks (`nu` from 0.25 to
-  3.5, the training data's, where the 0.2 line declared 2.33 to 3.7; `kappa` from 0.25 to 0.655, the largest trained value; `L / R` from 2.65 to 6.24, since phase 4c3) and the
+  3.5, the training data's, where the 0.2 line declared 2.33 to 3.7; `kappa` from 0.25 to 0.655, the largest trained value; `L / R` from 2.65 to 6.24) and the
   offset fraction (up to 0.3, as declared), which moves during a run and is clamped instead. Read from the training
   data (which reproduce the weights' stored feature statistics): `kappa` was trained at 0, 0.12 and 0.246 to 0.655,
   the 0.2 line's declared upper bound, 0.66, lay just above it; offsets reach 0.35, and for the operating geometries
@@ -38,7 +38,7 @@ Since phase 4c1:
   between 0.2 and 0.32 of the tube's radius, in the gaps between those samples (MIME-ANO-114, open: the MRS's
   near-wall check, dense data and retraining come first).
 
-Since phase 7i:
+Also:
 - **the type** (`Surrogate`, `ScrewSurrogate` its screw form, `Accuracy`, `Provenance`, `Evaluator`): the drag's node
   reads a surrogate's weights through the evaluator its record names (`register_evaluator`, `evaluator_named`), and
   refuses a record whose features are not the ones it builds. An accuracy nothing measured is `None`: unknown, not
@@ -46,7 +46,7 @@ Since phase 7i:
   training sampled the lateral surface alone, about the end of the body's axis;
 - **staleness, mechanically** (`staleness`, `current_inputs`): a surrogate's derivation record names the tables its
   training read as its `wall:tube` inputs, by hash, and is stale when the tube's wall kind reads another table now.
-  `dejongh_mlp_v2` is stale, as it declares (MIME-ANO-117); its retraining is the next phase's, blocked on the
+  `dejongh_mlp_v2` is stale, as it declares (MIME-ANO-117); its retraining comes next, blocked on the
   near-wall edge. A role the record names that nothing plays and the caller did not declare unjudged (a misspelling) is
   refused by name (`asset.unknown-role`), not passed as fresh;
 - **the generator and the held-out protocol** (`mime.surrogates.generator`): de Jongh's screw bodies resting on the
@@ -66,4 +66,4 @@ Since phase 7i:
   flow. Each case's checks are the build's: a case with a failed check produces no data (`mime.assets.derive`). The
   checks cannot see a jump confined to one spacing and gap (MIME-ANO-118).
 
-Phases and releases are explained in the [package manifest](../README.md#status).
+Releases are explained in the [package manifest](../README.md#status).

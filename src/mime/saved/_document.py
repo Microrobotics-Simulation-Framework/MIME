@@ -52,6 +52,7 @@ from mime.saved._schema import (
     QuantityDoc,
     ReasonDoc,
     ReferenceDoc,
+    RunDoc,
     SceneDoc,
     SegmentDoc,
     SettingValue,
@@ -561,7 +562,7 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         "mime": __version__,
         "experiment": settings.experiment,
         "profile": cast(Any, profile),
-        "run": {"dt": dt, "seed": settings.seed},
+        "run": run_doc(settings, dt),
         "scene": scene_doc(settings.scene),
         "sources": dict(sorted(sources.items())),
         "conditions": conditions_doc(settings.conditions),
@@ -579,6 +580,18 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
         raise TermsUnsavable(refusals)
     write_into(document, encoded)
     return document
+
+
+def run_doc(settings: RunSettings, dt: SettingValue) -> RunDoc:
+    """The run settings as the document holds them: the step, the seed and, where the experiment declares one, the
+    length of a run."""
+    run: RunDoc = {"dt": cast(Any, dt), "seed": settings.seed}
+    if settings.duration is not None:
+        duration = encode_setting(settings.duration, "duration")
+        if not (isinstance(duration, dict) and "unit" in duration) or "reason" in duration:
+            raise UnsavableError("duration is a time with no reason, such as s(3)")
+        run["duration"] = cast(Any, duration)
+    return run
 
 
 def _file_assets(declarations: Sequence[Declaration]) -> list[FileAsset]:

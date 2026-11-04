@@ -169,7 +169,7 @@ measurement, not a bound. A table whose stored values float32 holds only past it
 number) or below its normal numbers (a compiled read flushes them to zero) is refused when it is made.
 
 **Recorded.** The settings are the table's, beside its scheme and structure. Nothing saves a `Table` yet: they are
-recorded when tables enter an experiment's saved form, with their first consumers (phases 7h and 7i).
+recorded when tables enter an experiment's saved form, with their first consumers (the wall table and the surrogate's training data).
 
 ## Its oracles
 
@@ -189,9 +189,9 @@ recorded when tables enter an experiment's saved form, with their first consumer
 
 ## Status
 
-Since phase 7f: the description, the three schemes and the Cholesky structure, the flags, the build-time and
-host-side refusals, and `switch.searchsorted`. Since the performance pass ahead of phase 7h: the bucket index, the
+The description, the three schemes and the Cholesky structure, the flags, the build-time and
+host-side refusals, and `switch.searchsorted`. Then, after a performance pass: the bucket index, the
 read by windows, a scheme per axis and the three settings that trade memory for time. Its first consumer is the MRS's
-wall table, in phase 7h; `MaterialAt`, a2's coil maps and the table surrogate type come later.
+wall table; `MaterialAt`, a2's coil maps and the table surrogate type come later.
 
-Phases and releases are explained in the [package manifest](../../README.md#status).
+Releases are explained in the [package manifest](../../README.md#status).

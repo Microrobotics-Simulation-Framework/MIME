@@ -11,7 +11,7 @@ examples, not reviewed library data: OpenMaterica's curated library does not exi
 ## Origin
 
 Byte for byte the file `examples/records/water.json` of [OpenMaterica](https://github.com/OpenMaterica/OpenMaterica)
-at commit `eb722a9b92187df57d6010c7b7423e4f2090c3c2` on its `main` (its PR #109: each Newtonian label gains its
+at commit `eb722a9b92187df57d6010c7b7423e4f2090c3c2` on its `main` (its change that gives each Newtonian label gains its
 `label_basis`; no value, condition or label changes, so the record's version moves by a patch), and the file
 `examples/records/ndfeb_n45.json` at its tag `openmaterica-v0.1.0.dev3` (commit
 `1e4593c23af14d28c6f6e204c192ed4ce694d7be`), where it was last changed in commit `e37b1def`. Each record's `card` says what it holds, and each value's `provenance` names its
