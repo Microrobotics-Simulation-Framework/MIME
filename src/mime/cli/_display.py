@@ -23,7 +23,7 @@ import time
 import warnings
 from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
-from typing import IO, TYPE_CHECKING, Any, Concatenate, TextIO, cast
+from typing import IO, TYPE_CHECKING, Any, Concatenate, TextIO, cast, override
 
 from mime._said import (
     DONE,
@@ -53,6 +53,7 @@ from mime.cli._serve_view import FALLBACK_ROWS, event_line, stopped_lines, strip
 
 if TYPE_CHECKING:
     from rich.console import Console
+    from rich.live import Live
 
     from mime.live import ServeState
 
@@ -123,6 +124,26 @@ def _console_of(stream: IO[str]) -> Console:
     from rich.console import Console
 
     return Console(file=stream, highlight=False, markup=False, emoji=False, width=_columns_of(stream))
+
+
+def _ordered_console(stream: IO[str], guard: threading.RLock) -> Console:
+    """:func:`_console_of`, with each print made whole under ``guard``, the lock a live view's draws hold.
+
+    While a live display runs, a print finds the top of the region from the height it was last drawn at, under the live
+    display's lock, but draws the region again only after it has let that lock go. A draw on another thread in between
+    replaces the region at a new height, and the print then moves up by the old one: the top of a frame is left in the
+    scrollback (the strip, "Ctrl+C to stop" and all) or lines above it are erased. Under one lock from start to end, a
+    line of serve's own, an event, a draw and what another thread writes to a redirected standard stream come one after
+    the other."""
+    from rich.console import Console
+
+    class Ordered(Console):
+        @override
+        def print(self, *objects: Any, **options: Any) -> None:
+            with guard:
+                super().print(*objects, **options)
+
+    return Ordered(file=stream, highlight=False, markup=False, emoji=False, width=_columns_of(stream))
 
 
 def _text(line: str, style: str = "") -> Any:
@@ -230,27 +251,27 @@ class ServeDisplay:
 
     It is drawn about four times a second by a thread of its own, whatever the frame rate: the serve loop only stores into
     a :class:`~mime.live.ServeState`, and this reads it. A draw that waited on the terminal waits on that thread, never on
-    the loop that answers clients. What is drawn is made by ``mime.cli._serve_view`` from the state alone.
+    the loop that answers clients. What is drawn is made by ``mime.cli._serve_view`` from the state alone. Whatever is
+    printed through the view, from any thread, comes before a draw or after it, never inside it
+    (:func:`_ordered_console`): a line of serve's own waits for a draw under way, which is bounded as below.
 
     Everything it writes goes through a :class:`~mime.cli._bounded.BoundedWriter`, so that a terminal nobody reads
     (Ctrl+S, a stalled ssh session) holds up neither a draw for long nor the serve loop's own lines nor :meth:`close`: what
     the terminal does not take is dropped, and :attr:`dropped` counts it."""
 
     def __init__(self, stream: IO[str]) -> None:
-        from rich.live import Live
-
         self._stream = stream
         self._writer = BoundedWriter(stream)
-        self._console = _console_of(cast("IO[str]", self._writer))  # all a console asks of its file, which it has
+        self._guard = threading.RLock()
+        # all a console asks of its file, which the writer has
+        self._console = _ordered_console(cast("IO[str]", self._writer), self._guard)
         self._phase = ""
         self._phase_started = time.perf_counter()
         self._state: ServeState | None = None
         #: Whether standard output is the terminal this draws on, so that serve's lines are printed through it.
         self.shares_stdout = _shares_a_terminal(sys.stdout, stream)
-        self._live = Live(self, console=self._console, auto_refresh=False, transient=True,
-                          redirect_stdout=self.shares_stdout, redirect_stderr=True)
+        self._live = self._new_live()
         self._running = False
-        self._guard = threading.RLock()
         self._ending = threading.Event()
         self._thread: threading.Thread | None = None
         #: How many times the view has been drawn.
@@ -283,10 +304,20 @@ class ServeDisplay:
                 self._running = False
                 self._live.stop()
 
+    def _new_live(self) -> Live:
+        from rich.live import Live
+
+        return Live(self, console=self._console, auto_refresh=False, transient=True,
+                    redirect_stdout=self.shares_stdout, redirect_stderr=True)
+
     def _start(self) -> None:
         with self._guard:
             if not self._running:
                 self._running = True
+                # A live display of its own each time the view comes back: the last one's region was cleared from the
+                # screen, and a live display that kept its shape would move up by it at the first line printed, erasing
+                # that many lines printed while the view was away (the load report's last, at 80 columns).
+                self._live = self._new_live()
                 self._live.start()
             if self._thread is None:
                 self._thread = threading.Thread(target=self._draw_often, name="mime-serve-view", daemon=True)
