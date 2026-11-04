@@ -235,6 +235,7 @@ def deepest(draw: dict, node: RigidInertialNode) -> tuple[float, float]:
 HELD_WITHIN = 1e-6
 
 
+@pytest.mark.memory_heavy
 @settings(deadline=None)
 @given(DRAWS)
 def test_no_hull_point_ends_past_the_wall_and_the_margin_is_kept_to_the_sweeps_convergence(draw):
@@ -763,6 +764,7 @@ def changed(node: RigidInertialNode, draw: dict) -> list[str]:
                                                                        np.asarray(free[field]))]
 
 
+@pytest.mark.memory_heavy
 @settings(deadline=None)
 @given(DRAWS)
 def test_where_no_point_reaches_the_wall_the_step_is_the_free_bodys_to_the_last_bit(draw):
@@ -845,6 +847,7 @@ def frame_problems(node: RigidInertialNode, draw: dict, world) -> list[str]:
     return found
 
 
+@pytest.mark.memory_heavy
 @settings(deadline=None)
 @given(DRAWS, st.tuples(st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi), st.floats(-math.pi, math.pi)))
 def test_turning_the_tube_and_the_body_together_turns_the_step(draw, world):

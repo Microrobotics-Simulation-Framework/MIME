@@ -15,6 +15,9 @@
     "tests/oracles/test_mrs_near_wall.py::test_script_as_floored_screw_builds_and_its_run_stops_at_the_first_indefinite_step_before_the_body_takes_it": 1467,
     "tests/oracles/test_mrs_near_wall.py::test_the_tube_image_between_a_point_set_and_itself_is_the_tube_correction": 1467,
     "tests/oracles/test_arm_dynamics_battery.py::test_the_dynamic_arm_passes_maddenings_check": 1765,
-    "tests/oracles/test_arm_dynamics_battery.py::test_the_dynamic_arm_is_first_order_in_time": 700
+    "tests/oracles/test_arm_dynamics_battery.py::test_the_dynamic_arm_is_first_order_in_time": 700,
+    "tests/oracles/test_hull_contact.py::test_turning_the_tube_and_the_body_together_turns_the_step": 4845,
+    "tests/oracles/test_hull_contact.py::test_no_hull_point_ends_past_the_wall_and_the_margin_is_kept_to_the_sweeps_convergence": 2530,
+    "tests/oracles/test_hull_contact.py::test_where_no_point_reaches_the_wall_the_step_is_the_free_bodys_to_the_last_bit": 2500
   }
 }
