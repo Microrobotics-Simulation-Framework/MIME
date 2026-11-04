@@ -1,7 +1,7 @@
-"""MIME is Apache-2.0 from the 0.3 line on. The 0.2 line's licence is named in two places only: NOTICE's history
-note and the changelog. Every other tracked text file is searched for it (a binary file, whose random bytes spell any
-three letters somewhere, is not), and the search has a control: a planted mention
-outside those two places is found."""
+"""MIME is Apache-2.0 from the 0.3 line on. The 0.2 line's licence is named in NOTICE's history note, the changelog
+and a release's development record moved out of it (``docs/development/``), and nowhere else. Every other tracked text
+file is searched for it (a binary file, whose random bytes spell any three letters somewhere, is not), and the search
+has a control: a planted mention outside those places is found."""
 
 import hashlib
 import re
@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: The SHA-256 of the Apache License 2.0 text as apache.org publishes it (LICENSE-2.0.txt).
 APACHE_2_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-#: The two files allowed to name the earlier licence.
-HISTORY = {"NOTICE", "CHANGELOG.md"}
+#: The files allowed to name the earlier licence.
+HISTORY = {"NOTICE", "CHANGELOG.md", "docs/development/changes_0.3.0.dev1.md"}
 #: Spelt in pieces, so that this file, which the search reads too, holds no mention of its own.
 EARLIER_ID, EARLIER_NAME = "G" + "PL", "Lesser " + "General Public"
 EARLIER_LICENCE = re.compile(rf"\bL?{EARLIER_ID}|{EARLIER_NAME}", re.IGNORECASE)
