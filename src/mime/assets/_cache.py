@@ -178,6 +178,37 @@ def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None) -> Pa
     return file_path(ref)
 
 
+#: Where the cache keeps a file under its record's name, for a reader that needs a file name (a USD layer, a URDF):
+#: ``named/<sha256>/<name>``, a hard link to the file kept under its sha256 (a copy where links are not possible).
+NAMED_FOLDER = "named"
+
+
+def named_path(ref: AssetRef) -> Path:
+    """Where the cache keeps ``ref``'s file under its record's name. Declaring reads nothing: the file is linked there
+    when it is first read (:func:`named_file`)."""
+    return cache_dir() / NAMED_FOLDER / ref.sha256 / ref.name
+
+
+def named_file(ref: AssetRef) -> Path:
+    """``ref``'s cached file under its record's name, checked as :func:`locate` checks it (never downloaded: a file not
+    in the cache is refused as ``asset.missing`` with the command)."""
+    import shutil
+
+    stored = locate(ref)
+    path = named_path(ref)
+    if path.is_file() and path.stat().st_size == ref.size and path.stat().st_ino == stored.stat().st_ino:
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.partial")
+    temporary.unlink(missing_ok=True)
+    try:
+        temporary.hardlink_to(stored)
+    except OSError:
+        shutil.copyfile(stored, temporary)
+    os.replace(temporary, path)
+    return path
+
+
 def hash_problem(ref: AssetRef) -> str | None:
     """Why the file at the cache path is not ``ref``'s bytes, or ``None`` when it is. A file of another size is not
     hashed: its size already says it is another file, or a copy still in progress. The result is recorded, with the

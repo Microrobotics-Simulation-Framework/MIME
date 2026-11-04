@@ -31,6 +31,7 @@ from mime.registry import (
     Registered,
     implements,
 )
+from mime.assets import Manifest
 from mime.scene import (
     DRAWING_SEGMENTS,
     STAGE_WRITER,
@@ -42,6 +43,7 @@ from mime.scene import (
     VectorPrim,
     VisualPrim,
     kind_frame,
+    active_visual_pins,
     mesh_source,
     shape_settings,
 )
@@ -387,12 +389,36 @@ def _mounted_v1(plans: PlanSet) -> tuple[MountedPrim, ...]:
     return tuple(found)
 
 
+def stage_manifests(plans: PlanSet) -> dict[str, Manifest]:
+    """The manifests the stage's meshes come from, by name: each found beside a description or in an installed package,
+    and, for a mesh a loaded experiment keeps at its pin, the manifest its lock held. What a save writes into the lock's
+    ``visuals``: the records of the meshes, never their bytes."""
+    found: dict[str, Manifest] = {}
+    pins = active_visual_pins()
+    named = {prim.asset for prim in _visuals(plans) if prim.asset is not None}
+    for plan in plans.entries:
+        if plan.segment is None:
+            continue
+        for visual in plan.segment.visuals:
+            if visual.kind == "mesh" and visual.mesh is not None:
+                source = mesh_source(visual.mesh, plan.segment.description_file)
+                if source is not None and source[0].name in named:
+                    found.setdefault(source[0].name, source[0])
+    if pins is not None:
+        for name in sorted(named - set(found)):
+            if name in pins.manifests:
+                found[name] = pins.manifests[name]
+    return dict(sorted(found.items()))
+
+
 def _visuals(plans: PlanSet) -> tuple[VisualPrim, ...]:
     """What the stage draws on each frame of each segment: its description's visuals below ``visuals/``, a mesh named
-    by its visual set and file sha256 where a set lists it, and the simple shapes that stand in for meshes below
-    ``fallback/``."""
+    by its manifest and file sha256 where one lists it (beside the description, or in an installed package), and the
+    simple shapes that stand in for meshes below ``fallback/``. A loaded experiment's mesh prims keep what its saved
+    stage named (``mime.scene.pinned_visuals``), and a manifest found now that names another file is noted."""
     found: list[VisualPrim] = []
     prims = segment_prims(plans)
+    pins = active_visual_pins()
     for plan in plans.entries:
         if plan.segment is None or plan.owner not in prims:
             continue
@@ -405,10 +431,21 @@ def _visuals(plans: PlanSet) -> tuple[VisualPrim, ...]:
             index = counts.get((visual.frame, group), 0)
             counts[(visual.frame, group)] = index + 1
             name = {"visual": "visual", "collision": "collision", "frames": "bone"}.get(visual.role, "shape")
-            source = mesh_source(visual.mesh) if visual.kind == "mesh" and visual.mesh is not None else None
+            path = f"{frames[visual.frame]}/{group}/{name}_{index}"
+            source = mesh_source(visual.mesh, plan.segment.description_file) \
+                if visual.kind == "mesh" and visual.mesh is not None else None
+            named = (source[0].name, source[1].sha256) if source is not None else (None, None)
+            if pins is not None and visual.kind == "mesh" and path in pins.prims:
+                held = pins.prims[path]
+                if source is not None and held != named:
+                    line = (f"visuals: {path} keeps the mesh its saved stage names ({held[0]}, sha256 {held[1]}); the "
+                            f"manifest {named[0]} found now names sha256 {named[1]}")
+                    if line not in pins.notes:
+                        pins.notes.append(line)
+                named = held
             translation, orientation = _pose(visual.origin)
             found.append(VisualPrim(
-                f"{frames[visual.frame]}/{group}/{name}_{index}", visual.kind, visual.role, translation, orientation,
+                path, visual.kind, visual.role, translation, orientation,
                 visual.scale, visual.size, visual.radius, visual.length, visual.end, visual.colour, visual.mesh,
-                source[0].name if source is not None else None, source[1].sha256 if source is not None else None))
+                named[0], named[1]))
     return tuple(found)

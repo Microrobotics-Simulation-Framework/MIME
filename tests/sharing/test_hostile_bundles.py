@@ -512,9 +512,12 @@ def terminal_text_left_raw() -> Iterator[None]:
 
 @contextmanager
 def size_cap_removed() -> Iterator[None]:
+    """The plant: the cap gone, both where a stream passes it and where the store states a size past it before a byte
+    is taken."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_fetch._Capped, "write", lambda self, chunk: (setattr(self, "received", self.received + len(chunk)),
                                                                     self._stream.write(chunk))[1])
+        patch.setattr(_fetch._Capped, "stated", lambda self, size: None)
         yield
 
 

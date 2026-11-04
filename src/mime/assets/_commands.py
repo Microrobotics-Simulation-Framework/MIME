@@ -7,6 +7,8 @@ GROUP = "assets"
 LIST = "list"
 FETCH = "fetch"
 CHECK = "check"
+SOURCES = "sources"
+AUDIT = "audit"
 
 
 def folder_argument(folder: str | os.PathLike[str]) -> str:

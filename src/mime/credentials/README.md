@@ -5,7 +5,11 @@
 
 ## Commands
 
-`mime credentials set | status | remove <service>`, for `zenodo` and `zenodo-sandbox`.
+`mime credentials set | status | remove <service>`, for `zenodo` and `zenodo-sandbox`, and for **a host's own token**,
+`host:<host name>` (`host:files.lab.example.org`), which an asset adapter that needs a credential is handed for that
+host alone (`mime.assets`: never sent to another host, never carried across a redirect, never read from a record or a
+location). A host's token has no environment variable: it is the file's alone. A pack searches its files for it as for
+any token held.
 
 - **set** reads the token with `getpass` (nothing is echoed). It is never an argument of the command: a shell keeps
   its arguments in its history and `ps` shows them. A token typed as an argument, or in the place of the service, is

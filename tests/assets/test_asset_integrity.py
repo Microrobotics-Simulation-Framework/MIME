@@ -412,7 +412,7 @@ def the_old_rule_accepted_the_review_string() -> None:
 @contextmanager
 def the_check_before_contact_removed() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(_fetch, "location_problem", lambda location: None)
+        patch.setattr(_fetch, "location_problem", lambda location, *rest: None)
         yield
 
 
@@ -432,12 +432,16 @@ def test_control_the_old_rule_accepted_the_locations_that_only_the_parser_differ
     assert all(old_rule(location) is None for location in hidden), hidden
 
 
-def test_without_the_check_the_review_string_does_reach_the_other_host(rig: Rig):
-    """The control for the contact test: the request does arrive at 127.0.0.2 when nothing stops it."""
+def test_without_the_check_a_location_the_parsers_read_apart_does_reach_the_other_host(rig: Rig):
+    """The control for the contact test: a location whose host the standard parse reads as one name and the transport
+    reaches as another (a percent-escape, which the transport decodes) does arrive at 127.0.0.2 when nothing stops it.
+    The review's own string (a backslash before userinfo) separated pooch's parser from the standard one; the
+    transport MIME now downloads through refuses it itself, so the escape is the case that reaches a host."""
     other = free_loopback_server("127.0.0.2")
     try:
         built_around = object.__new__(assets.AssetRef)
-        location = f"http://127.0.0.2:{other.server_address[1]}\\@127.0.0.1/blob"
+        location = f"http://127.0.0.%32:{other.server_address[1]}/blob"
+        assert assets.location_problem(location) is not None
         for field, value in (("name", "blob"), ("sha256", hashlib.sha256(PAYLOAD).hexdigest()), ("size", len(PAYLOAD)),
                              ("licence", "CC0-1.0"), ("locations", (location,))):
             object.__setattr__(built_around, field, value)
@@ -509,16 +513,16 @@ def served_by_redirect(rig: Rig) -> assets.AssetRef:
     return reference(PAYLOAD, rig.server.url("/blob"))
 
 
-def pooch_refuses_the_redirected_body(rig: Rig) -> None:
+def the_stream_check_refuses_the_redirected_body(rig: Rig) -> None:
     ref = served_by_redirect(rig)
     refusal = caught(lambda: assets.fetch(ref))
     assert refusal.codes() == ["asset.hash-mismatch"]
     assert "stored other bytes" not in str(refusal) and "does not match" not in str(refusal)
-    assert "other bytes than the reference names" in str(refusal), "pooch's own check did not refuse it"
+    assert "other bytes than the reference names" in str(refusal), "the stream's own hash did not refuse it"
     assert rig.server.requests == ["GET /blob", "GET /wrong"] and not stored(rig, ref).exists()
 
 
-def the_second_layer_refuses_when_pooch_is_not_told_the_hash(rig: Rig) -> None:
+def the_second_layer_refuses_when_the_stream_is_not_hashed(rig: Rig) -> None:
     ref = served_by_redirect(rig)
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_fetch, "_download", download_without_the_hash)
@@ -528,28 +532,30 @@ def the_second_layer_refuses_when_pooch_is_not_told_the_hash(rig: Rig) -> None:
     assert not stored(rig, ref).exists() and not list(rig.cache.glob("*.incoming-*"))
 
 
-def pooch_is_given_the_references_hash(rig: Rig) -> None:
+def the_stream_is_held_to_the_references_hash(rig: Rig) -> None:
     rig.server.files["/blob"] = PAYLOAD
     ref = reference(PAYLOAD, rig.server.url("/blob"))
-    handed: list[object] = []
-    honest = pooch.retrieve
+    checked: list[bool] = []
+    honest = _fetch._transfer  # pyright: ignore[reportPrivateUsage]
 
-    def spy(*args: object, **kwargs: object) -> object:
-        handed.append(kwargs.get("known_hash"))
-        return honest(*args, **kwargs)  # type: ignore[arg-type]
+    def spy(location: str, held: assets.AssetRef, target: Path, *, check_hash: bool = True) -> None:
+        checked.append(check_hash)
+        honest(location, held, target, check_hash=check_hash)
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(pooch, "retrieve", spy)
+        patch.setattr(_fetch, "_transfer", spy)
         assets.fetch(ref)
-    assert handed == [f"sha256:{ref.sha256}"], handed
+    assert checked == [True], checked
 
 
 def download_without_the_hash(location: str, held: assets.AssetRef, directory: Path) -> Path:
-    return Path(str(pooch.retrieve(url=location, known_hash=None, fname=held.sha256, path=directory)))
+    target = directory / held.sha256
+    _fetch._transfer(location, held, target, check_hash=False)  # pyright: ignore[reportPrivateUsage]
+    return target
 
 
 @contextmanager
-def pooch_not_told_the_hash() -> Iterator[None]:
+def stream_not_hashed() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_fetch, "_download", download_without_the_hash)
         yield
@@ -562,26 +568,26 @@ def the_rehash_removed() -> Iterator[None]:
         yield
 
 
-def test_pooch_alone_refuses_a_redirected_wrong_body(rig: Rig):
-    pooch_refuses_the_redirected_body(rig)
+def test_the_streams_own_hash_alone_refuses_a_redirected_wrong_body(rig: Rig):
+    the_stream_check_refuses_the_redirected_body(rig)
 
 
-def test_the_rehash_alone_refuses_it_when_pooch_is_not_told_the_hash(rig: Rig):
-    the_second_layer_refuses_when_pooch_is_not_told_the_hash(rig)
+def test_the_rehash_alone_refuses_it_when_the_stream_is_not_hashed(rig: Rig):
+    the_second_layer_refuses_when_the_stream_is_not_hashed(rig)
 
 
-def test_pooch_is_handed_the_hash(rig: Rig):
-    pooch_is_given_the_references_hash(rig)
+def test_the_stream_is_held_to_the_hash(rig: Rig):
+    the_stream_is_held_to_the_references_hash(rig)
 
 
-def test_control_removing_pooch_hash_alone_is_visible_every_run(tmp_path: Path):
+def test_control_removing_the_stream_hash_alone_is_visible_every_run(tmp_path: Path):
     """The layer that refused is named by the message, so a change of layer shows without the other being removed."""
-    every_run_passes(tmp_path, pooch_refuses_the_redirected_body)
-    every_run_passes(tmp_path, pooch_is_given_the_references_hash)
-    assert planted_runs(tmp_path, pooch_refuses_the_redirected_body, pooch_not_told_the_hash) == RUNS
-    assert planted_runs(tmp_path, pooch_is_given_the_references_hash, pooch_not_told_the_hash) == RUNS
+    every_run_passes(tmp_path, the_stream_check_refuses_the_redirected_body)
+    every_run_passes(tmp_path, the_stream_is_held_to_the_references_hash)
+    assert planted_runs(tmp_path, the_stream_check_refuses_the_redirected_body, stream_not_hashed) == RUNS
+    assert planted_runs(tmp_path, the_stream_is_held_to_the_references_hash, stream_not_hashed) == RUNS
 
 
 def test_control_removing_the_rehash_alone_is_visible_every_run(tmp_path: Path):
-    every_run_passes(tmp_path, the_second_layer_refuses_when_pooch_is_not_told_the_hash)
-    assert planted_runs(tmp_path, the_second_layer_refuses_when_pooch_is_not_told_the_hash, the_rehash_removed) == RUNS
+    every_run_passes(tmp_path, the_second_layer_refuses_when_the_stream_is_not_hashed)
+    assert planted_runs(tmp_path, the_second_layer_refuses_when_the_stream_is_not_hashed, the_rehash_removed) == RUNS

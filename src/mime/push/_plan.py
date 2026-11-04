@@ -136,17 +136,30 @@ def on_zenodo(ref: AssetRef, own: frozenset[str] = frozenset()) -> bool:
 def asset_choices(refs: Sequence[AssetRef], judged: FolderTerms, lock: Lock,
                   own: frozenset[str] = frozenset()) -> list[AssetChoice]:
     """Each asset with what the record does with it (#198's tiers, #171 item 4): one that holds a file that may not be
-    redistributed, or whose own licence does not let it be, travels as a reference and is never uploaded; one that
-    may be redistributed is a file of the record where it has no location on Zenodo yet, or only in an earlier version
-    of this experiment (``own``, by DOI), whose files a new version links rather than uploads again."""
+    redistributed, or whose own licence does not let it be, travels as a reference and is never uploaded; so does one
+    derived from a referenced input, whatever its record's licence (``mime.assets.record_terms``), and one whose bytes
+    any record in reach says may not travel (``mime.assets.known_bytes``); one that may be redistributed is a file of
+    the record where it has no location on Zenodo yet, or only in an earlier version of this experiment (``own``, by
+    DOI), whose files a new version links rather than uploads again."""
+    from mime.assets import derived_verdicts, known_bytes
+    from mime.saved._terms import lock_records
+
     travelling = {file.referenced: file for file in judged.files if file.referenced is not None}
     listed = set(lock.get("referenced_files", {}).values())
+    held = lock_records(lock)
+    derived = derived_verdicts(held)
+    known = known_bytes([(ref, "in the folder's lock") for ref in held])
     found: list[AssetChoice] = []
     for ref in refs:
         file = travelling.get(ref.name)
-        verdict = file.verdict if file is not None else licence_verdict(ref.licence, judged.custom)
+        verdict = file.verdict if file is not None else licence_verdict(ref.licence, {**ref.custom, **judged.custom})
+        if file is None and ref.sha256 in derived and derived[ref.sha256].tier == "referenced":
+            verdict = derived[ref.sha256]
         if ref.name in listed and file is None:
             verdict = Verdict("unknown", "referenced", (), "a referenced file push cannot judge")
+        stated = known.found(ref.sha256)
+        if stated is not None and verdict.carried:
+            verdict = Verdict("unknown", "referenced", (), stated[1])
         if not verdict.carried:
             found.append(AssetChoice(ref, verdict, False, f"{verdict.words()}: travels as a reference, never "
                                                           f"uploaded"))
@@ -664,6 +677,7 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
             f"and in any one file", "move assets to an asset record of their own (`mime push --asset`, which comes "
                                     "later), or reference them with an origin, Terms(..., origin=(...)), and save "
                                     "again"))
+    refusals += upload_problems(files, lock)
     own_licence = licence or sharing.licence
     plan = Plan(service, name, root, tuple(files), judged, tuple(choices), own_licence, sharing, {}, version_of_mime,
                 lock_bytes, publication, staged_lock, "", version, staged, card_facts(root))
@@ -673,6 +687,23 @@ def make_plan(folder: str | os.PathLike[str], service: Service, sharing: Sharing
     if refusals:
         raise BuildRefused(refusals)
     return plan
+
+
+def upload_problems(files: Sequence[RecordFile], lock: Lock) -> list[Refusal]:
+    """``push.referenced-copy`` for each file the record would upload whose bytes a record in reach says may not
+    travel (``mime.assets.known_bytes``: the shared sources', the lock's, a derived file's inputs, a mesh baked into the
+    local cache from a referenced source), whatever the folder's own records say and whatever chose it. The bundle's
+    own files are held so by ``pack``."""
+    from mime.assets import known_bytes
+    from mime.saved._terms import lock_records
+
+    known = known_bytes([(ref, "in the folder's lock") for ref in lock_records(lock)])
+    return [_refuse("push.referenced-copy", RefusalClass.USER,
+                    f"the record would upload {plain(file.key)} ({file.what}), which holds the bytes of "
+                    f"{plain(held[1])}: they may not be redistributed, so no record holds them",
+                    "keep the file out of the record: declare it by its record so that it travels as a reference, "
+                    "asset(AssetRef(...)), save the experiment again, built.save(folder), and `mime push <folder>`")
+            for file in files if (held := known.found(file.sha256)) is not None]
 
 
 def with_sharing(plan: Plan, sharing: Sharing, today: datetime.date | None = None) -> Plan:
@@ -752,6 +783,6 @@ def _grantee_problems(permissions: Sequence[PermissionDoc], sharing: Sharing, ro
 
 
 __all__ = ["DOI_FIELDS", "FIELD_OWNERS", "KEYWORD", "MOST_BYTES", "MOST_FILES", "NOTICE_KEY", "OWN_RELATED",
-           "PUBLISHER", "AssetChoice", "field_owner", "Plan", "RecordFile", "declaring",
-           "asset_choices", "card_html", "file_hashes", "make_plan", "on_zenodo", "payload_of", "record_key",
-           "record_licences", "restaged", "rights_entries", "with_sharing"]
+           "PUBLISHER", "AssetChoice", "field_owner", "Plan", "RecordFile", "declaring", "asset_choices", "card_html",
+           "file_hashes", "make_plan", "on_zenodo", "payload_of", "record_key", "record_licences", "restaged",
+           "rights_entries", "upload_problems", "with_sharing"]

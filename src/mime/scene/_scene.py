@@ -7,12 +7,15 @@ import hashlib
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mime.scene._frame import unit_vector, up_axis_problem
 from mime.scene._geometry import Axis
-from mime.terms import Terms
+from mime.terms import CustomLicence, Terms
 from mime.things import PrimPath
+
+if TYPE_CHECKING:
+    from mime.assets import AssetRef
 
 
 @dataclass(frozen=True)
@@ -21,17 +24,46 @@ class Asset:
     bytes. With ``sha256`` given the build refuses a file whose bytes differ; without it the build pins the file as it
     finds it, and the saved form records the pin. ``terms`` are a third-party file's (``mime.terms.Terms``: its
     licence, credit, role and origin), which the saved form records by the file's path and pin; a file without them is
-    the author's own, under the experiment's licence."""
+    the author's own, under the experiment's licence.
+
+    Declared by its record (``asset(AssetRef(...))``: a scan one study uses, a file a lab's package names), the file is
+    the record's: its pin is the record's sha256, its terms come from the record (licence, credit, role, and the
+    record's locations as its origin), and it is read from the asset cache, never downloaded by a build (``asset.missing``
+    names the command that fetches it). ``path`` is then where the cache keeps it under the record's name."""
 
     path: Path
     sha256: str | None = None
     terms: Terms | None = None
+    record: AssetRef | None = None
 
     def read(self) -> bytes:
+        if self.record is not None:
+            from mime.assets import named_file
+
+            return named_file(self.record).read_bytes()
         return self.path.read_bytes()
 
 
-def asset(path: str | PathLike[str], *, sha256: str | None = None, terms: Terms | None = None) -> Asset:
+def _record_terms(record: AssetRef) -> Terms:
+    """The terms a file declared by its record carries: the record's licence (its custom licence where it names one
+    alone), its credit, its role, and its locations as the origin its bytes travel by."""
+    licence: str | CustomLicence = record.custom.get(record.licence, record.licence)
+    return Terms(licence, record.credit or "", record.role or "results", record.locations)
+
+
+def asset(path: str | PathLike[str] | AssetRef, *, sha256: str | None = None, terms: Terms | None = None) -> Asset:
+    """A file the experiment reads: by its path (pinned as the build finds it, or to ``sha256``), with ``terms`` where
+    it is a third party's; or by its record, an :class:`~mime.assets.AssetRef` (``sha256`` and ``terms`` then come
+    from the record, and giving either is refused)."""
+    from mime.assets import AssetRef as Record
+
+    if isinstance(path, Record):
+        if sha256 is not None or terms is not None:
+            raise ValueError("a file declared by its record takes its sha256 and its terms from the record: write "
+                             "asset(record) alone")
+        from mime.assets import named_path
+
+        return Asset(named_path(path), path.sha256, _record_terms(path), path)
     return Asset(Path(path), sha256, terms)
 
 

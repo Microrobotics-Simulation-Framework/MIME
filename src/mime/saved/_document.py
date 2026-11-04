@@ -12,6 +12,7 @@ from typing import Any, cast
 import numpy as np
 import yaml
 
+from mime.assets import AssetRef
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.build import CONVENTIONAL_GRAVITY, Attachment, ControllerDeclaration, Declaration, LicenceDeclaration, \
     PermissionDeclaration, RunSettings, SourceDeclaration, TermsDeclaration, ThingDeclaration, ValueDeclaration, \
@@ -628,6 +629,15 @@ def _pin(held: FileAsset, where: str) -> str:
         return held.sha256 or sha256_hex(held.read())
     except OSError as error:
         raise UnsavableError(f"{where} names the file {held.path}, which cannot be read to pin it: {error}") from error
+
+
+def declared_records(settings: RunSettings, declarations: Sequence[Declaration]) -> dict[str, AssetRef]:
+    """The record of each file the experiment declares by its record (``asset(AssetRef(...))``), by its sha256: what
+    the lock holds whole for a file that travels as a reference."""
+    scene = settings.scene
+    layers = [reference.asset for reference in scene.references] if isinstance(scene, Scene) else []
+    return {each.record.sha256: each.record for each in (*layers, *_file_assets(declarations))
+            if each.record is not None}
 
 
 def declared_of_terms(settings: RunSettings, declarations: Sequence[Declaration]) -> Declared:

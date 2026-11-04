@@ -235,21 +235,37 @@ def test_the_folder_in_the_command_is_written_so_it_cannot_be_read_as_a_name(tmp
     assert fetch_command(folder=tmp_path / "my run") == f"mime assets fetch '{tmp_path / 'my run'}/'"
 
 
-def test_a_doi_location_reaches_pooch_as_it_is_written(rig: Rig, monkeypatch: pytest.MonkeyPatch):
-    handed: list[str] = []
+def test_a_doi_location_is_resolved_to_its_file_and_fetched_from_there(rig: Rig, monkeypatch: pytest.MonkeyPatch,
+                                                                       tmp_path: Path):
+    """The DOI adapter asks the DOI's repository for the file's address (pooch's DOI resolution, faked here, handed the
+    resolver's timeout), and the resolver fetches the file from there, held to the reference's hash. The repository
+    answers on ``https``, as a remote one must: a redirect from a DOI to plain ``http`` is refused."""
+    from mime.assets import _adapters
+    from mime.testing import LoopbackStore, certificates
 
-    def downloader(self: object, url: str, output_file: Any, pooch_instance: object) -> None:
-        handed.append(url)
-        if hasattr(output_file, "write"):  # pooch's contract: a path or a file-like object, which a size cap hands it
-            output_file.write(PAYLOAD)
-        else:
-            Path(output_file).write_bytes(PAYLOAD)
+    handed: list[tuple[str, str]] = []
+    timeouts: list[float] = []
+    tls = certificates(tmp_path / "tls", ("localhost", "127.0.0.1"))
+    monkeypatch.setenv("MIME_CA_BUNDLE", str(tls.ca))
+    with LoopbackStore("127.0.0.1", tls.server_context()) as repository:
+        repository.files["/records/1234567/cylinder_wall.npz"] = PAYLOAD
 
-    monkeypatch.setattr(pooch.DOIDownloader, "__call__", downloader)
-    location = "doi:10.5281/zenodo.1234567/cylinder_wall.npz"
-    ref = reference(PAYLOAD, location)
-    assert assets.fetch(ref) == stored(rig, ref)
-    assert handed == [location] and rig.requests == 0
+        def resolved(doi: str, file: str, *, timeout: float) -> str:
+            handed.append((doi, file))
+            timeouts.append(timeout)
+            return repository.url(f"/records/1234567/{file}")
+
+        monkeypatch.setattr(_adapters, "doi_file_url", resolved)
+        location = "doi:10.5281/zenodo.1234567/cylinder_wall.npz"
+        ref = reference(PAYLOAD, location)
+        assert assets.fetch(ref) == stored(rig, ref)
+        assert handed == [("10.5281/zenodo.1234567", "cylinder_wall.npz")]
+        assert timeouts == [_fetch.TIMEOUT_SECONDS], "the DOI step is held to the resolver's timeout"
+        assert [seen.path for seen in repository.seen] == ["/records/1234567/cylinder_wall.npz"]
+    monkeypatch.setattr(_adapters, "doi_file_url", lambda doi, file, timeout: rig.server.url(f"/{file}"))
+    rig.server.files["/other.npz"] = PAYLOAD + b"!"
+    with pytest.raises(BuildRefused, match="plain http only on this machine"):
+        assets.fetch(reference(PAYLOAD + b"!", "doi:10.5281/zenodo.1234567/other.npz"))
 
 
 def test_the_cheap_check_catches_a_changed_size_and_a_touched_file(rig: Rig):
@@ -391,10 +407,12 @@ def test_the_commands_refuse_with_exit_two(commanded: assets.AssetRef, rig: Rig,
 
 @contextmanager
 def skipped_hash_check(ref: assets.AssetRef) -> Iterator[None]:
-    """pooch is not given the hash, and the full hash after it says what the reference says."""
+    """The stream is not hashed as it arrives, and the full hash after it says what the reference says."""
     with pytest.MonkeyPatch.context() as patch:
         def unchecked(location: str, held: assets.AssetRef, directory: Path) -> Path:
-            return Path(pooch.retrieve(url=location, known_hash=None, fname=held.sha256, path=directory))
+            target = directory / held.sha256
+            _fetch._transfer(location, held, target, check_hash=False)  # pyright: ignore[reportPrivateUsage]
+            return target
 
         patch.setattr(_fetch, "_download", unchecked)
         patch.setattr(_fetch, "sha256_of_file", lambda path: ref.sha256)

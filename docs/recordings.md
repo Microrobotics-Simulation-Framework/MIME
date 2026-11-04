@@ -51,7 +51,7 @@ experiment's declarations alone, the same bytes for the same declarations. For a
 - **A prim for every field a law reads at a body** (a flux density), below its apparatus: an arrow, hidden until a
   recording or a client gives it a value.
 - **What each frame draws** below it: its description's visuals (`visuals/`), a box, cylinder or sphere as its USD
-  primitive, a mesh as a prim naming its visual set and the sha256 of its source; and the simple shapes that stand in
+  primitive, a mesh as a prim naming its manifest and the sha256 of its source; and the simple shapes that stand in
   for meshes the stage does not hold (`fallback/`): a bone from the frame's origin to each child's, and a link's
   collision primitives.
 - **Drawn proxies within a triangle budget**: a geometry kind with no USD primitive (the screw) is drawn at fewer facets
@@ -66,34 +66,45 @@ current writer's stage.
 
 ## Visuals MIME does not ship
 
-Some descriptions' meshes cannot be redistributed. The AR4's are Annin Robotics' design: their licence forbids
-redistributing or hosting them in any form, and allows educational, research and personal non-commercial use. MIME
-ships a **recipe** for them, the visual set `ar4_mk5`, and never their bytes:
+Some descriptions' meshes cannot be redistributed. The AR4's are Annin Robotics' design files, under its
+non-commercial licence, which forbids redistributing or hosting them in any form, converted or decimated copies
+included, and allows educational, research and personal non-commercial use. The description's kinematics and inertial
+values are MIT. Neither distribution of MIME holds the AR4: its description folder, `examples/descriptions/ar4/` in the
+sdist and the repository, holds the URDF with its MIT licence and a **manifest** of its meshes (`visuals.json`), never
+their bytes. An experiment that reads the URDF finds the manifest beside it, so choosing the robot brings its meshes'
+records:
 
 ```sh
-mime visuals list              # each set, fetched or not, with its licence, tier and role
-mime visuals fetch ar4_mk5     # prints the credit and the terms, then downloads and bakes
-mime visuals view a0_run       # the layer that opens the run's recording with the meshes drawn
+mime visuals fetch examples/descriptions/ar4/   # prints the credit and the terms, then downloads and bakes
+mime visuals fetch a0_saved/                    # the same, from the records a saved folder's lock holds
+mime visuals list                               # each set an installed package ships, and each baked one
+mime visuals view a0_run                        # the layer that opens the run's recording with the meshes drawn
 ```
 
-- **The recipe** names the upstream repository at a pinned commit and each file by the path a description writes it
-  with, its sha256 and its git blob, with the set's licence (an SPDX `LicenseRef-`), its tier (no redistribution: the
-  bytes are referenced, never uploaded) and its role (presentation: no result depends on it).
+- **The manifest** is a named group of ordinary asset records (`mime.assets`): each file by the path a description
+  writes it with, its sha256 and its git blob, at the upstream repository at a pinned commit, with its licence (an
+  SPDX `LicenseRef-` whose custom licence says redistribution is not permitted) and its role (presentation: no result
+  depends on it). Its tier is the licence's verdict, `referenced`, never a value written by hand. A saved folder's lock
+  holds the manifests its stage draws (`visuals`), so the records travel with the folder and its bytes never do.
 - **Fetching** downloads each file from that commit through the asset cache's one resolver, held to its sha256,
   decimates it to its share of the set's triangle budget (vertex clustering; every vertex moves at most a cell's
   diagonal), measures its distance to the original from every vertex of each to the other's surface, both ways (so
   that no denser sample of vertices finds more), and writes it as a USD layer in the asset cache, under `visuals/`,
-  with a record of its source, parameters, checks and output. The record keeps both directions: a baked vertex lies
+  with a record of its source, parameters, checks and output, and its tier: a baked mesh is a derived file, and takes
+  the strictest terms of its source, so the AR4's are referenced too. The record keeps both directions: a baked vertex lies
   within the clustering cell's diagonal of the original, but an original vertex need not lie within it of the bake,
   where a feature thinner than a cell collapsed and its triangles were dropped, so that direction is measured, not
   bounded.
-- **The stage refers to a mesh by its set and its source's sha256**, never by a path into the cache, and holds none of
-  its bytes. When it is opened through `mime visuals view` or `mime.viz.open_stage`, or by a client from the overlay
+- **The stage refers to a mesh by its manifest's name and its source's sha256**, never by a path into the cache, and
+  holds none of its bytes. A saved stage's names are its pins: loaded, the experiment's stage names each mesh as it was
+  saved, whatever manifest is beside its description now, and the build report says where one names another file. When it is opened through `mime visuals view` or `mime.viz.open_stage`, or by a client from the overlay
   `hello` names, an overlay in the cache references each baked mesh into its prim and hides the bones. Without it, the
   links are drawn as bones, and `mime visuals view` and `hello` say which sets are missing and how to fetch them, with
   each set's notice (its credit and terms) whether it is drawn or not.
 - **Nothing of it is ever written into a saved folder or a run folder**, so `mime pack` cannot carry it: a test packs
   A0's saved folder and a live session's run folder with a stand-in baked in the cache, and finds none of its bytes.
+  `mime assets audit` finds a baked mesh copied anywhere (a tree, a wheel), by its hash, and `mime pack` and `mime push`
+  refuse one copied into an experiment as its author's own file (`bundle.referenced-copy`, `push.referenced-copy`).
 
 The triangle budget is a presentation setting with its basis (`mime.viz.TriangleBudget`): the earlier line's AR4
 meshes at CAD density shimmered in the viewport, their triangles smaller than its pixels, and drew slowly on a

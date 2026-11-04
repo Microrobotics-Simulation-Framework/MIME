@@ -395,7 +395,7 @@ def test_the_lock_names_each_reference_and_its_asset_as_the_save_writes_them(tmp
         folder, (path,) = saved(tmp_path, [Spec("not permitted", NO_REDISTRIBUTION, 4000, True, False)])
     lock = json.loads((folder / "mime.lock").read_text())
     data = path.read_bytes()
-    assert lock["schema"] == "mime.lock/5"
+    assert lock["schema"] == "mime.lock/6"
     assert lock["referenced_files"] == {f"scene/layers/{path.name}": path.name}
     assert lock["assets"] == [{"name": path.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
                                "licence": NO_REDISTRIBUTION.id, "locations": [ORIGIN.format(path.name)]}]
@@ -415,7 +415,7 @@ def pack_carries_everything() -> Iterator[None]:
     """The plant: a pack whose judgement lets every file travel, and a save that writes no reference."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_bundle, "referenced_members", lambda judged, lock, own=frozenset(): ({}, []))
-        patch.setattr(_record, "referenced_assets", lambda document, files, taken: [])
+        patch.setattr(_record, "referenced_assets", lambda document, files, taken, derived=None: [])
         yield
 
 
@@ -423,7 +423,7 @@ def pack_carries_everything() -> Iterator[None]:
 def save_writes_no_reference() -> Iterator[None]:
     """The plant: a save that writes no reference, which ``pack``'s own judgement must catch."""
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(_record, "referenced_assets", lambda document, files, taken: [])
+        patch.setattr(_record, "referenced_assets", lambda document, files, taken, derived=None: [])
         yield
 
 

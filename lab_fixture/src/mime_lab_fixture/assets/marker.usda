@@ -1,0 +1,11 @@
+#usda 1.0
+(
+    defaultPrim = "Marker"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Sphere "Marker"
+{
+    double radius = 0.001
+}

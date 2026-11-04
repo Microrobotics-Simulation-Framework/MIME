@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/5"
-LOCK_SCHEMA = "mime.lock/5"
+DOCUMENT_SCHEMA = "mime.document/6"
+LOCK_SCHEMA = "mime.lock/6"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -325,9 +325,11 @@ class ExperimentDocument(TypedDict, closed=True):
     each custom licence named, by its ``LicenseRef-`` id; ``terms``, each third-party file's, by its path below the
     folder; and ``permissions``, each declared permission (``mime.terms``).
 
-    Version 5 adds ``run.duration``, the length of a run of the experiment, absent where it declares none."""
+    Version 5 adds ``run.duration``, the length of a run of the experiment, absent where it declares none. Version 6
+    adds nothing to the document; its schema moves with the lock's, which holds an asset's full record and the
+    manifests of the meshes its stage draws."""
 
-    schema: ReadOnly[Literal["mime.document/5"]]
+    schema: ReadOnly[Literal["mime.document/6"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     profile: ReadOnly[Literal["exploratory", "research", "strict"]]
@@ -530,14 +532,26 @@ class AssetRecord(TypedDict, closed=True):
 
 
 class RemoteAssetRecord(TypedDict, closed=True):
-    """A remote asset as the lock names it, for a file too large to be saved with the experiment: ``mime.assets``'s
-    ``AssetRecord`` (a test holds the two together). Locations are tried in order."""
+    """An asset as the lock names it, the full record (``mime.assets``'s ``AssetRecord``; a test holds the two
+    together): the five keys every record has, and from version 6 each one the record states (its credit, role, kind
+    and derivation, notice, custom licences, version, citation, and the packages that provide the adapters its
+    locations need). Locations are tried in order; the lock holds only the record's own, never a machine's locations
+    file's."""
 
     name: ReadOnly[str]
     sha256: ReadOnly[str]
     size: ReadOnly[int]
     licence: ReadOnly[str]
     locations: ReadOnly[list[str]]
+    credit: NotRequired[ReadOnly[str]]
+    role: NotRequired[ReadOnly[Literal["results", "presentation"]]]
+    kind: NotRequired[ReadOnly[Literal["authored", "measured", "derived"]]]
+    derivation: NotRequired[ReadOnly[str]]
+    notice: NotRequired[ReadOnly[str]]
+    licences: NotRequired[ReadOnly[dict[str, CustomLicenceDoc]]]
+    version: NotRequired[ReadOnly[str]]
+    citation: NotRequired[ReadOnly[str]]
+    adapters: NotRequired[ReadOnly[dict[str, str]]]
 
 
 class MagnetRecord(TypedDict, closed=True):
@@ -722,12 +736,37 @@ class PublicationRecord(TypedDict, closed=True):
     version: ReadOnly[int]
 
 
+class ManifestFileRecord(TypedDict, closed=True):
+    """How a description names one of a manifest's files: the record's name, and its git blob where it has one."""
+
+    asset: ReadOnly[str]
+    git_blob: NotRequired[ReadOnly[str]]
+
+
+class ManifestRecord(TypedDict, closed=True):
+    """A manifest of the meshes the stage draws, as the lock holds it (``mime.assets``'s ``mime.asset_manifest/1``):
+    its name, title, credit and notice, each record whole, and how a description names each file. No tier: each
+    record's is the verdict of its licence."""
+
+    format: ReadOnly[Literal["mime.asset_manifest/1"]]
+    name: ReadOnly[str]
+    title: ReadOnly[str]
+    credit: ReadOnly[str]
+    notice: ReadOnly[str]
+    licences: NotRequired[ReadOnly[dict[str, CustomLicenceDoc]]]
+    upstream: NotRequired[ReadOnly[dict[str, str]]]
+    archives: ReadOnly[list[str]]
+    archive_checked: NotRequired[ReadOnly[str]]
+    assets: ReadOnly[list[RemoteAssetRecord]]
+    files: ReadOnly[dict[str, ManifestFileRecord]]
+
+
 class Lock(TypedDict, closed=True):
     """What a build wrote beside the document: the environment, the entries and their distributions, the derived
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/5"]]
+    schema: ReadOnly[Literal["mime.lock/6"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -742,6 +781,10 @@ class Lock(TypedDict, closed=True):
     #: ``assets`` that holds them (version 4): a file that may not be redistributed, or one over the size a bundle
     #: carries that has an origin. Outside the input hash, as ``assets`` is.
     referenced_files: NotRequired[ReadOnly[dict[str, str]]]
+    #: The manifests of the meshes the stage draws, by name (version 6): their records, never their bytes, so that
+    #: ``mime visuals fetch <folder>`` fetches and bakes them wherever the folder goes. Outside the input hash, as
+    #: ``assets`` is; the stage itself pins each mesh by its manifest's name and its sha256.
+    visuals: NotRequired[ReadOnly[dict[str, ManifestRecord]]]
     #: The record of the published bundle that holds this lock (``mime push``), so the folder names the record it is
     #: and ``mime pack`` makes the published bundle again. Outside the input hash, as ``assets`` is.
     publication: NotRequired[ReadOnly[PublicationRecord]]
@@ -875,7 +918,8 @@ __all__ = [
     "ExperimentDocument",
     "ExtrapolationDoc", "FileDoc", "GeometryRecord", "GpuRecordDoc", "GroupDoc", "GroupRecord", "GroupedValue",
     "HashRecord", "Json",
-    "Lock", "MagnetDoc", "MagnetRecord", "MaterialDoc", "NominalDoc", "PartDoc", "PartRecord", "QuantityDoc",
+    "Lock", "MagnetDoc", "ManifestFileRecord", "ManifestRecord", "MagnetRecord", "MaterialDoc", "NominalDoc",
+    "PartDoc", "PartRecord", "QuantityDoc",
     "PublicationRecord", "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord",
     "RegistrationRecord", "RemoteAssetRecord",
     "ResolvedController", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",

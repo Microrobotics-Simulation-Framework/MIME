@@ -37,6 +37,19 @@
   each with why (`asset.missing`);
   `fetch` hashes each file in full, cached ones too; `check` re-hashes every cached file in full and exits one when a file is corrupt, marking it so that a build refuses it until a fetch repairs it. The verbs are named in one place,
   `mime/assets/_commands.py`.
+- `mime assets sources <name-or-folder>...`: each asset's terms, tier and locations in the order a fetch tries them
+  (this machine's locations file's first), each looked at now without downloading it: reachable or not, and why;
+  offline, it says it did not look.
+- `mime assets audit <wheel|sdist|archive|directory>... [--manifest FILE]`: the guard. It hashes every file, inside
+  archives, compressed streams and base64 blocks too (each opened by its bytes, never its name), and finds any file
+  whose bytes are a referenced record's (every record known here: the installed sources', each manifest, lock and
+  record file inside the target, and those given), a derived file of one (by its record's derivation, or baked from
+  one into the local cache), and a mesh or scene file no record names (its format read from its bytes); it exits one
+  when it finds anything, and refuses (`asset.audit`) a file it cannot read within its limits rather than pass it.
+  MIME's CI runs it on its wheel, its sdist and its committed tree; a plugin's CI runs the same.
+- `mime visuals fetch <description folder | description | manifest | saved or run folder | set>`: fetch and bake a
+  description's meshes from the manifest beside it (or the manifests a saved folder's lock holds); `mime visuals
+  list` lists the sets installed packages ship and every baked one.
 
 - `mime pack <folder> [--out <file>]`: write the saved experiment in the folder as one **bundle** file
   (`<folder>.mimebundle` beside it by default); see [the saved form](../saved/README.md#the-bundle). It checks that the

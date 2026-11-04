@@ -129,3 +129,68 @@ def test_the_wheel_declares_the_command_and_the_toy_namespace(wheel):
     text = wheel.read(entry_points).decode()
     assert "[console_scripts]\nmime = mime.cli:main" in text
     assert "[mime.entries]\ntoy = mime.testing.toys" in text
+
+
+#: The AR4's example description, shipped in the sdist alone: the URDF byte for byte as the 0.2 line's A0 read it
+#: (its sha256 the one ``tests/differential`` holds after the header fix it documents), its MIT licence, and its
+#: meshes' manifest. No mesh is in either distribution.
+AR4_FOLDER = "examples/descriptions/ar4"
+AR4_URDF_SHA256 = "851d2f4ba29f4a49709f0f286c91eabb3fa2d84af59624ff3581d322309ddbc4"
+#: The sha256 of ``LICENSE`` in Annin Robotics' ``ar4_ros_driver`` at commit 6a3ebb11cedab12cd1d29b41d63aa270a008ab8b,
+#: read from the upstream file: the URDF's MIT notice ships as the upstream text and copyright line, byte for byte.
+AR4_LICENSE_SHA256 = "717977043020350ff6fbb8b1be5fd2b604dfe5056d74cebaaee580d028073d09"
+
+
+def _sdist_member(sdist: tarfile.TarFile, path: str) -> bytes:
+    (member,) = [m for m in sdist.getmembers() if m.name.endswith("/" + path)]
+    held = sdist.extractfile(member)
+    assert held is not None
+    return held.read()
+
+
+def test_the_sdist_ships_the_ar4s_description_with_its_mit_notice_and_the_wheel_does_not(wheel, sdist):
+    urdf = _sdist_member(sdist, f"{AR4_FOLDER}/ar4.urdf")
+    assert hashlib.sha256(urdf).hexdigest() == AR4_URDF_SHA256
+    licence = _sdist_member(sdist, f"{AR4_FOLDER}/LICENSE").decode()
+    assert hashlib.sha256(licence.encode()).hexdigest() == AR4_LICENSE_SHA256, "the upstream LICENSE, byte for byte"
+    assert hashlib.sha256((ROOT / AR4_FOLDER / "LICENSE").read_bytes()).hexdigest() == AR4_LICENSE_SHA256
+    assert licence.startswith("MIT License\n\nCopyright (c) 2021 Dexter Ong\n")
+    assert "The above copyright notice and this permission notice shall be included" in licence
+    assert b'"format": "mime.asset_manifest/1"' in _sdist_member(sdist, f"{AR4_FOLDER}/visuals.json")
+    assert not [name for name in wheel.namelist() if "ar4" in name.lower()]
+
+
+def test_neither_distribution_holds_a_file_that_may_not_be_redistributed_or_an_unrecorded_mesh(wheel, sdist,
+                                                                                             tmp_path, monkeypatch):
+    from mime import assets
+
+    monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "cache"))
+    for built in (wheel.filename, sdist.name):
+        assert built is not None
+        report = assets.audit(str(built), manifests=[ROOT / AR4_FOLDER / "visuals.json"])
+        assert report.findings == (), report.text()
+        assert report.files > 100
+
+
+def test_control_a_planted_copy_in_the_wheel_fails_the_guard(wheel, tmp_path, monkeypatch):
+    """A made STL planted in a copy of the wheel, once with a record that forbids its redistribution and once with
+    none: the guard finds both."""
+    import json
+    import struct
+
+    from mime import assets
+
+    monkeypatch.setenv("MIME_ASSETS_DIR", str(tmp_path / "cache"))
+    made = b"made".ljust(80, b"\0") + struct.pack("<I", 2) + bytes(100)
+    held = json.loads((ROOT / AR4_FOLDER / "visuals.json").read_text(encoding="utf-8"))
+    held["assets"][0]["sha256"], held["assets"][0]["size"] = hashlib.sha256(made).hexdigest(), len(made)
+    (tmp_path / "visuals.json").write_text(json.dumps(held), encoding="utf-8")
+    planted = tmp_path / "planted.whl"
+    assert wheel.filename is not None
+    with zipfile.ZipFile(wheel.filename) as source, zipfile.ZipFile(planted, "w") as copy:
+        for info in source.infolist():
+            copy.writestr(info, source.read(info))
+        copy.writestr("mime/data/visuals/link.STL", made)
+    found = assets.audit(planted, manifests=[tmp_path / "visuals.json"]).findings
+    assert [(each.path, each.kind) for each in found] == [("mime/data/visuals/link.STL", "referenced")]
+    assert [each.kind for each in assets.audit(planted).findings] == ["unrecorded mesh"]

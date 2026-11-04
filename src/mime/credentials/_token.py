@@ -84,6 +84,20 @@ class Token:
         """Whether ``data`` holds the token in any form :func:`_forms` lists."""
         return any(form in data for form in self._forms)
 
+    def hidden_in(self, text: str, mask: str) -> str:
+        """``text`` with the token, in every form :func:`_forms` lists that is text, replaced by ``mask``: what a
+        message, a log line or a refusal may say of text another party wrote (an adapter's error), whatever it
+        holds."""
+        forms: set[str] = set()
+        for form in self._forms:
+            try:
+                forms.add(form.decode("utf-8"))
+            except UnicodeDecodeError:
+                continue
+        for form in sorted((each for each in forms if each), key=len, reverse=True):
+            text = text.replace(form, mask)
+        return text
+
     @override
     def __repr__(self) -> str:
         return f"<Token for {self._service}: masked>"

@@ -8,17 +8,18 @@ import importlib.metadata
 import json
 import platform
 import sys
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 import jax
 
-from mime.assets import AssetRef, reference
+from mime.assets import AssetRef, Manifest, active_pins, derived_verdicts, reference, with_adapters
 from mime.build import LATENCY_RULE, BuildRefused, ControllerPlan, Declaration, Mode, PlanSet, Refusal, RefusalClass, \
     RunSettings
 from mime.build._derived import HASH_RECIPE, DerivedGraph, sha256_of
 from mime.build._plan import EntryPlan
+from mime.build._stage import stage_manifests
 from mime.data import Asset, asset_source
 from mime.env._host import (
     cpu_record,
@@ -32,6 +33,7 @@ from mime.env._host import (
 from mime.materials import RECORDS, LoadedRecord
 from mime.registry import SettingGroup, placed_gradient, rung_gradient
 from mime.saved._document import (
+    declared_records,
     SCENE_FOLDER,
     UnsavableError,
     all_settings,
@@ -61,6 +63,7 @@ from mime.saved._schema import (
     Json,
     Lock,
     MagnetRecord,
+    ManifestRecord,
     PartRecord,
     ReadRecord,
     RecordDoc,
@@ -340,6 +343,8 @@ class SavedRecord:
     #: Each file whose bytes travel as a reference, by its path below the folder, with the asset that holds them: the
     #: lock's ``referenced_files``, its assets beside the remote ones.
     referenced: tuple[tuple[str, AssetRef], ...] = ()
+    #: The manifests of the meshes the stage draws, by name: the lock's ``visuals``.
+    visuals: Mapping[str, Manifest] = field(default_factory=dict[str, Manifest])
 
     @property
     def stage_hash(self) -> str:
@@ -372,7 +377,7 @@ class SavedRecord:
         held = {ref.sha256: ref for ref in self.remote_assets}
         for _, ref in self.referenced:
             held.setdefault(ref.sha256, ref)
-        return [cast(RemoteAssetRecord, dict(ref.to_record())) for ref in held.values()]
+        return [cast(RemoteAssetRecord, dict(with_adapters(ref).to_record())) for ref in held.values()]
 
     def lock(self, reference: ReferenceRecord) -> Lock:
         lock: Lock = {
@@ -391,6 +396,9 @@ class SavedRecord:
             lock = {**lock, "assets": self.remote_asset_records()}
         if self.referenced:
             lock = {**lock, "referenced_files": {path: ref.name for path, ref in sorted(self.referenced)}}
+        if self.visuals:
+            lock = {**lock, "visuals": {name: cast(ManifestRecord, held.to_json())
+                                        for name, held in sorted(self.visuals.items())}}
         return lock
 
 
@@ -420,12 +428,16 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
     if document is not None and "terms" in document:
         sizes = {f"{SCENE_FOLDER}/{layer.file}": (layer.sha256, len(layer.content)) for layer in plans.scene.layers}
         sizes.update({path: (sha256_hex(content), len(content)) for path, content in files})
+        whole = {ref.sha256: ref for ref in active_pins().values()} | declared_records(settings, declarations)
         try:
-            referenced = tuple(referenced_assets(document, sizes, [ref.name for ref in remote]))
+            referenced = tuple(referenced_assets(document, sizes, [ref.name for ref in remote],
+                                                 derived_verdicts([*whole.values(), *remote])))
         except BuildRefused as error:
             unsavable += error.refusals
+        referenced = tuple((path, whole.get(ref.sha256, ref)) for path, ref in referenced)
     return SavedRecord(document, resolved_record(plans), tuple(entries), seeds, environment(), derived,
-                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files, remote, referenced)
+                       tuple(unsavable), stage, plans.scene.layers, plans.materials.records, files, remote, referenced,
+                       stage_manifests(plans))
 
 
 def remote_assets(plans: PlanSet) -> tuple[AssetRef, ...]:

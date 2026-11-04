@@ -2,7 +2,7 @@
 
 - ``planar()``: the three-link planar arm (``descriptions/three_link_planar.urdf``), whose forward kinematics has a
   closed form;
-- ``ar4()``: A0's arm (``descriptions/ar4.urdf``, as the 0.2 line ships it), a six-joint serial chain whose visual
+- ``ar4()``: A0's arm (``examples/descriptions/ar4/ar4.urdf``, as the 0.2 line ships it), a six-joint serial chain whose visual
   links are welded on by fixed joints;
 - ``coupled_planar()``: two strongly coupled links built in code, for the dynamic arm's stops and friction;
 - ``branched()``: a tree built in code that the two files do not exercise: a branch, a prismatic joint, a fixed joint
@@ -25,7 +25,8 @@ from mime.core.multibody import Body, Frame, Inertial, Joint, JointKind, JointLi
     read_urdf
 
 DESCRIPTIONS = Path(__file__).parent / "descriptions"
-PLANAR_URDF, AR4_URDF = DESCRIPTIONS / "three_link_planar.urdf", DESCRIPTIONS / "ar4.urdf"
+PLANAR_URDF = DESCRIPTIONS / "three_link_planar.urdf"
+AR4_URDF = Path(__file__).parents[1] / "examples" / "descriptions" / "ar4" / "ar4.urdf"
 #: The planar arm's link lengths, from its file.
 PLANAR_LENGTHS = (1.0, 1.0, 0.5)
 EPS = float(np.finfo(np.float64).eps)

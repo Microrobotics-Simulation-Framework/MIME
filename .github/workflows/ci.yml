@@ -781,6 +781,27 @@ jobs:
           rm src/mime/_planted_type_error.py
       - name: Build the wheel
         run: uv build --wheel
+      # The guard (mime assets audit): neither distribution, nor the tree a release's source archive and Zenodo's
+      # snapshot of a tag hold, carries a file whose terms let no copy be hosted (the AR4's meshes among them, by the
+      # manifest's hashes), a mesh baked from one, or a mesh with no record. A plugin's CI runs the same command.
+      - name: No file that may not be redistributed in the wheel, the sdist or the committed tree
+        run: |
+          uv build --sdist
+          git archive --format=tar -o "$RUNNER_TEMP/tree.tar" HEAD
+          uv run --no-sync mime assets audit dist/*.whl dist/*.tar.gz "$RUNNER_TEMP/tree.tar" \
+            --manifest examples/descriptions/ar4/visuals.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Control, a made mesh planted in a copy of the wheel fails the guard
+        run: |
+          cp dist/*.whl "$RUNNER_TEMP/planted.whl"
+          uv run --no-sync python -c "
+          import struct, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1], 'a') as wheel:
+              wheel.writestr('mime/data/planted.STL', b'planted'.ljust(80, b'\0') + struct.pack('<I', 1) + bytes(50))
+          " "$RUNNER_TEMP/planted.whl"
+          if uv run --no-sync mime assets audit "$RUNNER_TEMP/planted.whl"; then
+            echo "::error::the guard passed a wheel holding a planted mesh, so it cannot fail"
+            exit 1
+          fi
       - name: A consumer's code type-checks against the installed wheel
         run: |
           uv venv "$RUNNER_TEMP/consumer" --python 3.12

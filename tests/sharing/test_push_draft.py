@@ -407,9 +407,12 @@ def test_no_asset_whose_licence_forbids_it_is_ever_chosen_for_upload(drawn: list
 
 def test_control_a_choice_that_uploads_every_asset_is_caught_every_run(ar4: Path, token: str, tmp_path: Path,
                                                                        monkeypatch: pytest.MonkeyPatch):
+    """The planted choice, with the record's payload check planted away too (``upload_problems``, which refuses it on
+    its own: ``tests/sharing/test_records_travel.py``): the bucket's own record of what it holds sees the upload."""
     real = _plan.asset_choices
     monkeypatch.setattr(_plan, "asset_choices", lambda refs, judged, lock, own=frozenset(): [
         _plan.AssetChoice(each.ref, each.verdict, True, "planted") for each in real(refs, judged, lock, own)])
+    monkeypatch.setattr(_plan, "upload_problems", lambda files, lock: [])
     import shutil
 
     from mime import assets

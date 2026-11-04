@@ -1,0 +1,17 @@
+{
+  "about": "The lab's own records: found through its mime.assets entry point, their bytes inside this package.",
+  "assets": [
+    {
+      "name": "labx_marker.usda",
+      "sha256": "22686ed3da1c56a1b87f3f7df9bd18fbe8ec19418c3cef7aa5f1922503282670",
+      "size": 131,
+      "licence": "CC-BY-4.0",
+      "locations": [
+        "package:labx/marker.usda"
+      ],
+      "credit": "the lab fixture's authors",
+      "role": "presentation",
+      "kind": "authored"
+    }
+  ]
+}

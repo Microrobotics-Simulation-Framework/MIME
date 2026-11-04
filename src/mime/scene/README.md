@@ -189,10 +189,20 @@ sphere about its centroid that holds it (`enclosing_radius`).
 - **A field a law reads at a body** (a vector in the world's axes, the flux density a torque reads) has a prim below
   its apparatus, an arrow hidden until a recording or a client gives it a value (`mime:vector:value`).
 - **A description's visuals** are drawn below each frame's prim: a box, a cylinder or a sphere as its USD primitive;
-  a mesh as an `Xform` naming its visual set and the sha256 of its source (`mime:visual:asset`,
+  a mesh as an `Xform` naming its manifest and the sha256 of its source (`mime:visual:asset`,
   `mime:visual:sha256`), never its bytes; and, where the stage holds no mesh, bones from each frame's origin to its
-  children's (`fallback/`). The visual sets are `mime.data`'s `visuals/` recipes (`visual_sets()`, `mesh_source`),
-  read here so that the stage writer can name them; `mime.viz` fetches and bakes them into the asset cache.
+  children's (`fallback/`). The manifest is found where the description is kept, never in MIME's own data
+  (`mesh_source`): beside the description file (`<its stem>.visuals.json`, else `visuals.json`), so choosing a robot
+  brings its meshes' records, then among the manifests installed packages ship through a `mime.assets` entry point
+  (`visual_sets()`). A loaded experiment's mesh prims keep what its saved stage names (`pinned_visuals`), whatever
+  manifest is found now; the build report says where one names another file. `mime.viz` fetches and bakes them into
+  the asset cache.
+- **A file declared by its record**: `asset(AssetRef(...))` declares a file the experiment reads (a layer, a
+  description) by its whole record, a scan one study uses: the record's sha256 pins it, its licence, credit, role and
+  locations are its terms and origin, and the build reads it from the asset cache (under the record's name, so a USD
+  layer keeps its extension), never downloading it; a file not there is refused as `asset.missing` with the command.
+  `asset(path, sha256=, terms=)` stays the way to declare a file on disk; `mime.data.asset(name)` names MIME's own
+  packaged files.
 - **A drawn proxy holds at most its triangle budget** (`PROXY_TRIANGLES` in `mime.build`): a kind whose drawing at the
   writer's resolution would hold more is drawn at fewer facets a turn, and its proxy records the facets it was drawn
   at. The screw's proxy was nearly all of A0's saved stage.

@@ -101,7 +101,7 @@ def test_a_bundle_holds_the_folder_and_a_manifest_that_describes_it(folder: Path
     on_disk = {path.relative_to(folder).as_posix(): path.read_bytes() for path in folder.rglob("*") if path.is_file()}
     assert held == on_disk and set(on_disk) >= {"experiment.mime.yaml", "mime.lock", "reference.npz", "scene/scene.usda"}
     assert manifest == manifest_of(on_disk, "full_toy", notice=notice)
-    assert manifest["format"] == "mime.bundle/2" and manifest["assets"] == [] and manifest["referenced"] == {}
+    assert manifest["format"] == "mime.bundle/3" and manifest["assets"] == [] and manifest["referenced"] == {}
 
 
 def test_the_same_folder_makes_the_same_bytes(folder: Path, tmp_path: Path):

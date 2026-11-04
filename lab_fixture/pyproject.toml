@@ -14,5 +14,13 @@ dependencies = ["mime-engine[verify]"]
 [project.entry-points."mime.entries"]
 labx = "mime_lab_fixture"
 
+# Where MIME finds the lab's records (a package's data, read without running anything a record names), and the lab's
+# own storage adapter for locations of the scheme labstore.
+[project.entry-points."mime.assets"]
+labx = "mime_lab_fixture.assets"
+
+[project.entry-points."mime.asset_adapters"]
+labstore = "mime_lab_fixture.assets:LabStore"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/mime_lab_fixture"]

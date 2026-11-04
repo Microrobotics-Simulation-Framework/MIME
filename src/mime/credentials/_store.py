@@ -17,6 +17,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import re
 import secrets
 import stat
 import subprocess
@@ -31,6 +32,10 @@ from mime.credentials._token import Token
 
 #: The services a token is kept for, each with the variable that overrides the file.
 SERVICES: Mapping[str, str] = {"zenodo": "ZENODO_TOKEN", "zenodo-sandbox": "ZENODO_SANDBOX_TOKEN"}
+#: A host's own token, for an asset adapter that needs a credential (``host:files.lab.example.org``): sent by the
+#: resolver to that host alone, never across a redirect to another. It has no environment variable.
+HOST_PREFIX = "host:"
+_HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
 
 CREDENTIALS_FILE = "credentials"
 DIRECTORY_MODE = 0o700
@@ -46,10 +51,21 @@ def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Bui
     return BuildRefused([Refusal(code, category, message, action)])
 
 
+def host_service(host: str) -> str:
+    """The name a host's own token is kept under: ``host:<host>``, the host lowercase."""
+    return HOST_PREFIX + host.lower()
+
+
+def is_host_service(service: str) -> bool:
+    """Whether ``service`` names a host's own token, ``host:<a host name>``."""
+    return service.startswith(HOST_PREFIX) and _HOST_NAME.fullmatch(service.removeprefix(HOST_PREFIX)) is not None
+
+
 def check_service(service: str) -> None:
-    if service not in SERVICES:
+    if service not in SERVICES and not is_host_service(service):
         raise _refuse("credentials.service", RefusalClass.USER, f"no service is called {service!r}",
-                      f"name one of them, `mime credentials set <service>`: {', '.join(SERVICES)}")
+                      f"name one of them, `mime credentials set <service>`: {', '.join(SERVICES)}, or a host's own "
+                      f"token for an asset adapter, host:<host name>")
 
 
 def credentials_path() -> Path:
@@ -144,6 +160,8 @@ def _write(path: Path, held: Mapping[str, Token]) -> None:
 
 
 def _from_environment(service: str) -> Token | None:
+    if service not in SERVICES:
+        return None
     found = Token(service, os.environ.get(SERVICES[service], "").strip())
     return found if found.length else None
 

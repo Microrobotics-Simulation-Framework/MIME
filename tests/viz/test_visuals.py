@@ -1,17 +1,18 @@
-"""A description's visuals in the stage: the AR4's eighteen meshes named on their frames by the visual set's name and
+"""A description's visuals in the stage: the AR4's eighteen meshes named on their frames by the manifest's name and
 each file's sha256, never their bytes, with bones from its frames drawn in their place; the asset cache's overlay
 drawing the baked meshes (a synthetic stand-in, ``visual_cases.planted``: CI never fetches the AR4) and hiding the
-bones; and, with no bake in the cache, the stage drawing the bones and saying so. The recipe itself: every visual mesh
-of MIME's AR4 description is one of its files, pinned to one upstream commit, with its credit, licence and tier."""
+bones; and, with no bake in the cache, the stage drawing the bones and saying so. The manifest itself, beside the
+description in the example folder (MIME's own data holds none): every visual mesh of the AR4 description is one of
+its records, pinned to one upstream commit, with its credit and licence, and its tier the verdict of that licence."""
 
 import re
 import warnings
 from pathlib import Path
 
 import pytest
-from chain_cases import AR4, kinematic_rpm
+from chain_cases import AR4, AR4_VISUALS, kinematic_rpm
 from pxr import Usd, UsdGeom
-from visual_cases import planted
+from visual_cases import ar4_manifest, planted
 
 from mime.core.multibody import read_urdf
 from mime.scene import VISUAL_ASSET, VISUAL_ROLE, VISUAL_SHA256, mesh_path, mesh_source, visual_sets
@@ -40,28 +41,42 @@ def ar4_meshes() -> list[str]:
         return [s.mesh or "" for s in read_urdf(AR4).shapes if s.role == "visual" and s.kind == "mesh"]
 
 
-def test_every_visual_mesh_of_the_ar4_is_a_file_of_its_pinned_set():
-    held = visual_sets()["ar4_mk5"]
+def test_every_visual_mesh_of_the_ar4_is_a_record_of_the_manifest_beside_it():
+    held = ar4_manifest()
     assert sorted(mesh_path(m) for m in ar4_meshes()) == sorted(f.path for f in held.files) and len(held.files) == 18
     commit = held.upstream["commit"]
     assert re.fullmatch(r"[0-9a-f]{40}", commit)
-    for source in held.files:
-        assert re.fullmatch(r"[0-9a-f]{64}", source.sha256) and re.fullmatch(r"[0-9a-f]{40}", source.git_blob)
-        assert source.location == (f"https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/{commit}/"
-                                   f"annin_ar4_description/{source.path}")
-    assert (held.licence, held.tier, held.role) == ("LicenseRef-Annin-Robotics-NonCommercial", "no-redistribution",
-                                                    "presentation")
+    for each in held.files:
+        source = held.record(each.asset)
+        assert source is not None and each.git_blob is not None
+        assert re.fullmatch(r"[0-9a-f]{64}", source.sha256) and re.fullmatch(r"[0-9a-f]{40}", each.git_blob)
+        assert source.locations == (f"https://raw.githubusercontent.com/Annin-Robotics/ar4_ros_driver/{commit}/"
+                                    f"annin_ar4_description/{each.path}",)
+        assert (source.licence, source.role, source.tier) == ("LicenseRef-Annin-Robotics-NonCommercial",
+                                                              "presentation", "referenced")
+        assert source.verdict.status == "not_permitted", "the licence is declared to forbid redistribution"
     assert "Annin Robotics" in held.credit and "non-commercial" in held.notice.lower()
-    assert mesh_source("package://annin_ar4_description/meshes/ar4_mk5/Link_1_Aluminum.STL") is not None
-    assert mesh_source("meshes/elsewhere/Link_1_Aluminum.STL") is None
+    assert "derived files included" in held.notice and "MIT" in held.notice
+    assert mesh_source("package://annin_ar4_description/meshes/ar4_mk5/Link_1_Aluminum.STL", AR4) is not None
+    assert mesh_source("meshes/elsewhere/Link_1_Aluminum.STL", AR4) is None
+
+
+def test_mime_ships_no_manifest_of_its_own_and_finds_the_ar4s_only_beside_its_description(tmp_path):
+    """The control for the test above: the same description copied away from its manifest names no mesh."""
+    assert "ar4_mk5" not in visual_sets()
+    alone = tmp_path / "ar4.urdf"
+    alone.write_bytes(AR4.read_bytes())
+    assert mesh_source("meshes/ar4_mk5/Link_1_Aluminum.STL", alone) is None
+    (tmp_path / "ar4.visuals.json").write_bytes(AR4_VISUALS.read_bytes())
+    assert mesh_source("meshes/ar4_mk5/Link_1_Aluminum.STL", alone) is not None, "the description's own name"
 
 
 def test_the_stage_names_each_mesh_by_its_set_and_sha256_and_holds_none_of_its_bytes(stage_file):
     stage = Usd.Stage.Open(str(stage_file))
     named = [(str(prim.GetAttribute(VISUAL_ASSET).Get()), str(prim.GetAttribute(VISUAL_SHA256).Get()))
              for prim in stage.Traverse() if prim.GetAttribute(VISUAL_ASSET)]
-    held = visual_sets()["ar4_mk5"]
-    assert sorted(named) == sorted(("ar4_mk5", f.sha256) for f in held.files)
+    held = ar4_manifest()
+    assert sorted(named) == sorted(("ar4_mk5", ref.sha256) for ref in held.assets)
     meshes = [prim for prim in stage.Traverse() if prim.IsA(UsdGeom.Mesh)]
     assert all("/visuals/" not in str(prim.GetPath()) for prim in meshes)
     bones = [prim for prim in stage.Traverse() if prim.GetAttribute(VISUAL_ROLE) and
@@ -72,7 +87,7 @@ def test_the_stage_names_each_mesh_by_its_set_and_sha256_and_holds_none_of_its_b
 def test_with_nothing_baked_the_stage_draws_its_bones_and_says_so(cache, stage_file):
     found = overlay(stage_file)
     assert found.path is None and found.drawn == 0 and found.missing == {"ar4_mk5": 18}
-    assert "drawn as simple shapes" in found.text() and "mime visuals fetch ar4_mk5" in found.text()
+    assert "drawn as simple shapes" in found.text() and "mime visuals fetch <the description's folder>" in found.text()
     assert view(stage_file)[0] == stage_file
 
 
@@ -114,26 +129,33 @@ def test_a_set_it_does_not_know_and_a_folder_with_no_stage_are_refused(tmp_path)
 
     with pytest.raises(ArgumentRefused, match="visuals.unknown-set"):
         fetch("ar5_mk9", say=lambda line: None)
+    with pytest.raises(ArgumentRefused, match="visuals.unknown-set"):
+        fetch(tmp_path, say=lambda line: None)
     with pytest.raises(ArgumentRefused, match="visuals.no-stage"):
         view(tmp_path)
 
 
-def test_a_source_that_is_no_mesh_is_refused_by_name(cache, monkeypatch):
-    """A file placed in the cache under its sha256 (so nothing is downloaded) whose bytes are no STL file."""
+def test_a_source_that_is_no_mesh_is_refused_by_name(cache, monkeypatch, tmp_path):
+    """A file placed in the cache under its sha256 (so nothing is downloaded) whose bytes are no STL file, named by a
+    manifest in a folder of its own."""
     import hashlib
+    import json
 
     from mime.build import BuildRefused
-    from mime.scene import VisualFile, VisualSet
-    from mime.viz import _visuals, fetch
+    from mime.viz import fetch
 
     data = b"solid nothing\nendsolid nothing\n"
     digest = hashlib.sha256(data).hexdigest()
     cache.mkdir(parents=True)
     (cache / digest).write_bytes(data)
-    planted_set = VisualSet("planted", "a planted set", {}, "CC0-1.0", "https://example.org", "open", "presentation",
-                            "nobody", "none", (), "never", (VisualFile("meshes/x.STL", digest, len(data), "0" * 40,
-                                                                       "https://example.org/x.STL"),))
-    monkeypatch.setattr(_visuals, "visual_sets", lambda: {"planted": planted_set})
+    folder = tmp_path / "planted"
+    folder.mkdir()
+    (folder / "visuals.json").write_text(json.dumps({
+        "format": "mime.asset_manifest/1", "name": "planted", "title": "a planted set", "credit": "nobody",
+        "notice": "none", "archives": [], "assets": [{"name": "planted.x", "sha256": digest, "size": len(data),
+                                                      "licence": "CC0-1.0", "locations": ["https://example.org/x.STL"],
+                                                      "role": "presentation"}],
+        "files": {"meshes/x.STL": {"asset": "planted.x"}}}), encoding="utf-8")
     monkeypatch.setenv("MIME_OFFLINE", "1")
     with pytest.raises(BuildRefused, match="visuals.convert"):
-        fetch("planted", say=lambda line: None)
+        fetch(folder, say=lambda line: None)

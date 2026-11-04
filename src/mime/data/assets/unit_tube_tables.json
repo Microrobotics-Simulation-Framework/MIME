@@ -8,7 +8,10 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/45a4add8fb407ed40cefa0550cd810352722b9ae/unit_tube_2026-10-29b/unit_tube_R0.997.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived",
+      "derivation": "b87974c916d56c6eacd89cf01d6b51425456d29950b5a4ef31f3761ee4baa2a5"
     },
     {
       "name": "unit_tube_R0.997_1667_modes",
@@ -17,7 +20,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/20f4803b178d2eb55c30f702615da4475657665e/unit_tube_2026-10-29/unit_tube_R0.997.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     }
   ]
 }

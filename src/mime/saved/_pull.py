@@ -298,6 +298,32 @@ def packages_needed(lock: Lock) -> list[tuple[str, str, str | None]]:
     return needed
 
 
+def adapters_needed(lock: Lock) -> list[tuple[str, str]]:
+    """Each location scheme the lock's assets need an adapter for that is not registered here, with the package their
+    records name for it (an empty name for an adapter a script registered): listed by ``pull``, never installed. A file
+    placed in the cache by its sha256 is found without the adapter."""
+    from mime.assets import registered_schemes
+
+    present = registered_schemes()
+    needed: dict[str, str] = {}
+    for record in lock.get("assets", []):
+        for scheme, package in record.get("adapters", {}).items():
+            if scheme not in present:
+                needed.setdefault(scheme, package)
+    return sorted(needed.items())
+
+
+def _adapters_line(needed: list[tuple[str, str]]) -> str | None:
+    if not needed:
+        return None
+    named = sorted({package for _, package in needed if package})
+    schemes = ", ".join(f"{plain(scheme)}: (from {plain(package) if package else 'a script, no package'})"
+                        for scheme, package in needed)
+    command = f": pip install {' '.join(shlex.quote(each) for each in named)}" if named else ""
+    return (f"Adapters: the assets' locations need {schemes}, not installed here{command} (the bundle's author chose "
+            f"these: check them first; a file placed in the asset cache by its sha256 is found without them)")
+
+
 def _packages_line(needed: list[tuple[str, str, str | None]]) -> str:
     """The line that lists the packages to install, from the lock a stranger wrote: the names and versions were held to
     PEP 503 and PEP 440 when the lock was read, and the command quotes them for a shell besides."""
@@ -418,6 +444,7 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
              f"  - {_assets_line(outcome, destination)}",
              *([f"  - {referenced}"] if referenced is not None else []),
              f"  - {_packages_line(needed)}",
+             *([f"  - {adapters}"] if (adapters := _adapters_line(adapters_needed(unpacked.lock))) is not None else []),
              tail]
     if say is not None:
         say(Said("\n".join(lines), DONE if outcome.stopped is None else STOPPED))
@@ -426,4 +453,4 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
     return destination
 
 
-__all__ = ["ASSET_CONFIRM_BYTES", "Source", "packages_needed", "parse_source", "pull"]
+__all__ = ["ASSET_CONFIRM_BYTES", "Source", "adapters_needed", "packages_needed", "parse_source", "pull"]

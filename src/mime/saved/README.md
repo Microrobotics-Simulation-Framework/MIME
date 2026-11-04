@@ -25,8 +25,11 @@ The loader is the authority, and the schemas' known gaps against it are listed o
   and compares and never reads, and the runner's information, from `MIME_RUNNER_INFO`, which it stores and never
   compares); every entry used, with the distribution it came from and that
   distribution's version; the derived seeds; the hashes; the resolved record; the derived graph; the record of
-  the reference outputs; and, where there are any, the remote assets (`assets`) and the files that travel as
-  references, each with the asset that holds its bytes (`referenced_files`), both outside the input hash; and, in
+  the reference outputs; and, where there are any, the remote assets (`assets`, each record whole in the current form:
+  its credit, role, kind, custom licences and the packages of the adapters its locations need, and only the record's
+  own locations, never a machine's locations file's), the files that travel as references, each with the asset that
+  holds its bytes (`referenced_files`), and the manifests of the meshes the stage draws (`visuals`: their
+  records, never their bytes), all outside the input hash; and, in
   the lock of a bundle `mime push` published (and of its author's folder once it is published on production), the
   record it is (`publication`: the service, the version's record and DOI, its concept's record and DOI, its number),
   outside the input hash too, so the folder loads and verifies as before and `mime pack` makes the published bundle
@@ -63,7 +66,10 @@ is never pinned by its bytes in an experiment's lock.
 
 ## Loading
 
-`Experiment.load(folder)`:
+`Experiment.load(folder)` rebuilds the experiment **at its pins**: each record its lock holds is what the rebuild reads
+under that name, whatever a shared source (an installed package, MIME's own data) holds now, and each mesh its saved
+stage names keeps its manifest's name and sha256, whatever manifest is beside the description now; the build report
+lists each pin a source no longer agrees with, and never takes the other version. In order, it:
 
 1. reads the document with PyYAML's safe loader (a Python tag, or a key given twice, is refused) and the lock as
    JSON through the one reader every module that reads a lock calls (`mime._lock_json`: a key given twice is refused,
@@ -172,9 +178,10 @@ neither carries nor refuses `sharing.yaml`, the one file of a folder that is nei
 A **bundle** is a saved folder as one file, to hand to someone else (`mime pack <folder>`, `mime.saved.pack`). It is a
 zip with nothing compressed, named `<folder>.mimebundle`:
 
-- `manifest.json` first: the format (with its version in the name), the experiment's name, every carried file's sha256
-  and size, each file that travels as a reference with the asset that holds it, the NOTICE's sha256 and size, the asset
-  references of the lock, and the **bundle hash**, the sha256 of the rest of the manifest. It names the bundle's
+- `manifest.json` first: the format (with its version in the name; the current format's asset records are whole as
+  the lock's are, and the two earlier formats still unpack), the experiment's name, every carried file's sha256 and size (what is
+  inside), each file that travels as a reference with the asset that holds it (what is fetched), the NOTICE's sha256
+  and size, the asset records of the lock with their locations (from where), and the **bundle hash**, the sha256 of the rest of the manifest. It names the bundle's
   content whatever the zip around it.
 - The `NOTICE` (see [Terms and tiers](#terms-and-tiers)), which `unpack` checks and keeps and writes into no folder.
 - The folder's files under `experiment/`: the document, the lock, the reference outputs, the scene and its layers, the
@@ -227,7 +234,10 @@ in the forms it is known in. `pack` then reads every file's bytes, refusing, wit
   than their source (`bundle.lock-terms`): `pack` judges every file's terms itself, and holds the lock to its
   judgement;
 - a **copy of a referenced file's bytes** that would be carried, at another path and under whatever terms
-  (`bundle.referenced-copy`);
+  (`bundle.referenced-copy`); and **any file it would carry whose bytes a record in reach says may not travel**,
+  whatever the folder's own records and terms say: a referenced record's in an installed source or the lock, a derived
+  file's whose inputs make it referenced, a mesh baked into the local cache from a referenced source
+  (`bundle.referenced-copy`, `mime.assets.known_bytes`);
 - a **licence naming an id the installed `packaging` does not list** (`terms.unlisted-licence`).
 
 **The size limit** is fifty megabytes a file (`mime.saved.INLINE_LIMIT_BYTES`), a choice and not a measurement: a bundle
@@ -277,7 +287,8 @@ summary.
 **Pulling from a stranger.** A bundle comes from whoever wrote it, and the checks above are what lets you read it without
 trusting it: the layout and name checks, the hashes, the lock's names and the size caps. Three things are still theirs.
 **The assets:** a pulled lock names the hosts its assets come from (any `https://` address, and `http://` to this
-machine); each is held to the declared size and sha256, but the request itself goes to a host the author chose.
+machine, or a location of a scheme an installed adapter reads, whose package the summary names and never installs);
+each is held to the declared size and sha256, but the request itself goes to a host the author chose.
 `--no-assets` unpacks without contacting any, and `mime assets fetch <folder>` fetches them later. **The packages:** the
 command lists what the author used, which you decide whether to install. **A bundle at an address** has no checksum at
 all before the manifest's own, which proves self-consistency and not origin (next paragraph). Read the folder before you

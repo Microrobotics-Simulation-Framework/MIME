@@ -45,6 +45,15 @@ jobs:
           python -m pip install --upgrade twine
           python -m twine check dist/*
 
+      # The release check: no distribution, and not the tag's tree (the GitHub release's source archive, Zenodo's
+      # snapshot), holds a file whose terms let no copy be hosted, or a mesh with no record (mime assets audit).
+      - name: No file that may not be redistributed in the distributions or the tag's tree
+        run: |
+          python -m pip install dist/*.whl
+          git archive --format=tar -o "$RUNNER_TEMP/tree.tar" HEAD
+          mime assets audit dist/*.whl dist/*.tar.gz "$RUNNER_TEMP/tree.tar" \
+            --manifest examples/descriptions/ar4/visuals.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist

@@ -112,7 +112,9 @@ path = "src/mime/__init__.py"
 packages = ["src/mime"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/mime"]
+# The example descriptions (the AR4's URDF, MIT, with its licence and its meshes' manifest) travel in the sdist only;
+# no mesh is in either distribution (`mime assets audit` holds that in CI).
+include = ["src/mime", "examples/descriptions"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

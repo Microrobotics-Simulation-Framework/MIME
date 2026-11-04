@@ -12,7 +12,7 @@ import zipfile
 from collections.abc import Callable, Generator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from mime import _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
@@ -375,13 +375,23 @@ def _visuals(arguments: argparse.Namespace) -> int:
 
     if arguments.visuals_command == "list":
         baked = {name for name, _ in viz.baked_layers()}
-        for name, held in sorted(visual_sets().items()):
+        held_sets = visual_sets()
+        for name, held in sorted(held_sets.items()):
             print(for_terminal(f"{name}  {len(held.files)} files  {'baked' if name in baked else 'not fetched'}  "
-                               f"{held.licence} ({held.tier}, {held.role})"))
+                               f"{held.licence} ({held.verdict.tier}, {held.role})"))
+        for name in sorted(baked - set(held_sets)):
+            print(for_terminal(f"{name}  baked (its manifest is beside the description it came with)"))
+        if not held_sets and not baked:
+            print("no set: a description's manifest is beside it (visuals.json); `mime visuals fetch <its folder>` "
+                  "bakes its meshes")
         return 0
     if arguments.visuals_command == "fetch":
-        viz.fetch(arguments.set, say=_say)
-        print(f"{arguments.set}: baked into the asset cache, at {viz.visuals_dir()}; never into a saved or run folder")
+        manifests = viz.manifests_for(arguments.set)
+        for held in manifests:
+            viz.bake(held, say=_say)
+        names = [held.name for held in manifests]
+        print(f"{', '.join(names)}: baked into the asset cache, at {viz.visuals_dir()}; never into a saved or run "
+              f"folder")
         return 0
     path, found = viz.view(arguments.target)
     print(for_terminal(found.text()))
@@ -808,7 +818,7 @@ def _push(arguments: argparse.Namespace) -> int:
 
 #: The words of ``mime credentials``: a verb, then a service where the verb takes one.
 _CREDENTIAL_VERBS = ("set", "status", "remove")
-_CREDENTIAL_USAGE = ("usage: mime credentials set|status|remove <zenodo|zenodo-sandbox>\n"
+_CREDENTIAL_USAGE = ("usage: mime credentials set|status|remove <zenodo|zenodo-sandbox|host:<host name>>\n"
                      "A token is never an argument: `set` asks for it, hidden, and a shell would keep an argument in "
                      "its history.")
 
@@ -824,9 +834,20 @@ def _credential_words_problem(after: Sequence[str]) -> str | None:
         return "the first word is set, status or remove"
     if len(after) > 2:
         return "a verb takes one service and nothing else"
-    if len(after) == 2 and after[1] not in credentials.SERVICES:
-        return f"the service is one of {', '.join(credentials.SERVICES)}"
+    if len(after) == 2 and after[1] not in credentials.SERVICES and not credentials.is_host_service(after[1]):
+        return f"the service is one of {', '.join(credentials.SERVICES)}, or host:<host name>"
     return None
+
+
+class _Services(list[str]):
+    """The services ``mime credentials`` takes, as argparse's choices: the named ones listed (for help and completion),
+    and a host's own token, ``host:<host name>``, accepted too."""
+
+    @override
+    def __contains__(self, value: object) -> bool:
+        from mime import credentials
+
+        return super().__contains__(value) or (isinstance(value, str) and credentials.is_host_service(value))
 
 
 def _credentials(command: str, service: str | None) -> int:
@@ -979,6 +1000,19 @@ def build_parser() -> _guide.MimeParser:
                        help="an asset's name, or an experiment folder: exactly the assets its lock references")
     fetch.add_argument("--all", action="store_true", help="every known asset")
     held_commands.add_parser(assets.CHECK, help="re-hash every cached asset in full")
+    sources = held_commands.add_parser(assets.SOURCES, help="each asset's terms, tier and locations, each looked at "
+                                                            "now (reachable or not, and why), downloading nothing")
+    sources.add_argument("names", nargs="+", metavar="name-or-folder",
+                         help="an asset's name, a saved folder (its lock's assets and its meshes' manifests), a "
+                              "folder holding visuals.json, or a manifest file")
+    audit = held_commands.add_parser(assets.AUDIT, help="find in a wheel, an sdist, an archive or a directory any "
+                                                        "file whose bytes may not be redistributed, and any mesh "
+                                                        "with no record (exit 1 when anything is found)")
+    audit.add_argument("targets", nargs="+", metavar="wheel-sdist-or-directory",
+                       help="a wheel, an sdist, a zip or tar archive, or a directory")
+    audit.add_argument("--manifest", action="append", default=[], type=Path, metavar="FILE",
+                       help="a manifest whose records count too (repeat it); the target's own manifests and locks, "
+                            "the installed sources' and the local cache's baked meshes always count")
     pack = commands.add_parser("pack", help="write a saved experiment folder as one bundle file")
     pack.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     pack.add_argument("--out", type=Path, help="the bundle file (default: <folder>.mimebundle beside the folder)")
@@ -1066,7 +1100,7 @@ def build_parser() -> _guide.MimeParser:
     for verb, what in (("set", "read a token (hidden) and store it"), ("remove", "delete the stored token"),
                        ("status", "whether there is a token, where from, and its last four characters, if 32 or more")):
         each = credential_commands.add_parser(verb, help=what)
-        each.add_argument("service", nargs="?" if verb == "status" else None, choices=list(credentials.SERVICES))
+        each.add_argument("service", nargs="?" if verb == "status" else None, choices=_Services(credentials.SERVICES))
     held_cache = commands.add_parser("cache", help="the XLA compilation cache mime run and mime serve keep")
     cache_commands = held_cache.add_subparsers(dest="cache_command", required=True)
     cache_commands.add_parser("clear", help="delete the compilation cache in the user's cache directory")
@@ -1102,9 +1136,13 @@ def build_parser() -> _guide.MimeParser:
                                                        "cache, and the overlay that draws them on a stage")
     visual_commands = held_visuals.add_subparsers(dest="visuals_command", required=True)
     visual_commands.add_parser("list", help="every visual set MIME has a recipe for, baked or not, with its licence")
-    visuals_fetch = visual_commands.add_parser("fetch", help="download a visual set from its pinned upstream, check "
-                                                             "each file's sha256, and bake it into the asset cache")
-    visuals_fetch.add_argument("set", help="the visual set's name, from mime visuals list")
+    visuals_fetch = visual_commands.add_parser("fetch", help="download a description's meshes from their pinned "
+                                                             "upstream, check each file's sha256, and bake them into "
+                                                             "the asset cache")
+    visuals_fetch.add_argument("set", metavar="description-or-folder",
+                               help="a description's folder (its visuals.json), a description or manifest file, a "
+                                    "saved or run folder (the manifests its lock holds), or a set's name from mime "
+                                    "visuals list")
     visuals_view = visual_commands.add_parser("view", help="the layer that opens a stage, a recording or a folder's "
                                                            "with the baked meshes drawn, for any USD viewer")
     visuals_view.add_argument("target", type=Path, help="a stage or recording file, a run folder or a saved folder")
@@ -1339,6 +1377,14 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds,
                            not arguments.skip_evidence)
     if arguments.command == assets.GROUP:
+        if arguments.assets_command == assets.SOURCES:
+            print(for_terminal("\n".join(assets.sources_text(assets.assets_of(name)) for name in arguments.names)))
+            return 0
+        if arguments.assets_command == assets.AUDIT:
+            reports = [assets.audit(target, manifests=arguments.manifest) for target in arguments.targets]
+            for report in reports:
+                print(for_terminal(report.text()))
+            return 1 if any(report.findings for report in reports) else 0
         if arguments.assets_command == assets.FETCH and bool(arguments.names) == arguments.all:
             parser.error("fetch takes asset names, or --all")
         return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else ())

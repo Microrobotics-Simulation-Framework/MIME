@@ -1,13 +1,17 @@
 """A description's meshes in the asset cache, and the overlay that draws them on a stage.
 
-A visual set (``mime.scene.visual_sets``) is fetched and baked on the user's machine (``mime visuals fetch <set>``):
-each file is downloaded from the set's pinned upstream through :func:`mime.assets.resolve` (held to its sha256), read,
-decimated to its share of the set's triangle budget and written as a USD layer under ``visuals/`` in the asset cache,
-with a record of what it was made from and how (``<key>.json``). Nothing of it is ever written into a saved or a run
-folder: the stage names each mesh by its set and its source's sha256 (``mime:visual:asset``, ``mime:visual:sha256``),
-and :func:`overlay` writes, into the cache, a layer of overs that references each baked mesh into its prim and hides the
-simple shapes that stand in for it. :func:`view` writes a layer that opens a stage or a recording with that overlay, for
-any USD viewer; :func:`open_stage` opens one with it in Python."""
+A manifest of meshes (``mime.assets.Manifest``: beside a description, in an installed package, or in a saved folder's
+lock) is fetched and baked on the user's machine (``mime visuals fetch <description folder | manifest | folder |
+name>``): each record is resolved through :func:`mime.assets.resolve` (held to its sha256), read, decimated to its share
+of the triangle budget and written as a USD layer under ``visuals/`` in the asset cache, with a record of what it was
+made from and how (``<key>.json``), the terms of its source, and its tier: a converted mesh is a derived file, and
+takes the strictest terms of its source (``mime.terms.derived_verdict``). The cache's index of a set
+(``visuals/<set>.json``) holds the set's credit, licence and notice, so that the overlay needs no manifest. Nothing of
+it is ever written into a saved or a run folder: the stage names each mesh by its set and its source's sha256
+(``mime:visual:asset``, ``mime:visual:sha256``), and :func:`overlay` writes, into the cache, a layer of overs that
+references each baked mesh into its prim and hides the simple shapes that stand in for it. :func:`view` writes a layer
+that opens a stage or a recording with that overlay, for any USD viewer; :func:`open_stage` opens one with it in
+Python."""
 
 from __future__ import annotations
 
@@ -16,10 +20,13 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from mime._lock_json import read_lock
+from mime.assets import AssetRef, Manifest, read_manifest, read_manifest_data
 from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
-from mime.scene import VISUAL_ASSET, VISUAL_ROLE, VISUAL_SHA256, VisualSet, visual_sets
+from mime.scene import VISUAL_ASSET, VISUAL_ROLE, VISUAL_SHA256, manifest_beside, visual_sets
+from mime.terms import derived_verdict
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom, Vt
 from mime.viz._meshes import Mesh, TriangleBudget, decimate, one_sided_distances, read_stl, write_mesh
 
@@ -48,14 +55,62 @@ def baked_key(sha256: str, triangles: int) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _set(name: str) -> VisualSet:
-    held = visual_sets().get(name)
-    if held is None:
-        raise ArgumentRefused([Refusal(
-            "visuals.unknown-set", RefusalClass.USER,
-            f"no visual set is named {name!r}; MIME knows {', '.join(sorted(visual_sets())) or 'none'}",
-            "fetch one it knows: mime visuals fetch <set>, from mime visuals list")])
-    return held
+#: The cache's index of a baked set: what the overlay reads, the set's terms among it.
+INDEX_FORMAT = "mime.visual_index/1"
+LOCK_FILE = "mime.lock"
+#: The lock's key that holds the manifests a saved experiment's stage draws.
+LOCK_VISUALS = "visuals"
+
+
+def _unknown(target: str) -> ArgumentRefused:
+    known = ", ".join(sorted(visual_sets())) or "none by name"
+    return ArgumentRefused([Refusal(
+        "visuals.unknown-set", RefusalClass.USER,
+        f"{target!r} is no manifest MIME finds: not a manifest file, a description with a manifest beside it, a folder "
+        f"holding visuals.json or a saved experiment, nor the name of a set an installed package ships ({known})",
+        "name the description's folder (mime visuals fetch examples/descriptions/ar4/), its manifest file, a saved "
+        "folder, or a set from mime visuals list")])
+
+
+def lock_manifests(folder: Path) -> list[Manifest]:
+    """The manifests a saved folder's lock (or a run folder's experiment's) holds of the meshes its stage draws."""
+    for lock in (folder / LOCK_FILE, folder / "experiment" / LOCK_FILE):
+        if lock.is_file():
+            try:
+                held: object = read_lock(lock)
+            except (OSError, ValueError):
+                return []
+            listed: object = cast(dict[str, object], held).get(LOCK_VISUALS, {}) if isinstance(held, dict) else {}
+            if not isinstance(listed, dict):
+                return []
+            return [read_manifest_data(value, f"{lock} ({LOCK_VISUALS}: {name})")
+                    for name, value in sorted(cast(dict[str, object], listed).items())]
+    return []
+
+
+def manifests_for(target: str | Path) -> list[Manifest]:
+    """The manifests ``target`` names: a manifest file; a description file, with the manifest beside it; a saved or run
+    folder, with the manifests its lock holds; a folder holding ``visuals.json``; or the name of a set an installed
+    package ships."""
+    path = Path(target)
+    if path.is_file():
+        if path.suffix == ".json":
+            return [read_manifest(path)]
+        found = manifest_beside(path)
+        if found is None:
+            raise _unknown(str(target))
+        return [found]
+    if path.is_dir():
+        held = lock_manifests(path)
+        if held:
+            return held
+        if (path / "visuals.json").is_file():
+            return [read_manifest(path / "visuals.json")]
+        raise _unknown(str(target))
+    named = visual_sets().get(str(target))
+    if named is None:
+        raise _unknown(str(target))
+    return [named]
 
 
 @dataclass(frozen=True)
@@ -67,50 +122,53 @@ class Baked:
     record: dict[str, Any]
 
 
-def _source_ref(held: VisualSet, index: int) -> Any:
-    from mime.assets import AssetRef
-
-    source = held.files[index]
-    stem = source.path.rsplit("/", 1)[-1]
-    return AssetRef(name=f"{held.name}.{stem}", sha256=source.sha256, size=source.size, licence=held.licence,
-                    locations=(source.location,))
+def index_of(name: str) -> Path:
+    return visuals_dir() / f"{name}.json"
 
 
-def index_of(held: VisualSet) -> Path:
-    return visuals_dir() / f"{held.name}.json"
+def fetch(target: str | Path, *, budget: TriangleBudget = TriangleBudget(),
+          say: Callable[[str], None] = print) -> list[Baked]:
+    """Fetch and bake every manifest ``target`` names (:func:`manifests_for`) into the asset cache."""
+    baked: list[Baked] = []
+    for manifest in manifests_for(target):
+        baked += bake(manifest, budget=budget, say=say)
+    return baked
 
 
-def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable[[str], None] = print) -> list[Baked]:
-    """Fetch and bake the visual set ``name`` into the asset cache: each file from its pinned upstream, its sha256
-    checked, read, decimated to its share of ``budget`` and written as a USD layer with its record; and the set's index,
-    which the overlay reads. Prints the set's credit, licence and notice first."""
+def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(),
+         say: Callable[[str], None] = print) -> list[Baked]:
+    """Fetch and bake one manifest's meshes into the asset cache: each record resolved (its sha256 checked), read,
+    decimated to its share of ``budget`` and written as a USD layer with its record; and the set's index, which the
+    overlay reads. Prints the set's credit, licence and notice first."""
     from mime.assets import resolve
 
-    held = _set(name)
     say(held.text())
-    sources = [resolve(_source_ref(held, index), report=say) for index in range(len(held.files))]
+    files = [(each.path, held.record(each.asset)) for each in held.files]
+    sources: list[tuple[str, AssetRef]] = [(path, ref) for path, ref in files if ref is not None]
+    stored = [resolve(ref, report=say) for _, ref in sources]
     meshes: list[Mesh] = []
-    for index, path in enumerate(sources):
+    for (path, _), stored_path in zip(sources, stored, strict=True):
         try:
-            meshes.append(read_stl(path.read_bytes()))
+            meshes.append(read_stl(stored_path.read_bytes()))
         except (ValueError, OSError) as error:
             raise BuildRefused([Refusal(
                 "visuals.convert", RefusalClass.ENVIRONMENT,
-                f"{held.files[index].path} of {name} could not be read as an STL file: {error}",
-                f"fetch it again: mime visuals fetch {name}")]) from error
+                f"{path} of {held.name} could not be read as an STL file: {error}",
+                f"fetch it again: mime visuals fetch {held.where or held.name}")]) from error
     shares = budget.shares([len(mesh.triangles) for mesh in meshes])
     baked: list[Baked] = []
-    for source, mesh, share in zip(held.files, meshes, shares, strict=True):
+    for (path, source), mesh, share in zip(sources, meshes, shares, strict=True):
         key = baked_key(source.sha256, share)
         layer = visuals_dir() / f"{key}.usdc"
         decimated = decimate(mesh, share)
         write_mesh(layer, decimated.mesh, MESH_PRIM)
         from_original, to_original = one_sided_distances(mesh, decimated.mesh)
         distance = max(from_original, to_original)
+        verdict = derived_verdict([(source.licence, source.verdict)])
         record = {
-            "format": "mime.baked_mesh/2", "set": held.name, "file": source.path, "converter": CONVERTER,
+            "format": "mime.baked_mesh/3", "set": held.name, "file": path, "converter": CONVERTER,
             "version": CONVERTER_VERSION, "inputs": {"source": {"sha256": source.sha256, "size": source.size,
-                                                                "location": source.location}},
+                                                                "location": source.locations[0]}},
             "parameters": {"method": "vertex clustering on a cubic grid", "triangles": share,
                            "per_mesh": budget.per_mesh, "per_stage": budget.per_stage},
             "checks": {"triangles": {"original": int(len(mesh.triangles)), "baked": int(len(decimated.mesh.triangles)),
@@ -121,35 +179,62 @@ def fetch(name: str, *, budget: TriangleBudget = TriangleBudget(), say: Callable
                                       "vertices": {"original": int(len(mesh.points)),
                                                    "baked": int(len(decimated.mesh.points))}}},
             "output": {"sha256": hashlib.sha256(layer.read_bytes()).hexdigest(), "bytes": layer.stat().st_size},
-            "licence": held.licence, "tier": held.tier, "role": held.role, "credit": held.credit,
-            "notice": held.notice}
+            "licence": source.licence, "tier": verdict.tier, "verdict": verdict.words(), "by": verdict.by,
+            "role": source.role or "presentation", "credit": source.credit or held.credit, "notice": held.notice}
         (visuals_dir() / f"{key}.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n",
                                                    encoding="utf-8")
-        baked.append(Baked(source.path, layer, record))
-        say(f"{source.path}: {len(mesh.triangles)} triangles baked to {len(decimated.mesh.triangles)} "
+        baked.append(Baked(path, layer, record))
+        say(f"{path}: {len(mesh.triangles)} triangles baked to {len(decimated.mesh.triangles)} "
             f"(budget {share}), within {distance * 1e3:.2f} mm of the original, measured on every vertex both ways "
             f"(the original's to the bake {from_original * 1e3:.2f} mm, the bake's to the original "
             f"{to_original * 1e3:.2f} mm; no kept vertex moved more than {decimated.moved * 1e3:.2f} mm)")
-    index = {"set": held.name, "budget": {"per_mesh": budget.per_mesh, "per_stage": budget.per_stage},
-             "files": {item.path: {"sha256": next(f.sha256 for f in held.files if f.path == item.path),
-                                   "layer": item.layer.name} for item in baked}}
-    index_of(held).write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    index = {"format": INDEX_FORMAT, "set": held.name, "title": held.title, "credit": held.credit,
+             "notice": held.notice, "licence": held.licence, "tier": held.verdict.tier, "role": held.role,
+             "text": held.text(), "budget": {"per_mesh": budget.per_mesh, "per_stage": budget.per_stage},
+             "files": {item.path: {"sha256": source.sha256, "layer": item.layer.name}
+                       for item, (_, source) in zip(baked, sources, strict=True)}}
+    index_of(held.name).write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return baked
+
+
+def _indexes() -> dict[str, dict[str, Any]]:
+    """Every set's index in the cache, by set: written by :func:`bake`, or by an earlier MIME (no format, no terms)."""
+    found: dict[str, dict[str, Any]] = {}
+    for path in sorted(visuals_dir().glob("*.json")) if visuals_dir().is_dir() else ():
+        try:
+            held: object = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        index = cast(dict[str, Any], held) if isinstance(held, dict) else None
+        if index is not None and index.get("format", INDEX_FORMAT) == INDEX_FORMAT and "set" in index \
+                and isinstance(index.get("files"), dict):
+            found[str(index["set"])] = index
+    return found
 
 
 def baked_layers() -> dict[tuple[str, str], Path]:
     """Every baked mesh the cache holds, by its set and its source's sha256."""
     found: dict[tuple[str, str], Path] = {}
-    for held in visual_sets().values():
-        try:
-            index = json.loads(index_of(held).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        for item in index.get("files", {}).values():
+    for name, index in _indexes().items():
+        for item in cast(dict[str, dict[str, Any]], index["files"]).values():
             layer = visuals_dir() / str(item["layer"])
             if layer.is_file():
-                found[(held.name, str(item["sha256"]))] = layer
+                found[(name, str(item["sha256"]))] = layer
     return found
+
+
+def _notice(name: str, indexes: dict[str, dict[str, Any]], manifests: dict[str, Manifest]) -> str:
+    """A set's credit, licence and notice: from the cache's index where it is baked, else from the folder's lock or an
+    installed package's manifest, else a line saying where its terms are."""
+    if name in indexes and isinstance(indexes[name].get("text"), str):
+        return str(indexes[name]["text"])
+    if name in manifests:
+        return manifests[name].text()
+    shared = visual_sets().get(name)
+    if shared is not None:
+        return shared.text()
+    return (f"{name}: no manifest of it is here; its terms are in the manifest beside the description the stage was "
+            f"built from")
 
 
 @dataclass
@@ -163,19 +248,34 @@ class Overlay:
     drawn: int = 0
     missing: dict[str, int] = field(default_factory=dict[str, int])
     notices: list[str] = field(default_factory=list[str])
+    #: What ``mime visuals fetch`` takes to fetch each missing set: the folder whose lock holds its manifest, the set's
+    #: name where an installed package ships it, or the description's folder.
+    fetch: dict[str, str] = field(default_factory=dict[str, str])
 
     def text(self) -> str:
         lines = [f"{self.drawn} meshes drawn from the asset cache" + (f" ({self.path})" if self.path else "")]
         for name, count in sorted(self.missing.items()):
             lines.append(f"{count} meshes of {name} are not in the asset cache: drawn as simple shapes from the "
-                         f"description's frames; to draw them, `mime visuals fetch {name}`")
+                         f"description's frames; to draw them, `mime visuals fetch "
+                         f"{self.fetch.get(name, '<the description' + chr(39) + 's folder>')}`")
         return "\n".join(lines + self.notices)
+
+
+def _folder_of(stage_path: Path) -> Path | None:
+    """The saved or run folder a stage or recording is in, where it is in one."""
+    for folder in (stage_path.parent.parent, stage_path.parent):
+        if (folder / LOCK_FILE).is_file() or (folder / "experiment" / LOCK_FILE).is_file():
+            return folder
+    return None
 
 
 def overlay(stage_path: Path) -> Overlay:
     """The overlay of the stage (or recording) at ``stage_path``: written into the cache, keyed by the composed stage's
     visual prims, referencing each baked mesh into its prim (scaled from metres to the stage's units) and hiding each
     segment's simple shapes where every mesh of its frames is drawn. Nothing is written beside the stage."""
+    folder = _folder_of(stage_path)
+    manifests = {held.name: held for held in lock_manifests(folder)} if folder is not None else {}
+    indexes = _indexes()
     stage = Usd.Stage.Open(str(stage_path))
     meters = UsdGeom.GetStageMetersPerUnit(stage)
     layers = baked_layers()
@@ -191,7 +291,10 @@ def overlay(stage_path: Path) -> Overlay:
             found.missing[name] = found.missing.get(name, 0) + 1
         else:
             found.drawn += 1
-    found.notices = [visual_sets()[name].text() for name in sorted({name for _, _, name in wanted})]
+    named = sorted({name for _, _, name in wanted})
+    found.notices = [_notice(name, indexes, manifests) for name in named]
+    found.fetch = {name: (f"{folder}/" if folder is not None and name in manifests else
+                          name if name in visual_sets() else "<the description's folder>") for name in named}
     if not found.drawn:
         return found
     used = sorted({name for _, layer, name in wanted if layer is not None})
@@ -200,8 +303,10 @@ def overlay(stage_path: Path) -> Overlay:
     path = visuals_dir() / "overlays" / f"{hashlib.sha256(text.encode('utf-8')).hexdigest()}.usda"
     held = Sdf.Layer.CreateAnonymous(".usda")
     held.customLayerData = {"mime:visuals": {"sets": Vt.StringArray(used),
-                                             "credit": Vt.StringArray([visual_sets()[n].credit for n in used]),
-                                             "notice": Vt.StringArray([visual_sets()[n].notice for n in used])}}
+                                             "credit": Vt.StringArray([str(indexes.get(n, {}).get("credit", ""))
+                                                                       for n in used]),
+                                             "notice": Vt.StringArray([str(indexes.get(n, {}).get("notice", ""))
+                                                                       for n in used])}}
     complete: dict[str, bool] = {}
     for prim_path, layer, _ in wanted:
         segment = str(Sdf.Path(prim_path).GetParentPath().GetParentPath().GetParentPath())
@@ -275,6 +380,6 @@ def open_stage(target: Path) -> Any:
     return Usd.Stage.Open(str(path))
 
 
-__all__ = ["CONVERTER", "CONVERTER_VERSION", "Baked", "Overlay", "baked_key", "baked_layers", "fetch", "open_stage",
-           "overlay", "view", "visuals_dir"]
+__all__ = ["CONVERTER", "CONVERTER_VERSION", "INDEX_FORMAT", "LOCK_VISUALS", "Baked", "Overlay", "bake", "baked_key",
+           "baked_layers", "fetch", "lock_manifests", "manifests_for", "open_stage", "overlay", "view", "visuals_dir"]
 

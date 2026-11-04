@@ -40,7 +40,7 @@ import numpy as np
 HERE = Path(__file__).parent
 REFERENCES = HERE / "references" / "a0"
 OUTPUT = HERE / "a0_expected_differences.json"
-URDF = HERE.parent / "descriptions" / "ar4.urdf"
+URDF = HERE.parents[1] / "examples" / "descriptions" / "ar4" / "ar4.urdf"
 sys.path[:0] = [str(HERE), str(HERE.parent)]
 
 import predict_script_a as A  # noqa: E402

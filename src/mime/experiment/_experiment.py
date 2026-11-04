@@ -425,16 +425,19 @@ class Experiment:
         """Phases 1 and 2, then the saved form's record. Raises ``BuildRefused`` with every reason, each with its
         class and action line. An experiment that was loaded is checked against its lock here, and raises
         ``LoadRefused`` when it does not reproduce it."""
-        plans = self.plan()
-        law, problems, models = law_and_models(plans)
-        if problems and plans.controller is not None:
-            cls = plans.controller.registered.cls
-            refusals = [entry_defect(cls, problem) for problem in problems]
-            raise BuildRefused(refusals, report_of(plans, plans.order, refusals))
-        graph, report, derived = construct(plans, law, models)
-        stage = stage_text(stage_spec(plans))
-        record = record_of(self._settings, self._declarations, plans, derived, stage)
-        report = replace(report, stage_hash=record.stage_hash)
+        from mime.saved._pins import keeping_pins
+
+        with keeping_pins(self._saved) as pins:
+            plans = self.plan()
+            law, problems, models = law_and_models(plans)
+            if problems and plans.controller is not None:
+                cls = plans.controller.registered.cls
+                refusals = [entry_defect(cls, problem) for problem in problems]
+                raise BuildRefused(refusals, report_of(plans, plans.order, refusals))
+            graph, report, derived = construct(plans, law, models)
+            stage = stage_text(stage_spec(plans))
+            record = record_of(self._settings, self._declarations, plans, derived, stage)
+            report = replace(report, stage_hash=record.stage_hash, assets=pins.lines())
         for text in report.range_warnings():
             warnings.warn(text, UserWarning, stacklevel=3)
         load_report = None
@@ -444,8 +447,9 @@ class Experiment:
             writers = [held for held in stage_writers(self._saved.lock) if held in STAGE_WRITERS]
             if record.stage_hash == self._saved.lock["stage"]["sha256"] and STAGE_WRITER in writers:
                 writers = [STAGE_WRITER]  # the current writer's stage, as saved: no other is written
-            stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
-                      for writer in writers}
+            with keeping_pins(self._saved):
+                stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
+                          for writer in writers}
             load_report = check_load(self._saved, record, stages)
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law)
 

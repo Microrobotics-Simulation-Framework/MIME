@@ -119,6 +119,30 @@ refusal table's (`mime/build/refusal_table.txt`).
   `asset.missing`, with the command that fetches and places it; one that is there is held to its pin as every file is.
   *Cases:* `tests/sharing/test_referenced.py::test_a_folder_missing_a_referenced_file_is_refused_with_the_command_that_fetches_and_places_it`.
 
+- **[lock.records]** Each asset record of the lock (`assets`) is whole: beside the five keys every record has, each
+  key the record states (its credit, role, kind and derivation, notice, custom licences, version, citation, and the
+  package of each adapter its locations need), written only where stated, outside the input hash; its tier is never
+  written, but read from its licence. A file the experiment declares by its record is held so, and the lock names only
+  the record's own locations, never those a machine's locations file adds.
+  *Cases:* `tests/assets/test_records.py::test_a_full_record_round_trips_and_keeps_its_kind_role_and_identity`,
+  `tests/assets/test_records.py::test_control_a_record_that_writes_its_own_tier_is_refused`,
+  `tests/sharing/test_records_travel.py::test_the_lock_holds_the_declared_record_whole_and_never_this_machines_locations`.
+- **[lock.visuals]** The lock's `visuals` holds the manifest of each set of meshes the stage draws, by its name: their
+  records, never their bytes, outside the input hash.
+  *Cases:* `tests/viz/test_visual_pins.py::test_the_lock_holds_the_manifest_and_the_folder_holds_none`.
+- **[lock.previous-records]** A lock of a form before the one that added them that holds `visuals` or a key of an asset record
+  beyond the five is refused as `load.lock-shape`, never read as stating it.
+  *Cases:* `tests/saved/test_form6.py::test_an_earlier_lock_holding_a_key_version_six_added_is_refused`,
+  `tests/saved/test_form6.py::test_control_an_upgrade_that_accepts_the_keys_in_an_earlier_lock_is_caught_every_run`.
+- **[lock.pins]** The lock's records are the experiment's pins: a load reads each asset under the hash its lock names,
+  whatever a shared source holds under that name now, and the build report names each source that holds another
+  version; one not stored is refused as `asset.missing`. A saved stage's meshes keep the manifest and sha256 it names
+  likewise.
+  *Cases:* `tests/saved/test_lock_assets.py::test_the_pin_wins_a_lock_naming_the_table_under_another_hash_reads_that_hash`,
+  `tests/saved/test_lock_assets.py::test_a_shared_source_holding_another_version_of_the_table_is_reported_and_the_pin_kept`,
+  `tests/viz/test_visual_pins.py::test_the_saved_arm_loads_with_its_stage_rebuilt_from_its_pins`,
+  `tests/viz/test_visual_pins.py::test_control_a_rebuild_that_ignores_the_saved_stages_pins_is_refused_every_run`.
+
 ## The files the lock pins
 
 - **[files.reference]** Reference outputs that cannot be read are refused as `load.reference`.
@@ -136,10 +160,11 @@ refusal table's (`mime/build/refusal_table.txt`).
   `load.record-changed`.
   *Cases:* `tests/materials/test_pins.py::test_a_saved_record_file_edited_by_one_byte_is_refused_at_load`,
   `tests/materials/test_pins.py::test_a_record_file_missing_from_the_folder_is_refused_at_load`.
-- **[files.remote-asset]** A remote asset the build read must be named in the lock under the contents it was read
-  with; a lock without it, or naming it under another hash, is refused as `load.assets`.
+- **[files.remote-asset]** A remote asset the build read must be named in the lock; a lock without it is refused as
+  `load.assets`. A lock naming it under another hash is the experiment's pin, which the rebuild reads
+  (`lock.pins`).
   *Cases:* `tests/saved/test_lock_assets.py::test_control_a_lock_without_the_tables_name_is_refused_when_loaded_naming_it`,
-  `tests/saved/test_lock_assets.py::test_control_a_lock_naming_the_table_under_another_hash_is_refused_when_loaded`.
+  `tests/saved/test_lock_assets.py::test_the_pin_wins_a_lock_naming_the_table_under_another_hash_reads_that_hash`.
 
 ## Rebuilding the experiment
 

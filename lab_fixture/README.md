@@ -10,6 +10,12 @@ Its `pyproject.toml` declares the `mime.entries` entry point for `labx`, which i
 (`tests/saved/`) round-trips an experiment using it through a fresh process, and its lock names this package as the
 entry's distribution.
 
+It also ships a lab's records and its own storage adapter, from outside MIME (`mime_lab_fixture.assets`): a
+`mime.assets` entry point `labx`, whose records (`records.json`) MIME finds beside its own, the bytes of one inside the
+package (`package:labx/marker.usda`); and a `mime.asset_adapters` entry point `labstore`, a thin adapter for an
+authenticated store that MIME's resolver hands the token of the location's own host, and which passes
+`mime.testing.verify_adapter`.
+
 Install it next to MIME with `uv pip install --no-deps ./lab_fixture`.
 
 ## Status

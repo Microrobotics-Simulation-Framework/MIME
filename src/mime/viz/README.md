@@ -24,11 +24,17 @@
 - **Meshes** (`_meshes.py`): an STL file read (binary or ASCII) and welded, decimated by vertex clustering to a
   triangle budget (`TriangleBudget`, a presentation setting with its basis), its distance to the original measured
   both ways, and written as a USD mesh layer.
-- **The visuals in the asset cache** (`_visuals.py`): a visual set (`mime.scene.visual_sets`) fetched from its pinned
-  upstream through the asset cache's resolver, each file held to its sha256, baked under `visuals/` in the cache with
-  its record; the overlay, written in the cache, that references each baked mesh into the prim naming it and hides
-  the stand-in bones; and a view of a stage or a recording with it, for any USD viewer. Nothing of it is written into
-  a saved or a run folder.
+- **The visuals in the asset cache** (`_visuals.py`): a manifest of meshes (`mime.assets.Manifest`) named by
+  `mime visuals fetch <target>` (a description's folder or file, with the manifest beside it; a manifest file; a saved
+  or run folder, whose lock holds the manifests its stage draws; or a set an installed package ships, by name),
+  fetched through the asset cache's resolver, each file held to its sha256, and baked under `visuals/` in the cache
+  with its record: what it was made from and how, and its tier, the strictest of its source's (a baked mesh is a
+  derived file, `mime.terms.derived_verdict`). Each set's index in the cache holds its credit, licence and notice, so
+  the overlay needs no manifest; the overlay, written in the cache, references each baked mesh into the prim naming it
+  and hides the stand-in bones, and says, for a set not baked, its terms (from the index, the folder's lock or an
+  installed package) and what to fetch; a view of a stage or a recording with it is for any USD viewer. Nothing of it
+  is written into a saved or a run folder; `mime assets audit` finds a baked mesh copied anywhere, by its hash, and
+  `mime pack` and `mime push` refuse one copied into an experiment's folder.
 
 ## Boundaries
 

@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Asset records travel with what needs them, and the library knows how to fetch a file, never what or from where.**
+  One record type (`mime.assets.AssetRef`) serves every asset: beside its sha256, size, licence and locations it states,
+  where known, its credit, role, kind (with a derived asset's derivation record by hash), notice, custom licences,
+  version, citation and the packages of the adapters its locations need. Its tier is the verdict of its licence, never
+  written by hand. A robot's meshes are a manifest of such records beside its description (`visuals.json`), found from
+  the description in use; a lab's records come through a package's `mime.assets` entry point; MIME's own data holds its
+  own assets only. A loaded experiment keeps its pins (the lock's records, the saved stage's meshes) whatever a source
+  holds now, and its build report says where one differs; two shared sources that disagree are refused
+  (`asset.conflict`). Locations are open: `https`, `doi:`, `package:` (bytes inside an installed package), `file://`
+  mirrors, and any scheme a package's adapter adds (`mime.asset_adapters`), with the hash, the size cap, redirects, a
+  credential bound to its host, retries with backoff and resuming kept in the resolver; `mime.testing.verify_adapter`
+  is an adapter's conformance harness. A machine's locations file (`MIME_ASSET_LOCATIONS`) adds a lab's mirrors,
+  tried first, and never travels; `MIME_CA_BUNDLE` trusts an institution's CA; `mime credentials set host:<host>` keeps
+  a host's own token. `mime assets sources` shows where each asset can be fetched from now; `mime assets audit` finds,
+  in a wheel, an sdist, an archive or a tree, any file whose terms let no copy be hosted, a mesh baked from one, or a
+  mesh with no record, and runs in CI on MIME's distributions and tree. An experiment declares a one-off file by its
+  whole record, `mime.scene.asset(AssetRef(...))`.
+- **The saved form is version 6, and the bundle format 3.** The lock holds each asset's record whole and the manifests
+  of the meshes its stage draws (`visuals`), both outside the input hash; a lock of version 5 or earlier loads as it
+  did, and one that holds a key version 6 added is refused. Saving a folder again under version 6 moves its `document`
+  and `input` hashes (the schema string is inside what is hashed); its `derived` and `observations` hashes are
+  unchanged. A bundle's manifest holds each record whole; formats 2 and 1 still unpack.
+- **The AR4 left the library.** Its URDF (unchanged, byte for byte) and its meshes' manifest are in
+  `examples/descriptions/ar4/`, shipped in the sdist with the URDF's MIT licence; the manifest's notice states the
+  settled terms (the meshes are Annin Robotics' design files, whose licence forbids redistributing them in any form,
+  derived ones included). `mime visuals fetch` takes the description's folder, a manifest, or a saved folder.
 - **`exploratory` waives the inertia tensor's products, and the stamp is short.** A body whose parts give
   an inertia tensor with products of inertia (a screw's, 0.11% of its largest moment) is no longer refused in
   `exploratory`: the diagonal is used with the products dropped, and the build stamps `umr.inertia` pending with the

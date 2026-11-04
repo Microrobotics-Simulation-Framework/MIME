@@ -54,8 +54,9 @@ plans the fixtures, which needs their assets, so a run without them does not exe
 ## What the stage draws
 
 - `mime:visual:file`: on a mesh visual of a chain's frame, the file its description names, never its bytes.
-- `mime:visual:asset`: the visual set that bakes the mesh, where one lists it, for the asset cache's overlay.
-- `mime:visual:sha256`: the hash of the mesh file's bytes, beside the visual set.
+- `mime:visual:asset`: the manifest that lists the mesh (beside the description, or in an installed package), where
+  one does, for the asset cache's overlay.
+- `mime:visual:sha256`: the hash of the mesh file's bytes, beside the manifest's name.
 - `mime:visual:role`: what the shape stands for on its frame: `visual`, `collision`, or `frames`.
 - `mime:vector:name`: on the prim of a field a law reads at a body, the field's interface name.
 - `mime:vector:value`: the field's value at the body, set by a recording or a live client, in `mime:vector:units`.

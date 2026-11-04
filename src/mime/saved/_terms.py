@@ -59,6 +59,7 @@ from mime.terms import (
     licence_verdict,
     permission_problems,
     permission_verdict,
+    strictest,
     unlisted_ids,
     unlisted_words,
 )
@@ -392,28 +393,40 @@ def own_verdict(licence: str | None, custom: Mapping[str, CustomLicence]) -> Ver
 
 
 def third_party_verdict(doc: TermsDoc, sha256: str, permissions: Sequence[PermissionDoc],
-                        custom: Mapping[str, CustomLicence]) -> tuple[Verdict, tuple[int, ...]]:
+                        custom: Mapping[str, CustomLicence], derived: Verdict | None = None
+                        ) -> tuple[Verdict, tuple[int, ...]]:
     """A third party's file judged by its licence and by every permission that names its bytes, and those
-    permissions' indices: a permission binds by sha256, so a changed file inherits nothing."""
+    permissions' indices: a permission binds by sha256, so a changed file inherits nothing. ``derived`` is the
+    verdict of its record's inputs where a record in reach names it with its derivation record
+    (``mime.assets.derived_verdicts``): the stricter of that and its licence's stands, which only a permission bound to
+    its own bytes raises."""
     covering = tuple(index for index, held in enumerate(permissions) if sha256 in held["files"])
     granted = [permission_verdict(Scope(**permissions[index]["scope"])) for index in covering]
-    verdict = freest([licence_verdict(doc["licence"], custom), *granted])
+    own = licence_verdict(doc["licence"], custom)
+    if derived is not None:
+        held = strictest([own, derived])
+        if (held.status, held.tier, held.conditions) != (own.status, own.tier, own.conditions):
+            own = Verdict(held.status, held.tier, held.conditions, derived.by)
+    verdict = freest([own, *granted])
     return verdict, covering
 
 
 def file_verdicts(document: ExperimentDocument, files: Mapping[str, tuple[str, int]],
-                  records: Mapping[str, str]) -> list[FileTerms]:
+                  records: Mapping[str, str], derived: Mapping[str, Verdict] | None = None) -> list[FileTerms]:
     """Every file of ``files`` (path to sha256 and size), each with its verdict; ``records`` maps a record file's path
-    to the licence it states."""
+    to the licence it states; ``derived`` holds, by sha256, the verdict of each file a record in reach names with its
+    derivation record (``mime.assets.derived_verdicts``), which a third party's file takes where it is stricter than
+    its licence's: a derived file is never freer than its inputs."""
     custom = custom_licences(document)
     licence = document.get("licence")
     terms = document.get("terms", {})
     permissions = document.get("permissions", [])
+    by_inputs = derived or {}
     found: list[FileTerms] = []
     for path, (sha256, size) in sorted(files.items()):
         held = terms.get(path)
         if held is not None:
-            verdict, covering = third_party_verdict(held, sha256, permissions, custom)
+            verdict, covering = third_party_verdict(held, sha256, permissions, custom, by_inputs.get(sha256))
             found.append(FileTerms(path, sha256, size, "third party", held["licence"], verdict, held["credit"],
                                    held["role"], tuple(held.get("origin", [])), covering))
         elif path in records:
@@ -442,16 +455,17 @@ def must_reference(file: FileTerms, limit: int) -> bool:
 
 
 def referenced_assets(document: ExperimentDocument, files: Mapping[str, tuple[str, int]],
-                      taken: Sequence[str]) -> list[tuple[str, AssetRef]]:
+                      taken: Sequence[str], derived: Mapping[str, Verdict] | None = None) -> list[tuple[str, AssetRef]]:
     """The files of ``files`` whose bytes travel as references, each with the asset that holds them, built from its
     origin: what ``save`` writes into the lock (``referenced_files`` and ``assets``). A file that must travel as a
     reference and gives no origin is left out here: ``pack`` refuses it, naming what to declare. Copies of one file's
-    bytes (which ``save`` holds to one set of terms) travel as one asset."""
+    bytes (which ``save`` holds to one set of terms) travel as one asset. ``derived`` is as :func:`file_verdicts`
+    takes it: a derived file over a referenced input travels as a reference, whatever licence its record declares."""
     names = set(taken)
     held: dict[str, AssetRef] = {}
     found: list[tuple[str, AssetRef]] = []
     for file in file_verdicts(document, {path: each for path, each in files.items() if path in
-                                         document.get("terms", {})}, {}):
+                                         document.get("terms", {})}, {}, derived):
         if must_reference(file, INLINE_LIMIT_BYTES) and file.origin:
             ref = held.get(file.sha256)
             if ref is None:
@@ -494,10 +508,37 @@ class FolderTerms:
                 for where, licence in named if (found := unlisted_ids(licence))]
 
 
+def lock_records(lock: Lock | Mapping[str, object]) -> list[AssetRef]:
+    """Every record a folder's lock holds: its ``assets``, and those of the manifests its stage draws (``visuals``);
+    one that does not read is the load's to refuse, and is left out here."""
+    from mime.assets import read_manifest_data
+
+    held = cast(Mapping[str, object], lock)
+    found: list[AssetRef] = []
+    listed = held.get("assets")
+    for record in cast(list[object], listed) if isinstance(listed, list) else []:
+        if isinstance(record, dict):
+            try:
+                found.append(AssetRef.from_record(cast(dict[str, object], record)))
+            except Exception:  # noqa: BLE001 - a malformed record is the load's to refuse, with its reason
+                continue
+    visuals = held.get("visuals")
+    for value in cast(dict[str, object], visuals).values() if isinstance(visuals, dict) else ():
+        try:
+            found += read_manifest_data(value, "the lock's visuals").assets
+        except Exception:  # noqa: BLE001 - as above
+            continue
+    return found
+
+
 def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: set[str], version: int) -> FolderTerms:
     """Each of the ``named`` files of a saved folder with its verdict. A file that is in the folder is hashed there; a
     file that travels as a reference and is not there yet is described by the asset the lock names for it. A file the
-    lock says travels as a reference is marked with its asset's name."""
+    lock says travels as a reference is marked with its asset's name. A file that a record in reach (the lock's, the
+    shared sources') names with its derivation record takes the strictest terms of its inputs
+    (``mime.assets.derived_verdicts``), whatever its own licence: so ``pack``, ``push`` and the card judge it alike."""
+    from mime.assets import derived_verdicts
+
     referenced = lock.get("referenced_files", {})
     assets = {held["name"]: held for held in lock.get("assets", [])}
     files: dict[str, tuple[str, int]] = {}
@@ -512,8 +553,10 @@ def folder_terms(folder: Path, document: ExperimentDocument, lock: Lock, named: 
         elif path in referenced and referenced[path] in assets:
             held = assets[referenced[path]]
             files[path] = (held["sha256"], held["size"])
+    derived = derived_verdicts(lock_records(lock))
     judged = [FileTerms(f.path, f.sha256, f.size, f.owner, f.licence, f.verdict, f.credit, f.role, f.origin,
-                        f.permissions, referenced.get(f.path)) for f in file_verdicts(document, files, records)]
+                        f.permissions, referenced.get(f.path))
+              for f in file_verdicts(document, files, records, derived)]
     return FolderTerms(tuple(judged), document.get("licence"), custom_licences(document),
                        tuple(document.get("permissions", [])), version)
 
@@ -641,5 +684,5 @@ def unplaced_refusals(folder: str | os.PathLike[str], placed: Placed) -> list[Re
 __all__ = ["CORRUPT", "INLINE_LIMIT_BYTES", "NOT_CACHED", "NO_ASSET", "NO_LICENCE_BY", "OTHER_FILE", "OUTSIDE",
            "Declared", "Encoded", "FileTerms", "FolderTerms", "Placed", "asset_name", "custom_licences",
            "declared_permissions", "declared_terms", "encode", "experiment_licence", "file_verdicts", "folder_terms",
-           "must_reference", "own_verdict", "place_referenced", "read_check", "referenced_assets", "sha256_and_size",
-           "third_party_verdict", "unlisted_note", "unplaced_refusals", "write_into"]
+           "lock_records", "must_reference", "own_verdict", "place_referenced", "read_check", "referenced_assets",
+           "sha256_and_size", "third_party_verdict", "unlisted_note", "unplaced_refusals", "write_into"]

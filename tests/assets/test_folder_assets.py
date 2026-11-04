@@ -8,6 +8,7 @@ tube experiment), and the reading is the same. The lock with no key is a real lo
 import json
 import shutil
 from pathlib import Path
+from typing import cast
 
 import pytest
 from typing_extensions import TypedDict
@@ -145,8 +146,21 @@ def test_a_malformed_asset_record_in_a_lock_is_refused_by_the_saved_forms_reader
     assert "load.lock-shape" in refused.value.codes()
 
 
+def _shape(annotation: object) -> object:
+    """An annotation with each TypedDict in it replaced by its keys and their shapes, so two TypedDicts of one shape
+    defined in two modules compare equal."""
+    import typing
+
+    from typing_extensions import is_typeddict
+
+    if is_typeddict(annotation):
+        return {key: _shape(value) for key, value in typed_dict_fields(cast(type, annotation)).items()}
+    arguments = typing.get_args(annotation)
+    return (typing.get_origin(annotation), tuple(_shape(each) for each in arguments)) if arguments else annotation
+
+
 def test_the_saved_forms_record_has_the_assets_records_keys_and_types():
-    assert typed_dict_fields(RemoteAssetRecord) == typed_dict_fields(assets.AssetRecord)
+    assert _shape(RemoteAssetRecord) == _shape(assets.AssetRecord)
 
 
 def test_control_a_lock_without_the_key_in_its_form_refuses_a_lock_that_carries_it(saved_toy: Path, tmp_path: Path):

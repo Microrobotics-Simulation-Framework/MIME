@@ -5,7 +5,9 @@ stores it, and the script ``mime modal`` writes fetches it onto the assets Volum
 reads none writes no key.
 
 **The control**, failing on every run: a lock without the key, its experiment reading the table, is refused when the
-experiment is loaded, naming the asset (``load.assets``); so is a lock naming the table under another hash.
+experiment is loaded, naming the asset (``load.assets``). A lock naming the table under another hash is the
+experiment's pin, and the pin wins: the load reads that hash (design #229), and a shared source holding another version
+of the name is reported in the build report, never taken.
 
 The tube experiment reads the cached asset (``mime assets fetch unit_tube_R0.997``; CI stores it once per job)."""
 
@@ -18,6 +20,7 @@ from mrs_cases import BALL, mrs, mrs_tube, free_space
 
 import mime.env._modal_script as modal_generator
 from mime import assets
+from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.nodes.hydro.mrs._tube import UNIT_TUBE
 from mime.saved import LOCK_FILE, LoadRefused
@@ -73,14 +76,31 @@ def test_control_a_lock_without_the_tables_name_is_refused_when_loaded_naming_it
     assert UNIT_TUBE in str(refused.value) and "mime assets fetch" in str(refused.value)
 
 
-def test_control_a_lock_naming_the_table_under_another_hash_is_refused_when_loaded(saved: Path, tmp_path: Path):
-    other = assets.reference("unit_tube_R0.997_1667_modes")
+def test_the_pin_wins_a_lock_naming_the_table_under_another_hash_reads_that_hash(saved: Path, tmp_path: Path):
+    """The lock is the experiment's pin (design #229): a load reads the table under the hash its lock names, never the
+    one the installed MIME ships under that name, and a table nothing has stored is refused as missing, with the command
+    that fetches exactly what the lock names."""
+    other = {**TABLE.to_record(), "sha256": "ab" * 32, "size": 1234}
 
     def rehash(lock: dict[str, object]) -> None:
         held = lock["assets"]
         assert isinstance(held, list)
-        held[0] = {**TABLE.to_record(), "sha256": other.sha256, "size": other.size}
+        held[0] = other
 
-    with pytest.raises(LoadRefused) as refused:
+    with pytest.raises(BuildRefused) as refused:
         Experiment.load(edited(saved, tmp_path / "rehashed", rehash))
-    assert refused.value.codes() == ["load.assets"] and other.sha256 in str(refused.value)
+    assert refused.value.codes() == ["asset.missing"] and "mime assets fetch unit_tube_R0.997" in str(refused.value)
+    assert "1 kB" in str(refused.value), "the size the lock pins, not the shipped table's"
+
+
+def test_a_shared_source_holding_another_version_of_the_table_is_reported_and_the_pin_kept(saved: Path,
+                                                                                         monkeypatch: pytest.MonkeyPatch):
+    from mime.assets import _sources
+
+    real = _sources.shared()
+    newer = assets.AssetRef(UNIT_TUBE, "cd" * 32, 99, "CC0-1.0", ("https://example.org/newer.npz",))
+    records = {**real.records, UNIT_TUBE: (*real.records[UNIT_TUBE], _sources.Sourced(newer, "labx"))}
+    monkeypatch.setattr(_sources, "shared", lambda: _sources.Shared(records, real.manifests))
+    built = Experiment.load(saved).build()
+    assert any(f"asset {UNIT_TUBE}: the experiment keeps its pin, sha256 {TABLE.sha256}" in line and "labx" in line
+               for line in built.report.assets), built.report.assets

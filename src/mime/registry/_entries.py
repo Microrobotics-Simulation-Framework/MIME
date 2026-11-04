@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, NamedTuple, cast, override
 
@@ -750,6 +751,8 @@ class Segment:
     notes: tuple[str, ...] = ()
     #: What the stage draws of each frame: its description's visuals and the simple shapes that stand in for them.
     visuals: tuple[SegmentVisual, ...] = ()
+    #: The description file the visuals were read from, beside which the stage looks for the manifest of its meshes.
+    description_file: Path | None = None
 
 
 @dataclass(frozen=True)

@@ -38,9 +38,10 @@ from mime.saved._versions import upgraded_document, upgraded_lock
 PROPERTY = settings(max_examples=100, deadline=None)
 SAVED = Path(__file__).parent
 CURRENT = SAVED / "current" / "chain_screw"
-#: The committed folders of earlier forms: the versions 1 to 3 under ``previous/``, and the version 4 folder the stage
-#: writer's test holds (its stage is the first writer's).
-PREVIOUS = [*sorted((SAVED / "previous").iterdir()), SAVED / "stage_writers" / "chain_screw"]
+#: The committed folders of earlier forms: the versions 1 to 3 under ``previous/``, the version 4 folder the stage
+#: writer's test holds (its stage is the first writer's), and the version 5 document and lock (``form5/chain_screw``,
+#: the current folder as version 5 wrote it).
+PREVIOUS = [*sorted((SAVED / "previous").iterdir()), SAVED / "stage_writers" / "chain_screw", SAVED / "form5" / "chain_screw"]
 SCHEMAS = saved_form_schemas()
 
 
@@ -89,8 +90,8 @@ def earlier_forms() -> list[tuple[str, str]]:
 GAP_PLANTS: dict[str, Callable[[], list[tuple[str, str]]]] = {
     "duplicate-key": lambda: [("document", replaced(golden("document"), "experiment: chain_screw\n",
                                                     "experiment: chain_screw\nexperiment: chain_screw\n"))],
-    "duplicate-key-in-lock": lambda: [("lock", replaced(golden("lock"), '"schema": "mime.lock/5"',
-                                                        '"schema": "mime.lock/5",\n "schema": "mime.lock/5"'))],
+    "duplicate-key-in-lock": lambda: [("lock", replaced(golden("lock"), '"schema": "mime.lock/6"',
+                                                        '"schema": "mime.lock/6",\n "schema": "mime.lock/6"'))],
     "integral-float": lambda: [("document", replaced(golden("document"), "seed: 0\n", "seed: 0.0\n")),
                                ("lock", replaced(golden("lock"), '"steps": 8', '"steps": 8.0'))],
     "non-finite": lambda: [("document", replaced(golden("document"), "value: 0.001\n", "value: .nan\n")),
@@ -114,8 +115,8 @@ AGREEMENT_PLANTS: dict[tuple[str, str], Callable[[], str]] = {
     ("a boolean for an integer", "document"): lambda: replaced(golden("document"), "seed: 0\n", "seed: true\n"),
     ("a fraction for an integer", "document"): lambda: replaced(golden("document"), "seed: 0\n", "seed: 0.5\n"),
     ("a fraction for an integer", "lock"): lambda: replaced(golden("lock"), '"steps": 8', '"steps": 8.5'),
-    ("unknown key", "lock"): lambda: replaced(golden("lock"), '"schema": "mime.lock/5"',
-                                              '"colour": "red",\n "schema": "mime.lock/5"'),
+    ("unknown key", "lock"): lambda: replaced(golden("lock"), '"schema": "mime.lock/6"',
+                                              '"colour": "red",\n "schema": "mime.lock/6"'),
     ("a boolean for a number", "lock"): lambda: replaced(golden("lock"), '"rtol": 1e-06', '"rtol": true'),
 }
 
@@ -190,7 +191,7 @@ def test_the_readers_disagree_exactly_on_the_recorded_gaps(tmp_path):
     observed = {gap_id for gap_id, plants in gap_observations(tmp_path).items()
                 if any(loader != schema for _, (loader, schema) in plants)}
     assert observed == {gap.name for gap in GAPS if gap.disagreement}
-    assert len(GAP_PLANTS["earlier-form"]()) == 2 * len(PREVIOUS) == 10
+    assert len(GAP_PLANTS["earlier-form"]()) == 2 * len(PREVIOUS) == 12
 
 
 @pytest.mark.parametrize("missing", [gap.name for gap in GAPS if gap.disagreement])

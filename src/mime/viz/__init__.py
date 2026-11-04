@@ -15,18 +15,24 @@ from mime.viz._recording import (
 from mime.viz._visuals import (
     CONVERTER,
     CONVERTER_VERSION,
+    INDEX_FORMAT,
+    LOCK_VISUALS,
     Baked,
     Overlay,
+    bake,
     baked_key,
     baked_layers,
     fetch,
+    lock_manifests,
+    manifests_for,
     open_stage,
     overlay,
     view,
     visuals_dir,
 )
 
-__all__ = ["CONVERTER", "CONVERTER_VERSION", "RECORDING_FILE", "RECORDING_FORMAT", "RUN_STAGE", "Baked", "Decimated",
-           "Mesh", "Overlay", "RecordingSettings", "StageSamples", "TriangleBudget", "baked_key", "baked_layers",
-           "crate_version", "decimate", "fetch", "mesh_distance", "open_stage", "overlay", "read_stl",
+__all__ = ["CONVERTER", "CONVERTER_VERSION", "INDEX_FORMAT", "LOCK_VISUALS", "RECORDING_FILE", "RECORDING_FORMAT",
+           "RUN_STAGE", "Baked", "Decimated", "Mesh", "Overlay", "RecordingSettings", "StageSamples", "TriangleBudget",
+           "bake", "baked_key", "baked_layers", "crate_version", "decimate", "fetch", "lock_manifests",
+           "manifests_for", "mesh_distance", "open_stage", "overlay", "read_stl",
            "recording_layer", "view", "visuals_dir", "write_mesh", "write_recording"]

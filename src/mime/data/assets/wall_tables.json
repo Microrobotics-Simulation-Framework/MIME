@@ -8,7 +8,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R1.526.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r40_R2.035",
@@ -17,7 +19,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R2.035.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r40_R2.500",
@@ -26,7 +30,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R2.500.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r40_R3.054",
@@ -35,7 +41,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R3.054.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r40_R4.071",
@@ -44,7 +52,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R4.071.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r40_R8.333",
@@ -53,7 +63,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r40/wall_R8.333.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r30_R2.500",
@@ -62,7 +74,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R2.500.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r30_R2.857",
@@ -71,7 +85,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R2.857.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r30_R3.333",
@@ -80,7 +96,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R3.333.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r30_R4.545",
@@ -89,7 +107,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R4.545.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     },
     {
       "name": "cylinder_wall_r30_R6.667",
@@ -98,7 +118,9 @@
       "licence": "CC0-1.0",
       "locations": [
         "https://huggingface.co/datasets/NickERoy/mime-wall-tables/resolve/1f7b5a4e5a66c679ecd2a0b2c50cb57eb5a25cd6/r30/wall_R6.667.npz"
-      ]
+      ],
+      "role": "results",
+      "kind": "derived"
     }
   ]
 }

@@ -1,19 +1,26 @@
 """Resolving: the one lookup of a content-addressed file, shared by every caller that needs one stored.
 
-``resolve`` serves an asset now; a bundle (a packed experiment) is a content-addressed file too, and is resolved by the
-same function, with the same cache, offline switch, hash check, refusal codes and size report.
+``resolve`` serves an asset: its locations are opened by adapters (``mime.assets._adapters``), and the resolver keeps
+the rest, the cache, the offline switch, the hash check, the size cap, redirects with a credential bound to its host,
+timeouts, retries with backoff and resuming. A bundle (a packed experiment) is a content-addressed file too, whose hash
+is not known before it arrives: ``retrieve`` stores it, through pooch's downloader, into the same cache.
 """
 
 from __future__ import annotations
 
+import hashlib
+import http.client
 import logging
+import math
 import re
 import shutil
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, override
 from urllib.parse import unquote, urlsplit
@@ -39,8 +46,34 @@ from mime.assets._cache import (
 )
 from mime.assets._commands import check_command, fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
-from mime.assets._reference import AssetRef, carries_key, location_problem, redacted
+from mime.assets._adapters import (
+    LOOPBACK_HOSTS,
+    Adapter,
+    AdapterError,
+    Credential,
+    CredentialHook,
+    LoginRefused,
+    NotFound,
+    Opened,
+    Redirect,
+    Request,
+    Transient,
+    adapter_for,
+    host_of,
+    stored_credential,
+)
+from mime.assets._locations import read_locations
+from mime.assets._reference import (
+    BUILT_IN_SCHEMES,
+    KEY_HIDDEN,
+    AssetRef,
+    carries_key,
+    location_problem,
+    redacted,
+    scheme_of,
+)
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.credentials import Token
 from mime.terms import NO_ASSERTION
 
 #: The part of the message pooch raises for a download whose hash differs (``pooch.hashes.hash_matches``). Any other
@@ -106,7 +139,7 @@ class _Capped:
     is, whatever the server goes on to send, and what it wrote is discarded with its temporary file."""
 
     def __init__(self, stream: Any, limit: int, label: str = "", expected: int | None = None) -> None:
-        self._stream = stream
+        self._stream: Any = stream
         self._limit = limit
         self._label = label
         self._expected = expected
@@ -128,6 +161,16 @@ class _Capped:
 
     def flush(self) -> None:
         self._stream.flush()
+
+    def stated(self, size: int) -> None:
+        """The store states the whole file is ``size`` bytes: refused before a byte is taken where that is past the
+        limit, as a stream that goes past it would be."""
+        if size > self._limit:
+            raise _SizeExceeded(self._limit, size)
+
+    def restart(self) -> None:
+        """The download starts again from its first byte (a store that ignored a range): nothing received yet."""
+        self.received = 0
 
     def finish(self) -> None:
         """The download ended: its last report, whatever was told since the one before."""
@@ -218,9 +261,348 @@ def _download_held_to(location: str, known_hash: str | None, fname: str, directo
     return arrived
 
 
+#: How often a location is asked again after an answer worth retrying (a timeout, a cut, a 429 or a 5xx), and the
+#: first wait, doubled at each retry; a ``Retry-After`` the store states is waited instead, up to the cap.
+RETRIES = 3
+BACKOFF_SECONDS = 0.5
+RETRY_AFTER_CAP_SECONDS = 30.0
+#: How long an answer, or the next block of one, may take.
+TIMEOUT_SECONDS = 60.0
+#: How many redirects one location may lead through.
+MAX_REDIRECTS = 10
+_BLOCK = 1 << 20
+
+
+class _WrongBytes(Exception):
+    """The stream's bytes, hashed as they arrived, are not the reference's."""
+
+
+class _Unusable(Exception):
+    """A location MIME does not ask: no adapter reads its scheme, or a redirect leads to a location MIME refuses."""
+
+
+#: The hook the resolver asks for a host's credential; the machine's credential store unless a caller sets another.
+_credential_hook: ContextVar[CredentialHook] = ContextVar("mime_credential_hook", default=stored_credential)
+
+
+@contextmanager
+def credentials_from(hook: CredentialHook) -> Generator[None]:
+    """Inside this block, the resolver asks ``hook`` for a host's credential in place of the machine's store."""
+    token = _credential_hook.set(hook)
+    try:
+        yield
+    finally:
+        _credential_hook.reset(token)
+
+
+#: The longest wait a store's answer is read as meaning: a ``Retry-After`` past a day is no wait a busy server means,
+#: and is read as none stated.
+LONGEST_MEANT_SECONDS = 86_400.0
+
+
+def wait_seconds(attempt: int, stated: object) -> float:
+    """How long to wait before asking again: the wait a store stated (``Retry-After``, or an adapter's
+    :class:`Transient`), up to :data:`RETRY_AFTER_CAP_SECONDS`, where it is a number of seconds from zero to
+    :data:`LONGEST_MEANT_SECONDS`; otherwise (none stated, or a NaN, an infinity, a negative or an enormous number, or
+    no number at all) the default backoff, doubling from :data:`BACKOFF_SECONDS` at each attempt. Always finite, and
+    never more than the cap or the default."""
+    default = BACKOFF_SECONDS * 2 ** (attempt - 1)
+    if isinstance(stated, bool) or not isinstance(stated, int | float):
+        return default
+    try:
+        held = float(stated)
+    except OverflowError:
+        return default
+    if not math.isfinite(held) or not 0 <= held <= LONGEST_MEANT_SECONDS:
+        return default
+    return min(held, RETRY_AFTER_CAP_SECONDS)
+
+
+def _wait(attempt: int, error: BaseException) -> None:
+    seconds = wait_seconds(attempt, error.retry_after if isinstance(error, Transient) else None)
+    downloads_doing(f"waiting {seconds:.1f} s before asking again")
+    time.sleep(seconds)
+
+
+# --- credentials kept out of what is said ---------------------------------------------------------------------------
+
+
+#: The credentials the resolver has handed an adapter and whose attempt is still under way, in every thread: while any
+#: is held, every log record this process makes has them hidden, and every text the resolver says of an attempt.
+_handed: list[Token] = []
+_handed_lock = threading.Lock()
+#: The credentials handed in the attempts of the location in hand (this context's), whose texts the resolver scrubs.
+_handed_here: ContextVar[list[Token] | None] = ContextVar("mime_credentials_handed", default=None)
+_factory: list[Callable[..., logging.LogRecord]] = []
+
+
+def hidden(text: str) -> str:
+    """``text`` with every credential handed in the attempt in hand hidden, in every text form a token can take
+    (``Token.hidden_in``), and every address's access key (:func:`~mime.assets._reference.redacted`): what the
+    resolver says of an adapter's error, a redirect's target or a line it logs, whatever the adapter wrote."""
+    for token in (*(_handed_here.get() or ()), *_snapshot()):
+        text = token.hidden_in(text, KEY_HIDDEN)
+    return redacted(text)
+
+
+def _snapshot() -> tuple[Token, ...]:
+    with _handed_lock:
+        return tuple(_handed)
+
+
+def _scrubbed_record(*arguments: Any, **keywords: Any) -> logging.LogRecord:
+    """A log record whose message, and the traceback it carries, hold no credential an attempt under way was handed:
+    a line an adapter, or a library it wraps, logs is scrubbed where it is made."""
+    record = _factory[0](*arguments, **keywords)
+    if not _snapshot():
+        return record
+    try:
+        message = record.getMessage()
+    except Exception:  # noqa: BLE001 - a record whose arguments do not fit its message is logging's to report
+        return record
+    record.msg, record.args = hidden(message), ()
+    if record.exc_info and not record.exc_text:
+        record.exc_text = hidden(logging.Formatter().formatException(record.exc_info))
+    return record
+
+
+def _scrub_log_records() -> None:
+    """Make every log record through :func:`_scrubbed_record`, once per process."""
+    with _handed_lock:
+        if _factory:
+            return
+        _factory.append(logging.getLogRecordFactory())
+        logging.setLogRecordFactory(_scrubbed_record)
+
+
+@contextmanager
+def _handing() -> Generator[list[Token]]:
+    """The attempts of one location: the credentials :func:`_request` hands in them are held, and hidden from every
+    text said or logged, until the block ends."""
+    held: list[Token] = []
+    token = _handed_here.set(held)
+    try:
+        yield held
+    finally:
+        _handed_here.reset(token)
+        with _handed_lock:
+            for each in held:
+                if each in _handed:
+                    _handed.remove(each)
+
+
+def _hand(credential: Credential | None) -> Credential | None:
+    """``credential``, handed to an adapter: held for :func:`hidden` until the attempts of :func:`_handing` end."""
+    held = _handed_here.get()
+    if credential is not None and held is not None:
+        _scrub_log_records()
+        held.append(credential.token)
+        with _handed_lock:
+            _handed.append(credential.token)
+    return credential
+
+
+def _scrubbed(error: BaseException) -> BaseException:
+    """``error`` as the resolver says it, its text with every credential handed hidden: MIME's own kinds of adapter
+    error kept (a missing file, a refused login, an answer worth retrying), any other an :class:`AdapterError` naming
+    its type. Made outside any handler, so that it is chained to nothing that quotes the original."""
+    if isinstance(error, _WrongBytes | _SizeExceeded):
+        return error
+    text = hidden(str(error))
+    if isinstance(error, _Unusable):
+        return _Unusable(text)
+    if isinstance(error, NotFound) or _nothing_there(error):
+        return NotFound(text)
+    if isinstance(error, LoginRefused):
+        return LoginRefused(text)
+    if isinstance(error, Transient):
+        return Transient(text, error.retry_after)
+    if isinstance(error, AdapterError):
+        return AdapterError(text)
+    return AdapterError(f"{type(error).__name__}: {text}" if text else type(error).__name__)
+
+
+# --- redirects ------------------------------------------------------------------------------------------------------
+
+
+def redirect_problem(answering: str, target: str) -> str | None:
+    """Why a redirect from ``answering`` to ``target`` is not followed, or ``None``. **A redirect never changes the
+    scheme to a local one**: it leads to ``https``; to plain ``http`` only on this machine and only from a location on
+    this machine; or, for an adapter's own scheme (not one MIME reads itself), to that same scheme, which is the
+    store's own business. A ``file:`` mirror, a ``package:`` file, a ``doi:``, or any other scheme is refused: a remote
+    server never chooses what MIME reads on this machine, or which store it asks with a credential."""
+    to, held = scheme_of(target), scheme_of(answering)
+    if to == "https":
+        return None
+    if to == "http":
+        here = {host_of(answering), host_of(target)} <= LOOPBACK_HOSTS
+        return None if here else ("a redirect leads to plain http only on this machine, from a location on this "
+                                  "machine")
+    if to == held and to not in BUILT_IN_SCHEMES:
+        return None
+    return (f"a redirect leads to https (or, on this machine, to http), never to a {to}: location: a remote server "
+            f"never chooses what MIME reads here")
+
+
+def _request(ref: AssetRef, adapter: Adapter, location: str, start: int, validator: str | None) -> Request:
+    """The request of one attempt: the credential of the location's own host, and only where the adapter needs one."""
+    credential = None
+    if adapter.needs_credential:
+        host = host_of(location)
+        held = _credential_hook.get()(host) if host else None
+        credential = _hand(held if held is not None and held.host == host else None)
+    names = tuple(name for name, _ in _names_a_person_may_use(ref))
+    return Request(ref.name, ref.sha256, ref.size, names, start, None, validator if start else None, credential,
+                   TIMEOUT_SECONDS, read_locations().ca_bundle)
+
+
+def _transfer(location: str, ref: AssetRef, target: Path, *, check_hash: bool = True) -> None:
+    """Stream the file at ``location`` into ``target``: through its adapter, each redirect's target checked as a
+    location is and asked with the credential of its own host alone, the bytes held to the reference's size as they
+    arrive and hashed as they arrive (``check_hash``); an answer worth retrying asked again with backoff, and an
+    interrupted stream resumed from the bytes it had where the adapter reads a range and the store names the version it
+    sent, else started again."""
+    current, hops, attempt = location, 0, 0
+    written, validator = 0, None
+    digest = hashlib.sha256()
+    schemes = [scheme for scheme, _ in ref.adapters]
+    with target.open("w+b") as out:
+        capped = _Capped(out, ref.size, ref.name, ref.size)
+        while True:
+            adapter = adapter_for(current)
+            if adapter is None:
+                raise _Unusable(f"no adapter reads the scheme {scheme_of(current)!r} here: install the package the "
+                                f"record names for it"
+                                + (f" ({dict(ref.adapters)[scheme_of(current)]})" if scheme_of(current) in schemes
+                                   and dict(ref.adapters)[scheme_of(current)] else ""))
+            resume = written if written and adapter.ranged and validator is not None else 0
+            if written and not resume:
+                out.seek(0)
+                out.truncate()
+                written, digest = 0, hashlib.sha256()
+                capped.restart()
+            try:
+                opened = adapter.open(current, _request(ref, adapter, current, resume, validator))
+            except Transient as error:
+                attempt += 1
+                if attempt > RETRIES:
+                    raise
+                _wait(attempt, error)
+                continue
+            if isinstance(opened, Redirect):
+                hops += 1
+                problem = redirect_problem(current, opened.location) or location_problem(opened.location, schemes)
+                if hops > MAX_REDIRECTS:
+                    raise _Unusable(f"more than {MAX_REDIRECTS} redirects")
+                if problem is not None:
+                    raise _Unusable(f"it redirects to {hidden(opened.location)!r}, which MIME does not ask: {problem}")
+                current = opened.location
+                continue
+            try:
+                if opened.size is not None:
+                    capped.stated(opened.size)
+                if opened.start != resume:
+                    out.seek(0)
+                    out.truncate()
+                    written, digest = 0, hashlib.sha256()
+                    capped.restart()
+                while chunk := opened.stream.read(_BLOCK):
+                    capped.write(chunk)
+                    digest.update(chunk)
+                    written += len(chunk)
+                if opened.size is not None and written < opened.size:
+                    raise Transient(f"the stream ended at {written} of the {opened.size} bytes the store stated")
+            except (Transient, OSError, http.client.HTTPException) as error:
+                attempt += 1
+                validator = opened.validator
+                if attempt > RETRIES:
+                    raise Transient(f"the download was cut ({type(error).__name__}) and did not recover") from None
+                _wait(attempt, error)
+                continue
+            finally:
+                opened.close()
+            break
+        capped.finish()
+    if check_hash and digest.hexdigest() != ref.sha256:
+        raise _WrongBytes()
+
+
+#: How long ``mime assets sources`` waits for one location's answer.
+PROBE_TIMEOUT_SECONDS = 15.0
+
+
+@dataclass(frozen=True)
+class Probe:
+    """What looking at one location found: whether it answered with the file (``True``), did not (``False``), or was
+    not asked (``None``), and why, in words."""
+
+    location: str
+    reachable: bool | None
+    why: str
+
+
+def probe(location: str, ref: AssetRef) -> Probe:
+    """Look at one location of ``ref`` without downloading it: its adapter asked for the first byte where it reads a
+    range (an ``https`` server is sent ``Range: bytes=0-0``), else opened and closed at once; each redirect followed as
+    a download follows it, with the credential of its own host alone. Never with ``MIME_OFFLINE`` set."""
+    shown = redacted(location)
+    schemes = [scheme for scheme, _ in ref.adapters]
+    problem = location_problem(location, schemes)
+    if problem is not None:
+        return Probe(shown, False, f"not asked: {problem}")
+    if offline():
+        return Probe(shown, None, f"not looked at: {OFFLINE_VARIABLE} is set")
+    with _handing():
+        return _probed(location, ref, shown, schemes)
+
+
+def _probed(location: str, ref: AssetRef, shown: str, schemes: Sequence[str]) -> Probe:
+    """:func:`probe`'s looking, each text it says with every credential handed hidden (:func:`hidden`)."""
+    current = location
+    for _ in range(MAX_REDIRECTS + 1):
+        adapter = adapter_for(current)
+        if adapter is None:
+            return Probe(shown, False, f"no adapter reads the scheme {scheme_of(current)!r} here")
+        request = replace(_request(ref, adapter, current, 0, None), end=1 if adapter.ranged else None,
+                          timeout=PROBE_TIMEOUT_SECONDS)
+        failed: str | None = None
+        opened: Opened | Redirect | None = None
+        try:
+            opened = adapter.open(current, request)
+        except NotFound as error:
+            failed = f"no file there ({error})"
+        except LoginRefused as error:
+            failed = f"the login was refused ({error})"
+        except Exception as error:  # noqa: BLE001 - an adapter, or a library it wraps, may raise any type
+            failed = str(error) or type(error).__name__
+        if opened is None:  # said here, outside the handler: the adapter's error is chained to nothing said
+            return Probe(shown, False, hidden(failed or "the adapter opened nothing"))
+        if isinstance(opened, Redirect):
+            problem = redirect_problem(current, opened.location) or location_problem(opened.location, schemes)
+            if problem is not None:
+                return Probe(shown, False, f"it redirects to a location MIME does not ask: {problem}")
+            current = opened.location
+            continue
+        try:
+            size = opened.size
+        finally:
+            opened.close()
+        if size is not None and size != ref.size:
+            return Probe(shown, False, f"it answers with {size_text(size)}, and the record says {size_text(ref.size)}")
+        stated = f", {size_text(size)} as the record says" if size is not None else ", its size not stated"
+        via = "" if current == location else f" (through {hidden(current)})"
+        return Probe(shown, True, f"answered{stated}{via}; its hash is checked when it is fetched")
+    return Probe(shown, False, f"more than {MAX_REDIRECTS} redirects")
+
+
 def _download(location: str, ref: AssetRef, directory: Path) -> Path:
     """One location of ``ref`` into ``directory``, held to the reference's sha256 and its declared size."""
-    return _download_held_to(location, f"sha256:{ref.sha256}", ref.sha256, directory, ref.size, ref.name, ref.size)
+    target = directory / ref.sha256
+    _transfer(location, ref, target)
+    watching = _watcher.get()
+    if watching is not None:
+        watching.sent(ref.name)
+    return target
 
 
 def _placed_file(ref: AssetRef, why: str, path: Path | None = None) -> BuildRefused:
@@ -342,36 +724,52 @@ def _install(ref: AssetRef, arrived: Path, *, replace: bool) -> Path:
     return file_path(ref)
 
 
+def tried_locations(ref: AssetRef) -> tuple[str, ...]:
+    """The locations of ``ref`` in the order they are tried: the locations file's for it (by sha256, by name, then its
+    mirrors), then the record's own, primary first; each once."""
+    return tuple(dict.fromkeys((*read_locations().extra(ref.name, ref.sha256), *ref.locations)))
+
+
 def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool) -> Path:
     """The locations in order, each into a folder of its own; the first whose file is the reference's is moved into
     place and recorded."""
     failures: list[str] = []
     mismatched = oversize = False
     not_there = 0
-    for location in ref.locations:
-        problem = location_problem(location)
+    schemes = [scheme for scheme, _ in ref.adapters]
+    for location in tried_locations(ref):
+        problem = location_problem(location, schemes)
         if problem is not None:  # a reference built around the check: the location is never contacted
-            failures.append(f"{location}: not used, {problem}")
+            failures.append(f"{redacted(location)}: not used, {problem}")
             continue
         if report is not None:
-            report(f"{ref.name}: {size_text(ref.size)} from {location}")
+            report(f"{ref.name}: {size_text(ref.size)} from {redacted(location)}")
         incoming = Path(tempfile.mkdtemp(prefix=f"{ref.sha256}{INCOMING_INFIX}", dir=cache_dir()))
         try:
-            try:
-                arrived = _download(location, ref, incoming)
-            except Exception as error:  # noqa: BLE001 - pooch, requests and the DOI resolvers raise unrelated types
-                wrong_bytes = isinstance(error, ValueError) and _POOCH_MISMATCH in str(error)
-                too_many = isinstance(error, _SizeExceeded)
-                not_there += _nothing_there(error)
-                mismatched = mismatched or wrong_bytes
-                oversize = oversize or too_many
-                failures.append(f"{location}: " + (
-                    f"sent more than the {size_text(ref.size)} the reference declares, and the download was stopped"
-                    if too_many else "other bytes than the reference names" if wrong_bytes else str(error)))
-                continue
+            with _handing():
+                failed: BaseException | None = None
+                arrived: Path | None = None
+                try:
+                    arrived = _download(location, ref, incoming)
+                except Exception as error:  # noqa: BLE001 - an adapter, or a library it wraps, may raise any type
+                    failed = error
+                if failed is not None or arrived is None:  # judged here, outside the handler, as the resolver says it
+                    error = _scrubbed(failed or AdapterError("the adapter served nothing"))
+                    del failed
+                    wrong_bytes = isinstance(error, _WrongBytes)
+                    too_many = isinstance(error, _SizeExceeded)
+                    not_there += isinstance(error, NotFound)
+                    mismatched = mismatched or wrong_bytes
+                    oversize = oversize or too_many
+                    failures.append(hidden(f"{location}: " + (
+                        f"sent more than the {size_text(ref.size)} the reference declares, and the download was "
+                        f"stopped" if too_many else "other bytes than the reference names" if wrong_bytes
+                        else f"refused the login ({error})" if isinstance(error, LoginRefused)
+                        else str(error) or type(error).__name__)))
+                    continue
             if sha256_of_file(arrived) != ref.sha256:
                 mismatched = True
-                failures.append(f"{location}: stored other bytes than the reference names")
+                failures.append(f"{redacted(location)}: stored other bytes than the reference names")
                 continue
             return _install(ref, arrived, replace=replace)
         finally:
@@ -408,10 +806,10 @@ def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full:
        recorded, named by its sha256, by the asset's name or by the file name a location serves: hashed in full, no
        network, kept if its sha256 is the reference's. A file with other bytes is never deleted or overwritten when a
        person placed it (``asset.placed-file``); one MIME downloaded is replaced by step 3.
-    3. **The locations, primary then backups**: the first location is the primary, the permanent archive once there is
-       one, and the rest are backups tried only when the one before fails (unreachable, an error, or other bytes). Each
-       goes through pooch into a folder of its own, which checks the sha256; the file is hashed in full again before it
-       is moved into place and recorded.
+    3. **The locations**: this machine's locations file's for the asset first (a lab's mirror), then the record's own,
+       primary then backups, each tried only when the one before fails (unreachable, an error, or other bytes). Each
+       is opened by its adapter and streamed into a folder of its own, held to the record's size and hashed as it
+       arrives; the file is hashed in full again before it is moved into place and recorded.
 
     Steps 2 and 3 hold a lock on the asset: a second process waits, then finds the file stored. With
     ``MIME_OFFLINE`` set step 3 is refused (``asset.offline``). ``report`` is called with a line before each download,

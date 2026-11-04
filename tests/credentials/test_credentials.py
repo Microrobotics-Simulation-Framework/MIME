@@ -662,3 +662,40 @@ def test_the_new_checks_pass_unplanted_twenty_times(tmp_path: Path, capsys: pyte
                                 ("e", check_a_work_tree_elsewhere_is_not_a_reason_to_refuse)):
             with home(tmp_path / f"{name}{run}"):
                 git_check(tmp_path / f"{name}{run}")
+
+
+# --- a host's own token, for an asset adapter ----------------------------------------------------------------------
+
+
+def test_a_hosts_own_token_is_kept_beside_the_services_and_read_by_the_adapters_hook(folder: Path):
+    """``mime credentials set host:<host>`` keeps a token for an asset adapter that needs one; the resolver's hook
+    reads it for that host alone, and a pack searches files for it as for any token held."""
+    from mime import assets
+
+    value = a_token()
+    service = credentials.host_service("Files.Lab.Example.org")
+    assert service == "host:files.lab.example.org" and credentials.is_host_service(service)
+    put(service, value)
+    held = assets.stored_credential("files.lab.example.org")
+    assert held is not None and held.host == "files.lab.example.org" and held.token.reveal() == value
+    assert assets.stored_credential("other.example.org") is None
+    assert value not in repr(held) and value not in str(held)
+    assert any(each.reveal() == value for each in credentials.held_tokens())
+    assert credentials.source(service) == "the credentials file"
+
+
+@pytest.mark.parametrize("service", ["host:", "host:-bad.example", "host:a b", "host:UPPER_score", "zenodo-prod"])
+def test_a_service_that_is_neither_named_nor_a_host_is_refused(folder: Path, service: str):
+    with pytest.raises(BuildRefused) as refused:
+        credentials.token(service)
+    assert refused.value.codes() == ["credentials.service"]
+
+
+def test_the_command_takes_a_hosts_service(folder: Path, monkeypatch: pytest.MonkeyPatch,
+                                          capsys: pytest.CaptureFixture[str]):
+    value = a_token()
+    monkeypatch.setattr("getpass.getpass", lambda prompt: value)
+    assert main(["credentials", "set", "host:files.lab.example.org"]) == 0
+    assert main(["credentials", "status", "host:files.lab.example.org"]) == 0
+    out = capsys.readouterr().out
+    assert "host:files.lab.example.org: a token, from the credentials file" in out and value not in out

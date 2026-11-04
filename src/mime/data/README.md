@@ -24,10 +24,12 @@ stops tracking one or ignores it, and `tests/test_packaging.py` if a built distr
 surrogate's weights, as the asset **`dejongh_mlp_v2`**. `asset(name)` names a packaged asset with the sha256 MIME pins
 for it; `asset_bytes` reads its contents and refuses a file whose sha256 is not the one asked for.
 The saved form writes an asset by name and sha256, the lock records its source and sha256, and a load refuses an
-installation that ships other contents under the name. This is the smallest form of the design's `asset(...)`:
-assets by name from MIME's own package. `mime.asset` (in `mime.scene`) names a file by its path, a USD
-layer the scene references, pinned the same way; the two meet when assets by name, DOI or URL, an experiment folder's
-own, and assets that cannot be redistributed land.
+installation that ships other contents under the name: assets by name from MIME's own package. An external file is
+declared by its record (`mime.scene.asset(AssetRef(...))`), wherever it is kept (`mime.assets`).
+
+**`assets/`**: the records of MIME's own remote assets, the wall tables (each with its role and kind, the corrected
+tube table with its derivation record's sha256). MIME's data holds records of its own assets only: a robot's meshes are
+a manifest beside its description (the AR4's in `examples/descriptions/ar4/`), and a lab's records are its package's.
 
 **`records/`**: copies of OpenMaterica's example records `example/water` and `example/ndfeb_n45`, as
 the assets `openmaterica_example_water` and `openmaterica_example_ndfeb_n45`, which `mime.materials.packaged_record`

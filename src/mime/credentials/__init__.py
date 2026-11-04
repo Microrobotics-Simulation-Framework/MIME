@@ -1,6 +1,7 @@
 """Credentials, prepared for ``mime push``: a token per service, kept where a commit cannot publish it and shown nowhere.
 
-``mime credentials set | status | remove <service>`` for ``zenodo`` and ``zenodo-sandbox``. MIME has no accounts, so
+``mime credentials set | status | remove <service>`` for ``zenodo`` and ``zenodo-sandbox``, and for a host's own token
+(``host:<host name>``), which an asset adapter that needs a credential is handed for that host alone. MIME has no accounts, so
 nothing is "logged into": it stores another service's credential. The token is read with ``getpass``, never from a
 command-line argument; it is stored in the user's config directory (the file 0600, its directory 0700, never inside a
 git working tree), and its environment variable (``ZENODO_TOKEN``, ``ZENODO_SANDBOX_TOKEN``) overrides the file. A
@@ -12,11 +13,14 @@ from mime.credentials._store import (
     CREDENTIALS_FILE,
     DIRECTORY_MODE,
     FILE_MODE,
+    HOST_PREFIX,
     MINIMUM_LENGTH,
     SERVICES,
     credentials_path,
     describe,
     held_tokens,
+    host_service,
+    is_host_service,
     prompt,
     remove,
     source,
@@ -29,6 +33,7 @@ __all__ = [
     "CREDENTIALS_FILE",
     "DIRECTORY_MODE",
     "FILE_MODE",
+    "HOST_PREFIX",
     "MINIMUM_LENGTH",
     "SERVICES",
     "SHOWN_FROM_LENGTH",
@@ -36,6 +41,8 @@ __all__ = [
     "credentials_path",
     "describe",
     "held_tokens",
+    "host_service",
+    "is_host_service",
     "prompt",
     "remove",
     "source",

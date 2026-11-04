@@ -455,14 +455,39 @@ def permission_verdict(scope: Scope) -> Verdict:
     return Verdict("permitted", "conditional" if conditions else "open", conditions, "a declared permission")
 
 
+def strictest(verdicts: Sequence[Verdict]) -> Verdict:
+    """What a file made of all of ``verdicts`` may do: their ``AND`` (the most restrictive tier, every condition, not
+    permitted if any one is not); ``open`` for none."""
+    return _all(verdicts) if verdicts else Verdict("permitted", "open")
+
+
+#: What decides a derived file's verdict.
+DERIVED_BY = "the strictest of its inputs"
+DIFFERING_CONDITIONS_BY = "inputs under different conditional licences, whose compatibility MIME does not judge"
+
+
+def derived_verdict(inputs: Sequence[tuple[str, Verdict]]) -> Verdict:
+    """A derived file's verdict from its inputs' (each its licence expression and its verdict): the strictest of them
+    (:func:`strictest`), so one referenced input makes the file referenced. Where inputs carry different conditional
+    licences MIME does not judge whether their terms can hold together: the file is referenced, until a declared
+    permission bound to its own hash says otherwise (:func:`freest` with that permission's verdict)."""
+    verdicts = [verdict for _, verdict in inputs]
+    held = strictest(verdicts)
+    conditional = {licence for licence, verdict in inputs if verdict.tier == "conditional"}
+    if held.tier != "referenced" and len(conditional) > 1:
+        return Verdict("unknown", "referenced", (), DIFFERING_CONDITIONS_BY)
+    return Verdict(held.status, held.tier, held.conditions, DERIVED_BY)
+
+
 def freest(verdicts: Sequence[Verdict]) -> Verdict:
     """The freest of a file's verdicts (its licence's and each permission's that names it): a permission only ever
     raises a file's tier."""
     return min(verdicts, key=_rank)
 
 
-__all__ = ["CONDITIONAL", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "EVIDENCE_KINDS", "NON_COMMERCIAL",
-           "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN", "ROLES", "SHARE_ALIKE", "CustomLicence",
-           "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role", "Scope", "Status", "Terms", "Tier",
-           "Verdict", "canonical", "expression_of", "freest", "ids_of", "licence_problem", "licence_verdict",
-           "packaging_version", "permission_problems", "permission_verdict", "unlisted_ids", "unlisted_words"]
+__all__ = ["CONDITIONAL", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY", "DIFFERING_CONDITIONS_BY",
+           "EVIDENCE_KINDS", "NON_COMMERCIAL", "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN",
+           "ROLES", "SHARE_ALIKE", "CustomLicence", "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role",
+           "Scope", "Status", "Terms", "Tier", "Verdict", "canonical", "derived_verdict", "expression_of", "freest",
+           "ids_of", "licence_problem", "licence_verdict", "packaging_version", "permission_problems",
+           "permission_verdict", "strictest", "unlisted_ids", "unlisted_words"]

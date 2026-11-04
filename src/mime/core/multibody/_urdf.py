@@ -72,8 +72,9 @@ class InertiaGap:
 #: What MIME does instead of each element it does not use or refuses, where to look, and how to ask.
 CATEGORY_MESSAGES: dict[str, str] = {
     "visual": "MIME simulates no link's appearance; the stage draws it on each link's frame (mime.viz): a box, "
-              "cylinder or sphere as its USD primitive, a mesh from the asset cache where a visual set bakes it "
-              "(`mime visuals fetch <set>`), and simple shapes from the link's frames where it has neither.",
+              "cylinder or sphere as its USD primitive, a mesh from the asset cache where the manifest beside the "
+              "description lists it and it is baked (`mime visuals fetch <the description's folder>`), and simple "
+              "shapes from the link's frames where it has neither.",
     "collision": "MIME simulates no collision between a chain's links: contact is an interaction an experiment "
                  f"attaches between named things (mime.interactions.Contact). To ask for link collisions: {ISSUES}.",
     "material": "a URDF material is a colour, not a physical material: a part's material comes from an OpenMaterica "

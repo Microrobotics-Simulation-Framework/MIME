@@ -319,7 +319,7 @@ def arms():
         warnings.simplefilter("ignore")
         kinematic = kinematic_rpm("kinematic_arm").build().graph.get_node("rpm.arm")
         dynamic = dynamic_rpm("tracked_arm", motor=False, laws=()).build().graph.get_node("rpm.arm")
-        tree = read_urdf(Path(__file__).parents[1] / "descriptions" / "ar4.urdf").tree
+        tree = read_urdf(Path(__file__).parents[2] / "examples" / "descriptions" / "ar4" / "ar4.urdf").tree
     return kinematic, dynamic, tree
 
 

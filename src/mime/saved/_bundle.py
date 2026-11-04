@@ -7,11 +7,13 @@ every carried file's sha256 and size, each file that travels as a reference with
 The ``NOTICE`` follows (each file's licence, credit, verdict and declared permission, ``mime.saved._card``), then the
 folder's files under ``experiment/``, sorted, with a fixed timestamp and mode.
 
-**Format 2** (``mime.bundle/2``) carries a file only where its terms let it be redistributed: a file that may not be
+**Format 3** (``mime.bundle/3``) is format 2 with each asset's record whole in the manifest (its credit, role, kind,
+custom licences and the adapters its locations need, as the lock of saved form 6 holds them); a MIME of format 2
+refuses it as a later form rather than misreading it. **Format 2** (``mime.bundle/2``) carries a file only where its terms let it be redistributed: a file that may not be
 redistributed travels as a reference to its origin, **whatever its size**, and never inside a bundle, nor its bytes at
 another path; so does a file over the size a bundle carries that has an origin (``mime.saved._terms``). Each reference's
 asset is held to the file's terms, and an asset MIME ships to its shipped licence: the lock is outside the hashed
-record. Format 1 (``mime.bundle/1``) still unpacks. A bundle of a format this MIME does not read (a later one) is
+record. Formats 2 and 1 (``mime.bundle/1``) still unpack. A bundle of a format this MIME does not read (a later one) is
 refused first, before any other check, as ``load.newer-form``, with the advice to install the MIME that wrote it; a MIME
 before format 2 (a development checkout) instead refuses one as not a bundle ``mime pack`` wrote, except ``mime pull`` without
 ``--into``, which reads the manifest first.
@@ -44,16 +46,24 @@ from typing import Literal, cast
 from typing_extensions import ReadOnly, TypedDict
 
 from mime._terminal import plain
-from mime.assets import folder_assets, size_text
+from mime.assets import folder_assets, known_bytes, size_text
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token, held_tokens
 from mime.saved._folder import layout_problem, named_files, read_folder
 from mime.saved._schema import Lock, RemoteAssetRecord, conforms
-from mime.saved._terms import INLINE_LIMIT_BYTES, FileTerms, FolderTerms, folder_terms, place_referenced
+from mime.saved._terms import (
+    INLINE_LIMIT_BYTES,
+    FileTerms,
+    FolderTerms,
+    folder_terms,
+    lock_records,
+    place_referenced,
+)
 from mime.saved._versions import newer_form_refusal
 
 BUNDLE_SUFFIX = ".mimebundle"
-FORMAT = "mime.bundle/2"
+FORMAT = "mime.bundle/3"
+FORMAT_2 = "mime.bundle/2"
 FORMAT_1 = "mime.bundle/1"
 MANIFEST_MEMBER = "manifest.json"
 NOTICE_MEMBER = "NOTICE"
@@ -120,7 +130,7 @@ class Manifest(TypedDict, closed=True):
     carried; ``referenced`` those that travel as references, never carried; together they are every file the saved
     folder names."""
 
-    format: ReadOnly[Literal["mime.bundle/2"]]
+    format: ReadOnly[Literal["mime.bundle/3", "mime.bundle/2"]]
     name: ReadOnly[str]
     files: ReadOnly[dict[str, BundleFile]]
     referenced: ReadOnly[dict[str, ReferencedFile]]
@@ -141,7 +151,7 @@ class ManifestFormat1(TypedDict, closed=True):
 
 def referenced_of(manifest: Manifest | ManifestFormat1) -> dict[str, ReferencedFile]:
     """The files a manifest says travel as references: none in format 1."""
-    return dict(manifest["referenced"]) if manifest["format"] == FORMAT else {}
+    return dict(manifest["referenced"]) if manifest["format"] != FORMAT_1 else {}
 
 
 def _refuse(code: str, category: RefusalClass, message: str, action: str) -> Refusal:
@@ -509,6 +519,29 @@ def _copy_problems(judged: FolderTerms, listed: set[str]) -> list[Refusal]:
     return found
 
 
+def payload_problems(members: Mapping[str, bytes], judged: FolderTerms, lock: Lock) -> list[Refusal]:
+    """``bundle.referenced-copy`` for each file the bundle would carry whose bytes a record in reach says may not
+    travel, whatever the folder's own records and terms say: a referenced record's (the shared sources', the lock's), a
+    derived file's whose inputs make it referenced, or a mesh baked into the local cache from a referenced source
+    (``mime.assets.known_bytes``). A copy of a file the folder itself sends as a reference is :func:`_copy_problems`'s
+    to name."""
+    sent = {file.sha256 for file in judged.files if not file.verdict.carried or file.referenced is not None}
+    known = known_bytes([(ref, "in the folder's lock") for ref in lock_records(lock)])
+    found: list[Refusal] = []
+    for member, data in sorted(members.items()):
+        digest = sha256_of(data)
+        held = known.found(digest)
+        if held is None or digest in sent:
+            continue
+        found.append(_refuse(
+            "bundle.referenced-copy", RefusalClass.USER,
+            f"{plain(member)} holds the bytes of {plain(held[1])} (sha256 {digest}), which may not be redistributed: a "
+            f"bundle never carries them, whatever the folder's own records or terms say",
+            "keep the file out of the experiment, or declare it by its record so that it travels as a reference, "
+            "asset(AssetRef(...)); then save the experiment again, built.save(folder), and `mime pack <folder>`"))
+    return found
+
+
 def shipped_asset_problems(lock: Lock) -> list[Refusal]:
     """``bundle.lock-terms`` for each asset of the lock that is one MIME ships (``mime.assets.known``) whose licence
     the lock states otherwise than MIME ships it: the lock is outside the hashed record, so the licence a bundle's
@@ -585,6 +618,7 @@ def pack(folder: str | os.PathLike[str], *, out: str | os.PathLike[str] | None =
         carried = _scanned(member, path, stored, refusals)
         if carried is not None:
             members[member] = carried
+    refusals += payload_problems(members, judged, form.lock)
     notice = notice_text(judged, form.document, form.lock).encode("utf-8")
     refusals += _scan(NOTICE_MEMBER, notice, stored)
     if refusals:
@@ -702,12 +736,12 @@ def unknown_format(archive: zipfile.ZipFile) -> BuildRefused | None:
         held = _format_of(json.loads(archive.read(info)))
     except (ValueError, RecursionError, zipfile.BadZipFile, NotImplementedError, OSError):
         return None
-    return BuildRefused([refusal]) if (refusal := newer_form_refusal(held, "bundle", (FORMAT, FORMAT_1),
+    return BuildRefused([refusal]) if (refusal := newer_form_refusal(held, "bundle", (FORMAT, FORMAT_2, FORMAT_1),
                                                                       "the bundle")) is not None else None
 
 
 def read_manifest(archive: zipfile.ZipFile) -> Manifest | ManifestFormat1:
-    """The manifest, checked for its format first (2, or 1 which every file carried: a later one is refused with the
+    """The manifest, checked for its format first (3 or 2, or 1 which every file carried: a later one is refused with the
     advice to install the MIME that packed it), then its shape and its own hash."""
     later = unknown_format(archive)
     if later is not None:
@@ -803,8 +837,8 @@ def _write_members(archive: zipfile.ZipFile, manifest: Manifest | ManifestFormat
 
 
 def _notice_of(archive: zipfile.ZipFile, manifest: Manifest | ManifestFormat1) -> tuple[str, list[Refusal]]:
-    """The ``NOTICE`` a format 2 bundle carries, held to its hash in the manifest."""
-    if manifest["format"] != FORMAT:
+    """The ``NOTICE`` a bundle of format 2 or later carries, held to its hash in the manifest."""
+    if manifest["format"] == FORMAT_1:
         return "", []
     data = archive.read(NOTICE_MEMBER)
     expected = manifest["notice"]
@@ -884,7 +918,7 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
                 raise BuildRefused(refusals)
             manifest = read_manifest(archive)
             listed = {FOLDER_PREFIX + name for name in manifest["files"]}
-            listed |= {NOTICE_MEMBER} if manifest["format"] == FORMAT else set()
+            listed |= {NOTICE_MEMBER} if manifest["format"] != FORMAT_1 else set()
             held = {info.filename for info in archive.infolist()} - {MANIFEST_MEMBER}
             if listed != held:
                 raise BuildRefused([_refuse(
@@ -937,7 +971,8 @@ def unpack(bundle: str | os.PathLike[str], into: str | os.PathLike[str]) -> Unpa
                     tuple(path for path, _, _ in placed.missing))
 
 
-__all__ = ["BUNDLE_SUFFIX", "EXPANSION_LIMIT_BYTES", "FORMAT", "FORMAT_1", "INLINE_LIMIT_BYTES", "MANIFEST_MEMBER",
-           "NOTICE_MEMBER", "Manifest", "ManifestFormat1", "ReferencedFile", "Unpacked", "bundle_hash", "bundle_name",
-           "collisions", "destination_problem", "member_problem", "name_problem", "pack", "read_manifest",
-           "referenced_members", "referenced_of", "shipped_asset_problems", "unknown_format", "unpack"]
+__all__ = ["BUNDLE_SUFFIX", "EXPANSION_LIMIT_BYTES", "FORMAT", "FORMAT_1", "FORMAT_2", "INLINE_LIMIT_BYTES",
+           "MANIFEST_MEMBER", "NOTICE_MEMBER", "Manifest", "ManifestFormat1", "ReferencedFile", "Unpacked",
+           "bundle_hash", "bundle_name", "collisions", "destination_problem", "member_problem", "name_problem", "pack",
+           "payload_problems", "read_manifest", "referenced_members", "referenced_of", "shipped_asset_problems",
+           "unknown_format", "unpack"]

@@ -9,8 +9,10 @@ from pathlib import Path
 
 import numpy as np
 
-from mime.scene import visual_sets
-from mime.viz import Mesh, baked_key, decimate, visuals_dir, write_mesh
+from chain_cases import AR4_VISUALS
+
+from mime.assets import Manifest, read_manifest
+from mime.viz import INDEX_FORMAT, Mesh, baked_key, decimate, visuals_dir, write_mesh
 from mime.viz._visuals import index_of
 
 
@@ -39,20 +41,29 @@ def icosphere(subdivisions: int, radius: float = 0.05) -> Mesh:
     return Mesh(np.asarray(held) * radius, np.asarray(faces, dtype=np.int64))
 
 
-def planted(name: str = "ar4_mk5") -> dict[str, Path]:
-    """Bake a sphere under every file of the set ``name`` into the asset cache (``MIME_ASSETS_DIR``), as ``mime visuals
-    fetch`` would bake the set's own meshes; the layers by file."""
-    held = visual_sets()[name]
+def ar4_manifest() -> Manifest:
+    return read_manifest(AR4_VISUALS)
+
+
+def planted(held: Manifest | None = None) -> dict[str, Path]:
+    """Bake a sphere under every file of the manifest ``held`` (the AR4's by default) into the asset cache
+    (``MIME_ASSETS_DIR``), as ``mime visuals fetch`` would bake the set's own meshes, with the index it writes; the
+    layers by file."""
+    held = held if held is not None else ar4_manifest()
     layers: dict[str, Path] = {}
     files: dict[str, dict[str, str]] = {}
-    for index, source in enumerate(held.files):
+    for index, each in enumerate(held.files):
+        source = held.record(each.asset)
+        assert source is not None
         sphere = icosphere(2, radius=0.01 + 0.001 * index)
         mesh = decimate(Mesh(sphere.points + np.array([0.0, 0.0, 0.02]), sphere.triangles), 400).mesh
         key = baked_key(source.sha256, 400)
-        layers[source.path] = write_mesh(visuals_dir() / f"{key}.usdc", mesh, "mesh")
-        files[source.path] = {"sha256": source.sha256, "layer": f"{key}.usdc"}
-    index_of(held).parent.mkdir(parents=True, exist_ok=True)
-    index_of(held).write_text(json.dumps({"set": name, "files": files}), encoding="utf-8")
+        layers[each.path] = write_mesh(visuals_dir() / f"{key}.usdc", mesh, "mesh")
+        files[each.path] = {"sha256": source.sha256, "layer": f"{key}.usdc"}
+    index_of(held.name).parent.mkdir(parents=True, exist_ok=True)
+    index_of(held.name).write_text(json.dumps({"format": INDEX_FORMAT, "set": held.name, "files": files,
+                                               "credit": held.credit, "notice": held.notice, "text": held.text()}),
+                                   encoding="utf-8")
     return layers
 
 

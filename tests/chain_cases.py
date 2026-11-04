@@ -26,7 +26,9 @@ from mime.units import A_m2, N, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, m_
     standard_gravity
 
 DESCRIPTIONS = Path(__file__).parent / "descriptions"
-AR4 = DESCRIPTIONS / "ar4.urdf"
+AR4 = Path(__file__).parents[1] / "examples" / "descriptions" / "ar4" / "ar4.urdf"
+#: The manifest of the AR4's meshes, beside its description.
+AR4_VISUALS = AR4.parent / "visuals.json"
 C_ARM, SPIN_JOINT = DESCRIPTIONS / "c_arm.urdf", DESCRIPTIONS / "spin_joint.urdf"
 #: The AR4's base, and the joint positions that put its flange about 15 cm above the world's origin (A0's home pose).
 AR4_BASE = (-0.05, 0.328, -0.43)

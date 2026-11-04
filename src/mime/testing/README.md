@@ -30,7 +30,14 @@ Wired to `maddening.testing`. Also:
   (`Declare`, `declare_in_order`, `order_reference`, `order_invariance_failures`, `assert_order_invariant`, and
   `declaration_orders` for a Hypothesis property);
 - `mime.testing.toys`: toy entries with no physics under the `toy` namespace, and the toy experiments MIME's build
-  tests use. They live here, not in `tests/`, so a lab's tests can build the same toys.
+  tests use. They live here, not in `tests/`, so a lab's tests can build the same toys;
+- `verify_adapter(adapter, location_for=...)`: the conformance harness for an asset adapter, as `verify_node` is for a
+  node. It drives the adapter through MIME's own resolver against loopback stores (`LoopbackStore`, an HTTP server on
+  this machine, over TLS with a CA `certificates()` makes, that answers ranges, redirects, refused logins and cut
+  streams; `ConnectProxy`, a loopback proxy) and reports what passed, what was not run and why, and every problem: a
+  file fetched whole, a stream cut at the declared size, a missing file and a refused login told apart, and, for an
+  adapter that needs a credential, the credential sent to its own host, never in an error's text and never to another
+  host a redirect leads to. An adapter of another scheme turns the store's address into its own (`location_for`).
 
 Also:
 - `round_trip_failures(experiment, folder)`: build, save, load in a fresh process, rebuild; every difference in the

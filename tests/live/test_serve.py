@@ -87,12 +87,12 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(launch, f
     live = client(tmp_path / "ready.json")
     hello = live.hello
     assert hello["ok"] and hello["state"] == "ready" and hello["stage"].endswith("scene.usda")
-    from mime.scene import visual_sets
+    from visual_cases import ar4_manifest
 
-    # Nothing baked: no overlay, every mesh missing, and the set's notice (its credit and terms) to show beside the
-    # simple shapes, with how to fetch the meshes.
+    # Nothing baked: no overlay, every mesh missing, and the set's notice (its credit and terms, from the manifest the
+    # saved folder's lock holds) to show beside the simple shapes, with how to fetch the meshes.
     assert hello["visuals"] == {"overlay": None, "drawn": 0, "missing": {"ar4_mk5": 18},
-                                "notice": [visual_sets()["ar4_mk5"].text()]}
+                                "notice": [ar4_manifest().text()]}
     assert "Annin Robotics" in hello["visuals"]["notice"][0]
     assert live.request("start")["state"] == "running"
     frames = [live.frame() for _ in range(40)]

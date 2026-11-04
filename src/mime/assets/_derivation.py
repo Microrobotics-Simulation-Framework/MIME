@@ -32,7 +32,7 @@ import importlib.resources
 import json
 import math
 import subprocess
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -41,6 +41,7 @@ from typing import Protocol, cast
 
 from mime.assets._reference import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.terms import NO_ASSERTION, Verdict, derived_verdict, strictest
 
 #: A value a record holds: what JSON writes.
 Json = None | bool | int | float | str | list["Json"] | dict[str, "Json"]
@@ -164,6 +165,156 @@ class DerivationRecord:
             tuple(str(each) for each in cast(list[object], data["notes"])))
 
 
+def derived_terms(record: DerivationRecord, known: Mapping[str, AssetRef], *,
+                  derivations: Mapping[str, DerivationRecord] | None = None) -> Verdict:
+    """A derived asset's verdict from its inputs', read from its derivation record by hash: the strictest
+    of their verdicts (``mime.terms.derived_verdict``), so one referenced input makes the asset referenced, and inputs
+    under different conditional licences make it referenced too. ``known`` is every record at hand by sha256 (the shared
+    sources' and the experiment's pins); an input none of them names has terms nobody stated, and so makes the asset
+    referenced: unknown terms never travel. An input that is itself derived is judged by :func:`record_terms`, so a
+    chain of derivations carries a referenced input's terms to its end; ``derivations`` are derivation records at hand
+    beyond those :func:`derivation_by_hash` finds, by the sha256 of their bytes."""
+    return _derived_terms(record, known, derivations or {}, ())
+
+
+def _derived_terms(record: DerivationRecord, known: Mapping[str, AssetRef],
+                   derivations: Mapping[str, DerivationRecord], chain: tuple[str, ...]) -> Verdict:
+    inputs: list[tuple[str, Verdict]] = []
+    for each in record.inputs:
+        held = known.get(each.sha256)
+        if held is None:
+            inputs.append((NO_ASSERTION, Verdict("unknown", "referenced", (), f"its input {each.name} has no record")))
+        else:
+            inputs.append((held.licence, _record_terms(held, known, derivations, chain)))
+    return derived_verdict(inputs)
+
+
+#: What decides a derived record's verdict where its derivation record is not at hand, or does not describe it.
+UNREAD_DERIVATION_BY = "its derivation record, which cannot be read here: terms nobody can check never travel"
+CIRCULAR_DERIVATION_BY = "its derivation, which names the file among its own inputs"
+OTHER_DERIVATION_BY = "its derivation record, which describes another file"
+#: The most a derivation record may weigh to be read from the asset cache by its hash.
+_DERIVATION_LIMIT_BYTES = 50_000_000
+
+
+def _cached_derivation(sha256: str) -> DerivationRecord | None:
+    """The derivation record kept in the asset cache under the sha256 of its bytes, where one is and its bytes are
+    that hash's."""
+    from mime.assets._cache import cache_dir
+
+    path = cache_dir() / sha256
+    try:
+        if not path.is_file() or path.stat().st_size > _DERIVATION_LIMIT_BYTES:
+            return None
+        data = path.read_bytes()
+    except OSError:
+        return None
+    return read_derivation(data) if hashlib.sha256(data).hexdigest() == sha256 else None
+
+
+def read_derivation(data: bytes) -> DerivationRecord | None:
+    """The derivation record ``data`` holds, or ``None`` where it holds none."""
+    try:
+        held: object = json.loads(data)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(held, dict) or tuple(cast(dict[str, object], held)) != RECORD_KEYS:
+        return None
+    try:
+        return DerivationRecord.from_json(cast(dict[str, object], held))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
+@cache
+def _shipped_by_hash() -> Mapping[str, DerivationRecord]:
+    found: dict[str, DerivationRecord] = {}
+    folder = importlib.resources.files("mime.data") / DERIVATIONS_FOLDER
+    for file in sorted(folder.iterdir(), key=lambda entry: entry.name):
+        if file.name.endswith(".json"):
+            data = file.read_bytes()
+            record = read_derivation(data)
+            if record is not None:
+                found[hashlib.sha256(data).hexdigest()] = record
+    return MappingProxyType(found)
+
+
+def derivation_by_hash(sha256: str, found: Mapping[str, DerivationRecord] | None = None) -> DerivationRecord | None:
+    """The derivation record whose bytes have ``sha256``, as a record's ``derivation`` names it: among ``found`` (those
+    at hand, by the sha256 of their bytes), those MIME ships, and the asset cache's file of that hash; ``None`` where
+    none is."""
+    held = (found or {}).get(sha256) or _shipped_by_hash().get(sha256)
+    return held if held is not None else _cached_derivation(sha256)
+
+
+def record_terms(ref: AssetRef, known: Mapping[str, AssetRef], *,
+                 derivations: Mapping[str, DerivationRecord] | None = None) -> Verdict:
+    """The terms a record's bytes leave the machine under, at every exit (save, ``pack``, ``push``, a run's folder, the
+    guard): its licence's verdict; and for a record that names its derivation record, the strictest of that and its
+    inputs' (:func:`derived_terms`), so a derived file that declares an open licence over a referenced input is
+    referenced. The derivation record is read by hash (:func:`derivation_by_hash`); one that cannot be read here, or
+    that describes another file, makes the file referenced: it fails closed. A derived record that names no derivation
+    record states no inputs, and is judged by its licence."""
+    return _record_terms(ref, known, derivations or {}, ())
+
+
+def _record_terms(ref: AssetRef, known: Mapping[str, AssetRef], derivations: Mapping[str, DerivationRecord],
+                  chain: tuple[str, ...]) -> Verdict:
+    own = ref.verdict
+    if ref.derivation is None:
+        return own
+    if ref.sha256 in chain:
+        return Verdict("unknown", "referenced", (), CIRCULAR_DERIVATION_BY)
+    record = derivation_by_hash(ref.derivation, derivations)
+    if record is None:
+        return _stricter(own, Verdict("unknown", "referenced", (), UNREAD_DERIVATION_BY))
+    if record.sha256 != ref.sha256:
+        return _stricter(own, Verdict("unknown", "referenced", (), OTHER_DERIVATION_BY))
+    return _stricter(own, _derived_terms(record, known, derivations, (*chain, ref.sha256)))
+
+
+def _stricter(own: Verdict, derived: Verdict) -> Verdict:
+    """The strictest of a record's own verdict and its inputs', said as decided by whichever of them set it."""
+    held = strictest([own, derived])
+    same = (held.status, held.tier, held.conditions) == (own.status, own.tier, own.conditions)
+    return Verdict(held.status, held.tier, held.conditions, own.by if same else derived.by)
+
+
+def by_sha256(records: Iterable[AssetRef]) -> dict[str, AssetRef]:
+    """Records by the sha256 of their files; of two records of the same bytes, the one whose own terms are stricter."""
+    from mime.terms import freest
+
+    found: dict[str, AssetRef] = {}
+    for ref in records:
+        held = found.get(ref.sha256)
+        if held is None or freest([held.verdict, ref.verdict]) == held.verdict != ref.verdict:
+            found[ref.sha256] = ref
+    return found
+
+
+def derived_verdicts(records: Iterable[AssetRef], *, shared: bool = True,
+                     derivations: Mapping[str, DerivationRecord] | None = None) -> dict[str, Verdict]:
+    """By sha256, the terms of every file that a record in reach names with its derivation record: ``records`` (an
+    experiment's declared records and pins, a folder's lock), and the shared sources' with ``shared``; each by
+    :func:`record_terms`, over every one of those records as the inputs it may name. The strictest where two records
+    name the same bytes. An exit takes these over a file's own licence: one referenced input makes the file
+    referenced."""
+    held = list(records)
+    if shared:
+        from mime.assets._sources import shared as shared_sources
+
+        held += [each.ref for sourced in shared_sources().records.values() for each in sourced]
+    known = by_sha256(held)
+    found: dict[str, Verdict] = {}
+    for ref in held:
+        if ref.derivation is None:
+            continue
+        verdict = record_terms(ref, known, derivations=derivations)
+        before = found.get(ref.sha256)
+        found[ref.sha256] = verdict if before is None else _stricter(before, verdict)
+    return found
+
+
 def stale_inputs(record: DerivationRecord, current: Mapping[str, AssetRef], *,
                  unjudged: Collection[str] = ()) -> list[str]:
     """Why ``record`` is stale, one sentence per input: each input whose role names, in ``current``, an asset with
@@ -253,5 +404,7 @@ def derivation_of(asset: str) -> DerivationRecord:
     return held
 
 
-__all__ = ["DERIVATIONS_FOLDER", "RECORD_KEYS", "Builder", "CheckResult", "DerivationInput", "DerivationRecord", "Json",
-           "Produced", "derivation_of", "derive", "shipped_derivations", "stale_inputs", "working_state"]
+__all__ = ["CIRCULAR_DERIVATION_BY", "DERIVATIONS_FOLDER", "OTHER_DERIVATION_BY", "RECORD_KEYS", "UNREAD_DERIVATION_BY",
+           "Builder", "CheckResult", "DerivationInput", "DerivationRecord", "Json", "Produced", "by_sha256",
+           "derivation_by_hash", "derivation_of", "derive", "derived_terms", "derived_verdicts", "read_derivation",
+           "record_terms", "shipped_derivations", "stale_inputs", "working_state"]

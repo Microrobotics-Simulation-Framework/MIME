@@ -3,6 +3,11 @@
 **Scripts as a user writes them**, each runnable on its own and each held by a test, so that none drifts from what
 MIME does.
 
+- `descriptions/ar4/`: the AR4 robot arm's description (`ar4.urdf`, MIT, with its `LICENSE`) and the manifest of its
+  meshes beside it (`visuals.json`: records at Annin Robotics' repository at a pinned commit, never the meshes'
+  bytes, which its licence lets no copy of be hosted). An experiment reading the URDF finds its meshes' records there;
+  `mime visuals fetch examples/descriptions/ar4/` bakes them on this machine. Shipped in the sdist.
+
 - `script_a.py`: script A's reproduction arm. A de Jongh FL-9 screw on the floor of a 1/4" tube of water, turned by
   a field rotating at 10 Hz and 1.2 mT, with every number the 0.2 line's run of A used, declared in the experiment
   with where it comes from. Run it with `python examples/script_a.py` (float32) or with `JAX_ENABLE_X64=1` (float64):

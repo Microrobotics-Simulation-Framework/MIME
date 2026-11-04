@@ -120,6 +120,14 @@ class BuildReport:
     #: What the post-run watch compares after each run, for each entry it watches (``mime.results.watch``): the
     #: report's post-run section.
     watches: tuple[WatchPlan, ...] = ()
+    #: Each asset and mesh a loaded experiment keeps at its pin while a source now holds another version of it: the
+    #: pin wins, and the report says so (``mime.assets.pinned``).
+    assets: tuple[str, ...] = ()
+
+    def asset_lines(self) -> list[str]:
+        if not self.assets:
+            return []
+        return ["assets kept at their pins (a source now holds another version):", *(f"  {line}" for line in self.assets)]
 
     def range_warnings(self) -> list[str]:
         """The warnings before any run: each place the operating point the experiment declares lies past a law's
@@ -212,6 +220,7 @@ class BuildReport:
         if self.masses:
             lines.append("mounted masses, each with what carries it:")
             lines += [f"  {line}" for line in self.masses]
+        lines += self.asset_lines()
         for owner, validity in sorted(self.validity.items()):
             lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
         lines += self.checked_lines()
@@ -258,6 +267,7 @@ class BuildReport:
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
+        lines += self.asset_lines()
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
         lines += list(self.controller) or ["controller: none declared, so no latency to account for"]
         lines += self.materials_text()

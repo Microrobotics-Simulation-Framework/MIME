@@ -5,6 +5,7 @@
 #
 # A public call that reaches a raw raise gives `error.uncoded` (MIME's, with no code yet: report it), of the raise's
 # own class; one from below gives `error.unrecognised`. Coding a listed raise removes its line.
+assets/_adapters.py::register_adapter ValueError 1  # construction: a script registering an adapter for a scheme MIME reads itself, raised where the script calls it, outside every public call of an experiment
 assets/_derivation.py::DerivationRecord.from_json ValueError 3  # invariant: a shipped derivation record's own form, which its test reads
 assets/_derivation.py::derivation_of KeyError 1  # a derivation record looked up by an asset's name, from the asset tooling; outside a script's public call
 assets/_fetch.py::_download_held_to ValueError 1  # a location under the test prefix, which doi.org does not resolve: raised inside the download, which every caller turns into a coded refusal or the next location (asset.unreachable)
@@ -99,6 +100,7 @@ scene/_geometry.py::_vector TypeError 1  # invariant: MIME's own check, which no
 scene/_kinds.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_kinds.py::kind_frame KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_sampling.py::_quasi_uniform ValueError 2  # a kind's sampling at the build, from a density or a count a kind's own code gives: a lab's kind that passes one above its dense set, or a density not above zero, is a defect of that kind; reached, it is error.uncoded
+scene/_scene.py::asset ValueError 1  # construction: a file declared by its record given a sha256 or terms too, raised where the script declares it, outside every public call
 scene/_scene.py::Scene.__init__ ValueError 1  # construction: raised where the script makes the value or the entry, outside every public call
 scene/_scene.py::Scene.open NotImplementedError 1  # construction: a scene opened from a file, not yet supported, outside every public call
 scene/_screw.py::Screw.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
@@ -130,7 +132,6 @@ scene/_solids.py::_face_edges KeyError 1  # protocol: the class Python's protoco
 scene/_solids.py::_length TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_solids.py::_lengths TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_stage.py::_region ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
-scene/_visual_sets.py::visual_sets ValueError 1  # a visual set's record in MIME's own package data of another format: MIME's packaging defect, held by its tests
 surrogates/_type.py::Surrogate.__post_init__ ValueError 3  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::Surrogate.resolve ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 surrogates/_type.py::evaluator_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
@@ -141,10 +142,12 @@ surrogates/generator.py::_require_float64 RuntimeError 1  # tooling: the surroga
 surrogates/generator.py::accuracy ValueError 1  # tooling: the surrogate generator, run by its own script, not a script's public call
 terms.py::licence_verdict ValueError 1  # invariant: a licence MIME judges was held to licence_problem where it was declared or read; reached, it is error.uncoded, keeping its class
 testing/__init__.py::<module> ImportError 1  # the verify extra's import message, at import
+testing/_adapters.py::_checks.at ValueError 1  # a test harness's argument: a location_for that turns the store's address into another scheme, raised in the adapter author's own test
 testing/_families.py::conformance ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_families.py::family_named KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_families.py::register_family ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_fresh_load.py::<module> SystemExit 1  # the fresh-load helper's exit code
+testing/_loopback.py::certificates RuntimeError 1  # a test harness's environment: openssl missing, raised in a test so that it errors rather than passes
 testing/_nodes.py::entry_key ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_nodes.py::jit_consistent_off_switches ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_shape_suite.py::capability KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call

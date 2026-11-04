@@ -378,7 +378,7 @@ class Arm(ChainSegment):
                        initial_rates=tuple((float(r[0]), float(r[1]), float(r[2])) for r in turning),
                        massive=massive and not dynamic, initial_joints=tuple(float(c) for c in initial),
                        notes=armed.lines if armed is not None else transmission_lines(tree),
-                       visuals=segment_visuals(reading, frames))
+                       visuals=segment_visuals(reading, frames), description_file=self.description.path)
 
     def armed(self, tree: MultibodyTree) -> MultibodyTree:
         """``tree`` with each joint's armature on it, as phase 1 resolved it (its problems refused there)."""
