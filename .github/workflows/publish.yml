@@ -1,17 +1,18 @@
 name: Publish to PyPI
 
-# Publishes `mime-engine` to PyPI on every GitHub Release whose tag starts
-# with `v` (e.g. v0.1.0). Uses PyPI Trusted Publishing (OIDC) — no API
-# token is stored in the repo; the publisher is configured at
-# https://pypi.org/manage/account/publishing/ with:
+# Publishes `mime-engine` to PyPI on every published GitHub Release, a pre-release too, and attaches the release's
+# documentation pages to it. Uses PyPI Trusted Publishing (OIDC) — no API token is stored in the repo; the publisher is
+# configured at https://pypi.org/manage/account/publishing/ with:
 #   project       : mime-engine
 #   owner         : Microrobotics-Simulation-Framework
 #   repository    : MIME
 #   workflow      : publish.yml
 #   environment   : pypi
 #
-# A successful run can also be triggered manually via the Actions tab
-# (workflow_dispatch).
+# A release's tag must be `v` and the package's version (`src/mime/__init__.py`), and the distributions built from
+# it of that version, or nothing is published (scripts/release.py check-tag). A run can also be started by hand from
+# the Actions tab (workflow_dispatch), from the release's tag: a run from a branch is refused by the same check.
+# tests/test_release_workflow.py reads this file's wiring and runs its steps with their commands stubbed.
 
 on:
   release:
@@ -26,6 +27,8 @@ jobs:
   build:
     name: Build sdist + wheel
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +42,10 @@ jobs:
 
       - name: Build distributions
         run: python -m build
+
+      - name: The tag is v and the package's version, and so is every distribution
+        id: tag
+        run: python3 scripts/release.py check-tag --ref "$GITHUB_REF" dist/*.whl dist/*.tar.gz
 
       - name: Sanity-check distributions
         run: |
@@ -72,3 +79,58 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  # The pages `mime docs build` writes (index.md and pages/), attached to the release as mime-docs-<version>.tar.gz,
+  # which MICROROBOTICA's site renders the release's documentation from. They are the tagged commit's own CI pages (the
+  # artifact docs-pages-python-3.12, built with the default lane's JUnit reports) when a run of ci.yml on the commit
+  # still holds them; otherwise they are built here, in the same locked environment, without the lane's reports, and
+  # the asset's README.md says which.
+  docs:
+    name: Attach the documentation pages to the release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # gh release upload
+      actions: read     # the tagged commit's CI runs and their artifacts
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+      UV_VERSION: "0.13.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The pages of the tagged commit's own CI run, if one holds them
+        id: ci
+        run: >-
+          python3 scripts/release.py find-pages --repository "${{ github.repository }}" --commit "${{ github.sha }}"
+          --out "$RUNNER_TEMP/docs-pages"
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.ci.outputs.source == 'build'
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+      - name: Install the locked PyPI releases, as CI's default lane does
+        if: steps.ci.outputs.source == 'build'
+        run: |
+          uv sync --locked --extra verify
+          uv pip install --no-deps ./lab_fixture
+      - name: Build the pages here, without the lane's reports
+        if: steps.ci.outputs.source == 'build'
+        run: uv run --no-sync mime docs build --out "$RUNNER_TEMP/docs-pages"
+      - name: No private name or path in the pages
+        env:
+          CONFIDENTIAL_SCAN_KEY: ${{ secrets.CONFIDENTIAL_SCAN_KEY }}
+        run: python3 scripts/check_confidential.py --directory "$RUNNER_TEMP/docs-pages"
+      - name: The asset, with a README saying where its pages came from
+        env:
+          SOURCE: ${{ steps.ci.outputs.source }}
+          RUN: ${{ steps.ci.outputs.run }}
+          CONCLUSION: ${{ steps.ci.outputs.conclusion }}
+        run: >-
+          python3 scripts/release.py pack-pages --pages "$RUNNER_TEMP/docs-pages" --version "$VERSION"
+          --commit "${{ github.sha }}" --source "$SOURCE" --run "$RUN" --conclusion "$CONCLUSION"
+          --out "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz"
+      - name: Attach it to the release
+        run: >-
+          gh release upload "v$VERSION" "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz" --clobber
+          --repo "${{ github.repository }}"
