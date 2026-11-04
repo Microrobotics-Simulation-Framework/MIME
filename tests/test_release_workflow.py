@@ -10,18 +10,20 @@
 - **The pages are attached.** ``release.py find-pages`` takes the pages of the newest run of ``ci.yml`` on the tagged
   commit that still holds its ``docs-pages-python-3.12`` artifact (a run on another commit, or one whose artifact
   expired, is passed over), says ``source=build`` when none does, and fails on a download that is not a build's
-  pages; ``pack-pages`` writes ``mime-docs-<version>.tar.gz``, one folder of ``index.md``, ``pages/`` and a
-  ``README.md`` that says where the pages came from. The workflow's docs job is run step by step, its ``gh``, ``uv``
+  pages; ``pack-pages`` writes ``mime-docs-<version>.tar.gz``, one folder ``mime-docs-<version>/`` of ``index.md``,
+  ``pages/`` and a ``README.md`` that says where the pages came from, and its sha256 beside it (``.sha256``, in
+  ``sha256sum``'s form). The site that renders the pages pins that sha256, so the name and the layout are held. The workflow's docs job is run step by step, its ``gh``, ``uv``
   and scan stubbed: with a CI run holding the pages it builds nothing and attaches that run's pages; with none it
   installs, builds and attaches its own; either way it scans them first, and a failed scan attaches nothing.
 
 The controls plant one break each in a copy of the workflow (the tag step dropped, its exit status neutered, its ref
 fixed, the publishing job freed of the build, the audit dropped, the docs built though CI's pages were found, the scan
-dropped, the asset renamed, the job's write permission dropped), and the check must name it, every run: the workflow
+dropped, the asset renamed, its sha256 left unattached, the job's write permission dropped), and the check must name it, every run: the workflow
 and the plants are fixed, so there is no detection rate to measure."""
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -216,6 +218,9 @@ def test_the_asset_is_one_folder_of_the_pages_and_a_readme_saying_where_they_cam
     folder = f"mime-docs-{VERSION}"
     assert {name for name in held if not name.endswith(("pages", "guide", folder))} == {
         f"{folder}/index.md", f"{folder}/pages/guide/install.md", f"{folder}/README.md"}
+    assert {name.split("/")[1] for name in held if name.count("/") == 1} == {"index.md", "pages", "README.md"}
+    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+    assert (tmp_path / f"{asset.name}.sha256").read_text(encoding="utf-8") == f"{digest}  {asset.name}\n"
     readme = held[f"{folder}/README.md"]
     assert f"MIME {VERSION}" in readme and f"`v{VERSION}` (commit {COMMIT})" in readme
     assert f"/mime/{release.release_of(VERSION)}/pages/errors/" in readme
@@ -284,7 +289,10 @@ elif name == "gh" and words[0] == "api" and "/artifacts?name=" in words[1]:
 elif name == "gh" and words[:2] == ["run", "download"]:
     shutil.copytree(config["ci_pages"], words[words.index("--dir") + 1], dirs_exist_ok=True)
 elif name == "gh" and words[:2] == ["release", "upload"]:
-    shutil.copy(words[3], Path(config["released"]) / Path(words[3]).name)
+    for file in words[3:]:
+        if file.startswith("--"):
+            break
+        shutil.copy(file, Path(config["released"]) / Path(file).name)
 elif name == "uv" and "build" in words:
     shutil.copytree(config["built_pages"], words[words.index("--out") + 1], dirs_exist_ok=True)
 elif name == "check_confidential.py":
@@ -422,7 +430,16 @@ def workflow_problems(path: Path, scratch: Path) -> list[str]:
         if [call[3] for call in uploads] != [f"v{VERSION}"] or not (released / asset).is_file():
             found.append(f"{where}, the release v{VERSION} is not given {asset}: {[u[3:5] for u in uploads]}")
             continue
+        digest = hashlib.sha256((released / asset).read_bytes()).hexdigest()
+        if not (released / f"{asset}.sha256").is_file() or \
+                (released / f"{asset}.sha256").read_text(encoding="utf-8") != f"{digest}  {asset}\n":
+            found.append(f"{where}, the release v{VERSION} is not given {asset}.sha256, the asset's own sha256")
         held = unpacked(released / asset)
+        top = {name for name in held if name.count("/") <= 1}
+        if top != {f"mime-docs-{VERSION}", *(f"mime-docs-{VERSION}/{name}" for name in ("index.md", "pages",
+                                                                                       "README.md"))}:
+            found.append(f"{where}, the asset's layout is {sorted(top)}, not mime-docs-{VERSION}/ holding index.md, "
+                         f"pages/ and README.md")
         marker = "ci" if holds else "built"
         if held.get(f"mime-docs-{VERSION}/index.md") != f"# MIME ({marker})\n":
             found.append(f"{where}, the asset does not hold the {marker} pages")
@@ -459,9 +476,12 @@ PLANTS = {
                                   "with a CI run holding the pages, the docs job builds the pages anyway"),
     "the-scan-dropped": (SCAN, "", "with a CI run holding the pages, the docs job does not scan the pages before it "
                                    "attaches them"),
-    "the-asset-renamed": ('"$RUNNER_TEMP/mime-docs-$VERSION.tar.gz" --clobber', '"$RUNNER_TEMP/docs.tar.gz" --clobber',
+    "the-asset-renamed": ("mime-docs-$VERSION.tar.gz", "docs.tar.gz",
                           f"with a CI run holding the pages, the release v{VERSION} is not given "
                           f"mime-docs-{VERSION}.tar.gz"),
+    "the-checksum-dropped": ('\n          "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz.sha256" --clobber', "\n          --clobber",
+                             f"with a CI run holding the pages, the release v{VERSION} is not given "
+                             f"mime-docs-{VERSION}.tar.gz.sha256"),
     "no-write-permission": ("      contents: write   # gh release upload\n", "",
                             "the docs job cannot read CI's runs and write the release's assets"),
 }
@@ -471,11 +491,9 @@ PLANTS = {
 def test_control_a_break_in_the_workflow_fails_naming_it(tmp_path, plant):
     old, new, problem = PLANTS[plant]
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert text.count(old) == 1, f"the plant's anchor {old!r} is not in publish.yml once"
+    # the asset's name is planted wherever the job writes or attaches it; every other anchor is in the file once
+    assert text.count(old) == (3 if plant == "the-asset-renamed" else 1), f"the plant's anchor {old!r} is not in place"
     copy = tmp_path / "publish.yml"
     copy.write_text(text.replace(old, new), encoding="utf-8")
-    if plant == "the-asset-renamed":
-        copy.write_text(copy.read_text(encoding="utf-8").replace(
-            '--out "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz"', '--out "$RUNNER_TEMP/docs.tar.gz"'), encoding="utf-8")
     found = workflow_problems(copy, tmp_path / "scratch")
     assert any(problem in line for line in found), found

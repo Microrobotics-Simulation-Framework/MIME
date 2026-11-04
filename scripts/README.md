@@ -15,7 +15,7 @@ One script is the release workflow's (`.github/workflows/publish.yml`), run when
 
 | Script | What it does |
 |---|---|
-| `release.py` | `check-tag`: the release's tag is `v` and the version `src/mime/__init__.py` states, and the wheel and sdist built from it are of that version (read from their metadata), or nothing is published; a manual run from a branch is refused. `find-pages`: the documentation pages of the tagged commit's own CI run (the artifact `docs-pages-python-3.12`, built with the default lane's JUnit reports), if a run still holds them. `pack-pages`: the release asset `mime-docs-<version>.tar.gz`, the pages and a README saying where they came from. Standard library only; `tests/test_release_workflow.py` runs each and the workflow's steps |
+| `release.py` | `check-tag`: the release's tag is `v` and the version `src/mime/__init__.py` states, and the wheel and sdist built from it are of that version (read from their metadata), or nothing is published; a manual run from a branch is refused. `find-pages`: the documentation pages of the tagged commit's own CI run (the artifact `docs-pages-python-3.12`, built with the default lane's JUnit reports), if a run still holds them. `pack-pages`: the release asset `mime-docs-<version>.tar.gz` (one folder `mime-docs-<version>/` of `index.md`, `pages/` and a README saying where the pages came from) and its `.sha256`, a name and layout the site that renders them relies on. Standard library only; `tests/test_release_workflow.py` runs each and the workflow's steps |
 
 Two scripts are read by the platforms workflow and the ready workflow, not the lanes:
 

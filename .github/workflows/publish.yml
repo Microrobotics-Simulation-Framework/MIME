@@ -80,8 +80,10 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  # The pages `mime docs build` writes (index.md and pages/), attached to the release as mime-docs-<version>.tar.gz,
-  # which MICROROBOTICA's site renders the release's documentation from. They are the tagged commit's own CI pages (the
+  # The pages `mime docs build` writes, attached to the release as mime-docs-<version>.tar.gz (one folder,
+  # mime-docs-<version>/, holding index.md, pages/ and a README.md) with mime-docs-<version>.tar.gz.sha256 beside it.
+  # MICROROBOTICA's site renders the release's documentation from the asset and pins its sha256, so the name and the
+  # layout are fixed (tests/test_release_workflow.py holds both). They are the tagged commit's own CI pages (the
   # artifact docs-pages-python-3.12, built with the default lane's JUnit reports) when a run of ci.yml on the commit
   # still holds them; otherwise they are built here, in the same locked environment, without the lane's reports, and
   # the asset's README.md says which.
@@ -130,7 +132,7 @@ jobs:
           python3 scripts/release.py pack-pages --pages "$RUNNER_TEMP/docs-pages" --version "$VERSION"
           --commit "${{ github.sha }}" --source "$SOURCE" --run "$RUN" --conclusion "$CONCLUSION"
           --out "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz"
-      - name: Attach it to the release
+      - name: Attach it and its sha256 to the release
         run: >-
-          gh release upload "v$VERSION" "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz" --clobber
-          --repo "${{ github.repository }}"
+          gh release upload "v$VERSION" "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz"
+          "$RUNNER_TEMP/mime-docs-$VERSION.tar.gz.sha256" --clobber --repo "${{ github.repository }}"

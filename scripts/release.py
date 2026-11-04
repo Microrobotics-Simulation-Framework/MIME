@@ -19,14 +19,16 @@ the pages itself. Exits 0 either way, and 1 when what was downloaded is not a bu
 ``pack-pages --pages DIR --version V --commit SHA --source ci|build [--run URL --conclusion C] --out FILE``: the release
 asset ``mime-docs-<version>.tar.gz``, one folder ``mime-docs-<version>/`` holding the pages as ``mime docs build``
 writes them (``index.md`` and ``pages/``) and a ``README.md`` saying what they are, the commit and the tag they are of,
-and where they came from, with what pages built without the lane's reports lack. Exits 1 when DIR is not a build's
-pages.
+and where they came from, with what pages built without the lane's reports lack; and beside it
+``mime-docs-<version>.tar.gz.sha256``, its sha256 in ``sha256sum``'s form, which MICROROBOTICA's docs deploy pins. The
+asset's name and layout are fixed: the site renders them. Exits 1 when DIR is not a build's pages.
 
 ``tests/test_release_workflow.py`` runs each against planted cases and reads the workflow's wiring of them."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -193,8 +195,15 @@ def pack_pages(pages: Path, version: str, commit: str, source: str, run: str, co
         out.parent.mkdir(parents=True, exist_ok=True)
         with tarfile.open(out, "w:gz") as archive:
             archive.add(staged, arcname=folder, filter=_plain)
-    print(f"wrote {out} ({source})")
+    digest = hashlib.sha256(out.read_bytes()).hexdigest()
+    checksum(out).write_text(f"{digest}  {out.name}\n", encoding="utf-8")
+    print(f"wrote {out} ({source}) and {checksum(out).name}: {digest}")
     return 0
+
+
+def checksum(asset: Path) -> Path:
+    """The asset's sha256 file beside it, in ``sha256sum``'s form (``<hex>  <name>``), which a consumer pins."""
+    return asset.with_name(f"{asset.name}.sha256")
 
 
 def _plain(member: tarfile.TarInfo) -> tarfile.TarInfo:

@@ -95,6 +95,7 @@ process.
 CI builds the pages, scans the built directory for a private name or path (`scripts/check_confidential.py
 --directory`), and only then uploads it as a run artifact named `docs-pages-python-<version>`; download it from the
 run page to read them. A page you change is read the same way, by building locally. A release attaches its pages
-to its GitHub release as `mime-docs-<version>.tar.gz` (`.github/workflows/publish.yml`): the tagged commit's own CI
-pages when a run still holds them, else pages the release builds without the lane's reports, as the asset's
-README says.
+to its GitHub release as `mime-docs-<version>.tar.gz`, with its sha256 beside it (`.github/workflows/publish.yml`):
+one folder, `mime-docs-<version>/`, holding `index.md`, `pages/` and a README saying whether the pages are the tagged
+commit's own CI pages or pages the release built without the lane's reports. The site renders the release's pages
+from it, so its name and layout do not change.
