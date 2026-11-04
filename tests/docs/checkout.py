@@ -39,8 +39,9 @@ def planted_checkout(into: Path, files: dict[str, str]) -> Path:
 
 
 def copy_checkout(into: Path) -> Path:
-    """The package's sources, READMEs and refusal table, the tests' sources, ``docs/``, the two compliance scripts and
-    ``pyproject.toml`` (whose pins name releases), under ``into``; returns ``into``."""
+    """The package's sources, READMEs and refusal table, the tests' sources, ``docs/``, the examples and the lab fixture
+    the guides include from, the compliance script and ``pyproject.toml`` (whose pins name releases), under ``into``;
+    returns ``into``."""
     sources = [*(ROOT / "src/mime").rglob("*.py"), *(ROOT / "tests").rglob("*.py"), *(ROOT / "src").rglob("README*.md")]
     for source in sources:
         target = into / source.relative_to(ROOT)
@@ -48,7 +49,10 @@ def copy_checkout(into: Path) -> Path:
         shutil.copyfile(source, target)
     shutil.copyfile(ROOT / "src/mime/build/refusal_table.txt", into / "src/mime/build/refusal_table.txt")
     shutil.copyfile(ROOT / "pyproject.toml", into / "pyproject.toml")
+    shutil.copyfile(ROOT / "README.md", into / "README.md")
     shutil.copytree(ROOT / "docs", into / "docs", ignore=shutil.ignore_patterns("_build"))
+    for directory in ("examples", "lab_fixture"):
+        shutil.copytree(ROOT / directory, into / directory, ignore=shutil.ignore_patterns("__pycache__"))
     (into / "scripts").mkdir()
     for script in ("check_anomalies.py",):
         shutil.copyfile(ROOT / "scripts" / script, into / "scripts" / script)
@@ -72,15 +76,17 @@ def docs_run(*command: str, plant: str | None = None, prelude: str = "") -> subp
 
 def docs_check(root: Path = ROOT, plant: str | None = None, baseline: bool = False,
                prelude: str = "", base: str | None = None, hash_seeds: bool = False,
-               evidence: bool = False) -> subprocess.CompletedProcess[str]:
+               evidence: bool = False, examples: bool = False) -> subprocess.CompletedProcess[str]:
     """``mime docs check --root root`` (with ``--base base`` when given) in a fresh process, which first runs
     ``prelude`` and registers the planted entry ``plant`` (``planted_entries.py``); with ``baseline``, it prints the
     references line of the entries it holds before the plant. The pages are not built under the several hash seeds
-    unless ``hash_seeds``, and the test suite is not collected to resolve evidence unless ``evidence`` (the controls of
+    unless ``hash_seeds``, the test suite is not collected to resolve evidence unless ``evidence`` (the controls of
     the other stages stay fast, and a copy of the checkout holds the tests' sources without their data; the build's
-    and the resolver's own tests run those stages)."""
+    and the resolver's own tests run those stages), and the scripts the guides' output blocks name are not run unless
+    ``examples`` (``test_tutorials.py`` runs them)."""
     command = ["docs", "check", "--root", str(root), *(["--base", base] if base is not None else []),
-               *([] if hash_seeds else ["--skip-hash-seed-builds"]), *([] if evidence else ["--skip-evidence"])]
+               *([] if hash_seeds else ["--skip-hash-seed-builds"]), *([] if evidence else ["--skip-evidence"]),
+               *([] if examples else ["--skip-example-runs"])]
     before = "planted_entries.references_before_the_plant()\n" if baseline else ""
     planted = "" if plant is None else (f"import planted_entries\n{before}planted_entries.plant({plant!r})\n")
     script = (f"import sys\nsys.path.insert(0, {str(Path(__file__).parent)!r})\n{prelude}{planted}"

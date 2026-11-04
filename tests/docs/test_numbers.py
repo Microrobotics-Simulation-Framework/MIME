@@ -167,6 +167,21 @@ def test_n1_words_are_the_failing_rules_gap_and_the_warning_fires_on_them(tmp_pa
             if warning.path.as_posix() == PAGE] == [(FIRST, "sixteen per cent"), (FIRST + 1, "three times")]
 
 
+SPOKEN = ["Fetch about two hundred megabytes once.", "The step is half a millisecond.", "It takes a quarter of a second.",
+          "It ran ten hertz for one second.", "It changes three inputs at once.", "It fits on one screen."]
+
+
+def test_n1_the_warning_sees_a_byte_unit_a_multi_word_number_and_a_fraction_before_a_unit(tmp_path):
+    """The forms the guides spoke that the warning missed (the install page's size, the tutorial's step). The last two
+    lines are the controls: a count of things has no cue and a number word before a non-unit is not a quantity, so they
+    are not seen, which the warning's summary says."""
+    report = number_report(with_page(tmp_path, *SPOKEN, listed=""))
+    assert report.problems == []
+    assert [(warning.line - FIRST, warning.phrase) for warning in report.warnings if warning.path.as_posix() == PAGE] == [
+        (0, "two hundred megabytes"), (1, "half a millisecond"), (2, "quarter of a second"), (3, "one second"),
+        (3, "ten hertz")]
+
+
 def test_n1_the_warning_never_changes_the_exit_status(tmp_path):
     done = docs_check(with_page(tmp_path, *WORDS, listed=""))
     assert done.returncode == 0, done.stdout + done.stderr

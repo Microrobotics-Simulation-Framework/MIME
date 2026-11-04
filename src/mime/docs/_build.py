@@ -28,7 +28,9 @@ from mime.docs._family_page import family_page
 from mime.docs._lists import read_list
 from mime.docs._markdown import Hatch, Page
 from mime.docs._node_page import node_page
-from mime.docs._numbers import PAGE_DIRECTORIES
+from mime.docs._executable import expand
+from mime.docs._generated import GENERATORS
+from mime.docs._numbers import GUIDE_DIRECTORY, PAGE_DIRECTORIES
 from mime.docs._reference_pages import index_page, mechanism_page, vocabulary_page
 from mime.docs._specification_pages import migration_page, saved_form_pages, usd_reference_page
 from mime.docs._walk import PageIds, page_sources, version_problems
@@ -172,6 +174,20 @@ def _hand_written(docs: Path, ids: PageIds, records: Mapping[tuple[str, str], li
     return held, len(held)
 
 
+def guide_pages(root: Path, problems: list[str]) -> list[Page]:
+    """The pages of ``docs/guide/``: each hand-written file with its includes replaced by the files' text and its
+    generated texts by what the build generates, at ``guide/<name>.md``. A directive that does not resolve is a problem,
+    naming the file; the guide holds no number the number rule does not read in its source."""
+    pages: list[Page] = []
+    for source in sorted((root / "docs" / GUIDE_DIRECTORY).glob("*.md")):
+        if source.name.startswith("_"):
+            continue
+        text, found = expand(source.read_text(encoding="utf-8"), root, lambda name: GENERATORS[name](root))
+        problems += [f"{source.relative_to(root)}: {problem}" for problem in found]
+        pages.append(Page(f"{GUIDE_DIRECTORY}/{source.name}", text))
+    return pages
+
+
 def equation_problems(pages: Mapping[str, Page]) -> list[str]:
     """A display equation appears once, by its LaTeX with the whitespace removed: a duplicate, on one page or two,
     fails."""
@@ -214,6 +230,8 @@ def build_pages(root: Path, evidence: Inputs = Inputs()) -> Built:
         if (docs / "ratchets" / "builds_unchecked.txt").is_file() else set[str]()
     units_list = docs / "ratchets" / "symbol_units.txt"
     units_unchecked = read_list(units_list).items() if units_list.is_file() else set[str]()
+    guide = guide_pages(root, built.problems)
+    hand.update({page.path: page.text for page in guide})
     context = Context(records, {family.name: family for family in registered_families()}, hand, nodes,
                       frozenset(unchecked), units_unchecked=frozenset(units_unchecked))
     made: list[Page] = [entry_page(record, context) for record in newest_versions(records)]
@@ -227,6 +245,7 @@ def build_pages(root: Path, evidence: Inputs = Inputs()) -> Built:
     references = [*saved_form_pages(root), *usd_reference_page(root), *migration_page(root, live), *counted.pages]
     made += [vocabulary_page(context), index_page(context, {page.path for page in references})]
     made += [Page(note, hand[note].strip("\n") + "\n") for note in NOTE_PATHS if note in hand]
+    made += guide
     if (root / "src" / "mime" / "build").is_dir():
         listed = read_list(docs / "ratchets" / "refusal_codes.txt").items() \
             if (docs / "ratchets" / "refusal_codes.txt").is_file() else set[str]()

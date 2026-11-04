@@ -34,6 +34,7 @@ The numbers a run gives are the same with it and without it; what changes is the
 A global JAX setting is not MIME's to change, so a script that calls the library keeps JAX's defaults. Two lines turn the
 cache on, with the same directory, thresholds and cap `mime run` uses, for the length of the block:
 
+<!-- mime-fragment: lines for a script of the reader's own, shown and not run; the functions they call are exercised by tests/env/test_user_xla_cache.py and tests/env/test_run.py -->
 ```python
 from mime.env import user_xla_cache
 
@@ -43,6 +44,7 @@ with user_xla_cache():
 
 To keep it on for the whole process instead, point JAX at a directory yourself:
 
+<!-- mime-fragment: lines for a script of the reader's own, shown and not run; the functions they call are exercised by tests/env/test_user_xla_cache.py and tests/env/test_run.py -->
 ```python
 from mime.env import use_xla_cache, user_xla_cache_root
 

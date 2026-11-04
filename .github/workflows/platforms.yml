@@ -116,4 +116,6 @@ jobs:
         run: |
           git rev-parse --verify --quiet origin/v0.3 > /dev/null \
             || git fetch --no-tags --depth=1 origin +refs/heads/v0.3:refs/remotes/origin/v0.3
-          uv run --no-sync mime docs check --base origin/v0.3
+          # The guides' output blocks are a Linux run's printed text: the scripts they name run in the default lane
+          # (tests/docs/test_tutorials.py) and in ci.yml's docs check, not here.
+          uv run --no-sync mime docs check --base origin/v0.3 --skip-example-runs

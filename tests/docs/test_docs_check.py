@@ -70,6 +70,9 @@ def test_mime_docs_check_passes_on_the_checkout():
               r"pages: \d+ \(.*\) from \d+ hand-written sources in [\d.]+ s", r"hatches printed: ",
               r"citations: \d+ in \d+ pages and sources, \d+ checked against \d+ bibliography entries, 0 not found",
               r"none declared in MIME's pages: \d+ fields, \d+ of the list's \d+ lines at the start reason; ",
+              r"executable docs: \d+ hand-written files; \d+ fenced blocks \(\d+ fragments with a reason, \d+ outputs, "
+              r"scripts not run\); \d+ includes, \d+ generated texts; \d+ mime command lines parsed against the CLI; "
+              r"links resolved$",
               r"pages built in fresh processes under 8 hash seeds: byte-equal",
               r"evidence: the test suite collected once, every marker kept: \d+ tests in [\d.]+ s",
               r"docs/specification/saved_form\.md: \d+ normative statements, \d+ covered by a test CI runs, citing \d+ "

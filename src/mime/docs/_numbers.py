@@ -32,6 +32,8 @@ README_START = Path("docs/ratchets/readme_numbers.txt")
 IDIOMS = Path("docs/number_idioms.txt")
 #: The hand-written page sources under ``docs/``.
 PAGE_DIRECTORIES = ("entries", "nodes", "families", "mechanisms", "assets")
+#: The hand-written guides: the user guide's pages and the lab-author guide, each a page at ``guide/<name>.md``.
+GUIDE_DIRECTORY = "guide"
 #: The hand-written files directly under ``docs/`` that are pages too: the concepts note, the note on reading a
 #: run's results, and the note on reading an error.
 TOP_LEVEL_SOURCES = NOTE_PATHS
@@ -51,9 +53,11 @@ IDENTIFIERS = ("MIME-NODE-", "MIME-ANO-", "MIME-VER-", "MADD-ANO-")
 UNIT_NAMES = ("metre", "meter", "centimetre", "centimeter", "millimetre", "millimeter", "micrometre", "micrometer",
               "micron", "nanometre", "nanometer", "second", "millisecond", "microsecond", "nanosecond", "minute",
               "hour", "kilogram", "gram", "milligram", "newton", "pascal", "kelvin", "tesla", "millitesla", "hertz",
-              "kilohertz", "radian", "degree", "ampere", "volt", "watt", "joule", "litre", "liter", "ulp")
+              "kilohertz", "radian", "degree", "ampere", "volt", "watt", "joule", "litre", "liter", "ulp", "byte",
+              "kilobyte", "megabyte", "gigabyte", "terabyte")
 UNIT_SYMBOLS = ("mm", "cm", "um", "\u00b5m", "\u03bcm", "nm", "ms", "us", "\u00b5s", "\u03bcs", "ns", "kg", "mg",
-                "Pa", "mPa", "kPa", "mT", "Hz", "kHz", "MHz", "rad", "deg")
+                "Pa", "mPa", "kPa", "mT", "Hz", "kHz", "MHz", "rad", "deg", "kB", "MB", "GB", "TB", "KiB", "MiB",
+                "GiB")
 #: The single-letter symbols read. The rest (A, T, K, g, V, W, J, L) are left out, since a number word before a
 #: letter is mostly not a quantity ("one A matrix", "one T junction").
 UNIT_LETTERS = ("m", "s", "N")
@@ -95,15 +99,17 @@ TOKEN_GRAMMAR = (
     "from 1 by one; a section number (\u00a73.18); a URL; a code fence; and an idiom of docs/number_idioms.txt, "
     "removed before the line is keyed. A heading's number is a token, and so is a list item's out of its list's count")
 
-# The word-numeral warning: a number word directly before one of four cues.
+# The word-numeral warning: a number word directly before one of four cues (a unit, 'per cent', 'times', 'fold'), and a
+# fraction word ('half a', 'a quarter of a') before a unit. A count of things ('three inputs') has no cue and is not seen.
 _ONES = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen "
          "eighteen nineteen twenty").split()
 _TENS = "thirty forty fifty sixty seventy eighty ninety".split()
 _NUMBER_WORD = rf"(?:{'|'.join([*_ONES, *_TENS, 'hundred', 'thousand'])})"
-_SPELLED = rf"\b{_NUMBER_WORD}(?:-{_NUMBER_WORD})*"
+_SPELLED = rf"\b{_NUMBER_WORD}(?:(?:-|\s+){_NUMBER_WORD})*"
 _WORD_CUES = (
     ("a unit", re.compile(rf"(?i:{_SPELLED})\s+{_UNIT}")),
     ("'per cent'", re.compile(rf"(?i:{_SPELLED}\s+(?:per\s+cent|percent)\b)")),
+    ("a unit, after a fraction", re.compile(rf"(?i:\b(?:half|quarter|third)\s+(?:of\s+)?(?:an?\s+)?{_UNIT})")),
     ("'times'", re.compile(rf"(?i:{_SPELLED}\s+times\b)")),
     ("'fold'", re.compile(rf"(?i:{_SPELLED}(?:-|\s+)?fold\b)")),
 )
@@ -117,6 +123,7 @@ def scoped_files(root: Path) -> list[Path]:
     for directory in PAGE_DIRECTORIES:
         found |= set((root / "docs" / directory).rglob("*.md"))
     found |= {root / "docs" / name for name in (*TOP_LEVEL_SOURCES, *REFERENCE_SOURCES)}
+    found |= {path for path in (root / "docs" / GUIDE_DIRECTORY).glob("*.md") if not path.name.startswith("_")}
     return sorted(path.relative_to(root) for path in found if path.is_file())
 
 
@@ -495,15 +502,17 @@ def number_report(root: Path, base: str | None = None,
         + (f" ({sizes})" if shared else ""),
         f"idioms: {len(reading.idioms)} ({IDIOMS}: {', '.join(reading.idioms) or 'none'})",
         f"word-numeral warnings: {len(report.warnings)}, never a failure (a number word before a unit, 'per cent' or "
-        f"'percent', 'times', or 'fold'; units by name: {', '.join(UNIT_NAMES)}; by symbol: {', '.join(UNIT_SYMBOLS)}; "
+        f"'percent', 'times', or 'fold', or 'half', 'quarter' or 'third' before a unit; a count of things, 'three inputs', "
+        f"is not seen; units by name: {', '.join(UNIT_NAMES)}; by symbol: {', '.join(UNIT_SYMBOLS)}; "
         f"single letters: {', '.join(UNIT_LETTERS)}, the rest left out)"
         + "".join(f"\n  {warning.text()}" for warning in report.warnings),
     ]
     return report
 
 
-__all__ = ["ALLOWLIST", "IDENTIFIERS", "IDIOMS", "INSTALLED", "PAGE_DIRECTORIES", "PRODUCTS", "README_START",
-           "REFERENCE_SOURCES", "START_REASON", "TOKEN_GRAMMAR", "TOP_LEVEL_SOURCES", "UNIT_LETTERS", "UNIT_NAMES", "UNIT_SYMBOLS",
+__all__ = ["ALLOWLIST", "GUIDE_DIRECTORY", "IDENTIFIERS", "IDIOMS", "INSTALLED", "PAGE_DIRECTORIES", "PRODUCTS",
+           "README_START", "REFERENCE_SOURCES", "START_REASON", "TOKEN_GRAMMAR", "TOP_LEVEL_SOURCES", "UNIT_LETTERS",
+           "UNIT_NAMES", "UNIT_SYMBOLS",
            "NumberReport", "NumeralWarning", "Occurrence", "Reading", "base_start_list", "fence_problems", "idiom_pattern",
            "is_readme", "key_of", "list_places", "number_item_form", "number_report", "number_tokens", "occurrences",
            "prose_lines", "read_idioms", "read_number_lists", "reading_of", "releases", "rendered_occurrences",

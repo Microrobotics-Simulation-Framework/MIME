@@ -40,6 +40,7 @@ docs/_build.py::write_pages FileExistsError 1  # tooling: MIME's documentation, 
 docs/_build.py::write_pages ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_evidence.py::claim KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_evidence.py::read_claims ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+docs/_executable.py::run_script RuntimeError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_schemas.py::_Converter.schema TypeError 2  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_symbols.py::read_frozen_ids ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 docs/_symbols.py::resolve_dotted ImportError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call

@@ -24,6 +24,7 @@ between runs, so the starts stay fast, and the hashes keep it reproducible.
 
 ## Running an experiment
 
+<!-- mime-fragment: commands that start a Modal job, shown and never run by a check -->
 ```sh
 mime modal fl9_water/ --gpu A100-40GB        # writes fl9_water-modal/modal_app.py beside the folder
 modal run fl9_water-modal/modal_app.py::main --duration 5

@@ -29,6 +29,7 @@ body outside a model's domain are refused in every profile, each refusal saying 
 
 A steel ball settling in water, written with no paperwork but one line a record's read needs:
 
+<!-- mime-fragment: run as written by tests/docs/test_profiles_note.py, which extracts this block and checks what it leaves pending -->
 ```python
 from mime import Body, Experiment, Medium, State
 from mime.dynamics import RigidInertial

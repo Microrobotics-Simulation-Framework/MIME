@@ -10,10 +10,13 @@
 - a pull request's newer push cancels its older run, and nothing else is ever cancelled by a newer run (the workflow's
   ``concurrency``), read by evaluating its two expressions for each event;
 - the default lane runs ``mime docs check --base origin/v0.3`` with its exit status intact;
-- no step of any workflow runs ``mime docs check`` with ``--skip-evidence`` (``ci.yml``'s default lane and
-  ``platforms.yml``'s smoke jobs both run it, and one check reads every workflow file), nor ``mime docs build`` with
-  any ``--skip-*`` flag (the published page is built with its evidence resolved), in any step of the job, written out
-  or built from a variable;
+- no step of any workflow runs ``mime docs check`` with a ``--skip-*`` flag unless ``SKIPPABLE`` names that job for that
+  flag (``ci.yml``'s default lane and ``platforms.yml``'s smoke jobs both run it, and one check reads every workflow
+  file): ``--skip-example-runs`` is the non-required smoke job's alone, and a job that may skip is no required check.
+  The flag is only ever spelled in full, since ``mime docs`` accepts no abbreviation (``allow_abbrev=False``). And
+  no step runs ``mime docs build`` with any ``--skip-*`` flag (the published pages are built with their evidence
+  resolved). Each is read from the step's text and from its commands when it is run, so a flag built from a
+  variable shows too;
 - the ``confidential`` job runs ``scripts/check_confidential.py`` with the key's secret in its environment, and
   ``--messages``, ``--diffs`` and ``--ref-name``, with its exit status intact.
 
@@ -55,6 +58,13 @@ SHARD_COUNT = "${{ needs.shards.outputs.count }}"
 SHARD_LIST = "${{ fromJSON(needs.shards.outputs.list) }}"
 #: What the count job outputs in the run the wiring is read for, and what the lanes' check must then be told.
 COUNTED = "6"
+#: Each skip flag of ``mime docs check``: why CI runs the stage it skips, and the jobs (a workflow file and a job id)
+#: that may pass it. A flag the parser has and this table lacks fails ``test_every_skip_flag_of_the_command_is_listed``.
+SKIPPABLE: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
+    "--skip-evidence": ("CI resolves the evidence the specification and the anomaly registry cite", ()),
+    "--skip-hash-seed-builds": ("CI runs the second build under another hash seed", ()),
+    "--skip-example-runs": ("CI runs the scripts the guides' output blocks name", (("platforms.yml", "smoke"),)),
+}
 STEP_IFS = (None, "${{ !cancelled() }}", LANE_RAN)
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 SECRET = "the-secret-stands-in"
@@ -190,7 +200,7 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
               for problem in concurrency_problems(workflow)]
     if len(made.get(DOCS_CHECK, [])) == 1:
         found += docs_check_problems(made[DOCS_CHECK][0][1], scratch / "docs")
-    found += skip_evidence_problems(directory, scratch / "skip-evidence")
+    found += skip_flag_problems(directory, scratch / "skip-flags")
     if len(made.get(SCAN, [])) == 1:
         found += scan_problems(made[SCAN][0][1], scratch / "scan")
     return found
@@ -332,8 +342,6 @@ def docs_check_problems(job: dict[str, object], scratch: Path) -> list[str]:
     if not any(" ".join(arguments).find("mime docs check") >= 0 and ("--base", "origin/v0.3") in pairs(arguments)
                for command, arguments, _ in calls if command == "uv"):
         found.append(f"{where}: does not run mime docs check --base origin/v0.3")
-    if any("--skip-hash-seed-builds" in arguments for command, arguments, _ in calls if command == "uv"):
-        found.append(f"{where}: passes --skip-hash-seed-builds; CI runs the second build under another hash seed")
     return found
 
 
@@ -355,12 +363,12 @@ def docs_commands(run: str, calls: list[tuple[str, list[str], str]]) -> list[tup
     return found
 
 
-def skip_evidence_problems(directory: Path, scratch: Path) -> list[str]:
-    """Every step of every workflow in ``directory`` that runs ``mime docs`` with a flag that skips what the page or the
-    check resolves, read from its text and from its commands' arguments when it is run with them stubbed: CI resolves
-    the evidence the specification and the anomaly registry cite wherever it runs ``mime docs check`` (no
-    ``--skip-evidence``), and builds the published pages with every check on (no ``--skip-*`` of any name, so no page
-    is built that says its evidence was not resolved)."""
+def skip_flag_problems(directory: Path, scratch: Path, required: tuple[str, ...] = REQUIRED) -> list[str]:
+    """Every step of every workflow in ``directory`` that runs ``mime docs check`` with a ``--skip-*`` flag its job may
+    not pass (``SKIPPABLE``), or ``mime docs build`` with any ``--skip-*`` flag, read from its text and from its
+    commands' arguments when it is run with them stubbed (``docs_commands``): CI runs each stage a flag skips, wherever
+    it runs the check, and builds the published pages with nothing skipped. A job that may skip a stage makes no
+    required check."""
     found: list[str] = []
     for name, workflow in workflows(directory):
         for job_id, job in (workflow.get("jobs") or {}).items():
@@ -370,10 +378,15 @@ def skip_evidence_problems(directory: Path, scratch: Path) -> list[str]:
                     continue
                 _, calls = run_step(step, PULL_REQUEST, 0, scratch / f"{name}-{job_id}-{index}")
                 where = f"{name}: the job {job_id}'s step {step.get('name')!r}"
-                for subcommand, arguments in docs_commands(run, calls):
-                    if subcommand == "check" and "--skip-evidence" in arguments:
-                        found.append(f"{where}: passes --skip-evidence; CI resolves the evidence the specification "
-                                     f"and the anomaly registry cite")
+                commands = docs_commands(run, calls)
+                for flag, (reason, allowed) in SKIPPABLE.items():
+                    if not any(subcommand == "check" and flag in arguments for subcommand, arguments in commands):
+                        continue
+                    if (name, job_id) not in allowed:
+                        found.append(f"{where}: passes {flag}; {reason}")
+                    elif set(names_of(job_id, job)) & set(required):
+                        found.append(f"{name}: the job {job_id} passes {flag} and makes a required check; {reason}")
+                for subcommand, arguments in commands:
                     if subcommand == "build":
                         found += [f"{where}: passes {flag} to mime docs build; CI builds the published pages with "
                                   f"nothing skipped" for flag in sorted({a for a in arguments if a.startswith("--skip")})]
@@ -422,6 +435,11 @@ def test_a_copy_of_the_workflows_passes_too(tmp_path):
 
 
 DOCS_STEP = f"{DOCS_CHECK}: the step 'Docs check'"
+#: What the every-workflow guard says of a docs step of ci.yml's default job that passes a skip flag.
+HASH_SEEDS = ("ci.yml: the job default's step 'Docs check': passes --skip-hash-seed-builds; "
+              "CI runs the second build under another hash seed")
+EXAMPLE_RUNS = ("ci.yml: the job default's step 'Docs check': passes --skip-example-runs; "
+                "CI runs the scripts the guides' output blocks name")
 SCAN_STEP = f"{SCAN}: the step \"No private name or path in the tracked files, the commits or the branch's name\""
 SCAN_LINE = '            ${public:+--public "$public"} ${name:+--ref-name "$name"}\n'
 LANE_MATRIX = 'python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n      # Python 3.12'
@@ -462,10 +480,13 @@ PLANTS = {
                          f"{DOCS_STEP}: does not run mime docs check --base origin/v0.3"),
     "the-docs-step-skips-the-hash-seed-builds": (
         "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-hash-seed-builds",
-        f"{DOCS_STEP}: passes --skip-hash-seed-builds; CI runs the second build under another hash seed"),
+        HASH_SEEDS),
     "the-docs-step-skips-the-hash-seed-builds-before-the-base": (
         "mime docs check --base origin/v0.3", "mime docs check --skip-hash-seed-builds --base origin/v0.3",
-        f"{DOCS_STEP}: passes --skip-hash-seed-builds; CI runs the second build under another hash seed"),
+        HASH_SEEDS),
+    "the-docs-step-skips-the-example-runs": (
+        "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-example-runs",
+        EXAMPLE_RUNS),
     "the-docs-step-skips-the-evidence": (
         "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-evidence",
         "ci.yml: the job default's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
@@ -599,7 +620,7 @@ def test_control_the_platforms_docs_check_skipping_the_evidence_fails(tmp_path, 
     copy = tmp_path / "workflows"
     shutil.copytree(WORKFLOWS, copy)
     text = (copy / "platforms.yml").read_text(encoding="utf-8")
-    old = "          uv run --no-sync mime docs check --base origin/v0.3\n"
+    old = "          uv run --no-sync mime docs check --base origin/v0.3 --skip-example-runs\n"
     assert text.count(old) == 1
     new = old.replace("\n", f" {plant}\n")
     if plant == "--skip-$PART":
@@ -608,6 +629,97 @@ def test_control_the_platforms_docs_check_skipping_the_evidence_fails(tmp_path, 
     assert wiring_problems(copy, tmp_path / "scratch") == [
         "platforms.yml: the job smoke's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
         "specification and the anomaly registry cite"]
+
+
+SMOKE_DOCS_LINE = "          uv run --no-sync mime docs check --base origin/v0.3 --skip-example-runs\n"
+
+
+def test_every_skip_flag_of_the_command_is_listed():
+    """A skip flag the parser gains must be classified in ``SKIPPABLE``, with the jobs that may pass it, or the guard
+    over the workflows would not know it."""
+    from mime.cli import build_parser
+    from mime.cli._guide import _subparsers_of  # pyright: ignore[reportPrivateUsage]
+
+    docs = _subparsers_of(build_parser())
+    assert docs is not None
+    check = _subparsers_of(docs.choices["docs"])
+    assert check is not None
+    flags = {s for a in check.choices["check"]._actions for s in a.option_strings if s.startswith("--skip-")}  # pyright: ignore[reportPrivateUsage]
+    assert flags == set(SKIPPABLE)
+
+
+def test_mime_docs_takes_a_skip_flag_only_spelled_in_full():
+    """The guard reads the full spelling, so the parser must refuse every shorter one: argparse takes ``--skip-ex`` for
+    ``--skip-example-runs`` unless the parser says ``allow_abbrev=False``. The control is the full spelling."""
+    from mime.cli import build_parser
+    from mime.cli._guide import _subparsers_of  # pyright: ignore[reportPrivateUsage]
+
+    parser = build_parser()
+    docs = _subparsers_of(parser)
+    assert docs is not None
+    assert parser.parse_args(["docs", "check", "--skip-example-runs"]).skip_example_runs is True
+    for flag in SKIPPABLE:
+        for length in range(len("--s"), len(flag)):
+            with pytest.raises(SystemExit):
+                parser.parse_args(["docs", "check", flag[:length]])
+    assert all(not child.allow_abbrev for child in _every_docs_parser(docs.choices["docs"]))
+
+
+def _every_docs_parser(parser):
+    from mime.cli._guide import _subparsers_of  # pyright: ignore[reportPrivateUsage]
+
+    yield parser
+    held = _subparsers_of(parser)
+    for child in (held.choices.values() if held is not None else ()):
+        yield from _every_docs_parser(child)
+
+
+def _planted_workflows(tmp_path: Path, old: str, new: str, *, extra: str | None = None) -> Path:
+    copy = tmp_path / "workflows"
+    shutil.copytree(WORKFLOWS, copy)
+    text = (copy / "platforms.yml").read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    (copy / "platforms.yml").write_text(text.replace(old, new), encoding="utf-8")
+    if extra is not None:
+        (copy / "planted.yml").write_text(extra, encoding="utf-8")
+    return copy
+
+
+def test_control_the_smoke_job_may_skip_the_example_runs_and_the_real_workflows_pass(tmp_path):
+    assert skip_flag_problems(WORKFLOWS, tmp_path / "scratch") == []
+
+
+@pytest.mark.parametrize("flag, reason", [
+    ("--skip-hash-seed-builds", "CI runs the second build under another hash seed"),
+    ("--skip-evidence", "CI resolves the evidence the specification and the anomaly registry cite")])
+def test_the_smoke_job_skipping_another_stage_fails_naming_the_flag(tmp_path, flag, reason):
+    copy = _planted_workflows(tmp_path, SMOKE_DOCS_LINE, SMOKE_DOCS_LINE.replace("--skip-example-runs", flag))
+    assert skip_flag_problems(copy, tmp_path / "scratch") == [
+        f"platforms.yml: the job smoke's step 'Docs check': passes {flag}; {reason}"]
+
+
+def test_another_job_skipping_the_example_runs_fails_in_any_workflow(tmp_path):
+    other = ("on: [pull_request]\njobs:\n  elsewhere:\n    runs-on: ubuntu-latest\n    steps:\n"
+             "      - name: Docs\n        run: uv run mime docs check --skip-example-runs\n")
+    copy = _planted_workflows(tmp_path, SMOKE_DOCS_LINE, SMOKE_DOCS_LINE, extra=other)
+    assert skip_flag_problems(copy, tmp_path / "scratch") == [
+        "planted.yml: the job elsewhere's step 'Docs': passes --skip-example-runs; "
+        "CI runs the scripts the guides' output blocks name"]
+
+
+def test_a_job_named_smoke_in_another_workflow_may_not_skip_the_example_runs(tmp_path):
+    other = ("on: [pull_request]\njobs:\n  smoke:\n    runs-on: ubuntu-latest\n    steps:\n"
+             "      - name: Docs\n        run: uv run mime docs check --skip-example-runs\n")
+    copy = _planted_workflows(tmp_path, SMOKE_DOCS_LINE, SMOKE_DOCS_LINE, extra=other)
+    assert len(skip_flag_problems(copy, tmp_path / "scratch")) == 1, "a job id 'smoke' in another file is not the smoke job"
+
+
+def test_a_job_that_may_skip_the_example_runs_and_makes_a_required_check_fails(tmp_path):
+    required = (*REQUIRED, "smoke (macos-latest, Python 3.12)")
+    assert skip_flag_problems(WORKFLOWS, tmp_path / "control", REQUIRED) == []
+    assert skip_flag_problems(WORKFLOWS, tmp_path / "plant", required) == [
+        "platforms.yml: the job smoke passes --skip-example-runs and makes a required check; "
+        "CI runs the scripts the guides' output blocks name"]
 
 
 def test_a_second_job_making_a_required_check_fails(tmp_path):

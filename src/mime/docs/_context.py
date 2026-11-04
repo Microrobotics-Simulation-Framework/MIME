@@ -54,6 +54,9 @@ SCENE_PATH = "scene.md"
 #: The hand-written notes that are pages as they are, at the pages' root.
 NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH, ERRORS_PATH, LIVE_PATH, RECORDINGS_PATH, MULTIBODY_PATH,
               MATERIALS_PATH, SCENE_PATH)
+#: The user guide's front page and the lab-author guide, hand-written pages under ``guide/`` (``_build.guide_pages``).
+GUIDE_INDEX_PATH = "guide/index.md"
+LAB_AUTHOR_PATH = "guide/lab_author.md"
 INDEX_PATH = "index.md"
 
 

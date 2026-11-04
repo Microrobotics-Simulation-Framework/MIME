@@ -7,6 +7,7 @@ describes: ["0.1.0", "0.4.0"]
 `margin` from it: the side the surface faces (`tube.inner_surface` faces the lumen), the body's orientation read, so a
 long body turned across a narrow tube meets the wall at its ends and not at its centre.
 
+<!-- mime-fragment: one attach line of an experiment shown in the middle of a sentence; the experiments that attach it are built by tests/differential/ -->
 ```python
 experiment.attach(Contact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
 ```

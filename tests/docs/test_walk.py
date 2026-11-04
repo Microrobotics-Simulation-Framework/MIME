@@ -209,7 +209,7 @@ def test_a_link_to_an_entry_without_its_own_file_yet_resolves(tmp_path):
 
 def test_a_link_to_a_page_that_names_nothing_fails(tmp_path):
     root = paid(copy_checkout(tmp_path), "entry interaction drag", DRAG,
-                page(body="Beside [lift](lift.md) and [the guide](../../guide/x.md).\n"))
+                page(body="Beside [lift](lift.md) and [the docs front page](../../README.md).\n"))
     assert failures(docs_check(root)) == [
         f"{root / 'docs' / DRAG}: its link 'lift.md' names the interaction lift, which no entry registers"]
 

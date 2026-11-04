@@ -23,3 +23,8 @@ MIME does.
   no material records: every value is declared, and the inertia is the diagonal a research build prints when it refuses the
   parts' own tensor (an exploratory build uses it and stamps it pending). `python examples/screw_in_tube.py` runs it in a few seconds more (7 s, measured the same way); `--spacing-mm` sets how fine the
   samples are, which `docs/choosing_spacing.md` prices and judges. `tests/examples/test_screw_in_tube.py` runs it.
+- `tutorial_a.py` and `tutorial_a0.py`: the runs the user guide's tutorials print the output of
+  ([tutorial A](../docs/guide/tutorial_a.md), [tutorial A0](../docs/guide/tutorial_a0.md)). The first builds script A's two
+  arms from `script_a.py` and runs each for a short time; the second is A0, the same screw driven by a magnet on an AR4
+  arm in a closed loop, with the arm's description from `tests/descriptions/`. `tests/docs/test_tutorials.py` runs both and
+  holds the guide's output blocks to what they print; the guide includes their regions, and those of `script_a.py`.

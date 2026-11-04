@@ -12,7 +12,9 @@ from collections.abc import Collection, Iterable
 from mime.docs._context import (
     CONCEPTS_PATH,
     ERRORS_PATH,
+    GUIDE_INDEX_PATH,
     INDEX_PATH,
+    LAB_AUTHOR_PATH,
     LIVE_PATH,
     MATERIALS_PATH,
     MULTIBODY_PATH,
@@ -184,6 +186,9 @@ def index_page(context: Context, references: Collection[str] = frozenset()) -> P
     w = Writer()
     w.heading(1, "MIME documentation")
     w.paragraph("Generated from the registry and the vocabulary."
+                + (f" To learn MIME by doing, {_page_link(GUIDE_INDEX_PATH, 'the user guide')} has a tutorial for "
+                   f"each experiment it covers; to add your own entry, {_page_link(LAB_AUTHOR_PATH, 'the lab-author guide')}."
+                   if GUIDE_INDEX_PATH in context.hand and LAB_AUTHOR_PATH in context.hand else "")
                 + (f" Start with {_page_link(CONCEPTS_PATH, 'the concepts')} if the page types are new to you."
                    if CONCEPTS_PATH in context.hand else "")
                 + (f" After a run, {_page_link(RESULTS_PATH, 'reading its results')}: each observation's outputs "

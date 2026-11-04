@@ -166,6 +166,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the tag `pre-0.3`, with its 0.3 entry or the reason it was removed. `mime docs build` writes the four pages under
   `pages/reference/`; `mime docs check` collects the test suite once (`--skip-evidence` for the copies the tests of
   the other checks run on).
+- **The user guide and the lab-author guide, and the check that holds them true (docs D4b, part one).** `docs/guide/` holds
+  tutorials for experiments A and A0 (their code is `examples/tutorial_a.py` and `examples/tutorial_a0.py`, included and
+  never pasted, and each output block is what the script prints), install and environment, reading a build report (a
+  heading for each field of `BuildReport`, held equal), the command line (generated from the parser), scope and limits
+  (the profiles and the declared limits, generated), and the lab-author guide, which includes the CI-built `lab_fixture/`
+  and nothing else. `mime docs check` now fails a fenced block that is neither included, an output, nor marked a fragment
+  with a reason; a `mime` command line whose command or flag the parser does not have; an output block that is not what its
+  script prints; a relative link or anchor that does not resolve; a link to a glossary that is not the stack's canonical page
+  (`GLOSSARY_URL`); a code span of a command wrapped over two lines (read as one); code in a quotation or an HTML `pre` or
+  `code` element (not read, so refused); and a hand-edited CLI reference, whose usage lines now print a required option bare
+  and a positional that takes one value as `[x]`, as argparse does. `--skip-example-runs` leaves the scripts unrun (the
+  platform smoke job passes it, and no other job may). The `mime docs` commands accept no abbreviation of a flag
+  (`allow_abbrev=False`), so a skip flag is only ever spelled in full, which CI's wiring test reads in every workflow.
 - **`mime completion bash|zsh|fish`, shell completion written from the command's own parser.** It prints a script to
   standard output; every command, flag and choice the parser holds is completed and none is listed by hand, a path
   argument completes as files, `--to`, `--from` and the like as their choices. The script is static, so Tab runs no
