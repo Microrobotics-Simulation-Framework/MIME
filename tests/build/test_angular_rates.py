@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar
@@ -133,7 +134,9 @@ def test_si_refuses_each_kind_where_the_other_goes_and_takes_its_own_and_a_rate_
     assert [q for q, _ in angular.value.alternatives] == ["rad_per_s((2 * pi * 5.0, 0.0, 0.0))",
                                                          "rad_per_s((5.0, 0.0, 0.0))"]
     assert si(Hz(5.0), FREQUENCY, what="x") == 5.0 and si(rad_per_s(5.0), ANGULAR_VELOCITY, what="x") == 5.0
-    assert si(rad_per_s(1.0) + Hz(1.0), FREQUENCY, what="x") == 2.0, "a sum knows neither, and is taken as the site's"
+    with pytest.raises(UnitError, match=ANGLE):
+        si(rad_per_s(1.0) + Hz(1.0), FREQUENCY, what="x")
+    assert si(Quantity(2.0, FREQUENCY), FREQUENCY, what="x") == 2.0, "a rate that knows neither is taken as the site's"
     assert FREQUENCY == ANGULAR_VELOCITY and hash(FREQUENCY) == hash(ANGULAR_VELOCITY), "one dimension"
     assert str(rad_per_s(5.0)) == "5.0 rad/s" and str(Hz(5.0)) == "5.0 Hz"
     # each conversion written is the number the other reading gives
@@ -348,3 +351,160 @@ def test_control_registration_refuses_a_rate_per_second_that_says_neither():
     assert len(rate_problems(BareState)) == 1 and "its initial 'spin'" in rate_problems(BareState)[0]
     with pytest.raises(TypeError, match="says neither turns nor radians"):
         register_dynamics(BareSetting)
+
+
+# Arithmetic keeps what a rate counts. Each operation is checked by what it gives at a site of the other kind, which
+# must refuse it: an operation that dropped the angle would be taken there, as the mixed sum was before.
+
+TURNS, RADIANS = Hz(5.0), rad_per_s(5.0)
+
+
+def refused_at_the_other_site(quantity: Quantity) -> bool:
+    other = ANGULAR_VELOCITY if quantity.angle == "turn" else FREQUENCY
+    try:
+        si(quantity, other, what="x")
+    except UnitError as error:
+        return ANGLE in str(error)
+    return False
+
+
+@pytest.mark.parametrize("operation", ["add", "subtract", "compare", "np.sum", "np.mean"])
+def test_a_sum_difference_or_order_of_a_turn_and_a_radian_is_refused(operation):
+    combine = {"add": lambda a, b: a + b, "subtract": lambda a, b: a - b, "compare": lambda a, b: a < b,
+               "np.sum": lambda a, b: np.sum([a, b]), "np.mean": lambda a, b: np.mean([a, b])}[operation]
+    for a, b in ((TURNS, RADIANS), (RADIANS, TURNS)):
+        with pytest.raises(UnitError, match=ANGLE):
+            combine(a, b)
+    # the controls: two of one kind combine, and a rate that knows neither takes the other's kind
+    for a in (TURNS, RADIANS):
+        combine(a, a)
+        combined = combine(a, Quantity(1.0, FREQUENCY))
+        if isinstance(combined, Quantity):
+            assert combined.angle == a.angle and refused_at_the_other_site(combined)
+
+
+def test_a_turn_and_a_radian_are_never_equal_and_one_of_each_kind_is_equal_to_itself():
+    assert Hz(5.0) != rad_per_s(5.0) and rad_per_s(5.0) != Hz(5.0)
+    assert Hz(5.0) == Hz(5.0) and rad_per_s(5.0) == rad_per_s(5.0) and Hz(5.0) == Quantity(5.0, FREQUENCY)
+
+
+OPERATIONS = {
+    "times a number": lambda q: q * 2.0, "a number times": lambda q: 2.0 * q, "over a number": lambda q: q / 2.0,
+    "times 2 pi": lambda q: q * (2 * math.pi), "times a numpy number": lambda q: np.float64(2.0) * q,
+    "times a dimensionless quantity": lambda q: q * Quantity(2.0, DIMENSIONLESS),
+    "a dimensionless quantity times": lambda q: Quantity(2.0, DIMENSIONLESS) * q,
+    "over a dimensionless quantity": lambda q: q / Quantity(2.0, DIMENSIONLESS),
+    "negated": lambda q: -q, "np.negative": lambda q: np.negative(q), "np.mean of two": lambda q: np.mean([q, q]),
+    "sum from the rate": lambda q: sum([q, q], q), "times a time over the time": lambda q: q * ms(3.0) / ms(3.0),
+    "1 over 1 over it": lambda q: 1.0 / (1.0 / q),
+}
+
+
+@pytest.mark.parametrize("operation", list(OPERATIONS))
+@pytest.mark.parametrize("rate", [TURNS, RADIANS], ids=["Hz", "rad/s"])
+def test_an_operation_that_gives_a_rate_keeps_what_it_counts(rate, operation):
+    held = OPERATIONS[operation](rate)
+    assert held.angle == rate.angle and refused_at_the_other_site(held)
+    assert si(held, FREQUENCY if rate.angle == "turn" else ANGULAR_VELOCITY, what="x") == pytest.approx(held.value)
+
+
+def test_an_array_rate_keeps_what_it_counts_through_a_product():
+    series = Quantity.of([1.0, 2.0], DIMENSIONLESS)
+    assert (Hz(1.0) * series).angle == "turn" and (series * rad_per_s(1.0)).angle == "radian"
+    with pytest.raises(UnitError, match=ANGLE):
+        (Hz(1.0) * series).to(rad_per_s)
+
+
+def test_a_rate_times_a_time_counts_turns_or_radians_and_a_site_that_takes_radians_refuses_turns():
+    turns, radians = Hz(5.0) * ms(100.0), rad_per_s(5.0) * ms(100.0)
+    assert (turns.angle, radians.angle) == ("turn", "radian")
+    with pytest.raises(UnitError, match=r"0\.5 turns.*2 pi radians") as refused:
+        si(turns, DIMENSIONLESS, what="x")
+    assert [q for q, _ in refused.value.alternatives] == ["rad(2 * pi * 0.5)", "rad(0.5)"]
+    with pytest.raises(UnitError, match=ANGLE):
+        turns.to(rad)
+    # the controls: radians, a ratio of two rates of one kind, and an angle over a time, which is an angular velocity
+    assert si(radians, DIMENSIONLESS, what="x") == pytest.approx(0.5) and radians.to(rad) == pytest.approx(0.5)
+    assert (Hz(5.0) / Hz(1.0)).angle is None and si(Hz(5.0) / Hz(1.0), DIMENSIONLESS, what="x") == 5.0
+    assert (rad(2 * math.pi) / ms(1000.0)).angle == "radian"
+    assert refused_at_the_other_site(rad(2 * math.pi) / ms(1000.0))
+
+
+@pytest.mark.parametrize("pair", [(Hz(5.0), Hz(5.0)), (Hz(5.0), rad(1.0)), (rad_per_s(5.0), Hz(1.0))],
+                         ids=["turns times turns", "turns times radians", "radians over turns"])
+def test_a_product_or_ratio_of_two_quantities_that_count_an_angle_is_refused_but_of_one_kind_over_itself(pair):
+    a, b = pair
+    with pytest.raises(UnitError, match="both count an angle"):
+        (a * b) if a.angle == b.angle or b.dimension == DIMENSIONLESS else (a / b)
+    assert (a / a).angle is None
+
+
+# Each suggestion of each refusal, pasted: the value it gives is the one meant, read from how the refused value was
+# made. ``Hz(5.0) * (2 * pi)`` is a frequency multiplied by 2 pi, whose number is already the radians per second meant.
+SUGGESTED = re.compile(r"\b(?:rad_per_s|Hz|rad)\((?:[^()]|\([^()]*\))*\)")
+
+
+def pasted(action: str) -> list[Quantity]:
+    """Every quantity a refusal's action writes, evaluated as a script would paste it (pi from math)."""
+    return [eval(found, {"rad_per_s": rad_per_s, "Hz": Hz, "rad": rad, "pi": math.pi})
+            for found in SUGGESTED.findall(action.partition(": ")[2] or action)]
+
+
+#: (the value given, the site's kind, each suggestion's label -> the SI number meant under it).
+CASES = {
+    "Hz written, at rad/s": (Hz(5.0), ANGULAR_VELOCITY, {"for the turns per second written": 10.0 * math.pi,
+                                                         "if you meant radians per second": 5.0}),
+    "Hz times 2 pi, at rad/s": (Hz(5.0) * (2 * math.pi), ANGULAR_VELOCITY,
+                                {"for the frequency in Hz multiplied by 2 pi": 10.0 * math.pi}),
+    "Hz times 2 times pi, at rad/s": (2.0 * Hz(5.0) * math.pi, ANGULAR_VELOCITY,
+                                      {"for the frequency in Hz multiplied by 2 pi": 10.0 * math.pi}),
+    "2 pi as a dimensionless quantity times Hz, at rad/s": (
+        Quantity(2 * math.pi, DIMENSIONLESS) * Hz(5.0), ANGULAR_VELOCITY,
+        {"for the frequency in Hz multiplied by 2 pi": 10.0 * math.pi}),
+    "Hz times 3, at rad/s": (Hz(5.0) * 3.0, ANGULAR_VELOCITY, {"for the turns per second written": 30.0 * math.pi,
+                                                               "if you meant radians per second": 15.0}),
+    "rad/s written, at Hz": (rad_per_s(5.0), FREQUENCY, {"if you meant turns per second": 5.0,
+                                                          "for the radians per second written": 5.0 / (2 * math.pi)}),
+    "rad/s over 2 pi, at Hz": (rad_per_s(10.0 * math.pi) / (2 * math.pi), FREQUENCY,
+                               {"for the angular velocity in rad/s divided by 2 pi": 5.0}),
+    "turns, where a number goes": (Hz(5.0) * ms(100.0), DIMENSIONLESS, {"for the turns written": math.pi,
+                                                                       "if you meant radians": 0.5}),
+    "turns times 2 pi, where a number goes": (Hz(5.0) * ms(100.0) * (2 * math.pi), DIMENSIONLESS,
+                                              {"for the turns multiplied by 2 pi": math.pi}),
+}
+
+
+@pytest.mark.parametrize("case", list(CASES))
+def test_each_suggestion_pasted_gives_the_value_its_line_says_it_is_for(case):
+    given, dimension, meant = CASES[case]
+    with pytest.raises(UnitError) as refused:
+        si(given, dimension, what="x")
+    alternatives = refused.value.alternatives
+    assert [when.partition(" (")[0].partition(", in ")[0] for _, when in alternatives] == list(meant)
+    for (written, _), value in zip(alternatives, meant.values(), strict=True):
+        (quantity,) = pasted(written)
+        assert si(quantity, dimension, what="x") == pytest.approx(value)
+
+
+def test_the_walks_conversion_pasted_from_a_motors_refusal_turns_the_motor_at_the_rate_meant():
+    """``Hz(5.0) * (2 * pi)`` at a motor's prescribed velocity: the line the build writes is the one rad/s quantity
+    meant, and pasting it builds."""
+    (refused,) = angle_refusals(lambda: motor_rig(commands={"motor.velocity": Constant(Hz(5.0) * (2 * math.pi))}
+                                                  ).build())
+    (quantity,) = pasted(refused.action)
+    assert quantity.angle == "radian" and quantity.value == pytest.approx(10.0 * math.pi)
+    assert angle_refusals(lambda: motor_rig(commands={"motor.velocity": Constant(quantity)}).build()) == []
+    # the control: a frequency written as it is gets both lines, the first 2 pi times the number written
+    (written,) = angle_refusals(lambda: motor_rig(commands={"motor.velocity": Constant(Hz(5.0))}).build())
+    assert [q.value for q in pasted(written.action)] == pytest.approx([10.0 * math.pi, 5.0])
+
+
+def test_a_dynamic_segments_joint_velocities_and_spin_read_in_rad_per_s_the_unit_their_numbers_are_in():
+    """The arm advances its joint angles (rad) by ``dt`` times its joint velocities, and the motor its angle by its
+    spin, so both are radians per second, which a controller reading them declares (``Signal("rad/s")``)."""
+    from mime.nodes.actuation._dynamic import DynamicArmNode, DynamicMotorNode
+    from mime.vocabulary import JOINT_VELOCITIES
+
+    assert JOINT_VELOCITIES.units == "rad/s"
+    assert {s.units for s in DynamicArmNode.symbols if s.name == "joint_velocities"} == {"rad/s"}
+    assert {s.units for s in DynamicMotorNode.symbols if s.name == "spin"} == {"rad/s"}

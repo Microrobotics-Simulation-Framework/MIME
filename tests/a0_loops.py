@@ -121,7 +121,7 @@ def together(*laws: ControlLaw) -> ControlLaw:
                       held={key: value for law in laws for key, value in law.held.items()}, step=step)
 
 
-_TORQUE_READS = {**ArmTracking.reads, "joint_velocities": Signal("Hz", (-1,))}
+_TORQUE_READS = {**ArmTracking.reads, "joint_velocities": Signal("rad/s", (-1,))}
 _ROTOR_READS = {"rotor_rates": Signal("rad/s", (2, 3)), "rotor_poses": Signal("m; 1", (2, 7))}
 
 

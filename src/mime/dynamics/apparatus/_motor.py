@@ -58,7 +58,9 @@ class Motor(ChainSegment):
     ``kinematic`` (``Motor.Kinematic(...)``): its motion is prescribed, ``prescribed="angle"`` by the command
     ``<segment>.angle`` (rad), or ``prescribed="velocity"`` by ``<segment>.velocity`` (rad/s, integrated over each
     step), from ``initial_angle``. An ideal source of that motion: no rotor inertia, cogging, imbalance or thermal
-    terms, and no load taken.
+    terms, and no load taken. The graph's edge into that velocity is still labelled ``Hz``, its dimension's SI symbol,
+    for the rad/s it takes, as the drives' edges into it are: a command or a controller's write is checked as rad/s
+    (``Signal("rad/s")``), and the label is left for a later release to change with them.
 
     ``dynamic`` (``Motor.Dynamic(...)``): its rotor, of ``inertia`` about the axis, is turned by the torque commanded
     (``<segment>.torque``, N m) against its bearing's viscous ``damping`` and the loads on it about the axis, from

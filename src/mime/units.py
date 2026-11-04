@@ -22,6 +22,14 @@ takes one: :data:`FREQUENCY` (``Frequency``) counts turns, in Hz, and :data:`ANG
 radians, in rad/s. :func:`si` refuses a quantity of the other kind with the conversion to write, and an entry that
 declares a rate per second that says neither (``DIMENSIONLESS / TIME``) is refused at registration.
 
+Arithmetic keeps what a quantity counts. A number or a quantity that counts nothing multiplies or divides it and leaves
+it counting turns or radians: ``Hz(5.0) * (2 * pi)`` is 31.4 Hz, never rad/s, so write ``rad_per_s(2 * pi * 5.0)`` for
+an angular velocity. A sum, a difference or an order of a turn and a radian is refused, as ``.to`` refuses one, and
+they are never equal; so is their product or ratio. ``rad`` and ``deg`` count radians, so ``rad(2 * pi) / s(1)`` is an
+angular velocity, and a rate times a time counts what the rate counts: ``Hz(5.0) * s(1.0)`` is five turns, which a
+site that takes an angle in radians refuses. A quantity that knows neither (a result, or one loaded from a saved
+folder) takes what the other operand counts.
+
 Two limits of a check by dimension alone:
 
 - A dimension names one quantity. :data:`TORQUE` (N m) is dimensionally an energy (J), and the names and symbols a
@@ -262,6 +270,9 @@ class Quantity:
     #: Where the value comes from, or why it was chosen (``mm(3.175, reason="...")``): equality, hashing and
     #: arithmetic ignore it, and a quantity derived from others carries none.
     reason: Basis | None = field(default=None, compare=False)
+    #: The number a script's arithmetic multiplied the quantity by since its unit made it (``Hz(5.0) * (2 * pi)`` holds
+    #: 2 pi), so that a refusal tells a frequency multiplied by 2 pi, which stays in Hz, from one written as it is.
+    scale: float = field(default=1.0, compare=False, repr=False)
 
     @classmethod
     def of(cls, values: object, dimension: Dimension) -> Quantity:
@@ -281,10 +292,12 @@ class Quantity:
             raise UnitError(f"cannot read a quantity of {self.dimension} ({self}) in {unit.symbol}, a unit of "
                             f"{unit.dimension}")
         if self.angle is not None and unit.angle is not None and self.angle != unit.angle:
-            raise UnitError(f"cannot read {self}, an angular rate in {_ANGLE_UNIT[self.angle]}, in {unit.symbol}: "
-                            f"{_ANGLE_UNIT[self.angle]} and {unit.symbol} have the same dimension and differ by 2 pi "
-                            f"(1 Hz is 2 pi rad/s), which a conversion here would silently drop; multiply or divide "
-                            f"by 2 pi where you mean it")
+            kind = f"an angular rate in {_ANGLE_UNIT[self.angle]}" if self.dimension == FREQUENCY else \
+                f"which counts {_COUNTS[self.angle]}"
+            raise UnitError(f"cannot read {self}, {kind}, in {unit.symbol}: {_ANGLE_UNIT[self.angle]} and "
+                            f"{_ANGLE_UNIT[unit.angle]} have the same dimension and differ by 2 pi (1 Hz is 2 pi "
+                            f"rad/s), which a conversion here would silently drop; multiply or divide by 2 pi where "
+                            f"you mean it")
         if isinstance(self.value, tuple):
             return tuple(v / unit.factor for v in self.value)
         if isinstance(self.value, np.ndarray):
@@ -295,7 +308,7 @@ class Quantity:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Quantity):
             return NotImplemented
-        if self.dimension != other.dimension:
+        if self.dimension != other.dimension or _differ(self, other):
             return False
         if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
             return (isinstance(self.value, np.ndarray) and isinstance(other.value, np.ndarray)
@@ -316,35 +329,42 @@ class Quantity:
 
     def __mul__(self, other: Quantity | float) -> Quantity:
         if isinstance(other, Quantity):
+            angle, scale = _product_angle(self, other, "multiply"), _factor(self) * _factor(other)
+            dimension = self.dimension * other.dimension
             if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
-                return Quantity(self._array_with(other, "*"), self.dimension * other.dimension)
+                return Quantity(self._array_with(other, "*"), dimension, angle, scale=scale)
             if isinstance(self.value, tuple) and isinstance(other.value, tuple):
                 raise TypeError("the product of two vector quantities is not defined here")
             if isinstance(other.value, tuple):
-                return Quantity(_scaled(other.value, cast(float, self.value)), self.dimension * other.dimension)
-            return Quantity(_scaled(self.value, cast(float, other.value)), self.dimension * other.dimension)
-        return Quantity(_scaled(self.value, float(other)), self.dimension, self.angle)
+                return Quantity(_scaled(other.value, cast(float, self.value)), dimension, angle, scale=scale)
+            return Quantity(_scaled(self.value, cast(float, other.value)), dimension, angle, scale=scale)
+        return Quantity(_scaled(self.value, float(other)), self.dimension, self.angle, scale=self.scale * float(other))
 
     __rmul__ = __mul__
 
     def __truediv__(self, other: Quantity | float) -> Quantity:
         if isinstance(other, Quantity):
+            angle, scale = _product_angle(self, other, "divide"), _factor(self) / _factor(other)
+            dimension = self.dimension / other.dimension
             if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
-                return Quantity(self._array_with(other, "/"), self.dimension / other.dimension)
+                return Quantity(self._array_with(other, "/"), dimension, angle, scale=scale)
             if isinstance(other.value, tuple):
                 raise TypeError("division by a vector quantity is not defined")
-            return Quantity(_scaled(self.value, 1.0 / other.value), self.dimension / other.dimension)
-        return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension, self.angle)
+            return Quantity(_scaled(self.value, 1.0 / other.value), dimension, angle, scale=scale)
+        return Quantity(_scaled(self.value, 1.0 / float(other)), self.dimension, self.angle,
+                        scale=self.scale / float(other))
 
     def __rtruediv__(self, other: float) -> Quantity:
+        scale = float(other) / self.scale
         if isinstance(self.value, np.ndarray):
-            return Quantity(_frozen(float(other) / self.value), DIMENSIONLESS / self.dimension)
+            return Quantity(_frozen(float(other) / self.value), DIMENSIONLESS / self.dimension, self.angle,
+                            scale=scale)
         if isinstance(self.value, tuple):
             raise TypeError("division by a vector quantity is not defined")
-        return Quantity(float(other) / self.value, DIMENSIONLESS / self.dimension)
+        return Quantity(float(other) / self.value, DIMENSIONLESS / self.dimension, self.angle, scale=scale)
 
     def __neg__(self) -> Quantity:
-        return Quantity(_scaled(self.value, -1.0), self.dimension, self.angle)
+        return Quantity(_scaled(self.value, -1.0), self.dimension, self.angle, scale=self.scale)
 
     def _same_dimension(self, other: object, operation: str) -> Quantity:
         if not isinstance(other, Quantity):
@@ -354,21 +374,28 @@ class Quantity:
         return other
 
     def __add__(self, other: Quantity) -> Quantity:
-        other = self._same_dimension(other, "add")
-        angle = self.angle if self.angle == other.angle else None
+        return self._sum(self._same_dimension(other, "add"), "add")
+
+    def __sub__(self, other: Quantity) -> Quantity:
+        held = self._same_dimension(other, "subtract")
+        _sum_angle(self, held, "subtract")
+        return self._sum(-held, "subtract")
+
+    def _sum(self, other: Quantity, operation: str) -> Quantity:
+        angle = _sum_angle(self, other, operation)
+        scale = self.scale if self.scale == other.scale else 1.0
         if isinstance(self.value, np.ndarray) or isinstance(other.value, np.ndarray):
-            return Quantity(self._array_with(other, "+"), self.dimension, angle)
+            return Quantity(self._array_with(other, "+"), self.dimension, angle, scale=scale)
         if isinstance(self.value, tuple) != isinstance(other.value, tuple):
             raise TypeError("cannot add a scalar and a vector quantity")
         if isinstance(self.value, tuple) and isinstance(other.value, tuple):
-            return Quantity(tuple(a + b for a, b in zip(self.value, other.value, strict=True)), self.dimension, angle)
-        return Quantity(cast(float, self.value) + cast(float, other.value), self.dimension, angle)
-
-    def __sub__(self, other: Quantity) -> Quantity:
-        return self + (-self._same_dimension(other, "subtract"))
+            return Quantity(tuple(a + b for a, b in zip(self.value, other.value, strict=True)), self.dimension, angle,
+                            scale=scale)
+        return Quantity(cast(float, self.value) + cast(float, other.value), self.dimension, angle, scale=scale)
 
     def _scalars(self, other: Quantity) -> tuple[float, float]:
         held = self._same_dimension(other, "compare")
+        _sum_angle(self, held, "compare")
         if isinstance(self.value, np.ndarray) or isinstance(held.value, np.ndarray):
             raise TypeError("array quantities are not ordered: compare what .to(unit) gives")
         if isinstance(self.value, tuple) or isinstance(held.value, tuple):
@@ -398,6 +425,55 @@ class Quantity:
         if isinstance(self.value, np.ndarray):
             return f"{np.array2string(self.value, threshold=8, precision=6)} {symbol}".rstrip()
         return f"{self.value!r} {symbol}".rstrip()
+
+
+_COUNTS: dict[Angle, str] = {"turn": "turns", "radian": "radians"}
+
+
+def _differ(a: Quantity, b: Quantity) -> bool:
+    """Whether ``a`` and ``b`` both know what they count, and count different things (a turn and a radian)."""
+    return a.angle is not None and b.angle is not None and a.angle != b.angle
+
+
+def _sum_angle(a: Quantity, b: Quantity, operation: str) -> Angle | None:
+    """What a sum, difference or order of ``a`` and ``b`` counts: what either knows, or :class:`UnitError` where they
+    know different things."""
+    if _differ(a, b):
+        raise UnitError(f"cannot {operation} {a} and {b}: one counts {_COUNTS[cast(Angle, a.angle)]} and the other "
+                        f"{_COUNTS[cast(Angle, b.angle)]}, which share a dimension and differ by 2 pi (1 Hz is 2 pi "
+                        f"rad/s), which MIME does not drop silently; write both in one unit, multiplying or dividing "
+                        f"one by 2 pi where you mean it", dimension=a.dimension, given=b)
+    return a.angle if a.angle is not None else b.angle
+
+
+def _product_angle(a: Quantity, b: Quantity, operation: str) -> Angle | None:
+    """What a product or ratio of ``a`` and ``b`` counts: what the one that knows counts, nothing for a ratio of two
+    that count the same (turns over turns), or :class:`UnitError` where both know (a product would count its angle
+    twice, and a ratio of a turn and a radian is off by 2 pi)."""
+    if a.angle is None or b.angle is None:
+        return a.angle if a.angle is not None else b.angle
+    if operation == "divide" and a.angle == b.angle:
+        return None
+    raise UnitError(f"cannot {operation} {a} by {b}: both count an angle ({_COUNTS[a.angle]} and {_COUNTS[b.angle]}), "
+                    f"and a quantity here counts one at most; {operation} their magnitudes, each read with .to(...), "
+                    f"where you mean it", dimension=a.dimension, given=b)
+
+
+def _factor(quantity: Quantity) -> float:
+    """What ``quantity`` adds to a product's :attr:`Quantity.scale`: its value where it is a number that counts
+    nothing (``dimensionless(2 * pi)``), and its own scale otherwise."""
+    if quantity.dimension == DIMENSIONLESS and quantity.angle is None and _real(quantity.value):
+        return float(cast(float, quantity.value))
+    return quantity.scale
+
+
+def _times_two_pi(scale: float) -> int:
+    """How many times arithmetic multiplied a quantity by 2 pi (``-1`` divided), from its :attr:`Quantity.scale`;
+    zero where the scale is no power of 2 pi."""
+    if scale == 0.0 or not math.isfinite(scale):
+        return 0
+    power = round(math.log(abs(scale)) / math.log(2.0 * math.pi))
+    return power if power and math.isclose(abs(scale), (2.0 * math.pi) ** power, rel_tol=1e-9) else 0
 
 
 _SYMBOLS = {
@@ -456,27 +532,63 @@ def _rate_written(value: Magnitude, unit: str, scale: str) -> str:
 
 
 def _other_angle(quantity: Quantity, dimension: Dimension, what: str) -> UnitError:
-    """The refusal of an angular rate of the other kind than the site counts, with both conversions to write."""
+    """The refusal of an angular rate of the other kind than the site counts, with the conversions to write. Where
+    arithmetic already multiplied a frequency by 2 pi (or divided an angular velocity by it), the number is the one
+    meant, in the other unit, and that is the one line; otherwise both readings of the number written."""
     value = cast(Magnitude, quantity.value)
+    turned = _times_two_pi(quantity.scale)
     if dimension.angle == "radian":
         given = "a frequency, in turns per second"
-        alternatives = ((_rate_written(value, "rad_per_s", "*"), "for the turns per second written (pi from math)"),
-                        (_rate_written(value, "rad_per_s", ""), "if you meant radians per second"))
+        if turned == 1:
+            given += (", multiplied by 2 pi after it was written in Hz, which a number leaves counting turns "
+                      "(Hz(5.0) * (2 * pi) is 31.4 Hz)")
+            alternatives = ((_rate_written(value, "rad_per_s", ""),
+                             "for the frequency in Hz multiplied by 2 pi, in radians per second"),)
+        else:
+            alternatives = ((_rate_written(value, "rad_per_s", "*"), "for the turns per second written (pi from math)"),
+                            (_rate_written(value, "rad_per_s", ""), "if you meant radians per second"))
     else:
         given = "an angular velocity, in radians per second"
-        alternatives = ((_rate_written(value, "Hz", ""), "if you meant turns per second"),
-                        (_rate_written(value, "Hz", "/"), "for the radians per second written (pi from math)"))
+        if turned == -1:
+            given += (", divided by 2 pi after it was written in rad/s, which a number leaves counting radians "
+                      "(rad_per_s(31.4) / (2 * pi) is 5.0 rad/s)")
+            alternatives = ((_rate_written(value, "Hz", ""),
+                             "for the angular velocity in rad/s divided by 2 pi, in turns per second"),)
+        else:
+            alternatives = ((_rate_written(value, "Hz", ""), "if you meant turns per second"),
+                            (_rate_written(value, "Hz", "/"), "for the radians per second written (pi from math)"))
     return UnitError(f"{what} needs units of {dimension}; it was given {quantity}, {given}: the two share a dimension "
                      f"and differ by 2 pi (1 Hz is 2 pi rad/s), which MIME does not assume either way",
                      dimension=dimension, given=quantity, alternatives=alternatives)
+
+
+def _turns_counted(quantity: Quantity, what: str) -> UnitError:
+    """The refusal of a number of turns (a frequency in Hz times a time) where a number goes, which counts an angle in
+    radians, with the conversions to write."""
+    value = cast(Magnitude, quantity.value)
+    if _times_two_pi(quantity.scale) == 1:
+        alternatives = ((_rate_written(value, "rad", ""), "for the turns multiplied by 2 pi, in radians"),)
+        how = ", multiplied by 2 pi, which a number leaves counting turns"
+    else:
+        alternatives = ((_rate_written(value, "rad", "*"), "for the turns written (pi from math)"),
+                        (_rate_written(value, "rad", ""), "if you meant radians"))
+        how = ""
+    return UnitError(f"{what} takes a number, which MIME counts in radians where it is an angle; it was given "
+                     f"{_magnitude_text(value)} turns (a frequency in Hz times a time{how}): a turn is 2 pi radians, "
+                     f"which MIME does not assume", dimension=DIMENSIONLESS, given=quantity, alternatives=alternatives)
+
+
+def _magnitude_text(value: Magnitude) -> str:
+    return f"({', '.join(_number(c) for c in value)})" if isinstance(value, tuple) else _number(value)
 
 
 def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
     """The SI magnitude of ``quantity``, or :class:`UnitError` naming ``what`` when it is not a quantity of
     ``dimension``. A bare number is refused for any dimension but :data:`DIMENSIONLESS`: units are never assumed. An
     angular rate of the other kind than ``dimension`` counts (a frequency in Hz where an angular velocity goes, or one
-    in rad/s where a frequency goes) is refused, with the conversions to write as its ``alternatives``; a quantity that
-    does not know what it counts (a sum of the two, or a result) is taken as the site counts."""
+    in rad/s where a frequency goes) is refused, with the conversions to write as its ``alternatives``, and so is a
+    number of turns where a number goes (``Hz(5.0) * s(1.0)``), which MIME counts in radians; a quantity that does not
+    know what it counts (a result, or one loaded from a saved folder) is taken as the site counts."""
     if not isinstance(quantity, Quantity):
         if dimension == DIMENSIONLESS:
             return _magnitude(quantity)
@@ -490,6 +602,8 @@ def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
                         f"declaration takes a number or a tuple of them")
     if dimension.angle is not None and quantity.angle is not None and quantity.angle != dimension.angle:
         raise _other_angle(quantity, dimension, what)
+    if dimension == DIMENSIONLESS and quantity.angle == "turn":
+        raise _turns_counted(quantity, what)
     return quantity.value
 
 
@@ -551,8 +665,8 @@ m_per_s = Unit("m/s", 1.0, VELOCITY, "Metres per second.")
 m_per_s2 = Unit("m/s^2", 1.0, ACCELERATION, "Metres per second squared.")
 mm_per_s = Unit("mm/s", 1e-3, VELOCITY, "Millimetres per second.")
 um_per_s = Unit("um/s", 1e-6, VELOCITY, "Micrometres per second.")
-rad = Unit("rad", 1.0, DIMENSIONLESS, "Radians.")
-deg = Unit("deg", math.pi / 180.0, DIMENSIONLESS, "Degrees, held in radians.")
+rad = Unit("rad", 1.0, DIMENSIONLESS, "Radians.", "radian")
+deg = Unit("deg", math.pi / 180.0, DIMENSIONLESS, "Degrees, held in radians.", "radian")
 rad_per_s = Unit(
     "rad/s", 1.0, ANGULAR_VELOCITY,
     "Radians per second: an angular velocity. Its dimension is a frequency's, and they differ by 2 pi: a quantity made "
