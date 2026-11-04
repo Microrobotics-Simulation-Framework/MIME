@@ -253,6 +253,8 @@ loads it).
 - **`mime --help`** is grouped (Run, Share, Environment, Reference), each command has an example under its `--help`,
   a bare `mime` says what one can do here (more in a saved experiment's folder or a run's), and a mistyped command or
   flag is answered with the nearest (on every supported Python, a terminal or not).
+- **`mime --version`** (or `-V`) prints MIME's version, `mime.__version__`, and nothing else: the line a bug report
+  starts with.
 - **Ctrl+C while `mime` imports** (about the first second) ends it quietly, 130 (`mime/_import_guard.py`; installed only
   when the process is the `mime` command, so a script that imports MIME keeps Python's handling).
 

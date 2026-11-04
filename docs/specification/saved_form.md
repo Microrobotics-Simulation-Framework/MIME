@@ -206,6 +206,15 @@ refusal table's (`mime/build/refusal_table.txt`).
   whose entries now resolve otherwise under the same names and versions, as the environment's fault.
   *Cases:* `tests/saved/test_load.py::test_a_document_edited_after_its_lock_is_refused_naming_what_changed`,
   `tests/saved/test_load.py::test_a_document_saved_before_a_version_changed_is_refused_naming_the_entry`.
+- **[rebuild.version]** Development releases (0.3.0.devN) make no compatibility promise. MIME's version is part of
+  the rebuilt input (the document's `mime` line and the resolved record's `vocabulary.mime`), so a folder saved by one
+  development release is refused by the next as `load.input-hash`, whatever else is the same; the message names the
+  versions as a change of `resolved.vocabulary.mime` and says the document was changed, which is not what happened.
+  Keep the script that built the experiment and save it again with the new release. It holds of a saved folder in
+  every use of it (`Experiment.load`, `mime verify`, `mime run`, `mime pack`); a bundle unpacks (`mime pull` names the
+  MIME that packed it) but its folder is refused in the same way; and a run folder's outputs still read
+  (`RunResult.read`) while the `experiment/` folder inside it is a saved folder, so it is refused.
+  *Cases:* `tests/saved/test_load.py::test_a_folder_saved_by_another_mime_version_is_refused_and_one_saved_by_this_one_loads`.
 - **[rebuild.stage]** A stage written by a stage writer this MIME does not have is refused as `load.stage-writer`; in
   the environment the lock was written in, a rebuilt stage of other bytes is refused as `load.stage-hash`.
   *Cases:* `tests/saved/test_stage_writer.py::test_the_control_a_lock_naming_another_writer_or_a_stage_neither_writes_is_refused`.

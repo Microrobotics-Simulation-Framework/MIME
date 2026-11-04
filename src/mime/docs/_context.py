@@ -39,7 +39,7 @@ CONCEPTS_PATH = "concepts.md"
 #: The hand-written note on reading a run's results, beside the concepts note.
 RESULTS_PATH = "results.md"
 #: The hand-written note on reading an error and reaching its full traceback, beside them.
-ERRORS_PATH = "errors.md"
+ERRORS_PATH = "reading_errors.md"
 #: The hand-written note on the profiles' path: explore, see what is pending, seal.
 PROFILES_PATH = "profiles.md"
 #: The hand-written note on live sessions, ``mime serve`` and the ``mime.live`` protocol.
@@ -54,6 +54,9 @@ SCENE_PATH = "scene.md"
 #: The hand-written notes that are pages as they are, at the pages' root.
 NOTE_PATHS = (CONCEPTS_PATH, RESULTS_PATH, PROFILES_PATH, ERRORS_PATH, LIVE_PATH, RECORDINGS_PATH, MULTIBODY_PATH,
               MATERIALS_PATH, SCENE_PATH)
+#: The user guide's front page and the lab-author guide, hand-written pages under ``guide/`` (``_build.guide_pages``).
+GUIDE_INDEX_PATH = "guide/index.md"
+LAB_AUTHOR_PATH = "guide/lab_author.md"
 INDEX_PATH = "index.md"
 
 

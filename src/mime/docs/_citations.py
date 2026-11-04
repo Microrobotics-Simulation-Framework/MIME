@@ -19,7 +19,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from mime.docs._numbers import PAGE_DIRECTORIES, TOP_LEVEL_SOURCES, prose_lines
+from mime.docs._numbers import GUIDE_DIRECTORY, PAGE_DIRECTORIES, TOP_LEVEL_SOURCES, prose_lines
 
 _KEY_START = r"[A-Za-z0-9_]"
 _KEY = rf"{_KEY_START}(?:\w|[:.#$%&\-+?<>~/](?=\w))*"
@@ -60,8 +60,9 @@ def hand_written_files(docs: Path) -> dict[str, str]:
     held: dict[str, str] = {}
     for path in sorted(docs.rglob("*.md")):
         relative = path.relative_to(docs)
+        guide_page = len(relative.parts) == 2 and relative.parts[0] == GUIDE_DIRECTORY
         if any(part.startswith("_") for part in relative.parts) or relative.parts[0] in PAGE_DIRECTORIES \
-                or relative.as_posix() in TOP_LEVEL_SOURCES:
+                or relative.as_posix() in TOP_LEVEL_SOURCES or guide_page:
             continue
         held[(DOCS / relative).as_posix()] = path.read_text(encoding="utf-8")
     return held

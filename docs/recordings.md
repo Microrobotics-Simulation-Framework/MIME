@@ -6,11 +6,13 @@ experiment's by construction.
 
 ## Writing one
 
+<!-- mime-fragment: the recording call in a reader's script, with a built experiment the reader has -->
 ```python
 written = built.run_to("a0_run", s(2), stage_every=ms(16.5))   # a sample every 33 base steps
 written.recording                                              # a0_run/recording.usdc
 ```
 
+<!-- mime-fragment: the run command for a saved experiment the reader has -->
 ```sh
 mime run a0_saved --duration 2s --out a0_run --stage-every 16.5ms
 ```
@@ -74,6 +76,7 @@ sdist and the repository, holds the URDF with its MIT licence and a **manifest**
 their bytes. An experiment that reads the URDF finds the manifest beside it, so choosing the robot brings its meshes'
 records:
 
+<!-- mime-fragment: visuals commands that fetch from the network, shown and not run here -->
 ```sh
 mime visuals fetch examples/descriptions/ar4/   # prints the credit and the terms, then downloads and bakes
 mime visuals fetch a0_saved/                    # the same, from the records a saved folder's lock holds

@@ -9,8 +9,9 @@ row such as ``design #195``, a PR number, a bare ``#171``, the walks' ``D3``) ar
 runtime strings of the library (messages, refusals, CLI output, records a command prints), the docstrings of its public
 names (what ``help()`` prints), the hand-written docs pages, the package READMEs and the non-comment lines of the data
 files beside them. Left on purpose: code comments and private helpers' docstrings; ``MIME-ANO-n`` (the anomaly register
-ships, so it is a public record); the changelog and the register itself, which keep their history (the walk labels are
-still looked for in them); and ``docs/ratchets``, the checker's own lists.
+ships, so it is a public record); the changelog, the development record of a release moved out of it
+(``docs/development/``) and the register itself, which keep their history (the walk labels are still looked for in
+them); and ``docs/ratchets``, the checker's own lists.
 
 The text of an actual build (its stamp, its report, ``mime pending``) is read too.
 
@@ -46,7 +47,7 @@ WORK_LABELS = re.compile(
 #: Files that name a thing which only looks like a label: a GPU model.
 OTHER_MEANINGS = {"src/mime/env/_gpus.py"}
 #: Kept as a record of its history: the walk labels are looked for in them, the work labels are not.
-RECORDS = {"CHANGELOG.md", "docs/validation/known_anomalies.yaml"}
+RECORDS = {"CHANGELOG.md", "docs/development/changes_0.3.0.dev1.md", "docs/validation/known_anomalies.yaml"}
 #: The checker's own lists, which are not pages a user reads.
 UNREAD = ("docs/ratchets/", "docs/unpaged.txt")
 TEXT_SUFFIXES = {".md", ".txt", ".yaml", ".json"}
@@ -194,7 +195,8 @@ def test_the_scans_reach_the_surfaces_they_are_named_for():
     pages = {_relative(path, ROOT) for path in page_files(ROOT)}
     library = {_relative(path, ROOT) for path in library_files(ROOT)}
     assert {"README.md", "CHANGELOG.md", "docs/README.md", "docs/choosing_spacing.md", "src/mime/README.md",
-            "src/mime/cli/README.md", "docs/validation/known_anomalies.yaml"} <= pages
+            "src/mime/cli/README.md", "docs/validation/known_anomalies.yaml",
+            "docs/development/changes_0.3.0.dev1.md"} <= pages
     assert any(name.startswith("docs/entries/") for name in pages)
     assert any(name.startswith("examples/") for name in pages)
     assert any(name.startswith("src/mime/") and name.endswith(".txt") for name in pages)
@@ -215,6 +217,7 @@ def test_the_text_of_a_build_the_stamp_its_report_and_mime_pending_holds_no_labe
 CLEAN_FILES = {
     "README.md": "A library.\n",
     "CHANGELOG.md": "# Changelog\n- a change (MIME-ANO-114)\n",
+    "docs/development/changes_0.3.0.dev1.md": "# The development record\n- a change (MIME-ANO-114)\n",
     "docs/page.md": "A page a user reads.\n",
     "docs/entries/kind/entry.md": "An entry page.\n",
     "docs/validation/known_anomalies.yaml": "- id: MIME-ANO-1\n  text: recorded\n",
@@ -262,9 +265,11 @@ PLANTS = [
     ("src/mime/things/bodies.py", 'def public():\n    """Chosen (design #191 item 4)."""\n', True),
     ("src/mime/things/data.txt", "rule = value  # but phase 7h\nsecond = see the review of PR #60\n", True),
     ("CHANGELOG.md", "- as the first-hour walk found\n", True),
+    ("docs/development/changes_0.3.0.dev1.md", "- as the first-hour walk found\n", True),
     ("src/mime/things/_hidden.py", 'def another():\n    """A private helper (phase 7o)."""\n', False),
     ("src/mime/things/data.txt", "# a comment of phase 7o\n", False),
     ("CHANGELOG.md", "- a change (phase 7o, design #195)\n", False),
+    ("docs/development/changes_0.3.0.dev1.md", "- a change (phase 7o, design #195)\n", False),
     ("docs/validation/known_anomalies.yaml", "  note: since phase 7a, dev1's\n", False),
     ("docs/ratchets/list.txt", "a row, phase 7n-b\n", False),
 ]

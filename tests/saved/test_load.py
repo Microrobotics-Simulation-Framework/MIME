@@ -193,6 +193,23 @@ def test_an_experiment_a_load_could_not_find_cannot_be_saved(tmp_path):
     assert not (tmp_path / LOCK_FILE).exists()
 
 
+def test_a_folder_saved_by_another_mime_version_is_refused_and_one_saved_by_this_one_loads(tmp_path, monkeypatch):
+    """Development releases make no compatibility promise (design #232): MIME's version is in the input hash, so a
+    folder saved by one release is refused by the next, whatever else is the same. The control is the same experiment
+    saved and loaded by one version, which loads: so the refusal is the version's, not the experiment's."""
+    import mime
+
+    full_toy().save(tmp_path / "same")
+    Experiment.load(tmp_path / "same")
+    with monkeypatch.context() as earlier:
+        earlier.setattr(mime, "__version__", "0.3.0.dev0")
+        full_toy().save(tmp_path / "earlier")
+    with pytest.raises(LoadRefused) as refused:
+        Experiment.load(tmp_path / "earlier")
+    assert {r.code for r in refused.value.refusals} == {"load.input-hash"}
+    assert 'resolved.vocabulary.mime: "0.3.0.dev0" -> "' in " | ".join(r.message for r in refused.value.refusals)
+
+
 def test_a_document_saved_before_a_version_changed_is_refused_naming_the_entry(tmp_path):
     """A document is reproduced by the versions it names or refused: one naming rigid_inertial 0.1.0 (its step before
     the increment form and the contact held in the solve, before phase 4c3) and drag 0.2.0 (its shape read from

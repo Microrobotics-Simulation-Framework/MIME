@@ -45,4 +45,7 @@ docs/live.md  3.5 3.9  #1  # a measurement with its machine and script: the step
 docs/live.md  1.9  #1  # a measurement with its machine: before phase 7n-b, the chunk after the first set of A0's apparatus closed by ArmTracking (tests/live_cases.py's tracked rig) in a script, its controller compiled again, on the named laptop, 2026-11-01; the before of the fix, never a CI check (phase 7n-b)
 docs/live.md  1  #1  # the build report summary's format, mime.report/1: its name and its major version, a version, not a measured quantity (phase 7n-b)
 docs/live.md  1  #2  # the build report summary's format, mime.report/1, named again in its table: a version, not a measured quantity (phase 7n-b)
+docs/guide/install.md  3.14 3.12 3.12 3.13 3.14  #1  # the Pythons MIME supports: the range pyproject.toml's requires-python and classifiers name, and the three lanes of ci.yml's matrix (named, not measured)
+docs/guide/install.md  1  #1  # the value that switches an environment variable on (JAX_ENABLE_X64=1), a setting and not a quantity
+docs/guide/tutorial_a.md  9  #1  # FL-9, the name of the screw in de Jongh et al.'s table of designs: an identifier, not a quantity
 docs/live.md  40  #1  # the length of the Z85 text of a 32-byte CURVE public key (RFC 32/Z85 encodes 4 bytes as 5 characters), a fixed property of the encoding that the viewer's side also states, not a measured quantity (PR #122 review, F5)

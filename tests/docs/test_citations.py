@@ -130,7 +130,7 @@ NOT_FOUND = (r"docs/{name}:{line}: \[@NoSuchWork1900\] is not an entry of docs/b
 @pytest.mark.parametrize(("name", "append", "line"), [
     ("planted.md", False, 1),
     ("validation/README.md", True, None),
-    ("guide/start.md", False, 1),
+    ("notes/start.md", False, 1),
 ], ids=["a-new-file-under-docs", "the-validation-readme", "a-new-subdirectory"])
 def test_n2_a_typo_in_a_hand_written_file_of_docs_that_is_not_a_page_fails_naming_the_file_and_the_line(
         tmp_path, name, append, line):
@@ -153,7 +153,7 @@ def test_a_template_and_the_builds_own_output_are_not_read(tmp_path):
     """A file or directory whose name starts with ``_`` is a template (the script skipped ``_*`` files), and ``_build``
     holds pages already read when they were built."""
     root = copy_checkout(tmp_path)
-    for name in ("_template.md", "_build/page.md", "guide/_draft.md"):
+    for name in ("_template.md", "_build/page.md", "notes/_draft.md"):
         path = root / "docs" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(TYPO, encoding="utf-8")

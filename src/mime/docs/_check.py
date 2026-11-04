@@ -28,7 +28,9 @@ from mime.docs._citations import citation_report, hand_written_files
 from mime.docs._evidence import Collection as Collected
 from mime.docs._evidence import collect, components
 from mime.docs._evidence_page import Inputs, committed_copy_problems, floor_base_problems, floor_form
+from mime.docs._executable import executable_report, run_script
 from mime.docs._export import completeness_problems, entry_record, load_namespaces
+from mime.docs._generated import GENERATORS, build_report_problems, only_generated_problems
 from mime.docs._lists import RatchetList, base_list, list_problems, read_list
 from mime.docs._migration import migration_report
 from mime.docs._numbers import number_item_form, number_report
@@ -468,13 +470,16 @@ def reference_checks(root: Path, records: list[Registered], lists: Mapping[str, 
                           f"each name on the list frozen from pre-0.3")
 
 
-def check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evidence: bool = True) -> Report:
+def check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evidence: bool = True,
+          example_runs: bool = True) -> Report:
     """Every check over the checkout at ``root``, with MIME and every installed namespace loaded; with ``base``, a
     revision of its repository, the README start list against the base's too. The pages are built in this process for
     the citation check and the number rule's reading of what they print; with ``hash_seeds`` (the default, and what CI
     runs), they are also built in fresh processes under eight hash seeds, and must be the same text. With ``evidence``
     (the default, and what CI runs), the test suite is collected once, and the evidence the specification and the
-    anomaly registry cite is resolved against it."""
+    anomaly registry cite is resolved against it. With ``example_runs`` (also the default, and what CI runs), each script
+    an output block names is run, and the block must be what it printed; the executable-docs check's other stages never
+    need it."""
     report = Report()
     missing = [str(root / path) for path in (PACKAGE, TESTS, FROZEN_IDS, *map(Path, SCRIPTS))
                if not (root / path).exists()]
@@ -544,6 +549,10 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evide
     citations = citation_report(sources, bibliography_keys(root), exempt=built.outside)
     report.problems += citations.problems
     report.summary += citations.summary
+    executable = executable_report(root, {path: page.text for path, page in built.pages.items()},
+                                   runner=run_script if example_runs else None, generated=frozenset(GENERATORS))
+    report.problems += [*executable.problems, *build_report_problems(root), *only_generated_problems(root)]
+    report.summary += executable.summary
     if hash_seeds:
         with tempfile.TemporaryDirectory() as held:
             given = ["--skip-evidence"]
@@ -568,9 +577,10 @@ def check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evide
     return report
 
 
-def run_check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evidence: bool = True) -> int:
+def run_check(root: Path, base: str | None = None, *, hash_seeds: bool = True, evidence: bool = True,
+              example_runs: bool = True) -> int:
     started = time.perf_counter()
-    report = check(root.resolve(), base, hash_seeds=hash_seeds, evidence=evidence)
+    report = check(root.resolve(), base, hash_seeds=hash_seeds, evidence=evidence, example_runs=example_runs)
     print(report.text())
     print(f"mime docs check: {'failed' if report.problems else 'passed'} in {time.perf_counter() - started:.1f} s")
     return 1 if report.problems else 0

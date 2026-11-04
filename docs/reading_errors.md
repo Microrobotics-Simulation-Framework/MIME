@@ -6,6 +6,7 @@ from inside a run) is translated into one, and the error it translates is kept o
 
 ## What an error says
 
+<!-- mime-fragment: a quoted traceback shown for its form; it carries frames of one machine, so it is not regenerated -->
 ```text
 Traceback (most recent call last; MIME's, JAX's and MADDENING's frames left out):
   File "settle.py", line 20, in <module>
@@ -87,6 +88,7 @@ it whenever you like.
 - **The file** is written readable by you alone, named `mime-<time>-<process>-<code>.txt`. Only files of that name
   are ever deleted, so `$MIME_TRACEBACK_DIR` may name a folder that holds your own files.
 
+<!-- mime-fragment: a shell line with an environment variable for the reader's own script, which is not in this repository -->
 ```sh
 MIME_TRACEBACK=full python settle.py
 mime run <folder> --duration 1s --out run --traceback
@@ -115,6 +117,7 @@ catches it: your own exception raised in a hook or a controller's step (`except 
 are kept (`error.errno`, your exception's own); `error.original` is the exception itself. In the rare case where its
 class cannot be a base of another (a class that forbids subclasses), the original leaves the call unchanged.
 
+<!-- mime-fragment: a handler in the reader's own script, shown for its shape; names such as Settled and stop_when_settled are the reader's -->
 ```python
 try:
     built.run(s(1), hook=stop_when_settled, chunk=ms(10))
@@ -141,6 +144,7 @@ A refused command prints why, as above but with no frames (you wrote no Python),
 `mime run` whose state is not finite at its end writes its outputs all the same (`outputs.json` and `run.json` say
 `non_finite`), then says to run again with `--history` or with a smaller `dt` in the saved document:
 
+<!-- mime-fragment: the exit codes, a table in plain text -->
 ```text
 0  done
 1  mime verify: an output moved; mime pending: something is pending

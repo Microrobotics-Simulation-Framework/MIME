@@ -40,7 +40,16 @@ regulatory notes, release notes) are preserved at the tag `pre-0.3`.
   and the lock, generated from the closed TypedDicts, and their known gaps.
 - [`reference/mime_usd.md`](reference/mime_usd.md): what each name of the `mime:` USD schema means; its page adds
   each name's constant and each geometry kind's settings.
+- [`guide/`](guide/index.md): the user guide and the lab-author guide, hand-written, printed among the pages. Its tutorials
+  for experiments A and A0 include the code from `examples/` (a file a test runs, never pasted) and show the output of
+  running it; its short pages are install and environment, reading a build report (a heading for each field of
+  `BuildReport`, held equal), the command line (generated from the parser, nothing written by hand), and scope and limits
+  (the profiles and the declared limits, generated). `guide/lab_author.md` includes the CI-built `lab_fixture/` and nothing
+  else. MIME keeps no glossary: the guide links the stack's.
 - [`validation/`](validation/): the known-anomalies registry, with its claims and their evidence.
+- [`development/`](development/): each release's development record, every change as it was logged, moved out of
+  the changelog when the release is cut ([`changes_0.3.0.dev1.md`](development/changes_0.3.0.dev1.md), the record
+  of 0.3.0.dev1). The changelog's entry for a release is its summary for a user.
 - [`data/`](data/): records no code owns: the 0.2 line's frozen algorithm ids, its frozen public names, and the
   migration table from them to 0.3's entries.
 - [`ratchets/`](ratchets/): the lists `mime docs check` reads, one item per line with its reason, each only shrinking.
@@ -57,8 +66,19 @@ registered since the walk landed arrives with its source, and what merged before
 shrinks as each item is paid. No hand-written file or package README holds a measured number: it names the claim
 record that holds it (`see MIME-ANO-114`).
 
+## Code, commands and links in these pages
+
+`mime docs check` holds what a page shows. Every fenced block is one of three things, marked by a one-line comment above it
+(invisible when rendered): `<!-- mime-fragment: <why it is not run> -->`, a fragment with its reason; `<!-- mime-output:
+<script> -->`, the text the script prints, which the check runs and compares; or no block at all, a line
+`<!-- mime-include: <file>[#region | ::Name] -->` or `<!-- mime-generate: <name> -->` that the build replaces with the
+file's text or the code's own. An unmarked block fails. A `mime` command line in a page is walked down the CLI's own parser,
+and a relative link must resolve, in the sources or in a page the build generates, anchor included. After a change made on
+purpose to a tutorial or the code it runs, `python -m mime.docs._executable` rewrites the output blocks; read the diff.
+
 ## Building the pages
 
+<!-- mime-fragment: the commands that build these pages, shown and not run here; CI's docs job runs mime docs build -->
 ```sh
 uv run --no-sync mime docs build                    # to docs/_build/ (untracked, listed in .gitignore)
 uv run --no-sync mime docs build --out <directory>  # index.md and pages/ under <directory>
@@ -74,4 +94,8 @@ process.
 
 CI builds the pages, scans the built directory for a private name or path (`scripts/check_confidential.py
 --directory`), and only then uploads it as a run artifact named `docs-pages-python-<version>`; download it from the
-run page to read them. A page you change is read the same way, by building locally.
+run page to read them. A page you change is read the same way, by building locally. A release attaches its pages
+to its GitHub release as `mime-docs-<version>.tar.gz`, with its sha256 beside it (`.github/workflows/publish.yml`):
+one folder, `mime-docs-<version>/`, holding `index.md`, `pages/` and a README saying whether the pages are the tagged
+commit's own CI pages or pages the release built without the lane's reports. The site renders the release's pages
+from it, so its name and layout do not change.

@@ -68,6 +68,7 @@ FL9 = Screw(radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), mo
 
 
 def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
+    # region: world
     # The world: up is +z, so gravity points along -z.
     experiment = Experiment("script_a", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt)
 
@@ -77,7 +78,9 @@ def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
     water = experiment.add_medium(Medium("water", fills=tube.lumen))
     experiment.declare("water.density", kg_per_m3(1000.0), reason=REFERENCE)
     experiment.declare("water.viscosity", mPa_s(1.0), reason=REFERENCE)
+    # endregion world
 
+    # region: body
     # FL-9, resting on the tube's floor 1 mm below the axis, its own axis along the tube's. Its shell is the de Jongh
     # helix (de Jongh et al. 2025, Eq. 1 and Table 1), which gives the drag its shape and the body its extent.
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
@@ -93,18 +96,23 @@ def script_a(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                        reason="the reference's body has one density, so its centre of buoyancy is its centre of mass")
     experiment.declare("umr.magnetic_moment", A_m2((0.0, 2 * 8.4e-4, 0.0)),
                        reason=f"{REFERENCE}: two magnets of 8.4e-4 A m^2, across the body's axis")
+    # endregion body
 
+    # region: field
     # The field, starting along the body's moment and turning right-handed about the tube's axis.
     field = experiment.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
         commands={"frequency": frequency, "amplitude": mT(1.2)}))
+    # endregion field
 
+    # region: laws
     experiment.attach(Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15))),
                       body=umr, medium=water)
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
     experiment.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     experiment.observe(SwimSpeed(umr, along=tube.axis))
+    # endregion laws
     return experiment
 
 
@@ -115,6 +123,7 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                                     length=mm(100.0))))
 
+    # region: records
     # Water from OpenMaterica's example record, evaluated from the IAPWS formulations. Its viscosity states no shear
     # rate, so OpenMaterica answers "unknown": the experiment accepts that, with its reason.
     water_record = Record(
@@ -137,6 +146,7 @@ def record_arm(frequency=Hz(10.0), dt=ms(0.5)) -> Experiment:
                    "stated specimen or test method, and with no stated origin")},
         nominal={"magnetic.remanence": Nominal(
             T(1.345), reason="the middle of the grade's limits: nothing measured places these magnets within them")})
+    # endregion records
 
     # FL-9 from its parts: the screw, and two 1 mm N45 cubes inside it, magnetised across its axis.
     umr = experiment.add_body(Body("umr", dynamics=RigidInertial(), initial=State(

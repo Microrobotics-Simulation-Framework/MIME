@@ -1,6 +1,6 @@
 """MIME: microrobot experiments declared as scenes, built into MADDENING graphs, on OpenMaterica's materials."""
 
-__version__ = "0.3.0.dev0"
+__version__ = "0.3.0.dev1"
 
 # Ctrl+C while the `mime` command imports the rest of MIME ends it quietly (mime/_import_guard.py): first, because the
 # imports below are what takes the time.

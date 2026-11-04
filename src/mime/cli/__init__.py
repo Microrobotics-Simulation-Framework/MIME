@@ -14,7 +14,7 @@ from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
-from mime import _import_guard
+from mime import __version__, _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
 from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
@@ -869,7 +869,8 @@ def _credentials(command: str, service: str | None) -> int:
     return 0
 
 
-def _docs_check(root: Path, base: str | None, hash_seeds: bool, evidence: bool = True) -> int:
+def _docs_check(root: Path, base: str | None, hash_seeds: bool, evidence: bool = True,
+                example_runs: bool = True) -> int:
     try:
         from mime.docs._check import run_check
     except ImportError as error:
@@ -877,7 +878,7 @@ def _docs_check(root: Path, base: str | None, hash_seeds: bool, evidence: bool =
             raise
         print(f"mime docs check: {error}", file=sys.stderr)
         return 2
-    return run_check(root, base, hash_seeds=hash_seeds, evidence=evidence)
+    return run_check(root, base, hash_seeds=hash_seeds, evidence=evidence, example_runs=example_runs)
 
 
 def _docs_build(root: Path, out: Path | None, junit: Path | None = None, collection: Path | None = None,
@@ -946,6 +947,8 @@ def build_parser() -> _guide.MimeParser:
     parser.add_argument(PLAIN_FLAG, action="store_true",
                         help="draw nothing but plain text on a terminal, as when output is piped (NO_COLOR and "
                              "TERM=dumb ask the same); it may come anywhere on the line")
+    parser.add_argument("-V", "--version", action="version", version=f"mime {__version__}",
+                        help="print MIME's version and exit")
     commands = parser.add_subparsers(dest="command", required=False)
     verify = commands.add_parser("verify", help="load, rebuild, check the hash, and rerun against the reference "
                                                 "outputs; it keeps no XLA compilation cache, compiling as a fresh "
@@ -960,9 +963,11 @@ def build_parser() -> _guide.MimeParser:
                                                    "(experiment.mime.yaml), edited, to check it as it is")
     registry = commands.add_parser("registry", help="every registered entry and what it declares")
     registry.add_argument("--json", action="store_true", help="the whole export, as JSON")
-    docs = commands.add_parser("docs", help="the documentation's sources")
+    # A skip flag of the documentation's checks is only ever spelled in full: argparse would take ``--skip-ex`` for
+    # ``--skip-example-runs``, and a guard that reads workflows for the full spelling would not see it.
+    docs = commands.add_parser("docs", help="the documentation's sources", allow_abbrev=False)
     docs_commands = docs.add_subparsers(dest="docs_command", required=True)
-    check = docs_commands.add_parser("check", help="every check of the documentation's sources")
+    check = docs_commands.add_parser("check", help="every check of the documentation's sources", allow_abbrev=False)
     check.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to check (default: here)")
     check.add_argument("--base", metavar="REVISION", help="fail on a README start-list line this revision's list "
                                                          "does not hold (CI passes origin/v0.3)")
@@ -973,8 +978,12 @@ def build_parser() -> _guide.MimeParser:
                        help="do not collect the test suite to resolve the evidence the specification and the anomaly "
                             "registry cite (the tests of the other checks pass it, on copies of the checkout; CI "
                             "never does)")
+    check.add_argument("--skip-example-runs", action="store_true",
+                       help="do not run the scripts the guides' output blocks name to regenerate those blocks (the "
+                            "platform smoke job passes it: the printed numbers are a Linux run's; CI's docs check "
+                            "never does)")
     build = docs_commands.add_parser("build", help="generate the pages (never committed) from the registry and the "
-                                                   "hand-written sources")
+                                                   "hand-written sources", allow_abbrev=False)
     build.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to build from (default: here)")
     build.add_argument("--out", type=Path, help="the directory to write index.md and pages/ to (default: "
                                                 "<root>/docs/_build)")
@@ -1375,7 +1384,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
             return _docs_build(arguments.root, arguments.out, arguments.junit, arguments.collection,
                                arguments.skip_evidence)
         return _docs_check(arguments.root, arguments.base, not arguments.skip_hash_seed_builds,
-                           not arguments.skip_evidence)
+                           not arguments.skip_evidence, not arguments.skip_example_runs)
     if arguments.command == assets.GROUP:
         if arguments.assets_command == assets.SOURCES:
             print(for_terminal("\n".join(assets.sources_text(assets.assets_of(name)) for name in arguments.names)))

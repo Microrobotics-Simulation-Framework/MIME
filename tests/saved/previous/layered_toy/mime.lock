@@ -268,63 +268,63 @@
  "entries": [
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "dynamics",
    "name": "toy.body",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "dynamics",
    "name": "toy.relaxation",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "field provider",
    "name": "toy.field",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "toy.couple",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "toy.drag",
    "version": "0.2.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "toy.hold",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "toy.lift",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "toy.spring",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "observation",
    "name": "toy.recorder",
    "version": "0.1.0"
@@ -342,7 +342,7 @@
   "jaxlib": "0.12.0.1",
   "maddening": "0.4.2",
   "matmul_precision": null,
-  "mime": "0.3.0.dev0",
+  "mime": "0.3.0.dev1",
   "openmaterica": "0.1.0.dev3",
   "platform": "linux-x86_64",
   "prng": "threefry2x32 (jax_threefry_partitionable=True)",
@@ -355,8 +355,8 @@
  },
  "hashes": {
   "derived": "sha256:b27a9142eaf92ecefd8dcf7f65aa5c597015f02cc9c636600f64436f972c4eb8",
-  "document": "sha256:4586a00955c466739545eb7be15ad8d6a8d5ecf53a0585ac8ec04cb875567fcf",
-  "input": "sha256:eb338142f6e9b2641f497fef377dabdbfd2f88d495f154633724452d236af001",
+  "document": "sha256:24793cc64b010d948f5b4f0340d14ed4056983b7ca41f828694a812107d58ca1",
+  "input": "sha256:7588affc3b73c4bb327fb217135308f2ea999bdf08f5d35063944bc8b7a523af",
   "observations": "sha256:c4b93141545c913c601e4ed648359cde982f3e1f260d563f197adb0be33e6d8f",
   "recipe": "mime.hash/1"
  },
@@ -1095,7 +1095,7 @@
   },
   "values": {},
   "vocabulary": {
-   "mime": "0.3.0.dev0",
+   "mime": "0.3.0.dev1",
    "toy": "0.1.0"
   }
  },

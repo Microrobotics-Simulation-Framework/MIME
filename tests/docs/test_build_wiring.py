@@ -33,7 +33,7 @@ def build(out, **kwargs):
 
 
 def check(**kwargs):
-    return docs_run("check", "--root", str(ROOT), "--skip-hash-seed-builds", **kwargs)
+    return docs_run("check", "--root", str(ROOT), "--skip-hash-seed-builds", "--skip-example-runs", **kwargs)
 
 
 def test_a_display_equation_on_two_pages_stops_the_build_and_fails_the_check(tmp_path):

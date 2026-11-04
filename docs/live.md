@@ -7,6 +7,7 @@ MICROROBOTICA, it is `mime serve`, which speaks the protocol below.
 
 ## In a script
 
+<!-- mime-fragment: the session API in a reader's script, shown and not run here; tests/live/ holds the session's behaviour -->
 ```python
 from mime import Experiment
 from mime.units import ms
@@ -87,6 +88,7 @@ of one whose stage lacks a prim the binding moves is refused (`live.stage-writer
 
 ## `mime serve`
 
+<!-- mime-fragment: the serve command with its endpoints in comments, for a saved experiment the reader has -->
 ```sh
 mime serve a0_saved                       # commands on tcp://127.0.0.1:5555, frames on tcp://127.0.0.1:5556
 mime serve a0_saved --commands tcp://127.0.0.1:0 --frames tcp://127.0.0.1:0 --ready-file ready.json
@@ -104,6 +106,7 @@ detached (with `nohup`, say). **It binds to localhost.** A session has no authen
 own: reach a remote one through an SSH tunnel, which authenticates and encrypts; `--remote` binds another address all
 the same.
 
+<!-- mime-fragment: an ssh line for the reader's own host -->
 ```sh
 ssh -L 5555:localhost:5555 -L 5556:localhost:5556 <host>     # then connect to localhost as if it ran here
 ```
@@ -210,7 +213,7 @@ JSON object with `protocol`, `ok` and `command`; on success the session's status
 `pace`, `recording`, `non_finite`; `stepping`, the chunks a step in hand has still to take; `activity`, what the
 session is doing, `compiling`, `stepping` or `idle`; and `pending`, the commands taken while a chunk runs that act at
 its end, in order; and three optional keys below); on a refusal,
-`errors`, each in the shape of [MIME's errors](errors.md): `code`, `class`, `message`, `why`, `action`, `where` and
+`errors`, each in the shape of [MIME's errors](reading_errors.md): `code`, `class`, `message`, `why`, `action`, `where` and
 `page`. A request a client gets wrong is refused with its code (an argument of the wrong type included: `live.step`,
 `live.input-value`, `live.record`, `live.pace`), and the session goes on; an error of MIME's own inside a command is
 answered in the same shape, the session going on. The server never stops for one peer's bytes: a peer that does not
@@ -257,6 +260,7 @@ by `hashes`, the lock's.
 Each frame is one message on the PUB socket: binary by default, JSON with `--json-frames`. A binary frame is a header,
 then each field of the schema in its order, its bytes little-endian in the run's own type:
 
+<!-- mime-fragment: the layout of a wire frame, a table in plain text -->
 ```text
 offset  size  field
 0       4     magic "MIMF"

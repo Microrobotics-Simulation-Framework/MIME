@@ -93,9 +93,26 @@ def test_every_page_the_build_wrote_is_an_entry_a_node_a_family_a_mechanism_or_a
     assert entries == names
     rest = {"/".join(path.split("/")[:2]) if path.count("/") > 1 else path for path in found - entries}
     assert rest == {"index.md", "pages/nodes", "pages/families", "pages/mechanisms", "pages/vocabulary.md",
-                    "pages/concepts.md", "pages/results.md", "pages/profiles.md", "pages/errors.md", "pages/errors",
-                    "pages/live.md", "pages/recordings.md", "pages/multibody.md", "pages/materials.md",
-                    "pages/scene.md", "pages/reference"}
+                    "pages/concepts.md", "pages/results.md", "pages/profiles.md", "pages/reading_errors.md",
+                    "pages/errors", "pages/live.md", "pages/recordings.md", "pages/multibody.md", "pages/materials.md",
+                    "pages/scene.md", "pages/reference", "pages/guide"}
+
+
+def clashes(paths: set[str]) -> list[str]:
+    """Each page ``<p>.md`` beside a directory ``<p>/`` of pages: a site that serves the pages without their suffix
+    gives the two one address, ``<p>`` and ``<p>/``."""
+    directories = {"/".join(path.split("/")[:end]) for path in paths for end in range(1, path.count("/") + 1)}
+    return sorted(path for path in paths if path.endswith(".md") and path.removesuffix(".md") in directories)
+
+
+def test_no_page_shares_its_name_with_a_directory_of_pages(built):
+    assert clashes({path.relative_to(built).as_posix() for path in built.rglob("*.md")}) == []
+
+
+def test_control_the_note_named_as_the_catalogue_of_codes_clashes():
+    assert clashes({"pages/errors.md", "pages/errors/index.md", "pages/errors/env.pin.md"}) == ["pages/errors.md"]
+    assert clashes({"pages/entries.md", "pages/entries/geometry/sphere.md"}) == ["pages/entries.md"]
+    assert clashes({"pages/reading_errors.md", "pages/errors/index.md"}) == []
 
 
 def test_every_class_variable_the_export_carries_is_on_its_entrys_page(built, export):

@@ -6,6 +6,7 @@ end of a run. Every observation's entry page lists them.
 
 ## One result, from a run or from its folder
 
+<!-- mime-fragment: a reader's experiment continued from a build, shown for the accessors it calls -->
 ```python
 swim = experiment.observe(SwimSpeed(umr, along=tube.axis, after=s(2.5)))
 built = experiment.build()

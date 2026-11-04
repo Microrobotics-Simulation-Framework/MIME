@@ -85,14 +85,14 @@
  "entries": [
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "dynamics",
    "name": "rigid_inertial",
    "version": "0.2.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "gravity",
    "version": "0.1.0"
@@ -110,7 +110,7 @@
   "jaxlib": "0.12.0.1",
   "maddening": "0.4.2",
   "matmul_precision": null,
-  "mime": "0.3.0.dev0",
+  "mime": "0.3.0.dev1",
   "openmaterica": "0.1.0.dev3",
   "platform": "linux-x86_64",
   "prng": "threefry2x32 (jax_threefry_partitionable=True)",
@@ -123,8 +123,8 @@
  },
  "hashes": {
   "derived": "sha256:bc64fe593d972f5680ef2993842c9908f2d1737ad2a88ded90b05193e6e4b6b5",
-  "document": "sha256:b09f16d6c642e2cb0a330ded91a79c93193c4df88d057437bc0b2da6f79de273",
-  "input": "sha256:e6fcebe0088756b0495602cef91434d063999ba4d0d52e68d5ddef1823532485",
+  "document": "sha256:8a72d973a7fd17ca71532bd5620f1df83ae4e2e46e88b9c41d52b69962083ee6",
+  "input": "sha256:c2b004ae21238cd76d38b0acbf7c49de4ee2059977f32df316a5a15882b082f1",
   "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
   "recipe": "mime.hash/1"
  },
@@ -386,7 +386,7 @@
    }
   },
   "vocabulary": {
-   "mime": "0.3.0.dev0"
+   "mime": "0.3.0.dev1"
   }
  },
  "schema": "mime.lock/2",

@@ -17,6 +17,7 @@ refused, and warns once about each kind not used. A closed chain is refused by e
 
 A chain is the apparatus's `chain` mapping, each segment's name to its dynamics, in chain order:
 
+<!-- mime-fragment: a chain declared with the elision dots of a sketch (description=..., initial_positions=...), not a complete call -->
 ```python
 Apparatus("rig", chain={"arm": Arm.Dynamic(description=asset("arm.urdf"), initial_positions=...),
                         "motor": Motor.Dynamic(axis=Z, inertia=..., mount="link_6")}, ...)
