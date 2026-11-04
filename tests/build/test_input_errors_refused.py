@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pytest
 
 from mime import Apparatus, Body, Experiment, Medium, State, Structure
 from mime.build import ArgumentRefused, BuildRefused
 from mime.dynamics import RigidInertial
+from mime.experiment import RUN_OUTPUTS
 from mime.fields import UniformRotating
 from mime.interactions import Drag, Gravity, Magnetic
 from mime.observations import SwimSpeed
@@ -127,14 +129,27 @@ def test_a_window_that_starts_at_or_after_the_runs_end_is_refused_when_read_and_
     (held,) = error.value.refusals
     assert held.code == "run.window-past-end" and "swim_speed:umr.mean_speed's window starts at" in held.message
     assert "observed nothing" in held.message and "run(s(...))" in held.action and "--duration" in held.action
-    with pytest.raises(ArgumentRefused):
-        reading.value  # noqa: B018 - the read itself is refused
+    for read in (lambda: reading.value, lambda: reading.quantity, lambda: reading.quantity.to(mm_per_s)):
+        with pytest.raises(ArgumentRefused) as error:
+            read()  # each read is refused, the quantity's among them
+        assert error.value.refusals[0].code == "run.window-past-end"
     assert "nothing observed: its window starts at" in result.text() and " = 0.0 m/s" not in result.text()
     written = spinning(after).build().run_to(tmp_path / "run", s(1.0))
     manifest = json.loads((tmp_path / "run" / RUN_MANIFEST).read_text())
     (entry,) = [o for held in manifest["observations"] for o in held["outputs"] if o["name"] == "mean_speed"]
     assert entry["value"] is None, "outputs.json writes no number for a window nothing was observed in"
+    with np.load(tmp_path / "run" / RUN_OUTPUTS) as outputs:
+        assert np.isnan(outputs[entry["array"]]).all(), "outputs.npz holds NaN for it, never the zero its node holds"
     assert "nothing observed" in written.result.text()
+
+
+def test_control_a_window_inside_the_run_is_written_as_its_number_in_outputs_npz(tmp_path):
+    spinning(s(0.5)).build().run_to(tmp_path / "run", s(1.0))
+    manifest = json.loads((tmp_path / "run" / RUN_MANIFEST).read_text())
+    (entry,) = [o for held in manifest["observations"] for o in held["outputs"] if o["name"] == "mean_speed"]
+    with np.load(tmp_path / "run" / RUN_OUTPUTS) as outputs:
+        held = outputs[entry["array"]]
+    assert np.isfinite(held).all() and held.tolist() == pytest.approx(entry["value"])
 
 
 def test_control_a_window_inside_the_run_is_read_and_a_later_run_reads_into_it():

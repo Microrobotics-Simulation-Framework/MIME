@@ -369,6 +369,10 @@ class RunResult:
             self._recorded[path] = Samples(held[f"{key}/steps"].astype(np.int64), held[f"{key}/values"])
         return self._recorded.get(path)
 
+    def _observed(self, output: OutputLayout) -> bool:
+        """Whether a step of the run ended inside ``output``'s window: its window starts before the run's end."""
+        return output.after is None or self.end_step * self.dt > output.after
+
     @public
     def output(self, output: OutputLayout) -> Series | Reading:
         """``output`` in this run: a series when it is per step and recorded, a reading when it is at the end."""
@@ -387,7 +391,7 @@ class RunResult:
         start = output.after if output.after is not None else 0.0
         end = self.end_step * self.dt
         value = quantity_of(np.asarray(self.final[output.node][output.field]), output.dimension)
-        observed = output.after is None or end > start
+        observed = self._observed(output)
         return Reading(output.path, value, start, end, self._flag_source().over(start, end) if observed else (),
                        output.rule, observed=observed)
 
@@ -430,9 +434,12 @@ class RunResult:
         """What ``outputs.npz`` holds: every field after the last step (``final/<node>/<field>``), every field at
         every step when the run kept its history (``history/...``), each recorded series' step counts and values
         (``series/<observation>.<output>/steps``, ``/values``), and each flag at every step when the run recorded
-        anything (``flags/<node>.<field>``)."""
-        found = {f"final/{node}/{name}": np.asarray(value) for node, fields in self.final.items()
-                 for name, value in fields.items()}
+        anything (``flags/<node>.<field>``). The field of an output at the end whose window starts at or after the
+        run's end holds NaN, never the zero its node holds: it observed nothing (``run.window-past-end``)."""
+        unobserved = {(output.node, output.field) for held in self.layout.observations for output in held.outputs
+                      if output.kind is OutputKind.AT_END and not self._observed(output)}
+        found = {f"final/{node}/{name}": _nothing_observed(value) if (node, name) in unobserved else np.asarray(value)
+                 for node, fields in self.final.items() for name, value in fields.items()}
         for node, fields in (self.history or {}).items():
             found.update({f"history/{node}/{name}": np.asarray(value) for name, value in fields.items()})
         for path in self.recorded:
@@ -611,6 +618,12 @@ class RunResult:
                    tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz,
                    clock=cast(str | None, manifest.get("clock")),
                    watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))])
+
+
+def _nothing_observed(value: object) -> NDArray[Any]:
+    """``value``'s array with NaN in every place, in its own float type (float64 for any other)."""
+    held = np.asarray(value)
+    return np.full(held.shape, np.nan, dtype=held.dtype if np.issubdtype(held.dtype, np.floating) else np.float64)
 
 
 def read_report(path: Path) -> tuple[dict[str, Any] | None, str | None]:

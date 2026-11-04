@@ -242,11 +242,11 @@ class Reading:
     """One value of a run with its window and the flags raised over it: an output the graph reduced, or a series
     reduced over a window (``rule``, from ``samples`` samples). ``to(unit)`` reads it in a unit; it prints with its
     window and its flags, which never block the read. An output at the end whose window starts at or after the run's
-    end (``observed`` false) observed nothing: reading its value is refused (``run.window-past-end``), never read as
-    the zero its node holds, and it prints as nothing observed."""
+    end (``observed`` false) observed nothing: reading its value, its quantity or its unit's reading is refused
+    (``run.window-past-end``), never read as the zero its node holds, and it prints as nothing observed."""
 
     name: str
-    quantity: Quantity
+    held: Quantity
     start: float
     end: float
     flags: tuple[FlagRead, ...]
@@ -268,17 +268,21 @@ class Reading:
                     "there gives it none")])
 
     @property
+    def quantity(self) -> Quantity:
+        """Its value as a quantity; refused where it observed nothing."""
+        self._refuse_unobserved()
+        return self.held
+
+    @property
     def value(self) -> Values:
         """Its magnitude in SI; refused where it observed nothing."""
-        self._refuse_unobserved()
         return self.quantity.value
 
     @property
     def unit(self) -> str:
-        return unit_symbol(self.quantity.dimension)
+        return unit_symbol(self.held.dimension)
 
     def to(self, unit: Unit) -> Values:
-        self._refuse_unobserved()
         return self.quantity.to(unit)
 
     def text(self) -> str:
