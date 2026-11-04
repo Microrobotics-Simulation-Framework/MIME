@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
+import inspect
 import math
 import re
 import types
@@ -46,7 +48,7 @@ from mime.registry._entries import (
     rung_gradient_problems,
 )
 from mime.things import ThingKind
-from mime.units import TIME, Dimension, Quantity, UnitError, si
+from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
 from mime.vocabulary import MIME_NAMESPACE, Capability, namespace_of
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
@@ -172,6 +174,10 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
             if len(markers) > 1 or Quantity not in members or not members <= {Quantity, type(None)}:
                 problems.append(f"setting {setting.name!r} is annotated {hint!r}: a dimensioned setting holds a "
                                 f"Quantity (or None) and declares one dimension, as Annotated[Quantity, Length]")
+                continue
+            if not says_its_angle(markers[0]):
+                problems.append(f"setting {setting.name!r} is annotated with a rate per second that says neither "
+                                f"turns nor radians: {SAY_THE_ANGLE}")
                 continue
             declared = DimensionedSetting(markers[0], optional=type(None) in members)
             default: object = setting.default
@@ -496,8 +502,118 @@ def _wall_kind_problems(held: Any) -> list[str]:
     return found
 
 
+def rate_problems(cls: type) -> list[str]:
+    """Every command (``commands``) and initial state (``initial_state``) ``cls`` declares with a rate per second that
+    says neither turns nor radians: a frequency and an angular velocity differ by 2 pi, and a site that takes either
+    would take each as the other. Its settings are checked with their dimensions (:func:`dimensioned_settings`)."""
+    found: list[str] = []
+    commands: object = getattr(cls, "commands", None)
+    if isinstance(commands, Mapping):
+        for name, command in cast(Mapping[str, object], commands).items():
+            dimension = getattr(command, "dimension", None)
+            if isinstance(dimension, Dimension) and not says_its_angle(dimension):
+                found.append(f"its command {name!r} is declared with a rate per second that says neither turns nor "
+                             f"radians: {SAY_THE_ANGLE}")
+    initial: object = getattr(cls, "initial_state", None)
+    if isinstance(initial, Mapping):
+        for name, dimension in cast(Mapping[str, object], initial).items():
+            if isinstance(dimension, Dimension) and not says_its_angle(dimension):
+                found.append(f"its initial {name!r} is declared with a rate per second that says neither turns nor "
+                             f"radians: {SAY_THE_ANGLE}")
+    return found
+
+
+#: The key of a setting's ``dataclasses.field(metadata=...)`` that says why it has no default, in the words a refusal
+#: of a construction without it prints (``starts: int = field(metadata={WHY_REQUIRED: "its number of starts, ..."})``).
+WHY_REQUIRED = "mime_why_required"
+#: Why a required setting of each role has no default, where its field does not say.
+_ROLE_REQUIRES = {Role.PHYSICAL: "a physical setting, a fact about the setup, which MIME does not assume",
+                  Role.DESIGN: "a design setting, the experimenter's choice, which MIME does not make",
+                  Role.NUMERICAL: "a numerical setting with no stated rule for a default",
+                  Role.STANDARD: "a standard setting with no default written"}
+
+
+def _setting_written(held: dataclasses.Field[Any], hint: object) -> str:
+    """How a script writes the setting ``held``, its kind of value in angle brackets: ``radius=<a quantity of length
+    (m)>``, ``starts=<an int>``."""
+    if typing.get_origin(hint) is Annotated:
+        held_type, *metadata = typing.get_args(hint)
+        marker = next((m for m in metadata if isinstance(m, Dimension)), None)
+        if marker is not None:
+            return f"{held.name}=<a quantity of {marker}>"
+        if Direction in metadata:
+            return f"{held.name}=<a direction, such as X or (1.0, 0.0, 0.0)>"
+        hint = held_type
+    named = getattr(hint, "__name__", None)
+    return f"{held.name}=<{'an' if str(named)[:1] in 'aeiou' else 'a'} {named}>" if isinstance(named, str) else \
+        f"{held.name}=..."
+
+
+def missing_settings_refusal(cls: type, missing: list[str]) -> tuple[str, str]:
+    """What a construction of ``cls`` without its required settings ``missing`` is told: each setting with why it has
+    no default (its field's :data:`WHY_REQUIRED`, else its role's), and the settings as the call writes them."""
+    roles = declared_roles(cls)
+    try:
+        hints = typing.get_type_hints(cls, include_extras=True)
+    except Exception:  # noqa: BLE001 - a hint that does not resolve is refused at registration, never here
+        hints = {}
+    fields = {f.name: f for f in dataclasses.fields(cls)}
+    reasons: list[str] = []
+    for name in missing:
+        why = fields[name].metadata.get(WHY_REQUIRED)
+        role = roles.get(name)
+        if not isinstance(why, str):
+            why = _ROLE_REQUIRES[role.role] if role is not None else "a setting its entry gives no default"
+        reasons.append(f"{name}, {why}")
+    return "; ".join(reasons), ", ".join(_setting_written(fields[name], hints.get(name)) for name in missing)
+
+
+def _missing(signature: inspect.Signature, args: tuple[object, ...], kwargs: dict[str, object]) -> list[str]:
+    """The required parameters a call of ``signature`` with ``args`` and ``kwargs`` leaves out, where that is all that
+    is wrong with its arguments; empty otherwise (an unknown keyword, one too many, or nothing missing)."""
+    names = list(signature.parameters)
+    if not set(kwargs) <= set(names) or len(args) > len(names):
+        return []
+    given = set(kwargs) | set(names[:len(args)])
+    return [name for name in names if name not in given
+            and signature.parameters[name].default is inspect.Parameter.empty]
+
+
+def _naming_missing_settings(cls: type) -> None:
+    """Make ``cls``'s own dataclass constructor refuse a call without a required setting by name, with why it is
+    required (an ``ArgumentTypeRefused``, ``call.missing-setting``), where Python's own error names the argument
+    alone; any other error of the call is left as it is."""
+    init = vars(cls).get("__init__")
+    if init is None or getattr(init, "__mime_names_missing__", False):
+        return
+    signature = inspect.signature(init)
+
+    @functools.wraps(init)
+    def constructed(self: object, *args: object, **kwargs: object) -> None:
+        try:
+            init(self, *args, **kwargs)
+        except TypeError:
+            missing = _missing(signature, (self, *args), kwargs)
+            if not missing:
+                raise
+            from mime.build._refusals import ArgumentTypeRefused, Refusal, RefusalClass
+
+            why, written = missing_settings_refusal(cls, missing)
+            label = cls.__qualname__
+            raise ArgumentTypeRefused([Refusal(
+                "call.missing-setting", RefusalClass.USER,
+                f"{label}(...) is not given {', '.join(map(repr, missing))}, and "
+                f"{'they have' if len(missing) > 1 else 'it has'} "
+                f"no default: {why}",
+                f"write {label}(..., {written}), with the value of your own setup")]) from None
+
+    setattr(constructed, "__mime_names_missing__", True)
+    setattr(cls, "__init__", constructed)
+
+
 def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
     found = _problems(kind, cls)
+    found += rate_problems(cls)
     settings: dict[str, DimensionedSetting] = {}
     if dataclasses.is_dataclass(cls):
         settings, problems = dimensioned_settings(cls)
@@ -514,6 +630,7 @@ def _register[E: type[Entry]](kind: EntryKind, cls: E) -> E:
     record = Registered(kind, cls.name, cls.version, cls, settings, declared_roles(cls))
     _by_key[key] = record
     _by_class[cls] = record
+    _naming_missing_settings(cls)
     return cls
 
 

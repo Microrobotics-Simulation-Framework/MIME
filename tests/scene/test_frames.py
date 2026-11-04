@@ -8,7 +8,7 @@ from dataclasses import replace
 import pytest
 from script_a import script_a
 
-from mime import Experiment, Scene
+from mime import Body, Experiment, Scene, State
 from mime.build import BuildRefused
 from mime.scene import Tube, X, Z
 from mime.units import m_per_s2, mm, ms, standard_gravity
@@ -63,6 +63,12 @@ def test_a_direction_refers_to_the_tubes_axis_and_follows_it():
         held = experiment._declarations[0].thing
         experiment._declarations[0] = replace(experiment._declarations[0], thing=replace(
             held, geometry=replace(held.geometry, axis=tube_axis)))
+        # the body on the turned tube's axis: a body whose centre starts outside its medium's region is refused
+        for index, declaration in enumerate(experiment._declarations):
+            thing = getattr(declaration, "thing", None)
+            if isinstance(thing, Body) and thing.name == "umr":
+                on_the_axis = State(**{**dict(thing.initial), "position": mm((0.0, 0.0, 0.0))})
+                experiment._declarations[index] = replace(declaration, thing=replace(thing, initial=on_the_axis))
         plans = experiment.plan()
         field = next(p for p in plans.entries if p.owner == "field.magnetic")
         speed = next(p for p in plans.entries if p.owner == "swim_speed:umr")

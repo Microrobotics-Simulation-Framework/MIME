@@ -49,11 +49,45 @@ def traceback_directory() -> Path:
     return Path(str(pooch.os_cache("mime"))) / "tracebacks"
 
 
+#: The distribution MIME is installed as.
+DISTRIBUTION = "mime-engine"
+
+
+def _mime_line() -> str:
+    """What MIME is here: the distribution and its version where the code running is the installed distribution's (an
+    editable install, from its project's folder); and where it is not (a source tree on the path, or another checkout
+    than the one installed), the version the code states and where it runs from."""
+    import json
+    from importlib.metadata import PackageNotFoundError, distribution
+    from urllib.parse import unquote, urlparse
+
+    import mime
+
+    here = Path(mime.__file__).resolve().parent
+    try:
+        held = distribution(DISTRIBUTION)
+    except PackageNotFoundError:
+        return f"mime {mime.__version__} from source at {here}, with no {DISTRIBUTION} distribution installed"
+    try:
+        origin: object = json.loads(held.read_text("direct_url.json") or "{}")
+    except ValueError:
+        origin = {}
+    found = cast(dict[str, object], origin) if isinstance(origin, dict) else {}
+    url, directory = found.get("url"), found.get("dir_info")
+    editable = isinstance(directory, dict) and cast(dict[str, object], directory).get("editable") is True
+    project = Path(unquote(urlparse(url).path)).resolve() if isinstance(url, str) and url else None
+    if editable and project is not None and project in here.parents:
+        return f"{DISTRIBUTION} {held.version}, editable from {project}"
+    if Path(str(held.locate_file("mime"))).resolve() == here:
+        return f"{DISTRIBUTION} {held.version}"
+    return f"mime {mime.__version__} from source at {here}, while {DISTRIBUTION} {held.version} is installed elsewhere"
+
+
 def _environment() -> list[str]:
     from importlib.metadata import PackageNotFoundError, version
 
-    found: list[str] = []
-    for name in ("mime", "maddening", "jax", "jaxlib", "numpy", "openmaterica"):
+    found = [_mime_line()]
+    for name in ("maddening", "jax", "jaxlib", "numpy", "openmaterica"):
         try:
             found.append(f"{name} {version(name)}")
         except PackageNotFoundError:

@@ -67,9 +67,9 @@ def test_the_console_script_runs_and_lists_the_registry_through_a_pipe(tmp_path)
 
 
 def test_the_environment_check_names_only_what_nothing_pins(tmp_path):
-    """The check is for a runner's exact environment, so a development install is refused for its tools (pytest, the
-    lab fixture): every reason must be that one. Another reason (a pin that does not apply here, a marker that does not
-    evaluate) is what this test is for."""
+    """The check is for a runner's exact environment, so a development install is refused for what nothing pins (the
+    lab fixture; its tools, pytest among them, are accepted at the lock's pins): every reason must be that one. Another
+    reason (a pin that does not apply here, a marker that does not evaluate) is what this test is for."""
     run = mime_command("env", "check", "--variant", "cpu", cwd=tmp_path)
     output = (run.stdout + run.stderr).decode("utf-8", "replace")  # a refusal is shown on stderr
     assert run.returncode in (0, 2) and b"Traceback" not in run.stderr, said(run)

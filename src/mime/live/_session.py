@@ -529,14 +529,15 @@ class LiveSession:
 
     def _visuals(self, stage: str | None) -> dict[str, Any] | None:
         """What the asset cache draws of the stage's visuals: the overlay to add over the stage (a layer in the cache,
-        never in a folder), and the visual sets it lacks, which the stage draws as simple shapes."""
+        never in a folder), the visual sets it lacks, which the stage draws as simple shapes, and the command that
+        fetches each (``fetch``, its folder quoted for a shell)."""
         if stage is None:
             return None
         from mime.viz import overlay
 
         found = overlay(Path(stage))
         return {"overlay": str(found.path) if found.path is not None else None, "drawn": found.drawn,
-                "missing": found.missing, "notice": found.notices}
+                "missing": found.missing, "fetch": found.fetch_commands(), "notice": found.notices}
 
     @property
     def wall_time(self) -> float:

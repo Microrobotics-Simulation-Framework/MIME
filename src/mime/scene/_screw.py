@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Any, cast, override
 
 import numpy as np
@@ -13,7 +13,7 @@ import jax
 
 from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
-from mime.registry import PHYSICAL
+from mime.registry import PHYSICAL, WHY_REQUIRED
 from mime.registry import (
     Density,
     Drawing,
@@ -81,6 +81,12 @@ def _turned(angle: np.ndarray, turn: tuple[Any, Any]) -> tuple[Any, Any]:
     return cos * turn[0] - sin * turn[1], sin * turn[0] + cos * turn[1]
 
 
+#: Why a screw's ``starts`` has no default, as a construction without it is told.
+STARTS_REQUIRED = ("the screw's number of starts (its threads round the axis), a fact about the device which MIME does "
+                   "not assume: it sets the body's shape, and so its drag and its mass. Development versions of 0.3.0 "
+                   "before 0.3.0.dev1 took 2 where none was written; de Jongh's FL-9 has 2")
+
+
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Screw(Solid):
@@ -140,7 +146,7 @@ class Screw(Solid):
     length: Annotated[Quantity, Length]
     wavenumber: Annotated[Quantity, DIMENSIONLESS]
     modulation: Annotated[Quantity, DIMENSIONLESS]
-    starts: int
+    starts: int = field(metadata={WHY_REQUIRED: STARTS_REQUIRED})
 
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:

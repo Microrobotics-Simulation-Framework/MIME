@@ -155,16 +155,18 @@ testing/_shape_suite.py::capability KeyError 1  # tooling: MIME's documentation,
 things/_handles.py::ApparatusHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 things/_handles.py::StructureHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 units.py::Dimension.of ValueError 1  # construction: raised where the script makes the value or the entry, outside every public call
-units.py::Quantity.__add__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__hash__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__mul__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__rtruediv__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__truediv__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity._same_dimension UnitError 2  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::Quantity._sum TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity._scalars TypeError 2  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.to TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.to UnitError 3  # a value's own reading (quantity.to(unit)); at the boundary call.units, keeping its class
 units.py::_magnitude TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::_product_angle UnitError 1  # construction: raised where the script makes the value or the entry, outside every public call
+units.py::_sum_angle UnitError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::degC TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::parse_unit UnitError 2  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::si UnitError 3  # coded at the boundary as call.units, keeping its class

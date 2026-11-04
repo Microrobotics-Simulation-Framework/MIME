@@ -23,7 +23,11 @@ declared frequency, against the number the drag's rung is declared up to. The wa
 built the experiment, and a line in the build report that says what it was computed from) is never a refusal.
 
 No profile relaxes a validity limit or an input error: a value in the wrong unit, a read a record does not cover, a
-body outside a model's domain are refused in every profile, each refusal saying what to change.
+body outside a model's domain are refused in every profile, each refusal saying what to change. So are a frequency in
+Hz where an angular velocity in rad/s goes, or the other way round (one counts turns and the other radians, in one
+dimension: `setting.units`, `state.units`), a dynamic viscosity of zero or less (`value.not-positive`), a body whose
+centre starts outside the region its medium fills (`state.outside-region`), and the reading of an observation
+whose window starts at or after the run's end (`run.window-past-end`).
 
 ## Explore
 
@@ -101,8 +105,9 @@ and lists what it would still ask about, each with its line.
   it with `mime pending <folder>/experiment.mime.yaml`, and save the built experiment again for a new lock.
 
 What research refuses is the one placeholder MIME writes, `pending()`: it cannot tell a reason from a text that only
-looks like one, so `"TODO"` passes it. Judging what a reason says is a1's: named bases (`basis("name")`, a library
-pinned by its hash) for the reasons themselves, and strict's evidence records for what a numerical value rests on.
+looks like one, so `"TODO"` passes it. Judging what a reason says is a later release's: named bases (`basis("name")`,
+a library pinned by its hash) for the reasons themselves, and strict's evidence records for what a numerical value
+rests on.
 
 ## Where a value's source goes
 
@@ -112,8 +117,9 @@ pinned by its hash) for the reasons themselves, and strict's evidence records fo
   that is not a quantity, or a source added when sealing. A path names a setting: `<structure>.<setting>`,
   `<body>.parts.<part>.<setting>`, `<apparatus>.<field>.<setting>`, `<apparatus>.<command>` for a command's value,
   `<entry id>.<setting>` (`drag:ball.spacing`), `controller.<setting>`, `dt`, `gravity`, `conditions.<name>`.
-- A value you chose yourself, whatever its setting's role: `reason=chosen("the radius this study sweeps")`. The report
-  records it as a declared change of the setting's role.
+- A value you chose yourself, whatever its setting's role: `reason=chosen("the radius this study sweeps")`, with
+  `from mime.validity import chosen` (`pending` is imported from there too). The report records it as a declared
+  change of the setting's role.
 - A value declared in the experiment takes its reason in `exp.declare(..., reason=...)`; with none, it is pending.
 - A part's placement, `Part(..., at=mm(..., reason=...))` (`<thing>.parts.<part>.at`); the controller's rate and
   latency, `exp.set_controller(..., rate=ms(2, reason=...))` (`controller.rate`, `controller.latency`); an operating
@@ -139,8 +145,7 @@ default is required. A default is a claim, of one of these kinds:
 | numerical | a stated rule with its own basis | the drag's `spacing`, from the body's sample count | exploratory only, stamped pending |
 | undeclared | a written default whose setting declares no role (a lab's entry) | `smoothing: float = 3.0` with no `setting_roles` line | exploratory only, stamped pending |
 
-A convention on a physical setting (a tube centred on the world's origin, a screw's two starts, a segment at its
-frame's origin) is what anyone assumes untold, and may not hold for the setup: research lists each one taken, with
+A convention on a physical setting (a tube centred on the world's origin, a segment at its frame's origin) is what anyone assumes untold, and may not hold for the setup: research lists each one taken, with
 the `exp.source(...)` line that states it.
 
 Each entry page lists its settings with their roles, and `docs/ratchets/required_settings.txt` lists every required

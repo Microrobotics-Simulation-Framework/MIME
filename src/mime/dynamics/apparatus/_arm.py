@@ -22,8 +22,8 @@ from mime.registry import DESIGN, PHYSICAL, convention
 from mime.registry import BuildContext, CapabilityRecord, ChainSegment, Command, GradientRecord, Port, Problem, \
     RungGradient, Segment, SegmentVisual, register_dynamics
 from mime.scene import Asset
-from mime.units import DIMENSIONLESS, FORCE, FREQUENCY, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, Quantity, \
-    Time, unit_symbol
+from mime.units import ANGULAR_VELOCITY, DIMENSIONLESS, FORCE, LENGTH, MASS, MOMENT_OF_INERTIA, TORQUE, Magnitude, \
+    Quantity, Time, unit_symbol
 from mime.validity import basis_text
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, JOINT_POSITIONS, JOINT_VELOCITIES, LINK_INERTIA, \
     LINK_MOMENTUM, LINK_WRENCH, Capability
@@ -209,7 +209,7 @@ class Arm(ChainSegment):
     rung: str | None = None
     description: Asset
     initial_positions: Annotated[Quantity, DIMENSIONLESS]
-    initial_velocities: Annotated[Quantity | None, FREQUENCY] = None
+    initial_velocities: Annotated[Quantity | None, ANGULAR_VELOCITY] = None
     servo: Annotated[Quantity | None, Time] = None
     acknowledged: tuple[tuple[str, str], ...] = ()
     armature: Mapping[str, Quantity] | tuple[tuple[str, Quantity], ...] = ()
@@ -299,7 +299,7 @@ class Arm(ChainSegment):
 
     @override
     def segment(self, settings: Mapping[str, Magnitude]) -> Segment:
-        reading = self.read()
+        reading = self.quietly_read()
         if isinstance(reading, Problem):
             return Segment((), problems=(reading,))
         tree = reading.tree
@@ -396,7 +396,8 @@ class Arm(ChainSegment):
         return self.rung == "dynamic"
 
     def quietly_read(self) -> DescriptionReading | Problem:
-        """The description read again, its warnings given once already, where it was first read."""
+        """The description read without its warnings: a build reads it several times, and gives each of its warnings
+        once, at the line that built the experiment, from its segment's record (``Experiment.build``)."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DescriptionWarning)
             return self.read()
@@ -423,7 +424,7 @@ class Arm(ChainSegment):
 
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
-        reading = self.read()
+        reading = self.quietly_read()
         if isinstance(reading, Problem):
             raise ValueError("phase 1 refuses an arm whose description it cannot read")
         if self.rung == "dynamic":

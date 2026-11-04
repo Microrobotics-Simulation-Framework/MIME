@@ -146,6 +146,10 @@ OLD_NAME_LINES = [
      "script A's MRS arm, called by the name the frozen preregistration keys on, as its own scripts call it"),
     (r"tests/oracles/test_mrs_near_wall\.py", r'rung="b' + 'em"',
      "script A's MRS arm, the review's case, called by the name the frozen preregistration keys on"),
+    (r"src/mime/interactions/hydrodynamic\.py", r"def B" + r"EM\(|Drag\.B" + "EM",
+     "the old alias, kept to refuse a script that writes it by naming the new one"),
+    (r"tests/build/test_breaking_changes\.py", r"Drag\.B" + "EM",
+     "the test of the old alias's refusal"),
 ]
 SKIPPED_DIRECTORIES = {".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build", "site"}
 

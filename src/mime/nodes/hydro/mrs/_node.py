@@ -302,6 +302,41 @@ def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, point
     return Corrected(matrix, point.accepted & integrated.accepted), short
 
 
+#: Why the point forces do not take a body past the band where the resistance turns indefinite.
+_NO_WAY_OUT = ("The point forces (quadrature_refinement=1) are no way out: they are indefinite near the wall too "
+               "(MIME-ANO-130)")
+
+
+def indefinite_advice(gap: float | None, spacing: float, clear: float, *, at_start: bool = False) -> str:
+    """What to change where the resistance was indefinite, from what the node measured there: the body's least
+    distance from the wall, ``gap`` (m, below zero where its hull reached through the wall; ``None`` where unknown), the
+    force spacing it ran with (m), and ``clear``, the gap in force spacings outside which the resistance was measured
+    definite (:data:`CONFINED_GAP`, :data:`INTEGRATED_GAP`). A finer spacing where one clears the gap; where none can
+    (the hull on or through the wall) or none is finer than the one it ran with, a margin that holds the body clear
+    at this spacing, so that the advice never repeats the spacing it ran with."""
+    away = ("start the body further from the wall, Body(..., initial=State(position=...))" if at_start else
+            "hold the body further from the wall, Contact.Projection(margin=...)")
+    if gap is not None and gap > 0.0 and gap / clear < spacing:
+        finer = gap / clear * 1e3
+        return (f"write a force spacing of at most {finer:.3g} mm, the body's least distance from the wall there over "
+                f"{clear:g} (closer, the resistance was measured indefinite), Drag.MRS(spacing=mm({finer:.3g})); or "
+                f"{away}. {_NO_WAY_OUT}")
+    margin = clear * spacing * 1e3
+    if gap is not None and gap > 0.0 and spacing > 0.0:
+        return (f"the body was {gap * 1e3:.4g} mm from the wall, {gap / spacing:.3g} force spacings, outside the band "
+                f"where the resistance was measured indefinite, so no finer spacing than the {spacing * 1e3:.4g} mm "
+                f"it ran with follows from that band: write a smaller one, Drag.MRS(spacing=mm({spacing * 5e2:.3g})) "
+                f"halves it, and report the case (MIME-ANO-130). {_NO_WAY_OUT}")
+    reached = (f"the body's hull reached the wall (its least distance {gap * 1e3:.4g} mm), and no force spacing "
+               f"resolves a body on or through it" if gap is not None else "the body's distance from the wall is not "
+                                                                            "known")
+    hold = (f"start the body's hull at least {margin:.3g} mm from the wall, Body(..., initial=State(position=...))"
+            if at_start else f"hold it off the wall with a contact, Contact.Projection(margin=mm({margin:.3g}))")
+    return (f"{reached}: {hold}, {clear:g} of the force spacing it ran with ({spacing * 1e3:.4g} mm), outside the "
+            f"band where the resistance was measured indefinite; with a smaller margin, write a force spacing of at "
+            f"most the margin over {clear:g} as well, Drag.MRS(spacing=...). {_NO_WAY_OUT}")
+
+
 def run_gib(force_points: float) -> float:
     """The memory a run on a wall's image holds at ``force_points``, in GiB in float64 (:data:`RUN_GIB_PER_POINT_SQUARED`):
     an estimate, fitted to six measurements on one machine."""
@@ -888,8 +923,6 @@ class MRSDragNode(MimeNode):
         if found or self._free() or start is None or "pose" not in start:
             return found
         judged = self.judged_at(start["pose"])
-        finer = self._finer(judged.gap)
-        clear = self._clear_gap()
         if not judged.accepted:
             found.append(Problem(
                 "drag.mrs-resistance", f"the wall's reads at the body's starting pose were refused ({settings}): a force "
@@ -901,22 +934,13 @@ class MRSDragNode(MimeNode):
                                        f"({settings}), is not positive definite: its least eigenvalue, each row and "
                                        f"column scaled by its diagonal, is {judged.least:.3g}{self._gap_text(judged.gap)}; "
                                        f"the force points do not resolve the wall's image there (MIME-ANO-130)",
-                f"write a force spacing of at most {finer:.3g} mm, the body's least distance from the wall over "
-                f"{clear:g} (closer, the resistance was measured indefinite), Drag.MRS(spacing=mm({finer:.3g})); or "
-                f"start the body further from the wall, Body(..., initial=State(position=...)). The point forces "
-                f"(quadrature_refinement=1) are no way out: they are indefinite near the wall too (MIME-ANO-130)"))
+                indefinite_advice(judged.gap, self._force_spacing() or 0.0, self._clear_gap(), at_start=True)))
         return found
 
     def _clear_gap(self) -> float:
         """The gap to the wall, in force spacings, outside the band where this node's resistance was measured indefinite:
         :data:`INTEGRATED_GAP` with the image integrated over its cells, else :data:`CONFINED_GAP`."""
         return CONFINED_GAP if self._wall_quadrature is None else INTEGRATED_GAP
-
-    def _finer(self, gap: float | None) -> float:
-        """The force spacing (mm) that keeps a body ``gap`` (m) from the wall outside the band where the resistance was
-        measured indefinite (:meth:`_clear_gap`); the node's own where the gap is unknown or none."""
-        spacing = self._force_spacing() or 0.0
-        return (gap / self._clear_gap() if gap is not None and gap > 0.0 else spacing) * 1e3
 
     def _settings_text(self) -> str:
         return (f"{self.sample_count} force points, a quadrature of {self.quadrature_count} points, blob "
@@ -1047,17 +1071,13 @@ class MRSDragNode(MimeNode):
                 f"diagonal, was {least:.3g} ({self._settings_text()}), at the pose ({position}) mm, quaternion "
                 f"({turn}), with no wall: the discretisation, as the study's leaves moved it, does not resolve its blob",
                 "write a smaller blob or a larger quadrature_refinement: Drag.MRS(blob=..., quadrature_refinement=...)")
-        finer = self._finer(gap)
         return Problem(
             "drag.mrs-indefinite",
             f"its resistance turned indefinite at its step {step} (t = {step * self.delta_t:.6g} s), and the run "
             f"stopped there, before the body took it: its least eigenvalue, each row and column scaled by its "
             f"diagonal, was {least:.3g} ({self._settings_text()}), at the pose ({position}) mm, quaternion ({turn})"
             f"{self._gap_text(gap)}; the force points do not resolve the wall's image there (MIME-ANO-130)",
-            f"write a force spacing of at most {finer:.3g} mm, the body's least distance from the wall there over "
-            f"{CONFINED_GAP:g} (closer, the resistance was measured indefinite), Drag.MRS(spacing=mm({finer:.3g})); or "
-            f"hold the body further from the wall, Contact.Projection(margin=...). The point forces "
-            f"(quadrature_refinement=1) are no way out: they are indefinite near the wall too (MIME-ANO-130)")
+            indefinite_advice(gap, self._force_spacing() or 0.0, self._clear_gap()))
 
     def _held_value(self, p: Mapping[str, Any]) -> Array:
         """The body-frame quantity at the step's leaves: the held one where they are as built (``held_or_made``),

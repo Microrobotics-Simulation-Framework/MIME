@@ -18,7 +18,8 @@ from packaging.tags import Tag, compatible_tags, cpython_tags
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from uv import find_uv_bin
 
-from mime.env import EXPORT_ARGUMENTS, VARIANTS, applicable, bases, parse_requirements, pins, requirements_bytes
+from mime.env import EXPORT_ARGUMENTS, OPTIONAL_EXPORT_ARGUMENTS, OPTIONAL_EXTRAS, OPTIONAL_FILE, OPTIONAL_GROUPS, \
+    VARIANTS, applicable, bases, optional_pins, parse_requirements, pins, requirements_bytes
 from mime.env._modal_script import UV_VERSION
 from mime.env._pins import uv_digest, uv_image
 
@@ -28,7 +29,8 @@ REGENERATE = "uv export, as mime.env.EXPORT_ARGUMENTS gives it, into src/mime/da
 
 
 def export(project: Path, variant: str) -> bytes:
-    done = subprocess.run([find_uv_bin(), *EXPORT_ARGUMENTS[variant], "--project", str(project)],
+    arguments = OPTIONAL_EXPORT_ARGUMENTS if variant == "optional" else EXPORT_ARGUMENTS[variant]
+    done = subprocess.run([find_uv_bin(), *arguments, "--project", str(project)],
                           capture_output=True, timeout=120, check=False)
     assert done.returncode == 0, done.stderr.decode()
     return done.stdout
@@ -52,6 +54,22 @@ def test_each_requirements_file_is_the_locks_export_byte_for_byte(variant, tmp_p
     assert exported == requirements_bytes(variant), f"the lock changed: regenerate with {REGENERATE}"
 
 
+def test_the_optional_file_is_the_locks_export_with_mimes_own_extras_and_groups(tmp_path):
+    exported = export(committed_project(tmp_path), "optional")
+    assert exported == (SHIPPED / OPTIONAL_FILE).read_bytes(), \
+        "the lock changed: regenerate with uv export, as mime.env.OPTIONAL_EXPORT_ARGUMENTS gives it, into " \
+        f"src/mime/data/env/{OPTIONAL_FILE}"
+    assert {pin.name for pin in optional_pins()} >= {"pytest", "pyright", "hypothesis", "sortedcontainers"}
+
+
+def test_the_optional_extras_and_groups_are_every_one_of_mimes_that_is_no_variant():
+    """A new extra or group is a decision: listed as optional (accepted by the check at its pin) or made a variant."""
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    extras = set(project["project"]["optional-dependencies"])
+    assert extras - set(VARIANTS) == set(OPTIONAL_EXTRAS) and not set(OPTIONAL_EXTRAS) & set(VARIANTS)
+    assert set(project["dependency-groups"]) == set(OPTIONAL_GROUPS)
+
+
 def test_a_lock_changed_without_the_files_regenerated_fails(tmp_path):
     """The control: one hash of the lock changed, as a re-lock that moved one wheel would, and the export no longer
     matches the shipped file."""
@@ -65,6 +83,7 @@ def test_a_lock_changed_without_the_files_regenerated_fails(tmp_path):
         exported = export(tmp_path, variant)
         assert exported != requirements_bytes(variant)
         assert f"--hash=sha256:{planted}".encode() in exported
+    assert export(tmp_path, "optional") != (SHIPPED / OPTIONAL_FILE).read_bytes()
 
 
 def test_the_uv_that_exports_is_cis_and_the_scripts():

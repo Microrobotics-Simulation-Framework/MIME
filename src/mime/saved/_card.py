@@ -101,8 +101,8 @@ _OWNER_WORDS = {"yours": "the author's own", "third party": "a third party's", "
 NO_LICENCE = ("The experiment declares no licence: its own files are its author's, and a reuser is granted no licence "
               "to them. Saving and `mime pack` never refuse that; `mime push` will not publish it until one is "
               "declared: exp.licence(\"CC-BY-4.0\"), then save the experiment again.")
-NO_EVIDENCE = ("No evidence record: MIME's validity layer arrives in a1. This card states only what the build declares "
-               "and what `mime verify <folder>` would check; making the card ran no check.")
+NO_EVIDENCE = ("No evidence record: MIME's validity layer arrives in a later release. This card states only what the "
+               "build declares and what `mime verify <folder>` would check; making the card ran no check.")
 #: Each condition a licence or a permission can carry, as the card names the terms it flags.
 CONDITION_WORDS = {NON_COMMERCIAL: "Non-commercial terms", SHARE_ALIKE: "Share-alike terms",
                    NO_DERIVATIVES: "No-derivatives terms"}
