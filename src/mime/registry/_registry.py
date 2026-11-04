@@ -536,10 +536,14 @@ _ROLE_REQUIRES = {Role.PHYSICAL: "a physical setting, a fact about the setup, wh
 def _setting_written(held: dataclasses.Field[Any], hint: object) -> str:
     """How a script writes the setting ``held``, its kind of value in angle brackets: ``radius=<a quantity of length
     (m)>``, ``starts=<an int>``."""
-    marker = next((m for m in typing.get_args(hint)[1:] if isinstance(m, Dimension)), None) \
-        if typing.get_origin(hint) is Annotated else None
-    if marker is not None:
-        return f"{held.name}=<a quantity of {marker}>"
+    if typing.get_origin(hint) is Annotated:
+        held_type, *metadata = typing.get_args(hint)
+        marker = next((m for m in metadata if isinstance(m, Dimension)), None)
+        if marker is not None:
+            return f"{held.name}=<a quantity of {marker}>"
+        if Direction in metadata:
+            return f"{held.name}=<a direction, such as X or (1.0, 0.0, 0.0)>"
+        hint = held_type
     named = getattr(hint, "__name__", None)
     return f"{held.name}=<{'an' if str(named)[:1] in 'aeiou' else 'a'} {named}>" if isinstance(named, str) else \
         f"{held.name}=..."
@@ -598,7 +602,8 @@ def _naming_missing_settings(cls: type) -> None:
             label = cls.__qualname__
             raise ArgumentTypeRefused([Refusal(
                 "call.missing-setting", RefusalClass.USER,
-                f"{label}(...) is not given {', '.join(missing)}, and {'they have' if len(missing) > 1 else 'it has'} "
+                f"{label}(...) is not given {', '.join(map(repr, missing))}, and "
+                f"{'they have' if len(missing) > 1 else 'it has'} "
                 f"no default: {why}",
                 f"write {label}(..., {written}), with the value of your own setup")]) from None
 

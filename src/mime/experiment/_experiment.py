@@ -781,31 +781,6 @@ class BuiltExperiment:
                 why="a run steps the graph by whole base steps, and MIME does not round a duration")])
         return steps
 
-    def _windows_reach(self, steps: int) -> None:
-        """Refuse a run of ``steps`` more base steps whose end does not pass the start of an output's window: no step
-        of it would end inside the window, and its output would read as nothing observed (a mean speed of zero). A run
-        that keeps its history is not held to it: it is run for its states (``mime.testing``'s first steps of a saved
-        experiment), and its outputs' windows say where they lie."""
-        dt = self._plans.dt
-        end = (self._runs.steps + steps) * dt
-        short = [output for held in self.layout.observations for output in held.outputs
-                 if output.after is not None and not end > output.after]
-        if not short:
-            return
-        latest = max(cast(float, output.after) for output in short)
-        reaching = round((math.floor(latest / dt + 1e-9) + 1 - self._runs.steps) * dt, 12)
-        named = ", ".join(f"{output.path} (from {output.after!r} s)" for output in short)
-        plural = len(short) > 1
-        raise ArgumentRefused([Refusal(
-            "run.window-past-end", RefusalClass.USER,
-            f"the run ends at {end!r} s, and the window{'s' if plural else ''} of {named} start{'' if plural else 's'} "
-            f"at or after it: no step of the run ends inside, so {'they' if plural else 'it'} would read as nothing "
-            f"observed",
-            f"run past the window's start: run(s({reaching!r})) is the shortest run that ends inside it, by a step, "
-            f"so run longer; or start the window before {end!r} s in the observation (after=s(...) for SwimSpeed)",
-            why="an output at the end reduces the steps that end after its window's start, and a run that ends there "
-                "gives it none")])
-
     def _recording(self, record: Sequence[OutputRef | ObservationHandle | str]) -> list[OutputLayout]:
         """The per-step outputs ``record`` names: an output (a handle's ``swim.speed``, or ``"<id>.<output>"``), or an
         observation (its handle, or its id) for every per-step output it declares."""
@@ -888,8 +863,6 @@ class BuiltExperiment:
         every field at every step, and with it every per-step output is recorded. ``every`` spaces the samples kept
         and does not reduce the cost of recording, which is the whole state's history per step whatever is kept."""
         steps = self.steps_in(duration)
-        if not history:
-            self._windows_reach(steps)
         recorded = self._recording(record)
         if every is not None and not (recorded or history):
             raise ArgumentRefused([Refusal(

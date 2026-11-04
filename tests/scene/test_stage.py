@@ -9,6 +9,7 @@ its declaration."""
 
 import hashlib
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -138,6 +139,12 @@ def test_a_micro_scale_mesh_far_from_the_origin_keeps_its_points_local(tmp_path)
     experiment = script_a(drag=False)
     experiment._declarations[0] = type(experiment._declarations[0])(Structure("tube", geometry=Tube(
         axis=+X, inner_radius=mm(0.03), wall=mm(0.01), length=mm(0.5), centre=m((1000.0, 0.0, 0.0)))))
+    # the body goes with the tube: a body whose centre starts outside its medium's region is refused
+    for index, declaration in enumerate(experiment._declarations):
+        thing = getattr(declaration, "thing", None)
+        if isinstance(thing, Body) and thing.name == "umr":
+            moved = State(**{**dict(thing.initial), "position": m((1000.0, 0.0, 0.0))})
+            experiment._declarations[index] = replace(declaration, thing=replace(thing, initial=moved))
     stage = Usd.Stage.Open(str(saved(experiment, tmp_path)))
     proxy = stage.GetPrimAtPath("/World/tube/proxy")
     assert max(abs(c) for p in UsdGeom.Mesh(proxy).GetPointsAttr().Get() for c in p) <= 0.25e-3 * (1 + FLOAT32)

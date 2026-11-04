@@ -55,7 +55,7 @@ def test_a_screw_without_starts_is_refused_naming_it_and_why_it_has_no_default()
     assert isinstance(error.value, TypeError), "a handler written for Python's error still catches it"
     (refused,) = error.value.refusals
     assert refused.code == "call.missing-setting"
-    assert refused.message.startswith("Screw(...) is not given starts, and it has no default: starts, the screw's "
+    assert refused.message.startswith("Screw(...) is not given 'starts', and it has no default: starts, the screw's "
                                       "number of starts")
     assert "took 2 where none was written" in refused.message and "FL-9 has 2" in refused.message
     assert refused.action == "write Screw(..., starts=<an int>), with the value of your own setup"
@@ -70,7 +70,7 @@ def test_an_entry_without_a_required_setting_names_each_by_its_role_and_other_er
     assert refused.action == "write Sphere(..., radius=<a quantity of length (m)>), with the value of your own setup"
     with pytest.raises(ArgumentTypeRefused) as several:
         Screw(radius=mm(1.0))
-    assert "is not given length, wavenumber, modulation, starts, and they have no default" in \
+    assert "is not given 'length', 'wavenumber', 'modulation', 'starts', and they have no default" in \
         several.value.refusals[0].message
     with pytest.raises(TypeError) as unknown:
         Sphere(radius=mm(1.0), bogus=1)

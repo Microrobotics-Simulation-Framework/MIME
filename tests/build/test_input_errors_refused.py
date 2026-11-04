@@ -7,12 +7,13 @@ its range, which builds (or runs):
 - **a body whose centre starts outside the region its medium fills** (``state.outside-region``), with the position
   that starts it on the region's axis; a body inside, anywhere along the axis, and one in a medium that fills no
   region, are taken;
-- **a run that ends at or before an observation's window starts** (``run.window-past-end``), where the window read as
-  a mean of zero, refused before a step is taken, with the shortest run that ends inside it; a window inside the
-  run is taken, and so is a run kept for its states (``history=True``, how ``mime.testing`` runs an experiment's first
-  steps)."""
+- **an observation's window that starts at or after the run's end** (``run.window-past-end``), which read as a mean of
+  zero: the reading is refused, its text says nothing was observed, and ``outputs.json`` writes no number for it; a
+  window inside the run is read, and so is one a later run of the same graph reaches."""
 
 from __future__ import annotations
+
+import json
 
 import pytest
 
@@ -22,9 +23,10 @@ from mime.dynamics import RigidInertial
 from mime.fields import UniformRotating
 from mime.interactions import Drag, Gravity, Magnetic
 from mime.observations import SwimSpeed
+from mime.results import RUN_MANIFEST
 from mime.scene import Scene, Sphere, Tube, X, Z
 from mime.things import Part
-from mime.units import A_m2, Hz, kg, kg_m2, kg_per_m3, m_per_s, mm, mPa_s, ms, mT, rad_per_s, s, um
+from mime.units import A_m2, Hz, kg, kg_m2, kg_per_m3, m_per_s, mm, mm_per_s, mPa_s, ms, mT, rad_per_s, s, um
 
 
 def refused(build) -> list:
@@ -116,22 +118,30 @@ def spinning(after) -> Experiment:
 
 
 @pytest.mark.parametrize("after", [s(2.0), s(1.0)], ids=["after the end", "at the end"])
-def test_a_run_that_ends_before_its_window_starts_is_refused_before_a_step(after):
-    built = spinning(after).build()
+def test_a_window_that_starts_at_or_after_the_runs_end_is_refused_when_read_and_says_so_where_it_is_shown(after,
+                                                                                                         tmp_path):
+    result = spinning(after).build().run(s(1.0))
+    reading = result["swim_speed:umr"].mean_speed
     with pytest.raises(ArgumentRefused) as error:
-        built.run(s(1.0))
+        reading.to(mm_per_s)
     (held,) = error.value.refusals
-    assert held.code == "run.window-past-end" and "swim_speed:umr.mean_speed" in held.message
-    assert "would read as nothing observed" in held.message
-    shortest = 1.1 if after == s(1.0) else 2.1
-    assert f"run(s({shortest!r})) is the shortest run that ends inside it" in held.action
-    longer = built.run(s(2.5))
-    assert longer["swim_speed:umr"].observed.to(s) == pytest.approx(2.5 - after.to(s)), \
-        "the refused run took no step: the next starts at zero"
+    assert held.code == "run.window-past-end" and "swim_speed:umr.mean_speed's window starts at" in held.message
+    assert "observed nothing" in held.message and "run(s(...))" in held.action and "--duration" in held.action
+    with pytest.raises(ArgumentRefused):
+        reading.value  # noqa: B018 - the read itself is refused
+    assert "nothing observed: its window starts at" in result.text() and " = 0.0 m/s" not in result.text()
+    written = spinning(after).build().run_to(tmp_path / "run", s(1.0))
+    manifest = json.loads((tmp_path / "run" / RUN_MANIFEST).read_text())
+    (entry,) = [o for held in manifest["observations"] for o in held["outputs"] if o["name"] == "mean_speed"]
+    assert entry["value"] is None, "outputs.json writes no number for a window nothing was observed in"
+    assert "nothing observed" in written.result.text()
 
 
-def test_control_a_window_inside_the_run_is_read_and_a_run_kept_for_its_states_is_taken():
+def test_control_a_window_inside_the_run_is_read_and_a_later_run_reads_into_it():
     built = spinning(s(0.5)).build()
     assert built.run(s(1.0))["swim_speed:umr"].observed.to(s) == pytest.approx(0.5)
-    harnessed = spinning(s(2.0)).build().run(s(0.3), history=True)  # mime.testing's first steps of an experiment
-    assert harnessed.history is not None and harnessed["swim_speed:umr"].observed.to(s) == pytest.approx(0.0)
+    later = spinning(s(1.5)).build()
+    with pytest.raises(ArgumentRefused):
+        later.run(s(1.0))["swim_speed:umr"].mean_speed.to(mm_per_s)
+    reached = later.run(s(1.0))["swim_speed:umr"]  # the graph runs on from 1 s: its window is now inside
+    assert reached.observed.to(s) == pytest.approx(0.5) and reached.mean_speed.to(mm_per_s) is not None

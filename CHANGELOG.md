@@ -74,9 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computes moves, and the saved form writes both as it did (`Hz`, the same SI number).
 - **Three input errors that gave a number are refused in every profile**: a dynamic viscosity of zero or less
   (`value.not-positive`); a body whose centre starts outside the region the medium it is bound to fills
-  (`state.outside-region`, with the line that starts it on the region's axis); and a run that ends at or before an
-  observation's window starts (`run.window-past-end`), which read as a mean of zero; a run that keeps its history,
-  run for its states as `mime.testing`'s first steps are, is not held to it.
+  (`state.outside-region`, with the line that starts it on the region's axis); and an observation's window that starts
+  at or after the run's end (`run.window-past-end`), which read as a mean of zero: its reading is refused, its text
+  says nothing was observed, and `outputs.json` writes no number for it (the `.mat` file NaN). A later run of the same
+  graph that reaches the window reads it.
 - **A name 0.3.0 changed says so**: `Drag.BEM(...)` is refused naming `Drag.MRS` (`call.renamed`), and an entry made
   without a required setting names it and why it has no default (`call.missing-setting`; `Screw` without `starts`,
   which earlier development versions took as 2). The MRS rung's advice when a run stops on an indefinite resistance

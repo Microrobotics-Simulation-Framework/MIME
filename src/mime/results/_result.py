@@ -387,7 +387,9 @@ class RunResult:
         start = output.after if output.after is not None else 0.0
         end = self.end_step * self.dt
         value = quantity_of(np.asarray(self.final[output.node][output.field]), output.dimension)
-        return Reading(output.path, value, start, end, self._flag_source().over(start, end), output.rule)
+        observed = output.after is None or end > start
+        return Reading(output.path, value, start, end, self._flag_source().over(start, end) if observed else (),
+                       output.rule, observed=observed)
 
     @public
     def series(self) -> list[Series]:
@@ -458,7 +460,7 @@ class RunResult:
                     "rule": output.rule.value if output.rule is not None else None, "after": output.after}
                 if output.kind is OutputKind.AT_END:
                     reading = cast(Reading, self.output(output))
-                    value = reading.value
+                    value = reading.quantity.value if reading.observed else None
                     entry.update({"array": f"final/{output.node}/{output.field}",
                                   "value": value.tolist() if isinstance(value, np.ndarray) else value,
                                   "window": [reading.start, reading.end],

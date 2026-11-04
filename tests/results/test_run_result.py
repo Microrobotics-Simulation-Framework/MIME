@@ -138,7 +138,7 @@ def test_a_window_reaching_past_what_was_recorded_is_refused_and_one_inside_it_i
 
 def test_to_reads_a_series_and_a_reading_in_a_unit_and_refuses_one_of_another_dimension(bead):
     built, swim = bead
-    result = built.run(s(0.01), record=[swim.speed])
+    result = built.run(s(0.011), record=[swim.speed])  # past the window's start, 10.5 ms, wherever the graph began
     speed = result[swim].speed
     assert np.allclose(speed.to(mm_per_s), speed.raw.astype(np.float64) * 1e3)
     assert result[swim].mean_speed.to(mm_per_s) == pytest.approx(result[swim].mean_speed.value * 1e3)

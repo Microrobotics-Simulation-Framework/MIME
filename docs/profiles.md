@@ -26,8 +26,8 @@ No profile relaxes a validity limit or an input error: a value in the wrong unit
 body outside a model's domain are refused in every profile, each refusal saying what to change. So are a frequency in
 Hz where an angular velocity in rad/s goes, or the other way round (one counts turns and the other radians, in one
 dimension: `setting.units`, `state.units`), a dynamic viscosity of zero or less (`value.not-positive`), a body whose
-centre starts outside the region its medium fills (`state.outside-region`), and a run that ends before an
-observation's window starts (`run.window-past-end`).
+centre starts outside the region its medium fills (`state.outside-region`), and the reading of an observation
+whose window starts at or after the run's end (`run.window-past-end`).
 
 ## Explore
 
