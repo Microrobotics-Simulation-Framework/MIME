@@ -4,13 +4,16 @@ as the fallback width and not as nothing).
 
 What is held: a number is never wrapped (no line is wider than the terminal, at any width), the table's columns go in the
 declared order, its rows are at most ``min(12, height - 10)`` with the rest said in one line, the unit comes from the
-schema and says so where there is none; a draw is sampled, about four a second, whatever the frame rate; and words from
-a peer are plain text on the screen, never a command to the terminal.
+schema and says so where there is none; a draw is sampled, about four a second, whatever the frame rate; words from
+a peer are plain text on the screen, never a command to the terminal; and the view leaves nothing of itself behind and
+erases nothing of anyone else's, whenever a line is printed beside its draws.
 
 The controls, each of which fails the same check on every run: a display that draws at every frame instead of four times a
 second (the check is draws against frames, over frames fed with no pause), a drop order other than the declared one
-(the check is that a column absent means every column declared to go before it is absent too), and a display that does
-not escape what a peer wrote (the check is that no escape of the peer's reaches the terminal)."""
+(the check is that a column absent means every column declared to go before it is absent too), a display that does
+not escape what a peer wrote (the check is that no escape of the peer's reaches the terminal), a console whose prints
+are not ordered with the draws (a frame of the strip is left in the scrollback) and one live display kept across a
+pause (the load report loses a line)."""
 
 import re
 import threading
@@ -201,6 +204,145 @@ def test_the_display_draws_the_strip_and_the_table_with_events_above_and_leaves_
     assert any(l.startswith("STOPPED  stopped by Ctrl+C") for l in after) and any("viewer connected" in l for l in after)
     assert any("mime verify /runs/tracked-live/experiment" in l for l in after)
     assert sum("viewer connected" in l for l in after) == 1, "an event is printed once"
+
+
+#: A phase that takes more than one line at every width drawn at here, as serve's own building phase does at 80 columns.
+LONG_PHASE = "building the graph to serve it (compiling it, which can take many seconds); " * 2
+READY = {**STATUS, "state": "ready", "step": 0, "time": 0.0, "frames": 0, "activity": "idle", "wall_time": 0.0,
+         "clients": {"commands": 0, "frames": 0}}
+#: The strip's first line, whatever the state: a frame of the view.
+STRIP_HEAD = re.compile(r"[A-Z]+ · step ")
+#: How long anything here waits for a thread: a guard against a hang, not a bound on the drawing.
+HANG = 60.0
+
+
+def ready_state() -> ServeState:
+    state = ServeState("tracked", "/runs/tracked-live")
+    rows, shown = watch_rows(schema(), ["all"], BOUND, FLAGS)
+    state.watch(rows, FLAGS, 1, table=shown)
+    state.note_status(READY, 100.0)
+    return state
+
+
+def back_from_the_load_report(monkeypatch, columns: int, *, draw_due: bool) -> tuple[list[str], list[str]]:
+    """What serve does around its load report, on a terminal ``columns`` wide: its phase drawn, the view taken off the
+    screen, the report printed, the view back with the session's state and serve's ready line printed at once, then the
+    stop. With ``draw_due``, a draw comes while the ready line is being printed, after it has found the top of the
+    region and before it draws the region again (where a loaded machine put the view's own draw: CI's "the live region
+    is gone", PR #126's run 41839710392): it is made on another thread as the line itself is drawn, and the line waits
+    until that draw has been made or is held back. The view's own thread draws nothing here. The screen once the phase
+    was drawn, and after the stop."""
+    monkeypatch.setattr(_display, "SERVE_DRAW_EVERY", 3600.0)
+    state = ready_state()
+    drawers: list[threading.Thread] = []
+    armed = False  # while the ready line is printed
+    with terminal(columns=columns, rows=30) as tty:
+        display = ServeDisplay(tty.stream)
+        text = _display._text
+
+        def draw_now() -> None:
+            decided = threading.Event()
+            held_back: list[bool] = []
+
+            def draw() -> None:
+                free = display._guard.acquire(blocking=False)  # noqa: SLF001 - held by the line: this draw waits
+                if free:
+                    display._guard.release()  # noqa: SLF001
+                held_back.append(not free)
+                decided.set()
+                display.draw()
+
+            drawers.append(threading.Thread(target=draw, daemon=True))
+            drawers[-1].start()
+            assert decided.wait(HANG), "the draw never started"
+            if not held_back[0]:
+                drawers[-1].join(HANG)
+                assert not drawers[-1].is_alive(), "a draw nothing held back never ended"
+
+        class DrawDue:
+            def __init__(self, held) -> None:
+                self.held = held
+
+            def __rich_console__(self, console, options):
+                draw_now()
+                yield self.held
+
+        def text_with_a_draw_due(line: str, style: str = ""):
+            held = text(line, style)
+            return DrawDue(held) if draw_due and armed and not drawers else held
+
+        monkeypatch.setattr(_display, "_text", text_with_a_draw_due)
+        display.phase(LONG_PHASE)
+        display.draw()
+        phase = screen_of(tty.transcript())
+        display.pause()
+        display.say("load report: its first line\nload report: its last line")
+        display.running(state)
+        armed = True
+        display.say("mime serve: tracked ready (mime.live/1)")
+        armed = False
+        for drawer in drawers:
+            drawer.join(HANG)
+        display.draw()
+        state.stop_begins("stopped by Ctrl+C")
+        state.stop_ends("stopped by Ctrl+C", 0, 0.0, 1.0, 0, "/runs/tracked-live")
+        display.close()
+        after = screen_of(tty.transcript())
+    assert not draw_due or drawers, "no draw was made while the ready line drew the strip: this cannot fail"
+    return phase, after
+
+
+def keeps_one_live_display(monkeypatch) -> None:
+    """The control of the view's coming back: one live display, kept across the pause, as the view had before."""
+    made = ServeDisplay._new_live  # noqa: SLF001
+
+    def kept(display: ServeDisplay):
+        if "_kept" not in display.__dict__:
+            display.__dict__["_kept"] = made(display)
+        return display.__dict__["_kept"]
+
+    monkeypatch.setattr(ServeDisplay, "_new_live", kept)
+
+
+@needs_pty
+@pytest.mark.parametrize("columns", [100, 60, 0])
+def test_the_first_line_once_the_view_is_back_erases_nothing_printed_while_it_was_away(monkeypatch, columns):
+    """The view kept one live display across the pause, which kept the height of the region it last drew (the phase's
+    spinner), and the first line printed once the view was back moved up by it: it erased the load report's last line at
+    80 columns, where serve's building phase takes two. Here the phase takes more than one line at every width (checked:
+    a phase of one line is no move up at all, and the check could not fail)."""
+    phase, after = back_from_the_load_report(monkeypatch, columns, draw_due=False)
+    assert len([line for line in phase if line]) > 1, phase
+    assert "load report: its first line" in after and "load report: its last line" in after, after
+
+
+@needs_pty
+@pytest.mark.parametrize("columns", [100, 60, 0])
+def test_the_control_one_live_display_kept_across_the_pause_erases_a_line_of_the_report_every_run(monkeypatch, columns):
+    keeps_one_live_display(monkeypatch)
+    _, after = back_from_the_load_report(monkeypatch, columns, draw_due=False)
+    assert "load report: its last line" not in after, "the check above would fail it"
+
+
+@needs_pty
+@pytest.mark.parametrize("columns", [100, 60, 0])
+def test_a_line_printed_while_a_draw_comes_leaves_no_frame_of_the_strip_behind(monkeypatch, columns):
+    """A line of serve's own and a draw on the view's thread are ordered: the draw comes after the line, never inside
+    it. Inside it, the draw replaced the region and the line then moved up by the height it had found before: the top of
+    a frame, the strip with "Ctrl+C to stop", was left in the scrollback (CI's "the live region is gone", which a loaded
+    machine made by putting the view's draw there). The draw is put there on purpose here, every run."""
+    _, after = back_from_the_load_report(monkeypatch, columns, draw_due=True)
+    assert not any(STRIP_HEAD.match(line) for line in after), after
+    assert not any("Ctrl+C to stop" in line for line in after), "the live region is gone"
+    assert sum(line.startswith("mime serve: tracked ready") for line in after) == 1, after
+
+
+@needs_pty
+@pytest.mark.parametrize("columns", [100, 60, 0])
+def test_the_control_prints_not_ordered_with_the_draws_leave_a_frame_of_the_strip_every_run(monkeypatch, columns):
+    monkeypatch.setattr(_display, "_ordered_console", lambda stream, _guard: _display._console_of(stream))
+    _, after = back_from_the_load_report(monkeypatch, columns, draw_due=True)
+    assert any(STRIP_HEAD.match(line) for line in after), "the check above would fail it"
 
 
 def feed(display: ServeDisplay, state: ServeState, seconds: float, per_frame: bool) -> tuple[int, int, float]:

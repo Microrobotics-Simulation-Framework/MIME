@@ -58,6 +58,17 @@ repository's history before that history was rewritten on 2026-11-04, and does n
   part of the run, or a result written before the reduction.
 
 ### Fixed
+- **`mime serve`'s live view leaves no frame of itself behind and erases no line of anyone else's.** A line printed
+  through the view (serve's own, or what another thread writes to a redirected standard stream) found the top of the
+  live region from the height it was last drawn at, under `rich`'s lock, and drew the region again only after letting
+  that lock go; a draw on the view's own thread in between replaced the region at another height, and the line then
+  moved up by the old one. Serve's ready line, printed as the view comes back with the session's state, is where a
+  loaded machine put the view's draw: the top of a frame (the strip, "Ctrl+C to stop" and all) stayed in the
+  scrollback, and the terminal test failed with "the live region is gone" (twice on CI; reproduced, its transcript
+  showing the two writes). Every print through the view now holds the lock its draws hold. And
+  the view, taken off the screen while the load report is printed, kept the height of the spinner it last drew, so the
+  first line once it was back erased the report's last line wherever the building phase takes two lines (80 columns).
+  It now starts a live display of its own each time it comes back.
 - **The contact 0.4.0: the projection after the step chooses each group's point again in its second pass**
   (MIME-ANO-136). The contact 0.3.0's second pass held the points its first pass chose, at the pose the first left. A
   group can hold two of the body's local deepest points (a screw's rim and the crest pass beside it), and the first
