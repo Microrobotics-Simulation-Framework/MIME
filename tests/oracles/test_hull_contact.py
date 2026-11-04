@@ -77,11 +77,9 @@ def programs_given_back():
     now = _cache_ceiling.resident_mib()
     if now is None:
         return
-    if not LIMIT_MIB:
-        LIMIT_MIB.append(now + HEADROOM_MIB)
-    elif now > LIMIT_MIB[0]:
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
         _cache_ceiling.give_back_programs()
-        LIMIT_MIB[0] = (_cache_ceiling.resident_mib() or now) + HEADROOM_MIB
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
 
 
 MASS, INERTIA = 8.5e-5, (1.3e-10, 4.6e-10, 4.6e-10)
