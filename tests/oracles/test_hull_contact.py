@@ -43,6 +43,7 @@ support, so their samples hold them (CLAUDE.md's property-test causes: draw what
 import math
 from functools import cache
 
+import _cache_ceiling
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -59,6 +60,19 @@ from mime.interactions import Contact
 from mime.nodes.body import RigidInertialNode
 from mime.scene import Cylinder, Screw
 from mime.units import dimensionless, mm
+
+#: How far above where its worker stands a test of this file lets resident memory grow before it gives its compiled
+#: programs back (tests/_cache_ceiling.py): each hull node compiles the support's Newton steps and the sweeps, a property
+#: test compiles them again for the examples that change a parameter, and a worker that ran the file's tests one after
+#: another held 5 to 6 GB of programs at its end (four workers filled CI's 16 GB runner and its 3 GB of swap).
+HEADROOM_MIB = 512
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    with _cache_ceiling.under_ceiling(HEADROOM_MIB):
+        yield
+
 
 MASS, INERTIA = 8.5e-5, (1.3e-10, 4.6e-10, 4.6e-10)
 ROD = (Cylinder(radius=mm(1.0), length=mm(6.0), axis=(1.0, 0.0, 0.0)),
