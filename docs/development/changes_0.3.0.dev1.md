@@ -16,11 +16,12 @@ repository's history before that history was rewritten on 2026-11-04, and does n
   quadrature (below) changes what `spacing` and `blob` resolve. A free 100 um steel sphere settling in water at
   `spacing=um(20)`, `blob=0.5` (a step of 2.5 ms, a run of 75 ms, its speed read from 50 ms) moved
   from 0.03647 to 0.03565 m/s (-2.3 %; its ratio to Stokes's law from 0.977 to 0.955, outside the rung's declared
-  range, so neither says which is nearer the truth), on the sphere 0.1.0 and 0.2.0 alike. The old forces are drag 0.3.0's point forces
-  on the sphere 0.1.0's samples, and both stay registered: `mime.interactions.KEPT[("drag", "0.3.0")][0].MRS(...)`
-  with `mime.scene.KEPT[("sphere", "0.1.0")][0](...)` gives 0.03647 m/s again (drag 0.3.0 on the sphere 0.2.0 gives
-  0.03620), and a folder saved with them loads and reproduces. `examples/drag_change_sphere.py` runs the four, and
-  `tests/examples/test_drag_change_sphere.py` holds these numbers to it.
+  range, so neither says which is nearer the truth), on the sphere 0.1.0 and 0.2.0 alike. The old forces are drag
+  0.3.0's point forces on the sphere 0.1.0's samples, and both stay registered:
+  `mime.interactions.KEPT[("drag", "0.3.0")][0].MRS(...)` with `mime.scene.KEPT[("sphere", "0.1.0")][0](...)` gives
+  0.03647 m/s again (drag 0.3.0 on the sphere 0.2.0 gives 0.03620), and a folder saved with them loads and
+  reproduces. `examples/drag_change_sphere.py` runs the four, and `tests/examples/test_drag_change_sphere.py` holds
+  these numbers to it.
 - **Asset records travel with what needs them, and the library knows how to fetch a file, never what or from where.**
   One record type (`mime.assets.AssetRef`) serves every asset: beside its sha256, size, licence and locations it states,
   where known, its credit, role, kind (with a derived asset's derivation record by hash), notice, custom licences,
@@ -76,7 +77,11 @@ repository's history before that history was rewritten on 2026-11-04, and does n
   `angular_velocity`, a rate, a controller's write), and refuses the other kind in every profile with both
   conversions to write (`setting.units`, `state.units`, `run.rate-units`, `controller.signal`); an entry that declares
   a rate per second saying neither is refused at registration. A rad/s quantity prints in rad/s. Nothing a run
-  computes moves, and the saved form writes both as it did (`Hz`, the same SI number).
+  computes moves, and the saved form writes both as it did (`Hz`, the same SI number). A dynamic segment's joint
+  velocities (`apparatus.joint_velocities`) and a motor's spin read in rad/s, the unit their numbers are in, where they
+  said Hz, so a controller reads and writes a motor's rate under one name (`Signal("rad/s")`); the graph's edge into a
+  kinematic motor's velocity keeps the label `Hz` for the rad/s it takes, as the drives' edges into it do, which a
+  later release relabels together.
 - **Arithmetic keeps what a rate counts.** A sum of `rad_per_s(1.0)` and `Hz(1.0)` was 2.0 with neither, and a
   product with a dimensionless quantity dropped it too, so either was taken by any site. Now a sum, a difference or
   an order of a turn and a radian is refused, as `.to` refuses one, and the two are never equal; a number or a
