@@ -137,7 +137,7 @@
     last bits (MIME-ANO-129);
   - `test_projection.py`: a Hypothesis property of the confined body's node, after every step inside the lumen less
     its extent and margin and moving no further out where projected; the control, the unconfined node, fails it;
-  - `test_hull_contact.py`: the contact 0.3.0, which holds a body's hull points (`hull_cases.py`'s nodes and its
+  - `test_hull_contact.py`: the contact 0.4.0, which holds a body's hull points (`hull_cases.py`'s nodes and its
     FL-9 held from the first step), each oracle with a control that fails it on every run: a capped cylinder and
     FL-9 drawn turned and placed within what the tube admits, moving and driven, never past the wall nor past the
     margin by more than the sweeps leave (today's contact, the centre held by its extent, lets the hull through); a

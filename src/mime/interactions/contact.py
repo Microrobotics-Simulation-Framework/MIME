@@ -1,5 +1,5 @@
 """The contact family: a body against a surface. Here now: projection against a fixed structure's surface, of the
-body's hull points (``Contact`` 0.3.0), or of its centre by its extent (0.1.0, kept registered:
+body's hull points (``Contact`` 0.4.0), or of its centre by its extent (0.1.0, kept registered:
 ``mime.interactions.KEPT``)."""
 
 from __future__ import annotations
@@ -188,13 +188,18 @@ class Contact(Interaction):
 
     **Admissibility only.** The contact says where the body may be, and the force that keeps it there: it never adds
     near-wall lubrication, which a drag that includes it declares (``Interaction.includes_lubrication``), and the plan
-    refuses two laws on a body that include it. **Frictionless in 0.3.0**: friction at the contact (a traction law,
+    refuses two laws on a body that include it. **Frictionless in 0.4.0**: friction at the contact (a traction law,
     Coulomb's with static friction among it) is to be decided with the near-contact physics; its seam is the sweeps'
     rows, to which a traction law adds two along the surface at each point, bounded by its friction times the
     point's normal force.
 
-    Version 0.3.0 starts each group's search from as many places as the hull's shape needs and holds the point only of a
-    search that converged, where 0.2.0 (in no release) climbed a fixed count of steps from the group's nearest sample:
+    Version 0.4.0 chooses each group's point again in the projection's second pass, at the pose its first left, and
+    holds it with the first pass's points, where 0.3.0 (in no release) held the first pass's points alone: a group
+    holding two of the body's local deepest points (a screw's rim and a crest pass beside it) could have the one it did
+    not hold left past the margin by the first pass's turn, and the step ended there (1.36 um on a four-start screw
+    started wedged across the tube by its own surface, MIME-ANO-136). Version 0.3.0 started each group's search from as
+    many places as the hull's shape needs and held the point only of a search that converged, where 0.2.0 (in no
+    release) climbed a fixed count of steps from the group's nearest sample:
     a group holding two of a screw's crest passes or a pass and a rim held the shallower when its samples ordered them
     so, and the body passed the margin by up to the samples' shortfall (MIME-ANO-134); and a search left unconverged
     held a point set by the rounding, which could take the force, so a step's result moved with its frame and script
@@ -202,10 +207,10 @@ class Contact(Interaction):
     body's centre by its extent about its own axis and never read its orientation, so a body that turned across a
     narrow tube passed through the wall. A body whose hull no point reaches the margin of steps as the free body does,
     to the last bit, in every version. 0.1.0 is kept registered (``mime.interactions.KEPT``), so a folder saved with it
-    loads and reproduces; 0.2.0, which nothing saved or frozen names, is not."""
+    loads and reproduces; 0.2.0 and 0.3.0, which nothing saved or frozen names, are not."""
 
     name = "contact"
-    version = "0.3.0"
+    version = "0.4.0"
     holds_off = "margin"
     setting_roles = {
         "rung": DESIGN, "margin": NUMERICAL,
@@ -265,7 +270,9 @@ class Contact(Interaction):
         "projection: each step it holds one point of each of the hull's eight groups, the deepest its starts reach: "
         "a body touching in more places than its groups (a screw lying along the floor on "
         "several crest passes in one group) is held at the group's deepest of them, the rest taken by the projection "
-        "after the step when they pass the margin",
+        "after the step when they pass the margin: its first pass holds each group's deepest where the step ended, its "
+        "second each group's deepest where the first left the body, beside the first's points, and what the second's "
+        "turn leaves past the margin the next step takes",
         "projection: the starts a group takes, its places and the samples' shortfall are counted from the hull's "
         "settings as built, as its candidates are: a study that moves a setting far keeps them",
         "projection: a body with no hull is held as a sphere of its declared extent about its centre",

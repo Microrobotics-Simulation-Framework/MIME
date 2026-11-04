@@ -56,7 +56,7 @@ class RigidInertial(Dynamics):
     ``(M/dt + R) dV = F - R V``, ``V' = V + dV`` (there is no explicit setting), takes the gyroscopic term linearly
     implicit at the midpoint (it keeps a torque-free body's kinetic energy and the magnitude of its angular momentum
     to second order; MIME-ANO-129), and holds a confinement: its centre by its extent, projected after the step, or
-    its hull by impulses through the step's system and a projection after it (``Contact`` 0.3.0;
+    its hull by impulses through the step's system and a projection after it (``Contact`` 0.4.0;
     ``RigidInertialNode``), which needs nothing of a body's dynamics but this capability, so both versions hold both.
 
     Version 0.3.0 takes the gyroscopic term linearly implicit at the midpoint, where 0.2.0 took it explicit: the

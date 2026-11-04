@@ -30,7 +30,7 @@ version, until the law was given its own.
   MRS arm keeps 0.3.0's point forces; the contact 0.2.0 (phase 7o) holds the hull's points, and every arm keeps
   0.1.0, the body's centre held by its extent.
 - **Controls**, failing on every run: the experiment with the pin bypassed names the screw 0.3.0 and fails the first
-  check; with the law's pin bypassed it names drag 0.4.0 and the contact 0.3.0; a script that builds ``fl9()``
+  check; with the law's pin bypassed it names drag 0.4.0 and the contact 0.4.0; a script that builds ``fl9()``
   unpinned fails the source scan; the experiment with the dynamics' pin bypassed names ``rigid_inertial`` 0.3.0,
   fails the dynamics check, and its transverse-inertia arm runs at 3.20747 mm/s.
 

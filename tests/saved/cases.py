@@ -149,7 +149,7 @@ CASES = (
     # Script A's surrogate on drag 0.3.0, kept registered: what a folder saved before the separated quadrature names.
     Case("script_a_kept", script_a_kept_drag),
     Case("script_a_records", script_a_records),
-    # FL-9 held by its hull's points from the first step: the contact 0.3.0's golden outputs come from it.
+    # FL-9 held by its hull's points from the first step: the contact 0.4.0's golden outputs come from it.
     Case("hull_contact", hull_contact),
     Case("coupled_toy", coupled_toy),
     Case("full_toy", full_toy),

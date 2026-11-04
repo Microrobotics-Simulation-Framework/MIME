@@ -1,4 +1,4 @@
-"""The containment contact 0.3.0, which holds a body's hull points (``Contact.Projection``; the body's node,
+"""The containment contact 0.4.0, which holds a body's hull points (``Contact.Projection``; the body's node,
 ``RigidInertialNode``'s hull contact), against its oracles, each with a control that fails it on every run:
 
 - **Never past the wall.** A capped cylinder, FL-9's screw and two screws of three and four starts at the most twist
@@ -7,7 +7,10 @@
   millimetre body's scales, for four steps: no hull point ends past the wall, beyond the rounding of a position, nor
   past the wall shrunk by the margin by more than the sweeps leave of a wedged body (``HELD_WITHIN``). The control:
   today's contact, 0.1.0's, which holds the centre by the hull's radial reach, on the same draws, lets the hull
-  through the wall.
+  through the wall. Its second counterexample (the four-start screw started wedged across the tube, its body past the
+  shrunk wall at both ends, where the projection's first pass left a crest pass beside the rim it held 1.4 um past)
+  keeps the margin; the control: the projection's second pass holding the first's points alone, as the contact 0.3.0
+  did, lets it past.
 - **The deepest of a group's places.** A group can hold several of the body's own local deepest points, which its
   samples' gaps do not order: the property's counterexample (FL-9 lying along the tube, held at a crest pass while its
   rim went 8.4 um past the shrunk wall) keeps the margin, and at 2,000 fixed poses of each screw near the wall the
@@ -224,9 +227,11 @@ def deepest(draw: dict, node: RigidInertialNode) -> tuple[float, float]:
 #: How far past the wall shrunk by the margin the body may end: what the fixed count of sweeps leaves of a wedged body
 #: (7e-10 m on a rod turned into both walls, its two rows coupled at 0.82; phase 7o's pull request), with the dense
 #: quadrature's own shortfall from the body (``DENSE_SHARE``, at most 0.35 um), a declaration a hundredth of the
-#: margin. The contact holds the body's own surface, so its body ends no further past; one held by its samples at the
-#: draws' spacing (0.4 mm) ends up to their shortfall past it, 71 um on FL-9 (the control). The wall itself is never
-#: reached beyond a position's rounding.
+#: margin. The dense quadrature's points are the body's, so its gap is never below the body's own: its shortfall can
+#: pass a body that went past, never fail one that did not (on the wedged counterexample the contact's own point stood
+#: 0.084 um deeper than the dense set's). The contact holds the body's own surface, so its body ends no further past;
+#: one held by its samples at the draws' spacing (0.4 mm) ends up to their shortfall past it, 71 um on FL-9 (the
+#: control). The wall itself is never reached beyond a position's rounding.
 HELD_WITHIN = 1e-6
 
 
@@ -266,6 +271,101 @@ def test_the_counterexample_keeps_the_margin():
 def test_control_from_its_nearest_candidate_alone_the_counterexample_passes_the_margin(monkeypatch):
     least, _ = deepest(COUNTEREXAMPLE, started(monkeypatch, 1))
     assert least < -5e-6
+
+
+#: The property's second counterexample (Hypothesis on CI, 2026-11-03): the four-start screw turned on the tube's axis
+#: to the tilt its bore admits, placed by its samples, so that its body stood 36 um past the wall shrunk by the margin
+#: at both ends, moving across the tube at 1.6 cm/s. The projection's first pass turned it back by 12.6 mrad, holding
+#: the rim at one end, and that turn left the crest pass 0.26 mm in from the rim, in the same group and 6.6 um shallower
+#: before it, 1.44 um past the shrunk wall; a second pass holding the first pass's points alone moved nothing, and the
+#: first step ended 1.36e-06 m past it.
+WEDGED = {"kind": "s4k4", "spin": 0.859375, "tilt": 1.0, "about": 0.625, "towards": 0.0, "share": 0.0,
+          "velocity": (0.0, 0.015625, 0.0), "spinning": 0.0, "turning": (0.0, 0.0), "force": (0.0, 0.0, 0.0),
+          "torque": (0.0, 0.0, 0.0), "resisted": False, "dt": 0.00019}
+
+
+def test_the_wedged_counterexample_keeps_the_margin():
+    least, _ = deepest(WEDGED, held("s4k4"))
+    assert least >= -HELD_WITHIN, f"a hull point ended {-least:.3g} m past the wall shrunk by the margin"
+
+
+class FirstPassPoints(RigidInertialNode):
+    """The control: the projection's later passes hold the points its first pass chose, at the pose each starts from,
+    and choose none afresh (the contact 0.3.0's projection)."""
+
+    def hull_projected(self, p, body, pose, twist, mass_matrix):
+        found = None
+        for _ in range(rigid.HULL_PASSES):
+            found = self.contacts(p, body, pose) if found is None else self.contacts_at(p, body, pose, found.local)
+            response = jnp.linalg.solve(mass_matrix, found.rows.T)
+            shift = response @ self.sweeps(found.rows @ response, found.gaps, rigid.PROJECTION_SWEEPS,
+                                           owner="contact.push")
+            turn = quaternion.exponential(shift[3:])
+            pose = jnp.concatenate([pose[:3] + shift[:3], quaternion.multiply(turn, pose[3:])])
+            twist = self.carried(turn, twist)
+        return pose, twist
+
+
+@cache
+def first_pass_points_node() -> FirstPassPoints:
+    reference = held("s4k4")
+    return FirstPassPoints("umr", 5e-4, **{key: value for key, value in reference.constants().items()
+                                           if key not in ("name", "timestep")})
+
+
+def test_control_its_later_passes_holding_the_first_passs_points_let_the_wedged_counterexample_past_the_margin():
+    least, _ = deepest(WEDGED, first_pass_points_node())
+    assert least < -HELD_WITHIN
+
+
+def test_the_prose_that_names_the_contact_holding_the_hull_names_its_current_version():
+    """A version bump left "the contact 0.3.0" in the module docstring and in the dynamics' docstring that say which
+    contact holds the hull; nothing else reads them. Checked against the old text: it fails on each."""
+    import mime.interactions.contact as contact_module_
+    from mime.dynamics.body import RigidInertial
+
+    for text in (contact_module_.__doc__, RigidInertial.__doc__, __doc__):
+        assert text is not None
+        flat = " ".join(text.split())
+        assert f"``Contact`` {Contact.version}" in flat or f"contact {Contact.version}" in flat
+        assert "Contact`` 0.3.0" not in flat
+
+
+#: The wedged counterexample's neighbourhood, drawn once from a fixed seed so that the control's misses are the same on
+#: every run: the four-start screw wedged as it was (on the axis, the bore's tilt, started past the shrunk wall by its
+#: own surface), with the spin and the tilt's direction within 0.1 rad of its, a speed across the tube of 0.5 to 2 cm/s
+#: either way, a step of 0.15 to 0.3 ms. The property's own ranges find this class about never (0 of 1,600 draws), and
+#: the one draw does not bound a variant of it: here the contact 0.3.0's projection ends past ``HELD_WITHIN`` on 8 of the
+#: 300 draws (5 of them by 5 um or more, the worst 5.4 um), the 0.4.0's on none (its least gap +0.054 um).
+NEIGHBOURS, NEIGHBOURS_SEED = 300, 11
+
+
+@cache
+def wedged_neighbours() -> tuple[dict, ...]:
+    rng = np.random.default_rng(NEIGHBOURS_SEED)
+    found = []
+    for _ in range(NEIGHBOURS):
+        found.append({**WEDGED, "spin": WEDGED["spin"] + rng.uniform(-0.1, 0.1),
+                      "about": WEDGED["about"] + rng.uniform(-0.1, 0.1),
+                      "velocity": (rng.uniform(-0.005, 0.005), rng.uniform(0.005, 0.02) * rng.choice([-1, 1]),
+                                   rng.uniform(-0.005, 0.005)),
+                      "dt": rng.uniform(1.5e-4, 3e-4)})
+    return tuple(found)
+
+
+def neighbours_least_gaps(node: RigidInertialNode) -> np.ndarray:
+    return np.array([deepest(draw, node)[0] for draw in wedged_neighbours()])
+
+
+def test_the_wedged_counterexamples_neighbourhood_keeps_the_margin():
+    least = neighbours_least_gaps(held("s4k4"))
+    assert least.min() >= -HELD_WITHIN, f"{int((least < -HELD_WITHIN).sum())} of {NEIGHBOURS} draws ended past the " \
+        f"wall shrunk by the margin, the worst by {-least.min():.3g} m"
+
+
+def test_control_its_later_passes_holding_the_first_passs_points_let_the_wedged_neighbourhood_past_the_margin():
+    least = neighbours_least_gaps(first_pass_points_node())
+    assert (least < -HELD_WITHIN).sum() >= 5, f"only {int((least < -HELD_WITHIN).sum())} of {NEIGHBOURS} draws ended past"
 
 
 #: The poses the search is judged at alone: each screw within 30 um of the shrunk wall, placed as the property's draws

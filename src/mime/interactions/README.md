@@ -86,10 +86,12 @@ The surrogate rung reads its weights through the evaluator its surrogate's recor
 (`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
 is unchanged. The mrs rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.
 
-**`Contact.Projection`** (`contact` 0.3.0 since its fix round; 0.2.0, in no release, is not kept)
+**`Contact.Projection`** (`contact` 0.4.0 since its second fix round; 0.2.0 and 0.3.0, in no release, are not kept)
 holds the body's hull, its orientation read, each point
 kept `margin` from the surface, by impulses through the body's implicit solve with the rotation coupled in (projected
-Gauss-Seidel over one point per group of the hull's samples at `spacing`) and a projection of the pose after the step,
+Gauss-Seidel over one point per group of the hull's samples at `spacing`) and a projection of the pose after the step
+in two passes, the second choosing each group's point again where the first left the body and holding it beside the
+first's (MIME-ANO-136),
 inelastic and frictionless, in the body's own update (`RigidInertialNode`). The point each group holds is the body's
 own surface's point that the search from the deepest of its starts converges to: its nearest sample and each next
 nearest apart from those taken, as many as the hull's shape can hold local deepest points that its samples' gaps do

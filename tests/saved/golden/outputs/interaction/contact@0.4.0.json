@@ -1,5 +1,5 @@
 {
- "entry": "interaction contact 0.3.0",
+ "entry": "interaction contact 0.4.0",
  "case": "hull_contact",
  "steps": 8,
  "outputs": {

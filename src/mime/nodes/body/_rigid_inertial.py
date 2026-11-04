@@ -118,8 +118,9 @@ HULL_GROUPS = 8
 #: by 8 mm, coupled at 0.1, its couple to rounding; phase 7o's pull request); and in each pass of the projection after
 #: the step, which moves the pose by a step's drift and takes what the solve leaves. Declarations.
 HULL_SWEEPS, PROJECTION_SWEEPS = 20, 10
-#: The passes of the projection after the step, each the linearised projection at the pose the last one left: the
-#: second takes what the first's linearisation leaves, the square of a step's turning.
+#: The passes of the projection after the step, each the linearised projection at the pose the last one left, its
+#: points chosen there and held with every earlier pass's: the second takes what the first's linearisation leaves, the
+#: square of a step's turning, and a group's other deepest point that the first's turn left past the surface.
 HULL_PASSES = 2
 #: What a hull kind's setting a study may move says of the convex cut (phase 7o's D3).
 CUT_AS_BUILT = ("the hull's points move with it in the step; each group's candidates, the vertices of its own convex "
@@ -268,10 +269,14 @@ class RigidInertialNode(MimeNode):
     - *After the step*, the pose is projected back inside, ``HULL_PASSES`` passes: each moves the body by the least
       change of pose in ``M``'s norm (the mass matrix itself, symmetric, not the stepping one) that takes every row's
       point back to it (``J delta >= -g``, by ``PROJECTION_SWEEPS`` of the same sweeps), its turn applied as a
-      rotation. The first chooses and refines the points again at the pose the step ended at; the second holds the same
-      points of the body at the pose the first left and takes what its linearisation, and its sweeps, left (the
-      points' own move between the two is the square of that small turn, and choosing again would cost a third of the
-      step).
+      rotation. The first chooses and refines the points again at the pose the step ended at; the second chooses them
+      again at the pose the first left and holds them with the first's points, held there, and takes what the first's
+      linearisation, and its sweeps, left. A group can hold several of the body's local deepest points, and the turn
+      that takes the one it held back to the surface can leave another past it, first order in the turn: a four-start
+      screw wedged across the tube by its own surface, its samples inside, was turned back 12.6 mrad and left a crest
+      pass 1.44 um past the shrunk wall beside the rim its group held, which a second pass holding the first's points
+      alone never saw. The first's points, held beside the second's, keep it from pushing them back out. Choosing
+      again costs the step one more of the contact's searches.
       The twist is the solve's, its angular velocity turned with the pose (:meth:`carried`), so that the projection
       changes neither the rotational kinetic energy nor the angular momentum's magnitude: it moves the pose by the
       drift of a step, the square of its turning, and the next step's hold takes the rest. Left in the world, the
@@ -578,15 +583,14 @@ class RigidInertialNode(MimeNode):
     def hull_projected(self, p: Mapping[str, Any], body: Array, pose: Array, twist: Array,
                        mass_matrix: Array) -> tuple[Array, Array]:
         """``pose`` moved back inside the shrunk surface by ``HULL_PASSES`` passes of the least change of pose in
-        ``M``'s norm that takes each row's point back to it, the points chosen at the pose the first pass starts from
-        and held by every later pass at the pose it starts from, and ``twist`` carried by each pass's turn
+        ``M``'s norm that takes each row's point back to it, each pass's rows each group's point chosen at the pose it
+        starts from with the points every earlier pass chose, held there, and ``twist`` carried by each pass's turn
         (:meth:`carried`; see the class)."""
-        found: Contacts | None = None
+        chosen: list[Contacts] = []
         for _ in range(HULL_PASSES):
-            if found is None:
-                found = self.contacts(p, body, pose)
-            else:
-                found = self.contacts_at(p, body, pose, found.local)
+            fresh = self.contacts(p, body, pose)
+            found = joined([*(self.contacts_at(p, body, pose, earlier.local) for earlier in chosen), fresh])
+            chosen.append(fresh)
             response = jnp.linalg.solve(mass_matrix, found.rows.T)
             shift = response @ self.sweeps(found.rows @ response, found.gaps, PROJECTION_SWEEPS, owner="contact.push")
             turn = quaternion.exponential(shift[3:])

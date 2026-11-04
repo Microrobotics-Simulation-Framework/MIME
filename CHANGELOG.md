@@ -29,6 +29,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   part of the run, or a result written before the reduction.
 
 ### Fixed
+- **The contact 0.4.0: the projection after the step chooses each group's point again in its second pass**
+  (MIME-ANO-136). The contact 0.3.0's second pass held the points its first pass chose, at the pose the first left. A
+  group can hold two of the body's local deepest points (a screw's rim and the crest pass beside it), and the first
+  pass's turn could leave the one it did not hold past the margin, where nothing held it until the next step.
+  Hypothesis found a four-start screw (wavenumber 4) placed on the tube's axis at the tilt its bore admits by its
+  samples, its body 36 um past the wall shrunk by the margin at both ends by its own surface: the first pass turned it
+  back 12.6 mrad holding the rim at one end, which left the crest pass 0.26 mm in from that rim, in the same group,
+  1.44 um past, and the step ended 1.36 um past the shrunk wall against the property's 1 um (never the wall itself).
+  Now the second pass chooses each group's point at the pose the first left and holds it beside the first pass's
+  points, which keeps it from pushing those back out: the draw's first step ends 0.086 um inside. Around the draw
+  (spin and the tilt's direction within 0.1 rad, speeds and step drawn), 0.3.0's projection left 3 of 200 draws more
+  than 1 um past (up to 4.95 um), 0.4.0's none; the test's fixed 300 draws of that kind leave 8 past the margin by more
+  than 1 um under 0.3.0 (up to 5.4 um) and none under 0.4.0 (its least gap +0.054 um). A held step costs one more of the
+  contact's searches, and its compile more. Measured twice, each in float64 on a shared laptop's CPU, FL-9 at the
+  contact's spacing: the first, the compiled step's median over 200 steps, 3.11 against 4.94 ms at 0.1 mm
+  (1.6 times) and 1.9 against 3.0 ms at 0.4 mm, compile 13.7 against 19.3 s (+41 %); the second, FL-9 pressed into the
+  wall (1 cm/s, 0.5 mN, with resistance), the node's step alone, blocks of 20 steps interleaved old and new, 3.95
+  against 5.90 ms at 0.4 mm (1.50 times) and 2.79 against 3.61 ms at 0.1 mm (1.29 times, its blocks 1.28 to 1.72
+  times), compile 14.6 against 24.6 s (+69 %) and 14.7 against 24.1 s (+64 %). At 0.1 mm the two overlap
+  (the second's blocks ran 1.28 to 1.72 times on a shared machine), so the step costs 1.3 to 1.6 times there and about
+  1.5 at 0.4 mm; that is the node's alone, so a
+  run with a fluid law pays less, and the compile cost is the larger. Where the first pass leaves no point past, the
+  second's points take no force and the step is 0.3.0's: the contact's golden case (FL-9 placed at the wall by its
+  samples, eight steps) is unchanged to the last bit, and the cylinder's and the ellipsoid's goldens pass unchanged.
+  A held run is not bit for bit: FL-9 pressed into the wall (0.4 mm spacing) differs from 0.3.0's by up to 1.8 nm in a
+  pose component from its fifteenth step, bounded and not growing over 200 steps (the sweeps' leftover scale; rounding
+  here is 1e-16). That golden has identical values in 0.3.0 and 0.4.0 and so does not tell them apart, and
+  `tests/differential/` builds the contact 0.1.0 and cannot see this change; the regression case and its fixed
+  neighbourhood are what hold it. The law is a new version, `contact` 0.4.0; 0.3.0, in no release and named by nothing
+  saved or frozen (the frozen register and scripts A and A0 build 0.1.0), is not kept.
 - **The shape suite's convexity check no longer refutes a cylinder at the edge of its axis band.** A point within
   `AXIS_ULPS` units in the last place of the radius of the cylinder's axis has the axis's signed distance, minus the
   radius, wrong by up to the band's width (9e-15 m at a radius of 1 cm) by the shape's declaration: the check allowed

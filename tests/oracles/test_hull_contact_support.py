@@ -365,7 +365,7 @@ def test_control_the_long_rod_converges_and_does_not_report_it():
 
 
 def script_as_arm_held_by_its_hull(monkeypatch):
-    """Script A's reproduction arm with the contact 0.3.0 at its default spacing, 2 s of it."""
+    """Script A's reproduction arm with the contact 0.4.0 at its default spacing, 2 s of it."""
     import script_a
 
     monkeypatch.setattr(script_a, "CentreContact", Contact)

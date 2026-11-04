@@ -119,7 +119,7 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     # The rig's body has no hull (its extent declared), which 0.3.0 holds as a sphere of its extent, by 0.1.0's
     # projection: the family's closed form. Its hull's points have the oracles of their own
     # (tests/oracles/test_hull_contact.py).
-    ("interaction", "contact", "0.3.0"): FamilyCase(
+    ("interaction", "contact", "0.4.0"): FamilyCase(
         lambda: Contact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
     ("interaction", "drag", "0.3.0"): FamilyCase(kept_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),

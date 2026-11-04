@@ -1,5 +1,5 @@
 """Review 7l-c's F1, held: the walk's T4 screw (``scripts/inertia_arms.py``'s experiment: FL-9 under the de Jongh
-surrogate drag and a field turning at 5 Hz in script A's tube) with the contact 0.3.0 attached, at its default spacing.
+surrogate drag and a field turning at 5 Hz in script A's tube) with the contact 0.4.0 attached, at its default spacing.
 
 - **An anisotropic arm** (the parts' diagonal: the axial moment the smallest, as a real screw's is) turns broadside
   about half a second in, as the review found, and is held at the bore's limit: no point of its body, read from a
