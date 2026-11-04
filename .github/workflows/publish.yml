@@ -87,6 +87,13 @@ jobs:
   # artifact docs-pages-python-3.12, built with the default lane's JUnit reports) when a run of ci.yml on the commit
   # still holds them; otherwise they are built here, in the same locked environment, without the lane's reports, and
   # the asset's README.md says which.
+  #
+  # The asset's bytes are a function of its pages (sorted members, time 0, one owner and mode, no time or name in the
+  # gzip header: scripts/release.py archive_folder), so this job is safe to re-run. It runs beside `publish`, and can
+  # fail after PyPI has the upload (the scan, the download, or a release not yet published on a manual run). Re-run
+  # the failed job: it takes the same pages, packs the same bytes, and `--clobber` replaces the asset and its sha256
+  # with identical ones, so a site that has already pinned the sha256 still finds it. (Only a newer run of ci.yml on
+  # the commit, or the job building its own pages instead, can change the pages, and then the README.md inside says so.)
   docs:
     name: Attach the documentation pages to the release
     needs: build

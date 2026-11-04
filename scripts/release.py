@@ -28,6 +28,7 @@ asset's name and layout are fixed: the site renders them. Exits 1 when DIR is no
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -193,8 +194,7 @@ def pack_pages(pages: Path, version: str, commit: str, source: str, run: str, co
         shutil.copytree(pages / "pages", staged / "pages", ignore=shutil.ignore_patterns(".*"))
         (staged / "README.md").write_text(readme(version, commit, source, run, conclusion), encoding="utf-8")
         out.parent.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(out, "w:gz") as archive:
-            archive.add(staged, arcname=folder, filter=_plain)
+        archive_folder(staged, folder, out)
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     checksum(out).write_text(f"{digest}  {out.name}\n", encoding="utf-8")
     print(f"wrote {out} ({source}) and {checksum(out).name}: {digest}")
@@ -206,10 +206,23 @@ def checksum(asset: Path) -> Path:
     return asset.with_name(f"{asset.name}.sha256")
 
 
-def _plain(member: tarfile.TarInfo) -> tarfile.TarInfo:
-    member.uid = member.gid = 0
-    member.uname = member.gname = ""
-    return member
+def archive_folder(staged: Path, folder: str, out: Path) -> None:
+    """``staged`` as ``out``, a gzip tar whose bytes depend on the files' names and contents alone: the same pages give
+    the same sha256 on every run, which the site that pins it needs when a failed docs job is re-run. So the members
+    are sorted, each has time 0, one owner and one mode, and the gzip header holds neither a time nor a file name."""
+    paths = sorted(staged.rglob("*"), key=lambda path: path.relative_to(staged).as_posix())
+    with out.open("wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as zipped, \
+            tarfile.open(fileobj=zipped, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        for path in [staged, *paths]:
+            member = archive.gettarinfo(path, arcname=f"{folder}/{path.relative_to(staged).as_posix()}"
+                                        if path != staged else folder)
+            member.mtime, member.uid, member.gid, member.uname, member.gname = 0, 0, 0, "", ""
+            member.mode = 0o755 if member.isdir() else 0o644
+            if member.isfile():
+                with path.open("rb") as content:
+                    archive.addfile(member, content)
+            else:
+                archive.addfile(member)
 
 
 # -- the command -----------------------------------------------------------------------------------------------------

@@ -59,8 +59,8 @@ stated default, and the build report says which.
 
 - **Licence: Apache-2.0** from 0.3 on. The 0.2 line (the tag `pre-0.3` and earlier) keeps the licence it was
   distributed under, LGPL-3.0-or-later, as `NOTICE` says.
-- **Requirements**: Python 3.12 to 3.14 (0.2: 3.10 or later), MADDENING 0.4.2 or later within 0.4 (0.2: 0.3), and
-  OpenMaterica.
+- **Requirements**: Python 3.12 to 3.14 (0.2: 3.10 or later), MADDENING 0.4.2 or later within 0.4 (0.2.0: MADDENING 0.2.1 or
+  later within 0.2; the tag `pre-0.3`: 0.3.x), and OpenMaterica.
 - **0.2's nodes and effect models are entries.** The
   [migration table](https://microrobotica.org/mime/0.3.0/pages/reference/migration) gives each public name of 0.2 the
   entry an experiment attaches in its place: `RigidBodyNode` is `dynamics
@@ -78,7 +78,8 @@ stated default, and the build report says which.
   superparamagnetic responses, the coil array's field (it returns with its calibration asset), the field superposition,
   the phase tracking, and the rigid body's overdamped mode. The effect-model pilot's package, `mime.effects`, is gone;
   its models are the entries above.
-- The 0.2 line's experiments, examples, scripts and documentation. All of it remains at the tag `pre-0.3`.
+- The 0.2 line's experiments, examples, scripts and documentation. All of it remains at the tag `v0.2.0` (the code PyPI holds as 0.2.0) and at the tag `pre-0.3` (the line's later,
+  unreleased last commit).
 
 ### Upgrading from 0.2
 
@@ -87,7 +88,10 @@ stated default, and the build report says which.
   [migration table](https://microrobotica.org/mime/0.3.0/pages/reference/migration), attach that entry, and declare the
   values the node took as arguments. [Tutorial A](https://microrobotica.org/mime/0.3.0/pages/guide/tutorial_a) is 0.2's
   script A rewritten this way, and held to the 0.2 code's outputs.
-- To stay on 0.2, pin `mime-engine<0.3`. Its code and documentation are at the tag `pre-0.3`.
+- To stay on 0.2, pin `mime-engine<0.3`. That installs 0.2.0, whose code and documentation are at the tag
+  [`v0.2.0`](https://github.com/Microrobotics-Simulation-Framework/MIME/tree/v0.2.0) and which needs MADDENING 0.2.1 or later within 0.2. The tag
+  [`pre-0.3`](https://github.com/Microrobotics-Simulation-Framework/MIME/tree/pre-0.3) is a later commit of the 0.2 line that was never uploaded to PyPI: it runs on
+  MADDENING 0.3.x, and a pin on `<0.3` does not install it.
 
 ### Known limits
 
@@ -98,8 +102,10 @@ claim: a declared limit is a statement, not a measurement, and agreement with th
   use them are held to a reference on the same weights, not to the physics.
 - The MRS rung in a tube reads a table of 209 MB, which a build never downloads: fetch it once with
   `mime assets fetch unit_tube_R0.997`.
-- A folder saved by one release is refused by the next, whose version is in the lock's input hash: save it again from
-  its script.
+- Development releases (0.3.0.devN) make no compatibility promise. A folder saved by one development release is refused
+  by the next, so keep the script that built it and save it again with the new release. That holds of a saved folder in every
+  use (load, verify, run, pack), of the folder a bundle unpacks to, and of the `experiment/` folder inside a run
+  folder; a run folder's outputs still read.
 - Off Linux, a run is verified within its lock's tolerances, not bit for bit, and there is no GPU build for macOS or
   native Windows ([platforms](https://github.com/Microrobotics-Simulation-Framework/MIME/blob/v0.3.0.dev1/docs/platforms.md)).
 - The open anomalies are in the
@@ -319,6 +325,7 @@ MADDENING's `SimulationNode`, the actuation-apparatus node decomposition
 - `MIME-ANO-104` — v1 experiment controllers read microrobot position
   from physics truth (sensor pipeline deferred to SENSING plan).
 
-[Unreleased]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.3.0.dev1...HEAD
+[0.3.0.dev1]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.2.0...v0.3.0.dev1
 [0.2.0]: https://github.com/Microrobotics-Simulation-Framework/MIME/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Microrobotics-Simulation-Framework/MIME/releases/tag/v0.1.0

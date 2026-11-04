@@ -11,8 +11,10 @@ arrives with each release; [the changelog](https://github.com/Microrobotics-Simu
 [scope and limits](https://microrobotica.org/mime/0.3.0/pages/guide/scope) what it claims. The documentation is at
 [microrobotica.org/mime/0.3.0](https://microrobotica.org/mime/0.3.0/).
 
-The 0.2 line (the last release on MADDENING 0.3.x, with its nodes, experiments, docs and verification
-scripts) is preserved at the tag [`pre-0.3`](https://github.com/Microrobotics-Simulation-Framework/MIME/tree/pre-0.3), and is 0.2.0 on PyPI.
+The 0.2 line, with its nodes, experiments, docs and verification scripts, is at two tags. `mime-engine` 0.2.0 on PyPI is
+the tag [`v0.2.0`](https://github.com/Microrobotics-Simulation-Framework/MIME/tree/v0.2.0), which needs MADDENING 0.2.1 or later within 0.2; `pip install "mime-engine<0.3"`
+installs it. The tag [`pre-0.3`](https://github.com/Microrobotics-Simulation-Framework/MIME/tree/pre-0.3) is the line's last commit, made after 0.2.0 and never uploaded to
+PyPI: it runs on MADDENING 0.3.x.
 
 ## Install
 

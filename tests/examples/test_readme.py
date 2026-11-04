@@ -31,7 +31,7 @@ README = (ROOT / "README.md").read_text(encoding="utf-8")
 
 REPOSITORY = "https://github.com/Microrobotics-Simulation-Framework/MIME"
 #: The absolute addresses the README may link that are neither a file at this release's tag nor a page of its docs.
-OTHER_LINKS = {"https://microrobotica.org/maddening/", f"{REPOSITORY}/tree/pre-0.3"}
+OTHER_LINKS = {"https://microrobotica.org/maddening/", f"{REPOSITORY}/tree/pre-0.3", f"{REPOSITORY}/tree/v0.2.0"}
 
 
 def fences(language: str, text: str = README) -> list[str]:

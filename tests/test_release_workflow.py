@@ -17,7 +17,7 @@
   installs, builds and attaches its own; either way it scans them first, and a failed scan attaches nothing.
 
 The controls plant one break each in a copy of the workflow (the tag step dropped, its exit status neutered, its ref
-fixed, the publishing job freed of the build, the audit dropped, the docs built though CI's pages were found, the scan
+fixed, the publishing job freed of the build, its environment or its OIDC permission dropped, the audit dropped, the docs built though CI's pages were found, the scan
 dropped, the asset renamed, its sha256 left unattached, the job's write permission dropped), and the check must name it, every run: the workflow
 and the plants are fixed, so there is no detection rate to measure."""
 
@@ -33,6 +33,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -230,6 +231,65 @@ def test_the_asset_is_one_folder_of_the_pages_and_a_readme_saying_where_they_cam
         assert "without the lane's JUnit reports" in readme and "outcome not read (no lane report)" in readme
 
 
+def old_archive_folder(staged: Path, folder: str, out: Path) -> None:
+    """The packing before the asset was made reproducible: ``tarfile.open(out, "w:gz")``, which writes the time of
+    packing into the gzip header and the staged files' own times into the members. The control for the test below."""
+    with tarfile.open(out, "w:gz") as archive:
+        archive.add(staged, arcname=folder)
+
+
+def dated_pages(directory: Path, seconds: int) -> Path:
+    """The same pages as ``pages``, every file and folder given the modification time ``seconds`` (as a build that ran
+    at another hour leaves them)."""
+    made = pages(directory)
+    for path in [made, *made.rglob("*")]:
+        os.utime(path, (seconds, seconds))
+    return made
+
+
+def packed_twice(tmp_path: Path) -> tuple[str, str]:
+    """The sha256 of the asset packed from the same pages made in two folders with different times, the second pack
+    after the clock has moved on (by more than the second the gzip header's time is held in)."""
+    digests = []
+    for number, seconds in enumerate((1_000_000_000, 1_700_000_000)):
+        if number:
+            time.sleep(1.1)
+        asset = tmp_path / f"pack-{number}" / f"mime-docs-{VERSION}.tar.gz"
+        source = dated_pages(tmp_path / f"pages-{number}", seconds)
+        assert release.pack_pages(source, VERSION, COMMIT, "ci", RUN_URL, "success", asset) == 0
+        digests.append(hashlib.sha256(asset.read_bytes()).hexdigest())
+        assert (tmp_path / f"pack-{number}" / f"{asset.name}.sha256").read_text(encoding="utf-8").startswith(digests[-1])
+    return digests[0], digests[1]
+
+
+def test_the_same_pages_pack_to_the_same_bytes(tmp_path):
+    """A failed docs job is recovered by re-running it, which attaches the asset again with ``--clobber``: the site
+    that pinned the asset's sha256 must find the same one."""
+    first, second = packed_twice(tmp_path)
+    assert first == second
+
+
+def test_control_the_packing_before_it_was_reproducible_gives_different_bytes_every_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(release, "archive_folder", old_archive_folder)
+    first, second = packed_twice(tmp_path)
+    assert first != second
+
+
+def test_the_asset_holds_sorted_members_of_one_time_owner_and_mode_and_a_gzip_header_without_a_name(tmp_path):
+    asset = tmp_path / "asset.tar.gz"
+    assert release.pack_pages(dated_pages(tmp_path / "pages", 1_700_000_000), VERSION, COMMIT, "build", "", "",
+                              asset) == 0
+    raw = asset.read_bytes()
+    assert raw[3] == 0 and raw[4:8] == b"\0\0\0\0", "the gzip header holds a file name or a time"
+    with tarfile.open(asset) as held:
+        members = held.getmembers()
+    assert [member.name for member in members] == sorted(member.name for member in members)
+    assert {(member.mtime, member.uid, member.gid, member.uname, member.gname) for member in members} == {
+        (0, 0, 0, "", "")}
+    assert {member.mode for member in members if member.isdir()} == {0o755}
+    assert {member.mode for member in members if member.isfile()} == {0o644}
+
+
 def test_the_asset_is_refused_for_what_is_not_a_builds_pages_or_ci_pages_with_no_run(tmp_path):
     (tmp_path / "empty").mkdir()
     out = tmp_path / "asset.tar.gz"
@@ -400,6 +460,11 @@ def workflow_problems(path: Path, scratch: Path) -> list[str]:
             found.append("the tag step refuses a run of the version's own tag")
     if "build" not in ([publish.get("needs")] if isinstance(publish.get("needs"), str) else publish.get("needs") or []):
         found.append("the publishing job does not need the build job, so a refused tag could still publish")
+    if publish.get("environment") != "pypi":
+        found.append("the publishing job is not in the environment pypi, which PyPI's trusted publisher names")
+    held = publish.get("permissions", workflow.get("permissions")) or {}
+    if held.get("id-token") != "write":
+        found.append("the publishing job cannot request the OIDC token trusted publishing needs (id-token: write)")
     if len(steps_running(build, "mime assets audit")) != 1:
         found.append("the build job does not audit the distributions and the tag's tree (mime assets audit)")
     if docs.get("needs") != "build":
@@ -470,6 +535,11 @@ PLANTS = {
     "the-publishing-job-freed": ("    needs: build\n    runs-on: ubuntu-latest\n    environment: pypi\n",
                                  "    runs-on: ubuntu-latest\n    environment: pypi\n",
                                  "the publishing job does not need the build job, so a refused tag could still publish"),
+    "the-environment-dropped": ("    needs: build\n    runs-on: ubuntu-latest\n    environment: pypi\n",
+                                "    needs: build\n    runs-on: ubuntu-latest\n",
+                                "the publishing job is not in the environment pypi"),
+    "the-oidc-permission-dropped": ("  id-token: write   # required for Trusted Publishing OIDC\n", "",
+                                    "the publishing job cannot request the OIDC token"),
     "the-audit-dropped": ("          mime assets audit dist/*.whl", "          echo dist/*.whl",
                           "the build job does not audit the distributions and the tag's tree (mime assets audit)"),
     "built-though-ci-held-them": (BUILD_IF, "        run: uv run --no-sync mime docs build",
