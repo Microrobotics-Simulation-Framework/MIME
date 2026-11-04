@@ -5,3 +5,14 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 Releases of the 0.2 line (the tag pre-0.3 and earlier) were distributed under
 the GNU Lesser General Public License, version 3 or later; copies obtained
 under those terms keep them.
+
+This product includes files derived from usd2gltf 0.3.5, Copyright (c) 2020
+mikelyndon (Mike Lyndon), under the MIT License: src/mime/viz/_gltf/, whose
+LICENSE and README.md say which files and how they were changed.
+
+This product includes Google's <model-viewer> 4.3.1, Copyright Google LLC,
+under the Apache License, Version 2.0, in src/mime/viz/_viewer/. Its bundle
+includes three.js (Copyright 2010-2026 three.js authors, MIT License), lit
+(Copyright 2017 Google LLC, BSD 3-Clause License), fflate (Copyright 2023
+Arjun Barrett, MIT License) and gainmap-js (Copyright 2023 MONOGRID, MIT
+License); the text of each licence is beside it in that folder.

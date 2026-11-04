@@ -36,6 +36,18 @@
   is written into a saved or a run folder; `mime assets audit` finds a baked mesh copied anywhere, by its hash, and
   `mime pack` and `mime push` refuse one copied into an experiment's folder.
 
+- **A view that may be shared** (`_export.py`, `_web.py`, `_tiers.py`, `_primitives.py`, `_gltf/`): a stage, a recording
+  or a folder's as one glTF binary (`gltf`), +Y up, its units scaled to a power of ten metres, a short recording
+  slowed to about eight seconds and framed over its whole motion; and as one web page (`page`, `display` in a notebook,
+  `mime visuals web`) that draws it with Google's `<model-viewer>` 4.3.1, inlined from the copy in `_viewer/` (with the
+  licence of every part its bundle holds) or from jsDelivr held to its hash. The converter in `_gltf/` is derived from
+  usd2gltf 0.3.5 under MIT (its `LICENSE` and `README.md` say what was taken and changed); MIME tessellates USD's
+  spheres, cylinders, cubes and capsules (`_primitives.py`). **Such a view holds only the baked meshes whose tier lets
+  them travel**, `open` and `conditional` (`SHAREABLE_TIERS`): the overlay it composes leaves the others
+  out, drawing their frames' simple shapes and saying so, and a composed stage that reaches a baked mesh of another
+  tier, or of none stated, is refused (`visuals.not-shareable`). It is never written into a saved or a run folder
+  (`visuals.web-out`).
+
 ## Boundaries
 
 - With `scene`, the only importer of `pxr`.
@@ -43,7 +55,7 @@
 
 ## Status
 
-The recording layer, the mesh importer and the visuals in the asset cache.
+The recording layer, the mesh importer, the visuals in the asset cache, and the shareable view (a GLB and a web page).
 Viewports stay with the clients.
 
 Releases are explained in the [package manifest](../README.md#status).

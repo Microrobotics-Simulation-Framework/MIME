@@ -45,10 +45,11 @@ def ar4_manifest() -> Manifest:
     return read_manifest(AR4_VISUALS)
 
 
-def planted(held: Manifest | None = None) -> dict[str, Path]:
+def planted(held: Manifest | None = None, *, tier: str | None = None) -> dict[str, Path]:
     """Bake a sphere under every file of the manifest ``held`` (the AR4's by default) into the asset cache
     (``MIME_ASSETS_DIR``), as ``mime visuals fetch`` would bake the set's own meshes, with the index it writes; the
-    layers by file."""
+    layers by file. With ``tier``, the index and each mesh's record state it, as ``bake`` writes them; without, no
+    record states one."""
     held = held if held is not None else ar4_manifest()
     layers: dict[str, Path] = {}
     files: dict[str, dict[str, str]] = {}
@@ -60,10 +61,15 @@ def planted(held: Manifest | None = None) -> dict[str, Path]:
         key = baked_key(source.sha256, 400)
         layers[each.path] = write_mesh(visuals_dir() / f"{key}.usdc", mesh, "mesh")
         files[each.path] = {"sha256": source.sha256, "layer": f"{key}.usdc"}
+        if tier is not None:
+            (visuals_dir() / f"{key}.json").write_text(json.dumps({"format": "mime.baked_mesh/3", "set": held.name,
+                                                                   "file": each.path, "tier": tier}), encoding="utf-8")
     index_of(held.name).parent.mkdir(parents=True, exist_ok=True)
-    index_of(held.name).write_text(json.dumps({"format": INDEX_FORMAT, "set": held.name, "files": files,
-                                               "credit": held.credit, "notice": held.notice, "text": held.text()}),
-                                   encoding="utf-8")
+    index = {"format": INDEX_FORMAT, "set": held.name, "files": files, "credit": held.credit, "notice": held.notice,
+             "text": held.text()}
+    if tier is not None:
+        index["tier"] = tier
+    index_of(held.name).write_text(json.dumps(index), encoding="utf-8")
     return layers
 
 

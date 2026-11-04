@@ -7,8 +7,10 @@ name = "mime-engine"
 dynamic = ["version"]
 description = "MIcrorobotics Multiphysics Engine — domain-specific physics for microrobot simulation"
 readme = "README.md"
-license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
+# MIME is Apache-2.0; the files derived from usd2gltf (src/mime/viz/_gltf/) are MIT, and the inlined viewer's bundle
+# (src/mime/viz/_viewer/) holds MIT and BSD-3-Clause parts beside its Apache-2.0 code: each licence's text is listed.
+license = "Apache-2.0 AND MIT AND BSD-3-Clause"
+license-files = ["LICENSE", "NOTICE", "src/mime/viz/_gltf/LICENSE", "src/mime/viz/_viewer/LICENSE.*"]
 requires-python = ">=3.12"
 authors = [
     { name = "Nicholas Ehsan Roy" },
@@ -103,6 +105,9 @@ dev = [
     # The saved form's JSON Schemas are checked against its loader by an independent validator
     # (tests/saved/test_json_schema.py); the wheel only writes them.
     "jsonschema>=4.18",
+    # The GLB that mime.viz.gltf writes is read back by an independent reader (tests/viz/test_gltf_container.py); the
+    # wheel writes it itself.
+    "pygltflib>=1.16",
 ]
 
 [tool.hatch.version]

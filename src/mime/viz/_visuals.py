@@ -251,14 +251,51 @@ class Overlay:
     #: What ``mime visuals fetch`` takes to fetch each missing set: the folder whose lock holds its manifest, the set's
     #: name where an installed package ships it, or the description's folder.
     fetch: dict[str, str] = field(default_factory=dict[str, str])
+    #: The meshes the cache holds that this overlay leaves out, by set: their tier is not among the tiers asked for (a
+    #: view that may be shared draws only meshes whose terms let them travel), or no record states it.
+    withheld: dict[str, int] = field(default_factory=dict[str, int])
+    #: The sets whose meshes the overlay draws.
+    sets: list[str] = field(default_factory=list[str])
+    #: Each set's notice (the entries of ``notices``), by set.
+    terms: dict[str, str] = field(default_factory=dict[str, str])
 
     def text(self) -> str:
         lines = [f"{self.drawn} meshes drawn from the asset cache" + (f" ({self.path})" if self.path else "")]
+        for name, count in sorted(self.withheld.items()):
+            lines.append(f"{count} meshes of {name} are left out of this view: their licence does not let them be "
+                         f"shared, or no record states that it does; simple shapes from the description's frames are "
+                         f"drawn in their place (a USD viewer draws them on this machine: mime visuals view <target>)")
         for name, count in sorted(self.missing.items()):
             lines.append(f"{count} meshes of {name} are not in the asset cache: drawn as simple shapes from the "
                          f"description's frames; to draw them, `mime visuals fetch "
                          f"{self.fetch.get(name, '<the description' + chr(39) + 's folder>')}`")
         return "\n".join(lines + self.notices)
+
+
+def baked_sets() -> dict[str, str]:
+    """Each baked layer's file name in the cache, with the set whose index names it."""
+    return {str(item["layer"]): name for name, index in _indexes().items()
+            for item in cast(dict[str, dict[str, Any]], index["files"]).values()}
+
+
+def baked_tier(layer: Path, name: str, indexes: dict[str, dict[str, Any]] | None = None,
+               manifests: dict[str, Manifest] | None = None) -> str | None:
+    """The tier of the baked mesh ``layer`` of set ``name``: its record's (``<key>.json`` beside it, written by
+    :func:`bake`), else the set's index's, else the verdict of the set's manifest in the folder's lock or in an
+    installed package; ``None`` where none states it."""
+    record = layer.with_suffix(".json")
+    if record.is_file():
+        try:
+            held: object = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            held = None
+        if isinstance(held, dict) and isinstance(tier := cast(dict[str, Any], held).get("tier"), str):
+            return tier
+    index = (indexes if indexes is not None else _indexes()).get(name, {})
+    if isinstance(index.get("tier"), str):
+        return str(index["tier"])
+    manifest = (manifests or {}).get(name) or visual_sets().get(name)
+    return manifest.verdict.tier if manifest is not None else None
 
 
 def _folder_of(stage_path: Path) -> Path | None:
@@ -269,10 +306,12 @@ def _folder_of(stage_path: Path) -> Path | None:
     return None
 
 
-def overlay(stage_path: Path) -> Overlay:
+def overlay(stage_path: Path, *, tiers: frozenset[str] | None = None) -> Overlay:
     """The overlay of the stage (or recording) at ``stage_path``: written into the cache, keyed by the composed stage's
-    visual prims, referencing each baked mesh into its prim (scaled from metres to the stage's units) and hiding each
-    segment's simple shapes where every mesh of its frames is drawn. Nothing is written beside the stage."""
+    visual prims and ``tiers``, referencing each baked mesh into its prim (scaled from metres to the stage's units) and
+    hiding each segment's simple shapes where every mesh of its frames is drawn. With ``tiers``, a mesh whose tier
+    (:func:`baked_tier`) is not one of them, or is stated nowhere, is left out (``Overlay.withheld``), and its segment's
+    simple shapes stay drawn. Nothing is written beside the stage."""
     folder = _folder_of(stage_path)
     manifests = {held.name: held for held in lock_manifests(folder)} if folder is not None else {}
     indexes = _indexes()
@@ -286,20 +325,33 @@ def overlay(stage_path: Path) -> Overlay:
             key = (str(asset.Get()), str(digest.Get()))
             wanted.append((str(prim.GetPath()), layers.get(key), key[0]))
     found = Overlay(None)
-    for _, layer, name in wanted:
+    withheld: set[str] = set()
+    if tiers is not None:
+        kept: list[tuple[str, Path | None, str]] = []
+        for prim_path, layer, name in wanted:
+            if layer is not None and baked_tier(layer, name, indexes, manifests) not in tiers:
+                found.withheld[name] = found.withheld.get(name, 0) + 1
+                withheld.add(prim_path)
+                layer = None
+            kept.append((prim_path, layer, name))
+        wanted = kept
+    for prim_path, layer, name in wanted:
         if layer is None:
-            found.missing[name] = found.missing.get(name, 0) + 1
+            if prim_path not in withheld:
+                found.missing[name] = found.missing.get(name, 0) + 1
         else:
             found.drawn += 1
     named = sorted({name for _, _, name in wanted})
-    found.notices = [_notice(name, indexes, manifests) for name in named]
+    found.terms = {name: _notice(name, indexes, manifests) for name in named}
+    found.notices = [found.terms[name] for name in named]
     found.fetch = {name: (f"{folder}/" if folder is not None and name in manifests else
                           name if name in visual_sets() else "<the description's folder>") for name in named}
     if not found.drawn:
         return found
     used = sorted({name for _, layer, name in wanted if layer is not None})
-    text = json.dumps([[p, str(layer.name) if layer else None] for p, layer, _ in wanted] + [meters],
-                      separators=(",", ":"))
+    found.sets = used
+    text = json.dumps([[p, str(layer.name) if layer else None] for p, layer, _ in wanted]
+                      + [meters, sorted(tiers) if tiers is not None else None], separators=(",", ":"))
     path = visuals_dir() / "overlays" / f"{hashlib.sha256(text.encode('utf-8')).hexdigest()}.usda"
     held = Sdf.Layer.CreateAnonymous(".usda")
     held.customLayerData = {"mime:visuals": {"sets": Vt.StringArray(used),
@@ -336,11 +388,12 @@ def overlay(stage_path: Path) -> Overlay:
     return found
 
 
-def view(target: Path) -> tuple[Path, Overlay]:
-    """A layer in the cache that opens ``target`` (a stage, a recording, or a run or saved folder's) with its overlay:
-    the path to give a USD viewer, and the overlay. Without an overlay the view is ``target`` as it is."""
+def view(target: Path, *, tiers: frozenset[str] | None = None) -> tuple[Path, Overlay]:
+    """A layer in the cache that opens ``target`` (a stage, a recording, or a run or saved folder's) with its overlay
+    (of the meshes of ``tiers`` alone, where given): the path to give a USD viewer, and the overlay. Without an overlay
+    the view is ``target`` as it is."""
     held = _target(target)
-    found = overlay(held)
+    found = overlay(held, tiers=tiers)
     if found.path is None:
         return held, found
     resolved = held.resolve()
@@ -353,7 +406,8 @@ def view(target: Path) -> tuple[Path, Overlay]:
                     "framesPerSecond"):
             if source.pseudoRoot.HasInfo(key):
                 layer.pseudoRoot.SetInfo(key, source.pseudoRoot.GetInfo(key))
-    name = hashlib.sha256(str(resolved).encode("utf-8")).hexdigest()
+    keyed = str(resolved) if tiers is None else f"{resolved}\n{found.path.name}"
+    name = hashlib.sha256(keyed.encode("utf-8")).hexdigest()
     path = visuals_dir() / "views" / f"{name}.usda"
     path.parent.mkdir(parents=True, exist_ok=True)
     layer.Export(str(path))
@@ -381,5 +435,5 @@ def open_stage(target: Path) -> Any:
 
 
 __all__ = ["CONVERTER", "CONVERTER_VERSION", "INDEX_FORMAT", "LOCK_VISUALS", "Baked", "Overlay", "bake", "baked_key",
-           "baked_layers", "fetch", "lock_manifests", "manifests_for", "open_stage", "overlay", "view", "visuals_dir"]
+           "baked_layers", "baked_sets", "baked_tier", "fetch", "lock_manifests", "manifests_for", "open_stage", "overlay", "view", "visuals_dir"]
 

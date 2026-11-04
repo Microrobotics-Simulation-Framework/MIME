@@ -49,3 +49,4 @@ docs/guide/install.md  3.14 3.12 3.12 3.13 3.14  #1  # the Pythons MIME supports
 docs/guide/install.md  1  #1  # the value that switches an environment variable on (JAX_ENABLE_X64=1), a setting and not a quantity
 docs/guide/tutorial_a.md  9  #1  # FL-9, the name of the screw in de Jongh et al.'s table of designs: an identifier, not a quantity
 docs/live.md  40  #1  # the length of the Z85 text of a 32-byte CURVE public key (RFC 32/Z85 encodes 4 bytes as 5 characters), a fixed property of the encoding that the viewer's side also states, not a measured quantity (PR #122 review, F5)
+src/mime/viz/_gltf/README.md  6bc4d9db4c4960a5ee4e13dfa376585b7ebc9d488f9fd8af79d6fe1d8cc05291  #1  # the sha256 of usd2gltf 0.3.5's sdist on PyPI, the copied code's origin: an identity, not a quantity
