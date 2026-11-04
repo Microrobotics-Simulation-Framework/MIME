@@ -85,6 +85,7 @@ from mime.registry._entries import (
     uniform,
 )
 from mime.registry._registry import (
+    WHY_REQUIRED,
     EntryKind,
     Registered,
     declared_roles,
@@ -102,6 +103,7 @@ from mime.registry._registry import (
     register_wall_kind,
     registered,
     registration_of,
+    rate_problems,
     role_problems,
     setting_group_named,
     setting_names,
@@ -110,6 +112,7 @@ from mime.registry._registry import (
 )
 
 __all__ = [
+    "WHY_REQUIRED",
     "CAPABILITIES",
     "DESIGN",
     "NUMERICAL",
@@ -122,6 +125,7 @@ __all__ = [
     "declared_roles",
     "determined",
     "numerical_default",
+    "rate_problems",
     "role_problems",
     "setting_names",
     "NOT_ESTABLISHED",

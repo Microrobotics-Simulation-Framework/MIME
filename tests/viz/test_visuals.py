@@ -6,6 +6,7 @@ description in the example folder (MIME's own data holds none): every visual mes
 its records, pinned to one upstream commit, with its credit and licence, and its tier the verdict of that licence."""
 
 import re
+import shlex
 import warnings
 from pathlib import Path
 
@@ -89,6 +90,22 @@ def test_with_nothing_baked_the_stage_draws_its_bones_and_says_so(cache, stage_f
     assert found.path is None and found.drawn == 0 and found.missing == {"ar4_mk5": 18}
     assert "drawn as simple shapes" in found.text() and "mime visuals fetch <the description's folder>" in found.text()
     assert view(stage_file)[0] == stage_file
+
+
+def test_the_fetch_command_quotes_its_folder_for_a_shell_and_leaves_the_placeholder_as_it_is():
+    """A folder with a space in its path pastes whole into a shell; the control is the folder as it was written,
+    unquoted, which a shell splits in two."""
+    from mime.viz._visuals import UNKNOWN_FOLDER, Overlay
+
+    spaced = "/tmp/my runs/a0_run/"
+    found = Overlay(None, missing={"ar4_mk5": 18, "other": 2}, fetch={"ar4_mk5": spaced, "other": UNKNOWN_FOLDER})
+    command = found.fetch_command("ar4_mk5")
+    assert shlex.split(command) == ["mime", "visuals", "fetch", spaced]
+    assert f"`{command}`" in found.text() and found.fetch_commands() == {
+        "ar4_mk5": command, "other": f"mime visuals fetch {UNKNOWN_FOLDER}"}
+    assert shlex.split(f"mime visuals fetch {spaced}") != ["mime", "visuals", "fetch", spaced], "the control"
+    plain = Overlay(None, missing={"ar4_mk5": 18}, fetch={"ar4_mk5": "/tmp/a0_run/"})
+    assert plain.fetch_command("ar4_mk5") == "mime visuals fetch /tmp/a0_run/", "a path a shell takes whole is as it was"
 
 
 def test_the_overlay_draws_the_baked_meshes_and_hides_the_bones(cache, stage_file):

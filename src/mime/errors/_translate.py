@@ -95,8 +95,9 @@ def _unit_function(dimension: object) -> str | None:
     """The name of the SI unit of ``dimension`` in ``mime.units`` (``s`` for a time), where it has one."""
     from mime import units
 
+    angle = getattr(dimension, "angle", None)
     held = (name for name, value in vars(units).items() if isinstance(value, units.Unit) and value.factor == 1.0
-            and value.dimension == dimension and not name.startswith("_"))
+            and value.dimension == dimension and value.angle == angle and not name.startswith("_"))
     return next(held, None)
 
 
@@ -109,7 +110,10 @@ def unit_error(error: BaseException) -> MimeError | None:
         return None
     dimension, given = getattr(error, "dimension", None), getattr(error, "given", None)
     unit = _unit_function(dimension) if dimension is not None else None
-    if unit is not None and isinstance(given, (int, float)) and not isinstance(given, bool):
+    instead = error.instead(lambda quantity: quantity)
+    if instead:
+        action = f"write it in the unit it counts, `from mime.units import Hz, rad_per_s`{instead}"
+    elif unit is not None and isinstance(given, (int, float)) and not isinstance(given, bool):
         action = f"write it with its unit: {unit}({given!r}), with `from mime.units import {unit}`"
     elif unit is not None:
         action = f"write it as a quantity of {dimension}: {unit}(...), with `from mime.units import {unit}`"

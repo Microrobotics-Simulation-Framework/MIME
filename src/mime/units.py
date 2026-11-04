@@ -16,6 +16,12 @@ An entry declares each dimensioned setting's dimension once, in its annotation: 
 Length]``. The markers (:data:`Length`, :data:`Force` and the rest) are the SI dimensions themselves, so they combine:
 ``stiffness: Annotated[Quantity, Force / Length]``. A dimensionless setting is a plain number and needs no marker.
 
+A frequency and an angular velocity share a dimension, a rate per second, and differ by 2 pi: ``Hz(1)`` is one turn
+a second, ``rad_per_s(1)`` one radian. A quantity knows which it counts (``Quantity.angle``), and so does a site that
+takes one: :data:`FREQUENCY` (``Frequency``) counts turns, in Hz, and :data:`ANGULAR_VELOCITY` (``AngularVelocity``)
+radians, in rad/s. :func:`si` refuses a quantity of the other kind with the conversion to write, and an entry that
+declares a rate per second that says neither (``DIMENSIONLESS / TIME``) is refused at registration.
+
 Two limits of a check by dimension alone:
 
 - A dimension names one quantity. :data:`TORQUE` (N m) is dimensionally an energy (J), and the names and symbols a
@@ -30,10 +36,10 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from numbers import Real
-from typing import Any, Literal, cast, overload, override
+from typing import Any, ClassVar, Literal, cast, overload, override
 
 import numpy as np
 from numpy.typing import NDArray
@@ -41,20 +47,40 @@ from numpy.typing import NDArray
 from mime.validity._bases import Basis
 
 _BASE_SYMBOLS = ("m", "kg", "s", "A", "K", "mol", "cd")
+#: What an angular rate counts: turns (Hz) or radians (rad/s).
+type Angle = Literal["turn", "radian"]
+_ANGLE_UNIT: dict[Angle, str] = {"turn": "Hz", "radian": "rad/s"}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class Dimension:
-    """Exponents of the seven SI base units, in the order m, kg, s, A, K, mol, cd."""
+    """Exponents of the seven SI base units, in the order m, kg, s, A, K, mol, cd, which equality and hashing compare
+    alone. ``angle`` is what a rate per second counts where a site declares it: ``"turn"`` for :data:`FREQUENCY`,
+    ``"radian"`` for :data:`ANGULAR_VELOCITY`, ``None`` for any other dimension; :func:`si` checks it against the
+    quantity's own. Each of the two is an instance of its own class: ``typing`` keeps one ``Annotated[Quantity, ...]``
+    for markers that are equal and of one type, so a marker's angle survives only as its type."""
 
     exponents: tuple[int, int, int, int, int, int, int] = (0, 0, 0, 0, 0, 0, 0)
+    angle: ClassVar[Angle | None] = None
 
     @classmethod
     def of(cls, exponents: Iterable[int]) -> Dimension:
         e = tuple(exponents)
         if len(e) != len(_BASE_SYMBOLS):
             raise ValueError(f"a dimension has {len(_BASE_SYMBOLS)} exponents, not {len(e)}")
-        return cls((e[0], e[1], e[2], e[3], e[4], e[5], e[6]))
+        return Dimension((e[0], e[1], e[2], e[3], e[4], e[5], e[6]))
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        return self.exponents == other.exponents if isinstance(other, Dimension) else NotImplemented
+
+    @override
+    def __hash__(self) -> int:
+        return hash(self.exponents)
+
+    @override
+    def __repr__(self) -> str:
+        return f"Dimension(exponents={self.exponents!r})"
 
     def __mul__(self, other: Dimension) -> Dimension:
         return Dimension.of(a + b for a, b in zip(self.exponents, other.exponents, strict=True))
@@ -67,11 +93,25 @@ class Dimension:
 
     @override
     def __str__(self) -> str:
+        if self.angle == "radian":
+            return "angular velocity (rad/s)"
         if self in _NAMED:
             return _NAMED[self]
         terms = [symbol if power == 1 else f"{symbol}^{power}"
                  for symbol, power in zip(_BASE_SYMBOLS, self.exponents, strict=False) if power]
         return " ".join(terms) or "1"
+
+
+class _Turns(Dimension):
+    """A rate per second that counts turns: :data:`FREQUENCY`'s class."""
+
+    angle = "turn"
+
+
+class _Radians(Dimension):
+    """A rate per second that counts radians: :data:`ANGULAR_VELOCITY`'s class."""
+
+    angle = "radian"
 
 
 def _base(index: int) -> Dimension:
@@ -86,7 +126,11 @@ MASS = _base(1)
 TIME = _base(2)
 CURRENT = _base(3)
 TEMPERATURE = _base(4)
-FREQUENCY = DIMENSIONLESS / TIME
+#: A frequency, in Hz: turns, cycles or events per second. A site declared with it refuses an angular velocity.
+FREQUENCY: Dimension = _Turns((DIMENSIONLESS / TIME).exponents)
+#: An angular velocity, in rad/s: radians per second, the dimension of a frequency. A site declared with it refuses a
+#: frequency in Hz.
+ANGULAR_VELOCITY: Dimension = _Radians(FREQUENCY.exponents)
 VELOCITY = LENGTH / TIME
 ACCELERATION = LENGTH / TIME**2
 FORCE = MASS * ACCELERATION
@@ -126,6 +170,7 @@ Time = TIME
 Current = CURRENT
 Temperature = TEMPERATURE
 Frequency = FREQUENCY
+AngularVelocity = ANGULAR_VELOCITY
 Velocity = VELOCITY
 Acceleration = ACCELERATION
 Force = FORCE
@@ -139,21 +184,29 @@ Torque = TORQUE
 RotationalDamping = ROTATIONAL_DAMPING
 
 type Magnitude = float | tuple[float, ...]
-#: What an angular rate counts: turns (Hz) or radians (rad/s).
-type Angle = Literal["turn", "radian"]
-_ANGLE_UNIT: dict[Angle, str] = {"turn": "Hz", "radian": "rad/s"}
 #: What a quantity holds: a declaration's magnitude, or a result's array of SI floats (read-only).
 type Values = float | tuple[float, ...] | NDArray[np.float64]
 
 
 class UnitError(ValueError):
     """A quantity of the wrong dimension, or a bare number where a quantity is needed: ``dimension`` is the one needed
-    and ``given`` what was given, where :func:`si` knows them."""
+    and ``given`` what was given, where :func:`si` knows them. ``alternatives`` are the quantities to write in its place
+    where the error knows them, each with when it is the one (an angular rate of the other kind: ``Hz(5.0)`` if turns
+    per second were meant), which :meth:`instead` puts in a site's own line."""
 
-    def __init__(self, message: str, *, dimension: Dimension | None = None, given: object = None) -> None:
+    def __init__(self, message: str, *, dimension: Dimension | None = None, given: object = None,
+                 alternatives: tuple[tuple[str, str], ...] = ()) -> None:
         super().__init__(message)
         self.dimension = dimension
         self.given = given
+        self.alternatives = alternatives
+
+    def instead(self, line: Callable[[str], str]) -> str:
+        """What to write instead, after a colon, each alternative quantity in the site's ``line`` (``lambda q:
+        f"State(spin={q})"``), for a site's action to end with; empty where the error knows no alternative."""
+        if not self.alternatives:
+            return ""
+        return ": " + ", or ".join(f"{line(quantity)} {when}" for quantity, when in self.alternatives)
 
 
 def _real(value: object) -> bool:
@@ -340,7 +393,8 @@ class Quantity:
 
     @override
     def __str__(self) -> str:
-        symbol = _SYMBOLS.get(self.dimension, str(self.dimension))
+        symbol = _ANGLE_UNIT[self.angle] if self.angle is not None and self.dimension == FREQUENCY else \
+            _SYMBOLS.get(self.dimension, str(self.dimension))
         if isinstance(self.value, np.ndarray):
             return f"{np.array2string(self.value, threshold=8, precision=6)} {symbol}".rstrip()
         return f"{self.value!r} {symbol}".rstrip()
@@ -385,9 +439,44 @@ def parse_unit(symbol: str) -> Dimension:
     return Dimension.of(exponents)
 
 
+def _number(value: float) -> str:
+    return repr(float(value))
+
+
+def _rate_written(value: Magnitude, unit: str, scale: str) -> str:
+    """``value`` (a rate's magnitude) written in ``unit`` with each component not zero scaled by ``scale``, the
+    conversion as an expression (``2 * pi * 5.0``), or as it is where ``scale`` is empty."""
+    def one(component: float) -> str:
+        if not scale or component == 0.0:
+            return _number(component)
+        return f"2 * pi * {_number(component)}" if scale == "*" else f"{_number(component)} / (2 * pi)"
+    if isinstance(value, tuple):
+        return f"{unit}(({', '.join(one(c) for c in value)}{',' if len(value) == 1 else ''}))"
+    return f"{unit}({one(value)})"
+
+
+def _other_angle(quantity: Quantity, dimension: Dimension, what: str) -> UnitError:
+    """The refusal of an angular rate of the other kind than the site counts, with both conversions to write."""
+    value = cast(Magnitude, quantity.value)
+    if dimension.angle == "radian":
+        given = "a frequency, in turns per second"
+        alternatives = ((_rate_written(value, "rad_per_s", "*"), "for the turns per second written (pi from math)"),
+                        (_rate_written(value, "rad_per_s", ""), "if you meant radians per second"))
+    else:
+        given = "an angular velocity, in radians per second"
+        alternatives = ((_rate_written(value, "Hz", ""), "if you meant turns per second"),
+                        (_rate_written(value, "Hz", "/"), "for the radians per second written (pi from math)"))
+    return UnitError(f"{what} needs units of {dimension}; it was given {quantity}, {given}: the two share a dimension "
+                     f"and differ by 2 pi (1 Hz is 2 pi rad/s), which MIME does not assume either way",
+                     dimension=dimension, given=quantity, alternatives=alternatives)
+
+
 def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
     """The SI magnitude of ``quantity``, or :class:`UnitError` naming ``what`` when it is not a quantity of
-    ``dimension``. A bare number is refused for any dimension but :data:`DIMENSIONLESS`: units are never assumed."""
+    ``dimension``. A bare number is refused for any dimension but :data:`DIMENSIONLESS`: units are never assumed. An
+    angular rate of the other kind than ``dimension`` counts (a frequency in Hz where an angular velocity goes, or one
+    in rad/s where a frequency goes) is refused, with the conversions to write as its ``alternatives``; a quantity that
+    does not know what it counts (a sum of the two, or a result) is taken as the site counts."""
     if not isinstance(quantity, Quantity):
         if dimension == DIMENSIONLESS:
             return _magnitude(quantity)
@@ -399,7 +488,26 @@ def si(quantity: object, dimension: Dimension, *, what: str) -> Magnitude:
     if isinstance(quantity.value, np.ndarray):
         raise UnitError(f"{what} is given an array quantity ({quantity}): an array is a run's result, and a "
                         f"declaration takes a number or a tuple of them")
+    if dimension.angle is not None and quantity.angle is not None and quantity.angle != dimension.angle:
+        raise _other_angle(quantity, dimension, what)
     return quantity.value
+
+
+def rate_symbol(dimension: Dimension) -> str:
+    """The unit a site declared with ``dimension`` takes its numbers in: as :func:`unit_symbol`, with rad/s for an
+    angular velocity, which the saved form writes as Hz (the same SI number)."""
+    return "rad/s" if dimension == FREQUENCY and dimension.angle == "radian" else unit_symbol(dimension)
+
+
+def says_its_angle(dimension: Dimension) -> bool:
+    """Whether a site declared with ``dimension`` says what it counts: any dimension but a rate per second, and a rate
+    per second only as :data:`FREQUENCY` or :data:`ANGULAR_VELOCITY`."""
+    return dimension != FREQUENCY or dimension.angle is not None
+
+
+#: What a site declared with a rate per second that says neither is told to write instead.
+SAY_THE_ANGLE = ("say which rate it is: mime.units.Frequency for a frequency in Hz (turns per second), or "
+                 "mime.units.AngularVelocity for an angular velocity in rad/s; the two differ by 2 pi")
 
 
 @dataclass(frozen=True)
@@ -446,10 +554,10 @@ um_per_s = Unit("um/s", 1e-6, VELOCITY, "Micrometres per second.")
 rad = Unit("rad", 1.0, DIMENSIONLESS, "Radians.")
 deg = Unit("deg", math.pi / 180.0, DIMENSIONLESS, "Degrees, held in radians.")
 rad_per_s = Unit(
-    "rad/s", 1.0, FREQUENCY,
-    "Radians per second: an angular velocity. Its dimension is a frequency's, so Hz(1) written for an angular velocity "
-    "is 1 rad/s, not one turn per second. A quantity made from it is refused by ``.to(Hz)``, and one made from Hz by "
-    "``.to(rad_per_s)``: they differ by 2 pi.", "radian")
+    "rad/s", 1.0, ANGULAR_VELOCITY,
+    "Radians per second: an angular velocity. Its dimension is a frequency's, and they differ by 2 pi: a quantity made "
+    "from it is refused where a frequency goes (a field's turning frequency) and by ``.to(Hz)``, and one made from Hz "
+    "where an angular velocity goes (a body's initial spin) and by ``.to(rad_per_s)``.", "radian")
 m3 = Unit("m^3", 1.0, VOLUME, "Cubic metres.")
 mm3 = Unit("mm^3", 1e-9, VOLUME, "Cubic millimetres.")
 kg_per_m3 = Unit("kg/m^3", 1.0, DENSITY, "Kilograms per cubic metre.")
@@ -508,7 +616,8 @@ def standard_gravity(*, reason: Basis | None = None) -> Quantity:
 
 
 __all__ = [
-    "ACCELERATION", "CURRENT", "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FORCE", "FREQUENCY", "LENGTH",
+    "ACCELERATION", "ANGULAR_VELOCITY", "AngularVelocity", "SAY_THE_ANGLE", "rate_symbol", "says_its_angle",
+    "CURRENT", "DENSITY", "DIMENSIONLESS", "DYNAMIC_VISCOSITY", "FORCE", "FREQUENCY", "LENGTH",
     "MAGNETIC_FLUX_DENSITY", "MAGNETIC_MOMENT", "MASS", "MOMENT_OF_INERTIA", "ROTATIONAL_DAMPING", "TEMPERATURE",
     "TIME", "TORQUE", "VELOCITY", "VOLUME", "Acceleration", "Current", "Density", "DynamicViscosity", "Force",
     "Frequency", "Length", "MagneticFluxDensity", "MagneticMoment", "Mass", "MomentOfInertia", "RotationalDamping",

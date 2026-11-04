@@ -53,7 +53,9 @@ and the entry declares what the build needs of it:
 - `name` and `version` key the entry. The saved document stores both, so a newer version is a different entry.
 - A setting is a dataclass field, and a dimensioned one declares its dimension in its annotation
   (`Annotated[Quantity, Force]`). Registration refuses a `Quantity` with no marker, a marker on a setting that is not a
-  `Quantity`, and a default of another dimension.
+  `Quantity`, and a default of another dimension. A rate per second says what it counts: `Frequency` for one in Hz,
+  `AngularVelocity` for one in rad/s; one that says neither is refused, as a setting, a command or an initial state,
+  and so is a default of the other kind.
 - `setting_roles` says what each setting is for (a design choice, a physical value, a numerical choice) and the kind of its
   default. A setting that declares nothing is required, and the build reports a written default that declares nothing as
   `undeclared`, which the exploratory profile stamps and the research profile refuses ([profiles](../profiles.md)).

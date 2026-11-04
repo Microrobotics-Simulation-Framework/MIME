@@ -29,12 +29,13 @@ SEALED = Paperwork(profile="research", acceptance="water is Newtonian at a settl
 
 @pytest.fixture(scope="module")
 def runs(tmp_path_factory: pytest.TempPathFactory):
-    """The bare ball and the sealed one, each built, run three steps into a folder, and saved."""
+    """The bare ball and the sealed one, each built, run five steps into a folder (past its window's start, at 4 ms,
+    which a shorter run is refused for), and saved."""
     held = {}
     for name, paperwork in (("bare", Paperwork()), ("sealed", SEALED)):
         folder = tmp_path_factory.mktemp(name)
         built = settling_ball(paperwork).build()
-        written = built.run_to(folder / "run", ms(3.0), record=["swim_speed:ball.speed"])
+        written = built.run_to(folder / "run", ms(5.0), record=["swim_speed:ball.speed"])
         built.save(folder / "saved")
         held[name] = (built, written, folder)
     return held

@@ -12,6 +12,7 @@ guard against a hang (``HANG``) that is no bound on speed."""
 
 import contextlib
 import json
+import shlex
 import os
 import signal
 import socket
@@ -91,8 +92,12 @@ def test_every_frame_is_delivered_in_order_and_is_the_batch_runs_state(launch, f
 
     # Nothing baked: no overlay, every mesh missing, and the set's notice (its credit and terms, from the manifest the
     # saved folder's lock holds) to show beside the simple shapes, with how to fetch the meshes.
-    assert hello["visuals"] == {"overlay": None, "drawn": 0, "missing": {"ar4_mk5": 18},
+    fetch = hello["visuals"]["fetch"]
+    assert hello["visuals"] == {"overlay": None, "drawn": 0, "missing": {"ar4_mk5": 18}, "fetch": fetch,
                                 "notice": [ar4_manifest().text()]}
+    (command,) = fetch.values()
+    assert list(fetch) == ["ar4_mk5"] and shlex.split(command)[:3] == ["mime", "visuals", "fetch"]
+    assert (Path(shlex.split(command)[3]) / "mime.lock").is_file(), "the folder whose lock holds the set's manifest"
     assert "Annin Robotics" in hello["visuals"]["notice"][0]
     assert live.request("start")["state"] == "running"
     frames = [live.frame() for _ in range(40)]

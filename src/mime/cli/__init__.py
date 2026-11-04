@@ -1335,8 +1335,11 @@ def _parsed(parser: argparse.ArgumentParser, words: list[str], full: bool) -> in
     held = os.environ.get(TRACEBACK_VARIABLE)
     if full:
         os.environ[TRACEBACK_VARIABLE] = "full"
+    from mime.cli._display import short_description_warnings
+
     try:
-        return _command(parser, arguments)
+        with short_description_warnings(sys.stderr):
+            return _command(parser, arguments)
     except Exception as error:  # noqa: BLE001 - every error a command meets is shown as a MIME error with its code
         return refused(error, arguments.command)
     finally:

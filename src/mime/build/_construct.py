@@ -135,6 +135,16 @@ def description_lines(plans: PlanSet) -> tuple[str, ...]:
     return tuple(found)
 
 
+def description_warnings(plans: PlanSet) -> tuple[str, ...]:
+    """Each chain segment's description's warnings (an element not used, read past or read as massless), each once,
+    named by its segment: what a build warns of, once, where the reads that made them gave none."""
+    found: list[str] = []
+    for plan in plans.entries:
+        held = plan.segment.description if plan.segment is not None else None
+        found += [f"{plan.owner}: {line}" for line in (held.warnings() if held is not None else ())]
+    return tuple(dict.fromkeys(found))
+
+
 def _entry_defect(plan: EntryPlan, problem: str) -> Refusal:
     return entry_defect(plan.registered.cls, problem, context=f", building {plan.owner}")
 

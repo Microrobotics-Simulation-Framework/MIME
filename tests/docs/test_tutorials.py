@@ -64,6 +64,25 @@ def test_the_a0_tutorials_distance_is_the_standoff_plus_the_screws_depth_and_a_f
     assert depth == pytest.approx(1.0) and abs(excess - depth) < 0.5, (excess, depth)
 
 
+def declared_duration(source: str, name: str) -> str | None:
+    """The ``duration=`` the ``Experiment(name, ...)`` call in ``source`` declares, as written; ``None`` without one."""
+    import ast
+
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Experiment" and node.args and \
+                isinstance(node.args[0], ast.Constant) and node.args[0].value == name:
+            return next((ast.unparse(k.value) for k in node.keywords if k.arg == "duration"), None)
+    return None
+
+
+def test_the_a0_tutorials_experiment_declares_its_run_length_so_mime_run_on_its_saved_folder_needs_none():
+    """``mime run <folder>`` takes the length a saved experiment declares, and needs ``--duration`` for one that
+    declares none. The control: the same call with the declaration taken out declares none."""
+    source = (ROOT / "examples" / "tutorial_a0.py").read_text(encoding="utf-8")
+    assert declared_duration(source, "tutorial_a0") == "SHORT" and "built.run(SHORT" in source
+    assert declared_duration(source.replace(",\n                            duration=SHORT)", ")"), "tutorial_a0") is None
+
+
 @pytest.mark.parametrize("printed", ["150.0", "152.0"])
 def test_control_a_distance_the_depth_does_not_explain_fails(printed):
     """A distance that is not the standoff plus the depth is not explained by it; the arms are decided by the printed

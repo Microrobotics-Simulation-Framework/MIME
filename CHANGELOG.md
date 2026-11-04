@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Drag 0.4.0 moves the MRS rung's results against drag 0.3.0**, at the same written settings: the separated
+  quadrature (below) changes what `spacing` and `blob` resolve. A free 100 um steel sphere settling in water at
+  `spacing=um(20)`, `blob=0.5` moved from 0.03648 to 0.03566 m/s (-2.2%; its ratio to Stokes's law from 0.977 to
+  0.955, at a Reynolds number of 3.7, outside the rung's declared range, so neither says which is nearer the truth),
+  on the sphere 0.1.0 and 0.2.0 alike. The old forces are drag 0.3.0's point forces on the sphere 0.1.0's samples, and
+  both stay registered: `mime.interactions.KEPT[("drag", "0.3.0")][0].MRS(...)` with
+  `mime.scene.KEPT[("sphere", "0.1.0")][0](...)` gives 0.03648 m/s again (drag 0.3.0 on the sphere 0.2.0 gives
+  0.03621), and a folder saved with them loads and reproduces.
 - **Asset records travel with what needs them, and the library knows how to fetch a file, never what or from where.**
   One record type (`mime.assets.AssetRef`) serves every asset: beside its sha256, size, licence and locations it states,
   where known, its credit, role, kind (with a derived asset's derivation record by hash), notice, custom licences,
@@ -55,6 +63,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   part of the run, or a result written before the reduction.
 
 ### Fixed
+- **A frequency and an angular velocity are no longer taken for each other.** `Hz` and `rad_per_s` share a dimension
+  and differ by 2 pi, and the sites that take one checked the dimension alone: `commands={"frequency": rad_per_s(5.0)}`
+  ran as 5 Hz, and `State(angular_velocity=Hz(...))` as rad/s. Every site that takes a rate per second now says which
+  it counts (`mime.units.Frequency`, in Hz, or `mime.units.AngularVelocity`, in rad/s: a field's command, a motor's
+  prescribed velocity, `top_speed` and `initial_velocity`, an arm's `initial_velocities`, a body's initial
+  `angular_velocity`, a rate, a controller's write), and refuses the other kind in every profile with both
+  conversions to write (`setting.units`, `state.units`, `run.rate-units`, `controller.signal`); an entry that declares
+  a rate per second saying neither is refused at registration. A rad/s quantity prints in rad/s. Nothing a run
+  computes moves, and the saved form writes both as it did (`Hz`, the same SI number).
+- **Three input errors that gave a number are refused in every profile**: a dynamic viscosity of zero or less
+  (`value.not-positive`); a body whose centre starts outside the region the medium it is bound to fills
+  (`state.outside-region`, with the line that starts it on the region's axis); and a run that ends at or before an
+  observation's window starts (`run.window-past-end`), which read as a mean of zero; a run that keeps its history,
+  run for its states as `mime.testing`'s first steps are, is not held to it.
+- **A name 0.3.0 changed says so**: `Drag.BEM(...)` is refused naming `Drag.MRS` (`call.renamed`), and an entry made
+  without a required setting names it and why it has no default (`call.missing-setting`; `Screw` without `starts`,
+  which earlier development versions took as 2). The MRS rung's advice when a run stops on an indefinite resistance
+  with the body's hull on or through the wall gives the contact's margin that clears it at the spacing it ran with,
+  where it repeated that spacing. A traceback file names MIME's distribution and version, or the source tree it runs
+  from, where it said "mime not installed"; `strict`'s refusal says a later release.
+- **The documented installs pass `mime env check`.** `uv sync --locked` installs the dev group, and the check refused
+  the twenty distributions it adds as pinned by nothing (`env.unpinned`), and Hypothesis and sortedcontainers with the
+  `verify` extra. MIME's own extras that are no variant and its groups are pinned in
+  `mime/data/env/requirements-optional.txt`, the lock's export with them, held to the lock byte for byte like the
+  variants' files: the check accepts each of them installed at its pin, refuses one at another version (`env.pin`), and
+  requires none. A distribution in no file is refused as before.
+- **`mime visuals view` quotes its folder for a shell**, so a path with a space pastes whole, and `hello`'s `visuals`
+  carries that command for each missing set (`fetch`), as `docs/recordings.md` said it did. An arm's description's
+  warnings are given once each, at the line that built the experiment, where every read of the file gave them again
+  at MIME's own line (five times in one `mime run`); `mime`'s commands show them as `mime: warning: ...`, once each.
+  The A0 tutorial's experiment declares its run length, so `mime run` on its saved folder needs no `--duration`.
 - **The contact 0.4.0: the projection after the step chooses each group's point again in its second pass**
   (MIME-ANO-136). The contact 0.3.0's second pass held the points its first pass chose, at the pose the first left. A
   group can hold two of the body's local deepest points (a screw's rim and the crest pass beside it), and the first

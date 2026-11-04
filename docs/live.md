@@ -248,9 +248,9 @@ the view from `status` and the frames shows what these keys let it, and no more 
 `hello` returns MIME's version, the experiment's name and its hashes, the base step and the chunk in base steps, the
 controller (its entry, mode, period and latency) and its live inputs (each with its units, shape, meaning and
 `default`), the build report's summary (`report`, below), the path of the stage the session serves
-(`stage`), what the asset cache draws of its visuals (`visuals`: the overlay to add over the stage, and the visual sets
-it lacks, and every set's notice, its credit and terms, whether its meshes are drawn or not: see
-[recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema (`schema`), the commands,
+(`stage`), what the asset cache draws of its visuals (`visuals`: the overlay to add over the stage, the visual sets
+it lacks with the command that fetches each, `fetch`, and every set's notice, its credit and terms, whether its meshes
+are drawn or not: see [recordings](recordings.md)), the stage binding (`binding`), the topology, the frame schema (`schema`), the commands,
 and the status. `stage` is the path on the machine that serves the session: a client on another machine opens its own
 copy of the saved folder (the one it gave `mime serve`, or a `mime pull` of it) and checks it is the same experiment
 by `hashes`, the lock's.

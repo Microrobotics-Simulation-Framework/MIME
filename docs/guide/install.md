@@ -22,7 +22,9 @@ The README's install section gives the install line while MIME 0.3 is not releas
 
 `mime env check` holds the environment you are in to MIME's pins before a run: each distribution at its pinned version, no
 module imported from outside the environment, the devices JAX sees against the GPU you asked for. A GPU requested while JAX
-sees only a CPU is refused, because JAX would otherwise fall back without a word.
+sees only a CPU is refused, because JAX would otherwise fall back without a word. A checkout installed as CONTRIBUTING
+says, `uv sync --locked` with or without `--extra verify`, passes it: the dev group's tools and the `verify` extra are
+accepted at the versions MIME's lock pins, and refused at any other.
 
 <!-- mime-fragment: a shell line for an experiment folder the reader has; the command's flags are parsed against the CLI by mime docs check -->
 ```sh

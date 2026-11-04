@@ -772,6 +772,19 @@ class Drag(PointForceDrag):
     quadrature_refinement: int | None = None
     wall_refinement: int | None = None
 
+    @classmethod
+    def BEM(cls, **settings: Any) -> Self:  # noqa: N802 - the old rung's alias, refused by its name
+        """Refused, naming the new name: formerly the bem rung, renamed ``Drag.MRS`` in 0.3.0."""
+        from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+
+        written = ", ".join(f"{name}=..." for name in settings)
+        raise ArgumentRefused([Refusal(
+            "call.renamed", RefusalClass.USER,
+            "Drag.BEM is Drag.MRS since 0.3.0: the rung is the method of regularised Stokeslets, not a boundary-element "
+            "method, and the old name is kept for a true boundary-element rung; its settings are the same, and drag "
+            "0.4.0 moved its numbers (the changelog says by how much and how to keep the old ones)",
+            f"write Drag.MRS({written}) where Drag.BEM({written}) was written")])
+
     @override
     def default_spacing(self, ctx: PlanContext) -> Quantity | None:
         """The mrs rung's spacing when none is written: its family's (as 0.3.0's rule reads ``SEPARATED_SAMPLES``), and
