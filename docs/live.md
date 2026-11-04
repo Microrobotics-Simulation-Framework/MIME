@@ -213,7 +213,7 @@ JSON object with `protocol`, `ok` and `command`; on success the session's status
 `pace`, `recording`, `non_finite`; `stepping`, the chunks a step in hand has still to take; `activity`, what the
 session is doing, `compiling`, `stepping` or `idle`; and `pending`, the commands taken while a chunk runs that act at
 its end, in order; and three optional keys below); on a refusal,
-`errors`, each in the shape of [MIME's errors](errors.md): `code`, `class`, `message`, `why`, `action`, `where` and
+`errors`, each in the shape of [MIME's errors](reading_errors.md): `code`, `class`, `message`, `why`, `action`, `where` and
 `page`. A request a client gets wrong is refused with its code (an argument of the wrong type included: `live.step`,
 `live.input-value`, `live.record`, `live.pace`), and the session goes on; an error of MIME's own inside a command is
 answered in the same shape, the session going on. The server never stops for one peer's bytes: a peer that does not

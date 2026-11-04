@@ -16,7 +16,15 @@ page (`docs/platforms.md`) says what each operating system supports and what a t
 - **The `verify` extra** for `mime docs build` and MIME's own tests: it adds Hypothesis and MADDENING's verification
   harnesses. A script that builds and runs experiments needs neither.
 
-The README's install section gives the install line while MIME 0.3 is not released.
+MIME 0.3 is a pre-release, so pip installs it only when asked to, extras included:
+
+<!-- mime-fragment: an install line that downloads from PyPI, shown and not run by a check -->
+```sh
+pip install --pre "mime-engine[verify]"
+```
+
+A plain `pip install mime-engine` installs the earlier line, which these pages do not describe; `mime --version` says
+which you have.
 
 ## Checking an environment
 

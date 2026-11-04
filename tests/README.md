@@ -33,7 +33,8 @@
   sevenfold with every core busy.
 - `test_report_test_durations.py` and `duration_allowlist.txt`: the time budget's gate (see *The time budget*).
 - `test_licence.py`: the licence is the Apache-2.0 text, NOTICE names the copyright and the 0.2 line's licence, and
-  no other tracked file but the changelog names that licence, with a planted mention as the control.
+  no other tracked file but the changelog and its development records names that licence, with a planted mention
+  as the control.
 - `test_collection.py`: every test file under `tests/` is collected. pytest skips a folder named `build` by default,
   so `pyproject.toml` lists the folders to skip without it, and this test fails if one is ever left out again.
 - `test_lab_fixture.py`: an entry registered from outside MIME, by the [lab fixture package](../lab_fixture/), builds
@@ -344,7 +345,12 @@
   - `test_body_side.py`: phase 1 on the body side's declarations: declared values, the tube and its typed paths,
     fills, directions by reference, contact's binding and its reserved rung, commands and drives, the body's initial
     state, each refusal with what to write.
-- `saved/`, the saved form (float64, as `build/`):
+- `saved/`, the saved form (float64, as `build/`). Its folders of earlier forms (`previous/`, `form5/`,
+  `stage_writers/`, `current/`) were written by MIME at earlier commits and are frozen, but for the version they record:
+  at each release's version bump `restamp_version.py` stamps the new version into them and recomputes the lock's
+  `document` and `input` hashes it moves, after checking that it reproduces the stored hashes first, and refuses a
+  change to anything else (the `derived` and `observations` hashes included). Without it, a load under the new version
+  refuses every one (`load.input-hash`, the version being in the input hash):
   - `test_registry_walk.py`: every registered entry and kind of thing has a round-trip case in `cases.py`, and every
     case round-trips through a fresh process with the same derived hash and bitwise-identical first steps; its
     controls remove each load-bearing case and add an entry with none. Each case's parameter leaves reach its step;
@@ -438,7 +444,9 @@
     control, a law with +z in its code, fails it on every rotation tried, far above the tolerance.
 - `examples/` (phase 7l-c, the first run), each running what a new user runs, as written: `test_readme.py` extracts
   the README's quickstart and executes it in a temporary directory, runs the `mime pending` command the README gives on
-  the folder it saved, and holds the install section's distribution, extras and branch to the project's own;
+  the folder it saved, holds the install section's distribution, extras and pre-release flag to the project's own,
+  and every link to a file at this release's tag or a page of its documentation, since PyPI resolves no relative
+  link;
   `test_sphere_settling.py` and `test_screw_in_tube.py` run the two examples at their starting sizes and hold the
   screw's speed to its row of `docs/data/spacing_tables.json` and its inertia to what the build's refusal prints. They
   bound that each example builds, runs and gives the number its table states; the screw's number is no accuracy claim.

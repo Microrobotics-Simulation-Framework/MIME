@@ -203,42 +203,42 @@
  "entries": [
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "drive",
    "name": "drive.constant",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "dynamics",
    "name": "rigid_inertial",
    "version": "0.2.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "field provider",
    "name": "uniform_rotating",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "gravity",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "magnetic.torque",
    "version": "0.1.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "observation",
    "name": "swim_speed",
    "version": "0.1.0"
@@ -256,7 +256,7 @@
   "jaxlib": "0.12.0.1",
   "maddening": "0.4.2",
   "matmul_precision": null,
-  "mime": "0.3.0.dev0",
+  "mime": "0.3.0.dev1",
   "openmaterica": "0.1.0.dev3",
   "platform": "linux-x86_64",
   "prng": "threefry2x32 (jax_threefry_partitionable=True)",
@@ -269,8 +269,8 @@
  },
  "hashes": {
   "derived": "sha256:a0025c72094d60f246507f209dd0149d048395ff1ad89d40147a75c3ce549341",
-  "document": "sha256:7c32e0a2c7517482e3bd5b7b80865570bdeca844e489fdef8c5e2752ee10621d",
-  "input": "sha256:0fe38a870cfa5b9f0b26c2b81d4704a8b06b0cc45c38d4ffbd1e062dc8a5af69",
+  "document": "sha256:7f4ed4f4289cba6d5e12387fe4786e61e565fb47842ab4b67f99c97c7ac03ed2",
+  "input": "sha256:1ed9827510f12f0b253b3c543fec29f9a7d5edf144eea0eea0a57dda254971bc",
   "observations": "sha256:1f45c27729c71852133ff8fd8ca33ffe3cd9dcf92baff20c5c64816304162b23",
   "recipe": "mime.hash/1"
  },
@@ -877,7 +877,7 @@
    }
   },
   "vocabulary": {
-   "mime": "0.3.0.dev0"
+   "mime": "0.3.0.dev1"
   }
  },
  "schema": "mime.lock/1",

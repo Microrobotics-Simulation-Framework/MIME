@@ -1,0 +1,33 @@
+{
+  "title": "MIME: MIcrorobotics Multiphysics Engine",
+  "upload_type": "software",
+  "description": "<p>MIME is a JAX library for simulating field-actuated microrobots: an experiment is declared as a scene of bodies, media, fields and the laws between them, and built into a MADDENING graph.</p><p>This is a development pre-release of the 0.3 line, a rewrite of MIME on MADDENING 0.4. It simulates magnetically actuated bodies; acoustic actuation is planned for a later release. Its API, saved form and results may change before 0.3.0, and the limits its entries declare are statements, not measurements: the documentation's scope page says what it claims and what it does not. It is research software, not a medical device, and not intended for clinical use.</p>",
+  "creators": [
+    {
+      "name": "Roy, Nicholas Ehsan",
+      "affiliation": "Microrobotics Simulation Framework"
+    }
+  ],
+  "license": "Apache-2.0",
+  "keywords": [
+    "microrobotics",
+    "field-actuated microrobots",
+    "magnetic actuation",
+    "acoustic actuation",
+    "simulation",
+    "JAX"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/Microrobotics-Simulation-Framework/MIME",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://microrobotica.org/mime/",
+      "relation": "isDocumentedBy",
+      "scheme": "url"
+    }
+  ]
+}
