@@ -107,7 +107,7 @@ from mime.vocabulary import JOINT_VELOCITIES
 
 if TYPE_CHECKING:
     from mime.live import LiveSession
-    from mime.viz import RecordingSettings, StageSamples
+    from mime.viz import RecordingSettings, StageSamples, WebPage
 
 type History = dict[str, dict[str, np.ndarray]]
 
@@ -568,6 +568,12 @@ class RunWritten:
     recording: Path | None = None
     #: Set when the run was ended before the steps it was asked for (``stop=``): why, and the steps asked for.
     stopped: Stopped | None = None
+
+    def view(self, *, offline: bool = False, caption: str | None = None) -> WebPage:
+        """The run's view as a notebook shows it: ``mime.viz.display`` of its folder."""
+        from mime.viz import display
+
+        return display(self.record_file.parent, offline=offline, caption=caption)
 
 
 def run_layout(plans: PlanSet) -> Layout:
