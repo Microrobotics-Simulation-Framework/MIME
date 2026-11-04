@@ -38,6 +38,9 @@ if sys.platform != "win32":
 
 pytestmark = [needs_pty, pytest.mark.own_child_cache]
 HANG = 600
+#: How long, once the child has exited, the reader has to take what it wrote and see the terminal report its end: a guard
+#: against a descriptor that something else holds open, not a bound on the reading (which ends with the terminal's end).
+END_WITHIN = 30.0
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +80,6 @@ class Served:
             env=child_environment(home, **(env or {})), cwd=tmp, close_fds=True, start_new_session=True)
         os.close(slave)
         self._open = True
-        self._last = time.monotonic()
         self._reader = threading.Thread(target=self._read, daemon=True)
         self._reader.start()
         self.piped: tuple[str, str] | None = None
@@ -107,7 +109,6 @@ class Served:
                 return
             with self._lock:
                 self._held += more
-                self._last = time.monotonic()
 
     @property
     def tty(self) -> str:
@@ -133,8 +134,11 @@ class Served:
     def finish(self, limit: float | None = None) -> tuple[str, str, int]:
         """Wait for the exit; what the pipes received (empty for a terminal) and the exit code."""
         out, err = self.process.communicate(timeout=HANG if limit is None else limit)
-        while time.monotonic() - self._last < 0.5:  # what the child wrote last is still on its way through the terminal
-            time.sleep(0.05)
+        # What the child wrote last is in the terminal, not yet in ``tty``, and a quiet spell does not say it has arrived (a
+        # reader that a loaded machine held up for longer than the spell lost the end: "the live region is gone"). The
+        # event is the terminal's own end, which the reader returns on once it has taken everything before it. A reader
+        # that was stopped on purpose (``stop_reading``) is already over, and this returns at once.
+        self._reader.join(timeout=END_WITHIN)
         self._open = False
         self._reader.join(timeout=2)
         return (out or b"").decode("utf-8"), (err or b"").decode("utf-8"), self.process.returncode

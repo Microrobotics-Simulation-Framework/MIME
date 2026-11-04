@@ -62,7 +62,7 @@ from hypothesis.extra.numpy import arrays
 
 import multibody_cases as cases
 from mime.core import quaternion
-from mime.core.multibody import gravity_forces, inverse_dynamics, mass_matrix, read_urdf
+from mime.core.multibody import forward_dynamics, gravity_forces, inverse_dynamics, mass_matrix, read_urdf
 from mime.core.multibody._kinematics import body_poses, constants
 from mime.nodes.actuation import DynamicArmNode
 
@@ -171,10 +171,12 @@ GIFT = 4.0
 
 
 @st.composite
-def runs(draw, name):
+def runs(draw, name, at_a_stop: bool | None = None):
     """A start within the middle half of each joint's range, a speed of at least a tenth of ``SPEED`` on each joint,
-    so that the arm moves and gravity works on it, and torques of the joint's own scale; on half the draws, one joint
-    starts near a stop, turning into it and pushed into it, 10 to 50 % of the run's travel at its speed away."""
+    so that the arm moves and gravity works on it, and torques of the joint's own scale. On half the draws one joint
+    starts near a stop, turning into it and pushed into it, 10 to 50 % of the run's travel at its speed away.
+    ``at_a_stop`` fixes that half: false for none, true for every draw, and then built so that the run reaches the stop
+    (see :func:`into_a_stop`) and the test that needs a stop to be reached throws no draw away."""
     tree = TREES[name]
     a = tree.articulation
     lower, upper = np.maximum(a.lower, -math.pi), np.minimum(a.upper, math.pi)
@@ -185,12 +187,37 @@ def runs(draw, name):
     speed = draw(unit)
     qd0 = SPEED * np.sign(speed + 0.5) * (0.1 + 0.9 * np.abs(speed))
     tau = ACCELERATION * inertia * draw(unit)
-    if draw(st.booleans()):
+    if at_a_stop:
+        joint = draw(st.integers(0, a.dofs - 1))
+        side = draw(st.sampled_from([-1.0, 1.0]))
+        into_a_stop(tree, q0, qd0, tau, joint, side, draw(st.floats(0.1, 0.5)), lower, upper)
+    elif at_a_stop is None and draw(st.booleans()):
         joint = draw(st.integers(0, a.dofs - 1))
         side = draw(st.sampled_from([-1.0, 1.0]))
         q0[joint] = (upper if side > 0 else lower)[joint] - side * abs(qd0[joint]) * HORIZON * draw(st.floats(0.1, 0.5))
         qd0[joint], tau[joint] = side * abs(qd0[joint]), side * abs(tau[joint])
     return name, q0, qd0, tau
+
+
+def into_a_stop(tree, q0, qd0, tau, joint: int, side: float, fraction: float, lower, upper) -> None:
+    """Turn ``joint`` toward the stop on ``side`` and push it there so that the run reaches it, in place: the speed along
+    ``side``, the torque raised until the joint's own acceleration at the start (``M^-1 (tau - damping qd - h)``, with the
+    weight and the others' coupling in ``h``, taken at the stop) is at least ``ACCELERATION`` toward the stop, and the
+    joint put ``fraction`` of the run's travel from it. A torque that only has the sign of the stop can be outweighed by
+    the weight or the coupling, and then the joint is carried away from it (a third to a half of such draws reached no
+    stop at all, so the test that needs one threw them away)."""
+    a = tree.articulation
+    stop = float((upper if side > 0 else lower)[joint])
+    damping = np.asarray([tree.joint(n).damping for n in a.dof_names])
+    q0[joint], qd0[joint] = stop, side * abs(qd0[joint])
+    at_stop = jnp.asarray(q0)
+    qdd = np.asarray(forward_dynamics(a, at_stop, jnp.asarray(qd0), jnp.asarray(tau - damping * qd0), GRAVITY))
+    towards = side * qdd[joint]
+    if towards < ACCELERATION:
+        compliance = float(np.linalg.inv(np.asarray(mass_matrix(a, at_stop)))[joint, joint])
+        tau[joint] += side * (ACCELERATION - towards) / compliance
+        towards = ACCELERATION
+    q0[joint] = stop - side * (abs(qd0[joint]) * HORIZON + 0.5 * towards * HORIZON ** 2) * fraction
 
 
 class Found(NamedTuple):
@@ -275,7 +302,7 @@ def test_control_the_arm_with_its_gravity_dropped_fails_the_balance_on_every_dra
 
 
 @PROPERTY
-@given(st.sampled_from(sorted(TREES)).flatmap(runs))
+@given(st.sampled_from(sorted(TREES)).flatmap(lambda name: runs(name, at_a_stop=True)))
 def test_control_a_stop_that_gives_energy_fails_the_balance_on_every_draw(drawn):
     """A run that reaches a stop at all three step sizes, with a residual the rounding does not hide (a gift of
     ``GIFT`` times the unplanted run's largest at any of its step sizes, well above ``ROUNDING`` units in the last place
@@ -286,7 +313,8 @@ def test_control_a_stop_that_gives_energy_fails_the_balance_on_every_draw(drawn)
     only a residual above the integrator's own, could not see it: the plant below the oracle's resolution."""
     name, q0, qd0, tau = drawn
     plain = orders(BALANCES[name], q0, qd0, tau)
-    assume(all(at_stops > -math.inf for at_stops in plain.stops) and plain.largest > 1e3 * ROUNDING * EPS * plain.scale)
+    assert all(at_stops > -math.inf for at_stops in plain.stops), f"{name}: the draw was built to reach a stop: {plain.stops}"
+    assert plain.largest > 1e3 * ROUNDING * EPS * plain.scale, f"{name}: a residual the rounding hides: {plain.largest}"
     planted = orders(GIVERS[name], q0, qd0, tau, GIFT * plain.peak)
     assert stops_not_falling(planted), f"{name}: at the stops, at each step size, {planted.stops}"
 
