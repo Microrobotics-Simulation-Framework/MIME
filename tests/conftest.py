@@ -77,8 +77,10 @@ def pytest_configure(config: pytest.Config) -> None:
 
         _jax_timing.register(config)
     import _child_cache
+    import _collection_guard
 
     config.pluginmanager.register(_child_cache, "mime-child-cache")
+    config.pluginmanager.register(_collection_guard, "mime-collection-guard")
 
 
 MEMORY_HEAVY = "memory_heavy"

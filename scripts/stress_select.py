@@ -30,7 +30,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 DEFAULT_RUNS, MAX_RUNS = 20, 40
 SUPPORTED_PYTHONS = ("3.12", "3.13", "3.14")
@@ -91,6 +91,14 @@ def parse_description(body: str) -> tuple[list[str], dict[str, str], bool]:
     return listed, options, only
 
 
+def in_directory_order(targets: list[str]) -> list[str]:
+    """``targets`` with each directory's files together, the directories in tree order; the order within a directory is
+    kept. pytest 9.1.1 loses a directory's conftest fixtures (``tests/saved``'s ``x64``) for the files it meets the
+    directory with again after a file of a directory above it, which a listed target, then a changed file elsewhere, then
+    another changed file of the first's directory would do (``tests/_collection_guard.py``)."""
+    return sorted(targets, key=lambda target: PurePosixPath(target.split("::", 1)[0]).parts[:-1])
+
+
 def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_seed: Callable[[], int]) -> Request:
     """The stress run a description and a diff ask for; ``exists`` says whether a listed file is in the checkout."""
     listed, options, only = parse_description(body)
@@ -100,7 +108,8 @@ def select(body: str, changed: list[str], exists: Callable[[str], bool], fresh_s
             raise Refused(f"{token!r} is not a test file or node id under tests/ (options are runs=, python=, seed=, only)")
         if not exists(found.group("file")):
             raise Refused(f"{found.group('file')} is not in this checkout")
-    targets = list(dict.fromkeys(listed + ([] if only else sorted(p for p in changed if CHANGED_TEST.fullmatch(p)))))
+    chosen = dict.fromkeys(listed + ([] if only else sorted(p for p in changed if CHANGED_TEST.fullmatch(p))))
+    targets = in_directory_order(list(chosen))
     if not targets:
         raise Refused("nothing to run: the pull request changes no tests/**/test_*.py and its description lists none "
                       "(a line `stress: <path or node id> ...`)")

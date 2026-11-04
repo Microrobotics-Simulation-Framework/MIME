@@ -83,6 +83,11 @@ JAX_PLATFORMS=cpu uv run python -m pytest
 uv run python scripts/typing_check.py    # pyright, strict over src/mime, at zero errors
 ```
 
+When you name test files, name each directory's files together (`sorted` does it): pytest 9.1.1 drops a directory's
+`conftest.py` fixtures when a run reaches the directory again after a file of the directory above it, which ran
+`tests/saved` without its float64 mode. The run is refused, naming the fixture, when that happens
+(`tests/_collection_guard.py`); a run with no path never meets it.
+
 ## CI: how many shards
 
 CI runs each test lane (`default` on three Pythons, `maddening-main` and `openmaterica-main`) as several shard jobs,

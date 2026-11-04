@@ -4,10 +4,11 @@ workflow's wiring, read from the file, each control planting one break in a copy
 
 import copy
 import importlib.util
+import itertools
 import json
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
@@ -33,16 +34,17 @@ def ask(body: str = "", changed: list[str] | None = None, seed: int = 99) -> str
 def test_the_changed_tests_are_the_default_selection():
     request = ask(changed=["src/mime/a.py", "tests/test_x.py", "tests/oracles/test_spinner.py", "tests/conftest.py",
                            "tests/oracles/helper.py", "docs/test_not_here.py", "tests/data/test_notes.txt"])
-    assert request.targets == ("tests/oracles/test_spinner.py", "tests/test_x.py")
+    assert request.targets == ("tests/test_x.py", "tests/oracles/test_spinner.py")
     assert (request.runs, request.python, request.seed) == (20, "3.12", 99)
 
 
 def test_a_stress_line_adds_to_the_changed_tests_and_only_replaces_them():
     body = "Fixes it.\n\nstress: tests/oracles/test_spinner.py tests/test_x.py::test_y[a-1] runs=30 python=3.14 seed=7\n"
     request = ask(body, changed=["tests/test_x.py"])
-    assert request.targets == ("tests/oracles/test_spinner.py", "tests/test_x.py::test_y[a-1]", "tests/test_x.py")
+    assert request.targets == ("tests/test_x.py::test_y[a-1]", "tests/test_x.py", "tests/oracles/test_spinner.py")
     assert (request.runs, request.python, request.seed) == (30, "3.14", 7)
-    assert ask(body + "stress: only\n", changed=["tests/test_x.py"]).targets == request.targets[:2]
+    assert ask(body + "stress: only\n", changed=["tests/test_x.py"]).targets == (
+        "tests/test_x.py::test_y[a-1]", "tests/oracles/test_spinner.py")
 
 
 def test_the_line_is_read_as_a_markdown_author_writes_it():
@@ -102,6 +104,30 @@ def test_whatever_the_description_says_the_result_is_a_valid_request_or_a_refusa
     assert request.targets
     assert all(stress.TARGET.fullmatch(t) and ".." not in t for t in request.targets)
     assert 1 <= request.runs <= 40 and request.python in stress.SUPPORTED_PYTHONS and 0 <= request.seed < 2**31
+
+
+def revisited(targets: tuple[str, ...]) -> list[str]:
+    """The directories whose files are not together in ``targets``."""
+    runs = [directory for directory, _ in itertools.groupby(str(PurePosixPath(t.split("::")[0]).parent) for t in targets)]
+    return sorted({directory for directory in runs if runs.count(directory) > 1})
+
+
+def test_a_directorys_files_are_run_together_whatever_order_they_are_listed_and_changed_in():
+    """pytest 9.1.1 drops a directory's conftest fixtures the second time a run reaches it after a file of a directory
+    above it (tests/_collection_guard.py): ``tests/saved``'s float64 mode was lost to 89 tests that way. The planted
+    order is the one that did it."""
+    body = "stress: tests/oracles/test_spinner.py tests/test_x.py tests/oracles/test_dynamic_motor.py"
+    assert revisited(("tests/oracles/test_spinner.py", "tests/test_x.py", "tests/oracles/test_dynamic_motor.py")) == [
+        "tests/oracles"]
+    request = ask(body, changed=["tests/test_x.py"])
+    assert revisited(request.targets) == []
+    assert request.targets == ("tests/test_x.py", "tests/oracles/test_spinner.py", "tests/oracles/test_dynamic_motor.py")
+
+
+@given(st.lists(st.sampled_from(["tests/test_x.py", "tests/oracles/test_spinner.py", "tests/oracles/test_dynamic_motor.py",
+                                 "tests/test_x.py::test_y[a]"]), min_size=1))
+def test_no_listing_brings_a_directory_back_after_another(listed):
+    assert revisited(ask("stress: " + " ".join(listed), changed=["tests/test_x.py"]).targets) == []
 
 
 @given(st.lists(st.sampled_from(["tests/test_x.py", "tests/oracles/test_spinner.py", "runs=7", "only", "python=3.13"])))

@@ -1074,9 +1074,11 @@ def test_the_conftest_records_each_tests_own_and_its_childrens_cpu_time(gate, tm
     project = tmp_path / "project"
     project.mkdir()
     (project / "conftest.py").write_bytes((REPO_ROOT / "tests" / "conftest.py").read_bytes())
-    (project / "_child_cache.py").write_bytes((REPO_ROOT / "tests" / "_child_cache.py").read_bytes())
+    for helper in ("_child_cache.py", "_collection_guard.py"):
+        (project / helper).write_bytes((REPO_ROOT / "tests" / helper).read_bytes())
     (project / "test_spends.py").write_text(_SPENDS)
-    # Without CI's MIME_TEST_JAX_TIMING: its plugin is not in the scratch project; the conftest imports the child-cache one.
+    # Without CI's MIME_TEST_JAX_TIMING: its plugin is not in the scratch project; the conftest imports the child-cache
+    # and collection-guard ones.
     env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS" and not k.startswith("MIME_TEST_")}
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--junitxml=r.xml",
