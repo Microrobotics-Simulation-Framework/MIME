@@ -39,7 +39,7 @@ Those lines are declared, and nothing checks a step against them: the build does
 inside the limits that are stated is not thereby shown to run. A run that ends with a state that is not finite is
 `run.non-finite`. It names the first step, thing and field only where the run kept every step's state (`history=True`);
 with only the series it recorded it names which of them went non-finite, and with neither it says the first step is not
-known. This tutorial's runs record one series and keep no history ([reading an error](../errors.md)). If your own step
+known. This tutorial's runs record one series and keep no history ([reading an error](../reading_errors.md)). If your own step
 does that, shorten it, and read the `limits` lines of the report before suspecting anything else.
 
 ## The world, the body and the field

@@ -54,7 +54,7 @@ The version of the vocabulary of each namespace the experiment's entries use, as
 
 ## `refusals`
 
-The refusals the build met, each a MIME error with a code that says what to change ([reading an error](../errors.md)). The
+The refusals the build met, each a MIME error with a code that says what to change ([reading an error](../reading_errors.md)). The
 summary prints `refusals: none` for a build that succeeded.
 
 ## `run`

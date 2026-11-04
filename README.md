@@ -96,7 +96,7 @@ this release, `git clone --branch v0.3.0.dev1 https://github.com/Microrobotics-S
 - [The user guide](https://microrobotica.org/mime/0.3.0/pages/guide/index): install and environment, tutorials A and A0, reading a build report,
   the command line, and scope and limits.
 - [Reading a run's results](https://microrobotica.org/mime/0.3.0/pages/results): outputs by name with units, windows, flags, the exports.
-- [Reading an error](https://microrobotica.org/mime/0.3.0/pages/errors), and [the profiles](https://microrobotica.org/mime/0.3.0/pages/profiles), the path from exploring to
+- [Reading an error](https://microrobotica.org/mime/0.3.0/pages/reading_errors), and [the profiles](https://microrobotica.org/mime/0.3.0/pages/profiles), the path from exploring to
   sealing.
 - [`examples/script_a.py`](https://github.com/Microrobotics-Simulation-Framework/MIME/blob/v0.3.0.dev1/examples/script_a.py) is script A, a screw in a tube of water, with records.
 
