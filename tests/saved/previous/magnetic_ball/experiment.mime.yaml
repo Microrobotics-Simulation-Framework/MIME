@@ -1,5 +1,5 @@
 schema: mime.document/1
-mime: 0.3.0.dev0
+mime: 0.3.0.dev1
 experiment: magnetic_ball
 run:
   dt:

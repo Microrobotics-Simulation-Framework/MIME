@@ -125,14 +125,14 @@
  "entries": [
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "dynamics",
    "name": "rigid_inertial",
    "version": "0.2.0"
   },
   {
    "distribution": "mime-engine",
-   "distribution_version": "0.3.0.dev0",
+   "distribution_version": "0.3.0.dev1",
    "kind": "interaction",
    "name": "drag",
    "version": "0.3.0"
@@ -150,7 +150,7 @@
   "jaxlib": "0.12.0.1",
   "maddening": "0.4.2",
   "matmul_precision": null,
-  "mime": "0.3.0.dev0",
+  "mime": "0.3.0.dev1",
   "openmaterica": "0.1.0.dev3",
   "platform": "linux-x86_64",
   "prng": "threefry2x32 (jax_threefry_partitionable=True)",
@@ -163,8 +163,8 @@
  },
  "hashes": {
   "derived": "sha256:8a4b6c2a59f4654394d8f7f632f53519c07500d2684227a754cf49dcaa1ce512",
-  "document": "sha256:a7715610403e4e44b163322093ae04b2296d2b1d17cfe84db7e35b30b40a6fa4",
-  "input": "sha256:ab9577456548cefa02d7f9fe953198bb74842b75f4184d7f0820e1802b27229a",
+  "document": "sha256:223bf5976d42956929940d6ede1081dd0ece3911d1b778668b025b98dd1a3792",
+  "input": "sha256:d083733aa7b3e597e2230a6010a67817ad59aee0f0b1c4cd60cd21c314dac2ad",
   "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
   "recipe": "mime.hash/1"
  },
@@ -400,7 +400,7 @@
    }
   },
   "vocabulary": {
-   "mime": "0.3.0.dev0"
+   "mime": "0.3.0.dev1"
   }
  },
  "schema": "mime.lock/2",
