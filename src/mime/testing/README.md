@@ -102,6 +102,19 @@ Also:
   interaction, and every one in a family passes its whole suite.
 
 Also:
+- **the closed-loop case** (`CaseKind.CLOSED_LOOP`), for a family whose laws together are the derivative of an energy in
+  a static field (`Family.loop`, a `WorkLoop`): the law, with the members that complete it (`together=`: a magnetic
+  torque's force), built in the family's loop rig from each draw, does no net work round closed loops of the body's pose
+  (`Loop`: a turn about an axis, a translation, or both), the pose prescribed and the provider and the laws' nodes
+  evaluated as the graph's step does (`loop_works`). Each loop's work is summed by the periodic trapezoid rule at
+  `LOOP_POINTS` points and judged within the rule's error, estimated from every other point, plus a rounding floor
+  (`LOOP_ROUNDINGS` times the work's movement when every input of the laws' nodes is nudged as the other cases' floors
+  nudge it); no absolute part. The magnetic family's (`magnetic_loop_rig`, `magnetic_loop_draws`) draws a point dipole's
+  place, direction and moment, the body's moment and its magnet's centroid (zero among them), and four loops a draw. A
+  kept version known to fail a case says so in its family case, by the anomaly that records it, and the walk requires it
+  to fail (the magnetic laws 0.1.0, MIME-ANO-137, whose control is in `tests/oracles/test_closed_loop.py`).
+
+Also:
 - **rounding floors per field and per part.** Each field a law delivers has its own floor, and a composite one
   (`parts_of`: a pose's position and its quaternion, a pair of vectors' two, an operator's four blocks) a floor per
   part, each from that part's own movement under the 64-ulp nudge; each input part is nudged on the scale of its own

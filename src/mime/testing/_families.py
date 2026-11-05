@@ -84,6 +84,7 @@ class CaseKind(Enum):
     SWAP = "swap"
     EQUAL_AND_OPPOSITE = "equal and opposite"
     NODES = "nodes"
+    CLOSED_LOOP = "closed loop"
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,50 @@ def opposes(delivered: At, reading: At, *, rtol: float = 1e-6) -> SignRule:
 
 
 @dataclass(frozen=True)
+class Loop:
+    """A closed loop of a body's pose, ``t`` from 0 to ``2 pi``: its position ``centre + across cos t + along sin t``
+    and its orientation ``start`` turned by ``t`` about ``axis`` (a unit vector in the world, or zero for none), so
+    that its world angular velocity is ``axis`` and its velocity ``-across sin t + along cos t``, each per unit of
+    ``t``."""
+
+    centre: tuple[float, float, float]
+    across: tuple[float, float, float]
+    along: tuple[float, float, float]
+    axis: tuple[float, float, float]
+    start: tuple[float, float, float, float]
+
+    def poses_and_rates(self, t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """The pose at each ``t`` (``(n, 7)``, position then ``(w, x, y, z)``) and its rate (``(n, 6)``, the velocity
+        then the angular velocity), in float64."""
+        centre, across, along, axis = (np.asarray(v, dtype=np.float64) for v in (self.centre, self.across,
+                                                                                    self.along, self.axis))
+        cos, sin = np.cos(t)[:, None], np.sin(t)[:, None]
+        position = centre + across * cos + along * sin
+        velocity = -across * sin + along * cos
+        w2, x2, y2, z2 = np.asarray(self.start, dtype=np.float64)
+        turn = np.concatenate([np.cos(t / 2)[:, None], np.sin(t / 2)[:, None] * axis], axis=1) \
+            if float(np.linalg.norm(axis)) > 0.0 else np.tile([1.0, 0.0, 0.0, 0.0], (len(t), 1))
+        w1, x1, y1, z1 = turn.T
+        orientation = np.stack([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                                w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2], axis=1)
+        return np.concatenate([position, orientation], axis=1), np.concatenate([velocity, np.tile(axis, (len(t), 1))],
+                                                                               axis=1)
+
+
+@dataclass(frozen=True)
+class WorkLoop:
+    """The closed-loop case's setting, for a family whose laws together are the derivative of an energy in a static
+    field. ``rig(laws, drawn)`` is the smallest experiment holding ``laws`` (the law under test with the members that
+    complete it) on the body named ``body`` in a static field, built from one draw of ``draws()``, a Hypothesis
+    strategy; ``loops(drawn)`` are the closed loops of the body's pose that draw drives it round."""
+
+    rig: Callable[[Sequence[Interaction], Any], Experiment]
+    draws: Callable[[], Any]
+    loops: Callable[[Any], Sequence[Loop]]
+    body: str
+
+
+@dataclass(frozen=True)
 class Family:
     """What every law of a family satisfies, and the cases that check it.
 
@@ -144,7 +189,9 @@ class Family:
     ``uniform_along`` lists displacements of the rig's world along which its setup is uniform (along a straight
     tube's axis): moving every point the law reads by one leaves what it delivers unchanged but for the points it
     delivers, which move with it. ``linear_in`` names the members of ``material`` that what a law delivers is
-    proportional to (a resistance to the medium's viscosity): changed by half, the response changes by half."""
+    proportional to (a resistance to the medium's viscosity): changed by half, the response changes by half. ``loop``
+    sets the closed-loop case: the laws that together derive from an energy do no net work round a closed loop of the
+    body's pose in a static field."""
 
     name: str
     rig: Callable[[Interaction], Experiment]
@@ -159,6 +206,7 @@ class Family:
     frame_constants_held: tuple[str, ...] = ()
     uniform_along: tuple[tuple[float, float, float], ...] = ()
     linear_in: tuple[str, ...] = ()
+    loop: WorkLoop | None = None
 
 
 _families: dict[str, Family] = {}
@@ -752,6 +800,168 @@ def check_equal_and_opposite(probe: Probe, family: Family, max_examples: int) ->
     return _sampled(probe, family, "equal and opposite", balanced, max_examples)
 
 
+#: How many points the closed-loop case evaluates round each loop, equally spaced in ``t``: the periodic trapezoid
+#: rule, whose error on a loop's smooth periodic work falls geometrically with the count (its order is shown in
+#: MIME's ``tests/families/test_closed_loop.py``); every other point gives the rule at half the count, whose
+#: difference from the whole bounds the whole's quadrature error.
+LOOP_POINTS = 64
+#: The rounding floor's multiple of how far the work moves when every input of the laws' nodes moves by 64 units in
+#: its last place (as the other cases' floors).
+LOOP_ROUNDINGS = 4
+
+
+@dataclass(frozen=True)
+class LoopWork:
+    """The work done on a body round one closed loop of its pose, by the periodic trapezoid rule at ``LOOP_POINTS``
+    points (``work``) and at every other one (``coarse``), with the sum of its terms' magnitudes (``summed``, what the
+    work cancels against) and its rounding floor (``floor``: ``LOOP_ROUNDINGS`` times the terms' movement under the
+    64-ulp nudge of every input of the laws' nodes, on the scale of those inputs, so a term that cancels to zero is
+    judged on the scale it came from). It holds where the work is within the quadrature's error, estimated as the
+    whole rule's difference from the half's, plus the floor: no absolute part."""
+
+    work: float
+    coarse: float
+    summed: float
+    floor: float
+
+    @property
+    def tolerance(self) -> float:
+        return abs(self.work - self.coarse) + self.floor
+
+    @property
+    def holds(self) -> bool:
+        return abs(self.work) <= self.tolerance
+
+    def describe(self) -> str:
+        return (f"work {self.work:.6g} J, {abs(self.work) / self.summed if self.summed else 0.0:.3g} of the summed |W| "
+                f"{self.summed:.6g} J, against a tolerance of {self.tolerance:.3g} J (quadrature "
+                f"{abs(self.work - self.coarse):.3g}, rounding floor {self.floor:.3g})")
+
+
+def _nudged_jnp(value: Any, interface: str | None, eps: float, parity: int) -> Any:
+    """``value`` with each component moved by 64 units in the last place of the largest magnitude in its part
+    (:func:`parts_of`), in alternating directions, in JAX so that it maps over a batch."""
+    held = jnp.asarray(value)
+    shape = tuple(int(n) for n in held.shape)
+    signs = jnp.asarray(np.resize([1.0, -1.0] if parity % 2 == 0 else [-1.0, 1.0], shape), dtype=held.dtype)
+    magnitude = jnp.zeros(shape, dtype=held.dtype)
+    for part in parts_of(interface, shape):
+        magnitude = magnitude.at[part].set(jnp.max(jnp.abs(held[part])))
+    return held + 64 * eps * magnitude * signs
+
+
+def loop_works(built: BuiltExperiment, laws: Sequence[Interaction], body: str, loops: Sequence[Loop], *,
+               points: int = LOOP_POINTS) -> list[LoopWork]:
+    """The work ``laws``, as ``built`` holds them, do on the body ``body`` round each of ``loops``: the pose
+    prescribed, its twist the dynamics' initial one, every node the laws read through (the field's provider) and the
+    laws' own nodes evaluated from it as the graph's step does, and the wrenches they deliver into the body's applied
+    wrench summed, each term ``W . V`` with ``V`` the loop's rate."""
+    plans = [_planned(built, law) for law in laws]
+    if any(plan is None for plan in plans):
+        raise ValueError(f"the rig does not hold every one of {[law.label() for law in laws]}")
+    held_plans = [cast(EntryPlan, plan) for plan in plans]
+    own = [name for plan in held_plans for name in plan.node_names()]
+    read_from = {read.node for plan in held_plans for read in plan.reads.values() if read.slot is not None}
+    targets = {(target.node, target.field) for plan in held_plans for target in plan.delivers.values()
+               if target.interface == vocabulary.APPLIED_WRENCH.name and target.thing == body}
+    poses = {read.node for plan in held_plans for read in plan.reads.values()
+             if read.interface == vocabulary.POSE.name and read.slot is None}
+    if len(poses) != 1 or not targets:
+        raise ValueError(f"the laws read no one pose of {body!r} or deliver into no applied wrench of it")
+    (body_node,) = poses
+    graph = built.graph
+    order = [name for name in graph.schedule if name in own or name in read_from]
+    edges = cast(list[dict[str, Any]], graph_config(graph)["edges"])
+    incoming = {name: [(e["source_node"], e["source_field"], e["target_field"]) for e in edges
+                       if e["target_node"] == name] for name in order}
+    delivered = [(e["source_node"], e["source_field"]) for e in edges
+                 if (e["target_node"], e["target_field"]) in targets and e["source_node"] in own]
+    interfaces = {(plan_read.node, plan_read.field): plan_read.interface for plan in held_plans
+                  for plan_read in plan.reads.values()}
+    initial = {name: _initial(graph.get_node(name)) for name in {*order, body_node,
+                                                                *(e[0] for name in order for e in incoming[name])}}
+    dtype = computing_dtype(graph.get_node(own[0]))
+    eps = float(np.finfo(dtype).eps)
+
+    def delivered_wrench(held: Mapping[str, Mapping[str, Any]]) -> Any:
+        return sum(jnp.asarray(held[source][field]) for source, field in delivered)
+
+    def evaluated(name: str, held: Mapping[str, Mapping[str, Any]], nudge: bool) -> Mapping[str, Any]:
+        node = graph.get_node(name)
+        inputs = {port: (held[source] if source in held else initial[source])[field]
+                  for source, field, port in incoming[name]}
+        if nudge:
+            sources = {port: (source, field) for source, field, port in incoming[name]}
+            inputs = {port: _nudged_jnp(value, interfaces.get(sources[port]), eps, index)
+                      for index, (port, value) in enumerate(inputs.items())}
+        step = getattr(node, "fresh_update", None)
+        dt = float(node.delta_t)
+        return step(dict(initial[name]), inputs, dt) if step is not None else _update(node, initial[name], inputs, dt)
+
+    def wrenches(pose: Any) -> tuple[Any, Any]:
+        """What the laws deliver at ``pose``, and the same with every input of their own nodes nudged."""
+        plain: dict[str, Mapping[str, Any]] = {body_node: {**initial[body_node], "pose": pose}}
+        nudged: dict[str, Mapping[str, Any]] = dict(plain)
+        for name in order:
+            plain[name] = evaluated(name, plain, False)
+            nudged[name] = evaluated(name, nudged, True) if name in own else plain[name]
+        return delivered_wrench(plain), delivered_wrench(nudged)
+
+    t = 2.0 * np.pi * np.arange(points) / points
+    sampled = [loop.poses_and_rates(t) for loop in loops]
+    poses_all = jnp.asarray(np.concatenate([pose for pose, _ in sampled]), dtype=dtype)
+    plain_all, nudged_all = jax.vmap(wrenches)(poses_all)
+    found, moved = np.asarray(plain_all, dtype=np.float64), np.asarray(nudged_all, dtype=np.float64)
+    step = 2.0 * np.pi / points
+    works: list[LoopWork] = []
+    for index, (_, rate) in enumerate(sampled):
+        rows = slice(index * points, (index + 1) * points)
+        terms = np.sum(found[rows] * rate, axis=1)
+        nudged = np.sum(np.abs(moved[rows] - found[rows]) * np.abs(rate), axis=1)
+        works.append(LoopWork(float(np.sum(terms) * step), float(np.sum(terms[::2]) * 2 * step),
+                              float(np.sum(np.abs(terms)) * step), LOOP_ROUNDINGS * float(np.sum(nudged) * step)))
+    return works
+
+
+def check_closed_loop(law: Interaction, family: Family, together: Sequence[Interaction],
+                      max_examples: int) -> VerificationResult:
+    """The law with the members that complete it (``together``) does no net work round a closed loop of the body's
+    pose in a static field, on every draw of the family's loop rig and each of its loops: within the loop's quadrature
+    error plus its rounding floor (:class:`LoopWork`). A failing draw is reported as drawn, not shrunk: each example
+    builds the rig again (about 0.1 s), and Hypothesis shrinking one stopped after five minutes, unfinished."""
+    from hypothesis import HealthCheck, Phase, given, settings
+
+    loop = family.loop
+    if loop is None:
+        return _fail("closed loop", f"the {family.name} family lists the closed-loop case and sets no loop")
+    laws = (law, *together)
+    last: dict[str, Any] = {}
+    count = 0
+
+    @settings(max_examples=max_examples, deadline=None, database=None, phases=(Phase.explicit, Phase.generate),
+              suppress_health_check=[HealthCheck.too_slow])
+    @given(loop.draws())
+    def prop(drawn: Any) -> None:
+        nonlocal count
+        count += 1
+        last.clear()
+        last["drawn"] = drawn
+        try:
+            built = loop.rig(laws, drawn).build()
+        except BuildRefused as refused:
+            raise AssertionError(f"the {family.name} family's loop rig does not build: {refused}") from None
+        found = loop_works(built, laws, loop.body, loop.loops(drawn))
+        failed = [f"loop {index}: {work.describe()}" for index, work in enumerate(found) if not work.holds]
+        assert not failed, "; ".join(failed)
+
+    try:
+        prop()
+    except AssertionError as error:
+        return VerificationResult("closed loop", "FAIL", detail=str(error), counterexample=dict(last),
+                                  n_examples=count)
+    return VerificationResult("closed loop", "PASS", n_examples=count)
+
+
 def _another_dimension(value: object, dimension: Any) -> Quantity:
     magnitude = value.value if isinstance(value, Quantity) else 1.0
     return Quantity(magnitude, dimension * TIME)
@@ -889,10 +1099,12 @@ def check_nodes(probe: Probe, law: Interaction, node_case: NodeCase | None) -> V
 
 def conformance(law: Interaction, family: str | Family, *, oracle: Oracle | None = None,
                 swap_with: Interaction | None = None, node_case: NodeCase | None = None,
-                cases: Sequence[CaseKind] | None = None, max_examples: int = 200) -> dict[CaseKind, VerificationResult]:
+                cases: Sequence[CaseKind] | None = None, max_examples: int = 200,
+                together: Sequence[Interaction] = ()) -> dict[CaseKind, VerificationResult]:
     """Every case of ``family`` on ``law``, or the ones named in ``cases``. ``oracle`` is the law's closed form,
     ``swap_with`` the member a swap replaces (by default the family's reference), ``node_case`` how its nodes are
-    verified. ``max_examples`` is each sampled case's draws, ``verify_node``'s default."""
+    verified, ``together`` the members that complete it in the closed-loop case (a magnetic torque's force).
+    ``max_examples`` is each sampled case's draws, ``verify_node``'s default."""
     held = family_named(family) if isinstance(family, str) else family
     wanted = tuple(held.cases if cases is None else cases)
     unknown = [case for case in wanted if case not in held.cases]
@@ -911,16 +1123,18 @@ def conformance(law: Interaction, family: str | Family, *, oracle: Oracle | None
         CaseKind.SWAP: lambda: check_swap(probed, held, swap_with),
         CaseKind.EQUAL_AND_OPPOSITE: lambda: check_equal_and_opposite(probed, held, max_examples),
         CaseKind.NODES: lambda: check_nodes(probed, law, node_case),
+        CaseKind.CLOSED_LOOP: lambda: check_closed_loop(law, held, together, max_examples),
     }
     return {case: run[case]() for case in wanted}
 
 
 def assert_conforms(law: Interaction, family: str | Family, *, oracle: Oracle | None = None,
                     swap_with: Interaction | None = None, node_case: NodeCase | None = None,
-                    cases: Sequence[CaseKind] | None = None, max_examples: int = 200) -> None:
+                    cases: Sequence[CaseKind] | None = None, max_examples: int = 200,
+                    together: Sequence[Interaction] = ()) -> None:
     """:func:`conformance` as an assertion, listing every case that did not pass with its counterexample."""
     results = conformance(law, family, oracle=oracle, swap_with=swap_with, node_case=node_case, cases=cases,
-                          max_examples=max_examples)
+                          max_examples=max_examples, together=together)
     failed = [f"{case.value}: {result}" for case, result in results.items() if not result.passed]
     name = family if isinstance(family, str) else family.name
     assert not failed, f"{law.label()} does not conform to the {name} family:\n" + "\n".join(failed)

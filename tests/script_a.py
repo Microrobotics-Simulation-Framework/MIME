@@ -111,10 +111,10 @@ INERTIA_REASON = (f"{REASON}: its I_eff, m R^2 / 2 for a solid cylinder of FL-9'
 
 def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 0.0)), frequency=Hz(10.0),
              drag: bool | Interaction = True, nu=NU, inner_radius=mm(3.175), start=mm((10.0, 0.0, -1.0)),
-             records: frozenset[str] = frozenset(), length=LENGTH) -> Experiment:
+             records: frozenset[str] = frozenset(), length=LENGTH, torque=Magnetic.Torque) -> Experiment:
     """Script A; ``drag`` is the drag law (``True`` for script A's surrogate with lubrication, ``False`` for none).
     ``records`` names the record switches on (``ALL_RECORDS`` for the record arm); none for the reproduction arm.
-    ``length`` is the body's, for the drag's training-domain checks."""
+    ``length`` is the body's, for the drag's training-domain checks; ``torque`` the field's torque's class."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=dt,
                             conditions=CONDITIONS if records else None)
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=inner_radius, wall=mm(1.6),
@@ -147,7 +147,7 @@ def script_a(name: str = "script_a", *, dt=ms(0.5), velocity=m_per_s((0.0, 0.0, 
             experiment.declare("water.viscosity", VISCOSITY, reason=REASON)
         law = Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=EPSILON))
         experiment.attach(law if drag is True else drag, body=umr, medium=water)
-    experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
+    experiment.attach(torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
     experiment.attach(CentreContact.Projection(margin=mm(0.1)), body=umr, surface=tube.inner_surface)
     experiment.observe(SwimSpeed(umr, along=tube.axis))

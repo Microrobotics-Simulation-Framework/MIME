@@ -10,7 +10,8 @@ register and pass as ``swap_with=``: a Stokes sphere, the family's analytic orac
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 
 import numpy as np
@@ -22,7 +23,7 @@ from mime.experiment import Experiment
 from mime.fields import PointDipole, UniformRotating
 from mime.registry import Interaction
 from mime.scene import Cylinder, Scene, Screw, Tube, Z
-from mime.testing._families import CaseKind, Family, Response, SignRule, register_family
+from mime.testing._families import CaseKind, Family, Loop, Response, SignRule, WorkLoop, register_family
 from mime.things import Apparatus, Body, Medium, Part, PermanentMagnet, State, Structure
 from mime.units import (
     A_m2,
@@ -114,6 +115,89 @@ def magnetic_rig(law: Interaction) -> Experiment:
         "magnetic": UniformRotating(rotation_axis=(0.0, 0.0, 1.0), initial_direction=(1.0, 0.0, 0.0))},
         commands={"frequency": Constant(Hz(5.0)), "amplitude": Constant(mT(1.0))}))
     experiment.attach(law, body=PROBE, field="coils.magnetic")
+    return experiment
+
+
+#: The closed-loop rig's source: a magnet 8 mm across and 6 mm long (a 5 mm sphere holds it), fixed in the world,
+#: drawn 3 to 20 cm from the body, of 1 to 50 A m^2 in any direction: six times its radius or more from every point
+#: a loop reads, outside a point dipole's near field (MIME-ANO-100).
+LOOP_SOURCE_RADIUS, LOOP_SOURCE_LENGTH = mm(4.0), mm(6.0)
+LOOP_SOURCE_DISTANCE, LOOP_SOURCE_MOMENT = (0.03, 0.2), (1.0, 50.0)
+#: The body's moment, 0.1 to 10 mA m^2; its magnet's centroid, zero or 0.2 to 2 mm off its centre of mass; a
+#: translation loop's half-axes, 0.5 to 5 mm: millimetre bodies, as in the family's other rigs.
+LOOP_BODY_MOMENT, LOOP_LEVER, LOOP_REACH = (1e-4, 1e-2), (2e-4, 2e-3), (5e-4, 5e-3)
+
+
+@dataclass(frozen=True)
+class MagneticLoopDraw:
+    """One draw of the magnetic closed-loop rig: the source's place, direction and moment, the body's moment and its
+    magnet's centroid (body frame), and the loops: a turn about each of two axes, a translation loop, and the first
+    turn with the translation at once, each from one orientation."""
+
+    source_at: tuple[float, float, float]
+    source_direction: tuple[float, float, float]
+    source_moment: float
+    moment: tuple[float, float, float]
+    lever: tuple[float, float, float]
+    loops: tuple[Loop, ...]
+
+
+def _unit(values: Sequence[float]) -> tuple[float, ...]:
+    held = np.asarray(values, dtype=np.float64)
+    return tuple(float(v) for v in held / float(np.linalg.norm(held)))
+
+
+def magnetic_loop_draws() -> Any:
+    """The Hypothesis strategy of the magnetic closed-loop rig's draws, each at a body's scale (``LOOP_*``):
+    directions drawn in a box and kept where their length is at least 0.1, so a shrunk draw is never a direction of
+    zero length or one whose components underflow."""
+    from hypothesis import strategies as st
+
+    def directions() -> Any:
+        return st.tuples(*(st.floats(-1.0, 1.0) for _ in range(3))).filter(
+            lambda v: float(np.linalg.norm(v)) > 0.1).map(_unit)
+
+    quaternions = st.tuples(*(st.floats(-1.0, 1.0) for _ in range(4))).filter(
+        lambda q: float(np.linalg.norm(q)) > 0.1).map(_unit)
+    lever = st.one_of(st.just(0.0), st.floats(*LOOP_LEVER))
+
+    def draw(source: tuple[float, ...], distance: float, direction: tuple[float, ...], strength: float,
+             moment: tuple[float, ...], magnitude: float, lever_direction: tuple[float, ...], length: float,
+             first: tuple[float, ...], second: tuple[float, ...], across: tuple[float, ...], reach: float,
+             along: tuple[float, ...], reach_along: float, start: tuple[float, ...]) -> MagneticLoopDraw:
+        zero = (0.0, 0.0, 0.0)
+        a = tuple(reach * c for c in across)
+        b = tuple(reach_along * c for c in along)
+        q = cast(tuple[float, float, float, float], start)
+        loops = (Loop(zero, zero, zero, cast(Any, first), q), Loop(zero, zero, zero, cast(Any, second), q),
+                 Loop(zero, cast(Any, a), cast(Any, b), zero, q), Loop(zero, cast(Any, a), cast(Any, b),
+                                                                       cast(Any, first), q))
+        return MagneticLoopDraw(cast(Any, tuple(distance * c for c in source)), cast(Any, direction), strength,
+                                cast(Any, tuple(magnitude * c for c in moment)),
+                                cast(Any, tuple(length * c for c in lever_direction)), loops)
+
+    return st.builds(draw, directions(), st.floats(*LOOP_SOURCE_DISTANCE), directions(),
+                     st.floats(*LOOP_SOURCE_MOMENT), directions(), st.floats(*LOOP_BODY_MOMENT), directions(), lever,
+                     directions(), directions(), directions(), st.floats(*LOOP_REACH), directions(),
+                     st.floats(*LOOP_REACH), quaternions)
+
+
+def magnetic_loop_rig(laws: Sequence[Interaction], drawn: MagneticLoopDraw) -> Experiment:
+    """The body at the origin, with its drawn moment and magnet's centroid, and a magnet fixed in the world where the
+    draw puts it, a point dipole: ``laws`` attached together between them. The field is static, so the laws' loads
+    depend on the body's pose alone."""
+    experiment = _experiment("magnetic_loop_rig")
+    _body(experiment)
+    experiment.declare(f"{PROBE}.magnetic_moment", A_m2(drawn.moment), reason="the loop rig's drawn moment")
+    experiment.declare(f"{PROBE}.magnet_centre", m(drawn.lever), reason="the loop rig's drawn magnet's centroid")
+    experiment.add_apparatus(Apparatus(
+        "stand", parts={"magnet": Part(Cylinder(radius=LOOP_SOURCE_RADIUS, length=LOOP_SOURCE_LENGTH,
+                                                axis=drawn.source_direction), at=m(drawn.source_at))},
+        magnets={"magnet": PermanentMagnet(direction=drawn.source_direction)},
+        fields={"magnetic": PointDipole(part="magnet")}))
+    experiment.declare("stand.magnetic_moment", A_m2(drawn.source_moment), reason="the loop rig's drawn source")
+    for law in laws:
+        experiment.attach(law, body=PROBE, field="stand.magnetic")
     return experiment
 
 
@@ -296,7 +380,7 @@ _POSE_AND_RESISTANCE = {POSE.name: unit_quaternion, RESISTANCE.name: positive_se
 MAGNETIC = register_family(Family(
     name="magnetic", rig=magnetic_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
-           CaseKind.GRADIENTS, CaseKind.NODES),
+           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.CLOSED_LOOP),
     sign=SignRule("the field turns the body's moment toward it (tau . (m x B) is not negative), and its gradient pulls "
                   "the moment up the gradient of its alignment (F . (G^T m) is not negative): an aligned moment is "
                   "pulled toward the stronger field", _magnetic_sign, reads=(("body", POSE.name),),
@@ -304,6 +388,7 @@ MAGNETIC = register_family(Family(
     material=("moment",),
     reading_bounds={FLUX_DENSITY.name: (-1e-2, 1e-2), GRADIENT.name: (-1.0, 1.0), POSE.name: (-1.0, 1.0)},
     constrain=_POSE_AND_RESISTANCE,
+    loop=WorkLoop(rig=magnetic_loop_rig, draws=magnetic_loop_draws, loops=lambda drawn: drawn.loops, body=PROBE),
 ))
 
 GRAVITY = register_family(Family(
@@ -350,8 +435,9 @@ resistance and a background load. Equal and opposite does not apply: the tube is
 reaction its dynamics would carry. Frame: turning the whole setup, the tube's axis and the body's pose together, turns
 the resistance block by block, and moving the body along a straight tube's axis changes nothing."""
 
-__all__ = ["CONTACT", "EXTENT", "FURTHEST_FROM_THE_AXIS", "GRAVITY", "HYDRODYNAMIC", "INERTIA", "MAGNETIC",
-           "MAGNET_HEIGHT", "MAGNET_MOMENT", "MASS",
-           "NEAREST_THE_AXIS", "PROBE", "SCREW", "TUBE_AXIS", "TUBE_RADIUS", "WATER_VISCOSITY", "contact_rig",
-           "gravity_rig", "hydrodynamic_rig", "in_the_lumen", "magnetic_rig", "millimetre_lever",
-           "positive_semidefinite", "unit_quaternion"]
+__all__ = ["CONTACT", "EXTENT", "FURTHEST_FROM_THE_AXIS", "GRAVITY", "HYDRODYNAMIC", "INERTIA", "LOOP_BODY_MOMENT",
+           "LOOP_LEVER", "LOOP_REACH", "LOOP_SOURCE_DISTANCE", "LOOP_SOURCE_LENGTH", "LOOP_SOURCE_MOMENT",
+           "LOOP_SOURCE_RADIUS", "MAGNETIC", "MAGNET_HEIGHT", "MAGNET_MOMENT", "MASS", "NEAREST_THE_AXIS", "PROBE",
+           "SCREW", "TUBE_AXIS", "TUBE_RADIUS", "WATER_VISCOSITY", "MagneticLoopDraw", "contact_rig", "gravity_rig",
+           "hydrodynamic_rig", "in_the_lumen", "magnetic_loop_draws", "magnetic_loop_rig", "magnetic_rig",
+           "millimetre_lever", "positive_semidefinite", "unit_quaternion"]

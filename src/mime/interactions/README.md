@@ -25,7 +25,7 @@
 ## Status
 
 Also:
-- **`magnetic.py`**: `Magnetic.Torque()` (`magnetic.torque` 0.1.0), `tau = m x B` on the body's permanent moment
+- **`magnetic.py`**: `Magnetic.Torque()` (`magnetic.torque` 0.2.0), `tau = m x B` on the body's permanent moment
   turned by its orientation, from a uniform field; it reads the pose at the start of the step, a one-step lag of
   `omega dt` in phase that lag accounting shows;
 - **`gravity.py`**: `Gravity()` (`gravity` 0.1.0), weight minus buoyancy `(m - rho_f V) g` with gravity from the
@@ -60,17 +60,25 @@ Also:
 It passes the hydrodynamic family's suite (`mime.testing.HYDRODYNAMIC`), whose analytic oracle and second member, a
 Stokes sphere, is registered by MIME's tests only; no public `Drag.Stokes` is built yet.
 
-**`Magnetic.Force`** (`magnetic.force` 0.1.0): the force of a field's gradient on a body's
-permanent moment, `F = G^T m`, read at the body's centre of mass, acting at its magnet's centroid (`magnet_centre`),
-so with its torque. It is in the magnetic family, whose sign rule holds both its laws, and its pair law, the equal and
+**`Magnetic.Force`** (`magnetic.force` 0.2.0): the force of a field's gradient on a body's
+permanent moment, `F = G^T m`, read at its magnet's centroid (`magnet_centre`) and acting there, so with its torque. It is in the magnetic family, whose sign rule holds both its laws, and its pair law, the equal and
 opposite force between two point dipoles, is tested on the law alone. Its reaction on the source is not delivered.
 
 **the magnetic laws' reactions**: where the field's source is a part mounted on a segment that takes
 loads (a dynamic one), `Magnetic.Torque` and `Magnetic.Force` each deliver the reaction of their wrench on the body to
 the frame the source is mounted on, equal and opposite and moved to that frame's origin (`SourceReactionNode`); the
 two together are what the body's dipole exerts on a point dipole source. Elsewhere they build what they built.
-**`Magnetic.Torque`** reads a field that varies in space at the body's centre of mass, by a second support row; a
+**`Magnetic.Torque`** reads a field that varies in space at the body's magnet's centroid, by a second support row; a
 uniform field is read as before.
+
+**the magnetic laws read the field where the magnet is** (`magnetic.torque` 0.2.0, `magnetic.force` 0.2.0): a field that
+varies in space, and its gradient, are read at the body's `magnet_centre` turned by its orientation from its position, a
+point fixed in the body that the read names (`Read.offset`) and a provider that claims `Capability.BODY_POINTS`
+evaluates (`PointDipole` does), so that the two together are the derivative of a point dipole's energy there and do no
+net work round a closed loop of the pose. The magnetic family's closed-loop case holds them to it. Their 0.1.0, which
+read it at the centre of mass (MIME-ANO-137), stay registered (`KEPT`), and the frozen sim2real register keeps the
+torque's. A body with several magnets in its parts is refused for either in a field that varies in space unless its
+`magnet_centre` is declared; several magnets each need their own point, later.
 
 Releases are explained in the [package manifest](../README.md#status).
 

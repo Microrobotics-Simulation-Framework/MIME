@@ -18,6 +18,7 @@ from script_a import ALL_RECORDS, EPSILON, fl9, script_a
 
 from mime.data import asset
 from mime.dynamics.body import RigidInertialExplicit
+from mime.interactions import KEPT
 from mime.experiment import Experiment
 from mime.interactions import Lubrication
 from mime.interactions.hydrodynamic import PointForceDrag
@@ -34,6 +35,10 @@ from mime.testing.toys import (
 )
 from mime.things import Body, Medium, State, Structure
 from mime.units import N, kg, kg_m2, m, m_per_s, mm, rad_per_s
+
+
+KEPT_TORQUE, _ = KEPT["magnetic.torque", "0.1.0"]
+KEPT_FORCE, _ = KEPT["magnetic.force", "0.1.0"]
 
 
 @dataclass(frozen=True)
@@ -86,8 +91,23 @@ def lab_bead() -> Experiment:
 
 def script_a_body() -> Experiment:
     """Script A's body side, with no drag, the body moving along the tube at 1 mm/s so that every leaf of every node
-    acts within the walk's first steps: 4b's case, which the body side's golden outputs come from."""
-    return script_a("script_a_body", velocity=m_per_s((1e-3, 0.0, 0.0)), drag=False)
+    acts within the walk's first steps: 4b's case, which the body side's golden outputs come from. Its torque is the
+    one kept registered, 0.1.0, whose golden output came from it; in a uniform field 0.2.0 computes the same, and its
+    golden output comes from script A's case."""
+    return script_a("script_a_body", velocity=m_per_s((1e-3, 0.0, 0.0)), drag=False, torque=KEPT_TORQUE)
+
+
+def kinematic_rpm_kept() -> Experiment:
+    """A0's apparatus, kinematic, on the magnetic laws kept registered, 0.1.0 (the field read at the body's centre of
+    mass, MIME-ANO-137): what a folder saved before 0.2.0 names, and the case their golden outputs and the point
+    dipole's came from. The body's magnet is at its centre of mass, where 0.2.0 computes the same."""
+    return kinematic_rpm(magnetic=(KEPT_TORQUE, KEPT_FORCE))
+
+
+def dynamic_rpm_kept() -> Experiment:
+    """A0's apparatus on its dynamic rungs, on the magnetic laws kept registered, 0.1.0: each delivers its reaction to
+    the rotor, as a folder saved before 0.2.0 names it."""
+    return dynamic_rpm("dynamic_rpm_kept", magnetic=(KEPT_TORQUE, KEPT_FORCE))
 
 
 def script_a_with_drag() -> Experiment:
@@ -167,7 +187,7 @@ CASES = (
     Case("probed_shapes", probed_shapes),
     # A0's apparatus, kinematic: the AR4 arm from its URDF, a motor on its flange, a magnet on the rotor, the field's
     # torque and force on a body. The folder carries the URDF, and the fresh process reads it from there.
-    Case("kinematic_rpm", kinematic_rpm),
+    Case("kinematic_rpm", kinematic_rpm_kept),
     # The lab fixture's gantry, a chain segment with no URDF, carrying a magnet: mounts work on it unchanged.
     Case("gantry_magnet", gantry_magnet),
     # A0's apparatus closed by its controller, a callback every 2 ms, its writes 1 ms late: the arm's joint positions
@@ -177,6 +197,8 @@ CASES = (
     # motor on its flange driven by a torque, the field's torque and force on the body each delivering its reaction to
     # the rotor, and the rotor's to the flange a step late.
     Case("dynamic_rpm", dynamic_rpm),
+    # The same on the magnetic laws kept registered, 0.1.0, whose reactions on the rotor no other case builds.
+    Case("dynamic_rpm_kept", dynamic_rpm_kept),
     # A0's dynamic apparatus with its masses mounted: the magnet's density and the motor's top speed declared, a camera
     # on link 3 and a stator part on the motor's base by their declared masses, each welded on its link, the rotor's
     # mass and mean inertia across its axis on the flange.

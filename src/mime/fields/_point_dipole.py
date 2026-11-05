@@ -30,7 +30,11 @@ class PointDipole(FieldProvider):
     smallest sphere about its centroid that holds its solid, which the provider's node holds as ``magnet_radius``;
     closer, the finite magnet's field differs by more (MIME-ANO-100). No finite-magnet model is built. At the magnet's
     centroid the field is singular, so a reader is evaluated outside the magnet only: the build refuses a body that
-    starts inside the sphere that holds it."""
+    starts inside the sphere that holds it.
+
+    A reader's slot is evaluated at the position of the pose it reads, or, where the read names a point fixed in the
+    body (``Capability.BODY_POINTS``: a magnetic law's ``magnet_centre``), at that point, the pose's position plus its
+    orientation applied to it."""
 
     name = "point_dipole"
     version = "0.1.0"
@@ -42,7 +46,7 @@ class PointDipole(FieldProvider):
     validity = ("evaluated outside the magnet: the field is singular at its centroid, and a point dipole is faithful "
                 "only far from the magnet, against its radius (MIME-ANO-100); a validity line that checks the "
                 "distance is a1's",)
-    flags = frozenset({Capability.PROVISION_EVALUATED})
+    flags = frozenset({Capability.PROVISION_EVALUATED, Capability.BODY_POINTS})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}
     parts = {"part": PermanentMagnet.model}
     values = {"moment": "magnetic_moment"}
@@ -56,7 +60,8 @@ class PointDipole(FieldProvider):
         node = b.add_node(PointDipoleNode(
             ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots], moment=moment, placement=part.offset,
             magnet_radius=part.radius, mount_index=mount.index if mount else -1,
-            mount_count=mount.count if mount else 0, initial_mount_pose=mount.initial_pose if mount else _IDENTITY))
+            mount_count=mount.count if mount else 0, initial_mount_pose=mount.initial_pose if mount else _IDENTITY,
+            offsets={slot.name: slot.offset for slot in slots if slot.offset is not None}))
         if mount is not None:
             b.part("part", into=node["mount_poses"])
 

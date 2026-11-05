@@ -180,8 +180,9 @@ class ResolvedTarget:
 @dataclass(frozen=True)
 class ResolvedRead:
     """Where a read comes from. A state read names the publishing node's field. A field read names the provider's
-    output port for its reader slot, and ``points`` the state read its points come from. ``units`` are the
-    vocabulary's, which the edge carrying the read is labelled with."""
+    output port for its reader slot, ``points`` the state read its points come from, and ``offset`` the label of the
+    reader's value that is the point fixed in that pose's frame where the field is read (``Read.offset``). ``units``
+    are the vocabulary's, which the edge carrying the read is labelled with."""
 
     node: str
     field: str
@@ -189,6 +190,7 @@ class ResolvedRead:
     units: str
     points: ResolvedRead | None = None
     slot: str | None = None
+    offset: str | None = None
 
 
 @dataclass(frozen=True)
@@ -337,11 +339,14 @@ class ScenePlan:
 
 @dataclass(frozen=True)
 class Slot:
-    """A reader slot of a field provider: ``points_<name>`` in, ``<prefix>_<name>`` out for each interface read."""
+    """A reader slot of a field provider: ``points_<name>`` in, ``<prefix>_<name>`` out for each interface read.
+    ``offset`` is the point fixed in the reader's pose where the slot is read (in that pose's frame, SI), or ``None``
+    for the pose's position itself."""
 
     name: str
     reader: str
     interfaces: tuple[str, ...]
+    offset: tuple[float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -2593,9 +2598,14 @@ class _Planner:
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
         cls = plan.reader_cls()
         assert plan.plan is not None
-        sources: dict[tuple[str, ResolvedRead | None], str] = {}
+        sources: dict[tuple[str, ResolvedRead | None, str | None], str] = {}
         for label in sorted(plan.plan.reads):
             read = plan.plan.reads[label]
+            if read.offset is not None and (read.at is None or read.offset not in plan.plan.values):
+                self.defect(cls, f"read {label!r}: its offset {read.offset!r} is a point fixed in the pose a field is "
+                                 f"read at, and names a value its plan reads; the read gives no pose (at=) or its plan "
+                                 f"reads no value {read.offset!r}")
+                continue
             if cls.roles.get(read.role) is not RoleKind.FIELD:
                 if read.at is not None:
                     self.defect(cls, f"read {label!r}: only a field is read at points")
@@ -2636,10 +2646,17 @@ class _Planner:
             points = None if uniform or read.at is None else self.state_read(plan, where, read.at)
             if points is None and not uniform:
                 continue
-            key = (path, points)
+            # A uniform field is the same at every point, so a point fixed in the body changes nothing it reads.
+            offset = read.offset if points is not None else None
+            if offset is not None and (provider.record is None or Capability.BODY_POINTS not in provider.record.flags):
+                self.defect(cls, f"read {label!r} of field {read.interface!r} is at the point {offset!r} fixed in the "
+                                 f"body, and its provider {provider.describe()} evaluates at the pose's position only: "
+                                 f"its support rows must require Capability.BODY_POINTS")
+                continue
+            key = (path, points, offset)
             slot = sources.setdefault(key, _sanitize(plan.owner) + (f"_{len(sources)}" if sources else ""))
             plan.reads[label] = ResolvedRead(provider.owner, f"{prefix.field}_{slot}", read.interface, entry.units,
-                                             points, slot)
+                                             points, slot, offset)
 
     def target(self, plan: EntryPlan, where: str, delivery: Delivery) -> ResolvedTarget | None:
         cls = plan.reader_cls()
@@ -3247,13 +3264,28 @@ class _Planner:
                     self.refuse("slot.collision", RefusalClass.INTERNAL,
                                 f"field {read.node!r}: readers {held.reader} and {plan.owner} map to one slot name "
                                 f"{read.slot!r}", MIME_DEFECT)
-                slots[read.node][read.slot] = Slot(read.slot, plan.owner, tuple(dict.fromkeys(interfaces)))
+                slots[read.node][read.slot] = Slot(read.slot, plan.owner, tuple(dict.fromkeys(interfaces)),
+                                                   self.slot_offset(plan, read))
         for path, provider in list(self.providers.items()):
             provider.slots = [slots[path][name] for name in sorted(slots.get(path, {}))]
             if not provider.slots:
                 # A field nothing reads builds no node: there is no reader slot to give it.
                 self.declared.remove(provider)
                 del self.providers[path]
+
+    def slot_offset(self, plan: EntryPlan, read: ResolvedRead) -> tuple[float, float, float] | None:
+        """The point fixed in the reader's pose where ``read``'s slot is read, in SI, from the value its offset names;
+        ``None`` for a read at the pose's position, or where that value was refused (unresolved, or not a point)."""
+        held = plan.values.get(read.offset) if read.offset is not None else None
+        if held is None:
+            return None
+        value = held.value
+        if not (isinstance(value, tuple) and len(value) == 3):
+            self.defect(plan.registered.cls, f"its offset {read.offset!r} reads {held.path}, {value!r}, which is not a "
+                                             f"point (three lengths)")
+            return None
+        x, y, z = value
+        return (float(x), float(y), float(z))
 
     def check_readers_outside_parts(self) -> None:
         """A provider whose field is valid outside its parts only (``outside_parts``) is not read by a body that starts

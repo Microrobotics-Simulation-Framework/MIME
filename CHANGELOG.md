@@ -30,6 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The magnetic laws read the field where the magnet is: `magnetic.torque` 0.2.0 and `magnetic.force` 0.2.0.** In a
+  field that varies in space, both read the field and its gradient at the body's `magnet_centre` turned by its
+  orientation, the point a read now names fixed in the body (`Read(..., offset=...)`) and a provider that claims
+  `Capability.BODY_POINTS` evaluates (`PointDipole` does). 0.1.0 read them at the centre of mass while the force acted
+  at the centroid, so with the magnet off the centre of mass the pair was not conservative: a closed loop of the pose
+  in a static field did net work, `m l pi G_xx` for a turn about x on a dipole's axis, 2.35 % of the loop's summed
+  work at a 1 mm lever 50 mm from a 10 A m^2 dipole (MIME-ANO-137). The magnetic family's suite gains a closed-loop
+  case: the laws together do no net work round closed loops of the pose (turns about drawn axes, a translation) in a
+  drawn point dipole's field, within the loop's quadrature error plus its rounding floor; 0.1.0 fails it on every draw
+  whose turns carry its lever. 0.1.0 stays registered (`mime.interactions.KEPT`), so a folder saved with it loads and
+  reproduces, and 7j's frozen register keeps it; a script that writes `Magnetic.Torque()` or `Magnetic.Force()` gets
+  0.2.0. With the magnet at the centre of mass, or in a uniform field, the two compute the same: A0, A0 on its dynamic
+  rungs and script A were measured the same to the last bit on 0.2.0 as on 0.1.0, in float32 and float64. A body with
+  several magnets in its parts is refused for the torque too in a field that varies in space, unless its
+  `magnet_centre` is declared.
 - **`Experiment.save` and `Experiment.load` warn at the script's line.** A `DescriptionWarning` or a range warning raised
   while they build showed MIME's own line (`return self.build().save(...)`); the build now finds the script's frame
   itself, whichever public call it was reached through (`mime.errors._frames.warn_at_script`), and so does the view's

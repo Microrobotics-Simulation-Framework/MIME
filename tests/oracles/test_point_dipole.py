@@ -7,7 +7,9 @@ Hypothesis over moments of a magnet's order and points from a centimetre to a me
 - **The gradient** is the field differentiated by ``jax.jacfwd``, and it is **divergence-free and curl-free**: its
   trace is zero and it is symmetric, to the rounding of its entries.
 - **The provider in a build** places the dipole at its part, fixed in the world, and evaluates it at the reader's
-  point.
+  point; where the read names a point fixed in the body (``magnet_centre``, ``Capability.BODY_POINTS``), at the pose's
+  position plus its orientation applied to that point, on every drawn pose. The control: the point taken unturned
+  fails on every draw that turns it. Its node, with such a slot, passes MADDENING's battery.
 
 A closed form written in the distance alone is judged on the scale the point was placed on: its coordinates round
 on their own scale, up to a metre, beside a distance down to a centimetre. The control: a field planted with a factor
@@ -19,12 +21,15 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from chain_cases import MAGNET_MOMENT, fixed_magnet
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from mime.build._maddening import node_state
+from mime.interactions import Magnetic
 from mime.nodes.actuation import point_dipole
+from mime.testing import node_results
 from mime.units import VACUUM_PERMEABILITY, m
 
 K = VACUUM_PERMEABILITY / (4 * np.pi)
@@ -142,3 +147,92 @@ def test_the_provider_places_its_dipole_at_its_part_and_reads_it_at_the_body():
     distance = 0.1 + 1e-3
     assert close(stepped[slot], (0.0, 0.0, K * 2 * MAGNET_MOMENT / distance**3))
     assert close(stepped["centre"], (0.0, 0.0, 0.1))
+
+
+#: A body's magnet 0.8 mm off its centre of mass, along no axis.
+LEVER = np.array([0.5e-3, -0.4e-3, 0.48e-3])
+
+
+def unit(q):
+    q = np.asarray(q, dtype=np.float64)
+    return q / np.linalg.norm(q) if np.linalg.norm(q) > 1e-3 else np.array([1.0, 0.0, 0.0, 0.0])
+
+
+def turned(q, v):
+    w, x, y, z = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                     [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                     [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]]) @ v
+
+
+@pytest.fixture(scope="module")
+def offset_slot():
+    """The fixed magnet's provider as the force 0.2.0 reads it, from a body whose magnet is ``LEVER`` off its centre of
+    mass: its node, and the slot that reads at the magnet's centroid."""
+    built = fixed_magnet("offset_slot", law=Magnetic.Force(), magnet_centre=m(tuple(LEVER))).build()
+    node = built.graph.get_node("stand.magnetic")
+    (slot,) = node.constants()["offset_slots"]
+    return node, slot
+
+
+#: The body's pose: within 3 mm of the origin, turned any way.
+BODY_POSES = st.tuples(st.tuples(*(st.floats(-3e-3, 3e-3) for _ in range(3))),
+                       st.tuples(*(st.floats(-1.0, 1.0) for _ in range(4))).map(unit))
+
+
+def at_the_centroid(node, slot, position, orientation) -> np.ndarray:
+    pose = jnp.asarray(np.concatenate([position, orientation]))
+    return np.asarray(node.update(node.initial_state(), {f"points_{slot}": pose}, 1e-3)[f"gradient_{slot}"])
+
+
+@PROPERTY
+@given(BODY_POSES)
+def test_a_slot_read_at_a_point_fixed_in_the_body_is_evaluated_there(offset_slot, drawn):
+    node, slot = offset_slot
+    position, orientation = np.asarray(drawn[0]), np.asarray(drawn[1])
+    expected = np.asarray(field_and_gradient(jnp.asarray((0.0, 0.0, MAGNET_MOMENT)), jnp.asarray((0.0, 0.0, 0.1)),
+                                             jnp.asarray(position + turned(orientation, LEVER)))[1])
+    found = at_the_centroid(node, slot, position, orientation)
+    assert np.max(np.abs(found - expected)) <= ROUNDINGS * EPS * np.max(np.abs(expected))
+
+
+@PROPERTY
+@given(BODY_POSES)
+def test_control_the_point_taken_unturned_fails_on_every_draw_that_turns_it(offset_slot, drawn):
+    node, slot = offset_slot
+    position, orientation = np.asarray(drawn[0]), np.asarray(drawn[1])
+    assume(float(np.linalg.norm(turned(orientation, LEVER) - LEVER)) > 1e-2 * float(np.linalg.norm(LEVER)))
+    unturned = np.asarray(field_and_gradient(jnp.asarray((0.0, 0.0, MAGNET_MOMENT)), jnp.asarray((0.0, 0.0, 0.1)),
+                                             jnp.asarray(position + LEVER))[1])
+    found = at_the_centroid(node, slot, position, orientation)
+    assert np.max(np.abs(found - unturned)) > ROUNDINGS * EPS * np.max(np.abs(unturned))
+
+
+def outside_the_fixed_magnet(given):
+    """Each drawn reader's pose with its quaternion of unit length and its position moved out of the fixed magnet's 5 cm
+    sphere (centred 10 cm up), along its direction from the magnet's centre; a batch of poses pose by pose."""
+    centre = np.array([0.0, 0.0, 0.1])
+
+    def moved(pose: np.ndarray) -> np.ndarray:
+        offset = pose[:3] - centre
+        distance = float(np.linalg.norm(offset))
+        position = pose[:3] if distance >= 0.05 else centre + 0.05 * (
+            offset / distance if distance > 0 else np.array([1.0, 0.0, 0.0]))
+        return np.concatenate([position, unit(pose[3:])])
+
+    held = dict(given)
+    for key, value in given.items():
+        if not key.startswith("points_"):
+            continue
+        poses = np.asarray(value, dtype=np.float64)
+        flat = poses.reshape(-1, 7)
+        held[key] = np.stack([moved(pose) for pose in flat]).reshape(poses.shape).astype(np.asarray(value).dtype)
+    return held
+
+
+def test_the_provider_node_with_a_slot_at_a_body_point_passes_maddenings_battery(offset_slot):
+    node, _ = offset_slot
+    results = node_results(node, {"boundary_bounds": {name: (-1.0, 1.0) for name in node.boundary_input_spec()},
+                                  "constrain_boundary": outside_the_fixed_magnet})
+    print("\n" + "\n".join(str(r) for r in results.values()))
+    assert all(r.passed for r in results.values())

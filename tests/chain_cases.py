@@ -88,15 +88,17 @@ def rpm(*, joints=AR4_HOME, speed=6.0, motor_at=None, motor_orientation=None, ma
                else {"motor.angle": Constant(rad(speed))})}.items() if name not in controlled})
 
 
-def kinematic_rpm(name: str = "kinematic_rpm", **options) -> Experiment:
+def kinematic_rpm(name: str = "kinematic_rpm", *, magnetic=(Magnetic.Torque, Magnetic.Force),
+                  **options) -> Experiment:
     """A0's apparatus, kinematic: the AR4 carrying the motor and its magnet, the field's torque and force on a body
-    1 mm below the origin."""
+    1 mm below the origin; ``magnetic`` the torque's and the force's classes."""
     exp = experiment(name)
     exp.add_apparatus(rpm(**options))
     exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
     add_body(exp)
-    exp.attach(Magnetic.Torque(), body="umr", field="rpm.magnetic")
-    exp.attach(Magnetic.Force(), body="umr", field="rpm.magnetic")
+    torque_law, force_law = magnetic
+    exp.attach(torque_law(), body="umr", field="rpm.magnetic")
+    exp.attach(force_law(), body="umr", field="rpm.magnetic")
     return exp
 
 
@@ -118,14 +120,16 @@ def gantry_magnet(name: str = "gantry_magnet", *, magnet_at=None) -> Experiment:
     return exp
 
 
-def fixed_magnet(name: str = "fixed_magnet", *, at=m((0.0, 0.0, 0.1)), law=None, body_position=None) -> Experiment:
-    """A magnet fixed in the world, with no chain, above a body: the smallest apparatus a dipole needs."""
+def fixed_magnet(name: str = "fixed_magnet", *, at=m((0.0, 0.0, 0.1)), law=None, body_position=None,
+                 magnet_centre=m((0.0, 0.0, 0.0))) -> Experiment:
+    """A magnet fixed in the world, with no chain, above a body (its own magnet at ``magnet_centre``): the smallest
+    apparatus a dipole needs."""
     exp = experiment(name)
     exp.add_apparatus(Apparatus("stand", parts={"magnet": magnet_part(None, at=at)},
                                 magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
                                 fields={"magnetic": PointDipole(part="magnet")}))
     exp.declare("stand.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet, on a stand")
-    add_body(exp, **({} if body_position is None else {"position": body_position}))
+    add_body(exp, magnet_centre=magnet_centre, **({} if body_position is None else {"position": body_position}))
     exp.attach(law if law is not None else Magnetic.Force(), body="umr", field="stand.magnetic")
     return exp
 
@@ -191,13 +195,15 @@ def friction_arm(name: str = "friction_arm") -> Experiment:
 
 
 def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: bool = True,
-                torque: float = ROTOR_TORQUE, laws=("torque", "force"), armature=()) -> Experiment:
+                torque: float = ROTOR_TORQUE, laws=("torque", "force"), armature=(), magnet_centre=m((0.0, 0.0, 0.0)),
+                magnetic=(Magnetic.Torque, Magnetic.Force)) -> Experiment:
     """A0's apparatus on its dynamic rungs: the AR4 starting at rest at its home pose, held there at the start by the
     torques that balance its weight, carrying a motor on its flange (``motor=False``: none), placed at ``MOTOR_OFFSET``
     and turned by ``MOTOR_TURN``, whose rotor is driven by
     ``torque`` against its inertia and damping, and the magnet on ``mount``; the body below, under the field's torque
     and force (``laws``), each delivering its reaction to the frame the magnet is mounted on (by default the rotor, or
-    the flange with no motor); ``armature`` is the arm's."""
+    the flange with no motor); ``armature`` is the arm's, ``magnet_centre`` the body's, and ``magnetic`` the torque's
+    and the force's classes (the kept 0.1.0's, ``mime.interactions.KEPT``, for its control)."""
     exp = experiment(name)
     chain = {"arm": Arm.Dynamic(description=asset(AR4), initial_positions=rad(AR4_HOME), at=m(AR4_BASE),
                                 armature=armature)}
@@ -212,9 +218,10 @@ def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: b
                                 magnets={"rotor_magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
                                 fields={"magnetic": PointDipole(part="rotor_magnet")}, commands=commands))
     exp.declare("rpm.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
-    add_body(exp)
+    add_body(exp, magnet_centre=magnet_centre)
+    torque_law, force_law = magnetic
     for law in laws:
-        exp.attach(Magnetic.Torque() if law == "torque" else Magnetic.Force(), body="umr", field="rpm.magnetic")
+        exp.attach(torque_law() if law == "torque" else force_law(), body="umr", field="rpm.magnetic")
     return exp
 
 

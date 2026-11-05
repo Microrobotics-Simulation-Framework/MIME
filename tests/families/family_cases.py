@@ -1,11 +1,13 @@
 """The family cases the family walk requires: one per registered interaction, with the law to probe, its closed form
 and how its nodes are verified, or why it belongs to no family. The family is the one the entry declares
 (``Interaction.family``). An interaction registered without a case fails the walk, as one without a round-trip case
-fails the registry walk."""
+fails the registry walk. ``together`` names the members that complete a law in the closed-loop case (a magnetic
+torque's force, of its own version); ``fails`` names each case a kept version is known to fail, by the anomaly that
+records it, which the walk requires it to fail."""
 
 import os
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 
 import jax.numpy as jnp
 import numpy as np
@@ -16,7 +18,7 @@ from mime.core import quaternion
 from mime.interactions import KEPT, Contact, Drag, Gravity, Lubrication, Magnetic
 from mime.interactions.hydrodynamic import PointForceDrag
 from mime.registry import Interaction
-from mime.testing import NodeCase, Oracle, unit_quaternion
+from mime.testing import CaseKind, NodeCase, Oracle, unit_quaternion
 from mime.testing._mime_families import SCREW, TUBE_AXIS, TUBE_RADIUS
 from mime.testing.toys import ToyDrag
 from mime.units import mm, standard_gravity
@@ -29,6 +31,8 @@ class FamilyCase:
     node_case: NodeCase | None = None
     no_family: str = ""
     swap_with: Callable[[], Interaction] | None = None
+    together: Callable[[], tuple[Interaction, ...]] | None = None
+    fails: Mapping[CaseKind, str] = field(default_factory=dict)
 
 
 def torque(read, settings):
@@ -108,10 +112,21 @@ def linear(read, settings):
 
 
 CentreContact, _ = KEPT["contact", "0.1.0"]
+CentreMagneticTorque, _ = KEPT["magnetic.torque", "0.1.0"]
+CentreMagneticForce, _ = KEPT["magnetic.force", "0.1.0"]
+#: What the magnetic laws 0.1.0 fail: they read the field at the centre of mass, and with a magnet off it the pair does
+#: net work round a closed loop of the pose in a static field. ``tests/families/test_closed_loop.py`` is the control:
+#: 0.1.0 fails on every draw that turns a magnet off the centre of mass.
+CENTRE_OF_MASS_READ = {CaseKind.CLOSED_LOOP: "MIME-ANO-137"}
 TOY = "a toy with no physics, which exercises the build: the toy family has one member, the toy drag"
 FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
-    ("interaction", "magnetic.torque", "0.1.0"): FamilyCase(Magnetic.Torque, torque),
-    ("interaction", "magnetic.force", "0.1.0"): FamilyCase(Magnetic.Force, force),
+    ("interaction", "magnetic.torque", "0.1.0"): FamilyCase(
+        CentreMagneticTorque, torque, together=lambda: (CentreMagneticForce(),), fails=CENTRE_OF_MASS_READ),
+    ("interaction", "magnetic.force", "0.1.0"): FamilyCase(
+        CentreMagneticForce, force, together=lambda: (CentreMagneticTorque(),), fails=CENTRE_OF_MASS_READ),
+    ("interaction", "magnetic.torque", "0.2.0"): FamilyCase(Magnetic.Torque, torque,
+                                                            together=lambda: (Magnetic.Force(),)),
+    ("interaction", "magnetic.force", "0.2.0"): FamilyCase(Magnetic.Force, force, together=lambda: (Magnetic.Torque(),)),
     ("interaction", "gravity", "0.1.0"): FamilyCase(Gravity, weight_and_buoyancy),
     ("interaction", "contact", "0.1.0"): FamilyCase(
         lambda: CentreContact.Projection(margin=mm(0.1)), projected,
