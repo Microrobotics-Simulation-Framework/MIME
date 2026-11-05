@@ -25,8 +25,11 @@ dependence (the build skipping its canonical order, the tree not sorted) and sho
 from __future__ import annotations
 
 import copy
+import html
 import os
 import re
+import sys
+import types
 from collections import Counter
 from pathlib import Path
 
@@ -39,7 +42,7 @@ from views_cases import tutorial_a0, two_bodies, two_body_declarations
 from mime.build import _testing
 from mime.build._plan import Section
 from mime.experiment import BuiltExperiment, Experiment, Mermaid
-from mime.experiment._mermaid import POINTER, _escaped
+from mime.experiment._mermaid import MERMAID_CDN, MERMAID_SRI, MERMAID_VERSION, POINTER, _escaped, in_colab
 from mime.testing import declaration_orders, declare_in_order
 from mime.testing.toys import ToyDrag, full_declarations, toy_experiment
 
@@ -315,6 +318,103 @@ def test_the_mermaid_is_a_string_and_a_notebook_shows_it_as_a_fenced_diagram_wit
 def test_no_text_in_a_node_name_can_end_the_fence(built):
     """The fence ends at three backticks; MADDENING escapes a backtick in a name, so the diagram's own text cannot."""
     assert "`" not in built.to_mermaid()
+
+
+# --- Colab: the diagram drawn by the pinned library -----------------------------------------------------------------------
+#
+# What this bounds: the HTML Colab is given holds the library's pinned URL and integrity, loads nothing else, draws with
+# an explicit ``mermaid.run()``; Colab is told apart by ``google.colab`` being loaded; offline loads no script. What it
+# does not: that Colab draws it (no Colab here to run it; the PR gives the cell), and that the pinned hash is the file
+# jsDelivr serves at the URL today (measured once, when the pin was written, with the command beside the constants).
+
+
+@pytest.fixture
+def in_colab_kernel(monkeypatch):
+    monkeypatch.setitem(sys.modules, "google.colab", types.ModuleType("google.colab"))
+    assert in_colab()
+
+
+@pytest.fixture
+def shown(monkeypatch):
+    """A stand-in for IPython's ``display``: the calls it received."""
+    calls: list[tuple[object, dict]] = []
+    package, module = types.ModuleType("IPython"), types.ModuleType("IPython.display")
+    module.display = lambda obj, **kwargs: calls.append((obj, kwargs))  # type: ignore[attr-defined]
+    package.display = module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "IPython", package)
+    monkeypatch.setitem(sys.modules, "IPython.display", module)
+    return calls
+
+
+SCRIPT_TAG = re.compile(r"<script\b[^>]*>")
+
+
+def test_outside_colab_the_notebook_gets_the_markdown_fence_and_no_html(built):
+    assert not in_colab()
+    assert set(built.to_mermaid()._repr_mimebundle_()) == {"text/markdown", "text/plain"}
+
+
+def test_in_colab_the_notebook_gets_html_that_draws_the_diagram_and_no_markdown_fence(built, in_colab_kernel):
+    mermaid = built.to_mermaid()
+    bundle = mermaid._repr_mimebundle_()
+    assert set(bundle) == {"text/html", "text/plain"} and bundle["text/plain"] == str(mermaid)
+    page = bundle["text/html"]
+    assert page == mermaid.html()
+    tags = SCRIPT_TAG.findall(page)
+    assert len(tags) == 2, "the library, and the module that draws"
+    assert tags[0] == f'<script src="{MERMAID_CDN}" integrity="{MERMAID_SRI}" crossorigin="anonymous">'
+    assert tags[1] == '<script type="module">'
+    assert re.fullmatch(r"https://cdn\.jsdelivr\.net/npm/mermaid@\d+\.\d+\.\d+/dist/mermaid\.min\.js", MERMAID_CDN)
+    assert MERMAID_CDN.count(MERMAID_VERSION) == 1 and re.fullmatch(r"sha384-[A-Za-z0-9+/]{64}", MERMAID_SRI)
+    assert re.findall(r'(?:src|href)="([^"]*)"', page) == [MERMAID_CDN], "no other file is loaded"
+    assert "mermaid.initialize({startOnLoad: false})" in page and "await mermaid.run({nodes: [element]})" in page
+    assert "```" not in page
+
+
+def test_the_html_element_holds_the_text_exactly_so_that_the_library_reads_the_diagram_and_a_failed_load_shows_it(
+        built, in_colab_kernel):
+    mermaid = built.to_mermaid()
+    (element,) = re.findall(r'<pre class="mermaid" id="[^"]+">(.*?)</pre>', mermaid.html(), re.DOTALL)
+    assert html.unescape(element) == str(mermaid)
+    assert "<script" not in element and POINTER.split(" ")[0] in mermaid.html()
+
+
+def test_the_html_escapes_what_would_end_the_element_or_open_a_tag():
+    text = Mermaid('flowchart LR\n    n0["a</pre><script>x</script> & b"]\n')
+    page = text.html()
+    assert len(SCRIPT_TAG.findall(page)) == 2 and "<script>x" not in page
+    (element,) = re.findall(r'<pre class="mermaid" id="[^"]+">(.*?)</pre>', page, re.DOTALL)
+    assert html.unescape(element) == str(text)
+
+
+def test_offline_the_notebook_gets_the_text_and_the_pointer_and_no_script_in_colab_or_elsewhere(built, shown, monkeypatch):
+    mermaid = built.to_mermaid()
+    for colab in (False, True):
+        if colab:
+            monkeypatch.setitem(sys.modules, "google.colab", types.ModuleType("google.colab"))
+        shown.clear()
+        mermaid.display(offline=True)
+        ((bundle, kwargs),) = shown
+        assert kwargs == {"raw": True} and set(bundle) == {"text/markdown", "text/plain"}
+        assert bundle["text/markdown"] == f"```text\n{mermaid}```\n\n*{POINTER}*\n"
+        assert "<script" not in bundle["text/markdown"] and MERMAID_CDN not in bundle["text/markdown"]
+        assert "```mermaid" not in bundle["text/markdown"], "offline shows the text, not a diagram to be drawn"
+
+
+def test_display_shows_what_returning_the_diagram_from_a_cell_shows(built, shown, monkeypatch):
+    mermaid = built.to_mermaid()
+    mermaid.display()
+    monkeypatch.setitem(sys.modules, "google.colab", types.ModuleType("google.colab"))
+    mermaid.display()
+    (outside, _), (inside, _) = shown
+    assert outside["text/markdown"] == mermaid.fence() and inside["text/html"] == mermaid.html()
+
+
+def test_display_without_ipython_says_what_to_do_instead(built, monkeypatch):
+    monkeypatch.setitem(sys.modules, "IPython", None)
+    monkeypatch.setitem(sys.modules, "IPython.display", None)
+    with pytest.raises(RuntimeError, match="print"):
+        built.to_mermaid().display()
 
 
 # --- the tree --------------------------------------------------------------------------------------------------------

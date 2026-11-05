@@ -135,12 +135,21 @@ lag of every edge. `direction=` is MADDENING's (`LR`, `RL`, `TB` or `BT`): `TB` 
 
 ## In a notebook
 
-`built.to_mermaid()` returns a `str` that also tells a notebook how to show it: a `text/markdown` Mermaid fence, which a front end
-that draws Mermaid in Markdown draws as a diagram, and which any other shows as the Mermaid text, with a line under it saying
-where to draw it (mermaid.live); under a diagram that is drawn, the line reads as a pointer to where it can be edited. Nothing
-is loaded from a network to draw it. `print(built.to_mermaid())` is the plain text.
+`built.to_mermaid()` returns a `str` that also tells a notebook how to show it, in one of two ways:
 
-What the front ends do with that fence was measured on 2026-11-05, by opening a notebook that held the output in a Chrome 148
+- **In Google Colab,** a drawn diagram: `text/html` that loads Mermaid's library (11.17.2) from jsDelivr and draws the diagram
+  with an explicit `mermaid.run()`. The library's URL names its exact version and the element carries an `integrity` hash, so a
+  browser runs the file only if it is the file MIME pinned, as the 3D view does for its viewer. Colab does not draw a Markdown
+  Mermaid fence: the maintainer ran the one-cell check below there, and it showed the Mermaid text. If the library
+  does not load (no network, a changed file), the element still holds the text, with the pointer line under it.
+- **Anywhere else,** a `text/markdown` Mermaid fence, which a front end that draws Mermaid in Markdown draws as a diagram, and
+  which any other shows as the Mermaid text, with a line under it saying where to draw it (mermaid.live); under a diagram that
+  is drawn, the line reads as a pointer to where it can be edited. Nothing is loaded from a network to draw it.
+
+`built.to_mermaid().display(offline=True)` shows the text and the pointer line and loads nothing, in Colab as elsewhere, for a
+notebook that must not reach a network. `print(built.to_mermaid())` is the plain text.
+
+What the front ends do with the fence was measured on 2026-11-05, by opening a notebook that held the output in a Chrome 148
 driven by a script, and looking for a drawn diagram in the page (and for any request leaving the machine: there was none):
 
 | Front end | Draws the Mermaid fence |
@@ -149,9 +158,19 @@ driven by a script, and looking for a drawn diagram in the page (and for any req
 | Jupyter Notebook 7.6.4 | yes, as a diagram |
 | JupyterLab 4.0.13 | no: the Mermaid text, in a code block, with the line pointing to a renderer |
 | VS Code's notebooks | not measured: the measurement needs the editor, which was not available |
-| Google Colab | not measured: it needs a Google sign-in, which the measurement could not use |
+| Google Colab | no, measured by the maintainer in Colab: the Mermaid text. Colab gets the HTML route above |
 
-A cell shows whether a front end draws it, in one line:
+The HTML route was measured in a desktop Chrome, not in Colab: the page drew the diagram (every node and edge of a two-body toy's graph) from the pinned library, made one request, to jsDelivr, and with a changed `integrity` the browser refused the
+file and the text stayed. Colab's own output frame is the part not measured from here; to check the route there, run in a Colab
+cell (after installing MIME from the branch or release you want to check):
+
+<!-- mime-fragment: a cell for Colab, not a script; it needs the notebook front end -->
+```python
+from mime.testing.toys import full_toy
+full_toy().build().to_mermaid().display()
+```
+
+A cell shows whether a front end draws the Markdown fence, in one line:
 
 <!-- mime-fragment: a cell for a notebook, not a script; it shows the fence the page describes -->
 ```python

@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings. `built.to_mermaid()` is MADDENING's `to_mermaid` of the
   compiled graph with the registered entry added to each node, and a notebook shows it as a diagram where its front end
   draws a Mermaid fence (JupyterLab 4.1 and after and Notebook 7 do, measured; 4.0 shows the text with a pointer to a
-  renderer; VS Code and Colab were not measured). `mime show <folder>` prints the tree (`--tree`, the default, drawn as a
+  renderer; VS Code was not measured). Colab does not draw a fence (measured), so there it is `text/html` that draws it with
+  Mermaid 11.17.2 from jsDelivr, held to its `integrity` hash; `to_mermaid().display(offline=True)` loads nothing. `mime show <folder>` prints the tree (`--tree`, the default, drawn as a
   tree on a terminal, plain text piped, `--json` as data) or the graph (`--graph`), or both. Either is the same for the
   same experiment whatever the order its script declared things in.
 
