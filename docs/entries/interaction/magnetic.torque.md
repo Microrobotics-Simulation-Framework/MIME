@@ -26,8 +26,9 @@ delivery to `Magnetic.Force`, not an alternative to it.
 
 **When not to use it.**
 - Where the field varies across the magnet: it is read at one point, the magnet's centroid.
-- For a body with several magnets in a field that varies in space: one centroid does not hold them, and a body with
-  several magnets in its parts is refused unless its `magnet_centre` is declared.
+- For a body with several magnets in a field that varies in space: one centroid does not hold them. A body with parts
+  and several magnets among them, or none (its moment declared), is refused there unless its `magnet_centre` is
+  declared.
 - Inside a point dipole source's near field, where the source's own model fails before this law does (see MIME-ANO-100).
 - When the reaction on a source carried by a kinematic segment matters: a prescribed motion takes no load, so the
   reaction is delivered only where the source's segment is on its dynamic rung (see MIME-ANO-103).

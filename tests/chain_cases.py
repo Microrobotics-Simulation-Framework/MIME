@@ -225,6 +225,24 @@ def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: b
     return exp
 
 
+def swing_magnet(name: str = "swing_magnet", *, magnetic=(Magnetic.Torque, Magnetic.Force)) -> Experiment:
+    """``descriptions/swing.urdf``'s arm on its dynamic rung, 15 cm above the origin, carrying A0's magnet, above
+    a body under the field's torque and force (``magnetic``, their classes), each delivering its reaction to the arm:
+    the smallest apparatus a law's reaction is built on."""
+    exp = experiment(name)
+    exp.add_apparatus(Apparatus(
+        "swing", chain={"arm": Arm.Dynamic(description=asset(SWING), initial_positions=rad((0.0,)),
+                                         at=m((0.0, 0.0, 0.15)))},
+        parts={"magnet": magnet_part("arm.arm")}, magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
+        fields={"magnetic": PointDipole(part="magnet")}, commands={"arm.joint_torques": Constant(N_m((0.0,)))}))
+    exp.declare("swing.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
+    add_body(exp)
+    torque_law, force_law = magnetic
+    exp.attach(torque_law(), body="umr", field="swing.magnetic")
+    exp.attach(force_law(), body="umr", field="swing.magnetic")
+    return exp
+
+
 #: A0's magnet's density: sintered NdFeB's typical 7.5 g/cm^3 (inference: the record MIME packages holds its remanence
 #: alone). Through its solid, 0.144 kg, 1.59e-5 kg m^2 about the rotor's z, its spin axis (a diameter), and 2.21e-5
 #: and 1.59e-5 across it: the accepted case of a rotor unequal across its axis.

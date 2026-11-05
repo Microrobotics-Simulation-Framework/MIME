@@ -9,13 +9,15 @@ import importlib
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, cast
 
 from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_solids, mrs_tube
-from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, tracked_rpm
+from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, swing_magnet, tracked_rpm
 from hull_cases import hull_contact
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, EPSILON, fl9, script_a
 
+from mime.build import Attachment
 from mime.data import asset
 from mime.dynamics.body import RigidInertialExplicit
 from mime.interactions import KEPT
@@ -94,7 +96,17 @@ def script_a_body() -> Experiment:
     acts within the walk's first steps: 4b's case, which the body side's golden outputs come from. Its torque is the
     one kept registered, 0.1.0, whose golden output came from it; in a uniform field 0.2.0 computes the same, and its
     golden output comes from script A's case."""
-    return script_a("script_a_body", velocity=m_per_s((1e-3, 0.0, 0.0)), drag=False, torque=KEPT_TORQUE)
+    return on_the_kept_magnetic_laws(script_a("script_a_body", velocity=m_per_s((1e-3, 0.0, 0.0)), drag=False))
+
+
+def on_the_kept_magnetic_laws(experiment: Experiment) -> Experiment:
+    """``experiment`` with each magnetic law it attaches at its kept version, 0.1.0, bound as before, and nothing else
+    changed (script A's builder, a preregistered file, is not edited for it)."""
+    held = cast(Any, experiment)
+    declarations = [Attachment(KEPT[(d.law.name, "0.1.0")][0](), d.bindings)
+                    if isinstance(d, Attachment) and d.law.name.startswith("magnetic.") else d
+                    for d in held._declarations]
+    return cast(Experiment, held._declared(held._settings, declarations))
 
 
 def kinematic_rpm_kept() -> Experiment:
@@ -104,10 +116,10 @@ def kinematic_rpm_kept() -> Experiment:
     return kinematic_rpm(magnetic=(KEPT_TORQUE, KEPT_FORCE))
 
 
-def dynamic_rpm_kept() -> Experiment:
-    """A0's apparatus on its dynamic rungs, on the magnetic laws kept registered, 0.1.0: each delivers its reaction to
-    the rotor, as a folder saved before 0.2.0 names it."""
-    return dynamic_rpm("dynamic_rpm_kept", magnetic=(KEPT_TORQUE, KEPT_FORCE))
+def swing_magnet_kept() -> Experiment:
+    """A one-joint dynamic swing carrying a magnet above a body, on the magnetic laws kept registered, 0.1.0: each
+    delivers its reaction to the swing, as a folder saved before 0.2.0 names it."""
+    return swing_magnet("swing_magnet_kept", magnetic=(KEPT_TORQUE, KEPT_FORCE))
 
 
 def script_a_with_drag() -> Experiment:
@@ -197,8 +209,9 @@ CASES = (
     # motor on its flange driven by a torque, the field's torque and force on the body each delivering its reaction to
     # the rotor, and the rotor's to the flange a step late.
     Case("dynamic_rpm", dynamic_rpm),
-    # The same on the magnetic laws kept registered, 0.1.0, whose reactions on the rotor no other case builds.
-    Case("dynamic_rpm_kept", dynamic_rpm_kept),
+    # A one-joint dynamic swing carrying a magnet, on the magnetic laws kept registered, 0.1.0, whose reactions no other
+    # case builds.
+    Case("swing_magnet_kept", swing_magnet_kept),
     # A0's dynamic apparatus with its masses mounted: the magnet's density and the motor's top speed declared, a camera
     # on link 3 and a stator part on the motor's base by their declared masses, each welded on its link, the rotor's
     # mass and mean inertia across its axis on the flange.

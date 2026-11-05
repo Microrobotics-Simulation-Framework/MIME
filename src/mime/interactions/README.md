@@ -77,8 +77,8 @@ point fixed in the body that the read names (`Read.offset`) and a provider that 
 evaluates (`PointDipole` does), so that the two together are the derivative of a point dipole's energy there and do no
 net work round a closed loop of the pose. The magnetic family's closed-loop case holds them to it. Their 0.1.0, which
 read it at the centre of mass (MIME-ANO-137), stay registered (`KEPT`), and the frozen sim2real register keeps the
-torque's. A body with several magnets in its parts is refused for either in a field that varies in space unless its
-`magnet_centre` is declared; several magnets each need their own point, later.
+torque's. A body with parts and several magnets among them, or none (its moment declared), is refused for either in a
+field that varies in space unless its `magnet_centre` is declared; several magnets each need their own point, later.
 
 Releases are explained in the [package manifest](../README.md#status).
 

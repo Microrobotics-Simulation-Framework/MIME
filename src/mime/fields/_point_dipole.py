@@ -54,6 +54,7 @@ class PointDipole(FieldProvider):
 
     @override
     def build(self, ctx: BuildContext, b: ProviderBuilder, slots: Sequence[Slot]) -> None:
+        at_body_points = [slot for slot in slots if slot.offset is not None]
         part = ctx.parts["part"]
         mount = part.mount
         moment = ctx.vector_value("moment")
@@ -61,7 +62,8 @@ class PointDipole(FieldProvider):
             ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots], moment=moment, placement=part.offset,
             magnet_radius=part.radius, mount_index=mount.index if mount else -1,
             mount_count=mount.count if mount else 0, initial_mount_pose=mount.initial_pose if mount else _IDENTITY,
-            offsets={slot.name: slot.offset for slot in slots if slot.offset is not None}))
+            offset_slots=tuple(slot.name for slot in at_body_points),
+            offsets=tuple(c for slot in at_body_points for c in slot.offset or ())))
         if mount is not None:
             b.part("part", into=node["mount_poses"])
 

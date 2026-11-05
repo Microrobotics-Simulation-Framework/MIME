@@ -43,8 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reproduces, and 7j's frozen register keeps it; a script that writes `Magnetic.Torque()` or `Magnetic.Force()` gets
   0.2.0. With the magnet at the centre of mass, or in a uniform field, the two compute the same: A0, A0 on its dynamic
   rungs and script A were measured the same to the last bit on 0.2.0 as on 0.1.0, in float32 and float64. A body with
-  several magnets in its parts is refused for the torque too in a field that varies in space, unless its
-  `magnet_centre` is declared.
+  parts and several magnets among them, or none (its moment declared), is refused for the torque too in a field that
+  varies in space, as it was for the force, unless its `magnet_centre` is declared.
 - **`Experiment.save` and `Experiment.load` warn at the script's line.** A `DescriptionWarning` or a range warning raised
   while they build showed MIME's own line (`return self.build().save(...)`); the build now finds the script's frame
   itself, whichever public call it was reached through (`mime.errors._frames.warn_at_script`), and so does the view's
