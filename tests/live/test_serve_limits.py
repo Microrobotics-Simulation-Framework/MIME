@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 from live_cases import saved
+from live_servers import client, serve_command, watched
 
 from mime.live import PROTOCOL, LiveClient
 
@@ -40,9 +41,7 @@ def folder(tmp_path_factory) -> Path:
 def start(launch, folder: Path, tmp_path: Path, *extra: str, name: str = "run") -> tuple[subprocess.Popen, Path, Path]:
     """``mime serve`` of ``folder`` once its ready file is written: the process, the ready file and the run folder."""
     ready, out = tmp_path / f"{name}.ready.json", tmp_path / f"{name}.out"
-    process = launch([*MIME, "serve", str(folder), "--commands", "tcp://127.0.0.1:0", "--frames", "tcp://127.0.0.1:0",
-                      "--ready-file", str(ready), "--out", str(out), *extra],
-                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = watched(launch, serve_command(folder, ready, out, *extra), ready)
     deadline = time.monotonic() + HANG
     while not ready.exists() or not ready.read_text():
         assert process.poll() is None, process.communicate()
@@ -52,8 +51,7 @@ def start(launch, folder: Path, tmp_path: Path, *extra: str, name: str = "run") 
 
 
 def connect(ready: Path) -> LiveClient:
-    endpoints = json.loads(ready.read_text())
-    return LiveClient(endpoints["commands"], endpoints["frames"], timeout=60.0)
+    return client(ready, timeout=60.0)
 
 
 #: The keys of the ready file, under mime.live/1's rule: fields may be added and a reader ignores what it does not know.
@@ -86,7 +84,7 @@ def test_every_status_carries_the_wall_time_the_clients_and_the_recent_commands_
     peers = {live.commands.sock.getsockname()[1], live.frames.sock.getsockname()[1]}  # this client's ends
     first = live.request("status")
     assert first["wall_time"] > 0.0 and first["clients"] == {"commands": 1, "frames": 1} and first["recent"] == []
-    other = LiveClient(json.loads(ready.read_text())["commands"], json.loads(ready.read_text())["frames"], timeout=60.0)
+    other = connect(ready)
     assert live.request("status")["clients"] == {"commands": 2, "frames": 2}
     other.close()
     deadline = time.monotonic() + HANG
@@ -204,12 +202,27 @@ def test_the_control_select_of_another_field_does_change_the_frames_so_the_compa
     assert selected != served_frames["plain"] and len(selected[0]) < len(served_frames["plain"][0])
 
 
-def test_a_name_the_frames_do_not_carry_is_refused_with_the_nearest_name_before_a_run_folder_is_opened(folder, tmp_path):
-    done = subprocess.run([*MIME, "--plain", "serve", str(folder), "--watch", "umr.pos", "--out", str(tmp_path / "out"),
-                           "--commands", "tcp://127.0.0.1:0", "--frames", "tcp://127.0.0.1:0"],
+def test_a_name_the_frames_do_not_carry_is_refused_with_the_nearest_name_before_a_run_folder_is_opened(tmp_path):
+    """The refusal comes after ``mime serve`` has loaded and built the experiment, since the frames' names are known only
+    then; so it is checked on the toy experiment (``mime.testing.toys.full_toy``, one field in its frames,
+    ``toy.recorder:probe.last``) and not on the tracked rig, whose build compiles A0's apparatus: 33 s on four of
+    five lanes' shards of a green push run, 36 s on a cold one, for a refusal that reads only the names. The
+    refusal and its message are those the tracked rig gave (``--watch names 'umr.pos', which the frames do not carry``,
+    ``Did you mean 'umr.pose'``) with the toy's name, and no run folder is opened."""
+    import warnings
+
+    from mime.testing.toys import full_toy
+
+    toy = tmp_path / "toy"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        full_toy().save(toy)
+    done = subprocess.run([*MIME, "--plain", "serve", str(toy), "--watch", "toy.recorder:probe.lat", "--out",
+                           str(tmp_path / "out"), "--commands", "tcp://127.0.0.1:0", "--frames", "tcp://127.0.0.1:0"],
                           capture_output=True, text=True, check=False, timeout=HANG)
     assert done.returncode == 2 and "live.watch" in done.stderr, done.stderr
-    assert "--watch names 'umr.pos', which the frames do not carry" in done.stderr and "Did you mean 'umr.pose'" in done.stderr
+    assert "--watch names 'toy.recorder:probe.lat', which the frames do not carry" in done.stderr
+    assert "Did you mean 'toy.recorder:probe.last'" in done.stderr, done.stderr
     assert not (tmp_path / "out").exists(), "no run folder was opened"
 
 
