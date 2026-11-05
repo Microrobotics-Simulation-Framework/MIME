@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from mime._transfers import Transfers
     from mime.credentials import Token
     from mime.env import EnvReport
-    from mime.env._check import DistributionRow
     from mime.cli._display import RunDisplay
     from mime.control import Progress
     from mime.experiment import BuiltExperiment, RunWritten
@@ -448,10 +447,8 @@ def _env_check(arguments: argparse.Namespace) -> int:
     try:
         report = env.check(arguments.folder, variant=arguments.variant, gpu=arguments.gpu, base=arguments.base,
                            lab=arguments.lab, xla_cache=arguments.xla_cache, mime_version=arguments.mime_version)
-    except BuildRefused as refusal:
-        _write_record(arguments.record, {"refused": [str(r) for r in refusal.refusals]})
-        if isinstance(refusal, env.EnvRefused) and refusal.rows and styled(sys.stderr):
-            return refused(refusal, "env", pins=refusal.rows)
+    except BuildRefused as refused:
+        _write_record(arguments.record, {"refused": [str(r) for r in refused.refusals]})
         raise
     if not _drawn(lambda: _show_environment(report)):
         print(report.text())
@@ -953,11 +950,10 @@ def _docs_build(root: Path, out: Path | None, junit: Path | None = None, collect
     return run_build(root, out, junit=junit, collection=collection, skip_evidence=skip_evidence)
 
 
-def refused(error: Exception, command: str, *, pins: Sequence[DistributionRow] = ()) -> int:
+def refused(error: Exception, command: str) -> int:
     """Show why ``mime <command>`` stopped, as a MIME error with its code (the full chain first, with
     ``--traceback``), and give its exit code: :data:`REFUSED` for the user's or the environment's reason,
-    :data:`FAILED` for a MIME defect or an error MIME does not recognise. A terminal draws ``pins`` (the pinned
-    distributions an environment does not hold as pinned) as a table at the head of the block."""
+    :data:`FAILED` for a MIME defect or an error MIME does not recognise."""
     coded = crossed(error)
     if full_mode() and coded.chain:
         print(for_terminal(coded.chain), file=sys.stderr)
@@ -967,13 +963,13 @@ def refused(error: Exception, command: str, *, pins: Sequence[DistributionRow] =
         headline = f"mime {command} failed"
     else:
         headline = f"mime {command} is refused"
-    if not (styled(sys.stderr) and _refusal_block(coded, headline, pins)):
+    if not (styled(sys.stderr) and _refusal_block(coded, headline)):
         print(short_text(coded, None, frames=False, switch=TRACEBACK_FLAG, headline=headline), end="", file=sys.stderr)
     plain = all(r.category in (RefusalClass.USER, RefusalClass.ENVIRONMENT) for r in coded.refusals)
     return REFUSED if plain else FAILED
 
 
-def _refusal_block(error: MimeError, headline: str, pins: Sequence[DistributionRow] = ()) -> bool:
+def _refusal_block(error: MimeError, headline: str) -> bool:
     """The refusal drawn as a block on a terminal: its code, what is wrong, what to do, why and where, then its docs
     address and the footer the plain text ends with (whose defect it is, and the file the full traceback is in). ``False``
     when it could not be drawn, and the plain text is printed instead."""
@@ -981,7 +977,7 @@ def _refusal_block(error: MimeError, headline: str, pins: Sequence[DistributionR
     from mime.errors._display import footer_lines
 
     try:
-        show_refusal(error, headline, footer_lines(error, switch=TRACEBACK_FLAG), sys.stderr, pins)
+        show_refusal(error, headline, footer_lines(error, switch=TRACEBACK_FLAG), sys.stderr)
     except ImportError:
         return False
     return True

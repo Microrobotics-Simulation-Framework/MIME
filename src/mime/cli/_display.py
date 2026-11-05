@@ -580,14 +580,13 @@ _WHO = {"user": "yours to fix", "environment": "the environment's to fix", "inte
         "unrecognised": "an error from below that MIME does not recognise"}
 
 
-def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream: IO[str],
-                 pins: Sequence[DistributionRow] = ()) -> None:
+def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream: IO[str]) -> None:
     """A refused command as a block on ``stream``: for each refusal its code and who can act, what is wrong, what to do,
     why and where; then the docs address of each code, unbroken so that it can be copied, and the footer
     (the defect's owner and the full traceback's file) as the ordinary text gave it. Refusals of one code that are
     about a subject and share their finding, action, why and where (:func:`refusal_groups`) are one block: the code
-    once, what is wrong once, a row for each subject, what to do once. With ``pins`` (the pinned distributions an
-    environment does not hold as pinned) the block opens with their table (wanted, found, verdict), and the blocks about
+    once, what is wrong once, a row for each subject, what to do once. A refusal that holds ``pin_rows`` (the pinned distributions an
+    environment does not hold as pinned, :class:`~mime.env.EnvRefused`) opens with their table (wanted, found, verdict), and the blocks about
     those distributions keep their code, what is wrong and what to do but not their rows, which the table holds."""
     from rich.console import Group
     from rich.panel import Panel
@@ -595,6 +594,7 @@ def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream:
 
     console = _console(stream)
     parts: list[Any] = []
+    pins: Sequence[DistributionRow] = getattr(error, "pin_rows", ())
     if pins:
         parts.extend((_pins_table("the pins that differ from what is installed", pins), Text("")))
     tabled = {row.name for row in pins}

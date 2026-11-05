@@ -368,7 +368,7 @@ def refusal_of_a_differing_environment() -> EnvRefused:
                 "scipy": Expected("1.16.0", "the lab's pins"), "jax": Expected("0.12.0", "the cpu pins")}
     installed = {"numpy": ("2.3.5",), "pandas": ("2.9.0",), "jax": ("0.12.0",), "stray": ("1.0",)}
     return EnvRefused(distribution_refusals(installed, expected),
-                      rows=[row for row in distribution_rows(installed, expected) if not row.agrees])
+                      pin_rows=[row for row in distribution_rows(installed, expected) if not row.agrees])
 
 
 @needs_pty

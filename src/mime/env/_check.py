@@ -161,10 +161,10 @@ class EnvRefused(BuildRefused):
     headline = "the environment is refused"
 
     def __init__(self, refusals: Sequence[Refusal], report: BuildReport | None = None,
-                 rows: Sequence[DistributionRow] = ()) -> None:
+                 pin_rows: Sequence[DistributionRow] = ()) -> None:
         #: The pinned distributions that are not installed as pinned, as :func:`distribution_rows` gives them (a terminal
         #: draws them as a table of wanted, found and verdict).
-        self.rows = tuple(rows)
+        self.pin_rows = tuple(pin_rows)
         super().__init__(refusals, report)
 
 
@@ -539,7 +539,7 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     refusals += gpu_precision_refusals(recorded, requested)
     rows = distribution_rows(found, expected)
     if refusals:
-        raise EnvRefused(refusals, rows=[row for row in rows if not row.agrees])
+        raise EnvRefused(refusals, pin_rows=[row for row in rows if not row.agrees])
     config = cast(Any, jax.config)
     if x64 is not None:
         config.update("jax_enable_x64", x64)
