@@ -9,6 +9,7 @@ answers a set sequence of replies. The controls are fixed plants, each failing o
 import importlib.util
 import json
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -86,7 +87,8 @@ def test_a_server_error_that_never_clears_fails_naming_the_http_failure_and_prin
 def test_control_a_guard_that_let_a_failed_read_through_would_print_a_list_the_check_takes_for_no_shards(tmp_path):
     """The failed read's output goes into the check: it must fail the lane, not pass an empty list, under the step's
     ``pipefail`` or without it (the check alone sees no jobs and no shard)."""
-    done = subprocess.run(f'{sys.executable} {RUN_JOBS} {URL} --pause 0 | {sys.executable} {CHECK} --prefix "{PREFIX}" --shards 3',
+    done = subprocess.run(f"{shlex.quote(sys.executable)} {shlex.quote(str(RUN_JOBS))} {shlex.quote(URL)} --pause 0 | "
+                          f"{shlex.quote(sys.executable)} {shlex.quote(str(CHECK))} --prefix {shlex.quote(PREFIX)} --shards 3",
                           shell=True, executable="/bin/bash", env=stub_gh(tmp_path / "gh", [BAD_GATEWAY]),
                           capture_output=True, text=True, check=False, timeout=60)
     assert done.returncode == 1 and "Traceback" not in done.stdout + done.stderr, done

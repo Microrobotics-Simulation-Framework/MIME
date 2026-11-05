@@ -722,9 +722,6 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
-      - name: None of the completion tests skipped
-        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
-        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         env:
@@ -732,6 +729,9 @@ jobs:
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+      - name: None of the completion tests skipped
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
 
   openmaterica-main-completion:
     name: completion tests (openmaterica-main)
@@ -765,9 +765,6 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
-      - name: None of the completion tests skipped
-        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
-        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         env:
@@ -775,6 +772,9 @@ jobs:
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+      - name: None of the completion tests skipped
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
 
   maddening-main-completion:
     name: completion tests (maddening-main)
@@ -815,9 +815,6 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
-      - name: None of the completion tests skipped
-        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
-        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         env:
@@ -825,6 +822,9 @@ jobs:
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
           --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+      - name: None of the completion tests skipped
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
 
   usd-core-newest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
