@@ -2,11 +2,12 @@
 server was doing, not with a bare ``ConnectionResetError``.
 
 ``mime serve`` is started through :data:`SERVE`, ``mime serve`` under a few lines that log the server's accepts, its
-closes (who closed, of what age, with how many bytes unread) and the stalls of its loop, to ``<ready file>.serverlog``,
-and nothing else: the server's behaviour is its own. :func:`client` opens a ``LiveClient`` of a server started so; when
-the connection is refused or reset it raises an ``AssertionError`` holding the server process's ``poll()``, what is
-readable of its standard output and error, and the tail of that log, which is what a one-in-forty reset of a new
-client's handshake (CI, 2026-11-05, never reproduced locally) needed in order to name its mechanism.
+closes (who closed, of what age, with how many bytes the kernel still held unread for the peer) and the stalls of its
+loop, to ``<ready file>.serverlog``, and a thread's raise (passed on to the interpreter's own hook, so its traceback still
+reaches stderr), and nothing else: the server's behaviour is its own. :func:`client` opens a ``LiveClient`` of a server
+started so; when the connection is refused or reset it raises an ``AssertionError`` holding the server process's
+``poll()``, what is readable of its standard output and error, and the tail of that log, which is what a one-in-forty
+reset of a new client's handshake (CI, 2026-11-05, never reproduced locally) needed in order to name its mechanism.
 
 The control (``tests/live/test_serve_diagnostics.py``) stalls the server's loop past a lowered handshake limit with the
 test-only hook :data:`STALL_ENVIRONMENT`, which makes the server close the new peer unread, and checks the message."""
@@ -43,6 +44,16 @@ def log(*words):
 
 
 def _unread(peer):
+    """The bytes the kernel holds for the peer's socket, which the server has not read (what a close turns into a
+    reset), or "unknown" where the platform cannot say: never 0 for a count it could not read."""
+    try:
+        import fcntl, struct, termios
+        return struct.unpack("i", fcntl.ioctl(peer.sock.fileno(), termios.FIONREAD, b"\\0\\0\\0\\0"))[0]
+    except Exception:
+        return "unknown"
+
+
+def _buffered(peer):
     return len(getattr(getattr(peer, "reader", None), "buffer", b""))
 
 
@@ -52,7 +63,8 @@ _close = zmtp.Server._close
 def closing(self, peer):
     where = "<".join(frame.name for frame in traceback.extract_stack(limit=4)[:-1])
     log("close", peer.kind, getattr(peer, "address", "?"), "ready", peer.ready, "age",
-        round(time.monotonic() - getattr(peer, "opened", time.monotonic()), 3), "unread", _unread(peer), "from", where)
+        round(time.monotonic() - getattr(peer, "opened", time.monotonic()), 3), "unread", _unread(peer),
+        "buffered", _buffered(peer), "from", where)
     _close(self, peer)
 
 
@@ -105,7 +117,16 @@ if _stall:
     zmtp.Server._accept = stalled
 
 atexit.register(lambda: log("process exit"))
-threading.excepthook = lambda args: log("thread raised", args.exc_type, args.exc_value)
+_thread_hook = threading.excepthook
+
+
+def thread_raised(args):
+    log("thread raised", args.exc_type.__name__, args.exc_value, "|",
+        "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)).replace("\\n", " | "))
+    _thread_hook(args)
+
+
+threading.excepthook = thread_raised
 ''' % {"stall": STALL_ENVIRONMENT}
 
 #: ``mime`` with the arguments after ``-c``, under :data:`WATCH`.

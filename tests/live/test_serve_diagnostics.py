@@ -12,11 +12,16 @@ close of an unready peer from ``_housekeeping``, and a client's own error carrie
 diagnostics fails these assertions on every run. A healthy server is also checked, so the wrapper that logs does not
 refuse a handshake."""
 
+import re
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
-from live_servers import STALL_ENVIRONMENT, client, serve_command, watched
+from live_servers import STALL_ENVIRONMENT, WATCH, client, serve_command, watched
+
+from mime.live import _zmtp as zmtp
 
 HANG = 600
 
@@ -63,6 +68,11 @@ def test_a_handshake_reset_by_a_stalled_server_is_reported_with_its_stderr_its_l
     assert " accept PUB " in message  # a client's frames connection is the first it makes
     close = next(line for line in message.splitlines() if " close PUB " in line)
     assert "ready False" in close and "_housekeeping" in close, close
+    # the kernel's queue, not Python's buffer: the client had sent its greeting and the server had read none of it, which
+    # is what a close turns into a reset; and the age is that of a peer that outlived the lowered limit
+    greeting = len(zmtp.GREETING + zmtp.ready("SUB"))  # the first connection a client makes is its frames' SUB
+    assert re.search(rf" unread {greeting} ", close), (greeting, close)
+    assert float(re.search(r" age ([0-9.]+) ", close).group(1)) > 0.1, close
     # the control: the diagnostics are what carries these, not the error
     for only_in_the_diagnostics in ("test hook", "housekeeping", "ready False", "poll()"):
         assert only_in_the_diagnostics not in repr(cause), only_in_the_diagnostics
@@ -89,3 +99,24 @@ def test_a_healthy_server_under_the_logging_wrapper_is_greeted(launch, folder, t
     assert " accept REP " in log and " accept PUB " in log
     process.terminate()
     process.communicate(timeout=HANG)
+
+
+def test_a_thread_that_raises_in_the_wrapped_server_still_reaches_stderr_in_full_and_is_logged(tmp_path):
+    """The wrapper takes the thread hook to log; it passes the raise on, so the server's stderr is what it is without
+    the wrapper (the control: the same thread raises under the plain interpreter and its traceback is the same)."""
+    ready = tmp_path / "threaded.ready.json"
+    thread = (
+        "\nimport threading\n"
+        "def explode():\n    raise RuntimeError('boom in a server thread')\n"
+        "t = threading.Thread(target=explode, name='server-helper')\nt.start()\nt.join()\n"
+    )
+    arguments = ["serve", "x", "--ready-file", str(ready)]
+    done = subprocess.run([sys.executable, "-c", WATCH + thread, *arguments], capture_output=True, text=True,
+                          check=False, timeout=HANG)
+    plain = subprocess.run([sys.executable, "-c", thread, *arguments], capture_output=True, text=True, check=False,
+                           timeout=HANG)
+    for stderr in (done.stderr, plain.stderr):
+        assert "Traceback (most recent call last)" in stderr and "in explode" in stderr, stderr
+        assert "RuntimeError: boom in a server thread" in stderr and "server-helper" in stderr, stderr
+    logged = next(line for line in Path(str(ready) + ".serverlog").read_text().splitlines() if "thread raised" in line)
+    assert "boom in a server thread" in logged and "explode" in logged, logged
