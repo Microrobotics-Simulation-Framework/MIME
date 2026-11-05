@@ -13,6 +13,7 @@ import importlib.util
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,6 +27,9 @@ COMPLETION = "tests/cli/test_completion.py"
 #: The lanes that run as shards, and the lane that runs whole (the weekly one, which installs the shells itself).
 SHARDED = ("default-tests", "openmaterica-main-tests", "maddening-main-tests")
 UNSHARDED = "usd-core-newest"
+#: The step that asks, word for word: the count it is given, the output it writes and the file it asks about.
+ASK = ('echo "holder=$(uv run --no-sync python scripts/shard_of_file.py tests/cli/test_completion.py --of "$SHARDS")" '
+       '>> "$GITHUB_OUTPUT"')
 
 
 def _script():
@@ -80,8 +84,12 @@ def workflow_problems(text: str) -> list[str]:
             found.append(f"{name}: does not ask scripts/shard_of_file.py for the shard of {COMPLETION}")
         elif asks[0].get("env", {}).get("SHARDS") != "${{ needs.shards.outputs.count }}":
             found.append(f"{name}: asks for the shard of a count other than the lane's")
+        elif asks[0]["run"].strip() != ASK:
+            found.append(f"{name}: the run line of the ask is not the one that writes the holder for the lane's count")
         if len(installs) != 1 or installs[0]["run"].strip() != "bash scripts/install_shells.sh":
             found.append(f"{name}: does not install zsh and fish exactly once, by scripts/install_shells.sh")
+        elif "continue-on-error" in installs[0]:
+            found.append(f"{name}: the install may fail without failing the job (continue-on-error)")
         elif installs[0].get("if") != "steps.shells.outputs.holder == matrix.shard":
             found.append(f"{name}: installs the shells on a shard other than the one that holds them, or on all")
         elif asks and steps.index(asks[0]) > steps.index(installs[0]):
@@ -101,7 +109,12 @@ def test_every_sharded_lane_installs_the_shells_on_the_completion_tests_shard_al
     ("scripts/shard_of_file.py tests/cli/test_completion.py", "scripts/shard_of_file.py tests/cli/test_other.py",
      "does not ask scripts/shard_of_file.py"),
     ("          SHARDS: ${{ needs.shards.outputs.count }}\n", "          SHARDS: '10'\n", "a count other than the lane's"),
-], ids=["installs-on-all-shards", "asks-for-another-file", "asks-for-a-fixed-count"])
+    ('--of "$SHARDS")" >> "$GITHUB_OUTPUT"', '--of 10)" >> "$GITHUB_OUTPUT"', "the run line of the ask"),
+    ('echo "holder=$(uv run', 'echo "holdr=$(uv run', "the run line of the ask"),
+    ("        if: steps.shells.outputs.holder == matrix.shard\n",
+     "        if: steps.shells.outputs.holder == matrix.shard\n        continue-on-error: true\n", "continue-on-error"),
+], ids=["installs-on-all-shards", "asks-for-another-file", "asks-for-a-fixed-count", "writes-the-run-line-with-a-fixed-count",
+        "writes-the-holder-under-another-name", "lets-the-install-fail"])
 def test_control_a_break_in_the_wiring_is_named(old, new, expected):
     text = CI.read_text(encoding="utf-8")
     assert text.count(old) == len(SHARDED), old
@@ -131,30 +144,43 @@ def test_control_the_scan_finds_a_file_that_asks_for_a_shell(tmp_path):
 
 
 INSTALL = ROOT / "scripts" / "install_shells.sh"
+needs_posix = pytest.mark.skipif(sys.platform == "win32", reason="a CI Linux runner's script")
 
 
-def fake_tools(folder: Path, apt_body: str) -> dict[str, str]:
-    """An environment whose ``sudo``, ``dpkg`` and ``apt-get`` are scripts in ``folder`` (``sudo`` runs its arguments;
-    ``apt-get`` runs ``apt_body``, with ``$COUNT_FILE`` holding the attempts so far), so that the script is run for real
-    and installs nothing."""
+def fake_tools(folder: Path, apt_body: str, *, recorded: bool = False) -> dict[str, str]:
+    """An environment whose ``sudo``, ``dpkg`` and ``apt-get`` are scripts in ``folder``, so that the script is run for
+    real and installs nothing. ``apt-get`` runs ``apt_body`` (``$COUNT_FILE`` holds the attempts so far, ``$attempt``
+    the number of this one) and logs its arguments to ``$COUNT_FILE.apt``; ``sudo`` logs that it was used and runs its
+    arguments. With ``recorded``, ``timeout`` and ``sleep`` are fakes that log their arguments to ``$COUNT_FILE.calls``
+    and cut and wait for nothing (``timeout`` runs the command after its own options), so that the script's defaults
+    can be read off a run that takes no time."""
     folder.mkdir()
-    (folder / "sudo").write_text('#!/bin/sh\nexec "$@"\n', encoding="utf-8")
-    (folder / "dpkg").write_text("#!/bin/sh\necho dpkg-configure-ran >> \"$COUNT_FILE.dpkg\"\n", encoding="utf-8")
-    (folder / "apt-get").write_text('#!/bin/sh\necho x >> "$COUNT_FILE"\nattempt=$(wc -l < "$COUNT_FILE")\n' + apt_body,
-                                    encoding="utf-8")
+    (folder / "sudo").write_text('#!/bin/sh\necho "sudo $1" >> "$COUNT_FILE.sudo"\nexec "$@"\n', encoding="utf-8")
+    (folder / "dpkg").write_text('#!/bin/sh\necho "dpkg $*" >> "$COUNT_FILE.dpkg"\n', encoding="utf-8")
+    (folder / "apt-get").write_text('#!/bin/sh\necho x >> "$COUNT_FILE"\necho "$*" >> "$COUNT_FILE.apt"\n'
+                                    'attempt=$(wc -l < "$COUNT_FILE")\n' + apt_body, encoding="utf-8")
+    if recorded:
+        (folder / "timeout").write_text(
+            '#!/bin/sh\necho "timeout $1 $2 $3" >> "$COUNT_FILE.calls"\nshift 2\nexec "$@"\n', encoding="utf-8")
+        (folder / "sleep").write_text('#!/bin/sh\necho "sleep $1" >> "$COUNT_FILE.calls"\n', encoding="utf-8")
     for tool in folder.iterdir():
         tool.chmod(0o755)
     return {"PATH": f"{folder}:/usr/bin:/bin", "COUNT_FILE": str(folder / "count")}
 
 
-def run_install(tmp_path: Path, apt_body: str, **settings: str) -> tuple[subprocess.CompletedProcess[str], int]:
-    environment = fake_tools(tmp_path / "bin", apt_body) | settings
+def run_install(tmp_path: Path, apt_body: str, *, recorded: bool = False,
+                **settings: str) -> tuple[subprocess.CompletedProcess[str], int]:
+    environment = fake_tools(tmp_path / "bin", apt_body, recorded=recorded) | settings
+    if not recorded:  # the recorded runs wait for nothing, so they keep the script's own pause
+        environment.setdefault("SHELLS_PAUSE_SECONDS", "0")
     done = subprocess.run(["bash", str(INSTALL)], env=environment, capture_output=True, text=True, check=False, timeout=120)
     counted = Path(environment["COUNT_FILE"])
     return done, len(counted.read_text().splitlines()) if counted.exists() else 0
 
 
-needs_posix = pytest.mark.skipif(sys.platform == "win32", reason="a CI Linux runner's script")
+def lines(tmp_path: Path, suffix: str) -> list[str]:
+    path = tmp_path / "bin" / f"count.{suffix}"
+    return path.read_text().splitlines() if path.exists() else []
 
 
 @needs_posix
@@ -172,8 +198,64 @@ def test_control_without_the_cut_a_stalled_attempt_is_waited_for(tmp_path):
 
 
 @needs_posix
+def test_the_last_attempt_has_a_limit_of_its_own_so_an_install_slower_than_the_cut_still_passes(tmp_path):
+    """The history's slow installs (121 to 320 s) all passed on one attempt: the cut ends the first attempts only."""
+    done, attempts = run_install(tmp_path, '[ "$attempt" -ge 2 ] && { sleep 3; exit 0; }\nexec sleep 30\n',
+                                 SHELLS_ATTEMPTS="2", SHELLS_ATTEMPT_SECONDS="1", SHELLS_FINAL_SECONDS="20")
+    assert done.returncode == 0 and attempts == 2, done
+    assert "installed on attempt 2 of 2" in done.stdout
+
+
+@needs_posix
+def test_control_the_last_attempt_is_cut_at_its_own_limit_and_the_step_then_fails(tmp_path):
+    done, attempts = run_install(tmp_path, "exec sleep 30\n", SHELLS_ATTEMPTS="2", SHELLS_ATTEMPT_SECONDS="1",
+                                 SHELLS_FINAL_SECONDS="2")
+    assert done.returncode == 1 and attempts == 2, done
+    assert "attempt 2 of 2 failed or ran over 2 s" in done.stdout
+
+
+@needs_posix
 def test_a_failing_install_is_tried_the_set_number_of_times_and_then_fails_the_step(tmp_path):
     done, attempts = run_install(tmp_path, "exit 100\n", SHELLS_ATTEMPTS="2", SHELLS_ATTEMPT_SECONDS="5")
     assert done.returncode == 1 and attempts == 2, done
     assert "were not installed in 2 attempts" in done.stdout
-    assert len((tmp_path / "bin" / "count.dpkg").read_text().splitlines()) == 2, "the half-done install is repaired between"
+    assert len(lines(tmp_path, "dpkg")) == 1, "the half-done install is repaired between attempts, not after the last"
+
+
+@needs_posix
+def test_the_defaults_are_the_ones_the_step_documents_and_the_worst_case_is_inside_the_job(tmp_path):
+    """Run with no ``SHELLS_*`` setting, against a ``timeout`` and a ``sleep`` that record their arguments: the first
+    attempts are cut at 120 s, the last at 360 s, ``dpkg --configure -a`` at 60 s, a pause of 15 s follows each failed
+    attempt that is not the last, apt gets what it needs (as root, unattended, without its recommendations, zsh and
+    fish), and the worst case that the script prints is under the job's 20 minutes and under 15."""
+    done, attempts = run_install(tmp_path, '[ "$attempt" -ge 3 ] && exit 0\nexit 100\n', recorded=True)
+    assert done.returncode == 0 and attempts == 3, done
+    assert lines(tmp_path, "calls") == [
+        "timeout --kill-after=10 120 apt-get", "timeout --kill-after=10 60 dpkg", "sleep 15",
+        "timeout --kill-after=10 120 apt-get", "timeout --kill-after=10 60 dpkg", "sleep 15",
+        "timeout --kill-after=10 360 apt-get"]
+    assert lines(tmp_path, "apt") == ["install -y --no-install-recommends zsh fish"] * 3
+    assert lines(tmp_path, "dpkg") == ["dpkg --configure -a"] * 2
+    assert lines(tmp_path, "sudo") == ["sudo timeout"] * 5, "every apt-get (3) and dpkg (2) runs as root, under the cut"
+    worst = int(re.search(r"worst case ([0-9]+) s", done.stdout).group(1))
+    assert worst == (120 + 10 + 60 + 10 + 15) * 2 + 360 + 10 and worst < 15 * 60, worst
+
+
+@needs_posix
+def test_an_apt_that_cannot_get_its_lock_is_not_asked_again_at_once(tmp_path):
+    """apt exits 100 at once while another process holds its lock; the retries must be spaced, not three in a row."""
+    done, attempts = run_install(tmp_path, "exit 100\n", recorded=True)
+    assert done.returncode == 1 and attempts == 3, done
+    assert [line for line in lines(tmp_path, "calls") if line.startswith("sleep")] == ["sleep 15", "sleep 15"]
+
+
+@needs_posix
+def test_a_dpkg_that_hangs_is_cut_and_does_not_hold_the_next_attempt(tmp_path):
+    folder = tmp_path / "bin"
+    environment = fake_tools(folder, '[ "$attempt" -ge 2 ] && exit 0\nexit 100\n')
+    (folder / "dpkg").write_text("#!/bin/sh\nexec sleep 30\n", encoding="utf-8")
+    environment |= {"SHELLS_DPKG_SECONDS": "1", "SHELLS_PAUSE_SECONDS": "0"}
+    started = time.monotonic()
+    done = subprocess.run(["bash", str(INSTALL)], env=environment, capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode == 0 and "installed on attempt 2 of 3" in done.stdout, done
+    assert time.monotonic() - started < 15
