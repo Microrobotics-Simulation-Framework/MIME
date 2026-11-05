@@ -24,6 +24,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 from live_cases import built, saved
+from live_servers import WATCH, serve_command, watched
+from live_servers import client as watched_client
 from process_groups import running
 
 from mime.live import COMMAND_LOG, PROTOCOL, FrameOrder, LiveClient
@@ -38,10 +40,9 @@ HANG = 600
 
 def started(launch, folder: Path, out: Path, ready: Path, *extra: str) -> subprocess.Popen:
     """``mime serve`` of ``folder`` in a process group of its own (``launch``: stopped with its group when the test
-    ends), once its ready file is written."""
-    process = launch([*MIME, "serve", str(folder), "--commands", "tcp://127.0.0.1:0", "--frames",
-                      "tcp://127.0.0.1:0", "--ready-file", str(ready), "--out", str(out), *extra],
-                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    ends), once its ready file is written. It runs under ``live_servers.WATCH``, which logs the server's accepts and
+    closes for the message of a client whose handshake fails (``client`` below)."""
+    process = watched(launch, serve_command(folder, ready, out, *extra), ready)
     deadline = time.monotonic() + HANG
     while not ready.exists() or not ready.read_text():
         assert process.poll() is None, process.communicate()
@@ -56,8 +57,8 @@ def folder(tmp_path_factory) -> Path:
 
 
 def client(ready: Path, timeout: float = 30.0) -> LiveClient:
-    endpoints = json.loads(ready.read_text())
-    return LiveClient(endpoints["commands"], endpoints["frames"], timeout=timeout)
+    """A client of the server that wrote ``ready``; a handshake that fails raises with the server's state."""
+    return watched_client(ready, timeout)
 
 
 def acts_within(answer: dict, chunk_steps: int) -> tuple[int, ...]:
@@ -392,7 +393,7 @@ def test_a_run_folder_served_or_replayed_into_itself_is_refused_and_left_whole(f
 #: before 7n-b), "fd" (a peer identified by a slot of its kind, which the next connection of the kind reuses, as it
 #: would a descriptor) and "single" (one slot for the step in hand, answered only when the loop finds no step in
 #: hand: the second step taken in a batch replacing the first). Then ``mime`` with the rest.
-GATED = """
+GATED = WATCH + """
 import concurrent.futures, itertools, pathlib, sys
 import mime.control._run as run
 import mime.live._serve as serve
@@ -440,9 +441,9 @@ raise SystemExit(main(sys.argv[3:]))
 
 def gated_server(launch, folder: Path, tmp_path: Path, mode: str) -> tuple[subprocess.Popen, Path, Path]:
     gate, ready, out = tmp_path / f"gate_{mode}", tmp_path / f"ready_{mode}.json", tmp_path / f"out_{mode}"
-    process = launch([sys.executable, "-c", GATED, str(gate), mode, "serve", str(folder), "--commands",
-                      "tcp://127.0.0.1:0", "--frames", "tcp://127.0.0.1:0", "--ready-file", str(ready), "--out",
-                      str(out)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = watched(launch, [sys.executable, "-c", GATED, str(gate), mode, "serve", str(folder), "--commands",
+                               "tcp://127.0.0.1:0", "--frames", "tcp://127.0.0.1:0", "--ready-file", str(ready),
+                               "--out", str(out)], ready)
     deadline = time.monotonic() + HANG
     while not ready.exists() or not ready.read_text():
         assert process.poll() is None, process.communicate()

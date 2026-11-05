@@ -1,0 +1,122 @@
+"""A client whose handshake with a live server fails says what the server was doing (``tests/live_servers.py``).
+
+A one-in-forty ``ConnectionResetError`` in a new client's handshake (CI, 2026-11-05, 60 000 handshakes on a laptop and none
+reproduced it) named no mechanism: the test's message held the error and nothing of the server. A client opened by the
+live tests' ``client`` now fails with the server process's ``poll()``, its output and the log of its accepts, closes and loop
+stalls. Machine-free: the server's loop sleeps, test-only, past a handshake limit lowered to 0.1 s after it accepts a
+peer, so the next pass of its loop closes the peer unread (the mechanism the failure's report names first, made to
+happen), whatever the load.
+
+The control is the planted fault itself and its message: the server's stderr carries a line the hook writes, its log a
+close of an unready peer from ``_housekeeping``, and a client's own error carries neither, so a message that lost the
+diagnostics fails these assertions on every run. A healthy server is also checked, so the wrapper that logs does not
+refuse a handshake."""
+
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+from live_servers import STALL_ENVIRONMENT, WATCH, client, serve_command, watched
+
+from mime.live import _zmtp as zmtp
+
+HANG = 600
+
+
+@pytest.fixture(scope="module")
+def folder(tmp_path_factory) -> Path:
+    """A saved experiment that serves idle and builds in a second (the toy: the handshake needs no rig)."""
+    import warnings
+
+    from mime.testing.toys import full_toy
+
+    held = tmp_path_factory.mktemp("diagnosed") / "toy"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        full_toy().save(held)
+    return held
+
+
+def started(launch, folder: Path, tmp_path: Path, name: str, **options):
+    ready = tmp_path / f"{name}.ready.json"
+    process = watched(launch, serve_command(folder, ready, tmp_path / f"{name}.out"), ready, **options)
+    deadline = time.monotonic() + HANG
+    while not ready.exists() or not ready.read_text():
+        assert process.poll() is None, process.communicate()
+        assert time.monotonic() < deadline, "mime serve never wrote its ready file"
+        time.sleep(0.05)
+    return process, ready
+
+
+def test_a_handshake_reset_by_a_stalled_server_is_reported_with_its_stderr_its_log_and_its_state(
+        launch, folder, tmp_path, monkeypatch):
+    monkeypatch.setenv(STALL_ENVIRONMENT, "0.1:1.0")
+    process, ready = started(launch, folder, tmp_path, "stalled")
+    with pytest.raises(AssertionError) as raised:
+        client(ready)
+    message = str(raised.value)
+    cause = raised.value.__cause__
+    assert isinstance(cause, ConnectionError), "the fault did not reset or close the handshake"
+    # the process: alive, said so
+    assert "server process poll(): None (None: still running)" in message
+    # its stderr: the line the hook wrote
+    assert "test hook: the loop sleeps 1.0 s after an accept, past its 0.1 s handshake limit" in message
+    # its log: the accept, and the close of the unready peer by the loop's housekeeping
+    assert " accept PUB " in message  # a client's frames connection is the first it makes
+    close = next(line for line in message.splitlines() if " close PUB " in line)
+    assert "ready False" in close and "_housekeeping" in close, close
+    # the kernel's queue, not Python's buffer: the client had sent its greeting and the server had read none of it, which
+    # is what a close turns into a reset; and the age is that of a peer that outlived the lowered limit
+    greeting = len(zmtp.GREETING + zmtp.ready("SUB"))  # the first connection a client makes is its frames' SUB
+    assert re.search(rf" unread {greeting} ", close), (greeting, close)
+    assert float(re.search(r" age ([0-9.]+) ", close).group(1)) > 0.1, close
+    # the control: the diagnostics are what carries these, not the error
+    for only_in_the_diagnostics in ("test hook", "housekeeping", "ready False", "poll()"):
+        assert only_in_the_diagnostics not in repr(cause), only_in_the_diagnostics
+    assert process.poll() is None
+
+
+def test_a_server_that_has_exited_is_reported_with_its_exit_code(launch, folder, tmp_path):
+    process, ready = started(launch, folder, tmp_path, "gone")
+    process.kill()
+    process.wait(timeout=HANG)
+    with pytest.raises(AssertionError) as raised:
+        client(ready)
+    assert isinstance(raised.value.__cause__, ConnectionError)
+    assert f"server process poll(): {process.returncode} (None: still running)" in str(raised.value)
+    assert process.returncode is not None
+
+
+def test_a_healthy_server_under_the_logging_wrapper_is_greeted(launch, folder, tmp_path):
+    process, ready = started(launch, folder, tmp_path, "healthy")
+    live = client(ready)
+    assert live.request("status")["ok"]
+    live.close()
+    log = Path(str(ready) + ".serverlog").read_text()
+    assert " accept REP " in log and " accept PUB " in log
+    process.terminate()
+    process.communicate(timeout=HANG)
+
+
+def test_a_thread_that_raises_in_the_wrapped_server_still_reaches_stderr_in_full_and_is_logged(tmp_path):
+    """The wrapper takes the thread hook to log; it passes the raise on, so the server's stderr is what it is without
+    the wrapper (the control: the same thread raises under the plain interpreter and its traceback is the same)."""
+    ready = tmp_path / "threaded.ready.json"
+    thread = (
+        "\nimport threading\n"
+        "def explode():\n    raise RuntimeError('boom in a server thread')\n"
+        "t = threading.Thread(target=explode, name='server-helper')\nt.start()\nt.join()\n"
+    )
+    arguments = ["serve", "x", "--ready-file", str(ready)]
+    done = subprocess.run([sys.executable, "-c", WATCH + thread, *arguments], capture_output=True, text=True,
+                          check=False, timeout=HANG)
+    plain = subprocess.run([sys.executable, "-c", thread, *arguments], capture_output=True, text=True, check=False,
+                           timeout=HANG)
+    for stderr in (done.stderr, plain.stderr):
+        assert "Traceback (most recent call last)" in stderr and "in explode" in stderr, stderr
+        assert "RuntimeError: boom in a server thread" in stderr and "server-helper" in stderr, stderr
+    logged = next(line for line in Path(str(ready) + ".serverlog").read_text().splitlines() if "thread raised" in line)
+    assert "boom in a server thread" in logged and "explode" in logged, logged
