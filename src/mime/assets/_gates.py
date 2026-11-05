@@ -385,7 +385,8 @@ def _flags(licences: Sequence[Licence]) -> str:
 
 def _licence_refusal(licences: Sequence[Licence], needs: str, why: str) -> BuildRefused:
     """The refusal of a download whose licences are not accepted and cannot be asked about."""
-    said = "; ".join(f"{each.title} ({each.id}): {'; '.join(each.conditions)}" for each in licences)
+    said = "; ".join(f"{plain(each.title)} ({plain(each.id)}): {'; '.join(plain(line) for line in each.conditions)}"
+                     for each in licences)
     ids = ", ".join(repr(each.id) for each in licences)
     return _refuse(
         "asset.licence-not-accepted", RefusalClass.USER,
@@ -439,7 +440,7 @@ def _accept(needed: Sequence[Licence], names: str, asker: Asker | None, notice: 
         raise _licence_refusal(needed, names, "there is no terminal to ask at") from None
     if not said_yes:
         raise _refuse("asset.licence-declined", RefusalClass.USER,
-                      f"the conditions of {', '.join(each.title for each in needed)} were not accepted, and "
+                      f"the conditions of {', '.join(plain(each.title) for each in needed)} were not accepted, and "
                       f"nothing was downloaded or used",
                       f"read them again and answer y to accept, or accept them by name: `{_flags(needed)}`")
     remember(needed)
