@@ -50,6 +50,9 @@ stated default, and the build report says which.
   Colab. A mesh whose licence forbids redistribution (the AR4's) is never put into a page: simple shapes are drawn
   in its place, and the page says so. `examples/sphere_settling_tube.py`, a steel ball settling across a tube of
   water onto its floor, is made to be viewed.
+- **A run's live display in a notebook**: in Jupyter or Colab, `built.run`, `built.run_to` and `built.save` show
+  `mime run`'s live display through the notebook (the phase, then the bar, then, in `run_to`, the saving of the run
+  folder); `progress=False` turns it off, and outside a notebook nothing is shown unless `progress=True` asks for it.
 - **Sharing**: `mime pack` writes a saved experiment as one bundle, `mime pull` checks a bundle and unpacks it, and
   `mime push --to zenodo` publishes one as a record with its card.
 - **Assets by hash**: a large file is referenced by its sha256 with its licence and fetched on request

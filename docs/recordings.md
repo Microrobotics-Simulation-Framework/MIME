@@ -168,7 +168,8 @@ written.view()                            # after built.run_to(...): the same as
 ### In Colab
 
 The settling ball of `examples/sphere_settling_tube.py`, in a notebook. It fetches the tube's table (about two hundred
-megabytes) once, then runs the experiment on Colab's CPU:
+megabytes) once, then runs the experiment on Colab's CPU. `example.run` calls `built.run_to`, which in a notebook shows
+MIME's live display as it runs and while it writes the run folder (`progress=False` turns it off):
 
 <!-- mime-fragment: a notebook cell that installs MIME and downloads files from the network, shown and not run by a check -->
 ```python

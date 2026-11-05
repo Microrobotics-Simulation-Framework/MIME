@@ -138,3 +138,15 @@ returns a reason (a `mime.control.Progress`: the chunk's index, the steps taken,
 writing it as a stopped run. A stopped run is a faithful run of the steps it reached, which is why the manifest keeps
 its version: a reader that does not know `stopped` reads those steps. A run with a controller or a hook is chunked as
 before, by its control period or by `chunk=`.
+
+## A run in a notebook
+
+In a notebook (Jupyter, or Colab: rich's own test of one), `built.run(...)` and `built.run_to(...)` show the live
+display `mime run` shows, drawn through the notebook's output: the first chunk compiling, then the bar with the steps,
+the simulated time, the speed and an estimate of the time left, and, in `run_to`, a phase while the run folder is
+written, whose saved form builds, compiles and runs its reference steps (on Colab a minute or two). `built.save(folder)`
+shows its phase too. `progress=False` turns it off; outside a notebook nothing is shown, and `progress=True` asks for
+it on a terminal as `mime run` draws it. The display is drawn from `stop`'s place after each chunk, a `stop` of your own
+still asked after it: it changes neither the chunks nor anything the run computes. It is drawn through `ipywidgets`,
+which Colab has; where it is missing, rich says to install it. To stop a run there, interrupt the kernel: nothing of the
+run is kept, and the experiment is built again before it runs on.

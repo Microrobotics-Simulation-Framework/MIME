@@ -231,7 +231,7 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
                                every=s(every) if every is not None else None, source=folder,
                                load_seconds=time.perf_counter() - started,
                                stage_every=s(stage_every) if stage_every is not None else None,
-                               stop=stop)
+                               stop=stop, progress=False)
     except RunFailed as failed:
         if display is not None:
             display.close()

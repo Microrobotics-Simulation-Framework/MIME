@@ -68,6 +68,8 @@ class RunState:
     lengths: set[int] = field(default_factory=set[int])
     #: The flags seen raised so far, with the step of the chunk's end each was first seen at.
     flags: dict[str, int] = field(default_factory=dict[str, int])
+    #: What the estimate line says while the last chunk runs: what the run does when its steps are done.
+    finishing: str = "finishing the last chunk, then writing the run folder"
 
     def chunk(self, steps: int, now: float, raised: Sequence[str] | None = None) -> None:
         """A chunk ended at ``steps`` (counted from the run's start) at ``now``; ``raised`` the flags raised at its
@@ -117,16 +119,16 @@ class RunState:
         speed = self.steps_per_second()
         parts = [f"{speed:,.0f} steps/s" if speed is not None else "speed: after a chunk that did not compile"]
         if self.last_chunk_under_way:
-            parts.append("finishing the last chunk, then writing the run folder")
+            parts.append(self.finishing)
         else:
             left = self.remaining(now)
             parts.append(f"about {duration_text(left)} left (an estimate)" if left is not None else
                          "time left: an estimate after a chunk that did not compile")
         return "  ·  ".join(parts)
 
-    def flags_line(self) -> str:
+    def flags_line(self, stop: str = "Ctrl+C to stop") -> str:
         """The third line: the flags raised so far, and how to stop."""
-        return f"{self.flags_text()}  ·  Ctrl+C to stop"
+        return f"{self.flags_text()}  ·  {stop}"
 
     def flags_text(self) -> str:
         if not self.flags:
