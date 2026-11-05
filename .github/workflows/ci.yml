@@ -41,6 +41,9 @@ name: CI
 # that margin, and tests/shard_weights.json is rebuilt from a full run's reports (scripts/shard_weights.py) when the
 # suite has grown. A pull request's newer push cancels its older run
 # (`concurrency` below).
+# tests/cli/test_completion.py runs in a job of its own per lane (`<lane>-completion`, 30 minutes), which installs zsh
+# and fish (scripts/install_shells.sh) and which the lane's job under its own name waits on and checks; every shard
+# deselects the file and installs no shell (tests/test_completion_job.py).
 # Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix (every lane and Python, 58 jobs) runs on a push to
 # a branch, a manual run, and a pull request that carries the label `ready`. A pull request without the label runs a
 # reduced set: `typecheck`, `no private name or path`, the docs check and the default lane on Python 3.12 with all its
@@ -185,14 +188,6 @@ jobs:
         run: uv sync --locked --extra verify
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
-      - name: The shard that holds the completion tests
-        id: shells
-        env:
-          SHARDS: ${{ needs.shards.outputs.count }}
-        run: echo "holder=$(uv run --no-sync python scripts/shard_of_file.py tests/cli/test_completion.py --of "$SHARDS")" >> "$GITHUB_OUTPUT"
-      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner), on the shard that holds them
-        if: steps.shells.outputs.holder == matrix.shard
-        run: bash scripts/install_shells.sh
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -224,7 +219,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}" \
-            --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
+            --mime-shard-record "$RUNNER_TEMP/report/shard.json" --deselect tests/cli/test_completion.py \
             --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
@@ -267,7 +262,7 @@ jobs:
   # shard too (a job skipped by its `if` passes a required check), and fails then.
   default:
     name: default (Python ${{ matrix.python-version }})
-    needs: [shards, default-tests]
+    needs: [shards, default-tests, default-completion]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     # contents for the checkout, actions to read the run's own jobs (scripts/check_shard_jobs.py).
     permissions:
@@ -381,7 +376,7 @@ jobs:
           JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
         run: |
           set -o pipefail
-          gh api "$JOBS_URL" --paginate --jq '.jobs[] | {name, conclusion}' \
+          python3 scripts/run_jobs.py "$JOBS_URL" \
             | python3 scripts/check_shard_jobs.py --prefix "default tests (Python ${{ matrix.python-version }}, " --shards "${{ needs.shards.outputs.count }}"
       - name: Every shard passed, and together they ran the lane
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
@@ -393,6 +388,16 @@ jobs:
         run: >-
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
+
+      - name: The completion tests job, at its latest attempt, passed
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+        run: |
+          set -eo pipefail
+          python3 scripts/run_jobs.py "$JOBS_URL" \
+            | python3 scripts/check_shard_jobs.py --prefix "completion tests (default, Python ${{ matrix.python-version }})" --shards 1
 
   openmaterica-main-tests:
     name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
@@ -425,14 +430,6 @@ jobs:
             "openmaterica @ git+https://github.com/OpenMaterica/OpenMaterica@main"
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
-      - name: The shard that holds the completion tests
-        id: shells
-        env:
-          SHARDS: ${{ needs.shards.outputs.count }}
-        run: echo "holder=$(uv run --no-sync python scripts/shard_of_file.py tests/cli/test_completion.py --of "$SHARDS")" >> "$GITHUB_OUTPUT"
-      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner), on the shard that holds them
-        if: steps.shells.outputs.holder == matrix.shard
-        run: bash scripts/install_shells.sh
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -464,7 +461,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}" \
-            --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
+            --mime-shard-record "$RUNNER_TEMP/report/shard.json" --deselect tests/cli/test_completion.py \
             --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
@@ -499,7 +496,7 @@ jobs:
 
   openmaterica-main:
     name: openmaterica-main
-    needs: [shards, openmaterica-main-tests]
+    needs: [shards, openmaterica-main-tests, openmaterica-main-completion]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     continue-on-error: true
     runs-on: ubuntu-latest
@@ -529,6 +526,16 @@ jobs:
         run: >-
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
+
+      - name: The completion tests job passed
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        env:
+          COMPLETION: ${{ needs.openmaterica-main-completion.result }}
+        run: |
+          if [ "$COMPLETION" != success ]; then
+            echo "::error title=Completion tests::the completion tests job concluded '$COMPLETION', not success"
+            exit 1
+          fi
 
   maddening-main-tests:
     name: maddening-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
@@ -568,14 +575,6 @@ jobs:
           git config --global --remove-section "${rewrite}"
       - name: Build and install the lab fixture package, registered from outside MIME
         run: uv pip install --no-deps ./lab_fixture
-      - name: The shard that holds the completion tests
-        id: shells
-        env:
-          SHARDS: ${{ needs.shards.outputs.count }}
-        run: echo "holder=$(uv run --no-sync python scripts/shard_of_file.py tests/cli/test_completion.py --of "$SHARDS")" >> "$GITHUB_OUTPUT"
-      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner), on the shard that holds them
-        if: steps.shells.outputs.holder == matrix.shard
-        run: bash scripts/install_shells.sh
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -607,7 +606,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest -m "not slow" -n auto --dist worksteal --mime-shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}" \
-            --mime-shard-record "$RUNNER_TEMP/report/shard.json" \
+            --mime-shard-record "$RUNNER_TEMP/report/shard.json" --deselect tests/cli/test_completion.py \
             --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
@@ -642,7 +641,7 @@ jobs:
 
   maddening-main:
     name: maddening-main
-    needs: [shards, maddening-main-tests]
+    needs: [shards, maddening-main-tests, maddening-main-completion]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     continue-on-error: true
     runs-on: ubuntu-latest
@@ -672,6 +671,160 @@ jobs:
         run: >-
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
+
+      - name: The completion tests job passed
+        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        env:
+          COMPLETION: ${{ needs.maddening-main-completion.result }}
+        run: |
+          if [ "$COMPLETION" != success ]; then
+            echo "::error title=Completion tests::the completion tests job concluded '$COMPLETION', not success"
+            exit 1
+          fi
+
+  # tests/cli/test_completion.py, alone: the shells it runs under (zsh and fish) are installed here and on no shard, since
+  # `apt-get install` took 8 to 10 minutes on a slow mirror and a shard that held it beside its tests was cut at its 20
+  # minutes. The shards deselect the file (`--deselect` in their Tests step); the lane's job under its own name needs this
+  # one, so a red run here is a red required check. `scripts/install_shells.sh` ends at 800 s at worst (it prints that),
+  # so 30 minutes holds it, the set-up before it and the file after it with a margin. Under CI the tests fail, not skip,
+  # when a shell is missing, and scripts/check_no_skips.py fails the job on any skip.
+  default-completion:
+    name: completion tests (default, Python ${{ matrix.python-version }})
+    needs: shards
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+        # A reduced run (a pull request without `ready`) runs Python 3.12 alone.
+        exclude: ${{ fromJSON(needs.shards.outputs.full == 'true' && '[]' || '[{"python-version":"3.13"},{"python-version":"3.14"}]') }}
+    env:
+      MIME_CI_LANE: default
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
+      - name: Install the locked PyPI releases
+        run: uv sync --locked --extra verify
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
+        run: bash scripts/install_shells.sh
+      - name: Tests
+        id: tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
+      - name: None of the completion tests skipped
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
+      - name: Test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          TITLE: "Test durations: completion, default, Python ${{ matrix.python-version }}"
+        run: >-
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+
+  openmaterica-main-completion:
+    name: completion tests (openmaterica-main)
+    needs: shards
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MIME_CI_LANE: openmaterica-main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
+      - name: Install the locked releases, then OpenMaterica from its main
+        run: |
+          uv sync --locked --extra verify
+          uv pip install --reinstall-package openmaterica \
+            "openmaterica @ git+https://github.com/OpenMaterica/OpenMaterica@main"
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
+        run: bash scripts/install_shells.sh
+      - name: Tests
+        id: tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
+      - name: None of the completion tests skipped
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
+      - name: Test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          TITLE: "Test durations: completion, openmaterica-main"
+        run: >-
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+
+  maddening-main-completion:
+    name: completion tests (maddening-main)
+    needs: shards
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MIME_CI_LANE: maddening-main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          save-cache: ${{ github.event_name != 'pull_request' }}
+      # MADDENING is private: git reads it with MADDENING_TOKEN (Contents: read), through a URL rewrite, so the
+      # install records the plain repository URL and the token reaches no metadata.
+      - name: Install the locked releases, then MADDENING from its main
+        env:
+          MADDENING_TOKEN: ${{ secrets.MADDENING_TOKEN }}
+        run: |
+          uv sync --locked --extra verify
+          rewrite="url.https://x-access-token:${MADDENING_TOKEN}@github.com/Microrobotics-Simulation-Framework/MADDENING"
+          git config --global "${rewrite}.insteadOf" https://github.com/Microrobotics-Simulation-Framework/MADDENING
+          uv pip install --reinstall-package maddening \
+            "maddening[verify] @ git+https://github.com/Microrobotics-Simulation-Framework/MADDENING@main"
+          git config --global --remove-section "${rewrite}"
+      - name: Build and install the lab fixture package, registered from outside MIME
+        run: uv pip install --no-deps ./lab_fixture
+      - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner)
+        run: bash scripts/install_shells.sh
+      - name: Tests
+        id: tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
+      - name: None of the completion tests skipped
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
+      - name: Test durations
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          TITLE: "Test durations: completion, maddening-main"
+        run: >-
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
 
   usd-core-newest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

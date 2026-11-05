@@ -4,13 +4,13 @@
 
 ``scripts/latest_attempt.py`` keeps the newest uploaded report of each shard. A shard job that was re-run and failed
 before it uploaded one leaves its first attempt's report as the newest, which may have passed. The run's own list of
-jobs at their latest attempts (``GET /repos/{repo}/actions/runs/{id}/jobs?filter=latest``) says what the shard jobs
-ended as, so this reads it, one JSON object ``{"name", "conclusion"}`` per line on standard input, and checks that
-exactly ``--shards`` jobs have a name beginning ``--prefix`` and that each concluded ``success``. The prefix names one
-Python (``default tests (Python 3.12, ``): the matrix job's own result is one for all three, and would turn a lane red
+jobs at their latest attempts (``GET /repos/{repo}/actions/runs/{id}/jobs?filter=latest``, read by
+``scripts/run_jobs.py``, which asks again after a server error) says what the shard jobs ended as, so this reads it,
+one JSON object ``{"name", "conclusion"}`` per line on standard input, and checks that exactly ``--shards`` jobs have a
+name beginning ``--prefix`` and that each concluded ``success``. The prefix names one Python (``default tests (Python 3.12, ``): the matrix job's own result is one for all three, and would turn a lane red
 for another Python's shard.
 
-    gh api ".../jobs?filter=latest&per_page=100" --paginate --jq '.jobs[] | {name, conclusion}' \\
+    python3 scripts/run_jobs.py ".../jobs?filter=latest&per_page=100" \\
         | python3 scripts/check_shard_jobs.py --prefix "default tests (Python 3.12, " --shards 10
 
 Exits 0 when they all passed, 1 naming each that did not.
@@ -28,7 +28,11 @@ def problems(lines: Iterable[str], prefix: str, shards: int) -> list[str]:
     jobs: list[tuple[str, str | None]] = []
     for line in lines:
         if line.strip():
-            job = json.loads(line)
+            try:
+                job = json.loads(line)
+                job["name"], job["conclusion"]
+            except (ValueError, KeyError, TypeError):
+                return [f"the jobs' list holds a line that is not a job ({line.strip()[:200]!r}); no shard was checked"]
             if str(job["name"]).startswith(prefix):
                 jobs.append((job["name"], job["conclusion"]))
     found = [f"{name}: its latest attempt concluded {conclusion!r}" for name, conclusion in jobs
