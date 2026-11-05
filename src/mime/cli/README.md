@@ -36,8 +36,10 @@
   "Licence conditions: your acceptance is needed", the conditions as short lines, the licence's title and link, the
   record's notice under it, and in bold `Do you accept these conditions? [y/N]`, defaulting to no; a no downloads nothing
   and exits 2 (`asset.licence-declined`). A yes is remembered in `licences.json` in the user's config directory
-  (`MIME_LICENCE_ACCEPTANCES` names another file), so the licence is asked about once, again when its title, link or
-  conditions change; `mime assets licences` lists the acceptances and `--revoke <id>` forgets one. With no terminal to ask
+  (`MIME_LICENCE_ACCEPTANCES` names another file), so the licence is asked about once, again when its title (its version)
+  changes; a file already in the cache whose licence has conditions and no recorded acceptance is asked about once at
+  its first use (`visuals fetch`, `assets fetch`, `pull`, and `visuals view`, which takes `--accept-licence` too);
+  `NOASSERTION` (terms not stated) is gated, with a panel that says so; `mime assets licences` lists the acceptances and `--revoke <id>` forgets one. With no terminal to ask
   at it refuses (`asset.licence-not-accepted`) naming the licence and the exact flag, `--accept-licence <id>`, which may be
   repeated and accepts the licence it names for that command and nothing else. **No generic flag accepts a licence**:
   not `--yes`, not `--force`. **(2) The disk**: the download's bytes (the files not in the cache, and for `visuals fetch`

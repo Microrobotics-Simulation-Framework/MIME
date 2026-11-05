@@ -447,7 +447,8 @@ def _visuals(arguments: argparse.Namespace) -> int:
         return 0
     if arguments.visuals_command == "web":
         return _visuals_web(arguments)
-    path, found = viz.view(arguments.target)
+    with _gate_questions():
+        path, found = viz.view(arguments.target, accept_licences=arguments.accept_licence)
     print(for_terminal(found.text()))
     print(path)
     return 0
@@ -574,7 +575,8 @@ def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[st
             for ref in refs:
                 stored = assets.fetch(ref, report=_say)
                 print(f"{ref.name}: hashed in full, at {stored}")
-        unplaced = [each for argument in arguments if Path(argument).is_dir() for each in _place(Path(argument))]
+        unplaced = [each for argument in arguments if Path(argument).is_dir()
+                    for each in _place(Path(argument), accept_licences)]
         if unplaced:
             raise BuildRefused(unplaced)
     return 0
@@ -619,13 +621,13 @@ def _licences(revoke: str | None) -> int:
     return 0
 
 
-def _place(folder: Path) -> list[Refusal]:
+def _place(folder: Path, accept_licences: Sequence[str] = ()) -> list[Refusal]:
     """Put the folder's files that travel as references in place from the cache, saying what it did; an
     ``asset.missing`` for each it could not place, with why."""
     from mime import saved
     from mime.saved._terms import unplaced_refusals
 
-    placed = saved.place_referenced(folder)
+    placed = saved.place_referenced(folder, accept_licences=accept_licences)
     for path in placed.placed:
         print(for_terminal(f"{path}: placed from the asset cache"))
     return unplaced_refusals(folder, placed)
@@ -1359,6 +1361,10 @@ def build_parser() -> _guide.MimeParser:
     visuals_view = visual_commands.add_parser("view", help="the layer that opens a stage, a recording or a folder's "
                                                            "with the baked meshes drawn, for any USD viewer")
     visuals_view.add_argument("target", type=Path, help="a stage or recording file, a run folder or a saved folder")
+    visuals_view.add_argument("--accept-licence", action="append", default=[], metavar="ID",
+                              help="accept the conditions of this licence, by its id, without being asked (repeat it "
+                                   "for more): a baked mesh is drawn only once its licence is accepted, and a mesh "
+                                   "whose licence is not is left out where there is no terminal to ask at")
     visuals_web = visual_commands.add_parser("web", help="one web page of a stage, a recording or a folder's, to "
                                                          "open in a browser or share: the scene, its recording and "
                                                          "the meshes whose terms let them be shared")

@@ -371,15 +371,18 @@ def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, force: bool, accept_
     refs = assets.folder_assets(folder)
     absent = [ref for ref in refs if not assets.is_cached(ref)]
     cached = len(refs) - len(absent)
-    if not wanted or not absent:
+    if not wanted:
         return _AssetOutcome(cached, 0, 0, len(absent))
     total = sum(ref.size for ref in absent)
-    if say is not None:
+    if absent and say is not None:
         say(Said(f"Assets to download: {len(absent)} file{'s' if len(absent) != 1 else ''}, "
                  f"{assets.size_text(total)}", PLAN_LINE))
     try:
-        gate = assets.approved(absent, accept_licences=accept_licences, yes=yes, force=force, confirm=confirm)
+        # Every asset the lock names is gated, cached or not: the first use of a cached file asks about its licence too.
+        gate = assets.approved(refs, accept_licences=accept_licences, yes=yes, force=force, confirm=confirm)
         with gate:
+            if not absent:
+                return _AssetOutcome(cached, 0, 0, 0)
             assets.announce_downloads([(ref.name, ref.size) for ref in absent])
             stored = 0
             try:
@@ -435,7 +438,7 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
     outcome = _fetch_assets(destination, wanted=fetch_assets, yes=yes, force=force, accept_licences=accept_licences,
                             confirm=confirm, say=say)
     assets.downloads_doing("placing the files that travel as references")
-    placed = place_referenced(destination)
+    placed = place_referenced(destination, accept_licences=accept_licences)
     referenced = _referenced_line(placed, destination)
     name, folder = unpacked.manifest["name"], folder_argument(destination)
     if outcome.stopped is None:

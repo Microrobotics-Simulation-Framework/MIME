@@ -31,6 +31,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, cast
 
+from mime._terminal import for_terminal, plain
 from mime.assets._reference import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.terms import CustomLicence, Verdict, strictest
@@ -103,11 +104,14 @@ class Manifest:
 
     def text(self, *, notice: bool = True) -> str:
         """The credit, licence, tier and notice, as a command prints them before it fetches (without the notice where
-        a licence panel has just shown it)."""
-        links = "; ".join(f"{each.id}: {each.title} ({each.url})"
+        a licence panel has just shown it). Every word is a stranger's, so it is written as plain characters
+        (:mod:`mime._terminal`): an escape sequence in a title cannot rewrite the screen it is printed on."""
+        links = "; ".join(f"{plain(each.id)}: {plain(each.title)} ({plain(each.url)})"
                           for each in {c.id: c for held in self.assets for c in held.licences}.values())
-        return (f"{self.title}\ncredit: {self.credit}\nlicence: {self.licence}" + (f" ({links})" if links else "")
-                + f"; tier {self.verdict.tier}, role {self.role}" + (f"\n{self.notice}" if notice else ""))
+        return (f"{plain(self.title)}\ncredit: {plain(self.credit)}\nlicence: {plain(self.licence)}"
+                + (f" ({links})" if links else "")
+                + f"; tier {self.verdict.tier}, role {plain(self.role)}"
+                + (f"\n{for_terminal(self.notice)}" if notice else ""))
 
     def to_json(self, *, lock: bool = False) -> dict[str, Any]:
         """The manifest as its file holds it (``/2``): each record whole, with no tier. With ``lock``, as a saved

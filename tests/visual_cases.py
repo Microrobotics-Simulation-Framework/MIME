@@ -45,11 +45,16 @@ def ar4_manifest() -> Manifest:
     return read_manifest(AR4_VISUALS)
 
 
-def planted(held: Manifest | None = None, *, tier: str | None = None) -> dict[str, Path]:
+def planted(held: Manifest | None = None, *, tier: str | None = None, accepted: bool = True) -> dict[str, Path]:
     """Bake a sphere under every file of the manifest ``held`` (the AR4's by default) into the asset cache
     (``MIME_ASSETS_DIR``), as ``mime visuals fetch`` would bake the set's own meshes, with the index it writes; the
     layers by file. With ``tier``, the index and each mesh's record state it, as ``bake`` writes them; without, no
-    record states one."""
+    record states one. The licences of the set are accepted on this machine, as a person who fetched the set has
+    accepted them (``accepted=False`` for a cache filled before the gates, whose first use asks)."""
+    from mime.assets import _acceptances, licences_of
+
+    if accepted:
+        _acceptances.remember([each for ref in (held or ar4_manifest()).assets for each in licences_of(ref)])
     held = held if held is not None else ar4_manifest()
     layers: dict[str, Path] = {}
     files: dict[str, dict[str, str]] = {}
@@ -63,10 +68,13 @@ def planted(held: Manifest | None = None, *, tier: str | None = None) -> dict[st
         files[each.path] = {"sha256": source.sha256, "layer": f"{key}.usdc"}
         if tier is not None:
             (visuals_dir() / f"{key}.json").write_text(json.dumps({"format": "mime.baked_mesh/3", "set": held.name,
-                                                                   "file": each.path, "tier": tier}), encoding="utf-8")
+                                                                   "file": each.path, "tier": tier,
+                                                                   "licence": source.licence}), encoding="utf-8")
     index_of(held.name).parent.mkdir(parents=True, exist_ok=True)
     index = {"format": INDEX_FORMAT, "set": held.name, "files": files, "credit": held.credit, "notice": held.notice,
-             "text": held.text()}
+             "text": held.text(), "licence": held.licence,
+             "licences": {each.id: {"title": each.title, "url": each.url, "conditions": list(each.conditions)}
+                          for ref in held.assets for each in ref.licences}}
     if tier is not None:
         index["tier"] = tier
     index_of(held.name).write_text(json.dumps(index), encoding="utf-8")

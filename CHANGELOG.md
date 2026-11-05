@@ -22,8 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   custom licence) is downloaded only once its conditions are accepted: on a terminal a panel with an amber border titled
   "Licence conditions: your acceptance is needed" shows the conditions as short lines, the licence's title and link and
   the notice, then asks, in bold, `Do you accept these conditions? [y/N]` (no by default; a no downloads nothing, exit
-  2); a yes is remembered per licence and version in `licences.json` in the config directory (`mime assets licences`
-  lists the acceptances, `--revoke <id>` forgets one). With no terminal it refuses naming the licence and
+  2); a yes is remembered per licence and version (its id and title) in `licences.json` in the config directory (`mime
+  assets licences` lists the acceptances, `--revoke <id>` forgets one); the condition lines are looked up by the
+  licence's id, so a licence read from a saved lock shows the lines its manifest states; `NOASSERTION` (terms not
+  stated) is gated with a panel that says so; a file already in the cache whose licence has conditions and no recorded
+  acceptance asks once at its first use (a bake, `visuals view`, a fetch, a pull); a record's text is written as plain
+  characters at every prompt. With no terminal it refuses naming the licence and
   `--accept-licence <id>` (Python: `accept_licences={...}`), which accepts that licence for the command and no other;
   `--yes` and `--force` accept none. Every download also reads the free space of the drive that holds the cache: over
   1 GB or a tenth of it, it is asked about (`-y/--yes`); if it would leave under 2 GB or 5 % of the drive, it is stopped

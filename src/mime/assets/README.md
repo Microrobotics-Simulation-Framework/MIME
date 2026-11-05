@@ -249,19 +249,31 @@ a notebook meet the same two questions; a batch (`approved(refs, ...)`, which `m
 use) asks once for all its files and the resolver then asks nothing more of them.
 
 - **The licence.** An asset whose licence has conditions beyond credit (`licences_of(ref)`: a custom licence, a Creative
-  Commons licence with `NC`, `SA` or `ND`, any id that is not open; none for `NOASSERTION`, which states nothing) is
-  downloaded only once accepted: by name (`accept_licences={"<id>", ...}`, `--accept-licence <id>`: for the call, never
-  remembered), or by a person asked at a terminal or in a notebook (`input()`), whose yes is written to `licences.json` in
-  the user's config directory (`MIME_LICENCE_ACCEPTANCES`) with the licence's id, title, link, conditions and the date, and
-  holds while those are the same. Otherwise `asset.licence-not-accepted`, naming the licence, its conditions and the flag.
-  `yes` and `force` accept no licence. A file already in the cache, or copied in by hand, is no download and asks nothing
-  (`needs_download`). The Python asker is plain text (`PlainAsker`); the command line sets its own (`asking(asker)`).
+  Commons licence with `NC`, `SA` or `ND`, any id that is not open, and `NOASSERTION`, whose panel says the terms are not
+  stated and that checking them is the person's) is used only once accepted: by name (`accept_licences={"<id>", ...}`,
+  `--accept-licence <id>`: for the call, never remembered), or by a person asked at a terminal or in a notebook
+  (`input()`), whose yes is written to `licences.json` in the user's config directory (`MIME_LICENCE_ACCEPTANCES`) with the
+  licence's id, title, link, conditions and the date. **An acceptance is of the licence's id and its title, which is its
+  version**: the same licence read from a manifest and from a saved lock is one acceptance, asked about once. Otherwise
+  `asset.licence-not-accepted`, naming the licence, its conditions and the flag. `yes` and `force` accept no licence.
+  **The condition lines are looked up by the licence's id**, wherever the licence was read from: the record in hand if it
+  states them, else the manifests installed packages ship, else the ones a bake cached (`licences` in the baked set's
+  index); where none does, the panel shows the notice, title and link and says the record does not describe the licence.
+  **First use asks too**: a file already in the cache (a cache filled before the gates, or by a named acceptance) whose
+  licence has conditions and no recorded acceptance asks once where its bytes are read: the resolver (`resolve`, `fetch`),
+  a batch (`approved`: a bake, `mime assets fetch`, `mime pull`), the overlay (`mime.viz.overlay`: a set whose licence is
+  not accepted is left out and says how to accept it), and placing a referenced file from the cache (left unplaced as
+  `NOT_ACCEPTED`; placing asks nothing, `fetch` and `pull` ask for the whole folder first). `require_accepted(refs)` is
+  that gate alone. A file repaired because its bytes are not the record's (the right size, other bytes) is a download and
+  is gated as one. Every word of a record shown at a prompt is written as plain characters (`mime._terminal.plain`): a
+  manifest's or a lock's text is a stranger's. The Python asker is plain text (`PlainAsker`); the command line sets its
+  own (`asking(asker)`).
 - **The disk.** Before a download, its bytes (the files that would be downloaded, `extra_bytes` for what a bake writes,
   `BAKE_OUTPUT_FACTOR` of the meshes) against `shutil.disk_usage` of the cache's own folder: asked above `CONFIRM_ABOVE_BYTES`
   (1 GB) or `CONFIRM_ABOVE_FRACTION` (10 %) of the free space (`yes`; `asset.download-large` without a terminal), stopped when
   it would leave under `STOP_BELOW_BYTES` (2 GB) or `STOP_BELOW_FRACTION` (5 % of the drive) (`force`; `asset.disk-low`). A
-  bundle `retrieve` is held to the same rules where its size is stated (a bundle with no stated size is held only to
-  `max_bytes`).
+  bundle `retrieve` is held to the same rules where its size is stated; with no stated size (`mime pull <url>`) the stop
+  counts `max_bytes`, the most it can take, and nothing is asked about a size nobody stated.
 - **What a failed write leaves.** A download goes to a folder of its own, removed whatever happens; a baked layer and its
   records are written beside their names and moved into place, and removed if the write fails (a full disk leaves no
   half-written file). The asset's `.lock` file remains.

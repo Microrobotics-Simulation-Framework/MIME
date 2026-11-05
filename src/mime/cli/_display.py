@@ -51,7 +51,7 @@ from mime._said import (
     kind_of,
 )
 from mime._terminal import for_terminal, plain
-from mime.assets._gates import LICENCE_HEADING, LICENCE_QUESTION, NoTerminal
+from mime.assets._gates import LICENCE_HEADING, LICENCE_QUESTION, NoTerminal, licence_lines
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._progress import FLAG_INTERVAL, RunState, TransferState, duration_text
 from mime.cli._serve_view import FALLBACK_ROWS, event_line, stopped_lines, strip_lines, table_lines
@@ -1064,11 +1064,11 @@ class SaidDisplay:
         for each in licences:
             if rows:
                 rows.append(_text(""))
-            rows += [_text(f"\u2022 {line}") for line in each.conditions]
+            rows += [_text(f"\u2022 {plain(line)}") for line in each.conditions]
             rows.append(_text(""))
-            rows.append(_text(f"{each.title} ({each.id})", "bold"))
+            rows.append(_text(f"{plain(each.title)} ({plain(each.id)})", "bold"))
             if each.url:
-                rows.append(_text(each.url, "underline"))
+                rows.append(_text(plain(each.url), "underline"))
         try:
             self._console.print()
             self._frame(rows, style=_AMBER, heavy=True, title=LICENCE_HEADING)
@@ -1077,9 +1077,7 @@ class SaidDisplay:
             self._console.print(Text(f"{LICENCE_QUESTION} [y/N] ", style="bold"), end="", soft_wrap=True)
         except Exception:  # noqa: BLE001 - the question is always asked, in the plainest way when it cannot be set apart
             stream = self._console.file
-            stream.write("\n".join(for_terminal(line) for line in ("", LICENCE_HEADING, *(c for e in licences
-                                                                                          for c in e.conditions)))
-                         + f"\n{LICENCE_QUESTION} [y/N] ")
+            stream.write("\n".join(licence_lines(licences, notice)) + f"\n{LICENCE_QUESTION} [y/N] ")
         self._console.file.flush()
         try:
             return input().strip().lower() in ("y", "yes")

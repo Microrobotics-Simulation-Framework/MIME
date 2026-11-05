@@ -142,6 +142,8 @@ def test_the_flag_is_taken_by_assets_fetch_and_pull_as_well(tmp_path: Path, rig:
     for words in (("assets", "fetch"), ("pull",)):
         done = piped(tmp_path, rig, *words, "--help")
         assert "--accept-licence ID" in done.stdout and "-y, --yes" in done.stdout and "-f, --force" in done.stdout
+    viewed = piped(tmp_path, rig, "visuals", "view", "--help")
+    assert "--accept-licence ID" in viewed.stdout and "--yes" not in viewed.stdout and "--force" not in viewed.stdout
 
 
 # --- on a terminal ---------------------------------------------------------------------------------------------------------
@@ -182,8 +184,14 @@ def test_a_yes_downloads_remembers_and_the_next_fetch_asks_nothing(tmp_path: Pat
     assert revoked.returncode == 0 and CLOSED in revoked.stdout and accepted(tmp_path) == []
     missing = piped(tmp_path, rig, "assets", "licences", "--revoke", CLOSED)
     assert missing.returncode == 1 and "no such acceptance" in missing.stderr
-    cached, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(manifest), typed=b"n\n")
-    assert code == 0 and "Do you accept" not in stripped(cached), "a file already in the cache is no download to ask about"
+    first_use, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(manifest), typed=b"n\n")
+    assert code == 2 and "Do you accept these conditions? [y/N]" in stripped(first_use), (
+        "a file already in the cache, with no acceptance recorded, is asked about at its first use")
+    assert rig.requests == 1 and accepted(tmp_path) == []
+    once, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(manifest), typed=b"y\n")
+    assert code == 0 and "Do you accept these conditions? [y/N]" in stripped(once) and accepted(tmp_path) == [CLOSED]
+    assert rig.requests == 1, "the first use of a cached file downloads nothing"
+    assert piped(tmp_path, rig, "assets", "licences", "--revoke", CLOSED).returncode == 0
     shutil.rmtree(rig.cache)
     asked_again, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(manifest), typed=b"n\n")
     assert code == 2 and "Do you accept these conditions? [y/N]" in stripped(asked_again)
@@ -216,6 +224,112 @@ def test_with_standard_input_a_terminal_and_output_piped_the_question_goes_to_th
     assert code == 0 and "Do you accept these conditions? [y/N]" in stripped(seen["tty"])
     assert "Do you accept" not in seen["out"] and "free of" not in seen["out"]
     assert "a made mesh\ncredit: a maker" in seen["out"] and "baked into the asset cache" in seen["out"]
+
+
+@needs_pty
+def test_ctrl_d_at_the_panel_is_no_answer_at_all_so_nothing_is_downloaded_or_written(tmp_path: Path, rig: Rig,
+                                                                                      manifest: Path):
+    """The review's S2 (L4d): an end of input at the panel's question must not read as a yes."""
+    raw, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(manifest), typed=b"\x04")
+    assert code == 2 and rig.requests == 0 and accepted(tmp_path) == [], stripped(raw)
+    assert "asset.licence-not-accepted" in flat(stripped(raw)), "nobody answered: the refusal names the flag"
+
+
+@needs_pty
+def test_enter_is_no_in_the_plain_prompt_too(tmp_path: Path, rig: Rig, manifest: Path):
+    raw, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(manifest), "--plain", typed=b"\n")
+    assert code == 2 and rig.requests == 0 and accepted(tmp_path) == [], raw
+    raw, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(manifest), typed=b"\n", TERM="dumb")
+    assert code == 2 and rig.requests == 0 and accepted(tmp_path) == [], raw
+
+
+@needs_pty
+def test_a_pipe_that_holds_a_y_is_not_an_answer(tmp_path: Path, rig: Rig, manifest: Path):
+    """The review's S2 (L13): standard input must be a terminal. The output is a terminal here, so only the input
+    separates a person from a script."""
+    import pty
+
+    (tmp_path / "none.toml").write_text("", encoding="utf-8")
+    master, slave = pty.openpty()
+    child = subprocess.Popen(argv("visuals", "fetch", str(manifest)), stdin=subprocess.PIPE, stdout=slave, stderr=slave,
+                             env=environment(tmp_path, rig), cwd=tmp_path, close_fds=True)
+    os.close(slave)
+    assert child.stdin is not None
+    child.stdin.write(b"y\ny\n")
+    child.stdin.close()
+    seen = b""
+    while True:
+        try:
+            more = os.read(master, 65536)
+        except OSError:
+            break
+        if not more:
+            break
+        seen += more
+    code = child.wait()
+    os.close(master)
+    assert code == 2 and rig.requests == 0 and accepted(tmp_path) == []
+    assert "asset.licence-not-accepted" in flat(stripped(seen.decode("utf-8", "replace")))
+
+
+FORGED = "I accept everything"
+HOSTILE = {"title": f"Maker \x1b[2J\x1b[1;1H\x1b]0;pwned\x07 Licence\n{FORGED}\n", "url": "https://example.org/\x1b[99mlicence",
+           "notice": "The notice \x1b[2K\r\x1b[1A\x1b[8m ends."}
+
+
+@pytest.fixture
+def hostile_manifest(tmp_path: Path, rig: Rig, manifest: Path) -> Path:
+    held = json.loads(manifest.read_text(encoding="utf-8"))
+    held["notice"] = HOSTILE["notice"]
+    held["licences"][CLOSED]["title"] = HOSTILE["title"]
+    held["licences"][CLOSED]["url"] = HOSTILE["url"]
+    path = tmp_path / "hostile.visuals.json"
+    path.write_text(json.dumps(held), encoding="utf-8")
+    return path
+
+
+PLANTED = ("\x1b[2J", "\x1b[1;1H", "\x1b]0;", "\x07", "\x1b[2K", "\r\x1b[1A", "\x1b[8m", "\x1b[99m")
+
+
+@needs_pty
+@pytest.mark.parametrize("flags,extra", [((), {}), (("--plain",), {}), ((), {"NO_COLOR": "1"}), ((), {"TERM": "dumb"})],
+                         ids=["panel", "--plain", "NO_COLOR", "TERM=dumb"])
+def test_a_manifests_escape_sequences_never_reach_the_terminal_in_any_mode(tmp_path: Path, rig: Rig,
+                                                                           hostile_manifest: Path, flags: tuple[str, ...],
+                                                                           extra: dict[str, str]):
+    """The review's B1: a stranger's title, link and notice reached the plain prompt raw, and a clear-screen between the
+    conditions and the question could erase the conditions the person was about to accept."""
+    raw, code = on_a_terminal(tmp_path, rig, "visuals", "fetch", str(hostile_manifest), *flags, typed=b"n\n", **extra)
+    assert code == 2 and rig.requests == 0
+    for planted in PLANTED:
+        assert planted not in raw, (planted, raw)
+    text = flat(stripped(raw))
+    assert LINES[0] in text and "Do you accept these conditions? [y/N]" in text and "pwned" in text
+    rows = [flat(row) for row in stripped(raw).splitlines()]
+    assert FORGED not in rows, "a newline in a title forges no line of its own"
+    assert "x1b" in text, "the sequences are shown as the escapes that name them"
+    if flags or extra:
+        assert "\x1b" not in raw, "plain output holds no escape sequence at all"
+
+
+@needs_pty
+def test_a_manifests_escape_sequences_are_escaped_where_standard_output_is_piped_too(tmp_path: Path, rig: Rig,
+                                                                                    hostile_manifest: Path):
+    (tmp_path / "none.toml").write_text("", encoding="utf-8")
+    seen, code = run_with_streams(argv("visuals", "fetch", str(hostile_manifest)), env=environment(tmp_path, rig),
+                                  cwd=tmp_path, terminals=("err",), columns=120, typed=b"n\n")
+    assert code == 2 and rig.requests == 0
+    for planted in PLANTED:
+        assert planted not in seen["tty"] and planted not in seen["out"], planted
+    assert "Do you accept these conditions? [y/N]" in stripped(seen["tty"])
+
+
+def test_a_manifests_escape_sequences_never_reach_a_pipe_in_the_refusal_either(tmp_path: Path, rig: Rig,
+                                                                               hostile_manifest: Path):
+    done = piped(tmp_path, rig, "visuals", "fetch", str(hostile_manifest))
+    assert done.returncode == 2
+    for planted in PLANTED:
+        assert planted not in done.stderr and planted not in done.stdout, planted
 
 
 # --- the disk gate at the command line ---------------------------------------------------------------------------------

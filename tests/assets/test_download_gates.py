@@ -132,7 +132,7 @@ def space(free: int, total: int = 500 * GB) -> Iterator[None]:
 # --- which licences are asked about ------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("licence", ["CC0-1.0", "CC-BY-4.0", "MIT", "Apache-2.0", "NOASSERTION", "MIT OR CC-BY-NC-4.0"])
+@pytest.mark.parametrize("licence", ["CC0-1.0", "CC-BY-4.0", "MIT", "Apache-2.0", "MIT OR CC-BY-NC-4.0"])
 def test_a_licence_with_no_condition_beyond_credit_asks_nothing(licence: str):
     ref = AssetRef("a.bin", "ab" * 32, 10, licence, ("https://example.org/a",))
     assert assets.licences_of(ref) == ()
@@ -215,22 +215,39 @@ def test_a_no_downloads_nothing_and_refuses_saying_so(rig: Rig):
     assert rig.requests == 0 and not assets.is_cached(ref) and _acceptances.read_acceptances() == []
 
 
-@pytest.mark.parametrize("change", [{"title": "Maker Licence 1.2"}, {"lines": ("non-commercial use only",)}])
-def test_a_licence_that_changed_is_asked_about_again(rig: Rig, change: dict[str, object]):
+def test_a_licence_whose_version_changed_is_asked_about_again(rig: Rig):
+    """An acceptance is of the licence's id and its version, which is its title."""
     asker = Scripted()
     with assets.asking(asker):
         assets.fetch(closed(rig))
-        assets.fetch(closed(rig, "second.stl", b"second" * 100, custom(**change)))  # type: ignore[arg-type]
+        assets.fetch(closed(rig, "second.stl", b"second" * 100, custom(title="Maker Licence 1.2")))
     assert asker.asked == [(CLOSED,), (CLOSED,)]
 
 
-def test_a_changed_link_is_asked_about_again(rig: Rig):
+@pytest.mark.parametrize("same", [{"lines": ("non-commercial use only",)}, {"lines": ()},
+                                  {"url": "https://example.org/moved"}])
+def test_the_same_licence_in_another_form_is_one_acceptance(rig: Rig, same: dict[str, object]):
+    """Keyed by the id and the version alone: the lines of conditions and the link are not what was accepted, so the
+    manifest's form of a licence and the saved lock's (whose form has no key for lines) are asked about once."""
     asker = Scripted()
-    moved = CustomLicence(CLOSED, "Maker Licence 1.1", "https://example.org/moved", "not_permitted", LINES)
+    other = custom(lines=same.get("lines", LINES))  # type: ignore[arg-type]
+    if "url" in same:
+        other = CustomLicence(CLOSED, "Maker Licence 1.1", str(same["url"]), "not_permitted", LINES)
     with assets.asking(asker):
         assets.fetch(closed(rig))
-        assets.fetch(closed(rig, "second.stl", b"second" * 100, moved))
-    assert asker.asked == [(CLOSED,), (CLOSED,)]
+        assets.fetch(closed(rig, "second.stl", b"second" * 100, other))
+    assert asker.asked == [(CLOSED,)]
+
+
+def test_alternating_the_manifests_form_and_the_locks_form_of_a_licence_asks_once(rig: Rig):
+    """The review's S3: the manifest states four lines and the lock none, and four fetches asked four times."""
+    manifest_form, lock_form = custom(), custom(lines=())
+    asker = Scripted()
+    with assets.asking(asker):
+        for index, held in enumerate((manifest_form, lock_form, manifest_form, lock_form)):
+            assets.fetch(closed(rig, f"m{index}.stl", f"mesh {index}".encode() * 40, held))
+    assert asker.asked == [(CLOSED,)]
+    assert [each.licence.id for each in _acceptances.read_acceptances()] == [CLOSED]
 
 
 def test_a_batch_asks_once_for_all_its_files_and_shows_the_notice_with_the_licence(rig: Rig):
@@ -243,14 +260,82 @@ def test_a_batch_asks_once_for_all_its_files_and_shows_the_notice_with_the_licen
     assert approval.notice_shown and all(assets.is_cached(ref) for ref in refs)
 
 
-def test_a_file_already_in_the_cache_is_not_a_download_and_asks_nothing(rig: Rig):
+def test_a_file_already_in_the_cache_whose_licence_is_accepted_asks_nothing_and_says_nothing(rig: Rig):
     ref = closed(rig)
-    assets.fetch(ref, accept_licences={CLOSED})
+    with assets.asking(Scripted()):
+        assets.fetch(ref)
     asker = Scripted()
     with assets.asking(asker):
         assets.fetch(ref)
         assets.approve([ref])
-    assert asker.asked == [] and asker.lines == []
+    assert asker.asked == [] and asker.lines == [] and rig.requests == 1
+
+
+def test_a_cached_file_with_no_recorded_acceptance_asks_once_at_its_first_use(rig: Rig):
+    """A cache filled before the gates existed, or by ``--accept-licence`` (which is not remembered): the first use of a
+    file whose licence has conditions asks, downloads nothing, and remembers the yes."""
+    ref = closed(rig)
+    assets.fetch(ref, accept_licences={CLOSED})
+    assert _acceptances.read_acceptances() == [] and rig.requests == 1
+    declined = Scripted(licence=False)
+    with assets.asking(declined):
+        assert codes(lambda: assets.resolve(ref)) == ["asset.licence-declined"]
+        assert codes(lambda: assets.fetch(ref)) == ["asset.licence-declined"]
+    with assets.asking(None):
+        assert codes(lambda: assets.resolve(ref)) == ["asset.licence-not-accepted"]
+        assert f"--accept-licence {CLOSED}" in refusal_text(lambda: assets.resolve(ref))
+        assert assets.resolve(ref, accept_licences={CLOSED}) == assets.file_path(ref), "named, for this call"
+    asker = Scripted()
+    with assets.asking(asker):
+        assert assets.resolve(ref) == assets.file_path(ref)
+        assets.resolve(ref)
+        assets.fetch(ref)
+    assert asker.asked == [(CLOSED,)] and rig.requests == 1
+    assert [each.licence.id for each in _acceptances.read_acceptances()] == [CLOSED]
+
+
+def test_a_batch_over_cached_files_asks_once_at_its_entry_for_all_of_them(rig: Rig):
+    refs = [closed(rig, f"m{i}.stl", f"mesh {i}".encode() * 50) for i in range(3)]
+    for ref in refs:
+        assets.fetch(ref, accept_licences={CLOSED})
+    declined = Scripted(licence=False)
+    with assets.asking(declined):
+        with pytest.raises(BuildRefused):
+            with assets.approved(refs):
+                raise AssertionError("the block ran although the licence was declined")
+    assert declined.asked == [(CLOSED,)], "asked when the batch is entered, before any file is read"
+    asker = Scripted()
+    with assets.asking(asker), assets.approved(refs, notice="The notice.") as approval:
+        assert asker.asked == [(CLOSED,)] and approval.licences[0].id == CLOSED and approval.notice_shown
+        for ref in refs:
+            assets.fetch(ref)
+    assert asker.asked == [(CLOSED,)] and approval.plan is None and rig.requests == 3
+    assert asker.lines == [], "nothing is downloaded, so there is no line about the drive"
+
+
+def test_a_licence_nobody_stated_is_gated_with_a_panel_that_says_the_terms_are_not_stated(rig: Rig):
+    rig.server.files["/n.bin"] = b"unstated" * 50
+    import hashlib
+
+    ref = AssetRef("n.bin", hashlib.sha256(b"unstated" * 50).hexdigest(), 400, "NOASSERTION", (rig.server.url("/n.bin"),))
+    (found,) = assets.licences_of(ref)
+    assert found.id == "NOASSERTION" and "not stated" in found.title + " ".join(found.conditions)
+    assert "you are responsible for checking them" in " ".join(found.conditions)
+    with assets.asking(None):
+        text = refusal_text(lambda: assets.fetch(ref))
+        assert codes(lambda: assets.fetch(ref, yes=True, force=True)) == ["asset.licence-not-accepted"]
+        assert "--accept-licence NOASSERTION" in text and rig.requests == 0
+    asker = Scripted()
+    with assets.asking(asker):
+        assets.fetch(ref)
+    assert asker.asked == [("NOASSERTION",)] and [e.licence.id for e in _acceptances.read_acceptances()] == [
+        "NOASSERTION"], "accepted by the panel's yes, and remembered as the others are"
+    named = AssetRef("n3.bin", hashlib.sha256(b"third" * 50).hexdigest(), 250, "NOASSERTION", (rig.server.url("/n3.bin"),))
+    rig.server.files["/n3.bin"] = b"third" * 50
+    _acceptances.revoke("NOASSERTION")
+    with assets.asking(None):
+        assets.fetch(named, accept_licences={"NOASSERTION"})
+    assert assets.is_cached(named)
 
 
 def test_the_acceptances_are_listed_and_revoked_by_id(rig: Rig):
@@ -644,6 +729,275 @@ def test_the_saved_lock_holds_the_manifest_as_the_first_form_without_the_conditi
     assert in_lock["format"] == "mime.asset_manifest/1" and "conditions" not in json.dumps(in_lock)
     assert held.assets[0].to_record() == held.assets[0].to_record(conditions=False)
     assert "conditions" in json.dumps(held.assets[0].to_record(conditions=True))
+
+
+# --- the conditions are looked up by the licence's id -----------------------------------------------------------------------
+
+
+def lock_form(rig: Rig, name: str = "locked.stl") -> AssetRef:
+    """The record as a saved folder's lock holds it: its custom licence has the title and link, and no lines."""
+    return closed(rig, name, b"locked" * 80, custom(lines=()))
+
+
+def cached_index(rig: Rig, *, lines: Sequence[str] = LINES, identifier: str = CLOSED) -> Path:
+    """A baked set's index in the cache, as ``bake`` writes it: the manifest's licences, with their lines."""
+    folder = rig.cache / "visuals"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "made.json"
+    path.write_text(json.dumps({"format": "mime.visual_index/1", "set": "made", "files": {},
+                                "licences": {identifier: {"title": "Maker Licence 1.1",
+                                                          "url": "https://example.org/licence",
+                                                          "conditions": list(lines)}}}), encoding="utf-8")
+    return path
+
+
+def test_a_licence_read_from_a_lock_finds_its_lines_in_a_cached_manifest_by_its_id(rig: Rig):
+    ref = lock_form(rig)
+    assert "does not describe" in assets.licences_of(ref)[0].conditions[-1]
+    cached_index(rig)
+    (found,) = assets.licences_of(ref)
+    assert found.conditions == LINES and found.title == "Maker Licence 1.1"
+    cached_index(rig, identifier="LicenseRef-Someone-Else")
+    assert "does not describe" in assets.licences_of(ref)[0].conditions[-1], "the control: another id's lines are not borrowed"
+    # A licence the record names without defining it (its title and link are nowhere in it) is found whole.
+    cached_index(rig)
+    bare = AssetRef("b.stl", "ab" * 32, 10, CLOSED, ("https://example.org/b",))
+    (named,) = assets.licences_of(bare)
+    assert (named.title, named.url, named.conditions) == ("Maker Licence 1.1", "https://example.org/licence", LINES)
+
+
+def test_a_licence_read_from_a_lock_finds_its_lines_in_an_installed_manifest_by_its_id(rig: Rig,
+                                                                                         monkeypatch: pytest.MonkeyPatch):
+    installed = assets.read_manifest_data(manifest_data(), "made")
+    monkeypatch.setattr("mime.assets._sources.shared_manifests", lambda: (("package", installed),))
+    (found,) = assets.licences_of(lock_form(rig))
+    assert found.conditions == LINES
+    monkeypatch.setattr("mime.assets._sources.shared_manifests", lambda: ())
+    assert "does not describe" in assets.licences_of(lock_form(rig))[0].conditions[-1], "the control: with none installed"
+
+
+def test_where_no_manifest_gives_lines_the_panel_shows_the_notice_title_and_link_as_it_did(rig: Rig):
+    ref = lock_form(rig)
+    asker = Scripted()
+    with assets.asking(asker), assets.approved([ref], notice="The notice."):
+        pass
+    assert asker.asked == [(CLOSED,)] and asker.notices == ["The notice."]
+    (found,) = assets.licences_of(ref)
+    assert (found.title, found.url) == ("Maker Licence 1.1", "https://example.org/licence")
+    assert found.conditions[0].startswith("it may not be redistributed") and "read the licence" in found.conditions[1]
+
+
+# --- what a stranger's text can do at the terminal ------------------------------------------------------------------------
+
+ESCAPES = {"clear the screen": "\x1b[2J\x1b[1;1H", "set the window title": "\x1b]0;pwned\x07", "erase a line": "\x1b[2K\r",
+           "conceal": "\x1b[8m", "colour": "\x1b[31m", "a forged line": "\nI accept everything"}
+
+
+def hostile(field: str, planted: str) -> Licence:
+    base = {"id": CLOSED, "title": "Maker Licence 1.1", "url": "https://example.org/licence",
+            "conditions": ("non-commercial use only",)}
+    if field == "conditions":
+        base["conditions"] = (f"non-commercial{planted}use only",)
+    else:
+        base[field] = f"{base[field]}{planted}"
+    return Licence(**base)  # type: ignore[arg-type]
+
+
+#: Each field a record's text sits in, with each thing planted in it; the notice is prose and keeps its line breaks (as every
+#: refusal's does), so a forged line is not planted there.
+PLANTS = [(field, what) for field in ("title", "url", "conditions", "id", "notice") for what in ESCAPES
+          if (field, what) != ("notice", "a forged line")]
+
+
+@pytest.mark.parametrize("field,what", PLANTS)
+def test_the_plain_licence_prompt_writes_a_manifests_text_as_plain_characters(
+        field: str, what: str, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch):
+    """The review's B1: the plain prompt printed a stranger's title, link and notice raw, and a clear-screen between the
+    conditions and the question could erase what the person was about to accept."""
+    planted = ESCAPES[what]
+    held = hostile("title" if field == "notice" else field, planted if field != "notice" else "")
+    notice = f"The notice{planted}ends." if field == "notice" else None
+
+    class Terminal:
+        def isatty(self) -> bool:
+            return True
+
+        def write(self, text: str) -> int:
+            written.append(text)
+            return len(text)
+
+        def flush(self) -> None:
+            pass
+
+    written: list[str] = []
+    monkeypatch.setattr("sys.stdout", Terminal())
+    monkeypatch.setattr("builtins.input", lambda *_: "n")
+    assert not _gates.PlainAsker().licences([held], notice)
+    out = "".join(written)
+    if what == "a forged line":
+        assert "\nI accept everything" not in out and "\\nI accept everything" in out
+    else:
+        assert "\x1b" not in out and "\x07" not in out and "\r" not in out, out
+    assert "\\x1b" in out or what == "a forged line"
+    assert "Do you accept these conditions? [y/N]" in out
+    assert capsys.readouterr().out == ""
+
+
+def test_a_hostile_licence_is_escaped_in_lines_the_plan_and_the_listing(rig: Rig):
+    lines = _gates.licence_lines([hostile("title", ESCAPES["clear the screen"])], "n\x1b[2Jotice")
+    assert not any("\x1b" in line for line in lines)
+    _acceptances.remember([hostile("title", ESCAPES["set the window title"]), hostile("url", ESCAPES["colour"])])
+    assert "\x1b" not in assets.acceptances_text() and "\x07" not in assets.acceptances_text()
+    assert "\x1b" not in _gates.Plan(1, 10, 0, Path("a\x1b[2Jb"), 10**12, 10**12).line()
+    held = assets.read_manifest_data({**manifest_data(), "title": "a\x1b[2Jmade", "notice": "n\x1b]0;x\x07"}, "made")
+    assert "\x1b" not in held.text() and "\x07" not in held.text()
+
+
+# --- a corrupt cached file is repaired as a download ---------------------------------------------------------------------
+
+
+def flipped(ref: AssetRef) -> None:
+    """One byte of the cached file changed, its size kept (bit rot): the cheap check no longer vouches for it."""
+    path = assets.file_path(ref)
+    data = bytearray(path.read_bytes())
+    data[len(data) // 2] ^= 0x01
+    path.write_bytes(bytes(data))
+
+
+@pytest.mark.parametrize("repair", ["fetch", "resolve"])
+def test_a_bit_flipped_cached_file_is_repaired_only_as_a_download_that_is_gated(rig: Rig, repair: str):
+    """The review's S1: a same-size corrupt file was re-downloaded with no licence question and no disk check."""
+    ref = closed(rig)
+    with assets.asking(Scripted()):
+        assets.fetch(ref)
+    again = getattr(assets, repair)
+    flipped(ref)
+    _acceptances.revoke(CLOSED)
+    with assets.asking(None):
+        assert codes(lambda: again(ref)) == ["asset.licence-not-accepted"]
+    assert rig.requests == 1, "no request was made to repair it"
+    _acceptances.remember(assets.licences_of(ref))
+    with space(free=2_100_000_000), assets.asking(None):
+        assert codes(lambda: again(ref)) == ["asset.disk-low"]
+    assert rig.requests == 1
+    with assets.asking(None):
+        again(ref)
+    assert rig.requests == 2 and assets.check(ref) == "ok", "the repair itself still happens when it is allowed"
+
+
+# --- the pinned behaviours of the gate (the review's S2) -----------------------------------------------------------------
+
+
+def test_a_batch_of_an_open_and_a_closed_asset_is_gated_for_the_closed_one(rig: Rig):
+    batch = [open_record(rig), closed(rig)]
+    with assets.asking(None):
+        assert codes(lambda: assets.approve(batch)) == ["asset.licence-not-accepted"]
+        assert codes(lambda: assets.approve(list(reversed(batch)))) == ["asset.licence-not-accepted"]
+        with pytest.raises(BuildRefused):
+            with assets.approved(batch):
+                pass
+    assert rig.requests == 0
+    asker = Scripted()
+    with assets.asking(asker), assets.approved(batch):
+        for ref in batch:
+            assets.fetch(ref)
+    assert asker.asked == [(CLOSED,)] and all(assets.is_cached(ref) for ref in batch)
+
+
+@pytest.mark.parametrize("named", ["Maker Licence 1.1", "Maker", "maker licence 1.1", "https://example.org/licence",
+                                   "LicenseRef", "LicenseRef-Maker-NonCommercia", "*"])
+def test_accepting_by_name_takes_the_id_and_nothing_else_the_title_included(rig: Rig, named: str):
+    ref = closed(rig)
+    with assets.asking(None):
+        assert codes(lambda: assets.fetch(ref, accept_licences={named})) == ["asset.licence-not-accepted"]
+        assert codes(lambda: assets.approve([ref], accept_licences=[named])) == ["asset.licence-not-accepted"]
+    assert rig.requests == 0
+    assets.fetch(ref, accept_licences={CLOSED})
+    assert rig.requests == 1, "the control: the id accepts"
+
+
+@pytest.mark.parametrize("answer", ["", " ", "n", "no", "N", "maybe", "yes please", "ye", "\n"])
+def test_the_plain_asker_takes_only_y_or_yes_and_enter_is_no(answer: str, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("sys.stdout", Tty())
+    monkeypatch.setattr("builtins.input", lambda *_: answer)
+    assert _gates.PlainAsker().licences([custom_licence()], None) is False
+    assert _gates.PlainAsker().confirm("Download 2.0 GB now?") is False
+    for yes in ("y", "Y", " yes ", "YES"):
+        monkeypatch.setattr("builtins.input", lambda *_, yes=yes: yes)
+        assert _gates.PlainAsker().licences([custom_licence()], None) is True
+
+
+class Tty:
+    def __init__(self) -> None:
+        self.written: list[str] = []
+
+    def isatty(self) -> bool:
+        return True
+
+    def write(self, text: str) -> int:
+        self.written.append(text)
+        return len(text)
+
+    def flush(self) -> None:
+        pass
+
+
+def custom_licence() -> Licence:
+    return Licence(CLOSED, "Maker Licence 1.1", "https://example.org/licence", LINES)
+
+
+def test_a_plain_no_downloads_nothing_and_writes_no_acceptance(rig: Rig, monkeypatch: pytest.MonkeyPatch):
+    ref = closed(rig)
+    monkeypatch.setattr("sys.stdout", Tty())
+    monkeypatch.setattr("builtins.input", lambda *_: "")
+    with assets.asking(_gates.PlainAsker()):
+        assert codes(lambda: assets.fetch(ref)) == ["asset.licence-declined"]
+    assert rig.requests == 0 and _acceptances.read_acceptances() == []
+
+
+@pytest.mark.parametrize("stdin_is_a_terminal,output_is_a_terminal,expected",
+                         [(True, True, True), (False, True, False), (True, False, False), (False, False, False)])
+def test_a_person_can_answer_only_where_standard_input_is_a_terminal_and_the_question_has_a_screen(
+        stdin_is_a_terminal: bool, output_is_a_terminal: bool, expected: bool, monkeypatch: pytest.MonkeyPatch):
+    import io
+
+    class Stream(io.StringIO):
+        def __init__(self, terminal: bool) -> None:
+            super().__init__("")
+            self.terminal = terminal
+
+        def isatty(self) -> bool:
+            return self.terminal
+
+    monkeypatch.setattr("sys.stdin", Stream(stdin_is_a_terminal))
+    monkeypatch.setattr("sys.stdout", Stream(output_is_a_terminal))
+    monkeypatch.setattr("sys.stderr", Stream(False))
+    assert assets.can_ask() is expected
+
+
+# --- a bundle of no stated size is held to its cap by the stop ------------------------------------------------------------
+
+
+def test_a_bundle_with_no_stated_size_is_stopped_by_its_cap_and_never_asked_about(rig: Rig):
+    """The review's S4: ``mime pull <url>`` states no size, and was the one download the stop did not see."""
+    rig.server.files["/bundle"] = b"b" * 400
+    with space(free=1_000_000, total=GB), assets.asking(None):
+        assert codes(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle")) == ["asset.disk-low"]
+        text = refusal_text(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle"))
+        assert "up to 500 MB" in text and "--force" in text
+        assert codes(lambda: assets.retrieve(rig.server.url("/bundle"), name="bundle", yes=True)) == ["asset.disk-low"]
+    assert rig.requests == 0
+    with space(free=1_000_000, total=GB), assets.asking(None):
+        assets.retrieve(rig.server.url("/bundle"), name="bundle", force=True)
+    assert rig.requests == 1
+    rig.server.files["/second"] = b"s" * 400
+    asker = Scripted()
+    with space(free=400 * GB, total=500 * GB), assets.asking(asker):
+        assets.retrieve(rig.server.url("/second"), name="bundle")
+    assert asker.questions == [] and asker.lines and asker.lines[0].startswith("Download up to 500 MB")
+    with space(free=3_000_000_000, total=20 * GB), assets.asking(None):
+        # 500 MB is over a tenth of 3 GB and would be asked about were it a stated size; it leaves 2.5 GB, so no stop
+        assets.retrieve(rig.server.url("/second"), name="bundle")
 
 
 # --- the controls: each fails on every run ----------------------------------------------------------------------------
