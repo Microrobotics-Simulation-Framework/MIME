@@ -351,12 +351,53 @@ def test_the_notebook_test_is_one_helper_that_the_run_display_asks_too(monkeypat
 
 # -- the control for "the same" ---------------------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class Specimen:
+    """One of each kind of value the declarations of today do not hold but a declaration may: a list, a tuple, a
+    mapping, a set and a frozenset, arrays of floats, integers and objects, numpy scalars, a complex, a string with
+    attributes of its own, and (below) a dataclass holding an attribute beyond its fields."""
+    items: list[object]
+    pair: tuple[object, ...]
+    table: dict[str, object]
+    tags: set[str]
+    frozen_tags: frozenset[str]
+    reals: np.ndarray[Any, Any]
+    counts: np.ndarray[Any, Any]
+    labelled: np.ndarray[Any, Any]
+    single: np.float32
+    whole: np.int32
+    phase: complex
+    moment: np.datetime64
+    named: str
+
+
+class Named(str):
+    """A string with attributes of its own."""
+    colour: str
+
+
+def specimens() -> list[object]:
+    labelled = np.empty(3, dtype=object)
+    labelled[0], labelled[1], labelled[2] = ("tube", 3.175), "robot", 7
+    named = Named("umr")
+    named.colour = "red"
+    plain = Specimen(items=["a", 1, 2.5], pair=("tube", 3, None), table={"radius": 3.175, "name": "tube"},
+                     tags={"x", "y", "z"}, frozen_tags=frozenset({"p", "q"}),
+                     reals=np.arange(6, dtype=np.float64).reshape(2, 3) + 0.5, counts=np.array([3, 1, 4], dtype=np.int32),
+                     labelled=labelled, single=np.float32(1.5), whole=np.int32(7), phase=complex(1.5, -2.5), moment=np.datetime64(5, "s"),
+                     named=named)
+    noted = copy.deepcopy(plain)
+    object.__setattr__(noted, "note", {"made": "by hand", "count": 2})
+    return [plain, noted]
+
+
 def pool() -> list[object]:
     """Declarations of every kind, with the kinds of value a declaration holds: things with parts, records with their
     acceptance and nominal, and magnets (script A's record arm); a law with a group of settings (its drag's
     lubrication) and laws bound by handles and typed paths; an apparatus with a chain, a controller and a field read
     at a part (the controlled magnet); script A's body side, written with strings; a source; a value whose quantity
-    carries its reason; a licence of the author's own; a permission; and a scene's reference."""
+    carries its reason; a licence of the author's own; a permission; and a scene's reference. Then the specimens, for
+    the kinds of value no declaration holds yet (arrays, sets, complex numbers, attributes beyond a dataclass's fields)."""
     held: list[object] = [*vars(script_a(records=ALL_RECORDS))["_declarations"],
                           *vars(spun_magnet(observe=True))["_declarations"], *vars(world())["_declarations"]]
     held += [SourceDeclaration("tube.inner_radius", "a datasheet"),
@@ -365,7 +406,7 @@ def pool() -> list[object]:
              PermissionDeclaration(Permission("A Maker", "A Lab", ("0" * 64,), Scope(True, False, True), "2026-11-05",
                                               Evidence("public_statement", "https://example.org/statement"))),
              Reference(file_asset("robot.usda"), "/World/UMR")]
-    return held
+    return held + specimens()
 
 
 def _rebuilt_mapping(mapping: Mapping[Any, Any], items: list[tuple[Any, Any]]) -> Mapping[Any, Any]:
@@ -395,6 +436,13 @@ def _slots(cls: type) -> list[str]:
     return names
 
 
+def _extras(value: object) -> dict[str, object]:
+    """The attributes ``value`` holds beyond its dataclass fields (all of them, for an object that is no dataclass)."""
+    fields = {field.name for field in dataclasses.fields(value)} if dataclasses.is_dataclass(value) and not isinstance(
+        value, type) else set()
+    return {name: item for name, item in vars(value).items() if name not in fields} if hasattr(value, "__dict__") else {}
+
+
 def changed_once(value: object) -> Iterator[tuple[str, object]]:
     """Every copy of ``value`` with one leaf changed by the least it can be, each with the path to that leaf. A leaf
     of a kind it cannot change (``None``, a class, a function) yields nothing, and a container it cannot rebuild
@@ -409,10 +457,31 @@ def changed_once(value: object) -> Iterator[tuple[str, object]]:
         yield f"={value + 1}", value + 1
     elif isinstance(value, float):
         yield "+ulp", math.nextafter(value, math.inf)
+    elif isinstance(value, complex):
+        yield ".real+ulp", complex(math.nextafter(value.real, math.inf), value.imag)
+        yield ".imag+ulp", complex(value.real, math.nextafter(value.imag, math.inf))
+    elif isinstance(value, np.generic):
+        if np.issubdtype(value.dtype, np.floating):
+            yield "+ulp", np.nextafter(value, np.inf)
+        elif value.dtype.kind in "Mm":
+            yield "+1 unit", value + np.timedelta64(1, np.datetime_data(value.dtype)[0])
+        else:
+            yield "+ulp", value + 1
     elif isinstance(value, str):
         yield "+'x'", value + "x"
+        for name, item in _extras(value).items():
+            for path, leaf in changed_once(item):
+                held = copy.copy(value)
+                setattr(held, name, leaf)
+                yield f".{name}{path}", held
     elif isinstance(value, PurePath):
         yield "+'x'", type(value)(f"{value}x")
+    elif isinstance(value, np.ndarray) and value.dtype == object:
+        for index, item in enumerate(value.ravel().tolist()):
+            for path, leaf in changed_once(item):
+                held = value.copy()
+                held.reshape(-1)[index] = leaf
+                yield f"[{index}]{path}", held
     elif isinstance(value, np.ndarray) and value.size:
         changed = value.copy()
         flat = changed.reshape(-1)
@@ -424,6 +493,11 @@ def changed_once(value: object) -> Iterator[tuple[str, object]]:
                 held = copy.copy(value)
                 object.__setattr__(held, field.name, leaf)
                 yield f".{field.name}{path}", held
+        for name, item in _extras(value).items():
+            for path, leaf in changed_once(item):
+                held = copy.copy(value)
+                object.__setattr__(held, name, leaf)
+                yield f".{name}{path}", held
     elif isinstance(value, Mapping):
         items = list(value.items())
         for index, (key, item) in enumerate(items):
@@ -445,13 +519,113 @@ def changed_once(value: object) -> Iterator[tuple[str, object]]:
                 yield f".{name}{path}", held
 
 
+_ADDED = "an item the declaration does not hold"
+
+
+def _same_size_other_kind(dtype: np.dtype[Any]) -> list[np.dtype[Any]]:
+    """The dtypes of the same width that read the same bytes as another kind of number, or in another unit (a numpy
+    scalar of a datetime is one type whatever its unit, so only its dtype tells ``5 s`` from ``5 ms``)."""
+    width = dtype.itemsize
+    if dtype.kind in "Mm":
+        return [np.dtype(f"{dtype.kind}8[ms]" if np.datetime_data(dtype)[0] != "ms" else f"{dtype.kind}8[s]")]
+    if np.issubdtype(dtype, np.floating):
+        return [np.dtype(f"i{width}")]
+    if np.issubdtype(dtype, np.signedinteger):
+        return [np.dtype(f"u{width}"), *([np.dtype(f"f{width}")] if width in (2, 4, 8) else [])]
+    if np.issubdtype(dtype, np.unsignedinteger):
+        return [np.dtype(f"i{width}")]
+    return []
+
+
+def changed_in_structure(value: object) -> Iterator[tuple[str, object]]:
+    """Every copy of ``value`` with one change to its structure: an item added or dropped, a key added or dropped, a
+    set's member added, dropped or put in another's place, an array of the same bytes read as another dtype or
+    another shape, an attribute added to (or dropped from) an object that holds attributes beyond its fields, and
+    the same inside any of its parts. What it cannot rebuild it passes over (a leaf has no structure), and a
+    container of a type it cannot rebuild fails."""
+    if isinstance(value, np.ndarray):
+        if value.dtype == object:
+            for index, item in enumerate(value.ravel().tolist()):
+                for path, leaf in changed_in_structure(item):
+                    held = value.copy()
+                    held.reshape(-1)[index] = leaf
+                    yield f"[{index}]{path}", held
+        else:
+            for dtype in _same_size_other_kind(value.dtype):
+                yield f".view({dtype})", np.ascontiguousarray(value).view(dtype)
+        if value.ndim and value.shape[0]:
+            yield ".reshaped", value.reshape(*value.shape, 1)
+            yield ".first axis dropped", value[:-1]
+    elif isinstance(value, np.generic):
+        for dtype in _same_size_other_kind(value.dtype):
+            yield f".view({dtype})", value.view(dtype)
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        for field in dataclasses.fields(value):
+            for path, leaf in changed_in_structure(getattr(value, field.name)):
+                held = copy.copy(value)
+                object.__setattr__(held, field.name, leaf)
+                yield f".{field.name}{path}", held
+        for name, item in _extras(value).items():
+            for path, leaf in changed_in_structure(item):
+                held = copy.copy(value)
+                object.__setattr__(held, name, leaf)
+                yield f".{name}{path}", held
+            held = copy.copy(value)
+            del vars(held)[name]
+            yield f".-{name}", held
+        if hasattr(value, "__dict__"):
+            held = copy.copy(value)
+            object.__setattr__(held, "added_attribute", _ADDED)
+            yield ".+attribute", held
+    elif isinstance(value, Mapping):
+        items = list(value.items())
+        for index, (key, item) in enumerate(items):
+            for path, leaf in changed_in_structure(item):
+                yield f"[{key!r}]{path}", _rebuilt_mapping(value, [*items[:index], (key, leaf), *items[index + 1:]])
+            yield f"[{key!r}] dropped", _rebuilt_mapping(value, [*items[:index], *items[index + 1:]])
+        yield "+key", _rebuilt_mapping(value, [*items, (_ADDED, _ADDED)])
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+        for index, item in enumerate(items):
+            for path, leaf in changed_in_structure(item):
+                yield f"[{index}]{path}", _rebuilt_sequence(value, [*items[:index], leaf, *items[index + 1:]])
+            if type(value) in (list, tuple):  # a named tuple has the length its fields give it
+                yield f"[{index}] dropped", _rebuilt_sequence(value, [*items[:index], *items[index + 1:]])
+        if type(value) in (list, tuple):
+            yield "+item", _rebuilt_sequence(value, [*items, _ADDED])
+    elif isinstance(value, (set, frozenset)):
+        members = list(value)
+        yield "+member", type(value)([*members, _ADDED])
+        for index, member in enumerate(members):
+            yield f"-{member!r}", type(value)([*members[:index], *members[index + 1:]])
+            yield f"{member!r}->other", type(value)([*members[:index], _ADDED, *members[index + 1:]])
+    elif isinstance(value, (str, bytes, int, float, complex)) and hasattr(value, "__dict__"):
+        held = copy.copy(value)
+        setattr(held, "added_attribute", _ADDED)
+        yield ".+attribute", held
+    elif _slots(type(value)) and not hasattr(value, "__dict__") and not isinstance(value, (PurePath, Enum)):
+        for name in _slots(type(value)):
+            for path, leaf in changed_in_structure(getattr(value, name)):
+                held = copy.copy(value)
+                object.__setattr__(held, name, leaf)
+                yield f".{name}{path}", held
+
+
+def every_change(value: object) -> Iterator[tuple[str, object]]:
+    """The leaf changes and the changes of structure, of ``value``."""
+    yield from changed_once(value)
+    yield from changed_in_structure(value)
+
+
 def called_the_same() -> tuple[int, list[str]]:
-    """How many single changes the pool has, and those ``same_content`` calls the same as their original."""
+    """How many single changes (of a leaf or of the structure) the pool has, and those ``same_content`` calls the same
+    as their original, asked both ways round (a comparison that checks one side only misses half the structural
+    changes)."""
     count, missed = 0, []
     for declaration in pool():
-        for path, changed in changed_once(declaration):
+        for path, changed in every_change(declaration):
             count += 1
-            if same_content(declaration, changed):
+            if same_content(declaration, changed) or same_content(changed, declaration):
                 missed.append(f"{type(declaration).__name__}{path}")
     return count, missed
 
@@ -463,6 +637,8 @@ def afresh(value: object) -> object:
         held = copy.copy(value)
         for field in dataclasses.fields(value):
             object.__setattr__(held, field.name, afresh(getattr(value, field.name)))
+        for name, item in _extras(value).items():
+            object.__setattr__(held, name, afresh(item))
         return held
     if isinstance(value, Mapping):
         return _rebuilt_mapping(value, [(key, afresh(item)) for key, item in value.items()])
@@ -470,6 +646,22 @@ def afresh(value: object) -> object:
         return _rebuilt_sequence(value, [afresh(item) for item in value])
     if isinstance(value, PurePath):
         return type(value)(str(value))
+    if isinstance(value, (set, frozenset)):
+        return type(value)(afresh(member) for member in value)
+    if isinstance(value, np.ndarray):
+        twin = value.copy()
+        if value.dtype == object:
+            for index, item in enumerate(value.ravel().tolist()):
+                twin.reshape(-1)[index] = afresh(item)
+        return twin
+    if isinstance(value, np.generic):
+        return value.copy()
+    if isinstance(value, complex):
+        return complex(value.real, value.imag)
+    if isinstance(value, str) and hasattr(value, "__dict__"):
+        held = copy.copy(value)
+        held.__dict__.update({name: afresh(item) for name, item in vars(value).items()})
+        return held
     if _slots(type(value)) and not hasattr(value, "__dict__") and not isinstance(value, Enum):
         held = copy.copy(value)
         for name in _slots(type(value)):
@@ -484,10 +676,10 @@ def test_each_declaration_made_afresh_is_the_same_though_it_is_another_object():
         assert twin is not declaration and same_content(declaration, twin), declaration
 
 
-def test_no_single_change_of_a_leaf_of_any_declaration_is_called_the_same():
+def test_no_single_change_of_a_leaf_or_of_the_structure_of_any_declaration_is_called_the_same():
     count, missed = called_the_same()
     assert missed == []
-    paths = [path for declaration in pool() for path, _ in changed_once(declaration)]
+    paths = [path for declaration in pool() for path, _ in every_change(declaration)]
     reached = {
         "a quantity's value": any(path.endswith(".value+ulp") or ".value[" in path for path in paths),
         "a unit's exponent": any(".dimension.exponents[" in path for path in paths),
@@ -499,6 +691,27 @@ def test_no_single_change_of_a_leaf_of_any_declaration_is_called_the_same():
         "a part's material record": any(".material." in path for path in paths),
         "a key renamed": any("renamed]" in path for path in paths),
         "a group of settings": any(".lubrication." in path for path in paths),
+        "an item dropped": any(path.endswith(".items[0] dropped") for path in paths),
+        "an item added": any(path.endswith(".items+item") for path in paths),
+        "a key dropped": any(path.endswith(".table['radius'] dropped") for path in paths),
+        "a key added": any(path.endswith(".table+key") for path in paths),
+        "a set's member added": any(path.endswith(".tags+member") for path in paths),
+        "a set's member dropped": any(".tags-" in path for path in paths),
+        "a set's member put in another's place": any(".tags" in path and "->other" in path for path in paths),
+        "a frozenset's contents": any(".frozen_tags" in path and "->other" in path for path in paths),
+        "an array's dtype": any(path.startswith(".reals.view(") and path.endswith("int64)") for path in paths),
+        "an integer array's dtype": any(path.startswith(".counts.view(") for path in paths),
+        "an array's shape": any(path.endswith(".reals.reshaped") for path in paths),
+        "an array's length": any(path.endswith(".counts.first axis dropped") for path in paths),
+        "an object array's contents": any(path.startswith(".labelled[") for path in paths),
+        "a numpy scalar's dtype": any(path.startswith(".single.view(") for path in paths),
+        "a datetime's unit (one numpy type, two dtypes)": any(path.startswith(".moment.view(") for path in paths),
+        "a numpy scalar's value": any(path == ".whole+ulp" for path in paths) and any(path == ".single+ulp" for path in paths),
+        "a complex's imaginary part": any(path.endswith(".phase.imag+ulp") for path in paths),
+        "an attribute added": any(path.endswith(".+attribute") for path in paths),
+        "an attribute dropped": any(path.endswith(".-note") for path in paths),
+        "an attribute's value": any(".note[" in path for path in paths),
+        "a string's own attribute": any(path.endswith(".named.colour+'x'") for path in paths),
     }
     assert [what for what, found in reached.items() if not found] == [], "the enumeration did not reach them"
     assert count > 500, count
@@ -528,8 +741,41 @@ def mappings_by_their_values_alone(real):
     return weaker
 
 
+def sequences_by_their_common_prefix(real):
+    def weaker(a, b, open_pairs):
+        if type(a) in (list, tuple) and type(b) is type(a):
+            return all(real(x, y, open_pairs) for x, y in zip(a, b))
+        return real(a, b, open_pairs)
+    return weaker
+
+
+def sets_by_their_size(real):
+    def weaker(a, b, open_pairs):
+        if isinstance(a, (set, frozenset)) and type(b) is type(a):
+            return len(a) == len(b)
+        return real(a, b, open_pairs)
+    return weaker
+
+
+def numpy_scalars_by_their_bytes(real):
+    def weaker(a, b, open_pairs):
+        if isinstance(a, np.generic) and type(b) is type(a):
+            return a.tobytes() == b.tobytes()
+        return real(a, b, open_pairs)
+    return weaker
+
+
+def arrays_by_their_bytes(real):
+    def weaker(a, b, open_pairs):
+        if isinstance(a, np.ndarray) and isinstance(b, np.ndarray) and a.dtype != object:
+            return a.tobytes() == b.tobytes()
+        return real(a, b, open_pairs)
+    return weaker
+
+
 @pytest.mark.parametrize("plant", [quantity_by_its_own_equality, floats_to_a_relative_tolerance,
-                                   mappings_by_their_values_alone], ids=lambda plant: plant.__name__)
+                                   mappings_by_their_values_alone, sequences_by_their_common_prefix, sets_by_their_size,
+                                   arrays_by_their_bytes, numpy_scalars_by_their_bytes], ids=lambda plant: plant.__name__)
 def test_control_a_weaker_comparison_planted_is_caught_by_the_enumeration(plant, monkeypatch):
     monkeypatch.setattr(content_module, "_same", plant(content_module._same))
     _, missed = called_the_same()
@@ -548,3 +794,41 @@ def test_two_functions_with_nothing_inside_are_not_the_same():
     """Code is the same only as itself: two functions hold the same nothing a comparison can read."""
     assert not same_content(lambda: 1, lambda: 1)
     assert not same_content(object(), object())
+
+
+def test_a_string_with_attributes_of_its_own_is_the_same_only_with_those_attributes_the_same():
+    left, right = Named("umr"), Named("umr")
+    left.colour = right.colour = "red"
+    assert same_content(left, right)
+    right.colour = "blue"
+    assert not same_content(left, right)
+    assert not same_content(left, Named("umr"))
+
+
+def test_a_value_that_holds_itself_is_the_same_as_another_only_where_the_other_holds_itself_at_the_same_place():
+    def loop() -> dict[str, object]:
+        held: dict[str, object] = {}
+        held["inside"] = held
+        return held
+
+    inner = loop()
+    unrolled: dict[str, object] = {"inside": inner}
+    assert same_content(loop(), loop())
+    assert not same_content(loop(), unrolled) and not same_content(unrolled, loop())
+    pair: list[object] = []
+    pair += [pair, loop()]
+    assert same_content(pair, copy.deepcopy(pair))
+    assert not same_content(pair, [loop(), pair])
+
+
+def test_a_value_nested_past_the_recursion_limit_is_the_same_only_as_itself_and_raises_nothing():
+    def nested(depth: int) -> list[object]:
+        held: list[object] = []
+        for _ in range(depth):
+            held = [held]
+        return held
+
+    deep = nested(5000)
+    assert same_content(deep, deep)
+    assert not same_content(deep, nested(5000))
+    assert same_content(nested(20), nested(20))

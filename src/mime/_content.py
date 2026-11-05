@@ -12,7 +12,11 @@ Two values are the same when they are of one type and:
   of them the same.
 
 Anything else (a function, a class, a module, an object of any other kind) is the same only as itself: it may hold
-code or state that cannot be read, so two of them are never taken for one."""
+code or state that cannot be read, so two of them are never taken for one. So is a value nested too deep to read (past
+Python's recursion limit), and a value that holds itself is the same as another only where the other holds itself at the
+same place (a dict that holds itself is not a dict that holds a dict that holds itself).
+
+A scalar of a subclass (a ``str`` or an ``int`` with attributes of its own) is the same only with those attributes the same."""
 
 from __future__ import annotations
 
@@ -27,7 +31,10 @@ _MISSING = object()
 
 
 def same_content(a: object, b: object) -> bool:
-    return _same(a, b, set())
+    try:
+        return _same(a, b, {})
+    except RecursionError:  # nested too deep to read: the same only as itself
+        return a is b
 
 
 def _slots(cls: type) -> list[str]:
@@ -39,18 +46,19 @@ def _slots(cls: type) -> list[str]:
     return found
 
 
-def _same(a: object, b: object, open_pairs: set[tuple[int, int]]) -> bool:
+def _same(a: object, b: object, open_pairs: dict[int, int]) -> bool:
     if a is b:
         return True
     if type(a) is not type(b):
         return False
     if isinstance(a, float):
-        return a.hex() == cast(float, b).hex()
+        return a.hex() == cast(float, b).hex() and _same_attributes(a, b, open_pairs)
     if a is None or isinstance(a, (str, bytes, int)):
-        return a == b
+        return bool(a == b) and _same_attributes(a, b, open_pairs)
     if isinstance(a, complex):
         other = cast(complex, b)
-        return a.real.hex() == other.real.hex() and a.imag.hex() == other.imag.hex()
+        return (a.real.hex() == other.real.hex() and a.imag.hex() == other.imag.hex()
+                and _same_attributes(a, b, open_pairs))
     if isinstance(a, np.ndarray):
         return _same_array(cast(np.ndarray[Any, Any], a), cast(np.ndarray[Any, Any], b), open_pairs)
     if isinstance(a, np.generic):
@@ -58,17 +66,25 @@ def _same(a: object, b: object, open_pairs: set[tuple[int, int]]) -> bool:
         return bool(scalar_a.dtype == scalar_b.dtype) and scalar_a.tobytes() == scalar_b.tobytes()
     if isinstance(a, PurePath):
         return a == b
-    pair = (id(a), id(b))
-    if pair in open_pairs:  # a value that holds itself: the same so far
-        return True
-    open_pairs.add(pair)
+    if id(a) in open_pairs:  # a value that holds itself: the same so far, if the other holds itself at this place
+        return open_pairs[id(a)] == id(b)
+    if id(b) in open_pairs.values():  # the other holds itself where this one does not
+        return False
+    open_pairs[id(a)] = id(b)
     try:
         return _same_composite(a, b, open_pairs)
     finally:
-        open_pairs.discard(pair)
+        del open_pairs[id(a)]
 
 
-def _same_array(a: np.ndarray[Any, Any], b: np.ndarray[Any, Any], open_pairs: set[tuple[int, int]]) -> bool:
+def _same_attributes(a: object, b: object, open_pairs: dict[int, int]) -> bool:
+    """The attributes a scalar of a subclass holds of its own (none for a ``str``, an ``int`` or a ``float``)."""
+    held_a = vars(a) if hasattr(a, "__dict__") else {}
+    held_b = vars(b) if hasattr(b, "__dict__") else {}
+    return (not held_a and not held_b) or _same(held_a, held_b, open_pairs)
+
+
+def _same_array(a: np.ndarray[Any, Any], b: np.ndarray[Any, Any], open_pairs: dict[int, int]) -> bool:
     if a.dtype != b.dtype or a.shape != b.shape:
         return False
     if a.dtype == np.dtype(object):
@@ -76,7 +92,7 @@ def _same_array(a: np.ndarray[Any, Any], b: np.ndarray[Any, Any], open_pairs: se
     return a.tobytes() == b.tobytes()
 
 
-def _same_composite(a: object, b: object, open_pairs: set[tuple[int, int]]) -> bool:
+def _same_composite(a: object, b: object, open_pairs: dict[int, int]) -> bool:
     if dataclasses.is_dataclass(a) and not isinstance(a, type):
         names = [field.name for field in dataclasses.fields(a)]
         if not all(_same(getattr(a, name), getattr(b, name), open_pairs) for name in names):
