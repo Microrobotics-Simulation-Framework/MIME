@@ -64,9 +64,14 @@ writes the recording layer.
 A declaration made a second time (`_redeclared.py`), as when a notebook's cell runs twice: the same as the first
 (`mime._content.same_content`: its type, every setting with its units and reason, what it binds) is kept once, with a
 warning, in a script and in a notebook; a changed one is added and refused at the build in a script, and in a
-notebook (`mime._notebook.in_notebook`, the one test the run's display also asks) replaces the earlier one, with a
-warning, unless another declaration names the earlier one, when both are kept and the build's refusal says a cell has
-probably run twice. A permission has no key, so only the same one again is kept once; a scene's reference of the same
-asset at the same prim again is kept once by the scene.
+notebook or IPython (`mime._notebook.in_notebook`, the one test the run's display also asks; it is also true under
+`ipython script.py` and `%run`) replaces the earlier one, with a warning. A structure, medium, body or apparatus
+(the same name and kind) is replaced wherever other declarations name it: each holds the thing by its name, which the
+build resolves, so what names it follows it, and the one warning names each law, observation, value, source,
+controller and other thing that does. A name of another kind, or a declaration that holds the earlier thing's object
+and not its name, is kept beside the new one and refused at the build (`thing.duplicate`, saying a cell has probably
+run twice). A law or an observation that a source or the controller names is kept beside the new one likewise. A
+permission has no key, so only the same one again is kept once; a scene's reference of the same asset at the same prim
+again is kept once by the scene.
 
 Releases are explained in the [package manifest](../README.md#status).

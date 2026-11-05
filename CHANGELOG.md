@@ -23,10 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   time, the same in its type, its settings with their units and reasons, and what it binds, is kept once with a
   warning, in a script and in a notebook; it was refused (`id.duplicate`, `thing.duplicate`, ...). A changed one is
   still refused in a script. In a notebook (Jupyter, Colab or IPython) it replaces the earlier one, with a warning, so
-  a cell edited and run again takes effect, unless another declaration names the earlier one (a law bound to a body
-  changed in its cell): then both are kept and the build's refusal says a cell has probably run twice, with what to
-  run again. The same scene reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep its advice
-  (run again from the cell that makes the experiment) until they move to the release that ships this.
+  a cell edited and run again takes effect. That includes a structure, medium, body or apparatus (the same name and kind)
+  that laws, observations, values or the controller name: they hold it by its name, so they find the new one, and the one
+  warning names each (change `field_strength` and run the field cell again). A name declared again as another kind, or a
+  declaration that holds the earlier thing's object and not its name, is kept beside the new one and refused at the build,
+  saying a cell has probably run twice; so is a law or an observation that a source or the controller names. The words say "a notebook or IPython": the rule also applies to a script run by
+  `ipython script.py` or `%run`. The same scene reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep
+  its advice (run again from the cell that makes the experiment) until they move to the release that ships this.
 
 ### Fixed
 

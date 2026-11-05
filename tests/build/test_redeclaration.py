@@ -1,7 +1,9 @@
 """A declaration made a second time (``mime.experiment._redeclared``). The same one again is kept once, with a note, in a
-script and in a notebook. A changed one, in a notebook, replaces the earlier one where no other declaration names it,
-with a note; where one does, both are kept, with a note, and the build refuses them saying a cell has probably run
-twice. In a script a changed one is refused at the build as before, in the script's words.
+script and in a notebook. A changed one, in a notebook, replaces the earlier one, with a note: a structure, a medium, a
+body or an apparatus wherever other declarations name it (``test_rebind.py`` shows what follows it), a law or an
+observation where no other declaration names its id; where one does, both are kept, with a note, and the build refuses
+them saying a cell has probably run twice. In a script a changed one is refused at the build as before, in the script's
+words.
 
 The notebook is IPython's ``get_ipython`` put among the builtins, as IPython does, so that the one test MIME asks
 (``mime._notebook.in_notebook``) answers yes; the script is this process as it is. Each kind of declaration a cell can
@@ -208,7 +210,9 @@ CASES = (
     Case("licence", lambda exp, changed: exp.licence("CC0-1.0" if changed else "MIT"), licensed, "terms.licence",
          "the experiment's licence", refusals=documented),
 )
-NAMED = tuple(case for case in CASES if case.named is not None)
+#: The cases a notebook does not replace where another declaration names them (a law, an observation); a thing is
+#: replaced, and what names it follows it (``test_rebind.py``).
+NAMED = tuple(case for case in CASES if case.named is not None and case.name in ("law", "observation"))
 
 
 def ids(case: Case) -> str:
@@ -263,7 +267,8 @@ def test_a_changed_declaration_in_a_notebook_replaces_the_earlier_one_where_noth
     exp = case.held()
     count = len(held_ids(exp))
     with pytest.warns(UserWarning, match=re.escape(f"declares {case.noun} again, not the same as before: in a "
-                                                   f"notebook the last one run wins, so it replaces the earlier one")):
+                                                   f"notebook or IPython the last one run wins, so it replaces the "
+                                                   f"earlier one")):
         case.again(exp, True)
     assert len(held_ids(exp)) == count
     assert coded(case.refusals(exp), case.code) == []
@@ -280,7 +285,7 @@ def test_a_changed_declaration_another_names_is_kept_beside_it_and_refused_sayin
         case.again(exp, True)
     said = [str(warning.message) for warning in noted]
     assert len(said) == 1 and f"declares {case.noun} again, not the same as before, and " in said[0]
-    assert case.naming in said[0] and "so both are kept and the build will refuse them" in said[0]
+    assert case.naming in said[0] and "both are kept and the build will refuse them" in said[0]
     assert len(held_ids(exp)) == count + 1
     refused = coded(case.refusals(exp), case.code)
     assert refused and all(refusal.message.endswith(RAN_TWICE) and refusal.action == RUN_AGAIN for refusal in refused)

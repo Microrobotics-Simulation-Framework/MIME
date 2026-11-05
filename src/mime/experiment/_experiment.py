@@ -266,8 +266,10 @@ class Experiment:
     controller or licence), as when a notebook's cell runs twice, is kept once, with a warning, when it is the same as
     the first: its type, its settings with their units and reasons, and what it binds. A changed one is refused at the
     build in a script. In a notebook (IPython, Jupyter, Colab) the last one run replaces the earlier one, with a
-    warning, unless another declaration names the earlier one (a law bound to a body, a value declared of it): then
-    both are kept, with a warning, and the build refuses the two, saying a cell has probably run twice.
+    warning. A structure, medium, body or apparatus replaced this way is found by the declarations that hold its name
+    (laws, observations, values, sources, the controller, a medium's ``fills``), and the warning names each; a name
+    declared again as another kind, or held as an object and not a name, is kept beside the new one, and the build
+    refuses the two, saying a cell has probably run twice.
     """
 
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
