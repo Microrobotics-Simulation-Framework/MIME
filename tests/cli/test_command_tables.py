@@ -265,6 +265,7 @@ def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal
     assert cells["probe.x"] == f"moved: max |difference| 1.000e-06, first at step 0; held to {tolerance}"
 
 
+@needs_pty
 def test_the_same_environment_arm_is_equal_bit_for_bit_the_control_of_the_other_environment_arm(saved, monkeypatch):
     """Where this platform can read its CPU, the load finds the lock's environment (the arm above is then the contrast);
     elsewhere it does not, and the contrast is made by a lock found to be this environment."""
