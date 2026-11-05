@@ -37,12 +37,17 @@ POINTER = f"Mermaid source: if it shows as text, paste it into {RENDERER} to dra
 _NODE_LINE = re.compile(r'^(?P<head>\s*n\d+\[")(?P<name>.*?)<br/>(?P<type>.*)(?P<tail>"\])$')
 
 
+def _entity(code: str) -> str:
+    """Mermaid's entity code: ``#`` and the code, then ``;``."""
+    return f"#{code};"
+
+
 def _escaped(text: str) -> str:
     """Text made safe inside a quoted Mermaid label, as MADDENING makes it (``inspection._mermaid_text``): ``#`` first,
     since it opens an entity code, then the characters that would end the label or open HTML or Markdown."""
-    out = text.replace("#", "#35;")
-    for character, code in (('"', "#quot;"), ("<", "#lt;"), (">", "#gt;"), ("&", "#38;"), ("`", "#96;")):
-        out = out.replace(character, code)
+    out = text.replace("#", _entity("35"))
+    for character, code in (('"', "quot"), ("<", "lt"), (">", "gt"), ("&", "38"), ("`", "96")):
+        out = out.replace(character, _entity(code))
     return out.replace("\r\n", "<br/>").replace("\n", "<br/>").replace("\r", "<br/>")
 
 
