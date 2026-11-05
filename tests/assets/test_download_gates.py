@@ -319,6 +319,23 @@ def test_in_a_notebook_the_library_asks_through_input_and_a_kernel_that_takes_no
         "asset.licence-not-accepted"]
 
 
+def test_a_terminal_on_standard_input_alone_is_nobody_to_ask(monkeypatch: pytest.MonkeyPatch):
+    """With both output streams redirected the question would go into a file unseen, so nobody is asked (and Windows'
+    null device, a terminal to ``isatty``, with a pipe for output is such a case)."""
+    import io
+
+    class Terminal(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr("sys.stdin", Terminal(""))
+    monkeypatch.setattr("sys.stdout", io.StringIO())
+    monkeypatch.setattr("sys.stderr", io.StringIO())
+    assert not assets.can_ask()
+    monkeypatch.setattr("sys.stderr", Terminal())
+    assert assets.can_ask(), "the control: the same input with a terminal to show the question on"
+
+
 def test_standard_input_that_ends_before_an_answer_is_no_terminal_and_not_a_no(rig: Rig, monkeypatch: pytest.MonkeyPatch):
     """Windows reads its null device as a terminal; a program run with standard input from it is asked and gets the end of
     the input at once. That is nobody to ask: the refusal names the flag, as it does without a terminal."""
