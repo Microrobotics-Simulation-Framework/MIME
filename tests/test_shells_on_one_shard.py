@@ -3,7 +3,9 @@
 (run 42049802999, the default lane's shard 5, lost to its 20-minute limit) and over 100 s on 23 of 943 shard jobs of the last
 twenty runs, with no test of the shard using either shell. The tests fail, not skip, under CI when a shell is missing, so a
 wrong holder is red by name; this file keeps the holder right (``scripts/shard_of_file.py`` asks the plugin's own deal), the
-workflow wired to it in every sharded lane, and no other test file asking for either shell.
+workflow wired to it in every sharded lane, and no other test file asking for either shell. The install itself
+(``scripts/install_shells.sh``) cuts an attempt at a limit and makes it again, since the one shard that installs was
+itself met by a 9 min 51 s install in this change's first run (run 42058520080, ``maddening-main`` shard 8).
 
 The controls are fixed plants, each failing on every run."""
 
@@ -73,13 +75,13 @@ def workflow_problems(text: str) -> list[str]:
     for name in SHARDED:
         steps = jobs[name]["steps"]
         asks = [step for step in steps if step.get("id") == "shells"]
-        installs = [step for step in steps if "apt-get install" in step.get("run", "")]
+        installs = [step for step in steps if "install_shells.sh" in step.get("run", "")]
         if len(asks) != 1 or f"scripts/shard_of_file.py {COMPLETION} --of" not in asks[0].get("run", ""):
             found.append(f"{name}: does not ask scripts/shard_of_file.py for the shard of {COMPLETION}")
         elif asks[0].get("env", {}).get("SHARDS") != "${{ needs.shards.outputs.count }}":
             found.append(f"{name}: asks for the shard of a count other than the lane's")
-        if len(installs) != 1 or "zsh" not in installs[0]["run"] or "fish" not in installs[0]["run"]:
-            found.append(f"{name}: does not install zsh and fish exactly once")
+        if len(installs) != 1 or installs[0]["run"].strip() != "bash scripts/install_shells.sh":
+            found.append(f"{name}: does not install zsh and fish exactly once, by scripts/install_shells.sh")
         elif installs[0].get("if") != "steps.shells.outputs.holder == matrix.shard":
             found.append(f"{name}: installs the shells on a shard other than the one that holds them, or on all")
         elif asks and steps.index(asks[0]) > steps.index(installs[0]):
@@ -126,3 +128,52 @@ def test_control_the_scan_finds_a_file_that_asks_for_a_shell(tmp_path):
     (tmp_path / "test_other.py").write_text('import shutil\nshutil.which("zsh")\n', encoding="utf-8")
     (tmp_path / "test_plain.py").write_text("selfish = 1\n", encoding="utf-8")
     assert files_asking_for_a_shell(tmp_path) == ["test_other.py"]
+
+
+INSTALL = ROOT / "scripts" / "install_shells.sh"
+
+
+def fake_tools(folder: Path, apt_body: str) -> dict[str, str]:
+    """An environment whose ``sudo``, ``dpkg`` and ``apt-get`` are scripts in ``folder`` (``sudo`` runs its arguments;
+    ``apt-get`` runs ``apt_body``, with ``$COUNT_FILE`` holding the attempts so far), so that the script is run for real
+    and installs nothing."""
+    folder.mkdir()
+    (folder / "sudo").write_text('#!/bin/sh\nexec "$@"\n', encoding="utf-8")
+    (folder / "dpkg").write_text("#!/bin/sh\necho dpkg-configure-ran >> \"$COUNT_FILE.dpkg\"\n", encoding="utf-8")
+    (folder / "apt-get").write_text('#!/bin/sh\necho x >> "$COUNT_FILE"\nattempt=$(wc -l < "$COUNT_FILE")\n' + apt_body,
+                                    encoding="utf-8")
+    for tool in folder.iterdir():
+        tool.chmod(0o755)
+    return {"PATH": f"{folder}:/usr/bin:/bin", "COUNT_FILE": str(folder / "count")}
+
+
+def run_install(tmp_path: Path, apt_body: str, **settings: str) -> tuple[subprocess.CompletedProcess[str], int]:
+    environment = fake_tools(tmp_path / "bin", apt_body) | settings
+    done = subprocess.run(["bash", str(INSTALL)], env=environment, capture_output=True, text=True, check=False, timeout=120)
+    counted = Path(environment["COUNT_FILE"])
+    return done, len(counted.read_text().splitlines()) if counted.exists() else 0
+
+
+needs_posix = pytest.mark.skipif(sys.platform == "win32", reason="a CI Linux runner's script")
+
+
+@needs_posix
+def test_an_attempt_that_stalls_is_cut_and_made_again_and_the_second_installs(tmp_path):
+    done, attempts = run_install(tmp_path, '[ "$attempt" -ge 2 ] && exit 0\nexec sleep 30\n', SHELLS_ATTEMPT_SECONDS="1")
+    assert done.returncode == 0 and attempts == 2, done
+    assert "attempt 1 of 3 failed or ran over 1 s" in done.stdout and "installed on attempt 2 of 3" in done.stdout
+
+
+@needs_posix
+def test_control_without_the_cut_a_stalled_attempt_is_waited_for(tmp_path):
+    """The same stall with a limit longer than it: nothing is cut, so the one attempt is the only one."""
+    done, attempts = run_install(tmp_path, "sleep 2\nexit 0\n", SHELLS_ATTEMPT_SECONDS="60")
+    assert done.returncode == 0 and attempts == 1 and "attempt 1 of 3" in done.stdout
+
+
+@needs_posix
+def test_a_failing_install_is_tried_the_set_number_of_times_and_then_fails_the_step(tmp_path):
+    done, attempts = run_install(tmp_path, "exit 100\n", SHELLS_ATTEMPTS="2", SHELLS_ATTEMPT_SECONDS="5")
+    assert done.returncode == 1 and attempts == 2, done
+    assert "were not installed in 2 attempts" in done.stdout
+    assert len((tmp_path / "bin" / "count.dpkg").read_text().splitlines()) == 2, "the half-done install is repaired between"

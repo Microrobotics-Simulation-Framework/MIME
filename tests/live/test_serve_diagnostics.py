@@ -16,7 +16,6 @@ import time
 from pathlib import Path
 
 import pytest
-from live_cases import saved
 from live_servers import STALL_ENVIRONMENT, client, serve_command, watched
 
 HANG = 600
@@ -24,7 +23,16 @@ HANG = 600
 
 @pytest.fixture(scope="module")
 def folder(tmp_path_factory) -> Path:
-    return saved(tmp_path_factory.mktemp("diagnosed"))
+    """A saved experiment that serves idle and builds in a second (the toy: the handshake needs no rig)."""
+    import warnings
+
+    from mime.testing.toys import full_toy
+
+    held = tmp_path_factory.mktemp("diagnosed") / "toy"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        full_toy().save(held)
+    return held
 
 
 def started(launch, folder: Path, tmp_path: Path, name: str, **options):

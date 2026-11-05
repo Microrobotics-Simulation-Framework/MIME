@@ -192,7 +192,7 @@ jobs:
         run: echo "holder=$(uv run --no-sync python scripts/shard_of_file.py tests/cli/test_completion.py --of "$SHARDS")" >> "$GITHUB_OUTPUT"
       - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner), on the shard that holds them
         if: steps.shells.outputs.holder == matrix.shard
-        run: sudo apt-get install -y --no-install-recommends zsh fish
+        run: bash scripts/install_shells.sh
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -437,7 +437,7 @@ jobs:
         run: echo "holder=$(uv run --no-sync python scripts/shard_of_file.py tests/cli/test_completion.py --of "$SHARDS")" >> "$GITHUB_OUTPUT"
       - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner), on the shard that holds them
         if: steps.shells.outputs.holder == matrix.shard
-        run: sudo apt-get install -y --no-install-recommends zsh fish
+        run: bash scripts/install_shells.sh
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
@@ -580,7 +580,7 @@ jobs:
         run: echo "holder=$(uv run --no-sync python scripts/shard_of_file.py tests/cli/test_completion.py --of "$SHARDS")" >> "$GITHUB_OUTPUT"
       - name: Install the shells the completion tests ask (zsh and fish; bash is on the runner), on the shard that holds them
         if: steps.shells.outputs.holder == matrix.shard
-        run: sudo apt-get install -y --no-install-recommends zsh fish
+        run: bash scripts/install_shells.sh
       - name: The unit tube table, in the cache shared by every job
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
