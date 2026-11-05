@@ -34,7 +34,7 @@ from mime.env import (
     pins,
     shadow_refusals,
 )
-from mime.env._check import expected_distributions
+from mime.env._check import distribution_rows, expected_distributions
 
 SERIES = "3.14"
 BASE = bases()[SERIES]
@@ -419,3 +419,29 @@ def test_a_refusal_s_action_is_its_subjects_shared_action_with_the_name_in():
         assert refusal.action == refusal.subject.acted(), refusal.code
     assert [r.action for r in refusals if r.subject and r.subject.cells[0] == "pip"] == [
         next(r.action for r in refusals if r.subject and r.subject.cells[0] == "plain").replace("plain", "pip")]
+
+
+def test_the_pins_against_what_is_installed_is_a_row_for_each_pinned_distribution_all_as_pinned_when_it_passes():
+    report = check(variant="cpu", installed=checkout(), devices=CPU, system=base_system())
+    expected, _ = expected_distributions("cpu", base_system(), base=None)
+    assert [row.name for row in report.rows] == sorted(expected) and all(row.agrees for row in report.rows)
+    assert all(row.wanted == row.found for row in report.rows), "as pinned: what is wanted is what is found"
+    assert "rows" not in report.record(), "the record --record writes is what it was"
+
+
+def test_each_kind_of_difference_is_a_row_that_says_so_and_the_others_stay_as_pinned():
+    """The control for the rows: a difference planted into an environment the check accepts is the one row that
+    disagrees, with what is wanted and what is found, so a table that said 'as pinned' for all would fail here."""
+    expected, _ = expected_distributions("cpu", base_system(), base=None)
+    installed = {name: (want.version,) for name, want in expected.items()}
+    wanted = expected["numpy"].version
+    installed["numpy"] = ("1.0.0",)
+    del installed["scipy"]
+    rows = {row.name: row for row in distribution_rows(installed, expected)}
+    assert {name for name, row in rows.items() if not row.agrees} == {"numpy", "scipy"}
+    assert (rows["numpy"].wanted, rows["numpy"].found, rows["numpy"].verdict) == (wanted, "1.0.0", "differs from the pin")
+    assert (rows["scipy"].found, rows["scipy"].verdict) == (None, "not installed")
+    assert rows["numpy"].pinned_by == expected["numpy"].source
+    two = {"numpy": ("1.0.0", "2.0.0")}
+    assert distribution_rows(two, {"numpy": expected["numpy"]})[0].found == "1.0.0, 2.0.0"
+    assert distribution_rows(two, {"numpy": expected["numpy"]})[0].verdict == "differs from the pin"
