@@ -31,7 +31,7 @@ BASES = ROOT / "src" / "mime" / "data" / "env" / "bases.json"
 UV = ROOT / "src" / "mime" / "data" / "env" / "uv.json"
 #: The uv that installs the pins: the one whose ``uv export`` wrote them (the dev group's), pulled by the digest of its
 #: image's index.
-UV_VERSION = "0.13.0"
+UV_VERSION = "0.13.4"
 UV_REPOSITORY = "astral-sh/uv"
 SERIES = ("3.12", "3.13", "3.14")
 #: Debian's stable release when the file was first written, for every series alike.
