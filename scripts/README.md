@@ -24,7 +24,7 @@ Two scripts are read by the platforms workflow and the ready workflow, not the l
 | `ci_ready.py` | the ready workflow's one step (`.github/workflows/ready.yml`, [`CONTRIBUTING.md`](../CONTRIBUTING.md#ci-the-ready-label)): when a pull request gets the label `ready`, re-runs the head's newest CI and Platforms runs, which read the label as they start and so take the full matrix; a reduced run in flight is cancelled first, a run that has not read its mode yet or is full already is left alone. Exits 1 when a request fails (a pull request from a fork, whose token cannot re-run) |
 | `platforms_smoke.py` | runs the test files `tests/platforms.txt` names (one `path  # reason` a line) with pytest, with any further arguments passed on; the platforms workflow's macOS and Windows smoke jobs call it, so the selection has one home that `tests/test_platforms_selection.py` checks |
 
-Seven scripts are a maintainer's tools, run by hand and never by CI:
+Eight scripts are a maintainer's tools, run by hand and never by CI:
 
 | Script | What it does |
 |---|---|
@@ -35,6 +35,7 @@ Seven scripts are a maintainer's tools, run by hand and never by CI:
 | `names_0_2.py` | writes `docs/data/names_0.2.txt`, the 0.2 line's public names (its node classes and effect models) as the tag `pre-0.3` holds them, which the migration table is held to; run once, the list frozen by its digest in `mime.docs._migration` |
 | `offline_view_proof.py` | that the page `mime visuals web` writes draws with no network: the page with the viewer inlined opened in headless Chrome (WebGL through SwiftShader) with every request sent to a closed port, passing when `<model-viewer>` reports its animation's duration and the network log holds no request of the page's; the control, the same page with the viewer from jsDelivr, must fail to load under the same block. A manual check before a release, never a test (CI has no WebGL) |
 | `bump_bases.py` | writes `src/mime/data/env/bases.json` and `uv.json` (uv's image pinned by digest): for each Python series MIME supports, the base image pinned by digest, with its Python, Debian, glibc and own distributions read from the image's layers on Docker Hub; `--check` exits one when the tags have moved. Its output lands in a pull request, never in a build |
+| `colab_links.py` | points every link that opens a notebook of `docs/notebooks/` in Colab (the README's badges, the guide's lines, the notebooks' own badges) at the one branch its `BRANCH` names: change `BRANCH`, run it, and commit what it rewrote; `--check` changes nothing and exits 1 on a link to another branch or to a notebook that is not there, which `tests/examples/test_notebooks.py` runs |
 
 `check_anomalies.py` runs inside `mime docs check` (see
 [`mime.docs`](../src/mime/docs/README.md)), which CI runs in its default lane: the documentation's sources, the docs

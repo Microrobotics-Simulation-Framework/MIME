@@ -2,6 +2,13 @@
 
 MIcrorobotics Multiphysics Engine, on [MADDENING](https://microrobotica.org/maddening/).
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/main/docs/notebooks/sphere_settling_tube.ipynb) **Watch a steel ball settle in a tube of water**
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/main/docs/notebooks/tutorial_a.ipynb) **Drive a screw-shaped magnetic robot through a tube**
+
+The two tutorial notebooks run in your browser, on Google Colab, with nothing to install: click a badge, then run the
+cells from the top.
+
 **MIME 0.3.0.dev1 is the first release of MIME 0.3**, a rewrite on MADDENING 0.4, and a development pre-release: its
 API, its saved form and its results may change before 0.3.0. It holds the core that turns a declared experiment into a
 MADDENING graph, the saved form, the scene, the profiles, and the physics of its first experiments: a sphere settling

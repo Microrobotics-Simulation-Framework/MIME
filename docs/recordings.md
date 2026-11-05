@@ -190,3 +190,6 @@ one sample spacing (2.5 um here). Closer than that, near-contact lubrication is 
 last approach is too fast, and the contact, not the fluid, holds the ball on the floor. Near-contact lubrication, and a
 flat floor's wall (so a dish), are planned for 0.3.0.dev2. The tube's end caps are drawn, not computed: the physics is
 the infinite tube's, and the example's docstring says why the caps' absence does not matter at their distance.
+
+Run it in Colab: [the quickstart's notebook](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/main/docs/notebooks/sphere_settling_tube.ipynb) builds the experiment step by step in cells
+you can edit, and plots the ball's height above the floor.

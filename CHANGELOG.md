@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Colab notebooks** (`docs/notebooks/`), linked first in the README: a steel ball settling in a tube of water, and
+  de Jongh's screw-shaped magnetic robot driven along a tube by a rotating field (tutorial A's experiment). Written
+  for a newcomer, step by step in plain words, each installs the released MIME from PyPI, runs its experiment with the
+  live display, plots it with matplotlib, shows the browser view, and ends with changes to try.
+  `tests/examples/test_notebooks.py` builds each notebook's experiment against the checkout and runs A's for a few
+  steps; `scripts/colab_links.py` points every Colab link at one branch.
+
 ## [0.3.0.dev1] - 2026-11-05
 
 The first release of MIME 0.3, a rewrite of MIME on [MADDENING](https://microrobotica.org/maddening/) 0.4. It is a
