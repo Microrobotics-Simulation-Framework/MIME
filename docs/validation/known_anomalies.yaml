@@ -2508,13 +2508,13 @@ anomalies:
       A0 body, whose magnet_centre is declared at the centre of mass, where l = 0 leaves no lever. Not covered by
       MIME-ANO-100, which is the point dipole source model's near-field fidelity.
 
-      Severity: minor, as MIME-ANO-100, the near-field limit of the same laws, is. The registry's table gives minor to
-      "no correctness impact" and major to "incorrect results, workaround exists", and this entry sits between them
-      on purpose: the effect is inside the laws' declared validity (the field varies little across the body), where
-      the laws make no claim of the omitted term, so a result there is within what the laws state; outside it (a
-      lever that is a tenth of the field's length scale or more) it is an incorrect result, and the workaround below
-      applies. It should be read as major for a study in that regime.
-    severity: minor
+      Severity: major, by the registry's table ("incorrect results, workaround exists"). The two laws model one point
+      dipole at the magnet's centroid, yet read the field at two different points, so the pair is inconsistent with
+      its own model and does net work round a closed loop: an incorrect result, not a validity limit. Its size is
+      first order in the lever over the field's length scale, so it is small where the laws' declared validity holds
+      (the field varies little across the body), and the workaround below removes it. MIME-ANO-100, the source
+      model's near-field limit, is an entry of another kind.
+    severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       The error is first order in the lever over the field's length scale and sits inside the laws' declared
