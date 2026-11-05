@@ -40,10 +40,12 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
+ACTIONS = ROOT / ".github" / "actions"
 #: The development branch, and the name it had until 2026-11-05, which no workflow may name.
 BRANCH, OLD_BRANCH = "release/v0.3.0", "v0.3"
-#: The old name as a branch: ``v0.3`` not followed by ``.`` or a digit (``v0.3.0``, ``v0.3.0.dev1`` are versions).
-OLD_NAME = re.compile(r"\bv0\.3(?![.\d])")
+#: The old name as a branch: ``v0.3`` not followed by a digit or by a ``.`` and a word character, so that a version
+#: (``v0.3.0``, ``v0.3.0.dev1``) is not the name but ``v0.3`` ending a sentence is.
+OLD_NAME = re.compile(r"\bv0\.3(?!\d|\.\w)")
 #: The development branch's required status checks, by the names its branch protection gives them.
 REQUIRED = ("default (Python 3.12)", "default (Python 3.13)", "default (Python 3.14)", "maddening-main",
             "openmaterica-main", "typecheck (pyright, Python 3.12)", "no private name or path")
@@ -127,12 +129,29 @@ def runs_on_the_branch(workflow: dict[str, object]) -> bool:
     return all(BRANCH in ((triggers.get(event) or {}).get("branches") or []) for event in ("pull_request", "push"))
 
 
-def old_name_problems(directory: Path) -> list[str]:
-    """Each line of a workflow in ``directory`` that names the branch's old name: a trigger, a fallback, a comment."""
-    return [f"{path.name}: names the old branch name {OLD_BRANCH}: {line.strip()}"
-            for path in sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
+def old_name_problems(directory: Path, actions: Path = ACTIONS) -> list[str]:
+    """Each line of a workflow in ``directory``, or of a composite action under ``actions``, that names the branch's old
+    name: a trigger, a fallback, a comment."""
+    files = [(path.name, path) for path in sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])]
+    files += [(f"{path.parent.name}/{path.name}", path)
+              for path in sorted([*actions.rglob("*.yml"), *actions.rglob("*.yaml")])]
+    return [f"{name}: names the old branch name {OLD_BRANCH}: {line.strip()}"
+            for name, path in files
             for line in path.read_text(encoding="utf-8").splitlines()
             if OLD_NAME.search(line)]
+
+
+def branch_filter_problems(directory: Path) -> list[str]:
+    """Each trigger, in any workflow in ``directory``, that filters by branch names and leaves out the development
+    branch: a workflow dropping it would silently stop running on the branch (the ``stress`` label would do nothing)."""
+    found = []
+    for name, workflow in workflows(directory):
+        triggers = workflow.get("on", workflow.get(True))
+        for event, configuration in (triggers.items() if isinstance(triggers, dict) else []):
+            branches = configuration.get("branches") if isinstance(configuration, dict) else None  # schedule: a list
+            if branches is not None and BRANCH not in branches:
+                found.append(f"{name}: the {event} trigger filters by branch and does not list {BRANCH}")
+    return found
 
 
 def evaluate(text: str, context: dict[str, str]) -> str:
@@ -198,7 +217,7 @@ def one_step(job_name: str, job: dict[str, object], command: str) -> tuple[list[
     return [], steps[0]
 
 
-def wiring_problems(directory: Path, scratch: Path) -> list[str]:
+def wiring_problems(directory: Path, scratch: Path, actions: Path = ACTIONS) -> list[str]:
     """Everything wrong with how the workflows in ``directory`` run the required checks (``scratch`` holds the step
     runs)."""
     found: list[str] = []
@@ -224,7 +243,8 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
               for problem in concurrency_problems(workflow)]
     if len(made.get(DOCS_CHECK, [])) == 1:
         found += docs_check_problems(made[DOCS_CHECK][0][1], scratch / "docs")
-    found += old_name_problems(directory)
+    found += old_name_problems(directory, actions)
+    found += branch_filter_problems(directory)
     found += skip_flag_problems(directory, scratch / "skip-flags")
     if len(made.get(SCAN, [])) == 1:
         found += scan_problems(made[SCAN][0][1], scratch / "scan")
@@ -685,6 +705,65 @@ def test_a_break_in_the_wiring_fails_naming_it(tmp_path, plant):
     assert text.count(old) == 1, f"the plant's anchor {old!r} is not in ci.yml once"
     (copy / "ci.yml").write_text(text.replace(old, new), encoding="utf-8")
     assert problem in wiring_problems(copy, tmp_path / "scratch")
+
+
+def _branch_lists() -> list[tuple[str, int, str]]:
+    """Each ``branches: [...]`` line naming the development branch in a real workflow: its file, its line, its event."""
+    found = []
+    for path in sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")]):
+        event = ""
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+            if key := re.match(r"^  ([\w-]+):\s*$", line):
+                event = key.group(1)
+            if re.match(r"^\s+branches: \[.*\]$", line) and BRANCH in line:
+                found.append((path.name, number, event))
+    return found
+
+
+def test_the_branch_filters_the_plants_below_are_made_in_cover_every_workflow_that_has_one():
+    """Without this the plants below could pass over a workflow (stress.yml, ready.yml) that no test reads."""
+    assert {name for name, _, _ in _branch_lists()} >= {"ci.yml", "platforms.yml", "ready.yml", "stress.yml"}
+    assert branch_filter_problems(WORKFLOWS) == []
+
+
+@pytest.mark.parametrize("plant", _branch_lists(), ids=[f"{n}:{e}:{k}" for n, k, e in _branch_lists()])
+def test_every_workflow_filtering_by_branch_lists_the_development_branch_each_in_turn(tmp_path, plant):
+    """One rule for every workflow: dropping the branch from the trigger of any one (a trigger the required-checks
+    wiring does not read, stress.yml's, included) fails, naming it; text replacements, so every run."""
+    name, number, event = plant
+    copy = tmp_path / "workflows"
+    shutil.copytree(WORKFLOWS, copy)
+    lines = (copy / name).read_text(encoding="utf-8").splitlines(keepends=True)
+    dropped = re.sub(rf",\s*{re.escape(BRANCH)}|{re.escape(BRANCH)},\s*|{re.escape(BRANCH)}", "", lines[number], count=1)
+    assert dropped != lines[number]
+    lines[number] = dropped
+    (copy / name).write_text("".join(lines), encoding="utf-8")
+    assert f"{name}: the {event} trigger filters by branch and does not list {BRANCH}" in branch_filter_problems(copy)
+    assert f"{name}: the {event} trigger filters by branch and does not list {BRANCH}" in wiring_problems(
+        copy, tmp_path / "scratch")
+
+
+def test_the_old_name_in_a_composite_action_fails_naming_it(tmp_path):
+    """The scan reads ``.github/actions`` too: a plant in a copy of the action, ``v0.3`` in a comment."""
+    copy = tmp_path / "actions"
+    shutil.copytree(ACTIONS, copy)
+    action = next(copy.rglob("action.yml"))
+    action.write_text("# held against origin/v0.3\n" + action.read_text(encoding="utf-8"), encoding="utf-8")
+    assert old_name_problems(WORKFLOWS, ACTIONS) == []
+    assert old_name_problems(WORKFLOWS, copy) == [
+        f"{action.parent.name}/action.yml: names the old branch name v0.3: # held against origin/v0.3"]
+
+
+@pytest.mark.parametrize("line", [
+    "# a branch, v0.3.", "git fetch origin v0.3.", "origin/v0.3", "origin/v0.3 and more", "'v0.3'", "v0.3\n",
+    "v0.3-helix-ref"])
+def test_the_old_name_is_found_in_every_place_a_branch_is_named(line):
+    assert OLD_NAME.search(line)
+
+
+@pytest.mark.parametrize("line", ["v0.3.0", "release/v0.3.0", "v0.3.0.dev1", "tag v0.3.0.dev1.", "0.3.0", "v0.31", "xv0.3"])
+def test_a_version_is_not_the_old_name(line):
+    assert not OLD_NAME.search(line)
 
 
 @pytest.mark.parametrize("plant", ["--skip-evidence", "--skip-$PART"])

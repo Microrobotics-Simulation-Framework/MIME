@@ -110,9 +110,14 @@ count starts that count's caches cold.
 
 ## The development branch's name
 
-The development branch is `release/v0.3.0`, and the workflows run on it alone. It was named `v0.3` until 2026-11-05; a
-clone that still has that name follows the rename with
-`git branch -m v0.3 release/v0.3.0 && git fetch origin && git branch -u origin/release/v0.3.0 release/v0.3.0 && git remote prune origin`.
+The development branch is `release/v0.3.0`, and the workflows run on it alone. It was named `v0.3` until 2026-11-05. A clone
+follows the rename in one of two ways, by whether it has a local branch `v0.3`:
+
+- with one (`git branch --list v0.3` prints it):
+  `git branch -m v0.3 release/v0.3.0 && git fetch origin && git branch -u origin/release/v0.3.0 release/v0.3.0 && git remote prune origin`;
+- without one (a clone made after the rename, or one that only tracked `origin/v0.3`): `git fetch --prune origin`, then
+  `git switch release/v0.3.0` to work on the branch.
+
 The steps that read the branch (the docs check's `--base`, the confidentiality scan's `--public`) name
 `origin/release/v0.3.0` and nothing else; the docs check's step fails when that branch cannot be read.
 
