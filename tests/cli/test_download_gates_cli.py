@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -75,6 +76,12 @@ def environment(tmp_path: Path, rig: Rig, **extra: str) -> dict[str, str]:
             "JAX_PLATFORMS": "cpu", "MIME_ASSETS_DIR": str(rig.cache), "MIME_ASSET_LOCATIONS": str(tmp_path / "none.toml"),
             "MIME_LICENCE_ACCEPTANCES": str(tmp_path / "accepted.json"), "NO_PROXY": "127.0.0.1,localhost",
             "no_proxy": "127.0.0.1,localhost", **extra}
+
+
+def flat(text: str) -> str:
+    """A transcript with the frames dropped and every run of white space one space: a refusal's block wraps its words at
+    the width of the terminal, which a runner sets as it likes."""
+    return " ".join(re.sub(r"[│╭╮╰╯─┃┏┓┗┛━]", " ", text).split())
 
 
 def argv(*words: str) -> list[str]:
@@ -148,12 +155,12 @@ def test_the_panel_is_amber_titled_in_words_and_asks_in_bold_and_a_no_downloads_
     assert code == 2 and rig.requests == 0 and accepted(tmp_path) == []
     assert "Licence conditions: your acceptance is needed" in text
     for line in LINES:
-        assert line in text
-    assert "Maker Licence 1.1 (LicenseRef-Maker-NonCommercial)" in text and "https://example.org/licence" in text
-    assert NOTICE in text
+        assert line in flat(text)
+    assert "Maker Licence 1.1 (LicenseRef-Maker-NonCommercial)" in flat(text) and "https://example.org/licence" in text
+    assert NOTICE in flat(text)
     assert text.index("Licence conditions") < text.index(LINES[0]) < text.index("https://example.org/licence") \
         < text.index(NOTICE) < text.index("Do you accept these conditions? [y/N]")
-    assert "asset.licence-declined" in text and "nothing was downloaded" in text
+    assert "asset.licence-declined" in flat(text) and "nothing was downloaded" in flat(text)
     assert AMBER in raw, "the border is amber (xterm colour 214)"
     assert "\x1b[1m" in raw and raw.index("\x1b[1m") < raw.index("Do you accept"), "the question is bold"
 
@@ -247,4 +254,4 @@ def test_the_stop_refuses_on_a_terminal_as_well(tmp_path: Path, rig: Rig, manife
     (tmp_path / "none.toml").write_text("", encoding="utf-8")
     raw, status = run_on_terminal([sys.executable, "-c", code, "visuals", "fetch", str(manifest), "--accept-licence",
                                    CLOSED], env=environment(tmp_path, rig), cwd=tmp_path, columns=120)
-    assert status == 2 and "asset.disk-low" in stripped(raw) and rig.requests == 0
+    assert status == 2 and "asset.disk-low" in flat(stripped(raw)) and rig.requests == 0
