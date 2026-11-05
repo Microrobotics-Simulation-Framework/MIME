@@ -6,8 +6,8 @@ reports, and print the seconds each shard is then predicted to hold.
     python scripts/shard_weights.py reports/* --shards 6 --source "run <run id>"
 
 A file's weight is the median over the lanes of its tests' summed times, rounded to whole seconds (each directory is
-one artifact, and a shard's, named ``...-shard-<n>``, is its lane's); the table lists the files at or over ``--over`` seconds, and every other
-file goes by its hash. Run it in the project's
+one artifact, and a shard's, named ``...-shard-<n>`` or ``...-shard-<n>-attempt-<k>``, is its lane's); the table lists
+the files at or over ``--over`` seconds, and every other file goes by its hash. Run it in the project's
 environment: it loads ``tests/_sharding.py``, which imports pytest.
 """
 
@@ -53,6 +53,23 @@ def medians(lanes: list[list[Path]]) -> dict[str, float]:
     return {path: statistics.median(lane.get(path, 0.0) for lane in per_lane) for path in files}
 
 
+def lanes_of(directories: list[Path]) -> list[list[Path]]:
+    """The JUnit reports of each lane, from the artifacts' directories. A directory is a shard's, named
+    ``<lane>-shard-<n>`` or ``<lane>-shard-<n>-attempt-<k>``; a shard that ran again is counted once, by its last attempt
+    (its first is a job that was lost or failed)."""
+    last: dict[tuple[str, str], tuple[int, Path]] = {}
+    for directory in directories:
+        match = re.fullmatch(r"(.*)-shard-([0-9]+)(?:-attempt-([0-9]+))?", directory.name)
+        lane, shard, attempt = (match.group(1), match.group(2), int(match.group(3) or 0)) if match else (
+            directory.name, "", 0)
+        if (lane, shard) not in last or attempt >= last[lane, shard][0]:
+            last[lane, shard] = (attempt, directory)
+    grouped: dict[str, list[Path]] = {}
+    for (lane, _), (_, directory) in last.items():
+        grouped.setdefault(lane, []).extend(sorted(directory.glob("*.xml")))
+    return [reports for _, reports in sorted(grouped.items()) if reports]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("directories", nargs="+", type=Path,
@@ -61,10 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--over", type=float, default=1.0, help="list the files at or over this many seconds")
     parser.add_argument("--source", required=True, help="the runs the times come from, for the table's record")
     args = parser.parse_args(argv)
-    grouped: dict[str, list[Path]] = {}
-    for directory in args.directories:
-        grouped.setdefault(re.sub(r"-shard-[0-9]+$", "", directory.name), []).extend(sorted(directory.glob("*.xml")))
-    lanes = [reports for _, reports in sorted(grouped.items()) if reports]
+    lanes = lanes_of(args.directories)
     if not lanes:
         print("no JUnit XML in the directories given", file=sys.stderr)
         return 2

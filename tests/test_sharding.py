@@ -422,6 +422,20 @@ def test_the_weights_read_a_reports_node_ids_as_pytest_writes_them():
         "tests/saved/test_x.py::test_a[1-2]", "tests/saved/test_x.py::TestMachine::runTest"]
 
 
+def test_the_weights_count_a_shard_that_ran_again_once_by_its_last_attempt_and_group_the_lanes_by_name(tmp_path):
+    """CI names a shard's artifact ``<lane>-shard-<n>-attempt-<k>``: the lane is what is left of that name, so a lane's
+    shards are one lane (the weights' median is over lanes), and a lost first attempt is not counted beside its re-run."""
+    names = ["durations-a-python-3.12-shard-1-attempt-1", "durations-a-python-3.12-shard-2-attempt-1",
+             "durations-a-python-3.12-shard-2-attempt-2", "durations-b-shard-1", "durations-b-shard-2-attempt-1"]
+    for name in names:
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "report.xml").write_text("<testsuites/>", encoding="utf-8")
+    lanes = shard_weights.lanes_of([tmp_path / name for name in names])
+    assert [sorted(path.parent.name for path in lane) for lane in lanes] == [
+        ["durations-a-python-3.12-shard-1-attempt-1", "durations-a-python-3.12-shard-2-attempt-2"],
+        ["durations-b-shard-1", "durations-b-shard-2-attempt-1"]]
+
+
 # A re-run of one shard job (scripts/latest_attempt.py): the run then holds that shard's report twice, one per attempt.
 
 LANE = "durations-default-python-3.12"
