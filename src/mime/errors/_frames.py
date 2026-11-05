@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import inspect
 import os
+import sys
 import sysconfig
+import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -136,5 +138,50 @@ def caller_place() -> Place | None:
     return None
 
 
-__all__ = ["HIDDEN_PACKAGES", "Place", "caller_place", "innermost", "is_library", "raised_by_library",
-           "raised_by_mime", "raiser", "script_places", "script_traceback", "walk"]
+#: The attribute a warning instance carries when it has no line of the script's to name (see :func:`warn_at_script`):
+#: the command line shows it as ``mime: warning: <text>``, as it shows a description's.
+WITHOUT_SOURCE = "mime_without_source"
+
+
+def _is_entry(frame: FrameType) -> bool:
+    """Whether ``frame`` is the entry of a MIME command: the console script's stub (a file in the interpreter's
+    scripts directory, or in the launcher MIME's Windows executable holds) or ``python -m mime``'s ``__main__``, with
+    only the interpreter's own frames (``runpy``) outside it. A script of the user's that calls ``mime.cli.main`` is
+    not: its file is neither."""
+    outer = frame.f_back
+    while outer is not None:
+        if not is_library(outer):
+            return False
+        outer = outer.f_back
+    if frame.f_globals.get("__name__") != "__main__":
+        return False
+    folder = Path(frame.f_code.co_filename).parent
+    scripts = {Path(sysconfig.get_path("scripts")), Path(sys.executable).parent}
+    here = Path(__file__).resolve().parent.parent
+    try:
+        folder = folder.resolve()
+    except OSError:
+        return False
+    return folder in {path.resolve() for path in scripts} or folder.suffix == ".exe" \
+        or here in (folder, *folder.parents)
+
+
+def warn_at_script(message: str, category: type[Warning]) -> None:
+    """Warn at the line of the script's that called into MIME, however many of MIME's own frames lie between: a public
+    call that builds inside another (``save``, ``load``) shows the script's line, not its own. The script is the
+    innermost frame that is not a library's. Where there is none, because a command line (``mime run``) called into
+    MIME and its entry point is the outermost frame, the warning carries :data:`WITHOUT_SOURCE` and the command line
+    shows it without a source line; elsewhere, at the outermost frame."""
+    level, frame = 1, inspect.currentframe()
+    while frame is not None and (level == 1 or is_library(frame)):
+        if frame.f_back is None:
+            break
+        frame, level = frame.f_back, level + 1
+    warning = category(message)
+    if frame is not None and _is_entry(frame):
+        setattr(warning, WITHOUT_SOURCE, True)
+    warnings.warn(warning, stacklevel=level)
+
+
+__all__ = ["HIDDEN_PACKAGES", "WITHOUT_SOURCE", "Place", "caller_place", "innermost", "is_library", "raised_by_library",
+           "raised_by_mime", "raiser", "script_places", "script_traceback", "walk", "warn_at_script"]

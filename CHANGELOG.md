@@ -16,6 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/examples/test_notebooks.py` builds each notebook's experiment against the checkout and runs A's for a few
   steps; `scripts/colab_links.py` points every Colab link at one branch.
 
+### Fixed
+
+- **`Experiment.save` and `Experiment.load` warn at the script's line.** A `DescriptionWarning` or a range warning raised
+  while they build showed MIME's own line (`return self.build().save(...)`); the build now finds the script's frame
+  itself, whichever public call it was reached through (`mime.errors._frames.warn_at_script`), and so does the view's
+  output-size warning when it comes through `RunWritten.view`. Under `mime run`, where the only caller is the console
+  script's stub, a range warning is printed as `mime: warning: <text>`, once, with no source line, as a description's is.
+- **A `WebPage` in a notebook is no longer twice its size.** Its plain-text form held the whole escaped page (427 of the
+  553 kB in tutorial A's view output); it is now one line saying what it is, its size and how to open it. The HTML form
+  is unchanged.
+- **A field arrow in the browser view is capped at twice its body's largest extent.** The field at a body, drawn at
+  8.3 m per tesla, was 83 mm long at 10 mT beside tutorial A0's body, 7.5 mm long. The view now draws an arrow at a body
+  no longer than twice the largest extent of that body, and no arrow longer than a quarter of the diagonal of the scene
+  without its arrows (an arrow at no body has the scene's alone); under the cap an arrow's length stays proportional to
+  its vector. A0's own field, about 1 mT in its first samples, draws an 8 mm arrow, within the cap and unchanged. The cap is in the view alone (the
+  glTF and the page), the page's notes name each capped arrow by its prim path, and the stage and the recording are
+  unchanged.
+
 ## [0.3.0.dev1] - 2026-11-05
 
 The first release of MIME 0.3, a rewrite of MIME on [MADDENING](https://microrobotica.org/maddening/) 0.4. It is a

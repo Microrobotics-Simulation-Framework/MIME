@@ -138,6 +138,10 @@ result = mime.viz.gltf("a0_run")          # the GLB itself (result.glb), with wh
 written.view()                            # after built.run_to(...): the same as display() of its folder
 ```
 
+In a notebook a cell whose last expression is the page shows it. The page's plain-text form, what `print` and a terminal
+show, is one line (its name, its size and `.save('view.html')`, which writes a page to open in a browser) rather than the
+page, which in a saved notebook was most of the cell's output.
+
 - **Only meshes that may travel.** A page is a copy that leaves the machine, so it holds a baked mesh only where its
   tier is `open` or `conditional` (`mime.viz.SHAREABLE_TIERS`; a conditional set's conditions are printed on the
   page). The AR4's meshes are `referenced`, and a mesh no record states a tier for is treated as one: the page draws
@@ -153,6 +157,14 @@ written.view()                            # after built.run_to(...): the same as
   (`--slow-motion` sets it), and the slider and the clock read simulated time. The camera frames the box of the whole
   motion, not the first pose. Spheres, cylinders, cubes and capsules are tessellated (`mime.viz._primitives.SEGMENTS` facets a turn); meshes
   are drawn as the stage holds them; translucent parts are blended as their `displayOpacity` says.
+- **Arrows are capped in the view.** A field vector at a body is drawn at the length its prim says, which can be many
+  times the body's, and which grows with the field. The view draws an arrow at a body no longer than twice the largest
+  extent of that body (the longest side of the box of its own geometry in the stage,
+  `mime.viz._export.ARROW_BODY_FACTOR`), and no arrow longer than a quarter of the diagonal of the scene without its
+  arrows (`ARROW_CAP_FRACTION`); where the two differ, the lesser. An arrow at no body has the scene's alone. Under its
+  cap an arrow's length stays proportional to its vector. A capped arrow keeps its direction, the page's notes name each
+  one by its prim path with the length it is drawn at and the length it would have, and the stage and the recording hold
+  the full length, as they always did. There is no button to hide the arrows yet.
 - **The viewer.** `mime visuals web` inlines the copy of `<model-viewer>` 4.3.1 shipped in the wheel
   (`mime/viz/_viewer/`, pinned by its sha256, with the licence of every part its bundle holds: the Apache License, and
   three.js, fflate and gainmap-js under MIT, lit under BSD), so the page draws from a file with no network.

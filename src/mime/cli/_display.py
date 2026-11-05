@@ -544,15 +544,18 @@ def short_description_warnings(stream: IO[str]) -> Generator[None]:
     """A description's warnings (:class:`~mime.core.multibody.DescriptionWarning`, an element of an arm's file read
     past: the build report's lines) in MIME's short form, ``mime: warning: <text>`` on ``stream``, each once in the
     command however many times it builds (a load builds once to check its lock, and a run again), with no source line;
-    every other warning shown as it was."""
+    so too any warning a build raised with no line of a script's to name (``mime.errors._frames.WITHOUT_SOURCE``: a
+    range warning under ``mime run``, whose only caller is the console script's stub). Every other warning is shown as
+    it was."""
     from mime.core.multibody import DescriptionWarning
+    from mime.errors._frames import WITHOUT_SOURCE
 
     shown = warnings.showwarning
     said: set[str] = set()
 
     def show(message: Warning | str, category: type[Warning], filename: str, lineno: int, file: TextIO | None = None,
              line: str | None = None) -> None:
-        if not issubclass(category, DescriptionWarning):
+        if not issubclass(category, DescriptionWarning) and not getattr(message, WITHOUT_SOURCE, False):
             shown(message, category, filename, lineno, file, line)
             return
         text = str(message)

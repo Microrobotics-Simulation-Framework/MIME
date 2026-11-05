@@ -12,7 +12,7 @@ each transform's time samples as one animation, written as a GLB (``mime.viz._gl
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,7 +22,7 @@ from mime.scene._pxr import Usd, UsdGeom
 from mime.viz._gltf._common import clamped
 from mime.viz._gltf._mesh import Triangles, triangles_of
 from mime.viz._gltf._writer import ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, Buffers
-from mime.viz._gltf._xform import pose_of
+from mime.viz._gltf._xform import Pose, pose_of
 from mime.viz._primitives import KINDS, tessellate
 
 #: The purposes drawn: a stage's default prims and its proxies (MIME draws a tube's wall as a proxy mesh).
@@ -46,6 +46,9 @@ class Settings:
     segments: int = 48
     frame: tuple[tuple[float, float, float], tuple[float, float, float]] | None = None
     purposes: tuple[str, ...] = PURPOSES
+    #: The most a prim's scale is drawn at, by prim path (a component above it is drawn at it): the view's own limit,
+    #: the stage and its time samples left as they are.
+    scale_limits: Mapping[str, float] = field(default_factory=dict[str, float])
 
 
 @dataclass
@@ -150,6 +153,14 @@ class _Builder:
         self.channels.append({"sampler": len(self.samplers) - 1, "target": {"node": node, "path": path}})
         self.result.duration = max(self.result.duration, float(times.max()))
 
+    @staticmethod
+    def limit(pose: Pose, limit: float) -> None:
+        """``pose``'s scale, at rest and at every sample, at most ``limit`` in each component."""
+        if pose.scale is not None:
+            pose.scale = (min(pose.scale[0], limit), min(pose.scale[1], limit), min(pose.scale[2], limit))
+        if "scale" in pose.tracks:
+            pose.tracks["scale"] = np.minimum(pose.tracks["scale"], limit)
+
     def visible(self, prim: Any) -> bool:
         if not prim.IsA(UsdGeom.Imageable):
             return True
@@ -167,6 +178,9 @@ class _Builder:
         self.result.nodes[str(prim.GetPath())] = index
         if prim.IsA(UsdGeom.Xformable):
             pose = pose_of(prim)
+            limit = self.settings.scale_limits.get(str(prim.GetPath()))
+            if limit is not None:
+                self.limit(pose, limit)
             for name in ("translation", "rotation", "scale", "matrix"):
                 value = getattr(pose, name)
                 if value is not None:

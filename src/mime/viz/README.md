@@ -46,7 +46,10 @@
   them travel**, `open` and `conditional` (`SHAREABLE_TIERS`): the overlay it composes leaves the others
   out, drawing their frames' simple shapes and saying so, and a composed stage that reaches a baked mesh of another
   tier, or of none stated, is refused (`visuals.not-shareable`). It is never written into a saved or a run folder
-  (`visuals.web-out`).
+  (`visuals.web-out`). A vector's arrow is drawn at most twice the largest extent of the body it is drawn at long
+  (`ARROW_BODY_FACTOR`, read from that body's geometry in the stage) and at most a quarter of the scene's diagonal
+  (`ARROW_CAP_FRACTION`, the scene without its arrows; an arrow at no body has this alone), in the glTF and the page alone
+  and said in the page's notes; the stage and the recording hold its full length.
 
 ## Boundaries
 

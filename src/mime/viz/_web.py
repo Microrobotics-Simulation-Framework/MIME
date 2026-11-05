@@ -14,12 +14,13 @@ import base64
 import hashlib
 import html
 import json
-import warnings
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
+from typing import override
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+from mime.errors._frames import warn_at_script
 from mime.viz._export import GltfResult, gltf
 
 VIEWER_VERSION = "4.3.1"
@@ -257,12 +258,19 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None) -
 
 @dataclass(frozen=True)
 class WebPage:
-    """A view as a notebook shows it: the page in an ``<iframe srcdoc>``. The last expression of a cell shows it;
-    :meth:`save` writes the page as a file."""
+    """A view as a notebook shows it: the page in an ``<iframe srcdoc>``. A cell whose last expression it is shows it;
+    :meth:`save` writes the page as a file. Its ``repr`` is one line, not the page."""
 
     html: str
     result: GltfResult
     height: int = 720
+
+    @override
+    def __repr__(self) -> str:
+        """One line, not the page: Jupyter shows ``text/plain`` beside the HTML, and the page is megabytes."""
+        return (f"<WebPage {self.result.name!r}, {len(self.html.encode('utf-8')) / 1e3:.0f} kB: a notebook cell shows it "
+                f"when it is the cell's last expression; elsewhere .save('view.html') writes the page, to open in a "
+                f"browser>")
 
     def _repr_html_(self) -> str:
         return (f'<iframe srcdoc="{html.escape(self.html, quote=True)}" style="width: 100%; height: {self.height}px; '
@@ -283,11 +291,11 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
     held = page(result, cdn=not offline, caption=caption)
     size = len(held.encode("utf-8"))
     if size > OUTPUT_WARNING_BYTES:
-        warnings.warn(
+        warn_at_script(
             f"the view of {target} is {size / 1e6:.1f} MB as a notebook output, which Jupyter may drop at its default "
             f"output rate: record more coarsely (stage_every=), bake meshes to fewer triangles (TriangleBudget), "
             f"{'leave the viewer to jsDelivr (offline=False), ' if offline else ''}or write a page instead "
-            f"(mime visuals web {target})", UserWarning, stacklevel=2)
+            f"(mime visuals web {target})", UserWarning)
     return WebPage(held, result)
 
 

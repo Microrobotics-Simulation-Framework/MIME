@@ -103,8 +103,33 @@ def test_display_warns_above_a_million_bytes(run, monkeypatch):
         display(run)  # the control: the ball's page is far smaller
     monkeypatch.setattr(web_module, "gltf", lambda target, slow=None: type(result)(
         **{**result.__dict__, "glb": result.glb + b"\0" * 900_000}))
-    with pytest.warns(UserWarning, match="Jupyter may drop"):
+    with pytest.warns(UserWarning, match="Jupyter may drop") as caught:
         display(run)
+    assert [w.filename for w in caught] == [__file__], "at the script's line, not display's"
+
+
+#: What Jupyter holds of a cell's value beside its HTML is its ``text/plain``, ``repr``: one line, not the page.
+PLAIN_TEXT_BYTES = 300
+
+
+def test_the_plain_text_of_a_web_page_is_one_short_line_saying_what_it_is_and_how_to_open_it(run, monkeypatch):
+    shown = display(run)
+    plain = repr(shown)
+    assert len(plain.encode("utf-8")) <= PLAIN_TEXT_BYTES and "\n" not in plain
+    assert shown.result.name in plain and f"{len(shown.html.encode('utf-8')) / 1e3:.0f} kB" in plain
+    assert "browser" in plain
+    assert shown.html not in plain and "<iframe" not in plain and "<html" not in plain
+    assert shown._repr_html_().startswith("<iframe srcdoc=") and html.unescape(shown._repr_html_()).count(shown.html) == 1
+    assert plain.startswith("<WebPage ") and plain.endswith(">"), "a description, not a constructor call to evaluate"
+    assert "last expression" in plain and ".save(" in plain, "how a notebook shows it, and how anywhere else does"
+
+
+def test_control_the_dataclass_repr_it_replaces_held_the_whole_page(run):
+    shown = display(run)
+    generated = type(shown).__dataclass_fields__  # the fields the generated repr would print
+    assert "html" in generated
+    plain = f"WebPage(html={shown.html!r}, result=..., height={shown.height})"
+    assert len(plain.encode("utf-8")) > 100 * PLAIN_TEXT_BYTES, "so a bound of 300 bytes fails on it"
 
 
 def test_a_page_is_never_written_into_a_saved_or_run_folder(run, tmp_path):
