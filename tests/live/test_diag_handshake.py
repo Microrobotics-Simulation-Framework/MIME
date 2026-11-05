@@ -69,9 +69,17 @@ def _accept(self, listener, kind):
 zmtp.Server._accept = _accept
 
 orig_poll = zmtp.Server.poll
+last_exit = [time.monotonic()]
 def poll(self, timeout):
+    entered = time.monotonic()
+    if entered - last_exit[0] > 0.5:
+        log("STALL between polls", round(entered - last_exit[0], 3))
     try:
-        return orig_poll(self, timeout)
+        found = orig_poll(self, timeout)
+        if time.monotonic() - entered > timeout + 0.5:
+            log("STALL inside poll", round(time.monotonic() - entered - timeout, 3))
+        last_exit[0] = time.monotonic()
+        return found
     except BaseException:
         log("poll RAISED", traceback.format_exc().replace("\\n", " | "))
         raise
@@ -187,4 +195,7 @@ def test_the_new_client_after_a_hang_up_during_a_held_chunk_is_greeted(launch, f
         shown = [line for line in text.splitlines() if "accept" not in line or "RAISED" in line]
         raise AssertionError(f"{len(failures)} of {ROUNDS} rounds failed in mode {mode}:\n" + "\n".join(failures[:5])
                              + "\nthe server's log, closes only (last 60):\n" + "\n".join(shown[-60:]))
-    print(f"mode {mode}: {ROUNDS} rounds, no failure; log lines: {len(text.splitlines())}")
+    stalls = [line for line in text.splitlines() if "STALL" in line]
+    odd = [line for line in text.splitlines() if "close" in line and "ready False" in line]
+    print(f"mode {mode}: {ROUNDS} rounds, no failure; log lines: {len(text.splitlines())}; stalls: {stalls[:5]}; "
+          f"closes of unready peers: {odd[:5]}")
