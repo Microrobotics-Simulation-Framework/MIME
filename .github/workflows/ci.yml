@@ -42,8 +42,9 @@ name: CI
 # suite has grown. A pull request's newer push cancels its older run
 # (`concurrency` below).
 # tests/cli/test_completion.py runs in a job of its own per lane (`<lane>-completion`, 30 minutes), which installs zsh
-# and fish (scripts/install_shells.sh) and which the lane's job under its own name waits on and checks; every shard
-# deselects the file and installs no shell (tests/test_completion_job.py).
+# and fish (scripts/install_shells.sh) and which the lane's job under its own name waits on and checks, from the run's list
+# of jobs (never `needs.<job>.result`: a failed `continue-on-error` job reads `success` there); every shard deselects the
+# file and installs no shell (tests/test_completion_job.py).
 # Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix (every lane and Python, 58 jobs) runs on a push to
 # a branch, a manual run, and a pull request that carries the label `ready`. A pull request without the label runs a
 # reduced set: `typecheck`, `no private name or path`, the docs check and the default lane on Python 3.12 with all its
