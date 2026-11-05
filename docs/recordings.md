@@ -138,6 +138,9 @@ result = mime.viz.gltf("a0_run")          # the GLB itself (result.glb), with wh
 written.view()                            # after built.run_to(...): the same as display() of its folder
 ```
 
+In a notebook the cell shows the page, and the value's plain-text form is one line (its name, its size, and `.save('view.html')`
+to open it in a browser) rather than the page, which in a saved notebook was most of the cell's output.
+
 - **Only meshes that may travel.** A page is a copy that leaves the machine, so it holds a baked mesh only where its
   tier is `open` or `conditional` (`mime.viz.SHAREABLE_TIERS`; a conditional set's conditions are printed on the
   page). The AR4's meshes are `referenced`, and a mesh no record states a tier for is treated as one: the page draws
@@ -153,6 +156,13 @@ written.view()                            # after built.run_to(...): the same as
   (`--slow-motion` sets it), and the slider and the clock read simulated time. The camera frames the box of the whole
   motion, not the first pose. Spheres, cylinders, cubes and capsules are tessellated (`mime.viz._primitives.SEGMENTS` facets a turn); meshes
   are drawn as the stage holds them; translucent parts are blended as their `displayOpacity` says.
+- **Arrows are capped in the view.** A field vector at a body is drawn at the length its prim says, which can be many
+  times the body's. The view draws no arrow longer than a
+  quarter of the scene's diagonal, the scene without its arrows (`mime.viz._export.ARROW_CAP_FRACTION`): the viewer
+  frames everything the page holds, so an arrow at its full length would frame itself and shrink the bodies it points at.
+  A capped arrow keeps its direction, the page's notes say how many are capped, at what length, and the length each
+  would have, and the stage and the recording hold the full length, as they always did. There is no button to hide the
+  arrows yet.
 - **The viewer.** `mime visuals web` inlines the copy of `<model-viewer>` 4.3.1 shipped in the wheel
   (`mime/viz/_viewer/`, pinned by its sha256, with the licence of every part its bundle holds: the Apache License, and
   three.js, fflate and gainmap-js under MIT, lit under BSD), so the page draws from a file with no network.
