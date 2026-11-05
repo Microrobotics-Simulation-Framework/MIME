@@ -140,6 +140,16 @@ Each asset or mesh a loaded experiment keeps at its pin while a source now holds
 the run reads the bytes the experiment was saved with, and the report names the version it did not take. To take the
 other one, change the experiment's declaration and save it again ([assets in depth](assets.md)).
 
+## `replaced`
+
+Each declaration made in this session that replaced an earlier one, with what followed it: in a notebook or IPython, a
+thing (an apparatus, body, medium or structure), a law, an observation or a value declared again and changed replaces the
+earlier one, and the warning that says so can be removed by a warnings filter, so the experiment keeps it here, in the
+order the replacements were made (`plan().replaced` holds the same lines). A thing's note names every law, observation,
+value and other thing that holds its name and now finds the new one, and says when a declared value of the thing still
+applies and overrides what the new declaration brings. It is empty in a script and for an experiment loaded from a folder.
+The saved experiment holds the final declarations only ([reading errors](../reading_errors.md#a-declaration-made-twice)).
+
 ## `checked`
 
 Validity lines the build computed, by entry, such as a spinner's kick on its host's joints. Unlike `validity` they were checked.

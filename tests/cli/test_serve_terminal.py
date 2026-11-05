@@ -24,6 +24,7 @@ import threading
 import time
 from pathlib import Path
 
+import live_servers
 import pytest
 from live_cases import saved
 
@@ -119,8 +120,8 @@ class Served:
             return bytes(self._held).decode("utf-8", "replace")
 
     def client(self) -> LiveClient:
-        endpoints = json.loads(self.ready.read_text())
-        return LiveClient(endpoints["commands"], endpoints["frames"], timeout=60.0)
+        live_servers.register(self.ready, self.process)
+        return live_servers.client(self.ready, timeout=60.0)
 
     def until(self, wanted, what: str) -> str:
         """The terminal's screen once ``wanted`` is true of its lines: a guard against waiting for ever, not a bound."""

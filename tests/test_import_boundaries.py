@@ -20,6 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import mime
 
 PACKAGE = Path(mime.__file__).parent
@@ -199,6 +201,29 @@ def test_a_command_that_draws_nothing_never_loads_rich():
     """Help, a bare ``mime``, a mistyped command and a refused duration, piped: none of them touches ``rich``."""
     assert not loaded_rich('["--help"], [], ["verfy"], ["run", "--help"], ["run", "nowhere", "--duration", "10x", '
                            '"--out", "nowhere-out"]')
+
+
+@pytest.mark.parametrize("command", ["verify", "registry", "env check"])
+def test_a_table_command_piped_never_loads_rich(command, tmp_path):
+    """The three commands that draw a table on a terminal, piped (here a process whose standard output is a pipe): none of
+    them loads ``rich``."""
+    words = {"verify": lambda: ["verify", str(saved_toy(tmp_path))], "registry": lambda: ["registry"],
+             "env check": lambda: ["env", "check", "--variant", "cpu"]}[command]()
+    assert not loaded_rich(repr(words) + ",")
+
+
+def saved_toy(tmp_path: Path) -> Path:
+    import jax
+
+    from mime.testing.toys import full_toy
+
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        full_toy().save(tmp_path / "toy")
+    finally:
+        jax.config.update("jax_enable_x64", held)
+    return tmp_path / "toy"
 
 
 def test_the_control_a_process_that_draws_loads_rich():

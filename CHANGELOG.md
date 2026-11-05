@@ -18,15 +18,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`mime verify`, `mime env check` and `mime registry` draw tables on a terminal.** `mime verify` shows its checks as a
+  table (the saved form, the input hash, the environment, the derived graph, the rerun and what it was held to, and a
+  row for each field compared: "equal, bit for bit" where the comparison was bit for bit, otherwise the tolerance it was
+  held to ("within rtol ..., atol ..."), and a field that moved with the numbers that moved it and the tolerance in
+  words), with the verdict as the one line under it. `mime env check`, when it passes, shows the pins against what is installed, a row for
+  each pinned distribution (wanted, found, verdict, who pins it), then its other lines. `mime registry` shows one table
+  grouped by kind, a row for each entry with its name, its version and the settings it declares; a long cell wraps and
+  is never cut. Output that is not going to a terminal, and a terminal under `--plain`, `NO_COLOR` or `TERM=dumb`, is
+  byte for byte what it was; `mime registry --json` and `mime env check --record` are unchanged. A failing
+  `mime env check` on a terminal opens its refusal's block with the table of the pinned distributions that differ
+  (wanted, found, verdict, who pins it); the block keeps its codes, what to do and every reason the table does not
+  hold, and drops the rows the table holds. On a terminal too narrow for five columns (under about 90) who pins is a
+  line under the table instead of a column. Piped, it is the refusal's text as before.
 - **A declaration made twice is kept once when it is the same, and a notebook's cell can run again.** The same
   `exp.add_*`, `attach`, `observe`, `declare`, `source`, `set_controller`, `licence` or `permission` made a second
   time, the same in its type, its settings with their units and reasons, and what it binds, is kept once with a
   warning, in a script and in a notebook; it was refused (`id.duplicate`, `thing.duplicate`, ...). A changed one is
   still refused in a script. In a notebook (Jupyter, Colab or IPython) it replaces the earlier one, with a warning, so
-  a cell edited and run again takes effect, unless another declaration names the earlier one (a law bound to a body
-  changed in its cell): then both are kept and the build's refusal says a cell has probably run twice, with what to
-  run again. The same scene reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep its advice
-  (run again from the cell that makes the experiment) until they move to the release that ships this.
+  a cell edited and run again takes effect. That includes a structure, medium, body or apparatus (the same name and kind)
+  that laws, observations, values or the controller name: they hold it by its name, so they find the new one, and the one
+  warning names each (change `field_strength` and run the field cell again). A name declared again as another kind, or a
+  declaration that holds the earlier thing's object and not its name, is kept beside the new one and refused at the build,
+  saying a line or cell has probably run twice; so is a law or an observation that a source or the controller
+  names. A value declared of a thing replaced still applies and overrides what the new declaration brings, and the
+  warning says so. The warning is also recorded on the experiment (`plan().replaced` and the build report), because a
+  warnings filter removes a warning; a warning raised as an error stops the call before anything changes. The words
+  say "a notebook or IPython": the rule also applies to a script run by `ipython script.py` or `%run`. The same scene
+  reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep its advice (run again from the cell that makes the experiment) until they move to the release that ships this.
 
 ### Fixed
 

@@ -64,6 +64,9 @@ if TYPE_CHECKING:
 
     from mime.build import MimeError, Refusal
     from mime.cli._summary import RunSummary
+    from mime.env import EnvReport
+    from mime.env._check import DistributionRow
+    from mime.saved import VerifyReport
 
 #: Set by ``--plain``: no stream is styled.
 _plain = False
@@ -570,6 +573,9 @@ def short_description_warnings(stream: IO[str]) -> Generator[None]:
         warnings.showwarning = shown
 
 
+#: The codes of a refusal about a pinned distribution, whose row the pins' table holds (``mime.env._check``).
+_PIN_CODES = frozenset({"env.missing", "env.pin"})
+
 _WHO = {"user": "yours to fix", "environment": "the environment's to fix", "internal": "a defect, not yours",
         "unrecognised": "an error from below that MIME does not recognise"}
 
@@ -579,13 +585,24 @@ def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream:
     why and where; then the docs address of each code, unbroken so that it can be copied, and the footer
     (the defect's owner and the full traceback's file) as the ordinary text gave it. Refusals of one code that are
     about a subject and share their finding, action, why and where (:func:`refusal_groups`) are one block: the code
-    once, what is wrong once, a row for each subject, what to do once."""
+    once, what is wrong once, a row for each subject, what to do once. A refusal that holds ``pin_rows`` (the pinned
+    distributions an environment does not hold as pinned, :class:`~mime.env.EnvRefused`) opens with their table (wanted,
+    found, verdict), and the blocks about those distributions keep their code, what is wrong and what to do but not
+    their rows, which the table holds."""
     from rich.console import Group
     from rich.panel import Panel
     from rich.text import Text
 
     console = _console(stream)
     parts: list[Any] = []
+    pins: Sequence[DistributionRow] = getattr(error, "pin_rows", ())
+    if pins:
+        table, pinners = _pins_table("the pins that differ from what is installed", pins, min(console.width, 100) - 4)
+        parts.append(table)
+        if pinners is not None:
+            parts.append(pinners)
+        parts.append(Text(""))
+    tabled = {row.name for row in pins}
     blocks = refusal_groups(error.refusals)
     for index, block in enumerate(blocks):
         if index:
@@ -597,7 +614,8 @@ def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream:
             parts.append(_text(first.message))
         else:
             parts.append(_text(f"{len(block)} {shared.finding}:"))
-            parts.extend((_subjects(block), Text("")))
+            if not all(r.subject is not None and r.code in _PIN_CODES and r.subject.cells[0] in tabled for r in block):
+                parts.extend((_subjects(block), Text("")))
         for label, held in (("what to do", first.action if shared is None else shared.action),
                             ("why", first.why), ("where", first.where)):
             if held:
@@ -688,6 +706,131 @@ def show_summary(summary: RunSummary, stream: IO[str], *, full: Sequence[tuple[s
     for line in summary.next_steps:
         console.print(_text(f"  {line}"), soft_wrap=True)
     console.print(_text(summary.more, "dim"), soft_wrap=True)
+
+
+def _table(title: str, columns: Sequence[str]) -> Any:
+    """A table for a report on a terminal: a title, the column heads, every cell wrapping or folding and never cut, drawn
+    as wide as the terminal is (:func:`_console_of`) and no wider than it needs."""
+    from rich import box
+    from rich.table import Table
+
+    table = Table(title=for_terminal(title) if title else None, title_justify="left", title_style="bold",
+                  box=box.SIMPLE_HEAD, show_header=True, header_style="bold", pad_edge=False, expand=False)
+    for column in columns:
+        table.add_column(for_terminal(column), overflow="fold", no_wrap=False)
+    return table
+
+
+def _lines_as_rows(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """A report's text as a title (its first line) and rows: a line ``name: what it found`` is a row of the name and what
+    it found, a line indented under another is more of that row's second cell, and any other line is a row whose first
+    cell is the line. Every character of the text is in the rows, bar the separators ``: `` and the indents."""
+    title, *lines = text.splitlines()
+    rows: list[tuple[str, str]] = []
+    for line in lines:
+        if line[:1].isspace() and rows:
+            rows[-1] = (rows[-1][0], f"{rows[-1][1]}\n{line.strip()}" if rows[-1][1] else line.strip())
+        elif ": " in line:
+            name, found = line.split(": ", 1)
+            rows.append((name, found))
+        else:
+            rows.append((line, ""))
+    return title, rows
+
+
+def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -> None:
+    """``mime verify`` on a terminal: a table of its checks, the load's (the saved form, the input hash, the environment,
+    the derived graph), then the rerun (its steps and where, what it was held to, and every field compared with what it
+    found, a field that moved with the numbers that moved it and the tolerance in words), and under it the verdict, the
+    one line it always was. The words are the plain output's: the load's lines and each moved field's line are cells."""
+    from rich.text import Text
+
+    from mime.saved._folder import SHAPE_MOVED
+
+    console = _console_of(stream)
+    title, load_rows = _lines_as_rows(load) if load else ("", [])
+    table = _table(title, ("check", "found"))
+    for name, found in load_rows:
+        table.add_row(_text(name), _text(found))
+    if load_rows:
+        table.add_section()
+    table.add_row(_text("rerun"), _text(f"the first {report.steps} steps, on {report.environment}"))
+    table.add_row(_text("held to"), _text(report.tolerance + (": the environment the lock was written in"
+                                                              if report.same_environment else ": another environment")))
+    said_of: dict[str, str] = {}
+    for line in report.moved:
+        label = next((held for held in sorted(report.compared, key=len, reverse=True) if line.startswith(f"{held}: ")),
+                     None)
+        label, said = (label, line[len(label) + 2:]) if label is not None else line.partition(": ")[::2]
+        said_of[label] = said
+    for label in (*report.compared, *(label for label in said_of if label not in report.compared)):
+        said = said_of.get(label)
+        if said is None:
+            table.add_row(_text(label), _text("equal, bit for bit" if report.same_environment else report.tolerance,
+                                              "green"))
+        elif said == SHAPE_MOVED:
+            table.add_row(_text(label), _text(f"moved: {said}", "bold red"))
+        else:
+            table.add_row(_text(label), _text(f"moved: {said}; held to {report.tolerance}", "bold red"))
+    console.print(table)
+    verdict = report.text().splitlines()[0]
+    console.print(Text(for_terminal(verdict), style="bold green" if report.reproduced else "bold red", no_wrap=False,
+                       overflow="fold"), soft_wrap=True)
+
+
+def _pins_table(title: str, rows: Sequence[DistributionRow], width: int) -> tuple[Any, Any | None]:
+    """The pinned distributions against what is installed, a row each: wanted, found, the verdict in words, who pins it.
+    A name and a version are one word, and are not folded where the terminal has room for them. When the five columns do not fit ``width``, the last (who
+    pins it) is not a column: a line under the table counts the distributions each pinner pins, and the others are
+    not squeezed. The line is returned beside the table (``None`` when every column fits)."""
+    from collections import Counter
+
+    cells = [(row.name, row.wanted, row.found or "-", row.verdict, row.pinned_by) for row in rows]
+    heads = ("distribution", "wanted", "found", "verdict", "pinned by")
+    needs = [max(len(head), *(len(cell[i]) for cell in cells)) + 2 for i, head in enumerate(heads)]
+    keep = len(heads) if sum(needs) <= width else len(heads) - 1
+    table = _table(title, heads[:keep])
+    if sum(needs[:keep]) <= width:
+        for column in table.columns[:3]:
+            column.no_wrap = True
+    for row, cell in zip(rows, cells, strict=True):
+        shown = [_text(cell[0]), _text(cell[1]), _text(cell[2]), _text(cell[3], "green" if row.agrees else "bold red"),
+                 _text(cell[4])]
+        table.add_row(*shown[:keep])
+    if keep == len(heads):
+        return table, None
+    counted = Counter(row.pinned_by for row in rows)
+    return table, _text("pinned by: " + ", ".join(f"{who} ({count})" for who, count in counted.items()))
+
+
+def show_environment(report: EnvReport, stream: IO[str]) -> None:
+    """``mime env check`` on a terminal, when the check passed: the pins against what is installed, a row for each pinned
+    distribution (wanted, found, the verdict in words, who pins it), then the lines the plain output prints, each as a
+    line. (A check that fails is a refusal, whose block opens with the pins that differ, :func:`show_refusal`.)"""
+    console = _console_of(stream)
+    table, pinners = _pins_table("the pins against what is installed", report.rows, console.width)
+    console.print(table)
+    if pinners is not None:
+        console.print(pinners, soft_wrap=True)
+    for line in report.text().splitlines():
+        console.print(_text(line), soft_wrap=True)
+
+
+def show_registry(entries: Sequence[tuple[str, str, str, str]], not_loaded: dict[str, str], stream: IO[str]) -> None:
+    """``mime registry`` on a terminal: the registered entries as one table, grouped by kind, a row for each with its name,
+    its version and what it declares (its settings, as it names them); then a line for each namespace not loaded, as
+    the plain output says it. ``entries`` are (kind, name, version, settings) in the order the plain output prints them."""
+    console = _console_of(stream)
+    table = _table("", ("kind", "name", "version", "declares"))
+    held = None
+    for kind, name, version, declares in entries:
+        if held is not None and kind != held:
+            table.add_section()
+        table.add_row(_text(kind if kind != held else "", "bold"), _text(name), _text(version), _text(declares or "-"))
+        held = kind
+    console.print(table)
+    for name, reason in not_loaded.items():
+        console.print(_text(f"not loaded: {name} ({reason})"), soft_wrap=True)
 
 
 #: How each kind of plan line is drawn (the words are the line's own; the style only sets it apart).

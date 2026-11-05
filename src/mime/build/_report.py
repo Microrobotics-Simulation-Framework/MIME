@@ -90,7 +90,8 @@ class BuildReport:
     mode, period and latency, each read with its class and each write with the command it replaces the drive of; every
     mass mounted on a chain, with what carries it (a rigid body welded on a link, a spinner's rotor, nothing on a
     prescribed motion), a rotor's worst case across its axis and its kick on the joints of the segment that carries
-    it; the validity lines the build computed; and every refusal."""
+    it; the validity lines the build computed; each declaration of this session that replaced an earlier one, with what
+    followed it; and every refusal."""
 
     experiment: str
     dt: float | None
@@ -123,6 +124,15 @@ class BuildReport:
     #: Each asset and mesh a loaded experiment keeps at its pin while a source now holds another version of it: the
     #: pin wins, and the report says so (``mime.assets.pinned``).
     assets: tuple[str, ...] = ()
+    #: Each declaration that replaced an earlier one in this session (a notebook's cell run again) with what followed
+    #: it: the note the warning gave, which a warnings filter removes. The saved form holds the final declarations only.
+    replaced: tuple[str, ...] = ()
+
+    def replaced_lines(self) -> list[str]:
+        if not self.replaced:
+            return []
+        return [f"replaced in this session, the last one run winning ({len(self.replaced)}; the saved form holds only "
+                f"the last):", *(f"  {note}" for note in self.replaced)]
 
     def asset_lines(self) -> list[str]:
         if not self.assets:
@@ -220,6 +230,7 @@ class BuildReport:
         if self.masses:
             lines.append("mounted masses, each with what carries it:")
             lines += [f"  {line}" for line in self.masses]
+        lines += self.replaced_lines()
         lines += self.asset_lines()
         for owner, validity in sorted(self.validity.items()):
             lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
@@ -267,6 +278,7 @@ class BuildReport:
         if self.descriptions:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
+        lines += self.replaced_lines()
         lines += self.asset_lines()
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
         lines += list(self.controller) or ["controller: none declared, so no latency to account for"]
