@@ -268,8 +268,12 @@ class Experiment:
     controller or licence), as when a notebook's cell runs twice, is kept once, with a warning, when it is the same as
     the first: its type, its settings with their units and reasons, and what it binds. A changed one is refused at the
     build in a script. In a notebook (IPython, Jupyter, Colab) the last one run replaces the earlier one, with a
-    warning, unless another declaration names the earlier one (a law bound to a body, a value declared of it): then
-    both are kept, with a warning, and the build refuses the two, saying a cell has probably run twice.
+    warning, which a warnings filter can remove: so each replacement is also recorded, with the declarations that
+    follow it, in ``plan().replaced`` and the build report (the saved form holds the final declarations only). A
+    structure, medium, body or apparatus replaced this way is found by the declarations that hold its name (laws,
+    observations, values, sources, the controller, a medium's ``fills``), and the warning names each; a name
+    declared again as another kind, or held as an object and not a name, is kept beside the new one, and the build
+    refuses the two, saying a line or cell has probably run twice.
     """
 
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
@@ -280,6 +284,9 @@ class Experiment:
         self._settings = RunSettings(name, scene, gravity, dt, seed, up, conditions,
                                      profile.value if isinstance(profile, Profile) else profile, duration)
         self._declarations: list[Declaration] = []
+        #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again):
+        #: what a warnings filter cannot remove, shown by ``plan()`` and the build report. Not part of the saved form.
+        self._replaced: list[str] = []
         self._saved: SavedForm | None = None
         self.load_report: LoadReport | None = None
 
@@ -297,7 +304,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"add_{cls.__name__.lower()} takes a {cls.__name__}, not {type(thing).__name__}",
                 f"pass one: exp.add_{cls.__name__.lower()}({cls.__name__}(...))")])
-        add_declaration(self._declarations, ThingDeclaration(thing))
+        add_declaration(self._declarations, ThingDeclaration(thing), self._replaced)
 
     @public
     def add_structure(self, structure: Structure) -> StructureHandle:
@@ -338,7 +345,7 @@ class Experiment:
                     "call.wrong-type", RefusalClass.USER,
                     f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}",
                     f"bind it to a thing: {role}= the handle add_body or add_medium returned, or its name")])
-        add_declaration(self._declarations, Attachment(law, dict(bindings)))
+        add_declaration(self._declarations, Attachment(law, dict(bindings)), self._replaced)
         return entry_id(type(law), bindings)
 
     @public
@@ -351,7 +358,7 @@ class Experiment:
         With no reason (and none on the quantity, ``kg(8.5e-5, reason=...)``), the reason is pending: exploratory
         builds with it and stamps every output, and research refuses it by name (``value.reason-pending``). A reason
         given both on the quantity and here is refused."""
-        add_declaration(self._declarations, ValueDeclaration(path, value, reason))
+        add_declaration(self._declarations, ValueDeclaration(path, value, reason), self._replaced)
 
     @public
     def source(self, path: TypedPath | str, *, reason: Basis) -> None:
@@ -362,7 +369,7 @@ class Experiment:
         is named ``<structure>.<setting>`` (``tube.inner_radius``), ``<body>.parts.<part>.<setting>``,
         ``<apparatus>.<field>.<setting>``, ``<apparatus>.<command>`` (a command's value), ``<entry id>.<setting>``
         (``drag:umr.spacing``), ``dt``, ``gravity`` or ``conditions.<name>``."""
-        add_declaration(self._declarations, SourceDeclaration(path, reason))
+        add_declaration(self._declarations, SourceDeclaration(path, reason), self._replaced)
 
     @public
     def licence(self, licence: str | CustomLicence) -> None:
@@ -373,7 +380,7 @@ class Experiment:
         form records it. Without one the experiment declares none, which saving and ``mime pack`` never refuse, and
         every report of the folder says; ``mime push`` will not publish it until one is declared. Its form is checked
         when the experiment is saved (``terms.licence``)."""
-        add_declaration(self._declarations, LicenceDeclaration(licence))
+        add_declaration(self._declarations, LicenceDeclaration(licence), self._replaced)
 
     @public
     def permission(self, permission: Permission) -> None:
@@ -389,7 +396,7 @@ class Experiment:
                 f"permission takes a mime.terms.Permission, not {type(permission).__name__}",
                 "pass one: exp.permission(Permission(grantor=..., grantee=..., files=(...), scope=Scope(...), "
                 "date=\"YYYY-MM-DD\", evidence=Evidence(...)))")])
-        add_declaration(self._declarations, PermissionDeclaration(permission))
+        add_declaration(self._declarations, PermissionDeclaration(permission), self._replaced)
 
     @public
     def observe(self, observation: Observation) -> ObservationHandle:
@@ -398,7 +405,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"observe takes an Observation, not {type(observation).__name__}",
                 "pass an observation: exp.observe(SwimSpeed(body, along=X))")])
-        add_declaration(self._declarations, ObservationDeclaration(observation))
+        add_declaration(self._declarations, ObservationDeclaration(observation), self._replaced)
         return ObservationHandle(entry_id(type(observation), observation.bindings()),
                                  tuple(output.field for output in type(observation).outputs))
 
@@ -420,12 +427,19 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"set_controller takes a Controller, not {type(controller).__name__}",
                 "pass a registered controller: exp.set_controller(ArmTracking(...), reads=..., writes=..., mode=...)")])
-        add_declaration(self._declarations, ControllerDeclaration(controller, reads, writes, mode, rate, latency))
+        add_declaration(self._declarations, ControllerDeclaration(controller, reads, writes, mode, rate, latency),
+                        self._replaced)
 
     @public
     def plan(self) -> PlanSet:
         """Phase 1 alone: resolve and check every declaration, with no graph. Raises ``BuildRefused``."""
-        return plan_experiment(self._settings, list(self._declarations))
+        try:
+            plans = plan_experiment(self._settings, list(self._declarations))
+        except BuildRefused as refused:
+            if refused.report is not None:  # a refused build is where a replaced thing's trace matters most
+                refused.report = replace(refused.report, replaced=tuple(self._replaced))
+            raise
+        return replace(plans, replaced=tuple(self._replaced))
 
     @public
     def tree(self) -> Tree:

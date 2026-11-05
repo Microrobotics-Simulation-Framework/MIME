@@ -5,21 +5,19 @@ pack carries, nor anywhere in the run folder, with the visual set's stand-in bak
 controller, called back, steered by its live input. The controls: a mesh planted in a copy of the run folder is found by
 the same scan, and a session that sets nothing leaves the magnet where it was."""
 
-import json
 import shutil
-import subprocess
-import sys
 import time
 import warnings
 import zipfile
 
 import numpy as np
 import pytest
+from live_servers import client, serve_command, watched
 from script_a0 import a0
 from visual_cases import holds_any, mesh_bytes, planted
 
 from mime.experiment import Experiment
-from mime.live import FrameOrder, LiveClient
+from mime.live import FrameOrder
 from mime.saved import pack, read_folder
 from mime.saved._folder import named_files
 from mime.scene import check_stage
@@ -58,15 +56,12 @@ def test_a0_through_mime_serve_is_never_ahead_of_real_time_and_each_frame_is_the
     session starts, so that its compile is behind it when pacing begins. The control of the pacing check: the same
     frames arriving two chunks earlier than pacing allows are every one found ahead."""
     ready = tmp_path / "ready.json"
-    process = launch([sys.executable, "-m", "mime.cli", "serve", str(folder), "--commands", "tcp://127.0.0.1:0",
-                      "--frames", "tcp://127.0.0.1:0", "--ready-file", str(ready), "--out", str(tmp_path / "out")],
-                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = watched(launch, serve_command(folder, ready, tmp_path / "out"), ready, text=False)
     deadline = time.monotonic() + 600  # a guard against a hang, not a measure of speed
     while not ready.exists() or not ready.read_text():
         assert process.poll() is None and time.monotonic() < deadline
         time.sleep(0.05)
-    endpoints = json.loads(ready.read_text())
-    live = LiveClient(endpoints["commands"], endpoints["frames"])
+    live = client(ready)
     chunk = live.hello["chunk_steps"] * live.hello["dt"]
     stepped = live.request("step", chunks=1)  # answered once the chunk, and its compile, are done
     frames = [live.frame(), live.frame()]
