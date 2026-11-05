@@ -776,6 +776,7 @@ def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -
 def _pins_table(title: str, rows: Sequence[DistributionRow]) -> Any:
     """The pinned distributions against what is installed, a row each: wanted, found, the verdict in words, who pins it."""
     table = _table(title, ("distribution", "wanted", "found", "verdict", "pinned by"))
+    table.columns[0].no_wrap = True  # a name is one word: the other columns give way when the terminal is narrow
     for row in rows:
         table.add_row(_text(row.name), _text(row.wanted), _text(row.found or "-"),
                       _text(row.verdict, "green" if row.agrees else "bold red"), _text(row.pinned_by))

@@ -488,7 +488,7 @@ def test_env_check_on_a_terminal_is_one_block_per_code_and_every_package_the_pip
     assert code == 2, text
     for line in listed:
         name = line.split(": ", 1)[1].split(" ")[0]
-        assert any(row.strip("│ ").split()[:1] == [name] for row in text.splitlines()), f"{name} has no row"
+        assert any(row.strip("│ ").split()[:1] == [name] for row in text.splitlines()), f"{name} has no row in\n{text}"
     codes = {line.split(" ")[1].rstrip(":") for line in listed}
     assert len(codes) < len(listed), "the control: the pipe has more refusals than codes, so the blocks group"
     assert text.count("what to do:") == len(codes) and text.count("docs for env.") == len(codes)
