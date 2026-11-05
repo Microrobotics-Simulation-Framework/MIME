@@ -21,10 +21,10 @@ from pathlib import Path
 import jax
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from pxr import Usd, UsdGeom
-from scipy.optimize import minimize
+from scipy.optimize import minimize, root
 from script_a import VOLUME, fl9, script_a
 
 import mime.interactions.hydrodynamic as hydrodynamic
@@ -95,9 +95,30 @@ def surface(theta, zeta, nu, epsilon, starts, radius=R, length=L):
     return np.stack([zeta, rho * np.cos(alpha), rho * np.sin(alpha)], -1)
 
 
+def stationarity(x, point, nu, epsilon, starts, radius):
+    """Half the gradient of the squared distance from ``point`` to the surface point ``(theta, zeta / radius) = x``,
+    in the reference radius: the residual's components along the surface's two tangents, which vanish where the
+    surface point is the nearest one."""
+    theta, zeta = x[0], x[1] * radius
+    rho = radius * (1 + epsilon * np.sin(starts * theta))
+    alpha = theta + nu * (zeta + L / 2) / radius
+    c, s = np.cos(alpha), np.sin(alpha)
+    residual = np.array([zeta, rho * c, rho * s]) - point
+    drho = radius * epsilon * starts * np.cos(starts * theta)
+    along_theta = np.array([0.0, drho * c - rho * s, drho * s + rho * c])
+    along_zeta = np.array([1.0, -rho * s * nu / radius, rho * c * nu / radius])
+    return np.array([residual @ along_theta / radius ** 2, residual @ along_zeta / radius])
+
+
 def brute_force(point, nu, epsilon, starts, radius=R) -> float:
     """The signed distance from ``point`` to the unbounded screw: the nearest of a 720 x 721 grid of the surface over
-    three radii either side of the point's cross-section, refined by BFGS; negative inside the cross-section."""
+    three radii either side of the point's cross-section, refined by BFGS, then solved to the stationarity conditions
+    themselves (analytic, so no step of a finite difference leaves a bias); negative inside the cross-section.
+
+    The solve is what makes the oracle's resolution a distance's and not a squared distance's. BFGS on the squared
+    distance with finite-difference gradients stops where the forward difference's bias, about the step (1.5e-8)
+    over two, leaves the minimiser: an error of about 1e-16 in the squared distance, in radii squared, which the
+    square root turns into 1e-16 / (2 d) in the distance, d in radii: 6% of a distance of 3e-8 radii."""
     theta = np.linspace(0, 2 * np.pi, 720, endpoint=False)
     zeta = point[0] + np.linspace(-3 * radius, 3 * radius, 721)
     grid_t, grid_z = np.meshgrid(theta, zeta, indexing="ij")
@@ -107,10 +128,19 @@ def brute_force(point, nu, epsilon, starts, radius=R) -> float:
     def squared(x):
         return np.sum((surface(x[0], x[1] * radius, nu, epsilon, starts, radius) - point) ** 2) / radius ** 2
 
-    found = minimize(squared, [grid_t[i], grid_z[i] / radius], method="BFGS", options={"gtol": 1e-14})
+    seed = minimize(squared, [grid_t[i], grid_z[i] / radius], method="BFGS", options={"gtol": 1e-14})
+    arguments = (point, nu, epsilon, starts, radius)
+    solved = root(stationarity, seed.x, args=arguments, method="hybr", tol=1e-15)
+    nearest = squared(solved.x)
+    # the solve moves the seed a hair (BFGS's bias) and does not leave its basin, nor end on a saddle or a maximum: it
+    # is not nearer by the seed's rounding (the residual's, about 4e-16 radii, twice the distance) and it is stationary
+    # to that rounding, in radii, the tangents a few radii long. Its own success flag is not asked: it reports "not
+    # making good progress" once the solve has reached that rounding
+    assert nearest <= seed.fun * (1 + 1e-9) + 1e-15 * math.sqrt(seed.fun) + 1e-30, (seed.x, seed.fun, solved.x, nearest)
+    assert np.max(np.abs(stationarity(solved.x, *arguments))) <= 1e-13, stationarity(solved.x, *arguments)
     across = math.atan2(point[2], point[1]) - nu * (point[0] + L / 2) / radius
     inside = math.hypot(point[1], point[2]) < radius * (1 + epsilon * math.sin(starts * across))
-    return (-1.0 if inside else 1.0) * math.sqrt(found.fun) * radius
+    return (-1.0 if inside else 1.0) * math.sqrt(nearest) * radius
 
 
 def screw(nu, epsilon, starts, radius=R):
@@ -122,11 +152,24 @@ def screw(nu, epsilon, starts, radius=R):
 @given(nu=st.floats(-4.0, 4.0), epsilon=st.floats(0.02, 0.5), starts=st.sampled_from((2, 3, 4)),
        radius=st.floats(5e-4, 3e-3), across=st.floats(0.0, 3.0), angle=st.floats(0.0, 2 * math.pi),
        along=st.floats(-1.0, 1.0))
+# 6e-11 m (3e-8 radii) inside the surface: the oracle's BFGS on the squared distance stopped 7e-9 radians short, 6% of
+# the distance off, where the screw's value (-5.88352562e-11 m, from a 60-digit solve) was right
+@example(nu=5.08e-07, epsilon=0.0625, starts=2, radius=0.001953125, across=1.0, angle=0.0, along=-0.625)
 def test_the_screws_distance_is_the_brute_force_minimums(nu, epsilon, starts, radius, across, angle, along):
     point = np.array([along * L, across * radius * math.cos(angle), across * radius * math.sin(angle)])
     expected = brute_force(point, nu, epsilon, starts, radius)
     found = float(SCREW.signed_distance(screw(nu, epsilon, starts, radius), jnp.asarray(point)))
     assert abs(found - expected) <= 1e-9 * radius, (found, expected)
+
+
+@pytest.mark.parametrize("offset", [-0.3, -1e-4, -3e-8, 0.0, 3e-8, 1e-7, 1e-4, 0.5])
+def test_the_distance_oracle_resolves_a_point_a_hair_from_the_surface(offset):
+    """The control for the oracle: with no modulation the screw is a circular cylinder, whose signed distance is
+    exact, ``hypot(y, z) - radius``. The oracle returns it within 1e-9 radii at an offset of 3e-8 radii, where BFGS on
+    the squared distance alone, with finite-difference gradients, was off by 1e-8 radii or more."""
+    radius, point = 1.56e-3, np.array([0.3 * L, 0.0, 0.0])
+    point[1:] = (radius * (1 + offset)) * np.array([math.cos(0.7), math.sin(0.7)])
+    assert abs(brute_force(point, 1.3, 0.0, 3, radius) - radius * offset) <= 1e-9 * radius
 
 
 def test_the_02_lines_surface_points_moved_half_its_length_lie_on_the_screw():
