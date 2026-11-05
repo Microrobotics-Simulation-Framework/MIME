@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 #: The branch every Colab link opens the notebooks from.
-BRANCH = "v0.3-colab-notebooks"
+BRANCH = "main"
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = "https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/"
 #: A link to a notebook in Colab, its branch (which may hold slashes) and the notebook's name.

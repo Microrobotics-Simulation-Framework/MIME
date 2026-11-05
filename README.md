@@ -2,9 +2,9 @@
 
 MIcrorobotics Multiphysics Engine, on [MADDENING](https://microrobotica.org/maddening/).
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/v0.3-colab-notebooks/docs/notebooks/sphere_settling_tube.ipynb) **Watch a steel ball settle in a tube of water**
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/main/docs/notebooks/sphere_settling_tube.ipynb) **Watch a steel ball settle in a tube of water**
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/v0.3-colab-notebooks/docs/notebooks/tutorial_a.ipynb) **Drive a screw-shaped magnetic robot through a tube**
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/main/docs/notebooks/tutorial_a.ipynb) **Drive a screw-shaped magnetic robot through a tube**
 
 The two tutorial notebooks run in your browser, on Google Colab, with nothing to install: click a badge, then run the
 cells from the top.
