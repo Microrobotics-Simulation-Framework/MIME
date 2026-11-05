@@ -65,6 +65,7 @@ if TYPE_CHECKING:
     from mime.build import MimeError, Refusal
     from mime.cli._summary import RunSummary
     from mime.env import EnvReport
+    from mime.env._check import DistributionRow
     from mime.saved import VerifyReport
 
 #: Set by ``--plain``: no stream is styled.
@@ -572,22 +573,31 @@ def short_description_warnings(stream: IO[str]) -> Generator[None]:
         warnings.showwarning = shown
 
 
+#: The codes of a refusal about a pinned distribution, whose row the pins' table holds (``mime.env._check``).
+_PIN_CODES = frozenset({"env.missing", "env.pin"})
+
 _WHO = {"user": "yours to fix", "environment": "the environment's to fix", "internal": "a defect, not yours",
         "unrecognised": "an error from below that MIME does not recognise"}
 
 
-def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream: IO[str]) -> None:
+def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream: IO[str],
+                 pins: Sequence[DistributionRow] = ()) -> None:
     """A refused command as a block on ``stream``: for each refusal its code and who can act, what is wrong, what to do,
     why and where; then the docs address of each code, unbroken so that it can be copied, and the footer
     (the defect's owner and the full traceback's file) as the ordinary text gave it. Refusals of one code that are
     about a subject and share their finding, action, why and where (:func:`refusal_groups`) are one block: the code
-    once, what is wrong once, a row for each subject, what to do once."""
+    once, what is wrong once, a row for each subject, what to do once. With ``pins`` (the pinned distributions an
+    environment does not hold as pinned) the block opens with their table (wanted, found, verdict), and the blocks about
+    those distributions keep their code, what is wrong and what to do but not their rows, which the table holds."""
     from rich.console import Group
     from rich.panel import Panel
     from rich.text import Text
 
     console = _console(stream)
     parts: list[Any] = []
+    if pins:
+        parts.extend((_pins_table("the pins that differ from what is installed", pins), Text("")))
+    tabled = {row.name for row in pins}
     blocks = refusal_groups(error.refusals)
     for index, block in enumerate(blocks):
         if index:
@@ -599,7 +609,8 @@ def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream:
             parts.append(_text(first.message))
         else:
             parts.append(_text(f"{len(block)} {shared.finding}:"))
-            parts.extend((_subjects(block), Text("")))
+            if not all(r.subject is not None and r.code in _PIN_CODES and r.subject.cells[0] in tabled for r in block):
+                parts.extend((_subjects(block), Text("")))
         for label, held in (("what to do", first.action if shared is None else shared.action),
                             ("why", first.why), ("where", first.where)):
             if held:
@@ -729,6 +740,8 @@ def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -
     one line it always was. The words are the plain output's: the load's lines and each moved field's line are cells."""
     from rich.text import Text
 
+    from mime.saved._folder import SHAPE_MOVED
+
     console = _console_of(stream)
     title, load_rows = _lines_as_rows(load) if load else ("", [])
     table = _table(title, ("check", "found"))
@@ -739,10 +752,19 @@ def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -
     table.add_row(_text("rerun"), _text(f"the first {report.steps} steps, on {report.environment}"))
     table.add_row(_text("held to"), _text(report.tolerance + (": the environment the lock was written in"
                                                               if report.same_environment else ": another environment")))
-    for label in report.compared:
-        said = next((line.split(": ", 1)[1] for line in report.moved if line.startswith(f"{label}: ")), None)
+    said_of: dict[str, str] = {}
+    for line in report.moved:
+        label = next((held for held in sorted(report.compared, key=len, reverse=True) if line.startswith(f"{held}: ")),
+                     None)
+        label, said = (label, line[len(label) + 2:]) if label is not None else line.partition(": ")[::2]
+        said_of[label] = said
+    for label in (*report.compared, *(label for label in said_of if label not in report.compared)):
+        said = said_of.get(label)
         if said is None:
-            table.add_row(_text(label), _text(f"equal, {report.tolerance}", "green"))
+            table.add_row(_text(label), _text("equal, bit for bit" if report.same_environment else report.tolerance,
+                                              "green"))
+        elif said == SHAPE_MOVED:
+            table.add_row(_text(label), _text(f"moved: {said}", "bold red"))
         else:
             table.add_row(_text(label), _text(f"moved: {said}; held to {report.tolerance}", "bold red"))
     console.print(table)
@@ -751,16 +773,21 @@ def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -
                        overflow="fold"), soft_wrap=True)
 
 
+def _pins_table(title: str, rows: Sequence[DistributionRow]) -> Any:
+    """The pinned distributions against what is installed, a row each: wanted, found, the verdict in words, who pins it."""
+    table = _table(title, ("distribution", "wanted", "found", "verdict", "pinned by"))
+    for row in rows:
+        table.add_row(_text(row.name), _text(row.wanted), _text(row.found or "-"),
+                      _text(row.verdict, "green" if row.agrees else "bold red"), _text(row.pinned_by))
+    return table
+
+
 def show_environment(report: EnvReport, stream: IO[str]) -> None:
     """``mime env check`` on a terminal, when the check passed: the pins against what is installed, a row for each pinned
     distribution (wanted, found, the verdict in words, who pins it), then the lines the plain output prints, each as a
-    line. (A check that fails is a refusal, whose block names each distribution that differs, under its code.)"""
+    line. (A check that fails is a refusal, whose block opens with the pins that differ, :func:`show_refusal`.)"""
     console = _console_of(stream)
-    table = _table("the pins against what is installed", ("distribution", "wanted", "found", "verdict", "pinned by"))
-    for row in report.rows:
-        table.add_row(_text(row.name), _text(row.wanted), _text(row.found or "-"),
-                      _text(row.verdict, "green" if row.agrees else "bold red"), _text(row.pinned_by))
-    console.print(table)
+    console.print(_pins_table("the pins against what is installed", report.rows))
     for line in report.text().splitlines():
         console.print(_text(line), soft_wrap=True)
 

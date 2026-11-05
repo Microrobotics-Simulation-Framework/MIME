@@ -767,6 +767,10 @@ def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
     return refusals
 
 
+#: What a moved line says of a field the rerun lacks or gave in another shape (no numbers, so no tolerance holds it).
+SHAPE_MOVED = "missing or of another shape"
+
+
 @dataclass(frozen=True)
 class VerifyReport:
     """A rerun of the first ``steps`` steps against the reference outputs. Within the environment the lock was written
@@ -813,7 +817,7 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
         label = key.removeprefix("history/").replace("/", ".", 1)
         compared.append(label)
         if a is None or b is None or a.shape != b.shape:
-            moved.append(f"{label}: missing or of another shape")
+            moved.append(f"{label}: {SHAPE_MOVED}")
             continue
         equal = np.array_equal(a, b) if same else np.allclose(a, b, rtol=rtol, atol=atol)
         if not equal:

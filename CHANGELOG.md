@@ -20,13 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`mime verify`, `mime env check` and `mime registry` draw tables on a terminal.** `mime verify` shows its checks as a
   table (the saved form, the input hash, the environment, the derived graph, the rerun and what it was held to, and a
-  row for each field compared, a field that moved with the numbers that moved it and the tolerance in words), with the
-  verdict as the one line under it. `mime env check`, when it passes, shows the pins against what is installed, a row for
+  row for each field compared: "equal, bit for bit" where the comparison was bit for bit, otherwise the tolerance it was
+  held to ("within rtol ..., atol ..."), and a field that moved with the numbers that moved it and the tolerance in
+  words), with the verdict as the one line under it. `mime env check`, when it passes, shows the pins against what is installed, a row for
   each pinned distribution (wanted, found, verdict, who pins it), then its other lines. `mime registry` shows one table
   grouped by kind, a row for each entry with its name, its version and the settings it declares; a long cell wraps and
   is never cut. Output that is not going to a terminal, and a terminal under `--plain`, `NO_COLOR` or `TERM=dumb`, is
   byte for byte what it was; `mime registry --json` and `mime env check --record` are unchanged. A failing
-  `mime env check` is still the refusal's block.
+  `mime env check` on a terminal opens its refusal's block with the table of the pinned distributions that differ
+  (wanted, found, verdict, who pins it); the block keeps its codes, what to do and every reason the table does not
+  hold, and drops the rows the table holds. Piped, it is the refusal's text as before.
 - **A declaration made twice is kept once when it is the same, and a notebook's cell can run again.** The same
   `exp.add_*`, `attach`, `observe`, `declare`, `source`, `set_controller`, `licence` or `permission` made a second
   time, the same in its type, its settings with their units and reasons, and what it binds, is kept once with a

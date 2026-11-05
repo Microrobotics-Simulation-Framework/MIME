@@ -34,7 +34,7 @@ from mime.env import (
     pins,
     shadow_refusals,
 )
-from mime.env._check import distribution_rows, expected_distributions
+from mime.env._check import distribution_refusals, distribution_rows, expected_distributions
 
 SERIES = "3.14"
 BASE = bases()[SERIES]
@@ -445,3 +445,15 @@ def test_each_kind_of_difference_is_a_row_that_says_so_and_the_others_stay_as_pi
     two = {"numpy": ("1.0.0", "2.0.0")}
     assert distribution_rows(two, {"numpy": expected["numpy"]})[0].found == "1.0.0, 2.0.0"
     assert distribution_rows(two, {"numpy": expected["numpy"]})[0].verdict == "differs from the pin"
+
+
+def test_a_distribution_installed_twice_at_the_pinned_version_is_not_as_pinned():
+    """The control for the one-installed rule: two copies at the very version pinned (not at another version, which
+    would differ anyway) are still a difference, as ``distribution_refusals`` holds."""
+    expected, _ = expected_distributions("cpu", base_system(), base=None)
+    pinned_at = expected["numpy"].version
+    two = {"numpy": (pinned_at, pinned_at)}
+    assert distribution_refusals(two, {"numpy": expected["numpy"]}), "the check refuses it"
+    row = distribution_rows(two, {"numpy": expected["numpy"]})[0]
+    assert (row.verdict, row.found) == ("differs from the pin", f"{pinned_at}, {pinned_at}")
+    assert distribution_rows({"numpy": (pinned_at,)}, {"numpy": expected["numpy"]})[0].agrees

@@ -25,15 +25,15 @@ import pytest
 import mime.cli
 import mime.env
 import mime.experiment._experiment as experiment_module
-from _platform_support import needs_pty
+from _platform_support import needs_pty, needs_readable_cpu_flags
 from _terminal_support import run_on_terminal, stripped, terminal
 from mime.cli import main as mime_main
 from mime.cli._display import set_plain, show_registry
 from mime.docs._export import export_json
 from mime.env import EnvReport
-from mime.env._check import AS_PINNED, DistributionRow
+from mime.env._check import AS_PINNED, DistributionRow, EnvRefused, Expected, distribution_refusals, distribution_rows
 from mime.experiment import Experiment
-from mime.saved import read_folder
+from mime.saved import VerifyReport, read_folder
 from mime.testing.toys import full_toy
 
 pytestmark = pytest.mark.own_child_cache
@@ -111,15 +111,59 @@ def old_verify_text(folder: Path) -> tuple[str, str]:
     return f"{loaded.load_report.text()}\n{report.text()}\n", report.text().splitlines()[0]
 
 
-def old_registry_text() -> str:
-    found = json.loads(export_json())
-    return "".join(f"{e['kind']}  {e['name']}  {e['version']}\n" for e in found["entries"]) + "".join(
-        f"not loaded: {name} ({reason})\n" for name, reason in found["not_loaded"].items())
+def registry_entries_of_a_child(tmp_path) -> dict[str, object]:
+    """The registry as a fresh ``mime registry --json`` process holds it: the process that draws the table. This test
+    process holds what earlier tests registered in it (toy entries a child never sees), so it is no oracle for the table."""
+    done = in_child_piped(tmp_path, "registry", "--json")
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def old_registry_text(found: dict[str, object] | None = None) -> str:
+    """What ``mime registry`` printed before the table, from the registry's export (this process's, unless ``found``)."""
+    held = found if found is not None else json.loads(export_json())
+    return "".join(f"{e['kind']}  {e['name']}  {e['version']}\n" for e in held["entries"]) + "".join(
+        f"not loaded: {name} ({reason})\n" for name, reason in held["not_loaded"].items())
+
+
+def parsed_table(text: str, *heads: str) -> list[list[str]]:
+    """The rows of the table whose header holds ``heads`` in order, each row as its cells by column (the header's columns
+    are where a cell starts; rich pads every line of a table to its width, and a blank line ends it, or is a rule
+    between groups when a row follows). A cell is read by its column, so a word in the wrong column is a different cell."""
+    lines = text.splitlines()
+    for top, line in enumerate(lines):
+        starts, at = [], 0
+        for head in heads:
+            at = line.find(head, at)
+            if at < 0:
+                break
+            starts.append(at)
+            at += len(head)
+        if len(starts) == len(heads) and line.strip(" │").split()[:1] == [heads[0]]:
+            break
+    else:
+        raise AssertionError(f"no table with the columns {heads} in\n{text}")
+    width, rows, blank = len(lines[top + 1]), [], False
+    for line in lines[top + 2:]:
+        empty = not line.strip(" │")
+        if len(line) != width or (empty and blank):
+            break
+        blank = empty
+        if not empty:
+            ends = [*starts[1:], width]
+            rows.append([line[a:b].strip(" │") for a, b in zip(starts, ends, strict=True)])
+    return rows
 
 
 ROWS = (DistributionRow("jax", "0.12.0", "0.12.0", "the cpu pins", AS_PINNED),
         DistributionRow("a-distribution-with-a-long-name", "2026.11.5.post1", "2026.11.5.post1", "the lab's pins",
                         AS_PINNED))
+
+#: Rows whose five cells all differ from each other and whose verdicts are not 'as pinned', so a table that put one
+#: column's text in another, or said 'as pinned' whatever the row said, is found by the cell it got wrong.
+DIFFERING = (DistributionRow("numpy", "2.4.0", "2.3.5", "the cpu pins", "differs from the pin"),
+             DistributionRow("scipy", "1.16.0", None, "the lab's pins", "not installed"),
+             DistributionRow("jax", "0.12.0", "0.12.0", "the pinned MIME wheel", AS_PINNED))
 
 
 def an_env_report(**changes) -> EnvReport:
@@ -136,28 +180,10 @@ def old_env_text(report: EnvReport) -> str:
 # --- the tables on a terminal ---------------------------------------------------------------------------------------
 
 
-@needs_pty
-def test_verify_on_a_terminal_is_a_table_of_its_checks_with_every_word_of_the_plain_output_and_the_verdict_under_it(
-        saved, tmp_path):
-    old, verdict = old_verify_text(saved)
-    raw, code = in_child_on_a_terminal(tmp_path, "verify", str(saved))
-    text = stripped(raw)
-    assert code == 0, text
-    assert holds_every_word_of(old, text)
-    lines = [line for line in text.splitlines() if line.strip()]
-    assert lines[-1] == verdict, "the verdict is one line, under the table"
-    assert not any(line.startswith("verify:") for line in lines[:-1])
-    header = next(line for line in lines if "check" in line and "found" in line)
-    for check in ("saved form", "input hash", "environment", "derived graph", "rerun", "held to", "probe.x", "probe.v"):
-        assert any(line.strip().startswith(check) for line in lines[lines.index(header):]), f"{check} has no row"
-    held = [key for key in read_folder(saved).reference if key.startswith("history/")]
-    assert len(held) > 1 and text.count("equal, bit for bit") == len(held), "a row for each field the reference holds"
-
-
-@needs_pty
-def test_verify_with_a_field_moved_names_the_numbers_that_moved_and_the_tolerance_in_words(saved, monkeypatch):
-    """The control is the run without the plant: the same command says nothing moved, so a table that marked every row
-    'moved' (or none) would fail one of the two."""
+def verify_in_process(saved, monkeypatch, *, planted: bool = False, other_environment: bool = False) -> tuple[str, int]:
+    """``mime verify`` in this process on a pseudo-terminal: its transcript without control sequences, and its code.
+    ``planted`` moves two fields of the rerun, ``other_environment`` makes the load and the rerun find this process unlike
+    the one the lock was written in (on any platform, as every platform but Linux does: its CPU flags are unreadable)."""
     import numpy as np
 
     real = experiment_module.verify_history
@@ -168,26 +194,139 @@ def test_verify_with_a_field_moved_names_the_numbers_that_moved_and_the_toleranc
         history["probe"]["v"] = np.asarray(history["probe"]["v"]) * 1.5
         return real(form, history)
 
-    def draw(planted: bool) -> tuple[str, int]:
-        with monkeypatch.context() as patch:
-            if planted:
-                patch.setattr(experiment_module, "verify_history", moved)
-            with terminal(columns=COLUMNS) as tty:
-                patch.setattr(sys, "stdout", tty.stream)
-                code = mime_main(["verify", str(saved)])
-                return stripped(tty.transcript()), code
+    with monkeypatch.context() as patch:
+        if planted:
+            patch.setattr(experiment_module, "verify_history", moved)
+        if other_environment:
+            patch.setattr("mime.saved._folder.environment_differences", lambda lock: ["device: cpu here, gpu in the lock"])
+        with terminal(columns=COLUMNS) as tty:
+            patch.setattr(sys, "stdout", tty.stream)
+            code = mime_main(["verify", str(saved)])
+            return stripped(tty.transcript()), code
 
-    unplanted, code = draw(False)
+
+@needs_pty
+@needs_readable_cpu_flags
+def test_verify_on_a_terminal_is_a_table_of_its_checks_with_every_word_of_the_plain_output_and_the_verdict_under_it(
+        saved, tmp_path):
+    old, verdict = old_verify_text(saved)
+    raw, code = in_child_on_a_terminal(tmp_path, "verify", str(saved))
+    text = stripped(raw)
+    assert code == 0, text
+    assert holds_every_word_of(old, text)
+    lines = [line for line in text.splitlines() if line.strip()]
+    assert lines[-1] == verdict, "the verdict is one line, under the table"
+    assert not any(line.startswith("verify:") for line in lines[:-1])
+    cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
+    for check in ("saved form", "input hash", "environment", "derived graph", "rerun", "held to", "probe.x", "probe.v"):
+        assert check in cells, f"{check} has no row"
+    assert cells["rerun"] == "the first 8 steps, on cpu, float64"
+    assert cells["held to"] == "bit for bit: the environment the lock was written in"
+    held = [key.removeprefix("history/").replace("/", ".", 1) for key in read_folder(saved).reference
+            if key.startswith("history/")]
+    assert len(held) > 1
+    assert [cells[label] for label in held] == ["equal, bit for bit"] * len(held), "a row for each field the reference holds"
+
+
+@needs_pty
+@needs_readable_cpu_flags
+def test_verify_with_a_field_moved_names_the_numbers_that_moved_and_the_tolerance_in_words(saved, monkeypatch):
+    """The control is the run without the plant: the same command says nothing moved, so a table that marked every row
+    'moved' (or none) would fail one of the two."""
+    unplanted, code = verify_in_process(saved, monkeypatch)
     assert code == 0 and "moved" not in unplanted
-    text, code = draw(True)
+    text, code = verify_in_process(saved, monkeypatch, planted=True)
     assert code == 1
-    rows = {line.split()[0]: line for line in text.splitlines() if line.split()[:1] and line.split()[0].startswith("probe.")}
-    assert "moved: max |difference| 1.000e-06, first at step 0" in rows["probe.x"]
-    assert "moved: max |difference| 2.472e-01, first at step 0" in rows["probe.v"]
-    assert text.count("held to bit for bit") == 2, "the tolerance, in words, beside each failure"
+    cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
+    assert cells["probe.x"] == "moved: max |difference| 1.000e-06, first at step 0; held to bit for bit"
+    assert cells["probe.v"] == "moved: max |difference| 2.472e-01, first at step 0; held to bit for bit"
     assert [line for line in text.splitlines() if line.strip()][-1] == \
         "verify: 2 reference output(s) moved over 8 steps on cpu, float64"
     assert "probe.x: max |difference|" not in text, "the old line is a row, not repeated"
+
+
+@needs_pty
+def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal_or_bit_for_bit(saved, monkeypatch):
+    """Both arms of the words: a field within the tolerance is not equal, and a table that said 'equal' (or 'bit for bit',
+    or the tolerance's two numbers the wrong way round, or the environment's sentence the wrong way round) is found
+    here. The first run is the control: the same environment says 'equal, bit for bit'."""
+    tolerance = "within rtol 1e-06, atol 1e-09"
+    text, code = verify_in_process(saved, monkeypatch, other_environment=True)
+    assert code == 0, text
+    cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
+    assert cells["held to"] == f"{tolerance}: another environment"
+    assert cells["probe.x"] == cells["probe.v"] == tolerance
+    assert "equal" not in text.replace("the environment the lock", "") and "bit for bit" not in text
+    assert [line for line in text.splitlines() if line.strip()][-1].startswith(f"verify: reproduced 8 steps {tolerance} on ")
+    text, code = verify_in_process(saved, monkeypatch, planted=True, other_environment=True)
+    cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
+    assert code == 1
+    assert cells["probe.v"] == f"moved: max |difference| 2.472e-01, first at step 0; held to {tolerance}"
+    assert cells["probe.x"] == f"moved: max |difference| 1.000e-06, first at step 0; held to {tolerance}"
+
+
+def test_the_same_environment_arm_is_equal_bit_for_bit_the_control_of_the_other_environment_arm(saved, monkeypatch):
+    """Where this platform can read its CPU, the load finds the lock's environment (the arm above is then the contrast);
+    elsewhere it does not, and the contrast is made by a lock found to be this environment."""
+    monkeypatch.setattr("mime.saved._folder.environment_differences", lambda lock: [])
+    with terminal(columns=COLUMNS) as tty:
+        monkeypatch.setattr(sys, "stdout", tty.stream)
+        assert mime_main(["verify", str(saved)]) == 0
+        cells = {row[0]: row[1] for row in parsed_table(stripped(tty.transcript()), "check", "found")}
+    assert cells["held to"] == "bit for bit: the environment the lock was written in"
+    assert cells["probe.x"] == cells["probe.v"] == "equal, bit for bit"
+
+
+def a_verification(**changes) -> VerifyReport:
+    held = dict(steps=8, same_environment=True, rtol=1e-6, atol=1e-9, environment="cpu, float64",
+                moved=("a.b: max |difference| 1.000e-03, first at step 2",), compared=("a.b", "a.c"))
+    return VerifyReport(**{**held, **changes})
+
+
+def drawn_verification(report: VerifyReport) -> dict[str, str]:
+    from mime.cli._display import show_verification
+
+    with terminal(columns=COLUMNS) as tty:
+        show_verification(None, report, tty.stream)
+        return {row[0]: row[1] for row in parsed_table(stripped(tty.transcript()), "check", "found")}
+
+
+@needs_pty
+def test_a_moved_line_whose_field_is_not_among_those_compared_is_a_row_of_its_own_so_no_numbers_are_dropped():
+    cells = drawn_verification(a_verification(compared=("a.c",)))
+    assert cells["a.b"] == "moved: max |difference| 1.000e-03, first at step 2; held to bit for bit"
+    assert cells["a.c"] == "equal, bit for bit"
+    assert drawn_verification(a_verification(compared=()))["a.b"].startswith("moved: max |difference| 1.000e-03")
+    nested = drawn_verification(a_verification(moved=("a: b: max |difference| 1.000e-03, first at step 2",),
+                                               compared=("a", "a: b")))
+    assert nested["a: b"].startswith("moved: max |difference|") and nested["a"] == "equal, bit for bit", \
+        "the longest label a line starts with is its own"
+
+
+@needs_pty
+def test_a_field_missing_or_reshaped_is_moved_and_no_tolerance_is_said_to_hold_it():
+    cells = drawn_verification(a_verification(moved=("a.b: missing or of another shape",), same_environment=False))
+    assert cells["a.b"] == "moved: missing or of another shape"
+    assert cells["a.c"] == "within rtol 1e-06, atol 1e-09"
+
+
+def test_a_verification_lists_every_field_it_compared_among_them_one_the_rerun_lacks_or_gave_in_another_shape(
+        monkeypatch):
+    """``compared`` is every field of the reference and of the rerun, the missing one too: a row for each."""
+    import numpy as np
+    from types import SimpleNamespace
+
+    from mime.saved import verify_history
+
+    monkeypatch.setattr("mime.saved._folder.environment_differences", lambda lock: [])
+    lock = {"reference": {"steps": 3, "rtol": 1e-6, "atol": 1e-9}}
+    reference = {"history/n/kept": np.zeros(3), "history/n/lost": np.zeros(3), "history/n/reshaped": np.zeros(3)}
+    form = SimpleNamespace(lock=lock, reference=reference)
+    history = {"n": {"kept": np.zeros(3), "reshaped": np.zeros((3, 2)), "extra": np.zeros(3)}}
+    report = verify_history(form, history)
+    assert report.compared == ("n.extra", "n.kept", "n.lost", "n.reshaped")
+    assert report.moved == ("n.extra: missing or of another shape", "n.lost: missing or of another shape",
+                            "n.reshaped: missing or of another shape")
 
 
 @needs_pty
@@ -200,19 +339,74 @@ def test_env_check_on_a_terminal_is_the_pins_against_what_is_installed_a_row_eac
         assert mime_main(["env", "check", "--variant", "cpu"]) == 0
         text = stripped(tty.transcript())
     assert holds_every_word_of(old_env_text(report), text)
+    rows = parsed_table(text, "distribution", "wanted", "found", "verdict", "pinned by")
+    assert rows == [["jax", "0.12.0", "0.12.0", "as pinned", "the cpu pins"],
+                    ["a-distribution-with-a-long-name", "2026.11.5.post1", "2026.11.5.post1", "as pinned", "the lab's pins"]]
     lines = text.splitlines()
-    head = next(line for line in lines if "distribution" in line and "verdict" in line)
-    rows = [line.split() for line in lines[lines.index(head) + 2:] if line.split()]
-    assert [row[:2] for row in rows[:2]] == [["jax", "0.12.0"], ["a-distribution-with-a-long-name", "2026.11.5.post1"]]
-    assert all("as" in row and "pinned" in row for row in rows[:2])
     own = report.text().splitlines()
     assert [line for line in lines if line.strip()][-len(own):] == own, "the report's own lines, one each, under the table"
     assert capsys.readouterr().out == ""
 
 
 @needs_pty
+def test_the_pins_table_puts_each_cell_in_its_column_and_says_what_each_row_says():
+    from mime.cli._display import show_environment
+
+    with terminal(columns=COLUMNS) as tty:
+        show_environment(an_env_report(rows=DIFFERING), tty.stream)
+        rows = parsed_table(stripped(tty.transcript()), "distribution", "wanted", "found", "verdict", "pinned by")
+    assert rows == [["numpy", "2.4.0", "2.3.5", "differs from the pin", "the cpu pins"],
+                    ["scipy", "1.16.0", "-", "not installed", "the lab's pins"],
+                    ["jax", "0.12.0", "0.12.0", "as pinned", "the pinned MIME wheel"]]
+
+
+def refusal_of_a_differing_environment() -> EnvRefused:
+    """What ``mime.env.check`` raises, built from the check's own two functions over an environment that differs in every
+    way a pinned distribution can: two at other versions, one missing, one pinned and right, and one nothing pins."""
+    expected = {"numpy": Expected("2.4.0", "the cpu pins"), "pandas": Expected("3.0.0", "the lab's pins"),
+                "scipy": Expected("1.16.0", "the lab's pins"), "jax": Expected("0.12.0", "the cpu pins")}
+    installed = {"numpy": ("2.3.5",), "pandas": ("2.9.0",), "jax": ("0.12.0",), "stray": ("1.0",)}
+    return EnvRefused(distribution_refusals(installed, expected),
+                      rows=[row for row in distribution_rows(installed, expected) if not row.agrees])
+
+
+@needs_pty
+def test_a_failing_env_check_on_a_terminal_opens_with_the_pins_that_differ_and_keeps_every_other_reason(
+        monkeypatch, capsys, tmp_path):
+    refusal = refusal_of_a_differing_environment()
+    monkeypatch.setenv("MIME_TRACEBACK_DIR", str(tmp_path))
+    monkeypatch.setattr(mime.env, "check", lambda *a, **k: (_ for _ in ()).throw(refusal))
+    with terminal(columns=COLUMNS) as tty:
+        monkeypatch.setattr(sys, "stderr", tty.stream)
+        assert mime_main(["env", "check", "--variant", "cpu"]) == 2
+        text = stripped(tty.transcript())
+    rows = parsed_table(text, "distribution", "wanted", "found", "verdict", "pinned by")
+    assert rows == [["numpy", "2.4.0", "2.3.5", "differs from the pin", "the cpu pins"],
+                    ["pandas", "3.0.0", "2.9.0", "differs from the pin", "the lab's pins"],
+                    ["scipy", "1.16.0", "-", "not installed", "the lab's pins"]], "only the distributions that differ"
+    assert capsys.readouterr().out == ""
+    for code in ("env.pin", "env.missing", "env.unpinned"):
+        assert f"docs for {code}:" in text, f"{code} keeps its block"
+    assert sum(line.strip(" │").startswith("numpy ") for line in text.splitlines()) == 1, "a row is not said twice"
+    stray = [line for line in text.splitlines() if line.strip(" │").startswith("stray")]
+    assert stray, "a reason the table does not hold keeps its row"
+    assert text.count("what to do:") == 3 and "2 installed distributions differ from their pins:" in text
+
+
+def test_a_failing_env_check_that_is_not_drawn_is_the_refusal_s_plain_text_with_no_table(monkeypatch, capsys, tmp_path):
+    refusal = refusal_of_a_differing_environment()
+    monkeypatch.setenv("MIME_TRACEBACK_DIR", str(tmp_path))
+    monkeypatch.setattr(mime.env, "check", lambda *a, **k: (_ for _ in ()).throw(refusal))
+    assert mime_main(["env", "check", "--variant", "cpu"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "the pins that differ" not in captured.err
+    assert all(code in captured.err for code in ("env.pin", "env.missing", "env.unpinned"))
+
+
+@needs_pty
 def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_row(tmp_path):
-    old = old_registry_text()
+    held = registry_entries_of_a_child(tmp_path)
+    old = old_registry_text(held)
     raw, code = in_child_on_a_terminal(tmp_path, "registry")
     text = stripped(raw)
     assert code == 0, text
@@ -220,17 +414,34 @@ def test_registry_on_a_terminal_is_one_table_grouped_by_kind_with_every_entry_a_
     once = "".join(line.split("  ", 1)[1] + "\n" if not line.startswith("not loaded:") else line + "\n"
                    for line in old.splitlines()) + "\n".join(kinds)
     assert holds_every_word_of(once, text), "every word, the kind once for its group and not again for each entry"
-    rows = [line.split() for line in text.splitlines() if line.strip()]
     for line in old.splitlines():
         if line.startswith("not loaded:"):
             assert line in text
-            continue
-        kind, name, version = line.split("  ")
-        assert any(name in row and version in row for row in rows), f"{line!r} has no row"
-        assert text.count(kind) >= 1
-    first_cells = [line[1:].lstrip() for line in text.splitlines() if line.strip()]
+    drawn: list[list[str]] = []
+    for kind, name, version, declares in parsed_table(text, "kind", "name", "version", "declares"):
+        if not name and drawn:  # a cell that wrapped: the rest of the row above
+            drawn[-1][3] += declares
+        else:
+            drawn.append([kind or drawn[-1][0], name, version, declares])
+    expected = [[e["kind"], e["name"], e["version"], "".join((", ".join(e["settings"]) or "-").split())]
+                for e in held["entries"]]
+    assert [[*row[:3], "".join(row[3].split())] for row in drawn] == expected, \
+        "every entry is a row of its kind, name, version and what it declares, in the order the plain output prints"
+    first_cells = [row[0] for row in parsed_table(text, "kind", "name", "version", "declares")]
     for kind in kinds:
-        assert sum(cell.startswith(kind + " ") for cell in first_cells) == 1, f"{kind} is named once, for its group"
+        assert first_cells.count(kind) == 1, f"{kind} is named once, for its group"
+    assert any(e["settings"] for e in held["entries"]), "the control: some entry declares settings, so that cell is read"
+
+
+@needs_pty
+def test_the_registry_table_puts_each_cell_in_its_column():
+    entries = [("geometry", "screw", "0.3.0", "pitch, radius"), ("geometry", "tube", "0.4.1", ""),
+               ("dynamics", "rigid_body", "1.2.0", "mass")]
+    with terminal(columns=COLUMNS) as tty:
+        show_registry(entries, {}, tty.stream)
+        rows = parsed_table(stripped(tty.transcript()), "kind", "name", "version", "declares")
+    assert rows == [["geometry", "screw", "0.3.0", "pitch, radius"], ["", "tube", "0.4.1", "-"],
+                    ["dynamics", "rigid_body", "1.2.0", "mass"]]
 
 
 @needs_pty

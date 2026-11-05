@@ -85,6 +85,8 @@ answer: a carriage return in every saved text file on Windows, a `ValueError` sh
   there to be exactly what it always was (`tests/cli/test_pipes.py`). What `mime` draws on a terminal (the progress
   line, a refusal's block, `--plain`) is tested on Linux and macOS through a pseudo-terminal
   (`tests/cli/test_terminal.py`, and `mime push` and `mime pull`'s plan, publish step, questions, site edit and file
-  progress in `tests/cli/test_push_display.py`); **Windows has no `pty` module, so those tests are skipped there** (`needs_pty`,
+  progress in `tests/cli/test_push_display.py`, and the tables of `mime verify`, `mime env check` and `mime registry` in
+  `tests/cli/test_command_tables.py`, whose two `mime verify` tests that assert "bit for bit" also skip where the CPU's flags
+  are unreadable, `needs_readable_cpu_flags`); **Windows has no `pty` module, so those tests are skipped there** (`needs_pty`,
   `tests/_platform_support.py`), and an interactive Windows console, which writes Unicode, was not run. Ctrl+C while
   `mime` imports is tested on POSIX only, by a SIGINT to a child (`needs_posix_sigint`).

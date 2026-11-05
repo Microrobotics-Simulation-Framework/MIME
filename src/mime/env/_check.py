@@ -29,7 +29,7 @@ from packaging.markers import default_environment
 from packaging.utils import canonicalize_name
 
 from mime._lock_json import read_lock
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.build import BuildRefused, BuildReport, Refusal, RefusalClass
 from mime.build._refusals import SUBJECT_NAME, Subject
 from mime.build._maddening import devices as devices_of_jax
 from mime.env._gpus import gpu_type, is_kind_of
@@ -159,6 +159,13 @@ class EnvRefused(BuildRefused):
     """Every way an environment differs from the one a run asked for, at once."""
 
     headline = "the environment is refused"
+
+    def __init__(self, refusals: Sequence[Refusal], report: BuildReport | None = None,
+                 rows: Sequence[DistributionRow] = ()) -> None:
+        #: The pinned distributions that are not installed as pinned, as :func:`distribution_rows` gives them (a terminal
+        #: draws them as a table of wanted, found and verdict).
+        self.rows = tuple(rows)
+        super().__init__(refusals, report)
 
 
 REBUILD = "rebuild the environment from the pinned requirements (`mime modal` writes a script that does)"
@@ -530,8 +537,9 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     seen: list[DeviceLike] = list(devices) if devices is not None else list(jax_devices())
     refusals += device_refusals(seen, requested)
     refusals += gpu_precision_refusals(recorded, requested)
+    rows = distribution_rows(found, expected)
     if refusals:
-        raise EnvRefused(refusals)
+        raise EnvRefused(refusals, rows=[row for row in rows if not row.agrees])
     config = cast(Any, jax.config)
     if x64 is not None:
         config.update("jax_enable_x64", x64)
@@ -546,7 +554,7 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
                      config.jax_default_matmul_precision, cache,
                      fingerprint() if installed is None else "not read (the distributions were given)", runner,
                      held_base, str(lab) if lab is not None else None, mime_version, held_modules is not None,
-                     distribution_rows(found, expected))
+                     rows)
 
 
 __all__ = ["AS_PINNED", "DISTRIBUTION", "INSTALLERS", "DistributionRow", "EnvRefused", "EnvReport", "System",
