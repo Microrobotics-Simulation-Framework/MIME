@@ -110,6 +110,35 @@ def stationarity(x, point, nu, epsilon, starts, radius):
     return np.array([residual @ along_theta / radius ** 2, residual @ along_zeta / radius])
 
 
+#: How many unit roundoffs of its scale ``stationarity`` may remain at (``stationarity_floor``): the largest excess over
+#: one that 6,900 draws gave, the strategy's corner (|nu| near 4, the smallest radius, the farthest point) among them, was
+#: 1.5, so the factor leaves a margin of ten.
+STATIONARITY_ROUNDINGS = 16
+UNIT_ROUNDOFF = float(np.finfo(float).eps) / 2
+
+
+def stationarity_floor(x, nu, epsilon, radius, distance) -> float:
+    """What ``stationarity`` can remain at when the solve has done all it can, from the evaluation's own rounding: a unit
+    roundoff times three factors, with no part of its own (each is at least one).
+
+    - ``(1 + |nu|)^2 (1 + epsilon)^2``: the stationarity's change per unit change of the coordinate along the axis,
+      about ``1 + nu^2 rho^2 / R^2``; the solve cannot place ``x[1]`` closer than the spacing of floats at its size, so
+      it stops at that change.
+    - ``max(1, |x[1]|, |alpha|)``: the size of the numbers it rounds: the coordinate along the axis, and the turn
+      ``alpha = theta + nu (zeta + L / 2) / R``, at most ``|theta| + |nu| (|x[1]| + L / 2R)``. The turn's rounding
+      swings the surface point about the axis by as much, and the stationarity's change per unit turn is at most the
+      tangents' product.
+    - ``1 + d / R``: the length of the residual, in radii, which that swing moves along the tangents. ``distance`` is
+      ``d``, in metres.
+
+    Judged this way, the corner of the strategy (nu near -4, the radius near 5e-4, the point near the end of the
+    length and three radii out, where ``|x[1]|`` is about 21) is not mistaken for a failure of the solve: an absolute
+    1e-13 was exceeded by about 2% of its draws."""
+    turn = abs(x[0]) + abs(nu) * (abs(x[1]) + L / 2 / radius)
+    scale = (1 + abs(nu)) ** 2 * (1 + epsilon) ** 2 * (1 + distance / radius) * max(1.0, abs(x[1]), turn)
+    return STATIONARITY_ROUNDINGS * UNIT_ROUNDOFF * scale
+
+
 def brute_force(point, nu, epsilon, starts, radius=R) -> float:
     """The signed distance from ``point`` to the unbounded screw: the nearest of a 720 x 721 grid of the surface over
     three radii either side of the point's cross-section, refined by BFGS, then solved to the stationarity conditions
@@ -132,12 +161,17 @@ def brute_force(point, nu, epsilon, starts, radius=R) -> float:
     arguments = (point, nu, epsilon, starts, radius)
     solved = root(stationarity, seed.x, args=arguments, method="hybr", tol=1e-15)
     nearest = squared(solved.x)
-    # the solve moves the seed a hair (BFGS's bias) and does not leave its basin, nor end on a saddle or a maximum: it
-    # is not nearer by the seed's rounding (the residual's, about 4e-16 radii, twice the distance) and it is stationary
-    # to that rounding, in radii, the tangents a few radii long. Its own success flag is not asked: it reports "not
-    # making good progress" once the solve has reached that rounding
-    assert nearest <= seed.fun * (1 + 1e-9) + 1e-15 * math.sqrt(seed.fun) + 1e-30, (seed.x, seed.fun, solved.x, nearest)
-    assert np.max(np.abs(stationarity(solved.x, *arguments))) <= 1e-13, stationarity(solved.x, *arguments)
+    # the solve moves the seed a hair (BFGS's bias) and does not leave its basin, nor end on a saddle or a maximum: its
+    # distance has not risen above the seed's, beyond the rounding of a residual (each of its three components is a
+    # difference of numbers of the point's or the surface's size, rounded at most twice, so the distance, in radii,
+    # moves by at most four unit roundoffs of that size), and it is stationary to the evaluation's own rounding. Its own
+    # success flag is not asked: it reports "not making good progress" once the solve has reached that rounding
+    size = max(1.0, abs(solved.x[1]), float(np.max(np.abs(point))) / radius, 1 + epsilon)
+    assert math.sqrt(nearest) <= math.sqrt(seed.fun) * (1 + 5e-10) + 4 * UNIT_ROUNDOFF * size, \
+        (seed.x, seed.fun, solved.x, nearest)
+    found = np.max(np.abs(stationarity(solved.x, *arguments)))
+    floor = stationarity_floor(solved.x, nu, epsilon, radius, math.sqrt(nearest) * radius)
+    assert found <= floor, (found, floor, stationarity(solved.x, *arguments))
     across = math.atan2(point[2], point[1]) - nu * (point[0] + L / 2) / radius
     inside = math.hypot(point[1], point[2]) < radius * (1 + epsilon * math.sin(starts * across))
     return (-1.0 if inside else 1.0) * math.sqrt(nearest) * radius
@@ -155,6 +189,11 @@ def screw(nu, epsilon, starts, radius=R):
 # 6e-11 m (3e-8 radii) inside the surface: the oracle's BFGS on the squared distance stopped 7e-9 radians short, 6% of
 # the distance off, where the screw's value (-5.88352562e-11 m, from a 60-digit solve) was right
 @example(nu=5.08e-07, epsilon=0.0625, starts=2, radius=0.001953125, across=1.0, angle=0.0, along=-0.625)
+# the corner of the strategy (|nu| near 4, radius near 5e-4, a point near the end of the length and three radii out),
+# where an absolute 1e-13 on the stationarity was exceeded by about 2% of the draws: the rounding of its numbers, up to 21
+# radii long and turned 80 radians
+@example(nu=-3.915023864900873, epsilon=0.42663211825561725, starts=2, radius=0.000530892216212288,
+         across=2.7548954049342114, angle=4.019461499491126, along=0.9880332153980829)
 def test_the_screws_distance_is_the_brute_force_minimums(nu, epsilon, starts, radius, across, angle, along):
     point = np.array([along * L, across * radius * math.cos(angle), across * radius * math.sin(angle)])
     expected = brute_force(point, nu, epsilon, starts, radius)
@@ -166,10 +205,31 @@ def test_the_screws_distance_is_the_brute_force_minimums(nu, epsilon, starts, ra
 def test_the_distance_oracle_resolves_a_point_a_hair_from_the_surface(offset):
     """The control for the oracle: with no modulation the screw is a circular cylinder, whose signed distance is
     exact, ``hypot(y, z) - radius``. The oracle returns it within 1e-9 radii at an offset of 3e-8 radii, where BFGS on
-    the squared distance alone, with finite-difference gradients, was off by 1e-8 radii or more."""
+    the squared distance alone, with finite-difference gradients, was off by 2.6e-9 radii (1.3e-8 on the surface), and
+    failed this bound at three of the eight offsets."""
     radius, point = 1.56e-3, np.array([0.3 * L, 0.0, 0.0])
     point[1:] = (radius * (1 + offset)) * np.array([math.cos(0.7), math.sin(0.7)])
     assert abs(brute_force(point, 1.3, 0.0, 3, radius) - radius * offset) <= 1e-9 * radius
+
+
+@pytest.mark.parametrize("offset", [-3e-8, 3e-8, 1e-7])
+@pytest.mark.parametrize(("nu", "epsilon", "starts"), [(2.33, 0.33, 2), (-3.7, 0.45, 3), (1.1, 0.2, 4)])
+def test_the_distance_oracle_resolves_a_point_a_hair_from_a_modulated_surface(nu, epsilon, starts, offset):
+    """The control for the oracle's modulation terms, which the cylinder's has none of: a point ``offset`` radii from
+    the surface along its normal (from central differences of the surface, independent of the oracle's tangents) is
+    ``offset`` radii from it, and the oracle returns that within 1e-9 radii. The squared-distance BFGS alone, with
+    finite-difference gradients, was off by 1.7e-9 to 2.3e-7 radii at the worst of six feet in each of these nine cases
+    and failed this bound at eight of them (measured against the oracle it replaced)."""
+    radius, step = 1.56e-3, 1e-5
+    rng = np.random.default_rng(5)
+    for theta, zeta in zip(rng.uniform(0, 2 * np.pi, 6), rng.uniform(-3, 3, 6) * radius + rng.uniform(-0.5, 0.5, 6) * L):
+        def foot(t, z):
+            return surface(t, z, nu, epsilon, starts, radius)
+        along_theta = (foot(theta + step, zeta) - foot(theta - step, zeta)) / (2 * step)
+        along_zeta = (foot(theta, zeta + step * radius) - foot(theta, zeta - step * radius)) / (2 * step * radius)
+        normal = np.cross(along_theta, along_zeta)
+        point = foot(theta, zeta) + offset * radius * normal / np.linalg.norm(normal)
+        assert abs(abs(brute_force(point, nu, epsilon, starts, radius)) - abs(offset) * radius) <= 1e-9 * radius
 
 
 def test_the_02_lines_surface_points_moved_half_its_length_lie_on_the_screw():
