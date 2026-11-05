@@ -199,6 +199,11 @@ loads it).
   known at a chunk's last step, so it is "raised **by** step N", the end of the chunk it was first seen at; one raised and
   gone again inside a chunk is not seen. The last chunk is not announced, so the run folder's writing (which can take
   longer than a chunk) shows as "finishing the last chunk, then writing the run folder".
+- **The same display in a notebook** (Jupyter, Colab): `built.run`, `built.run_to` and `built.save` started in the
+  notebook's own Python draw it through rich's notebook rendering (`python_display`, `Watch`), since Colab's output
+  for a `!mime run` cell ignores cursor-up and stacks a line at every redraw of a display two lines tall. It is drawn
+  again at each chunk as well as on its own clock, and `run_to` shows a phase while it writes the run folder.
+  `progress=False` turns it off; outside IPython the default asks nothing and runs as it always ran.
 - **The end of a run** leads with what needs attention (a stopped run, flags raised, post-run watches above their range or that could not be checked (no range declared, an input missing),
   the validity lines the build computed, MADDENING's warnings counted, the profile's pending items counted, an
   environment unlike the lock's), says what ran and how the time went, shows the first readings, the files written and

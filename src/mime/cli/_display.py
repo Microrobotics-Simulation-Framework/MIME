@@ -9,7 +9,11 @@ gets what it always got. Colour never carries a meaning the words do not.
 ``rich`` is imported inside the functions that draw, so a command that draws nothing (``mime --help``, anything piped)
 never loads it. Everything that reaches a terminal here is text from outside made plain first
 (:func:`mime._terminal.for_terminal`) and drawn as :class:`rich.text.Text`, never as markup, so a name with brackets or
-an escape in it is only text."""
+an escape in it is only text.
+
+In a notebook (Jupyter, Colab), a run started from the notebook's own Python (``built.run``, ``run_to``, ``built.save``)
+shows ``mime run``'s display drawn through the notebook (:func:`python_display`, :class:`Watch`): Colab's output for a
+``!mime run`` cell ignores cursor-up, so a live display two lines tall stacks a line at every redraw there."""
 
 from __future__ import annotations
 
@@ -55,6 +59,7 @@ if TYPE_CHECKING:
     from rich.console import Console
     from rich.live import Live
 
+    from mime.control import Progress, StopRequest
     from mime.live import ServeState
 
     from mime.build import MimeError, Refusal
@@ -164,19 +169,38 @@ def _line(line: str, style: str = "") -> Any:
 class RunDisplay:
     """The live line of ``mime run``: a spinner naming the phase while the experiment loads, builds and compiles, then the
     bar, the steps, the simulated time, the speed, the time remaining (an estimate), the flags raised so far and how to
-    stop. It is drawn about four times a second whatever the run's speed; the run only stores its numbers into it."""
+    stop. It is drawn about four times a second whatever the run's speed; the run only stores its numbers into it.
 
-    def __init__(self, stream: IO[str]) -> None:
+    ``console`` draws it somewhere other than ``stream``'s terminal: a notebook's (:func:`notebook_console`), where it is
+    drawn through the notebook's own output and the standard streams are left as they are. ``stop`` is how to stop the
+    run, as the display says it; ``eager`` draws it again at once at each change of phase and each chunk (a run started
+    from Python, whose display a test reads), as well as four times a second."""
+
+    def __init__(self, stream: IO[str], *, console: Console | None = None, stop: str = "Ctrl+C to stop",
+                 eager: bool = False) -> None:
         from rich.live import Live
 
         self._stream = stream
-        self._console = _console(stream)
+        self._console = console if console is not None else _console(stream)
+        self._stop = stop
+        self._eager = eager
         self._phase = ""
         self._phase_started = time.perf_counter()
         self.state: RunState | None = None
+        redirect = console is None or not console.is_jupyter
         self._live = Live(self, console=self._console, refresh_per_second=4, transient=True,
-                          redirect_stdout=_shares_a_terminal(sys.stdout, stream), redirect_stderr=True)
+                          redirect_stdout=redirect and _shares_a_terminal(sys.stdout, stream), redirect_stderr=redirect)
         self._running = False
+
+    @property
+    def phase_text(self) -> str:
+        """The phase the spinner names, where it is shown (no run's progress, or the run's first chunk not ended)."""
+        return self._phase
+
+    @property
+    def shown(self) -> bool:
+        """Whether the display is on the screen."""
+        return self._running
 
     def phase(self, text: str) -> None:
         """Name what is under way (a spinner and the seconds it has taken), starting the display if it is stopped."""
@@ -185,6 +209,7 @@ class RunDisplay:
         if not self._running:
             self._running = True
             self._live.start()
+        self._eagerly()
 
     def running(self, state: RunState) -> None:
         """From here the display shows the run's progress; until its first chunk ends it says it is compiling."""
@@ -193,6 +218,15 @@ class RunDisplay:
         if not self._running:
             self._running = True
             self._live.start()
+        self._eagerly()
+
+    def refresh(self) -> None:
+        """Draw it again now, where it is eager and on the screen (a chunk ended)."""
+        self._eagerly()
+
+    def _eagerly(self) -> None:
+        if self._eager and self._running:
+            self._live.refresh()
 
     def pause(self) -> None:
         """Take the display off the screen (before something is printed in its place)."""
@@ -227,7 +261,7 @@ class RunDisplay:
             yield Spinner("dots" if unicode else "line",
                           text=_text(f"{self._phase}  ({duration_text(now - self._phase_started)})"))
             if state is not None:
-                yield _text("Ctrl+C to stop", "dim")
+                yield _text(self._stop, "dim")
             return
         assert state is not None
         grid = Table.grid(padding=(0, 1))
@@ -236,7 +270,75 @@ class RunDisplay:
         grid.add_row(ProgressBar(total=state.steps_asked, completed=state.steps, width=28), _text(state.head()))
         yield grid
         yield _text(state.estimate_line(now), "dim")
-        yield _text(state.flags_line(), "dim")
+        yield _text(state.flags_line(self._stop), "dim")
+
+
+#: How a run started from Python is stopped, where ``mime run`` says "Ctrl+C to stop": an interrupt ends it between two
+#: chunks and nothing of it is kept (``built.run``'s docstring: build the experiment again after one).
+NOTEBOOK_STOP = "interrupt the kernel to stop (nothing of the run is kept)"
+TERMINAL_STOP = "Ctrl+C to stop (nothing of the run is kept)"
+#: The phase of ``run_to`` while it writes the run folder, most of it the run's saved form, whose reference steps are run
+#: on a graph built and compiled afresh: about ten seconds on a laptop, up to two minutes on Colab.
+SAVING_RUN = "saving the run folder: building, compiling and running its reference steps"
+#: The phase of ``built.save``, for the same work.
+SAVING = "saving the experiment: building, compiling and running its reference steps"
+
+
+def notebook_console() -> Console | None:
+    """A console that draws through the notebook this Python runs in (Jupyter, Colab: rich's own detection), or ``None``
+    outside one."""
+    from rich.console import Console
+
+    console = Console(highlight=False, markup=False, emoji=False)
+    return console if console.is_jupyter else None
+
+
+def python_display(progress: bool | None) -> RunDisplay | None:
+    """The display of a run started from Python (``built.run``, ``run_to``, ``built.save``): in a notebook, drawn
+    through it unless ``progress`` is ``False``; with ``progress=True`` also on a terminal, by ``mime run``'s rules (on
+    standard error, where it is a terminal and not asked to be plain, :func:`styled`); anywhere else none."""
+    if progress is False:
+        return None
+    console = notebook_console()
+    if console is not None:
+        return RunDisplay(console.file, console=console, stop=NOTEBOOK_STOP, eager=True)
+    if progress and styled(sys.stderr):
+        return RunDisplay(sys.stderr, stop=TERMINAL_STOP, eager=True)
+    return None
+
+
+class Watch:
+    """A run started from Python as its display follows it, the ``stop=`` of ``mime run``'s ``_watched`` for the Python
+    API: :meth:`stop` tells the display where each chunk ended (and, no oftener than a few times a second, which flags
+    are raised there) and then asks the caller's own ``stop``, whose answer it returns. It reads, and changes neither
+    the chunks nor anything the run computes."""
+
+    def __init__(self, display: RunDisplay, steps_asked: int, dt: float, flags: Callable[[], Sequence[str]],
+                 asked: StopRequest | None, *, finishing: str | None = None) -> None:
+        self.display = display
+        self.state = RunState(steps_asked, dt, time.perf_counter())
+        if finishing is not None:
+            self.state.finishing = finishing
+        self._poll = FlagPoll(flags)
+        self._asked = asked
+        display.running(self.state)
+
+    def stop(self, progress: Progress) -> str | None:
+        now = time.perf_counter()
+        self.state.chunk(self.state.steps_asked - (progress.end - progress.steps), now, self._poll(now))
+        self.display.refresh()
+        return self._asked(progress) if self._asked is not None else None
+
+    def ended(self, steps: int) -> None:
+        """The run returned at ``steps`` from its start (``stop`` is not asked after the last chunk)."""
+        if steps > self.state.steps:
+            self.state.chunk(steps, time.perf_counter())
+        self.display.refresh()
+
+    def saving(self, steps: int) -> None:
+        """The run returned at ``steps``, and the run folder is being written."""
+        self.ended(steps)
+        self.display.phase(SAVING_RUN)
 
 
 #: How often the live view of ``mime serve`` is drawn (seconds): about four a second whatever the frame rate.

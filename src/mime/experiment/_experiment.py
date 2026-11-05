@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 import math
 import re
@@ -107,6 +108,7 @@ from mime.validity import DEFAULT_PROFILE, Basis, Profile
 from mime.vocabulary import JOINT_VELOCITIES
 
 if TYPE_CHECKING:
+    from mime.cli._display import RunDisplay, Watch
     from mime.live import LiveSession
     from mime.viz import RecordingSettings, StageSamples, WebPage
 
@@ -701,6 +703,17 @@ def _not_writable(folder: Path, error: OSError) -> BaseException:
     return standing_for(refused, error) or error
 
 
+def _python_display(progress: bool | None) -> RunDisplay | None:
+    """MIME's live display for a run, a ``run_to`` or a save started from Python (``mime.cli._display.python_display``),
+    or ``None``. Outside IPython, the default asks nothing more: rich's own test of a notebook begins with IPython's
+    ``get_ipython``, so a script or a terminal goes the way it always went, and loads no display."""
+    if progress is False or (progress is None and not hasattr(builtins, "get_ipython")):
+        return None
+    from mime.cli._display import python_display
+
+    return python_display(progress)
+
+
 def _whole_run(tally: FlagTally | None, index: int) -> FlagWhole | None:
     """The ``index``-th flag's reduction over the run's steps, or ``None`` for a run that reduced none."""
     if tally is None:
@@ -847,7 +860,8 @@ class BuiltExperiment:
     @public
     def run(self, duration: Quantity, *, history: bool = False,
             record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
-            hook: ChunkHook | None = None, chunk: Quantity | None = None, stop: StopRequest | None = None) -> RunResult:
+            hook: ChunkHook | None = None, chunk: Quantity | None = None, stop: StopRequest | None = None,
+            progress: bool | None = None) -> RunResult:
         """Run for ``duration``, a whole number of base steps, in compiled chunks, between which Python regains control
         (a ``KeyboardInterrupt`` arrives there, and a ``stop`` is asked). With a controller they are its control
         periods, with the controller called between them. ``hook`` is called after every chunk with a
@@ -867,7 +881,35 @@ class BuiltExperiment:
         run that records nothing keeps no step's state, and reduces each flag over its steps as it runs (how many raised
         it, the first and the last), so a flag raised at any step is known. ``history`` keeps
         every field at every step, and with it every per-step output is recorded. ``every`` spaces the samples kept
-        and does not reduce the cost of recording, which is the whole state's history per step whatever is kept."""
+        and does not reduce the cost of recording, which is the whole state's history per step whatever is kept.
+
+        ``progress`` shows ``mime run``'s live display. The default, ``None``, shows it in a notebook (Jupyter, Colab:
+        rich's own detection), drawn through the notebook, and nowhere else; ``True`` shows it on a terminal too, as
+        ``mime run`` does (on standard error, where that is a terminal not asked to be plain); ``False`` never. It is
+        drawn from ``stop``'s place after each chunk, the caller's own ``stop`` asked after it and its answer kept; it
+        reads where each chunk ended and the flags raised there, and changes neither the chunks nor anything the run
+        computes."""
+        display = _python_display(progress)
+        if display is None:
+            return self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk, stop=stop)
+        try:
+            watch = self._watch(display, duration, stop, finishing="finishing the last chunk")
+            result = self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk,
+                               stop=watch.stop)
+            watch.ended(result.steps)
+            return result
+        finally:
+            display.close()
+
+    def _watch(self, display: RunDisplay, duration: Quantity, stop: StopRequest | None, *,
+               finishing: str | None = None) -> Watch:
+        from mime.cli._display import Watch
+
+        return Watch(display, self.steps_in(duration), self._plans.dt, self.raised_flags, stop, finishing=finishing)
+
+    def _run(self, duration: Quantity, *, history: bool, record: Sequence[OutputRef | ObservationHandle | str],
+             every: Quantity | None, hook: ChunkHook | None, chunk: Quantity | None,
+             stop: StopRequest | None) -> RunResult:
         steps = self.steps_in(duration)
         recorded = self._recording(record)
         if every is not None and not (recorded or history):
@@ -1030,7 +1072,8 @@ class BuiltExperiment:
                record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
                source: str | PathLike[str] | None = None, load_seconds: float | None = None,
                hook: ChunkHook | None = None, chunk: Quantity | None = None,
-               stage_every: Quantity | None = None, stop: StopRequest | None = None) -> RunWritten:
+               stage_every: Quantity | None = None, stop: StopRequest | None = None,
+               progress: bool | None = None) -> RunWritten:
         """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
         last step, with ``history`` at every step, the series ``record`` names, one every ``every``, and the flags at
         every step when anything is recorded), ``outputs.json`` beside it (its manifest: every output with its unit,
@@ -1050,7 +1093,29 @@ class BuiltExperiment:
         ``recording.usdc``: the bound prims' poses and vectors (:meth:`binding`) over the folder's own stage, at the
         run's start and every ``stage_every`` after it, a whole number of chunks (the run is chunked for it, which
         changes nothing it computes, and keeps no step's state). ``topology.json`` is written beside the outputs, and
-        ``report.json``, the build report's summary (:meth:`report_summary`), beside ``run.json``."""
+        ``report.json``, the build report's summary (:meth:`report_summary`), beside ``run.json``.
+
+        ``progress`` shows the live display as :meth:`run` does, and after the run, while the folder is written, a
+        phase saying so: the run's saved form runs its reference steps on a graph built and compiled afresh, which on
+        Colab takes a minute or two."""
+        display = _python_display(progress)
+        if display is None:
+            return self._run_to(out, duration, history=history, record=record, every=every, source=source,
+                                load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
+                                stop=stop, watch=None)
+        try:
+            watch = self._watch(display, duration, stop)
+            return self._run_to(out, duration, history=history, record=record, every=every, source=source,
+                                load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
+                                stop=watch.stop, watch=watch)
+        finally:
+            display.close()
+
+    def _run_to(self, out: str | PathLike[str], duration: Quantity, *, history: bool,
+                record: Sequence[OutputRef | ObservationHandle | str], every: Quantity | None,
+                source: str | PathLike[str] | None, load_seconds: float | None, hook: ChunkHook | None,
+                chunk: Quantity | None, stage_every: Quantity | None, stop: StopRequest | None,
+                watch: Watch | None) -> RunWritten:
         import time
 
         started = time.perf_counter()
@@ -1060,7 +1125,7 @@ class BuiltExperiment:
         samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:
             result = self.run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk,
-                              stop=stop)
+                              stop=stop, progress=False)
         except RunFailed as error:
             if not isinstance(error.result, RunResult):
                 raise
@@ -1068,9 +1133,11 @@ class BuiltExperiment:
             # outputs are what there is to look at.
             failed, result = error, error.result
         ran = time.perf_counter()
+        if watch is not None:
+            watch.saving(result.steps)
         target = Path(out)
         target.mkdir(parents=True, exist_ok=True)
-        self.save(target / RUN_EXPERIMENT)
+        self.save(target / RUN_EXPERIMENT, progress=False)
         np.savez(target / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
         manifest = result.manifest()
         refused = failed.refusals[0].message if failed is not None else None
@@ -1173,11 +1240,24 @@ class BuiltExperiment:
         return {node: {name: value[:steps] for name, value in fields.items()} for node, fields in stacked.items()}
 
     @public
-    def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS) -> Lock:
+    def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS, progress: bool | None = None) -> Lock:
         """Write the document, the lock, the scene (``scene/scene.usda`` and the asset layers it references, under
         ``scene/layers/``) and the reference outputs (every field over the first ``steps`` steps, run from the
         initial state on a fresh graph) into ``folder``. Raises ``BuildRefused`` when the experiment cannot
-        be saved: a setting the document cannot hold, or an entry a load elsewhere could not find."""
+        be saved: a setting the document cannot hold, or an entry a load elsewhere could not find. ``progress`` shows
+        the live display's phase while it saves, as :meth:`run` decides where (in a notebook, by default)."""
+        display = _python_display(progress)
+        if display is None:
+            return self._save(folder, steps)
+        from mime.cli._display import SAVING
+
+        try:
+            display.phase(SAVING)
+            return self._save(folder, steps)
+        finally:
+            display.close()
+
+    def _save(self, folder: str | PathLike[str], steps: int) -> Lock:
         path = Path(folder)
         try:
             lock = write_folder(path, self.record, self._fresh_history(steps), steps)

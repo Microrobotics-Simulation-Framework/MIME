@@ -57,8 +57,9 @@ dependencies = [
     # files with it. pooch already depends on it. A licence is checked as an SPDX expression by its `packaging.licenses`,
     # which arrived in 24.2.
     "packaging>=24.2",
-    # `mime run` on a terminal shows its progress, a refusal and its summary through rich (MIT); one module,
-    # `mime.cli._display`, imports it, and only when the output is a terminal. Piped output never loads it.
+    # `mime run` on a terminal shows its progress, a refusal and its summary through rich (MIT), and a run started in a
+    # notebook its progress; one module, `mime.cli._display`, imports it, and only when the output is a terminal or a
+    # notebook. Piped output never loads it.
     "rich>=13.9",
 ]
 
