@@ -13,14 +13,16 @@ merged. The control: the notebook with its drag's weights left out is refused at
 
 **A cell run twice** (``mime.experiment._redeclared``), in a notebook as IPython marks one: every cell after the one
 that makes the experiment, run again as it is, declares the same experiment, each declaration kept once with a note;
-A's cells with a model swapped as their comments say replace the drag and the wall; A's field cell run again with its
-frequency changed is refused at the build, saying a cell has probably run twice, since the torque names the field. The
-notebooks still pin the released MIME, which refuses a cell run twice, so their own words about it change with the
-release that ships this."""
+A's cells with a model swapped as their comments say replace the drag and the wall; A's field cell run again with a new
+strength replaces the apparatus, the torque law that names it follows it, and the run records the new strength's torque
+(the same as a notebook that declared it from the top, and not the old); the tube's cell and the robot's likewise. In a
+script the same field cell is still refused at the build. The notebooks still pin the released MIME, which refuses a
+cell run twice, so their own words about it change with the release that ships this."""
 
 import builtins
 import importlib.util
 import json
+import os
 import re
 import warnings
 from collections.abc import Mapping
@@ -31,6 +33,7 @@ import numpy as np
 import pytest
 import tube_asset
 
+import mime.experiment._redeclared as redeclared
 from mime._notebook import RAN_TWICE, RUN_AGAIN
 from mime.build import BuildRefused
 
@@ -218,7 +221,7 @@ def test_tutorial_as_swap_lines_run_in_a_notebook_replace_the_earlier_model(firs
     setup, _ = split_at_run(read_notebook("tutorial_a.ipynb"))
     namespace = declared(setup)
     notes = run_again([swapped(cell_holding(setup, first), first)], namespace)
-    assert f"exp.attach(...) declares {law} again, not the same as before: in a notebook the last one run wins, so " \
+    assert f"exp.attach(...) declares {law} again, not the same as before: in a notebook or IPython the last one run wins, so " \
            f"it replaces the earlier one" in notes
     held = [entry for entry in namespace["experiment"].document()["interactions"] if entry["id"] == law]
     family, which = replaced
@@ -226,28 +229,118 @@ def test_tutorial_as_swap_lines_run_in_a_notebook_replace_the_earlier_model(firs
     assert which in (held[0].get("settings", {}).get("rung"), held[0]["version"])
 
 
-@pytest.mark.parametrize("place", ["script", "notebook"])
-def test_tutorial_as_field_cell_run_again_changed_is_refused_in_a_notebook_saying_a_cell_ran_twice(place, request):
-    """The torque names the field, so a field changed in a notebook is not put in place of the earlier one: both are
-    kept and refused, in a notebook's words there and in a script's words in a script."""
-    if place == "notebook":
-        request.getfixturevalue("notebook")
+def recorded_torque(namespace: dict[str, Any], run: str, folder: Path) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    """The run cell's short run (the notebook's, with ``run_time`` shortened) in ``folder``: the torque on the robot and
+    the drive's amplitude it recorded, the two that depend on the field's strength."""
+    namespace["run_time"] = SHORT_RUN_S
+    folder.mkdir()
+    previous = Path.cwd()
+    os.chdir(folder)
+    try:
+        with pytest.warns(UserWarning, match="Reynolds number"):
+            exec(compile(run, "<the run cell>", "exec"), namespace)
+        history = namespace["run"].result.history
+        return (np.asarray(history["magnetic.torque:robot"]["wrench"]),
+                np.asarray(history["drive:field.amplitude"]["value"]))
+    finally:
+        os.chdir(previous)
+
+
+def natural_edit_problems(folder: Path) -> list[str]:
+    """The natural edit: change ``field_strength``, run the field cell again, then the run cell. The apparatus is
+    replaced; the note names the law that follows it; the run records the new strength's torque, the same as a notebook
+    that declared 2.4 from the top, and not the old (the field's amplitude is 2.4 mT in the run's record)."""
+    setup, run = split_at_run(read_notebook("tutorial_a.ipynb"))
+    old = recorded_torque(declared(setup), run, folder / "old")
+    namespace = declared(setup)
+    namespace["field_strength"] = 2.4
+    notes = run_again([cell_holding(setup, "experiment.add_apparatus(")], namespace)
+    changed = [note for note in notes if "declares the apparatus 'field' again, not the same as before" in note]
+    problems: list[str] = []
+    if not (len(changed) == 1 and changed[0].endswith("what holds its name now finds the new one: the law "
+                                                       "magnetic.torque:robot")):
+        problems.append(f"the note is {notes}")
+    namespace["experiment"].plan()
+    new = recorded_torque(namespace, run, folder / "new")
+    from_the_top = declared([source.replace("field_strength = 1.2 ", "field_strength = 2.4 ") for source in setup])
+    assert from_the_top["field_strength"] == 2.4
+    fresh = recorded_torque(from_the_top, run, folder / "fresh")
+    if not (np.allclose(new[1], 2.4e-3) and np.allclose(old[1], 1.2e-3)):
+        problems.append("the run's recorded amplitude is not 2.4 mT after the edit and 1.2 mT before")
+    if not all(np.array_equal(a, b) for a, b in zip(new, fresh, strict=True)):
+        problems.append("the run does not record what a notebook that declared 2.4 from the top records")
+    if np.array_equal(new[0], old[0]):
+        problems.append("the run records the old strength's torque")
+    return problems
+
+
+def test_tutorial_as_field_cell_run_again_with_a_new_strength_in_a_notebook_runs_with_the_new_one(notebook, tmp_path):
+    assert natural_edit_problems(tmp_path) == []
+
+
+def test_tutorial_as_field_cell_run_again_under_a_filter_that_ignores_warnings_still_shows_in_the_plan_and_report(notebook):
+    """A notebook whose first cell silences warnings: the replacement and the law that follows it are on the plan and in
+    the build report, and the saved form is the one an experiment declared with the new strength holds."""
     setup, _ = split_at_run(read_notebook("tutorial_a.ipynb"))
     namespace = declared(setup)
-    namespace["field_turns_per_second"] = 20.0
-    with warnings.catch_warnings(record=True) as noted:
+    namespace["field_strength"] = 2.4
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        exec(compile(cell_holding(setup, "experiment.add_apparatus("), "<the field cell, run again>", "exec"), namespace)
+    experiment = namespace["experiment"]
+    (note,) = experiment.plan().replaced
+    assert "declares the apparatus 'field' again" in note and note.endswith("the law magnetic.torque:robot")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = experiment.build().report
+    assert note in report.text()
+    from_the_top = declared([source.replace("field_strength = 1.2 ", "field_strength = 2.4 ") for source in setup])
+    assert experiment.document() == from_the_top["experiment"].document()
+
+
+def test_control_a_re_bind_that_keeps_the_old_apparatus_fails_the_natural_edit_every_run(notebook, tmp_path, monkeypatch):
+    """The note says it replaced; the earlier apparatus stays, so the run keeps its parameters under the new name."""
+    def keeps_the_old_one(held, earlier, declaration, known, name, replaced):
+        warnings.warn(f"{known.call} declares {known.noun} again, not the same as before: in a notebook or IPython the "
+                      f"last one run wins, so it replaces the earlier one", UserWarning)
+
+    monkeypatch.setattr(redeclared, "_replace_thing", keeps_the_old_one)
+    assert natural_edit_problems(tmp_path)
+
+
+def test_tutorial_as_field_cell_run_again_changed_is_refused_in_a_script_at_the_build():
+    """The script path is unchanged: both apparatus are kept, with no note, and the build refuses the two in a script's
+    words."""
+    setup, _ = split_at_run(read_notebook("tutorial_a.ipynb"))
+    namespace = declared(setup)
+    namespace["field_strength"] = 2.4
+    with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         exec(compile(cell_holding(setup, "experiment.add_apparatus("), "<the field cell, changed>", "exec"), namespace)
-    notes = [str(note.message) for note in noted]
-    kept = [note for note in notes if re.search(r"declares the apparatus 'field' again, not the same as before, and "
-                                                r"magnetic\.torque:robot names the earlier one: .* so both are kept and "
-                                                r"the build will refuse them", note)]
-    assert len(kept) == (1 if place == "notebook" else 0), notes
+    assert not [note for note in caught if "not the same as before" in str(note.message)]
     with pytest.raises(BuildRefused) as refused:
         namespace["experiment"].plan()
     held = [refusal for refusal in refused.value.refusals if refusal.code == "thing.duplicate"]
-    assert held
-    if place == "notebook":
-        assert all(refusal.message.endswith(RAN_TWICE) and refusal.action == RUN_AGAIN for refusal in held)
-    else:
-        assert all(RAN_TWICE not in refusal.message and refusal.action != RUN_AGAIN for refusal in held)
+    assert held and all(RAN_TWICE not in refusal.message and refusal.action != RUN_AGAIN for refusal in held)
+
+
+@pytest.mark.parametrize(("cell", "text", "changed", "thing", "holders"), [
+    ("experiment.add_structure(", "mm(3.175)", "mm(3.2)", "the structure 'tube'",
+     ("the medium 'water'", "the apparatus 'field'", "the law contact:robot", "the observation")),
+    ("experiment.add_body(", "mm((0.0, 0.0, -1.0))", "mm((0.0, 0.0, -0.9))", "the body 'robot'",
+     ("the value robot.mass", "the law magnetic.torque:robot", "the law drag:robot", "the law gravity:robot")),
+], ids=["the tube", "the robot"])
+def test_tutorial_as_a_thing_cell_run_again_changed_in_a_notebook_replaces_the_thing_and_still_plans(
+        cell, text, changed, thing, holders, notebook):
+    """The tube's cell (its radius) and the robot's (where it starts) run again with a number changed: each is replaced,
+    the one note names what follows it, and the experiment still plans. The observation is not made yet in the tube's
+    case: the run cell makes it, so it is not listed."""
+    setup, _ = split_at_run(read_notebook("tutorial_a.ipynb"))
+    source = cell_holding(setup, cell)
+    assert text in source
+    namespace = declared(setup)
+    notes = run_again([source.replace(text, changed)], namespace)
+    (replaced,) = [note for note in notes if f"declares {thing} again, not the same as before: in a notebook or IPython "
+                                             f"the last one run wins, so it replaces the earlier one" in note]
+    assert all(holder in replaced for holder in holders if holder != "the observation"), replaced
+    namespace["experiment"].plan()

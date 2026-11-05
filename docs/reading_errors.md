@@ -77,8 +77,7 @@ program reads.
 ## A declaration made twice
 
 A declaration the experiment already holds (a thing of the same name, the same law or observation bound to the same
-things, a value or a source at the same path, a second controller or licence) is read as follows, in a script and in a
-notebook (Jupyter, Colab or IPython):
+things, a value or a source at the same path, a second controller or licence) is read as follows:
 
 - **The same as the first** in its type, its settings with their units and reasons, and what it binds: it is kept
   once, and a warning at your line says so. Two objects made by running one cell twice are the same in this sense; a
@@ -86,12 +85,37 @@ notebook (Jupyter, Colab or IPython):
 - **Changed, in a script**: the build refuses the two, with the code of their kind (`thing.duplicate`,
   `id.duplicate`, `value.duplicate`, `source.duplicate`, `controller.more-than-one`, and `terms.licence` when the
   experiment is saved).
-- **Changed, in a notebook**: the last one run replaces the earlier one, and a warning says so, so a model swapped in a
-  cell (`Drag.MRS` for `Drag.Surrogate`) takes effect when the cell runs again. Where another declaration names the
-  earlier one (a law bound to a body, a value declared of it, a source naming a law's setting), replacing it would bind
-  what names it to a declaration it was not written against, unseen: both are kept, a warning lists what names it, and
-  the build refuses the two, saying a cell has probably run twice. Run the cells again from the one that makes the
-  experiment, or run them all.
+- **Changed, in a notebook or IPython**: the last one run replaces the earlier one, and a warning says so, so a number
+  edited in a cell and the cell run again takes effect, and so does a model swapped in (`Drag.MRS` for
+  `Drag.Surrogate`).
+  - *A structure, medium, body or apparatus* (the same name and the same kind) takes the earlier one's place, and
+    every declaration that holds its name now finds the new one: a law's binding, an observation's, the controller's
+    reads and writes, a declared value or a source naming a setting of it, a medium's `fills`, a setting that names a
+    direction. A declaration holds a thing by its name, which the build resolves, so none of them is rewritten. The one
+    warning names the thing and each law, observation, value, source, controller and other thing that holds its name,
+    so that nothing is re-bound unseen. Check it: a value declared of the thing (`declare("robot.mass", ...)`) still
+    applies to the new one until its own cell is run again, and it **overrides what the new declaration brings**: a
+    value declared of the water's density (`declare("water.density", ...)`) wins over the density in the record of a
+    new material, as a value declared in the experiment always does over a record. The warning says so ("the value
+    water.density (with its quantity) still applies and overrides what the new medium brings"); to use the new record,
+    run the cell that declares the value again, changed. A law the new thing cannot serve (a field the new
+    apparatus lacks, a region the new structure lacks) is refused at the build by that law's own check, which names it.
+  - *A thing that cannot be replaced*: a name declared again as another kind (a body as an apparatus), and a
+    declaration that holds the earlier thing's object itself and not its name (it would keep the old settings under the
+    new name). Both are kept, a warning says so, and the build refuses the two (`thing.duplicate`), saying a line or
+    cell has probably run twice (a notebook has cells; IPython's terminal, and a script run through it, have lines).
+    Run the lines or cells again from the one that makes the experiment, or run them all.
+  - *A law or an observation* is replaced where no other declaration names its id; where a source or the controller
+    does, both are kept and the build refuses the two as above.
+  - *The replacement leaves a record the warning does not.* A warnings filter (`warnings.simplefilter("ignore")`, a
+    common first cell) removes the warning, so each replacement is also recorded on the experiment with what followed
+    it: `plan().replaced` and the build report (`built.report.text()`, under "replaced in this session") list them,
+    in the order they were made. The saved experiment holds only the final declarations. A filter that turns a warning
+    into an error stops the call before anything is changed.
+- **Where the notebook's rule applies.** MIME asks whether IPython is running (`get_ipython` is among the builtins):
+  true in Jupyter and Colab, in IPython's own terminal, and in a script run through `ipython script.py` or `%run`, and
+  false for `python script.py`, `python -c` and Python's own prompt. So a script run through IPython gets the
+  notebook's rule, and its warnings and refusals say "a notebook or IPython".
 
 A permission has no such key, since an experiment holds one for each grant, so only the same one again is kept once.
 A scene's reference of the same asset at the same prim again is kept once; another asset at that prim is refused at
