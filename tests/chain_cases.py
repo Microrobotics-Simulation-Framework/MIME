@@ -226,14 +226,13 @@ def dynamic_rpm(name: str = "dynamic_rpm", *, mount: str | None = None, motor: b
 
 
 def swing_magnet(name: str = "swing_magnet", *, magnetic=(Magnetic.Torque, Magnetic.Force)) -> Experiment:
-    """``descriptions/swing.urdf``'s arm on its dynamic rung, 15 cm above the origin, carrying A0's magnet, above
+    """``descriptions/swing.urdf``'s arm on its dynamic rung carrying A0's magnet 15 cm above the origin, above
     a body under the field's torque and force (``magnetic``, their classes), each delivering its reaction to the arm:
     the smallest apparatus a law's reaction is built on."""
     exp = experiment(name)
     exp.add_apparatus(Apparatus(
-        "swing", chain={"arm": Arm.Dynamic(description=asset(SWING), initial_positions=rad((0.0,)),
-                                         at=m((0.0, 0.0, 0.15)))},
-        parts={"magnet": magnet_part("arm.arm")}, magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
+        "swing", chain={"arm": Arm.Dynamic(description=asset(SWING), initial_positions=rad((0.0,)))},
+        parts={"magnet": magnet_part("arm.arm", at=m((0.0, 0.0, 0.15)))}, magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
         fields={"magnetic": PointDipole(part="magnet")}, commands={"arm.joint_torques": Constant(N_m((0.0,)))}))
     exp.declare("swing.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's 35 x 20 mm N45 rotor magnet")
     add_body(exp)
