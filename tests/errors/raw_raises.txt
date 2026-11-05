@@ -52,6 +52,7 @@ dynamics/apparatus/_arm.py::Arm.build ValueError 1  # invariant: MIME's own chec
 env/_pins.py::applicable ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and refused with its code (env.lab, by the env check)
 experiment/_experiment.py::ObservationHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+experiment/_mermaid.py::Mermaid.display RuntimeError 1  # an environment: the notebook call run where IPython is not installed, raised where the script calls it, with the plain-text way to show the diagram
 interactions/hydrodynamic.py::PointForceDrag._build_mrs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 interactions/hydrodynamic.py::PointForceDrag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 live/_protocol.py::FrameSchema.decode ValueError 3  # a client's frame of another schema, length or protocol: a Python client's own check of a message it received, below any public call; the protocol's page documents it
