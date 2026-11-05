@@ -38,6 +38,21 @@ def folder(tmp_path_factory) -> Path:
     return saved(tmp_path_factory.mktemp("limits"))
 
 
+@pytest.fixture(scope="module")
+def toy_folder(tmp_path_factory) -> Path:
+    """A saved toy, for a test of the server's clock, which the rig adds nothing to (the rig's build in the server's
+    process took this test from 8 to 14 s to 24 s once, on CI's cold re-run)."""
+    import warnings
+
+    from mime.testing.toys import full_toy
+
+    held = tmp_path_factory.mktemp("limits_toy") / "toy"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        full_toy().save(held)
+    return held
+
+
 def start(launch, folder: Path, tmp_path: Path, *extra: str, name: str = "run") -> tuple[subprocess.Popen, Path, Path]:
     """``mime serve`` of ``folder`` once its ready file is written: the process, the ready file and the run folder."""
     ready, out = tmp_path / f"{name}.ready.json", tmp_path / f"{name}.out"
@@ -133,8 +148,8 @@ def test_the_control_without_the_flag_a_session_nobody_is_connected_to_serves_on
     assert "idle-timeout" not in process.communicate(timeout=HANG)[0]
 
 
-def test_max_wall_stops_a_session_at_its_wall_time_a_client_connected_or_not(launch, folder, tmp_path):
-    process, ready, out = start(launch, folder, tmp_path, "--max-wall", "3s")
+def test_max_wall_stops_a_session_at_its_wall_time_a_client_connected_or_not(launch, toy_folder, tmp_path):
+    process, ready, out = start(launch, toy_folder, tmp_path, "--max-wall", "3s")
     live = connect(ready)
     stdout, _ = process.communicate(timeout=HANG)
     assert process.returncode == 0 and (out / "run.json").is_file() and (out / "outputs.json").is_file()
