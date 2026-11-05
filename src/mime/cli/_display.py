@@ -51,7 +51,7 @@ from mime._said import (
     kind_of,
 )
 from mime._terminal import for_terminal, plain
-from mime.assets._gates import LICENCE_HEADING, LICENCE_QUESTION
+from mime.assets._gates import LICENCE_HEADING, LICENCE_QUESTION, NoTerminal
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._progress import FLAG_INTERVAL, RunState, TransferState, duration_text
 from mime.cli._serve_view import FALLBACK_ROWS, event_line, stopped_lines, strip_lines, table_lines
@@ -1001,8 +1001,8 @@ class SaidDisplay:
         self._console.file.flush()
         try:
             return input().strip().lower() in ("y", "yes")
-        except EOFError:
-            return False
+        except EOFError as error:  # no one answers: the gate refuses naming the flag, as without a terminal
+            raise NoTerminal from error
 
     def _answer(self, hint: str) -> str:
         """The hint on the terminal the question is on, then the line typed. ``input`` is given no prompt of its own: it
