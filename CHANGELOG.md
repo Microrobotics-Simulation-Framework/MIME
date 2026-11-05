@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0.dev1] - 2026-11-04
+## [0.3.0.dev1] - 2026-11-05
 
 The first release of MIME 0.3, a rewrite of MIME on [MADDENING](https://microrobotica.org/maddening/) 0.4. It is a
 development pre-release: install it with `pip install --pre mime-engine`, since a plain `pip install mime-engine` still
