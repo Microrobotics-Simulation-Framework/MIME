@@ -294,12 +294,19 @@ def test_a_cached_file_with_no_recorded_acceptance_asks_once_at_its_first_use(ri
     assert [each.licence.id for each in _acceptances.read_acceptances()] == [CLOSED]
 
 
-def test_a_batch_over_cached_files_asks_once_at_their_first_use(rig: Rig):
+def test_a_batch_over_cached_files_asks_once_at_its_entry_for_all_of_them(rig: Rig):
     refs = [closed(rig, f"m{i}.stl", f"mesh {i}".encode() * 50) for i in range(3)]
     for ref in refs:
         assets.fetch(ref, accept_licences={CLOSED})
+    declined = Scripted(licence=False)
+    with assets.asking(declined):
+        with pytest.raises(BuildRefused):
+            with assets.approved(refs):
+                raise AssertionError("the block ran although the licence was declined")
+    assert declined.asked == [(CLOSED,)], "asked when the batch is entered, before any file is read"
     asker = Scripted()
-    with assets.asking(asker), assets.approved(refs) as approval:
+    with assets.asking(asker), assets.approved(refs, notice="The notice.") as approval:
+        assert asker.asked == [(CLOSED,)] and approval.licences[0].id == CLOSED and approval.notice_shown
         for ref in refs:
             assets.fetch(ref)
     assert asker.asked == [(CLOSED,)] and approval.plan is None and rig.requests == 3

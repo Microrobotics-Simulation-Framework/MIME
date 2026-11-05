@@ -272,7 +272,8 @@ def test_a_pipe_that_holds_a_y_is_not_an_answer(tmp_path: Path, rig: Rig, manife
     assert "asset.licence-not-accepted" in flat(stripped(seen.decode("utf-8", "replace")))
 
 
-HOSTILE = {"title": "Maker \x1b[2J\x1b[1;1H\x1b]0;pwned\x07 Licence", "url": "https://example.org/\x1b[99mlicence",
+FORGED = "I accept everything"
+HOSTILE = {"title": f"Maker \x1b[2J\x1b[1;1H\x1b]0;pwned\x07 Licence\n{FORGED}\n", "url": "https://example.org/\x1b[99mlicence",
            "notice": "The notice \x1b[2K\r\x1b[1A\x1b[8m ends."}
 
 
@@ -304,6 +305,8 @@ def test_a_manifests_escape_sequences_never_reach_the_terminal_in_any_mode(tmp_p
         assert planted not in raw, (planted, raw)
     text = flat(stripped(raw))
     assert LINES[0] in text and "Do you accept these conditions? [y/N]" in text and "pwned" in text
+    rows = [flat(row) for row in stripped(raw).splitlines()]
+    assert FORGED not in rows, "a newline in a title forges no line of its own"
     assert "x1b" in text, "the sequences are shown as the escapes that name them"
     if flags or extra:
         assert "\x1b" not in raw, "plain output holds no escape sequence at all"

@@ -111,6 +111,38 @@ def test_pull_without_the_licence_accepted_stops_naming_the_flag_and_keeps_the_f
     assert (tmp_path / "pulled0" / "mime.lock").is_file() and "not complete" in lines[1]
 
 
+def test_pull_asks_at_the_first_use_of_an_asset_that_is_already_cached(tmp_path: Path, rig: Rig, monkeypatch):
+    """The asset is in the cache (a cache filled before the gates, or under a name that was not remembered): nothing is
+    downloaded, and the licence is still asked about once before the file is placed."""
+    folder, data, ref = referenced_folder(tmp_path, rig)
+    bundle = pack(folder, out=tmp_path / "x.mimebundle")
+    monkeypatch.chdir(tmp_path)
+    assets.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})
+    before = rig.requests
+    with assets.asking(None):
+        with pytest.raises(BuildRefused) as stopped:
+            pull(bundle, into="refused", say=lambda line: None)
+        assert stopped.value.codes() == ["asset.licence-not-accepted"]
+        assert not (tmp_path / "refused" / LAYER).exists()
+    asked: list[tuple[str, ...]] = []
+
+    class Yes:
+        def licences(self, licences, notice):  # type: ignore[no-untyped-def]
+            asked.append(tuple(each.id for each in licences))
+            return True
+
+        def confirm(self, question: str) -> bool:
+            return True
+
+        def line(self, text: str) -> None:
+            pass
+
+    with assets.asking(Yes()):
+        pull(bundle, into="pulled", say=lambda line: None)
+    assert asked == [(NO_REDISTRIBUTION.id,)] and (tmp_path / "pulled" / LAYER).read_bytes() == data
+    assert rig.requests == before, "nothing was downloaded"
+
+
 def test_pull_fetches_and_places_a_referenced_file_and_says_so(tmp_path: Path, rig: Rig, monkeypatch):
     folder, data, _ = referenced_folder(tmp_path, rig)
     bundle = pack(folder, out=tmp_path / "x.mimebundle")
