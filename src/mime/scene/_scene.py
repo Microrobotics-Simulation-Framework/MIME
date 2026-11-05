@@ -126,7 +126,7 @@ class Scene:
         """Reference ``layer`` (an :func:`asset`, or a path) at the prim path ``at``; returns that prim. The same asset
         referenced at the same prim again (a notebook's cell run twice) is kept once, with a note. Another asset at a
         prim already referenced is kept beside it, since the scene cannot tell what binds the first one's prims, and
-        the build refuses the two (``scene.reference-path``), in a notebook saying a cell has probably run twice."""
+        the build refuses the two (``scene.reference-path``), in a notebook saying a line or cell has probably run twice."""
         from mime.errors._frames import warn_at_script  # the errors' package imports the build, which imports this
 
         held = layer if isinstance(layer, Asset) else asset(layer)
@@ -140,7 +140,7 @@ class Scene:
         if earlier and in_notebook():
             warn_at_script(f"scene.reference(...) references another asset at {at}, where one is referenced already: "
                            f"the scene cannot tell what binds the earlier one's prims, so both are kept and the build "
-                           f"will refuse them; run the cells again from the one that makes the scene, or run them all",
+                           f"will refuse them; run the lines or cells again from the one that makes the scene, or run them all",
                            UserWarning)
         return PrimPath(at)
 
