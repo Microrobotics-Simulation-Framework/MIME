@@ -52,7 +52,9 @@ from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_mode
 from mime.build._maddening import FlagTally, FlagTest
 from mime.errors import public
 from mime.errors._frames import warn_at_script
+from mime.experiment._mermaid import Mermaid, mermaid_of
 from mime.experiment._redeclared import add as add_declaration
+from mime.experiment._tree import Tree, tree_of
 from mime._notebook import in_notebook
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
@@ -426,6 +428,15 @@ class Experiment:
         return plan_experiment(self._settings, list(self._declarations))
 
     @public
+    def tree(self) -> Tree:
+        """What this experiment declares, as a tree: its structures, media and what each fills, bodies and their
+        parts, apparatus with their fields and drives, each law with the things it binds, each observation with what it
+        reads, and the controller with its reads and writes, each with its registered id and version. Nothing is built or
+        checked, so it shows an experiment that would be refused too. ``str(tree)`` is plain indented text, ``tree.record()``
+        the same as data. The same tree whatever the order of the calls that declared it."""
+        return tree_of(self._settings, self._declarations)
+
+    @public
     def document(self) -> ExperimentDocument:
         """What this experiment declares, as its saved document. Raises ``UnsavableError`` for a setting the
         document cannot hold."""
@@ -775,6 +786,15 @@ class BuiltExperiment:
     @public
     def snapshot(self) -> str:
         return graph_text(self._graph, self.report.lags)
+
+    @public
+    def to_mermaid(self, *, direction: str = "LR") -> Mermaid:
+        """The compiled graph as a Mermaid flowchart: every node, edge, coupling group and external input, each node
+        labelled with its name and the registered entry (and version) that built it. It is MADDENING's ``to_mermaid`` with
+        MIME's names added; ``direction`` is MADDENING's (``LR``, ``RL``, ``TB`` or ``BT``). A ``str`` that a notebook
+        also shows as a diagram where its front end draws Mermaid. The same text for the same experiment, whatever the
+        order of the calls that declared it."""
+        return mermaid_of(self._graph, self.report, direction=direction)
 
     @property
     def stage_text(self) -> str:
