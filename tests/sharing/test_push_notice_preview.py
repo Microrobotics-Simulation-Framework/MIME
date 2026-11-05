@@ -25,11 +25,15 @@ Controls, each caught on every run:
 
 from __future__ import annotations
 
+import ast
 import datetime
 import io
+import json
 import types
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from push_cases import copy_of, saved_toy, with_token, write_sharing
@@ -38,7 +42,7 @@ from zenodo_records import FakeRecords, served
 from mime import push
 from mime.build import BuildRefused
 from mime.cli import main
-from mime.push import _draft, _plan
+from mime.push import Answer, _draft, _plan
 from mime.saved import pull
 
 NUMBER = "629525"
@@ -73,6 +77,31 @@ class Day:
 
         monkeypatch.setattr(_plan, "datetime", types.SimpleNamespace(datetime=Now, date=datetime.date,
                                                                       UTC=datetime.UTC))
+
+
+def calendar_reads(source: str) -> list[int]:
+    """The lines of ``source`` that read the calendar day: ``datetime.now``, ``datetime.datetime.now``,
+    ``datetime.utcnow``, ``date.today`` or ``datetime.date.today`` (the clock of a duration, ``time.time``, is not one)."""
+    reads: list[int] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute) and node.attr in ("now", "utcnow", "today"):
+            owner = node.value
+            name = owner.id if isinstance(owner, ast.Name) else owner.attr if isinstance(owner, ast.Attribute) else ""
+            if name in ("datetime", "date"):
+                reads.append(node.lineno)
+    return reads
+
+
+def test_the_one_read_of_the_calendar_day_in_push_is_the_one_the_pin_covers():
+    """``Day`` replaces ``_plan.datetime`` alone: a second read of the day elsewhere in push would escape it, and the
+    tests here would depend on the wall clock again."""
+    assert calendar_reads("import datetime\nx = datetime.datetime.now(datetime.UTC).date()\n") == [2], \
+        "the detector does not see a planted read"
+    assert calendar_reads("from datetime import date\nx = date.today()\n") == [2]
+    assert calendar_reads("import time\nx = time.time()\ny = self.now()\n") == []
+    found = {path.name: calendar_reads(path.read_text()) for path in Path(push.__file__).parent.glob("*.py")}
+    assert {name: lines for name, lines in found.items() if lines}.keys() == {"_plan.py"}, \
+        f"push reads the calendar day outside _plan.py, which the pin does not cover: {found}"
 
 
 @pytest.fixture
@@ -182,30 +211,44 @@ def test_control_a_choice_on_the_page_written_over_is_caught(toy: Path, sandbox:
 # --- a publish that cannot be confirmed writes nothing new (I7); a NOTICE replaced is said (I5) ------------------------
 
 
-def puts(fake: FakeRecords) -> int:
-    return sum(1 for method, _, _, _ in fake.seen if method == "PUT")
-
-
 def refused_unconfirmed(toy: Path, fake: FakeRecords, tmp_path: Path, *, later: datetime.date | None = None,
-                        day: Day | None = None) -> int:
-    """A draft pushed, then (on the day ``later``, where given) a publish with no terminal and no ``--confirm``: how
-    many writes it sent before its refusal."""
+                        day: Day | None = None) -> list[str]:
+    """A draft pushed, then (on the day ``later``, where given) a publish with no terminal and no ``--confirm``: each
+    write (PUT) it sent before its refusal, as ``PUT <path> {payload keys}``, so that an assertion on them names the
+    write."""
     folder = copy_of(toy, tmp_path)
     service = push.SERVICES["zenodo-sandbox"]
     push.push(folder, service, pause=0)
     if later is not None:
         assert day is not None
         day.today = later
-    before = puts(fake)
-    with pytest.raises(BuildRefused) as refused:
-        push.publish(folder, service, pause=0)
+    writes: list[str] = []
+    handle = fake.handle
+
+    def noting(method: str, url: str, headers: Mapping[str, str], body: bytes | None) -> Answer:
+        if method == "PUT":
+            try:
+                keys = sorted(json.loads(body or b"{}"))
+            except ValueError:  # not JSON: a file's content
+                keys = [f"<{len(body or b'')} bytes, not JSON>"]
+            writes.append(f"PUT {urlsplit(url).path} {keys}")
+        return handle(method, url, headers, body)
+
+    fake.handle = noting
+    try:
+        with pytest.raises(BuildRefused) as refused:
+            push.publish(folder, service, pause=0)
+    finally:
+        del fake.handle  # back to the class's method
     assert refused.value.codes() == ["push.unconfirmed"]
-    return puts(fake) - before
+    return writes
 
 
 def test_a_publish_that_cannot_be_confirmed_writes_no_preview_before_its_refusal(toy: Path, sandbox: FakeRecords,
                                                                                  tmp_path: Path):
-    assert refused_unconfirmed(toy, sandbox, tmp_path) == 0 and preview(sandbox) is None
+    writes = refused_unconfirmed(toy, sandbox, tmp_path)
+    assert writes == [], f"{len(writes)} write(s) before the refusal: {writes}"
+    assert preview(sandbox) is None
 
 
 def test_control_a_publish_a_day_after_its_push_writes_the_date_and_only_the_date_before_its_refusal(
@@ -216,7 +259,8 @@ def test_control_a_publish_a_day_after_its_push_writes_the_date_and_only_the_dat
     Forcing the crossing writes once, the date, and the preview stays unset: what the failure saw (one write, expected
     none), reproduced every run."""
     tomorrow = TODAY + datetime.timedelta(days=1)
-    assert refused_unconfirmed(toy, sandbox, tmp_path, later=tomorrow, day=day) == 1
+    writes = refused_unconfirmed(toy, sandbox, tmp_path, later=tomorrow, day=day)
+    assert len(writes) == 1, f"expected the date alone, saw {len(writes)} write(s): {writes}"
     metadata = sandbox.records[NUMBER].body["metadata"]
     assert isinstance(metadata, dict) and metadata["publication_date"] == tomorrow.isoformat()
     assert preview(sandbox) is None
@@ -226,7 +270,8 @@ def test_control_with_the_preview_written_on_every_publish_the_unconfirmed_one_i
         toy: Path, sandbox: FakeRecords, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(_draft.Drafting, "previewing", property(lambda self: True, lambda self, value: None),
                         raising=False)
-    assert refused_unconfirmed(toy, sandbox, tmp_path) == 1, "the planted defect is not seen"
+    writes = refused_unconfirmed(toy, sandbox, tmp_path)
+    assert len(writes) == 1, f"the planted defect is not seen: {writes}"
 
 
 def pushed_with_the_old_notice(toy: Path, fake: FakeRecords, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
