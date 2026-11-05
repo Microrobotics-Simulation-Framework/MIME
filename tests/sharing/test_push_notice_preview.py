@@ -17,11 +17,17 @@ Controls, each caught on every run:
   publish, one refused for want of a terminal or ``--confirm`` is caught writing the draft first;
 - **a NOTICE replaced unsaid** (I5): with the deletion left out of what a push says, a draft #100's push made (its
   NOTICE under the old name), pushed again, is caught saying only what it uploaded.
+- **a publish on a later day than its push** (the failure of the push run of a6769bc, shard 8, a run that crossed
+  midnight UTC): the day a push and a publish read is pinned (``day``), so that none of these tests depends on the
+  wall clock, and a publish a day after its push, which does write the draft's publication date before its refusal, is
+  caught writing exactly that and nothing else.
 """
 
 from __future__ import annotations
 
+import datetime
 import io
+import types
 import zipfile
 from pathlib import Path
 
@@ -36,6 +42,8 @@ from mime.push import _draft, _plan
 from mime.saved import pull
 
 NUMBER = "629525"
+#: The day the tests below read as today (UTC), and the day after it.
+TODAY = datetime.date(2026, 11, 4)
 DOI = f"10.5072/zenodo.{NUMBER}"
 #: The file extensions Zenodo's previewers take (invenio-previewer's entry points, read in its source): the NOTICE's
 #: must be one of them.
@@ -49,8 +57,32 @@ def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return folder
 
 
+class Day:
+    """The day push reads as today (``datetime.datetime.now(datetime.UTC).date()``, in :mod:`mime.push._plan`), held
+    still so that a test that pushes and then publishes does not cross midnight UTC between the two; ``day.today`` is
+    set to move it."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, today: datetime.date) -> None:
+        self.today = today
+        day = self
+
+        class Now(datetime.datetime):
+            @classmethod
+            def now(cls, tz: datetime.tzinfo | None = None) -> Now:
+                return cls.combine(day.today, datetime.time(12), tzinfo=tz)
+
+        monkeypatch.setattr(_plan, "datetime", types.SimpleNamespace(datetime=Now, date=datetime.date,
+                                                                      UTC=datetime.UTC))
+
+
 @pytest.fixture
-def sandbox(monkeypatch: pytest.MonkeyPatch):  # noqa: ANN201
+def day(monkeypatch: pytest.MonkeyPatch) -> Day:
+    return Day(monkeypatch, TODAY)
+
+
+@pytest.fixture
+def sandbox(monkeypatch: pytest.MonkeyPatch, day: Day):  # noqa: ANN201
+    del day  # the day is pinned before any push of the test
     token = with_token(monkeypatch)
     monkeypatch.setattr(push._client, "PAUSE_SECONDS", 0.0)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
@@ -154,11 +186,16 @@ def puts(fake: FakeRecords) -> int:
     return sum(1 for method, _, _, _ in fake.seen if method == "PUT")
 
 
-def refused_unconfirmed(toy: Path, fake: FakeRecords, tmp_path: Path) -> int:
-    """A draft pushed, then a publish with no terminal and no ``--confirm``: how many writes it sent before its refusal."""
+def refused_unconfirmed(toy: Path, fake: FakeRecords, tmp_path: Path, *, later: datetime.date | None = None,
+                        day: Day | None = None) -> int:
+    """A draft pushed, then (on the day ``later``, where given) a publish with no terminal and no ``--confirm``: how
+    many writes it sent before its refusal."""
     folder = copy_of(toy, tmp_path)
     service = push.SERVICES["zenodo-sandbox"]
     push.push(folder, service, pause=0)
+    if later is not None:
+        assert day is not None
+        day.today = later
     before = puts(fake)
     with pytest.raises(BuildRefused) as refused:
         push.publish(folder, service, pause=0)
@@ -169,6 +206,20 @@ def refused_unconfirmed(toy: Path, fake: FakeRecords, tmp_path: Path) -> int:
 def test_a_publish_that_cannot_be_confirmed_writes_no_preview_before_its_refusal(toy: Path, sandbox: FakeRecords,
                                                                                  tmp_path: Path):
     assert refused_unconfirmed(toy, sandbox, tmp_path) == 0 and preview(sandbox) is None
+
+
+def test_control_a_publish_a_day_after_its_push_writes_the_date_and_only_the_date_before_its_refusal(
+        toy: Path, sandbox: FakeRecords, tmp_path: Path, day: Day):
+    """The cause of the one failure of the test above (the push run of a6769bc, shard 8): the test pushed before
+    midnight UTC and published after it, and a publish on a later day than its push writes the draft's publication date
+    (``Drafting.written_where_needed(dated=True)``, a design: the date is the day it is published), refusal or not.
+    Forcing the crossing writes once, the date, and the preview stays unset: what the failure saw (one write, expected
+    none), reproduced every run."""
+    tomorrow = TODAY + datetime.timedelta(days=1)
+    assert refused_unconfirmed(toy, sandbox, tmp_path, later=tomorrow, day=day) == 1
+    metadata = sandbox.records[NUMBER].body["metadata"]
+    assert isinstance(metadata, dict) and metadata["publication_date"] == tomorrow.isoformat()
+    assert preview(sandbox) is None
 
 
 def test_control_with_the_preview_written_on_every_publish_the_unconfirmed_one_is_caught_writing(
