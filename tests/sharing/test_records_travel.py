@@ -40,10 +40,12 @@ def scan_record(data: bytes, licence: str = NO_REDISTRIBUTION.id) -> AssetRef:
 
 def placed(cache: Path, data: bytes) -> None:
     """The scan's bytes copied into the cache by hand, as a lab without the network does, then checked in full (the
-    fetch downloads nothing: ``MIME_OFFLINE`` is set)."""
+    fetch downloads nothing: ``MIME_OFFLINE`` is set). A person who placed it has accepted its licence (a first use of a
+    cached file asks)."""
     cache.mkdir(parents=True, exist_ok=True)
     (cache / hashlib.sha256(data).hexdigest()).write_bytes(data)
-    assets.fetch(scan_record(data))
+    record = scan_record(data)
+    assets.fetch(record, accept_licences={each.id for each in assets.licences_of(record)})
 
 
 def saved_with(record: AssetRef, where: Path) -> Path:

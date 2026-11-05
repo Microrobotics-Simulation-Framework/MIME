@@ -45,7 +45,8 @@ The licence decides where the bytes may live, asset by asset, and never whether 
 **Downloads under a licence with conditions beyond credit ask first.** `mime visuals fetch`, `mime assets fetch` and `mime
 pull` (and the Python calls under them) show the conditions, the licence's title and link, and the notice, and ask
 `Do you accept these conditions? [y/N]`; the answer is remembered for that licence and version (`mime assets licences`
-lists it, `--revoke <id>` forgets it). Where nothing can be asked (a script, CI, Modal) the command refuses and names the
+lists it, `--revoke <id>` forgets it), and a file already in your cache under such a licence asks once, the first time
+it is used. A licence whose terms are not stated (`NOASSERTION`) asks too, saying so. Where nothing can be asked (a script, CI, Modal) the command refuses and names the
 flag, `--accept-licence <id>`; no other flag, `--yes` and `--force` included, accepts a licence. Every download also
 checks the disk: a download over 1 GB or a tenth of the free space is asked about (`--yes`), and one that would leave
 under 2 GB or 5 % of the drive free is stopped (`--force`).

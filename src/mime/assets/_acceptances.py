@@ -4,8 +4,10 @@ A download under a licence with conditions beyond credit asks for them to be acc
 yes is written here: the licence's id, its title, its link, its conditions and the date. The file is JSON, at
 ``MIME_LICENCE_ACCEPTANCES`` when that is set, else ``licences.json`` in the user's config directory (``platformdirs``),
 beside the credentials and the locations file. It never travels with an experiment, a bundle or a lock: a person's yes is
-theirs. An acceptance holds only while the licence is the one accepted: when its id, title, link or conditions change
-(a licence's version is in its title), it is asked about again.
+theirs. An acceptance is of a licence by its **id and version**, which is its title (a licence's version is in its
+title): when the title changes, the licence is asked about again. The link and the condition lines are kept as they were
+shown, for the person who lists them, but they are not what an acceptance is keyed by: the same licence read from a
+manifest and from a saved lock (whose form has no key for the lines) is one acceptance, asked about once.
 
 ``mime assets licences`` lists the acceptances and ``mime assets licences --revoke <id>`` removes one. A file that cannot
 be read is refused (``asset.licences-file``), never read as no acceptance and written over.
@@ -22,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from mime._terminal import plain
 from mime.build import BuildRefused, Refusal, RefusalClass
 
 ACCEPTANCES_VARIABLE = "MIME_LICENCE_ACCEPTANCES"
@@ -32,7 +35,7 @@ ACCEPTANCES_FORMAT = "mime.licence_acceptances/1"
 @dataclass(frozen=True)
 class Licence:
     """A licence a download needs accepted: its id, its title and link, and its conditions beyond credit in short lines.
-    An acceptance is of these four: when any changes, the licence is asked about again."""
+    An acceptance is of its id and its title (its version): when either changes, the licence is asked about again."""
 
     id: str
     title: str
@@ -111,8 +114,8 @@ def _write(held: Sequence[Acceptance]) -> None:
 
 
 def accepted(licence: Licence) -> bool:
-    """Whether this very licence (its id, title, link and conditions) was accepted on this machine."""
-    return any(each.licence == licence for each in read_acceptances())
+    """Whether this licence, by its id and its title (its version), was accepted on this machine."""
+    return any(each.licence.id == licence.id and each.licence.title == licence.title for each in read_acceptances())
 
 
 def remember(licences: Sequence[Licence]) -> None:
@@ -137,9 +140,9 @@ def acceptances_text() -> str:
     """The acceptances as ``mime assets licences`` prints them, one line each; a line saying so where there are none."""
     held = read_acceptances()
     if not held:
-        return f"no licence accepted on this machine ({acceptances_path()})"
-    return "\n".join(f"{each.licence.id}  {each.licence.title}  {each.licence.url}  accepted {each.date}"
-                     for each in held)
+        return f"no licence accepted on this machine ({plain(str(acceptances_path()))})"
+    return "\n".join(f"{plain(each.licence.id)}  {plain(each.licence.title)}  {plain(each.licence.url)}  "
+                     f"accepted {plain(each.date)}" for each in held)
 
 
 __all__ = ["ACCEPTANCES_FILE", "ACCEPTANCES_FORMAT", "ACCEPTANCES_VARIABLE", "Acceptance", "Licence", "accepted",
