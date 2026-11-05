@@ -6,6 +6,8 @@
   credit's (the control: a URL planted outside the credit is found);
 - ``display`` returns the page inside an ``<iframe srcdoc>`` that unescapes to it, from jsDelivr unless ``offline``,
   and warns above a million bytes (the control: the ball's own page, far smaller, does not);
+- the camera may come within a millionth of the scene's diagonal, the wheel zooming by a factor toward the pointer,
+  so a body far smaller than its scene can be approached (the control: a scene with no extent keeps the viewer's);
 - a page is never written into a saved or a run folder (``visuals.web-out``).
 
 That the page draws, with no network, is shown by hand in a browser: ``scripts/offline_view_proof.py``, which is not a
@@ -23,7 +25,7 @@ from gltf_cases import ball, recorded, with_pose
 import mime.viz._web as web_module
 from mime.build import ArgumentRefused
 from mime.viz import display, gltf, page, web
-from mime.viz._web import CREDIT, VIEWER_CDN, VIEWER_SRI, viewer_bytes
+from mime.viz._web import CLOSEST, CREDIT, VIEWER_CDN, VIEWER_SRI, closest_radius, viewer_bytes
 
 #: The inlined viewer: model-viewer 4.3.1's dist/model-viewer.min.js, 1,068,903 bytes (jsDelivr's, unpkg's and the npm
 #: tarball's alike).
@@ -116,3 +118,37 @@ def test_a_page_is_never_written_into_a_saved_or_run_folder(run, tmp_path):
     written, result = web(run, tmp_path / "out.html", glb=tmp_path / "scene.glb")
     assert written.read_text(encoding="utf-8") == page(result)
     assert (tmp_path / "scene.glb").read_bytes() == result.glb
+
+
+def config_of(text: str) -> dict:
+    import json
+
+    (held,) = re.findall(r"const config = (\{.*?\});", text)
+    return json.loads(held)
+
+
+def test_the_camera_may_come_within_a_millionth_of_the_scene(run):
+    result = gltf(run)
+    text = page(result)
+    closest = config_of(text)["closest"]
+    assert closest == pytest.approx(result.across_m / result.unit_m * CLOSEST) and closest > 0.0
+    assert config_of(text)["reach"] == pytest.approx(result.across_m / result.unit_m / 2.0)
+    assert "2 * framed / 1000" in text  # on load, never nearer than the viewer's own near plane
+    assert "view.minCameraOrbit" in text and "positionAndNormalFromPoint" in text  # the wheel zooms toward the pointer
+    assert "Scroll to zoom toward the pointer, as close as the view can draw" in text
+
+
+def test_control_a_scene_with_no_extent_keeps_the_viewers_own_limit(run):
+    import dataclasses
+
+    flat = dataclasses.replace(gltf(run), across_m=0.0)
+    assert closest_radius(flat) is None and config_of(page(flat))["closest"] is None
+    (tag,) = re.findall(r"<model-viewer [^>]*>", page(flat))
+    assert "min-camera-orbit" not in tag
+
+
+def test_a_handle_under_the_view_folds_the_notes_down_to_the_controls(run):
+    text = page(gltf(run))
+    order = [text.index(marker) for marker in ("<model-viewer ", 'id="grip"', 'class="controls"', 'id="notes"')]
+    assert order == sorted(order)  # the view, the handle, the controls, then the notes the handle folds
+    assert 'role="separator"' in text and "notesHeight(0)" in text and '"dblclick"' in text

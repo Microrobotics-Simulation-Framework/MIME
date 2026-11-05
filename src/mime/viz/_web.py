@@ -70,15 +70,22 @@ _STYLE = """
 }
 :root[data-theme="dark"] { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --panel: #161b22; --edge: #3d444d; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, sans-serif; }
-model-viewer { display: block; width: 100%; height: min(70vh, 640px); min-height: 280px; background: var(--panel); }
-.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px;
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, sans-serif;
+  display: flex; flex-direction: column; overflow: hidden; }
+model-viewer { display: block; width: 100%; flex: 1 1 auto; min-height: 160px; background: var(--panel); }
+.grip { flex: 0 0 auto; height: 12px; cursor: ns-resize; touch-action: none; display: flex; align-items: center;
+  justify-content: center; background: var(--panel); border-top: 1px solid var(--edge); }
+.grip::before { content: ""; width: 48px; height: 4px; border-radius: 2px; background: var(--muted); opacity: 0.6; }
+.grip:focus-visible { outline: 2px solid var(--muted); outline-offset: -2px; }
+.controls { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px;
   border-bottom: 1px solid var(--edge); }
 .controls input[type=range] { flex: 1 1 200px; min-width: 0; }
 .controls button, .controls select { font: inherit; color: var(--fg); background: var(--panel);
   border: 1px solid var(--edge); border-radius: 6px; padding: 2px 10px; }
 #clock { font-variant-numeric: tabular-nums; }
-.notes { padding: 8px 16px 16px; max-width: 72em; }
+.notes { flex: 0 0 auto; overflow: auto; }
+.notes-body { padding: 8px 16px 16px; max-width: 72em; }
 .notes p { margin: 6px 0; }
 .muted { color: var(--muted); }
 a { color: inherit; }
@@ -87,6 +94,69 @@ a { color: inherit; }
 _SCRIPT = """
 const view = document.getElementById("view");
 const config = CONFIG;
+// The wheel (a mouse's notches, a touchpad's scroll) zooms here, not in the viewer: by a factor in proportion to how far
+// it turned, toward the point under the pointer, with the view's angle kept, as close as config.closest. The viewer's own
+// zoom moves in equal steps toward a limit and narrows the view as it goes, so a body a millionth of its scene could not
+// be reached in comfort, and a touchpad's many small events each jumped to the limit. A pinch keeps the viewer's.
+// The handle under the view: dragging it down gives the view the room the notes had, down to the controls alone at the
+// bottom; up gives the notes back, up to their whole length. A double-click (or Enter) folds or unfolds the notes.
+const grip = document.getElementById("grip");
+const notes = document.getElementById("notes");
+let unfolded = null;
+function notesHeight(px) { notes.style.height = Math.max(0, Math.min(px, notes.scrollHeight)) + "px"; }
+function shown() { return notes.getBoundingClientRect().height; }
+function fold() {
+  if (shown() > 0) { unfolded = shown(); notesHeight(0); }
+  else notesHeight(unfolded ?? Math.min(notes.scrollHeight, window.innerHeight * 0.35));
+}
+if (grip && notes) {
+  notesHeight(Math.min(notes.scrollHeight, window.innerHeight * 0.35));
+  grip.addEventListener("pointerdown", (event) => {
+    const fromY = event.clientY, from = shown();
+    grip.setPointerCapture(event.pointerId);
+    const move = (e) => notesHeight(from - (e.clientY - fromY));
+    const up = () => { grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up);
+  });
+  grip.addEventListener("dblclick", fold);
+  grip.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") notesHeight(shown() - 24);
+    else if (event.key === "ArrowUp") notesHeight(shown() + 24);
+    else if (event.key === "Enter" || event.key === " ") fold();
+    else return;
+    event.preventDefault();
+  });
+}
+const ZOOM_PER_PIXEL = 0.0025;
+if (config.closest !== null) {
+    // The viewer draws nothing nearer its camera than its near plane, which it sets once, when it frames the scene, at a
+  // thousandth of its far one: twice the larger of the camera's distance then and the scene's reach. The camera may come
+  // half as far again as that, never nearer, so what it is pointed at is never cut away; config.closest is the floor
+  // a viewer with a moving near plane could reach.
+  let closest = config.closest;
+  view.addEventListener("load", () => {
+    const framed = Math.max(view.getCameraOrbit().radius, config.reach);
+    closest = Math.max(config.closest, 1.5 * (2 * framed / 1000));
+    view.minCameraOrbit = "auto auto " + closest + "m";
+  });
+  view.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1);
+    const orbit = view.getCameraOrbit();
+    const radius = Math.max(closest, orbit.radius * Math.exp(pixels * ZOOM_PER_PIXEL));
+    if (radius < orbit.radius) {
+      const hit = view.positionAndNormalFromPoint(event.clientX, event.clientY);  // the page's coordinates, as it takes them
+      if (hit) {
+        const target = view.getCameraTarget(), towards = 1 - radius / orbit.radius;
+        view.cameraTarget = [target.x + (hit.position.x - target.x) * towards, target.y + (hit.position.y - target.y) * towards,
+                             target.z + (hit.position.z - target.z) * towards].map((v) => v + "m").join(" ");
+      }
+    }
+    view.cameraOrbit = orbit.theta + "rad " + orbit.phi + "rad " + radius + "m";
+  }, { capture: true, passive: false });
+}
 const play = document.getElementById("play");
 const speed = document.getElementById("speed");
 const time = document.getElementById("time");
@@ -122,6 +192,19 @@ if (time) time.addEventListener("input", () => {
 """
 
 
+#: The closest the camera may come, as a fraction of the scene's diagonal: a millionth, so that a micrometre's body in a
+#: metre's scene (a microrobot in a vessel, a vessel in a body) can be approached. The viewer's own limit stops the
+#: camera outside the whole scene's bounds, which leaves a millimetre's helix beside a robot arm out of reach.
+CLOSEST = 1e-6
+
+
+def closest_radius(result: GltfResult) -> float | None:
+    """How close the camera may come at the most, in the glTF's own unit: :data:`CLOSEST` of the scene's diagonal;
+    none for a scene with no extent, which keeps the viewer's own limit."""
+    diagonal = result.across_m / result.unit_m
+    return diagonal * CLOSEST if diagonal > 0.0 else None
+
+
 def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None) -> str:
     """The page of ``result``: the viewer inlined, or from jsDelivr with ``cdn``; ``caption`` above the notes."""
     glb = base64.b64encode(result.glb).decode("ascii")
@@ -133,7 +216,9 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None) -
         shown = f" (shown {result.slow:,.4g} times slower)"
     else:
         shown = f" (shown {1.0 / result.slow:,.4g} times faster)"
-    config = json.dumps({"slow": result.slow, "unit": unit, "factor": factor, "digits": digits, "shown": shown})
+    config = json.dumps({"slow": result.slow, "unit": unit, "factor": factor, "digits": digits, "shown": shown,
+                         "closest": closest_radius(result),
+                         "reach": result.across_m / result.unit_m / 2.0})
     title = html.escape(result.name)
     parts = [
         "<!doctype html>", '<html lang="en">', "<head>", '<meta charset="utf-8">',
@@ -141,7 +226,10 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None) -
         f"<style>{_STYLE}</style>", _viewer_tag(cdn), "</head>", "<body>",
         f'<model-viewer id="view" src="data:model/gltf-binary;base64,{glb}" alt="{title}, drawn from its USD stage" '
         f'camera-controls {"autoplay animation-name=" + chr(34) + "run" + chr(34) if animated else ""} '
-        'interaction-prompt="none" shadow-intensity="0" exposure="1"></model-viewer>']
+        'interaction-prompt="none" shadow-intensity="0" exposure="1"></model-viewer>',
+        '<div class="grip" id="grip" role="separator" aria-orientation="horizontal" tabindex="0" '
+        'aria-label="Resize the notes below the view" '
+        'title="Drag down for more view, up for more notes; double-click to fold or unfold the notes"></div>']
     if animated:
         options = "".join(f'<option value="{s:g}"{" selected" if s == 1.0 else ""}>{s:g}x</option>' for s in SPEEDS)
         start = f"t = {0:.{digits}f} {unit} simulated{shown}"
@@ -157,11 +245,12 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None) -
             if animated else "a scene with no recording")
     notes.append(f'<p class="muted">{html.escape(result.name)}: about {html.escape(result.size_text())} across '
                  f"over its whole motion; {html.escape(span)}.</p>")
+    notes.append('<p class="muted">Scroll to zoom toward the pointer, as close as the view can draw (about a hundredth of the scene); click a part to orbit around it; right-drag or two fingers to pan.</p>')
     notes += [f'<p class="muted">{html.escape(line)}</p>' for line in result.lines()]
     where = ("The viewer is loaded from jsDelivr, held to its hash; the scene is inside this page." if cdn else
              "The viewer and the scene are both inside this page: it needs no network.")
     notes.append(f'<p class="muted">{CREDIT} {where}</p>')
-    parts += ['<div class="notes">', *notes, "</div>",
+    parts += ['<div class="notes" id="notes"><div class="notes-body">', *notes, "</div></div>",
               f'<script type="module">{_SCRIPT.replace("CONFIG", config)}</script>', "</body>", "</html>"]
     return "\n".join(parts) + "\n"
 
@@ -232,5 +321,5 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
     return written, result
 
 
-__all__ = ["CREDIT", "OUTPUT_WARNING_BYTES", "VIEWER_CDN", "VIEWER_FILE", "VIEWER_SHA256", "VIEWER_SRI",
-           "VIEWER_VERSION", "WebPage", "display", "page", "viewer_bytes", "web"]
+__all__ = ["CLOSEST", "CREDIT", "OUTPUT_WARNING_BYTES", "VIEWER_CDN", "VIEWER_FILE", "VIEWER_SHA256", "VIEWER_SRI",
+           "VIEWER_VERSION", "WebPage", "closest_radius", "display", "page", "viewer_bytes", "web"]
