@@ -4,7 +4,6 @@ import builtins
 import json
 import math
 import re
-import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
@@ -53,6 +52,7 @@ from mime.build import StageBinding, stage_binding
 from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
 from mime.build._maddening import FlagTally, FlagTest
 from mime.errors import public
+from mime.errors._frames import warn_at_script
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
 from mime.results import (
@@ -442,9 +442,9 @@ class Experiment:
             record = record_of(self._settings, self._declarations, plans, derived, stage)
             report = replace(report, stage_hash=record.stage_hash, assets=pins.lines())
         for text in report.range_warnings():
-            warnings.warn(text, UserWarning, stacklevel=3)
+            warn_at_script(text, UserWarning)
         for text in description_warnings(plans):
-            warnings.warn(text, DescriptionWarning, stacklevel=3)
+            warn_at_script(text, DescriptionWarning)
         load_report = None
         if self._saved is not None:
             # A saved folder's stage is rebuilt by the writer that wrote it, to be held to its lock; a save writes the

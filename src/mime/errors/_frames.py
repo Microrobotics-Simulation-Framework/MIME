@@ -9,6 +9,7 @@ from __future__ import annotations
 import inspect
 import os
 import sysconfig
+import warnings
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -136,5 +137,17 @@ def caller_place() -> Place | None:
     return None
 
 
+def warn_at_script(message: str, category: type[Warning]) -> None:
+    """Warn at the line of the script's that called into MIME, however many of MIME's own frames lie between: a public
+    call that builds inside another (``save``, ``load``) shows the script's line, not its own. Where no frame is the
+    script's (a command), at the outermost frame."""
+    level, frame = 1, inspect.currentframe()
+    while frame is not None and (level == 1 or is_library(frame)):
+        if frame.f_back is None:
+            break
+        frame, level = frame.f_back, level + 1
+    warnings.warn(message, category, stacklevel=level)
+
+
 __all__ = ["HIDDEN_PACKAGES", "Place", "caller_place", "innermost", "is_library", "raised_by_library",
-           "raised_by_mime", "raiser", "script_places", "script_traceback", "walk"]
+           "raised_by_mime", "raiser", "script_places", "script_traceback", "walk", "warn_at_script"]
