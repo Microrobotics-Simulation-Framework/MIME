@@ -24,7 +24,7 @@ import modal
 ROOT = Path(__file__).resolve().parents[2] if modal.is_local() else Path("/")
 ENV = ROOT / "src" / "mime" / "data" / "env"
 BASE = json.loads((ENV / "bases.json").read_text())["3.14"]["image"] if modal.is_local() else "python:3.14-slim"
-UV_VERSION = json.loads((ENV / "uv.json").read_text())["version"] if modal.is_local() else "0.13.0"
+UV_VERSION = json.loads((ENV / "uv.json").read_text())["version"] if modal.is_local() else "0.13.4"
 WHEEL = Path(os.environ.get("MIME_WHEEL", "dist/missing.whl"))
 PRECISION = {"JAX_ENABLE_X64": "1", "JAX_PLATFORMS": "cpu", "MIME_ASSETS_DIR": "/tmp/assets"}
 #: Spacings at or below this get the larger container: the dense matrices grow with the square of the samples.
