@@ -4,8 +4,13 @@ Mermaid text (``--graph``), without running it.
 **What this bounds.** That the command prints what the Python calls print (``Experiment.tree()``, ``built.to_mermaid()``)
 for a saved folder, byte for byte when its output is not going to a terminal; that on a terminal the tree is drawn
 with every word of the plain tree; that ``--json`` is the tree as data; and that a missing folder and an option pair
-that do not go together are refused with an exit code. The tree and the Mermaid are judged in
+that do not go together are refused with an exit code; and that no view writes into, touches or adds to the folder it
+reads (every file's content, size and modification time, and the list of files, before and after). The tree and the Mermaid are judged in
 ``tests/build/test_graph_and_tree.py``; this judges the command around them.
+
+**Two bodies.** The full toy has one body, so a command that printed the first body's name for every law would match its
+committed text; the saved two-body toy (``views_cases.two_bodies``) is held to its own tree and Mermaid through the
+command, from its saved folder, which also shows the chain's order surviving the save.
 
 **Windows.** The terminal test uses a pseudo-terminal, which Windows has not (``needs_pty``), so the drawn tree is not
 tested there; the piped and ``--json`` tests, which are what a program reads, run on every platform.
@@ -17,6 +22,7 @@ the piped text."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -32,6 +38,7 @@ from _platform_support import needs_pty
 from _terminal_support import run_on_terminal, stripped
 from mime.cli import main as mime_main
 from mime.testing.toys import full_toy
+from views_cases import two_bodies
 
 pytestmark = pytest.mark.own_child_cache
 
@@ -49,6 +56,16 @@ def saved(tmp_path_factory) -> Path:
     jax.config.update("jax_enable_x64", True)
     folder = tmp_path_factory.mktemp("toy")
     full_toy().save(folder)
+    jax.config.update("jax_enable_x64", held)
+    return folder
+
+
+@pytest.fixture(scope="module")
+def saved_two_bodies(tmp_path_factory) -> Path:
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    folder = tmp_path_factory.mktemp("two_bodies")
+    two_bodies().save(folder)
     jax.config.update("jax_enable_x64", held)
     return folder
 
@@ -200,3 +217,75 @@ def test_control_the_terminal_without_a_request_for_plain_text_is_not_the_piped_
 def test_the_graph_on_a_terminal_is_still_the_mermaid_text(saved, tmp_path):
     raw, code = on_a_terminal(tmp_path, "show", str(saved), "--graph", translated=False)
     assert code == 0 and raw == MERMAID
+
+
+def test_the_saved_two_body_experiment_shows_the_tree_and_the_graph_of_the_one_that_was_saved(saved_two_bodies, capsys):
+    """Each law keeps its own body, medium and field, and the chain its order, through the saved document and the command."""
+    experiment = two_bodies()
+    assert mime_main(["show", str(saved_two_bodies)]) == 0
+    assert capsys.readouterr().out == experiment.tree().text() == (GOLDEN / "two_bodies.tree").read_text()
+    assert mime_main(["show", str(saved_two_bodies), "--graph"]) == 0
+    assert capsys.readouterr().out == str(experiment.build().to_mermaid()) == (GOLDEN / "two_bodies.mmd").read_text()
+    assert mime_main(["show", str(saved_two_bodies), "--json"]) == 0
+    assert capsys.readouterr().out == experiment.tree().json()
+
+
+# --- nothing is written into the folder ------------------------------------------------------------------------------
+
+LONG_AGO = 1_000_000_000  # 2001: any later write to a file changes its modification time, whatever the clock's grain
+
+
+def folder_state(folder: Path) -> dict[str, tuple[str, int, int, str | None]]:
+    """Every file and directory under ``folder`` as ``(kind, size, modification time in ns, SHA-256 of a file)``."""
+    held: dict[str, tuple[str, int, int, str | None]] = {}
+    for path in sorted(folder.rglob("*")):
+        stat = path.stat()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        held[path.relative_to(folder).as_posix()] = ("file" if path.is_file() else "dir", stat.st_size, stat.st_mtime_ns,
+                                                     digest)
+    return held
+
+
+def aged(folder: Path) -> None:
+    for path in folder.rglob("*"):
+        os.utime(path, (LONG_AGO, LONG_AGO))
+
+
+@pytest.mark.parametrize("words", [(), ("--tree",), ("--graph",), ("--tree", "--graph"), ("--json",)],
+                         ids=["default", "tree", "graph", "tree+graph", "json"])
+@pytest.mark.parametrize("target", ["folder", "document"])
+def test_showing_an_experiment_leaves_its_folder_exactly_as_it_was(saved_two_bodies, tmp_path, capsys, words, target):
+    """The folder is copied and every file in it set to a time long ago, so that a file rewritten with the same bytes
+    (which the content hash alone would not see) has a new modification time. The check holds the list of files, each one's
+    size, time and content, and the directories, before and after."""
+    import shutil
+
+    folder = tmp_path / "folder"
+    shutil.copytree(saved_two_bodies, folder)
+    aged(folder)
+    before = folder_state(folder)
+    assert len(before) > 1 and all(time == LONG_AGO * 10**9 for _, _, time, _ in before.values())
+    path = folder / "experiment.mime.yaml" if target == "document" else folder
+    assert mime_main(["show", str(path), *words]) == 0
+    assert capsys.readouterr().out
+    assert folder_state(folder) == before
+
+
+def test_control_the_state_check_sees_a_file_added_a_file_rewritten_with_its_own_text_and_one_touched(saved_two_bodies, tmp_path):
+    import shutil
+
+    folder = tmp_path / "folder"
+    shutil.copytree(saved_two_bodies, folder)
+    aged(folder)
+    before = folder_state(folder)
+    document = folder / "experiment.mime.yaml"
+    (folder / "graph.cache").write_text("x")
+    assert folder_state(folder) != before
+    (folder / "graph.cache").unlink()
+    assert folder_state(folder) == before
+    document.write_text(document.read_text())
+    assert folder_state(folder) != before, "the same text, written again, is seen by its time"
+    aged(folder)
+    assert folder_state(folder) == before
+    os.utime(document, (LONG_AGO + 1, LONG_AGO + 1))
+    assert folder_state(folder) != before

@@ -72,6 +72,11 @@ between, in the order its roles are declared (`body`, then `medium`, `field` or 
 it reads comes from and what each label it writes goes to. The tree lists what the experiment declares, not what the build
 derived: a law bound to a name nothing declares is listed with the name it was given.
 
+The tree is the topology: what is made of what, and what each law and observation binds. It does not list the declared values
+(a mass, a viscosity, a magnetic moment, each with its reason), the settings of an entry other than its rung, the run's settings
+(`dt`, the duration, the seed), the scene's references or the initial state; a value missing from the tree is not undeclared.
+`mime show` reads the saved document, which holds them.
+
 ## The graph
 
 `built.to_mermaid()` is the graph the build made, as a Mermaid flowchart. It is MADDENING's own `to_mermaid`, so every node,
@@ -84,7 +89,9 @@ folder:
 mime show my_experiment --graph
 ```
 
-`--tree --graph` prints both, the tree first. The graph builds the experiment, which the tree does not. Tutorial A0's graph:
+`--tree --graph` prints both, the tree first. The graph builds the experiment, which the tree does not. Not every law of the tree
+is a node of the graph: `contact:umr` is a projection applied to the body's state outside the graph, so it is in the tree and
+has no node or edge in the graph (the [build report](build_report.md) lists it as a rule). Tutorial A0's graph:
 
 <!-- mime-fragment: tutorial A0's graph as it is printed; tests/docs/test_graph_and_tree_page.py holds this block to the experiment's own graph, so one changed character fails it -->
 ```mermaid
@@ -130,7 +137,8 @@ lag of every edge. `direction=` is MADDENING's (`LR`, `RL`, `TB` or `BT`): `TB` 
 
 `built.to_mermaid()` returns a `str` that also tells a notebook how to show it: a `text/markdown` Mermaid fence, which a front end
 that draws Mermaid in Markdown draws as a diagram, and which any other shows as the Mermaid text, with a line under it saying
-where to draw it (mermaid.live). Nothing is loaded from a network to draw it. `print(built.to_mermaid())` is the plain text.
+where to draw it (mermaid.live); under a diagram that is drawn, the line reads as a pointer to where it can be edited. Nothing
+is loaded from a network to draw it. `print(built.to_mermaid())` is the plain text.
 
 What the front ends do with that fence was measured on 2026-11-05, by opening a notebook that held the output in a Chrome 148
 driven by a script, and looking for a drawn diagram in the page (and for any request leaving the machine: there was none):

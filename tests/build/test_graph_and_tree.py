@@ -12,6 +12,11 @@ MADDENING's own description of the graph (``built.topology()``, which reads ``Gr
 compared with phase 1's resolution of the same declarations (``built.plans``: its things, its entries with the names
 each is bound to, its controller), which reaches them by another route than the tree does.
 
+**A law bound to the wrong thing.** Script A, tutorial A0 and the full toy each declare one body, one medium and one
+field, so a tree that printed the first body for every law would look right on them. The two-body toy (``views_cases``)
+has two bodies, two media and two fields, bound across, and a chain, parts and fields declared out of alphabetical order,
+so such a tree differs from the right one, and so does one that sorted the chain or left the parts in the order given.
+
 **Controls.** Each check is a function of its inputs, and each control hands it the planted fault: every edge dropped in
 turn, every node, every group, every external input, every law of the tree omitted in turn or bound to the wrong name.
 Each fails on every run, since the faults are enumerated and not drawn. The order-dependence control restores the
@@ -30,7 +35,7 @@ from hypothesis import HealthCheck, find, given, settings
 from hypothesis import strategies as st
 
 import mime.experiment._tree as tree_module
-from views_cases import tutorial_a0
+from views_cases import tutorial_a0, two_bodies, two_body_declarations
 from mime.build import _testing
 from mime.build._plan import Section
 from mime.experiment import BuiltExperiment, Experiment, Mermaid
@@ -53,9 +58,7 @@ def full_toy() -> Experiment:
     return declare_in_order(lambda: toy_experiment("full_toy"), full_declarations())
 
 
-MAKERS = {"script A": script_a, "tutorial A0": tutorial_a0, "full toy": full_toy}
-
-
+MAKERS = {"script A": script_a, "tutorial A0": tutorial_a0, "full toy": full_toy, "two bodies": two_bodies}
 
 
 @pytest.fixture(scope="module", params=list(MAKERS))
@@ -431,6 +434,12 @@ def test_the_tree_of_tutorial_a0_has_the_controller_with_its_reads_and_writes():
     assert apparatus["parts"][0]["mount"] == "motor.rotor" and apparatus["parts"][0]["magnet"]
 
 
+def test_a_tree_can_be_hashed_and_equal_trees_hash_alike(experiment):
+    """A frozen record over a dict has no hash of its own; the tree's is its text's."""
+    assert hash(experiment.tree()) == hash(experiment.tree()) and experiment.tree() == experiment.tree()
+    assert len({experiment.tree(), experiment.tree()}) == 1
+
+
 def test_the_tree_needs_no_build_and_shows_an_experiment_the_build_would_refuse():
     experiment = toy_experiment("refused")
     experiment.attach(ToyDrag.Quadratic(), body="nobody")
@@ -439,14 +448,56 @@ def test_the_tree_needs_no_build_and_shows_an_experiment_the_build_would_refuse(
     assert record["bodies"] == []
 
 
+def test_the_two_body_tree_binds_each_law_and_observation_to_its_own_body_medium_and_field():
+    """With one body, a tree that printed the first body for every ``body`` role would look right; with two, each law
+    names the body, medium and field it was attached to (``zed`` to ``bath`` and ``push``, ``abe`` to ``oil`` and
+    ``pull``). Written out here, not compared with the plan, so that a tree and a plan that were wrong the same way fail."""
+    record = two_bodies().tree().record()
+    assert {row["id"]: row["binds"] for row in record["laws"]} == {
+        "toy.couple:abe": [["body", "abe"], ["medium", "oil"]],
+        "toy.couple:zed": [["body", "zed"], ["medium", "bath"]],
+        "toy.drag:zed": [["body", "zed"]],
+        "toy.hold:abe": [["body", "abe"], ["field", "rig.pull"]],
+        "toy.hold:zed": [["body", "zed"], ["field", "rig.push"]],
+        "toy.spring:abe": [["body", "abe"]]}
+    assert {row["id"]: row["reads"] for row in record["observations"]} == {
+        "toy.recorder:abe": [["body", "abe"]], "toy.recorder:zed": [["body", "zed"]]}
+
+
+def test_the_two_body_tree_keeps_a_chain_in_its_declared_order_and_sorts_parts_fields_and_the_things():
+    """The chain is declared ``zeta`` then ``alpha`` (the second mounts on the first), the parts ``shell`` then ``cap``
+    and ``yoke`` then ``cap``, the fields ``push`` then ``pull``, the bodies ``zed`` then ``abe``: the chain stays as
+    declared, and the rest is sorted."""
+    record = two_bodies().tree().record()
+    (rig,) = record["apparatus"]
+    assert [segment["name"] for segment in rig["chain"]] == ["zeta", "alpha"]
+    assert [part["name"] for part in rig["parts"]] == ["cap", "yoke"]
+    assert [each["name"] for each in rig["fields"]] == ["pull", "push"]
+    assert [each["name"] for each in rig["commands"]] == ["alpha.velocity", "zeta.velocity"]
+    assert [row["name"] for row in record["bodies"]] == ["abe", "zed"]
+    assert [part["name"] for part in record["bodies"][1]["parts"]] == ["cap", "shell"]
+    assert [row["name"] for row in record["media"]] == ["bath", "oil"]
+
+
+def test_the_two_body_mermaid_wires_each_body_to_its_own_medium_and_field():
+    mermaid = lines_of(two_bodies().build().to_mermaid())
+    names = {found[1]: found[2].split("<br/>")[0] for line in mermaid if (found := NODE.match(line))}
+    wired = {(names[found[1]], names[found[4]]) for line in mermaid if (found := EDGE.match(line))}
+    right = {("zed", "bath.flow"), ("bath.flow", "zed"), ("abe", "oil.flow"), ("oil.flow", "abe"),
+             ("rig.push", "toy.hold:zed"), ("toy.hold:zed", "zed"), ("rig.pull", "toy.hold:abe"), ("toy.hold:abe", "abe")}
+    wrong = {("zed", "oil.flow"), ("oil.flow", "zed"), ("abe", "bath.flow"), ("bath.flow", "abe"),
+             ("rig.push", "toy.hold:abe"), ("toy.hold:abe", "zed"), ("rig.pull", "toy.hold:zed"), ("toy.hold:zed", "abe")}
+    assert right <= wired and not (wrong & wired)
+
+
 # --- determinism -----------------------------------------------------------------------------------------------------
 
 
 DECLARATIONS = full_declarations()
 
 
-def views(order: list[int]) -> tuple[str, str, str]:
-    experiment = declare_in_order(lambda: toy_experiment("full_toy"), DECLARATIONS, order)
+def views(order: list[int], declarations=DECLARATIONS, name: str = "full_toy") -> tuple[str, str, str]:
+    experiment = declare_in_order(lambda: toy_experiment(name), declarations, order)
     return str(experiment.build().to_mermaid()), experiment.tree().text(), experiment.tree().json()
 
 
@@ -459,6 +510,23 @@ def reference() -> tuple[str, str, str]:
 @given(order=declaration_orders(DECLARATIONS))
 def test_any_order_of_the_calls_gives_the_same_mermaid_tree_and_data_byte_for_byte(order, reference):
     assert views(order) == reference
+
+
+TWO_BODY_DECLARATIONS = two_body_declarations()
+
+
+@pytest.fixture(scope="module")
+def two_body_reference() -> tuple[str, str, str]:
+    return views(list(range(len(TWO_BODY_DECLARATIONS))), TWO_BODY_DECLARATIONS, "two_bodies")
+
+
+@PROPERTY
+@given(order=declaration_orders(TWO_BODY_DECLARATIONS))
+def test_any_order_of_the_calls_of_the_two_body_toy_gives_the_same_mermaid_tree_and_data_byte_for_byte(
+        order, two_body_reference):
+    """The toy with two bodies, two media and two fields, whose laws would each be bound to the other's thing by an order
+    that mattered."""
+    assert views(order, TWO_BODY_DECLARATIONS, "two_bodies") == two_body_reference
 
 
 def test_control_with_the_canonical_order_skipped_hypothesis_finds_an_order_that_changes_the_mermaid(reference):
@@ -493,10 +561,10 @@ def test_the_declarations_reversed_give_the_same_mermaid_and_tree(name):
 # --- the committed text ----------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["full toy", "script A"])
+@pytest.mark.parametrize("name", ["full toy", "script A", "two bodies"])
 def test_the_mermaid_and_the_tree_match_their_committed_text(name):
     experiment = MAKERS[name]()
-    stem = {"full toy": "full_toy", "script A": "script_a"}[name]
+    stem = {"full toy": "full_toy", "script A": "script_a", "two bodies": "two_bodies"}[name]
     produced = {f"{stem}.mmd": str(experiment.build().to_mermaid()), f"{stem}.tree": experiment.tree().text()}
     if os.environ.get("MIME_REGENERATE_GOLDEN") == "1":
         for file, text in produced.items():

@@ -31,8 +31,9 @@ if TYPE_CHECKING:
 
 #: Where to draw Mermaid text that a front end shows as text.
 RENDERER = "https://mermaid.live"
-#: The line a notebook shows under the Mermaid text, when the front end draws it as text and not as a diagram.
-POINTER = f"Mermaid source: if it shows as text, paste it into {RENDERER} to draw it."
+#: The line a notebook shows under the Mermaid, drawn or not: a ``text/markdown`` output cannot be shown to some front ends
+#: and not to others, so the line is worded to read well under a diagram and under the text.
+POINTER = f"Mermaid diagram. If your notebook shows its text instead, paste it into {RENDERER} to draw it."
 
 _NODE_LINE = re.compile(r'^(?P<head>\s*n\d+\[")(?P<name>.*?)<br/>(?P<type>.*)(?P<tail>"\])$')
 

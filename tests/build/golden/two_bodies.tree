@@ -1,0 +1,43 @@
+experiment two_bodies  (profile exploratory)
+  structures: none
+  media
+    bath  (fills nothing declared)
+      flow toy.relaxation 0.1.0
+    oil  (fills nothing declared)
+      flow toy.relaxation 0.1.0
+  bodies
+    abe  toy.body 0.1.0
+    zed  toy.body 0.1.0
+      part cap  box 0.1.0
+      part shell  box 0.1.0
+  apparatus
+    rig
+      chain zeta  motor 0.2.0, rung kinematic
+      chain alpha  motor 0.2.0, rung kinematic
+      part cap  box 0.1.0  (mounted on alpha.rotor)
+      part yoke  box 0.1.0  (mounted on zeta.rotor; permanent magnet)
+      field pull  toy.field 0.1.0
+      field push  toy.field 0.1.0
+      drive alpha.velocity  drive.constant 0.1.0
+      drive zeta.velocity  drive.constant 0.1.0
+  laws
+    toy.couple:abe  toy.couple 0.1.0
+      between body abe, medium oil
+    toy.couple:zed  toy.couple 0.1.0
+      between body zed, medium bath
+    toy.drag:zed  toy.drag 0.2.0, rung quadratic
+      between body zed
+    toy.hold:abe  toy.hold 0.1.0
+      between body abe, field rig.pull
+    toy.hold:zed  toy.hold 0.1.0
+      between body zed, field rig.push
+    toy.spring:abe  toy.spring 0.1.0
+      between body abe
+  observations
+    toy.recorder:abe  toy.recorder 0.1.0
+      reads body abe
+      gives last, samples
+    toy.recorder:zed  toy.recorder 0.1.0
+      reads body zed
+      gives last, samples
+  controller: none

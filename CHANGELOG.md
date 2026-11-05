@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `experiment.tree()` is what the experiment declares (structures, media and what each fills, bodies and their parts,
   apparatus with their chain, parts, fields and drives, each law with the things it binds, observations with what they
   read, the controller with its reads and writes), each with its registered id and version: plain indented text
-  (`str(tree)`) or data (`tree.record()`, `mime.tree/1`). `built.to_mermaid()` is MADDENING's `to_mermaid` of the
+  (`str(tree)`) or data (`tree.record()`, `mime.tree/1`); it is the topology, not the declared values, settings or run
+  settings. `built.to_mermaid()` is MADDENING's `to_mermaid` of the
   compiled graph with the registered entry added to each node, and a notebook shows it as a diagram where its front end
   draws a Mermaid fence (JupyterLab 4.1 and after and Notebook 7 do, measured; 4.0 shows the text with a pointer to a
   renderer; VS Code and Colab were not measured). `mime show <folder>` prints the tree (`--tree`, the default, drawn as a

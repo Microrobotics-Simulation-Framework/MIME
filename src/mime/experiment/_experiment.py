@@ -446,8 +446,10 @@ class Experiment:
         """What this experiment declares, as a tree: its structures, media and what each fills, bodies and their
         parts, apparatus with their fields and drives, each law with the things it binds, each observation with what it
         reads, and the controller with its reads and writes, each with its registered id and version. Nothing is built or
-        checked, so it shows an experiment that would be refused too. ``str(tree)`` is plain indented text, ``tree.record()``
-        the same as data. The same tree whatever the order of the calls that declared it."""
+        checked, so it shows an experiment that would be refused too. It is the topology: what is made of what and what binds
+        what, not the declared values (a mass, a viscosity), the settings of an entry, the run's settings or the scene.
+        ``str(tree)`` is plain indented text, ``tree.record()`` the same as data. The same tree whatever the order of
+        the calls that declared it."""
         return tree_of(self._settings, self._declarations)
 
     @public

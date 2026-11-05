@@ -277,6 +277,10 @@ class Tree:
         return json.dumps(self._record, indent=2) + "\n"
 
     @override
+    def __hash__(self) -> int:
+        return hash(self.text())
+
+    @override
     def __str__(self) -> str:
         return self.text()
 
