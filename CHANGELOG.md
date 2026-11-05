@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Colab notebooks** (`docs/notebooks/`): the settling ball in a tube (`examples/sphere_settling_tube.py`) and
-  tutorial A's reproduction arm (`examples/script_a.py`). Each installs the released MIME from PyPI, runs its
-  experiment with the live display, plots it with matplotlib and shows the browser view. Their cells tagged `example`
-  are the examples' code, verbatim: `tests/examples/test_notebooks.py` fails when they differ.
+- **Colab notebooks** (`docs/notebooks/`), linked first in the README: a steel ball settling in a tube of water, and
+  de Jongh's screw-shaped magnetic robot driven along a tube by a rotating field (tutorial A's experiment). Written
+  for a newcomer, step by step in plain words, each installs the released MIME from PyPI, runs its experiment with the
+  live display, plots it with matplotlib, shows the browser view, and ends with changes to try.
+  `tests/examples/test_notebooks.py` builds each notebook's experiment against the checkout and runs A's for a few
+  steps; `scripts/colab_links.py` points every Colab link at one branch.
 
 ## [0.3.0.dev1] - 2026-11-05
 

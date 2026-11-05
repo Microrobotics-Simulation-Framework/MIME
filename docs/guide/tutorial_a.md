@@ -9,8 +9,8 @@ Both arms are in one file, `examples/script_a.py`, and the tutorial's own run of
 [the scene](../scene.md) (frames, regions, the stage), [materials](../materials.md) (how a value reaches an entry, declared
 against fitted), and [the profiles](../profiles.md).
 
-Run it in Colab: [the tutorial's notebook](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/v0.3-colab-notebooks/docs/notebooks/tutorial_a.ipynb) builds the reproduction arm, runs it, plots its swim
-speed and its position along the tube, and shows the browser view.
+Run it in Colab: [the tutorial's notebook](https://colab.research.google.com/github/Microrobotics-Simulation-Framework/MIME/blob/v0.3-colab-notebooks/docs/notebooks/tutorial_a.ipynb) builds the screw and its tube step by step in plain
+words, runs it, plots its position along the tube, and shows the browser view.
 
 ## What this tutorial claims
 

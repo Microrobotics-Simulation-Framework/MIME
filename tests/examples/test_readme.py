@@ -7,14 +7,15 @@ says and nothing else.
 The README is also the project's page on PyPI, which resolves no relative link, so every link in it is absolute: a file
 of the repository at this release's tag (``blob/v<version>/`` or ``tree/v<version>/``, naming a path of this checkout),
 a page of this release's documentation (``https://microrobotica.org/mime/<release>/``, naming a page whose source is in
-``docs/``), or one of the few other addresses listed. The control: the README as it was before the release, with its
-relative links and its install from the branch, fails both checks.
+``docs/``), a notebook of ``docs/notebooks/`` opened in Colab, or one of the few other addresses listed. The control:
+the README as it was before the release, with its relative links and its install from the branch, fails both checks.
 
 **What this bounds.** That the quickstart builds, runs, saves, and that the shell command the README gives prints what
 the README says it prints; that the distribution and extras the README installs exist in the project; that each link
 names a file or a page source this checkout has, at the tag and the release of its own version. It does not install
 from a network, does not run the ``pip`` line, and does not fetch a link (the tag does not exist until the release)."""
 
+import importlib.util
 import re
 import tomllib
 from pathlib import Path
@@ -30,8 +31,14 @@ README = (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 REPOSITORY = "https://github.com/Microrobotics-Simulation-Framework/MIME"
-#: The absolute addresses the README may link that are neither a file at this release's tag nor a page of its docs.
-OTHER_LINKS = {"https://microrobotica.org/maddening/", f"{REPOSITORY}/tree/pre-0.3", f"{REPOSITORY}/tree/v0.2.0"}
+_SPEC = importlib.util.spec_from_file_location("colab_links", ROOT / "scripts" / "colab_links.py")
+assert _SPEC is not None and _SPEC.loader is not None
+COLAB = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(COLAB)
+#: The absolute addresses the README may link that are neither a file at this release's tag nor a page of its docs
+#: (a notebook opened in Colab is held by ``scripts/colab_links.py``'s check, which tests/examples/test_notebooks.py runs).
+OTHER_LINKS = {"https://microrobotica.org/maddening/", f"{REPOSITORY}/tree/pre-0.3", f"{REPOSITORY}/tree/v0.2.0",
+               COLAB.BADGE}
 
 
 def fences(language: str, text: str = README) -> list[str]:
@@ -45,6 +52,10 @@ def link_problems(text: str, root: Path = ROOT) -> list[str]:
     found = []
     for target in re.findall(r"\]\(([^)\s]+)\)", text):
         if target in OTHER_LINKS:
+            continue
+        if (held := COLAB.LINK.fullmatch(target)) is not None:
+            if not (root / "docs" / "notebooks" / held["name"]).is_file():
+                found.append(f"{target}: no docs/notebooks/{held['name']} in this checkout")
             continue
         if (held := files.fullmatch(target)) is not None:
             if not (root / held["path"]).exists():
@@ -139,3 +150,4 @@ def test_control_the_readme_before_the_release_fails_both_checks():
     assert len(problems) == 2 and problems[0].startswith("docs/platforms.md: neither a file at the tag")
     assert problems[1].endswith("/pages/nowhere: no page source docs/nowhere.md")
     assert link_problems(f"[a]({REPOSITORY}/blob/v{mime.__version__}/no_such_file.md)") != []
+    assert link_problems(f"[n]({COLAB.link('no_such_notebook.ipynb')})") != [], "a Colab link to no notebook passes"
