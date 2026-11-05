@@ -17,7 +17,7 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Callable, Collection, Generator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -45,6 +45,7 @@ from mime.assets._cache import (
     write_record,
 )
 from mime.assets._commands import check_command, fetch_command
+from mime.assets._gates import approve, is_cleared
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
 from mime.assets._adapters import (
     LOOPBACK_HOSTS,
@@ -638,6 +639,17 @@ def _names_a_person_may_use(ref: AssetRef) -> list[tuple[str, bool]]:
     return [(name, own_name) for name, own_name in names if name != ref.sha256]
 
 
+def needs_download(ref: AssetRef) -> bool:
+    """Whether resolving ``ref`` would go to a location: not with ``MIME_OFFLINE`` set, not when the cache holds it, and not
+    when the cache directory holds a file of its size under its sha256 or a name a person may copy in (which the resolver
+    hashes, and takes if its bytes are the reference's). The download gates ask about what this says is a download; a file
+    that turns out to hold other bytes is gated by the resolver, when it comes to download it."""
+    if offline() or cheap_problem(ref) is None:
+        return False
+    candidates = [file_path(ref), *(cache_dir() / name for name, _ in _names_a_person_may_use(ref))]
+    return not any(path.is_file() and path.stat().st_size == ref.size for path in candidates)
+
+
 def _link_into_place(ref: AssetRef, placed: Path) -> None:
     """Make the file a person placed under another name the cache's file for ``ref``: a hard link, so the person's file
     stays where and as it was, and a copy on a filesystem without them."""
@@ -797,7 +809,8 @@ def _store(ref: AssetRef, report: Callable[[str], None] | None, *, replace: bool
         f"check the network, or copy the file to {file_path(ref)} and run `{check_command()}`")])
 
 
-def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full: bool = False) -> Path:
+def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full: bool = False,
+            accept_licences: Collection[str] = (), yes: bool = False, force: bool = False) -> Path:
     """The file of ``ref`` in the cache, stored first if it is not there. In this order:
 
     1. **The cache**, keyed by the hash: a file whose full verification is recorded and unchanged is returned, with no
@@ -813,7 +826,12 @@ def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full:
 
     Steps 2 and 3 hold a lock on the asset: a second process waits, then finds the file stored. With
     ``MIME_OFFLINE`` set step 3 is refused (``asset.offline``). ``report`` is called with a line before each download,
-    naming the size and the location."""
+    naming the size and the location.
+
+    **Step 3 is gated** (:mod:`mime.assets._gates`) unless a batch has cleared the file (:func:`approved`): a licence
+    with conditions beyond credit must be accepted (``accept_licences`` names the ids accepted for this call; a person
+    at a terminal is asked; otherwise ``asset.licence-not-accepted``), and the disk must have room (``yes`` answers the
+    size question, ``force`` overrides the stop; ``yes`` and ``force`` never accept a licence)."""
     is_offline = offline()
     if not full and cheap_problem(ref) is None:
         return file_path(ref)
@@ -828,6 +846,8 @@ def resolve(ref: AssetRef, *, report: Callable[[str], None] | None = None, full:
             return file_path(ref)
         if is_offline:
             raise _offline(ref, present=replace)
+        if not is_cleared(ref):
+            approve([ref], accept_licences=accept_licences, yes=yes, force=force)
         return _store(ref, report, replace=replace)
 
 
@@ -844,10 +864,11 @@ def _look_at_what_is_there(ref: AssetRef) -> tuple[bool, bool]:
     return False, True
 
 
-def fetch(ref: AssetRef, *, report: Callable[[str], None] | None = None) -> Path:
+def fetch(ref: AssetRef, *, report: Callable[[str], None] | None = None, accept_licences: Collection[str] = (),
+          yes: bool = False, force: bool = False) -> Path:
     """Store ``ref`` in the cache and return its file: :func:`resolve` with the file hashed in full, so that a file
-    the cheap check passes, a flipped byte among them, is still found and repaired."""
-    return resolve(ref, report=report, full=True)
+    the cheap check passes, a flipped byte among them, is still found and repaired. Gated as :func:`resolve` is."""
+    return resolve(ref, report=report, full=True, accept_licences=accept_licences, yes=yes, force=force)
 
 
 #: A download of a bundle whose hash is not yet known goes to a folder with this prefix; one a killed process left is
@@ -896,7 +917,8 @@ def _download_refused(error: Exception, name: str, shown: str, max_bytes: int,
 
 def retrieve(location: str, *, name: str, known_hash: str | None = None, max_bytes: int = RETRIEVE_LIMIT_BYTES,
              exceeded_action: str = LIMIT_ACTION, report: Callable[[str], None] | None = None,
-             size: int | None = None, fetcher: Fetcher | None = None) -> AssetRef:
+             size: int | None = None, fetcher: Fetcher | None = None, yes: bool = False,
+             force: bool = False) -> AssetRef:
     """Store the file at one ``location`` whose sha256 nobody has said yet (a bundle named by its DOI), and return the
     reference to it that the hash makes: the file is in the cache under that hash, and :func:`locate` finds it.
 
@@ -907,7 +929,9 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     ``asset.size-exceeded`` with ``exceeded_action`` as what to do. ``size``, where the record states one, is what a
     terminal's progress counts towards (:func:`watching_downloads`); it holds the download to nothing. ``fetcher``, where
     given, downloads the location in place of pooch's own downloader (``mime pull --signed-in``: the token goes to the
-    service's own host alone), as pooch calls a downloader, and a refusal it raises is raised as it is."""
+    service's own host alone), as pooch calls a downloader, and a refusal it raises is raised as it is. Where ``size`` is
+    stated the download is held to the disk gate (:mod:`mime.assets._gates`) before a byte is taken: asked about when it is
+    large (``yes`` answers), stopped when it would fill the drive (``force`` overrides)."""
     shown, keyed = redacted(location), carries_key(location)
     problem = location_problem(location)
     if problem is not None:
@@ -919,6 +943,8 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
             "asset.offline", RefusalClass.ENVIRONMENT,
             f"{name} is not cached, and {OFFLINE_VARIABLE} is set, so nothing is downloaded",
             f"unset {OFFLINE_VARIABLE} (`unset {OFFLINE_VARIABLE}`), or pass the file you copied here")])
+    if size is not None:
+        approve([], yes=yes, force=force, bundle=(name, size))
     cache_dir().mkdir(parents=True, exist_ok=True)
     _clear_stale_unhashed()
     incoming = Path(tempfile.mkdtemp(prefix=_UNHASHED, dir=cache_dir()))

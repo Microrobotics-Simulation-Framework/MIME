@@ -34,12 +34,20 @@ as `asset.reference`. In a lock, a manifest or a package it is the record `Asset
 `AssetRef.from_record()`. Because the hash names the file, a new home for it is one more location: no saved
 experiment changes, and none breaks.
 
-**A manifest** (`Manifest`, its format `mime.asset_manifest` at its first version) is a named group of ordinary records, with the credit and
+**A manifest** (`Manifest`, its format `mime.asset_manifest/2`) is a named group of ordinary records, with the credit and
 notice the group is shown with, and how a description names each of its files (a mesh's path, with its git blob). A
 robot's meshes are a manifest beside its description: the AR4's is `examples/descriptions/ar4/visuals.json`. A
 manifest's `credit` and `licences` fill each record that states none. The earlier visual-set form
 (`mime.visual_set`, its only version) is still read, its hand-written tier dropped and the verdict computed; any other format is
-refused as `asset.manifest`, never misread.
+refused as `asset.manifest`, never misread. **`/2` adds the conditions of a custom licence**: each entry of the manifest's
+`licences` (and of a package's record files) may hold `conditions`, short lines such as `non-commercial use only`, which
+the download gates show and ask to be accepted (below); the manifest's `notice` stays, the licence's own words, shown under
+them. `/1` is still read, as a manifest whose licences state no condition lines, and a `/1` manifest that holds
+`conditions` is refused (`asset.manifest`); a MIME that reads only `/1` refuses a `/2` manifest by its format. **A saved
+folder's lock (saved form 6) has no key for the lines**, so it holds the manifest as `/1` and the records without them
+(`to_record()` leaves them out unless asked; `Manifest.to_json(lock=True)`): a download fed from a lock shows the
+licence's id, title and link, what its redistribution status says, and the notice. Holding the lines in the lock is a
+saved form 7, which moves the saved goldens; it is not done here.
 
 ## Where records come from, and the pin
 
@@ -225,6 +233,7 @@ The words are in one place, `_commands.py`.
   folder), and each file of it that travels as a reference is then placed at its path from the cache
   (`mime.saved.place_referenced`); any other is an asset's name; `--all` is every known asset. Exits zero, or two when
   refused or while a file that travels as a reference is left unplaced (`asset.missing`, with why).
+- `mime assets licences [--revoke <id>]`: the licences accepted here (below).
 - `mime assets check`: re-hash every cached asset in full. Exits one when a file is corrupt, marks it (so `locate`
   refuses it) and leaves it where it is.
 - `mime assets sources <name-or-folder>...`: each asset's terms, tier and locations, each looked at now (above).
@@ -232,6 +241,30 @@ The words are in one place, `_commands.py`.
   anything.
 
 "Check" and not "verify": in MIME, verify reruns an experiment against its reference outputs.
+
+## The download gates
+
+`mime.assets._gates` (the thresholds are named there). `resolve` and `fetch` are gated, so the command line, a script and
+a notebook meet the same two questions; a batch (`approved(refs, ...)`, which `mime assets fetch`, `viz.bake` and `mime pull`
+use) asks once for all its files and the resolver then asks nothing more of them.
+
+- **The licence.** An asset whose licence has conditions beyond credit (`licences_of(ref)`: a custom licence, a Creative
+  Commons licence with `NC`, `SA` or `ND`, any id that is not open; none for `NOASSERTION`, which states nothing) is
+  downloaded only once accepted: by name (`accept_licences={"<id>", ...}`, `--accept-licence <id>`: for the call, never
+  remembered), or by a person asked at a terminal or in a notebook (`input()`), whose yes is written to `licences.json` in
+  the user's config directory (`MIME_LICENCE_ACCEPTANCES`) with the licence's id, title, link, conditions and the date, and
+  holds while those are the same. Otherwise `asset.licence-not-accepted`, naming the licence, its conditions and the flag.
+  `yes` and `force` accept no licence. A file already in the cache, or copied in by hand, is no download and asks nothing
+  (`needs_download`). The Python asker is plain text (`PlainAsker`); the command line sets its own (`asking(asker)`).
+- **The disk.** Before a download, its bytes (the files that would be downloaded, `extra_bytes` for what a bake writes,
+  `BAKE_OUTPUT_FACTOR` of the meshes) against `shutil.disk_usage` of the cache's own folder: asked above `CONFIRM_ABOVE_BYTES`
+  (1 GB) or `CONFIRM_ABOVE_FRACTION` (10 %) of the free space (`yes`; `asset.download-large` without a terminal), stopped when
+  it would leave under `STOP_BELOW_BYTES` (2 GB) or `STOP_BELOW_FRACTION` (5 % of the drive) (`force`; `asset.disk-low`). A
+  bundle `retrieve` is held to the same rules where its size is stated (a bundle with no stated size is held only to
+  `max_bytes`).
+- **What a failed write leaves.** A download goes to a folder of its own, removed whatever happens; a baked layer and its
+  records are written beside their names and moved into place, and removed if the write fails (a full disk leaves no
+  half-written file). The asset's `.lock` file remains.
 
 ## What a folder's lock references
 

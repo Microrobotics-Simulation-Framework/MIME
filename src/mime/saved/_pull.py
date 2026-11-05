@@ -14,14 +14,14 @@ import os
 import re
 import shlex
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import unquote
 
 from mime import assets
-from mime._said import DONE, PLAN_LINE, QUESTION_CONFIRM, STOPPED, Said
+from mime._said import DONE, PLAN_LINE, STOPPED, Said
 from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets._commands import fetch_command, folder_argument
@@ -34,10 +34,6 @@ from mime.saved._terms import Placed, place_referenced
 
 if TYPE_CHECKING:
     from mime.push._client import Access
-
-#: Assets whose download is larger than this are asked about first (an interactive terminal), or need ``--yes``. A
-#: choice: about what a session on a laptop's connection should not start without being told.
-ASSET_CONFIRM_BYTES = 1_000_000_000
 
 _RAISE_LIMIT = "if the bundle is that large on purpose, raise the limit: `mime pull --max-bundle-bytes <bytes>`"
 _DOI = re.compile(r"10\.\d{4,9}/\S+")
@@ -179,25 +175,27 @@ def _limit(stated: int | None, allowed: int) -> int:
     return stated if stated is not None else allowed
 
 
-def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_bytes: int) -> Path:
+def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_bytes: int, yes: bool = False,
+                 force: bool = False) -> Path:
     if source.kind == "file":
         return Path(source.value)
     if assets.offline():
         raise _offline_refusal(redacted(source.value))
     if source.kind == "url":
         return assets.locate(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
-                                             exceeded_action=_RAISE_LIMIT, report=say))
+                                             exceeded_action=_RAISE_LIMIT, report=say, yes=yes, force=force))
     assets.downloads_doing(f"reading the file list of the record doi:{source.value}")
     file, checksum, stated, named = _record_file(source.value, source.file)
     if named is not None and say is not None:
         say(f"the record: {named}")
     limit = _limit(stated, max_bundle_bytes)
     return assets.locate(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum,
-                                         max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated))
+                                         max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated,
+                                         yes=yes, force=force))
 
 
 def _from_service(service_name: str, record: str, say: Callable[[str], None] | None, max_bundle_bytes: int,
-                  access: Access | None = None) -> Path:
+                  access: Access | None = None, yes: bool = False, force: bool = False) -> Path:
     """The bundle of the published record ``record`` on a service ``mime push`` publishes to, read by its number at the
     service's records API, never through doi.org (the sandbox's DOIs do not resolve there); with ``access``, let in by
     the token stored for the service or a share link's key, which go to the service's own host alone."""
@@ -217,7 +215,7 @@ def _from_service(service_name: str, record: str, say: Callable[[str], None] | N
                                      f"{found.record}, names the latest")
     return assets.locate(assets.retrieve(found.url, name="bundle", known_hash=f"md5:{found.md5}",
                                          max_bytes=_limit(found.size, max_bundle_bytes), exceeded_action=_RAISE_LIMIT,
-                                         report=say, size=found.size,
+                                         report=say, size=found.size, yes=yes, force=force,
                                          fetcher=downloader(service, found.record, access) if access is not None
                                          else None))
 
@@ -250,7 +248,7 @@ def _kept_secret(source: str | os.PathLike[str] | Token) -> str | Token:
 
 
 def _bundle_from(source: str | Token, say: Callable[[str], None] | None, max_bundle_bytes: int,
-                 from_service: str | None, signed_in: bool) -> Path:
+                 from_service: str | None, signed_in: bool, yes: bool = False, force: bool = False) -> Path:
     """The bundle ``source`` names: a share link's record (let in by its key), a record's number on ``from_service``
     (signed in where asked), or a DOI, an address or a file. A source held as a secret (:func:`_kept_secret`) is read as
     a link first, and no refusal quotes the key it carries; one that is not a service's link is an address elsewhere,
@@ -266,7 +264,7 @@ def _bundle_from(source: str | Token, say: Callable[[str], None] | None, max_bun
                           + (", and is pulled without --signed-in" if signed_in else
                              f", and is pulled from {link.service.name}, not from {from_service}"),
                           "pull the link alone, `mime pull '<the link>'`")
-        return _from_service(link.service.name, link.record, say, max_bundle_bytes, Access(key=link.key))
+        return _from_service(link.service.name, link.record, say, max_bundle_bytes, Access(key=link.key), yes, force)
     if isinstance(source, Token) and (from_service is not None or signed_in):
         raise _refuse("pull.source", RefusalClass.USER,
                       "with --from or --signed-in, pull takes a record's number, and this is an address that carries "
@@ -275,12 +273,13 @@ def _bundle_from(source: str | Token, say: Callable[[str], None] | None, max_bun
     if from_service is not None:
         assert not isinstance(source, Token)
         return _from_service(from_service, source, say, max_bundle_bytes,
-                             _signed_in(from_service) if signed_in else None)
+                             _signed_in(from_service) if signed_in else None, yes, force)
     if signed_in:
         raise _refuse("pull.source", RefusalClass.USER,
                       "--signed-in sends the token stored for the service --from names, and no --from is given",
                       "pull the record by its number from its service, `mime pull --from zenodo <record> --signed-in`")
-    return _bundle_file(parse_source(source.reveal() if isinstance(source, Token) else source), say, max_bundle_bytes)
+    return _bundle_file(parse_source(source.reveal() if isinstance(source, Token) else source), say, max_bundle_bytes,
+                        yes, force)
 
 
 def packages_needed(lock: Lock) -> list[tuple[str, str, str | None]]:
@@ -367,8 +366,8 @@ def _referenced_line(placed: Placed, folder: Path) -> str | None:
     return line + "; each placed from the asset cache"
 
 
-def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, confirm: Callable[[str], bool] | None,
-                  say: Callable[[str], None] | None) -> _AssetOutcome:
+def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, force: bool, accept_licences: Collection[str],
+                  confirm: Callable[[str], bool] | None, say: Callable[[str], None] | None) -> _AssetOutcome:
     refs = assets.folder_assets(folder)
     absent = [ref for ref in refs if not assets.is_cached(ref)]
     cached = len(refs) - len(absent)
@@ -378,36 +377,41 @@ def _fetch_assets(folder: Path, *, wanted: bool, yes: bool, confirm: Callable[[s
     if say is not None:
         say(Said(f"Assets to download: {len(absent)} file{'s' if len(absent) != 1 else ''}, "
                  f"{assets.size_text(total)}", PLAN_LINE))
-    if total > ASSET_CONFIRM_BYTES and not yes:
-        if confirm is None:
-            return _AssetOutcome(cached, 0, 0, len(absent), _refuse(
-                "pull.assets-large", RefusalClass.USER, f"the assets are {assets.size_text(total)}, over the "
-                f"{assets.size_text(ASSET_CONFIRM_BYTES)} MIME asks about, and this is not a terminal to ask in",
-                f"run `{fetch_command(folder=folder)}` to download them"))
-        if not confirm(Said(f"Download {assets.size_text(total)} of assets now?", QUESTION_CONFIRM)):
-            return _AssetOutcome(cached, 0, 0, len(absent))
-    assets.announce_downloads([(ref.name, ref.size) for ref in absent])
-    stored = 0
     try:
-        for ref in refs:
-            assets.fetch(ref, report=say)
-            stored += ref in absent
+        gate = assets.approved(absent, accept_licences=accept_licences, yes=yes, force=force, confirm=confirm)
+        with gate:
+            assets.announce_downloads([(ref.name, ref.size) for ref in absent])
+            stored = 0
+            try:
+                for ref in refs:
+                    assets.fetch(ref, report=say)
+                    stored += ref in absent
+            except BuildRefused as refused:
+                return _AssetOutcome(cached, stored, sum(ref.size for ref in absent[:stored]), len(absent) - stored,
+                                     refused)
     except BuildRefused as refused:
-        return _AssetOutcome(cached, stored, sum(ref.size for ref in absent[:stored]), len(absent) - stored, refused)
+        if refused.codes() == ["asset.download-declined"]:  # a "no" to the size question downloads nothing, as before
+            return _AssetOutcome(cached, 0, 0, len(absent))
+        return _AssetOutcome(cached, 0, 0, len(absent), refused)
     return _AssetOutcome(cached, len(absent), total, 0)
 
 
 def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str] | None = None,
          fetch_assets: bool = True, yes: bool = False, confirm: Callable[[str], bool] | None = None,
          say: Callable[[str], None] | None = None, max_bundle_bytes: int = assets.RETRIEVE_LIMIT_BYTES,
-         from_service: str | None = None, signed_in: bool = False) -> Path:
+         from_service: str | None = None, signed_in: bool = False, accept_licences: Collection[str] = (),
+         force: bool = False) -> Path:
     """Get the bundle ``source`` names (a DOI, an address or a file), check its manifest's hashes, and unpack it into
     the new folder ``into`` (by default ``./<experiment name>/``); then, unless ``fetch_assets`` is false, fetch its
     assets as ``mime assets fetch <folder>`` does. A destination that cannot be unpacked to is refused before anything is
     downloaded; a bundle download stops once it passes the size its record states, or ``max_bundle_bytes`` where none is
-    stated. Assets over :data:`ASSET_CONFIRM_BYTES` are fetched only with ``yes`` or when ``confirm`` (asked with a
-    question) says so; with neither, the folder is complete except for them and a ``BuildRefused`` says the command
-    that fetches them. ``say`` receives progress lines and, last, the summary. Installs nothing. With
+    stated. The assets' downloads are gated (:mod:`mime.assets._gates`): an asset under a licence with conditions beyond
+    credit is fetched only once its licence is accepted (``accept_licences`` names the ids; a person at a terminal is
+    asked), a download over the size MIME asks about (:data:`mime.assets.CONFIRM_ABOVE_BYTES`, or a tenth of the free
+    space) only with ``yes`` or when ``confirm`` (asked with a question) says so, and one that would leave the drive
+    almost full only with ``force``; ``yes`` and ``force`` never accept a licence. With none of them the folder is
+    complete except for the assets and a ``BuildRefused`` says why and the command that fetches them. ``say`` receives
+    progress lines and, last, the summary. Installs nothing. With
     ``from_service`` (``zenodo-sandbox`` or ``zenodo``), ``source`` is a published record's number there, read at that
     service's records API (a sandbox DOI never resolves through doi.org); a DOI under the sandbox's test prefix given
     without it is refused (``pull.sandbox-doi``). ``signed_in`` (with ``from_service``) sends the token ``mime
@@ -423,12 +427,13 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
         refused = destination_problem(into)
         if refused is not None:
             raise refused
-    bundle = _bundle_from(source, say, max_bundle_bytes, from_service, signed_in)
+    bundle = _bundle_from(source, say, max_bundle_bytes, from_service, signed_in, yes, force)
     destination = Path(into) if into is not None else Path(bundle_name(bundle))
     assets.downloads_doing("unpacking the bundle, and checking each file in it")
     unpacked: Unpacked = unpack(bundle, destination)
     needed = packages_needed(unpacked.lock)
-    outcome = _fetch_assets(destination, wanted=fetch_assets, yes=yes, confirm=confirm, say=say)
+    outcome = _fetch_assets(destination, wanted=fetch_assets, yes=yes, force=force, accept_licences=accept_licences,
+                            confirm=confirm, say=say)
     assets.downloads_doing("placing the files that travel as references")
     placed = place_referenced(destination)
     referenced = _referenced_line(placed, destination)
@@ -453,4 +458,4 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
     return destination
 
 
-__all__ = ["ASSET_CONFIRM_BYTES", "Source", "adapters_needed", "packages_needed", "parse_source", "pull"]
+__all__ = ["Source", "adapters_needed", "packages_needed", "parse_source", "pull"]

@@ -18,7 +18,8 @@ from __future__ import annotations
 import hashlib
 import json
 import shlex
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -128,25 +129,47 @@ def index_of(name: str) -> Path:
 
 
 def fetch(target: str | Path, *, budget: TriangleBudget = TriangleBudget(),
-          say: Callable[[str], None] = print) -> list[Baked]:
-    """Fetch and bake every manifest ``target`` names (:func:`manifests_for`) into the asset cache."""
+          say: Callable[[str], None] = print, accept_licences: Collection[str] = (), yes: bool = False,
+          force: bool = False) -> list[Baked]:
+    """Fetch and bake every manifest ``target`` names (:func:`manifests_for`) into the asset cache, gated as :func:`bake`
+    is."""
     baked: list[Baked] = []
     for manifest in manifests_for(target):
-        baked += bake(manifest, budget=budget, say=say)
+        baked += bake(manifest, budget=budget, say=say, accept_licences=accept_licences, yes=yes, force=force)
     return baked
 
 
-def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(),
-         say: Callable[[str], None] = print) -> list[Baked]:
+def _written(path: Path, text: str) -> None:
+    """``text`` at ``path`` whole or not at all: written beside it, then moved into place, and removed if the write
+    fails (a full disk leaves no half-written record for a reader to take as one)."""
+    partial = path.with_name(f".{path.name}.partial")
+    try:
+        partial.write_text(text, encoding="utf-8")
+        os.replace(partial, path)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+
+
+def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(), say: Callable[[str], None] = print,
+         accept_licences: Collection[str] = (), yes: bool = False, force: bool = False) -> list[Baked]:
     """Fetch and bake one manifest's meshes into the asset cache: each record resolved (its sha256 checked), read,
     decimated to its share of ``budget`` and written as a USD layer with its record; and the set's index, which the
-    overlay reads. Prints the set's credit, licence and notice first."""
-    from mime.assets import resolve
+    overlay reads. Prints the set's credit, licence and notice first.
 
-    say(held.text())
+    The download is gated (:mod:`mime.assets._gates`) before a byte is taken: a licence with conditions beyond credit
+    (the AR4's) must be accepted (``accept_licences`` names the ids accepted for this call, a person at a terminal is
+    asked, otherwise ``asset.licence-not-accepted``), the drive must have room for the files and for what the bake
+    writes (:data:`~mime.assets.BAKE_OUTPUT_FACTOR` of their size), a large download is asked about (``yes`` answers),
+    and one that would fill the drive is stopped (``force`` overrides). ``yes`` and ``force`` never accept a licence."""
+    from mime.assets import approved, bake_bytes, resolve
+
     files = [(each.path, held.record(each.asset)) for each in held.files]
     sources: list[tuple[str, AssetRef]] = [(path, ref) for path, ref in files if ref is not None]
-    stored = [resolve(ref, report=say) for _, ref in sources]
+    with approved([ref for _, ref in sources], accept_licences=accept_licences, yes=yes, force=force,
+                  extra_bytes=bake_bytes(ref for _, ref in sources), notice=held.notice) as approval:
+        say(held.text(notice=not approval.notice_shown))
+        stored = [resolve(ref, report=say) for _, ref in sources]
     meshes: list[Mesh] = []
     for (path, _), stored_path in zip(sources, stored, strict=True):
         try:
@@ -182,8 +205,7 @@ def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(),
             "output": {"sha256": hashlib.sha256(layer.read_bytes()).hexdigest(), "bytes": layer.stat().st_size},
             "licence": source.licence, "tier": verdict.tier, "verdict": verdict.words(), "by": verdict.by,
             "role": source.role or "presentation", "credit": source.credit or held.credit, "notice": held.notice}
-        (visuals_dir() / f"{key}.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n",
-                                                   encoding="utf-8")
+        _written(visuals_dir() / f"{key}.json", json.dumps(record, indent=2, sort_keys=True) + "\n")
         baked.append(Baked(path, layer, record))
         say(f"{path}: {len(mesh.triangles)} triangles baked to {len(decimated.mesh.triangles)} "
             f"(budget {share}), within {distance * 1e3:.2f} mm of the original, measured on every vertex both ways "
@@ -194,7 +216,7 @@ def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(),
              "text": held.text(), "budget": {"per_mesh": budget.per_mesh, "per_stage": budget.per_stage},
              "files": {item.path: {"sha256": source.sha256, "layer": item.layer.name}
                        for item, (_, source) in zip(baked, sources, strict=True)}}
-    index_of(held.name).write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _written(index_of(held.name), json.dumps(index, indent=2, sort_keys=True) + "\n")
     return baked
 
 
