@@ -2472,28 +2472,48 @@ anomalies:
       (U = -m . B(x + R l) is), and a body whose pose is turned round a closed loop in a static, non-uniform field
       gains net work, whatever the step. With the field and gradient constant over the loop (the body held at x, which
       is what the laws read), the work of the pair is exactly the loop integral of m . G (axis x l) over the angle, for
-      a turn about a fixed axis; for the moment and lever at right angles to a turn about x, at a point on a dipole
-      source's axis, it is m l pi G_xx.
+      a turn about a fixed axis. For a turn about x, at a point on a dipole source's axis, with the moment and lever at
+      right angles, it is m l pi G_xx when m x l points along +x (the moment along y and the lever along z below), minus
+      that when l x m does, and zero when they are parallel.
 
-      Measured at one operating point (coordinator's re-run of the design pass's red-team script on the development
-      branch's magnetic nodes; the test below reproduces it): a source of 10 A m^2 along z at the origin, the body 50 mm
-      up its axis, a body moment of 1.68 mA m^2 along y, a lever of 1 mm along z, the pose turned once about x with
-      no dynamics. The pair's loop work is 2.5334e-6 J, 2.35 % of the loop's summed absolute work, the same at 64, 360,
-      1000, 3600 and 10000 steps a turn, and equal to m l pi G_xx to better than 1e-14 of itself. The control, the same
-      nodes fed B and G at the magnet's centroid (the derivative of the energy above), does zero work to rounding
-      (1e-20 J against a summed absolute work of 1e-4 J). On 2,500 drawn cases (sources of 1 to 50 A m^2 at 3 to 20 cm,
-      moments of 0.1 to 10 mA m^2, levers of 0.2 to 2 mm, any axis) the pair's work matched the loop integral to at most
-      217 float64 roundings of the scale of its terms, and the control's was at most 73 of them. The work scales as
-      m l |G|, the term the laws' declared validity ("valid while the field varies little across the body") leaves
-      out, so it is inside that validity and small where that holds; on a dipole's axis l |G| / |B| is 3 l / d
-      (arithmetic: 6 % for a lever of 1 mm at 50 mm).
+      Measured at one operating point (a re-run of the design pass's red-team script on the development branch's
+      magnetic nodes, and the tests below, which build both laws as registered): a source of 10 A m^2 along z at the
+      origin, the body 50 mm up its axis, a body moment of 1.68 mA m^2 along y, a lever of 1 mm along z, the pose turned
+      once about x with no dynamics. The pair's loop work is 2.5334e-6 J, which is 2.35 % of the loop's summed absolute
+      work (the sum over the steps of the absolute work of each step's total), the same at 64, 360, 3600 and 10000 steps
+      a turn, and equal to m l pi G_xx to at most 0.27 roundings of the inputs' scale. The control, the same nodes
+      fed B and G at the magnet's centroid (the derivative of the energy above), does zero work to rounding (1e-20 J
+      against a summed absolute work of 1e-4 J). The tests also turn the body to a general orientation, with a moment and
+      lever not along an axis and an oblique axis, and draw cases without a filter: 3,000 unfiltered draws (sources of 1
+      to 50 A m^2 at 3 to 20 cm, moments of 0.1 to 10 mA m^2, levers of 0.2 to 2 mm, any directions, any starting
+      orientation, any axis) matched the loop integral to at most 1.54 roundings (eps times the inputs' scale
+      2 pi |m| (|B| + |l| |G|)), and the control did zero work to at most 1.57 of them. The work scales as m l |G|, the
+      term the laws' declared validity ("valid while the field varies little across the body") leaves out, so it is
+      inside that validity and small where that holds; on a dipole's axis l |G| / |B| is 3 l / d (arithmetic: 6 % for a
+      lever of 1 mm at 50 mm).
+
+      Confirmed on a dynamic closed loop through the build, a measurement on one test rig (not reproduced by a test in
+      this entry): a 0.2 g swing with a link 5 cm long, on a dipole's axis, the moment 1.68e-3 A m^2 along body y, the
+      magnet's centroid 1 mm along body z, spun at 400 rad/s about x, with both laws and both reactions delivered, in
+      float64, at dt 0.5, 0.25 and 0.125 ms. The 0.1.0 read leaves a residual that does not change with dt: -7.25e-7 J
+      over 12.38 turns, which is -5.85e-8 J a turn (the sign is that run's energy-balance convention), 0.99 of
+      m l pi G_xx (5.91e-8 J) for that rig. A read at the magnet's centroid converges at first order in dt. How to
+      detect it: a check of the energy over two time steps sees it only over closed turns; over 0.3 of a turn the
+      0.1.0 read also converged at first order, and passed.
 
       Who it touches (read from the declarations): any body whose magnet sits off its centre of mass, in a field that
       varies in space: a single off-centre magnet derived from parts, or a declared magnet_centre; the magnetic
-      family's conformance rig (its probe's magnet is 0.2 to 0.3 mm off the centre of mass) and the chain test cases'
-      0.5 mm body are two. Not script A, whose field is uniform (zero gradient), and not the tutorial A0 body, whose
-      magnet_centre is declared at the centre of mass, where l = 0 leaves no lever. Not covered by MIME-ANO-100, which is the point dipole source model's
-      near-field fidelity.
+      family's conformance rig (its probe's magnet is 0.37 mm off the centre of mass, at (2e-4, -1e-4, 3e-4) m) and the
+      chain test cases' 0.5 mm body are two. Not script A, whose field is uniform (zero gradient), and not the tutorial
+      A0 body, whose magnet_centre is declared at the centre of mass, where l = 0 leaves no lever. Not covered by
+      MIME-ANO-100, which is the point dipole source model's near-field fidelity.
+
+      Severity: minor, as MIME-ANO-100, the near-field limit of the same laws, is. The registry's table gives minor to
+      "no correctness impact" and major to "incorrect results, workaround exists", and this entry sits between them
+      on purpose: the effect is inside the laws' declared validity (the field varies little across the body), where
+      the laws make no claim of the omitted term, so a result there is within what the laws state; outside it (a
+      lever that is a tenth of the field's length scale or more) it is an incorrect result, and the workaround below
+      applies. It should be read as major for a study in that regime.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -2508,14 +2528,17 @@ anomalies:
       - "entry: interaction magnetic.torque 0.1.0"
       - "entry: interaction magnetic.force 0.1.0"
     verification:
-      - "tests/oracles/test_magnetic_pair_work.py::test_the_pair_does_net_work_round_a_turn_about_x_and_it_is_m_l_pi_gxx_whatever_the_step"
-      - "tests/oracles/test_magnetic_pair_work.py::test_control_the_nodes_fed_at_the_magnets_centroid_do_no_work_round_the_same_turn"
+      - "tests/oracles/test_magnetic_pair_work.py::test_the_registered_pair_does_net_work_round_a_turn_about_x_and_it_is_m_l_pi_gxx_whatever_the_step"
+      - "tests/oracles/test_magnetic_pair_work.py::test_the_registered_pair_does_the_predicted_work_at_a_general_orientation"
+      - "tests/oracles/test_magnetic_pair_work.py::test_control_the_nodes_fed_at_the_magnets_centroid_do_no_work_round_the_same_turns"
       - "tests/oracles/test_magnetic_pair_work.py::test_the_pair_does_the_predicted_net_work_and_the_control_none_on_every_draw"
-      - "tests/oracles/test_magnetic_pair_work.py::test_the_laws_as_built_read_the_field_at_the_centre_of_mass_and_not_at_the_magnets_centroid"
+      - "tests/oracles/test_magnetic_pair_work.py::test_the_registered_laws_read_the_field_at_the_centre_of_mass_and_not_at_the_magnets_centroid"
+      - "tests/oracles/test_magnetic_pair_work.py::test_control_with_the_read_point_moved_to_the_centroid_the_pins_fail_and_the_pair_does_no_work"
     residual_risk: >
       A study of an off-centre magnet in a field with a gradient (a close-in pull, a body turned in a gradient) carries
       a torque error of order m l |G| that is not conservative, so its energy balance does not close by that much; the
       laws report nothing of it. What is not bounded: the size at a given standoff beyond the cases above, and any
-      effect on a dynamic study's trajectory (the test measures the work of a prescribed loop, not a body's motion).
+      effect on a dynamic study's trajectory (the tests measure the work of a prescribed loop; the one dynamic
+      measurement above is a residual of the energy balance on one rig, not an effect on an outcome).
     workaround: "Declare magnet_centre at the centre of mass where the lever is negligible, or keep l |G| / |B| small (a lever well under a tenth of the field's length scale)"
-    planned_resolution: "Dev2's phase P0: Magnetic.Torque 0.2.0 and Magnetic.Force 0.2.0, which read B and G at the magnet's centroid (x + R l), so the pair is the derivative of U = -m . B(x + R l); 0.1.0 stays registered. The tests above are P0's control: 0.1.0 must fail a zero-work oracle on every draw"
+    planned_resolution: "Dev2's phase P0: Magnetic.Torque 0.2.0 and Magnetic.Force 0.2.0, which read B and G at the magnet's centroid (x + R l), so the pair is the derivative of U = -m . B(x + R l); 0.1.0 stays registered. The tests above build 0.1.0 by name and version, so they stay valid for it, and they fail on a graph whose read point is moved to the centroid (the last test shows it). The 0.2.0 oracle reuses their loop, prediction, draws and control, fed from the built graph"
