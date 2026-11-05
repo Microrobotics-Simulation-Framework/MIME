@@ -888,7 +888,8 @@ def show_acceptances(held: Sequence[Acceptance], stream: IO[str]) -> None:
     if all(len(each.licence.id) + 2 <= console.width // 2 for each in held):
         table.columns[0].no_wrap = True  # the id is what `--revoke` takes: whole where the terminal has room for it
     for each in held:
-        table.add_row(_text(each.licence.id), _text(each.licence.title), _text(each.licence.url), _text(each.date))
+        table.add_row(_text(plain(each.licence.id)), _text(plain(each.licence.title)), _text(plain(each.licence.url)),
+                      _text(plain(each.date)))
     console.print(table)
 
 

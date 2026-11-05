@@ -217,6 +217,37 @@ def test_licences_on_a_terminal_is_a_table_and_piped_a_line_each(monkeypatch: py
     assert licence.id in text and licence.url in text and date in text, "the id is whole: it is what --revoke takes"
 
 
+@needs_pty
+def test_licences_table_keeps_an_id_whole_where_the_terminal_has_room_for_it_however_long_the_other_cells_are(
+        monkeypatch: pytest.MonkeyPatch):
+    """The id is what ``--revoke`` takes, and a folded id cannot be pasted: with a long title and a long link competing
+    for the width, the id (which fits in half the terminal) is still one piece."""
+    from mime.assets import Licence, _acceptances
+
+    long_id = "LicenseRef-" + "Maker-Of-Meshes-" * 3 + "NonCommercial"
+    assert len(long_id) + 2 <= COLUMNS // 2
+    licence = Licence(long_id, "A Very Long Licence Title, Version 1.1, " * 3, "https://example.org/" + "licence/" * 14, ())
+    _acceptances.remember([licence])
+    drawn, code = on_a_terminal(monkeypatch, "assets", "licences")
+    text = stripped(drawn)
+    assert code == 0 and long_id in text, "the id is on one line, whole"
+
+
+@needs_pty
+def test_licences_table_draws_a_strangers_title_as_plain_characters(monkeypatch: pytest.MonkeyPatch):
+    """An acceptance holds the title and link a manifest gave: no escape sequence of theirs reaches the terminal, and a
+    newline in a title is not a row of the table's of its own."""
+    from mime.assets import Licence, _acceptances
+
+    _acceptances.remember([Licence("LicenseRef-Maker", "Maker \x1b[2J\x1b]0;pwned\x07 Licence\nI accept everything\n",
+                                   "https://example.org/\x1b[99mlicence", ())])
+    drawn, code = on_a_terminal(monkeypatch, "assets", "licences")
+    assert code == 0
+    for planted in ("\x1b[2J", "\x1b]0;", "\x07", "\x1b[99m"):
+        assert planted not in drawn, planted
+    assert "I accept everything" not in [" ".join(FRAME.sub(" ", row).split()) for row in stripped(drawn).splitlines()]
+
+
 def test_licences_with_none_accepted_says_so(capsys: pytest.CaptureFixture[str]):
     out, _, code = piped(capsys, "assets", "licences")
     assert code == 0 and out.startswith("no licence accepted on this machine (")
