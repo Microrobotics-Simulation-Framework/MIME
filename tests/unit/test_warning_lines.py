@@ -75,12 +75,11 @@ def test_the_views_output_warning_through_a_run_written_names_the_scripts_line(t
 
 
 def test_a_built_experiments_save_and_run_to_build_nothing_so_nothing_is_warned_from_them(tmp_path, monkeypatch):
-    """Absence, held so that it can fail: the warning helper is wrapped to count its calls. ``Experiment.save`` calls it
-    (the control: the count is above zero), and a built experiment's ``save`` and ``run_to`` must not, as they would if
-    either rebuilt."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        built = kinematic_rpm("described").build()
+    """Absence, held so that it can fail: the warning helper is wrapped to count its calls. ``Experiment.build`` calls it
+    (the control, the first build here: the count is above zero), and a built experiment's ``save`` and ``run_to`` must
+    not, as they would if either rebuilt. The control builds and does not save: the helper is called by the build, and
+    a save of an experiment that had not been built would only compile the run once more (this test took 20 to 31 s on
+    CI's cold runners with that second compile)."""
     calls: list[str] = []
     real = experiment_module.warn_at_script
 
@@ -91,8 +90,8 @@ def test_a_built_experiments_save_and_run_to_build_nothing_so_nothing_is_warned_
     monkeypatch.setattr(experiment_module, "warn_at_script", counting)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        kinematic_rpm("described").save(tmp_path / "control", steps=2)
-    assert calls, "control: a save that builds calls the helper"
+        built = kinematic_rpm("described").build()
+    assert calls, "control: a build calls the helper"
     calls.clear()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

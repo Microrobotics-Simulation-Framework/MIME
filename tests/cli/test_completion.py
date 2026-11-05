@@ -9,8 +9,8 @@ comparison to find them, every run.
 bash and fish are asked for real (`COMP_WORDS` and the function; `complete -C`). zsh is asked with its completion
 builtins (`compadd`, `_describe`, `_files`, `compset`) replaced by functions that print what they were given: that checks
 the script's own logic, and not compsys, which wants a terminal (the script was also tried by hand under compinit on a
-pseudo-terminal). A shell that is not installed skips its tests on a machine, and fails them under CI, which installs
-every one (a skipped test fails a CI lane)."""
+pseudo-terminal). A shell that is not installed skips its tests on a machine, and fails them under CI, whose shard that
+holds this file installs every one (a skipped test fails a CI lane)."""
 
 import argparse
 import functools
@@ -35,7 +35,8 @@ def shell_path(shell: str) -> str:
     found = shutil.which(shell)
     if found is None:
         if os.environ.get("CI"):
-            pytest.fail(f"{shell} is not installed; every CI lane installs bash, zsh and fish for the completion tests")
+            pytest.fail(f"{shell} is not installed; the CI shard that holds this file installs bash, zsh and fish for it "
+                        "(.github/workflows/ci.yml, scripts/shard_of_file.py)")
         pytest.skip(f"{shell} is not installed")
     return found
 

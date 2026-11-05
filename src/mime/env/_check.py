@@ -29,7 +29,7 @@ from packaging.markers import default_environment
 from packaging.utils import canonicalize_name
 
 from mime._lock_json import read_lock
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.build import BuildRefused, BuildReport, Refusal, RefusalClass
 from mime.build._refusals import SUBJECT_NAME, Subject
 from mime.build._maddening import devices as devices_of_jax
 from mime.env._gpus import gpu_type, is_kind_of
@@ -136,10 +136,36 @@ class Expected:
         return same_version(version, self.version)
 
 
+AS_PINNED = "as pinned"
+
+
+@dataclass(frozen=True)
+class DistributionRow:
+    """One pinned distribution against the installed environment: what is pinned, what is installed (``None``: nothing),
+    who pins it, and the verdict in words."""
+
+    name: str
+    wanted: str
+    found: str | None
+    pinned_by: str
+    verdict: str
+
+    @property
+    def agrees(self) -> bool:
+        return self.verdict == AS_PINNED
+
+
 class EnvRefused(BuildRefused):
     """Every way an environment differs from the one a run asked for, at once."""
 
     headline = "the environment is refused"
+
+    def __init__(self, refusals: Sequence[Refusal], report: BuildReport | None = None,
+                 pin_rows: Sequence[DistributionRow] = ()) -> None:
+        #: The pinned distributions that are not installed as pinned, as :func:`distribution_rows` gives them (a terminal
+        #: draws them as a table of wanted, found and verdict).
+        self.pin_rows = tuple(pin_rows)
+        super().__init__(refusals, report)
 
 
 REBUILD = "rebuild the environment from the pinned requirements (`mime modal` writes a script that does)"
@@ -229,6 +255,19 @@ def distribution_refusals(installed: Mapping[str, Sequence[str]], expected: Mapp
                                     f"uninstall it (`pip uninstall {name}`), or pin it in the lab's requirements "
                                     f"(--lab <file>); {REBUILD}", subject=subject))
     return refusals
+
+
+def distribution_rows(installed: Mapping[str, Sequence[str]],
+                      expected: Mapping[str, Expected]) -> tuple[DistributionRow, ...]:
+    """The pins against what is installed, a row for each pinned distribution, by name: as pinned, installed at another
+    version (or at more than one), or not installed."""
+    rows: list[DistributionRow] = []
+    for name, want in sorted(expected.items()):
+        held = installed.get(name, ())
+        verdict = ("not installed" if not held else AS_PINNED if len(held) == 1 and want.matches(held[0])
+                   else "differs from the pin")
+        rows.append(DistributionRow(name, want.version, ", ".join(held) or None, want.source, verdict))
+    return tuple(rows)
 
 
 def environment_modules(paths: Sequence[str] | None = None) -> dict[str, str]:
@@ -437,6 +476,9 @@ class EnvReport:
     lab: str | None = None
     mime: str | None = None
     shadows_checked: bool = False
+    #: The pins against what is installed (:func:`distribution_rows`), which a terminal draws as a table; not in
+    #: :meth:`text` nor :meth:`record`.
+    rows: tuple[DistributionRow, ...] = ()
 
     def text(self) -> str:
         lines = [f"environment: every one of the {self.distributions} distributions installed as pinned "
@@ -495,8 +537,9 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
     seen: list[DeviceLike] = list(devices) if devices is not None else list(jax_devices())
     refusals += device_refusals(seen, requested)
     refusals += gpu_precision_refusals(recorded, requested)
+    rows = distribution_rows(found, expected)
     if refusals:
-        raise EnvRefused(refusals)
+        raise EnvRefused(refusals, pin_rows=[row for row in rows if not row.agrees])
     config = cast(Any, jax.config)
     if x64 is not None:
         config.update("jax_enable_x64", x64)
@@ -510,10 +553,12 @@ def check(folder: str | Path | None = None, *, variant: str, gpu: str | None = N
                      tuple(sorted({f"{d.platform}: {d.device_kind}" for d in seen})), x64,
                      config.jax_default_matmul_precision, cache,
                      fingerprint() if installed is None else "not read (the distributions were given)", runner,
-                     held_base, str(lab) if lab is not None else None, mime_version, held_modules is not None)
+                     held_base, str(lab) if lab is not None else None, mime_version, held_modules is not None,
+                     rows)
 
 
-__all__ = ["DISTRIBUTION", "INSTALLERS", "EnvRefused", "EnvReport", "System", "apply_lock_precision", "base_refusals",
-           "check", "device_refusals", "distribution_refusals", "environment_modules", "expected_distributions",
-           "fingerprint", "gpu_precision_refusals", "import_locations", "installed_distributions", "lab_pins_of",
+__all__ = ["AS_PINNED", "DISTRIBUTION", "INSTALLERS", "DistributionRow", "EnvRefused", "EnvReport", "System",
+           "apply_lock_precision", "base_refusals", "check", "device_refusals", "distribution_refusals",
+           "distribution_rows", "environment_modules", "expected_distributions", "fingerprint",
+           "gpu_precision_refusals", "import_locations", "installed_distributions", "lab_pins_of",
            "lock_matmul_precision", "lock_x64", "shadow_refusals", "this_system"]
