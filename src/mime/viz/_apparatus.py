@@ -215,7 +215,7 @@ def draw(stage: Any, source: Path, scene_m: Callable[[], float]) -> list[Apparat
     ``scene_m`` is the scene's diagonal in metres (called only if a placeholder needs it)."""
     meters = float(UsdGeom.GetStageMetersPerUnit(stage)) or 1.0
     document = saved_document(source)
-    codes = _time_codes(stage)
+    codes = time_codes(stage)
     found: list[ApparatusShape] = []
     magnets: list[tuple[Any, str, str]] = []
     motors: list[Any] = []
@@ -289,12 +289,13 @@ def _motor_axis(document: Mapping[str, Any] | None, apparatus: str, segment: str
     return 0.0, 0.0, 1.0
 
 
-def _time_codes(stage: Any) -> list[float]:
-    """Every time code of the stage's range, one apart (the recording's samples): none for a stage with no range."""
+def time_codes(stage: Any) -> list[float]:
+    """Every time code of the stage's range, one apart (the recording's samples, all of them, however many): none for a
+    stage with no range."""
     if not stage.HasAuthoredTimeCodeRange():
         return []
     start, end = float(stage.GetStartTimeCode()), float(stage.GetEndTimeCode())
     return [start + k for k in range(int(round(end - start)) + 1)] if end > start else [start]
 
 
-__all__ = ["APPARATUS_ROOT", "PLACEHOLDER_FRACTION", "ApparatusShape", "draw", "saved_document"]
+__all__ = ["APPARATUS_ROOT", "PLACEHOLDER_FRACTION", "ApparatusShape", "draw", "saved_document", "time_codes"]

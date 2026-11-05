@@ -300,8 +300,8 @@ def _body(result: GltfResult, name: str, argument: str) -> BodyTrack:
     raise ArgumentRefused([Refusal(
         "visuals.unknown-body", RefusalClass.USER,
         f"{argument}={name!r} names no body of {result.name}'s scene. {did_you_mean(name, result.bodies)}",
-        f"name one of its bodies: {argument}={next(iter(sorted(result.bodies)), 'umr')!r} "
-        f"(mime visuals web <target> --{argument} <body>)")])
+        (f"name one of its bodies: {argument}={sorted(result.bodies)[0]!r} (mime visuals web <target> --{argument} <body>)"
+         if result.bodies else f"the scene has no bodies, so leave `{argument}=None` (`mime visuals web <target>`)"))])
 
 
 def _legend_line(key: ArrowKey) -> str:
@@ -415,7 +415,8 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None, s
                 "Focus: off. The camera frames the whole motion.",
                 "focus=None or no --focus turns it off" if focus is not None else "focus='<body>' or --focus <body>"),
         _toggle("follow", follow is not None, f"Follow: {follow}. The camera's target keeps on its recorded position"
-                f"{', with a checkbox to release it' if animated else ''}." if follow is not None else
+                f"{', with a checkbox to release it' if animated else ' (a scene with no recording has one position, so the camera is held there and cannot be released)'}."
+                if follow is not None else
                 "Follow: off. The camera stays where you put it.",
                 "follow=None or no --follow turns it off" if follow is not None else "follow='<body>' or --follow <body>")]
     notes.append(f'<ul class="toggles" id="toggles">{"".join(toggles)}</ul>')

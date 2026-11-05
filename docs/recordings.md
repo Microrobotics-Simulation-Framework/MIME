@@ -176,8 +176,8 @@ page, which in a saved notebook was most of the cell's output.
   | `scale_bar` / `--no-scale-bar` | on | A round length in SI units (one, two or five times a power of ten, from picometres to metres) that is redrawn as you zoom. It is true at the point the camera orbits, the one a click set, and not beside a part at another depth. |
   | `legend` / `--no-legend` | on | What each arrow is (its name, what its unit measures), its colour, the length it is drawn at per unit, the most it is drawn long, and, where the cap shortened it in this view, how much. A scene with no arrows has no legend. |
   | `apparatus_shapes` / `--no-apparatus-shapes` | on | A motor and the magnets mounted on it, which the stage holds as frames, drawn for the view alone (see below). |
-  | `focus="umr"` / `--focus umr` | off | The camera starts framed on the named body, five times its largest extent away. |
-  | `follow="umr"` / `--follow umr` | off | The camera's target keeps on the named body's recorded position through the recording, with a checkbox in the controls to release it. |
+  | `focus="umr"` / `--focus umr` | off | The camera starts framed on the named body, five times its largest extent away, or as near as the viewer draws (about three thousandths of the distance the camera starts at) where that is farther: a body very small beside its scene is framed from there. |
+  | `follow="umr"` / `--follow umr` | off | The camera's target keeps on the named body's recorded position at every sample of the recording, however many (between samples, on the straight line joining them, as the animation moves the body), with a checkbox in the controls to release it. A scene with no recording has one position, so the camera is held there and there is no checkbox. |
 
   The scale bar and the legend are on because they cost the page a few hundred bytes and answer the two questions a
   reader asks first, how big and what is this arrow; focus and follow are off until a body is named, because a view
@@ -193,8 +193,10 @@ page, which in a saved notebook was most of the cell's output.
   length and diameter each a fortieth of the scene's diagonal. The **motor** is always a placeholder, since no description
   declares its size: a cylinder along its axis, its length the largest extent of the magnets on its rotor, ending in the
   rotor's plane on the side the axis points away from, which is not declared either. The page's notes name every
-  placeholder with its rule. Nothing of it is written into a saved stage, a run folder or the asset cache:
-  `tests/viz/test_viewer_basics.py` holds the saved folder's digests before and after a view.
+  placeholder with its rule. The saved experiment found beside a stage is trusted as the declaration: its sizes are applied to
+  the magnet of the same apparatus and part name, and the stage's own solid is not checked against it. Nothing of it is written
+  into a saved stage, a run folder or the asset cache: `tests/viz/test_viewer_basics.py` holds every file of a saved folder, of
+  a run folder and of the cache (size, modification time, hash) before and after a view of each way to name A0.
 - **The viewer.** `mime visuals web` inlines the copy of `<model-viewer>` 4.3.1 shipped in the wheel
   (`mime/viz/_viewer/`, pinned by its sha256, with the licence of every part its bundle holds: the Apache License, and
   three.js, fflate and gainmap-js under MIT, lit under BSD), so the page draws from a file with no network.

@@ -26,7 +26,7 @@ import numpy as np
 
 from mime.scene import ARROW, VECTOR_SCALE, VECTOR_UNITS, VECTOR_VALUE
 from mime.scene._pxr import Gf, Usd, UsdGeom
-from mime.viz._apparatus import ApparatusShape, draw
+from mime.viz._apparatus import APPARATUS_ROOT, ApparatusShape, draw, time_codes
 from mime.viz._gltf import Settings, convert, up_turn
 from mime.viz._primitives import SEGMENTS
 from mime.viz._tiers import SHAREABLE_TIERS, refuse_unshareable
@@ -375,10 +375,12 @@ def _turned(turn: tuple[float, float, float, float], vector: np.ndarray) -> np.n
 
 def body_tracks(stage: Any, tokens: list[Any], *, scale: float, turn: tuple[float, float, float, float],
                 shown: float) -> dict[str, BodyTrack]:
-    """Each body prim's origin at the stage's time codes (the same ones the motion's box is read at), in the glTF's
-    coordinates (the stage's units scaled by ``scale``, the up axis turned by ``turn``) against the display seconds
-    (``shown`` per simulated second) the converter's animation uses; one sample at the default time without a range."""
-    codes = _codes(stage)
+    """Each body prim's origin at *every* time code of the stage's range (the recording's own samples, not the at most
+    ``BOUNDS_SAMPLES`` the motion's box is read at: a camera that follows must be on the body at each frame the
+    animation draws), in the glTF's coordinates (the stage's units scaled by ``scale``, the up axis turned by ``turn``)
+    against the display seconds (``shown`` per simulated second) the converter's animation uses; one sample at the
+    default time without a range."""
+    codes = time_codes(stage)
     rate = float(stage.GetTimeCodesPerSecond()) or 1.0
     start = float(stage.GetStartTimeCode()) if stage.HasAuthoredTimeCodeRange() else 0.0
     extents = {str(prim.GetPath()): size for prim, size in _bodies(stage, tokens)}
@@ -432,8 +434,10 @@ def gltf(target: str | Path, *, slow: float | None = None, segments: int = SEGME
     purposes = ("default", "proxy")
 
     def scene_m() -> float:
+        """The scene's diagonal in metres without its arrows and without the view's own shapes."""
         vectors = [prim for prim in stage.Traverse() if prim.HasAttribute(VECTOR_VALUE)]
-        box = motion_bounds(stage, purposes, vectors)
+        overlay = stage.GetPrimAtPath(APPARATUS_ROOT)
+        box = motion_bounds(stage, purposes, [*vectors, *([overlay] if overlay else [])])
         return float(np.linalg.norm(box[1] - box[0])) * (float(UsdGeom.GetStageMetersPerUnit(stage)) or 1.0) if box else 0.0
 
     shapes = draw(stage, source, cache(scene_m)) if apparatus_shapes else []
