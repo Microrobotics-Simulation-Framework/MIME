@@ -105,7 +105,7 @@ fields, a node's `NodeMeta` and symbol table, and the refusal table. The pages a
   file's lines with the same tokens (computed, never stored): a wording edit keeps an entry, and a changed, added,
   removed or swapped number, or a copy of a listed line, is a new key. `docs/ratchets/number_allowlist.txt` lists a
   line with its own reason, and `docs/ratchets/readme_numbers.txt` is the READMEs' frozen start, which only shrinks:
-  with `--base <revision>` (CI's is `origin/v0.3`), a line the base's list does not hold fails. What one token is, and
+  with `--base <revision>` (CI's is `origin/release/v0.3.0`), a line the base's list does not hold fails. What one token is, and
   what is exempt (a code fence, an identifier of MIME's by its prefix, a version, a release the code reads after its
   product's name, a phase name, an ordered list's count, an idiom of `docs/number_idioms.txt`), is printed with every
   run, and so are the releases; an unclosed code fence fails, since it would hide the rest of its file. A number in an equation, a node's `governing_equations`, is a

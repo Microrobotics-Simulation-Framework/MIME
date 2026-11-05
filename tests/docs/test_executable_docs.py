@@ -95,7 +95,7 @@ def test_a_fence_never_closed_fails(tmp_path):
 
 def test_a_command_of_the_parser_passes_in_a_block_and_in_a_span(tmp_path):
     page = ("# P\n\nRun `mime run my_experiment --duration 10s --out out`, or\n\n<!-- mime-fragment: shell lines -->\n"
-            "```sh\nuv run --no-sync mime docs check --base origin/v0.3 \\\n  --skip-hash-seed-builds\n"
+            "```sh\nuv run --no-sync mime docs check --base origin/release/v0.3.0 \\\n  --skip-hash-seed-builds\n"
             "mime env check x --variant cpu | tee log\n```\n")
     assert problems(tree(tmp_path, page)) == []
 
@@ -150,7 +150,7 @@ def test_a_stale_output_block_is_rewritten_by_the_refresh(tmp_path):
 
 
 def test_a_command_in_a_code_span_wrapped_over_two_lines_is_read_and_a_stale_one_fails_at_its_first_line(tmp_path):
-    page = "# P\n\nRun `mime docs\ncheck --base origin/v0.3` or `mime docs\ncheck --no-such-flag` to see.\n"
+    page = "# P\n\nRun `mime docs\ncheck --base origin/release/v0.3.0` or `mime docs\ncheck --no-such-flag` to see.\n"
     (found,) = problems(tree(tmp_path, page))
     assert found.startswith("docs/guide/page.md:4: `mime docs check --no-such-flag`: --no-such-flag is not a flag of")
 

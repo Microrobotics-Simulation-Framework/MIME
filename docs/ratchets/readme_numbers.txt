@@ -3,7 +3,7 @@
 # its occurrence index among that file's lines carrying the same tokens). It only shrinks. A wording edit keeps a
 # line's entry; a line whose tokens change leaves this list, and passes or takes its own reason in
 # number_allowlist.txt. `mime docs check` fails on a README line listed nowhere, and on a listed key that matches no
-# line (delete its line); with `--base <revision>` (CI's is origin/v0.3), on a line the base revision's list does not
+# line (delete its line); with `--base <revision>` (CI's is origin/release/v0.3.0), on a line the base revision's list does not
 # hold, so a README's new number takes its own line, with its own reason, in number_allowlist.txt. Its length is
 # printed, never stored.
 src/mime/README.md  0.2  #1                                                                        # present at D1-min
