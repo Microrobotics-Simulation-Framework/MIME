@@ -13,16 +13,25 @@ control, in float64, where its resolution is finest.
   translation) 0.2.0's work round a translation loop falls from 5.7e-3 of its summed ``|W|`` at 4 points to 1.3e-5 at
   8 and 3e-13 at 16, about tenfold a point, and is at rounding (2e-16) from 24, where the case's floor is 2.5e-13.
 - **The rounding floor**, measured: four times the work's movement when every input of the laws' nodes moves by 64
-  units in its last place. Over 300 draws of four loops each, 0.2.0's work stayed within 0.0067 of it in float64 and
-  0.0063 in float32.
-- **The control**: the pair 0.1.0 fails the case on every draw whose turns carry its lever, by an independent
-  prediction of the work it leaves (``oint m . G (a x l) dtheta``, in NumPy) of at least a millionth of ``2 pi |m| |l|
-  |G|``; draws whose lever lies along the turns' axes, or whose moment and gradient make the work vanish, have no
-  defect to find. Measured before it was written: 149 such draws of 149 failed (300 draws, 164 with a lever).
+  units in its last place. The draws are at a body's scale: each direction from three components 0.1 to 1 in size,
+  each signed, so none has a component that underflows (a box's draw offers 5e-227). Over 1,100 unfiltered draws of
+  four loops each, 0.2.0's work stayed within 0.0076 of its tolerance in float64 (median 3.3e-4) and 0.0039 in float32
+  (median 1.0e-4).
+- **The control**: the pair 0.1.0, built through its registered entries (``mime.interactions.KEPT``) and evaluated as
+  the case evaluates any law, fails the case on every draw with a lever, but the geometry that leaves it exactly no
+  work: the work it leaves round a turn about the centre of mass averages to ``-pi (a . G a) a . (l x m)``
+  (``turn_defect``, against the quadrature ``predicted_defect``), zero where the axis, lever and moment are coplanar
+  (Hypothesis draws the lever along the moment, a real geometry) or ``a . G a`` is zero. Measured before it was
+  written, over the same 1,100 draws: in float64, 505 had a lever, 15 of them that geometry, and all 490 others failed
+  (by at least 1.4e8 times the tolerance); in float32, 446, 24 and all 422 (by at least 1.23 times it). The control
+  draws a lever on every draw, so its filter removes that geometry alone (about 3 %).
 - **The smallest lever** 0.1.0 still fails at, at the operating point: 1e-14 m in float64, which passes at 5.6e-15 m;
   in float32, 5.6 micrometres, which passes at 3.2 micrometres.
 - **A law alone**: 0.2.0's torque without its force is not the derivative of an energy, and fails a turn; the case
   needs ``together=``.
+- **Closed loops only.** Every loop the case drives returns the pose to its start (whole turns, a closed translation):
+  over an open arc a conservative pair's work is the energy's change, not zero, so zero work cannot judge it. The
+  case's dynamic counterpart through the build, over whole turns, is ``test_closed_loop_dynamic.py``.
 """
 
 import numpy as np
@@ -40,10 +49,10 @@ K = VACUUM_PERMEABILITY / (4 * np.pi)
 CentreMagneticTorque, _ = KEPT["magnetic.torque", "0.1.0"]
 CentreMagneticForce, _ = KEPT["magnetic.force", "0.1.0"]
 ZERO, IDENTITY = (0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0)
-#: The least share of ``2 pi |m| |l| |G|`` the work 0.1.0 leaves round a draw's turns, by the independent prediction,
-#: for the draw to carry a defect: three orders of magnitude above the case's float64 resolution at the draws' farthest
-#: corner (3e-11 of it, a 0.2 mm lever 20 cm from the source).
-GENERIC = 1e-6
+#: How near zero, as a share of ``2 pi |m| |l| |G|``, the closed form of the work 0.1.0 leaves round a turn is taken
+#: to be zero: its rounding is about 1e-16 of that scale, and the smallest work of a draw not exactly degenerate,
+#: measured over 1,100 draws, is far above it (the module's docstring).
+NO_WORK = 1e-12
 
 
 def pair(version: str) -> tuple:
@@ -133,12 +142,46 @@ def test_the_loops_quadrature_converges_geometrically_and_is_at_rounding_well_be
     assert all(1e-14 < w.floor / w.summed < 1e-12 for w in found[64])
 
 
+def turn_defect(drawn: MagneticLoopDraw, loop: Loop) -> tuple[float, float]:
+    """The work the pair 0.1.0 leaves round a turn of the body about its centre of mass at the origin, in closed form,
+    and the scale it is judged on, ``2 pi |m| |l| |G|``: ``oint m . G (a x l) dtheta`` with ``m`` and ``l`` turned
+    together about the axis ``a`` averages, over the turn, to ``-pi (a . G a) a . (l x m)``, since ``G`` is symmetric
+    and its trace is zero (the field is free of curl and divergence). It is zero exactly where the axis, the lever and
+    the moment are coplanar (the lever along the moment, among them) or ``a . G a`` is zero."""
+    source = drawn.source_moment * np.asarray(drawn.source_direction)
+    gradient = dipole_gradient(source, np.asarray(drawn.source_at), np.zeros(3))
+    axis, start = np.asarray(loop.axis), turned(loop.start)
+    moment, lever = start @ np.asarray(drawn.moment), start @ np.asarray(drawn.lever)
+    work = -np.pi * float(axis @ gradient @ axis) * float(axis @ np.cross(lever, moment))
+    return work, 2 * np.pi * float(np.linalg.norm(moment) * np.linalg.norm(lever) * np.linalg.norm(gradient, 2))
+
+
+def degenerate(drawn: MagneticLoopDraw) -> bool:
+    """Whether the draw's turns leave 0.1.0 exactly no work: no lever, or each turn's closed form zero to its rounding
+    (``turn_defect``)."""
+    if float(np.linalg.norm(drawn.lever)) == 0.0:
+        return True
+    return all(abs(work) <= NO_WORK * scale for work, scale in (turn_defect(drawn, loop) for loop in drawn.loops[:2]))
+
+
 @PROPERTY
 @given(magnetic_loop_draws())
-def test_control_the_pair_0_1_0_fails_the_case_on_every_draw_whose_turns_carry_its_lever(drawn):
+def test_the_turns_closed_form_is_the_independent_quadratures(drawn):
+    """``turn_defect``'s closed form against ``predicted_defect``'s quadrature of the integrand, by Rodrigues' formula,
+    on every draw with a lever: they agree to 1e-14 of the scale (measured: 2.3e-16 over 300 draws)."""
     assume(float(np.linalg.norm(drawn.lever)) > 0.0)
-    assume(max(abs(work) / scale for work, scale in (predicted_defect(drawn, loop) for loop in drawn.loops[:2]))
-           >= GENERIC)
+    for loop in drawn.loops[:2]:
+        (closed, scale), (quadrature, _) = turn_defect(drawn, loop), predicted_defect(drawn, loop)
+        assert abs(closed - quadrature) <= 1e-14 * scale
+
+
+@PROPERTY
+@given(magnetic_loop_draws(with_zero_lever=False))
+def test_control_the_pair_0_1_0_fails_the_case_on_every_draw_with_a_lever(drawn):
+    """Filtered only of the draws whose turns leave it exactly no work (``degenerate``: no lever, or each turn's axis,
+    lever and moment coplanar, or ``a . G a`` zero), which can pass; every other draw fails, as measured before it was
+    written (the module's docstring)."""
+    assume(not degenerate(drawn))
     found = works("0.1.0", drawn)
     assert not all(work.holds for work in found), "; ".join(work.describe() for work in found)
 

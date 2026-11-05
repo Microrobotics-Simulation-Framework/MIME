@@ -110,9 +110,11 @@ Also:
   `LOOP_POINTS` points and judged within the rule's error, estimated from every other point, plus a rounding floor
   (`LOOP_ROUNDINGS` times the work's movement when every input of the laws' nodes is nudged as the other cases' floors
   nudge it); no absolute part. The magnetic family's (`magnetic_loop_rig`, `magnetic_loop_draws`) draws a point dipole's
-  place, direction and moment, the body's moment and its magnet's centroid (zero among them), and four loops a draw. A
-  kept version known to fail a case says so in its family case, by the anomaly that records it, and the walk requires it
-  to fail (the magnetic laws 0.1.0, MIME-ANO-137, whose control is in `tests/oracles/test_closed_loop.py`).
+  place, direction and moment, the body's moment and its magnet's centroid (zero among them), and four loops a draw,
+  each direction from three signed components bounded away from zero, so no draw holds a component that underflows.
+  Every loop is closed: over an open arc a conservative pair's work is the energy's change, which zero work cannot
+  judge. A kept version known to fail a case says so in its family case, by the anomaly that records it, and the walk
+  requires it to fail (the magnetic laws 0.1.0, MIME-ANO-137, whose control is in `tests/oracles/test_closed_loop.py`).
 
 Also:
 - **rounding floors per field and per part.** Each field a law delivers has its own floor, and a composite one

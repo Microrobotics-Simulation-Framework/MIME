@@ -147,19 +147,24 @@ def _unit(values: Sequence[float]) -> tuple[float, ...]:
     return tuple(float(v) for v in held / float(np.linalg.norm(held)))
 
 
-def magnetic_loop_draws() -> Any:
-    """The Hypothesis strategy of the magnetic closed-loop rig's draws, each at a body's scale (``LOOP_*``):
-    directions drawn in a box and kept where their length is at least 0.1, so a shrunk draw is never a direction of
-    zero length or one whose components underflow."""
+def magnetic_loop_draws(*, with_zero_lever: bool = True) -> Any:
+    """The Hypothesis strategy of the magnetic closed-loop rig's draws, each at a body's scale (``LOOP_*``), the lever
+    zero among them unless ``with_zero_lever`` is false (a control that needs a lever draws it so). A direction
+    or an orientation is drawn as its components, each 0.1 to 1 in size with its own sign, then normalised: bounded
+    away from every axis's plane, so no draw holds a component Hypothesis would shrink towards an underflow (it offers
+    5e-227 to a box's draw), and no two drawn vectors are parallel but where it draws the same components twice."""
     from hypothesis import strategies as st
 
-    def directions() -> Any:
-        return st.tuples(*(st.floats(-1.0, 1.0) for _ in range(3))).filter(
-            lambda v: float(np.linalg.norm(v)) > 0.1).map(_unit)
+    def signed(count: int) -> Any:
+        return st.tuples(st.tuples(*(st.floats(0.1, 1.0) for _ in range(count))),
+                         st.tuples(*(st.booleans() for _ in range(count)))).map(
+            lambda drawn: _unit([size if positive else -size for size, positive in zip(*drawn, strict=True)]))
 
-    quaternions = st.tuples(*(st.floats(-1.0, 1.0) for _ in range(4))).filter(
-        lambda q: float(np.linalg.norm(q)) > 0.1).map(_unit)
-    lever = st.one_of(st.just(0.0), st.floats(*LOOP_LEVER))
+    def directions() -> Any:
+        return signed(3)
+
+    quaternions = signed(4)
+    lever = st.one_of(st.just(0.0), st.floats(*LOOP_LEVER)) if with_zero_lever else st.floats(*LOOP_LEVER)
 
     def draw(source: tuple[float, ...], distance: float, direction: tuple[float, ...], strength: float,
              moment: tuple[float, ...], magnitude: float, lever_direction: tuple[float, ...], length: float,
