@@ -104,7 +104,7 @@ concurrency:
 
 env:
   JAX_PLATFORMS: cpu
-  UV_VERSION: "0.13.0"
+  UV_VERSION: "0.13.4"
   MIME_CI_PLANT_FAILURE: ${{ inputs.plant_failure && '1' || '0' }}
   MIME_CI_PLANT_SLOW_TESTS: ${{ inputs.plant_slow_tests && '1' || '0' }}
   MIME_CI_PLANT_SHARD_FAILURE: ${{ inputs.plant_shard_failure }}

@@ -28,7 +28,7 @@ concurrency:
 
 env:
   JAX_PLATFORMS: cpu
-  UV_VERSION: "0.13.0"
+  UV_VERSION: "0.13.4"
   MIME_OFFLINE: "1"
 
 defaults:
