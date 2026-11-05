@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Colab notebooks** (`docs/notebooks/`): the settling ball in a tube (`examples/sphere_settling_tube.py`) and
+  tutorial A's reproduction arm (`examples/script_a.py`). Each installs the released MIME from PyPI, runs its
+  experiment with the live display, plots it with matplotlib and shows the browser view. Their cells tagged `example`
+  are the examples' code, verbatim: `tests/examples/test_notebooks.py` fails when they differ.
+
 ## [0.3.0.dev1] - 2026-11-05
 
 The first release of MIME 0.3, a rewrite of MIME on [MADDENING](https://microrobotica.org/maddening/) 0.4. It is a
