@@ -767,6 +767,10 @@ def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
     return refusals
 
 
+#: What a moved line says of a field the rerun lacks or gave in another shape (no numbers, so no tolerance holds it).
+SHAPE_MOVED = "missing or of another shape"
+
+
 @dataclass(frozen=True)
 class VerifyReport:
     """A rerun of the first ``steps`` steps against the reference outputs. Within the environment the lock was written
@@ -778,6 +782,13 @@ class VerifyReport:
     atol: float
     environment: str
     moved: tuple[str, ...] = field(default_factory=tuple)
+    #: Every field the rerun was compared on (``node.field``, sorted); a line of ``moved`` starts with its field's label.
+    compared: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def tolerance(self) -> str:
+        """What the comparison held the fields to, in words."""
+        return "bit for bit" if self.same_environment else f"within rtol {self.rtol}, atol {self.atol}"
 
     @property
     def reproduced(self) -> bool:
@@ -785,8 +796,7 @@ class VerifyReport:
 
     def text(self) -> str:
         if self.reproduced:
-            how = "bit for bit" if self.same_environment else f"within rtol {self.rtol}, atol {self.atol}"
-            return f"verify: reproduced {self.steps} steps {how} on {self.environment}"
+            return f"verify: reproduced {self.steps} steps {self.tolerance} on {self.environment}"
         lines = [f"verify: {len(self.moved)} reference output(s) moved over {self.steps} steps on {self.environment}"]
         return "\n".join(lines + [f"  {line}" for line in self.moved])
 
@@ -798,14 +808,16 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
     same = not environment_differences(lock)
     here = environment()
     moved: list[str] = []
+    compared: list[str] = []
     found = {history_key(node, name): np.asarray(value) for node, fields in history.items()
              for name, value in fields.items()}
     saved = {key: value for key, value in form.reference.items() if key.startswith("history/")}
     for key in sorted(set(saved) | set(found)):
         a, b = saved.get(key), found.get(key)
         label = key.removeprefix("history/").replace("/", ".", 1)
+        compared.append(label)
         if a is None or b is None or a.shape != b.shape:
-            moved.append(f"{label}: missing or of another shape")
+            moved.append(f"{label}: {SHAPE_MOVED}")
             continue
         equal = np.array_equal(a, b) if same else np.allclose(a, b, rtol=rtol, atol=atol)
         if not equal:
@@ -813,7 +825,7 @@ def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarra
             step = int(np.argmax(np.any(delta.reshape(delta.shape[0], -1) > 0, axis=1)))
             moved.append(f"{label}: max |difference| {float(np.max(delta)):.3e}, first at step {step}")
     device = f"{here['device']}, {'float64' if here['x64'] else 'float32'}"
-    return VerifyReport(steps, same, rtol, atol, device, tuple(moved))
+    return VerifyReport(steps, same, rtol, atol, device, tuple(moved), tuple(compared))
 
 
 __all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport", "lock_text",

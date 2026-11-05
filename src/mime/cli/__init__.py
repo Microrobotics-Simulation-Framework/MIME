@@ -31,6 +31,7 @@ from mime.experiment import Experiment
 if TYPE_CHECKING:
     from mime._transfers import Transfers
     from mime.credentials import Token
+    from mime.env import EnvReport
     from mime.cli._display import RunDisplay
     from mime.control import Progress
     from mime.experiment import BuiltExperiment, RunWritten
@@ -121,10 +122,30 @@ def _verified(folder: Path) -> int:
     apply_lock_precision(folder)
     experiment = Experiment.load(folder)
     report = experiment.build().verify()
-    if experiment.load_report is not None:
-        print(for_terminal(experiment.load_report.text()))
-    print(for_terminal(report.text()))
+    load = experiment.load_report.text() if experiment.load_report is not None else None
+
+    def draw() -> None:
+        from mime.cli._display import show_verification
+
+        show_verification(load, report, sys.stdout)
+
+    if not _drawn(draw):
+        if load is not None:
+            print(for_terminal(load))
+        print(for_terminal(report.text()))
     return 0 if report.reproduced else 1
+
+
+def _drawn(draw: Callable[[], None]) -> bool:
+    """Draw a result on standard output with ``draw`` when it is a terminal not asked to be plain; ``False`` when it is
+    not (or ``rich`` cannot be imported), and the caller prints what it always printed."""
+    if not styled(sys.stdout):
+        return False
+    try:
+        draw()
+    except ImportError:
+        return False
+    return True
 
 
 def _pending(folder: Path) -> int:
@@ -429,9 +450,16 @@ def _env_check(arguments: argparse.Namespace) -> int:
     except BuildRefused as refused:
         _write_record(arguments.record, {"refused": [str(r) for r in refused.refusals]})
         raise
-    print(report.text())
+    if not _drawn(lambda: _show_environment(report)):
+        print(report.text())
     _write_record(arguments.record, report.record())
     return 0
+
+
+def _show_environment(report: EnvReport) -> None:
+    from mime.cli._display import show_environment
+
+    show_environment(report, sys.stdout)
 
 
 def _write_record(path: Path | None, record: dict[str, object]) -> None:
@@ -460,10 +488,18 @@ def _registry(as_json: bool) -> int:
         print(exported)
         return 0
     found = json.loads(exported)
-    for entry in found["entries"]:
-        print(f"{entry['kind']}  {entry['name']}  {entry['version']}")
-    for name, reason in found["not_loaded"].items():
-        print(f"not loaded: {name} ({reason})")
+
+    def draw() -> None:
+        from mime.cli._display import show_registry
+
+        show_registry([(e["kind"], e["name"], e["version"], ", ".join(e["settings"])) for e in found["entries"]],
+                      found["not_loaded"], sys.stdout)
+
+    if not _drawn(draw):
+        for entry in found["entries"]:
+            print(f"{entry['kind']}  {entry['name']}  {entry['version']}")
+        for name, reason in found["not_loaded"].items():
+            print(f"not loaded: {name} ({reason})")
     return 0
 
 
