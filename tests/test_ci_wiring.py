@@ -1,7 +1,8 @@
 """CI's wiring of the checks it must run, read from ``.github/workflows/``:
 
-- every job name v0.3's branch protection requires is made by one job, of a workflow that runs on a pull request into
-  v0.3 and on a push to it, and that job is skipped by nothing but the schedule (a skipped job passes a required check);
+- every job name the development branch's protection requires is made by one job, of a workflow that runs on a pull
+  request into the branch and on a push to it, under both of the branch's names (``release/v0.3.0``, and ``v0.3``
+  until it is renamed), and that job is skipped by nothing but the schedule (a skipped job passes a required check);
 - a required job that waits on a lane's shard jobs runs after a red shard too (``!cancelled()``), and fails unless
   ``scripts/check_shards.py`` passes, with its exit status intact, over as many shards as the jobs it waits on run (the
   matrix and their ``--mime-shard``), and those jobs are skipped by nothing but the schedule;
@@ -9,7 +10,8 @@
   test (``--max-skipped 0``: the suite skips none in CI);
 - a pull request's newer push cancels its older run, and nothing else is ever cancelled by a newer run (the workflow's
   ``concurrency``), read by evaluating its two expressions for each event;
-- the default lane runs ``mime docs check --base origin/v0.3`` with its exit status intact;
+- the default lane runs ``mime docs check`` against the development branch, ``--base origin/release/v0.3.0`` or, where
+  that branch does not exist, ``--base origin/v0.3``, with its exit status intact;
 - no step of any workflow runs ``mime docs check`` with a ``--skip-*`` flag unless ``SKIPPABLE`` names that job for that
   flag (``ci.yml``'s default lane and ``platforms.yml``'s smoke jobs both run it, and one check reads every workflow
   file): ``--skip-example-runs`` is the non-required smoke job's alone, and a job that may skip is no required check.
@@ -37,6 +39,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
+#: The development branch's two names: ``release/v0.3.0``, and ``v0.3`` until the branch is renamed.
+BRANCH, OLD_BRANCH = "release/v0.3.0", "v0.3"
 #: v0.3's required status checks, by the names its branch protection gives them.
 REQUIRED = ("default (Python 3.12)", "default (Python 3.13)", "default (Python 3.14)", "maddening-main",
             "openmaterica-main", "typecheck (pyright, Python 3.12)", "no private name or path")
@@ -83,7 +87,12 @@ MANUAL = {**PUSH, "github.event_name": "workflow_dispatch", "github.ref_name": "
 STUB = """#!/bin/sh
 { printf '%s' "${0##*/}"; for argument in "$@"; do printf '\\t%s' "$argument"; done
   printf '\\tkey=%s\\n' "${CONFIDENTIAL_SCAN_KEY-}"; } >> "$STUB_LOG"
-[ "${0##*/}" = git ] && exit 0
+if [ "${0##*/}" = git ]; then
+  for name in $STUB_MISSING; do
+    case " $* " in *"/$name "*|*"/$name:"*) exit 1 ;; esac
+  done
+  exit 0
+fi
 exit "$STUB_EXIT"
 """
 
@@ -109,9 +118,12 @@ def names_of(job_id: str, job: dict[str, object]) -> list[str]:
     return names
 
 
-def runs_on_v0_3(workflow: dict[str, object]) -> bool:
+def runs_on_the_branch(workflow: dict[str, object]) -> bool:
+    """Whether the workflow runs on a pull request into the development branch and on a push to it, under each of the
+    branch's names."""
     triggers = workflow.get("on", workflow.get(True)) or {}
-    return all("v0.3" in ((triggers.get(event) or {}).get("branches") or []) for event in ("pull_request", "push"))
+    return all(name in ((triggers.get(event) or {}).get("branches") or [])
+               for event in ("pull_request", "push") for name in (BRANCH, OLD_BRANCH))
 
 
 def evaluate(text: str, context: dict[str, str]) -> str:
@@ -121,10 +133,12 @@ def evaluate(text: str, context: dict[str, str]) -> str:
     return re.sub(r"\$\{\{(.*?)\}\}", value, text)
 
 
-def run_step(step: dict[str, object], context: dict[str, str], exit_status: int, scratch: Path):
+def run_step(step: dict[str, object], context: dict[str, str], exit_status: int, scratch: Path,
+             missing: tuple[str, ...] = ()):
     """The step's script run in ``bash -e`` with ``uv``, ``python3`` and ``git`` stubbed, each stub recording its
-    arguments and the key it saw, ``uv`` and ``python3`` exiting ``exit_status``: the script's exit status, and each
-    stubbed call as its command, its arguments and the key."""
+    arguments and the key it saw, ``uv`` and ``python3`` exiting ``exit_status``, and ``git`` failing for any call that
+    names one of the branches in ``missing``: the script's exit status, and each stubbed call as its command, its
+    arguments and the key."""
     scratch.mkdir(parents=True)
     stubs = scratch / "bin"
     stubs.mkdir()
@@ -139,7 +153,7 @@ def run_step(step: dict[str, object], context: dict[str, str], exit_status: int,
                           text=True, check=False, cwd=scratch,
                           env={"PATH": f"{stubs}:/usr/bin:/bin", "RUNNER_TEMP": str(scratch),
                                "GITHUB_STEP_SUMMARY": str(scratch / "summary.md"), "STUB_LOG": str(log),
-                               "STUB_EXIT": str(exit_status), **env})
+                               "STUB_EXIT": str(exit_status), "STUB_MISSING": " ".join(missing), **env})
     calls = [line.split("\t") for line in log.read_text(encoding="utf-8").splitlines()]
     return done.returncode, [(call[0], call[1:-1], call[-1].removeprefix("key=")) for call in calls]
 
@@ -190,8 +204,9 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
             found.append(f"{name!r}: {len(jobs)} jobs make this required check; one does")
             continue
         workflow, job = jobs[0]
-        if not runs_on_v0_3(workflow):
-            found.append(f"{name!r}: its workflow does not run on both a pull request into v0.3 and a push to it")
+        if not runs_on_the_branch(workflow):
+            found.append(f"{name!r}: its workflow does not run on both a pull request into the development branch and "
+                         f"a push to it, under both of the branch's names")
         if job.get("needs"):
             found += shard_problems(name, job, workflow, scratch / "shards" / re.sub(r"\W+", "-", name))
         elif job.get("if") not in (None, EVENT_FILTER):
@@ -338,10 +353,16 @@ def docs_check_problems(job: dict[str, object], scratch: Path) -> list[str]:
         return found
     where = f"{DOCS_CHECK}: the step {step.get('name')!r}"
     found += step_problems(where, step) + exit_problems(where, step, PULL_REQUEST, scratch)
-    _, calls = run_step(step, PULL_REQUEST, 0, scratch / "arguments")
-    if not any(" ".join(arguments).find("mime docs check") >= 0 and ("--base", "origin/v0.3") in pairs(arguments)
-               for command, arguments, _ in calls if command == "uv"):
-        found.append(f"{where}: does not run mime docs check --base origin/v0.3")
+    # The base is the development branch under the name that exists: the new one, else the old (the control for a
+    # branch not yet renamed), and a step that finds neither fails before the check, which it never runs.
+    for state, missing, base in (("renamed", (), f"origin/{BRANCH}"), ("not yet renamed", (BRANCH,), f"origin/{OLD_BRANCH}")):
+        _, calls = run_step(step, PULL_REQUEST, 0, scratch / f"arguments-{state}", missing)
+        if not any(" ".join(arguments).find("mime docs check") >= 0 and ("--base", base) in pairs(arguments)
+                   for command, arguments, _ in calls if command == "uv"):
+            found.append(f"{where}: with the branch {state}, does not run mime docs check --base {base}")
+    status, calls = run_step(step, PULL_REQUEST, 0, scratch / "arguments-neither", (BRANCH, OLD_BRANCH))
+    if status == 0 or any(command == "uv" for command, _, _ in calls):
+        found.append(f"{where}: with neither name of the branch readable, runs the check or exits 0")
     return found
 
 
@@ -401,15 +422,26 @@ def scan_problems(job: dict[str, object], scratch: Path) -> list[str]:
     found += step_problems(where, step) + exit_problems(where, step, PULL_REQUEST, scratch)
     if (step.get("env") or {}).get("CONFIDENTIAL_SCAN_KEY") != "${{ secrets.CONFIDENTIAL_SCAN_KEY }}":
         found.append(f"{where}: its environment does not set CONFIDENTIAL_SCAN_KEY from the secret")
-    # A manual run scans what a pull request of its head into v0.3 does (every commit v0.3 does not hold) and the
-    # branch's name, so its later green can never stand for a weaker scan of the same head.
+    # A manual run scans what a pull request of its head into the development branch does (every commit the branch
+    # does not hold) and the branch's name, so its later green can never stand for a weaker scan of the same head. What
+    # the branch holds is read from the branch under the name that exists: the new one, else the old (the controls
+    # with the branch not yet renamed).
+    into_main = {**PULL_REQUEST, "github.base_ref": "main"}
+    manual = {("--messages", "HEAD"), ("--diffs", "HEAD"), ("--ref-name", "a-branch")}
     expected = {"pull request": (PULL_REQUEST, {("--messages", "BASE..HEAD"), ("--diffs", "BASE..HEAD"),
-                                                ("--ref-name", "a-branch")}),
-                "push": (PUSH, {("--messages", "BEFORE..AFTER"), ("--diffs", "BEFORE..AFTER")}),
-                "manual run": (MANUAL, {("--messages", "HEAD"), ("--diffs", "HEAD"), ("--public", "origin/v0.3"),
-                                        ("--ref-name", "a-branch")})}
-    for event, (context, wanted) in expected.items():
-        _, calls = run_step(step, context, 0, scratch / event.replace(" ", "-"))
+                                                ("--ref-name", "a-branch")}, ()),
+                "push": (PUSH, {("--messages", "BEFORE..AFTER"), ("--diffs", "BEFORE..AFTER")}, ()),
+                "manual run": (MANUAL, manual | {("--public", f"origin/{BRANCH}")}, ()),
+                "manual run, the branch not yet renamed": (MANUAL, manual | {("--public", f"origin/{OLD_BRANCH}")},
+                                                           (BRANCH,)),
+                "pull request into main": (into_main, {("--messages", "BASE..HEAD"), ("--diffs", "BASE..HEAD"),
+                                                       ("--ref-name", "a-branch"), ("--public", f"origin/{BRANCH}")},
+                                           ()),
+                "pull request into main, the branch not yet renamed": (
+                    into_main, {("--messages", "BASE..HEAD"), ("--diffs", "BASE..HEAD"), ("--ref-name", "a-branch"),
+                                ("--public", f"origin/{OLD_BRANCH}")}, (BRANCH,))}
+    for event, (context, wanted, missing) in expected.items():
+        _, calls = run_step(step, context, 0, scratch / event.replace(" ", "-").replace(",", ""), missing)
         scans = [(arguments, key) for command, arguments, key in calls
                  if command == "python3" and arguments[:1] == ["scripts/check_confidential.py"]]
         if len(scans) != 1:
@@ -441,6 +473,8 @@ HASH_SEEDS = ("ci.yml: the job default's step 'Docs check': passes --skip-hash-s
 EXAMPLE_RUNS = ("ci.yml: the job default's step 'Docs check': passes --skip-example-runs; "
                 "CI runs the scripts the guides' output blocks name")
 SCAN_STEP = f"{SCAN}: the step \"No private name or path in the tracked files, the commits or the branch's name\""
+DOCS_BASE = 'mime docs check --base "$base"'
+SMOKE_DOCS_LINE = '          uv run --no-sync mime docs check --base "$base" --skip-example-runs\n'
 SCAN_LINE = '            ${public:+--public "$public"} ${name:+--ref-name "$name"}\n'
 LANE_MATRIX = 'python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n      # Python 3.12'
 SHARD_LINE = ('        if: ' + LANE_RAN + '\n        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n')
@@ -476,19 +510,32 @@ PLANTS = {
                               f"{DOCS_STEP}: exits 0 when its command fails; it must exit with the command's status"),
     "diffs-dropped": ('--messages "$range" --diffs "$range"', '--messages "$range"',
                       f"{SCAN_STEP}: on a pull request, does not pass --diffs BASE..HEAD"),
-    "the-base-dropped": ("mime docs check --base origin/v0.3", "mime docs check",
-                         f"{DOCS_STEP}: does not run mime docs check --base origin/v0.3"),
+    "the-base-dropped": (DOCS_BASE, "mime docs check",
+                         f"{DOCS_STEP}: with the branch renamed, does not run mime docs check --base "
+                         f"origin/{BRANCH}"),
+    "the-docs-step-without-the-old-name": (
+        "for branch in release/v0.3.0 v0.3; do", "for branch in release/v0.3.0; do",
+        f"{DOCS_STEP}: with the branch not yet renamed, does not run mime docs check --base origin/{OLD_BRANCH}"),
+    "the-docs-step-without-the-new-name": (
+        "for branch in release/v0.3.0 v0.3; do", "for branch in v0.3; do",
+        f"{DOCS_STEP}: with the branch renamed, does not run mime docs check --base origin/{BRANCH}"),
+    "the-docs-step-running-without-a-base": (
+        '          [ -n "${base-}" ] || { echo "neither origin/release/v0.3.0 nor origin/v0.3 can be read" >&2; exit 1; }\n',
+        "", f"{DOCS_STEP}: with neither name of the branch readable, runs the check or exits 0"),
+    "the-scan-without-the-old-name": (
+        '          git rev-parse --verify --quiet "$dev" > /dev/null || dev=origin/v0.3\n', "",
+        f"{SCAN_STEP}: on a manual run, the branch not yet renamed, does not pass --public origin/{OLD_BRANCH}"),
     "the-docs-step-skips-the-hash-seed-builds": (
-        "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-hash-seed-builds",
+        DOCS_BASE, DOCS_BASE + " --skip-hash-seed-builds",
         HASH_SEEDS),
     "the-docs-step-skips-the-hash-seed-builds-before-the-base": (
-        "mime docs check --base origin/v0.3", "mime docs check --skip-hash-seed-builds --base origin/v0.3",
+        DOCS_BASE, "mime docs check --skip-hash-seed-builds --base \"$base\"",
         HASH_SEEDS),
     "the-docs-step-skips-the-example-runs": (
-        "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-example-runs",
+        DOCS_BASE, DOCS_BASE + " --skip-example-runs",
         EXAMPLE_RUNS),
     "the-docs-step-skips-the-evidence": (
-        "mime docs check --base origin/v0.3", "mime docs check --base origin/v0.3 --skip-evidence",
+        DOCS_BASE, DOCS_BASE + " --skip-evidence",
         "ci.yml: the job default's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
         "specification and the anomaly registry cite"),
     "the-build-step-skips-the-evidence": (
@@ -506,15 +553,15 @@ PLANTS = {
         f"        if: {LANE_RAN}\n        continue-on-error: true\n        run: |\n          status=0\n",
         f"{DOCS_STEP}: continue-on-error hides its failure from the job"),
     "a-manual-run-scans-the-tree-alone": (
-        '            *) range="HEAD"; public="origin/v0.3"; name="$REF_NAME" ;;\n', '            *) range="" ;;\n',
+        '            *) range="HEAD"; public="$dev"; name="$REF_NAME" ;;\n', '            *) range="" ;;\n',
         f"{SCAN_STEP}: on a manual run, does not pass --messages HEAD"),
-    "a-manual-run-scans-v0.3-s-commits-too": (
-        '            *) range="HEAD"; public="origin/v0.3"; name="$REF_NAME" ;;\n',
+    "a-manual-run-scans-the-branch-s-commits-too": (
+        '            *) range="HEAD"; public="$dev"; name="$REF_NAME" ;;\n',
         '            *) range="HEAD"; name="$REF_NAME" ;;\n',
-        f"{SCAN_STEP}: on a manual run, does not pass --public origin/v0.3"),
+        f"{SCAN_STEP}: on a manual run, does not pass --public origin/{BRANCH}"),
     "a-manual-run-without-the-branch-name": (
-        '            *) range="HEAD"; public="origin/v0.3"; name="$REF_NAME" ;;\n',
-        '            *) range="HEAD"; public="origin/v0.3" ;;\n',
+        '            *) range="HEAD"; public="$dev"; name="$REF_NAME" ;;\n',
+        '            *) range="HEAD"; public="$dev" ;;\n',
         f"{SCAN_STEP}: on a manual run, does not pass --ref-name a-branch"),
     "set-plus-e-in-the-scan": ("          public=\"\"\n", "          set +e\n          public=\"\"\n",
                                f"{SCAN_STEP}: its script holds an '|| true' or a 'set +e'"),
@@ -595,10 +642,18 @@ PLANTS = {
         GROUP_LINE,
         "  group: ${{ github.workflow }}-${{ github.ref }}\n",
         "ci.yml: a push, manual or scheduled run shares a group with another run, which could cancel it"),
-    "no-pull-request-into-v0.3": (
-        "  pull_request:\n    branches: [main, v0.3]\n", "  pull_request:\n    branches: [main]\n",
-        "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into v0.3 and a push "
-        "to it"),
+    "no-pull-request-into-the-branch": (
+        "  pull_request:\n    branches: [main, release/v0.3.0, v0.3]\n", "  pull_request:\n    branches: [main]\n",
+        "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into the development "
+        "branch and a push to it, under both of the branch's names"),
+    "no-pull-request-into-the-new-name": (
+        "  pull_request:\n    branches: [main, release/v0.3.0, v0.3]\n", "  pull_request:\n    branches: [main, v0.3]\n",
+        "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into the development "
+        "branch and a push to it, under both of the branch's names"),
+    "no-push-to-the-old-name": (
+        "  push:\n    branches: [main, release/v0.3.0, v0.3]\n", "  push:\n    branches: [main, release/v0.3.0]\n",
+        "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into the development "
+        "branch and a push to it, under both of the branch's names"),
 }
 
 
@@ -620,7 +675,7 @@ def test_control_the_platforms_docs_check_skipping_the_evidence_fails(tmp_path, 
     copy = tmp_path / "workflows"
     shutil.copytree(WORKFLOWS, copy)
     text = (copy / "platforms.yml").read_text(encoding="utf-8")
-    old = "          uv run --no-sync mime docs check --base origin/v0.3 --skip-example-runs\n"
+    old = SMOKE_DOCS_LINE
     assert text.count(old) == 1
     new = old.replace("\n", f" {plant}\n")
     if plant == "--skip-$PART":
@@ -629,9 +684,6 @@ def test_control_the_platforms_docs_check_skipping_the_evidence_fails(tmp_path, 
     assert wiring_problems(copy, tmp_path / "scratch") == [
         "platforms.yml: the job smoke's step 'Docs check': passes --skip-evidence; CI resolves the evidence the "
         "specification and the anomaly registry cite"]
-
-
-SMOKE_DOCS_LINE = "          uv run --no-sync mime docs check --base origin/v0.3 --skip-example-runs\n"
 
 
 def test_every_skip_flag_of_the_command_is_listed():

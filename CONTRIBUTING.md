@@ -108,6 +108,13 @@ plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default`
 behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
 count starts that count's caches cold.
 
+## The development branch's name
+
+The development branch is being renamed from `v0.3` to `release/v0.3.0`. Until the old name is dropped, the workflows
+run under both names, and the steps that read the branch (the docs check's `--base`, the confidentiality scan's
+`--public`) take `origin/release/v0.3.0` where it exists and `origin/v0.3` where it does not. The commands in this file
+that name `origin/v0.3` are for a clone that still has that name.
+
 ## CI: the `ready` label
 
 A run of the whole matrix is 58 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
