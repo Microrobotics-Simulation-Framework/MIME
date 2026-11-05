@@ -61,4 +61,12 @@ which field of the state moves which prim; `built.topology()`, the built graph i
 `topology.json` beside a run's outputs; and `run_to(..., hook=, chunk=, stage_every=)`, a saved run that streams and
 writes the recording layer.
 
+A declaration made a second time (`_redeclared.py`), as when a notebook's cell runs twice: the same as the first
+(`mime._content.same_content`: its type, every setting with its units and reason, what it binds) is kept once, with a
+warning, in a script and in a notebook; a changed one is added and refused at the build in a script, and in a
+notebook (`mime._notebook.in_notebook`, the one test the run's display also asks) replaces the earlier one, with a
+warning, unless another declaration names the earlier one, when both are kept and the build's refusal says a cell has
+probably run twice. A permission has no key, so only the same one again is kept once; a scene's reference of the same
+asset at the same prim again is kept once by the scene.
+
 Releases are explained in the [package manifest](../README.md#status).

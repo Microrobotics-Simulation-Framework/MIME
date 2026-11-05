@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/examples/test_notebooks.py` builds each notebook's experiment against the checkout and runs A's for a few
   steps; `scripts/colab_links.py` points every Colab link at one branch.
 
+### Changed
+
+- **A declaration made twice is kept once when it is the same, and a notebook's cell can run again.** The same
+  `exp.add_*`, `attach`, `observe`, `declare`, `source`, `set_controller`, `licence` or `permission` made a second
+  time, the same in its type, its settings with their units and reasons, and what it binds, is kept once with a
+  warning, in a script and in a notebook; it was refused (`id.duplicate`, `thing.duplicate`, ...). A changed one is
+  still refused in a script. In a notebook (Jupyter, Colab or IPython) it replaces the earlier one, with a warning, so
+  a cell edited and run again takes effect, unless another declaration names the earlier one (a law bound to a body
+  changed in its cell): then both are kept and the build's refusal says a cell has probably run twice, with what to
+  run again. The same scene reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep its advice
+  (run again from the cell that makes the experiment) until they move to the release that ships this.
+
 ### Fixed
 
 - **`Experiment.save` and `Experiment.load` warn at the script's line.** A `DescriptionWarning` or a range warning raised

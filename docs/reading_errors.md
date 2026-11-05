@@ -74,6 +74,29 @@ program reads.
 - A folder `save` cannot write into: `save.not-writable`, and still the `OSError` it was. A document that is not
   Unicode text: `load.document-encoding`. A reference outputs file that is truncated or corrupt: `load.reference`.
 
+## A declaration made twice
+
+A declaration the experiment already holds (a thing of the same name, the same law or observation bound to the same
+things, a value or a source at the same path, a second controller or licence) is read as follows, in a script and in a
+notebook (Jupyter, Colab or IPython):
+
+- **The same as the first** in its type, its settings with their units and reasons, and what it binds: it is kept
+  once, and a warning at your line says so. Two objects made by running one cell twice are the same in this sense; a
+  setting moved by a single unit in its last place is not.
+- **Changed, in a script**: the build refuses the two, with the code of their kind (`thing.duplicate`,
+  `id.duplicate`, `value.duplicate`, `source.duplicate`, `controller.more-than-one`, and `terms.licence` when the
+  experiment is saved).
+- **Changed, in a notebook**: the last one run replaces the earlier one, and a warning says so, so a model swapped in a
+  cell (`Drag.MRS` for `Drag.Surrogate`) takes effect when the cell runs again. Where another declaration names the
+  earlier one (a law bound to a body, a value declared of it, a source naming a law's setting), replacing it would bind
+  what names it to a declaration it was not written against, unseen: both are kept, a warning lists what names it, and
+  the build refuses the two, saying a cell has probably run twice. Run the cells again from the one that makes the
+  experiment, or run them all.
+
+A permission has no such key, since an experiment holds one for each grant, so only the same one again is kept once.
+A scene's reference of the same asset at the same prim again is kept once; another asset at that prim is refused at
+the build (`scene.reference-path`), in a notebook in the same words.
+
 ## Reaching the full traceback
 
 The full chain (every frame from your script's first down to the raise, and every error chained to it) is kept on

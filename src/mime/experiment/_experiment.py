@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import json
 import math
 import re
@@ -53,6 +52,8 @@ from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_mode
 from mime.build._maddening import FlagTally, FlagTest
 from mime.errors import public
 from mime.errors._frames import warn_at_script
+from mime.experiment._redeclared import add as add_declaration
+from mime._notebook import in_notebook
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
 from mime.results import (
@@ -260,6 +261,13 @@ class Experiment:
     ``"research"`` needs each with its reason and refuses a pending one by name; ``"strict"`` is a later release's
     and refused until then. Validity limits and input errors are refused in every profile. ``built.report.pending()`` and
     ``mime pending <folder>`` list what is pending, with the lines to paste.
+
+    A declaration made a second time (the same thing's name, law or observation id, value's or source's path, a second
+    controller or licence), as when a notebook's cell runs twice, is kept once, with a warning, when it is the same as
+    the first: its type, its settings with their units and reasons, and what it binds. A changed one is refused at the
+    build in a script. In a notebook (IPython, Jupyter, Colab) the last one run replaces the earlier one, with a
+    warning, unless another declaration names the earlier one (a law bound to a body, a value declared of it): then
+    both are kept, with a warning, and the build refuses the two, saying a cell has probably run twice.
     """
 
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
@@ -287,7 +295,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"add_{cls.__name__.lower()} takes a {cls.__name__}, not {type(thing).__name__}",
                 f"pass one: exp.add_{cls.__name__.lower()}({cls.__name__}(...))")])
-        self._declarations.append(ThingDeclaration(thing))
+        add_declaration(self._declarations, ThingDeclaration(thing))
 
     @public
     def add_structure(self, structure: Structure) -> StructureHandle:
@@ -328,7 +336,7 @@ class Experiment:
                     "call.wrong-type", RefusalClass.USER,
                     f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}",
                     f"bind it to a thing: {role}= the handle add_body or add_medium returned, or its name")])
-        self._declarations.append(Attachment(law, dict(bindings)))
+        add_declaration(self._declarations, Attachment(law, dict(bindings)))
         return entry_id(type(law), bindings)
 
     @public
@@ -341,7 +349,7 @@ class Experiment:
         With no reason (and none on the quantity, ``kg(8.5e-5, reason=...)``), the reason is pending: exploratory
         builds with it and stamps every output, and research refuses it by name (``value.reason-pending``). A reason
         given both on the quantity and here is refused."""
-        self._declarations.append(ValueDeclaration(path, value, reason))
+        add_declaration(self._declarations, ValueDeclaration(path, value, reason))
 
     @public
     def source(self, path: TypedPath | str, *, reason: Basis) -> None:
@@ -352,7 +360,7 @@ class Experiment:
         is named ``<structure>.<setting>`` (``tube.inner_radius``), ``<body>.parts.<part>.<setting>``,
         ``<apparatus>.<field>.<setting>``, ``<apparatus>.<command>`` (a command's value), ``<entry id>.<setting>``
         (``drag:umr.spacing``), ``dt``, ``gravity`` or ``conditions.<name>``."""
-        self._declarations.append(SourceDeclaration(path, reason))
+        add_declaration(self._declarations, SourceDeclaration(path, reason))
 
     @public
     def licence(self, licence: str | CustomLicence) -> None:
@@ -363,7 +371,7 @@ class Experiment:
         form records it. Without one the experiment declares none, which saving and ``mime pack`` never refuse, and
         every report of the folder says; ``mime push`` will not publish it until one is declared. Its form is checked
         when the experiment is saved (``terms.licence``)."""
-        self._declarations.append(LicenceDeclaration(licence))
+        add_declaration(self._declarations, LicenceDeclaration(licence))
 
     @public
     def permission(self, permission: Permission) -> None:
@@ -379,7 +387,7 @@ class Experiment:
                 f"permission takes a mime.terms.Permission, not {type(permission).__name__}",
                 "pass one: exp.permission(Permission(grantor=..., grantee=..., files=(...), scope=Scope(...), "
                 "date=\"YYYY-MM-DD\", evidence=Evidence(...)))")])
-        self._declarations.append(PermissionDeclaration(permission))
+        add_declaration(self._declarations, PermissionDeclaration(permission))
 
     @public
     def observe(self, observation: Observation) -> ObservationHandle:
@@ -388,7 +396,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"observe takes an Observation, not {type(observation).__name__}",
                 "pass an observation: exp.observe(SwimSpeed(body, along=X))")])
-        self._declarations.append(ObservationDeclaration(observation))
+        add_declaration(self._declarations, ObservationDeclaration(observation))
         return ObservationHandle(entry_id(type(observation), observation.bindings()),
                                  tuple(output.field for output in type(observation).outputs))
 
@@ -410,7 +418,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"set_controller takes a Controller, not {type(controller).__name__}",
                 "pass a registered controller: exp.set_controller(ArmTracking(...), reads=..., writes=..., mode=...)")])
-        self._declarations.append(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
+        add_declaration(self._declarations, ControllerDeclaration(controller, reads, writes, mode, rate, latency))
 
     @public
     def plan(self) -> PlanSet:
@@ -705,9 +713,10 @@ def _not_writable(folder: Path, error: OSError) -> BaseException:
 
 def _python_display(progress: bool | None) -> RunDisplay | None:
     """MIME's live display for a run, a ``run_to`` or a save started from Python (``mime.cli._display.python_display``),
-    or ``None``. Outside IPython, the default asks nothing more: rich's own test of a notebook begins with IPython's
-    ``get_ipython``, so a script or a terminal goes the way it always went, and loads no display."""
-    if progress is False or (progress is None and not hasattr(builtins, "get_ipython")):
+    or ``None``. Outside IPython (``mime._notebook.in_notebook``), the default asks nothing more: rich's own test of a
+    notebook begins with IPython's ``get_ipython``, so a script or a terminal goes the way it always went, and loads no
+    display."""
+    if progress is False or (progress is None and not in_notebook()):
         return None
     from mime.cli._display import python_display
 

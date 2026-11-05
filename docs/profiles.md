@@ -186,7 +186,8 @@ the refusal prints the line, such as `spacing=m(..., reason="...")`.
 ### `source.duplicate`
 
 A setting, or a declared value, is given its reason twice. Give it one: on the quantity, or by `exp.source` (by
-`reason=` for a declared value).
+`reason=` for a declared value). The same `exp.source(...)` made again is kept once, and a changed one run again in a
+notebook replaces the earlier one ([a declaration made twice](reading_errors.md#a-declaration-made-twice)).
 
 ### `source.reason`
 
