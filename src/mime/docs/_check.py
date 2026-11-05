@@ -255,7 +255,7 @@ def none_declared_problems(root: Path, held: RatchetList, built: Built, base: st
     start = [line for line in held.lines if line.reason == NONE_DECLARED_START]
     if base is None:
         found += rename_problems(root, None, None, held, mapped, head_entries)[0]
-        compared = "not compared with a base revision (pass --base; CI passes origin/v0.3)"
+        compared = "not compared with a base revision (pass --base; CI passes origin/release/v0.3.0)"
     else:
         before, problem = base_list(root, base, Path("docs/ratchets/none_declared.txt"), LISTS["none_declared"])
         if problem is not None:

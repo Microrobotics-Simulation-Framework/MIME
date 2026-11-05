@@ -37,7 +37,7 @@ page for a redirected stream (Python before 3.15 does not default to UTF-8 there
   (`tests/saved/`: the document, the load, the schema, the array guards, description files in a chain);
 - `mime modal`'s script and files, written and read through a stand-in for `modal` (`tests/env/test_modal_script.py`):
   a Windows or Mac user runs `mime modal` on their own machine;
-- `mime docs check --base origin/v0.3`, with the pages built under eight hash seeds.
+- `mime docs check --base origin/release/v0.3.0`, with the pages built under eight hash seeds.
 
 The run that showed it: https://github.com/Microrobotics-Simulation-Framework/MIME/actions/runs/41222449103 (all four
 jobs passed, with the skips below), at commit `ca6836f`. The run before it

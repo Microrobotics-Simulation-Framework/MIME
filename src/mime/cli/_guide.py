@@ -54,8 +54,8 @@ EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("visuals", "view"): "mime visuals view my_run",
     ("visuals", "web"): "mime visuals web my_run --open",
     ("registry",): "mime registry --json",
-    ("docs",): "mime docs check --base origin/v0.3",
-    ("docs", "check"): "mime docs check --base origin/v0.3",
+    ("docs",): "mime docs check --base origin/release/v0.3.0",
+    ("docs", "check"): "mime docs check --base origin/release/v0.3.0",
     ("docs", "build"): "mime docs build --out docs_pages",
     ("completion",): "mime completion bash > ~/.local/share/bash-completion/completions/mime",
 }

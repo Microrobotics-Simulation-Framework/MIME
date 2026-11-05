@@ -9,14 +9,14 @@ name: Stress
 # CONTRIBUTING.md.
 #
 # Each run is a job set up as CI's default lane sets itself up (locked install, lab fixture, the unit tube table), with
-# the JAX compilation caches that v0.3's last push saved for the shards holding the selected files, restored and never
+# the JAX compilation caches that release/v0.3.0's last push saved for the shards holding the selected files, restored and never
 # saved, and runs the selection with pytest-xdist and its own `--hypothesis-seed`. scripts/stress_summary.py reads the
 # runs' JUnit reports. The pull request's description is untrusted text: it reaches a script only through an
 # environment variable, and the script refuses anything but a path under tests/.
 
 on:
   pull_request:
-    branches: [main, release/v0.3.0, v0.3]
+    branches: [main, release/v0.3.0]
     types: [labeled, synchronize]
 
 permissions:

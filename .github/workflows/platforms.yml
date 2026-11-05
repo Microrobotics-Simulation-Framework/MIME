@@ -5,17 +5,17 @@ name: Platforms
 # lane: the test files tests/platforms.txt names (a free-space experiment built, run, saved, loaded and verified; the
 # command's `run`, `verify` and `modal` on it; the saved form's round trips), then `mime docs check`. None of it needs
 # an asset. Nothing here sets PYTHONUTF8 or PYTHONIOENCODING: the job must meet what a user's machine meets, and Python
-# before 3.15 does not default to UTF-8 output on Windows (docs/platforms.md). It is no required check: v0.3's branch
+# before 3.15 does not default to UTF-8 output on Windows (docs/platforms.md). It is no required check: release/v0.3.0's branch
 # protection names none of these jobs, and the maintainer decides later whether to require them. Every step runs even
 # when an earlier one failed, so one run lists everything that breaks on a platform.
 
 on:
   pull_request:
-    branches: [release/v0.3.0, v0.3]
+    branches: [release/v0.3.0]
     # No `labeled`: a label starts no run here (ready.yml re-runs this one for `ready`, as it does ci.yml's).
     types: [opened, synchronize, reopened]
   push:
-    branches: [release/v0.3.0, v0.3]
+    branches: [release/v0.3.0]
   workflow_dispatch:
 
 permissions:
@@ -114,15 +114,10 @@ jobs:
       - name: Docs check
         if: ${{ !cancelled() }}
         run: |
-          # The development branch is release/v0.3.0, and was v0.3 until it was renamed: the base is whichever exists.
-          for branch in release/v0.3.0 v0.3; do
-            git rev-parse --verify --quiet "origin/$branch" > /dev/null \
-              || git fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch" 2> /dev/null \
-              || continue
-            base="origin/$branch"
-            break
-          done
-          [ -n "${base-}" ] || { echo "neither origin/release/v0.3.0 nor origin/v0.3 can be read" >&2; exit 1; }
+          base=origin/release/v0.3.0
+          git rev-parse --verify --quiet "$base" > /dev/null \
+            || git fetch --no-tags --depth=1 origin "+refs/heads/release/v0.3.0:refs/remotes/$base" 2> /dev/null \
+            || { echo "$base cannot be read" >&2; exit 1; }
           # The guides' output blocks are a Linux run's printed text: the scripts they name run in the default lane
           # (tests/docs/test_tutorials.py) and in ci.yml's docs check, not here.
           uv run --no-sync mime docs check --base "$base" --skip-example-runs

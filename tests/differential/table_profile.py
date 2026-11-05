@@ -8,7 +8,7 @@ The read before this one is profiled by the same script, run against that evalua
 built through each tree's ``Table.arrays``, and a setting the evaluator does not have is left out of its
 configurations, so that both columns of a comparison come from one harness:
 
-    git archive origin/v0.3 src | tar -x -C BEFORE
+    git archive origin/release/v0.3.0 src | tar -x -C BEFORE
     JAX_PLATFORMS=cpu PYTHONPATH=BEFORE/src uv run --no-sync python tests/differential/table_profile.py OUT.jsonl \
         --label before
 

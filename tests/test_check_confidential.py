@@ -325,7 +325,7 @@ def test_n5_without_its_key_the_scan_fails_and_says_why(
 
 
 @pytest.mark.parametrize(("name", "payload"), [
-    ("push", {"ref": "refs/heads/v0.3"}),
+    ("push", {"ref": "refs/heads/release/v0.3.0"}),
     ("pull_request", pull_request(MIME)),
     ("pull_request", pull_request(MIME.lower())),
     ("pull_request", {"pull_request": {}}),
