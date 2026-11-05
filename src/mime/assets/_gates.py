@@ -168,8 +168,8 @@ class Asker(Protocol):
 
 
 class NoTerminal(Exception):
-    """An asker found there is nobody to answer after all (a notebook kernel that takes no input): the gate refuses as
-    it does without a terminal."""
+    """An asker found there is nobody to answer after all (a notebook kernel that takes no input, or standard input that
+    ends before an answer): the gate refuses as it does without a terminal, naming the flag, and not as a person's no."""
 
 
 #: What the licence prompt is headed with, and asks.
@@ -225,8 +225,8 @@ class PlainAsker:
             out.write(prompt)
             out.flush()
             return _yes(input())
-        except EOFError:
-            return False
+        except EOFError as error:  # standard input ends at once: no one is there (a null device reads as a terminal on Windows)
+            raise NoTerminal from error
         except RuntimeError as error:  # a notebook kernel that takes no input (ipykernel's StdinNotImplementedError)
             raise NoTerminal from error
 

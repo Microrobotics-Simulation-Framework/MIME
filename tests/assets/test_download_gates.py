@@ -270,7 +270,8 @@ def test_the_acceptances_file_is_in_the_config_directory_unless_a_variable_names
                                                                                          tmp_path: Path):
     monkeypatch.delenv("MIME_LICENCE_ACCEPTANCES")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setenv("APPDATA", str(tmp_path / "config"))
+    for variable in ("APPDATA", "LOCALAPPDATA", "WIN_PD_OVERRIDE_APPDATA", "WIN_PD_OVERRIDE_LOCAL_APPDATA"):
+        monkeypatch.setenv(variable, str(tmp_path / "config"))  # Windows: platformdirs reads its overrides first
     monkeypatch.setenv("HOME", str(tmp_path))
     assert _acceptances.acceptances_path().name == "licences.json" and "mime" in _acceptances.acceptances_path().parts
     assert tmp_path in _acceptances.acceptances_path().parents
@@ -316,6 +317,24 @@ def test_in_a_notebook_the_library_asks_through_input_and_a_kernel_that_takes_no
     monkeypatch.setattr(builtins, "input", no_stdin)
     assert codes(lambda: assets.fetch(closed(rig, "second.stl", b"second" * 100, custom(OTHER, title="Other")))) == [
         "asset.licence-not-accepted"]
+
+
+def test_standard_input_that_ends_before_an_answer_is_no_terminal_and_not_a_no(rig: Rig, monkeypatch: pytest.MonkeyPatch):
+    """Windows reads its null device as a terminal; a program run with standard input from it is asked and gets the end of
+    the input at once. That is nobody to ask: the refusal names the flag, as it does without a terminal."""
+    import builtins
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    monkeypatch.setattr(builtins, "get_ipython", lambda: object(), raising=False)  # something that claims it can ask
+
+    def ends(prompt: str = "") -> str:
+        raise EOFError
+
+    monkeypatch.setattr(builtins, "input", ends)
+    ref = closed(rig)
+    assert codes(lambda: assets.fetch(ref)) == ["asset.licence-not-accepted"]
+    assert rig.requests == 0
 
 
 # --- no generic switch accepts a licence --------------------------------------------------------------------------------
@@ -487,8 +506,7 @@ def test_a_download_whose_write_fails_part_way_leaves_no_file_behind(rig: Rig, m
     assert calls["n"] > 1, "the write failed after bytes had been written"
     assert leftovers(rig.cache) == [] and not assets.is_cached(ref)
     assert [path.name for path in rig.cache.iterdir() if ".incoming-" in path.name] == []
-    monkeypatch.undo()
-    monkeypatch.setenv("MIME_ASSETS_DIR", str(rig.cache))
+    monkeypatch.setattr(_fetch._Capped, "write", original)
     assets.fetch(ref)
     assert assets.is_cached(ref), "the next fetch is not troubled by what the failed one did"
 
@@ -504,12 +522,11 @@ def test_a_bake_whose_write_fails_leaves_no_half_written_layer_or_record(tmp_pat
     def full(source: object, destination: object) -> None:
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(_meshes.os, "replace", full)
-    with pytest.raises(OSError):
-        _meshes.write_mesh(target, mesh, "mesh")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(_meshes.os, "replace", full)
+        with pytest.raises(OSError):
+            _meshes.write_mesh(target, mesh, "mesh")
     assert list(target.parent.iterdir()) == [], "the layer written beside it is removed with the failure"
-    monkeypatch.undo()
-    monkeypatch.setenv("MIME_ASSETS_DIR", str(cache))
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_visuals.os, "replace", full)
         with pytest.raises(OSError):
