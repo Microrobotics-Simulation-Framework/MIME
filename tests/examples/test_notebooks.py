@@ -278,9 +278,29 @@ def test_tutorial_as_field_cell_run_again_with_a_new_strength_in_a_notebook_runs
     assert natural_edit_problems(tmp_path) == []
 
 
+def test_tutorial_as_field_cell_run_again_under_a_filter_that_ignores_warnings_still_shows_in_the_plan_and_report(notebook):
+    """A notebook whose first cell silences warnings: the replacement and the law that follows it are on the plan and in
+    the build report, and the saved form is the one an experiment declared with the new strength holds."""
+    setup, _ = split_at_run(read_notebook("tutorial_a.ipynb"))
+    namespace = declared(setup)
+    namespace["field_strength"] = 2.4
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        exec(compile(cell_holding(setup, "experiment.add_apparatus("), "<the field cell, run again>", "exec"), namespace)
+    experiment = namespace["experiment"]
+    (note,) = experiment.plan().replaced
+    assert "declares the apparatus 'field' again" in note and note.endswith("the law magnetic.torque:robot")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = experiment.build().report
+    assert note in report.text()
+    from_the_top = declared([source.replace("field_strength = 1.2 ", "field_strength = 2.4 ") for source in setup])
+    assert experiment.document() == from_the_top["experiment"].document()
+
+
 def test_control_a_re_bind_that_keeps_the_old_apparatus_fails_the_natural_edit_every_run(notebook, tmp_path, monkeypatch):
     """The note says it replaced; the earlier apparatus stays, so the run keeps its parameters under the new name."""
-    def keeps_the_old_one(held, earlier, declaration, known, name):
+    def keeps_the_old_one(held, earlier, declaration, known, name, replaced):
         warnings.warn(f"{known.call} declares {known.noun} again, not the same as before: in a notebook or IPython the "
                       f"last one run wins, so it replaces the earlier one", UserWarning)
 

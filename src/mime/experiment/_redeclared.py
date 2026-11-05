@@ -13,11 +13,16 @@ name, a law's or an observation's id, a value's or a source's path; the controll
     replaced and every declaration that holds its name, by what it is (a law, an observation, the controller, a
     value, a source, another thing). A declaration that holds the earlier *object* instead of its name would keep the
     old parameters under the new name, so then both are kept and the build refuses the two; so it does for a name
-    of another kind (a body declared again as an apparatus), which no replacement can serve.
+    of another kind (a body declared again as an apparatus), which no replacement can serve. A value declared of the
+    thing still applies to the new one and overrides what the new declaration brings, and the note says so.
   - *A law or an observation*, where no other declaration names its id, replaces the earlier one with a note; where
-    one does (a value, a source, the controller), both are kept and the build refuses the two, saying a cell has
-    probably run twice.
+    one does (a value, a source, the controller), both are kept and the build refuses the two, saying a line or cell
+    has probably run twice.
   - *A value, a source, the controller or the licence* replaces the earlier one; nothing names them.
+  - *The note is also kept.* A warning is all a warnings filter removes, so each replacement is also recorded on the
+    experiment (``replaced``), which ``plan()`` and the build report show (``PlanSet.replaced``,
+    ``BuildReport.replaced``). The saved form is not changed: it holds the final declarations. The note is raised
+    before anything is changed, so a filter that turns a warning into an error leaves the experiment as it was.
 - **Not the same, in a script**: added, and the build refuses the two (``thing.duplicate``, ``id.duplicate``,
   ``value.duplicate``, ``source.duplicate``, ``controller.more-than-one``, ``terms.licence``), as before.
 
@@ -191,23 +196,45 @@ def _listed(nouns: list[str]) -> str:
 
 
 def _kept_beside(known: Known, why: str, held: list[Declaration], declaration: Declaration) -> None:
-    held.append(declaration)
     warn_at_script(f"{known.call} declares {known.noun} again, not the same as before, and {why}: both are kept and "
-                   f"the build will refuse them; run the cells again from the one that makes the experiment, or run "
-                   f"them all", UserWarning)
+                   f"the build will refuse them; run the lines or cells again from the one that makes the experiment, "
+                   f"or run them all", UserWarning)
+    held.append(declaration)  # after the note: a warning raised as an error leaves the experiment as it was
+
+
+def _declared_values(held: list[Declaration], earlier: list[int], name: str) -> list[str]:
+    """Each value declared of ``name`` (``water.density``), as ``the value water.density (1000.0 kg/m^3)``: one that
+    still applies to a thing declared again under the name, over whatever the new declaration brings."""
+    found: list[str] = []
+    for index, other in enumerate(held):
+        if index in earlier or not isinstance(other, ValueDeclaration):
+            continue
+        path = _path(other.path)
+        if path == name or path.startswith(f"{name}."):
+            found.append(f"the value {path} ({other.value})")
+    return found
+
+
+def _still_applies(values: list[str], kind: str) -> str:
+    """The clause of a note that says a declared value of the thing replaced still applies, and wins."""
+    if not values:
+        return ""
+    verbs = "still apply and override" if len(values) > 1 else "still applies and overrides"
+    return f"; of these, {_listed(values)} {verbs} what the new {kind} brings"
 
 
 def _replace_thing(held: list[Declaration], earlier: list[int], declaration: ThingDeclaration, known: Known,
-                   name: str) -> None:
+                   name: str, replaced: list[str]) -> None:
     """A thing declared again, changed, in a notebook: it takes the earlier one's place, and what names it follows
-    it (by its name, which is all a declaration holds of a thing), with one note that names each."""
+    it (by its name, which is all a declaration holds of a thing), with one note that names each. The note is raised
+    first and recorded after the change."""
     apart = _other_kinds(held, earlier, declaration)
     if apart:
-        held.append(declaration)
         warn_at_script(f"{known.call} declares {known.noun} again, but an earlier {name!r} is of another kind "
                        f"({' and '.join(apart)}), and a name has one kind: nothing is replaced, both are kept and the "
-                       f"build will refuse them; run the cells again from the one that makes the experiment, or run "
-                       f"them all", UserWarning)
+                       f"build will refuse them; run the lines or cells again from the one that makes the experiment, "
+                       f"or run them all", UserWarning)
+        held.append(declaration)
         return
     objects = _holding_the_object(held, earlier, name)
     if objects:
@@ -216,17 +243,28 @@ def _replace_thing(held: list[Declaration], earlier: list[int], declaration: Thi
                      declaration)
         return
     naming = _naming(held, earlier, name)
+    follows = (f"; what holds its name now finds the new one: {', '.join(naming)}" if naming else
+               "; nothing else holds its name")
+    note = (f"{known.call} declares {known.noun} again, not the same as before: in {WHERE} the last one run wins, so "
+            f"it replaces the earlier one{follows}"
+            f"{_still_applies(_declared_values(held, earlier, name), declaration.thing.kind.value)}")
+    _replace(held, earlier, declaration, note, replaced)
+
+
+def _replace(held: list[Declaration], earlier: list[int], declaration: Declaration, note: str,
+             replaced: list[str]) -> None:
+    """``declaration`` takes the first of ``earlier``'s place and the rest go, with ``note`` raised first (a filter that
+    makes it an error leaves ``held`` and ``replaced`` as they were) and then recorded in ``replaced``."""
+    warn_at_script(note, UserWarning)
     held[earlier[0]] = declaration
     for index in reversed(earlier[1:]):
         del held[index]
-    follows = (f"; what holds its name now finds the new one: {', '.join(naming)}" if naming else
-               "; nothing else holds its name")
-    warn_at_script(f"{known.call} declares {known.noun} again, not the same as before: in {WHERE} the last one run "
-                   f"wins, so it replaces the earlier one{follows}", UserWarning)
+    replaced.append(note)
 
 
-def add(held: list[Declaration], declaration: Declaration) -> None:
-    """Add ``declaration`` to ``held`` by the rule of this module, warning with its note at the script's line."""
+def add(held: list[Declaration], declaration: Declaration, replaced: list[str]) -> None:
+    """Add ``declaration`` to ``held`` by the rule of this module, warning with its note at the script's line, and
+    record in ``replaced`` each note of a declaration that replaced an earlier one."""
     known = known_as(declaration)
     if known is None:
         held.append(declaration)
@@ -240,18 +278,15 @@ def add(held: list[Declaration], declaration: Declaration) -> None:
         held.append(declaration)
         return
     if isinstance(declaration, ThingDeclaration):
-        _replace_thing(held, earlier, declaration, known, known.key[1])
+        _replace_thing(held, earlier, declaration, known, known.key[1], replaced)
         return
     naming = _naming(held, earlier, known.key[1]) if known.named else []
     if naming:
         _kept_beside(known, f"{_listed(naming)} name{'s' if len(naming) == 1 else ''} the earlier one, and in {WHERE} "
                             f"a law or an observation is replaced only where nothing names it", held, declaration)
         return
-    held[earlier[0]] = declaration
-    for index in reversed(earlier[1:]):
-        del held[index]
-    warn_at_script(f"{known.call} declares {known.noun} again, not the same as before: in {WHERE} the last one run "
-                   f"wins, so it replaces the earlier one", UserWarning)
+    _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: in "
+                                         f"{WHERE} the last one run wins, so it replaces the earlier one", replaced)
 
 
 __all__ = ["Known", "add", "known_as", "names_in", "things_in"]

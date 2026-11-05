@@ -94,14 +94,24 @@ things, a value or a source at the same path, a second controller or licence) is
     direction. A declaration holds a thing by its name, which the build resolves, so none of them is rewritten. The one
     warning names the thing and each law, observation, value, source, controller and other thing that holds its name,
     so that nothing is re-bound unseen. Check it: a value declared of the thing (`declare("robot.mass", ...)`) still
-    applies to the new one until its own cell is run again. A law the new thing cannot serve (a field the new
+    applies to the new one until its own cell is run again, and it **overrides what the new declaration brings**: a
+    value declared of the water's density (`declare("water.density", ...)`) wins over the density in the record of a
+    new material, as a value declared in the experiment always does over a record. The warning says so ("the value
+    water.density (with its quantity) still applies and overrides what the new medium brings"); to use the new record,
+    run the cell that declares the value again, changed. A law the new thing cannot serve (a field the new
     apparatus lacks, a region the new structure lacks) is refused at the build by that law's own check, which names it.
   - *A thing that cannot be replaced*: a name declared again as another kind (a body as an apparatus), and a
     declaration that holds the earlier thing's object itself and not its name (it would keep the old settings under the
-    new name). Both are kept, a warning says so, and the build refuses the two (`thing.duplicate`), saying a cell has
-    probably run twice. Run the cells again from the one that makes the experiment, or run them all.
+    new name). Both are kept, a warning says so, and the build refuses the two (`thing.duplicate`), saying a line or
+    cell has probably run twice (a notebook has cells; IPython's terminal, and a script run through it, have lines).
+    Run the lines or cells again from the one that makes the experiment, or run them all.
   - *A law or an observation* is replaced where no other declaration names its id; where a source or the controller
     does, both are kept and the build refuses the two as above.
+  - *The replacement leaves a record the warning does not.* A warnings filter (`warnings.simplefilter("ignore")`, a
+    common first cell) removes the warning, so each replacement is also recorded on the experiment with what followed
+    it: `plan().replaced` and the build report (`built.report.text()`, under "replaced in this session") list them,
+    in the order they were made. The saved experiment holds only the final declarations. A filter that turns a warning
+    into an error stops the call before anything is changed.
 - **Where the notebook's rule applies.** MIME asks whether IPython is running (`get_ipython` is among the builtins):
   true in Jupyter and Colab, in IPython's own terminal, and in a script run through `ipython script.py` or `%run`, and
   false for `python script.py`, `python -c` and Python's own prompt. So a script run through IPython gets the

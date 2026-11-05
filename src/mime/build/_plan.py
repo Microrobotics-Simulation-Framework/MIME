@@ -488,6 +488,9 @@ class PlanSet:
     #: spinner's kick on its host's joints, as numbers (``mime.build._kicks``).
     checked: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     kicks: tuple[SpinnerKicks, ...] = ()
+    #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again), set by
+    #: the experiment: not a planned thing, and no part of the saved form.
+    replaced: tuple[str, ...] = ()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""

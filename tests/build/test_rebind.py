@@ -231,7 +231,8 @@ def note_problems(kind: Kind) -> list[str]:
     notes = noted(lambda: kind.edit(made))
     if len(notes) != 1:
         return [f"{len(notes)} notes, not one: {notes}"]
-    head, _, rest = notes[0].partition("; ")
+    text, _, _ = notes[0].partition("; of these, ")  # the clause on the declared values is checked on its own
+    head, _, rest = text.partition("; ")
     expected = (f"{kind.call} declares the {kind.name} {kind.thing!r} again, not the same as before: in a notebook or "
                 f"IPython the last one run wins, so it replaces the earlier one")
     problems = [] if head == expected else [f"the note begins {head!r}, not {expected!r}"]
@@ -485,30 +486,287 @@ def test_a_saved_experiment_holds_only_the_new_declaration_and_loads_and_rebuild
     loaded.build()
 
 
+# -- the trace: a warnings filter removes the warning, and not the record of the replacement ----------------------------
+
+def replaced_of(exp: Experiment) -> list[str]:
+    return vars(exp)["_replaced"]
+
+
+def trace_problems(kind: Kind) -> list[str]:
+    """The edit of ``kind`` under ``simplefilter("ignore")`` (a notebook's usual first cell): ``plan()`` and the build
+    report hold the note, with every declaration that follows the thing; the saved form is the fresh one's."""
+    made = experiment()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        kind.edit(made)
+    problems: list[str] = []
+    plans = made.exp.plan()
+    if len(plans.replaced) != 1:
+        return [f"plan().replaced holds {len(plans.replaced)} notes, not one"]
+    (note,) = plans.replaced
+    problems += [f"plan().replaced does not name {holder}" for holder in sorted(kind.holders) if holder not in note]
+    if f"declares the {kind.name} {kind.thing!r} again" not in note:
+        problems.append("plan().replaced does not name the thing replaced")
+    report = made.exp.build().report
+    if report.replaced != plans.replaced:
+        problems.append("the build report holds another record than the plan")
+    if not any(note in line for line in report.text().splitlines()) or \
+            "replaced in this session" not in report.text(details=True):
+        problems.append("the build report's text does not show the replacement")
+    if made.exp.document() != kind.fresh().exp.document():
+        problems.append("the saved form is not what an experiment declared with the change holds")
+    return problems
+
+
+def error_filter_problems(kind: Kind) -> list[str]:
+    """The edit of ``kind`` under ``simplefilter("error")``: the note raises, and the experiment is as it was."""
+    made = experiment()
+    before = list(declarations(made.exp))
+    problems: list[str] = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        try:
+            kind.edit(made)
+            problems.append("the edit did not raise under the error filter")
+        except UserWarning:
+            pass
+    if len(declarations(made.exp)) != len(before) or any(a is not b for a, b in zip(declarations(made.exp), before)):
+        problems.append("the call raised and has also changed the declarations")
+    if replaced_of(made.exp):
+        problems.append("the call raised and has also recorded a replacement")
+    if made.exp.plan().replaced:
+        problems.append("the plan shows a replacement that did not happen")
+    return problems
+
+
+@pytest.mark.parametrize("kind", KINDS, ids=named)
+def test_a_replacement_is_recorded_for_plan_and_report_when_a_filter_removes_the_warning(kind, notebook):
+    assert trace_problems(kind) == []
+
+
+@pytest.mark.parametrize("kind", KINDS, ids=named)
+def test_a_warning_raised_as_an_error_leaves_the_experiment_unchanged(kind, notebook):
+    assert error_filter_problems(kind) == []
+
+
+def test_a_leaf_replaced_under_the_error_filter_leaves_the_experiment_unchanged_and_under_ignore_is_recorded(notebook):
+    made = experiment()
+    before = list(declarations(made.exp))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(UserWarning):
+            made.exp.declare("water.density", kg_per_m3(998.0), reason=REASON)
+    assert all(a is b for a, b in zip(declarations(made.exp), before, strict=True)) and replaced_of(made.exp) == []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        made.exp.declare("water.density", kg_per_m3(998.0), reason=REASON)
+    (note,) = made.exp.plan().replaced
+    assert "the value water.density" in note and "replaces the earlier one" in note
+
+
+def test_a_kept_beside_declaration_is_not_added_when_its_warning_raises(notebook):
+    made = experiment()
+    count = len(declarations(made.exp))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(UserWarning):
+            made.exp.add_body(body(name="field"))
+    assert len(declarations(made.exp)) == count
+
+
+def held_object(made: Made) -> None:
+    made.exp.set_controller(Ticker(), reads={"pose": body()}, writes={"angle": "field.frequency"}, mode="callback",
+                            rate=ms(3))
+
+
+def test_a_declaration_kept_beside_because_it_holds_the_object_is_not_added_when_its_warning_raises(notebook):
+    made = experiment()
+    held_object(made)
+    count = len(declarations(made.exp))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(UserWarning, match="not its name"):
+            made.exp.add_body(body(9.0))
+    assert len(declarations(made.exp)) == count and replaced_of(made.exp) == []
+
+
+def test_a_law_a_source_names_is_not_added_beside_when_its_warning_raises_and_says_lines_or_cells(notebook):
+    made = experiment()
+    made.exp.source("robot.parts.shell.density", reason="a datasheet")
+    made.exp.source("contact:robot.margin", reason="a datasheet")
+    count = len(declarations(made.exp))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(UserWarning):
+            made.exp.attach(CentreContact.Projection(margin=mm(0.2)), body=made.robot, surface=made.tube.inner_surface)
+    assert len(declarations(made.exp)) == count
+    (note,) = noted(lambda: made.exp.attach(CentreContact.Projection(margin=mm(0.2)), body=made.robot,
+                                            surface=made.tube.inner_surface))
+    assert "both are kept" in note and "run the lines or cells again from the one that makes the experiment" in note
+    assert len(declarations(made.exp)) == count + 1
+
+
+def test_the_note_of_a_held_object_says_lines_or_cells(notebook):
+    made = experiment()
+    held_object(made)
+    (note,) = noted(lambda: made.exp.add_body(body(9.0)))
+    assert "run the lines or cells again from the one that makes the experiment" in note and "a cell " not in note
+
+
+def test_replacements_are_listed_in_the_order_they_were_made_and_a_kept_once_one_is_not_a_replacement(notebook):
+    made = experiment()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        APPARATUS.edit(made)
+        APPARATUS.edit(made)  # the same as the last: kept once
+        STRUCTURE.edit(made)
+    first, second = made.exp.plan().replaced
+    assert "exp.add_apparatus(...)" in first and "exp.add_structure(...)" in second
+    assert "replaced in this session, the last one run winning (2;" in made.exp.build().report.text(details=True)
+
+
+def test_nothing_is_recorded_for_a_script_or_for_declarations_that_replace_nothing():
+    made = experiment()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        APPARATUS.edit(made)  # a script: added beside, refused at the build
+        APPARATUS.same(made)
+    assert replaced_of(made.exp) == []
+    assert "replaced in this session" not in experiment().exp.build().report.text(details=True)
+
+
+def test_a_refused_plan_carries_the_record_of_what_was_replaced(notebook):
+    made = experiment()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        made.exp.add_apparatus(apparatus(made.tube, with_field=False))
+    with pytest.raises(BuildRefused) as refused:
+        made.exp.plan()
+    assert refused.value.report is not None
+    (note,) = refused.value.report.replaced
+    assert "the law magnetic.torque:robot" in note
+
+
+# -- the declared values that still apply ------------------------------------------------------------------------------
+
+def test_a_declared_value_of_the_thing_still_applies_and_the_note_says_it_overrides_the_new_record(notebook):
+    """Tutorial A declares ``water.density``; the medium declared again with a material record that gives another: the
+    declared value wins, as a value declared in the experiment always does, and the note says so."""
+    made = experiment()
+    (note,) = noted(lambda: MEDIUM.edit(made))
+    assert ("; of these, the value water.density (1000.0 kg/m^3) still applies and overrides what the new medium "
+            "brings") in note, note
+    value, source = value_line(made.exp, "water.density")
+    assert value == pytest.approx(1000.0) and "record of material" not in source
+
+
+def test_several_declared_values_still_apply_and_override(notebook):
+    made = experiment()
+    (note,) = noted(lambda: BODY.edit(made))
+    assert "still apply and override what the new body brings" in note
+    assert "the value robot.inertia (" in note.partition("; of these, ")[2]
+
+
+def test_a_thing_with_no_declared_value_has_no_such_clause(notebook):
+    made = experiment()
+    (note,) = noted(lambda: APPARATUS.edit(made))
+    assert "still appl" not in note
+
+
+# -- the words in IPython's terminal, where there are lines and no cells --------------------------------------------------
+
+def test_the_refusals_words_fit_a_terminal_as_well_as_a_notebook():
+    assert RAN_TWICE == "; in a notebook or IPython, a line or cell has probably run twice, changed the second time"
+    assert RUN_AGAIN.startswith("run the lines or cells again from the one that makes the experiment, exp = Experiment")
+    assert RUN_AGAIN.endswith("or run them all (Run all, in a notebook)")
+
+
+def test_the_notes_that_keep_both_say_lines_or_cells(notebook):
+    made = experiment()
+    (note,) = noted(lambda: made.exp.add_body(body(name="field")))
+    assert "run the lines or cells again from the one that makes the experiment" in note and "a cell " not in note
+
+
+# -- what the first run of the checks missed (the reviewer's four surviving mutants) --------------------------------------
+
+def test_a_thing_whose_name_only_contains_the_replaced_ones_is_not_listed_as_naming_it(notebook):
+    """``robot2`` holds ``robot`` as a substring and does not name it: not the body, nor the value declared of it."""
+    made = experiment()
+    made.exp.add_body(body(name="robot2"))
+    made.exp.declare("robot2.inertia", kg_m2((1.03e-10,) * 3), reason=REASON)
+    (note,) = noted(lambda: BODY.edit(made))
+    assert "robot2" not in note, note
+    assert "the value robot.inertia" in note
+
+
+def test_a_law_named_by_a_near_name_is_replaced_and_not_kept_beside(notebook):
+    """A law is replaced where nothing names its id: a value declared at ``contact:robot2.margin`` does not name
+    ``contact:robot``, so the law changed and declared again replaces the earlier one."""
+    made = experiment()
+    made.exp.declare("contact:robot2.margin", mm(0.1), reason=REASON)
+    count = len(declarations(made.exp))
+    (note,) = noted(lambda: made.exp.attach(CentreContact.Projection(margin=mm(0.2)), body=made.robot,
+                                            surface=made.tube.inner_surface))
+    assert "replaces the earlier one" in note and "both are kept" not in note and len(declarations(made.exp)) == count
+
+
+def test_a_name_held_twice_with_one_of_another_kind_is_refused_and_nothing_is_removed(monkeypatch):
+    """Two earlier declarations of ``x`` (a body and an apparatus, declared in a script): a body declared again in a
+    notebook is of the kind of one and not of the other, so nothing is replaced."""
+    exp = Experiment("twice", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5))
+    tube = exp.add_structure(structure())
+    exp.add_body(body(name="x"))
+    exp.add_apparatus(apparatus(tube, name="x"))
+    assert thing_names(exp).count("x") == 2
+    monkeypatch.setattr(builtins, "get_ipython", lambda: None, raising=False)
+    count = len(declarations(exp))
+    (note,) = noted(lambda: exp.add_body(body(9.0, name="x")))
+    assert "is of another kind (apparatus)" in note and "nothing is replaced" in note
+    assert len(declarations(exp)) == count + 1 and thing_names(exp).count("x") == 3
+
+
+def test_a_body_inside_a_list_a_declaration_holds_is_found_as_a_held_object(notebook):
+    made = experiment()
+    made.exp.set_controller(Ticker(), reads={"pose": [body()]}, writes={"angle": "field.frequency"}, mode="callback",
+                            rate=ms(3))
+    count = len(declarations(made.exp))
+    (note,) = noted(lambda: made.exp.add_body(body(9.0)))
+    assert "the controller holds the earlier one itself" in note and "not its name" in note
+    assert len(declarations(made.exp)) == count + 1
+
+
+def test_the_action_the_refusal_gives_in_a_notebook_is_these_words(notebook):
+    made = experiment()
+    noted(lambda: made.exp.add_body(body(name="field")))
+    (refusal, *_) = duplicates(made.exp)
+    assert refusal.action.startswith("run the lines or cells again from the one that makes the experiment, ")
+    assert refusal.action.endswith("or run them all (Run all, in a notebook)")
+
+
 # -- the controls: a re-bind planted wrong fails the check it belongs to, every run ----------------------------------------
 
 def keeps_the_old_declaration(monkeypatch):
     """Says it replaced; the earlier declaration stays (the old settings under the new name)."""
-    def planted(held, earlier, declaration, known, name):
+    def planted(held, earlier, declaration, known, name, replaced):
         warnings.warn(f"{known.call} declares {known.noun} again, not the same as before: in a notebook or IPython the "
                       f"last one run wins, so it replaces the earlier one; nothing else holds its name", UserWarning)
     monkeypatch.setattr(redeclared, "_replace_thing", planted)
 
 
 def adds_beside_the_earlier_one(monkeypatch):
-    monkeypatch.setattr(redeclared, "_replace_thing", lambda held, earlier, declaration, known, name:
+    monkeypatch.setattr(redeclared, "_replace_thing", lambda held, earlier, declaration, known, name, replaced:
                         held.append(declaration))
 
 
 def puts_the_new_one_at_the_end(monkeypatch):
-    def planted(held, earlier, declaration, known, name):
+    def planted(held, earlier, declaration, known, name, replaced):
         del held[earlier[0]]
         held.append(declaration)
     monkeypatch.setattr(redeclared, "_replace_thing", planted)
 
 
 def says_nothing(monkeypatch):
-    def planted(held, earlier, declaration, known, name):
+    def planted(held, earlier, declaration, known, name, replaced):
         held[earlier[0]] = declaration
     monkeypatch.setattr(redeclared, "_replace_thing", planted)
 
@@ -532,6 +790,39 @@ def dataclasses_replace_fills(value):
     return dataclasses.replace(value, fills=None) if isinstance(value, Medium) else value
 
 
+def records_no_replacement(monkeypatch):
+    """Replaces and warns, and leaves no trace on the experiment."""
+    def planted(held, earlier, declaration, note, replaced):
+        warnings.warn(note, UserWarning)
+        held[earlier[0]] = declaration
+        for index in reversed(earlier[1:]):
+            del held[index]
+    monkeypatch.setattr(redeclared, "_replace", planted)
+
+
+def changes_the_experiment_before_the_note(monkeypatch):
+    """The note comes after the change: under the error filter the call raises and has also changed the experiment."""
+    def planted(held, earlier, declaration, note, replaced):
+        held[earlier[0]] = declaration
+        for index in reversed(earlier[1:]):
+            del held[index]
+        replaced.append(note)
+        warnings.warn(note, UserWarning)
+    monkeypatch.setattr(redeclared, "_replace", planted)
+
+
+def a_record_without_the_followers(monkeypatch):
+    """The trace names the thing and nothing that follows it."""
+    real = redeclared._replace
+    monkeypatch.setattr(redeclared, "_replace", lambda held, earlier, declaration, note, replaced:
+                        real(held, earlier, declaration, note, replaced) or
+                        replaced.__setitem__(-1, note.partition("; what holds")[0]))
+
+
+def a_note_that_hides_the_value_that_overrides(monkeypatch):
+    monkeypatch.setattr(redeclared, "_still_applies", lambda values, kind: "")
+
+
 def replaces_across_kinds(monkeypatch):
     monkeypatch.setattr(redeclared, "_other_kinds", lambda held, earlier, declaration: [])
 
@@ -553,6 +844,12 @@ CONTROLS = (
     (a_note_that_skips_the_observations, lambda: note_problems(STRUCTURE)),
     (a_note_that_skips_the_observations, lambda: note_problems(BODY)),
     (a_note_that_skips_a_mediums_fills, lambda: note_problems(STRUCTURE)),
+    (records_no_replacement, lambda: trace_problems(APPARATUS)),
+    (records_no_replacement, lambda: trace_problems(MEDIUM)),
+    (a_record_without_the_followers, lambda: trace_problems(STRUCTURE)),
+    (a_record_without_the_followers, lambda: trace_problems(BODY)),
+    (changes_the_experiment_before_the_note, lambda: error_filter_problems(APPARATUS)),
+    (changes_the_experiment_before_the_note, lambda: error_filter_problems(STRUCTURE)),
     (replaces_across_kinds, kind_change_problems),
     (does_not_look_for_a_held_object, object_problems),
 )

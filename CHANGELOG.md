@@ -27,9 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that laws, observations, values or the controller name: they hold it by its name, so they find the new one, and the one
   warning names each (change `field_strength` and run the field cell again). A name declared again as another kind, or a
   declaration that holds the earlier thing's object and not its name, is kept beside the new one and refused at the build,
-  saying a cell has probably run twice; so is a law or an observation that a source or the controller names. The words say "a notebook or IPython": the rule also applies to a script run by
-  `ipython script.py` or `%run`. The same scene reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep
-  its advice (run again from the cell that makes the experiment) until they move to the release that ships this.
+  saying a line or cell has probably run twice; so is a law or an observation that a source or the controller
+  names. A value declared of a thing replaced still applies and overrides what the new declaration brings, and the
+  warning says so. The warning is also recorded on the experiment (`plan().replaced` and the build report), because a
+  warnings filter removes a warning; a warning raised as an error stops the call before anything changes. The words
+  say "a notebook or IPython": the rule also applies to a script run by `ipython script.py` or `%run`. The same scene
+  reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep its advice (run again from the cell that makes the experiment) until they move to the release that ships this.
 
 ### Fixed
 

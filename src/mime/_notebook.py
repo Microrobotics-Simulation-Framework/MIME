@@ -14,11 +14,12 @@ import builtins
 
 #: Where the notebook's rule applies, as MIME's words name it (the test's reach is IPython's, see the module).
 WHERE = "a notebook or IPython"
-#: What a refusal of one declaration made twice adds in a notebook or IPython, where a cell run twice is its usual cause.
-RAN_TWICE = f"; in {WHERE}, a cell has probably run twice, changed the second time"
+#: What a refusal of one declaration made twice adds in a notebook or IPython, where a cell run twice is its usual cause
+#: (a line, in IPython's terminal, and a script run through it, which have no cells).
+RAN_TWICE = f"; in {WHERE}, a line or cell has probably run twice, changed the second time"
 #: What that refusal says to do in a notebook or IPython.
-RUN_AGAIN = ("run the cells again from the one that makes the experiment, exp = Experiment(...), or run them all "
-             "(Run all)")
+RUN_AGAIN = ("run the lines or cells again from the one that makes the experiment, exp = Experiment(...), or run them "
+             "all (Run all, in a notebook)")
 
 
 def in_notebook() -> bool:
