@@ -293,3 +293,9 @@ def test_the_installed_command_pipes_the_same_bytes_and_nothing_on_the_error_str
                           timeout=TIMEOUT * 3)
     assert done.returncode == 0 and done.stderr == ""
     assert done.stdout == _completion.script("bash", build_parser())
+
+
+def test_the_planted_failure_of_the_completion_tests_job_is_off_unless_a_manual_run_plants_it():
+    """The ``plant_completion_failure`` input of a manual CI run sets ``MIME_CI_PLANT_COMPLETION_FAILURE=1`` in the completion
+    tests jobs only; each lane's required check must then be red (``tests/test_completion_job.py``). Elsewhere it is off."""
+    assert os.environ.get("MIME_CI_PLANT_COMPLETION_FAILURE") != "1", "planted failure: MIME_CI_PLANT_COMPLETION_FAILURE=1"

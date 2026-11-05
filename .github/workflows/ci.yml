@@ -84,6 +84,10 @@ on:
         description: "Fail this shard number of the Python 3.12 default lane on the run's first attempt only: the control that re-running just that shard clears the lane (scripts/latest_attempt.py)"
         type: string
         default: ""
+      plant_completion_failure:
+        description: "Plant a failing test in the shell-completion tests job of every lane: the control that a red completion job turns its lane's required check red (tests/test_completion_job.py)"
+        type: boolean
+        default: false
       shards:
         description: "Shards per lane for this run, 1 to 12 (empty: the repository variable MIME_CI_SHARDS, else 10; scripts/shard_matrix.py)"
         type: string
@@ -719,6 +723,8 @@ jobs:
         run: bash scripts/install_shells.sh
       - name: Tests
         id: tests
+        env:
+          MIME_CI_PLANT_COMPLETION_FAILURE: ${{ inputs.plant_completion_failure && '1' || '0' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
@@ -762,6 +768,8 @@ jobs:
         run: bash scripts/install_shells.sh
       - name: Tests
         id: tests
+        env:
+          MIME_CI_PLANT_COMPLETION_FAILURE: ${{ inputs.plant_completion_failure && '1' || '0' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
@@ -812,6 +820,8 @@ jobs:
         run: bash scripts/install_shells.sh
       - name: Tests
         id: tests
+        env:
+          MIME_CI_PLANT_COMPLETION_FAILURE: ${{ inputs.plant_completion_failure && '1' || '0' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           uv run --no-sync pytest tests/cli/test_completion.py -m "not slow" --junitxml="$RUNNER_TEMP/report/test-results.xml"
