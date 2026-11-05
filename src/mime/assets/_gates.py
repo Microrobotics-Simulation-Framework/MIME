@@ -239,12 +239,15 @@ def _is_terminal(stream: object) -> bool:
 
 
 def can_ask() -> bool:
-    """Whether a person can answer here: standard input is a terminal, or this is a notebook (Jupyter, Colab) or IPython,
-    where ``input()`` asks in the page."""
+    """Whether a person can answer here: standard input is a terminal and the question can be shown on one (standard output
+    or standard error), or this is a notebook (Jupyter, Colab) or IPython, where ``input()`` asks in the page."""
     if in_notebook():
         return True
     stdin = getattr(sys, "stdin", None)
-    return stdin is not None and bool(stdin.isatty())
+    # And a screen to show the question on: with standard output and standard error both redirected a question would go
+    # into a file unseen (and Windows reads its null device as a terminal, which a program run with it must not be asked).
+    return (stdin is not None and bool(stdin.isatty())
+            and (_is_terminal(sys.stdout) or _is_terminal(sys.stderr)))
 
 
 _UNSET: object = object()
