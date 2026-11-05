@@ -110,16 +110,22 @@ count starts that count's caches cold.
 
 ## The development branch's name
 
-The development branch is being renamed from `v0.3` to `release/v0.3.0`. Until the old name is dropped, the workflows
-run under both names, and the steps that read the branch (the docs check's `--base`, the confidentiality scan's
-`--public`) take `origin/release/v0.3.0` where it exists and `origin/v0.3` where it does not. The commands in this file
-that name `origin/v0.3` are for a clone that still has that name.
+The development branch is `release/v0.3.0`, and the workflows run on it alone. It was named `v0.3` until 2026-11-05. A clone
+follows the rename in one of two ways, by whether it has a local branch `v0.3`:
+
+- with one (`git branch --list v0.3` prints it):
+  `git branch -m v0.3 release/v0.3.0 && git fetch origin && git branch -u origin/release/v0.3.0 release/v0.3.0 && git remote prune origin`;
+- without one (a clone made after the rename, or one that only tracked `origin/v0.3`): `git fetch --prune origin`, then
+  `git switch release/v0.3.0` to work on the branch.
+
+The steps that read the branch (the docs check's `--base`, the confidentiality scan's `--public`) name
+`origin/release/v0.3.0` and nothing else; the docs check's step fails when that branch cannot be read.
 
 ## CI: the `ready` label
 
 A run of the whole matrix is 58 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
 and an agent pushes two to four times a round. So `ci.yml` has two modes. The **full** matrix runs on a push to a branch
-(v0.3's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**. A pull
+(the development branch's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**. A pull
 request without it runs a **reduced** set of 18 jobs: `typecheck`, `no private name or path`, the docs check, and the
 `default` lane on Python 3.12 with all its shards.
 
@@ -159,7 +165,7 @@ list of jobs, at their latest attempts, shows that Python's shard jobs all concl
 
 ## CI: borderline tests
 
-A push to `v0.3` runs cold (an empty compilation cache) and a shard draws whichever runner class is free, so a test
+A push to `release/v0.3.0` runs cold (an empty compilation cache) and a shard draws whichever runner class is free, so a test
 near the 20 s budget fails the `Test durations` step on some runs and not others, with nothing wrong in it. A test is
 listed in `tests/duration_allowlist.txt` as persistently borderline when, over the last cold push runs of the CI
 workflow, it was over 20 s at least once, or over 17 s (85 % of the budget) in at least a quarter of them. Its entry says
@@ -193,7 +199,7 @@ selection that is empty, fails the `stress selection` job by name; a stress run 
 **Read it** on the run's page: the `stress summary` job lists, per test, how many of the runs it passed (tests that did
 not pass every run first), then for each failure the run, its Hypothesis seed, the falsifying example and the
 `@reproduce_failure` blob, and every run's seed. It fails if any run failed, or had no report, or passed no test. Each
-run is a job (`stress run k of n`) set up as the default lane is, with the compilation caches the last push to `v0.3`
+run is a job (`stress run k of n`) set up as the default lane is, with the compilation caches the last push to `release/v0.3.0`
 saved for the shards holding the selected files, restored and never saved (at most three shards' worth; the rest of the
 files compile cold, so a first run can be slower). Each run's JUnit report is a run artifact, `stress-run-<k>`.
 
@@ -212,8 +218,8 @@ its timing; if it does not fail locally, run `seed=N` again on CI.
 uv run --no-sync mime docs check            # the documentation's sources, the docs walk, the number rule, the citations, the pages built twice
 uv run --no-sync mime docs build            # the pages, to docs/_build/ (untracked, never committed), for you to read
 python scripts/check_anomalies.py
-python scripts/check_confidential.py --key-file /path/to/confidential_scan.key --messages origin/v0.3..HEAD \
-  --diffs origin/v0.3..HEAD
+python scripts/check_confidential.py --key-file /path/to/confidential_scan.key --messages origin/release/v0.3.0..HEAD \
+  --diffs origin/release/v0.3.0..HEAD
 python scripts/check_confidential.py --key-file /path/to/confidential_scan.key --directory docs/_build   # the built pages
 ```
 
@@ -227,7 +233,8 @@ message in the range; with `--diffs RANGE`, what each commit in the range adds a
 adds or changes, the lines it adds (with the line after each), and a binary content or a new file whole, so a name
 added and removed again within a pull request is found; and with `--ref-name`, a branch's name. CI's `confidential`
 job passes the pull request's or the push's range to both, and a pull request's branch name; a change into `main`
-leaves out v0.3's commits (`--public origin/v0.3`), public already and scanned on their way into v0.3.
+leaves out the development branch's commits (`--public origin/release/v0.3.0`), public already and scanned on their way
+into it.
 
 The names cannot be listed here, and plain hashes of them would not hide them, since hashing a word list recovers
 short words. So `scripts/confidential_digests.txt` holds their HMAC-SHA256 under a secret key, 64 hexadecimal digits,
@@ -252,8 +259,8 @@ decompressed.
 
 - **Run it**, from the repository's root, with the key in a file or in `CONFIDENTIAL_SCAN_KEY`:
   ```sh
-  python3 scripts/check_confidential.py --key-file /path/to/confidential_scan.key --messages origin/v0.3..HEAD \
-    --diffs origin/v0.3..HEAD
+  python3 scripts/check_confidential.py --key-file /path/to/confidential_scan.key --messages origin/release/v0.3.0..HEAD \
+    --diffs origin/release/v0.3.0..HEAD
   ```
   Without a key it still prints what it finds among the paths, and fails.
 - **Add a term** (this needs the key): add it to the private list of terms, one a line, and write the digests again

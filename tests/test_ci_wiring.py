@@ -1,8 +1,8 @@
 """CI's wiring of the checks it must run, read from ``.github/workflows/``:
 
 - every job name the development branch's protection requires is made by one job, of a workflow that runs on a pull
-  request into the branch and on a push to it, under both of the branch's names (``release/v0.3.0``, and ``v0.3``
-  until it is renamed), and that job is skipped by nothing but the schedule (a skipped job passes a required check);
+  request into the branch (``release/v0.3.0``) and on a push to it, and that job is skipped by nothing but the
+  schedule (a skipped job passes a required check); and no workflow names the branch's old name, ``v0.3``;
 - a required job that waits on a lane's shard jobs runs after a red shard too (``!cancelled()``), and fails unless
   ``scripts/check_shards.py`` passes, with its exit status intact, over as many shards as the jobs it waits on run (the
   matrix and their ``--mime-shard``), and those jobs are skipped by nothing but the schedule;
@@ -10,8 +10,9 @@
   test (``--max-skipped 0``: the suite skips none in CI);
 - a pull request's newer push cancels its older run, and nothing else is ever cancelled by a newer run (the workflow's
   ``concurrency``), read by evaluating its two expressions for each event;
-- the default lane runs ``mime docs check`` against the development branch, ``--base origin/release/v0.3.0`` or, where
-  that branch does not exist, ``--base origin/v0.3``, with its exit status intact;
+- the default lane runs ``mime docs check`` against the development branch, ``--base origin/release/v0.3.0``, and
+  fails before the check where that branch cannot be read (it never falls back to another name), with its exit status
+  intact;
 - no step of any workflow runs ``mime docs check`` with a ``--skip-*`` flag unless ``SKIPPABLE`` names that job for that
   flag (``ci.yml``'s default lane and ``platforms.yml``'s smoke jobs both run it, and one check reads every workflow
   file): ``--skip-example-runs`` is the non-required smoke job's alone, and a job that may skip is no required check.
@@ -39,9 +40,13 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
-#: The development branch's two names: ``release/v0.3.0``, and ``v0.3`` until the branch is renamed.
+ACTIONS = ROOT / ".github" / "actions"
+#: The development branch, and the name it had until 2026-11-05, which no workflow may name.
 BRANCH, OLD_BRANCH = "release/v0.3.0", "v0.3"
-#: v0.3's required status checks, by the names its branch protection gives them.
+#: The old name as a branch: ``v0.3`` not followed by a digit or by a ``.`` and a word character, so that a version
+#: (``v0.3.0``, ``v0.3.0.dev1``) is not the name but ``v0.3`` ending a sentence is.
+OLD_NAME = re.compile(r"\bv0\.3(?!\d|\.\w)")
+#: The development branch's required status checks, by the names its branch protection gives them.
 REQUIRED = ("default (Python 3.12)", "default (Python 3.13)", "default (Python 3.14)", "maddening-main",
             "openmaterica-main", "typecheck (pyright, Python 3.12)", "no private name or path")
 DOCS_CHECK, SCAN = "default (Python 3.12)", "no private name or path"
@@ -72,14 +77,14 @@ SKIPPABLE: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
 STEP_IFS = (None, "${{ !cancelled() }}", LANE_RAN)
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 SECRET = "the-secret-stands-in"
-#: What a run's expressions are, for a pull request into v0.3 and for a push to it.
-PULL_REQUEST = {"github.event_name": "pull_request", "github.head_ref": "a-branch", "github.base_ref": "v0.3",
+#: What a run's expressions are, for a pull request into the development branch and for a push to it.
+PULL_REQUEST = {"github.event_name": "pull_request", "github.head_ref": "a-branch", "github.base_ref": BRANCH,
                 "github.ref_name": "30/merge", "github.event.pull_request.base.sha": "BASE",
                 "github.event.pull_request.head.sha": "HEAD", "github.sha": "MERGE", "matrix.python-version": "3.12",
                 "secrets.CONFIDENTIAL_SCAN_KEY": SECRET,
                 "needs.shards.outputs.count": COUNTED}
 PUSH = {**PULL_REQUEST, "github.event_name": "push", "github.head_ref": "", "github.base_ref": "",
-        "github.ref_name": "v0.3", "github.event.before": "BEFORE", "github.sha": "AFTER",
+        "github.ref_name": BRANCH, "github.event.before": "BEFORE", "github.sha": "AFTER",
         "github.event.pull_request.base.sha": "", "github.event.pull_request.head.sha": ""}
 #: A manual run on a pull request's branch: no pull request in its payload, its ref the branch.
 MANUAL = {**PUSH, "github.event_name": "workflow_dispatch", "github.ref_name": "a-branch", "github.event.before": "",
@@ -119,11 +124,34 @@ def names_of(job_id: str, job: dict[str, object]) -> list[str]:
 
 
 def runs_on_the_branch(workflow: dict[str, object]) -> bool:
-    """Whether the workflow runs on a pull request into the development branch and on a push to it, under each of the
-    branch's names."""
+    """Whether the workflow runs on a pull request into the development branch and on a push to it."""
     triggers = workflow.get("on", workflow.get(True)) or {}
-    return all(name in ((triggers.get(event) or {}).get("branches") or [])
-               for event in ("pull_request", "push") for name in (BRANCH, OLD_BRANCH))
+    return all(BRANCH in ((triggers.get(event) or {}).get("branches") or []) for event in ("pull_request", "push"))
+
+
+def old_name_problems(directory: Path, actions: Path = ACTIONS) -> list[str]:
+    """Each line of a workflow in ``directory``, or of a composite action under ``actions``, that names the branch's old
+    name: a trigger, a fallback, a comment."""
+    files = [(path.name, path) for path in sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])]
+    files += [(f"{path.parent.name}/{path.name}", path)
+              for path in sorted([*actions.rglob("*.yml"), *actions.rglob("*.yaml")])]
+    return [f"{name}: names the old branch name {OLD_BRANCH}: {line.strip()}"
+            for name, path in files
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if OLD_NAME.search(line)]
+
+
+def branch_filter_problems(directory: Path) -> list[str]:
+    """Each trigger, in any workflow in ``directory``, that filters by branch names and leaves out the development
+    branch: a workflow dropping it would silently stop running on the branch (the ``stress`` label would do nothing)."""
+    found = []
+    for name, workflow in workflows(directory):
+        triggers = workflow.get("on", workflow.get(True))
+        for event, configuration in (triggers.items() if isinstance(triggers, dict) else []):
+            branches = configuration.get("branches") if isinstance(configuration, dict) else None  # schedule: a list
+            if branches is not None and BRANCH not in branches:
+                found.append(f"{name}: the {event} trigger filters by branch and does not list {BRANCH}")
+    return found
 
 
 def evaluate(text: str, context: dict[str, str]) -> str:
@@ -189,7 +217,7 @@ def one_step(job_name: str, job: dict[str, object], command: str) -> tuple[list[
     return [], steps[0]
 
 
-def wiring_problems(directory: Path, scratch: Path) -> list[str]:
+def wiring_problems(directory: Path, scratch: Path, actions: Path = ACTIONS) -> list[str]:
     """Everything wrong with how the workflows in ``directory`` run the required checks (``scratch`` holds the step
     runs)."""
     found: list[str] = []
@@ -206,7 +234,7 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
         workflow, job = jobs[0]
         if not runs_on_the_branch(workflow):
             found.append(f"{name!r}: its workflow does not run on both a pull request into the development branch and "
-                         f"a push to it, under both of the branch's names")
+                         f"a push to it")
         if job.get("needs"):
             found += shard_problems(name, job, workflow, scratch / "shards" / re.sub(r"\W+", "-", name))
         elif job.get("if") not in (None, EVENT_FILTER):
@@ -215,6 +243,8 @@ def wiring_problems(directory: Path, scratch: Path) -> list[str]:
               for problem in concurrency_problems(workflow)]
     if len(made.get(DOCS_CHECK, [])) == 1:
         found += docs_check_problems(made[DOCS_CHECK][0][1], scratch / "docs")
+    found += old_name_problems(directory, actions)
+    found += branch_filter_problems(directory)
     found += skip_flag_problems(directory, scratch / "skip-flags")
     if len(made.get(SCAN, [])) == 1:
         found += scan_problems(made[SCAN][0][1], scratch / "scan")
@@ -302,9 +332,9 @@ RUNS = {
     "pull request 31": {"github.event_name": "pull_request", "github.event.pull_request.number": "31",
                         "github.run_id": "503", "github.workflow": "CI", "github.ref": "refs/pull/31/merge"},
     "push, run 1": {"github.event_name": "push", "github.run_id": "504", "github.workflow": "CI",
-                    "github.ref": "refs/heads/v0.3"},
+                    "github.ref": f"refs/heads/{BRANCH}"},
     "push, run 2": {"github.event_name": "push", "github.run_id": "505", "github.workflow": "CI",
-                    "github.ref": "refs/heads/v0.3"},
+                    "github.ref": f"refs/heads/{BRANCH}"},
     "manual": {"github.event_name": "workflow_dispatch", "github.run_id": "506", "github.workflow": "CI",
                "github.ref": "refs/heads/a-branch"},
     "schedule": {"github.event_name": "schedule", "github.run_id": "507", "github.workflow": "CI",
@@ -353,16 +383,16 @@ def docs_check_problems(job: dict[str, object], scratch: Path) -> list[str]:
         return found
     where = f"{DOCS_CHECK}: the step {step.get('name')!r}"
     found += step_problems(where, step) + exit_problems(where, step, PULL_REQUEST, scratch)
-    # The base is the development branch under the name that exists: the new one, else the old (the control for a
-    # branch not yet renamed), and a step that finds neither fails before the check, which it never runs.
-    for state, missing, base in (("renamed", (), f"origin/{BRANCH}"), ("not yet renamed", (BRANCH,), f"origin/{OLD_BRANCH}")):
-        _, calls = run_step(step, PULL_REQUEST, 0, scratch / f"arguments-{state}", missing)
-        if not any(" ".join(arguments).find("mime docs check") >= 0 and ("--base", base) in pairs(arguments)
-                   for command, arguments, _ in calls if command == "uv"):
-            found.append(f"{where}: with the branch {state}, does not run mime docs check --base {base}")
-    status, calls = run_step(step, PULL_REQUEST, 0, scratch / "arguments-neither", (BRANCH, OLD_BRANCH))
+    # The base is the development branch, ``origin/release/v0.3.0``. A step that cannot read it fails before the check,
+    # which it never runs: the old name is no fallback (the stub reads every name but the new one, so a fallback to
+    # the old would run the check).
+    _, calls = run_step(step, PULL_REQUEST, 0, scratch / "arguments")
+    if not any(" ".join(arguments).find("mime docs check") >= 0 and ("--base", f"origin/{BRANCH}") in pairs(arguments)
+               for command, arguments, _ in calls if command == "uv"):
+        found.append(f"{where}: does not run mime docs check --base origin/{BRANCH}")
+    status, calls = run_step(step, PULL_REQUEST, 0, scratch / "arguments-unreadable", (BRANCH,))
     if status == 0 or any(command == "uv" for command, _, _ in calls):
-        found.append(f"{where}: with neither name of the branch readable, runs the check or exits 0")
+        found.append(f"{where}: with the branch unreadable, runs the check or exits 0")
     return found
 
 
@@ -424,22 +454,22 @@ def scan_problems(job: dict[str, object], scratch: Path) -> list[str]:
         found.append(f"{where}: its environment does not set CONFIDENTIAL_SCAN_KEY from the secret")
     # A manual run scans what a pull request of its head into the development branch does (every commit the branch
     # does not hold) and the branch's name, so its later green can never stand for a weaker scan of the same head. What
-    # the branch holds is read from the branch under the name that exists: the new one, else the old (the controls
-    # with the branch not yet renamed).
+    # the branch holds is read from ``origin/release/v0.3.0`` alone: with it unreadable the step still names it, and
+    # never another (the stub reads every name but that one, so a fallback to the old name shows).
     into_main = {**PULL_REQUEST, "github.base_ref": "main"}
     manual = {("--messages", "HEAD"), ("--diffs", "HEAD"), ("--ref-name", "a-branch")}
     expected = {"pull request": (PULL_REQUEST, {("--messages", "BASE..HEAD"), ("--diffs", "BASE..HEAD"),
                                                 ("--ref-name", "a-branch")}, ()),
                 "push": (PUSH, {("--messages", "BEFORE..AFTER"), ("--diffs", "BEFORE..AFTER")}, ()),
                 "manual run": (MANUAL, manual | {("--public", f"origin/{BRANCH}")}, ()),
-                "manual run, the branch not yet renamed": (MANUAL, manual | {("--public", f"origin/{OLD_BRANCH}")},
-                                                           (BRANCH,)),
+                "manual run, the branch unreadable": (MANUAL, manual | {("--public", f"origin/{BRANCH}")},
+                                                      (BRANCH,)),
                 "pull request into main": (into_main, {("--messages", "BASE..HEAD"), ("--diffs", "BASE..HEAD"),
                                                        ("--ref-name", "a-branch"), ("--public", f"origin/{BRANCH}")},
                                            ()),
-                "pull request into main, the branch not yet renamed": (
+                "pull request into main, the branch unreadable": (
                     into_main, {("--messages", "BASE..HEAD"), ("--diffs", "BASE..HEAD"), ("--ref-name", "a-branch"),
-                                ("--public", f"origin/{OLD_BRANCH}")}, (BRANCH,))}
+                                ("--public", f"origin/{BRANCH}")}, (BRANCH,))}
     for event, (context, wanted, missing) in expected.items():
         _, calls = run_step(step, context, 0, scratch / event.replace(" ", "-").replace(",", ""), missing)
         scans = [(arguments, key) for command, arguments, key in calls
@@ -487,6 +517,8 @@ PRIVATE_STEP = "      - name: No private name or path in the built pages\n"
 SECOND_BUILD = ("      - name: A second build\n        run: uv run --no-sync mime docs build --out \"$RUNNER_TEMP/again\" "
                 "--skip-evidence\n")
 
+NOT_ON_THE_BRANCH = ("'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into the "
+                     "development branch and a push to it")
 #: Each plant: the text replaced in ci.yml, its replacement, and the problem it must raise.
 PLANTS = {
     "the-docs-check-step-if-false": (
@@ -511,20 +543,24 @@ PLANTS = {
     "diffs-dropped": ('--messages "$range" --diffs "$range"', '--messages "$range"',
                       f"{SCAN_STEP}: on a pull request, does not pass --diffs BASE..HEAD"),
     "the-base-dropped": (DOCS_BASE, "mime docs check",
-                         f"{DOCS_STEP}: with the branch renamed, does not run mime docs check --base "
-                         f"origin/{BRANCH}"),
-    "the-docs-step-without-the-old-name": (
-        "for branch in release/v0.3.0 v0.3; do", "for branch in release/v0.3.0; do",
-        f"{DOCS_STEP}: with the branch not yet renamed, does not run mime docs check --base origin/{OLD_BRANCH}"),
-    "the-docs-step-without-the-new-name": (
-        "for branch in release/v0.3.0 v0.3; do", "for branch in v0.3; do",
-        f"{DOCS_STEP}: with the branch renamed, does not run mime docs check --base origin/{BRANCH}"),
+                         f"{DOCS_STEP}: does not run mime docs check --base origin/{BRANCH}"),
+    "the-docs-step-on-the-old-name": (
+        "base=origin/release/v0.3.0\n", "base=origin/v0.3\n",
+        f"{DOCS_STEP}: does not run mime docs check --base origin/{BRANCH}"),
     "the-docs-step-running-without-a-base": (
-        '          [ -n "${base-}" ] || { echo "neither origin/release/v0.3.0 nor origin/v0.3 can be read" >&2; exit 1; }\n',
-        "", f"{DOCS_STEP}: with neither name of the branch readable, runs the check or exits 0"),
-    "the-scan-without-the-old-name": (
-        '          git rev-parse --verify --quiet "$dev" > /dev/null || dev=origin/v0.3\n', "",
-        f"{SCAN_STEP}: on a manual run, the branch not yet renamed, does not pass --public origin/{OLD_BRANCH}"),
+        '|| { echo "$base cannot be read" >&2; exit 1; }', '|| echo "$base cannot be read" >&2',
+        f"{DOCS_STEP}: with the branch unreadable, runs the check or exits 0"),
+    "the-docs-step-falling-back-to-the-old-name": (
+        '|| { echo "$base cannot be read" >&2; exit 1; }', "|| base=origin/v0.3",
+        f"{DOCS_STEP}: with the branch unreadable, runs the check or exits 0"),
+    "the-scan-falling-back-to-the-old-name": (
+        "          dev=origin/release/v0.3.0\n",
+        '          dev=origin/release/v0.3.0\n          git rev-parse --verify --quiet "$dev" > /dev/null || dev=origin/v0.3\n',
+        f"{SCAN_STEP}: on a manual run, the branch unreadable, does not pass --public origin/{BRANCH}"),
+    "the-old-name-in-a-comment": (
+        "      - name: Docs check\n        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}\n",
+        "      # held against origin/v0.3\n      - name: Docs check\n        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}\n",
+        "ci.yml: names the old branch name v0.3: # held against origin/v0.3"),
     "the-docs-step-skips-the-hash-seed-builds": (
         DOCS_BASE, DOCS_BASE + " --skip-hash-seed-builds",
         HASH_SEEDS),
@@ -643,17 +679,20 @@ PLANTS = {
         "  group: ${{ github.workflow }}-${{ github.ref }}\n",
         "ci.yml: a push, manual or scheduled run shares a group with another run, which could cancel it"),
     "no-pull-request-into-the-branch": (
-        "  pull_request:\n    branches: [main, release/v0.3.0, v0.3]\n", "  pull_request:\n    branches: [main]\n",
-        "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into the development "
-        "branch and a push to it, under both of the branch's names"),
-    "no-pull-request-into-the-new-name": (
-        "  pull_request:\n    branches: [main, release/v0.3.0, v0.3]\n", "  pull_request:\n    branches: [main, v0.3]\n",
-        "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into the development "
-        "branch and a push to it, under both of the branch's names"),
-    "no-push-to-the-old-name": (
-        "  push:\n    branches: [main, release/v0.3.0, v0.3]\n", "  push:\n    branches: [main, release/v0.3.0]\n",
-        "'typecheck (pyright, Python 3.12)': its workflow does not run on both a pull request into the development "
-        "branch and a push to it, under both of the branch's names"),
+        "  pull_request:\n    branches: [main, release/v0.3.0]\n", "  pull_request:\n    branches: [main]\n",
+        NOT_ON_THE_BRANCH),
+    "the-pull-request-trigger-on-the-old-name": (
+        "  pull_request:\n    branches: [main, release/v0.3.0]\n", "  pull_request:\n    branches: [main, v0.3]\n",
+        NOT_ON_THE_BRANCH),
+    "no-push-to-the-branch": (
+        "  push:\n    branches: [main, release/v0.3.0]\n", "  push:\n    branches: [main]\n", NOT_ON_THE_BRANCH),
+    "the-old-name-back-in-the-pull-request-trigger": (
+        "  pull_request:\n    branches: [main, release/v0.3.0]\n",
+        "  pull_request:\n    branches: [main, release/v0.3.0, v0.3]\n",
+        "ci.yml: names the old branch name v0.3: branches: [main, release/v0.3.0, v0.3]"),
+    "the-old-name-back-in-the-push-trigger": (
+        "  push:\n    branches: [main, release/v0.3.0]\n", "  push:\n    branches: [main, release/v0.3.0, v0.3]\n",
+        "ci.yml: names the old branch name v0.3: branches: [main, release/v0.3.0, v0.3]"),
 }
 
 
@@ -666,6 +705,65 @@ def test_a_break_in_the_wiring_fails_naming_it(tmp_path, plant):
     assert text.count(old) == 1, f"the plant's anchor {old!r} is not in ci.yml once"
     (copy / "ci.yml").write_text(text.replace(old, new), encoding="utf-8")
     assert problem in wiring_problems(copy, tmp_path / "scratch")
+
+
+def _branch_lists() -> list[tuple[str, int, str]]:
+    """Each ``branches: [...]`` line naming the development branch in a real workflow: its file, its line, its event."""
+    found = []
+    for path in sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")]):
+        event = ""
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+            if key := re.match(r"^  ([\w-]+):\s*$", line):
+                event = key.group(1)
+            if re.match(r"^\s+branches: \[.*\]$", line) and BRANCH in line:
+                found.append((path.name, number, event))
+    return found
+
+
+def test_the_branch_filters_the_plants_below_are_made_in_cover_every_workflow_that_has_one():
+    """Without this the plants below could pass over a workflow (stress.yml, ready.yml) that no test reads."""
+    assert {name for name, _, _ in _branch_lists()} >= {"ci.yml", "platforms.yml", "ready.yml", "stress.yml"}
+    assert branch_filter_problems(WORKFLOWS) == []
+
+
+@pytest.mark.parametrize("plant", _branch_lists(), ids=[f"{n}:{e}:{k}" for n, k, e in _branch_lists()])
+def test_every_workflow_filtering_by_branch_lists_the_development_branch_each_in_turn(tmp_path, plant):
+    """One rule for every workflow: dropping the branch from the trigger of any one (a trigger the required-checks
+    wiring does not read, stress.yml's, included) fails, naming it; text replacements, so every run."""
+    name, number, event = plant
+    copy = tmp_path / "workflows"
+    shutil.copytree(WORKFLOWS, copy)
+    lines = (copy / name).read_text(encoding="utf-8").splitlines(keepends=True)
+    dropped = re.sub(rf",\s*{re.escape(BRANCH)}|{re.escape(BRANCH)},\s*|{re.escape(BRANCH)}", "", lines[number], count=1)
+    assert dropped != lines[number]
+    lines[number] = dropped
+    (copy / name).write_text("".join(lines), encoding="utf-8")
+    assert f"{name}: the {event} trigger filters by branch and does not list {BRANCH}" in branch_filter_problems(copy)
+    assert f"{name}: the {event} trigger filters by branch and does not list {BRANCH}" in wiring_problems(
+        copy, tmp_path / "scratch")
+
+
+def test_the_old_name_in_a_composite_action_fails_naming_it(tmp_path):
+    """The scan reads ``.github/actions`` too: a plant in a copy of the action, ``v0.3`` in a comment."""
+    copy = tmp_path / "actions"
+    shutil.copytree(ACTIONS, copy)
+    action = next(copy.rglob("action.yml"))
+    action.write_text("# held against origin/v0.3\n" + action.read_text(encoding="utf-8"), encoding="utf-8")
+    assert old_name_problems(WORKFLOWS, ACTIONS) == []
+    assert old_name_problems(WORKFLOWS, copy) == [
+        f"{action.parent.name}/action.yml: names the old branch name v0.3: # held against origin/v0.3"]
+
+
+@pytest.mark.parametrize("line", [
+    "# a branch, v0.3.", "git fetch origin v0.3.", "origin/v0.3", "origin/v0.3 and more", "'v0.3'", "v0.3\n",
+    "v0.3-helix-ref"])
+def test_the_old_name_is_found_in_every_place_a_branch_is_named(line):
+    assert OLD_NAME.search(line)
+
+
+@pytest.mark.parametrize("line", ["v0.3.0", "release/v0.3.0", "v0.3.0.dev1", "tag v0.3.0.dev1.", "0.3.0", "v0.31", "xv0.3"])
+def test_a_version_is_not_the_old_name(line):
+    assert not OLD_NAME.search(line)
 
 
 @pytest.mark.parametrize("plant", ["--skip-evidence", "--skip-$PART"])

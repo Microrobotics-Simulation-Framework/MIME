@@ -107,7 +107,7 @@ def test_a_release_of_the_versions_tag_with_distributions_of_it_passes(tmp_path)
 @pytest.mark.parametrize(("ref", "versions", "problem"), [
     ("refs/tags/v0.0.1", (VERSION, VERSION), "the tag v0.0.1 is not v"),
     (f"refs/tags/{VERSION}", (VERSION, VERSION), f"the tag {VERSION} is not v"),
-    ("refs/heads/v0.3", (VERSION, VERSION), "this run is of refs/heads/v0.3: a release is published from its tag"),
+    ("refs/heads/release/v0.3.0", (VERSION, VERSION), "this run is of refs/heads/release/v0.3.0: a release is published from its tag"),
     ("", (VERSION, VERSION), "this run is of no ref"),
     (f"refs/tags/v{VERSION}", ("0.0.1", VERSION), "is of version 0.0.1, not"),
     (f"refs/tags/v{VERSION}", (VERSION, "0.0.1"), "is of version 0.0.1, not"),
@@ -452,7 +452,7 @@ def workflow_problems(path: Path, scratch: Path) -> list[str]:
             found.append("the build job does not output the version the tag step read")
         if step.get("if") or step.get("continue-on-error") or "shell" in step or NEUTERING.search(str(step["run"])):
             found.append("the tag step can be skipped or its failure hidden")
-        if tag_step_runs(step, scratch / "tag-branch", "refs/heads/v0.3") == 0:
+        if tag_step_runs(step, scratch / "tag-branch", "refs/heads/release/v0.3.0") == 0:
             found.append("the tag step passes a run from a branch")
         if tag_step_runs(step, scratch / "tag-other", "refs/tags/v0.0.1") == 0:
             found.append("the tag step passes a run of another tag")

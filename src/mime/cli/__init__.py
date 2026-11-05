@@ -991,7 +991,7 @@ def build_parser() -> _guide.MimeParser:
     check = docs_commands.add_parser("check", help="every check of the documentation's sources", allow_abbrev=False)
     check.add_argument("--root", type=Path, default=Path.cwd(), help="the checkout to check (default: here)")
     check.add_argument("--base", metavar="REVISION", help="fail on a README start-list line this revision's list "
-                                                         "does not hold (CI passes origin/v0.3)")
+                                                         "does not hold (CI passes origin/release/v0.3.0)")
     check.add_argument("--skip-hash-seed-builds", action="store_true",
                        help="do not build the pages in fresh processes under eight hash seeds (the tests of "
                             "the other checks pass it to stay fast; CI never does)")

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from test_ci_wiring import BRANCH, OLD_BRANCH, PULL_REQUEST, REQUIRED, run_step
+from test_ci_wiring import BRANCH, OLD_BRANCH, OLD_NAME, PULL_REQUEST, REQUIRED, run_step
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "platforms.yml"
@@ -63,26 +63,67 @@ def workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
 
 
-def test_the_workflow_runs_on_pull_requests_and_pushes_to_the_development_branch_and_is_no_required_check():
-    """Under both names of the branch: ``release/v0.3.0``, and ``v0.3`` until it is renamed."""
-    triggers = workflow()[True]  # YAML 1.1 reads the key `on` as a boolean
-    names = ["release/v0.3.0", "v0.3"]
-    assert triggers["pull_request"]["branches"] == names and triggers["push"]["branches"] == names
+def branch_problems(text: str, scratch: Path) -> list[str]:
+    """What is wrong with how a copy of the workflow (``text``) names the development branch: its triggers, the base of
+    its docs check, and any mention of the old name ``v0.3`` (``scratch`` holds the step runs)."""
+    found: list[str] = []
+    triggers = yaml.safe_load(text)[True]  # YAML 1.1 reads the key `on` as a boolean
+    for event in ("pull_request", "push"):
+        if triggers[event]["branches"] != [BRANCH]:
+            found.append(f"{event} runs on {triggers[event]['branches']}, not [{BRANCH!r}] alone")
+    found += [f"names the old branch name {OLD_BRANCH}: {line.strip()}" for line in text.splitlines()
+              if OLD_NAME.search(line)]
+    step = next(step for step in yaml.safe_load(text)["jobs"]["smoke"]["steps"] if step.get("name") == "Docs check")
+    _, calls = run_step(step, PULL_REQUEST, 0, scratch / "ran")
+    checks = [arguments for command, arguments, _ in calls if command == "uv"]
+    if not (len(checks) == 1 and ["--base", f"origin/{BRANCH}"] == checks[0][checks[0].index("--base"):][:2]):
+        found.append(f"the docs check does not compare with origin/{BRANCH}")
+    status, calls = run_step(step, PULL_REQUEST, 0, scratch / "unreadable", (BRANCH,))
+    if status == 0 or [call for call in calls if call[0] == "uv"]:
+        found.append("with the branch unreadable, the docs check runs or the step exits 0")
+    return found
+
+
+def test_the_workflow_runs_on_pull_requests_and_pushes_to_the_development_branch_and_is_no_required_check(tmp_path):
+    """On ``release/v0.3.0`` alone, never the old name ``v0.3``; and the docs check compares with ``origin/release/v0.3.0``
+    where the step is run as GitHub runs it (``bash -e``, git and uv stubbed), and fails without running the check where
+    that branch cannot be read (the stub reads every other name, so a fallback to the old one shows)."""
+    assert branch_problems(WORKFLOW.read_text(encoding="utf-8"), tmp_path) == []
     names = [job.get("name", "") for job in workflow()["jobs"].values()]
     assert not set(names) & set(REQUIRED)
 
 
-@pytest.mark.parametrize(("missing", "base"), [((), f"origin/{BRANCH}"), ((BRANCH,), f"origin/{OLD_BRANCH}")],
-                         ids=["branch renamed", "branch not yet renamed"])
-def test_the_docs_check_compares_with_the_development_branch_under_the_name_that_exists(tmp_path, missing, base):
-    """Run as GitHub runs it (``bash -e``, git and uv stubbed): the base is the new name where it can be read, else the
-    old. The control is the step with neither readable, which fails without running the check."""
-    step = next(step for step in workflow()["jobs"]["smoke"]["steps"] if step.get("name") == "Docs check")
-    _, calls = run_step(step, PULL_REQUEST, 0, tmp_path / "ran", missing)
-    checks = [arguments for command, arguments, _ in calls if command == "uv"]
-    assert len(checks) == 1 and ["--base", base] == checks[0][checks[0].index("--base"):][:2]
-    status, calls = run_step(step, PULL_REQUEST, 0, tmp_path / "neither", (BRANCH, OLD_BRANCH))
-    assert status != 0 and not [call for call in calls if call[0] == "uv"]
+BRANCH_PLANTS = {
+    "the-pull-request-trigger-drops-the-branch": (
+        "  pull_request:\n    branches: [release/v0.3.0]\n", "  pull_request:\n    branches: []\n",
+        f"pull_request runs on [], not [{BRANCH!r}] alone"),
+    "the-push-trigger-on-the-old-name": (
+        "  push:\n    branches: [release/v0.3.0]\n", "  push:\n    branches: [v0.3]\n",
+        f"push runs on ['v0.3'], not [{BRANCH!r}] alone"),
+    "the-old-name-back-in-the-pull-request-trigger": (
+        "  pull_request:\n    branches: [release/v0.3.0]\n", "  pull_request:\n    branches: [release/v0.3.0, v0.3]\n",
+        f"pull_request runs on ['release/v0.3.0', 'v0.3'], not [{BRANCH!r}] alone"),
+    "the-old-name-in-a-comment": (
+        "      - name: Docs check\n", "      # held against origin/v0.3\n      - name: Docs check\n",
+        "names the old branch name v0.3: # held against origin/v0.3"),
+    "the-docs-check-on-the-old-name": (
+        "base=origin/release/v0.3.0\n", "base=origin/v0.3\n", f"the docs check does not compare with origin/{BRANCH}"),
+    "the-docs-step-running-without-a-base": (
+        '|| { echo "$base cannot be read" >&2; exit 1; }', '|| echo "$base cannot be read" >&2',
+        "with the branch unreadable, the docs check runs or the step exits 0"),
+    "the-docs-step-falling-back-to-the-old-name": (
+        '|| { echo "$base cannot be read" >&2; exit 1; }', "|| base=origin/v0.3",
+        "with the branch unreadable, the docs check runs or the step exits 0"),
+}
+
+
+@pytest.mark.parametrize("plant", BRANCH_PLANTS, ids=list(BRANCH_PLANTS))
+def test_a_break_in_how_the_workflow_names_the_branch_fails_naming_it(tmp_path, plant):
+    """The control of the test above: each plant fails it, every run."""
+    old, new, problem = BRANCH_PLANTS[plant]
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert text.count(old) == 1, f"the plant's anchor {old!r} is not in platforms.yml once"
+    assert problem in branch_problems(text.replace(old, new), tmp_path)
 
 
 def test_each_job_is_bounded_and_the_matrix_is_both_platforms_on_two_pythons():

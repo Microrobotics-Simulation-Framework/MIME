@@ -413,7 +413,7 @@ def _start_against_base(root: Path, start: RatchetList, base: str | None, report
     """Each line of the start list ``start`` that the base revision's does not hold, as a failure; and what the
     comparison was, for the summary."""
     if base is None:
-        return f"{README_START}: not compared with a base revision (pass --base; CI passes origin/v0.3)"
+        return f"{README_START}: not compared with a base revision (pass --base; CI passes origin/release/v0.3.0)"
     held, problem = base_start_list(root, base)
     if problem is not None:
         report.problems.append(problem)

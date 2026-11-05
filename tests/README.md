@@ -9,9 +9,10 @@
 - `test_ci_lane.py`: each CI lane installed what it claims. It reads the distributions' own metadata. For example,
   the OpenMaterica-`main` lane must have OpenMaterica from git, not PyPI. A lane that doesn't name itself fails, so no
   lane can skip the check. The test also runs its own control: claims meant for other lanes must fail in this one.
-- `test_ci_wiring.py`: CI runs the checks it must, read from `.github/workflows/`. Each job name v0.3's branch
-  protection requires is made by one job, of a workflow run on a pull request into v0.3 and a push to it, and skipped
-  by nothing but the schedule; the default lane's `mime docs check --base origin/v0.3` and the `confidential` job's
+- `test_ci_wiring.py`: CI runs the checks it must, read from `.github/workflows/`. Each job name the development
+  branch's protection requires is made by one job, of a workflow run on a pull request into `release/v0.3.0` and a push
+  to it, and skipped by nothing but the schedule; no workflow names the branch's old name, `v0.3`; the default lane's
+  `mime docs check --base origin/release/v0.3.0` (which fails where that branch cannot be read) and the `confidential` job's
   scan, with the key's secret, `--messages`, `--diffs` and `--ref-name`, keep their exit status, read by running each
   step's script in bash with its commands stubbed. Each control plants one break in a copy of the workflows.
 - `test_ci_docs_artifact.py` (N6): the workflow builds the documentation pages, scans the built directory and uploads

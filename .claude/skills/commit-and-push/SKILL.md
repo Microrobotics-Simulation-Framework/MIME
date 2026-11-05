@@ -38,7 +38,7 @@ writes the pages to the untracked `docs/_build/` for you to read; they are never
 CI's `confidential` job scans the tracked files and their paths, each commit's diff and message in the push or pull
 request, and the branch's name (`CONTRIBUTING.md`, "Confidentiality"). Never write a private project's name or a private
 path in a file, a file's name, a commit message or a branch name, even in a commit a later one undoes. Without the key,
-`python3 scripts/check_confidential.py --messages origin/v0.3..HEAD --diffs origin/v0.3..HEAD` still prints any private
+`python3 scripts/check_confidential.py --messages origin/release/v0.3.0..HEAD --diffs origin/release/v0.3.0..HEAD` still prints any private
 path it finds, and fails.
 
 ### 4. Commit Message Convention

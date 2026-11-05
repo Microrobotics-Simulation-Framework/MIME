@@ -352,7 +352,7 @@ def floor_base_problems(root: Path, base: str | None, floor: RatchetList, remove
     found += [f"{removed.path}:{line.number}: {line.item!r} is logged as removed from the floor and is still on it; "
               f"delete one of the two lines" for line in removed.lines if line.item in floor.items()]
     if base is None:
-        return found, "evidence floor: not compared with a base revision (pass --base; CI passes origin/v0.3)"
+        return found, "evidence floor: not compared with a base revision (pass --base; CI passes origin/release/v0.3.0)"
     before, problem = base_list(root, base, FLOOR, floor_form)
     if problem is not None:
         return [*found, problem], f"evidence floor: not compared with {base}, which cannot be read"
