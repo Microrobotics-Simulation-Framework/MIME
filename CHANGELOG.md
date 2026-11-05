@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   byte for byte what it was; `mime registry --json` and `mime env check --record` are unchanged. A failing
   `mime env check` on a terminal opens its refusal's block with the table of the pinned distributions that differ
   (wanted, found, verdict, who pins it); the block keeps its codes, what to do and every reason the table does not
-  hold, and drops the rows the table holds. Piped, it is the refusal's text as before.
+  hold, and drops the rows the table holds. On a terminal too narrow for five columns (under about 90) who pins is a
+  line under the table instead of a column. Piped, it is the refusal's text as before.
 - **A declaration made twice is kept once when it is the same, and a notebook's cell can run again.** The same
   `exp.add_*`, `attach`, `observe`, `declare`, `source`, `set_controller`, `licence` or `permission` made a second
   time, the same in its type, its settings with their units and reasons, and what it binds, is kept once with a

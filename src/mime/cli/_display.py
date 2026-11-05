@@ -585,9 +585,10 @@ def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream:
     why and where; then the docs address of each code, unbroken so that it can be copied, and the footer
     (the defect's owner and the full traceback's file) as the ordinary text gave it. Refusals of one code that are
     about a subject and share their finding, action, why and where (:func:`refusal_groups`) are one block: the code
-    once, what is wrong once, a row for each subject, what to do once. A refusal that holds ``pin_rows`` (the pinned distributions an
-    environment does not hold as pinned, :class:`~mime.env.EnvRefused`) opens with their table (wanted, found, verdict), and the blocks about
-    those distributions keep their code, what is wrong and what to do but not their rows, which the table holds."""
+    once, what is wrong once, a row for each subject, what to do once. A refusal that holds ``pin_rows`` (the pinned
+    distributions an environment does not hold as pinned, :class:`~mime.env.EnvRefused`) opens with their table (wanted,
+    found, verdict), and the blocks about those distributions keep their code, what is wrong and what to do but not
+    their rows, which the table holds."""
     from rich.console import Group
     from rich.panel import Panel
     from rich.text import Text
@@ -596,7 +597,11 @@ def show_refusal(error: MimeError, headline: str, footer: Sequence[str], stream:
     parts: list[Any] = []
     pins: Sequence[DistributionRow] = getattr(error, "pin_rows", ())
     if pins:
-        parts.extend((_pins_table("the pins that differ from what is installed", pins), Text("")))
+        table, pinners = _pins_table("the pins that differ from what is installed", pins, min(console.width, 100) - 4)
+        parts.append(table)
+        if pinners is not None:
+            parts.append(pinners)
+        parts.append(Text(""))
     tabled = {row.name for row in pins}
     blocks = refusal_groups(error.refusals)
     for index, block in enumerate(blocks):
@@ -773,14 +778,29 @@ def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -
                        overflow="fold"), soft_wrap=True)
 
 
-def _pins_table(title: str, rows: Sequence[DistributionRow]) -> Any:
-    """The pinned distributions against what is installed, a row each: wanted, found, the verdict in words, who pins it."""
-    table = _table(title, ("distribution", "wanted", "found", "verdict", "pinned by"))
-    table.columns[0].no_wrap = True  # a name is one word: the other columns give way when the terminal is narrow
-    for row in rows:
-        table.add_row(_text(row.name), _text(row.wanted), _text(row.found or "-"),
-                      _text(row.verdict, "green" if row.agrees else "bold red"), _text(row.pinned_by))
-    return table
+def _pins_table(title: str, rows: Sequence[DistributionRow], width: int) -> tuple[Any, Any | None]:
+    """The pinned distributions against what is installed, a row each: wanted, found, the verdict in words, who pins it.
+    A name and a version are one word, and are not folded where the terminal has room for them. When the five columns do not fit ``width``, the last (who
+    pins it) is not a column: a line under the table counts the distributions each pinner pins, and the others are
+    not squeezed. The line is returned beside the table (``None`` when every column fits)."""
+    from collections import Counter
+
+    cells = [(row.name, row.wanted, row.found or "-", row.verdict, row.pinned_by) for row in rows]
+    heads = ("distribution", "wanted", "found", "verdict", "pinned by")
+    needs = [max(len(head), *(len(cell[i]) for cell in cells)) + 2 for i, head in enumerate(heads)]
+    keep = len(heads) if sum(needs) <= width else len(heads) - 1
+    table = _table(title, heads[:keep])
+    if sum(needs[:keep]) <= width:
+        for column in table.columns[:3]:
+            column.no_wrap = True
+    for row, cell in zip(rows, cells, strict=True):
+        shown = [_text(cell[0]), _text(cell[1]), _text(cell[2]), _text(cell[3], "green" if row.agrees else "bold red"),
+                 _text(cell[4])]
+        table.add_row(*shown[:keep])
+    if keep == len(heads):
+        return table, None
+    counted = Counter(row.pinned_by for row in rows)
+    return table, _text("pinned by: " + ", ".join(f"{who} ({count})" for who, count in counted.items()))
 
 
 def show_environment(report: EnvReport, stream: IO[str]) -> None:
@@ -788,7 +808,10 @@ def show_environment(report: EnvReport, stream: IO[str]) -> None:
     distribution (wanted, found, the verdict in words, who pins it), then the lines the plain output prints, each as a
     line. (A check that fails is a refusal, whose block opens with the pins that differ, :func:`show_refusal`.)"""
     console = _console_of(stream)
-    console.print(_pins_table("the pins against what is installed", report.rows))
+    table, pinners = _pins_table("the pins against what is installed", report.rows, console.width)
+    console.print(table)
+    if pinners is not None:
+        console.print(pinners, soft_wrap=True)
     for line in report.text().splitlines():
         console.print(_text(line), soft_wrap=True)
 

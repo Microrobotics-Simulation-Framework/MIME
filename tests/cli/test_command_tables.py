@@ -361,6 +361,30 @@ def test_the_pins_table_puts_each_cell_in_its_column_and_says_what_each_row_says
                     ["jax", "0.12.0", "0.12.0", "as pinned", "the pinned MIME wheel"]]
 
 
+LONG = DistributionRow("jsonschema-specifications", "0.0.1", "2025.9.1", "the lab's pins", "differs from the pin")
+
+
+@needs_pty
+@pytest.mark.parametrize("columns", [80, 100])
+def test_the_pins_table_on_a_narrow_terminal_keeps_every_name_and_version_whole_and_says_who_pins_in_a_line(columns):
+    """At 80 columns five columns do not fit: a name and a version are never folded, and who pins is a line under the
+    table (the control is 100 columns, where it is a column)."""
+    from mime.cli._display import show_environment
+
+    rows = (LONG, *(DistributionRow(f"dist-{i:02d}", "0.0.1", "1.2.3", "the cpu pins", "differs from the pin")
+                    for i in range(20)))
+    with terminal(columns=columns) as tty:
+        show_environment(an_env_report(rows=rows), tty.stream)
+        text = stripped(tty.transcript())
+    heads = ("distribution", "wanted", "found", "verdict") + (("pinned by",) if columns == 100 else ())
+    table = parsed_table(text, *heads)
+    assert [row[:3] for row in table] == [[r.name, r.wanted, r.found] for r in rows], "every name and version whole"
+    assert len(text.splitlines()) < 2 * len(rows) + 14, "a row is about a line"
+    assert ("pinned by: the lab's pins (1), the cpu pins (20)" in text) == (columns == 80)
+    if columns == 100:
+        assert {row[4] for row in table} == {"the lab's pins", "the cpu pins"}
+
+
 def refusal_of_a_differing_environment() -> EnvRefused:
     """What ``mime.env.check`` raises, built from the check's own two functions over an environment that differs in every
     way a pinned distribution can: two at other versions, one missing, one pinned and right, and one nothing pins."""
