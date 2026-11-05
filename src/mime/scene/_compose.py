@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mime._notebook import RAN_TWICE, RUN_AGAIN, in_notebook
 from mime.scene._derived import GEOMETRY, GEOMETRY_API
 from mime.scene._frame import Problem
 from mime.scene._pxr import Gf, Sdf, Usd, UsdGeom
@@ -238,9 +239,10 @@ def compose(references: Sequence[Reference], meters_per_unit: float | None) -> C
                                                                  f"at=\"{WORLD}/<name>\")"))
             continue
         if any(layer.at == reference.at for layer in layers):
-            problems.append(("scene.reference-path", f"two assets are referenced at {reference.at}",
-                             "reference each asset at its own prim: scene.reference(..., at=\"/World/<name>\") for "
-                             "each"))
+            problems.append(("scene.reference-path", f"two assets are referenced at {reference.at}"
+                             + (RAN_TWICE if in_notebook() else ""),
+                             RUN_AGAIN if in_notebook() else "reference each asset at its own prim: "
+                                                             "scene.reference(..., at=\"/World/<name>\") for each"))
             continue
         try:
             content = reference.asset.read()

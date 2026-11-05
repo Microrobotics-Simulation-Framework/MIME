@@ -16,6 +16,7 @@ from typing import Any, cast
 import numpy as np
 
 from mime import materials, vocabulary
+from mime._notebook import RAN_TWICE, RUN_AGAIN, in_notebook
 from mime.build._control import DELAY, UNBUILT, ClassedRead, ControllerPlan, Mode, ReadClass, ResolvedWrite, \
     controller_nodes, mode_of, refused_reads
 from mime.build._declarations import (
@@ -529,6 +530,10 @@ def _vec(values: Sequence[float]) -> str:
     return "(" + ", ".join(f"{float(c) + 0.0:.6g}" for c in values) + ")"
 
 
+def _a(noun: str) -> str:
+    return f"{'an' if noun.startswith(tuple('aeiou')) else 'a'} {noun}"
+
+
 def _sanitize(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
 
@@ -955,10 +960,11 @@ class _Planner:
         if name in self.things:
             held = self.things[name]
             self.refuse("thing.duplicate", RefusalClass.USER,
-                        f"two things are named {name!r}: a {held.kind.value} at {prim_path_of(held)} and a "
-                        f"{thing.kind.value} at {prim_path_of(thing)} (a body bound to a prim is named after the "
-                        f"prim's last element unless it is given a name)",
-                        "give every thing its own name: Body(\"<name>\", prim=...)")
+                        f"two things are named {name!r}: {_a(held.kind.value)} at {prim_path_of(held)} and "
+                        f"{_a(thing.kind.value)} at {prim_path_of(thing)}"
+                        + (RAN_TWICE if in_notebook() else " (a body bound to a prim is named after the prim's last "
+                                                           "element unless it is given a name)"),
+                        RUN_AGAIN if in_notebook() else "give every thing its own name: Body(\"<name>\", prim=...)")
             return
         self.things[name] = thing
         self.place_thing(thing)
@@ -3222,8 +3228,9 @@ class _Planner:
             if plan.owner in seen:
                 self.refuse("id.duplicate", RefusalClass.USER,
                             f"two declarations share the id {plan.owner!r}: an id is the registered name and the "
-                            f"things bound to it, so the same entry is bound to the same things twice",
-                            "remove the duplicate exp.attach(...) or exp.observe(...)")
+                            f"things bound to it, so the same entry is bound to the same things twice"
+                            + (RAN_TWICE if in_notebook() else ""),
+                            RUN_AGAIN if in_notebook() else "remove the duplicate exp.attach(...) or exp.observe(...)")
             seen[plan.owner] = plan
 
     def collect_registrations_and_slots(self) -> None:
