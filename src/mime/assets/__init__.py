@@ -64,7 +64,7 @@ from mime.assets._adapters import (
     with_adapters,
 )
 from mime.assets._audit import AuditReport, Finding, KnownBytes, audit, container_of, known_bytes, mesh_format
-from mime.assets._availability import assets_of, sources_text
+from mime.assets._availability import SourceLocation, SourceView, assets_of, sources_text, sources_view
 from mime.assets._commands import AUDIT, CHECK, FETCH, GROUP, LICENCES, LIST, SOURCES
 from mime.assets._derivation import (
     Builder,
@@ -184,6 +184,8 @@ __all__ = [
     "Redirect",
     "Request",
     "SOURCES",
+    "SourceLocation",
+    "SourceView",
     "SOURCE_GROUP",
     "STOP_BELOW_BYTES",
     "STOP_BELOW_FRACTION",
@@ -248,6 +250,7 @@ __all__ = [
     "shipped_derivations",
     "size_text",
     "sources_text",
+    "sources_view",
     "stale_inputs",
     "stored_credential",
     "tried_locations",
