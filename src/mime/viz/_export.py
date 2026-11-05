@@ -8,9 +8,10 @@ seconds is slowed to about eight seconds of display (``slow`` display seconds pe
 too, so that a page reads simulated time back), and eight invisible points span the whole motion's bounds, so that a
 viewer frames all of it rather than the first pose. The meshes come from the overlay of the asset cache restricted to
 the shareable tiers (``mime.viz._tiers``): a mesh left out is drawn as its frames' simple shapes, counted in
-``GltfResult.withheld`` and said in its text. A vector's arrow is drawn at most ``ARROW_CAP_FRACTION`` of the scene's
-diagonal long (the scene without its arrows), in the view alone and said in its text: the stage and the recording hold
-the arrow at the length its prim says. Nothing is written into a saved or a run folder."""
+``GltfResult.withheld`` and said in its text. A vector's arrow is drawn at most ``ARROW_BODY_FACTOR`` times the largest
+extent of the body it is drawn at, and at most ``ARROW_CAP_FRACTION`` of the diagonal of the scene without its arrows
+(the lesser; the scene's alone for an arrow at no body), in the view alone and said in its text: the stage and the
+recording hold the arrow at the length its prim says. Nothing is written into a saved or a run folder."""
 
 from __future__ import annotations
 
@@ -36,12 +37,29 @@ SHOWN_S = 8.0
 BOUNDS_SAMPLES = 512
 #: The longest an arrow is drawn, as a fraction of the diagonal of the scene's motion without the arrows. The scene
 #: without them is the choice because the viewer frames all of what the view holds: an arrow as long as the field's
-#: value says (8.3 m per tesla at 10 mT: 8 cm beside a millimetre body) would make the frame its own, and shrink the
-#: bodies and the walls it is there to point at; a quarter of what they alone need keeps the frame within 1.5 times
-#: theirs and the arrow longer than any body in it that is not itself the scene. A body's size is not the measure:
-#: a 20 um ball in a centimetre tube would have its arrow drawn at 60 um, which cannot be seen.
+#: value says would make the frame its own and shrink the bodies and the walls it is there to point at. This cap alone
+#: does not make an arrow readable beside a body a thousandth of the scene (an arm and a millimetre body), which is
+#: what ``ARROW_BODY_FACTOR`` is for; this one is the arrow's cap where it points at no body, and the bound on the others.
 ARROW_CAP_FRACTION = 0.25
+#: The longest an arrow is drawn at a body, as a multiple of the body's largest extent (the longest side of the box of
+#: its own geometry in the stage, whatever its pose): long enough to read its direction beside the body, short enough
+#: to stay near it.
+ARROW_BODY_FACTOR = 2.0
+#: How close, as a fraction of the body's largest extent, a vector prim's origin must lie to a body prim's origin (at the
+#: first and the last time code) for the arrow to be drawn at that body: the recording places both from the same pose.
+AT_BODY_TOLERANCE = 1e-6
 _PREFIXES = ((1.0, "m"), (1e-3, "mm"), (1e-6, "µm"), (1e-9, "nm"))
+
+
+@dataclass(frozen=True)
+class ArrowCap:
+    """One arrow drawn shorter than its prim says: the longest it is drawn (``drawn_m``), the longest it would be
+    (``would_be_m``), both in metres, and whether the body it is drawn at (``"body"``) or the scene (``"scene"``) set the
+    cap."""
+
+    drawn_m: float
+    would_be_m: float
+    rule: str
 
 
 @dataclass
@@ -66,10 +84,8 @@ class GltfResult:
     notices: list[str] = field(default_factory=list[str])
     skipped: dict[str, int] = field(default_factory=dict[str, int])
     fetch: dict[str, str] = field(default_factory=dict[str, str])
-    #: The arrows drawn shorter than their prims say: each one's name and the longest it would be, in metres, and the
-    #: length they are drawn at most.
-    capped: dict[str, float] = field(default_factory=dict[str, float])
-    arrow_cap_m: float = 0.0
+    #: The arrows drawn shorter than their prims say, by prim path.
+    capped: dict[str, ArrowCap] = field(default_factory=dict[str, ArrowCap])
 
     def lines(self) -> list[str]:
         """What a reader of the view is told: the meshes left out and missing, then every set's terms."""
@@ -86,13 +102,14 @@ class GltfResult:
                         f"cubes and capsules")
         if self.capped:
             names = sorted(self.capped)
-            shown = ", ".join(f"{name} ({length_text(self.capped[name])})" for name in names[:3])
-            more = f" and {len(names) - 3} more" if len(names) > 3 else ""
             noun = "arrow is" if len(names) == 1 else "arrows are"
-            held.append(f"{len(names)} {noun} drawn capped at {length_text(self.arrow_cap_m)}, "
-                        f"{ARROW_CAP_FRACTION:.0%} of the scene's size without its arrows, so that an arrow does not "
-                        f"outgrow what it points at: {shown}{more}, each with the length its vector would have. A capped "
-                        f"arrow still points along its vector; the stage and the recording hold its full length.")
+            shown = ", ".join(f"{name.removeprefix('/World/')} drawn at {length_text(self.capped[name].drawn_m)}, not "
+                              f"{length_text(self.capped[name].would_be_m)}" for name in names[:3])
+            more = f" and {len(names) - 3} more" if len(names) > 3 else ""
+            held.append(f"{len(names)} {noun} drawn capped, so that an arrow stays beside what it points at: "
+                        f"{ARROW_BODY_FACTOR:g} times the largest extent of its body, or {ARROW_CAP_FRACTION:.0%} of the "
+                        f"scene's size without its arrows, whichever is less ({shown}{more}). A capped arrow still points "
+                        f"along its vector; the stage and the recording hold its full length.")
         return held + self.notices
 
     def size_text(self) -> str:
@@ -140,13 +157,13 @@ def _outside(stage: Any, left: Sequence[Any]) -> list[Any]:
     return found
 
 
-def motion_bounds(stage: Any, purposes: tuple[str, ...],
-                  leaving: Sequence[Any] = ()) -> tuple[np.ndarray, np.ndarray] | None:
+def motion_bounds(stage: Any, purposes: tuple[str, ...], leaving: Sequence[Any] = (),
+                  only: Sequence[Any] | None = None) -> tuple[np.ndarray, np.ndarray] | None:
     """The union of the drawn prims' world bounds over the stage's time codes, in its units, leaving out the subtrees
-    of the prims ``leaving``; ``None`` when it draws nothing."""
+    of the prims ``leaving``, or of just the subtrees of the prims ``only``; ``None`` when it draws nothing."""
     tokens = [UsdGeom.Tokens.default_ if purpose == "default" else getattr(UsdGeom.Tokens, purpose) for purpose in purposes]
     low, high = np.full(3, np.inf), np.full(3, -np.inf)
-    measured = _outside(stage, leaving) if leaving else [stage.GetPseudoRoot()]
+    measured = list(only) if only is not None else _outside(stage, leaving) if leaving else [stage.GetPseudoRoot()]
     for code in _codes(stage) or [Usd.TimeCode.Default()]:
         time = Usd.TimeCode(code) if isinstance(code, float) else code
         cache = UsdGeom.BBoxCache(time, tokens, useExtentsHint=False)
@@ -163,18 +180,21 @@ def motion_bounds(stage: Any, purposes: tuple[str, ...],
 
 @dataclass
 class Arrows:
-    """The stage's vector arrows against a cap: the drawn ones (``vectors``), the longest each is drawn over the
-    motion in the stage's units (``longest``, by prim path), the cap in the stage's units (``cap``; ``None`` where the
-    scene without arrows has no extent to be a fraction of), the arrows' scale at most ``limits`` (by prim path), and
-    the box of the motion with every arrow at most the cap (``bounds``; ``None`` when none is longer than the cap)."""
+    """The stage's vector arrows against their caps, in the stage's units, by prim path: the longest each is drawn over
+    the motion (``longest``), the most each is drawn (``caps``, with ``rules``: ``"body"`` or ``"scene"``, whichever set
+    it; an arrow with no cap is absent), the arrows' scale at most ``limits``, the scene's cap (``scene``; ``None`` where
+    the scene without arrows has no extent to be a fraction of), and the box of the motion as the view draws it
+    (``bounds``: with every arrow at most its cap, or as the stage has it where none is longer than its cap)."""
 
-    cap: float | None = None
+    scene: float | None = None
     longest: dict[str, float] = field(default_factory=dict[str, float])
+    caps: dict[str, float] = field(default_factory=dict[str, float])
+    rules: dict[str, str] = field(default_factory=dict[str, str])
     limits: dict[str, float] = field(default_factory=dict[str, float])
     bounds: tuple[np.ndarray, np.ndarray] | None = None
 
     def capped(self) -> dict[str, float]:
-        return {path: length for path, length in self.longest.items() if self.cap is not None and length > self.cap}
+        return {path: length for path, length in self.longest.items() if path in self.caps and length > self.caps[path]}
 
 
 def _drawn(prim: Any) -> bool:
@@ -189,28 +209,73 @@ def _rest(prim: Any, meters: float) -> float:
     return float(height) if height is not None else 1.0 / meters
 
 
+def _origin(prim: Any, code: float | None) -> np.ndarray:
+    time = Usd.TimeCode(code) if code is not None else Usd.TimeCode.Default()
+    matrix = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(time)
+    return np.asarray(matrix.Transform(Gf.Vec3d(0.0, 0.0, 0.0)), dtype=np.float64)
+
+
+def _bodies(stage: Any, tokens: list[Any]) -> list[tuple[Any, float]]:
+    """Each body's prim and the largest extent of its own geometry in the stage's units (the longest side of its
+    box in its own axes, so that a turn does not change it); bodies with no geometry are left out."""
+    found: list[tuple[Any, float]] = []
+    cache = UsdGeom.BBoxCache(Usd.TimeCode.EarliestTime(), tokens, useExtentsHint=False)
+    for prim in stage.Traverse():
+        thing = prim.GetAttribute("mime:thing")
+        if not thing or thing.Get() != "body":
+            continue
+        box = cache.ComputeUntransformedBound(prim).ComputeAlignedRange()
+        size = float(max(box.GetSize())) if not box.IsEmpty() else 0.0
+        if size > 0.0 and math.isfinite(size):
+            found.append((prim, size))
+    return found
+
+
+def _body_of(prim: Any, bodies: list[tuple[Any, float]], codes: list[float]) -> float | None:
+    """The largest extent of the body the vector ``prim`` is drawn at: the body whose origin the prim's coincides with
+    at the first and the last time code (a recording places both from the one pose; the stage, at the body's start),
+    the nearest where two do; ``None`` where there is none."""
+    ends = [codes[0], codes[-1]] if codes else [None]
+    mine = [_origin(prim, code) for code in ends]
+    best: tuple[float, float] | None = None
+    for body, size in bodies:
+        gap = max(float(np.linalg.norm(_origin(body, code) - at)) for code, at in zip(ends, mine))
+        if gap <= AT_BODY_TOLERANCE * size and (best is None or gap < best[0]):
+            best = (gap, size)
+    return best[1] if best is not None else None
+
+
 def arrows_of(stage: Any, purposes: tuple[str, ...]) -> Arrows:
-    """Each drawn vector prim's longest arrow over the motion, and the cap on them: ``ARROW_CAP_FRACTION`` of the
-    diagonal of the motion without any arrow. The bounds of the motion with the arrows capped are held only where
-    one is longer than the cap; a scene with none is framed as before."""
+    """Each drawn vector prim's longest arrow over the motion, and the cap on it: the lesser of ``ARROW_BODY_FACTOR``
+    times the largest extent of the body it is drawn at and ``ARROW_CAP_FRACTION`` of the diagonal of the motion
+    without any arrow (the scene's alone where it is drawn at no body). The box of the motion is the stage's own where
+    no arrow is longer than its cap, and else the motion without arrows with every arrow at most its cap."""
     prims = [prim for prim in stage.Traverse() if prim.HasAttribute(VECTOR_VALUE)]
     if not prims:
         return Arrows()
+    tokens = [UsdGeom.Tokens.default_ if purpose == "default" else getattr(UsdGeom.Tokens, purpose) for purpose in purposes]
     meters = float(UsdGeom.GetStageMetersPerUnit(stage)) or 1.0
-    bodies = motion_bounds(stage, purposes, prims)
+    scene = motion_bounds(stage, purposes, prims)
     drawn = [prim for prim in prims if _drawn(prim)]
-    diagonal = float(np.linalg.norm(bodies[1] - bodies[0])) if bodies is not None else 0.0
-    cap = ARROW_CAP_FRACTION * diagonal if math.isfinite(ARROW_CAP_FRACTION) and diagonal > 0.0 else None
-    found = Arrows(cap=cap)
-    low, high = (bodies if bodies is not None else (np.full(3, np.inf), np.full(3, -np.inf)))
+    diagonal = float(np.linalg.norm(scene[1] - scene[0])) if scene is not None else 0.0
+    fraction = ARROW_CAP_FRACTION * diagonal if math.isfinite(ARROW_CAP_FRACTION) and diagonal > 0.0 else None
+    found = Arrows(scene=fraction)
+    codes = _codes(stage)
+    bodies = _bodies(stage, tokens) if math.isfinite(ARROW_BODY_FACTOR) else []
+    low, high = (scene if scene is not None else (np.full(3, np.inf), np.full(3, -np.inf)))
     low, high = low.copy(), high.copy()
     for prim in drawn:
+        path = str(prim.GetPath())
+        size = _body_of(prim, bodies, codes) if bodies else None
+        cap, rule = fraction, "scene"
+        if size is not None and (cap is None or ARROW_BODY_FACTOR * size < cap):
+            cap, rule = ARROW_BODY_FACTOR * size, "body"
         rest = _rest(prim, meters)
         if cap is not None:
-            found.limits[str(prim.GetPath())] = cap / rest
+            found.caps[path], found.rules[path], found.limits[path] = cap, rule, cap / rest
         xformable = UsdGeom.Xformable(prim)
         longest = 0.0
-        for code in _codes(stage) or [Usd.TimeCode.Default()]:
+        for code in codes or [Usd.TimeCode.Default()]:
             time = Usd.TimeCode(code) if isinstance(code, float) else code
             matrix = xformable.ComputeLocalToWorldTransform(time)
             origin = np.asarray(matrix.Transform(Gf.Vec3d(0.0, 0.0, 0.0)), dtype=np.float64)
@@ -219,10 +284,20 @@ def arrows_of(stage: Any, purposes: tuple[str, ...]) -> Arrows:
             longest = max(longest, length)
             held = origin + (tip - origin) * (min(1.0, cap / length) if cap is not None and length > 0.0 else 1.0)
             low, high = np.minimum(low, np.minimum(origin, held)), np.maximum(high, np.maximum(origin, held))
-        found.longest[str(prim.GetPath())] = longest
-    if found.capped() and np.all(np.isfinite(low)):
-        found.bounds = (low, high)
+        found.longest[path] = longest
+    if found.capped():
+        found.bounds = (low, high) if np.all(np.isfinite(low)) else None
+    else:
+        found.bounds = _joined(scene, motion_bounds(stage, purposes, only=prims))
     return found
+
+
+def _joined(first: tuple[np.ndarray, np.ndarray] | None,
+            second: tuple[np.ndarray, np.ndarray] | None) -> tuple[np.ndarray, np.ndarray] | None:
+    """The box of two boxes."""
+    if first is None or second is None:
+        return first or second
+    return np.minimum(first[0], second[0]), np.maximum(first[1], second[1])
 
 
 def slowed(simulated_s: float) -> float:
@@ -276,11 +351,11 @@ def gltf(target: str | Path, *, slow: float | None = None, segments: int = SEGME
                        "notices": list(found.notices)}}
     credit = "\n".join(found.terms[name] for name in found.sets if name in found.terms)
     converted = convert(stage, settings, extras=extras, copyright=credit or None)
-    capped = {path.rsplit("/", 1)[-1]: length * meters for path, length in arrows.capped().items()}
+    capped = {prim: ArrowCap(arrows.caps[prim] * meters, length * meters, arrows.rules[prim])
+              for prim, length in arrows.capped().items()}
     return GltfResult(converted.glb, source, name, unit, shown, simulated, samples, across, converted.triangles,
                       found.drawn, dict(found.withheld), dict(found.missing), list(found.notices),
-                      dict(converted.skipped), dict(found.fetch), capped,
-                      (arrows.cap or 0.0) * meters if capped else 0.0)
+                      dict(converted.skipped), dict(found.fetch), capped)
 
 
-__all__ = ["ARROW_CAP_FRACTION", "GltfResult", "arrows_of", "gltf", "length_text", "motion_bounds", "slowed"]
+__all__ = ["ARROW_BODY_FACTOR", "ARROW_CAP_FRACTION", "ArrowCap", "GltfResult", "arrows_of", "gltf", "length_text", "motion_bounds", "slowed"]

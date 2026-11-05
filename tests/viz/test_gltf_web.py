@@ -117,10 +117,11 @@ def test_the_plain_text_of_a_web_page_is_one_short_line_saying_what_it_is_and_ho
     plain = repr(shown)
     assert len(plain.encode("utf-8")) <= PLAIN_TEXT_BYTES and "\n" not in plain
     assert shown.result.name in plain and f"{len(shown.html.encode('utf-8')) / 1e3:.0f} kB" in plain
-    assert ".save(" in plain and "browser" in plain
-    assert shown.html not in plain and "<" not in plain
+    assert "browser" in plain
+    assert shown.html not in plain and "<iframe" not in plain and "<html" not in plain
     assert shown._repr_html_().startswith("<iframe srcdoc=") and html.unescape(shown._repr_html_()).count(shown.html) == 1
-    assert "WebPage" in plain
+    assert plain.startswith("<WebPage ") and plain.endswith(">"), "a description, not a constructor call to evaluate"
+    assert "last expression" in plain and ".save(" in plain, "how a notebook shows it, and how anywhere else does"
 
 
 def test_control_the_dataclass_repr_it_replaces_held_the_whole_page(run):

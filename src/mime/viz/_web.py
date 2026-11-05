@@ -258,8 +258,8 @@ def page(result: GltfResult, *, cdn: bool = False, caption: str | None = None) -
 
 @dataclass(frozen=True)
 class WebPage:
-    """A view as a notebook shows it: the page in an ``<iframe srcdoc>``. The last expression of a cell shows it;
-    :meth:`save` writes the page as a file."""
+    """A view as a notebook shows it: the page in an ``<iframe srcdoc>``. A cell whose last expression it is shows it;
+    :meth:`save` writes the page as a file. Its ``repr`` is one line, not the page."""
 
     html: str
     result: GltfResult
@@ -268,8 +268,9 @@ class WebPage:
     @override
     def __repr__(self) -> str:
         """One line, not the page: Jupyter shows ``text/plain`` beside the HTML, and the page is megabytes."""
-        return (f"WebPage({self.result.name!r}, {len(self.html.encode('utf-8')) / 1e3:.0f} kB): the last expression of a "
-                f"cell shows it; .save('view.html') writes it as a page to open in a browser")
+        return (f"<WebPage {self.result.name!r}, {len(self.html.encode('utf-8')) / 1e3:.0f} kB: a notebook cell shows it "
+                f"when it is the cell's last expression; elsewhere .save('view.html') writes the page, to open in a "
+                f"browser>")
 
     def _repr_html_(self) -> str:
         return (f'<iframe srcdoc="{html.escape(self.html, quote=True)}" style="width: 100%; height: {self.height}px; '

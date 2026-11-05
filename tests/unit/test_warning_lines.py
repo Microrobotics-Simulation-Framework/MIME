@@ -3,7 +3,8 @@
 
 A0 declares an arm whose description holds elements the build reads past, so that its build warns
 (:class:`DescriptionWarning`); the ball is the cheap rig for the view's. ``BuiltExperiment.save`` and ``run_to`` build
-nothing and warn of nothing, which the last test holds to.
+nothing and warn of nothing, which the last test holds to, and under ``mime run`` (a subprocess of the installed console
+script, where no frame is the script's) a range warning is a ``mime: warning:`` line with no source.
 
 The control is the old fixed stack level put back (``warnings.warn(..., stacklevel=3)`` where the build's wrapper and
 ``build`` stand between the warning and a ``save``'s caller): the same assertions then name ``_experiment.py`` for
@@ -11,12 +12,18 @@ The control is the old fixed stack level put back (``warnings.warn(..., stacklev
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+import sys
+import textwrap
 import warnings
 from pathlib import Path
 
 import pytest
 from chain_cases import kinematic_rpm
 from gltf_cases import ball
+from range_cases import TURNING, rotating_screw
 
 import mime.experiment._experiment as experiment_module
 import mime.viz._web as web_module
@@ -67,12 +74,82 @@ def test_the_views_output_warning_through_a_run_written_names_the_scripts_line(t
     assert files_warned_from(lambda: written.view()) == [__file__]
 
 
-def test_a_built_experiments_save_and_run_to_build_nothing_and_warn_of_nothing(tmp_path):
+def test_a_built_experiments_save_and_run_to_build_nothing_so_nothing_is_warned_from_them(tmp_path, monkeypatch):
+    """Absence, held so that it can fail: the warning helper is wrapped to count its calls. ``Experiment.save`` calls it
+    (the control: the count is above zero), and a built experiment's ``save`` and ``run_to`` must not, as they would if
+    either rebuilt."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         built = kinematic_rpm("described").build()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    calls: list[str] = []
+    real = experiment_module.warn_at_script
+
+    def counting(text, category):
+        calls.append(text)
+        real(text, category)
+
+    monkeypatch.setattr(experiment_module, "warn_at_script", counting)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        kinematic_rpm("described").save(tmp_path / "control", steps=2)
+    assert calls, "control: a save that builds calls the helper"
+    calls.clear()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         built.save(tmp_path / "saved", steps=2)
         built.run_to(tmp_path / "run", ms(2))
-    assert [str(w.message) for w in caught if issubclass(w.category, (DescriptionWarning, UserWarning))] == []
+    assert calls == []
+
+
+# Under ``mime run`` no frame is the script's: the stack is MIME's and the console script's stub. A range warning is
+# shown as ``mime: warning: <text>``, once, with no source line, as a description's is.
+
+
+@pytest.fixture(scope="module")
+def turning_folder(tmp_path_factory) -> Path:
+    folder = tmp_path_factory.mktemp("turning") / "saved"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        rotating_screw().save(folder, steps=2)
+    return folder
+
+
+def console_script() -> str:
+    found = shutil.which("mime", path=str(Path(sys.executable).parent))
+    assert found is not None, "the console script is installed beside the interpreter, as CI installs it"
+    return found
+
+
+def run_in_a_process(command: list[str], tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, capture_output=True, text=True, check=False, timeout=900,
+                          env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path),
+                               "XDG_CACHE_HOME": str(tmp_path / ".cache"), "JAX_PLATFORMS": "cpu"})
+
+
+def turning_lines(done: subprocess.CompletedProcess[str]) -> list[str]:
+    return [line for line in done.stderr.splitlines() if TURNING in line]
+
+
+def test_under_mime_run_a_range_warning_is_a_line_with_no_source_and_not_the_console_scripts(turning_folder, tmp_path):
+    done = run_in_a_process([console_script(), "run", str(turning_folder), "--duration", "0.01",
+                             "--out", str(tmp_path / "run")], tmp_path)
+    assert done.returncode == 0, done.stderr
+    (line,) = turning_lines(done)
+    assert line.startswith("mime: warning: "), line
+    assert "UserWarning" not in done.stderr and "sys.exit(main())" not in done.stderr
+    assert console_script() not in done.stderr, "no line of the console script's stub"
+
+
+def test_control_the_same_warning_from_a_script_that_calls_the_command_names_that_script(turning_folder, tmp_path):
+    """The assertions above fail for this run: a script of the user's that calls ``mime.cli.main`` is the script, and
+    the warning keeps the usual form with its file and line."""
+    script = tmp_path / "caller.py"
+    script.write_text(textwrap.dedent(f"""
+        import sys
+        from mime.cli import main
+        sys.exit(main(["run", {str(turning_folder)!r}, "--duration", "0.01", "--out", {str(tmp_path / "run")!r}]))
+        """), encoding="utf-8")
+    done = run_in_a_process([sys.executable, str(script)], tmp_path)
+    assert done.returncode == 0, done.stderr
+    lines = turning_lines(done)
+    assert lines and all(line.startswith(f"{script}:") and "UserWarning" in line for line in lines), done.stderr
