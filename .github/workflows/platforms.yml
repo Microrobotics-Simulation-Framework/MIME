@@ -11,11 +11,11 @@ name: Platforms
 
 on:
   pull_request:
-    branches: [v0.3]
+    branches: [release/v0.3.0, v0.3]
     # No `labeled`: a label starts no run here (ready.yml re-runs this one for `ready`, as it does ci.yml's).
     types: [opened, synchronize, reopened]
   push:
-    branches: [v0.3]
+    branches: [release/v0.3.0, v0.3]
   workflow_dispatch:
 
 permissions:
@@ -114,8 +114,15 @@ jobs:
       - name: Docs check
         if: ${{ !cancelled() }}
         run: |
-          git rev-parse --verify --quiet origin/v0.3 > /dev/null \
-            || git fetch --no-tags --depth=1 origin +refs/heads/v0.3:refs/remotes/origin/v0.3
+          # The development branch is release/v0.3.0, and was v0.3 until it was renamed: the base is whichever exists.
+          for branch in release/v0.3.0 v0.3; do
+            git rev-parse --verify --quiet "origin/$branch" > /dev/null \
+              || git fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch" 2> /dev/null \
+              || continue
+            base="origin/$branch"
+            break
+          done
+          [ -n "${base-}" ] || { echo "neither origin/release/v0.3.0 nor origin/v0.3 can be read" >&2; exit 1; }
           # The guides' output blocks are a Linux run's printed text: the scripts they name run in the default lane
           # (tests/docs/test_tutorials.py) and in ci.yml's docs check, not here.
-          uv run --no-sync mime docs check --base origin/v0.3 --skip-example-runs
+          uv run --no-sync mime docs check --base "$base" --skip-example-runs

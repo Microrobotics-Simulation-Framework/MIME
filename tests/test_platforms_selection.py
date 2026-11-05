@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from test_ci_wiring import REQUIRED
+from test_ci_wiring import BRANCH, OLD_BRANCH, PULL_REQUEST, REQUIRED, run_step
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "platforms.yml"
@@ -63,11 +63,26 @@ def workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
 
 
-def test_the_workflow_runs_on_pull_requests_and_pushes_to_v0_3_and_is_no_required_check():
+def test_the_workflow_runs_on_pull_requests_and_pushes_to_the_development_branch_and_is_no_required_check():
+    """Under both names of the branch: ``release/v0.3.0``, and ``v0.3`` until it is renamed."""
     triggers = workflow()[True]  # YAML 1.1 reads the key `on` as a boolean
-    assert triggers["pull_request"]["branches"] == ["v0.3"] and triggers["push"]["branches"] == ["v0.3"]
+    names = ["release/v0.3.0", "v0.3"]
+    assert triggers["pull_request"]["branches"] == names and triggers["push"]["branches"] == names
     names = [job.get("name", "") for job in workflow()["jobs"].values()]
     assert not set(names) & set(REQUIRED)
+
+
+@pytest.mark.parametrize(("missing", "base"), [((), f"origin/{BRANCH}"), ((BRANCH,), f"origin/{OLD_BRANCH}")],
+                         ids=["branch renamed", "branch not yet renamed"])
+def test_the_docs_check_compares_with_the_development_branch_under_the_name_that_exists(tmp_path, missing, base):
+    """Run as GitHub runs it (``bash -e``, git and uv stubbed): the base is the new name where it can be read, else the
+    old. The control is the step with neither readable, which fails without running the check."""
+    step = next(step for step in workflow()["jobs"]["smoke"]["steps"] if step.get("name") == "Docs check")
+    _, calls = run_step(step, PULL_REQUEST, 0, tmp_path / "ran", missing)
+    checks = [arguments for command, arguments, _ in calls if command == "uv"]
+    assert len(checks) == 1 and ["--base", base] == checks[0][checks[0].index("--base"):][:2]
+    status, calls = run_step(step, PULL_REQUEST, 0, tmp_path / "neither", (BRANCH, OLD_BRANCH))
+    assert status != 0 and not [call for call in calls if call[0] == "uv"]
 
 
 def test_each_job_is_bounded_and_the_matrix_is_both_platforms_on_two_pythons():

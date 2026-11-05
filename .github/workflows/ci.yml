@@ -59,10 +59,10 @@ name: CI
 
 on:
   push:
-    branches: [main, v0.3]
+    branches: [main, release/v0.3.0, v0.3]
   # No `labeled`: a label starts no run here (ready.yml re-runs this one for `ready`).
   pull_request:
-    branches: [main, v0.3]
+    branches: [main, release/v0.3.0, v0.3]
     types: [opened, synchronize, reopened]
   # Weekly, for usd-core-newest. GitHub runs schedules from the default branch's workflow file only.
   schedule:
@@ -328,10 +328,17 @@ jobs:
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         run: |
           status=0
-          git rev-parse --verify --quiet origin/v0.3 > /dev/null \
-            || git fetch --no-tags --depth=1 origin +refs/heads/v0.3:refs/remotes/origin/v0.3
+          # The development branch is release/v0.3.0, and was v0.3 until it was renamed: the base is whichever exists.
+          for branch in release/v0.3.0 v0.3; do
+            git rev-parse --verify --quiet "origin/$branch" > /dev/null \
+              || git fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch" 2> /dev/null \
+              || continue
+            base="origin/$branch"
+            break
+          done
+          [ -n "${base-}" ] || { echo "neither origin/release/v0.3.0 nor origin/v0.3 can be read" >&2; exit 1; }
           started=$(date +%s%N)
-          uv run --no-sync mime docs check --base origin/v0.3 > "$RUNNER_TEMP/docs-check.txt" 2>&1 || status=$?
+          uv run --no-sync mime docs check --base "$base" > "$RUNNER_TEMP/docs-check.txt" 2>&1 || status=$?
           echo "the command's wall time, start-up included: $(( ($(date +%s%N) - started) / 1000000 )) ms" \
             >> "$RUNNER_TEMP/docs-check.txt"
           cat "$RUNNER_TEMP/docs-check.txt"
@@ -730,15 +737,18 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
         run: |
+          # The development branch is release/v0.3.0, and was v0.3 until it was renamed: public is whichever exists.
+          dev=origin/release/v0.3.0
+          git rev-parse --verify --quiet "$dev" > /dev/null || dev=origin/v0.3
           public=""
-          if [ "$TARGET" = main ]; then public="origin/v0.3"; fi
+          if [ "$TARGET" = main ]; then public="$dev"; fi
           name="$HEAD_REF"
           case "$EVENT" in
             pull_request) range="$PR_BASE..$PR_HEAD" ;;
             push)
               range="$PUSH_AFTER"
               if git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then range="$PUSH_BEFORE..$PUSH_AFTER"; fi ;;
-            *) range="HEAD"; public="origin/v0.3"; name="$REF_NAME" ;;
+            *) range="HEAD"; public="$dev"; name="$REF_NAME" ;;
           esac
           python3 scripts/check_confidential.py ${range:+--messages "$range" --diffs "$range"} \
             ${public:+--public "$public"} ${name:+--ref-name "$name"}

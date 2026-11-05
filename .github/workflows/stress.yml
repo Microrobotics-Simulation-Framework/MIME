@@ -16,7 +16,7 @@ name: Stress
 
 on:
   pull_request:
-    branches: [main, v0.3]
+    branches: [main, release/v0.3.0, v0.3]
     types: [labeled, synchronize]
 
 permissions:
