@@ -12,6 +12,7 @@ The completion tests fail, not skip, under CI when a shell is missing (``shell_p
 by mistake is red by name; the controls are fixed plants, each failing on every run."""
 
 import copy
+import json
 import re
 import subprocess
 import sys
@@ -35,6 +36,14 @@ LANES = {
 UNSHARDED = "usd-core-newest"
 #: What the job's limit must exceed the install script's worst case by, for the set-up before and the file after it.
 MARGIN_SECONDS = 10 * 60
+#: The conditions the steps that decide a lane's result run under: ``scripts/check_no_skips.py`` after the tests step, and
+#: a lane's read of its completion job after anything red. Any other (``${{ false }}`` included) switches the check off.
+LANE_RAN = "${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}"
+AFTER_TESTS = "${{ !cancelled() && steps.tests.outcome != 'skipped' }}"
+#: The completion job's own ``if``, per lane: the lane's shards' (the default lane's every Python; the others, the full matrix).
+JOB_IF = {"default": "github.event_name != 'schedule'",
+          "openmaterica-main": "${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}",
+          "maddening-main": "${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}"}
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 INSTALL_RUN = "bash scripts/install_shells.sh"
 needs_posix = pytest.mark.skipif(sys.platform == "win32", reason="a CI Linux runner's script")
@@ -49,8 +58,10 @@ def setup_python(job: dict) -> list[object]:
             if str(step.get("uses", "")).startswith("astral-sh/setup-uv@")]
 
 
-def step_faults(where: str, step: dict) -> list[str]:
+def step_faults(where: str, step: dict, expected_if: str | None = None) -> list[str]:
     found = []
+    if step.get("if") != expected_if:
+        found.append(f"{where}: runs under if: {step.get('if')!r}, not {expected_if!r}, so a condition can switch it off")
     if step.get("continue-on-error"):
         found.append(f"{where}: continue-on-error hides its failure")
     if NEUTERING.search(str(step.get("run", ""))):
@@ -82,11 +93,13 @@ def completion_job_problems(lane: str, jobs: dict, worst: int) -> list[str]:
     if len(skips) != 1 or "test-results.xml" not in skips[0]["run"]:
         found.append(f"{completion_id}: does not fail on a skipped test (scripts/check_no_skips.py over the tests' report)")
     else:
-        found += step_faults(f"{completion_id}: the skip check", skips[0])
+        found += step_faults(f"{completion_id}: the skip check", skips[0], AFTER_TESTS)
     limit = job.get("timeout-minutes")
     if not isinstance(limit, int) or limit * 60 < worst + MARGIN_SECONDS:
         found.append(f"{completion_id}: timeout-minutes {limit!r} is under the install script's worst case ({worst} s) "
                      f"and {MARGIN_SECONDS // 60} minutes for the rest")
+    if job.get("if") != JOB_IF[lane]:
+        found.append(f"{completion_id}: runs under if: {job.get('if')!r}, not {JOB_IF[lane]!r}, so a condition can switch it off")
     # the lane it stands for: what its shards ran in, so no coverage is lost
     if job.get("if") != shard_job.get("if") or job.get("continue-on-error") != shard_job.get("continue-on-error"):
         found.append(f"{completion_id}: runs under a condition other than the lane's shards' ({shard_job.get('if')!r})")
@@ -116,21 +129,35 @@ def shard_job_problems(lane: str, jobs: dict) -> list[str]:
 
 
 def summary_problems(lane: str, jobs: dict) -> list[str]:
+    """The lane's job under its own name reads what the completion job ended as from the run's own list of jobs, as the
+    default lane does for its shards, and not from ``needs.<job>.result``: a job with ``continue-on-error`` reads
+    ``success`` there when it failed (the manual run's ``plant_completion_failure`` measured it, see the workflow)."""
     tests_id, completion_id = LANES[lane]
     summary = jobs[lane]
-    needs = summary["needs"]
-    if completion_id not in needs:
+    if completion_id not in summary["needs"]:
         return [f"{lane}: the job that makes the required check does not wait on {completion_id}, so a red completion "
                 f"job would not fail it"]
-    expression = f"needs.{completion_id}.result"
-    steps = [step for step in summary["steps"]
-             if expression in str(step.get("env", "")) or "completion tests (default, Python" in str(step.get("run", ""))]
+    if not isinstance(jobs.get(completion_id), dict):
+        return []
+    name = jobs[completion_id]["name"]
+    steps = [step for step in summary["steps"] if "scripts/check_shard_jobs.py" in str(step.get("run", ""))
+             and "completion tests (" in str(step.get("run", ""))]
     if len(steps) != 1:
         return [f"{lane}: {len(steps)} steps check the completion tests job's result; one does"]
-    found = step_faults(f"{lane}: the step checking the completion tests job", steps[0])
-    if lane == "default" and "check_shard_jobs.py --prefix \"completion tests (default, Python ${{ matrix.python-version }})\" " \
-            "--shards 1" not in steps[0]["run"]:
-        found.append(f"{lane}: checks the completion tests job of another Python than its own")
+    step = steps[0]
+    run = str(step.get("run", ""))
+    found = step_faults(f"{lane}: the step checking the completion tests job", step, LANE_RAN)
+    if not re.search(r"^\s*set -e?o pipefail$", run, re.MULTILINE) or "python3 scripts/run_jobs.py \"$JOBS_URL\"" not in run \
+            or "scripts/check_shard_jobs.py" not in run or not run.rstrip().endswith("--shards 1"):
+        found.append(f"{lane}: the step checking the completion tests job does not read the run's jobs by scripts/run_jobs.py "
+                     f"under pipefail into scripts/check_shard_jobs.py for exactly one job")
+    if f'--prefix "{name}"' not in run:
+        found.append(f"{lane}: checks the completion tests job of another Python than its own, or of another lane's "
+                     f"(its name is {name!r})")
+    if "filter=latest" not in str((step.get("env") or {}).get("JOBS_URL", "")):
+        found.append(f"{lane}: the step checking the completion tests job does not read the jobs at their latest attempts")
+    if (summary.get("permissions") or {}).get("actions") != "read":
+        found.append(f"{lane}: cannot read the run's jobs (permissions: actions: read)")
     return found
 
 
@@ -202,8 +229,8 @@ def _plants(lane: str):
     install = lambda step: "install_shells.sh" in str(step.get("run", ""))
     pytest_step = lambda step: step.get("id") == "tests"
     skip_check = lambda step: "check_no_skips.py" in str(step.get("run", ""))
-    summary_check = lambda step: "completion tests (default, Python" in str(step.get("run", "")) \
-        or f"needs.{completion_id}.result" in str(step.get("env", ""))
+    summary_check = lambda step: "scripts/check_shard_jobs.py" in str(step.get("run", "")) \
+        and f"completion tests (" in str(step.get("run", ""))
     plants = {
         "the-job-is-gone": (lambda w: w["jobs"].pop(completion_id), "there is no job"),
         "the-shells-are-not-installed": (_drop_step(completion_id, install), "does not install zsh and fish exactly once"),
@@ -235,6 +262,33 @@ def _plants(lane: str):
                                                      COMPLETION, "tests/cli/test_other.py"), "does not deselect"),
         "the-lane-does-not-wait-for-it": (lambda w: _unneed(w, lane, completion_id), "does not wait on"),
         "the-lane-does-not-check-it": (_drop_step(lane, summary_check), "steps check the completion tests job's result"),
+        "the-lane-reads-the-needs-result": (_read_the_needs_result(lane, completion_id, summary_check),
+                                            "steps check the completion tests job's result"),
+        "the-lane-reads-another-jobs-name": (_edit_run(lane, summary_check, '--prefix "completion tests (',
+                                                       '--prefix "completion tests (other '),
+                                             "another Python than its own"),
+        "the-lane-expects-no-job": (_edit_run(lane, summary_check, "--shards 1", "--shards 0"), "for exactly one job"),
+        "the-lane-expects-two-jobs": (_edit_run(lane, summary_check, "--shards 1", "--shards 2"), "for exactly one job"),
+        "the-lane-reads-no-run-jobs": (_edit_run(lane, summary_check, "python3 scripts/run_jobs.py", "gh api"),
+                                       "does not read the run's jobs by scripts/run_jobs.py"),
+        "the-lane-reads-without-pipefail": (_edit_run(lane, summary_check, "set -eo pipefail", "set -e"),
+                                            "does not read the run's jobs by scripts/run_jobs.py"),
+        "the-lane-reads-no-latest-attempts": (_alter_env(lane, summary_check, "JOBS_URL", "repos/o/r/actions/runs/1/jobs"),
+                                              "latest attempts"),
+        "the-lane-may-not-read-the-jobs": (_alter(lane, "permissions", {"contents": "read"}), "cannot read the run's jobs"),
+        "the-lane-check-is-switched-off": (_alter_step(lane, summary_check, **{"if": "${{ false }}"}), "can switch it off"),
+        "the-lane-check-is-switched-off-bare": (_alter_step(lane, summary_check, **{"if": "false"}), "can switch it off"),
+        "the-lane-check-is-switched-off-by-a-conjunction": (
+            _alter_step(lane, summary_check, **{"if": "${{ !cancelled() && false }}"}), "can switch it off"),
+        "the-lane-check-runs-only-when-green": (_alter_step(lane, summary_check, **{"if": "${{ success() }}"}),
+                                                "can switch it off"),
+        "the-skip-check-is-switched-off": (_alter_step(completion_id, skip_check, **{"if": "${{ false }}"}), "can switch it off"),
+        "the-skip-check-is-switched-off-bare": (_alter_step(completion_id, skip_check, **{"if": "false"}), "can switch it off"),
+        "the-skip-check-runs-only-when-green": (_alter_step(completion_id, skip_check, **{"if": "${{ success() }}"}),
+                                                "can switch it off"),
+        "the-tests-are-switched-off": (_alter_step(completion_id, pytest_step, **{"if": "${{ false }}"}), "can switch it off"),
+        "the-job-and-its-shards-are-switched-off": (lambda w: _switch_off_both(w, tests_id, completion_id),
+                                                    "can switch it off"),
         "the-lane-s-check-is-swallowed": (_swallow(lane, summary_check), "'|| true'"),
     }
     if lane == "default":
@@ -251,6 +305,28 @@ def _set_python(workflow, job_id):
     for step in workflow["jobs"][job_id]["steps"]:
         if str(step.get("uses", "")).startswith("astral-sh/setup-uv@"):
             step["with"]["python-version"] = "3.10"
+
+
+def _alter_env(job_id, find, key, value):
+    def plant(workflow):
+        for step in workflow["jobs"][job_id]["steps"]:
+            if find(step):
+                step["env"][key] = value
+    return plant
+
+
+def _read_the_needs_result(lane, completion_id, find):
+    """The workflow before the fix round: the step reads ``needs.<completion job>.result`` in place of the jobs' list."""
+    def plant(workflow):
+        for step in workflow["jobs"][lane]["steps"]:
+            if find(step):
+                step["env"] = {"COMPLETION": f"${{{{ needs.{completion_id}.result }}}}"}
+                step["run"] = 'if [ "$COMPLETION" != success ]; then exit 1; fi\n'
+    return plant
+
+
+def _switch_off_both(workflow, tests_id, completion_id):
+    workflow["jobs"][tests_id]["if"] = workflow["jobs"][completion_id]["if"] = "${{ false }}"
 
 
 def _unneed(workflow, lane, completion_id):
@@ -280,29 +356,66 @@ def test_control_a_break_in_the_completion_job_s_wiring_is_named(tmp_path, workf
     assert any(expected in problem for problem in workflow_problems(broken, worst)), (plant, workflow_problems(broken, worst))
 
 
-def test_the_text_of_the_summary_s_check_fails_the_lane_on_anything_but_success():
-    """The two lanes that read the job's result as a context (the default lane reads the run's jobs, per Python): the
-    step exits 1 unless the result is ``success``, a skipped job included. Run for real, with each result."""
+def _jobs_reply(lane: str, completion: list[tuple[str, str | None]]) -> str:
+    """The run's jobs as ``scripts/run_jobs.py`` prints them: the lane's shard jobs, all green, and ``completion``."""
+    others = [(f"{lane} tests (shard {n} of 3)", "success") for n in (1, 2, 3)] + [("shard count", "success")]
+    return "".join(json.dumps({"name": name, "conclusion": conclusion}) + "\n" for name, conclusion in [*others, *completion])
+
+
+def run_summary_check(tmp_path: Path, lane: str, reply: str, *, edit=lambda text: text) -> subprocess.CompletedProcess[str]:
+    """The lane's step that checks the completion job, as the workflow has it, run for real against a ``gh`` that
+    answers ``reply`` (the run's jobs, whatever GitHub gives for the job that ended as it ended)."""
     document = yaml.safe_load(CI.read_text(encoding="utf-8"))
-    for lane in ("openmaterica-main", "maddening-main"):
-        step = next(step for step in document["jobs"][lane]["steps"]
-                    if f"needs.{LANES[lane][1]}.result" in str(step.get("env", "")))
-        for result, status in (("success", 0), ("failure", 1), ("skipped", 1), ("cancelled", 1), ("", 1)):
-            done = subprocess.run(["bash", "-e", "-c", step["run"]], env={"COMPLETION": result, "PATH": "/usr/bin:/bin"},
-                                  capture_output=True, text=True, check=False)
-            assert done.returncode == status, (lane, result, done)
+    name = document["jobs"][LANES[lane][1]]["name"].replace("${{ matrix.python-version }}", "3.12")
+    step = next(step for step in document["jobs"][lane]["steps"] if "scripts/check_shard_jobs.py" in str(step.get("run", ""))
+                and "completion tests (" in str(step.get("run", "")))
+    bin_ = tmp_path / "bin"
+    bin_.mkdir(parents=True)
+    (tmp_path / "reply").write_text(reply, encoding="utf-8")
+    (bin_ / "gh").write_text(f'#!/bin/sh\ncat "{tmp_path}/reply"\n', encoding="utf-8")
+    (bin_ / "gh").chmod(0o755)
+    run = edit(step["run"].replace("${{ matrix.python-version }}", "3.12"))
+    assert f'--prefix "{name}"' in run
+    return subprocess.run(["bash", "-e", "-c", run], cwd=ROOT, capture_output=True, text=True, check=False, timeout=60,
+                          env={"PATH": f"{bin_}:/usr/bin:/bin", "JOBS_URL": "repos/o/r/actions/runs/1/jobs?filter=latest",
+                               "GH_TOKEN": "x"})
 
 
-def test_control_the_summary_s_check_that_passes_anything_is_found():
-    """The plant of the previous test: a check that exits 0 on a failure is not the workflow's check."""
-    step = next(step for step in yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["maddening-main"]["steps"]
-                if "needs.maddening-main-completion.result" in str(step.get("env", "")))
-    done = subprocess.run(["bash", "-e", "-c", step["run"].replace("exit 1", "exit 0")], env={"COMPLETION": "failure",
-                          "PATH": "/usr/bin:/bin"}, capture_output=True, text=True, check=False)
-    assert done.returncode == 0, "the plant must pass where the real step fails"
-    real = subprocess.run(["bash", "-e", "-c", step["run"]], env={"COMPLETION": "failure", "PATH": "/usr/bin:/bin"},
-                          capture_output=True, text=True, check=False)
-    assert real.returncode == 1
+@needs_posix
+@pytest.mark.parametrize("lane", LANES)
+@pytest.mark.parametrize("conclusion, status", [("success", 0), ("failure", 1), ("cancelled", 1), ("skipped", 1), (None, 1)],
+                         ids=["success", "failure", "cancelled", "skipped", "not-finished"])
+def test_the_lane_s_check_of_the_completion_job_follows_what_the_run_s_jobs_say_it_ended_as(tmp_path, lane, conclusion, status):
+    """Run for real, each lane, with the job's conclusion as the jobs' list gives it: the job with ``continue-on-error``
+    that failed is listed ``failure`` (the run 42111720966 shard jobs; the plant run of the fix round), and only
+    ``success`` passes."""
+    name = {"default": "completion tests (default, Python 3.12)"}.get(lane, f"completion tests ({lane})")
+    done = run_summary_check(tmp_path, lane, _jobs_reply(lane, [(name, conclusion)]))
+    assert done.returncode == status, (lane, conclusion, done)
+
+
+@needs_posix
+@pytest.mark.parametrize("lane", LANES)
+def test_the_lane_s_check_fails_when_the_completion_job_is_absent_twice_listed_or_the_list_is_empty(tmp_path, lane):
+    name = {"default": "completion tests (default, Python 3.12)"}.get(lane, f"completion tests ({lane})")
+    for at, reply in enumerate([_jobs_reply(lane, []), _jobs_reply(lane, [(name, "success")] * 2), "",
+                                _jobs_reply(lane, [(name.replace("completion", "other"), "success")])]):
+        done = run_summary_check(tmp_path / str(at), lane, reply, edit=lambda text: text.replace(
+            'run_jobs.py "$JOBS_URL"', 'run_jobs.py "$JOBS_URL" --pause 0'))  # an empty reply is read again: no waiting
+        assert done.returncode == 1, (lane, at, done)
+
+
+@needs_posix
+@pytest.mark.parametrize("lane", LANES)
+def test_control_the_lane_s_check_that_reads_nothing_passes_a_failed_job_so_the_test_above_can_fail(tmp_path, lane):
+    """The plant of the two tests above: the same step with the checker replaced by ``cat`` passes a failed job and an
+    absent one, where the real step fails them."""
+    name = {"default": "completion tests (default, Python 3.12)"}.get(lane, f"completion tests ({lane})")
+    plant = lambda text: text.replace("python3 scripts/check_shard_jobs.py", "cat #")
+    done = run_summary_check(tmp_path / "failed", lane, _jobs_reply(lane, [(name, "failure")]), edit=plant)
+    absent = run_summary_check(tmp_path / "absent", lane, _jobs_reply(lane, []), edit=plant)
+    assert done.returncode == 0 and absent.returncode == 0, (done, absent)
+    assert run_summary_check(tmp_path / "real", lane, _jobs_reply(lane, [(name, "failure")])).returncode == 1
 
 
 def collected(tmp_path: Path, *options: str) -> list[str]:

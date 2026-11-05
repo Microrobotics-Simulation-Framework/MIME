@@ -503,6 +503,10 @@ jobs:
     needs: [shards, openmaterica-main-tests, openmaterica-main-completion]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     continue-on-error: true
+    # contents for the checkout, actions to read the run's own jobs (scripts/check_shard_jobs.py).
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -531,15 +535,18 @@ jobs:
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
 
-      - name: The completion tests job passed
+      # Not `needs.<completion job>.result`: the completion job is `continue-on-error`, and a failed such job reads
+      # `success` there (measured, the manual run's plant_completion_failure, run 42120077511: this lane's step saw
+      # COMPLETION=success for a completion job that concluded failure). The run's list of jobs says what it ended as.
+      - name: The completion tests job, at its latest attempt, passed
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         env:
-          COMPLETION: ${{ needs.openmaterica-main-completion.result }}
+          GH_TOKEN: ${{ github.token }}
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
         run: |
-          if [ "$COMPLETION" != success ]; then
-            echo "::error title=Completion tests::the completion tests job concluded '$COMPLETION', not success"
-            exit 1
-          fi
+          set -eo pipefail
+          python3 scripts/run_jobs.py "$JOBS_URL" \
+            | python3 scripts/check_shard_jobs.py --prefix "completion tests (openmaterica-main)" --shards 1
 
   maddening-main-tests:
     name: maddening-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
@@ -648,6 +655,10 @@ jobs:
     needs: [shards, maddening-main-tests, maddening-main-completion]
     if: ${{ !cancelled() && github.event_name != 'schedule' }}
     continue-on-error: true
+    # contents for the checkout, actions to read the run's own jobs (scripts/check_shard_jobs.py).
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -676,15 +687,18 @@ jobs:
           python3 scripts/report_test_durations.py "$RUNNER_TEMP"/shards/*/test-results-shard*.xml
           --allowlist tests/duration_allowlist.txt --fail-over 0 --cache-mode mixed --title "$TITLE"
 
-      - name: The completion tests job passed
+      # Not `needs.<completion job>.result`: the completion job is `continue-on-error`, and a failed such job reads
+      # `success` there (measured, the manual run's plant_completion_failure, run 42120077511: this lane's step saw
+      # COMPLETION=success for a completion job that concluded failure). The run's list of jobs says what it ended as.
+      - name: The completion tests job, at its latest attempt, passed
         if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
         env:
-          COMPLETION: ${{ needs.maddening-main-completion.result }}
+          GH_TOKEN: ${{ github.token }}
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
         run: |
-          if [ "$COMPLETION" != success ]; then
-            echo "::error title=Completion tests::the completion tests job concluded '$COMPLETION', not success"
-            exit 1
-          fi
+          set -eo pipefail
+          python3 scripts/run_jobs.py "$JOBS_URL" \
+            | python3 scripts/check_shard_jobs.py --prefix "completion tests (maddening-main)" --shards 1
 
   # tests/cli/test_completion.py, alone: the shells it runs under (zsh and fish) are installed here and on no shard, since
   # `apt-get install` took 8 to 10 minutes on a slow mirror and a shard that held it beside its tests was cut at its 20

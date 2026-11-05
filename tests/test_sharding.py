@@ -551,7 +551,8 @@ def test_the_workflow_names_a_report_by_its_attempt_and_prunes_before_it_checks(
      "run: 'true'\n      - name: Gather the default lane's JUnit", "default: the newest attempt is not kept"),
     ("run: |\n          set -o pipefail\n          python3 scripts/run_jobs.py", "run: |\n          python3 scripts/run_jobs.py",
      "default: no step fails the lane when a shard job's latest attempt"),
-    ("      actions: read\n", "", "default: cannot read the run's jobs"),
+    ("      actions: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    strategy:\n",
+     "    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    strategy:\n", "default: cannot read the run's jobs"),
 ], ids=["a-report-named-without-its-attempt", "no-pruning", "the-jobs-pipe-without-pipefail", "no-permission-to-read-jobs"])
 def test_control_a_break_in_the_attempt_wiring_is_named(old, new, expected):
     text = CI.read_text(encoding="utf-8")
