@@ -17,14 +17,16 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from functools import cache
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from mime.scene import ARROW, VECTOR_VALUE
+from mime.scene import ARROW, VECTOR_SCALE, VECTOR_UNITS, VECTOR_VALUE
 from mime.scene._pxr import Gf, Usd, UsdGeom
+from mime.viz._apparatus import APPARATUS_ROOT, ApparatusShape, draw, time_codes
 from mime.viz._gltf import Settings, convert, up_turn
 from mime.viz._primitives import SEGMENTS
 from mime.viz._tiers import SHAREABLE_TIERS, refuse_unshareable
@@ -48,6 +50,7 @@ ARROW_BODY_FACTOR = 2.0
 #: How close, as a fraction of the body's largest extent, a vector prim's origin must lie to a body prim's origin (at the
 #: first and the last time code) for the arrow to be drawn at that body: the recording places both from the same pose.
 AT_BODY_TOLERANCE = 1e-6
+VECTOR_NAME = "mime:vector:name"
 _PREFIXES = ((1.0, "m"), (1e-3, "mm"), (1e-6, "µm"), (1e-9, "nm"))
 
 
@@ -60,6 +63,33 @@ class ArrowCap:
     drawn_m: float
     would_be_m: float
     rule: str
+
+
+@dataclass(frozen=True)
+class ArrowKey:
+    """One vector the view draws as an arrow, for the page's legend: its prim, its name and unit as the stage states
+    them, its colour, the length it is drawn at per unit (``metres_per_unit``) and, where the cap shortens it, the cap."""
+
+    prim: str
+    name: str
+    unit: str
+    colour: tuple[float, float, float]
+    metres_per_unit: float
+    cap: ArrowCap | None = None
+    #: The most the view draws it long, in metres, where a cap holds it (whether or not it is shortened now).
+    limit_m: float | None = None
+
+
+@dataclass(frozen=True)
+class BodyTrack:
+    """A body's recorded position as the viewer's camera sees it: the display seconds of each sampled time code and the
+    body prim's origin then, in the glTF scene's own coordinates (the unit and the up axis applied), and the body's
+    largest extent in the same unit (``None`` for a body with no geometry)."""
+
+    prim: str
+    times: tuple[float, ...]
+    positions: tuple[tuple[float, float, float], ...]
+    extent: float | None = None
 
 
 @dataclass
@@ -86,6 +116,13 @@ class GltfResult:
     fetch: dict[str, str] = field(default_factory=dict[str, str])
     #: The arrows drawn shorter than their prims say, by prim path.
     capped: dict[str, ArrowCap] = field(default_factory=dict[str, ArrowCap])
+    #: Every vector drawn as an arrow, for a legend.
+    arrows: list[ArrowKey] = field(default_factory=list[ArrowKey])
+    #: Each body of the stage by name: where it is along the recording.
+    bodies: dict[str, BodyTrack] = field(default_factory=dict[str, BodyTrack])
+    #: The motors and magnets drawn for the view alone (:mod:`mime.viz._apparatus`), and whether they were asked for.
+    shapes: list[ApparatusShape] = field(default_factory=list[ApparatusShape])
+    apparatus_shapes: bool = True
 
     def lines(self) -> list[str]:
         """What a reader of the view is told: the meshes left out and missing, then every set's terms."""
@@ -110,11 +147,22 @@ class GltfResult:
                         f"{ARROW_BODY_FACTOR:g} times the largest extent of its body, or {ARROW_CAP_FRACTION:.0%} of the "
                         f"scene's size without its arrows, whichever is less ({shown}{more}). A capped arrow still points "
                         f"along its vector; the stage and the recording hold its full length.")
+        for shape in self.shapes:
+            if shape.placeholder:
+                held.append(f"{shape.name} is drawn as a placeholder, a {shape.kind} of {_size_text(shape)}, for the view "
+                            f"alone: {shape.rule}; the stage holds no such shape.")
         return held + self.notices
 
     def size_text(self) -> str:
         """The scene's diagonal over its whole motion, in the SI unit that puts it between 1 and 1000."""
         return length_text(self.across_m)
+
+
+def _size_text(shape: ApparatusShape) -> str:
+    sizes = [length_text(v) for v in shape.size_m]
+    if shape.kind == "cylinder":
+        return f"radius {sizes[0]}, length {sizes[1]}"
+    return f"radius {sizes[0]}" if shape.kind == "sphere" else " by ".join(sizes)
 
 
 def length_text(metres: float) -> str:
@@ -318,16 +366,81 @@ def _name(stage: Any, source: Path) -> str:
     return folder.name or source.stem
 
 
-def gltf(target: str | Path, *, slow: float | None = None, segments: int = SEGMENTS) -> GltfResult:
+def _turned(turn: tuple[float, float, float, float], vector: np.ndarray) -> np.ndarray:
+    """``vector`` (rows of three) turned by the unit quaternion ``turn`` (x, y, z, w)."""
+    imaginary, real = np.asarray(turn[:3]), turn[3]
+    across = np.cross(imaginary, vector)
+    return vector + 2.0 * np.cross(imaginary, across + real * vector)
+
+
+def body_tracks(stage: Any, tokens: list[Any], *, scale: float, turn: tuple[float, float, float, float],
+                shown: float) -> dict[str, BodyTrack]:
+    """Each body prim's origin at *every* time code of the stage's range (the recording's own samples, not the at most
+    ``BOUNDS_SAMPLES`` the motion's box is read at: a camera that follows must be on the body at each frame the
+    animation draws), in the glTF's coordinates (the stage's units scaled by ``scale``, the up axis turned by ``turn``)
+    against the display seconds (``shown`` per simulated second) the converter's animation uses; one sample at the
+    default time without a range."""
+    codes = time_codes(stage)
+    rate = float(stage.GetTimeCodesPerSecond()) or 1.0
+    start = float(stage.GetStartTimeCode()) if stage.HasAuthoredTimeCodeRange() else 0.0
+    extents = {str(prim.GetPath()): size for prim, size in _bodies(stage, tokens)}
+    found: dict[str, BodyTrack] = {}
+    for prim in stage.Traverse():
+        thing = prim.GetAttribute("mime:thing")
+        if not thing or thing.Get() != "body":
+            continue
+        named = prim.GetAttribute("mime:name")
+        name = str(named.Get()) if named and named.Get() else prim.GetName()
+        times: list[float] = []
+        points: list[np.ndarray] = []
+        for code in codes or [None]:
+            times.append((code - start) / rate * shown if code is not None else 0.0)
+            points.append(_origin(prim, code))
+        placed = _turned(turn, np.stack(points) * scale)
+        extent = extents.get(str(prim.GetPath()))
+        found[name] = BodyTrack(str(prim.GetPath()), tuple(times),
+                                tuple((float(p[0]), float(p[1]), float(p[2])) for p in placed),
+                                extent * scale if extent is not None else None)
+    return found
+
+
+def _arrow_keys(stage: Any, capped: dict[str, ArrowCap], limits_m: dict[str, float]) -> list[ArrowKey]:
+    keys: list[ArrowKey] = []
+    for prim in stage.Traverse():
+        if not prim.HasAttribute(VECTOR_VALUE):
+            continue
+        named, unit, per = prim.GetAttribute(VECTOR_NAME), prim.GetAttribute(VECTOR_UNITS), prim.GetAttribute(VECTOR_SCALE)
+        child = prim.GetChild(ARROW)
+        colour = UsdGeom.PrimvarsAPI(child).GetPrimvar("displayColor").Get() if child else None
+        rgb = (float(colour[0][0]), float(colour[0][1]), float(colour[0][2])) if colour else (0.8, 0.8, 0.8)
+        path = str(prim.GetPath())
+        keys.append(ArrowKey(path, str(named.Get()) if named and named.Get() else prim.GetName(),
+                             str(unit.Get()) if unit and unit.Get() else "", rgb,
+                             float(per.Get()) if per and per.Get() else 1.0, capped.get(path), limits_m.get(path)))
+    return keys
+
+
+def gltf(target: str | Path, *, slow: float | None = None, segments: int = SEGMENTS,
+         apparatus_shapes: bool = True) -> GltfResult:
     """``target`` (a stage or recording file, a run folder or a saved folder) as a GLB that may be shared: the overlay
     of the shareable tiers composed, the composed stage refused if any other baked mesh reaches it
     (``visuals.not-shareable``), the up axis turned to +Y, the units scaled, the recording slowed by ``slow`` (chosen
-    when ``None``: :func:`slowed`) and framed over its whole motion."""
+    when ``None``: :func:`slowed`) and framed over its whole motion. With ``apparatus_shapes`` the apparatus's motors
+    and magnets are drawn for the view alone (:mod:`mime.viz._apparatus`); nothing is written into the stage."""
     source = _target(Path(target))
     path, found = view(source, tiers=SHAREABLE_TIERS)
     stage = Usd.Stage.Open(str(path))
     refuse_unshareable(stage, Path(target))
     purposes = ("default", "proxy")
+
+    def scene_m() -> float:
+        """The scene's diagonal in metres without its arrows and without the view's own shapes."""
+        vectors = [prim for prim in stage.Traverse() if prim.HasAttribute(VECTOR_VALUE)]
+        overlay = stage.GetPrimAtPath(APPARATUS_ROOT)
+        box = motion_bounds(stage, purposes, [*vectors, *([overlay] if overlay else [])])
+        return float(np.linalg.norm(box[1] - box[0])) * (float(UsdGeom.GetStageMetersPerUnit(stage)) or 1.0) if box else 0.0
+
+    shapes = draw(stage, source, cache(scene_m)) if apparatus_shapes else []
     arrows = arrows_of(stage, purposes)
     bounds = arrows.bounds if arrows.bounds is not None else motion_bounds(stage, purposes)
     meters = float(UsdGeom.GetStageMetersPerUnit(stage)) or 1.0
@@ -341,21 +454,27 @@ def gltf(target: str | Path, *, slow: float | None = None, segments: int = SEGME
     if bounds is not None:
         low, high = bounds
         frame = ((float(low[0]), float(low[1]), float(low[2])), (float(high[0]), float(high[1]), float(high[2])))
-    settings = Settings(scale=meters / unit, turn=up_turn(str(UsdGeom.GetStageUpAxis(stage))), slow=shown,
+    turn = up_turn(str(UsdGeom.GetStageUpAxis(stage)))
+    settings = Settings(scale=meters / unit, turn=turn, slow=shown,
                         segments=segments, frame=frame, purposes=purposes, scale_limits=arrows.limits)
     samples = int(round(float(stage.GetEndTimeCode()) - float(stage.GetStartTimeCode()))) + 1 \
         if stage.HasAuthoredTimeCodeRange() else 0
     name = _name(stage, source)
+    drawn_shapes = [{"prim": s.prim, "name": s.name, "kind": s.kind, "size_m": list(s.size_m), "source": s.source}
+                    for s in shapes]
     extras = {"mime": {"name": name, "unit_m": unit, "slow": shown, "simulated_s": simulated, "samples": samples,
                        "time_codes_per_second": rate, "withheld": dict(found.withheld), "missing": dict(found.missing),
-                       "notices": list(found.notices)}}
+                       "notices": list(found.notices), "apparatus_shapes": drawn_shapes}}
     credit = "\n".join(found.terms[name] for name in found.sets if name in found.terms)
     converted = convert(stage, settings, extras=extras, copyright=credit or None)
     capped = {prim: ArrowCap(arrows.caps[prim] * meters, length * meters, arrows.rules[prim])
               for prim, length in arrows.capped().items()}
+    tokens = [UsdGeom.Tokens.default_ if purpose == "default" else getattr(UsdGeom.Tokens, purpose) for purpose in purposes]
+    tracks = body_tracks(stage, tokens, scale=meters / unit, turn=turn, shown=shown)
     return GltfResult(converted.glb, source, name, unit, shown, simulated, samples, across, converted.triangles,
                       found.drawn, dict(found.withheld), dict(found.missing), list(found.notices),
-                      dict(converted.skipped), dict(found.fetch), capped)
+                      dict(converted.skipped), dict(found.fetch), capped, _arrow_keys(stage, capped, {p: c * meters for p, c in arrows.caps.items()}), tracks, shapes,
+                      apparatus_shapes)
 
 
-__all__ = ["ARROW_BODY_FACTOR", "ARROW_CAP_FRACTION", "ArrowCap", "GltfResult", "arrows_of", "gltf", "length_text", "motion_bounds", "slowed"]
+__all__ = ["ARROW_BODY_FACTOR", "ARROW_CAP_FRACTION", "ArrowCap", "ArrowKey", "BodyTrack", "GltfResult", "body_tracks", "arrows_of", "gltf", "length_text", "motion_bounds", "slowed"]
