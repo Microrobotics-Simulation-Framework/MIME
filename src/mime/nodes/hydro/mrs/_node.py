@@ -181,6 +181,23 @@ QUADRATURE_MOVE_LIMIT = 0.05
 SIGNIFICANT_ENTRY = 1e-2
 
 
+class BuiltMatrix(NamedTuple):
+    """A quadrature's force points, cell areas and centroids, and the free part's matrix on it."""
+
+    force: Array
+    area: Array
+    centroid: Array
+    matrix: Array
+
+
+class BuiltMatrices(NamedTuple):
+    """What the build's jitted program returns (:meth:`MRSDragNode.build_matrices`): the node's quadrature, and, where a
+    reference quadrature was given, that one."""
+
+    free: BuiltMatrix
+    reference: BuiltMatrix | None
+
+
 class Built(NamedTuple):
     """What a node on a separated quadrature makes once per build, in float64 at unit viscosity in the body's frame: the
     held quantity (the resistance in free space, the free part's matrix with a wall); the free part's resistance's
@@ -845,28 +862,64 @@ class MRSDragNode(MimeNode):
         constants = self.constants()
         return {key: constants[key] for key in self.body_leaf_names()}
 
+    def build_matrices(self, theta: Mapping[str, Any]) -> BuiltMatrices:
+        """The body's discretisation and the free part's matrix from the leaves ``theta`` (:meth:`_built_theta`, in
+        float64), and, where a reference quadrature was given, the same on that quadrature: a pure function of ``theta``.
+        :meth:`made_built` runs it as one jitted program; called under ``ensure_compile_time_eval`` it is the op-by-op
+        form, which compiles every primitive as its own XLA program (255 compiles in the tube demo's build), and which
+        the tests hold the jitted one to bit for bit."""
+        body = self.body(theta)
+        matrix = separated_matrix(body.force, body.points, body.weights, self.chunks, body.eps_squared)
+        reference = None
+        if self._reference is not None:
+            there = self.body(theta, self._reference)
+            held = separated_matrix(there.force, there.points, there.weights,
+                                    Chunks.of(self._reference[1], self.sample_count), there.eps_squared)
+            reference = BuiltMatrix(there.force, there.area, there.centroid, held)
+        return BuiltMatrices(BuiltMatrix(body.force, body.area, body.centroid, matrix), reference)
+
+    def made_built(self, *, jitted: bool = True) -> Built:
+        """:meth:`build_matrices` of the node's constants as one jitted float64 program (``jitted``) or op by op, then
+        the resistance and its judgement from them, and what is held of it (:class:`Built`). The resistance is not part
+        of the jitted program: jitted, its sum over the samples (``force_sums``) rounds differently from the op-by-op
+        form (measured on the tube demo's ball, last bits of every entry), and the held resistance of free space is
+        what every step turns.
+
+        Each leaf is a fresh device array, so that the program reads no array object a float32 trace has read
+        (MIME-ANO-138: one numpy array converted to float32 under one x64 setting and to float64 under another). The
+        program is lowered and compiled outside ``ensure_compile_time_eval``, inside which the quantities it makes from
+        constants alone (the kind's samples) would be evaluated op by op as it is traced, each its own XLA program; a
+        compiled program is called on concrete arrays, so it runs where it is asked for, in a step's trace too."""
+        with cast(Any, jax).enable_x64(True):
+            with cast(Any, jax).ensure_compile_time_eval():
+                theta = {key: jnp.array(value, dtype=jnp.float64, copy=True)
+                         for key, value in self._built_theta().items()}
+                made = None if jitted else self.build_matrices(theta)
+            if jitted:
+                made = cast(Any, jax).jit(self.build_matrices).lower(theta).compile()(theta)
+            with cast(Any, jax).ensure_compile_time_eval():
+                return self._judged_build(cast(BuiltMatrices, made))
+
+    def _judged_build(self, made: BuiltMatrices) -> Built:
+        """The build's resistance from the matrix, made op by op, and what is held of it."""
+        centre = jnp.zeros(3, dtype=jnp.float64)
+        found = separated_resistance(made.free.matrix, made.free.force, made.free.area, made.free.centroid, centre)
+        symmetric = np.asarray((found + found.T) / 2.0, dtype=np.float64)
+        moved = None
+        if made.reference is not None:
+            there = made.reference
+            again = separated_resistance(there.matrix, there.force, there.area, there.centroid, centre)
+            moved = quadrature_move(symmetric, np.asarray((again + again.T) / 2.0, dtype=np.float64))
+        kept = symmetric if self._free() else np.asarray(made.free.matrix, dtype=np.float64)
+        return Built(kept, float(asymmetry(found)), float(scaled_least_eigenvalue(found)), symmetric, moved)
+
     @cached_property
     def _built(self) -> Built:
         """The body-frame quantity made once, from the node's constants in float64 whatever the run's precision (the
         resistance in free space, the free part's matrix with a wall), and what the build judges of the free part's
         resistance (:class:`Built`). Evaluated where it is first asked for, a step's trace included, and never traced
         (``ensure_compile_time_eval``): it is made from constants."""
-        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
-            theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
-            body = self.body(theta)
-            matrix = separated_matrix(body.force, body.points, body.weights, self.chunks, body.eps_squared)
-            found = separated_resistance(matrix, body.force, body.area, body.centroid, jnp.zeros(3, dtype=jnp.float64))
-            symmetric = np.asarray((found + found.T) / 2.0, dtype=np.float64)
-            moved = None
-            if self._reference is not None:
-                reference = self.body(theta, self._reference)
-                held = separated_matrix(reference.force, reference.points, reference.weights,
-                                        Chunks.of(self._reference[1], self.sample_count), reference.eps_squared)
-                again = separated_resistance(held, reference.force, reference.area, reference.centroid,
-                                             jnp.zeros(3, dtype=jnp.float64))
-                moved = quadrature_move(symmetric, np.asarray((again + again.T) / 2.0, dtype=np.float64))
-            kept = symmetric if self._free() else np.asarray(matrix, dtype=np.float64)
-            return Built(kept, float(asymmetry(found)), float(scaled_least_eigenvalue(found)), symmetric, moved)
+        return self.made_built()
 
     @property
     def held_in_body_frame(self) -> np.ndarray:

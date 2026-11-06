@@ -10,8 +10,8 @@ process held the matrix of the cap samples in float64 and every later one the ma
 build's apart from the rest. In float64 the two were the same. It was not reduced to a case without MIME, so it is not
 attributed to JAX in general.
 
-The screw and a cylinder (whose caps take the same layout) are each built, at a coarse spacing so that a build takes
-seconds, three times in a fresh process (float32 is the default, and the first build of a process is the one in
+The screw, a cylinder (whose caps take the same layout) and a ball (the tube demo's body, which has no caps) are each
+built, at a coarse spacing so that a build takes seconds, three times in a fresh process (float32 is the default, and the first build of a process is the one in
 question; this process has built before), and the held matrix of each is read. The path a user meets has a process of
 its own: the screw's first build is run, then saved, and that run is compared with the reference the save wrote. The
 controls hand the layout out as the one cached array, as it was: the first build then differs from the second and
@@ -33,6 +33,8 @@ import tube_asset
 ROOT = Path(__file__).resolve().parents[2]
 SPACING_MM = 2.0
 PROGRAMS = ("screw", "cylinder")
+#: The programs whose three builds are compared: the control needs the cap layout, which a ball has none of.
+ALIKE = (*PROGRAMS, "ball")
 #: What the saved reference of the screw's first-build run moves on when the first build differs from the rest.
 MOVED = "drag:umr.resistance"
 
@@ -40,7 +42,7 @@ PRELUDE = """
 import hashlib, json, sys, types
 from pathlib import Path
 import numpy as np
-from mime.scene import Cylinder, _caps, _screw, _solids
+from mime.scene import Cylinder, Sphere, _caps, _screw, _solids
 layout, program, example, spacing, folder = sys.argv[1:6]
 if layout == "as_cached":
     _screw.cap_rings = _solids.cap_rings = _caps._cap_rings
@@ -49,6 +51,8 @@ sys.modules["example"] = module
 exec(compile(Path(example).read_text(), example, "exec"), module.__dict__)
 if program == "cylinder":
     module.Screw = lambda radius, length, **_: Cylinder(radius=radius, length=length, axis=(1.0, 0.0, 0.0))
+if program == "ball":
+    module.Screw = lambda radius, length, **_: Sphere(radius=radius)
 
 
 def build():
@@ -96,7 +100,7 @@ def first_build_run(layout: str, folder: Path) -> dict:
     return fresh_float32_process(FIRST_BUILD_RUN, layout, "screw", folder / layout)
 
 
-@pytest.mark.parametrize("program", PROGRAMS)
+@pytest.mark.parametrize("program", ALIKE)
 def test_three_builds_hold_the_same_matrix_in_float32(program):
     first, second, third = held_matrices("as_handed_out", program)
     assert first == second == third
