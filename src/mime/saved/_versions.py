@@ -55,9 +55,11 @@ reference's ``program`` names the program its outputs were run by where it is no
 periods: ``one-step``, every step its own compiled scan, the program a run chunked by one step runs, from whose graph
 the save took them; ``verify`` reruns that program, since two programs of the same steps can differ in their last bits.
 The environment's ``usable_cpus`` is how many CPUs the build's process could use, by which XLA's CPU backend partitions
-a program's work: a load under another count is in another environment. A lock of an earlier version names no program,
-its reference outputs being the history scan's, and records no count, and a load compares its environment without one,
-as before; one of an earlier version that holds either key is refused, never read as declaring it. The document holds
+a program's work, and its ``blas_threads`` is how many threads the BLAS under JAX's CPU LAPACK kernels uses (SciPy's
+OpenBLAS pool), which splits a routine's sums: a load under another count of either is in another environment. A lock
+of an earlier version names no program, its reference outputs being the history scan's, and records neither count, and
+a load compares its environment without them, as before; one of an earlier version that holds any of the keys is
+refused, never read as declaring it. The document holds
 no new key; its schema moves with the lock's."""
 
 from __future__ import annotations
@@ -100,9 +102,11 @@ RECORD_KEYS_ADDED: tuple[str, ...] = ("credit", "role", "kind", "derivation", "n
                                       "citation", "adapters")
 #: The document's key version 7 added: the experiment this one was made from.
 BASED_ON_KEY = "based_on"
-#: The lock's keys version 8 added: the program below its ``reference``, the count below its ``environment``.
+#: The lock's keys version 8 added: the program below its ``reference``, the two counts below its ``environment``.
 PROGRAM_KEY = "program"
 USABLE_CPUS_KEY = "usable_cpus"
+BLAS_THREADS_KEY = "blas_threads"
+COUNT_KEYS = (USABLE_CPUS_KEY, BLAS_THREADS_KEY)
 
 #: The profile a version 1 document is read under, and the keys version 2 added, with the values a version 1 form holds.
 PREVIOUS_PROFILE = "exploratory"
@@ -205,12 +209,13 @@ def based_on_held(data: object) -> list[str]:
 
 
 def program_keys_held(data: object) -> list[str]:
-    """The keys version 8 added that a lock holds: ``reference.program`` and ``environment.usable_cpus``."""
+    """The keys version 8 added that a lock holds: ``reference.program``, ``environment.usable_cpus`` and
+    ``environment.blas_threads``."""
     if not isinstance(data, dict):
         return []
     held = cast("dict[str, object]", data)
     found: list[str] = []
-    for parent, key in (("reference", PROGRAM_KEY), ("environment", USABLE_CPUS_KEY)):
+    for parent, key in (("reference", PROGRAM_KEY), *(("environment", count) for count in COUNT_KEYS)):
         below = held.get(parent)
         if isinstance(below, dict) and key in cast("dict[str, object]", below):
             found.append(f"{parent}.{key}")
@@ -345,7 +350,7 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
     return held
 
 
-__all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "CURRENT", "DOCUMENT_SCHEMAS", "DURATION_ADDED", "DURATION_KEY", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
+__all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS", "DURATION_ADDED", "DURATION_KEY", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
            "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
            "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RUNG_RENAMED", "TERMS_ADDED", "TERMS_KEYS",
            "USABLE_CPUS_KEY", "added_after", "based_on_held", "document_in_form", "duration_held", "newer_form_refusal",

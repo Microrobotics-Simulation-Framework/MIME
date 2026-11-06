@@ -24,7 +24,8 @@ The loader is the authority, and the schemas' known gaps against it are listed o
 - **The lock**, `mime.lock` (JSON). The environment (MIME, MADDENING, OpenMaterica, JAX, jaxlib and Python versions,
   the platform, the device, the precision, the PRNG, and what no pin holds: the GPU's device kind with its driver, CUDA
   and cuDNN as JAX reports them, the CPU's model and the hash of its flags, how many CPUs the process could use
-  (`usable_cpus`, its affinity, by which XLA's CPU backend partitions a program's work), the matmul precision, `XLA_FLAGS` and
+  (`usable_cpus`, its affinity, by which XLA's CPU backend partitions a program's work) and how many threads its BLAS uses
+  (`blas_threads`, the OpenBLAS pool under JAX's CPU LAPACK kernels), the matmul precision, `XLA_FLAGS` and
   whether they turn XLA's deterministic GPU mode on, the runner's own record, from `MIME_RUNNER`, which MIME stores
   and compares and never reads, and the runner's information, from `MIME_RUNNER_INFO`, which it stores and never
   compares); every entry used, with the distribution it came from and that
@@ -109,13 +110,13 @@ form does): bit for
 bit within the environment the lock was written in, and within the lock's tolerance in another. **"The same result" means
 bit for bit within one environment; across environments the checks report differences within tolerances and claim no
 bits.** **"The same environment" means equal on every field of the lock's environment but the runner's information**: the
-versions, the platform, the device and the precision, and the GPU and its driver and libraries, the CPU and the count
-of CPUs the process could use, the matmul precision, XLA's flags and deterministic mode, and the runner's record. A
+versions, the platform, the device and the precision, and the GPU and its driver and libraries, the CPU, the count
+of CPUs the process could use and the threads of its BLAS, the matmul precision, XLA's flags and deterministic mode, and the runner's record. A
 difference in any one of them, in the lock or in the process that loads it, makes the load another environment: one
-program computes other bits under another count of CPUs (MIME-ANO-140), so a folder saved unpinned and verified under
-`taskset` is another environment. A lock before the eighth form records no count, and is compared without one, as it
-was (verify such a folder at the count it was saved at). A field of the GPU or the CPU, or the count, that either
-side could not read is never equal to anything, `None` included. The runner's information (a workspace's image ID, a client's
+program computes other bits under another count of CPUs or of BLAS threads (MIME-ANO-140), so a folder saved unpinned
+and verified under `taskset`, or under another `OPENBLAS_NUM_THREADS`, is another environment. A lock before the eighth
+form records neither count, and is compared without them, as it was (verify such a folder at the count it was saved
+at). A field of the GPU or the CPU, or a count, that either side could not read is never equal to anything, `None` included. The runner's information (a workspace's image ID, a client's
 version) is for the reader and is never compared.
 
 A package that registers entries declares, for each namespace, `[project.entry-points."mime.entries"]

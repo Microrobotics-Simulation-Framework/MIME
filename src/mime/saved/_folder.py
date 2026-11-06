@@ -39,6 +39,7 @@ from mime.saved._schema import DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument,
     ReferenceRecord, conforms
 from mime.saved._versions import (
     BASED_ON_ADDED,
+    COUNT_KEYS,
     CURRENT,
     DOCUMENT_SCHEMAS,
     DURATION_ADDED,
@@ -48,7 +49,6 @@ from mime.saved._versions import (
     PREVIOUS_PROFILE,
     PROGRAM_ADDED,
     TERMS_ADDED,
-    USABLE_CPUS_KEY,
     added_after,
     based_on_held,
     duration_held,
@@ -569,7 +569,7 @@ def _differences_of(key: str, saved: object, here: object) -> list[str]:
         return [f"{key}.{name}: built under {held[name]!r}, loaded under {now[name]!r}"
                 + (" (unreadable, so not the same)" if held[name] is None or now[name] is None else "")
                 for name in sorted(now) if held.get(name) is None or now[name] is None or held[name] != now[name]]
-    if key == USABLE_CPUS_KEY and (saved is None or here is None):
+    if key in COUNT_KEYS and (saved is None or here is None):
         return [f"{key}: built under {saved!r}, loaded under {here!r} (unreadable, so not the same)"]
     if saved != here:
         return [f"{key}: built under {saved!r}, loaded under {here!r}"]
@@ -578,11 +578,11 @@ def _differences_of(key: str, saved: object, here: object) -> list[str]:
 
 def environment_differences(lock: Lock) -> list[str]:
     """Every way this process differs from the one the lock was written in, the runner's information aside. A lock of a
-    form before version 8 records no count of usable CPUs, and is compared without one, as it was. A count either side
-    could not read is never equal to anything, as a device's field is not."""
+    form before version 8 records neither count (of usable CPUs, of BLAS threads), and is compared without them, as it
+    was. A count either side could not read is never equal to anything, as a device's field is not."""
     here = cast(dict[str, object], environment())
     saved = cast(dict[str, object], lock["environment"])
-    found = [line for key in sorted(here) if key not in INFORMATION_ONLY and (key in saved or key != USABLE_CPUS_KEY)
+    found = [line for key in sorted(here) if key not in INFORMATION_ONLY and (key in saved or key not in COUNT_KEYS)
              for line in _differences_of(key, saved[key], here[key])]
     return found + _distribution_versions(lock["entries"])
 

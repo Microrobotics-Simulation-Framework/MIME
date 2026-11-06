@@ -154,8 +154,8 @@ refusal table's (`mime/build/refusal_table.txt`).
   beyond the five is refused as `load.lock-shape`, never read as stating it.
   *Cases:* `tests/saved/test_form6.py::test_an_earlier_lock_holding_a_key_version_six_added_is_refused`,
   `tests/saved/test_form6.py::test_control_an_upgrade_that_accepts_the_keys_in_an_earlier_lock_is_caught_every_run`.
-- **[lock.previous-program]** A lock of a form before the one that added them that holds `reference.program` or
-  `environment.usable_cpus` is refused as `load.lock-shape`, never read as stating it; a lock of the seventh form
+- **[lock.previous-program]** A lock of a form before the one that added them that holds `reference.program`,
+  `environment.usable_cpus` or `environment.blas_threads` is refused as `load.lock-shape`, never read as stating it; a lock of the seventh form
   without them reads as it did. A reader of the seventh form refuses a folder of the eighth as `load.newer-form`.
   *Cases:* `tests/saved/test_form8.py::test_an_earlier_lock_holding_a_key_version_eight_added_is_refused`,
   `tests/saved/test_form8.py::test_control_an_upgrade_that_accepts_the_keys_in_an_earlier_lock_is_caught_every_run`,
@@ -173,6 +173,7 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_save_reference.py::test_mime_verify_in_a_fresh_process_reproduces_a_one_step_reference_bit_for_bit`,
   `tests/saved/test_save_reference.py::test_control_the_lock_naming_the_other_program_fails_verify_where_the_two_differ`,
   `tests/saved/test_save_reference.py::test_saving_then_running_on_is_bit_for_bit_a_run_that_never_saved`,
+  `tests/saved/test_save_reference.py::test_saving_after_a_step_count_the_observations_divider_does_not_divide_is_bit_for_bit_a_run_that_never_saved`,
   `tests/saved/test_save_reference.py::test_a_graph_edited_after_the_build_is_saved_from_a_fresh_graph`,
   `tests/saved/test_form8.py::test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_environment_names_no_count`.
 - **[lock.usable-cpus]** The lock's environment records how many CPUs the build's process could use (its affinity),
@@ -182,6 +183,17 @@ refusal table's (`mime/build/refusal_table.txt`).
   *Cases:* `tests/saved/test_save_reference.py::test_a_folder_verified_at_the_count_it_was_saved_at_is_the_same_environment_bit_for_bit`,
   `tests/saved/test_save_reference.py::test_a_folder_verified_at_another_count_is_another_environment`,
   `tests/saved/test_save_reference.py::test_mime_verify_under_another_affinity_in_a_fresh_process_reports_another_environment`,
+  `tests/saved/test_save_reference.py::test_a_count_either_side_could_not_read_is_never_the_same`,
+  `tests/saved/test_form8.py::test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_environment_names_no_count`.
+- **[lock.blas-threads]** The lock's environment records how many threads the BLAS under JAX's CPU LAPACK kernels
+  uses (the pool of the OpenBLAS SciPy ships, which `OPENBLAS_NUM_THREADS` sets, else the affinity), by which a routine
+  that large splits its sums: a load or `verify` under another count is in another environment, and reports it. A
+  count either side could not read is never the same. A lock before the eighth form records none, and its environment
+  is compared without one, as it was.
+  *Cases:* `tests/saved/test_save_reference.py::test_the_lock_records_the_blas_threads_and_a_folder_loaded_at_that_count_is_the_same_environment`,
+  `tests/saved/test_save_reference.py::test_a_folder_loaded_at_another_blas_count_is_another_environment`,
+  `tests/saved/test_save_reference.py::test_control_the_blas_count_dropped_from_the_comparison_fails_the_test_above`,
+  `tests/saved/test_save_reference.py::test_the_mrs_case_saved_at_one_blas_count_reproduces_at_it_and_is_another_environment_at_another`,
   `tests/saved/test_save_reference.py::test_a_count_either_side_could_not_read_is_never_the_same`,
   `tests/saved/test_form8.py::test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_environment_names_no_count`.
 - **[lock.pins]** The lock's records are the experiment's pins: a load reads each asset under the hash its lock names,

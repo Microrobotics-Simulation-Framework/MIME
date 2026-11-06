@@ -250,6 +250,7 @@
   }
  ],
  "environment": {
+  "blas_threads": 24,
   "cpu": {
    "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
    "model": "12th Gen Intel(R) Core(TM) i7-12850HX"

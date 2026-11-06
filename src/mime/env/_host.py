@@ -6,13 +6,16 @@ compares them with everything else it records, except the runner's information, 
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
+import importlib.util
 import json
 import os
 import platform
 import subprocess
 from collections.abc import Mapping
 from functools import cache
+from pathlib import Path
 from typing import Any, cast
 
 import jax
@@ -117,6 +120,42 @@ def usable_cpus() -> int | None:
     return os.cpu_count()
 
 
+@cache
+def _lapack_openblas() -> ctypes.CDLL | None:
+    """The OpenBLAS that SciPy ships, which is the one JAX's CPU backend runs its LAPACK routines on (``jaxlib`` takes
+    them from ``scipy.linalg.cython_lapack``), found beside SciPy and opened by path: the loader returns the library
+    SciPy already holds, so its thread pool is the one the compiled steps use. ``None`` where SciPy ships none (macOS
+    on Arm uses the system's Accelerate) or the library cannot be opened."""
+    spec = importlib.util.find_spec("scipy")
+    if spec is None or spec.origin is None:
+        return None
+    package = Path(spec.origin).parent
+    for folder in (package.parent / f"{spec.name}.libs", package / ".dylibs"):
+        for path in sorted(folder.glob("*scipy_openblas*")):
+            try:
+                return ctypes.CDLL(str(path))
+            except OSError:
+                continue
+    return None
+
+
+def blas_threads() -> int | None:
+    """How many threads the BLAS under JAX's CPU LAPACK kernels uses: the thread pool of the OpenBLAS SciPy ships,
+    which ``OPENBLAS_NUM_THREADS`` sets (else ``GOTO_NUM_THREADS``, else ``OMP_NUM_THREADS``) and which otherwise is the
+    affinity's CPU count [measured]. A routine that large (the MRS drag's solves) splits its work over them, and the
+    sums it makes in another order give other last bits: the MRS demos' states differ between one thread and 24 here.
+    NumPy ships its own OpenBLAS with its own pool, which this does not read (see MIME-ANO-140). ``None`` where the pool
+    cannot be read. Read when called: ``threadpoolctl`` or the library's own setter can change it."""
+    held = _lapack_openblas()
+    if held is None:
+        return None
+    try:
+        count = int(held.scipy_openblas_get_num_threads())
+    except (AttributeError, OSError):
+        return None
+    return count if count > 0 else None
+
+
 def xla_flags() -> str:
     return os.environ.get(XLA_FLAGS_VARIABLE, "")
 
@@ -174,5 +213,5 @@ def runner_info(environ: Mapping[str, str] | None = None) -> dict[str, str]:
 
 
 __all__ = ["DETERMINISTIC_FLAG", "RUNNER_INFO_VARIABLE", "RUNNER_VARIABLE", "XLA_FLAGS_VARIABLE", "CpuRecord",
-           "GpuRecord", "cpu_record", "deterministic", "gpu_record", "matmul_precision", "runner_info",
+           "GpuRecord", "blas_threads", "cpu_record", "deterministic", "gpu_record", "matmul_precision", "runner_info",
            "runner_record", "usable_cpus", "with_deterministic", "xla_flags"]

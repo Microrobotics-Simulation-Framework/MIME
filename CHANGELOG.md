@@ -114,20 +114,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saved after a run chunked by one step can hold other reference outputs than the save before would have written; it
   verifies bit for bit against itself, which is what the lock names the program for. The live display's saving phase
   says "running its reference steps".
-- **The saved form is version 8** (`mime.document/8`, `mime.lock/8`): the lock's `reference.program` and
-  `environment.usable_cpus`, both outside the input hash; the document holds no new key, its schema moving with the
+- **The saved form is version 8** (`mime.document/8`, `mime.lock/8`): the lock's `reference.program`,
+  `environment.usable_cpus` and `environment.blas_threads`, all outside the input hash; the document holds no new key, its schema moving with the
   lock's. A folder of version 7 loads as before, and its reference outputs are rerun by the history scan; one of
-  version 7 holding either key is refused. A reader of version 7 (this release before the step) or of version 6
+  version 7 holding any of the keys is refused. A reader of version 7 (this release before the step) or of version 6
   (0.3.0.dev1) refuses a folder of version 8 as `load.newer-form`, the document and the lock each once.
-- **A folder saved under one count of usable CPUs and verified under another is another environment** (MIME-ANO-140,
-  resolved for folders of saved form 8). XLA's CPU backend sizes its thread pools by the process's affinity and
-  partitions a program's work by it, so one program computes other bits on 2 CPUs than on 24 (measured on the tube
-  demo); the lock recorded the CPU's model but not the count, so a folder saved unpinned and verified under
-  `taskset -c 0,1` was read as the same environment and reported moved, bit for bit. The lock's environment now records
-  `usable_cpus`, and a load or `verify` under another count says so and compares within the lock's tolerance. That
-  comparison still reports the tube demo moved (MIME-ANO-141, open: its tolerance is absolute below each element's
-  scale). A folder of an earlier form records no count and is compared as before: verify it at the count it was saved
-  at.
+- **A folder saved under one count of usable CPUs, or of BLAS threads, and verified under another is another
+  environment** (MIME-ANO-140, resolved for folders of saved form 8). XLA's CPU backend sizes its thread pools by the
+  process's affinity and partitions a program's work by it, and the OpenBLAS under JAX's CPU LAPACK kernels splits a
+  routine's sums over its own pool (`OPENBLAS_NUM_THREADS`, else the affinity), so one program computes other bits on
+  2 CPUs than on 24 and under one BLAS thread than under 24 (measured on the tube demo and on the MRS point-force
+  case); the lock recorded the CPU's model but neither count, so a folder saved unpinned and verified under
+  `taskset -c 0,1`, or under another `OPENBLAS_NUM_THREADS`, was read as the same environment and reported moved, bit
+  for bit. The lock's environment now records `usable_cpus` and `blas_threads`, and a load or `verify` under another
+  count says so and compares within the lock's tolerance. That comparison still reports the tube demo moved
+  (MIME-ANO-141, open: its tolerance is absolute below each element's scale, and the differences it reports are about
+  10^-3 of the field's largest element, not last bits). A folder of an earlier form records neither count and is
+  compared as before: verify it at the counts it was saved at.
 - **The documents no longer say that a run chunked for `stage_every` changes nothing it computes**: chunks of two
   steps or more change nothing, and a chunk of one step can change its last bits (`BuiltExperiment.run_to`,
   `docs/recordings.md`, the CLI's README).

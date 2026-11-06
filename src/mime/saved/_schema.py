@@ -340,8 +340,8 @@ class ExperimentDocument(TypedDict, closed=True):
     adds nothing to the document; its schema moves with the lock's, which holds an asset's full record and the
     manifests of the meshes its stage draws. Version 7 adds ``based_on``, the saved experiment this one was made from
     (``Experiment.based_on``), absent where it was made from none. Version 8 adds nothing to the document; its schema
-    moves with the lock's, which records the program the reference outputs were run by and the CPUs the build could
-    use."""
+    moves with the lock's, which records the program the reference outputs were run by, the CPUs the build could use
+    and the threads of its BLAS."""
 
     schema: ReadOnly[Literal["mime.document/8"]]
     mime: ReadOnly[str]
@@ -386,10 +386,11 @@ class CpuRecordDoc(TypedDict, closed=True):
 class EnvironmentRecord(TypedDict, closed=True):
     """What a build ran under. A load compares it and reports every difference; it never refuses on one. Besides the
     versions, the platform, the device and the precision: the GPU (``None`` on a CPU) and the CPU, how many CPUs the
-    process could use (version 8; ``None`` where the system did not say), the matmul precision, XLA's flags and whether
+    process could use (version 8; ``None`` where the system did not say), how many threads its BLAS used (version 8; ``None`` where
+    it could not be read), the matmul precision, XLA's flags and whether
     they turn its deterministic GPU mode on, the runner's own record of strings, which MIME stores and compares and
     never reads, and the runner's information, strings it stores and never compares (a workspace's image ID, a client's
-    version). A lock of version 7 or earlier records no count, and a load compares it without one, as it did."""
+    version). A lock of version 7 or earlier records neither count, and a load compares it without them, as it did."""
 
     mime: ReadOnly[str]
     maddening: ReadOnly[str]
@@ -407,6 +408,10 @@ class EnvironmentRecord(TypedDict, closed=True):
     #: How many CPUs the process could use (``mime.env._host.usable_cpus``): XLA's CPU backend partitions a program's
     #: work by it, so another count is another environment (version 8).
     usable_cpus: NotRequired[ReadOnly[int | None]]
+    #: How many threads the BLAS under JAX's CPU LAPACK kernels uses (``mime.env._host.blas_threads``, SciPy's
+    #: OpenBLAS pool): a routine split over them sums in another order, so another count is another environment
+    #: (version 8).
+    blas_threads: NotRequired[ReadOnly[int | None]]
     matmul_precision: ReadOnly[str | None]
     xla_flags: ReadOnly[str]
     deterministic: ReadOnly[bool]

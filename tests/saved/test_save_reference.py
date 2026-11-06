@@ -1,5 +1,5 @@
-"""The save's reference outputs taken from the run's own graph (saved form 8), and the usable CPUs in the lock's
-environment.
+"""The save's reference outputs taken from the run's own graph (saved form 8), and the usable CPUs and the BLAS threads
+in the lock's environment.
 
 A save runs the reference steps on the build's own graph, reset to its initial state and put back where the runs left
 it: by the history scan of one step where a run chunked by one step compiled it (the lock names it, ``one-step``, and
@@ -12,7 +12,9 @@ and the save then run one program, and agree bit for bit within one environment 
 
 **The controls.** The compile listener sees a compile: a save after a run chunked by two compiles, and one with the
 guard tripped builds a graph. Saving then running on is bit for bit against a run that never saved, and the same with
-the state left where the reference steps put it (the restore planted away) differs on every case it is run on. The
+the state left where the reference steps put it (the restore planted away) differs on every case it is run on; so does
+the same with only the internal step counters left (``_meta``), after a step count the multi-rate observation's
+divider does not divide, which four steps hid. The
 guard's plants move the reference (a replaced parameter leaf after a run chunked by one; a static array edited in place
 after a run chunked by two, which the history scan then traces): a reference taken from the stale graph differs from a
 fresh graph's on each, so the test can fail; an edit in place is seen only by the bytes of a NumPy array, not by its
@@ -28,13 +30,14 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import jax
 import numpy as np
 import pytest
+from maddening import GraphManager
 from _platform_support import needs_readable_cpu_flags
 from chain_cases import tracked_rpm
 from script_a import script_a
@@ -169,19 +172,37 @@ CONTINUED = {"full_toy_chunked_by_one": (full_toy, run_chunked_by_one),
 
 
 def runs_on_after(make: Callable[[], Experiment], run: Callable[[BuiltExperiment, int], Any], folder: Path | None,
-                  restore: bool = True) -> tuple[History, History]:
-    """``BEFORE`` steps, a save into ``folder`` (none where it is ``None``), ``AFTER`` steps: their history and the final
-    state."""
+                  restore: Callable[[GraphManager], AbstractContextManager[None]] | None = None,
+                  steps: tuple[int, int] = (BEFORE, AFTER)) -> tuple[History, History]:
+    """``steps[0]`` steps, a save into ``folder`` (none where it is ``None``), ``steps[1]`` steps: their history and the
+    final state. ``restore`` replaces the save's put-back of the graph's state where it is given."""
     built = make().build()
-    run(built, BEFORE)
+    run(built, steps[0])
     if folder is not None:
         with pytest.MonkeyPatch.context() as patch:
-            if not restore:
-                patch.setattr(_experiment, "state_put_back", lambda graph: nullcontext())
+            if restore is not None:
+                patch.setattr(_experiment, "state_put_back", restore)
             built.save(folder)
-    after = run(built, AFTER)
+    after = run(built, steps[1])
     assert after.history is not None
     return after.history, after.final
+
+
+def nothing_put_back(graph: GraphManager) -> AbstractContextManager[None]:
+    """The whole put-back planted away."""
+    return nullcontext()
+
+
+@contextmanager
+def put_back_but_the_counters(graph: GraphManager) -> Iterator[None]:
+    """The put-back with the graph's internal counters (``_meta``: the step count the multi-rate observations and the
+    predictor histories read) left where the reference steps put them, and everything else put back."""
+    state = cast(dict[str, Any], cast(Any, graph)._state)  # noqa: SLF001
+    with state_put_back(graph):
+        yield
+        left = dict(state["_meta"])
+    state["_meta"].clear()
+    state["_meta"].update(left)
 
 
 @pytest.mark.parametrize("case", list(CONTINUED))
@@ -197,9 +218,39 @@ def test_saving_then_running_on_is_bit_for_bit_a_run_that_never_saved(case: str,
 @pytest.mark.parametrize("case", list(CONTINUED))
 def test_control_the_state_left_where_the_reference_steps_put_it_differs_on_every_case(case: str, tmp_path: Path):
     make, run = CONTINUED[case]
-    planted_history, _ = runs_on_after(make, run, tmp_path / "saved", restore=False)
+    planted_history, _ = runs_on_after(make, run, tmp_path / "saved", restore=nothing_put_back)
     history, _ = runs_on_after(make, run, None)
     assert differing(planted_history, history) != []
+
+
+#: Step counts that are not multiples of the multi-rate observation's divider (the toy's recorder reads every second
+#: step): a step counter put back wrong, or not at all, lands in the same phase after a count that is one, and the
+#: observation's phase is read from it. The cases above run four and four, which hides that.
+ODD_STEPS = [(3, 3), (5, 4)]
+MULTI_RATE = {name: CONTINUED[name] for name in ("full_toy_chunked_by_one", "full_toy_chunked_by_two")}
+
+
+@pytest.mark.parametrize("steps", ODD_STEPS, ids=str)
+@pytest.mark.parametrize("case", list(MULTI_RATE))
+def test_saving_after_a_step_count_the_observations_divider_does_not_divide_is_bit_for_bit_a_run_that_never_saved(
+        case: str, steps: tuple[int, int], tmp_path: Path):
+    make, run = MULTI_RATE[case]
+    saved_history, saved_final = runs_on_after(make, run, tmp_path / "saved", steps=steps)
+    history, final = runs_on_after(make, run, None, steps=steps)
+    assert differing(saved_history, history) == [] and differing(saved_final, final) == []
+
+
+@pytest.mark.parametrize("steps", ODD_STEPS, ids=str)
+@pytest.mark.parametrize("case", list(MULTI_RATE))
+def test_control_the_counters_left_where_the_reference_steps_put_them_differ_after_an_odd_step_count(
+        case: str, steps: tuple[int, int], tmp_path: Path):
+    """Only the ``_meta`` counters planted away from the put-back: the run on differs from one that never saved, on
+    every case here. Nothing is drawn, so it fails on every run."""
+    make, run = MULTI_RATE[case]
+    planted_history, planted_final = runs_on_after(make, run, tmp_path / "saved", restore=put_back_but_the_counters,
+                                                   steps=steps)
+    history, final = runs_on_after(make, run, None, steps=steps)
+    assert differing(planted_history, history) != [] or differing(planted_final, final) != []
 
 
 # --- the guard -----------------------------------------------------------------------------------------------------
@@ -391,7 +442,92 @@ def test_mime_verify_under_another_affinity_in_a_fresh_process_reports_another_e
     assert "bit for bit" not in done.stdout and (" within rtol " in done.stdout or "moved over" in done.stdout)
 
 
-def test_a_count_either_side_could_not_read_is_never_the_same():
-    assert _folder._differences_of("usable_cpus", None, None) == [  # noqa: SLF001
-        "usable_cpus: built under None, loaded under None (unreadable, so not the same)"]
-    assert _folder._differences_of("usable_cpus", 4, 4) == []  # noqa: SLF001
+@pytest.mark.parametrize("count", ["usable_cpus", "blas_threads"])
+def test_a_count_either_side_could_not_read_is_never_the_same(count: str):
+    assert _folder._differences_of(count, None, None) == [  # noqa: SLF001
+        f"{count}: built under None, loaded under None (unreadable, so not the same)"]
+    assert _folder._differences_of(count, 4, 4) == []  # noqa: SLF001
+
+
+# --- the BLAS threads: another count is another environment --------------------------------------------------------
+#
+# The compiled steps of the MRS drag solve on JAX's CPU LAPACK kernels, which run on the OpenBLAS SciPy ships; a routine
+# that large splits its sums over that pool's threads, and another count gives other last bits (MIME-ANO-140). The
+# count is OpenBLAS's own: ``OPENBLAS_NUM_THREADS`` sets it, and the affinity does where that is unset.
+
+
+def test_the_lock_records_the_blas_threads_and_a_folder_loaded_at_that_count_is_the_same_environment(toy_folder: Path):
+    lock = read_folder(toy_folder).lock
+    assert lock["environment"]["blas_threads"] == _record.blas_threads()
+    assert isinstance(lock["environment"]["blas_threads"], int) and lock["environment"]["blas_threads"] >= 1
+    assert not any("blas_threads" in line for line in _folder.environment_differences(lock))
+
+
+def another_blas_count_is_another_environment(folder: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    saved = read_folder(folder).lock["environment"]["blas_threads"]
+    monkeypatch.setattr(_record, "blas_threads", lambda: saved + 1)
+    loaded = Experiment.load(folder)
+    assert loaded.load_report is not None and not loaded.load_report.same_environment
+    assert f"blas_threads: built under {saved!r}, loaded under {saved + 1!r}" in loaded.load_report.environment
+    report = loaded.build().verify()
+    assert not report.same_environment and report.tolerance.startswith("within rtol")
+
+
+def test_a_folder_loaded_at_another_blas_count_is_another_environment(toy_folder: Path,
+                                                                      monkeypatch: pytest.MonkeyPatch):
+    another_blas_count_is_another_environment(toy_folder, monkeypatch)
+
+
+def test_control_the_blas_count_dropped_from_the_comparison_fails_the_test_above(toy_folder: Path,
+                                                                                 monkeypatch: pytest.MonkeyPatch):
+    """The count planted away from the comparison (read as information only, as the runner's information is): the
+    assertion that another count is another environment then fails. Nothing here is drawn, so it fails on every run."""
+    monkeypatch.setattr(_folder, "INFORMATION_ONLY", _folder.INFORMATION_ONLY | {"blas_threads"})
+    with pytest.raises(AssertionError):
+        another_blas_count_is_another_environment(toy_folder, monkeypatch)
+
+
+#: A child process that saves the MRS point-force case under its own BLAS pool and verifies it there, or
+#: verifies a folder; it prints the pool's size and the verify report. ``OPENBLAS_NUM_THREADS`` is set by the parent.
+BLAS_CHILD = """
+import sys
+import os
+sys.path[:0] = sys.argv[2].split(os.pathsep)
+from mime.env._host import blas_threads
+print('blas_threads', blas_threads())
+if sys.argv[1] == 'save':
+    from cases import CASES
+    from mime.experiment import Experiment
+    next(case.make for case in CASES if case.name == 'mrs_point_forces')().save(sys.argv[3])
+    loaded = Experiment.load(sys.argv[3])
+    print(loaded.load_report.text())
+    print(loaded.build().verify().text())
+else:
+    from mime.cli import main
+    sys.exit(main(['verify', sys.argv[3]]))
+"""
+
+
+def run_blas_child(mode: str, threads: int, folder: Path) -> tuple[int, list[str]]:
+    done = subprocess.run([sys.executable, "-c", BLAS_CHILD, mode, os.pathsep.join([str(HERE), str(TESTS)]),
+                           str(folder)], capture_output=True,
+                          text=True, check=False, env={**os.environ, "OPENBLAS_NUM_THREADS": str(threads)})
+    assert done.returncode in ((0,) if mode == "save" else (0, 1)), done.stdout + done.stderr
+    lines = done.stdout.splitlines()
+    assert lines[0] == f"blas_threads {threads}", done.stdout + done.stderr
+    return done.returncode, lines
+
+
+@needs_readable_cpu_flags
+def test_the_mrs_case_saved_at_one_blas_count_reproduces_at_it_and_is_another_environment_at_another(tmp_path: Path):
+    """A fresh process per count, the pool set by ``OPENBLAS_NUM_THREADS`` as a user would. At the saving count the
+    folder loads as the same environment and verifies bit for bit; at another the environment names the count and the
+    comparison is the tolerance's. Not asserted: that the tolerance then passes (MIME-ANO-141)."""
+    folder = tmp_path / "mrs"
+    _, saved = run_blas_child("save", 1, folder)
+    assert "environment: the one the lock was written in" in saved and any("bit for bit" in line for line in saved)
+    assert read_folder(folder).lock["environment"]["blas_threads"] == 1
+    _, other = run_blas_child("verify", 2, folder)
+    assert "environment: built under another; results are not guaranteed to match: run verify" in other
+    assert "  blas_threads: built under 1, loaded under 2" in other
+    assert not any("bit for bit" in line for line in other)

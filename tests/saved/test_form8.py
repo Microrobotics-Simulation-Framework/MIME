@@ -1,7 +1,8 @@
 """Saved form 8: the lock names the program its reference outputs were run by (``reference.program``, ``one-step`` where
 the save took them from a run chunked by one step, absent where they are the history scan's) and records how many CPUs
-the build's process could use (``environment.usable_cpus``). Both are outside the input hash; the document holds no new
-key, its schema moving with the lock's.
+the build's process could use (``environment.usable_cpus``) and how many threads its BLAS used
+(``environment.blas_threads``). All three are outside the input hash; the document holds no new key, its schema moving
+with the lock's.
 
 A lock of version 7 reads under the current form as it was: it names no program, so ``verify`` reruns the history
 scan, and it records no count, so its environment is compared without one (``form7/timed_toy``, written by MIME at the
@@ -46,6 +47,8 @@ TIMED7_SHA256 = {
     "scene/scene.usda": "78a93ae11ce3de31021b76e56c8f7d849d2ee1c1a292bdf78f83a7b136132039",
 }
 RUNS = 20
+#: The lock's keys version 8 added.
+KEYS = ["reference.program", "environment.usable_cpus", "environment.blas_threads"]
 NEWER = "load.newer-form"
 #: The forms each earlier reader reads: this MIME before the step, and 0.3.0.dev1.
 FORM7_READS, DEV1_READS = 7, 6
@@ -60,7 +63,8 @@ def test_this_mime_writes_version_eight_and_a_version_seven_lock_reads_under_it(
     assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/8" and LOCK_SCHEMAS[CURRENT] == "mime.lock/8"
     held, version = upgraded_lock(lock_of(FORM7))
     assert version == 7 and conforms(held, Lock)[1] == []
-    assert "usable_cpus" not in held["environment"] and "program" not in held["reference"]
+    assert "usable_cpus" not in held["environment"] and "blas_threads" not in held["environment"]
+    assert "program" not in held["reference"]
 
 
 @pytest.mark.parametrize("folder", [FORM7, CURRENT_FOLDER], ids=["form7", "current"])
@@ -84,13 +88,14 @@ def test_a_save_records_the_count_and_a_save_with_no_run_names_no_program(tmp_pa
     lock = lock_of(tmp_path / "toy")
     assert lock["schema"] == "mime.lock/8" and "program" not in lock["reference"]
     assert isinstance(lock["environment"]["usable_cpus"], int) and lock["environment"]["usable_cpus"] >= 1
+    assert isinstance(lock["environment"]["blas_threads"], int) and lock["environment"]["blas_threads"] >= 1
 
 
 # --- an earlier lock holding a key version 8 added ----------------------------------------------------------------
 
 
 def an_earlier_lock(tmp_path: Path, key: str) -> Path:
-    """The form-7 timed toy with ``key`` (``reference.program`` or ``environment.usable_cpus``) written into its lock."""
+    """The form-7 timed toy with ``key`` (``reference.program``, ``environment.usable_cpus`` or ``environment.blas_threads``) written into its lock."""
     folder = Path(shutil.copytree(TIMED7, tmp_path))
     lock = lock_of(folder)
     parent, name = key.split(".")
@@ -108,7 +113,7 @@ def an_earlier_lock_holding_the_key_is_refused(tmp_path: Path, key: str) -> None
                for each in refused.value.refusals), [each.message for each in refused.value.refusals]
 
 
-@pytest.mark.parametrize("key", ["reference.program", "environment.usable_cpus"])
+@pytest.mark.parametrize("key", KEYS)
 def test_an_earlier_lock_holding_a_key_version_eight_added_is_refused(tmp_path: Path, key: str):
     an_earlier_lock_holding_the_key_is_refused(tmp_path / "folder", key)
 
@@ -122,7 +127,7 @@ def keys_accepted_early() -> Iterator[None]:
         yield
 
 
-@pytest.mark.parametrize("key", ["reference.program", "environment.usable_cpus"])
+@pytest.mark.parametrize("key", KEYS)
 def test_control_an_upgrade_that_accepts_the_keys_in_an_earlier_lock_is_caught_every_run(tmp_path: Path, key: str):
     caught = 0
     for run in range(RUNS):
@@ -148,7 +153,7 @@ def test_the_form_seven_timed_toy_is_the_folder_form_seven_wrote_byte_for_byte()
 def test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_environment_names_no_count(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """It names no program, so ``verify`` reruns the history scan (the program is what ``_history_on`` is asked for);
-    it records no count, so no line of its environment names one, here or under another count."""
+    it records neither count, so no line of its environment names one, here or under another count."""
     from mime.experiment import _experiment
 
     folder = Path(shutil.copytree(TIMED7, tmp_path / "timed_toy"))
@@ -167,7 +172,9 @@ def test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_e
     built = loaded.build()
     assert built.verify().reproduced and asked == [None]
     monkeypatch.setattr("mime.saved._record.usable_cpus", lambda: 1_000_003)
-    assert not any("usable_cpus" in line for line in _folder.environment_differences(read_folder(folder).lock))
+    monkeypatch.setattr("mime.saved._record.blas_threads", lambda: 1_000_003)
+    assert not any("usable_cpus" in line or "blas_threads" in line
+                   for line in _folder.environment_differences(read_folder(folder).lock))
 
 
 # --- the readers before the step ----------------------------------------------------------------------------------
