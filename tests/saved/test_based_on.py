@@ -196,6 +196,19 @@ def test_a_loaded_experiment_edited_in_a_notebook_is_refused_by_its_lock_pointin
     assert child.build().load_report is None
 
 
+def test_remove_names_a_declaration_taken_from_the_parent_by_where_it_came_from(parent: Path):
+    """``exp.remove`` refuses while something names what it removes, citing where each was declared: a declaration
+    taken from the parent was declared in it, and the refusal says so, by the parent's name."""
+    child = Experiment.based_on(parent, name="edited")
+    with pytest.raises(ArgumentRefused) as refused:
+        child.remove("probe")
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "remove.named"
+    assert "toy.spring:probe (taken from 'full_toy', the saved experiment this one is based on)" in refusal.message
+    child.remove("toy.spring:probe")
+    assert "toy.spring:probe" not in {entry["id"] for entry in child.document()["interactions"]}
+
+
 # --- the parent's folder -------------------------------------------------------------------------------------------------
 
 
