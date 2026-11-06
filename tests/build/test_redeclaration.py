@@ -210,8 +210,8 @@ CASES = (
     Case("licence", lambda exp, changed: exp.licence("CC0-1.0" if changed else "MIT"), licensed, "terms.licence",
          "the experiment's licence", refusals=documented),
 )
-#: The cases a notebook does not replace where another declaration names them (a law, an observation); a thing is
-#: replaced, and what names it follows it (``test_rebind.py``).
+#: The cases another declaration can name (a law, an observation, by the source written under its id): a notebook
+#: replaces them all the same, and what names them follows (``test_rebind.py`` for a thing).
 NAMED = tuple(case for case in CASES if case.named is not None and case.name in ("law", "observation"))
 
 
@@ -277,18 +277,34 @@ def test_a_changed_declaration_in_a_notebook_replaces_the_earlier_one_where_noth
 
 
 @pytest.mark.parametrize("case", NAMED, ids=ids)
-def test_a_changed_declaration_another_names_is_kept_beside_it_and_refused_saying_a_cell_ran_twice(case, notebook):
+def test_a_changed_law_or_observation_another_names_is_replaced_and_what_names_it_follows_with_a_note(case, notebook):
+    """A source names the law's or the observation's id (the setting it gives the source of); in a notebook the changed
+    declaration replaces the earlier one all the same, the source follows it by the id, and the one note lists it."""
     assert case.named is not None
     exp = case.named()
     count = len(held_ids(exp))
     with pytest.warns(UserWarning) as noted:
         case.again(exp, True)
     said = [str(warning.message) for warning in noted]
-    assert len(said) == 1 and f"declares {case.noun} again, not the same as before, and " in said[0]
-    assert case.naming in said[0] and "both are kept and the build will refuse them" in said[0]
+    assert len(said) == 1 and said[0].endswith(
+        f"declares {case.noun} again, not the same as before: in a notebook or IPython the last one run wins, so it "
+        f"replaces the earlier one; what holds its id now finds the new one: {case.naming}")
+    assert len(held_ids(exp)) == count
+    assert coded(case.refusals(exp), case.code) == []
+
+
+@pytest.mark.parametrize("case", NAMED, ids=ids)
+def test_a_changed_law_or_observation_another_names_is_still_added_and_refused_in_a_script(case):
+    assert case.named is not None
+    where(None, "script")
+    exp = case.named()
+    count = len(held_ids(exp))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        case.again(exp, True)
     assert len(held_ids(exp)) == count + 1
     refused = coded(case.refusals(exp), case.code)
-    assert refused and all(refusal.message.endswith(RAN_TWICE) and refusal.action == RUN_AGAIN for refusal in refused)
+    assert refused and all(RAN_TWICE not in refusal.message and refusal.action != RUN_AGAIN for refusal in refused)
 
 
 @pytest.mark.parametrize("place", ["script", "notebook"])

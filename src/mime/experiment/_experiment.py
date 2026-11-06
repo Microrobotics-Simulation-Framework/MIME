@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import weakref
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
@@ -52,8 +53,10 @@ from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_mode
 from mime.build._maddening import FlagTally, FlagTest
 from mime.errors import public
 from mime.errors._frames import warn_at_script
-from mime.experiment._redeclared import add as add_declaration
-from mime._notebook import in_notebook
+from mime.experiment._redeclared import add as add_declaration, known_as
+from mime.experiment._removed import remove as remove_declaration
+from mime._lineage import Change, Origin, remember_folder
+from mime._notebook import in_notebook, where_called
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
 from mime.terms import CustomLicence, Permission
 from mime.results import (
@@ -269,9 +272,11 @@ class Experiment:
     warning, which a warnings filter can remove: so each replacement is also recorded, with the declarations that
     follow it, in ``plan().replaced`` and the build report (the saved form holds the final declarations only). A
     structure, medium, body or apparatus replaced this way is found by the declarations that hold its name (laws,
-    observations, values, sources, the controller, a medium's ``fills``), and the warning names each; a name
-    declared again as another kind, or held as an object and not a name, is kept beside the new one, and the build
-    refuses the two, saying a line or cell has probably run twice.
+    observations, values, sources, the controller, a medium's ``fills``), and the warning names each; so is a law or an
+    observation that a source or the controller names. A name declared again as another kind, or held as an object and
+    not a name, is kept beside the new one, and the build refuses the two, saying a line or cell has probably run
+    twice. :meth:`remove` takes a declaration out, and is recorded (``plan().removed``) with no warning. A build made before a
+    replacement or a removal is stale (:attr:`BuiltExperiment.stale`): refused in a notebook, warned about in a script.
     """
 
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
@@ -285,11 +290,24 @@ class Experiment:
         #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again):
         #: what a warnings filter cannot remove, shown by ``plan()`` and the build report. Not part of the saved form.
         self._replaced: list[str] = []
+        #: Likewise for each declaration removed (``remove``).
+        self._removed: list[str] = []
+        #: Every replacement and removal of this session, in order, which a build, a result and a view remember the
+        #: count of (``mime._lineage``): what says one of them predates a change.
+        self._changes: list[Change] = []
+        #: Where each declaration held was made (a cell and its line, or a file and its line), by ``id``: what
+        #: ``remove`` names when something still holds a name.
+        self._sites: dict[int, str] = {}
         self._saved: SavedForm | None = None
         #: Whether :meth:`load` has checked this experiment against its lock: a later build that differs from the lock
         #: is an edit made after the load.
         self._load_checked = False
         self.load_report: LoadReport | None = None
+
+    def _declared_now(self) -> list[Declaration]:
+        """The declarations held now: what an origin compares its own with (through a weak reference to this method, so
+        that a result never keeps the experiment alive)."""
+        return self._declarations
 
     @classmethod
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
@@ -299,13 +317,63 @@ class Experiment:
         experiment._declarations = list(declarations)
         return experiment
 
+    def _declare(self, declaration: Declaration) -> None:
+        """``declaration`` added by the rule of a declaration made a second time (``_redeclared``), with the change it
+        made (a replacement) recorded and the place it was declared at kept."""
+        before = len(self._replaced)
+        add_declaration(self._declarations, declaration, self._replaced)
+        known = known_as(declaration)
+        if len(self._replaced) > before and known is not None:
+            self._changes.append(Change("replacement", known.noun, self._replaced[-1]))
+        held = {id(other) for other in self._declarations}
+        if id(declaration) in held:
+            self._sites[id(declaration)] = where_called()
+        self._sites = {key: place for key, place in self._sites.items() if key in held}
+
+    @public
+    def remove(self, target: Handle | ObservationHandle | TypedPath | str | None = None, /, *,
+               kind: str | None = None) -> None:
+        """Take a declaration out of the experiment: a thing (by its name or its handle), a law (by the id ``attach``
+        returned), an observation (by its id or handle), a declared value or a source (by its path), or the
+        controller (``exp.remove(kind="controller")``, which has no name). ``kind=`` (``"thing"``, ``"law"``,
+        ``"observation"``, ``"value"``, ``"source"``, ``"controller"``) says which where a name is two kinds, a path
+        with a declared value and a source. In a script and in a notebook alike.
+
+        It is refused while another declaration still names what it removes (a thing is named by its laws, its
+        observations, its values and sources, a medium that fills it, the controller; a law or an observation by the
+        sources written under its id and the controller): the refusal lists each, with the cell or line that
+        declared it. Nothing is removed with it. A removal is recorded (``plan().removed`` and the build report) and
+        raises no warning: it is your own call, and is made under ``-W error`` too. Removing and declaring again under the same name is how a
+        thing's kind is changed (``exp.add_body`` after ``exp.remove``)."""
+        written = cast(object, target)  # a script is not type-checked
+        if written is not None and not isinstance(written, (Handle, ObservationHandle, TypedPath, str)):
+            raise ArgumentTypeRefused([Refusal(
+                "call.wrong-type", RefusalClass.USER,
+                f"remove takes a name, a handle or a typed path, not {type(written).__name__}",
+                "name what to remove: exp.remove('water'), exp.remove(tube), exp.remove(kind='controller')")])
+        if isinstance(written, Handle):
+            kind = kind or "thing"
+            name: str | None = written.name
+        elif isinstance(written, ObservationHandle):
+            kind = kind or "observation"
+            name = written.id
+        else:
+            name = None if written is None else str(written)
+        noun, note = remove_declaration(self._declarations, name, kind, self._place_of, self._removed)
+        self._changes.append(Change("removal", noun, note))
+        held = {id(other) for other in self._declarations}
+        self._sites = {key: place for key, place in self._sites.items() if key in held}
+
+    def _place_of(self, declaration: Declaration) -> str:
+        return self._sites.get(id(declaration), "declared in the loaded document")
+
     def _add(self, thing: Any, cls: type) -> None:
         if not isinstance(thing, cls):
             raise ArgumentTypeRefused([Refusal(
                 "call.wrong-type", RefusalClass.USER,
                 f"add_{cls.__name__.lower()} takes a {cls.__name__}, not {type(thing).__name__}",
                 f"pass one: exp.add_{cls.__name__.lower()}({cls.__name__}(...))")])
-        add_declaration(self._declarations, ThingDeclaration(thing), self._replaced)
+        self._declare(ThingDeclaration(thing))
 
     @public
     def add_structure(self, structure: Structure) -> StructureHandle:
@@ -346,7 +414,7 @@ class Experiment:
                     "call.wrong-type", RefusalClass.USER,
                     f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}",
                     f"bind it to a thing: {role}= the handle add_body or add_medium returned, or its name")])
-        add_declaration(self._declarations, Attachment(law, dict(bindings)), self._replaced)
+        self._declare(Attachment(law, dict(bindings)))
         return entry_id(type(law), bindings)
 
     @public
@@ -359,7 +427,7 @@ class Experiment:
         With no reason (and none on the quantity, ``kg(8.5e-5, reason=...)``), the reason is pending: exploratory
         builds with it and stamps every output, and research refuses it by name (``value.reason-pending``). A reason
         given both on the quantity and here is refused."""
-        add_declaration(self._declarations, ValueDeclaration(path, value, reason), self._replaced)
+        self._declare(ValueDeclaration(path, value, reason))
 
     @public
     def source(self, path: TypedPath | str, *, reason: Basis) -> None:
@@ -370,7 +438,7 @@ class Experiment:
         is named ``<structure>.<setting>`` (``tube.inner_radius``), ``<body>.parts.<part>.<setting>``,
         ``<apparatus>.<field>.<setting>``, ``<apparatus>.<command>`` (a command's value), ``<entry id>.<setting>``
         (``drag:umr.spacing``), ``dt``, ``gravity`` or ``conditions.<name>``."""
-        add_declaration(self._declarations, SourceDeclaration(path, reason), self._replaced)
+        self._declare(SourceDeclaration(path, reason))
 
     @public
     def licence(self, licence: str | CustomLicence) -> None:
@@ -381,7 +449,7 @@ class Experiment:
         form records it. Without one the experiment declares none, which saving and ``mime pack`` never refuse, and
         every report of the folder says; ``mime push`` will not publish it until one is declared. Its form is checked
         when the experiment is saved (``terms.licence``)."""
-        add_declaration(self._declarations, LicenceDeclaration(licence), self._replaced)
+        self._declare(LicenceDeclaration(licence))
 
     @public
     def permission(self, permission: Permission) -> None:
@@ -397,7 +465,7 @@ class Experiment:
                 f"permission takes a mime.terms.Permission, not {type(permission).__name__}",
                 "pass one: exp.permission(Permission(grantor=..., grantee=..., files=(...), scope=Scope(...), "
                 "date=\"YYYY-MM-DD\", evidence=Evidence(...)))")])
-        add_declaration(self._declarations, PermissionDeclaration(permission), self._replaced)
+        self._declare(PermissionDeclaration(permission))
 
     @public
     def observe(self, observation: Observation) -> ObservationHandle:
@@ -406,7 +474,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"observe takes an Observation, not {type(observation).__name__}",
                 "pass an observation: exp.observe(SwimSpeed(body, along=X))")])
-        add_declaration(self._declarations, ObservationDeclaration(observation), self._replaced)
+        self._declare(ObservationDeclaration(observation))
         return ObservationHandle(entry_id(type(observation), observation.bindings()),
                                  tuple(output.field for output in type(observation).outputs))
 
@@ -428,8 +496,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"set_controller takes a Controller, not {type(controller).__name__}",
                 "pass a registered controller: exp.set_controller(ArmTracking(...), reads=..., writes=..., mode=...)")])
-        add_declaration(self._declarations, ControllerDeclaration(controller, reads, writes, mode, rate, latency),
-                        self._replaced)
+        self._declare(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
 
     @public
     def plan(self) -> PlanSet:
@@ -438,9 +505,10 @@ class Experiment:
             plans = plan_experiment(self._settings, list(self._declarations))
         except BuildRefused as refused:
             if refused.report is not None:  # a refused build is where a replaced thing's trace matters most
-                refused.report = replace(refused.report, replaced=tuple(self._replaced))
+                refused.report = replace(refused.report, replaced=tuple(self._replaced),
+                                         removed=tuple(self._removed))
             raise
-        return replace(plans, replaced=tuple(self._replaced))
+        return replace(plans, replaced=tuple(self._replaced), removed=tuple(self._removed))
 
     @public
     def document(self) -> ExperimentDocument:
@@ -481,7 +549,9 @@ class Experiment:
                 stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
                           for writer in writers}
             load_report = check_load(self._saved, record, stages, edited_after_load=self._load_checked)
-        return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law)
+        origin = Origin(self._changes, len(self._changes), tuple(self._declarations), weakref.WeakMethod(self._declared_now))
+        return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law,
+                               origin=origin)
 
     @public
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS) -> Lock:
@@ -606,12 +676,14 @@ class RunWritten:
     recording: Path | None = None
     #: Set when the run was ended before the steps it was asked for (``stop=``): why, and the steps asked for.
     stopped: Stopped | None = None
+    #: The declarations the run came from (``mime._lineage``): what says its view predates a replacement or a removal.
+    origin: Origin | None = None
 
     def view(self, *, offline: bool = False, caption: str | None = None) -> WebPage:
         """The run's view as a notebook shows it: ``mime.viz.display`` of its folder."""
         from mime.viz import display
 
-        return display(self.record_file.parent, offline=offline, caption=caption)
+        return display(self.record_file.parent, offline=offline, caption=caption)  # the folder's origin is found there
 
 
 def run_layout(plans: PlanSet) -> Layout:
@@ -762,9 +834,10 @@ class BuiltExperiment:
 
     def __init__(self, graph: GraphManager, report: BuildReport, plans: PlanSet, record: SavedRecord, *,
                  saved: SavedForm | None = None, load_report: LoadReport | None = None,
-                 law: ControlLaw | None = None) -> None:
+                 law: ControlLaw | None = None, origin: Origin | None = None) -> None:
         self._graph = graph
-        self.report = report
+        self._report = report
+        self._origin = origin
         self._plans = plans
         self.record = record
         self._saved = saved
@@ -776,6 +849,36 @@ class BuiltExperiment:
         self._summary: dict[str, Any] | None = None
         #: Where a run of this built left its state not finite, for the runs after it.
         self._non_finite: NonFinite | None = None
+
+    @property
+    def report(self) -> BuildReport:
+        """The build report. Once the experiment it was built from has had a replacement or a removal since the build,
+        it says so on its first line (``STALE: ...``): ``built`` is then the physics of the declarations before."""
+        stale = self.stale
+        return self._report if stale is None else replace(self._report, stale=stale)
+
+    @property
+    def stale(self) -> str | None:
+        """Why this build no longer matches its experiment, or ``None``: the replacements and removals made since it was
+        built, and what to do (build again). A build of a loaded experiment or one made without an experiment never is."""
+        return self._origin.stale("this build", "build the experiment again, then run that build") if self._origin is not None else None
+
+    def _fresh(self) -> None:
+        """Refuse in a notebook or IPython, and warn in a script, to use this build after the experiment it was built
+        from had a replacement or a removal: it would run the physics of the declarations before, as if they were the
+        new. A notebook's cell run again is the trap, with the one that builds not run again with it, so there the
+        build is refused; a script that changes its experiment after a build did it on purpose (to run both), so
+        there it is warned."""
+        stale = self.stale
+        if stale is None:
+            return
+        if in_notebook():
+            raise ArgumentRefused([Refusal(
+                "run.stale", RefusalClass.USER, stale,
+                "build the experiment again (built = exp.build()), then run that build",
+                why="a build is the declarations as they were when it was made; running it after a cell was run again "
+                    "would pass the old physics for the new")])
+        warn_at_script(stale, UserWarning)
 
     @property
     def graph(self) -> GraphManager:
@@ -799,7 +902,7 @@ class BuiltExperiment:
 
     @public
     def snapshot(self) -> str:
-        return graph_text(self._graph, self.report.lags)
+        return graph_text(self._graph, self._report.lags)
 
     @property
     def stage_text(self) -> str:
@@ -922,7 +1025,11 @@ class BuiltExperiment:
         ``mime run`` does (on standard error, where that is a terminal not asked to be plain); ``False`` never. It is
         drawn from ``stop``'s place after each chunk, the caller's own ``stop`` asked after it and its answer kept; it
         reads where each chunk ended and the flags raised there, and changes neither the chunks nor anything the run
-        computes."""
+        computes.
+
+        A build whose experiment has had a replacement or a removal since is refused in a notebook or IPython, and warned
+        about in a script (:attr:`stale`)."""
+        self._fresh()
         display = _python_display(progress)
         if display is None:
             return self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk, stop=stop)
@@ -981,7 +1088,7 @@ class BuiltExperiment:
         result = self.result_of(start, taken, final, stacked, recorded if not history else self.layout.per_step(),
                                 spacing, history=history,
                                 stopped=Stopped(why, steps) if why is not None else None, tally=self._runs.tally)
-        refusal = non_finite(final, stacked, self.report.nodes, start, self._plans.dt, kept_all=history,
+        refusal = non_finite(final, stacked, self._report.nodes, start, self._plans.dt, kept_all=history,
                              already=self._non_finite)
         if refusal is not None:
             if self._non_finite is None:
@@ -1017,7 +1124,7 @@ class BuiltExperiment:
         return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
                          watches=read_watches(self._plans.watches, final, stacked if history else None),
-                         report=self.report_summary(), stopped=stopped)
+                         report=self.report_summary(), stopped=stopped, origin=self._origin)
 
     @public
     def binding(self) -> StageBinding:
@@ -1037,9 +1144,9 @@ class BuiltExperiment:
         from mime.build._report import graph_config
 
         config = graph_config(self._graph)
-        lines = {line.node: line for line in self.report.nodes}
+        lines = {line.node: line for line in self._report.nodes}
         owners = {node: plan for plan in self._plans.entries for node in plan.node_names()}
-        read = {(e.source[0], e.source[1], e.target[0], e.target[1]): e.lag.value for e in self.report.lags}
+        read = {(e.source[0], e.source[1], e.target[0], e.target[1]): e.lag.value for e in self._report.lags}
         nodes: list[dict[str, Any]] = []
         for node in config["nodes"]:
             name = str(node["name"])
@@ -1071,7 +1178,7 @@ class BuiltExperiment:
                 "nodes": nodes, "edges": edges,
                 "coupling_groups": [{"nodes": list(g.nodes), "tolerance": g.tolerance,
                                      "max_iterations": g.max_iterations, "requested_by": list(g.requested_by)}
-                                    for g in self.report.groups],
+                                    for g in self._report.groups],
                 "external_inputs": [{"node": e["target_node"], "field": e["target_field"], "shape": list(e["shape"]),
                                      "dtype": str(e["dtype"])} for e in config["external_inputs"]],
                 "controller": held}
@@ -1084,7 +1191,7 @@ class BuiltExperiment:
         the profile's stamp says of it, the profile with its stamp, and the summary's text. ``hello`` carries it, and
         every run folder holds it as ``report.json``, which ``RunResult.read`` reads."""
         if self._summary is None:
-            self._summary = report_summary(self.report, self.layout)
+            self._summary = report_summary(self._report, self.layout)
         return json.loads(json.dumps(self._summary))
 
     @public
@@ -1099,6 +1206,7 @@ class BuiltExperiment:
         the experiment, the command log, the final state, and the recording layer when recording was on."""
         from mime.live import LiveSession
 
+        self._fresh()
         return LiveSession(self, chunk=chunk, pace=pace, select=select, out=Path(out) if out is not None else None)
 
     @public
@@ -1131,7 +1239,10 @@ class BuiltExperiment:
 
         ``progress`` shows the live display as :meth:`run` does, and after the run, while the folder is written, a
         phase saying so: the run's saved form runs its reference steps on a graph built and compiled afresh, which on
-        Colab takes a minute or two."""
+        Colab takes a minute or two.
+
+        As :meth:`run`, a stale build is refused in a notebook or IPython and warned about in a script."""
+        self._fresh()
         display = _python_display(progress)
         if display is None:
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
@@ -1158,8 +1269,8 @@ class BuiltExperiment:
         failed: RunFailed | None = None
         samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:
-            result = self.run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk,
-                              stop=stop, progress=False)
+            result = self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk,
+                               stop=stop)
         except RunFailed as error:
             if not isinstance(error.result, RunResult):
                 raise
@@ -1171,7 +1282,7 @@ class BuiltExperiment:
             watch.saving(result.steps)
         target = Path(out)
         target.mkdir(parents=True, exist_ok=True)
-        self.save(target / RUN_EXPERIMENT, progress=False)
+        self._save(target / RUN_EXPERIMENT, DEFAULT_STEPS)
         np.savez(target / RUN_OUTPUTS, allow_pickle=False, **result.arrays())
         manifest = result.manifest()
         refused = failed.refusals[0].message if failed is not None else None
@@ -1202,8 +1313,11 @@ class BuiltExperiment:
         (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         (target / RUN_MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                                            encoding="utf-8", newline="\n")
+        read_back = RunResult.read(target)
+        read_back.origin = self._origin
+        remember_folder(target, self._origin)
         done = RunWritten(result.steps, target / RUN_OUTPUTS, target / RUN_RECORD, target / RUN_EXPERIMENT, written,
-                          target / RUN_MANIFEST, RunResult.read(target), recording, result.stopped)
+                          target / RUN_MANIFEST, read_back, recording, result.stopped, self._origin)
         if failed is not None:
             failed.written = done
             raise failed
@@ -1279,7 +1393,9 @@ class BuiltExperiment:
         ``scene/layers/``) and the reference outputs (every field over the first ``steps`` steps, run from the
         initial state on a fresh graph) into ``folder``. Raises ``BuildRefused`` when the experiment cannot
         be saved: a setting the document cannot hold, or an entry a load elsewhere could not find. ``progress`` shows
-        the live display's phase while it saves, as :meth:`run` decides where (in a notebook, by default)."""
+        the live display's phase while it saves, as :meth:`run` decides where (in a notebook, by default). A stale
+        build is refused in a notebook or IPython and warned about in a script, as :meth:`run`'s is."""
+        self._fresh()
         display = _python_display(progress)
         if display is None:
             return self._save(folder, steps)
