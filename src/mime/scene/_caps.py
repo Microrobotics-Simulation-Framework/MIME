@@ -127,9 +127,21 @@ def radial_weights(nodes: tuple[Fraction, ...]) -> tuple[Fraction, ...]:
                  for i in range(len(nodes)))
 
 
-@lru_cache(maxsize=64)
 def cap_rings(total: int, starts: int) -> CapRings:
-    """The cap's ``total`` samples (one its centre) in rings, for a section of ``starts`` starts."""
+    """The cap's ``total`` samples (one its centre) in rings, for a section of ``starts`` starts. The arrays are the
+    caller's own, a copy of the cached layout each call: JAX can keep a numpy array's float32 conversion, made while a
+    step was traced with x64 off, and give it back for a later conversion made with x64 on, so that a float64 build
+    made after the first in a process held cap samples rounded to float32 (MIME-ANO-138). A fresh array each call has
+    no earlier conversion to give back."""
+    held = _cap_rings(total, starts)
+    own = [array.copy() for array in (held.fraction, held.angle, held.share)]
+    for array in own:
+        array.flags.writeable = False
+    return CapRings(held.fractions, held.counts, *own)
+
+
+@lru_cache(maxsize=64)
+def _cap_rings(total: int, starts: int) -> CapRings:
     fractions, counts = _rings(total, starts)
     weights = radial_weights((Fraction(0), *fractions))
     fraction = np.concatenate([[0.0], *(np.full(m, float(s)) for s, m in zip(fractions, counts, strict=True))])

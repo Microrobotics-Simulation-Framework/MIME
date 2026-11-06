@@ -75,6 +75,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **In float32 a screw's second build in a process held the same matrix as its first, to the bit** (MIME-ANO-138). The
+  first build of the screw in a process made the MRS node's held matrix from cap samples in float64; every later build
+  made it from the same samples rounded to float32 (1e-7 of themselves), because the cap layout the process caches was
+  handed to each build as the same arrays, and JAX gave back an earlier conversion of them. The drag's resistance then
+  differed between the first build and the rest by 1e-5 of its entries from step 0. `cap_rings` now hands out a copy
+  of the layout each call. Float64 is unchanged; `mime verify` was never affected (it compares two later builds).
 - **`Experiment.save` and `Experiment.load` warn at the script's line.** A `DescriptionWarning` or a range warning raised
   while they build showed MIME's own line (`return self.build().save(...)`); the build now finds the script's frame
   itself, whichever public call it was reached through (`mime.errors._frames.warn_at_script`), and so does the view's
