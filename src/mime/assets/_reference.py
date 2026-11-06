@@ -50,7 +50,9 @@ KINDS: tuple[Kind, ...] = ("authored", "measured", "derived")
 
 class CustomLicenceRecord(TypedDict, closed=True):
     """A custom licence a record's licence names, by its ``LicenseRef-`` id: its title, its link, and what a person
-    says it allows (``unknown`` or ``not_permitted``)."""
+    says it allows (``unknown`` or ``not_permitted``). This is the shape a saved folder's lock holds (a test holds the
+    two together): a licence's ``conditions`` are a key of a manifest file (``mime.asset_manifest/2``), written only by
+    ``to_record(conditions=True)`` and read by :meth:`AssetRef.from_record`, never by the lock."""
 
     title: ReadOnly[str]
     url: ReadOnly[str]
@@ -292,8 +294,11 @@ class AssetRef:
     def tier(self) -> str:
         return self.verdict.tier
 
-    def to_record(self) -> AssetRecord:
-        """The record as a lock or a manifest holds it: the five keys every record has, then each one it states."""
+    def to_record(self, *, conditions: bool = False) -> AssetRecord:
+        """The record as a lock or a manifest holds it: the five keys every record has, then each one it states. The
+        conditions of its custom licences (short lines a download shows and asks to be accepted) are written only
+        with ``conditions``, which a manifest file does (``mime.asset_manifest/2``) and a saved folder's lock, whose
+        form has no key for them, does not."""
         held: dict[str, object] = {"name": self.name, "sha256": self.sha256, "size": self.size,
                                    "licence": self.licence, "locations": list(self.locations)}
         for key in ("credit", "role", "kind", "derivation", "notice"):
@@ -301,7 +306,9 @@ class AssetRef:
             if value is not None:
                 held[key] = value
         if self.licences:
-            held["licences"] = {each.id: {"title": each.title, "url": each.url, "redistribution": each.redistribution}
+            held["licences"] = {each.id: {"title": each.title, "url": each.url, "redistribution": each.redistribution,
+                                          **({"conditions": list(each.conditions)}
+                                             if conditions and each.conditions else {})}
                                 for each in sorted(self.licences, key=lambda each: each.id)}
         for key in ("version", "citation"):
             value = getattr(self, key)
@@ -341,18 +348,23 @@ class AssetRef:
 
 
 def _licences_of(name: str, held: object) -> tuple[CustomLicence, ...]:
-    shape = "the record's licences are an object of LicenseRef- id to its title, url and redistribution, as texts"
+    shape = ("the record's licences are an object of LicenseRef- id to its title, url and redistribution, as texts, "
+             "and its conditions, a list of texts, where it has them")
     if not isinstance(held, dict):
         raise _invalid(name, shape)
     found: list[CustomLicence] = []
     for key, value in cast("dict[object, object]", held).items():
         if not isinstance(key, str) or not isinstance(value, dict):
             raise _invalid(name, shape)
-        entry = cast("dict[str, object]", value)
-        if set(entry) != {"title", "url", "redistribution"} or not all(isinstance(each, str) for each in entry.values()):
+        entry = dict(cast("dict[str, object]", value))
+        said = entry.pop("conditions", ())
+        lines = cast("list[object]", said) if isinstance(said, list) else None
+        if (set(entry) != {"title", "url", "redistribution"} or not all(isinstance(each, str) for each in entry.values())
+                or (lines is None and said != ()) or not all(isinstance(each, str) for each in lines or ())):
             raise _invalid(name, shape)
         found.append(CustomLicence(key, str(entry["title"]), str(entry["url"]),
-                                   cast("Literal['not_permitted', 'unknown']", entry["redistribution"])))
+                                   cast("Literal['not_permitted', 'unknown']", entry["redistribution"]),
+                                   tuple(str(each) for each in lines or ())))
     return tuple(found)
 
 

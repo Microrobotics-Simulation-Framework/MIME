@@ -18,7 +18,8 @@ from __future__ import annotations
 import hashlib
 import json
 import shlex
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -128,25 +129,47 @@ def index_of(name: str) -> Path:
 
 
 def fetch(target: str | Path, *, budget: TriangleBudget = TriangleBudget(),
-          say: Callable[[str], None] = print) -> list[Baked]:
-    """Fetch and bake every manifest ``target`` names (:func:`manifests_for`) into the asset cache."""
+          say: Callable[[str], None] = print, accept_licences: Collection[str] = (), yes: bool = False,
+          force: bool = False) -> list[Baked]:
+    """Fetch and bake every manifest ``target`` names (:func:`manifests_for`) into the asset cache, gated as :func:`bake`
+    is."""
     baked: list[Baked] = []
     for manifest in manifests_for(target):
-        baked += bake(manifest, budget=budget, say=say)
+        baked += bake(manifest, budget=budget, say=say, accept_licences=accept_licences, yes=yes, force=force)
     return baked
 
 
-def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(),
-         say: Callable[[str], None] = print) -> list[Baked]:
+def _written(path: Path, text: str) -> None:
+    """``text`` at ``path`` whole or not at all: written beside it, then moved into place, and removed if the write
+    fails (a full disk leaves no half-written record for a reader to take as one)."""
+    partial = path.with_name(f".{path.name}.partial")
+    try:
+        partial.write_text(text, encoding="utf-8")
+        os.replace(partial, path)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+
+
+def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(), say: Callable[[str], None] = print,
+         accept_licences: Collection[str] = (), yes: bool = False, force: bool = False) -> list[Baked]:
     """Fetch and bake one manifest's meshes into the asset cache: each record resolved (its sha256 checked), read,
     decimated to its share of ``budget`` and written as a USD layer with its record; and the set's index, which the
-    overlay reads. Prints the set's credit, licence and notice first."""
-    from mime.assets import resolve
+    overlay reads. Prints the set's credit, licence and notice first.
 
-    say(held.text())
+    The download is gated (:mod:`mime.assets._gates`) before a byte is taken: a licence with conditions beyond credit
+    (the AR4's) must be accepted (``accept_licences`` names the ids accepted for this call, a person at a terminal is
+    asked, otherwise ``asset.licence-not-accepted``), the drive must have room for the files and for what the bake
+    writes (:data:`~mime.assets.BAKE_OUTPUT_FACTOR` of their size), a large download is asked about (``yes`` answers),
+    and one that would fill the drive is stopped (``force`` overrides). ``yes`` and ``force`` never accept a licence."""
+    from mime.assets import approved, bake_bytes, resolve
+
     files = [(each.path, held.record(each.asset)) for each in held.files]
     sources: list[tuple[str, AssetRef]] = [(path, ref) for path, ref in files if ref is not None]
-    stored = [resolve(ref, report=say) for _, ref in sources]
+    with approved([ref for _, ref in sources], accept_licences=accept_licences, yes=yes, force=force,
+                  extra_bytes=bake_bytes(ref for _, ref in sources), notice=held.notice) as approval:
+        say(held.text(notice=not approval.notice_shown))
+        stored = [resolve(ref, report=say) for _, ref in sources]
     meshes: list[Mesh] = []
     for (path, _), stored_path in zip(sources, stored, strict=True):
         try:
@@ -182,8 +205,7 @@ def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(),
             "output": {"sha256": hashlib.sha256(layer.read_bytes()).hexdigest(), "bytes": layer.stat().st_size},
             "licence": source.licence, "tier": verdict.tier, "verdict": verdict.words(), "by": verdict.by,
             "role": source.role or "presentation", "credit": source.credit or held.credit, "notice": held.notice}
-        (visuals_dir() / f"{key}.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n",
-                                                   encoding="utf-8")
+        _written(visuals_dir() / f"{key}.json", json.dumps(record, indent=2, sort_keys=True) + "\n")
         baked.append(Baked(path, layer, record))
         say(f"{path}: {len(mesh.triangles)} triangles baked to {len(decimated.mesh.triangles)} "
             f"(budget {share}), within {distance * 1e3:.2f} mm of the original, measured on every vertex both ways "
@@ -192,9 +214,11 @@ def bake(held: Manifest, *, budget: TriangleBudget = TriangleBudget(),
     index = {"format": INDEX_FORMAT, "set": held.name, "title": held.title, "credit": held.credit,
              "notice": held.notice, "licence": held.licence, "tier": held.verdict.tier, "role": held.role,
              "text": held.text(), "budget": {"per_mesh": budget.per_mesh, "per_stage": budget.per_stage},
+             "licences": {each.id: {"title": each.title, "url": each.url, "conditions": list(each.conditions)}
+                          for _, ref in sources for each in sorted(ref.licences, key=lambda found: found.id)},
              "files": {item.path: {"sha256": source.sha256, "layer": item.layer.name}
                        for item, (_, source) in zip(baked, sources, strict=True)}}
-    index_of(held.name).write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _written(index_of(held.name), json.dumps(index, indent=2, sort_keys=True) + "\n")
     return baked
 
 
@@ -259,6 +283,11 @@ class Overlay:
     #: The meshes the cache holds that this overlay leaves out, by set: their tier is not among the tiers asked for (a
     #: view that may be shared draws only meshes whose terms let them travel), or no record states it.
     withheld: dict[str, int] = field(default_factory=dict[str, int])
+    #: The meshes the cache holds that this overlay leaves out, by set, because their licence has conditions nobody has
+    #: accepted on this machine and nobody could be asked (or the answer was no): the first use of a mesh asks.
+    unaccepted: dict[str, int] = field(default_factory=dict[str, int])
+    #: What accepts each such set by name: the licence ids.
+    unaccepted_ids: dict[str, list[str]] = field(default_factory=dict[str, list[str]])
     #: The sets whose meshes the overlay draws.
     sets: list[str] = field(default_factory=list[str])
     #: Each set's notice (the entries of ``notices``), by set.
@@ -281,6 +310,12 @@ class Overlay:
             lines.append(f"{count} meshes of {name} are left out of this view: their licence does not let them be "
                          f"shared, or no record states that it does; simple shapes from the description's frames are "
                          f"drawn in their place (a USD viewer draws them on this machine: mime visuals view <target>)")
+        for name, count in sorted(self.unaccepted.items()):
+            flags = " ".join(f"--accept-licence {each}" for each in self.unaccepted_ids.get(name, ()))
+            lines.append(f"{count} meshes of {name} are left out of this view: their licence has conditions that have "
+                         f"not been accepted on this machine; simple shapes from the description's frames are drawn in "
+                         f"their place (answer the question at a terminal, or add `{flags}` to the command; "
+                         f"`mime assets licences` lists what is accepted)")
         for name, count in sorted(self.missing.items()):
             lines.append(f"{count} meshes of {name} are not in the asset cache: drawn as simple shapes from the "
                          f"description's frames; to draw them, `{self.fetch_command(name)}`")
@@ -321,12 +356,45 @@ def _folder_of(stage_path: Path) -> Path | None:
     return None
 
 
-def overlay(stage_path: Path, *, tiers: frozenset[str] | None = None) -> Overlay:
+def _licences_of_layers(layers: list[Path], index: dict[str, Any]) -> tuple[Any, ...]:
+    """The licences, each once, that the baked meshes ``layers`` of a set need accepted. Each mesh's own record
+    (``<layer>.json``) states its tier and its source's licence; where it states none, the set's ``index`` does (a bake
+    an earlier MIME wrote may state neither, and its meshes' licence is then not stated: ``NOASSERTION``, accepted like
+    any other). A mesh whose tier is open needs nothing."""
+    from mime.assets import licences_read
+
+    found: dict[str, Any] = {}
+    for layer in layers:
+        record: dict[str, Any] = {}
+        path = layer.with_suffix(".json")
+        if path.is_file():
+            try:
+                held: object = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                held = None
+            if isinstance(held, dict):
+                record = cast(dict[str, Any], held)
+        tier = record.get("tier", index.get("tier"))
+        expression = record.get("licence", index.get("licence"))
+        if tier == "open":
+            continue
+        for each in licences_read(expression if isinstance(expression, str) and expression else "NOASSERTION"):
+            found.setdefault(each.id, each)
+    return tuple(found.values())
+
+
+def overlay(stage_path: Path, *, tiers: frozenset[str] | None = None, accept_licences: Collection[str] = ()) -> Overlay:
     """The overlay of the stage (or recording) at ``stage_path``: written into the cache, keyed by the composed stage's
     visual prims and ``tiers``, referencing each baked mesh into its prim (scaled from metres to the stage's units) and
     hiding each segment's simple shapes where every mesh of its frames is drawn. With ``tiers``, a mesh whose tier
     (:func:`baked_tier`) is not one of them, or is stated nowhere, is left out (``Overlay.withheld``), and its segment's
-    simple shapes stay drawn. Nothing is written beside the stage."""
+    simple shapes stay drawn. **A mesh is drawn only once its licence is accepted**: this is where its bytes are first
+    read, and a licence with conditions beyond credit that has no recorded acceptance is asked about once (a person at a
+    terminal, or in a notebook), or accepted by name (``accept_licences``); where nobody can be asked, or the answer is
+    no, that set's meshes are left out (``Overlay.unaccepted``) and its simple shapes stay drawn. Nothing is written
+    beside the stage."""
+    from mime.assets import require_licences
+
     folder = _folder_of(stage_path)
     manifests = {held.name: held for held in lock_manifests(folder)} if folder is not None else {}
     indexes = _indexes()
@@ -350,6 +418,21 @@ def overlay(stage_path: Path, *, tiers: frozenset[str] | None = None) -> Overlay
                 layer = None
             kept.append((prim_path, layer, name))
         wanted = kept
+    for name in sorted({name for _, layer, name in wanted if layer is not None}):
+        needed = _licences_of_layers([layer for _, layer, each in wanted if layer is not None and each == name],
+                                     indexes.get(name, {}))
+        if not needed:
+            continue
+        try:
+            require_licences(needed, accept_licences=accept_licences, what=f"the baked meshes of {name}",
+                             notice=str(indexes.get(name, {}).get("notice") or "") or None)
+        except BuildRefused:
+            found.unaccepted_ids[name] = [each.id for each in needed]
+            for position, (prim_path, layer, each) in enumerate(wanted):
+                if each == name and layer is not None:
+                    wanted[position] = (prim_path, None, each)
+                    found.unaccepted[name] = found.unaccepted.get(name, 0) + 1
+                    withheld.add(prim_path)
     for prim_path, layer, name in wanted:
         if layer is None:
             if prim_path not in withheld:
@@ -403,12 +486,13 @@ def overlay(stage_path: Path, *, tiers: frozenset[str] | None = None) -> Overlay
     return found
 
 
-def view(target: Path, *, tiers: frozenset[str] | None = None) -> tuple[Path, Overlay]:
+def view(target: Path, *, tiers: frozenset[str] | None = None,
+         accept_licences: Collection[str] = ()) -> tuple[Path, Overlay]:
     """A layer in the cache that opens ``target`` (a stage, a recording, or a run or saved folder's) with its overlay
     (of the meshes of ``tiers`` alone, where given): the path to give a USD viewer, and the overlay. Without an overlay
     the view is ``target`` as it is."""
     held = _target(target)
-    found = overlay(held, tiers=tiers)
+    found = overlay(held, tiers=tiers, accept_licences=accept_licences)
     if found.path is None:
         return held, found
     resolved = held.resolve()

@@ -73,7 +73,9 @@ def test_the_commands_the_review_found_misprinted_are_printed_as_argparse_takes_
     assert usage(("credentials", "status"), credentials.choices["status"]).endswith(" [{zenodo,zenodo-sandbox}]")
     fetch = _subparsers_of(held.choices["assets"])
     assert fetch is not None
-    assert usage(("assets", "fetch"), fetch.choices["fetch"]).endswith(" [--all] [name-or-folder ...]")
+    fetching = usage(("assets", "fetch"), fetch.choices["fetch"])
+    assert fetching.startswith("mime assets fetch [--all] [--accept-licence ID] [-y] [-f]")
+    assert fetching.endswith(" [name-or-folder ...]")
 
 
 # -- the oracle: what argparse itself refuses to leave out ------------------------------------------------------------

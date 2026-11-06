@@ -16,6 +16,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/examples/test_notebooks.py` builds each notebook's experiment against the checkout and runs A's for a few
   steps; `scripts/colab_links.py` points every Colab link at one branch.
 
+- **Download gates: a licence's conditions are accepted before a download, and the disk is checked** (design #237), in
+  the library, so a script and a notebook meet them as `mime assets fetch`, `mime visuals fetch` and `mime pull` do. An
+  asset under a licence with conditions beyond credit (the AR4's meshes; a non-commercial Creative Commons licence; any
+  custom licence) is downloaded only once its conditions are accepted: on a terminal a panel with an amber border titled
+  "Licence conditions: your acceptance is needed" shows the conditions as short lines, the licence's title and link and
+  the notice, then asks, in bold, `Do you accept these conditions? [y/N]` (no by default; a no downloads nothing, exit
+  2); a yes is remembered per licence and version (its id and title) in `licences.json` in the config directory (`mime
+  assets licences` lists the acceptances, `--revoke <id>` forgets one); the condition lines are looked up by the
+  licence's id, so a licence read from a saved lock shows the lines its manifest states; `NOASSERTION` (terms not
+  stated) is gated with a panel that says so; a file already in the cache whose licence has conditions and no recorded
+  acceptance asks once at its first use (a bake, `visuals view`, a fetch, a pull); a record's text is written as plain
+  characters at every prompt. With no terminal it refuses naming the licence and
+  `--accept-licence <id>` (Python: `accept_licences={...}`), which accepts that licence for the command and no other;
+  `--yes` and `--force` accept none. Every download also reads the free space of the drive that holds the cache: over
+  1 GB or a tenth of it, it is asked about (`-y/--yes`); if it would leave under 2 GB or 5 % of the drive, it is stopped
+  (`-f/--force`); `visuals fetch` counts 30 % of the meshes' size more for what baking writes. New refusals:
+  `asset.licence-not-accepted`, `asset.licence-declined`, `asset.disk-low`, `asset.download-large`,
+  `asset.download-declined`, `asset.licences-file`. Output that is not going to a terminal is byte for byte what it was.
+  **Moves:** the asset manifest format is `mime.asset_manifest/2` (it adds `conditions` to a custom licence; `/1` is still
+  read, and a `/1` manifest holding `conditions` is refused); the AR4's `visuals.json` is `/2` with its licence's four
+  condition lines; a saved folder's lock (form 6) holds the manifest as `/1` without the lines. `mime pull`'s question
+  about a large download follows the new rule (1 GB or a tenth of the free space, not 1 GB alone), its refusal without a
+  terminal is `asset.download-large` (it was `pull.assets-large`), and `mime.saved.ASSET_CONFIRM_BYTES` is gone
+  (`mime.assets.CONFIRM_ABOVE_BYTES`). `-y`, `-f` and `--accept-licence` are options of `assets fetch`, `visuals fetch`
+  and `pull`.
+
 ### Changed
 
 - **A folder saved by another development release is refused by its own refusal, `load.other-release`.** Development

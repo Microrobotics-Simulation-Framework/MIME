@@ -33,7 +33,7 @@ import json
 import os
 import re
 import secrets
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
@@ -41,7 +41,7 @@ from typing import Literal, cast
 from mime._lock_json import read_lock
 from mime.assets import AssetRef, is_cached, location_problem
 from mime.assets import file_path as cached_file
-from mime.build import Refusal, RefusalClass
+from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import CustomLicenceDoc, ExperimentDocument, Lock, PermissionDoc, TermsDoc
 from mime.terms import (
     CUSTOM_PREFIX,
@@ -570,13 +570,15 @@ OTHER_FILE = "another file is in its place"
 NO_ASSET = "the lock's assets do not name the asset"
 OUTSIDE = "its path is not a place inside the folder a saved form keeps a file"
 CORRUPT = "the cached copy is not the file's bytes (mime assets fetch hashes it and fetches it again)"
+NOT_ACCEPTED = ("its licence has conditions that have not been accepted on this machine (`mime assets fetch` asks "
+                "about them, or takes `--accept-licence <id>`)")
 
 
 @dataclass(frozen=True)
 class Placed:
     """What :func:`place_referenced` did: the files it placed from the cache, those already in place, and those it
     could not place, each with the asset's name and why (:data:`NOT_CACHED`, :data:`OTHER_FILE`, :data:`NO_ASSET`,
-    :data:`OUTSIDE`, :data:`CORRUPT`)."""
+    :data:`OUTSIDE`, :data:`CORRUPT`, :data:`NOT_ACCEPTED`)."""
 
     placed: tuple[str, ...] = ()
     present: tuple[str, ...] = ()
@@ -619,9 +621,25 @@ def _copy_checked(source: Path, target: Path, sha256: str) -> bool:
         temporary.unlink(missing_ok=True)
 
 
-def place_referenced(folder: str | os.PathLike[str]) -> Placed:
+def _accepted_to_read(ref: AssetRef, accept_licences: Collection[str]) -> bool:
+    """Whether the cached file of ``ref`` may be read now: its licence has no conditions, or they were accepted (recorded,
+    or named in ``accept_licences``, or accepted by the batch in force). Never asks: placing a file is not where a
+    question is put; ``mime assets fetch`` and ``mime pull`` ask for the whole folder, then place."""
+    from mime import assets
+
+    with assets.asking(None):
+        try:
+            assets.require_accepted([ref], accept_licences=accept_licences)
+        except BuildRefused:
+            return False
+    return True
+
+
+def place_referenced(folder: str | os.PathLike[str], *, accept_licences: Collection[str] = ()) -> Placed:
     """Put each file the folder's lock says travels as a reference at its path, from the asset cache: copied and
-    hashed, never over a file already there, never outside the folder. A file that is not cached is left for ``mime
+    hashed, never over a file already there, never outside the folder. A file whose licence has conditions nobody has
+    accepted (a first use of the cached file: ``accept_licences`` names ids accepted for this call) is left unplaced, as
+    :data:`NOT_ACCEPTED`: this asks nothing. A file that is not cached is left for ``mime
     assets fetch <folder>``, which stores it and calls this again; every file it does not place is reported missing,
     with why. The folder is judged by its real path, so that a folder reached through a link (macOS's ``/tmp`` and
     ``/var``) is the folder its files are in. Reads the lock as JSON and runs nothing."""
@@ -660,6 +678,8 @@ def place_referenced(folder: str | os.PathLike[str]) -> Placed:
                 missing.append((path, name, OTHER_FILE))
         elif not is_cached(ref):
             missing.append((path, name, NOT_CACHED))
+        elif not _accepted_to_read(ref, accept_licences):
+            missing.append((path, name, NOT_ACCEPTED))
         elif _copy_checked(cached_file(ref), target, ref.sha256):
             placed.append(path)
         else:

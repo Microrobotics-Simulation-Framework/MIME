@@ -9,6 +9,7 @@ FETCH = "fetch"
 CHECK = "check"
 SOURCES = "sources"
 AUDIT = "audit"
+LICENCES = "licences"
 
 
 def folder_argument(folder: str | os.PathLike[str]) -> str:

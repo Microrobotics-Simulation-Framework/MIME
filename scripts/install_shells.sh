@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# zsh and fish for tests/cli/test_completion.py, on the CI shard that holds that file (.github/workflows/ci.yml).
+# zsh and fish for tests/cli/test_completion.py, in the CI job that runs that file alone (.github/workflows/ci.yml).
 #
 # `apt-get install` takes 12 s at the median and, in 23 of 1043 shard jobs of 21 runs, over 120 s (121 to 320 s, each of
 # them successful on its one attempt), once 8 min 19 s and once 9 min 51 s (both lost to the job's 20 minutes), nearly all
@@ -11,10 +11,10 @@
 #     install that passed before is failed here: the cut only ever ends an attempt the history says is stalled.
 #
 # The worst case, printed first, is (attempt cut + 10 + dpkg cut + 10 + pause) x (attempts - 1) + final cut + 10 =
-# (120 + 10 + 60 + 10 + 15) x 2 + 370 = 800 s (13.3 min). That is inside the job's 20 minutes alone, not beside the
-# shard's tests (11 to 14 min): an install that stalls twice and then runs to its last cut loses the job, as the step
-# before this one would have (the two installs of 8 and 10 minutes never finished). Whether a second attempt on a runner
-# whose first stalled is quick is not known; the log says how long each took.
+# (120 + 10 + 60 + 10 + 15) x 2 + 370 = 800 s (13.3 min). The job that runs it holds the completion tests alone
+# (its limit is 30 minutes: tests/test_completion_job.py holds that above this worst case with a margin), where the step
+# before this one ran beside a shard's 11 to 14 minutes of tests and lost the job to installs of 8 and 10 minutes.
+# Whether a second attempt on a runner whose first stalled is quick is not known; the log says how long each took.
 set -u
 
 attempts=${SHELLS_ATTEMPTS:-3}

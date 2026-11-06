@@ -29,6 +29,28 @@
   of the machine, with no page written, and two without the `verify` extra.
   `mime.docs` is imported inside the command, so every other command runs without it.
 
+- **The download gates** (`mime.assets._gates`, in the library, so a script and a notebook meet them too), on `mime assets
+  fetch`, `mime visuals fetch` and `mime pull`: **(1) a licence with conditions beyond credit** (non-commercial,
+  share-alike, no redistribution, a custom licence: whatever `mime.terms` does not judge open; an open licence asks
+  nothing) is downloaded only once its conditions are accepted. On a terminal they are a panel with an amber border titled
+  "Licence conditions: your acceptance is needed", the conditions as short lines, the licence's title and link, the
+  record's notice under it, and in bold `Do you accept these conditions? [y/N]`, defaulting to no; a no downloads nothing
+  and exits 2 (`asset.licence-declined`). A yes is remembered in `licences.json` in the user's config directory
+  (`MIME_LICENCE_ACCEPTANCES` names another file), so the licence is asked about once, again when its title (its version)
+  changes; a file already in the cache whose licence has conditions and no recorded acceptance is asked about once at
+  its first use (`visuals fetch`, `assets fetch`, `pull`, and `visuals view`, which takes `--accept-licence` too);
+  `NOASSERTION` (terms not stated) is gated, with a panel that says so; `mime assets licences` lists the acceptances and `--revoke <id>` forgets one. With no terminal to ask
+  at it refuses (`asset.licence-not-accepted`) naming the licence and the exact flag, `--accept-licence <id>`, which may be
+  repeated and accepts the licence it names for that command and nothing else. **No generic flag accepts a licence**:
+  not `--yes`, not `--force`. **(2) The disk**: the download's bytes (the files not in the cache, and for `visuals fetch`
+  30 % of the meshes' size more for what baking writes, a bound measured on the AR4: 1.9 % of its input in all, 28 % at
+  worst for one small mesh) against the free space of the drive that holds the asset cache. On a terminal one line says
+  both ("Download 49.7 MB (18 files), and bake about 14.9 MB more, into <folder>: 447 GB free of 1.0 TB."). A download over
+  1 GB or over 10 % of the free space is asked about (`-y/--yes`; refused without a terminal, `asset.download-large`); one
+  that would leave under 2 GB or 5 % of the drive free is stopped (`-f/--force` overrides, `asset.disk-low`), whatever
+  the terminal. The thresholds are named in `mime.assets._gates`. On a terminal the questions are drawn by the display;
+  under `--plain`, `NO_COLOR`, `TERM=dumb`, or with standard output piped but a terminal to answer at, they are asked in
+  plain lines (the licence's, in the same words) on the terminal, and the line about the drive is not said.
 - `mime assets list`, `mime assets fetch <name-or-folder>... | --all` and `mime assets check`: the large files MIME references
   by sha256, in the cache (see [`mime.assets`](../assets/README.md)). `fetch` takes an experiment folder too, and stores exactly the assets its lock references,
   then places each file of the folder that travels as a reference at its path (copied from the cache and hashed,
@@ -40,6 +62,8 @@
 - `mime assets sources <name-or-folder>...`: each asset's terms, tier and locations in the order a fetch tries them
   (this machine's locations file's first), each looked at now without downloading it: reachable or not, and why;
   offline, it says it did not look.
+- `mime assets licences [--revoke <id>]`: the licences accepted on this machine (id, title, link, date); `--revoke`
+  forgets one (exit 1 where none of that id is kept).
 - `mime assets audit <wheel|sdist|archive|directory>... [--manifest FILE]`: the guard. It hashes every file, inside
   archives, compressed streams and base64 blocks too (each opened by its bytes, never its name), and finds any file
   whose bytes are a referenced record's (every record known here: the installed sources', each manifest, lock and
@@ -75,13 +99,16 @@
   it), or with `--notice` its NOTICE (each file's licence, credit, verdict and declared permission), offline and
   byte for byte as `mime push` will publish them; printed, or written to `--out`. It loads the folder as `pack` does.
   Exits zero, or two when refused.
-- `mime pull <doi | address | file> [--into <folder>] [--no-assets] [--yes] [--max-bundle-bytes <n>]`: get a bundle,
+- `mime pull <doi | address | file> [--into <folder>] [--no-assets] [--yes] [--force] [--accept-licence <id>]... [--max-bundle-bytes <n>]`: get a bundle,
   check its hashes, unpack it into a new folder, fetch its assets (unless `--no-assets`) and say what is still needed:
   the packages the lock names that are not installed, with the command to install them. It installs and runs nothing.
   The destination is checked before anything is downloaded, and a download stops at the size a record states, or at
-  half a gigabyte for a bundle with no stated size (`--max-bundle-bytes` raises it). A download of assets over a gigabyte is
-  asked about first in a terminal; `--yes` goes ahead, and without a terminal it stops with the exact command that
-  continues. Each asset download is held to the size its lock declares. A concept DOI resolves to its latest version,
+  half a gigabyte for a bundle with no stated size (`--max-bundle-bytes` raises it). The assets' downloads meet the
+  download gates (below): a download over a gigabyte, or a tenth of the free space, is asked about first in a terminal
+  (`--yes` goes ahead; without a terminal it stops, `asset.download-large`, and the folder is kept), one that would leave
+  under 2 GB or 5 % of the drive free is stopped (`--force` goes ahead), and an asset under a licence with conditions
+  beyond credit waits for the licence to be accepted (`--accept-licence <id>`). Each asset download is held to the size
+  its lock declares. A concept DOI resolves to its latest version,
   which pull names. `mime pull --from zenodo|zenodo-sandbox <record>` pulls a published record by its number, read at
   that service's records API with no token: a sandbox DOI is under DataCite's test prefix, which doi.org does not
   resolve, so MIME never asks doi.org for one (`pull.sandbox-doi` says the command). `--signed-in` sends the token `mime
