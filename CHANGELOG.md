@@ -25,9 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says that development releases do not load each other's folders, and says what to do: run the script that built the
   experiment under this MIME and save it again, `built.save(folder)`, or load the folder as it is under the MIME that
   saved it. A folder unpacked from a published record (`mime pull`) says so and names the record's page.
-  `load.input-hash` is raised only where the versions agree, for a document changed after its lock was written; one
-  loaded and then edited (a notebook cell run after the load) is refused in words about the edit ("edited after it was
-  loaded"). The compatibility policy for later releases is designed before the first users; this is not it.
+  It is the first thing `Experiment.load` does, before any entry resolves, so a folder whose document no longer resolves
+  under this release is still refused for the release that saved it. `load.input-hash` is raised only where the
+  versions agree, for a document changed after its lock was written; one loaded and then edited (a notebook cell run
+  after the load) is refused in words about the edit ("edited after it was loaded"), with the actions that work: load
+  the folder again, or make the same edit in the script that built the experiment and save from there (a loaded,
+  edited experiment can be neither built nor saved; `Experiment.based_on` will be named when it lands). The
+  compatibility policy for later releases is designed before the first users; this is not it, and two final releases
+  (0.3.0 and 0.3.1) still meet `load.input-hash` and its words about a changed document.
 - **`mime verify`, `mime env check` and `mime registry` draw tables on a terminal.** `mime verify` shows its checks as a
   table (the saved form, the input hash, the environment, the derived graph, the rerun and what it was held to, and a
   row for each field compared: "equal, bit for bit" where the comparison was bit for bit, otherwise the tolerance it was

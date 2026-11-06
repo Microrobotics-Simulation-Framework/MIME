@@ -673,6 +673,23 @@ def other_release_refusal(form: SavedForm, running: str | None = None) -> Refusa
     return _refuse("load.other-release", RefusalClass.USER, message, action)
 
 
+#: Whether ``Experiment.based_on`` exists (U15). While it does not, a loaded experiment that was edited cannot be built
+#: or saved, and the action names what does work; set this to True when it lands and the action names it instead.
+_BASED_ON_EXISTS = False
+
+
+def _edited_after_load_action(folder: Path) -> str:
+    """What to do with a loaded experiment that was edited: only what works. A loaded experiment is checked against its
+    lock at every build, so the edited one can be neither built nor saved (a save builds first)."""
+    if _BASED_ON_EXISTS:
+        return (f"to keep the edit, start a new experiment from the folder, Experiment.based_on({str(folder)!r}), make "
+                f"the edit there and save it as a new folder; to drop it, load the folder again, "
+                f"Experiment.load({str(folder)!r})")
+    return (f"this experiment cannot be built or saved while it differs from its lock. To drop the edit, load the "
+            f"folder again, Experiment.load({str(folder)!r}). To keep it, make the same edit in the script that built "
+            f"the experiment and save from there, built.save(\"<new folder>\")")
+
+
 def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] | None = None, *,
                edited_after_load: bool = False) -> LoadReport:
     """The three load checks, against the rebuilt experiment's ``record``. A folder saved by another development
@@ -725,9 +742,7 @@ def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] |
                                     f"it no longer reproduces the lock it was loaded with: {detail}"
                                     + (f" ({WHERE}: a line or cell run after the load changed it)"
                                        if in_notebook() else ""),
-                                    "to keep the edit, build the experiment and save it as a new folder, "
-                                    "built.save(\"<new folder>\"), which writes a new lock; to drop it, load the "
-                                    "folder again, Experiment.load(\"<folder>\")"))
+                                    _edited_after_load_action(form.folder)))
         elif edited:
             refusals.append(_refuse("load.input-hash", RefusalClass.USER,
                                     f"the document was changed after its lock was written: {detail}",

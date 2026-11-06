@@ -504,7 +504,8 @@ class Experiment:
     @public
     def load(cls, folder: str | PathLike[str]) -> Experiment:
         """The experiment saved in ``folder``, rebuilt and checked against its lock. Reads the document and runs no
-        code it names; resolves every entry among installed packages and installs nothing, refusing a missing one
+        code it names; first refuses a folder another development release saved (``load.other-release``), which needs
+        only the lock; resolves every entry among installed packages and installs nothing, refusing a missing one
         or another version with the line to install; then makes the three load checks, whose outcome is
         :attr:`load_report`. Raises ``LoadRefused`` with every reason: a folder that is not there names the saved
         experiments beside it."""
@@ -514,6 +515,12 @@ class Experiment:
 
             raise LoadRefused(missing_folder(Path(folder)).refusals)
         form = read_folder(Path(folder))
+        from mime.saved import _folder
+
+        # First: the refusal needs only the lock, and a folder another release saved may no longer resolve or build.
+        other_release = _folder.other_release_refusal(form)
+        if other_release is not None:
+            raise _folder.LoadRefused([other_release])
         experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder)))
         experiment._saved = form
         experiment.load_report = experiment.build().load_report
