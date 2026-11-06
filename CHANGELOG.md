@@ -143,6 +143,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **In float32 every build of a screw or a cylinder in a process holds the first build's matrix, to the bit** (MIME-ANO-138).
+  The first build in a process made the MRS node's held matrix from cap samples in float64; every later build made it
+  from the same samples rounded to float32 (1e-7 of themselves), because the cap layout the process caches was handed
+  to each build as the same arrays. Measured at MIME's level: `jnp.asarray` with x64 on returned float32 for the same
+  array object the traced step had used under x64 off, and float64 for a copy of it (as did `jax.device_put` and
+  `jax.clear_caches()`); the cached arrays themselves were unchanged. It was not reduced to a case without MIME, so it
+  is not attributed to JAX in general. The drag's resistance differed between the first build and the rest by 1.1e-5
+  of its first entry (about 90 float32 epsilons, from the samples' 2 to 3) from step 0, so in a script the process's
+  first build, run and then saved, reported moved against the reference its own save wrote (`built.verify()` was
+  clean). `cap_rings` now hands out a copy of the layout each call. Float64 is unchanged; `mime verify` was never
+  affected (its reference and its rerun are both later builds, and `Experiment.load` builds once before the user's
+  `.build()`).
 - **A document of version 6 that declares a run's length reads.** The load refused `run.duration` in any document of
   a version below the current one, where version 5 added it; with the form at 7, that would have refused every
   version 6 folder that declares its run's length. It is refused only below version 5, as the key's message says.
