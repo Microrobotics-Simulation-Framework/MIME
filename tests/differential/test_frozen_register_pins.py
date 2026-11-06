@@ -28,9 +28,11 @@ version, until the law was given its own.
   versions registered when the register froze, each registered (the current version or one
   ``mime.interactions.KEPT`` keeps): drag 0.4.0 (phase 7m-b) separated the MRS rung's quadrature, and the register's
   MRS arm keeps 0.3.0's point forces; the contact 0.2.0 (phase 7o) holds the hull's points, and every arm keeps
-  0.1.0, the body's centre held by its extent.
+  0.1.0, the body's centre held by its extent; the magnetic torque 0.2.0 (MIME-ANO-137) reads a field that varies in
+  space at the magnet's centroid, and every arm keeps 0.1.0 (the register's field is uniform, where the two compute the
+  same).
 - **Controls**, failing on every run: the experiment with the pin bypassed names the screw 0.3.0 and fails the first
-  check; with the law's pin bypassed it names drag 0.4.0 and the contact 0.4.0; a script that builds ``fl9()``
+  check; with the law's pin bypassed it names drag 0.4.0, the contact 0.4.0 and the magnetic torque 0.2.0; a script that builds ``fl9()``
   unpinned fails the source scan; the experiment with the dynamics' pin bypassed names ``rigid_inertial`` 0.3.0,
   fails the dynamics check, and its transverse-inertia arm runs at 3.20747 mm/s.
 
@@ -59,9 +61,10 @@ CURRENT = {cls.name: cls.version for cls in (Screw, Sphere, Capsule, Box, Cylind
 #: The interactions' versions registered on 2026-10-31, and the current ones.
 REGISTER_FROZE_INTERACTIONS = {"drag": "0.3.0", "magnetic.torque": "0.1.0", "gravity": "0.1.0", "contact": "0.1.0"}
 CURRENT_INTERACTIONS = {cls.name: cls.version for cls in (Drag, Magnetic.Torque, Gravity, Contact)}
-#: What an experiment of the register's names with the laws' pin bypassed: the two laws that have moved since.
+#: What an experiment of the register's names with the laws' pin bypassed: the three laws that have moved since.
 MOVED_SINCE = [f"contact:umr: contact {Contact.version}, the register froze 0.1.0",
-               f"drag:umr: drag {Drag.version}, the register froze 0.3.0"]
+               f"drag:umr: drag {Drag.version}, the register froze 0.3.0",
+               f"magnetic.torque:umr: magnetic.torque {Magnetic.Torque.version}, the register froze 0.1.0"]
 #: What builds a geometry or an experiment in a script: a kind's class, script A's shell or arms, an experiment.
 BUILDERS = {cls.__name__ for cls in (Screw, Sphere, Capsule, Box, Cylinder, Ellipsoid, Tube)} | {
     held.__name__ for held, _ in KEPT.values()} | {"fl9", "script_a", "record_arm", "Experiment"} | {

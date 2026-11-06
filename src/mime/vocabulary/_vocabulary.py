@@ -52,7 +52,10 @@ class Capability(Enum):
     ``UNIFORM``: a field provider whose field is the same at every point, so a reader's slot takes no points.
     ``HOLDS_HULL``: a dynamics that holds a confinement's hull, every point of its kind's samples, orientation read; one
     that projects a confinement without it holds only a centre by its extent, and a hull's confinement is refused
-    for it."""
+    for it.
+    ``BODY_POINTS``: a field provider that evaluates a reader's slot at a point fixed in the reader's body (the slot's
+    ``offset``, turned by the pose's orientation from the pose's position: a magnet's centroid), where one without it
+    evaluates at the pose's position only; a read at a body's point is planned only on a provider that claims it."""
 
     RIGID = "rigid"
     INERTIAL = "inertial"
@@ -66,6 +69,7 @@ class Capability(Enum):
     PROVISION_SOLVED = "provision=solved"
     PROVISION_TABULATED = "provision=tabulated"
     UNIFORM = "uniform"
+    BODY_POINTS = "body_points"
 
 
 @dataclass(frozen=True)

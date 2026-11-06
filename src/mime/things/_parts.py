@@ -284,7 +284,9 @@ def _magnet_centre(body: str, magnets: Sequence[PartMass]) -> Derived:
     if not magnets:
         return Derived(None, problems=((
             "parts.no-magnet", f"body {body!r} has parts and no magnet among them, so no magnet's centroid",
-            "give a part a magnet's role: magnets={\"<part>\": PermanentMagnet(...)}"),))
+            "declare its magnet_centre with its reason, the point the magnetic laws read the field at: "
+            "exp.declare(\"<body>.magnet_centre\", m((...)), reason=\"...\"); or give a part a magnet's role: "
+            "magnets={\"<part>\": PermanentMagnet(...)}"),))
     return Derived(None, problems=((
         "parts.several-magnets", f"body {body!r} has {len(magnets)} magnets ({', '.join(m.name for m in magnets)}): a "
                                  f"field's gradient pulls on each where it sits, which one centroid does not hold",

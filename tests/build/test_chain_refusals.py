@@ -10,7 +10,12 @@ declaration without the defect, which builds or plans:
 - **a refused URDF element**: a mimic joint is refused, naming it and how to acknowledge it; acknowledged with its
   reason it builds, and the saved form and the report record it;
 - **a reader inside the magnet**: a body that starts within the sphere that holds a point dipole's magnet is refused,
-  naming the distance and the radius; the same body outside it plans;
+  naming the distance and the radius; the same body outside it plans. The point judged is the one the law reads: the
+  centre of mass for 0.1.0, the magnet's centroid (turned by the orientation the body starts in) for 0.2.0, each beside
+  the placement that tells them apart;
+- **a magnet's centroid asked of a body with parts and no magnet** (the 0.2.0 torque): refused, the advice naming both
+  cures; declaring ``magnet_centre`` builds it. **A law reading at a body point from a provider that does not evaluate
+  there** is refused by the planner's guard (a toy law whose rows forgot the capability);
 - **several magnets on an apparatus**, and **an initial position beyond a joint's limit**, each refused with the
   limits or the magnets named; the control, one magnet and positions inside the limits, plans;
 - the mounts: a segment after the first that names no frame, or one its predecessor does not have, a first segment
@@ -36,13 +41,13 @@ from mime.core.multibody import ClosureKind, DescriptionReading, LoopClosure
 from mime.dynamics import Arm, Motor, RigidInertial
 from mime.fields import PointDipole
 from mime.gradients import GradientStatus
-from mime.registry import BuildContext, Delivery, Interaction, Problem, RoleKind, register_dynamics, \
-    register_interaction
-from mime.interactions import Magnetic
+from mime.registry import BuildContext, Delivery, Interaction, Problem, Read, RoleKind, SupportRow, Value, \
+    register_dynamics, register_field_provider, register_interaction, requires
+from mime.interactions import KEPT, Magnetic
 from mime.scene import Cylinder, Z, asset
 from mime.things import Apparatus, Body, Part, PermanentMagnet, State
 from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, m, m_per_s, mm, ms, rad, rad_per_s
-from mime.vocabulary import LINK_WRENCH, register_namespace
+from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, LINK_WRENCH, POSE, Capability, register_namespace
 
 register_namespace("chainrefusals", "0.0.1")
 
@@ -60,6 +65,43 @@ class PushOnChain(Interaction):
 
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         return None
+
+
+@register_field_provider
+@dataclass(frozen=True, kw_only=True)
+class FieldAtThePoseOnly(PointDipole):
+    """A point dipole that does not claim to evaluate at a point fixed in the reader's body."""
+
+    name = "chainrefusals.pose_only"
+    version = "0.1.0"
+    flags = frozenset({Capability.PROVISION_EVALUATED})
+
+
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class ReadsAtTheMagnet(Interaction):
+    """A third-party law that reads a field at the body's magnet (``Read.offset``) and whose support row forgets to
+    require the capability that evaluates there: the planner's own guard is what refuses it, the registered magnetic
+    laws' rows already requiring it."""
+
+    name = "chainrefusals.reads_at_the_magnet"
+    version = "0.1.0"
+    differentiability = GradientStatus.EXACT
+    roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
+    support = (SupportRow(None, {
+        "body": requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name], publishes=[POSE.name]),
+        "field": requires(Capability.PROVISION_EVALUATED, publishes=[FLUX_DENSITY.name])}),)
+    reads = {"pose": Read("body", POSE.name),
+             "flux_density": Read("field", FLUX_DENSITY.name, at=Read("body", POSE.name), offset="magnet_centre")}
+    delivers = {"wrench": Delivery("body", APPLIED_WRENCH.name)}
+    values = {"magnet_centre": Value("body", "magnet_centre")}
+
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        return None
+
+
+#: The magnetic laws 0.1.0, which read the field at the centre of mass, by name.
+OLD_LAWS = {name: KEPT[f"magnetic.{name}", "0.1.0"][0] for name in ("force", "torque")}
 
 
 def refused(experiment) -> list:
@@ -326,6 +368,53 @@ def test_a_force_on_a_body_with_two_magnets_asks_for_its_lever():
     assert "parts.several-magnets" in codes(exp)
 
 
+def shell_body_under_torque(name: str, *, law=None, centre=None):
+    """A body with a part and no magnet role, its moment declared, under the field's torque: the 0.1.0 torque built it
+    (the field read at the centre of mass); the 0.2.0 torque reads at the magnet's centroid and has none to read."""
+    exp = new_experiment(name)
+    exp.add_apparatus(Apparatus("stand", parts={"magnet": magnet_part(None, at=m((0.0, 0.0, 0.1)))},
+                                magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
+                                fields={"magnetic": PointDipole(part="magnet")}))
+    exp.declare("stand.magnetic_moment", A_m2(18.89), reason="the source")
+    exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=mm((0.0, 0.0, -1.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0))),
+        parts={"shell": Part(Cylinder(radius=mm(0.5), length=mm(1.0), axis=(1.0, 0.0, 0.0)))}))
+    for key, value in (("mass", kg(8.5e-5)), ("inertia", kg_m2((1e-10, 1e-10, 1e-10))),
+                       ("magnetic_moment", A_m2((1e-3, 0.0, 0.0)))):
+        exp.declare(f"umr.{key}", value, reason="the body")
+    if centre is not None:
+        exp.declare("umr.magnet_centre", centre, reason="the magnet sits at the shell's centre")
+    exp.attach(law if law is not None else Magnetic.Torque(), body="umr", field="stand.magnetic")
+    return exp
+
+
+def test_a_law_reading_at_the_body_from_a_provider_that_does_not_evaluate_there_is_refused_by_the_planner():
+    """The planner's guard, which no registered law reaches: its own support rows require the capability, so a law that
+    forgot the row is refused as a defect of the law, naming the capability its rows must require."""
+    (refusal,) = [r for r in refused(fixed_magnet("pose_only", law=ReadsAtTheMagnet(), provider=FieldAtThePoseOnly))
+                  if r.code == "entry.defect"]
+    assert "'flux_density'" in refusal.message and "evaluates at the pose's position only" in refusal.message
+    assert "Capability.BODY_POINTS" in refusal.message
+
+
+def test_control_the_same_law_on_a_provider_that_evaluates_at_a_body_point_plans():
+    fixed_magnet("body_points", law=ReadsAtTheMagnet()).plan()
+
+
+def test_a_torque_on_a_body_with_parts_and_no_magnet_is_refused_saying_how_to_name_the_magnets_centroid():
+    """The 0.2.0 torque's lever has to come from a magnet part or from a declaration; the advice names both."""
+    (refusal,) = [r for r in refused(shell_body_under_torque("no_magnet")) if r.code == "parts.no-magnet"]
+    assert "no magnet's centroid" in refusal.message
+    assert 'exp.declare("<body>.magnet_centre", m((...)), reason="...")' in refusal.action
+    assert 'magnets={"<part>": PermanentMagnet(...)}' in refusal.action
+
+
+def test_control_declaring_the_magnet_centre_builds_that_body_and_so_does_the_kept_0_1_0_torque():
+    shell_body_under_torque("declared_centre", centre=m((0.0, 0.0, 0.0))).plan()
+    shell_body_under_torque("kept_torque", law=OLD_LAWS["torque"]()).plan()
+
+
 def test_a_body_that_starts_inside_the_magnet_is_refused_naming_the_distance_and_the_radius():
     """The magnet's sphere is 20.2 mm in radius (a cylinder 35 mm across and 20 mm long): a body 5 mm from its centroid
     is inside it, and so is one at the centroid, where the field is singular."""
@@ -339,6 +428,63 @@ def test_a_body_that_starts_inside_the_magnet_is_refused_naming_the_distance_and
 def test_control_the_same_body_outside_the_magnets_sphere_plans():
     fixed_magnet("outside_magnet", body_position=m((0.0, 0.0, 0.1 - 0.0202))).plan()
     fixed_magnet("far_from_magnet").plan()
+
+
+#: A 5 mm sphere about a source at the origin (a cylinder 4 mm in radius and 6 mm long holds in one), and a body whose
+#: magnet sits 3 mm along its z from its centre of mass: the magnetic laws 0.2.0 read where the magnet is, and the
+#: near-field check judges that point, not the centre of mass.
+SMALL_SOURCE = {"at": m((0.0, 0.0, 0.0)), "magnet_size": (4e-3, 6e-3)}
+LEVER = m((0.0, 0.0, 3e-3))
+FLIPPED = (0.0, 1.0, 0.0, 0.0)
+
+
+def small_source(centre_z, lever=LEVER, orientation=(1.0, 0.0, 0.0, 0.0), law=None):
+    return fixed_magnet("near_read", body_position=m((0.0, 0.0, centre_z)), magnet_centre=lever,
+                        body_orientation=orientation, law=law, **SMALL_SOURCE)
+
+
+@pytest.mark.parametrize("law", [Magnetic.Force, Magnetic.Torque])
+def test_a_magnet_whose_read_point_starts_inside_the_source_is_refused_though_the_centre_of_mass_is_outside(law):
+    """The centre of mass is 6 mm from the centroid, outside the 5 mm sphere; the magnet, 3 mm toward the source, is
+    3 mm from it, inside, and that is where the law reads."""
+    (refusal,) = [r for r in refused(small_source(6e-3, m((0.0, 0.0, -3e-3)), law=law()))
+                  if r.code == "provider.reader-inside"]
+    assert "'umr' reads stand.magnetic at 'magnet_centre'" in refusal.message
+    assert "starts 0.003 m from the centroid" in refusal.message and "0.005 m sphere" in refusal.message
+    assert "change 'magnet_centre'" in refusal.action and "outside the magnet" in refusal.action
+
+
+@pytest.mark.parametrize("law", [Magnetic.Force, Magnetic.Torque])
+def test_a_magnet_whose_read_point_starts_outside_the_source_plans_though_the_centre_of_mass_is_inside(law):
+    """The centre of mass is 4 mm from the centroid, inside the 5 mm sphere; the magnet, 3 mm away from the source, is
+    7 mm from it, and that is where the law reads."""
+    small_source(4e-3, law=law()).plan()
+
+
+def test_the_read_point_is_turned_by_the_orientation_the_body_starts_in():
+    """The same centre of mass and magnet_centre, turned half a turn about x: the magnet is 3 mm toward the source."""
+    (refusal,) = [r for r in refused(small_source(4e-3, orientation=FLIPPED))
+                  if r.code == "provider.reader-inside"]
+    assert "starts 0.001 m from the centroid" in refusal.message
+
+
+@pytest.mark.parametrize("name", ["force", "torque"])
+def test_control_the_kept_0_1_0_still_judges_the_centre_of_mass(name):
+    """0.1.0 reads at the centre of mass, so its check does: the two placements above, reversed."""
+    law = OLD_LAWS[name]
+    small_source(6e-3, m((0.0, 0.0, -3e-3)), law=law()).plan()
+    (refusal,) = [r for r in refused(small_source(4e-3, law=law())) if r.code == "provider.reader-inside"]
+    assert "body 'umr' starts 0.004 m from the centroid" in refusal.message
+    assert "magnet_centre" not in refusal.message
+
+
+def test_control_with_no_lever_the_check_is_the_centre_of_mass_as_before():
+    """A lever of zero is the centre of mass, whatever the version."""
+    for law in (Magnetic.Force(), OLD_LAWS["force"]()):
+        (refusal,) = [r for r in refused(small_source(4e-3, m((0.0, 0.0, 0.0)), law=law))
+                      if r.code == "provider.reader-inside"]
+        assert "starts 0.004 m from the centroid" in refusal.message
+        small_source(6e-3, m((0.0, 0.0, 0.0)), law=law).plan()
 
 
 def test_an_apparatus_with_two_magnets_is_refused():

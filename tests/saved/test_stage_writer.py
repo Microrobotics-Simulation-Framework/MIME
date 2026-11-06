@@ -31,7 +31,7 @@ from mime import Apparatus, Body, Experiment, State, Structure
 from mime.build import ArgumentRefused, stage_spec
 from mime.dynamics import Motor, RigidInertial
 from mime.fields import PointDipole
-from mime.interactions import Magnetic
+from mime.interactions import KEPT as KEPT_LAWS
 from mime.saved import DOCUMENT_FILE, LOCK_FILE
 from mime.saved._folder import LoadRefused
 from mime.scene import KEPT, STAGE_FILE, STAGE_WRITER, Cylinder, Scene, Tube, X, Z, sha256_hex, stage_edits, stage_text
@@ -43,7 +43,9 @@ FIXTURE = Path(__file__).parent / "stage_writers" / "chain_screw"
 
 def chain_screw() -> Experiment:
     """The fixture's experiment, as it was written for ``v0.3`` at 4bc1ada: its screw is the kept ``screw`` 0.2.0, the
-    version current then (phase 7m-a made 0.3.0 the current one, which samples quasi-uniformly)."""
+    version current then (phase 7m-a made 0.3.0 the current one, which samples quasi-uniformly), and its magnetic
+    torque the kept 0.1.0 (0.2.0 reads the field at the magnet's centroid, which this body, a shell with its moment
+    declared, does not have)."""
     exp = Experiment("chain_screw", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(1.0))
     exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                       length=mm(100.0))))
@@ -62,7 +64,7 @@ def chain_screw() -> Experiment:
         magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))},
         fields={"magnetic": PointDipole(part="magnet")}, commands={"motor.angle": rad(0.25)}))
     exp.declare("spin.magnetic_moment", A_m2(18.89), reason="de Jongh's rotor magnet")
-    exp.attach(Magnetic.Torque(), body="umr", field="spin.magnetic")
+    exp.attach(KEPT_LAWS["magnetic.torque", "0.1.0"][0](), body="umr", field="spin.magnetic")
     return exp
 
 

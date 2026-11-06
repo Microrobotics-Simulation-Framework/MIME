@@ -27,7 +27,9 @@ a2.
 
 **`PointDipole`** (`point_dipole` 0.1.0): a magnet part of the apparatus as a point
 dipole, its field and gradient (by the closed form) at each reader's point, the part placed by its mount, so it
-follows the chain carrying it. Its moment is the apparatus's `magnetic_moment`, declared as a magnitude along the
+follows the chain carrying it. A reader's slot whose read names a point fixed in the reader's body (a magnetic law's
+`magnet_centre`) is evaluated there, the pose's position plus its orientation applied to the point
+(`Capability.BODY_POINTS`). Its moment is the apparatus's `magnetic_moment`, declared as a magnitude along the
 magnet's declared direction; its node holds the magnet's radius, against which its near-field limit is stated
 (MIME-ANO-100). A provider may read its apparatus's parts (`parts`) and values (`values`).
 
