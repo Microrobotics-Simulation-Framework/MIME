@@ -126,6 +126,7 @@ needs no MIME, no Python and no USD viewer to open, so it is the form to send to
 mime visuals web a0_run                          # a0_run.html here: one file, the viewer inside it, no network needed
 mime visuals web a0_run --out a0.html --open     # named, and opened in the default browser
 mime visuals web a0_run --cdn --glb a0.glb       # the viewer from jsDelivr (a smaller page), and the GLB alone
+mime visuals web a0_run --follow umr --no-legend # the camera on the body through the recording, without the arrow legend
 ```
 
 <!-- mime-fragment: the notebook call, for a run folder the reader has -->
@@ -134,6 +135,7 @@ import mime.viz
 
 mime.viz.display("a0_run")                # the last line of a cell: the page, in the cell's output
 mime.viz.display("a0_run", offline=True)  # the viewer inlined too, for a notebook read without a network
+mime.viz.display("a0_run", focus="umr", scale_bar=False)  # the camera framed on the body at the start, no scale bar
 result = mime.viz.gltf("a0_run")          # the GLB itself (result.glb), with what it holds and leaves out
 written.view()                            # after built.run_to(...): the same as display() of its folder
 ```
@@ -164,7 +166,37 @@ page, which in a saved notebook was most of the cell's output.
   arrows (`ARROW_CAP_FRACTION`); where the two differ, the lesser. An arrow at no body has the scene's alone. Under its
   cap an arrow's length stays proportional to its vector. A capped arrow keeps its direction, the page's notes name each
   one by its prim path with the length it is drawn at and the length it would have, and the stage and the recording hold
-  the full length, as they always did. There is no button to hide the arrows yet.
+  the full length, as they always did. The legend (below) says what each arrow is and the scale and the cap it is drawn at.
+- **The basics, each a switch.** Each is an argument of `mime.viz.display`, of `mime.viz.web` and (all but the last, which
+  is decided where the view is made) of `mime.viz.page`, and a flag of `mime visuals web`, and the page's notes say which
+  are on:
+
+  | Switch | Default | What it does |
+  | --- | --- | --- |
+  | `scale_bar` / `--no-scale-bar` | on | A round length in SI units (one, two or five times a power of ten, from picometres to metres) that is redrawn as you zoom. It is true at the point the camera orbits, the one a click set, and not beside a part at another depth. |
+  | `legend` / `--no-legend` | on | What each arrow is (its name, what its unit measures), its colour, the length it is drawn at per unit, the most it is drawn long, and, where the cap shortened it in this view, how much. A scene with no arrows has no legend. |
+  | `apparatus_shapes` / `--no-apparatus-shapes` | on | A motor and the magnets mounted on it, which the stage holds as frames, drawn for the view alone (see below). |
+  | `focus="umr"` / `--focus umr` | off | The camera starts framed on the named body, five times its largest extent away, or as near as the viewer draws (about three thousandths of the distance the camera starts at) where that is farther: a body very small beside its scene is framed from there. |
+  | `follow="umr"` / `--follow umr` | off | The camera's target keeps on the named body's recorded position at every sample of the recording, however many (between samples, on the straight line joining them, as the animation moves the body), with a checkbox in the controls to release it. A scene with no recording has one position, so the camera is held there and there is no checkbox. |
+
+  The scale bar and the legend are on because they cost the page a few hundred bytes and answer the two questions a
+  reader asks first, how big and what is this arrow; focus and follow are off until a body is named, because a view
+  that frames one body hides the rest. A body the scene does not hold is refused with the nearest names
+  (`visuals.unknown-body`).
+- **A0's motor and magnet are drawn for the view, not the stage.** The stage holds a magnet part as a frame (the field
+  is a point dipole, which needs no shape) and a motor as two frames. The view draws, below the root prim
+  `/ApparatusView` of the opened stage's session layer (every root prim but `/World` is reserved for overlays), each magnet
+  at the size the saved experiment declares (`experiment.mime.yaml` beside the stage or the recording: a cylinder's radius
+  and length, a sphere's radius, a box's edges, in metres), following its frame at every sample of the recording. Where there is
+  no saved experiment beside the stage, or the solid is another kind, or a size is in a unit the view does not read, a
+  **placeholder** is drawn instead (translucent, named `..._placeholder`): a cylinder along the magnet's direction, its
+  length and diameter each a fortieth of the scene's diagonal. The **motor** is always a placeholder, since no description
+  declares its size: a cylinder along its axis, its length the largest extent of the magnets on its rotor, ending in the
+  rotor's plane on the side the axis points away from, which is not declared either. The page's notes name every
+  placeholder with its rule. The saved experiment found beside a stage is trusted as the declaration: its sizes are applied to
+  the magnet of the same apparatus and part name, and the stage's own solid is not checked against it. Nothing of it is written
+  into a saved stage, a run folder or the asset cache: `tests/viz/test_viewer_basics.py` holds every file of a saved folder, of
+  a run folder and of the cache (size, modification time, hash) before and after a view of each way to name A0.
 - **The viewer.** `mime visuals web` inlines the copy of `<model-viewer>` 4.3.1 shipped in the wheel
   (`mime/viz/_viewer/`, pinned by its sha256, with the licence of every part its bundle holds: the Apache License, and
   three.js, fflate and gainmap-js under MIT, lit under BSD), so the page draws from a file with no network.
