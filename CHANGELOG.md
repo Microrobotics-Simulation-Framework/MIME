@@ -33,7 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1 GB or a tenth of it, it is asked about (`-y/--yes`); if it would leave under 2 GB or 5 % of the drive, it is stopped
   (`-f/--force`); `visuals fetch` counts 30 % of the meshes' size more for what baking writes. New refusals:
   `asset.licence-not-accepted`, `asset.licence-declined`, `asset.disk-low`, `asset.download-large`,
-  `asset.download-declined`, `asset.licences-file`. Output that is not going to a terminal is byte for byte what it was.
+  `asset.download-declined`, `asset.licences-file`. `mime assets list`, `assets sources`, `assets licences` and `visuals
+  list` are tables on a terminal; `mime pending` sets the lines to paste apart as blocks that are never wrapped; `mime
+  cache clear` says how much it freed. Output that is not going to a terminal is byte for byte what it was.
   **Moves:** the asset manifest format is `mime.asset_manifest/2` (it adds `conditions` to a custom licence; `/1` is still
   read, and a `/1` manifest holding `conditions` is refused); the AR4's `visuals.json` is `/2` with its licence's four
   condition lines; a saved folder's lock (form 6) holds the manifest as `/1` without the lines. `mime pull`'s question
