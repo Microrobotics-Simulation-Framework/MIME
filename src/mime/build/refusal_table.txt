@@ -194,6 +194,7 @@ load.missing-file             user
 load.missing-folder           user
 load.namespace-import         environment
 load.newer-form               user
+load.other-release            user
 load.record-changed           user
 load.reference                user
 load.reference-changed        user
