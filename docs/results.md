@@ -114,7 +114,7 @@ The contact `0.1.0` (kept registered for reproductions, `mime.interactions.KEPT`
 never reads its orientation, so a body with a hull that turns across the region it is held in (a screw longer than the
 tube is wide) reaches a pose its hull cannot take there, and the run goes on with the body through the wall. Nothing in
 the graph sees it: script A's isotropic effective inertia keeps its axis along the tube, and the same body given its own
-inertia tensor turns across within 0.35 s (measured: 45 degrees at 0.34 s). After every run MIME reads the body's pose and the surface's signed
+inertia tensor turns across in a fraction of a second. After every run MIME reads the body's pose and the surface's signed
 distance at the hull's points. The result is in `result.containment` and in `result.text()`, in `outputs.json` under
 `containment` and in the `.mat` file's `containment` struct, and in the build report beside the Reynolds watch. It is
 never a refusal and no part of the graph, in every profile, as the Reynolds watch is: a run that went through the wall is
@@ -132,8 +132,7 @@ a result its author may want to read, so the watch says where, and the run is no
   watched either.
 - **The fix is in the text.** `Contact.Projection(margin=...)` holds the hull, its orientation read.
 - **Cost.** No node, no edge: the graph and its derived hash are what they would be without it. After the run it
-  evaluates the surface at the convex hull's vertices of the hull's samples at every step it reads, in blocks, about
-  2e7 numbers a block; the hull's points are made once, when first read, not at the build.
+  evaluates the surface at the convex hull's vertices of the hull's samples at every step it reads, in blocks of bounded size; the hull's points are made once, when first read, not at the build.
 
 ## Exports
 
