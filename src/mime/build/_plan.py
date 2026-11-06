@@ -496,6 +496,8 @@ class PlanSet:
     #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again), set by
     #: the experiment: not a planned thing, and no part of the saved form.
     replaced: tuple[str, ...] = ()
+    #: The note of each declaration removed in this session (``exp.remove``), set by the experiment likewise.
+    removed: tuple[str, ...] = ()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""

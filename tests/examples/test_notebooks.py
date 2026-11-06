@@ -33,9 +33,12 @@ import numpy as np
 import pytest
 import tube_asset
 
+import mime._lineage as lineage
 import mime.experiment._redeclared as redeclared
 from mime._notebook import RAN_TWICE, RUN_AGAIN
 from mime.build import BuildRefused
+from mime.errors import MimeError
+from mime.units import ms
 
 ROOT = Path(__file__).resolve().parents[2]
 NOTEBOOKS = ROOT / "docs" / "notebooks"
@@ -344,3 +347,114 @@ def test_tutorial_as_a_thing_cell_run_again_changed_in_a_notebook_replaces_the_t
                                              f"the last one run wins, so it replaces the earlier one" in note]
     assert all(holder in replaced for holder in holders if holder != "the observation"), replaced
     namespace["experiment"].plan()
+
+
+# -- a stale build, result and view: the cell run again with the one that builds not run again ----------------------------
+
+def ran_and_edited(folder: Path, edit: str) -> dict[str, Any]:
+    """Tutorial A's setup and run cell (10 ms of simulated time), then ``edit``: ``"field"`` runs the field cell again with
+    a new strength (a replacement), ``"gravity"`` removes the gravity law."""
+    setup, run = split_at_run(read_notebook("tutorial_a.ipynb"))
+    namespace = declared(setup)
+    namespace["run_time"] = SHORT_RUN_S
+    os.chdir(folder)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        exec(compile(run, "<the run cell>", "exec"), namespace)
+        namespace["page_before"] = namespace["viz"].display("robot_run")
+        if edit == "field":
+            namespace["field_strength"] = 2.4
+            exec(compile(cell_holding(setup, "experiment.add_apparatus("), "<the field cell, run again>", "exec"),
+                 namespace)
+        else:
+            namespace["experiment"].remove("gravity:robot")
+    return namespace
+
+
+SLOW_RUN = "run = built.run_to('robot_run_slow', s(0.005), record=[swimming], history=True, stage_every=ms(1.0))"
+
+
+def stale_problems(folder: Path, place: str) -> list[str]:
+    """After the edit, the old ``built`` is refused in a notebook and warned about in a script (the tutorial's own
+    commented ``slow_run`` line); the result and the view of the first run say they are stale; a fresh build clears all
+    of them."""
+    previous = Path.cwd()
+    try:
+        namespace = ran_and_edited(folder, "field" if place == "notebook" else "gravity")
+        problems: list[str] = []
+        first = namespace["run"]
+        before = namespace["page_before"]  # made when the build was current: only its banner can say it is stale now
+        if "STALE" in before.html or before.stale is None or "STALE" not in before._repr_html_() \
+                or "STALE" not in repr(before):
+            problems.append("a view made before the change does not say it is stale once the change is made")
+        what = "the replacement of the apparatus 'field'" if place == "notebook" else \
+            "the removal of the law gravity:robot"
+        if what not in (namespace["built"].stale or ""):
+            problems.append(f"the old build does not say {what}: {namespace['built'].stale}")
+        if "STALE" not in repr(first.result) or what not in repr(first.result):
+            problems.append("the first run's result, displayed, does not say it is stale")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            page = namespace["viz"].display("robot_run")
+        shown = [str(note.message) for note in caught if str(note.message).startswith("this view predates")]
+        if not (len(shown) == 1 and what in shown[0] and page.stale is not None and "STALE" in page._repr_html_()):
+            problems.append(f"the view does not say it is stale: {shown}")
+        if "STALE" not in first.view().html or "STALE" not in repr(first.view()):
+            problems.append("the view made from the run does not say it is stale")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            try:
+                exec(compile(SLOW_RUN, "<the slow run>", "exec"), namespace)
+                ran = True
+            except MimeError as refused:
+                ran = False
+                if refused.refusals[0].code != "run.stale" or what not in refused.refusals[0].message:
+                    problems.append(f"the refusal is {refused.refusals[0]}")
+        if place == "notebook" and ran:
+            problems.append("the stale build ran in a notebook")
+        if place == "script" and not (ran and [n for n in caught if str(n.message).startswith("this build predates")]):
+            problems.append("the stale build did not run with its warning in a script")
+        namespace["built"] = namespace["experiment"].build()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            exec(compile(SLOW_RUN.replace("robot_run_slow", "robot_run_fresh"), "<the fresh run>", "exec"), namespace)
+        fresh = namespace["run"]
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            page = namespace["viz"].display("robot_run_fresh")
+        if fresh.result.stale is not None or "STALE" in repr(fresh.result) or page.stale is not None \
+                or [n for n in caught if "predates" in str(n.message)]:
+            problems.append("a fresh build, its result and its view are stale")
+        return problems
+    finally:
+        os.chdir(previous)
+
+
+def test_tutorial_as_old_built_after_the_field_cell_run_again_is_refused_and_a_fresh_build_clears_it(notebook, tmp_path):
+    assert stale_problems(tmp_path, "notebook") == []
+
+
+def test_tutorial_as_old_built_after_a_removal_runs_with_a_warning_in_a_script(tmp_path):
+    assert stale_problems(tmp_path, "script") == []
+
+
+def test_control_a_marker_that_never_raises_fails_the_tutorials_stale_check_every_run(notebook, tmp_path, monkeypatch):
+    monkeypatch.setattr(lineage.Origin, "since", lambda self: ())
+    assert stale_problems(tmp_path, "notebook")
+
+
+def test_control_a_marker_that_raises_on_an_unchanged_notebook_fails_the_tutorials_stale_check_every_run(
+        notebook, tmp_path, monkeypatch):
+    monkeypatch.setattr(lineage.Origin, "since",
+                        lambda self: (lineage.Change("replacement", "the apparatus 'field'", "a note"),))
+    previous = Path.cwd()
+    try:
+        setup, run = split_at_run(read_notebook("tutorial_a.ipynb"))
+        namespace = declared(setup)
+        namespace["run_time"] = SHORT_RUN_S
+        os.chdir(tmp_path)
+        with pytest.raises(MimeError, match="predates"):  # the plant refuses the unchanged tutorial's own run
+            exec(compile(run, "<the run cell>", "exec"), namespace)
+            namespace["built"].run(ms(1))
+    finally:
+        os.chdir(previous)

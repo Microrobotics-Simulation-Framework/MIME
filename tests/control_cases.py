@@ -349,10 +349,10 @@ def expected_angles(steps: int, latency: int, period: int, held: float = -1.0) -
 
 def spun_magnet(name: str = "spun_magnet", *, controller: Controller | None = None, reads=None, writes=None,
                 mode: Any = "callback", rate=ms(3), latency=None, observe: bool = False,
-                drive_angle: bool = False, torque: Any = None) -> Experiment:
+                drive_angle: bool = False, torque: Any = None, along: Any = X) -> Experiment:
     """A motor alone in the world, 10 cm above a body, its rotor carrying a magnet whose field turns the body; its
     angle prescribed, written by ``controller`` (a :class:`Ticker` by default) every ``rate``. ``observe`` adds the
-    body's swim speed along x; ``drive_angle`` gives the angle a drive as well."""
+    body's swim speed along ``along`` (x); ``drive_angle`` gives the angle a drive as well."""
     exp = experiment(name)
     exp.add_apparatus(Apparatus(
         "spin", chain={"motor": Motor.Kinematic(axis=Z, prescribed="angle", initial_angle=rad(0.0),
@@ -364,7 +364,7 @@ def spun_magnet(name: str = "spun_magnet", *, controller: Controller | None = No
     add_body(exp)
     exp.attach(Magnetic.Torque() if torque is None else torque, body="umr", field="spin.magnetic")
     if observe:
-        exp.observe(SwimSpeed("umr", along=X))
+        exp.observe(SwimSpeed("umr", along=along))
     exp.set_controller(controller if controller is not None else Ticker(),
                        reads={"pose": "umr.pose"} if reads is None else reads,
                        writes={"angle": "spin.motor.angle"} if writes is None else writes,
