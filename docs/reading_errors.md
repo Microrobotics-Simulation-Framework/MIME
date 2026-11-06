@@ -105,8 +105,10 @@ things, a value or a source at the same path, a second controller or licence) is
     new name). Both are kept, a warning says so, and the build refuses the two (`thing.duplicate`), saying a line or
     cell has probably run twice (a notebook has cells; IPython's terminal, and a script run through it, have lines).
     Run the lines or cells again from the one that makes the experiment, or run them all.
-  - *A law or an observation* is replaced where no other declaration names its id; where a source or the controller
-    does, both are kept and the build refuses the two as above.
+  - *A law or an observation* is replaced the same way, and a source written under its id or the controller that reads
+    its outputs follows it by the id; the one warning lists them. If the new one cannot serve what names it (a setting
+    the source gives that the new law lacks, an output the controller reads that the new observation lacks), that
+    declaration's own check refuses it at the build and names it.
   - *The replacement leaves a record the warning does not.* A warnings filter (`warnings.simplefilter("ignore")`, a
     common first cell) removes the warning, so each replacement is also recorded on the experiment with what followed
     it: `plan().replaced` and the build report (`built.report.text()`, under "replaced in this session") list them,
@@ -120,6 +122,45 @@ things, a value or a source at the same path, a second controller or licence) is
 A permission has no such key, since an experiment holds one for each grant, so only the same one again is kept once.
 A scene's reference of the same asset at the same prim again is kept once; another asset at that prim is refused at
 the build (`scene.reference-path`), in a notebook in the same words.
+
+## Taking a declaration out
+
+`exp.remove(name)` removes a declaration, in a script and in a notebook alike: a thing (by its name or its handle), a
+law (by the id `exp.attach` returned), an observation (by its id or handle), a declared value or a source (by its
+path), or the controller (`exp.remove(kind="controller")`, which has no name). `kind=` (`"thing"`, `"law"`,
+`"observation"`, `"value"`, `"source"`, `"controller"`) says which where a path is two kinds, a value and a source.
+
+- **Refused while something names it** (`remove.named`). A thing is named by its laws, its observations, the values and
+  sources declared of it, the controller, a medium that fills it and another thing that holds it; a law by the sources
+  written under its id and the controller; an observation by the controller's reads. The refusal lists each, with the
+  cell and its line, or the file and line, that made it, and the call that removes it. Nothing is removed with the
+  thing: remove or change each first.
+- **Recorded as a replacement is.** A warning says what was removed, and the removal is kept on the experiment whatever
+  the warnings filter (`plan().removed`, the build report under "removed in this session"). The saved experiment holds
+  what was left.
+- **Changing a thing's kind.** A name declared again as another kind is refused (above); remove it (after what names it),
+  then declare it again under the same name.
+- A name nothing is declared under is refused with the candidates (`remove.unknown`); a path that is both a value and a
+  source, with the call that says which (`remove.ambiguous`).
+
+## A build that predates a change
+
+A built experiment (`built`), the result of its run and the view of that run each remember the declarations they came
+from. When the experiment has had a replacement or a removal since, each says so, in words that name it: `this build
+predates the replacement of the apparatus 'field'`.
+
+- **A stale build is refused in a notebook or IPython, and warned about in a script.** In a notebook the trap is real: a
+  cell run again changes the experiment, and the cell that runs `built` is not run again with the cell that builds it, so
+  the old physics would pass for the new. `built.run`, `built.run_to`, `built.save` and `built.live` are refused
+  (`run.stale`; build the experiment again, then run that build). A script that changes its experiment after a build has
+  done it on purpose (to run both, say), so there the call goes ahead and a warning says what changed.
+- **Where it shows.** `built.stale` and the first lines of `built.report.text()`; a result's `stale`, `repr` and
+  `text()`; a view's `stale` and its page, whether made by `RunWritten.view` or `viz.display` of a run folder `run_to`
+  wrote in this process. A run folder read back from disk, and one written by `mime run`, has no session to compare with.
+- **What is stale.** A change recorded after the build, with the declarations now different from the ones it was built
+  from: a replacement put back is not stale, and neither is a declaration only added. A fresh build clears it.
+- The marks live on the objects in the session. The run folder, its report's summary and the saved experiment are not
+  changed.
 
 ## Reaching the full traceback
 

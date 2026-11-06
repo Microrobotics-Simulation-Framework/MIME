@@ -17,6 +17,7 @@ from typing import Any, Protocol, cast, override
 import numpy as np
 from numpy.typing import NDArray
 
+from mime._lineage import Origin
 from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError, Refusal, RefusalClass
 from mime.errors import public
 from mime.registry import OutputKind, Reduction
@@ -262,8 +263,13 @@ class RunResult:
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
                  loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
                  clock: str | None = None, watches: Sequence[WatchRead] = (),
-                 report: Mapping[str, Any] | None = None, stopped: Stopped | None = None) -> None:
+                 report: Mapping[str, Any] | None = None, stopped: Stopped | None = None,
+                 origin: Origin | None = None) -> None:
         self.steps = steps
+        #: The declarations the run came from, for a result of a run in this process (``mime._lineage``): what says,
+        #: once the experiment has had a replacement or a removal since, that the result is of the declarations before.
+        #: ``None`` for one read back from a folder.
+        self.origin = origin
         #: Set when the run ended before the steps it was asked for, told to: then ``steps`` are those it reached.
         self.stopped = stopped
         self.final = final
@@ -285,6 +291,13 @@ class RunResult:
         #: ``mime.report/N``), or ``"not JSON"``. The run reads regardless; ``report`` is ``None`` then.
         self.report_unreadable: str | None = None
         self._clock = np.dtype(clock) if clock is not None else None
+
+    @property
+    def stale(self) -> str | None:
+        """Why this result no longer matches its experiment, or ``None``: the replacements and removals made since the
+        build it came from, and what to do (build again and run again). Shown by :meth:`text` and ``repr``."""
+        return self.origin.stale("this result", "it is a run of the declarations before: build and run again") \
+            if self.origin is not None else None
 
     @property
     def clock(self) -> np.dtype[Any]:
@@ -537,8 +550,10 @@ class RunResult:
 
     @public
     def text(self) -> str:
+        stale = self.stale
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
+                 *([f"STALE: {stale}"] if stale is not None else []),
                  *([f"STOPPED, {self.stopped.reason}: {self.steps} of the {self.stopped.steps_asked} steps asked "
                     f"for"] if self.stopped is not None else []),
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
@@ -554,8 +569,9 @@ class RunResult:
 
     @override
     def __repr__(self) -> str:
+        stale = self.stale
         return (f"<RunResult {self.layout.experiment}: {self.steps} steps, {len(self.observations)} observations, "
-                f"{len(self.recorded)} series recorded>")
+                f"{len(self.recorded)} series recorded" + (f"; STALE, {stale}" if stale is not None else "") + ">")
 
     @classmethod
     @public

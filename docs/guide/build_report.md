@@ -150,6 +150,20 @@ value and other thing that holds its name and now finds the new one, and says wh
 applies and overrides what the new declaration brings. It is empty in a script and for an experiment loaded from a folder.
 The saved experiment holds the final declarations only ([reading errors](../reading_errors.md#a-declaration-made-twice)).
 
+## `removed`
+
+Each declaration removed in this session (`exp.remove(...)`), as a note: what was removed, and that nothing else named it
+(a removal is refused while something does). Like `replaced`, it is kept on the experiment (`plan().removed` holds the
+same lines) because the warning that says so can be removed by a warnings filter. It is empty for an experiment nothing
+was removed from. The saved experiment holds what was left ([reading errors](../reading_errors.md#taking-a-declaration-out)).
+
+## `stale`
+
+Set on a built experiment's `report` once the experiment has had a replacement or a removal since the build: what changed
+and what to do (`this build predates the replacement of the apparatus 'field': build the experiment again`). The report's
+first lines carry it as `STALE: ...`. It is `None` for a build that is current, and it is never part of the report's
+summary for a client or of a run folder ([reading errors](../reading_errors.md#a-build-that-predates-a-change)).
+
 ## `checked`
 
 Validity lines the build computed, by entry, such as a spinner's kick on its host's joints. Unlike `validity` they were checked.

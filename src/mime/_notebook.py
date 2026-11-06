@@ -24,3 +24,21 @@ RUN_AGAIN = ("run the lines or cells again from the one that makes the experimen
 
 def in_notebook() -> bool:
     return hasattr(builtins, "get_ipython")
+
+
+def where_called() -> str:
+    """Where the script's own code is, as a reader finds it: the cell and its line in a notebook or IPython (``cell
+    [3], line 2``), the file and its line elsewhere. The innermost frame that is not a library's, the line that called
+    into MIME; ``"somewhere in the script"`` where there is none."""
+    from mime.errors._frames import caller_place
+
+    place = caller_place()
+    if place is None:
+        return "somewhere in the script"
+    cell = place.filename.startswith("<ipython-input") or "ipykernel_" in place.filename
+    shell = getattr(builtins, "get_ipython", None)
+    if cell and shell is not None:
+        count = getattr(shell(), "execution_count", None)
+        if isinstance(count, int):
+            return f"cell [{count}], line {place.line}"
+    return place.text()

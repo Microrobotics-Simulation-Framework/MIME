@@ -91,7 +91,8 @@ class BuildReport:
     mass mounted on a chain, with what carries it (a rigid body welded on a link, a spinner's rotor, nothing on a
     prescribed motion), a rotor's worst case across its axis and its kick on the joints of the segment that carries
     it; the validity lines the build computed; each declaration of this session that replaced an earlier one, with what
-    followed it; and every refusal."""
+    followed it, and each one removed; whether the experiment has changed since the build (``stale``); and every
+    refusal."""
 
     experiment: str
     dt: float | None
@@ -127,6 +128,21 @@ class BuildReport:
     #: Each declaration that replaced an earlier one in this session (a notebook's cell run again) with what followed
     #: it: the note the warning gave, which a warnings filter removes. The saved form holds the final declarations only.
     replaced: tuple[str, ...] = ()
+    #: Each declaration removed in this session (``exp.remove``) with what, if anything, still named it: the note the
+    #: warning gave. The saved form holds what was left.
+    removed: tuple[str, ...] = ()
+    #: Set on a built experiment's report once the experiment has had a replacement or a removal since the build: what
+    #: changed, and what to do. Never part of the saved form or the report's summary for a client.
+    stale: str | None = None
+
+    def stale_lines(self) -> list[str]:
+        return [f"STALE: {self.stale}"] if self.stale else []
+
+    def removed_lines(self) -> list[str]:
+        if not self.removed:
+            return []
+        return [f"removed in this session ({len(self.removed)}; the saved form holds what was left):",
+                *(f"  {note}" for note in self.removed)]
 
     def replaced_lines(self) -> list[str]:
         if not self.replaced:
@@ -203,7 +219,8 @@ class BuildReport:
         a chain with what carries it, the attached rungs' validity lines and the limits each record states,
         MADDENING's warnings with their text, the refusals, and the hash."""
         lines = [f"build report: experiment {self.experiment!r}, "
-                 + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}"]
+                 + (f"base step {self.dt!r} s" if self.dt else "no base step") + f", run as {self.run.text()}",
+                 *self.stale_lines()]
         if self.profile is not None:
             lines += self.profile.report_lines()
             if self.profile.items:
@@ -231,6 +248,7 @@ class BuildReport:
             lines.append("mounted masses, each with what carries it:")
             lines += [f"  {line}" for line in self.masses]
         lines += self.replaced_lines()
+        lines += self.removed_lines()
         lines += self.asset_lines()
         for owner, validity in sorted(self.validity.items()):
             lines += [f"validity of {owner} (declared, not yet checked): {line}" for line in validity]
@@ -253,7 +271,7 @@ class BuildReport:
             return "\n".join([*self.summary(), "every node, group, edge and value's derivation, record, part and "
                                                 "orientation: report.text(details=True)"])
         lines = [f"build report: experiment {self.experiment!r}",
-                 f"base step dt: {self.dt!r} s" if self.dt else "base step dt: not set"]
+                 f"base step dt: {self.dt!r} s" if self.dt else "base step dt: not set", *self.stale_lines()]
         if self.profile is not None:
             lines += self.profile.report_lines()
             if self.profile.items:
@@ -279,6 +297,7 @@ class BuildReport:
             lines.append("descriptions, each chain segment's as read:")
             lines += [f"  {line}" for line in self.descriptions]
         lines += self.replaced_lines()
+        lines += self.removed_lines()
         lines += self.asset_lines()
         lines.append(f"external inputs: {', '.join(self.external_inputs) or 'none'}")
         lines += list(self.controller) or ["controller: none declared, so no latency to account for"]

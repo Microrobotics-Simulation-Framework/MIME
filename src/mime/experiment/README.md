@@ -74,7 +74,14 @@ run twice). A value declared of the replaced thing still applies and overrides w
 the note says so. Every replacement is also recorded on the experiment (`plan().replaced`, the build report), since a
 warnings filter removes the warning, and the note is raised before the change, so a warning raised as an error leaves
 the experiment as it was; the saved form is unchanged. A law or an observation that a source or the controller names is
-kept beside the new one likewise. A permission has no key, so only the same one again is kept once; a scene's reference
+replaced likewise, the source or controller following by the id. A permission has no key, so only the same one again is kept once; a scene's reference
 of the same asset at the same prim again is kept once by the scene.
+
+`remove` (`_removed.py`) takes a thing, a law, an observation, a declared value, a source or the controller out, refused
+while another declaration names it (`remove.named`, listing each with the cell or line that made it: the experiment keeps
+where it was declared), and recorded like a replacement (`plan().removed`, the build report). A build, the result of its
+run and the view of that run remember the declarations they came from (`mime._lineage`); after a replacement or a removal
+the build is refused in a notebook or IPython (`run.stale`) and warned about in a script, and its report, a result shown
+and a view shown say what changed. The saved form is unchanged.
 
 Releases are explained in the [package manifest](../README.md#status).

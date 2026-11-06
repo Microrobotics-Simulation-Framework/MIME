@@ -320,6 +320,9 @@ record.unit                   user
 record.unknown                user
 record.unreadable             user
 registration.not-accepted     user
+remove.ambiguous              user
+remove.named                  user
+remove.unknown                user
 result.format                 user
 result.matlab-name            user
 result.no-observation         user
@@ -344,6 +347,7 @@ run.rate-units                user
 run.record                    user
 run.seed                      user
 run.stage-every               user
+run.stale                     user
 run.unfed-input               internal
 run.window-past-end           user
 rung.missing                  user

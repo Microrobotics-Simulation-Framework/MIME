@@ -19,6 +19,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import override
 
+from mime._lineage import Origin, origin_of_folder
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.viz._export import GltfResult, gltf
@@ -264,16 +265,28 @@ class WebPage:
     html: str
     result: GltfResult
     height: int = 720
+    #: The declarations the run came from, for a view of a run made in this process (``mime._lineage``).
+    origin: Origin | None = None
+
+    @property
+    def stale(self) -> str | None:
+        """Why this view no longer matches its experiment, or ``None``: the replacements and removals made since the
+        build its run came from, and what to do. Shown wherever the view is shown."""
+        return self.origin.stale("this view", "it shows a run of the declarations before: build and run again") \
+            if self.origin is not None else None
 
     @override
     def __repr__(self) -> str:
         """One line, not the page: Jupyter shows ``text/plain`` beside the HTML, and the page is megabytes."""
+        stale = self.stale
         return (f"<WebPage {self.result.name!r}, {len(self.html.encode('utf-8')) / 1e3:.0f} kB: a notebook cell shows it "
                 f"when it is the cell's last expression; elsewhere .save('view.html') writes the page, to open in a "
-                f"browser>")
+                f"browser" + (f"; STALE, {stale}" if stale is not None else "") + ">")
 
     def _repr_html_(self) -> str:
-        return (f'<iframe srcdoc="{html.escape(self.html, quote=True)}" style="width: 100%; height: {self.height}px; '
+        stale = self.stale
+        banner = f'<p style="color: #b3261e; font-weight: bold">STALE: {html.escape(stale)}</p>' if stale else ""
+        return (banner + f'<iframe srcdoc="{html.escape(self.html, quote=True)}" style="width: 100%; height: {self.height}px; '
                 f'border: 0" title="{html.escape(self.result.name)}"></iframe>')
 
     def save(self, path: str | Path) -> Path:
@@ -288,7 +301,13 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
     the viewer from jsDelivr (``offline=True`` inlines it, 1.4 MB more), ``caption`` above its notes. Warns above
     ``OUTPUT_WARNING_BYTES``, which a notebook may drop."""
     result = gltf(target, slow=slow)
-    held = page(result, cdn=not offline, caption=caption)
+    origin = origin_of_folder(target)
+    stale = origin.stale("this view", "it shows a run of the declarations before: build and run again") \
+        if origin is not None else None
+    if stale is not None:
+        warn_at_script(stale, UserWarning)
+    held = page(result, cdn=not offline, caption=f"STALE: {stale}. {caption}" if stale and caption else
+                f"STALE: {stale}" if stale else caption)
     size = len(held.encode("utf-8"))
     if size > OUTPUT_WARNING_BYTES:
         warn_at_script(
@@ -296,7 +315,7 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
             f"output rate: record more coarsely (stage_every=), bake meshes to fewer triangles (TriangleBudget), "
             f"{'leave the viewer to jsDelivr (offline=False), ' if offline else ''}or write a page instead "
             f"(mime visuals web {target})", UserWarning)
-    return WebPage(held, result)
+    return WebPage(held, result, origin=origin)
 
 
 def _held_by(path: Path) -> Path | None:

@@ -55,6 +55,9 @@ where `stage_every=` asks, the recording layer (`mime.viz`), the stage's time sa
 It holds `report.json` beside `run.json`, the build report's summary (`REPORT_FORMAT`: validity
 lines, flags and their meanings, each setting's role and default, the profile), which `RunResult.read` reads as
 `result.report` (`None` for a folder written before).
+A result of a run in this process remembers the declarations its build came from (`mime._lineage`): `stale` and its
+`repr` and `text()` say so once the experiment has had a replacement or a removal since, and a result read from a folder
+never does.
 Later: `.mat` through a `matlab` extra and `StudyResult`, a result with a leading sweep axis whose table is long
 (dev2).
 
