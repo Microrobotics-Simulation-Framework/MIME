@@ -147,6 +147,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "rigid_inertial", "0.3.0"): RIGID_BODY,
     ("field provider", "uniform_rotating", "0.1.0"): NodeCase(),
     ("interaction", "magnetic.torque", "0.1.0"): NodeCase(),
+    ("interaction", "magnetic.torque", "0.2.0"): NodeCase(),
     ("interaction", "gravity", "0.1.0"): NodeCase(),
     ("interaction", "drag", "0.3.0"): DRAG,
     ("interaction", "drag", "0.4.0"): DRAG,
@@ -164,6 +165,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),
     ("field provider", "point_dipole", "0.1.0"): DIPOLE,
     ("interaction", "magnetic.force", "0.1.0"): NodeCase(),
+    ("interaction", "magnetic.force", "0.2.0"): NodeCase(),
     ("controller", "arm_tracking", "0.1.0"): NodeCase(
         no_node="a callback: the run calls it on the host between compiled chunks, and its writes are the graph's "
                 "external inputs"),

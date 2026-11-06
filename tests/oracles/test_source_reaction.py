@@ -1,14 +1,19 @@
 """The magnetic laws' reaction on the field's source, delivered to the frame the source is mounted on (float64, per
 module), on A0's AR4 on its dynamic rung with the magnet on its flange (``chain_cases.dynamic_rpm(motor=False)``), its
-nodes as the build makes them, evaluated as the graph's step does, over drawn poses of the body below.
+nodes as the build makes them, evaluated as the graph's step does, over drawn poses of the body below. Each runs on
+the laws 0.2.0 with the body's magnet at its centre of mass and 0.8 mm off it (``LEVER``), and on 0.1.0, kept
+registered, with it at the centre of mass, as A0 declares it.
 
-- **Equal and opposite**: what ``Magnetic.Torque`` and ``Magnetic.Force`` deliver on the body, moved from its centre
-  of mass to the flange's origin, and the reactions they deliver in the flange's row of the arm's loads sum to zero,
-  and every other row is zero. The control: the laws with their reactions dropped fail on every draw.
-- **Two point dipoles**: the two reactions together are the force and torque the body's dipole exerts on the source's,
-  computed from the source's side in closed form, ``F_M = grad(m_M . B_b)`` and ``tau_M = m_M x B_b`` at the magnet's
-  centre, ``B_b`` the body's field, moved to the flange's origin: the pair's torques balance only with both laws'
-  reactions. The control: the force's reaction alone fails on every draw.
+- **Equal and opposite**, the pair's momentum and angular momentum: what ``Magnetic.Torque`` and ``Magnetic.Force``
+  deliver on the body, moved from its centre of mass to the flange's origin, and the reactions they deliver in the
+  flange's row of the arm's loads sum to zero, force and torque about that one point, and every other row is zero.
+  The control: the laws with their reactions dropped fail on every draw.
+- **Two point dipoles**: the two reactions together are the force and torque the body's dipole, at its magnet's
+  centroid, exerts on the source's, computed from the source's side in closed form, ``F_M = grad(m_M . B_b)`` and
+  ``tau_M = m_M x B_b`` at the magnet's centre, ``B_b`` the body's field, moved to the flange's origin: the pair's
+  torques balance only with both laws' reactions. The controls: the force's reaction alone fails on every draw; and the
+  laws 0.1.0 with the magnet off the centre of mass, which read the field there and not at the centroid
+  (MIME-ANO-137), fail on every draw.
 - **The reaction's node** passes MADDENING's battery.
 """
 
@@ -24,8 +29,9 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
 from mime.core import quaternion
+from mime.interactions import KEPT, Magnetic
 from mime.testing import node_results
-from mime.units import VACUUM_PERMEABILITY
+from mime.units import VACUUM_PERMEABILITY, m
 
 PROPERTY = settings(deadline=None, max_examples=100)
 EPS = float(np.finfo(np.float64).eps)
@@ -33,21 +39,46 @@ ROUNDINGS = 64
 DT = 1e-3
 K = VACUUM_PERMEABILITY / (4 * np.pi)
 LAWS = ("force", "torque")
+#: The body's magnet off its centre of mass, in the body's frame: 0.8 mm, along no axis.
+LEVER = (0.5e-3, -0.4e-3, 0.48e-3)
+KEPT_LAWS = (KEPT["magnetic.torque", "0.1.0"][0], KEPT["magnetic.force", "0.1.0"][0])
+#: Each arm: the laws' classes and the body's magnet's centroid.
+ARMS = {"0.2.0 at the centre": ((Magnetic.Torque, Magnetic.Force), (0.0, 0.0, 0.0)),
+        "0.2.0 off the centre": ((Magnetic.Torque, Magnetic.Force), LEVER),
+        "0.1.0 at the centre": (KEPT_LAWS, (0.0, 0.0, 0.0))}
 
 
-@pytest.fixture(scope="module")
-def nodes():
+def built_nodes(laws, lever):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        built = dynamic_rpm("flange_magnet", motor=False).build()
+        built = dynamic_rpm("flange_magnet", motor=False, magnetic=laws, magnet_centre=m(lever)).build()
     graph = built.graph
     names = ("rpm.arm", "rpm.magnetic", *(f"magnetic.{law}:umr" for law in LAWS),
              *(f"magnetic.{law}:umr.reaction" for law in LAWS))
     return {name: graph.get_node(name) for name in names}
 
 
+@pytest.fixture(scope="module", params=list(ARMS), ids=list(ARMS))
+def arm(request):
+    return request.param
+
+
 @pytest.fixture(scope="module")
-def step(nodes):
+def nodes(arm):
+    return built_nodes(*ARMS[arm])
+
+
+@pytest.fixture(scope="module")
+def step(nodes, arm):
+    return stepper(nodes, ARMS[arm][1])
+
+
+@pytest.fixture(scope="module")
+def kept_with_a_lever():
+    return stepper(built_nodes(KEPT_LAWS, LEVER), LEVER)
+
+
+def stepper(nodes, lever):
     """One step of the provider, the two laws and their reactions, compiled as one, from the body's pose and the arm's
     frames at its start: the body's wrenches, the reactions' rows, the frame's row, the magnet's centre and moment,
     and the flange's origin."""
@@ -81,7 +112,7 @@ def step(nodes):
     def stepped(pose):
         wrenches, rows, centre, moment = compiled(pose)
         return ({law: np.asarray(w) for law, w in wrenches.items()}, {law: np.asarray(r) for law, r in rows.items()},
-                index, np.asarray(centre), np.asarray(moment), origin)
+                index, np.asarray(centre), np.asarray(moment), origin, np.asarray(lever))
 
     return stepped
 
@@ -113,7 +144,7 @@ def balance(wrenches, rows, index, origin, centre, dropped: bool = False) -> tup
 @PROPERTY
 @given(POSES)
 def test_the_laws_and_their_reactions_on_the_source_are_equal_and_opposite(step, pose):
-    wrenches, rows, index, _, _, origin = step(pose)
+    wrenches, rows, index, _, _, origin, _ = step(pose)
     misfit, bound = balance(wrenches, rows, index, origin, np.asarray(pose[:3]))
     assert misfit <= bound, f"{misfit:.3g} > {bound:.3g}"
 
@@ -121,7 +152,7 @@ def test_the_laws_and_their_reactions_on_the_source_are_equal_and_opposite(step,
 @PROPERTY
 @given(POSES)
 def test_control_the_laws_with_their_reactions_dropped_fail_on_every_draw(step, pose):
-    wrenches, rows, index, _, _, origin = step(pose)
+    wrenches, rows, index, _, _, origin, _ = step(pose)
     misfit, bound = balance(wrenches, rows, index, origin, np.asarray(pose[:3]), dropped=True)
     assert misfit > bound
 
@@ -140,11 +171,12 @@ def body_field(moment, centre, point):
     return K * (3 * np.dot(moment, r) * r / d**2 - moment) / d**3
 
 
-def on_the_source(pose, magnet_centre, magnet_moment, origin):
-    """The force and the torque the body's dipole exerts on the source's dipole, about the flange's origin: the force
-    the gradient of ``m_M . B_b`` by central differences of the closed form, refined to rounding by Richardson."""
+def on_the_source(pose, magnet_centre, magnet_moment, origin, lever):
+    """The force and the torque the body's dipole, at its magnet's centroid ``lever`` (body frame), exerts on the
+    source's dipole, about the flange's origin: the force the gradient of ``m_M . B_b`` by central differences of the
+    closed form, refined to rounding by Richardson."""
     body_moment = turned(np.asarray(pose[3:]), np.asarray(BODY_MOMENT))
-    centre = np.asarray(pose[:3])
+    centre = np.asarray(pose[:3]) + turned(np.asarray(pose[3:]), np.asarray(lever))
 
     def energy(point):
         return float(np.dot(magnet_moment, body_field(body_moment, centre, point)))
@@ -173,20 +205,34 @@ def pair_misfit(rows, index, expected, laws=LAWS) -> float:
 @PROPERTY
 @given(POSES)
 def test_the_reactions_are_the_force_and_torque_of_the_bodys_dipole_on_the_sources(step, pose):
-    _, rows, index, centre, moment, origin = step(pose)
-    expected = on_the_source(pose, centre, moment, origin)
+    _, rows, index, centre, moment, origin, lever = step(pose)
+    expected = on_the_source(pose, centre, moment, origin, lever)
     assert pair_misfit(rows, index, expected) <= PAIR_TOLERANCE
 
 
 @PROPERTY
 @given(POSES)
 def test_control_the_forces_reaction_alone_fails_the_pair_on_every_draw(step, pose):
-    _, rows, index, centre, moment, origin = step(pose)
-    expected = on_the_source(pose, centre, moment, origin)
+    _, rows, index, centre, moment, origin, lever = step(pose)
+    expected = on_the_source(pose, centre, moment, origin, lever)
     assert pair_misfit(rows, index, expected, laws=("force",)) > PAIR_TOLERANCE
 
 
-def test_the_reactions_node_passes_maddenings_battery(nodes):
+@PROPERTY
+@given(POSES)
+def test_control_the_laws_0_1_0_with_the_magnet_off_the_centre_fail_the_pair_on_every_draw(kept_with_a_lever, pose):
+    """They read the field at the centre of mass, so the torque misses ``m x (G l)``: what they deliver, and so their
+    reactions, are not what the body's dipole at its centroid exerts on the source's. Their reactions still balance
+    what the body receives (the first test's balance holds of any wrench)."""
+    wrenches, rows, index, centre, moment, origin, lever = kept_with_a_lever(pose)
+    expected = on_the_source(pose, centre, moment, origin, lever)
+    assert pair_misfit(rows, index, expected) > PAIR_TOLERANCE
+    misfit, bound = balance(wrenches, rows, index, origin, np.asarray(pose[:3]))
+    assert misfit <= bound
+
+
+def test_the_reactions_node_passes_maddenings_battery():
+    nodes = built_nodes(*ARMS["0.2.0 off the centre"])
     node = nodes["magnetic.force:umr.reaction"]
     options = {"boundary_bounds": {"pose": (-1.0, 1.0), "wrench": (-1e-3, 1e-3), "mount_poses": (-1.0, 1.0)},
                "bounds": {"link_wrench": (-1e-3, 1e-3)}}

@@ -11,10 +11,12 @@ sign flip) is in ``tests/oracles/test_laws.py``, the hydrodynamic family's in ``
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, override
 
 import numpy as np
 import pytest
+import yaml
 from family_cases import FAMILY_CASES, RADIUS, FamilyCase, projected, weight_and_buoyancy
 
 from mime.build import InteractionBuilder
@@ -46,7 +48,7 @@ def uncased(cases: dict, registered: list[tuple[str, str, str]]) -> list[str]:
 @pytest.fixture(scope="module")
 def registered():
     found = installed_entries()
-    assert ("interaction", "magnetic.torque", "0.1.0") in found, "the walk would pass over an empty registry"
+    assert ("interaction", "magnetic.torque", "0.2.0") in found, "the walk would pass over an empty registry"
     return found
 
 
@@ -81,16 +83,43 @@ def test_every_interaction_declares_a_family_or_its_case_says_why_it_has_none():
 
 @pytest.mark.parametrize("key", sorted(k for k, c in FAMILY_CASES.items() if not c.no_family), ids=" ".join)
 def test_every_interaction_in_a_family_passes_its_suite(key):
+    """Every case of its family's suite, but the ones its case lists as known to fail, each by the anomaly that
+    records it (a kept version's), which the next test requires to fail."""
     case: FamilyCase = FAMILY_CASES[key]
     assert case.law is not None
     law = case.law()
     family = type(law).family
     assert family is not None and family == declared_family(key), key
+    cases = [kind for kind in family_named(family).cases if kind not in case.fails]
     assert_conforms(law, family, oracle=case.oracle, node_case=case.node_case,
-                    swap_with=case.swap_with() if case.swap_with else None)
+                    swap_with=case.swap_with() if case.swap_with else None,
+                    together=case.together() if case.together else (), cases=cases)
+
+
+@pytest.mark.parametrize("key", sorted(k for k, c in FAMILY_CASES.items() if c.fails), ids=" ".join)
+def test_a_case_a_kept_version_is_known_to_fail_fails_and_is_its_anomalys(key):
+    """A case listed as known to fail does fail, and names a registered anomaly whose affected components name the
+    entry: a kept version exempt from a case is exempt by a record, not by a gap. The control that it fails on every
+    draw that can show its defect is the anomaly's own test."""
+    case: FamilyCase = FAMILY_CASES[key]
+    assert case.law is not None
+    law = case.law()
+    family = type(law).family
+    assert family is not None
+    results = conformance(law, family, oracle=case.oracle, together=case.together() if case.together else (),
+                          cases=list(case.fails))
+    print("\n" + "\n".join(f"{kind.value}: {result}" for kind, result in results.items()))
+    assert all(result.failed for result in results.values()), results
+    anomalies = {entry["anomaly_id"]: entry for entry in yaml.safe_load(ANOMALIES.read_text())["anomalies"]}
+    for anomaly in case.fails.values():
+        components = anomalies[anomaly]["affected_components"]
+        assert any(item.startswith(f"entry: {key[0]} {key[1]} {key[2]}") for item in components), (anomaly, key)
 
 
 # -- planted defects ----------------------------------------------------------------------------------------------
+
+#: The registry of known anomalies, which names each case a kept version is known to fail.
+ANOMALIES = Path(__file__).resolve().parents[2] / "docs" / "validation" / "known_anomalies.yaml"
 
 register_namespace("walked", "0.0.1")
 

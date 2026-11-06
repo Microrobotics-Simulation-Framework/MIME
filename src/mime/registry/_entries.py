@@ -86,11 +86,15 @@ class Port(NamedTuple):
 @dataclass(frozen=True)
 class Read:
     """A read of a bound thing: a state interface its dynamics publishes, or a field interface its provider publishes,
-    evaluated at ``at`` (a state read giving the points)."""
+    evaluated at ``at`` (a state read giving the points). A field read at a pose may name ``offset``, the label of a
+    value its plan reads that is a point in the frame of that pose (a body's ``magnet_centre``): the field is then
+    read at the point fixed there, the pose's position plus its orientation applied to the point, by a provider that
+    claims ``Capability.BODY_POINTS``."""
 
     role: str
     interface: str
     at: Read | None = None
+    offset: str | None = None
 
 
 @dataclass(frozen=True)

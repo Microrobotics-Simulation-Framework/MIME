@@ -28,7 +28,6 @@ part.not-a-part           # no test names it
 part.not-a-solid          # no test names it
 part.scaled               # no test names it
 parts.no-bulk             # no test names it
-parts.no-magnet           # no test names it
 post-build.base-step      # no test names it
 post-build.not-by-edge    # no test names it
 record.extrapolation      # no test names it

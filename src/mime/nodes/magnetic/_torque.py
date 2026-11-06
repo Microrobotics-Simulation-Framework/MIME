@@ -47,7 +47,8 @@ class MagneticTorqueNode(MimeNode):
                     "centre of mass with no force.",
         governing_equations=EQUATIONS,
         assumptions=("A point dipole with a rigid, permanent moment fixed in the body",
-                     "The field is read at the body's centre of mass: it is taken uniform across the body",
+                     "The field is read at one point, where the law reads it: it is taken uniform across the "
+                     "magnet",
                      "The body's orientation is the one read at the start of the step, so the torque of a step turns "
                      "the body as it stood after the step before"),
         references=(Reference("Ling2016UniversityPhysics2", "the torque on a magnetic dipole in a field"),),

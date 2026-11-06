@@ -13,8 +13,9 @@ to a body that carries a magnet off its centre of mass in the field of a fixed p
 built graph. The read point is therefore the registered laws' own wiring, and it is not restated here. The body is
 turned to a general orientation (not the identity, and a lever and moment not along an axis) before it is turned round
 the loop. The 0.1.0 entries stay registered after the fix the anomaly plans (0.2.0 reading at the centroid), so these
-tests stay valid for 0.1.0 then; they fail on a graph whose read point is moved to the centroid, which the last test
-shows with that graph.
+tests stay valid for 0.1.0 then; they fail on a graph whose read point is moved to the centroid, which the sixth test
+shows with that graph, planted; and the fix itself, 0.2.0, is that graph (the seventh: the pins fail on it, its pair
+does no work, and its wrench is the planted fix's).
 
 - **The pair's work** (the first three tests and the property): the pose is held at ``x`` and turned once about a fixed
   axis. The work round the loop, ``sum tau . axis dtheta``, equals ``oint m . G (axis x l) dtheta``: exact for these
@@ -156,9 +157,9 @@ class Laws:
     parameters, so one built and compiled graph serves every draw; its sweep gives the wrench of each law at each of a
     batch of poses, one step from each, as the laws read the pose at the start of the step."""
 
-    def __init__(self) -> None:
-        torque, force = (lookup(EntryKind.INTERACTION, name, "0.1.0") for name in ("magnetic.torque", "magnetic.force"))
-        assert torque is not None and force is not None, "0.1.0 of both laws stays registered"
+    def __init__(self, version: str = "0.1.0") -> None:
+        torque, force = (lookup(EntryKind.INTERACTION, name, version) for name in ("magnetic.torque", "magnetic.force"))
+        assert torque is not None and force is not None, f"{version} of both laws is registered"
         exp = experiment("pair_work")
         exp.add_apparatus(Apparatus("stand", parts={"magnet": Part(Cylinder(radius=m(17.5e-3), length=m(20e-3),
                                                                             axis=(1.0, 0.0, 0.0)), mount=None,
@@ -193,10 +194,14 @@ class Laws:
     def built(self, source_moment, source_at, moment, lever, poses) -> tuple[np.ndarray, np.ndarray]:
         """The wrench of the torque law and of the force law, one step from each of ``poses``, as the graph gives it."""
         nodes = self.graph.params["nodes"]
+        # 0.2.0 reads at the centroid: its provider holds the lever too, once for each law's slot.
+        provider = self.graph.get_node("stand.magnetic").constants()
+        offsets = {"offsets": jnp.tile(jnp.asarray(lever), len(provider["offset_slots"]))} \
+            if "offset_slots" in provider else {}
         params = {**self.graph.params, "nodes": {
             **nodes,
             "stand.magnetic": {**nodes["stand.magnetic"], "moment": jnp.asarray(source_moment),
-                               "placement": jnp.asarray([*source_at, 1.0, 0.0, 0.0, 0.0])},
+                               "placement": jnp.asarray([*source_at, 1.0, 0.0, 0.0, 0.0]), **offsets},
             TORQUE: {**nodes[TORQUE], "moment": jnp.asarray(moment)},
             FORCE: {**nodes[FORCE], "moment": jnp.asarray(moment), "magnet_centre": jnp.asarray(lever)}}}
         batch = {name: {key: jnp.broadcast_to(value, (len(poses), *value.shape)) for key, value in fields.items()}
@@ -389,3 +394,26 @@ def test_control_with_the_read_point_moved_to_the_centroid_the_pins_fail_and_the
     work = fixed.pair_work(GENERAL_SOURCE, GENERAL_SOURCE_AT, np.zeros(3), GENERAL_MOMENT, LEVER, GENERAL_START,
                            GENERAL_AXIS)
     assert abs(work.net) <= ROUNDINGS * EPS * work.scale
+
+
+def test_the_registered_pair_0_2_0_is_the_planted_fix(monkeypatch):
+    """``magnetic.torque`` 0.2.0 and ``magnetic.force`` 0.2.0, looked up as 0.1.0 is, are the fix the test above plants:
+    the pins fail on them as on it, their pair does zero work round the same loops, and at a general orientation their
+    built wrench is the planted fix's and the nodes' fed at the centroid (to 1e-9 of the torque)."""
+    real = Laws("0.2.0")
+    with pytest.raises(AssertionError):
+        the_pair_shows_the_defect_at_the_operating_point(real, 360)
+    with pytest.raises(AssertionError):
+        the_pair_reads_at_the_centre_of_mass(real)
+    for work in (real.pair_work(SOURCE_MOMENT, SOURCE_AT, ON_THE_AXIS, MOMENT, LEVER, IDENTITY, AXIS_X),
+                 real.pair_work(GENERAL_SOURCE, GENERAL_SOURCE_AT, np.zeros(3), GENERAL_MOMENT, LEVER, GENERAL_START,
+                                GENERAL_AXIS)):
+        assert abs(work.net) <= ROUNDINGS * EPS * work.scale
+    source_at, pose = np.array([0.0, 0.0, 0.1]), np.concatenate([np.array([4e-3, -2e-3, 0.0]), GENERAL_START])[None]
+    built = sum(real.built(GENERAL_SOURCE, source_at, GENERAL_MOMENT, LEVER, pose))[0]
+    at_centroid = sum(real.fed(GENERAL_SOURCE, source_at, GENERAL_MOMENT, LEVER, pose, at_centroid=True))[0]
+    MovedToTheCentroid(LEVER).apply(monkeypatch)
+    planted = sum(Laws().built(GENERAL_SOURCE, source_at, GENERAL_MOMENT, LEVER, pose))[0]
+    scale = float(np.max(np.abs(at_centroid[3:])))
+    assert np.allclose(built, at_centroid, rtol=1e-9, atol=1e-9 * scale)
+    assert np.allclose(built, planted, rtol=1e-9, atol=1e-9 * scale)

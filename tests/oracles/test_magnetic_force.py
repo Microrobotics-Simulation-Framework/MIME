@@ -9,13 +9,14 @@
   stronger; turned against it, pushed away.
 - **A uniform field** pulls on nothing: its gradient is zero, and so is the force, exactly.
 - **The torque's second support row**: ``Magnetic.Torque`` bound to a point dipole reads the field at the body's
-  centre of mass, ``m x B(x)``."""
+  magnet's centroid, ``m x B(x + R l)``; its 0.1.0, kept registered, at the centre of mass, ``m x B(x)``."""
 
 from typing import Any
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from chain_cases import BODY_MOMENT, MAGNET_MOMENT, add_body, experiment, fixed_magnet
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
@@ -23,11 +24,11 @@ from hypothesis import strategies as st
 from mime.build._maddening import node_state, run_scan
 from mime.drives import Constant
 from mime.fields import UniformRotating
-from mime.interactions import Magnetic
+from mime.interactions import KEPT, Magnetic
 from mime.nodes.actuation import DIPOLE_CONSTANT, point_dipole
 from mime.nodes.magnetic import MagneticForceNode
 from mime.things import Apparatus
-from mime.units import Hz, mT
+from mime.units import Hz, m, mT
 
 EPS = float(np.finfo(np.float64).eps)
 ROUNDINGS = 64
@@ -128,17 +129,26 @@ def test_a_uniform_field_pulls_on_nothing():
     assert np.array_equal(np.asarray(state["magnetic.force:umr"]["wrench"]), np.zeros(6))
 
 
-def test_the_torque_reads_a_dipoles_field_at_the_bodys_centre_of_mass():
+#: A body's magnet 0.8 mm off its centre of mass, along no axis.
+LEVER = (0.5e-3, -0.4e-3, 0.48e-3)
+
+
+@pytest.mark.parametrize("version", ["0.2.0", "0.1.0"])
+def test_the_torque_reads_a_dipoles_field_at_the_magnets_centroid_and_its_0_1_0_at_the_centre_of_mass(version):
     """``Magnetic.Torque`` bound to the fixed magnet, by its second support row: ``m x B`` with ``B`` the dipole's
-    field at the body's start, 1 mm below the origin."""
-    built = fixed_magnet("torque_at_centre", law=Magnetic.Torque()).build()
+    field at the body's magnet's centroid, ``LEVER`` from its start 1 mm below the origin (the body unturned); the
+    torque 0.1.0, kept registered, reads it at the centre of mass (MIME-ANO-137)."""
+    law = Magnetic.Torque() if version == "0.2.0" else KEPT["magnetic.torque", "0.1.0"][0]()
+    built = fixed_magnet("torque_at_the_magnet", law=law, magnet_centre=m(LEVER)).build()
     reads = {edge.target[1]: edge for edge in built.report.lags if edge.target[0] == "stand.magnetic"}
     assert any(field.startswith("points_") for field in reads), "the field is read at the body's points"
     graph = built.graph
     graph.reset_state()
     state = run_scan(graph, 1)
+    centre_of_mass = np.array([0.0, 0.0, -1e-3])
+    where = centre_of_mass + np.asarray(LEVER) if version == "0.2.0" else centre_of_mass
     field = np.asarray(point_dipole(jnp.asarray((0.0, 0.0, MAGNET_MOMENT)), jnp.asarray((0.0, 0.0, 0.1)),
-                                    jnp.asarray((0.0, 0.0, -1e-3)))[0])
+                                    jnp.asarray(where))[0])
     expected = np.cross(np.asarray(BODY_MOMENT), field)
     torque = np.asarray(state["magnetic.torque:umr"]["wrench"])[3:]
     assert np.allclose(torque, expected, rtol=1e-12, atol=1e-12 * float(np.max(np.abs(expected))))
