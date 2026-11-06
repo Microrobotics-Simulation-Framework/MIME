@@ -194,9 +194,10 @@ def test_an_experiment_a_load_could_not_find_cannot_be_saved(tmp_path):
 
 
 def test_a_folder_saved_by_another_mime_version_is_refused_and_one_saved_by_this_one_loads(tmp_path, monkeypatch):
-    """Development releases make no compatibility promise (design #232): MIME's version is in the input hash, so a
-    folder saved by one release is refused by the next, whatever else is the same. The control is the same experiment
-    saved and loaded by one version, which loads: so the refusal is the version's, not the experiment's."""
+    """Development releases make no compatibility promise (design #232): a folder saved by one release is refused by
+    the next, whatever else is the same, by its own refusal (``tests/saved/test_other_release.py`` holds its words and
+    controls). The control is the same experiment saved and loaded by one version, which loads: so the refusal is the
+    version's, not the experiment's."""
     import mime
 
     full_toy().save(tmp_path / "same")
@@ -206,8 +207,8 @@ def test_a_folder_saved_by_another_mime_version_is_refused_and_one_saved_by_this
         full_toy().save(tmp_path / "earlier")
     with pytest.raises(LoadRefused) as refused:
         Experiment.load(tmp_path / "earlier")
-    assert {r.code for r in refused.value.refusals} == {"load.input-hash"}
-    assert 'resolved.vocabulary.mime: "0.3.0.dev0" -> "' in " | ".join(r.message for r in refused.value.refusals)
+    assert {r.code for r in refused.value.refusals} == {"load.other-release"}
+    assert "saved by MIME 0.3.0.dev0, and this is MIME " in " | ".join(r.message for r in refused.value.refusals)
 
 
 def test_a_document_saved_before_a_version_changed_is_refused_naming_the_entry(tmp_path):

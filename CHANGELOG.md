@@ -80,6 +80,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A folder saved by another development release is refused by its own refusal, `load.other-release`.** Development
+  releases (0.3.0.devN) make no compatibility promise, and MIME's version is part of a saved folder's input hash, so
+  `0.3.0.dev1`'s folders are not loaded by `0.3.0.dev2`. Until now the refusal was `load.input-hash`, whose message said
+  the document was changed. The new one names both versions ("saved by MIME 0.3.0.dev1, and this is MIME 0.3.0.dev2"),
+  says that development releases do not load each other's folders, and says what to do: run the script that built the
+  experiment under this MIME and save it again, `built.save(folder)`, or load the folder as it is under the MIME that
+  saved it. A folder unpacked from a published record (`mime pull`) says so and names the record's page.
+  It is the first thing `Experiment.load` does, before any entry resolves, so a folder whose document no longer resolves
+  under this release is still refused for the release that saved it. `load.input-hash` is raised only where the
+  versions agree, for a document changed after its lock was written; one loaded and then edited (a notebook cell run
+  after the load) is refused in words about the edit ("edited after it was loaded"), with the actions that work: load
+  the folder again, or keep the edit in a new experiment made from the folder, `Experiment.based_on(<folder>,
+  name=...)` (a loaded, edited experiment can be neither built nor saved). The
+  compatibility policy for later releases is designed before the first users; this is not it, and two final releases
+  (0.3.0 and 0.3.1) still meet `load.input-hash` and its words about a changed document.
 - **`mime verify`, `mime env check` and `mime registry` draw tables on a terminal.** `mime verify` shows its checks as a
   table (the saved form, the input hash, the environment, the derived graph, the rerun and what it was held to, and a
   row for each field compared: "equal, bit for bit" where the comparison was bit for bit, otherwise the tolerance it was

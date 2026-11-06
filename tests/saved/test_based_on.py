@@ -46,6 +46,7 @@ from pathlib import Path
 import jax
 import pytest
 import yaml
+from packaging.version import Version
 from folder_state import untouched
 from script_a0 import a0
 
@@ -211,7 +212,8 @@ def test_a_loaded_experiment_edited_in_a_notebook_is_refused_by_its_lock_pointin
     with pytest.raises(LoadRefused) as refused:
         loaded.build()
     (refusal,) = refused.value.refusals
-    assert refusal.code == "load.input-hash" and 'Experiment.based_on("<folder>", name="<a new name>")' in refusal.action
+    assert refusal.code == "load.input-hash" and "edited after it was loaded" in refusal.message
+    assert f'Experiment.based_on({str(parent)!r}, name="<a new name>")' in refusal.action
     child = Experiment.based_on(parent, name="stiffer_toy")
     with pytest.warns(UserWarning):
         stiffer(child)
@@ -361,6 +363,30 @@ def test_a_child_of_a_folder_the_released_wheel_saved_saves_as_form_seven_loads_
     reloaded = Experiment.load(child)
     assert reloaded.load_report is not None and "input hash: reproduced exactly" in reloaded.load_report.text()
     assert reloaded.build().verify().reproduced
+
+
+def the_next_development_release(version: str) -> str:
+    """The development release after ``version``: ``0.3.0.dev1`` -> ``0.3.0.dev2``."""
+    held = Version(version)
+    assert held.dev is not None and held.local is None, version
+    return f"{held.base_version}.dev{held.dev + 1}"
+
+
+def test_a_parent_another_development_release_saved_is_refused_by_based_on_as_its_load_refuses_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The released parent under the next development release (``__version__`` patched for the test): refused by
+    name, ``load.other-release`` with both versions (design #232), before anything is made of it, and left as it was.
+    The control is the test above: the same folder under the MIME that saved it is based on."""
+    parent = Path(shutil.copytree(RELEASED, tmp_path / "timed_toy"))
+    saved_by = lock_of(parent)["environment"]["mime"]
+    later = the_next_development_release(saved_by)
+    monkeypatch.setattr(mime, "__version__", later)
+    with untouched(parent), pytest.raises(LoadRefused) as refused:
+        Experiment.based_on(parent, name="child")
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "load.other-release"
+    assert f"saved by MIME {saved_by}, and this is MIME {later}" in refusal.message
+    assert not (tmp_path / "child").exists()
 
 
 #: The running MIME (a release, patched in for the test) and the MIME a parent's lock is edited to name (an earlier

@@ -42,8 +42,9 @@ from beside the document.
 Its invariants are held by Hypothesis stateful tests over random scripts of its calls
 (`tests/saved/test_experiment_states.py`): a build succeeds or refuses with reasons, `load(save(x))` keeps the
 derived hash, and a refused build leaves the experiment as it was. A loaded experiment checks every build against
-its lock, so once changed it is refused (`load.input-hash`) and cannot be saved again: to change a saved experiment,
-make a new one from it with `Experiment.based_on(source, name=...)`.
+its lock, so once changed it is refused (`load.input-hash`, "edited after it was loaded") and cannot be built or saved:
+to keep the change, make a new experiment from the folder with `Experiment.based_on(source, name=...)` and change that;
+to drop it, load the folder again.
 
 `Experiment.based_on(source, name=...)` makes a new experiment from a saved one: a folder, a bundle file, or what
 `mime pull` takes (a DOI, an address), which is pulled first into `./<its name>/` as `mime pull` pulls it, or, where

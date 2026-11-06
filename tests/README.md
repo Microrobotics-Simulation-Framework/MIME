@@ -352,7 +352,8 @@
   at each release's version bump `restamp_version.py` stamps the new version into them and recomputes the lock's
   `document` and `input` hashes it moves, after checking that it reproduces the stored hashes first, and refuses a
   change to anything else (the `derived` and `observations` hashes included). Without it, a load under the new version
-  refuses every one (`load.input-hash`, the version being in the input hash):
+  refuses every one (`load.other-release`, the version being in the input hash; the lock's recorded version is stamped
+  too):
   - `test_registry_walk.py`: every registered entry and kind of thing has a round-trip case in `cases.py`, and every
     case round-trips through a fresh process with the same derived hash and bitwise-identical first steps; its
     controls remove each load-bearing case and add an entry with none. Each case's parameter leaves reach its step;
