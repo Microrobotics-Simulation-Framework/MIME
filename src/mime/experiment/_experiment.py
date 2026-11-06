@@ -301,6 +301,9 @@ class Experiment:
         #: ``remove`` names when something still holds a name.
         self._sites: dict[int, str] = {}
         self._saved: SavedForm | None = None
+        #: Whether :meth:`load` has checked this experiment against its lock: a later build that differs from the lock
+        #: is an edit made after the load.
+        self._load_checked = False
         self.load_report: LoadReport | None = None
 
     def _declared_now(self) -> list[Declaration]:
@@ -558,7 +561,7 @@ class Experiment:
             with keeping_pins(self._saved):
                 stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
                           for writer in writers}
-            load_report = check_load(self._saved, record, stages)
+            load_report = check_load(self._saved, record, stages, edited_after_load=self._load_checked)
         origin = Origin(self._changes, len(self._changes), tuple(self._declarations), weakref.WeakMethod(self._declared_now))
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law,
                                origin=origin)
@@ -584,7 +587,8 @@ class Experiment:
     @public
     def load(cls, folder: str | PathLike[str]) -> Experiment:
         """The experiment saved in ``folder``, rebuilt and checked against its lock. Reads the document and runs no
-        code it names; resolves every entry among installed packages and installs nothing, refusing a missing one
+        code it names; first refuses a folder another development release saved (``load.other-release``), which needs
+        only the lock; resolves every entry among installed packages and installs nothing, refusing a missing one
         or another version with the line to install; then makes the three load checks, whose outcome is
         :attr:`load_report`. Raises ``LoadRefused`` with every reason: a folder that is not there names the saved
         experiments beside it."""
@@ -594,9 +598,16 @@ class Experiment:
 
             raise LoadRefused(missing_folder(Path(folder)).refusals)
         form = read_folder(Path(folder))
+        from mime.saved import _folder
+
+        # First: the refusal needs only the lock, and a folder another release saved may no longer resolve or build.
+        other_release = _folder.other_release_refusal(form)
+        if other_release is not None:
+            raise _folder.LoadRefused([other_release])
         experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder)))
         experiment._saved = form
         experiment.load_report = experiment.build().load_report
+        experiment._load_checked = True
         return experiment
 
 
