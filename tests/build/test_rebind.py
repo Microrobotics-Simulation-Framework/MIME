@@ -98,8 +98,9 @@ def apparatus(tube: Any, strength: float = 1.2, with_field: bool = True, name: s
 
 
 def experiment(*, radius: float = 3.175, record: Any = None, density: bool | None = None, length: float = 7.47,
-               strength: float = 1.2) -> Made:
-    """Tutorial A's order. The water's density is declared unless ``density`` is False (or a ``record`` gives it)."""
+               strength: float = 1.2, margin: float = 0.1, sourced: bool = False) -> Made:
+    """Tutorial A's order. The water's density is declared unless ``density`` is False (or a ``record`` gives it); the
+    contact law's margin is a source's to give where ``sourced``."""
     exp = Experiment("rebind", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5),
                      conditions=CONDITIONS)
     tube = exp.add_structure(structure(radius))
@@ -113,7 +114,9 @@ def experiment(*, radius: float = 3.175, record: Any = None, density: bool | Non
     field = exp.add_apparatus(apparatus(tube, strength))
     exp.attach(Magnetic.Torque(), body=robot, field=field.magnetic)
     exp.attach(Gravity(), body=robot, medium=water)
-    exp.attach(CentreContact.Projection(margin=mm(0.1)), body=robot, surface=tube.inner_surface)
+    if sourced:
+        exp.source("contact:robot.margin", reason="a datasheet")
+    exp.attach(CentreContact.Projection(margin=mm(margin)), body=robot, surface=tube.inner_surface)
     exp.observe(SwimSpeed(robot, along=tube.axis))
     return Made(exp, tube, water, robot, field)
 
@@ -590,7 +593,7 @@ def test_a_declaration_kept_beside_because_it_holds_the_object_is_not_added_when
     assert len(declarations(made.exp)) == count and replaced_of(made.exp) == []
 
 
-def test_a_law_a_source_names_is_not_added_beside_when_its_warning_raises_and_says_lines_or_cells(notebook):
+def test_a_law_a_source_names_is_replaced_and_its_warning_raised_as_an_error_leaves_the_experiment_as_it_was(notebook):
     made = experiment()
     made.exp.source("robot.parts.shell.density", reason="a datasheet")
     made.exp.source("contact:robot.margin", reason="a datasheet")
@@ -599,11 +602,12 @@ def test_a_law_a_source_names_is_not_added_beside_when_its_warning_raises_and_sa
         warnings.simplefilter("error")
         with pytest.raises(UserWarning):
             made.exp.attach(CentreContact.Projection(margin=mm(0.2)), body=made.robot, surface=made.tube.inner_surface)
-    assert len(declarations(made.exp)) == count
+    assert len(declarations(made.exp)) == count and replaced_of(made.exp) == []
     (note,) = noted(lambda: made.exp.attach(CentreContact.Projection(margin=mm(0.2)), body=made.robot,
                                             surface=made.tube.inner_surface))
-    assert "both are kept" in note and "run the lines or cells again from the one that makes the experiment" in note
-    assert len(declarations(made.exp)) == count + 1
+    assert note.endswith("it replaces the earlier one; what holds its id now finds the new one: the source of "
+                         "contact:robot.margin")
+    assert len(declarations(made.exp)) == count and replaced_of(made.exp) == [note]
 
 
 def test_the_note_of_a_held_object_says_lines_or_cells(notebook):

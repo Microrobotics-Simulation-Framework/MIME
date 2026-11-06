@@ -85,7 +85,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         limits={p.owner: p.record.limits for p in plans.entries if p.record is not None and p.record.limits},
         controller=(*plans.controller.lines(plans.dt), *model_lines(plans, models))
         if plans.controller is not None else (),
-        masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced,
+        masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
         checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
                                                  for owner, lines in (computed or {}).items()}}.items())))
 

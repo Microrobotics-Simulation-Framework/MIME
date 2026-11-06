@@ -148,15 +148,20 @@ def _key_of(declaration: Declaration) -> tuple[str, str] | None:
     return known.key if known is not None else None
 
 
+def named_by(held: list[Declaration], earlier: list[int], name: str) -> list[int]:
+    """The places in ``held``, other than ``earlier``, of the declarations that hold ``name`` (or a path under it)."""
+    return [index for index, other in enumerate(held)
+            if index not in earlier and any(text == name or text.startswith(f"{name}.") for text in names_in(other))]
+
+
+def called(other: Declaration) -> str:
+    known = known_as(other)
+    return known.holder or known.noun if known is not None else type(other).__name__
+
+
 def _naming(held: list[Declaration], earlier: list[int], name: str) -> list[str]:
     """How a note calls each declaration of ``held``, other than ``earlier``, that holds ``name``."""
-    found: list[str] = []
-    for index, other in enumerate(held):
-        if index in earlier or not any(text == name or text.startswith(f"{name}.") for text in names_in(other)):
-            continue
-        known = known_as(other)
-        found.append(known.holder or known.noun if known is not None else type(other).__name__)
-    return found
+    return [called(held[index]) for index in named_by(held, earlier, name)]
 
 
 def things_in(value: object, _open: frozenset[int] = frozenset()) -> Iterator[Structure | Medium | Body | Apparatus]:
@@ -184,14 +189,15 @@ def _other_kinds(held: list[Declaration], earlier: list[int], declaration: Thing
     return sorted(kind.value for kind in kinds - {declaration.thing.kind})
 
 
+def holding_the_object_at(held: list[Declaration], earlier: list[int], name: str) -> list[int]:
+    """The places in ``held``, other than ``earlier``, of the declarations that hold the thing named ``name`` itself."""
+    return [index for index, other in enumerate(held)
+            if index not in earlier and any(thing.name == name for thing in things_in(other))]
+
+
 def _holding_the_object(held: list[Declaration], earlier: list[int], name: str) -> list[str]:
     """How a note calls each declaration of ``held``, other than ``earlier``, that holds the thing named ``name`` itself."""
-    found: list[str] = []
-    for index, other in enumerate(held):
-        if index not in earlier and any(thing.name == name for thing in things_in(other)):
-            known = known_as(other)
-            found.append(known.holder or known.noun if known is not None else type(other).__name__)
-    return found
+    return [called(held[index]) for index in holding_the_object_at(held, earlier, name)]
 
 
 def _listed(nouns: list[str]) -> str:
@@ -283,19 +289,15 @@ def add(held: list[Declaration], declaration: Declaration, replaced: list[str], 
     if known.key is None or not earlier or not (inherited or in_notebook()):
         held.append(declaration)
         return
-    where = f"in an experiment based on {parent!r}" if inherited else f"in {WHERE}"
     why = (f"it replaces the one this experiment took from {parent!r}, which it is based on" if inherited
            else f"in {WHERE} the last one run wins, so it replaces the earlier one")
     if isinstance(declaration, ThingDeclaration):
         _replace_thing(held, earlier, declaration, known, known.key[1], replaced, why)
         return
     naming = _naming(held, earlier, known.key[1]) if known.named else []
-    if naming:
-        _kept_beside(known, f"{_listed(naming)} name{'s' if len(naming) == 1 else ''} the earlier one, and {where} "
-                            f"a law or an observation is replaced only where nothing names it", held, declaration)
-        return
-    _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: {why}",
-             replaced)
+    follows = f"; what holds its id now finds the new one: {', '.join(naming)}" if naming else ""
+    _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: "
+                                         f"{why}{follows}", replaced)
 
 
-__all__ = ["Known", "add", "known_as", "names_in", "things_in"]
+__all__ = ["Known", "add", "called", "holding_the_object_at", "known_as", "named_by", "names_in", "things_in"]
