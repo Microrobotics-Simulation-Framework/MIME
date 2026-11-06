@@ -42,8 +42,8 @@ from beside the document.
 Its invariants are held by Hypothesis stateful tests over random scripts of its calls
 (`tests/saved/test_experiment_states.py`): a build succeeds or refuses with reasons, `load(save(x))` keeps the
 derived hash, and a refused build leaves the experiment as it was. A loaded experiment checks every build against
-its lock, so once changed it is refused (`load.input-hash`) and cannot be saved again: what a loaded experiment that
-is edited should become is open.
+its lock, so once changed it is refused (`load.input-hash`, "edited after it was loaded") and cannot be saved again: what
+a loaded experiment that is edited should become is open.
 
 `run(duration, record=[...], every=...)` and `run_to(..., record=, every=)` return and write a
 `RunResult`, read by each observation's declared outputs, and `run_to` writes `outputs.json` beside `outputs.npz`.

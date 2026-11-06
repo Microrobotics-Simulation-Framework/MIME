@@ -286,6 +286,9 @@ class Experiment:
         #: what a warnings filter cannot remove, shown by ``plan()`` and the build report. Not part of the saved form.
         self._replaced: list[str] = []
         self._saved: SavedForm | None = None
+        #: Whether :meth:`load` has checked this experiment against its lock: a later build that differs from the lock
+        #: is an edit made after the load.
+        self._load_checked = False
         self.load_report: LoadReport | None = None
 
     @classmethod
@@ -477,7 +480,7 @@ class Experiment:
             with keeping_pins(self._saved):
                 stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
                           for writer in writers}
-            load_report = check_load(self._saved, record, stages)
+            load_report = check_load(self._saved, record, stages, edited_after_load=self._load_checked)
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law)
 
     @public
@@ -514,6 +517,7 @@ class Experiment:
         experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder)))
         experiment._saved = form
         experiment.load_report = experiment.build().load_report
+        experiment._load_checked = True
         return experiment
 
 

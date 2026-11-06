@@ -208,13 +208,24 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_load.py::test_a_document_saved_before_a_version_changed_is_refused_naming_the_entry`.
 - **[rebuild.version]** Development releases (0.3.0.devN) make no compatibility promise. MIME's version is part of
   the rebuilt input (the document's `mime` line and the resolved record's `vocabulary.mime`), so a folder saved by one
-  development release is refused by the next as `load.input-hash`, whatever else is the same; the message names the
-  versions as a change of `resolved.vocabulary.mime` and says the document was changed, which is not what happened.
-  Keep the script that built the experiment and save it again with the new release. It holds of a saved folder in
-  every use of it (`Experiment.load`, `mime verify`, `mime run`, `mime pack`); a bundle unpacks (`mime pull` names the
-  MIME that packed it) but its folder is refused in the same way; and a run folder's outputs still read
-  (`RunResult.read`) while the `experiment/` folder inside it is a saved folder, so it is refused.
-  *Cases:* `tests/saved/test_load.py::test_a_folder_saved_by_another_mime_version_is_refused_and_one_saved_by_this_one_loads`.
+  development release is refused by the next, whatever else is the same. The refusal is its own, `load.other-release`,
+  raised before the input hash is judged: it names both versions ("saved by MIME 0.3.0.dev1, and this is MIME
+  0.3.0.dev2"), says that development releases do not load each other's folders, and says what to do: run the script
+  that built the experiment under this MIME and save it again (`built.save(folder)`), or load the folder as it is under
+  the MIME that saved it (`pip install mime-engine==<that version>`). A folder unpacked from a published record
+  (`mime pull`: its lock records the publication) also says so and names the record's page. `load.input-hash` keeps
+  its meaning, a document changed after its lock was written, and is raised only where the versions agree. It holds of
+  a saved folder in every use of it (`Experiment.load`, `mime verify`, `mime run`, `mime pack`); a bundle unpacks
+  (`mime pull` names the MIME that packed it) but its folder is refused in the same way; and a run folder's outputs
+  still read (`RunResult.read`) while the `experiment/` folder inside it is a saved folder, so it is refused. The
+  compatibility policy for releases after the development ones is designed before the first users; this is not it.
+  *Cases:* `tests/saved/test_other_release.py::test_a_lock_recording_another_development_release_is_refused_by_its_own_refusal`,
+  `tests/saved/test_load.py::test_a_folder_saved_by_another_mime_version_is_refused_and_one_saved_by_this_one_loads`.
+- **[rebuild.edited-after-load]** An experiment that was loaded and then edited (a body added in a notebook cell run
+  after the load) is refused at its next build as `load.input-hash`, in words about the edit: "edited after it was
+  loaded", naming what changed and, in a notebook or IPython, saying that a line or cell run after the load changed
+  it. The action is to save the edited experiment as a new folder, or to load the folder again.
+  *Cases:* `tests/saved/test_other_release.py::test_an_experiment_edited_after_it_was_loaded_is_refused_in_words_about_the_edit`.
 - **[rebuild.stage]** A stage written by a stage writer this MIME does not have is refused as `load.stage-writer`; in
   the environment the lock was written in, a rebuilt stage of other bytes is refused as `load.stage-hash`.
   *Cases:* `tests/saved/test_stage_writer.py::test_the_control_a_lock_naming_another_writer_or_a_stage_neither_writes_is_refused`.
