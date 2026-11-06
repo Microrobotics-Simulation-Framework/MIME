@@ -163,6 +163,11 @@ persists: the newest attempt's own outcome and JUnit report are what is read, an
 list of jobs, at their latest attempts, shows that Python's shard jobs all concluded success. The manual run's `plant_shard_failure` input (a shard number) fails that shard of the Python
 3.12 default lane on the first attempt only, to show this on a run.
 
+The shell-completion tests run in a job of their own per lane (`completion tests (...)`), which each lane's job under its own
+name reads from the run's list of jobs at their latest attempts, as it reads its shards: the lanes whose jobs carry
+`continue-on-error` cannot read it from `needs.<job>.result`. The manual run's `plant_completion_failure` input fails that
+job in every lane; each lane's required check must then be red.
+
 ## CI: borderline tests
 
 A push to `release/v0.3.0` runs cold (an empty compilation cache) and a shard draws whichever runner class is free, so a test
