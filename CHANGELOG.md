@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A containment watch: a body the centre-held contact holds whose hull leaves its region is flagged after the run**
+  (in every profile that can be built, exploratory and research; never a refusal, no node or edge, so the graph and its
+  derived hash are what they were). The contact 0.1.0 holds a body's centre by its extent and never reads its
+  orientation, so script A's body given FL-9's own inertia tensor, instead of the isotropic effective inertia, turns its
+  axis across the tube (45 degrees at 0.34 s) and its hull is through the wall by millimetres, which nothing flagged but
+  the surrogate drag's own tilt and bore flags, later and in words about the drag. `result.containment` (and
+  `result.text()`, the manifest, `outputs.json`, the `.mat` file and the end-of-run summary) now says the step, the depth
+  past the wall and the fix (`Contact.Projection` reads the orientation). A run that kept the pose is read at every step
+  it kept (`record=` keeps it for this); one that kept nothing is read at its last step alone, and says that it knows
+  nothing of the steps before (the summary says so in one line). A centre-held body the watch cannot check (a surface
+  whose shape takes one point at a time, a hull kind that gives no samples, a body whose dynamics publish no pose) is
+  listed in the build report and read as not checked, with the reason. It is read when first asked for (the result's
+  `containment`, its text, manifest and exports, the summary), so a run that never looks pays nothing. The depth is of
+  the hull's samples, which fall up to 23 um short of the body at the watch's spacing (`shortfall`, quoted in the text):
+  a bound on how far a flagged depth can understate the true one. `tests/results/test_containment.py` holds the
+  reproduced case, the false-alarm cases (script A as it is, the record arm), the hull contact's run, independent
+  depths, and the mutants the reviews planted.
 - **The experiment's tree and its compiled graph, shown without running it** (`docs/guide/graph_and_tree.md`).
   `experiment.tree()` is what the experiment declares (structures, media and what each fills, bodies and their parts,
   apparatus with their chain, parts, fields and drives, each law with the things it binds, observations with what they

@@ -15,7 +15,7 @@ from mime.build._refusals import Refusal
 
 if TYPE_CHECKING:
     from mime.build._lags import EdgeLag
-    from mime.build._watch import WatchPlan
+    from mime.build._watch import Watched
     from mime.build._plan import MaterialsPlan, ValueLine
     from mime.build._profile import ProfileOutcome
 
@@ -121,7 +121,7 @@ class BuildReport:
     profile: ProfileOutcome | None = None
     #: What the post-run watch compares after each run, for each entry it watches (``mime.results.watch``): the
     #: report's post-run section.
-    watches: tuple[WatchPlan, ...] = ()
+    watches: tuple[Watched, ...] = ()
     #: Each asset and mesh a loaded experiment keeps at its pin while a source now holds another version of it: the
     #: pin wins, and the report says so (``mime.assets.pinned``).
     assets: tuple[str, ...] = ()

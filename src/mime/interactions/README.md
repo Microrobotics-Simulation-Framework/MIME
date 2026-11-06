@@ -122,7 +122,8 @@ flagged `unconverged` above `CONVERGED`. A spacing whose samples fall farther fr
 takes more than `JUDGED_SAMPLES` to judge, is refused (`confinement.spacing-short`); left unwritten, the spacing is the
 margin, no finer than `SPACING_FLOOR` of the hull's size. A turned body that touches at two points takes the
 couple that holds it, and a screw that turns broadside in a narrow tube is held at the bore's limit, where 0.1.0
-held its centre by its extent and let it through the wall. A body with no hull is held as a sphere of its extent, as
+held its centre by its extent and let it through the wall (a body held by 0.1.0 whose hull leaves the region is
+flagged after the run by the containment watch, in exploratory and research: [the results note](../../../docs/results.md)). A body with no hull is held as a sphere of its extent, as
 before; a body whose hull no point reaches the margin steps as it did, to the last bit. 0.1.0 is kept registered
 (`mime.interactions.KEPT`) for folders saved with it and for the experiments whose comparisons were declared against
 it, script A's and A0's reproductions. **A contact handles admissibility only**: it never adds near-wall lubrication,

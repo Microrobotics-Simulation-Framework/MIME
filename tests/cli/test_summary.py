@@ -203,7 +203,7 @@ def test_every_status_but_within_reaches_the_attention_list(status):
     watch = WatchRead("drag:ball", "drag", "stokes", "ball", "water", status, 0.5, 0.1, 1.0, 1.0, 1e-4, 1000.0, 1e-3, 0.1, "b",
                       True, 0.1, "", ("the medium's density is not declared",) if status == "not_computed" else ())
     report = types.SimpleNamespace(checked={}, refusals=(), warnings=(), profile=None, range_warning_lines=lambda: [])
-    written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=(watch,)), stopped=None)
+    written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=(watch,), containment=()), stopped=None)
     lines = _summary.attention_lines(types.SimpleNamespace(report=report), written, None, Path("exp"))
     assert bool(lines) == (status != "within"), lines
 
@@ -216,8 +216,51 @@ def test_a_warning_the_build_gave_before_the_run_leads_what_needs_attention_afte
     def lines_of(warnings):
         report = types.SimpleNamespace(checked={}, refusals=(), warnings=(), profile=None,
                                        range_warning_lines=lambda: list(warnings))
-        written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=()), stopped=None)
+        written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=(), containment=()), stopped=None)
         return _summary.attention_lines(types.SimpleNamespace(report=report), written, None, Path("exp"))
 
     planted = "warning before the run: drag:ball: a planted turning Reynolds number of 270"
     assert lines_of([planted]) == [planted] and lines_of([]) == []
+
+
+@pytest.mark.parametrize("status", ["past_the_wall", "within", "not_computed"])
+def test_a_hull_past_the_wall_leads_the_attention_list_and_a_containment_that_could_not_be_read_is_listed(status):
+    """The containment watch through ``attention_lines``: raised leads, not computed is listed as not checked, and
+    ``within`` is a pass and silent."""
+    import types
+
+    from mime.results._containment import ContainmentRead
+
+    read = ContainmentRead("contact:umr", "contact 0.1.0", "umr", "tube.inner_surface", status,
+                           2e-3 if status == "past_the_wall" else -1e-4, 1e-9, 404, 801, 1000, True, 1e-4, 4.5e-6, 5e-4,
+                           ("the body's pose is not finite",) if status == "not_computed" else ())
+    report = types.SimpleNamespace(checked={}, refusals=(), warnings=(), profile=None, range_warning_lines=lambda: [])
+    written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=(), containment=(read,)),
+                                    stopped=None)
+    lines = _summary.attention_lines(types.SimpleNamespace(report=report), written, None, Path("exp"))
+    assert bool(lines) == (status != "within"), lines
+    if status == "past_the_wall":
+        assert lines[0].startswith("post-run containment raised: containment:contact:umr") and "Contact.Projection" in lines[0]
+    if status == "not_computed":
+        assert lines[0].startswith("post-run containment could not be checked")
+
+
+@pytest.mark.parametrize("every_step", [True, False])
+def test_a_containment_read_at_the_last_step_only_says_so_where_the_run_ends(every_step):
+    """A body inside the wall at the last step of a run that kept no pose is not "fine" as a run that kept every step is:
+    the summary says the watch saw one step. The control is the same read at every step, which is a pass and silent."""
+    import types
+
+    from mime.results._containment import ContainmentRead
+
+    read = ContainmentRead("contact:umr", "contact 0.1.0", "umr", "tube.inner_surface", "within", -1e-4, 1e-9, None, 801,
+                           1000 if every_step else 1, every_step, 1e-4, 2.3e-5, 5e-4)
+    report = types.SimpleNamespace(checked={}, refusals=(), warnings=(), profile=None, range_warning_lines=lambda: [])
+    written = types.SimpleNamespace(result=types.SimpleNamespace(flags=(), watches=(), containment=(read,)),
+                                    stopped=None)
+    lines = _summary.attention_lines(types.SimpleNamespace(report=report), written, None, Path("exp"))
+    if every_step:
+        assert lines == []
+    else:
+        (line,) = lines
+        assert line.startswith("containment read at the last step only (umr against tube.inner_surface)"), line

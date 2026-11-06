@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -37,6 +38,7 @@ from mime.build import (
 from mime.build._checks import stopped_refusals
 from mime.build._construct import description_warnings, report_of
 from mime.core.multibody import DescriptionWarning
+from mime.build._watch import ContainmentPlan
 from mime.build._report import NodeLine
 from mime.build._plan import EntryPlan, Section
 from mime.build._steps import whole_runs_either_side, whole_steps
@@ -75,6 +77,7 @@ from mime.results import (
     RunResult,
     Samples,
     Stopped,
+    read_containments,
     read_watches,
 )
 from mime.saved import (
@@ -1174,7 +1177,8 @@ class BuiltExperiment:
         kept = history or bool(recorded)
         keep = None if history or not recorded else frozenset(
             {(output.node, output.field) for output in recorded}
-            | {(flag.node, flag.field) for flag in self.layout.flags})
+            | {(flag.node, flag.field) for flag in self.layout.flags}
+            | {(plan.node, plan.field) for plan in self._plans.watches if isinstance(plan, ContainmentPlan)})
         final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep,
                                         automatic=hook is None and self._runs.chunk is None, stop=stop,
                                         tests=self._flag_tests())
@@ -1194,6 +1198,14 @@ class BuiltExperiment:
     def _flag_tests(self) -> tuple[FlagTest, ...]:
         """Each flag of the layout as a scan tests it, for a run that keeps no step's state to reduce them over."""
         return tuple(FlagTest(flag.node, flag.field, flag.limits) for flag in self.layout.flags)
+
+    def _poses_kept(self, stacked: History | None) -> History | None:
+        """The poses of the bodies the containment watch reads, from ``stacked`` where the run kept them, and nothing
+        else of it, so that a result holds no more than the watch needs until the watch is read."""
+        if stacked is None:
+            return None
+        return {plan.node: {plan.field: stacked[plan.node][plan.field]} for plan in self._plans.watches
+                if isinstance(plan, ContainmentPlan) and plan.field in stacked.get(plan.node, {})}
 
     def result_of(self, start: int, steps: int, final: History, stacked: History | None = None,
                   recorded: Sequence[OutputLayout] = (), spacing: int = 1, *, history: bool = False,
@@ -1219,6 +1231,9 @@ class BuiltExperiment:
         return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
                          watches=read_watches(self._plans.watches, final, stacked if history else None),
+                         containment=functools.partial(read_containments, self._plans.watches, final,
+                                                       self._poses_kept(stacked), last_step=start + steps,
+                                                       dt=self._plans.dt),
                          report=self.report_summary(), stopped=stopped, origin=self._origin)
 
     @public

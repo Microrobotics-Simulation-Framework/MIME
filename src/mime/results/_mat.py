@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from mime.results._result import RunResult
 
 #: The variables of the file that are not an observation's.
-RESERVED = ("manifest", "run", "flags", "watches", "name_map")
+RESERVED = ("manifest", "run", "flags", "watches", "containment", "name_map")
 #: The longest MATLAB name.
 LONGEST_NAME = 63
 #: The bytes a variable may hold: MATLAB reads v5 variables only below 2 GiB.
@@ -166,6 +166,19 @@ def _watch_variable(result: RunResult) -> Struct:
     return held
 
 
+def _containment_variable(result: RunResult) -> Struct:
+    """Every post-run containment watch: its status, the deepest the hull went past the surface and the step, as its
+    text states them."""
+    held: Struct = {}
+    for read in result.containment:
+        held[matlab_name(read.path)] = {
+            "path": read.path, "entry": read.entry, "body": read.body, "surface": read.surface,
+            "status": read.status, "raised": _tri(read.raised), "depth": _number(read.depth),
+            "first_step": _number(read.first_step), "worst_step": _number(read.worst_step),
+            "from": "every step the run kept" if read.peak else "the last step only", "text": read.text()}
+    return held
+
+
 def _run_variable(result: RunResult) -> Struct:
     manifest = result.manifest()
     stamp = result.layout.stamp
@@ -200,6 +213,9 @@ def variables_of(result: RunResult) -> dict[str, Any]:
     if result.watches:
         names_of("watch", [read.path for read in result.watches])
         variables["watches"] = _watch_variable(result)
+    if result.containment:
+        names_of("containment", [read.path for read in result.containment])
+        variables["containment"] = _containment_variable(result)
     for held in result.layout.observations:
         variables[observations[held.id]] = {outputs[held.id][output.name]: _output(result, output, flags)
                                             for output in held.outputs}

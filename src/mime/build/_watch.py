@@ -1,4 +1,4 @@
-"""What the post-run watch needs from the plan: for each entry of the hydrodynamic family, the body it moves, the
+"""What the post-run watches need from the plan: for each entry of the hydrodynamic family, the body it moves, the
 medium it moves in, the hull's diameter, the medium's density and viscosity where the experiment gives them, the
 Reynolds number its rung is declared up to, and where in the graph the body's twist is held. Plain data read after a
 run (``mime.results.watch``); it adds no node and no edge, so the graph and its hash are what they would be without it.
@@ -10,7 +10,16 @@ profile and is never a refusal."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+from mime.units import Magnitude
+
+if TYPE_CHECKING:
+    from mime.registry import Solid
 
 #: The family whose entries are watched: those whose model neglects the fluid's inertia.
 WATCHED_FAMILY = "hydrodynamic"
@@ -91,3 +100,116 @@ class WatchPlan:
                       f"{number:.3g}" if number is not None else
                       f"; the declared rate ({self.turning_from}) gives no number before the run: an input is missing")
         return f"{self.owner}: the Reynolds number after each run for {what}, {held}{gaps}{before}"
+
+
+#: The spacing of the points the containment watch compares with the surface, as a share of the hull's enclosing radius
+#: (about 0.21 mm for FL-9, whose samples then fall 23 um short of the body and whose convex hull has about 500
+#: vertices): coarser than the hull contact's, which must hold the body to its margin, since the watch reads a run
+#: after it, at every step it kept, and its cost is the vertices times the steps; it quotes the shortfall.
+WATCH_SPACING = 0.05
+#: The hulls made in this process (``ContainmentPlan.made``), and the most kept.
+_MADE: dict[tuple[object, ...], tuple[np.ndarray, float]] = {}
+_MADE_MOST = 8
+
+
+@dataclass(frozen=True)
+class ContainmentPlan:
+    """What the containment watch needs for a body the centre-held contact (0.1.0) holds, which has a hull it does not
+    read: the contact's id and label, the body and the surface it is held against, the node and field that hold its
+    pose, the surface's shape with its parameters in SI, the contact's margin, and the hull (its kind, settings and
+    placement in the body, the spacing of its sample points). The body's hull is what the watch compares with the
+    surface after the run; ``vertices`` are the hull's points the surface's signed distance is read at, in the body's
+    frame: the vertices of the convex hull of the samples where the surface's region is convex (the largest signed
+    distance over a set is at a vertex of its hull), else every sample. They are made when first read, not at the build.
+
+    ``shortfall`` is how far the samples fall short of the body (m, ``mime.scene.samples_shortfall``, an estimate over
+    finitely many directions), made when first read: the depth the watch reports is of the samples, so the body may
+    pass the wall by up to that more; it bounds how far a flagged depth can understate the true one."""
+
+    owner: str
+    entry: str
+    body: str
+    surface: str
+    node: str
+    field: str
+    shape: str
+    parameters: Mapping[str, Magnitude]
+    margin: float
+    hull_label: str
+    kind: Solid
+    settings: Mapping[str, Magnitude]
+    centre: tuple[float, float, float]
+    rotation: tuple[tuple[float, ...], ...]
+    spacing: float
+    convex: bool
+
+    @property
+    def made(self) -> tuple[np.ndarray, float]:
+        """The hull's points to compare with the surface (``vertices``) and how far the samples fall short of the body
+        (``shortfall``, m), made once per process for the same hull: a study builds the same body many times."""
+        key = (self.kind.name, self.kind.version, tuple(sorted((n, repr(v)) for n, v in self.settings.items())),
+               self.centre, self.rotation, self.spacing, self.convex)
+        if key not in _MADE:
+            from mime.nodes.body._rigid_inertial import hull_vertices
+            from mime.scene._sampling import quadrature_arrays, quadrature_counts, samples_shortfall
+
+            patches = tuple(self.kind.patches)
+            counts = quadrature_counts(self.kind, self.settings, self.spacing, patches)
+            points = quadrature_arrays(self.kind, self.settings, patches, counts)[0]
+            turn = np.asarray(self.rotation, dtype=np.float64).reshape(3, 3)
+            placed = points @ turn.T + np.asarray(self.centre, dtype=np.float64)
+            _MADE[key] = (placed[hull_vertices(placed)] if self.convex else placed,
+                          float(samples_shortfall(self.kind, self.settings, self.spacing)))
+            while len(_MADE) > _MADE_MOST:
+                del _MADE[next(iter(_MADE))]
+        return _MADE[key]
+
+    @property
+    def vertices(self) -> np.ndarray:
+        """The hull's points to compare with the surface, in the body's frame, ``K x 3`` in float64."""
+        return self.made[0]
+
+    @property
+    def shortfall(self) -> float:
+        """How far the samples fall short of the body in any direction (m)."""
+        return self.made[1]
+
+    def range_warning(self) -> str | None:
+        """None: a run's pose is what the watch reads, so there is nothing to warn before one."""
+        return None
+
+    def line(self) -> str:
+        """The build report's line for it."""
+        return (f"{self.owner}: after each run, {self.body}'s hull against {self.surface} ({self.entry} holds only its "
+                f"centre by its extent, never reading its orientation): the deepest point of the hull past the "
+                f"surface, at each step the run kept or at its last step; flagged, never a refusal")
+
+
+@dataclass(frozen=True)
+class UnwatchedContainment:
+    """A body the centre-held contact (0.1.0) holds whose hull the containment watch cannot check, and why
+    (``reason``): the surface's shape takes one point at a time, the hull's kind gives no sample points, or the body's
+    dynamics publish no pose. It reads nothing after a run; the result says the watch could not be checked, with the
+    reason, and the build report lists it, so that a body the watch skips is never skipped in silence."""
+
+    owner: str
+    entry: str
+    body: str
+    surface: str
+    margin: float
+    reason: str
+
+    def range_warning(self) -> str | None:
+        """None: there is nothing to read, before or after a run."""
+        return None
+
+    def line(self) -> str:
+        """The build report's line for it."""
+        return (f"{self.owner}: after each run, {self.body}'s hull against {self.surface} is NOT watched "
+                f"({self.entry} holds only its centre by its extent, never reading its orientation): {self.reason}")
+
+
+type Watched = WatchPlan | ContainmentPlan | UnwatchedContainment
+
+__all__ = ["WATCH_SPACING", "WATCHED_FAMILY", "ContainmentPlan", "UnwatchedContainment", "Watched", "WatchPlan",
+           "turning_reynolds"]
