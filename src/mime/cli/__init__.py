@@ -1174,8 +1174,8 @@ def build_parser() -> _guide.MimeParser:
     pack = commands.add_parser("pack", help="write a saved experiment folder as one bundle file")
     pack.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     pack.add_argument("--out", type=Path, help="the bundle file (default: <folder>.mimebundle beside the folder)")
-    card = commands.add_parser("card", help="a saved experiment's card (Markdown), or its NOTICE, offline, exactly as "
-                                            "mime push will publish them")
+    card = commands.add_parser("card", help="a saved experiment's card (Markdown), or its NOTICE, offline, as mime push "
+                                            "will publish them (the card also names the experiment it was based on)")
     card.add_argument("folder", type=Path, help="a folder written by Experiment.save")
     card.add_argument("--out", type=Path, help="write it to this file (default: print it)")
     card.add_argument("--notice", action="store_true", help="the NOTICE (each file's licence, credit, verdict and "

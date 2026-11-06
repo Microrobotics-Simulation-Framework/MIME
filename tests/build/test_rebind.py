@@ -747,26 +747,26 @@ def test_the_action_the_refusal_gives_in_a_notebook_is_these_words(notebook):
 
 def keeps_the_old_declaration(monkeypatch):
     """Says it replaced; the earlier declaration stays (the old settings under the new name)."""
-    def planted(held, earlier, declaration, known, name, replaced):
+    def planted(held, earlier, declaration, known, name, replaced, why):
         warnings.warn(f"{known.call} declares {known.noun} again, not the same as before: in a notebook or IPython the "
                       f"last one run wins, so it replaces the earlier one; nothing else holds its name", UserWarning)
     monkeypatch.setattr(redeclared, "_replace_thing", planted)
 
 
 def adds_beside_the_earlier_one(monkeypatch):
-    monkeypatch.setattr(redeclared, "_replace_thing", lambda held, earlier, declaration, known, name, replaced:
+    monkeypatch.setattr(redeclared, "_replace_thing", lambda held, earlier, declaration, known, name, replaced, why:
                         held.append(declaration))
 
 
 def puts_the_new_one_at_the_end(monkeypatch):
-    def planted(held, earlier, declaration, known, name, replaced):
+    def planted(held, earlier, declaration, known, name, replaced, why):
         del held[earlier[0]]
         held.append(declaration)
     monkeypatch.setattr(redeclared, "_replace_thing", planted)
 
 
 def says_nothing(monkeypatch):
-    def planted(held, earlier, declaration, known, name, replaced):
+    def planted(held, earlier, declaration, known, name, replaced, why):
         held[earlier[0]] = declaration
     monkeypatch.setattr(redeclared, "_replace_thing", planted)
 
