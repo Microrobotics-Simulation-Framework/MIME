@@ -46,7 +46,9 @@ def test_the_lock_holds_the_manifest_and_the_folder_holds_none(saved: Path):
     assert not list(saved.rglob("*.json")) or all(path.name != "visuals.json" for path in saved.rglob("*.json"))
     assert [manifest.name for manifest in lock_manifests(saved)] == ["ar4_mk5"]
     assert [manifest.name for manifest in manifests_for(saved)] == ["ar4_mk5"]
-    assert lock_manifests(saved)[0].to_json()["assets"] == ar4_manifest().to_json()["assets"]
+    assert lock_manifests(saved)[0].to_json()["assets"] == ar4_manifest().to_json(lock=True)["assets"]
+    assert held["format"] == "mime.asset_manifest/1" and "conditions" not in json.dumps(lock["visuals"]), (
+        "the lock (saved form 6) holds the manifest as /1: its form has no key for a licence's condition lines")
 
 
 def test_the_saved_arm_loads_with_its_stage_rebuilt_from_its_pins(saved: Path):

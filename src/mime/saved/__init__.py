@@ -40,7 +40,7 @@ from mime.saved._folder import (
     verify_history,
     write_folder,
 )
-from mime.saved._pull import ASSET_CONFIRM_BYTES, pull
+from mime.saved._pull import pull
 from mime.saved._reconstruct import declarations_from
 from mime.saved._record import SavedRecord, environment, record_of
 from mime.saved._resolve import ENTRY_POINT_GROUP, namespace_providers
@@ -66,7 +66,6 @@ from mime.saved._schema import (
 )
 
 __all__ = [
-    "ASSET_CONFIRM_BYTES",
     "BUNDLE_SUFFIX",
     "DEFAULT_STEPS",
     "DOCUMENT_FILE",
