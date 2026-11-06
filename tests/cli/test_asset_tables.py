@@ -97,6 +97,7 @@ def test_assets_list_on_a_terminal_is_a_table_of_name_size_cached_licence_and_ti
                          rf"\s+{ref.tier}", text), ref.name
 
 
+@needs_pty
 def test_plain_and_no_color_keep_assets_list_as_it_was(monkeypatch: pytest.MonkeyPatch):
     with terminal(COLUMNS) as held, monkeypatch.context() as inside:
         inside.setattr(sys, "stdout", held.stream)
@@ -316,18 +317,25 @@ def test_pending_piped_is_the_text_as_it_was(tmp_path: Path, monkeypatch: pytest
 # --- mime cache clear -----------------------------------------------------------------------------------------------------
 
 
-def test_cache_clear_says_how_much_it_freed_on_a_terminal_and_what_it_always_said_elsewhere(
-        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path):
+def test_cache_clear_piped_says_what_it_always_said(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+                                                  tmp_path: Path):
     root = tmp_path / "xla"
     monkeypatch.setattr("mime.env.user_xla_cache_root", lambda: root)
     monkeypatch.setattr("mime.env.clear_user_xla_cache", lambda path: 3_000_000)
     out, err, code = piped(capsys, "cache", "clear")
     assert (out, code) == (f"removed 3000000 bytes of XLA's compilation cache from {root}\n", 0)
+    monkeypatch.setattr("mime.env.clear_user_xla_cache", lambda path: 0)
+    out, _, _ = piped(capsys, "cache", "clear")
+    assert out == f"no XLA compilation cache to remove at {root}\n"
+
+
+@needs_pty
+def test_cache_clear_says_how_much_it_freed_on_a_terminal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    root = tmp_path / "xla"
+    monkeypatch.setattr("mime.env.user_xla_cache_root", lambda: root)
+    monkeypatch.setattr("mime.env.clear_user_xla_cache", lambda path: 3_000_000)
     with terminal(COLUMNS) as held, monkeypatch.context() as inside:
         inside.setattr(sys, "stdout", held.stream)
         assert main(["cache", "clear"]) == 0
         text = stripped(held.transcript())
     assert "freed 3.0 MB" in text and str(root) in text and "?" not in text, "it says how much it freed, and asks nothing"
-    monkeypatch.setattr("mime.env.clear_user_xla_cache", lambda path: 0)
-    out, _, _ = piped(capsys, "cache", "clear")
-    assert out == f"no XLA compilation cache to remove at {root}\n"
