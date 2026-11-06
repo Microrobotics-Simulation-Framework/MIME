@@ -178,7 +178,7 @@ before, by its control period or by `chunk=`.
 In a notebook (Jupyter, or Colab: rich's own test of one), `built.run(...)` and `built.run_to(...)` show the live
 display `mime run` shows, drawn through the notebook's output: the first chunk compiling, then the bar with the steps,
 the simulated time, the speed and an estimate of the time left, and, in `run_to`, a phase while the run folder is
-written, whose saved form builds, compiles and runs its reference steps (on Colab a minute or two). `built.save(folder)`
+written, whose saved form runs its reference steps on the run's own graph. `built.save(folder)`
 shows its phase too. `progress=False` turns it off; outside a notebook nothing is shown, and `progress=True` asks for
 it on a terminal as `mime run` draws it. The display is drawn from `stop`'s place after each chunk, a `stop` of your own
 still asked after it: it changes neither the chunks nor anything the run computes. It is drawn through `ipywidgets`,

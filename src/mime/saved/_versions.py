@@ -48,7 +48,17 @@ this one was made from (``Experiment.based_on``): its name, its input hash, the 
 where it was published, written only where the experiment was made from one. It is part of the document, and so of the
 document and input hashes. Nothing else changed. A document of an earlier version was made from none; one of an earlier
 version that holds the key is refused, never read as declaring it. The lock holds no new key; its schema moves with the
-document's, as at every version."""
+document's, as at every version.
+
+**Version 8** (``mime.document/8``, ``mime.lock/8``) adds two keys to the lock, both outside the input hash. The
+reference's ``program`` names the program its outputs were run by where it is not the history scan of whole control
+periods: ``one-step``, every step its own compiled scan, the program a run chunked by one step runs, from whose graph
+the save took them; ``verify`` reruns that program, since two programs of the same steps can differ in their last bits.
+The environment's ``usable_cpus`` is how many CPUs the build's process could use, by which XLA's CPU backend partitions
+a program's work: a load under another count is in another environment. A lock of an earlier version names no program,
+its reference outputs being the history scan's, and records no count, and a load compares its environment without one,
+as before; one of an earlier version that holds either key is refused, never read as declaring it. The document holds
+no new key; its schema moves with the lock's."""
 
 from __future__ import annotations
 
@@ -60,19 +70,21 @@ from mime.build import Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 7
+CURRENT = 8
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
-                                       CURRENT: DOCUMENT_SCHEMA}
+                                       7: "mime.document/7", CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
-                                   5: "mime.lock/5", 6: "mime.lock/6", CURRENT: LOCK_SCHEMA}
+                                   5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
-#: holds an asset's full record and the manifests of the meshes its stage draws, and the version that added the
-#: experiment an experiment was made from.
+#: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
+#: experiment an experiment was made from, and the version whose lock names the program the reference outputs were
+#: run by and records the CPUs the build could use.
 TERMS_ADDED = 4
 DURATION_ADDED = 5
 RECORDS_ADDED = 6
 BASED_ON_ADDED = 7
+PROGRAM_ADDED = 8
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
@@ -88,6 +100,9 @@ RECORD_KEYS_ADDED: tuple[str, ...] = ("credit", "role", "kind", "derivation", "n
                                       "citation", "adapters")
 #: The document's key version 7 added: the experiment this one was made from.
 BASED_ON_KEY = "based_on"
+#: The lock's keys version 8 added: the program below its ``reference``, the count below its ``environment``.
+PROGRAM_KEY = "program"
+USABLE_CPUS_KEY = "usable_cpus"
 
 #: The profile a version 1 document is read under, and the keys version 2 added, with the values a version 1 form holds.
 PREVIOUS_PROFILE = "exploratory"
@@ -189,6 +204,19 @@ def based_on_held(data: object) -> list[str]:
     return [BASED_ON_KEY] if isinstance(data, dict) and BASED_ON_KEY in cast("dict[str, object]", data) else []
 
 
+def program_keys_held(data: object) -> list[str]:
+    """The keys version 8 added that a lock holds: ``reference.program`` and ``environment.usable_cpus``."""
+    if not isinstance(data, dict):
+        return []
+    held = cast("dict[str, object]", data)
+    found: list[str] = []
+    for parent, key in (("reference", PROGRAM_KEY), ("environment", USABLE_CPUS_KEY)):
+        below = held.get(parent)
+        if isinstance(below, dict) and key in cast("dict[str, object]", below):
+            found.append(f"{parent}.{key}")
+    return found
+
+
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
     terms keys in one of an earlier version, version 5's duration and version 7's ``based_on`` in one earlier than
@@ -225,7 +253,7 @@ def upgraded_lock(data: object) -> tuple[object, int]:
     """``data`` as the current schema reads it, and the version it was written in. The lock's contents stay in the form
     it was written in: a load compares the rebuilt experiment written back into that form. A lock of an earlier
     version that holds a key a later one added (version 4's ``referenced_files``, version 6's ``visuals`` or a key of
-    an asset record beyond the five) is left as it is, for the schema check to refuse."""
+    an asset record beyond the five, version 8's program or count) is left as it is, for the schema check to refuse."""
     if not isinstance(data, dict):
         return data, CURRENT
     held = dict(cast("dict[str, object]", data))
@@ -235,6 +263,8 @@ def upgraded_lock(data: object) -> tuple[object, int]:
     if LOCK_TERMS_KEY in held and version < TERMS_ADDED:
         return held, version
     if version < RECORDS_ADDED and records_held(held):
+        return held, version
+    if version < PROGRAM_ADDED and program_keys_held(held):
         return held, version
     resolved = held.get("resolved")
     if version == 1 and isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
@@ -317,6 +347,7 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
 
 __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "CURRENT", "DOCUMENT_SCHEMAS", "DURATION_ADDED", "DURATION_KEY", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
            "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
-           "OLD_RUNG", "PREVIOUS_PROFILE", "RUNG_RENAMED", "TERMS_ADDED", "TERMS_KEYS", "added_after",
-           "based_on_held", "document_in_form", "duration_held", "newer_form_refusal", "physics_in_form", "resolved_in_form",
-           "terms_keys_held", "upgraded_document", "upgraded_lock", "version_of"]
+           "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RUNG_RENAMED", "TERMS_ADDED", "TERMS_KEYS",
+           "USABLE_CPUS_KEY", "added_after", "based_on_held", "document_in_form", "duration_held", "newer_form_refusal",
+           "physics_in_form", "program_keys_held", "resolved_in_form", "terms_keys_held", "upgraded_document",
+           "upgraded_lock", "version_of"]

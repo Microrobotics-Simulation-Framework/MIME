@@ -4,8 +4,10 @@ here, once, and given the type MIME relies on. Nothing here changes what is call
 
 from __future__ import annotations
 
+import hashlib
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -18,6 +20,7 @@ from maddening.core.edge import EdgeSpec
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.params import ParamSpec
 from maddening.core.schedule import topological_sort
+from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
 type NodeFields = dict[str, dict[str, Array]]
@@ -279,6 +282,121 @@ def ready(state: NodeFields) -> None:
 
 def scan_chunk_with_history(graph: GraphManager, steps: int, fed: Fed) -> tuple[NodeFields, NodeFields]:
     return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed))
+
+
+#: How MADDENING's scan cache names the history scan of one step (``run_scan_with_history``), after the compile
+#: generation it was built for.
+_ONE_STEP_HISTORY = ("run_scan_with_history", 1)
+
+
+def holds_one_step_history(graph: GraphManager) -> bool:
+    """Whether ``graph`` holds the history scan of one step built for the step it has compiled now: what a run that
+    keeps its steps' state compiled when it was chunked by one step. MADDENING keeps the cache private, keyed by the
+    compile generation, which every recompile moves."""
+    held = _held(graph)
+    return (held._compile_generation, *_ONE_STEP_HISTORY) in held._scan_cache  # noqa: SLF001
+
+
+def _content(value: object) -> str | None:
+    """The SHA-256 of a NumPy array's bytes where it can be written in place (a JAX array cannot), else ``None``."""
+    if isinstance(value, np.ndarray) and value.flags.writeable:
+        held = cast(NDArray[Any], value)
+        return hashlib.sha256(np.ascontiguousarray(held).tobytes()).hexdigest()
+    return None
+
+
+def _same(a: object, b: object) -> bool:
+    """One leaf: the same object, or the same immutable scalar."""
+    if a is b:
+        return True
+    return type(a) is type(b) and isinstance(a, (bool, int, float, complex, str, bytes, type(None))) and a == b
+
+
+@dataclass(frozen=True, eq=False)
+class StepReads:
+    """What a graph's compiled step was compiled from and reads, as it stood when taken (:func:`step_reads`): the
+    compile generation, whether a pending change marks the graph for a recompile (a ``node.params`` write MADDENING
+    has not taken in, a static array of another shape), the node objects by name, the parameter tree, its leaves and
+    every static array, each by identity, and the bytes of each NumPy array among them, which an edit in place
+    changes and its identity does not (a JAX array cannot be edited in place). It does not see an attribute of a node
+    written directly, which MADDENING's own step does not see until it is traced again."""
+
+    generation: int
+    dirty: bool
+    nodes: tuple[tuple[str, object], ...]
+    params: object
+    structure: object
+    leaves: tuple[object, ...]
+    statics: tuple[tuple[str, str, object, object, object], ...]
+    contents: tuple[str | None, ...]
+
+    def unchanged_since(self, earlier: StepReads) -> bool:
+        """Whether nothing this records differs from ``earlier``, and neither marks the graph for a recompile."""
+        return (not self.dirty and not earlier.dirty and self.generation == earlier.generation
+                and self.params is earlier.params and self.structure == earlier.structure
+                and len(self.nodes) == len(earlier.nodes) and len(self.leaves) == len(earlier.leaves)
+                and len(self.statics) == len(earlier.statics)
+                and all(a[0] == b[0] and a[1] is b[1] for a, b in zip(self.nodes, earlier.nodes, strict=True))
+                and all(_same(a, b) for a, b in zip(self.leaves, earlier.leaves, strict=True))
+                and all(a[:2] == b[:2] and a[2] is b[2] and a[3:] == b[3:]
+                        for a, b in zip(self.statics, earlier.statics, strict=True))
+                and self.contents == earlier.contents)
+
+
+def step_reads(graph: GraphManager) -> StepReads:
+    """What ``graph``'s compiled step reads, as it stands (:class:`StepReads`). Reading it takes in a ``node.params``
+    write MADDENING has not taken in yet, as the next run would."""
+    held = _held(graph)
+    dirty = bool(held._check_static_data_dirty()) or bool(held._dirty)  # noqa: SLF001
+    params = held.params
+    leaves, structure = _held(jax).tree_util.tree_flatten(params)
+    statics: list[tuple[str, str, object, object, object]] = []
+    for name in graph.node_names:
+        for key, value in sorted(static_data(graph.get_node(name)).items()):
+            if isinstance(value, StaticArray):
+                statics.append((name, key, value.value, value.replication, value.shard_axis))
+            else:
+                statics.append((name, key, value, None, None))
+    contents = tuple(_content(leaf) for leaf in leaves) + tuple(_content(each[2]) for each in statics)
+    return StepReads(int(held._compile_generation), dirty,  # noqa: SLF001
+                     tuple((name, graph.get_node(name)) for name in graph.node_names), params, structure,
+                     tuple(cast(list[object], leaves)), tuple(statics), contents)
+
+
+#: MADDENING's own record of the state it holds, beside the state itself, which a step or a reset writes:
+#: whether the state holds tracers and what to go back to, the step a report describes, and the underflow check's
+#: progress and the groups it has warned about.
+_STATE_RECORD = ("_state_traced", "_state_before_trace", "_state_as_reported", "_underflow_check_pending",
+                 "_underflow_free_checks", "_underflow_stores_since_check", "_underflow_warned")
+
+
+@contextmanager
+def state_put_back(graph: GraphManager) -> Generator[None]:
+    """The graph's state, its internal counters (``_meta``) and MADDENING's own record of it, put back as they were when
+    the block ends, however it ends: the same objects, holding what they held. What the block compiles stays compiled.
+    Every array is shared, never copied: an array cannot change."""
+    held = _held(graph)
+    attributes = cast(dict[str, Any], vars(held))
+    state = cast(dict[str, Any], held._state)  # noqa: SLF001
+    fields = dict(state)
+    meta = cast(dict[str, Any] | None, state.get("_meta") if isinstance(state.get("_meta"), dict) else None)
+    counters = dict(meta) if meta is not None else None
+    record = {name: attributes[name] for name in _STATE_RECORD if name in attributes}
+    warned = set(cast(set[str], record["_underflow_warned"])) if "_underflow_warned" in record else None
+    try:
+        yield
+    finally:
+        if meta is not None and counters is not None:
+            meta.clear()
+            meta.update(counters)
+        state.clear()
+        state.update(fields)
+        held._state = state  # noqa: SLF001
+        attributes.update(record)
+        if warned is not None:
+            underflow = cast(set[str], attributes["_underflow_warned"])
+            underflow.clear()
+            underflow.update(warned)
 
 
 def device_array(value: np.ndarray) -> Array:

@@ -105,6 +105,18 @@ def cpu_record() -> CpuRecord:
     return {"model": model, "flags_sha256": digest}
 
 
+def usable_cpus() -> int | None:
+    """How many CPUs this process may run on: its affinity where the system has one (``os.sched_getaffinity``, Linux),
+    and otherwise the CPUs Python counts; ``None`` where neither says. XLA's CPU backend sizes its thread pools by the
+    affinity when JAX first computes, and partitions a program's work by it, so one program can compute other bits
+    under another count (measured: the tube demo's 40 states, on 24 CPUs and on 2). Read when called: an affinity
+    changed after JAX's first computation is not the one XLA uses."""
+    affinity = getattr(os, "sched_getaffinity", None)
+    if affinity is not None:
+        return len(affinity(0))
+    return os.cpu_count()
+
+
 def xla_flags() -> str:
     return os.environ.get(XLA_FLAGS_VARIABLE, "")
 
@@ -163,4 +175,4 @@ def runner_info(environ: Mapping[str, str] | None = None) -> dict[str, str]:
 
 __all__ = ["DETERMINISTIC_FLAG", "RUNNER_INFO_VARIABLE", "RUNNER_VARIABLE", "XLA_FLAGS_VARIABLE", "CpuRecord",
            "GpuRecord", "cpu_record", "deterministic", "gpu_record", "matmul_precision", "runner_info",
-           "runner_record", "with_deterministic", "xla_flags"]
+           "runner_record", "usable_cpus", "with_deterministic", "xla_flags"]

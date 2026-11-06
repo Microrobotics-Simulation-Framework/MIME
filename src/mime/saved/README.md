@@ -23,7 +23,8 @@ The loader is the authority, and the schemas' known gaps against it are listed o
   alone, whose own document records its own (see [Based on another](#based-on-another)).
 - **The lock**, `mime.lock` (JSON). The environment (MIME, MADDENING, OpenMaterica, JAX, jaxlib and Python versions,
   the platform, the device, the precision, the PRNG, and what no pin holds: the GPU's device kind with its driver, CUDA
-  and cuDNN as JAX reports them, the CPU's model and the hash of its flags, the matmul precision, `XLA_FLAGS` and
+  and cuDNN as JAX reports them, the CPU's model and the hash of its flags, how many CPUs the process could use
+  (`usable_cpus`, its affinity, by which XLA's CPU backend partitions a program's work), the matmul precision, `XLA_FLAGS` and
   whether they turn XLA's deterministic GPU mode on, the runner's own record, from `MIME_RUNNER`, which MIME stores
   and compares and never reads, and the runner's information, from `MIME_RUNNER_INFO`, which it stores and never
   compares); every entry used, with the distribution it came from and that
@@ -44,7 +45,14 @@ The loader is the authority, and the schemas' known gaps against it are listed o
   built in the canonical order, the registrations, reader slots, coupling groups, and each entry's declared gradient
   status: the attached rung's, where the entry's rungs declare their own.
 - **The reference outputs**, `reference.npz`: every field of every node over the first steps, and every static
-  array's contents.
+  array's contents. A save runs them on the build's own graph, reset to its initial state and put back where its runs
+  left it, so a run goes on from there bit for bit and nothing is built: by the history scan of one step where a run
+  chunked by one step that kept its steps' state compiled it (nothing is compiled either; the lock names the program,
+  `reference.program: one-step`), else by the history scan of whole control periods. Where the graph was edited since
+  the build (a parameter leaf or a static array replaced, a NumPy array edited in place, a recompile pending), the save
+  builds a graph afresh, as every save did before the eighth form. A scan of one step and a longer scan can differ in
+  their last bits (measured in about half the round-trip cases, in float32 and in float64: the table of
+  `tests/saved/test_save_reference.py`), so the lock names the program and `verify` reruns that one.
 
 - **The scene**, `scene/scene.usda`, and the asset layers it references, under `scene/layers/` with their bytes as the
   build read them.
@@ -95,14 +103,19 @@ lists each pin a source no longer agrees with, and never takes the other version
      that builds something else under the same version is refused); in another, its values and static arrays are
      compared within the lock's tolerance and reported. The rebuilt stage is held to the lock's hash the same way.
 
-`BuiltExperiment.verify()` and `mime verify <folder>` rerun the reference steps from the initial state: bit for bit
-within the environment the lock was written in, and within the lock's tolerance in another. **"The same result" means
+`BuiltExperiment.verify()` and `mime verify <folder>` rerun the reference steps from the initial state, on a graph
+built afresh, by the program the lock names (the history scan where it names none, as every lock before the eighth
+form does): bit for
+bit within the environment the lock was written in, and within the lock's tolerance in another. **"The same result" means
 bit for bit within one environment; across environments the checks report differences within tolerances and claim no
 bits.** **"The same environment" means equal on every field of the lock's environment but the runner's information**: the
-versions, the platform, the device and the precision, and the GPU and its driver and libraries, the CPU, the matmul
-precision, XLA's flags and deterministic mode, and the runner's record. A difference in any one of them, in the lock or
-in the process that loads it, makes the load another environment. A field of the GPU or the CPU that either side could
-not read is never equal to anything, `None` included. The runner's information (a workspace's image ID, a client's
+versions, the platform, the device and the precision, and the GPU and its driver and libraries, the CPU and the count
+of CPUs the process could use, the matmul precision, XLA's flags and deterministic mode, and the runner's record. A
+difference in any one of them, in the lock or in the process that loads it, makes the load another environment: one
+program computes other bits under another count of CPUs (MIME-ANO-140), so a folder saved unpinned and verified under
+`taskset` is another environment. A lock before the eighth form records no count, and is compared without one, as it
+was (verify such a folder at the count it was saved at). A field of the GPU or the CPU, or the count, that either
+side could not read is never equal to anything, `None` included. The runner's information (a workspace's image ID, a client's
 version) is for the reader and is never compared.
 
 A package that registers entries declares, for each namespace, `[project.entry-points."mime.entries"]

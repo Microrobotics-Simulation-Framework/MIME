@@ -52,7 +52,7 @@ from mime.build._refusals import (
 )
 from mime.build import StageBinding, stage_binding
 from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
-from mime.build._maddening import FlagTally, FlagTest
+from mime.build._maddening import FlagTally, FlagTest, holds_one_step_history, state_put_back, step_reads
 from mime.errors import public
 from mime.errors._frames import warn_at_script
 from mime.experiment._mermaid import Mermaid, mermaid_of
@@ -98,6 +98,7 @@ from mime.saved import (
     write_folder,
 )
 from mime.saved._folder import LoadRefused, stage_writers
+from mime.saved._schema import ReferenceProgram
 from mime.scene import STAGE_WRITER, STAGE_WRITERS, Scene, stage_text
 from mime.things import (
     Apparatus,
@@ -933,6 +934,9 @@ class BuiltExperiment:
         self.load_report = load_report
         self._law = law
         self._runs = ChunkedRun(graph, plans, law)
+        #: What the compiled step read when it was built, which a save holds the graph to before it takes the
+        #: reference outputs from it (:meth:`_reference`).
+        self._built_reads = step_reads(graph)
         self.layout = run_layout(plans)
         self._binding: StageBinding | None = None
         self._summary: dict[str, Any] | None = None
@@ -1343,13 +1347,17 @@ class BuiltExperiment:
         and the steps and time asked for), and ``RunWritten.stopped`` set. ``outputs.json`` is written last, so that a
         run quit part-way through writing is not a folder that reads. ``stage_every`` writes the recording layer,
         ``recording.usdc``: the bound prims' poses and vectors (:meth:`binding`) over the folder's own stage, at the
-        run's start and every ``stage_every`` after it, a whole number of chunks (the run is chunked for it, which
-        changes nothing it computes, and keeps no step's state). ``topology.json`` is written beside the outputs, and
+        run's start and every ``stage_every`` after it, a whole number of chunks (the run is chunked for it and keeps
+        no step's state; chunks of two steps or more change nothing it computes, and chunks of one step can change its
+        last bits, as a scan of one step can differ from a longer one: measured in about half of the saved round-trip
+        cases, in float32 and in float64). ``topology.json`` is written beside the outputs, and
         ``report.json``, the build report's summary (:meth:`report_summary`), beside ``run.json``.
 
         ``progress`` shows the live display as :meth:`run` does, and after the run, while the folder is written, a
-        phase saying so: the run's saved form runs its reference steps on a graph built and compiled afresh, which on
-        Colab takes a minute or two.
+        phase saying so: the run's saved form runs its reference steps from the initial state on the run's own graph,
+        which is put back where the run left it (:meth:`save`). A run chunked by one step that keeps its steps' state
+        (``record`` or ``history``, with ``stage_every``, ``chunk`` or a controller of one step) has compiled their
+        program already; any other run compiles it once more.
 
         As :meth:`run`, a stale build is refused in a notebook or IPython and warned about in a script."""
         self._fresh()
@@ -1487,24 +1495,44 @@ class BuiltExperiment:
         return [flag.path for flag in self.layout.flags
                 if bool(flag.raised(np.asarray(node_state(self._graph, flag.node)[flag.field])[None])[0])]
 
-    def _fresh_history(self, steps: int) -> History:
-        """The first ``steps`` steps of a graph constructed afresh from the same plans, leaving this one alone: run in
-        whole control periods, and the steps past ``steps`` dropped."""
-        graph, _, _ = construct(self._plans, self._law)
+    def _history_on(self, graph: GraphManager, steps: int, program: ReferenceProgram | None) -> History:
+        """The first ``steps`` steps of ``graph`` from where it stands, run by ``program`` (``one-step``: every step its
+        own compiled scan; ``None``: the history scan) in whole control periods, and the steps past ``steps``
+        dropped."""
         runs = ChunkedRun(graph, self._plans, self._law)
         period = runs.chunk or 1
-        _, stacked = runs.run(-(-steps // period) * period, history=True)
+        _, stacked = runs.run(-(-steps // period) * period, history=True, one_step=program == "one-step")
         assert stacked is not None
         return {node: {name: value[:steps] for name, value in fields.items()} for node, fields in stacked.items()}
+
+    def _reference(self, steps: int) -> tuple[History, ReferenceProgram | None]:
+        """The reference outputs a save writes, the first ``steps`` steps from the initial state, and the program that
+        ran them. Taken on this build's own graph, reset to its initial state and put back where it stood after
+        (:func:`~mime.build._maddening.state_put_back`), so nothing is built: with the history scan of one step where
+        the graph holds it (a run chunked by one step that kept its steps' state compiled it, so nothing is compiled
+        either), else with the history scan of whole control periods. Where the compiled step reads anything the build
+        did not give it (:func:`~mime.build._maddening.step_reads`: ``graph``, edited, bypasses every check the build
+        made), on a graph built afresh, as before. ``verify`` reruns the lock's program on a fresh graph either way."""
+        graph = self._graph
+        if not step_reads(graph).unchanged_since(self._built_reads):
+            return self._history_on(construct(self._plans, self._law)[0], steps, None), None
+        program: ReferenceProgram | None = "one-step" if holds_one_step_history(graph) else None
+        with state_put_back(graph):
+            graph.reset_state()
+            return self._history_on(graph, steps, program), program
 
     @public
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS, progress: bool | None = None) -> Lock:
         """Write the document, the lock, the scene (``scene/scene.usda`` and the asset layers it references, under
         ``scene/layers/``) and the reference outputs (every field over the first ``steps`` steps, run from the
-        initial state on a fresh graph) into ``folder``. Raises ``BuildRefused`` when the experiment cannot
-        be saved: a setting the document cannot hold, or an entry a load elsewhere could not find. ``progress`` shows
-        the live display's phase while it saves, as :meth:`run` decides where (in a notebook, by default). A stale
-        build is refused in a notebook or IPython and warned about in a script, as :meth:`run`'s is."""
+        initial state) into ``folder``. The reference steps are run on this build's graph, reset and then put back
+        where its runs left it, so a run continues from there bit for bit: by the history scan of one step where a run
+        chunked by one step compiled it (the lock names it, ``one-step``, and nothing is compiled), else by the history
+        scan; on a graph built afresh where :attr:`graph` was edited since the build. Raises ``BuildRefused`` when the
+        experiment cannot be saved: a setting the document cannot hold, or an entry a load elsewhere could not find.
+        ``progress`` shows the live display's phase while it saves, as :meth:`run` decides where (in a notebook, by
+        default). A stale build is refused in a notebook or IPython and warned about in a script, as :meth:`run`'s
+        is."""
         self._fresh()
         display = _python_display(progress)
         if display is None:
@@ -1520,7 +1548,8 @@ class BuiltExperiment:
     def _save(self, folder: str | PathLike[str], steps: int) -> Lock:
         path = Path(folder)
         try:
-            lock = write_folder(path, self.record, self._fresh_history(steps), steps)
+            history, program = self._reference(steps)
+            lock = write_folder(path, self.record, history, steps, program)
         except OSError as error:
             raise _not_writable(path, error) from error
         self._saved = read_folder(path)
@@ -1528,12 +1557,15 @@ class BuiltExperiment:
 
     @public
     def verify(self) -> VerifyReport:
-        """Rerun the reference outputs' steps from the initial state and compare: bit for bit in the environment the
-        lock was written in, within the lock's tolerance in another."""
+        """Rerun the reference outputs' steps from the initial state, on a graph built afresh, by the program the lock
+        names, and compare: bit for bit in the environment the lock was written in, within the lock's tolerance in
+        another."""
         if self._saved is None:
             raise ArgumentRefused([Refusal(
                 "verify.nothing-saved", RefusalClass.USER,
                 "nothing to verify against: this experiment was neither loaded nor saved",
                 "load a saved one, Experiment.load(folder).build().verify(), or save this one first: "
                 "built.save(folder)")])
-        return verify_history(self._saved, self._fresh_history(self._saved.lock["reference"]["steps"]))
+        reference = self._saved.lock["reference"]
+        graph, _, _ = construct(self._plans, self._law)
+        return verify_history(self._saved, self._history_on(graph, reference["steps"], reference.get("program")))

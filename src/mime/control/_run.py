@@ -279,6 +279,7 @@ class ChunkedRun:
         #: Why the last :meth:`run` ended before its steps, or ``None`` if it took them all.
         self.stopped: str | None = None
         self._block: int | None = None
+        self._one_step = False
         self._keep: frozenset[tuple[str, str]] | None = None
         self._tests: tuple[FlagTest, ...] = ()
         #: What the last :meth:`run` reduced of the flags it was given to test, inside its compiled scans (``None`` for
@@ -296,7 +297,8 @@ class ChunkedRun:
 
     def run(self, steps: int, *, history: bool, hook: ChunkHook | None = None, chunk: int | None = None,
             keep: frozenset[tuple[str, str]] | None = None, automatic: bool = False,
-            stop: StopRequest | None = None, tests: Sequence[FlagTest] = ()) -> tuple[History, History | None]:
+            stop: StopRequest | None = None, tests: Sequence[FlagTest] = (),
+            one_step: bool = False) -> tuple[History, History | None]:
         """``steps`` base steps from where the graph stands, as compiled chunks of ``chunk`` steps (the control period
         when a controller is called between them), the hook called after each; or as one compiled scan when neither a
         controller nor a hook asks for chunks, unless ``automatic``, which splits it as :func:`automatic_chunks` does.
@@ -308,8 +310,13 @@ class ChunkedRun:
         where a hook, the end of the run or a stop needs it; between chunks it waits on the device.
 
         ``tests`` are flags to reduce over the run's steps inside its scans when no history is kept (:attr:`tally`): the
-        scan then carries a count and the first and last step of each beside the state, and keeps nothing of any step."""
+        scan then carries a count and the first and last step of each beside the state, and keeps nothing of any step.
+
+        ``one_step`` runs every step as a compiled scan of its own, the chunks and a controller's ticks unchanged: the
+        program a run chunked by one step runs, which a saved form's reference outputs taken from such a run name
+        (``one-step``) and ``verify`` reruns."""
         self._tests = tuple(tests) if not history else ()
+        self._one_step = one_step
         self.tally = FlagTally.none(len(self._tests)) if self._tests else None
         size = self.chunk if self.chunk is not None else (chunk if hook is not None else None)
         stacked: list[History] = []
@@ -364,6 +371,8 @@ class ChunkedRun:
             if not self.checked:
                 fed_inputs(self.graph, fed)
                 self.checked = True
+            if self._one_step:
+                stop = step + 1
             if history:
                 stop = min(stop, step + self.block())
                 final, held = scan_chunk_with_history(self.graph, stop - step, fed)

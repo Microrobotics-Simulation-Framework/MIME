@@ -19,7 +19,9 @@ mime run a0_saved --duration 2s --out a0_run --stage-every 16.5ms
 
 A live session records between `session.record(True)` and `session.record(False)` (the `record` command), a sample
 at each chunk's end ([live sessions](live.md)). `stage_every` is a whole number of the run's chunks: the run is
-chunked for it, which changes nothing it computes, and keeps no step's state (no `history=True`).
+chunked for it and keeps no step's state (no `history=True`). Chunks of two steps or more change nothing it computes;
+chunks of one step can change its last bits, as a scan of one step can differ from a longer one (measured in about half
+of the saved round-trip cases, in float32 and in float64).
 
 ## What it holds
 

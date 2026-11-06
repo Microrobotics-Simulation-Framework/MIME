@@ -283,10 +283,11 @@ class RunDisplay:
 NOTEBOOK_STOP = "interrupt the kernel to stop (nothing of the run is kept)"
 TERMINAL_STOP = "Ctrl+C to stop (nothing of the run is kept)"
 #: The phase of ``run_to`` while it writes the run folder, most of it the run's saved form, whose reference steps are run
-#: on a graph built and compiled afresh: about ten seconds on a laptop, up to two minutes on Colab.
-SAVING_RUN = "saving the run folder: building, compiling and running its reference steps"
+#: from the initial state on the run's own graph: by the program a run chunked by one step compiled, or by the history
+#: scan, compiled for them (``BuiltExperiment.save``).
+SAVING_RUN = "saving the run folder: running its reference steps"
 #: The phase of ``built.save``, for the same work.
-SAVING = "saving the experiment: building, compiling and running its reference steps"
+SAVING = "saving the experiment: running its reference steps"
 
 
 def notebook_console() -> Console | None:
