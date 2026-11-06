@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A containment watch: a body the centre-held contact holds whose hull leaves its region is flagged after the run**
+  (dev2 lane U, U9; in every profile, never a refusal, no node or edge, so the graph and its derived hash are what they
+  were). The contact 0.1.0 holds a body's centre by its extent and never reads its orientation, so script A's body given
+  FL-9's own inertia tensor, instead of the isotropic effective inertia, turns its axis across the tube (45 degrees at
+  0.34 s) and its hull is through the wall by millimetres, which nothing flagged but the surrogate drag's own tilt and bore
+  flags, later and in words about the drag. `result.containment` (and `result.text()`, the manifest, `outputs.json`, the
+  `.mat` file and the end-of-run summary) now says the step, the depth past the wall and the fix (`Contact.Projection`
+  reads the orientation). A run that kept the pose is read at every step it kept (`record=` keeps it for this); one that
+  kept nothing at its last step alone, and says so. The depth is of the hull's samples, which fall a few micrometres short
+  of the body. `tests/results/test_containment.py` holds the reproduced case, the false-alarm cases (script A as it is,
+  the record arm), the hull contact's run, an independent depth and three mutants.
+
 - **Colab notebooks** (`docs/notebooks/`), linked first in the README: a steel ball settling in a tube of water, and
   de Jongh's screw-shaped magnetic robot driven along a tube by a rotating field (tutorial A's experiment). Written
   for a newcomer, step by step in plain words, each installs the released MIME from PyPI, runs its experiment with the

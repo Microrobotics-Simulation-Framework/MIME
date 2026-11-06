@@ -37,6 +37,7 @@ from mime.build import (
 from mime.build._checks import stopped_refusals
 from mime.build._construct import description_warnings, report_of
 from mime.core.multibody import DescriptionWarning
+from mime.build._watch import ContainmentPlan
 from mime.build._report import NodeLine
 from mime.build._plan import EntryPlan, Section
 from mime.build._steps import whole_runs_either_side, whole_steps
@@ -73,6 +74,7 @@ from mime.results import (
     RunResult,
     Samples,
     Stopped,
+    read_containments,
     read_watches,
 )
 from mime.saved import (
@@ -1068,7 +1070,8 @@ class BuiltExperiment:
         kept = history or bool(recorded)
         keep = None if history or not recorded else frozenset(
             {(output.node, output.field) for output in recorded}
-            | {(flag.node, flag.field) for flag in self.layout.flags})
+            | {(flag.node, flag.field) for flag in self.layout.flags}
+            | {(plan.node, plan.field) for plan in self._plans.watches if isinstance(plan, ContainmentPlan)})
         final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep,
                                         automatic=hook is None and self._runs.chunk is None, stop=stop,
                                         tests=self._flag_tests())
@@ -1113,6 +1116,8 @@ class BuiltExperiment:
         return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
                          watches=read_watches(self._plans.watches, final, stacked if history else None),
+                         containment=read_containments(self._plans.watches, final, stacked,
+                                                       last_step=start + steps, dt=self._plans.dt),
                          report=self.report_summary(), stopped=stopped, origin=self._origin)
 
     @public

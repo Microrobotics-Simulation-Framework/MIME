@@ -21,6 +21,7 @@ from mime._lineage import Origin
 from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError, Refusal, RefusalClass
 from mime.errors import public
 from mime.registry import OutputKind, Reduction
+from mime.results._containment import ContainmentRead
 from mime.results._layout import FlagLayout, Layout, ObservationLayout, OutputLayout
 from mime.results._watch import WatchRead, watches_text
 from mime.results._series import (
@@ -263,6 +264,7 @@ class RunResult:
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
                  loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
                  clock: str | None = None, watches: Sequence[WatchRead] = (),
+                 containment: Sequence[ContainmentRead] = (),
                  report: Mapping[str, Any] | None = None, stopped: Stopped | None = None,
                  origin: Origin | None = None) -> None:
         self.steps = steps
@@ -284,6 +286,10 @@ class RunResult:
         #: The post-run watches (:class:`~mime.results.WatchRead`), read from the run's end state and, where the run
         #: kept it, its history: a flag on the result, never a refusal.
         self.watches: tuple[WatchRead, ...] = tuple(watches)
+        #: The post-run containment watches (:class:`~mime.results.ContainmentRead`), one per body a contact holds by
+        #: its centre that has a hull: whether the hull stayed inside the region, read from the run's poses. A flag on
+        #: the result, never a refusal.
+        self.containment: tuple[ContainmentRead, ...] = tuple(containment)
         #: The build report's summary (:data:`REPORT_FORMAT`): the built experiment's for a run in memory, a run
         #: folder's ``report.json`` for one read back, ``None`` for a folder written before run folders held it.
         self.report: Mapping[str, Any] | None = report
@@ -524,6 +530,7 @@ class RunResult:
                 "observations": observations, "flags": flags,
                 "run_flags": [read.manifest() for read in self.flags],
                 "watches": [read.manifest() for read in self.watches],
+                "containment": [read.manifest() for read in self.containment],
                 "reading": "steps count base steps from the graph's start; a sample at step k is the state at the end "
                            "of step k, at time k dt; a window (start, end] holds the steps whose end lies after start "
                            "and not after end; values are in SI, in each output's unit"}
@@ -566,6 +573,7 @@ class RunResult:
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
+                 *(f"post-run containment: {read.text()}" for read in self.containment),
                  self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
                                                                                  "written before profiles)"]
         return "\n".join(lines)
@@ -641,7 +649,9 @@ class RunResult:
                    stopped=stopped,
                    tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz,
                    clock=cast(str | None, manifest.get("clock")),
-                   watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))])
+                   watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))],
+                   containment=[ContainmentRead.from_manifest(w)
+                                for w in cast(list[dict[str, Any]], manifest.get("containment", []))])
 
 
 def _nothing_observed(value: object) -> NDArray[Any]:

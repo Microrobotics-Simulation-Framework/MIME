@@ -131,7 +131,8 @@ research it is refused ([profiles](../profiles.md)).
 
 ## `watches`
 
-What the post-run watch compares after each run, for each entry it watches, and what is missing for it. A watch is computed
+What the post-run watches compare after each run, for each entry they watch (the Reynolds-number watch of a drag, the
+containment watch of a body the centre-held contact holds), and what is missing for it. A watch is computed
 after the run and is a flag on the result, never a refusal and no part of the graph ([the results note](../results.md)).
 
 ## `assets`

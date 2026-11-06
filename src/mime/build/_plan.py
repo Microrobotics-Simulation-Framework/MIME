@@ -50,7 +50,7 @@ from mime.build._refusals import (
 )
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.build._steps import whole_runs_either_side, whole_steps
-from mime.build._watch import WATCHED_FAMILY, WatchPlan
+from mime.build._watch import WATCHED_FAMILY, ContainmentPlan, WatchPlan
 from mime.core import VELOCITY_RULES, jnp, shape_named
 from mime.build._kicks import SpinnerKicks, kick_lines
 from mime.build._masses import plan_masses
@@ -483,7 +483,7 @@ class PlanSet:
     #: What the experiment's profile made of it: waivers, defaults taken, what is pending and listed, sources.
     profile: ProfileOutcome = ProfileOutcome(DEFAULT_PROFILE)
     #: The post-run watch's inputs, one per watched entry: read after a run, never part of the graph.
-    watches: tuple[WatchPlan, ...] = ()
+    watches: tuple[WatchPlan | ContainmentPlan, ...] = ()
     #: The validity lines the build computed, by entry id: never a refusal, and the same in every profile; and each
     #: spinner's kick on its host's joints, as numbers (``mime.build._kicks``).
     checked: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
@@ -755,11 +755,12 @@ class _Planner:
                         f"in it changes another's (no hydrodynamic interaction between bodies in MIME 0.3.0)")
                 self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), line)
 
-    def watch_plans(self) -> tuple[WatchPlan, ...]:
+    def watch_plans(self) -> tuple[WatchPlan | ContainmentPlan, ...]:
         """The inputs of the post-run watch of every entry of the hydrodynamic family, from what the experiment
         declares: the density is read only where it is declared or an entry has read it, so the watch asks for
-        nothing the build did not and refuses nothing."""
-        found: list[WatchPlan] = []
+        nothing the build did not and refuses nothing; then the containment watch of every body held by its centre
+        that has a hull (``containment_plans``)."""
+        found: list[WatchPlan | ContainmentPlan] = []
         for plan in self.readers:
             cls = plan.reader_cls()
             if plan.section is not Section.INTERACTION or getattr(cls, "family", None) != WATCHED_FAMILY:
@@ -788,7 +789,34 @@ class _Planner:
                 float(viscosity.value) if viscosity is not None and isinstance(viscosity.value, float) else None,
                 range_.upper if range_ is not None else None, range_.basis if range_ is not None else None, missing,
                 turning[0] if turning is not None else None, turning[1] if turning is not None else ""))
-        return tuple(found)
+        return (*found, *self.containment_plans())
+
+    def containment_plans(self) -> list[ContainmentPlan]:
+        """The inputs of the containment watch of every body a contact holds by its centre (``Confinement`` with an
+        extent: the contact 0.1.0) whose parts give a hull that samples its surface: the contact never reads the
+        body's orientation, so the hull may leave the region the centre is held in, which the watch reads after the
+        run from the pose. A body with no hull is held as the sphere of its extent, which that contact holds exactly,
+        and a surface whose shape takes one point at a time is not watched."""
+        from mime.interactions.contact import SPACING_FLOOR
+
+        found: list[ContainmentPlan] = []
+        for body, dynamics in sorted(self.dynamics.items()):
+            hull = self.hull_of(body)
+            if hull is None or not implements(hull.kind, "samples"):
+                continue
+            for held in dynamics.confinements:
+                if held.hull is not None or not getattr(shape_named(held.shape), "takes_many", False):
+                    continue
+                owner = next((p for p in self.readers if p.owner == held.id), None)
+                port = dynamics.record.publishes.get(vocabulary.POSE.name) if dynamics.record is not None else None
+                if owner is None or port is None:
+                    continue
+                spacing = max(held.margin, SPACING_FLOOR * float(cast(Any, hull.kind).enclosing_radius(hull.settings)))
+                found.append(ContainmentPlan(
+                    held.id, owner.reader_cls().label(), body, held.surface, dynamics.node_name(port.node), port.field,
+                    held.shape, held.parameters, held.margin, hull.label(), hull.kind, hull.settings, hull.centre,
+                    hull.rotation, spacing, bool(getattr(shape_named(held.shape), "convex", False))))
+        return found
 
     def turning_rate_of(self, body: str) -> tuple[float, str] | None:
         """The rate (rad/s) at which the fields acting on ``body`` turn a body that follows them, where an interaction

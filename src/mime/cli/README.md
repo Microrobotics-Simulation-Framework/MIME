@@ -235,7 +235,7 @@ loads it).
   for a `!mime run` cell ignores cursor-up and stacks a line at every redraw of a display two lines tall. It is drawn
   again at each chunk as well as on its own clock, and `run_to` shows a phase while it writes the run folder.
   `progress=False` turns it off; outside IPython the default asks nothing and runs as it always ran.
-- **The end of a run** leads with what needs attention (a stopped run, flags raised, post-run watches above their range or that could not be checked (no range declared, an input missing),
+- **The end of a run** leads with what needs attention (a stopped run, flags raised, post-run watches above their range or that could not be checked (no range declared, an input missing), a body the centre-held contact holds whose hull passed the wall,
   the validity lines the build computed, MADDENING's warnings counted, the profile's pending items counted, an
   environment unlike the lock's), says what ran and how the time went, shows the first readings, the files written and
   the commands for this folder (read it, verify it, serve it), and ends with where the rest is. `--full` adds the load

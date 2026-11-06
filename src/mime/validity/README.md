@@ -5,7 +5,8 @@
 ## What goes here
 
 - **Validity lines**: one per assumption, each with its covered range.
-- **Watches**: run-time checks that report and never halt.
+- **Watches**: run-time checks that report and never halt: the Reynolds-number watch, and the containment watch (a body
+  the centre-held contact holds whose hull leaves its region), both in every profile.
 - **Evidence** in the build report.
 - **MIME's profile lines**, for `exploratory`, `research` and `strict`, merged with OpenMaterica's.
 - **The stamp** a build carries, and `exp.status()`.
