@@ -412,9 +412,9 @@ into the version its lock was written in (`document_in_form`, `resolved_in_form`
 so an old lock is compared with the form it was hashed in. Saving it again writes the third.
 
 The saved form is in its seventh version since the document records the experiment it was made from (`based_on`);
-versions 4 to 6 added the terms, the run's length, and the lock's whole asset records and visuals
+the fourth to the sixth versions added the terms, the run's length, and the lock's whole asset records and visuals
 (`_versions.py`). A document of an earlier version was made from none, and one that holds `based_on` is refused. A
-MIME that reads version 6 (0.3.0.dev1) refuses a folder of version 7 as `load.newer-form`, rather than reading a key it
-does not know.
+MIME that reads up to the sixth (0.3.0.dev1) refuses a folder of the seventh as `load.newer-form`, rather than reading a
+key it does not know.
 
 Releases are explained in the [package manifest](../README.md#status).

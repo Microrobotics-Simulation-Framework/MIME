@@ -52,7 +52,7 @@ and never written. The new experiment holds its declarations under the new name,
 (the step, the seed, gravity, the scene, the conditions, the profile and the run's length). A declaration taken from
 it, made again and changed, replaces the one taken, in a script as in a notebook, with a warning recorded in
 `plan().replaced`; one made after `based_on` follows the rule any experiment's does (`_redeclared.py`). Saving it writes
-a new folder with its own lock, whose document records the saved experiment as `based_on` (the saved form's version 7,
+a new folder with its own lock, whose document records the saved experiment as `based_on` (the saved form's seventh version,
 `mime.saved`): its name, the input hash its lock records, the MIME version that saved it, and its DOI where its lock
 names the record it was published as. Only the immediate one: each parent's own document records its parent.
 
