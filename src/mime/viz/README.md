@@ -51,6 +51,15 @@
   (`ARROW_CAP_FRACTION`, the scene without its arrows; an arrow at no body has this alone), in the glTF and the page alone
   and said in the page's notes; the stage and the recording hold its full length.
 
+  The page's **basics** are each a switch, an argument of `display`, `page` and `web` and a flag of `mime visuals web`
+  (`apparatus_shapes` is `gltf`'s, since it changes the GLB): a scale bar and an arrow legend (`_web.py`; on), focus and
+  follow a body (off until a body is named; an unknown name is refused with the nearest, `visuals.unknown-body`), and an
+  apparatus's motor and magnets drawn for the view alone (`_apparatus.py`; on). **The shapes are an overlay of the opened
+  stage's session layer** under `/ApparatusView`, one prim to a frame following its world pose at every time code, sized
+  from the saved experiment's declared solid or else a marked placeholder by a stated rule; they are never written into
+  a stage. The page's arithmetic (the scale bar's round length, the followed position) is plain JavaScript in `_web.py`
+  (`_LOGIC`), which `tests/viz/test_viewer_basics.py` runs in Node.
+
 ## Boundaries
 
 - With `scene`, the only importer of `pxr`.
