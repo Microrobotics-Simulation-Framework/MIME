@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live display, plots it with matplotlib, shows the browser view, and ends with changes to try.
   `tests/examples/test_notebooks.py` builds each notebook's experiment against the checkout and runs A's for a few
   steps; `scripts/colab_links.py` points every Colab link at one branch.
+- **`Experiment.based_on(source, name=...)`: a saved experiment changed as a new one, which records it.** `source` is
+  a saved folder, a bundle file, or what `mime pull` takes (a DOI, an address), pulled first into `./<its name>/` as
+  `mime pull` pulls it. The saved experiment is loaded and checked against its lock as `Experiment.load` does, and its
+  folder is never written. The new experiment holds its declarations and run settings under the new name with no
+  lock; a declaration taken from it, made again and changed, replaces the one taken, in a script as in a notebook,
+  with a warning recorded in `plan().replaced` (`exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)`). Saving
+  it writes a new folder with its own lock, whose document records the saved experiment as `based_on`: its name, the
+  input hash its lock records, the MIME version that saved it, and the DOI of the record its lock names, where it names
+  one. Only the immediate one: each parent's document records its own. `mime card` names it (`Based on <name> (<its
+  DOI, or its input hash>)`). The parent's third-party files keep their terms and tiers, so `mime pack` carries and
+  references the same files. **`mime push` sends what it sent before**: no relation to the parent and no line naming
+  it in the description, until that relation (DataCite's `IsDerivedFrom`) is rehearsed on Zenodo's sandbox.
+- **The saved form is version 7** (`mime.document/7`, `mime.lock/7`): the document's `based_on`, written only where
+  an experiment was made from another, inside the document and input hashes. A folder of version 6 loads as before,
+  and one of version 6 holding `based_on` is refused. 0.3.0.dev1, which reads up to version 6, refuses a folder of
+  version 7 as `load.newer-form`, the document and the lock each once.
 
 ### Changed
 
@@ -49,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A document of version 6 that declares a run's length reads.** The load refused `run.duration` in any document of
+  a version below the current one, where version 5 added it; with the form at 7, that would have refused every
+  version 6 folder that declares its run's length. It is refused only below version 5, as the key's message says.
 - **`Experiment.save` and `Experiment.load` warn at the script's line.** A `DescriptionWarning` or a range warning raised
   while they build showed MIME's own line (`return self.build().save(...)`); the build now finds the script's frame
   itself, whichever public call it was reached through (`mime.errors._frames.warn_at_script`), and so does the view's

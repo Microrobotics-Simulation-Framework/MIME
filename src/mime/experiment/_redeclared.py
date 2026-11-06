@@ -25,6 +25,10 @@ name, a law's or an observation's id, a value's or a source's path; the controll
     before anything is changed, so a filter that turns a warning into an error leaves the experiment as it was.
 - **Not the same, in a script**: added, and the build refuses the two (``thing.duplicate``, ``id.duplicate``,
   ``value.duplicate``, ``source.duplicate``, ``controller.more-than-one``, ``terms.licence``), as before.
+- **Not the same, of a declaration taken from a saved experiment** (``Experiment.based_on``), in a script or a
+  notebook: it is replaced as a notebook replaces one, with a note that names the experiment it was taken from, since
+  changing what it holds is what an experiment based on another is for. A declaration made after it follows the rules
+  above.
 
 A permission has no key (an experiment holds one for each grant), so only the same one again is kept once, and another
 is another permission."""
@@ -32,7 +36,7 @@ is another permission."""
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -224,7 +228,7 @@ def _still_applies(values: list[str], kind: str) -> str:
 
 
 def _replace_thing(held: list[Declaration], earlier: list[int], declaration: ThingDeclaration, known: Known,
-                   name: str, replaced: list[str]) -> None:
+                   name: str, replaced: list[str], why: str) -> None:
     """A thing declared again, changed, in a notebook: it takes the earlier one's place, and what names it follows
     it (by its name, which is all a declaration holds of a thing), with one note that names each. The note is raised
     first and recorded after the change."""
@@ -245,8 +249,7 @@ def _replace_thing(held: list[Declaration], earlier: list[int], declaration: Thi
     naming = _naming(held, earlier, name)
     follows = (f"; what holds its name now finds the new one: {', '.join(naming)}" if naming else
                "; nothing else holds its name")
-    note = (f"{known.call} declares {known.noun} again, not the same as before: in {WHERE} the last one run wins, so "
-            f"it replaces the earlier one{follows}"
+    note = (f"{known.call} declares {known.noun} again, not the same as before: {why}{follows}"
             f"{_still_applies(_declared_values(held, earlier, name), declaration.thing.kind.value)}")
     _replace(held, earlier, declaration, note, replaced)
 
@@ -262,9 +265,11 @@ def _replace(held: list[Declaration], earlier: list[int], declaration: Declarati
     replaced.append(note)
 
 
-def add(held: list[Declaration], declaration: Declaration, replaced: list[str]) -> None:
+def add(held: list[Declaration], declaration: Declaration, replaced: list[str], taken: Sequence[Declaration] = (),
+        parent: str | None = None) -> None:
     """Add ``declaration`` to ``held`` by the rule of this module, warning with its note at the script's line, and
-    record in ``replaced`` each note of a declaration that replaced an earlier one."""
+    record in ``replaced`` each note of a declaration that replaced an earlier one. ``taken`` are the declarations an
+    experiment based on the saved experiment ``parent`` took from it, the objects themselves."""
     known = known_as(declaration)
     if known is None:
         held.append(declaration)
@@ -274,19 +279,23 @@ def add(held: list[Declaration], declaration: Declaration, replaced: list[str]) 
     if any(same_content(held[index], declaration) for index in earlier):
         warn_at_script(f"{known.call} declares {known.noun} again, the same as before: it is kept once", UserWarning)
         return
-    if known.key is None or not earlier or not in_notebook():
+    inherited = bool(earlier) and all(any(held[index] is each for each in taken) for index in earlier)
+    if known.key is None or not earlier or not (inherited or in_notebook()):
         held.append(declaration)
         return
+    where = f"in an experiment based on {parent!r}" if inherited else f"in {WHERE}"
+    why = (f"it replaces the one this experiment took from {parent!r}, which it is based on" if inherited
+           else f"in {WHERE} the last one run wins, so it replaces the earlier one")
     if isinstance(declaration, ThingDeclaration):
-        _replace_thing(held, earlier, declaration, known, known.key[1], replaced)
+        _replace_thing(held, earlier, declaration, known, known.key[1], replaced, why)
         return
     naming = _naming(held, earlier, known.key[1]) if known.named else []
     if naming:
-        _kept_beside(known, f"{_listed(naming)} name{'s' if len(naming) == 1 else ''} the earlier one, and in {WHERE} "
+        _kept_beside(known, f"{_listed(naming)} name{'s' if len(naming) == 1 else ''} the earlier one, and {where} "
                             f"a law or an observation is replaced only where nothing names it", held, declaration)
         return
-    _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: in "
-                                         f"{WHERE} the last one run wins, so it replaces the earlier one", replaced)
+    _replace(held, earlier, declaration, f"{known.call} declares {known.noun} again, not the same as before: {why}",
+             replaced)
 
 
 __all__ = ["Known", "add", "known_as", "names_in", "things_in"]

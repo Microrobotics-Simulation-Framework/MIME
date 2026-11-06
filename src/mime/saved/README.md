@@ -17,7 +17,10 @@ The loader is the authority, and the schemas' known gaps against it are listed o
   are not written; the resolved record holds them. Slots for material references, the scene and the controller stay
   empty until those land. It never holds code, and never holds copies of a record's values. It holds what may be
   shared (see [Terms and tiers](#terms-and-tiers)): the experiment's own licence, each custom licence it names, each
-  third-party file's terms and each declared permission, each only where something is declared.
+  third-party file's terms and each declared permission, each only where something is declared. An experiment made
+  from a saved one (`Experiment.based_on`) records it as `based_on`: its name, the input hash its lock records, the MIME
+  version that saved it, and the DOI of the record it was published as, where its lock names one; the immediate one
+  alone, whose own document records its own (see [Based on another](#based-on-another)).
 - **The lock**, `mime.lock` (JSON). The environment (MIME, MADDENING, OpenMaterica, JAX, jaxlib and Python versions,
   the platform, the device, the precision, the PRNG, and what no pin holds: the GPU's device kind with its driver, CUDA
   and cuDNN as JAX reports them, the CPU's model and the hash of its flags, the matmul precision, `XLA_FLAGS` and
@@ -165,7 +168,9 @@ licence that asks to travel with every copy (MIT and the BSD licences) under its
 statement: "reproducible exactly from this bundle alone" only where the bundle carries every file, and otherwise each
 file it does not carry, with why, its licence, its role and where it is available from. `mime card <folder>`
 (`mime.saved.card_text`) writes the card, as `mime push` writes a record's description, naming the record the lock's
-`publication` names (its version, its DOI, how to pull and cite it): every condition each file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
+`publication` names (its version, its DOI, how to pull and cite it) and, above it, the experiment it was based on
+(`Based on <name> (<its DOI, or its input hash>)`), a line push's description leaves out until push states that relation
+(rehearsed on the sandbox first): every condition each file's licence or permission carries (non-commercial, share-alike, no-derivatives) is flagged, and "what reproduces"
 says what `mime verify <folder>` would check (the card runs no check). Both are generated and the same bytes each
 time. **Credit** (the creators with their ORCIDs, the
 contributors and their roles) lives in `sharing.yaml` beside the saved form, which `mime push <folder> --to <service>
@@ -315,6 +320,22 @@ cached or downloaded (and the command to fetch those left), and the packages to 
 `mime verify`. "The same result" is as everywhere in this form: bit for bit in the environment the lock was written in,
 and within its tolerances in another.
 
+## Based on another
+
+`Experiment.based_on(source, name=...)` makes a new experiment from a saved one, to change and save as an experiment of
+its own (`mime.experiment`). `source` is a folder, a bundle file, or what `mime pull` takes, pulled first into
+`./<its name>/` as `mime pull` pulls it, its assets into the cache. The saved experiment is loaded and checked against
+its lock as `Experiment.load` does, so a folder that does not load is refused with the load's reasons, and the input
+hash recorded is one this MIME reproduced; its folder is read and never written.
+
+The new experiment's document records it as `based_on`, part of the document and so of the input hash: editing the
+record by hand is refused at load as any edit is. Its lock is its own, and names no record (`publication`) until its
+own push makes one. Its files are referenced on their own terms, as any experiment's are: a third-party file the parent
+declared keeps its terms, verdict and tier, so `pack` carries and references the same files; the parent's licence is
+the new experiment's until it declares another. `mime push` sends what it sent before: no relation to the parent and
+no line naming it in the description, until that relation (DataCite's `IsDerivedFrom`, a new kind of Zenodo action)
+is rehearsed on the sandbox.
+
 ## How it stays complete
 
 A CI test walks the registry in a fresh process and requires, for every registered entry and every kind of thing, a
@@ -389,5 +410,11 @@ folder of the first or second version loads: its document is read as the current
 rung by its old name reads as naming `mrs`, and the load report says so), and the rebuilt experiment is written back
 into the version its lock was written in (`document_in_form`, `resolved_in_form`, `physics_in_form`) and hashed there,
 so an old lock is compared with the form it was hashed in. Saving it again writes the third.
+
+The saved form is in its seventh version since the document records the experiment it was made from (`based_on`);
+versions 4 to 6 added the terms, the run's length, and the lock's whole asset records and visuals
+(`_versions.py`). A document of an earlier version was made from none, and one that holds `based_on` is refused. A
+MIME that reads version 6 (0.3.0.dev1) refuses a folder of version 7 as `load.newer-form`, rather than reading a key it
+does not know.
 
 Releases are explained in the [package manifest](../README.md#status).

@@ -285,6 +285,11 @@ class Experiment:
         #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again):
         #: what a warnings filter cannot remove, shown by ``plan()`` and the build report. Not part of the saved form.
         self._replaced: list[str] = []
+        #: The declarations an experiment made by :meth:`based_on` took from the saved experiment it is based on (the
+        #: objects themselves), and that experiment's name: one of them declared again, changed, is replaced, in a
+        #: script as in a notebook.
+        self._inherited: tuple[Declaration, ...] = ()
+        self._parent: str | None = None
         self._saved: SavedForm | None = None
         self.load_report: LoadReport | None = None
 
@@ -293,8 +298,12 @@ class Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
                          seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile,
                          duration=settings.duration)
+        experiment._settings = replace(experiment._settings, based_on=settings.based_on)
         experiment._declarations = list(declarations)
         return experiment
+
+    def _add_declaration(self, declaration: Declaration) -> None:
+        add_declaration(self._declarations, declaration, self._replaced, self._inherited, self._parent)
 
     def _add(self, thing: Any, cls: type) -> None:
         if not isinstance(thing, cls):
@@ -302,7 +311,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"add_{cls.__name__.lower()} takes a {cls.__name__}, not {type(thing).__name__}",
                 f"pass one: exp.add_{cls.__name__.lower()}({cls.__name__}(...))")])
-        add_declaration(self._declarations, ThingDeclaration(thing), self._replaced)
+        self._add_declaration(ThingDeclaration(thing))
 
     @public
     def add_structure(self, structure: Structure) -> StructureHandle:
@@ -343,7 +352,7 @@ class Experiment:
                     "call.wrong-type", RefusalClass.USER,
                     f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}",
                     f"bind it to a thing: {role}= the handle add_body or add_medium returned, or its name")])
-        add_declaration(self._declarations, Attachment(law, dict(bindings)), self._replaced)
+        self._add_declaration(Attachment(law, dict(bindings)))
         return entry_id(type(law), bindings)
 
     @public
@@ -356,7 +365,7 @@ class Experiment:
         With no reason (and none on the quantity, ``kg(8.5e-5, reason=...)``), the reason is pending: exploratory
         builds with it and stamps every output, and research refuses it by name (``value.reason-pending``). A reason
         given both on the quantity and here is refused."""
-        add_declaration(self._declarations, ValueDeclaration(path, value, reason), self._replaced)
+        self._add_declaration(ValueDeclaration(path, value, reason))
 
     @public
     def source(self, path: TypedPath | str, *, reason: Basis) -> None:
@@ -367,7 +376,7 @@ class Experiment:
         is named ``<structure>.<setting>`` (``tube.inner_radius``), ``<body>.parts.<part>.<setting>``,
         ``<apparatus>.<field>.<setting>``, ``<apparatus>.<command>`` (a command's value), ``<entry id>.<setting>``
         (``drag:umr.spacing``), ``dt``, ``gravity`` or ``conditions.<name>``."""
-        add_declaration(self._declarations, SourceDeclaration(path, reason), self._replaced)
+        self._add_declaration(SourceDeclaration(path, reason))
 
     @public
     def licence(self, licence: str | CustomLicence) -> None:
@@ -378,7 +387,7 @@ class Experiment:
         form records it. Without one the experiment declares none, which saving and ``mime pack`` never refuse, and
         every report of the folder says; ``mime push`` will not publish it until one is declared. Its form is checked
         when the experiment is saved (``terms.licence``)."""
-        add_declaration(self._declarations, LicenceDeclaration(licence), self._replaced)
+        self._add_declaration(LicenceDeclaration(licence))
 
     @public
     def permission(self, permission: Permission) -> None:
@@ -394,7 +403,7 @@ class Experiment:
                 f"permission takes a mime.terms.Permission, not {type(permission).__name__}",
                 "pass one: exp.permission(Permission(grantor=..., grantee=..., files=(...), scope=Scope(...), "
                 "date=\"YYYY-MM-DD\", evidence=Evidence(...)))")])
-        add_declaration(self._declarations, PermissionDeclaration(permission), self._replaced)
+        self._add_declaration(PermissionDeclaration(permission))
 
     @public
     def observe(self, observation: Observation) -> ObservationHandle:
@@ -403,7 +412,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"observe takes an Observation, not {type(observation).__name__}",
                 "pass an observation: exp.observe(SwimSpeed(body, along=X))")])
-        add_declaration(self._declarations, ObservationDeclaration(observation), self._replaced)
+        self._add_declaration(ObservationDeclaration(observation))
         return ObservationHandle(entry_id(type(observation), observation.bindings()),
                                  tuple(output.field for output in type(observation).outputs))
 
@@ -425,8 +434,7 @@ class Experiment:
                 "call.wrong-type", RefusalClass.USER,
                 f"set_controller takes a Controller, not {type(controller).__name__}",
                 "pass a registered controller: exp.set_controller(ArmTracking(...), reads=..., writes=..., mode=...)")])
-        add_declaration(self._declarations, ControllerDeclaration(controller, reads, writes, mode, rate, latency),
-                        self._replaced)
+        self._add_declaration(ControllerDeclaration(controller, reads, writes, mode, rate, latency))
 
     @public
     def plan(self) -> PlanSet:
@@ -515,6 +523,54 @@ class Experiment:
         experiment._saved = form
         experiment.load_report = experiment.build().load_report
         return experiment
+
+    @classmethod
+    @public
+    def based_on(cls, source: str | PathLike[str], *, name: str) -> Experiment:
+        """A new experiment made from a saved one, to change and save as an experiment of its own: it holds the saved
+        experiment's declarations under ``name``, with no lock, and saving it writes a new folder with a lock of its
+        own. ``source`` is a saved folder, a bundle file, or what ``mime pull`` takes (a DOI, an address): a source that
+        is not a folder is pulled first, as ``mime pull <source>`` pulls it (its assets fetched into the asset cache),
+        into ``./<its name>/``, which must not exist yet, and the experiment is based on that folder. The saved
+        experiment is loaded as :meth:`load` loads it, and refused, with the load's reasons, where it does not load;
+        its folder is read and never written.
+
+        A declaration taken from the saved experiment, made again and changed, replaces the one taken, in a script as
+        in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), with a warning that names what
+        follows it, recorded in ``plan().replaced`` as a notebook's replacements are; a declaration made after this
+        call follows the rule any experiment's does. The run settings (the step, the seed, gravity, the scene, the
+        conditions, the profile and the run's length) are the saved experiment's.
+
+        The new experiment's document records the one it was made from as ``based_on``: its name, the input hash its
+        lock records, the MIME version that saved it, and the DOI of the record it was published as, where its lock
+        names one (every bundle ``mime push`` publishes does). Only that one: an experiment made from one that was
+        itself made from another records the one it was made from, whose own document records the next.
+        ``mime card`` names it."""
+        from mime.saved._based_on import based_on_of
+
+        held = Path(source)
+        parent = cls.load(held if held.is_dir() else _pulled(source))
+        assert parent._saved is not None
+        settings = replace(parent._settings, experiment=name, based_on=based_on_of(parent._saved))
+        experiment = cls._declared(settings, parent._declarations)
+        experiment._inherited, experiment._parent = tuple(experiment._declarations), parent.name
+        return experiment
+
+
+def _pulled(source: str | PathLike[str]) -> Path:
+    """The folder ``mime pull <source>`` unpacks ``source`` into (``./<its name>/``), for :meth:`Experiment.based_on`:
+    a folder there already is refused as pull refuses it, with the call that bases the experiment on it instead."""
+    from mime.saved import pull
+
+    try:
+        return Path(pull(source))
+    except BuildRefused as refused:
+        if "pull.destination" not in refused.codes():
+            raise
+        raise BuildRefused([replace(each, action=f"{each.action}; or, where it holds this experiment pulled before, "
+                                                 f"base the new one on that folder: Experiment.based_on(\"<the folder>\", "
+                                                 f"name=...)") if each.code == "pull.destination" else each
+                            for each in refused.refusals]) from None
 
 
 #: What :meth:`BuiltExperiment.run_to` writes into its folder: the outputs, their manifest (``outputs.json``), the run's

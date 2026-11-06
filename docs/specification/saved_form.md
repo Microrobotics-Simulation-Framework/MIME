@@ -63,7 +63,10 @@ refusal table's (`mime/build/refusal_table.txt`).
   *Cases:* `tests/saved/test_previous_form.py::test_a_previous_folder_loads_as_exploratory`,
   `tests/saved/test_previous_form.py::test_the_control_a_previous_document_holding_a_key_of_version_two_is_refused`,
   `tests/saved/test_terms_saved.py::test_an_earlier_version_given_a_terms_key_is_refused`,
-  `tests/saved/test_duration_saved.py::test_the_control_an_earlier_form_holding_the_key_of_version_five_is_refused`.
+  `tests/saved/test_duration_saved.py::test_the_control_an_earlier_form_holding_the_key_of_version_five_is_refused`,
+  `tests/saved/test_form7.py::test_an_earlier_document_holding_based_on_is_refused`,
+  `tests/saved/test_form7.py::test_control_an_upgrade_that_accepts_based_on_in_an_earlier_document_is_caught_every_run`,
+  `tests/saved/test_form7.py::test_a_version_six_document_that_declares_a_run_length_reads`.
 - **[document.duration]** The run's length, where the experiment declares one (`Experiment(..., duration=...)`), is
   saved as `run.duration` and is part of the hashed input: a duration edited after its lock was written is refused as
   `load.input-hash`. `mime run` on the folder runs that long when it is given no `--duration`, and the option still
@@ -76,6 +79,18 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_duration_saved.py::test_the_control_a_folder_with_no_duration_still_needs_one`,
   `tests/saved/test_duration_saved.py::test_an_earlier_form_loads_without_a_duration_and_still_needs_one`,
   `tests/saved/test_duration_saved.py::test_the_control_a_duration_a_run_would_refuse_is_refused_at_the_build_and_never_saved`.
+- **[document.based-on]** An experiment made from a saved one (`Experiment.based_on`) records it as `based_on`: its
+  name, the input hash its lock records, the MIME version that saved it, and the DOI of the record its lock names,
+  where it names one; the immediate one alone. It is part of the hashed input: a record edited after its lock was
+  written is refused as `load.input-hash`, as any edit is. The new experiment's lock is its own and names no record;
+  the folder it was made from is never written. A reader of version 6 refuses a folder of version 7 as
+  `load.newer-form`.
+  *Cases:* `tests/saved/test_based_on.py::test_saving_writes_a_new_folder_whose_document_records_the_parent_and_whose_lock_is_its_own`,
+  `tests/saved/test_based_on.py::test_the_record_names_the_parents_doi_where_its_lock_names_the_record_it_was_published_as`,
+  `tests/saved/test_based_on.py::test_the_record_edited_by_hand_after_its_lock_was_written_is_refused`,
+  `tests/saved/test_based_on.py::test_an_experiment_based_on_one_that_was_itself_based_on_another_records_its_immediate_parent`,
+  `tests/saved/test_based_on.py::test_the_parents_folder_is_never_written`,
+  `tests/saved/test_form7.py::test_dev1s_reader_refuses_a_folder_of_version_seven_as_newer_each_file_once`.
 - **[document.terms]** The document's licence, custom licences, terms and permissions are read in the form `save`
   writes them; terms in any other form are refused by their own codes.
   *Cases:* `tests/saved/test_terms_saved.py::test_terms_edited_by_hand_are_refused_at_load_by_their_code`.

@@ -11,7 +11,7 @@
   - conditions, gravity, and values declared from outside a record, each with its reason.
 
   Its methods are `add_*`, `attach`, `observe`, `set_controller`, `declare`, `plan`, `build`, `save`, `load`,
-  `status` and `export_fmu`.
+  `based_on`, `status` and `export_fmu`.
 - **`BuiltExperiment`**, the result of `build()`: the build report, `run(...)`, `run_to(folder, duration)` (the
   outputs, their manifest, a record and the run's own saved form, which `mime run` writes), and `verify()`. A run
   returns a `RunResult` (`mime.results`): each observation's outputs by name, with units, and the series
@@ -42,8 +42,19 @@ from beside the document.
 Its invariants are held by Hypothesis stateful tests over random scripts of its calls
 (`tests/saved/test_experiment_states.py`): a build succeeds or refuses with reasons, `load(save(x))` keeps the
 derived hash, and a refused build leaves the experiment as it was. A loaded experiment checks every build against
-its lock, so once changed it is refused (`load.input-hash`) and cannot be saved again: what a loaded experiment that
-is edited should become is open.
+its lock, so once changed it is refused (`load.input-hash`) and cannot be saved again: to change a saved experiment,
+make a new one from it with `Experiment.based_on(source, name=...)`.
+
+`Experiment.based_on(source, name=...)` makes a new experiment from a saved one: a folder, a bundle file, or what
+`mime pull` takes (a DOI, an address), which is pulled first into `./<its name>/` as `mime pull` pulls it. The saved
+experiment is loaded as `load` loads it, and refused with the load's reasons where it does not load; its folder is read
+and never written. The new experiment holds its declarations under the new name, with no lock, and its run settings
+(the step, the seed, gravity, the scene, the conditions, the profile and the run's length). A declaration taken from
+it, made again and changed, replaces the one taken, in a script as in a notebook, with a warning recorded in
+`plan().replaced`; one made after `based_on` follows the rule any experiment's does (`_redeclared.py`). Saving it writes
+a new folder with its own lock, whose document records the saved experiment as `based_on` (the saved form's version 7,
+`mime.saved`): its name, the input hash its lock records, the MIME version that saved it, and its DOI where its lock
+names the record it was published as. Only the immediate one: each parent's own document records its parent.
 
 `run(duration, record=[...], every=...)` and `run_to(..., record=, every=)` return and write a
 `RunResult`, read by each observation's declared outputs, and `run_to` writes `outputs.json` beside `outputs.npz`.
