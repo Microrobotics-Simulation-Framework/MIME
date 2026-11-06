@@ -26,7 +26,7 @@ from bundles import member, rewrite, write_bundle
 from terms_cases import NO_REDISTRIBUTION, V3_FIXTURE, layered, same_reference_run, write_mesh
 
 from mime import assets
-from mime.assets import AssetRef
+from mime.assets import AssetRef, _acceptances
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.experiment import Experiment
@@ -46,6 +46,13 @@ def codes_of(action: Callable[[], object]) -> list[str]:
     raise AssertionError("not refused")
 
 
+def fetched_and_accepted(ref: AssetRef) -> None:
+    """The asset is in the cache and its licence is accepted on this machine (a first use of a cached file asks, and a
+    file is placed from the cache only once its licence is accepted)."""
+    assets.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})
+    _acceptances.remember(assets.licences_of(ref))
+
+
 def referenced_folder(root: Path, rig: Rig) -> tuple[Path, bytes, AssetRef]:
     """A saved folder whose mesh may not be redistributed, its origin the rig's server; the mesh's bytes and the asset
     its lock names."""
@@ -63,7 +70,7 @@ def referenced_folder(root: Path, rig: Rig) -> tuple[Path, bytes, AssetRef]:
 def test_a_referenced_file_is_placed_from_the_cache_when_it_is_cached(tmp_path: Path, rig: Rig):
     folder, data, ref = referenced_folder(tmp_path, rig)
     bundle = pack(folder, out=tmp_path / "x.mimebundle")
-    assets.fetch(ref)
+    fetched_and_accepted(ref)
     unpacked = unpack(bundle, tmp_path / "unpacked")
     assert unpacked.placed == (LAYER,) and unpacked.missing == ()
     assert (tmp_path / "unpacked" / LAYER).read_bytes() == data
@@ -83,9 +90,57 @@ def test_a_folder_missing_a_referenced_file_is_refused_with_the_command_that_fet
         Experiment.load("unpacked")
     assert refused.value.codes() == ["asset.missing"]
     assert refused.value.refusals[0].action == "Run: mime assets fetch ./unpacked/"
-    assert main(["assets", "fetch", "./unpacked/"]) == 0
+    assert main(["assets", "fetch", "./unpacked/", "--accept-licence", NO_REDISTRIBUTION.id]) == 0
     assert (tmp_path / "unpacked" / LAYER).read_bytes() == data
     assert Experiment.load("unpacked").load_report is not None
+
+
+def test_pull_without_the_licence_accepted_stops_naming_the_flag_and_keeps_the_folder(tmp_path: Path, rig: Rig,
+                                                                                       monkeypatch):
+    folder, _, ref = referenced_folder(tmp_path, rig)
+    bundle = pack(folder, out=tmp_path / "x.mimebundle")
+    monkeypatch.chdir(tmp_path)
+    before = rig.requests
+    lines: list[str] = []
+    for switch in ({}, {"yes": True}):
+        with pytest.raises(BuildRefused) as stopped:
+            pull(bundle, into=f"pulled{len(switch)}", say=lines.append, **switch)
+        assert stopped.value.codes() == ["asset.licence-not-accepted"]
+        assert f"--accept-licence {NO_REDISTRIBUTION.id}" in str(stopped.value)
+    assert rig.requests == before and not assets.is_cached(ref)
+    assert (tmp_path / "pulled0" / "mime.lock").is_file() and "not complete" in lines[1]
+
+
+def test_pull_asks_at_the_first_use_of_an_asset_that_is_already_cached(tmp_path: Path, rig: Rig, monkeypatch):
+    """The asset is in the cache (a cache filled before the gates, or under a name that was not remembered): nothing is
+    downloaded, and the licence is still asked about once before the file is placed."""
+    folder, data, ref = referenced_folder(tmp_path, rig)
+    bundle = pack(folder, out=tmp_path / "x.mimebundle")
+    monkeypatch.chdir(tmp_path)
+    assets.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})
+    before = rig.requests
+    with assets.asking(None):
+        with pytest.raises(BuildRefused) as stopped:
+            pull(bundle, into="refused", say=lambda line: None)
+        assert stopped.value.codes() == ["asset.licence-not-accepted"]
+        assert not (tmp_path / "refused" / LAYER).exists()
+    asked: list[tuple[str, ...]] = []
+
+    class Yes:
+        def licences(self, licences, notice):  # type: ignore[no-untyped-def]
+            asked.append(tuple(each.id for each in licences))
+            return True
+
+        def confirm(self, question: str) -> bool:
+            return True
+
+        def line(self, text: str) -> None:
+            pass
+
+    with assets.asking(Yes()):
+        pull(bundle, into="pulled", say=lambda line: None)
+    assert asked == [(NO_REDISTRIBUTION.id,)] and (tmp_path / "pulled" / LAYER).read_bytes() == data
+    assert rig.requests == before, "nothing was downloaded"
 
 
 def test_pull_fetches_and_places_a_referenced_file_and_says_so(tmp_path: Path, rig: Rig, monkeypatch):
@@ -93,7 +148,7 @@ def test_pull_fetches_and_places_a_referenced_file_and_says_so(tmp_path: Path, r
     bundle = pack(folder, out=tmp_path / "x.mimebundle")
     monkeypatch.chdir(tmp_path)
     lines: list[str] = []
-    pull(bundle, into="pulled", say=lines.append)
+    pull(bundle, into="pulled", say=lines.append, accept_licences={NO_REDISTRIBUTION.id})
     assert (tmp_path / "pulled" / LAYER).read_bytes() == data
     assert ("  - Referenced files: 1, not carried in the bundle (their terms are in `mime card ./pulled/ --notice`); "
             "each placed from the asset cache") in lines[-1].splitlines()
@@ -117,9 +172,27 @@ def test_a_summary_of_a_bundle_that_carries_every_file_has_no_referenced_line(tm
     assert not any("Referenced files" in line for line in lines[-1].splitlines())
 
 
+def test_a_cached_file_whose_licence_is_not_accepted_is_not_placed_until_it_is(tmp_path: Path, rig: Rig):
+    """The first use of a cached file asks (``mime assets fetch``, ``mime pull``), and placing it is a use: it is placed
+    only once the licence is accepted, by a recorded acceptance or by name, and placing asks nothing."""
+    folder, data, ref = referenced_folder(tmp_path, rig)
+    bundle = pack(folder, out=tmp_path / "x.mimebundle")
+    assets.fetch(ref, accept_licences={NO_REDISTRIBUTION.id})  # in the cache, no acceptance recorded
+    unpacked = unpack(bundle, tmp_path / "unpacked")
+    assert unpacked.placed == () and unpacked.missing == (LAYER,)
+    assert not (tmp_path / "unpacked" / LAYER).exists()
+    placed = place_referenced(tmp_path / "unpacked")
+    assert placed.placed == () and placed.missing[0][2] == _terms.NOT_ACCEPTED
+    assert "--accept-licence" in _terms.NOT_ACCEPTED
+    assert place_referenced(tmp_path / "unpacked", accept_licences=["LicenseRef-Someone-Else"]).placed == ()
+    named = place_referenced(tmp_path / "unpacked", accept_licences={NO_REDISTRIBUTION.id})
+    assert named.placed == (LAYER,) and (tmp_path / "unpacked" / LAYER).read_bytes() == data
+    assert _acceptances.read_acceptances() == [], "named for the call, not remembered"
+
+
 def test_placing_never_writes_over_another_file_or_outside_the_folder(tmp_path: Path, rig: Rig):
     folder, data, ref = referenced_folder(tmp_path, rig)
-    assets.fetch(ref)
+    fetched_and_accepted(ref)
     copy = Path(shutil.copytree(folder, tmp_path / "copy"))
     (copy / LAYER).write_bytes(b"another file")
     placed = place_referenced(copy)
@@ -140,11 +213,11 @@ def test_mime_assets_fetch_exits_two_while_a_referenced_file_is_not_placed(tmp_p
                                                                           capsys: pytest.CaptureFixture[str]):
     folder, data, _ = referenced_folder(tmp_path, rig)
     (folder / LAYER).write_bytes(b"another file")
-    assert main(["assets", "fetch", str(folder)]) == 2
+    assert main(["assets", "fetch", str(folder), "--accept-licence", NO_REDISTRIBUTION.id]) == 2
     err = capsys.readouterr().err
     assert "asset.missing" in err and _terms.OTHER_FILE in err
     (folder / LAYER).unlink()
-    assert main(["assets", "fetch", str(folder)]) == 0 and (folder / LAYER).read_bytes() == data
+    assert main(["assets", "fetch", str(folder), "--accept-licence", NO_REDISTRIBUTION.id]) == 0 and (folder / LAYER).read_bytes() == data
 
 
 def placed_through(alias: Path, tmp_path: Path, rig: Rig) -> None:
@@ -152,7 +225,7 @@ def placed_through(alias: Path, tmp_path: Path, rig: Rig) -> None:
     that is not the folder's real one; the file is placed and the folder loads."""
     folder, data, ref = referenced_folder(tmp_path, rig)
     bundle = pack(folder, out=tmp_path / "x.mimebundle")
-    assets.fetch(ref)
+    fetched_and_accepted(ref)
     unpacked = unpack(bundle, alias / "unpacked")
     assert unpacked.placed == (LAYER,) and unpacked.missing == (), unpacked
     assert (alias / "unpacked" / LAYER).read_bytes() == data

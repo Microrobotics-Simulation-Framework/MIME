@@ -397,7 +397,7 @@ class SavedRecord:
         if self.referenced:
             lock = {**lock, "referenced_files": {path: ref.name for path, ref in sorted(self.referenced)}}
         if self.visuals:
-            lock = {**lock, "visuals": {name: cast(ManifestRecord, held.to_json())
+            lock = {**lock, "visuals": {name: cast(ManifestRecord, held.to_json(lock=True))
                                         for name, held in sorted(self.visuals.items())}}
         return lock
 

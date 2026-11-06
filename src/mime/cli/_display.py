@@ -51,6 +51,7 @@ from mime._said import (
     kind_of,
 )
 from mime._terminal import for_terminal, plain
+from mime.assets._gates import LICENCE_HEADING, LICENCE_QUESTION, NoTerminal, licence_lines
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._progress import FLAG_INTERVAL, RunState, TransferState, duration_text
 from mime.cli._serve_view import FALLBACK_ROWS, event_line, stopped_lines, strip_lines, table_lines
@@ -62,6 +63,7 @@ if TYPE_CHECKING:
     from mime.control import Progress, StopRequest
     from mime.live import ServeState
 
+    from mime.assets import Licence
     from mime.build import MimeError, Refusal
     from mime.cli._summary import RunSummary
     from mime.env import EnvReport
@@ -837,6 +839,8 @@ def show_registry(entries: Sequence[tuple[str, str, str, str]], not_loaded: dict
 _PLAN_STYLE = {PLAN_HEAD: "bold", PLAN_UP: "green", PLAN_REFERENCE: "cyan", PLAN_FIELD: "", PLAN_LINE: "dim",
                PLAN_SECTION: "bold"}
 _STEP_KINDS = frozenset({STEP_HEAD, STEP_IRREVERSIBLE, STEP_TRIAL, STEP_LINE})
+#: The border of the licence panel: an amber (xterm colour 214).
+_AMBER = "orange1"
 #: The two values of a site edit: ``    on the site:  <value>`` and ``    <what writes it>: <value>``.
 _EDIT_LINE = re.compile(r"\s+(?P<who>.+?):\s+(?P<value>.*)", re.DOTALL)
 
@@ -956,6 +960,48 @@ class SaidDisplay:
         except EOFError:
             return ""
 
+    def confirm(self, question: str) -> bool:
+        """:meth:`ask`, as the download gates (:mod:`mime.assets._gates`) name it."""
+        return self.ask(question)
+
+    def line(self, text: str) -> None:
+        """A line the download gates say (what a download takes and what the drive has), as any other line is said."""
+        self.say(text)
+
+    def licences(self, licences: Sequence[Licence], notice: str | None) -> bool:
+        """The conditions of the licences a download needs accepted, in a panel with an amber border titled in words
+        (``Licence conditions: your acceptance is needed``): each licence's conditions as short lines, then its title and
+        link; under it the record's notice; then, in bold, ``Do you accept these conditions? [y/N]``, answered here. Anything
+        but y or yes is no. The colour sets the panel apart; every word it means is a word in it."""
+        from rich.text import Text
+
+        if self._transfers is not None:
+            self._transfers.hide()
+        self._settle(keep="")
+        rows: list[Any] = []
+        for each in licences:
+            if rows:
+                rows.append(_text(""))
+            rows += [_text(f"\u2022 {plain(line)}") for line in each.conditions]
+            rows.append(_text(""))
+            rows.append(_text(f"{plain(each.title)} ({plain(each.id)})", "bold"))
+            if each.url:
+                rows.append(_text(plain(each.url), "underline"))
+        try:
+            self._console.print()
+            self._frame(rows, style=_AMBER, heavy=True, title=LICENCE_HEADING)
+            if notice:
+                self._console.print(_text(notice, "dim"), soft_wrap=True)
+            self._console.print(Text(f"{LICENCE_QUESTION} [y/N] ", style="bold"), end="", soft_wrap=True)
+        except Exception:  # noqa: BLE001 - the question is always asked, in the plainest way when it cannot be set apart
+            stream = self._console.file
+            stream.write("\n".join(licence_lines(licences, notice)) + f"\n{LICENCE_QUESTION} [y/N] ")
+        self._console.file.flush()
+        try:
+            return input().strip().lower() in ("y", "yes")
+        except EOFError as error:  # no one answers: the gate refuses naming the flag, as without a terminal
+            raise NoTerminal from error
+
     def _answer(self, hint: str) -> str:
         """The hint on the terminal the question is on, then the line typed. ``input`` is given no prompt of its own: it
         would put one on standard error, which may be a file while the question is on the screen."""
@@ -994,7 +1040,8 @@ class SaidDisplay:
             line, self._site = self._site, None
             self._plain(line, EDIT_SITE)
 
-    def _frame(self, rows: Sequence[Any], *, style: str, heavy: bool = False, double: bool = False) -> None:
+    def _frame(self, rows: Sequence[Any], *, style: str, heavy: bool = False, double: bool = False,
+               title: str | None = None) -> None:
         from rich import box
         from rich.console import Group
         from rich.panel import Panel
@@ -1005,13 +1052,15 @@ class SaidDisplay:
             # A word wider than the frame's inside (a hash, an address) would be folded across lines, and a hash is
             # copied whole: the rows are drawn with no side to break them, between two rules, and the terminal wraps them.
             line = "\u2501" if heavy else "\u2550" if double else "\u2500"
-            self._console.print(Rule(style=style, characters=line))
+            self._console.print(Rule(title=for_terminal(title) if title else "", style=style, characters=line,
+                                     align="left"))
             for row in rows:
                 self._console.print(row, soft_wrap=True)
             self._console.print(Rule(style=style, characters=line))
             return
         self._console.print(Panel(Group(*rows), box=box.HEAVY if heavy else box.DOUBLE if double else box.ROUNDED,
-                                  border_style=style, expand=False, width=width))
+                                  border_style=style, expand=False, width=width,
+                                  title=for_terminal(title) if title else None, title_align="left"))
 
     def _draw_plan(self) -> None:
         if self._plan:

@@ -57,6 +57,16 @@ def user_xla_cache_in_the_sessions_own_directory(tmp_path_factory: pytest.TempPa
         yield
 
 
+@pytest.fixture(autouse=True)
+def licence_acceptances_in_the_tests_own_file(tmp_path_factory: pytest.TempPathFactory,
+                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """A licence a test accepts at a prompt is written to the acceptances file (``mime.assets._acceptances``), which is the
+    user's config directory's unless ``MIME_LICENCE_ACCEPTANCES`` names another. Each test has a file of its own, none yet
+    written, so that no test is excused a question by another's yes, and the developer's own acceptances are never read
+    or written."""
+    monkeypatch.setenv("MIME_LICENCE_ACCEPTANCES", str(tmp_path_factory.mktemp("licences") / "licences.json"))
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--mime-shard", metavar="i/N", help="keep CI shard i of N's test files (tests/_sharding.py)")
     parser.addoption("--mime-shard-record", metavar="FILE", help="write what the shard collected and kept, as JSON")

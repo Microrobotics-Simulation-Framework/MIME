@@ -62,6 +62,9 @@ LANE_RAN = "${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}"
 GROUP_LINE = ("  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && "
               "github.event.pull_request.number || github.run_id }}\n")
 SHARD_CHECK = "scripts/check_shards.py"
+#: The jobs that run the shell-completion tests alone, one per lane: a lane's job waits on its own, which is no shard job
+#: (tests/test_completion_job.py holds their wiring).
+COMPLETION_JOBS = ("default-completion", "openmaterica-main-completion", "maddening-main-completion")
 COUNT_JOB, COUNT_SCRIPT = "shards", "scripts/shard_matrix.py"
 SHARD_COUNT = "${{ needs.shards.outputs.count }}"
 SHARD_LIST = "${{ fromJSON(needs.shards.outputs.list) }}"
@@ -285,7 +288,7 @@ def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object
         found.append(f"{name!r}: does not wait on the {COUNT_JOB} job, so its --shards is not the count the shards ran")
     found += count_job_problems(name, workflow, scratch / "count")
     for needed_id in needed:
-        if needed_id == COUNT_JOB:
+        if needed_id == COUNT_JOB or needed_id in COMPLETION_JOBS:
             continue
         shard_job = (workflow.get("jobs") or {}).get(needed_id) or {}
         if shard_job.get("if") not in (None, SCHEDULE_FILTER, FULL_LANE_TESTS):
@@ -607,8 +610,8 @@ PLANTS = {
         LANE_MATRIX, LANE_MATRIX.replace('["3.12", "3.13", "3.14"]', '["3.12", "3.13"]'),
         "'default (Python 3.14)': 0 jobs make this required check; one does"),
     "the-lane-job-skipped-after-a-red-shard": (
-        f"    needs: [shards, default-tests]\n    if: {AFTER_ITS_SHARDS}\n",
-        "    needs: [shards, default-tests]\n    if: github.event_name != 'schedule'\n",
+        f"    needs: [shards, default-tests, default-completion]\n    if: {AFTER_ITS_SHARDS}\n",
+        "    needs: [shards, default-tests, default-completion]\n    if: github.event_name != 'schedule'\n",
         "'default (Python 3.12)': runs only if \"github.event_name != 'schedule'\"; it waits on shard jobs, so it must "
         f"run after a red one too ({AFTER_ITS_SHARDS}), since a skipped job passes a required check"),
     "the-shard-check-swallowed": (
@@ -632,7 +635,8 @@ PLANTS = {
         "    name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n",
         "'openmaterica-main': the shard job openmaterica-main-tests does not wait on the shards job"),
     "a-lane-not-waiting-on-the-count": (
-        "    needs: [shards, openmaterica-main-tests]\n", "    needs: openmaterica-main-tests\n",
+        "    needs: [shards, openmaterica-main-tests, openmaterica-main-completion]\n",
+        "    needs: [openmaterica-main-tests, openmaterica-main-completion]\n",
         "'openmaterica-main': does not wait on the shards job, so its --shards is not the count the shards ran"),
     "the-count-job-not-reading-the-variable": (
         "          VARIABLE: ${{ vars.MIME_CI_SHARDS }}\n", "          VARIABLE: ''\n",
