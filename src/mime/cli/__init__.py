@@ -190,6 +190,49 @@ def _pending(folder: Path) -> int:
     return 1 if profile.pending else 0
 
 
+def _show(folder: Path, graph: bool, tree: bool, as_json: bool) -> int:
+    """What a saved experiment is made of, without running it: ``--tree``, its topology as declared (the default), and
+    ``--graph``, the MADDENING graph it compiles to, as Mermaid text; both, the tree first and a blank line between.
+    The tree is read from the document alone and builds nothing; the graph is built as ``mime pending`` builds it.
+    ``folder`` may be a document instead of a folder. ``--json`` is the tree as data."""
+    from mime.env import apply_lock_precision
+
+    if tree or not graph:
+        found = Experiment.from_document(_document_of(folder)).tree()
+
+        def draw() -> None:
+            from mime.cli._display import show_tree
+
+            show_tree(found.lines(), sys.stdout)
+
+        if as_json:
+            sys.stdout.write(for_terminal(found.json()))
+        elif not _drawn(draw):
+            sys.stdout.write(for_terminal(found.text()))
+    if graph:
+        if tree:
+            sys.stdout.write("\n")
+        if folder.is_file():
+            built = Experiment.from_document(folder).build()
+        else:
+            apply_lock_precision(folder)
+            built = Experiment.load(folder).build()
+        sys.stdout.write(for_terminal(built.to_mermaid()))
+    return 0
+
+
+def _document_of(folder: Path) -> Path:
+    """The document of the saved experiment in ``folder``; a folder that is not there is refused as ``Experiment.load``
+    refuses it, naming the saved experiments beside it."""
+    from mime.saved import DOCUMENT_FILE
+
+    if folder.is_file():
+        return folder
+    if not folder.is_dir():
+        Experiment.load(folder)
+    return folder / DOCUMENT_FILE
+
+
 def _run(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str] = (),
          every: float | None = None, stage_every: float | None = None, commands: Path | None = None,
          full: bool = False) -> int:
@@ -1162,6 +1205,16 @@ def build_parser() -> _guide.MimeParser:
                                                   "to seal it")
     pending.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
                                                    "(experiment.mime.yaml), edited, to check it as it is")
+    show = commands.add_parser("show", help="what a saved experiment is made of: its topology as a tree, and the "
+                                             "graph it compiles to as Mermaid text, without running it")
+    show.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
+                                                "(experiment.mime.yaml)")
+    show.add_argument("--tree", action="store_true", help="the topology as declared: structures, media, bodies and "
+                                                          "their parts, apparatus, each law with what it binds, "
+                                                          "observations and the controller (the default)")
+    show.add_argument("--graph", action="store_true", help="the MADDENING graph the experiment compiles to, as "
+                                                           "Mermaid text; it builds the experiment")
+    show.add_argument("--json", action="store_true", help="the tree as JSON (the mime.tree format)")
     registry = commands.add_parser("registry", help="every registered entry and what it declares")
     registry.add_argument("--json", action="store_true", help="the whole export, as JSON")
     # A skip flag of the documentation's checks is only ever spelled in full: argparse would take ``--skip-ex`` for
@@ -1604,6 +1657,10 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         return _verify(arguments.folder)
     if arguments.command == "pending":
         return _pending(arguments.folder)
+    if arguments.command == "show":
+        if arguments.json and arguments.graph:
+            parser.error("--json is the tree as data; the graph is Mermaid text, so --json and --graph do not go together")
+        return _show(arguments.folder, arguments.graph, arguments.tree, arguments.json)
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "run":
