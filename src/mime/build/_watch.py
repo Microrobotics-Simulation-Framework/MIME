@@ -103,7 +103,7 @@ class WatchPlan:
 
 
 #: The spacing of the points the containment watch compares with the surface, as a share of the hull's enclosing radius
-#: (about 0.2 mm for FL-9, whose samples then fall 20 um short of the body and whose convex hull has about 500
+#: (about 0.21 mm for FL-9, whose samples then fall 23 um short of the body and whose convex hull has about 500
 #: vertices): coarser than the hull contact's, which must hold the body to its margin, since the watch reads a run
 #: after it, at every step it kept, and its cost is the vertices times the steps; it quotes the shortfall.
 WATCH_SPACING = 0.05
@@ -122,8 +122,9 @@ class ContainmentPlan:
     frame: the vertices of the convex hull of the samples where the surface's region is convex (the largest signed
     distance over a set is at a vertex of its hull), else every sample. They are made when first read, not at the build.
 
-    ``shortfall`` is how far the samples fall short of the body (m, ``mime.scene.samples_shortfall``), made when first
-    read: the depth the watch reports is of the samples, so the body may pass the wall by up to that more."""
+    ``shortfall`` is how far the samples fall short of the body (m, ``mime.scene.samples_shortfall``, an estimate over
+    finitely many directions), made when first read: the depth the watch reports is of the samples, so the body may
+    pass the wall by up to that more; it bounds how far a flagged depth can understate the true one."""
 
     owner: str
     entry: str
@@ -184,4 +185,31 @@ class ContainmentPlan:
                 f"surface, at each step the run kept or at its last step; flagged, never a refusal")
 
 
-__all__ = ["WATCH_SPACING", "WATCHED_FAMILY", "ContainmentPlan", "WatchPlan", "turning_reynolds"]
+@dataclass(frozen=True)
+class UnwatchedContainment:
+    """A body the centre-held contact (0.1.0) holds whose hull the containment watch cannot check, and why
+    (``reason``): the surface's shape takes one point at a time, the hull's kind gives no sample points, or the body's
+    dynamics publish no pose. It reads nothing after a run; the result says the watch could not be checked, with the
+    reason, and the build report lists it, so that a body the watch skips is never skipped in silence."""
+
+    owner: str
+    entry: str
+    body: str
+    surface: str
+    margin: float
+    reason: str
+
+    def range_warning(self) -> str | None:
+        """None: there is nothing to read, before or after a run."""
+        return None
+
+    def line(self) -> str:
+        """The build report's line for it."""
+        return (f"{self.owner}: after each run, {self.body}'s hull against {self.surface} is NOT watched "
+                f"({self.entry} holds only its centre by its extent, never reading its orientation): {self.reason}")
+
+
+type Watched = WatchPlan | ContainmentPlan | UnwatchedContainment
+
+__all__ = ["WATCH_SPACING", "WATCHED_FAMILY", "ContainmentPlan", "UnwatchedContainment", "Watched", "WatchPlan",
+           "turning_reynolds"]

@@ -581,7 +581,7 @@ class RunResult:
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
-                 *(f"post-run containment: {read.text()}" for read in self.containment),
+                 *(f"post-run {read.text()}" for read in self.containment),
                  self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
                                                                                  "written before profiles)"]
         return "\n".join(lines)

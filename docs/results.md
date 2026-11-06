@@ -117,7 +117,7 @@ the graph sees it: script A's isotropic effective inertia keeps its axis along t
 inertia tensor turns across in a fraction of a second. After every run MIME reads the body's pose and the surface's signed
 distance at the hull's points. The result is in `result.containment` and in `result.text()`, in `outputs.json` under
 `containment` and in the `.mat` file's `containment` struct, and in the build report beside the Reynolds watch. It is
-never a refusal and no part of the graph, in every profile, as the Reynolds watch is: a run that went through the wall is
+never a refusal and no part of the graph, in exploratory and research (strict is reserved and cannot be built), as the Reynolds watch is: a run that went through the wall is
 a result its author may want to read, so the watch says where, and the run is not discarded.
 
 - **What is read.** The deepest point of the hull past the surface (`depth`, positive past it), the step it was deepest at
@@ -125,11 +125,16 @@ a result its author may want to read, so the watch says where, and the run is no
   contact's margin: a hull that comes within the margin without passing the wall is held as the contact leaves it. A run
   that kept the body's pose at every step (`history=True`, or `record=`, which keeps the pose for this) is read at every
   step; one that kept nothing is read at its last step alone and says so: it knows nothing of the steps before it.
-- **What it bounds.** The depth is of the hull's samples, which fall short of the body by up to a few micrometres at the
-  spacing the hull contact would use (`shortfall`, in the text): the body may be that much deeper, and the watch cannot
-  say a hull is inside that is outside by more than that. A body with no hull (no parts) is held as a sphere of its
-  extent, which that contact holds exactly, and is not watched; a surface whose shape takes one point at a time is not
-  watched either.
+- **What it bounds.** The depth is of the hull's samples, which fall short of the body by up to `shortfall`, which the
+  text quotes (tens of micrometres for the screw of script A at the watch's spacing, several times what the hull contact's
+  finer spacing leaves): the body may be that much deeper, so `shortfall` bounds how far a flagged depth can understate
+  the true one (it is measured over finitely many directions and may miss the largest by a little), and the watch
+  cannot say a hull is inside that is outside by more than that. A run that kept no pose says "inside at the last step; earlier steps were not kept, so
+  nothing is known of them": a hull that crossed the wall and came back before the last step reads as inside. A body
+  with no hull (no parts) is held as a sphere of its extent, which that contact holds exactly, and is not watched. A
+  body with a hull that the watch cannot check (the surface's shape takes one point at a time, the hull's kind gives no
+  samples, or the body's dynamics publish no pose) is listed in the build report as not watched and read as not
+  computed, with the reason.
 - **The fix is in the text.** `Contact.Projection(margin=...)` holds the hull, its orientation read.
 - **Cost.** No node, no edge: the graph and its derived hash are what they would be without it. It is read when first
   asked for (`result.containment`, `result.text()`, the manifest, the exports and the end-of-run summary), so a run that

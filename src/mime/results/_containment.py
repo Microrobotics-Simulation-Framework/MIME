@@ -7,8 +7,8 @@ the wall, unflagged by the contact. The watch reads the body's pose after the ru
 last step's alone) and the surface's signed distance at the hull's points (``mime.build._watch.ContainmentPlan``): the
 largest, over the steps and the points, is how far the hull passed the surface. Like the Reynolds watch it adds no node
 and no edge, so the graph and its derived hash are what they would be without it, and it raises a flag on the result in
-every profile, never a refusal: a run that went through the wall is a result the experiment's author may want to read
-(the flag says where), not one MIME may discard.
+exploratory and research (strict is reserved and cannot be built), never a refusal: a run that went through the wall is
+a result the experiment's author may want to read (the flag says where), not one MIME may discard.
 
 What it bounds and what it estimates. The depth is the depth of the hull's samples, which fall short of the body by up
 to the plan's ``shortfall``: the body may be that much deeper than the depth read (the watch cannot report a hull inside
@@ -26,7 +26,7 @@ import jax
 import numpy as np
 from numpy.typing import NDArray
 
-from mime.build._watch import ContainmentPlan
+from mime.build._watch import ContainmentPlan, UnwatchedContainment
 from mime.core import jnp, shape_named
 
 #: The units in the last place of the run's precision, at the scale of the hull and the body's position, that the
@@ -83,6 +83,10 @@ class ContainmentRead:
         short = "" if self.shortfall is None else (
             f"; the hull's samples fall up to {self.shortfall * 1e6:.3g} um short of the body, which may be that much "
             f"deeper")
+        if self.status == WITHIN and not self.peak:
+            return (f"{what}: {self.body}'s hull is inside {self.surface} at the last step, its deepest point "
+                    f"{-self.depth * 1e3:.4g} mm from it; earlier steps were not kept, so nothing is known of "
+                    f"them{short}")
         if self.status == WITHIN:
             return (f"{what}: {self.body}'s hull stayed inside {self.surface}, its deepest point "
                     f"{-self.depth * 1e3:.4g} mm from it over {scope}{short}")
@@ -130,22 +134,25 @@ def rotations(quaternions: NDArray[np.float64]) -> NDArray[np.float64]:
         np.stack([2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)], -1)], -2)
 
 
-def depths(plan: ContainmentPlan, poses: NDArray[np.float64]) -> NDArray[np.float64]:
-    """The largest signed distance from the plan's surface, over the hull's points, at each of ``poses`` (``n x 7``:
-    position, then the quaternion ``(w, x, y, z)``), in float64 whatever the run's precision (m, positive past the
-    surface). One compiled function of a block of poses, so that the points of every step in the block are placed and
-    read in one fused pass."""
-    shape = shape_named(plan.shape)
-    vertices = plan.vertices
-    block = max(1, BLOCK // (3 * len(vertices)))
-    found = np.empty(len(poses), dtype=np.float64)
-    with cast(Any, jax).enable_x64(True):
-        parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
-                      for name, value in plan.parameters.items()}
-        held = jnp.asarray(vertices, dtype=jnp.float64)
+#: The compiled evaluations made in this process (``_compiled``), and the most kept: a function traces once per plan's
+#: surface and once per number of poses in a block, not at every call.
+_COMPILED: dict[tuple[object, ...], Any] = {}
+_COMPILED_MOST = 8
+
+
+def _compiled(plan: ContainmentPlan) -> Any:
+    """The jitted function of a block of poses and the hull's points that gives, for each pose, the largest signed
+    distance from the plan's surface over the points: held per surface (its shape and parameters), so that the
+    reading of one plan's poses, or of a study's many builds of the same body, traces it once."""
+    key = (plan.shape, tuple(sorted((name, repr(value)) for name, value in plan.parameters.items())))
+    if key not in _COMPILED:
+        shape = shape_named(plan.shape)
+        with cast(Any, jax).enable_x64(True):
+            parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
+                          for name, value in plan.parameters.items()}
 
         @cast(Any, jax).jit
-        def deepest(blocked: Any) -> Any:
+        def deepest(blocked: Any, held: Any) -> Any:
             w, x, y, z = (blocked[:, 3 + i] for i in range(4))
             turn = jnp.stack([
                 jnp.stack([1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)], -1),
@@ -154,12 +161,31 @@ def depths(plan: ContainmentPlan, poses: NDArray[np.float64]) -> NDArray[np.floa
             world = blocked[:, None, :3] + jnp.einsum("nij,kj->nki", turn, held)
             return jnp.max(shape.signed_distance(parameters, world), axis=-1)
 
+        _COMPILED[key] = deepest
+        while len(_COMPILED) > _COMPILED_MOST:
+            del _COMPILED[next(iter(_COMPILED))]
+    return _COMPILED[key]
+
+
+def depths(plan: ContainmentPlan, poses: NDArray[np.float64]) -> NDArray[np.float64]:
+    """The largest signed distance from the plan's surface, over the hull's points, at each of ``poses`` (``n x 7``:
+    position, then the quaternion ``(w, x, y, z)``), in float64 whatever the run's precision (m, positive past the
+    surface). One compiled function of a block of poses, so that the points of every step in the block are placed and
+    read in one fused pass."""
+    vertices = plan.vertices
+    block = max(1, BLOCK // (3 * len(vertices)))
+    found = np.empty(len(poses), dtype=np.float64)
+    with cast(Any, jax).enable_x64(True):
+        deepest = _compiled(plan)
+        held = jnp.asarray(vertices, dtype=jnp.float64)
         for start in range(0, len(poses), block):
-            found[start:start + block] = np.asarray(deepest(jnp.asarray(poses[start:start + block], dtype=jnp.float64)))
+            found[start:start + block] = np.asarray(deepest(jnp.asarray(poses[start:start + block], dtype=jnp.float64),
+                                                            held))
     return found
 
 
-def _unknown(plan: ContainmentPlan, dt: float, missing: tuple[str, ...]) -> ContainmentRead:
+def _unknown(plan: ContainmentPlan | UnwatchedContainment, dt: float, missing: tuple[str, ...]) -> \
+        ContainmentRead:
     return ContainmentRead(plan.owner, plan.entry, plan.body, plan.surface, UNKNOWN, None, None, None, None, 0, False,
                            plan.margin, None, dt, missing)
 
@@ -198,9 +224,11 @@ def read_containment(plan: ContainmentPlan, final: Final, history: Final | None,
 
 def read_containments(plans: Sequence[Any], final: Final, history: Final | None, *, last_step: int,
                       dt: float) -> tuple[ContainmentRead, ...]:
-    """Every containment watch among ``plans`` (the others are the Reynolds watch's)."""
+    """Every containment watch among ``plans`` (the others are the Reynolds watch's); a body the watch cannot check is
+    read as not computed, with the plan's reason."""
     return tuple(read_containment(plan, final, history, last_step=last_step, dt=dt)
-                 for plan in plans if isinstance(plan, ContainmentPlan))
+                 if isinstance(plan, ContainmentPlan) else _unknown(plan, dt, (plan.reason,))
+                 for plan in plans if isinstance(plan, ContainmentPlan | UnwatchedContainment))
 
 
 __all__ = ["PAST", "UNKNOWN", "WITHIN", "ContainmentRead", "depths", "read_containment", "read_containments"]

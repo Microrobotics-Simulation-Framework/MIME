@@ -26,7 +26,7 @@ from typing import Any, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from mime.build._watch import ContainmentPlan, WatchPlan, turning_reynolds
+from mime.build._watch import WatchPlan, Watched, turning_reynolds
 
 #: A sphere's neglected inertia in the drag, Oseen's first correction, by the Reynolds number of its translation.
 OSEEN = 3.0 / 16.0
@@ -176,7 +176,7 @@ def _unknown(plan: WatchPlan, missing: tuple[str, ...]) -> WatchRead:
                      plan.diameter, plan.density, plan.viscosity, plan.upper, plan.basis, False, None, "", missing)
 
 
-def read_watches(plans: Sequence[WatchPlan | ContainmentPlan], final: Final, history: Final | None) -> \
+def read_watches(plans: Sequence[Watched], final: Final, history: Final | None) -> \
         tuple[WatchRead, ...]:
     """Every Reynolds-number watch of a run (the containment watches among ``plans`` are
     ``mime.results.read_containments``')."""

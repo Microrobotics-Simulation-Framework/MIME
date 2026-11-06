@@ -71,6 +71,9 @@ def attention_lines(built: BuiltExperiment, written: RunWritten, load: LoadRepor
             lines.append(f"post-run containment raised: {contained.text()}")
         elif contained.status != WITHIN_THE_REGION:
             lines.append(f"post-run containment could not be checked: {contained.text()}")
+        elif not contained.peak:
+            lines.append(f"containment read at the last step only ({contained.body} against {contained.surface}): "
+                         f"--history or --record keeps the poses of every step for it")
     checked = [(owner, line) for owner, held in sorted(report.checked.items()) for line in held]
     lines += [f"validity of {owner}, computed at build: {line}" for owner, line in checked]
     lines += [f"build refused: {line}" for refusal in report.refusals for line in str(refusal).splitlines()]
