@@ -300,6 +300,12 @@ class RunResult:
             if self.origin is not None else None
 
     @property
+    def stale_unknown(self) -> str | None:
+        """Why this result cannot say whether it is stale, or ``None``: it was pickled (sent from another process), and
+        a pickle carries no link to the experiment it came from. Neither stale nor fresh; shown by :meth:`text`."""
+        return self.origin.unknown("this result") if self.origin is not None else None
+
+    @property
     def clock(self) -> np.dtype[Any]:
         """The float type the run's nodes computed in, which decides a window's start (as a node decides its
         ``after``): the type of the run's first floating-point field."""
@@ -554,6 +560,7 @@ class RunResult:
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
                  *([f"STALE: {stale}"] if stale is not None else []),
+                 *([f"STALENESS UNKNOWN: {self.stale_unknown}"] if self.stale_unknown is not None else []),
                  *([f"STOPPED, {self.stopped.reason}: {self.steps} of the {self.stopped.steps_asked} steps asked "
                     f"for"] if self.stopped is not None else []),
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
@@ -571,7 +578,8 @@ class RunResult:
     def __repr__(self) -> str:
         stale = self.stale
         return (f"<RunResult {self.layout.experiment}: {self.steps} steps, {len(self.observations)} observations, "
-                f"{len(self.recorded)} series recorded" + (f"; STALE, {stale}" if stale is not None else "") + ">")
+                f"{len(self.recorded)} series recorded" + (f"; STALE, {stale}" if stale is not None else "") +
+                ("; staleness unknown (pickled)" if self.stale_unknown is not None else "") + ">")
 
     @classmethod
     @public

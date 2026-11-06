@@ -13,9 +13,10 @@ refusal lists each, with the cell or line that declared it (``exp.remove``'s own
 way, says the document), and the call that removes it. Nothing is taken out with the thing: it is the reader's to
 remove, or to change.
 
-**Recorded like a replacement** (``mime.experiment._redeclared``): a note, raised before anything changes, and kept on
-the experiment (``removed``), which ``plan()`` and the build report show whatever the warnings filter. The saved form
-holds what was left.
+**Recorded, not warned about.** A removal is the reader's own call, unlike a replacement, which happens without their
+asking and so warns (``mime.experiment._redeclared``): it gives a note, kept on the experiment (``removed``), which
+``plan()`` and the build report show. Raising no warning, it is made under ``-W error`` too. The saved form holds what
+was left.
 
 Removing and declaring again under the name is how a thing's kind is changed (a body that becomes an apparatus), which a
 second declaration of a name of another kind never does."""
@@ -34,7 +35,6 @@ from mime.experiment._redeclared import (
     named_by,
     known_as,
 )
-from mime.errors._frames import warn_at_script
 from mime.things import did_you_mean
 
 #: The kinds ``kind=`` names, with the key ``known_as`` gives the declaration of each.
@@ -136,7 +136,6 @@ def remove(held: list[Declaration], target: str | None, kind: str | None, place_
             why="a removal takes nothing else with it: what names it would be left with no one to resolve it")])
     note = (f"exp.remove(...) removes {noun}" + (f" ({len(found.places)} declarations)" if len(found.places) > 1
                                                       else "") + "; nothing else names it")
-    warn_at_script(note, UserWarning)  # before the change: a warning raised as an error leaves the experiment as it was
     for index in reversed(found.places):
         del held[index]
     removed.append(note)

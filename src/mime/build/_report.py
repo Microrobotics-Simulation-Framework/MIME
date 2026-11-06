@@ -128,8 +128,8 @@ class BuildReport:
     #: Each declaration that replaced an earlier one in this session (a notebook's cell run again) with what followed
     #: it: the note the warning gave, which a warnings filter removes. The saved form holds the final declarations only.
     replaced: tuple[str, ...] = ()
-    #: Each declaration removed in this session (``exp.remove``) with what, if anything, still named it: the note the
-    #: warning gave. The saved form holds what was left.
+    #: Each declaration removed in this session (``exp.remove``) with what, if anything, still named it: the note
+    #: ``remove`` gave (it raises no warning). The saved form holds what was left.
     removed: tuple[str, ...] = ()
     #: Set on a built experiment's report once the experiment has had a replacement or a removal since the build: what
     #: changed, and what to do. Never part of the saved form or the report's summary for a client.

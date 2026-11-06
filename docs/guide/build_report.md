@@ -153,8 +153,8 @@ The saved experiment holds the final declarations only ([reading errors](../read
 ## `removed`
 
 Each declaration removed in this session (`exp.remove(...)`), as a note: what was removed, and that nothing else named it
-(a removal is refused while something does). Like `replaced`, it is kept on the experiment (`plan().removed` holds the
-same lines) because the warning that says so can be removed by a warnings filter. It is empty for an experiment nothing
+(a removal is refused while something does). Unlike a replacement, a removal raises no warning (it is your own call);
+the experiment keeps the note (`plan().removed` holds the same lines). It is empty for an experiment nothing
 was removed from. The saved experiment holds what was left ([reading errors](../reading_errors.md#taking-a-declaration-out)).
 
 ## `stale`

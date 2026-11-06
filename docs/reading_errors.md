@@ -135,9 +135,9 @@ path), or the controller (`exp.remove(kind="controller")`, which has no name). `
   written under its id and the controller; an observation by the controller's reads. The refusal lists each, with the
   cell and its line, or the file and line, that made it, and the call that removes it. Nothing is removed with the
   thing: remove or change each first.
-- **Recorded as a replacement is.** A warning says what was removed, and the removal is kept on the experiment whatever
-  the warnings filter (`plan().removed`, the build report under "removed in this session"). The saved experiment holds
-  what was left.
+- **Recorded, with no warning.** A removal is your own call, unlike a replacement, which happens without your asking:
+  it raises no warning (so `-W error` does not forbid it), and the experiment keeps what was removed (`plan().removed`,
+  the build report under "removed in this session"). The saved experiment holds what was left.
 - **Changing a thing's kind.** A name declared again as another kind is refused (above); remove it (after what names it),
   then declare it again under the same name.
 - A name nothing is declared under is refused with the candidates (`remove.unknown`); a path that is both a value and a
@@ -156,7 +156,10 @@ predates the replacement of the apparatus 'field'`.
   done it on purpose (to run both, say), so there the call goes ahead and a warning says what changed.
 - **Where it shows.** `built.stale` and the first lines of `built.report.text()`; a result's `stale`, `repr` and
   `text()`; a view's `stale` and its page, whether made by `RunWritten.view` or `viz.display` of a run folder `run_to`
-  wrote in this process. A run folder read back from disk, and one written by `mime run`, has no session to compare with.
+  wrote in this process, or of a file inside it (`viz.web` writes the same line into the page's notes). A run folder read
+  back from disk, one written by `mime run` and a copy of a folder have no session to compare with, and are shown with
+  no mark, which is not a statement that they are current. A result sent back from a worker process (pickled) says
+  "staleness unknown" in `text()` and `repr`: it is neither stale nor fresh.
 - **What is stale.** A change recorded after the build, with the declarations now different from the ones it was built
   from: a replacement put back is not stale, and neither is a declaration only added. A fresh build clears it.
 - The marks live on the objects in the session. The run folder, its report's summary and the saved experiment are not

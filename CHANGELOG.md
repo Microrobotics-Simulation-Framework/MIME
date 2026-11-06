@@ -50,8 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`exp.remove(name or handle)`** takes a declaration out, in a script and in a notebook: a thing, a law (by the id
   `attach` returned), an observation, a declared value, a source, or the controller (`exp.remove(kind="controller")`).
   It is refused while another declaration still names it (`remove.named`), listing each with the cell or line that made
-  it and the call that removes it; nothing is removed with it. A removal is recorded as a replacement is
-  (`plan().removed`, the build report's "removed in this session"), whatever the warnings filter. Removing and declaring
+  it and the call that removes it; nothing is removed with it. A removal is recorded
+  (`plan().removed`, the build report's "removed in this session") and raises no warning, being your own call
+  (a replacement warns, because it happens without your asking). Removing and declaring
   again under the same name is how a thing's kind changes.
 - **A build, a result and a view that predate a replacement or a removal say so.** `built.stale`, `result.stale` and the
   view's `stale` name what changed since (`this build predates the replacement of the apparatus 'field'`). Running
@@ -59,7 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`run.stale`, action: build the experiment again) and warned about in a script; the build report's first lines, a
   result shown (`repr`, `text()`) and a view (`viz.display` of a run folder `run_to` wrote, `RunWritten.view`) carry the
   same line. A fresh build clears it; a change put back, or a declaration only added, is not stale. The run folder and
-  the report's summary written into it are not changed.
+  the report's summary written into it are not changed. A file inside the run folder and `viz.web` carry the mark too; a copy of the folder, which no session knows, is shown
+  with no mark. A result pickled (sent back from a worker process) keeps no link to the experiment: it still pickles and
+  deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
 

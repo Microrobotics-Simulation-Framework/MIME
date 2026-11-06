@@ -79,7 +79,8 @@ of the same asset at the same prim again is kept once by the scene.
 
 `remove` (`_removed.py`) takes a thing, a law, an observation, a declared value, a source or the controller out, refused
 while another declaration names it (`remove.named`, listing each with the cell or line that made it: the experiment keeps
-where it was declared), and recorded like a replacement (`plan().removed`, the build report). A build, the result of its
+where it was declared), and recorded (`plan().removed`, the build report) with no warning: it is the reader's own call, and is made under `-W error`
+too. A build, the result of its
 run and the view of that run remember the declarations they came from (`mime._lineage`); after a replacement or a removal
 the build is refused in a notebook or IPython (`run.stale`) and warned about in a script, and its report, a result shown
 and a view shown say what changed. The saved form is unchanged.

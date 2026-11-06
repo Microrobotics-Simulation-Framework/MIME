@@ -22,18 +22,29 @@ that ignores what names the thing, one that is silent."""
 from __future__ import annotations
 
 import builtins
+import copy
 import inspect
+import os
+import pickle
 import re
+import subprocess
+import sys
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 from control_cases import Watcher, spun_magnet
-from test_rebind import apparatus, declarations, experiment, noted
+from script_a import REASON
+from test_rebind import apparatus, body, declarations, experiment, noted
 
 import mime._lineage as lineage
+import mime._notebook as notebook_module
+import mime.viz._web as viz_web
+import mime.experiment._experiment as experiment_module
 import mime.experiment._redeclared as redeclared
 import mime.experiment._removed as removed
 from mime import Experiment
@@ -42,7 +53,7 @@ from mime.build import BuildRefused, Refusal
 from mime.errors import MimeError
 from mime.observations import SwimSpeed
 from mime.scene import Y
-from mime.units import mm, ms
+from mime.units import kg_m2, mm, ms
 
 
 @pytest.fixture
@@ -128,8 +139,9 @@ CASES = {
 
 
 def removal_problems(case: str, *, filter: str = "always") -> list[str]:
-    """The removal of ``case``: one declaration fewer, the one note (``exp.remove(...) removes ...; nothing else names
-    it``), and the plan and the report hold it whatever the warnings filter."""
+    """The removal of ``case``: one declaration fewer, no warning (a removal is the reader's own call), the one note
+    (``exp.remove(...) removes ...; nothing else names it``), and the plan and the report hold it whatever the warnings
+    filter."""
     make, noun = CASES[case]
     made = experiment()
     exp, remove = make(made)
@@ -141,8 +153,8 @@ def removal_problems(case: str, *, filter: str = "always") -> list[str]:
     if len(declarations(exp)) != count - 1:
         problems.append(f"{len(declarations(exp))} declarations held, not {count - 1}")
     expected = f"exp.remove(...) removes {noun}; nothing else names it"
-    if filter == "always" and [str(note.message) for note in caught] != [expected]:
-        problems.append(f"the warning is {[str(note.message) for note in caught]}, not {[expected]}")
+    if [str(note.message) for note in caught]:
+        problems.append(f"the removal warned: {[str(note.message) for note in caught]}")
     try:
         recorded = exp.plan().removed
     except BuildRefused as refused:  # the value removed is one the build needs: the refused report carries the note
@@ -185,15 +197,28 @@ def test_the_controller_is_removed_by_kind_and_a_second_removal_is_refused(place
     assert refusal_of(lambda: exp.remove(kind="controller")).code == "remove.unknown"
 
 
-def test_a_removal_whose_warning_is_raised_as_an_error_leaves_the_experiment_as_it_was(place):
+def test_a_removal_is_made_and_recorded_under_a_filter_that_raises_warnings_as_errors(place):
+    """A removal is the reader's own call and raises no warning, so ``-W error`` (or pytest's ``filterwarnings = error``)
+    does not forbid it, as it forbids a replacement's."""
+    assert removal_problems("a thing", filter="error") == []
     made = experiment()
     spare(made)
-    count = len(declarations(made.exp))
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        with pytest.raises(UserWarning, match="removes the apparatus 'spare'"):
-            made.exp.remove("spare")
-    assert len(declarations(made.exp)) == count and made.exp.plan().removed == ()
+        made.exp.remove("spare")
+    assert made.exp.plan().removed == ("exp.remove(...) removes the apparatus 'spare'; nothing else names it",)
+
+
+def test_control_a_removal_that_warns_fails_the_check_every_run(monkeypatch):
+    real = removed.remove
+
+    def warning_remove(*arguments: Any) -> tuple[str, str]:
+        noun, note = real(*arguments)
+        warnings.warn(note, UserWarning)
+        return noun, note
+
+    monkeypatch.setattr(experiment_module, "remove_declaration", warning_remove)
+    assert removal_problems("a thing", filter="always")
 
 
 def test_the_saved_form_holds_what_was_left_and_equals_an_experiment_declared_without_it(place):
@@ -615,9 +640,9 @@ def test_every_declaration_under_a_name_goes_with_it_in_a_script():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         made.exp.remove("spare")
-    assert len(declarations(made.exp)) == count - 2
-    assert [str(note.message) for note in caught] == ["exp.remove(...) removes the apparatus 'spare' (2 declarations); "
-                                                      "nothing else names it"]
+    assert len(declarations(made.exp)) == count - 2 and not caught
+    assert made.exp.plan().removed == ("exp.remove(...) removes the apparatus 'spare' (2 declarations); nothing else "
+                                       "names it",)
 
 
 def test_a_stale_build_is_refused_for_a_live_session_and_a_save_in_a_notebook_and_warned_about_in_a_script(place, tmp_path):
@@ -653,3 +678,254 @@ def test_a_build_names_only_the_changes_made_after_it(notebook):
         made.exp.remove("gravity:robot")
     assert built.stale is not None and "the removal of the law gravity:robot" in built.stale \
         and "replacement" not in built.stale
+
+
+# -- the fix round: a value or a held object alone keeps a thing, the cell's number, a result that travels, every view -----
+
+def a_spare_body(made: Any) -> None:
+    made.exp.add_body(body(name="spare"))
+
+
+def value_alone_problems() -> list[str]:
+    """No law, observation or controller names ``spare``: only ``spare.inertia`` does, and the removal is refused for it."""
+    made = experiment()
+    a_spare_body(made)
+    made.exp.declare("spare.inertia", kg_m2((1.03e-10,) * 3), reason=REASON)
+    count = len(declarations(made.exp))
+    try:
+        made.exp.remove("spare")
+    except MimeError as refused:
+        (refusal,) = getattr(refused, "refusals")
+    else:
+        return ["the body was removed while a value declared of it remained"]
+    problems = [] if refusal.code == "remove.named" else [f"the code is {refusal.code}"]
+    if "the value spare.inertia" not in refusal.message or "1 declaration still names it" not in refusal.message:
+        problems.append(f"the refusal does not list the value alone: {refusal.message}")
+    if len(declarations(made.exp)) != count or vars(made.exp)["_removed"]:
+        problems.append("the refused removal changed the experiment")
+    return problems
+
+
+def held_object_problems() -> list[str]:
+    """Nothing names ``spare`` but the controller, which holds the body object: the removal is refused for it."""
+    from control_cases import Ticker
+
+    made = experiment()
+    spare_body = body(name="spare")
+    made.exp.add_body(spare_body)
+    made.exp.set_controller(Ticker(), reads={"pose": spare_body}, writes={"angle": "field.frequency"}, mode="callback",
+                            rate=ms(3))
+    count = len(declarations(made.exp))
+    try:
+        made.exp.remove("spare")
+    except MimeError as refused:
+        (refusal,) = getattr(refused, "refusals")
+    else:
+        return ["the body was removed while the controller held it"]
+    problems = [] if refusal.code == "remove.named" else [f"the code is {refusal.code}"]
+    if "the controller" not in refusal.message or "1 declaration still names it" not in refusal.message:
+        problems.append(f"the refusal does not list the controller alone: {refusal.message}")
+    if len(declarations(made.exp)) != count:
+        problems.append("the refused removal changed the experiment")
+    return problems
+
+
+def test_a_value_declared_of_a_thing_alone_keeps_it_from_being_removed(place):
+    assert value_alone_problems() == []
+
+
+def test_a_body_the_controller_holds_as_an_object_alone_keeps_it_from_being_removed(place):
+    assert held_object_problems() == []
+
+
+def test_control_a_removal_blind_to_declared_values_fails_the_value_check_every_run(place, monkeypatch):
+    real = removed.referrers
+    monkeypatch.setattr(removed, "referrers", lambda held, found: [
+        index for index in real(held, found) if type(held[index]).__name__ != "ValueDeclaration"])
+    assert value_alone_problems()
+
+
+def test_control_a_removal_blind_to_what_holds_the_object_fails_the_held_object_check_every_run(place, monkeypatch):
+    """The controller holds the object and nothing else names it; a ``referrers`` that finds none lets the body go. (Both
+    ways ``referrers`` finds the controller, by the body's name inside the object and by the object itself, give the same
+    answer for a thing: the name is a field of every thing, so one mutant of the second alone is equivalent.)"""
+    monkeypatch.setattr(removed, "referrers", lambda held, found: [])
+    assert held_object_problems()
+
+
+class FakeShell:
+    """What IPython hands ``get_ipython()``: ``user_ns["In"]`` holds an empty entry 0 and one per cell run so far (this
+    cell's included), and ``execution_count`` is the number of the *next* cell inside a running cell in ipykernel 7.4.0 and
+    IPython's terminal [measured by the review, a real kernel], this cell's in older IPython (Colab's)."""
+
+    def __init__(self, cell: int, count: int, history: bool = True) -> None:
+        self.execution_count = count
+        self.user_ns: dict[str, object] = {"In": [""] + [f"cell {n}" for n in range(1, cell + 1)]} if history else {}
+
+
+def cell_refusal_message(shell: FakeShell, filename: str, monkeypatch: pytest.MonkeyPatch) -> str:
+    monkeypatch.setattr(builtins, "get_ipython", lambda: shell, raising=False)
+    made = experiment()
+    exec(compile("\nmade.exp.source('tube.inner_radius', reason='a datasheet')\n", filename, "exec"), {"made": made})
+    return refusal_of(lambda: made.exp.remove("tube")).message
+
+
+KERNEL_FILE = "/tmp/ipykernel_4242/1234567.py"  # ipykernel 7 names a cell's code by a hash: no number in it
+
+
+@pytest.mark.parametrize("count", [4, 5], ids=["a count that is this cell's (older IPython)",
+                                                 "a count one ahead (ipykernel 7.4.0, the terminal)"])
+def test_the_cell_named_is_the_cell_run_whether_the_count_reads_this_cell_or_the_next(count, monkeypatch):
+    assert "(cell [4], line 2)" in cell_refusal_message(FakeShell(cell=4, count=count), KERNEL_FILE, monkeypatch)
+
+
+def test_the_cell_number_falls_back_to_the_one_in_an_older_file_name_and_never_to_the_count(monkeypatch):
+    message = cell_refusal_message(FakeShell(cell=4, count=5, history=False), "<ipython-input-4-0abc>", monkeypatch)
+    assert "(cell [4], line 2)" in message
+    message = cell_refusal_message(FakeShell(cell=4, count=5, history=False), KERNEL_FILE, monkeypatch)
+    assert "cell [" not in message and KERNEL_FILE in message  # no number to be had: the file and its line
+
+
+def test_control_a_cell_number_read_from_the_count_names_the_neighbour_every_run(monkeypatch):
+    monkeypatch.setattr(notebook_module, "cell_number", lambda shell, filename: shell.execution_count)
+    assert "(cell [4], line 2)" not in cell_refusal_message(FakeShell(cell=4, count=5), KERNEL_FILE, monkeypatch)
+
+
+# -- a result that travels: pickled, copied, sent to another process ---------------------------------------------------
+
+def travel_problems(made: Any) -> list[str]:
+    """A result of a build pickles and deep-copies; a pickled one says its staleness is unknown, never stale or fresh by
+    accident; a deep copy keeps the link and is stale with the original when the experiment changes."""
+    result = made.exp.build().run(ms(2))
+    problems: list[str] = []
+    try:
+        sent = pickle.loads(pickle.dumps(result))
+        copied = copy.deepcopy(result)
+    except Exception as error:  # the closure over the experiment, planted back, fails here
+        return [f"a result does not pickle or deep-copy: {type(error).__name__}: {error}"]
+    if sent.steps != result.steps or sent.text().splitlines()[0] != result.text().splitlines()[0]:
+        problems.append("the pickled result is not the result")
+    if sent.stale is not None or sent.stale_unknown is None or "STALENESS UNKNOWN" not in sent.text() \
+            or "staleness unknown" not in repr(sent):
+        problems.append("a pickled result does not say its staleness is unknown")
+    if result.stale_unknown is not None or copied.stale_unknown is not None:
+        problems.append("a result in the process that made it, or its copy, says its staleness is unknown")
+    edit_the_field(made)
+    if result.stale is None or copied.stale is None:
+        problems.append(f"after a replacement the result is {result.stale!r} and its deep copy {copied.stale!r}")
+    if sent.stale is not None or sent.stale_unknown is None:
+        problems.append("a pickled result became stale or fresh when the experiment changed")
+    return problems
+
+
+def test_a_result_pickles_and_deep_copies_and_a_pickled_one_says_its_staleness_is_unknown(notebook):
+    assert travel_problems(experiment()) == []
+
+
+def test_a_result_does_not_keep_its_experiment_alive(notebook):
+    import gc
+    import weakref
+
+    made = experiment()
+    result = made.exp.build().run(ms(2))
+    alive = weakref.ref(made.exp)
+    del made
+    gc.collect()
+    assert alive() is None and result.stale is None  # an experiment that is gone cannot have changed
+
+
+def test_control_an_origin_that_closes_over_the_experiment_fails_the_travel_check_every_run(notebook, monkeypatch):
+    """The closure planted back: an origin without the one that does not travel, holding ``lambda: exp._declarations``."""
+    made = experiment()
+
+    @dataclass(frozen=True)
+    class Closed(lineage.Origin):
+        __reduce__ = object.__reduce__
+        __deepcopy__ = None  # type: ignore[assignment]
+
+    monkeypatch.setattr(experiment_module, "Origin", lambda changes, seen, state, current: Closed(
+        changes, seen, state, lambda: made.exp._declarations))  # type: ignore[arg-type]
+    problems = travel_problems(made)
+    assert problems and problems[0].startswith("a result does not pickle or deep-copy")
+
+
+def test_a_result_pickled_in_one_process_and_read_in_another_says_its_staleness_is_unknown(notebook, tmp_path):
+    made = experiment()
+    result = made.exp.build().run(ms(2))
+    (tmp_path / "sent.pkl").write_bytes(pickle.dumps(result))
+    child = ("import pickle, sys\n"
+             "from pathlib import Path\n"
+             "result = pickle.loads(Path(sys.argv[1]).read_bytes())\n"
+             "assert result.stale is None and result.stale_unknown is not None, 'known in a process with no session'\n"
+             "assert 'STALENESS UNKNOWN' in result.text()\n"
+             "Path(sys.argv[2]).write_bytes(pickle.dumps(result))\n")
+    done = subprocess.run([sys.executable, "-I", "-c", child, str(tmp_path / "sent.pkl"), str(tmp_path / "back.pkl")],
+                          env={**os.environ, "JAX_PLATFORMS": "cpu"}, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr[-2000:]
+    back = pickle.loads((tmp_path / "back.pkl").read_bytes())
+    edit_the_field(made)
+    assert back.stale is None and back.stale_unknown is not None and result.stale is not None
+
+
+# -- the mark reaches every view of a stale run in the process ---------------------------------------------------------
+
+def view_marks_problems(place: str, out: Path) -> list[str]:
+    """A run folder written in this process, then a change: the folder, a file inside it and a page written by ``web`` carry
+    the mark; a copy of the folder, which no session knows, carries none."""
+    from mime.viz import display, web
+
+    edit, _ = EDITS[place]
+    made = experiment()
+    written = made.exp.build().run_to(out / "run", ms(2), stage_every=ms(1))
+    assert written.recording is not None
+    shown = display(written.record_file.parent, offline=False)
+    problems: list[str] = []
+    if shown.stale is not None:
+        problems.append("a view of an unchanged run is marked")
+    edit(made)
+    for label, target in (("the folder", written.record_file.parent), ("a file inside it", written.recording)):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            page = display(target, offline=False)
+        if page.stale is None or "STALE" not in page._repr_html_() or "STALE" not in page.html:
+            problems.append(f"the view of {label} is not marked")
+        if not [note for note in caught if "this view predates" in str(note.message)]:
+            problems.append(f"the view of {label} raised no warning")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        page_file, _ = web(written.record_file.parent, out / "page.html", cdn=True)
+    if "STALE" not in page_file.read_text(encoding="utf-8") \
+            or not [note for note in caught if "this view predates" in str(note.message)]:
+        problems.append("the page `web` wrote is not marked")
+    import shutil
+
+    shutil.copytree(written.record_file.parent, out / "copy")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        copied = display(out / "copy", offline=False)
+    if copied.stale is not None or "STALE" in copied.html or [n for n in caught if "predates" in str(n.message)]:
+        problems.append("a copy of the folder, which no session knows, is marked")
+    return problems
+
+
+def test_every_view_of_a_stale_run_in_the_process_is_marked_and_a_copy_of_its_folder_is_shown_with_no_mark(place, tmp_path):
+    assert view_marks_problems(place, tmp_path) == []
+
+
+def test_control_a_folder_found_only_by_its_exact_path_fails_the_view_check_every_run(place, tmp_path, monkeypatch):
+    monkeypatch.setattr(viz_web, "origin_of_folder", lambda target: lineage._FOLDERS.get(Path(target).resolve()))
+    assert view_marks_problems(place, tmp_path)
+
+
+def test_a_file_inside_a_run_folder_nested_in_another_runs_is_not_marked_by_the_outer_one(tmp_path):
+    outer = tmp_path / "outer"
+    inner = outer / "inner"
+    inner.mkdir(parents=True)
+    (inner / "run.json").write_text("{}", encoding="utf-8")
+    origin = lineage.Origin([], 0, (), None)
+    lineage.remember_folder(outer, origin)
+    try:
+        assert lineage.origin_of_folder(outer / "recording.usdc") is origin
+        assert lineage.origin_of_folder(inner / "recording.usdc") is None
+    finally:
+        lineage.remember_folder(outer, None)

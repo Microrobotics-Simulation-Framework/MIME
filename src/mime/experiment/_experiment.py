@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import weakref
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
@@ -274,7 +275,7 @@ class Experiment:
     observations, values, sources, the controller, a medium's ``fills``), and the warning names each; so is a law or an
     observation that a source or the controller names. A name declared again as another kind, or held as an object and
     not a name, is kept beside the new one, and the build refuses the two, saying a line or cell has probably run
-    twice. :meth:`remove` takes a declaration out, and is recorded likewise (``plan().removed``). A build made before a
+    twice. :meth:`remove` takes a declaration out, and is recorded (``plan().removed``) with no warning. A build made before a
     replacement or a removal is stale (:attr:`BuiltExperiment.stale`): refused in a notebook, warned about in a script.
     """
 
@@ -299,6 +300,11 @@ class Experiment:
         self._sites: dict[int, str] = {}
         self._saved: SavedForm | None = None
         self.load_report: LoadReport | None = None
+
+    def _declared_now(self) -> list[Declaration]:
+        """The declarations held now: what an origin compares its own with (through a weak reference to this method, so
+        that a result never keeps the experiment alive)."""
+        return self._declarations
 
     @classmethod
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
@@ -333,8 +339,8 @@ class Experiment:
         It is refused while another declaration still names what it removes (a thing is named by its laws, its
         observations, its values and sources, a medium that fills it, the controller; a law or an observation by the
         sources written under its id and the controller): the refusal lists each, with the cell or line that
-        declared it. Nothing is removed with it. A removal is recorded as a replacement is, whatever the warnings
-        filter: ``plan().removed`` and the build report. Removing and declaring again under the same name is how a
+        declared it. Nothing is removed with it. A removal is recorded (``plan().removed`` and the build report) and
+        raises no warning: it is your own call, and is made under ``-W error`` too. Removing and declaring again under the same name is how a
         thing's kind is changed (``exp.add_body`` after ``exp.remove``)."""
         written = cast(object, target)  # a script is not type-checked
         if written is not None and not isinstance(written, (Handle, ObservationHandle, TypedPath, str)):
@@ -540,7 +546,7 @@ class Experiment:
                 stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
                           for writer in writers}
             load_report = check_load(self._saved, record, stages)
-        origin = Origin(self._changes, len(self._changes), tuple(self._declarations), lambda: self._declarations)
+        origin = Origin(self._changes, len(self._changes), tuple(self._declarations), weakref.WeakMethod(self._declared_now))
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law,
                                origin=origin)
 
