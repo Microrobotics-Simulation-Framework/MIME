@@ -83,7 +83,7 @@ refusal table's (`mime/build/refusal_table.txt`).
   name, the input hash its lock records, the MIME version that saved it, and the DOI of the record its lock names,
   where it names one; the immediate one alone. It is part of the hashed input: a record edited after its lock was
   written is refused as `load.input-hash`, as any edit is. The new experiment's lock is its own and names no record;
-  the folder it was made from is never written. A reader of the sixth form (0.3.0.dev1's) refuses a folder of the
+  the folder it was made from is never written. A reader of the sixth form (that of 0.3.0.dev1) refuses a folder of the
   seventh as `load.newer-form`.
   *Cases:* `tests/saved/test_based_on.py::test_saving_writes_a_new_folder_whose_document_records_the_parent_and_whose_lock_is_its_own`,
   `tests/saved/test_based_on.py::test_the_record_names_the_parents_doi_where_its_lock_names_the_record_it_was_published_as`,

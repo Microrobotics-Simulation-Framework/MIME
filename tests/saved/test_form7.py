@@ -2,7 +2,7 @@
 made from one, inside the document and input hashes. A document of version 6 reads under the current form as it was;
 one of version 6 that holds ``based_on`` is refused, never read as declaring it. The committed folders of either form
 hold the hashes their documents make: saving again under form 7 moves the ``document`` and ``input`` hashes (the
-document names its form), never ``derived`` or ``observations``. A reader of version 6, 0.3.0.dev1's, refuses a folder
+document names its form), never ``derived`` or ``observations``. A reader of version 6, that of 0.3.0.dev1, refuses a folder
 of version 7 as ``load.newer-form``, the document and the lock each once, rather than reading a key it does not know.
 
 **The controls.** An upgrade planted to accept ``based_on`` in an earlier document reads it, and the refusal test
@@ -116,7 +116,7 @@ def test_control_an_upgrade_that_accepts_based_on_in_an_earlier_document_is_caug
     assert caught == RUNS
 
 
-# --- 0.3.0.dev1's reader -------------------------------------------------------------------------------------------------
+# --- the reader of 0.3.0.dev1 -------------------------------------------------------------------------------------------------
 
 
 @contextmanager
