@@ -1,0 +1,31 @@
+experiment script_a  (profile exploratory)
+  structures
+    tube  tube 0.1.0
+      regions lumen, wall
+      surfaces inner_surface
+      directions axis
+  media
+    water  fills tube.lumen
+      still, no flow dynamics
+  bodies
+    umr  rigid_inertial 0.3.0
+      part shell  screw 0.3.0
+  apparatus
+    field
+      field magnetic  uniform_rotating 0.1.0
+      drive amplitude  drive.constant 0.1.0
+      drive frequency  drive.constant 0.1.0
+  laws
+    contact:umr  contact 0.1.0, rung projection
+      between body umr, surface tube.inner_surface
+    drag:umr  drag 0.4.0, rung surrogate
+      between body umr, medium water
+    gravity:umr  gravity 0.1.0
+      between body umr, medium water
+    magnetic.torque:umr  magnetic.torque 0.2.0
+      between body umr, field field.magnetic
+  observations
+    swim_speed:umr  swim_speed 0.1.0
+      reads body umr
+      gives distance, mean_speed, observed, speed
+  controller: none

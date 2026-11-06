@@ -1,0 +1,19 @@
+flowchart LR
+    n0["field.magnetic<br/>uniform_rotating 0.1.0<br/>UniformRotatingNode"]
+    n1["drag:umr<br/>drag 0.4.0 (rung surrogate)<br/>SurrogateDragNode"]
+    n2["gravity:umr<br/>gravity 0.1.0<br/>GravityNode"]
+    n3["magnetic.torque:umr<br/>magnetic.torque 0.2.0<br/>MagneticTorqueNode"]
+    n4["umr<br/>rigid_inertial 0.3.0<br/>RigidInertialMidpointNode"]
+    n5["swim_speed:umr<br/>swim_speed 0.1.0<br/>SwimSpeedNode"]
+    n6["drive:field.amplitude<br/>drive.constant 0.1.0<br/>ConstantNode"]
+    n7["drive:field.frequency<br/>drive.constant 0.1.0<br/>ConstantNode"]
+    n6 -->|"value→amplitude"| n0
+    n7 -->|"value→frequency"| n0
+    n4 -->|"pose→pose"| n1
+    n0 -->|"flux_density_magnetic_torque_umr→flux_density"| n3
+    n4 -->|"pose→pose"| n3
+    n2 -->|"wrench→applied_wrench (additive)"| n4
+    n3 -->|"wrench→applied_wrench (additive)"| n4
+    n1 -->|"background_load→background_load (additive)"| n4
+    n1 -->|"resistance→resistance (additive)"| n4
+    n4 -->|"twist→twist"| n5
