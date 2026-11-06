@@ -10,7 +10,6 @@ are listed with the command to install them.
 from __future__ import annotations
 
 import importlib.metadata
-import json
 import os
 import re
 import shlex
@@ -19,10 +18,11 @@ import zipfile
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
 from mime import assets
+from mime._lock_json import lock_data
 from mime._said import DONE, PLAN_LINE, STOPPED, Said
 from mime._shell import quoted
 from mime._terminal import plain
@@ -486,8 +486,9 @@ _LOCK_LIMIT_BYTES = 16_000_000
 
 
 def _input_hash_of(lock_text: str | bytes) -> str | None:
+    """The input hash a lock's text records, read by the one reader of a lock, or ``None``."""
     try:
-        found = json.loads(lock_text)["hashes"]["input"]
+        found = cast(Any, lock_data(lock_text))["hashes"]["input"]
     except (ValueError, KeyError, TypeError):
         return None
     return found if isinstance(found, str) else None
