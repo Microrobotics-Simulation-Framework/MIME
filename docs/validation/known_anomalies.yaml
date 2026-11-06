@@ -2581,3 +2581,166 @@ anomalies:
       not built.
     workaround: "Use magnetic.torque 0.2.0 and magnetic.force 0.2.0 (Magnetic.Torque(), Magnetic.Force()); with 0.1.0, declare magnet_centre at the centre of mass where the lever is negligible, or keep l |G| / |B| small"
     planned_resolution: "Done in dev2's phase P0: magnetic.torque 0.2.0 and magnetic.force 0.2.0 read B and G at the magnet's centroid (x + R l), so the pair is the derivative of U = -m . B(x + R l); 0.1.0 stays registered. The oracle is the magnetic family's closed-loop case (no net work round closed loops of the pose in a drawn point dipole's field, within the loop's quadrature error plus its rounding floor), and its control is 0.1.0, built through its registered entries, which fails it on every draw with a lever in float64 but the geometry that leaves it exactly no work, and in float32 on all but the few draws below its resolution"
+
+  - anomaly_id: MIME-ANO-138
+    title: "In float32 the first build of the screw in a process held the cap samples in float64 and every later build the same samples rounded to float32, so one program took two answers"
+    description: >
+      The screw's cap patches are sampled from a layout of rings (mime.scene._caps.cap_rings) that the process caches,
+      three numpy arrays (the rings' fraction, angle and share) handed to every caller as the same objects. The MRS
+      node makes the held part of its resistance once per build, in float64 whatever the run's precision (with a wall,
+      the free part's matrix), from the screw's samples converted with x64 on. In float32, the first build in a process
+      converted those arrays with x64 on before any step had been traced, and held the float64 samples. The step is
+      traced with x64 off, and after that trace a conversion of the same arrays with x64 on, in a later build, came back
+      as float32 values: the cap points were 2.0e-7 of themselves from the first build's and the cap weights 3.5e-7, so
+      the held matrix of every later build was made from samples rounded to float32. The two matrices are both valid
+      discretisations of the same body; the first is the one the code means. A float32 solve carries 1e-7 in the matrix
+      to about 1e-5 in the resistance, so the same program built twice in one process differs between its first build
+      and the rest from step 0. In float64 there is nothing to round and the builds are the same.
+
+      The mechanism, as far as it was measured (at MIME's level): jnp.asarray with x64 on returned float32 for the same
+      ndarray object the traced step had used under x64 off; a copy of it, jax.device_put of it, or jax.clear_caches()
+      each gave float64; the cached arrays themselves are unchanged (bytes, dtype, read-only flag). It was not reduced
+      to a case without MIME (the builder's and the review's variants all stayed float64), so it is not attributed to
+      JAX in general.
+
+      Measured (examples/screw_in_tube.py as written: FL-9 on the axis of the tube in glycerol, 1 Hz, 5 mT, the MRS drag
+      with the tube's wall kind, dt 100 ms, 3 s; three fresh processes, three builds each, every history array compared
+      byte for byte): in float32, 11 of 28 arrays differ between the first build and the second, first at step 0, the same
+      11 and the same sizes in all three processes: the drag's resistance by at most 2.07e-5 (its first entry is 1.878
+      N s/m), its asymmetry by 4.7e-8 at step 0, its least eigenvalue by 6.6e-7, the distance swum by 2.9e-11 m; the
+      second and third builds are identical in every array. In float64 none differ, in three of three processes. Each
+      of these changed alone, with the layout handed out as before, left the first build's difference as it was: a
+      trivial jitted call before the first build; the tube's table compiled for the run's dtype before it; the
+      compilation cache cold and then warm in a second process; one BLAS thread. The held matrix's inputs (the samples)
+      differ between the first and later builds and nothing else does: the table's leaves, the viscosity, the blob and
+      the placement are the same bytes in every build. With the cached layout cleared before each build, or handed out
+      as copies, every build holds the first build's matrix. The cylinder, whose caps take the same layout
+      (mime.scene._solids), was exposed too: a cylinder in the same tube, three builds in a fresh float32 process, 9 of
+      28 history arrays differed before the fix (the resistance by 7.75e-6) and none after.
+
+      What the user meets. In a script, the process's first build is run, the experiment is saved, and that run is
+      compared with the reference the save wrote (the reference is made on a later build): in float32 with the layout
+      as it was, the comparison reports the run moved, on the drag's resistance (by 2.5e-5, first at step 0) and on
+      every quantity downstream of it (asymmetry, least eigenvalue, wall gap, the torque, the swim speed, the pose and
+      twist); built.verify() on the same object is clean. With the fix both are clean (the last two tests below).
+
+      What it does not do: it does not make mime verify report a difference. Experiment.save and BuiltExperiment.verify
+      each run the reference on a graph constructed afresh from an already-built experiment, so each is a later build
+      (read: Experiment._fresh_history), and Experiment.load builds once before the user's .build(), so a loaded
+      folder's build is never a process's first build (measured, legacy layout, float32 fresh process: the held matrix
+      of Experiment.load(folder).build() is the later builds' 739c87ab4635, a script's own first build 7901d110c69a).
+      The four arrangements first run for this entry, in float32 in fresh processes (saved from a second build and
+      verified by a load in a fresh process; saved from a first build and verified after a discarded build; and two
+      same-kind controls), all reproduced the 8 steps bit for bit; they were described as mixing first and later
+      builds, and by the above each was a later build against a later build, which is the reason they agree. That
+      mime verify is unaffected stands, for that reason.
+
+      Severity: minor. The resistance differs by about 1.1e-5 relative (2.07e-5 on 1.878), about 90 float32 epsilons,
+      from inputs that differ by 2 to 3 epsilons (2.0e-7 and 3.5e-7), amplified by the solve's conditioning (about 90
+      times). It stays minor because both held matrices are valid discretisations of the same body, the difference is
+      three orders under the rung's discretisation error (a few per cent), and the distance swum differs by 2.9e-11 m
+      in 3 s: a reproducibility defect, not an accuracy one. It bounds nothing about the rung's accuracy; what it breaks
+      is the claim that one program builds to one answer.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      No physical result is wrong: the held matrix of a later build is made from samples rounded to float32 (1e-7 of
+      themselves), where the first build's are in float64. What is lost is the build's reproducibility in a process: a
+      comparison of two runs of one program at bit level, in float32, depends on how many builds the process had made.
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1, <0.3.0.dev2"
+    resolution_version: "0.3.0.dev2"
+    affected_components:
+      - "node: MRSDragNode; the held part of the resistance (held_in_body_frame), built from the screw's cap samples"
+      - "entry: geometry screw 0.1.0; the cap patches' layout (cap_rings)"
+    verification:
+      - "tests/oracles/test_mrs_builds_alike.py::test_three_builds_hold_the_same_matrix_in_float32[screw]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_three_builds_hold_the_same_matrix_in_float32[cylinder]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest[screw]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest[cylinder]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_the_first_build_of_a_process_run_agrees_with_the_reference_it_saves"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_first_build_run_with_the_layout_as_one_cached_array_moves_the_resistance_from_step_0"
+    residual_risk: >
+      What is measured: the screw on the tube's axis at 2 mm in the tests (a fresh process each) and at 0.7 mm by hand,
+      and a cylinder in the same tube, on one machine and one JAX (0.12.0.1). What is not: the mechanism inside JAX,
+      beyond the statement above; it was not reduced to a case without MIME.
+
+      The same exposure class (a numpy array the process keeps and hands to both a float64 precompute and a float32
+      traced step) was checked in src/mime by reading, not by a proof that nothing else is exposed. The module-level
+      numpy arrays are _HERMITE and _LINEAR (core/tables/_compile.py), ODD_IN_ANGLE and ODD_ALONG
+      (nodes/hydro/mrs/_tube.py), CANONICAL (surrogates/generator.py) and _ENTRY_AT, _IN_LOWER_TRIANGLE and
+      _ON_DIAGONAL (surrogates/_cholesky_mlp.py); the cached functions are cap_rings (this entry) and tube_table_from
+      (a Table of float64 arrays that the held matrix's precompute and the step both read), the others returning
+      records, bytes, floats or a manifest. Read: every constant above holds small integers or booleans, which are the
+      same in float32 and float64, so a stale float32 conversion of one would change no value. Measured, after the fix,
+      in a fresh float32 process, three builds, every history array compared byte for byte: the screw in the tube 0 of
+      28 differ, script A (the surrogate drag, so the MLP's constants) 0 of 19, the sphere settling in the tube (the
+      table and its parity constants) 0 of 27, tutorial A0 0 of 29, a cylinder in the tube 0 of 28 (9 before the
+      fix); the control arm, the same probe with the cap layout handed out as it was, shows 9 of 28 differ for the
+      screw. No other array was exposed on those programs, so nothing else was changed. Not done: every jnp.asarray of
+      a reused numpy object in src/mime, or any program the five above do not run.
+    workaround: "Run in float64, or build the experiment once more before the run that is compared (the second build on)"
+    planned_resolution: "Done: cap_rings hands every caller its own copies of the cached layout's arrays, so no conversion of them is shared between builds"
+
+  - anomaly_id: MIME-ANO-139
+    title: "The uniform rotating field's phase is the present frequency times the time since the start, not the integral of the frequency, so a frequency changed during a run turns the field at the wrong rate and jumps its angle"
+    description: >
+      UniformRotating 0.1.0 (node UniformRotatingNode) makes the field's angle at step n as 2 pi f_n t_n, the frequency
+      commanded at that step times the time since the start (t_n = n dt), not as 2 pi times the integral of the frequency
+      over the run. The node's own assumptions say so ("the phase is the present frequency times the time since the
+      start, not the integral of a frequency that changes"); nothing in the build or the run refuses or flags a frequency
+      that changes. For a frequency that does not change the two are the same: 2 pi f t. For one that does, the field
+      turns at 2 pi (f + t df/dt) instead of 2 pi f. A linear ramp from zero (f = k t) turns the field at 2 pi (2 k t),
+      twice the commanded rate and twice the commanded angle at every time (arithmetic). A step from f1 to f2 at t_s
+      turns the field at the commanded rate before and after, since the rate d/dt (2 pi f t) is 2 pi f where f is constant,
+      but moves its angle by 2 pi (f2 - f1) t_s in the step that makes the change, a jump the field does not make at any
+      rate, and keeps that offset from the integral for the rest of the run: of 0.8 of a turn for f1 = 1 Hz, f2 = 2 Hz,
+      t_s = 0.8 s.
+
+      Measured through the built graph, in float32 (tests below): a controller written for the purpose commands the
+      field's frequency each step; the field's direction is read from the recorded flux density. With a constant 1 Hz the
+      angle is 2 pi f t to float32's rounding (the control). With a ramp of 2 Hz per second over 1 s, the angle is
+      2 pi f(t) t to the same rounding and 2.00 (within 0.5 %) of 2 pi times the sum of the commanded frequency over the
+      steps (the integral): 2 turns where 1 was commanded. With a step from 1 to 2 Hz at 0.8 s (the 800th step) the angle
+      matches the integral before the step and matches it plus 2 pi (f2 - f1) (799 dt) = 0.799 turn after it, to the same
+      rounding; the rates before and after are 1.0000 and 2.0000 Hz.
+
+      Who it touches (read from the declarations and the tree on the development branch): only a frequency that
+      changes in a run. The shipped drive is the constant (drives.Constant), the only drive entry; script A, the
+      screw in a tube and tutorial A's notebook declare a constant (10 Hz, 1 Hz and the notebook's one number, changed
+      between runs); a live session's `set` changes only a live input a controller
+      declares, and the one shipped controller, ArmTracking, writes a joint position, not a field's frequency. Script A0
+      turns its magnet with a motor, not with this field. So no shipped script or example is affected, and no test experiment
+      other than this entry's own, whose result reads the field's angle, commands a changing frequency (tests/build/test_rebind.py and
+      tests/build/test_notebook_gaps.py wire a test controller's tick count, which changes every step, to
+      field.frequency, but assert on what the controller wrote, not on the field's angle).
+      A controller a user or a lab registers that writes a field's frequency (the command's name is `frequency`) is, as
+      is a drive added later, and any study that sweeps the frequency inside one run (a ramp to find a step-out
+      frequency, for instance). A frequency changed between runs, each run constant, is not.
+
+      Severity: major, by the registry's table ("incorrect results, workaround exists"): the field's angle is wrong by a
+      factor of two for a ramp, with no flag and no refusal; the workaround below removes it.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The field the body is driven by is not the field commanded, with no sign in the run, for any run whose frequency
+      changes; a body that follows the field (a screw, a swimmer near its step-out frequency) is driven at up to twice
+      the commanded rate on a ramp, and a result read as the response to a commanded ramp is the response to another.
+      No shipped experiment commands a changing frequency, so nothing shipped is touched.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: field_provider uniform_rotating 0.1.0"
+      - "node: UniformRotatingNode"
+    verification:
+      - "tests/oracles/test_uniform_rotating_phase.py::test_control_a_constant_frequency_turns_the_field_by_its_integral"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_a_ramp_from_zero_turns_the_field_twice_as_fast_as_commanded"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_a_step_in_frequency_moves_the_fields_angle_by_two_pi_df_t_and_the_offset_stays"
+    residual_risk: >
+      What is measured: the three cases above at one step size (1 ms), in float32, on a graph with a test controller. What
+      is not: a frequency that changes slowly (the error is t df/dt in the rate, so small only where the frequency
+      changes little over the time since the start: a change of 1 % of f at t = 10 turns is a rate error of 1 % of f
+      times 10 turns, which is not small), and a drive or controller of a lab that changes the frequency in a way not
+      tried here. The node reports nothing of it.
+    workaround: "Command a constant frequency in each run (drives.Constant, or a controller that writes one value), and change the frequency between runs"
+    planned_resolution: "An integrating version of the field (UniformRotating 0.2.0), in step with S2b of dev2, pending the maintainer's decision: its phase is a state the node advances by 2 pi f dt each step, so a change of frequency changes the rate and not the angle. 0.1.0 stays registered. Options for a guard on 0.1.0, which are the maintainer's call and are not taken here: (1) a refusal at the build when a controller writes the field's frequency; (2) a flag raised at a step where the commanded frequency differs from the previous step's; (3) a warning at the build naming the assumption; (4) none, the assumption as the node states it. The tests above flip on the integrating version: the ramp's ratio reads 1 and the step's offset zero"

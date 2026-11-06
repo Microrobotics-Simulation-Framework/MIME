@@ -6,8 +6,9 @@ case fails here.
 The controls: removing any case is caught, naming its entry; an interaction registered without one is caught; and a
 law planted with one defect fails its family's case for it: gravity with its weight reversed fails the sign case, a
 projection that keeps the outward velocity fails the contact sign case, even at a speed whose square float32 cannot
-hold, and a projection that pushes the body 70 nm too far fails the contact oracle. The magnetic family's control (a
-sign flip) is in ``tests/oracles/test_laws.py``, the hydrodynamic family's in ``test_hydrodynamic_family.py``.
+hold, and a projection that pushes the body a micrometre too far fails the contact oracle. The magnetic family's
+control (a sign flip) is in ``tests/oracles/test_laws.py``, the hydrodynamic family's in
+``test_hydrodynamic_family.py``.
 """
 
 from dataclasses import dataclass
@@ -223,15 +224,19 @@ def test_the_contact_sign_case_floors_its_rounding_at_the_smallest_normal_number
 
 
 def test_a_projection_to_the_wrong_radius_fails_the_contact_oracle():
-    """A closed form whose margin is off by 70 nanometres is told apart in every run. Each field has its own rounding
+    """A closed form whose margin is off by a micrometre is told apart in every run. Each field has its own rounding
     floor, and each part of a composite its own (a pose's position apart from its quaternion), so a confined position
     is judged on the rounding of metres, about a tenth of a micrometre in float32 on a generic draw, where in 4b the
     whole state's floor (about 15 micrometres, from the quaternion) let a micrometre pass in about one run in eight.
-    Measured over independent runs of this oracle case before choosing it: 70 nm caught in 210 of 210 runs, 50 nm in 58
-    of 60, 30 nm in 6 of 10, 10 nm in none of 10; so 70 nm is the smallest planted error the oracle resolves in every
-    run, and the control sits there."""
+
+    The control sits well above what the oracle resolves. Measured over independent runs of this oracle case, float32,
+    each run a fresh set of draws: a margin 1 um off was caught in 220 of 220 runs and in 40 of 40 in a second set; a
+    margin 70 nm off, which this test planted before, in 220 of 220 and 40 of 40 as well, yet one CI run missed it (job
+    127414267313, head 882f9a2), so a rate measured over hundreds of runs could not show a miss this rare; 20 nm was
+    caught in 2 of 40. The oracle's resolution therefore sits between about 20 and 70 nm: 70 nm was at its edge, not a
+    margin above it, and 1 um is more than ten times above it."""
     def too_far(read, settings):
-        return projected(read, {**settings, "margin": settings["margin"] + 7e-8})
+        return projected(read, {**settings, "margin": settings["margin"] + 1e-6})
 
     (result,) = conformance(Contact.Projection(margin=mm(0.1)), "contact", oracle=too_far,
                             cases=[CaseKind.ORACLE]).values()
