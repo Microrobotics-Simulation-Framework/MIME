@@ -835,6 +835,23 @@ def show_registry(entries: Sequence[tuple[str, str, str, str]], not_loaded: dict
         console.print(_text(f"not loaded: {name} ({reason})"), soft_wrap=True)
 
 
+def show_tree(lines: Sequence[tuple[int, str]], stream: IO[str]) -> None:
+    """``mime show --tree`` on a terminal: the experiment's tree, drawn with guide lines. ``lines`` are the
+    ``(depth, text)`` lines the plain output indents, the first the experiment at depth 0, each section's heading at depth
+    1 (set in bold, which only sets it apart: the words are the same), so the drawing holds exactly the words of the plain
+    text."""
+    from rich.tree import Tree
+
+    console = _console_of(stream)
+    (_, head), *rest = lines
+    root = Tree(_text(head, "bold"), guide_style="dim")
+    held = [root]
+    for depth, text in rest:
+        del held[depth:]
+        held.append(held[-1].add(_text(text, "bold" if depth == 1 else "")))
+    console.print(root, soft_wrap=True)
+
+
 def show_assets(rows: Sequence[tuple[str, str, str, str, str]], stream: IO[str]) -> None:
     """``mime assets list`` on a terminal: a row for each asset with its name, size, whether it is cached, its licence and
     its tier. ``rows`` are the plain output's lines, taken apart."""

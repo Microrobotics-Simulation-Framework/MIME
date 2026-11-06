@@ -56,6 +56,14 @@ convention when not given; `declare(path, value)` with no reason, a pending decl
 a setting's source apart from its value. The report's `pending()` lists what is pending with the lines to paste, and a
 run's result carries the profile's stamp.
 
+`exp.tree()` (`_tree.py`), the experiment's topology from its declarations alone, with no build: its things by name, its laws
+and observations by id, each with its registered id and version and what it binds, the controller with its reads and writes;
+`str(tree)` is plain indented text and `tree.record()` the same as data (the `mime.tree` format), the text written from the record.
+`built.to_mermaid()` (`_mermaid.py`), the compiled graph as MADDENING's `to_mermaid` with the registered entry added under
+each node's name; a `Mermaid`, a `str` that a notebook shows as a diagram where its front end draws a Mermaid fence. Both are
+the same for the same experiment whatever the order of the calls that declared it, and `mime show` prints them
+([the guide](../../../docs/guide/graph_and_tree.md)).
+
 `built.live(...)`, a live session (`mime.live`); `built.binding()`, the stage binding,
 which field of the state moves which prim; `built.topology()`, the built graph in MIME's names, written as
 `topology.json` beside a run's outputs; and `run_to(..., hook=, chunk=, stage_every=)`, a saved run that streams and

@@ -9,6 +9,16 @@
   does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report and the
   verdict, and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the load or the build is refused.
   Ctrl+C ends it (130), the second press at once.
+- `mime show <folder> [--tree] [--graph] [--json]`: what a saved experiment is made of, without running it. `--tree` (the
+  default) is its topology as declared, read from the document alone (nothing is built): structures, media and what each
+  fills, bodies and their parts, apparatus with their chain, parts, fields and drives, each law with the things it binds,
+  observations with what they read, the controller with its reads and writes, each line with the entry's id and version;
+  drawn as a tree on a terminal, plain indented text when piped or under `--plain`, `NO_COLOR` or `TERM=dumb`, and
+  `--json` the same as data (the `mime.tree` format). `--graph` builds the experiment as `mime pending` does and prints the
+  MADDENING graph it compiles to as Mermaid text; with both flags the tree comes first and a blank line separates them,
+  and `--json` is the tree's, so `--json --graph` is refused. `<folder>` may be the document (`experiment.mime.yaml`).
+  Exits zero, or two when the load or the build is refused. The same views are `Experiment.tree()` and
+  `BuiltExperiment.to_mermaid()` (see [`mime.experiment`](../experiment/README.md)).
 - `mime cache clear`: delete the XLA compilation cache that `mime run` and `mime serve` keep in the user's cache
   directory, and say how much it held (see [the compilation cache](../../../docs/compilation_cache.md)). `mime run` and
   `mime serve` use it by default, prune its oldest entries at their start once it passes its cap, and take

@@ -39,3 +39,4 @@ tube.inner_surface       # a typed path in a family's rig: the tube's inner surf
 tube.lumen               # a typed path in a family's rig: the tube's lumen
 water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
+google.colab  # the package Colab's kernel loads, which tells Colab from other notebooks

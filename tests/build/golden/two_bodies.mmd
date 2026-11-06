@@ -1,0 +1,36 @@
+flowchart LR
+    n0["rig.pull<br/>toy.field 0.1.0<br/>ToyFieldNode"]
+    n1["rig.push<br/>toy.field 0.1.0<br/>ToyFieldNode"]
+    n2["toy.drag:zed<br/>toy.drag 0.2.0 (rung quadratic)<br/>ToyDragNode"]
+    n3["toy.hold:abe<br/>toy.hold 0.1.0<br/>ToyHoldNode"]
+    n4["toy.hold:zed<br/>toy.hold 0.1.0<br/>ToyHoldNode"]
+    n5["toy.spring:abe<br/>toy.spring 0.1.0<br/>ToySpringNode"]
+    n6["bath.flow<br/>toy.relaxation 0.1.0<br/>ToyMediumNode"]
+    n7["oil.flow<br/>toy.relaxation 0.1.0<br/>ToyMediumNode"]
+    n8["abe<br/>toy.body 0.1.0<br/>ToyBodyNode"]
+    n9["zed<br/>toy.body 0.1.0<br/>ToyBodyNode"]
+    n10["rig.zeta<br/>motor 0.2.0 (rung kinematic)<br/>KinematicMotorNode"]
+    n11["rig.alpha<br/>motor 0.2.0 (rung kinematic)<br/>KinematicMotorNode"]
+    n12["toy.recorder:abe<br/>toy.recorder 0.1.0<br/>ToyRecorderNode"]
+    n13["toy.recorder:zed<br/>toy.recorder 0.1.0<br/>ToyRecorderNode"]
+    n14["drive:rig.alpha.velocity<br/>drive.constant 0.1.0<br/>ConstantNode"]
+    n15["drive:rig.zeta.velocity<br/>drive.constant 0.1.0<br/>ConstantNode"]
+    n8 -->|"x→points_toy_hold_abe"| n0
+    n9 -->|"x→points_toy_hold_zed"| n1
+    n9 -->|"v→v"| n2
+    n0 -->|"push_toy_hold_abe→push"| n3
+    n1 -->|"push_toy_hold_zed→push"| n4
+    n8 -->|"x→x"| n5
+    n9 -->|"x→pos_zed"| n6
+    n8 -->|"x→pos_abe"| n7
+    n3 -->|"hold_z→hold_z"| n8
+    n7 -->|"force_abe→load (additive)"| n8
+    n5 -->|"load→load (additive)"| n8
+    n4 -->|"hold_z→hold_z"| n9
+    n6 -->|"force_zed→load (additive)"| n9
+    n2 -->|"load→load (additive)"| n9
+    n15 -->|"value→velocity"| n10
+    n10 -->|"frame_poses→mount_poses"| n11
+    n14 -->|"value→velocity"| n11
+    n8 -->|"x→position"| n12
+    n9 -->|"x→position"| n13
