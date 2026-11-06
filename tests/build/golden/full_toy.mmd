@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph g0["coupling group bath.flow+probe+toy.lift:probe"]
+        n4["toy.lift:probe<br/>toy.lift 0.1.0<br/>ToyLiftNode"]
+        n5["bath.flow<br/>toy.relaxation 0.1.0<br/>ToyMediumNode"]
+        n6["probe<br/>toy.body 0.1.0<br/>ToyBodyNode"]
+    end
+    n0["source.push<br/>toy.field 0.1.0<br/>ToyFieldNode"]
+    n1["toy.drag:probe<br/>toy.drag 0.2.0 (rung quadratic)<br/>ToyDragNode"]
+    n2["toy.hold:probe<br/>toy.hold 0.1.0<br/>ToyHoldNode"]
+    n3["toy.spring:probe<br/>toy.spring 0.1.0<br/>ToySpringNode"]
+    n7["toy.recorder:probe<br/>toy.recorder 0.1.0<br/>ToyRecorderNode"]
+    n6 -->|"x→points_toy_hold_probe"| n0
+    n6 -->|"v→v"| n1
+    n0 -->|"push_toy_hold_probe→push"| n2
+    n6 -->|"x→x"| n3
+    n5 -->|"u→u"| n4
+    n6 -->|"x→pos_probe"| n5
+    n2 -->|"hold_z→hold_z"| n6
+    n5 -->|"force_probe→load (additive)"| n6
+    n1 -->|"load→load (additive)"| n6
+    n4 -->|"load→load (additive)"| n6
+    n3 -->|"load→load (additive)"| n6
+    n6 -->|"x→position"| n7

@@ -53,8 +53,10 @@ from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_mode
 from mime.build._maddening import FlagTally, FlagTest
 from mime.errors import public
 from mime.errors._frames import warn_at_script
+from mime.experiment._mermaid import Mermaid, mermaid_of
 from mime.experiment._redeclared import add as add_declaration, known_as
 from mime.experiment._removed import remove as remove_declaration
+from mime.experiment._tree import Tree, tree_of
 from mime._lineage import Change, Origin, remember_folder
 from mime._notebook import in_notebook, where_called
 from mime.registry import ControlLaw, Controller, Interaction, Observation, OutputKind
@@ -299,6 +301,9 @@ class Experiment:
         #: ``remove`` names when something still holds a name.
         self._sites: dict[int, str] = {}
         self._saved: SavedForm | None = None
+        #: Whether :meth:`load` has checked this experiment against its lock: a later build that differs from the lock
+        #: is an edit made after the load.
+        self._load_checked = False
         self.load_report: LoadReport | None = None
 
     def _declared_now(self) -> list[Declaration]:
@@ -508,6 +513,17 @@ class Experiment:
         return replace(plans, replaced=tuple(self._replaced), removed=tuple(self._removed))
 
     @public
+    def tree(self) -> Tree:
+        """What this experiment declares, as a tree: its structures, media and what each fills, bodies and their
+        parts, apparatus with their fields and drives, each law with the things it binds, each observation with what it
+        reads, and the controller with its reads and writes, each with its registered id and version. Nothing is built or
+        checked, so it shows an experiment that would be refused too. It is the topology: what is made of what and what binds
+        what, not the declared values (a mass, a viscosity), the settings of an entry, the run's settings or the scene.
+        ``str(tree)`` is plain indented text, ``tree.record()`` the same as data. The same tree whatever the order of
+        the calls that declared it."""
+        return tree_of(self._settings, self._declarations)
+
+    @public
     def document(self) -> ExperimentDocument:
         """What this experiment declares, as its saved document. Raises ``UnsavableError`` for a setting the
         document cannot hold."""
@@ -545,7 +561,7 @@ class Experiment:
             with keeping_pins(self._saved):
                 stages = {writer: stage if writer == STAGE_WRITER else stage_text(stage_spec(plans, writer=writer))
                           for writer in writers}
-            load_report = check_load(self._saved, record, stages)
+            load_report = check_load(self._saved, record, stages, edited_after_load=self._load_checked)
         origin = Origin(self._changes, len(self._changes), tuple(self._declarations), weakref.WeakMethod(self._declared_now))
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law,
                                origin=origin)
@@ -571,7 +587,8 @@ class Experiment:
     @public
     def load(cls, folder: str | PathLike[str]) -> Experiment:
         """The experiment saved in ``folder``, rebuilt and checked against its lock. Reads the document and runs no
-        code it names; resolves every entry among installed packages and installs nothing, refusing a missing one
+        code it names; first refuses a folder another development release saved (``load.other-release``), which needs
+        only the lock; resolves every entry among installed packages and installs nothing, refusing a missing one
         or another version with the line to install; then makes the three load checks, whose outcome is
         :attr:`load_report`. Raises ``LoadRefused`` with every reason: a folder that is not there names the saved
         experiments beside it."""
@@ -581,9 +598,16 @@ class Experiment:
 
             raise LoadRefused(missing_folder(Path(folder)).refusals)
         form = read_folder(Path(folder))
+        from mime.saved import _folder
+
+        # First: the refusal needs only the lock, and a folder another release saved may no longer resolve or build.
+        other_release = _folder.other_release_refusal(form)
+        if other_release is not None:
+            raise _folder.LoadRefused([other_release])
         experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder)))
         experiment._saved = form
         experiment.load_report = experiment.build().load_report
+        experiment._load_checked = True
         return experiment
 
 
@@ -892,6 +916,15 @@ class BuiltExperiment:
     @public
     def snapshot(self) -> str:
         return graph_text(self._graph, self._report.lags)
+
+    @public
+    def to_mermaid(self, *, direction: str = "LR") -> Mermaid:
+        """The compiled graph as a Mermaid flowchart: every node, edge, coupling group and external input, each node
+        labelled with its name and the registered entry (and version) that built it. It is MADDENING's ``to_mermaid`` with
+        MIME's names added; ``direction`` is MADDENING's (``LR``, ``RL``, ``TB`` or ``BT``). A ``str`` that a notebook
+        also shows as a diagram where its front end draws Mermaid. The same text for the same experiment, whatever the
+        order of the calls that declared it."""
+        return mermaid_of(self._graph, self.report, direction=direction)
 
     @property
     def stage_text(self) -> str:

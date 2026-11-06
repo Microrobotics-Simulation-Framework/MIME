@@ -42,8 +42,9 @@ from beside the document.
 Its invariants are held by Hypothesis stateful tests over random scripts of its calls
 (`tests/saved/test_experiment_states.py`): a build succeeds or refuses with reasons, `load(save(x))` keeps the
 derived hash, and a refused build leaves the experiment as it was. A loaded experiment checks every build against
-its lock, so once changed it is refused (`load.input-hash`) and cannot be saved again: what a loaded experiment that
-is edited should become is open.
+its lock, so once changed it is refused (`load.input-hash`, "edited after it was loaded") and cannot be built or saved: the actions
+that work are to load the folder again or to make the edit in the script that built it; what a loaded experiment that
+is edited should become (`Experiment.based_on`) is open.
 
 `run(duration, record=[...], every=...)` and `run_to(..., record=, every=)` return and write a
 `RunResult`, read by each observation's declared outputs, and `run_to` writes `outputs.json` beside `outputs.npz`.
@@ -55,6 +56,14 @@ result is read by.
 convention when not given; `declare(path, value)` with no reason, a pending declaration; and `source(path, reason=...)`,
 a setting's source apart from its value. The report's `pending()` lists what is pending with the lines to paste, and a
 run's result carries the profile's stamp.
+
+`exp.tree()` (`_tree.py`), the experiment's topology from its declarations alone, with no build: its things by name, its laws
+and observations by id, each with its registered id and version and what it binds, the controller with its reads and writes;
+`str(tree)` is plain indented text and `tree.record()` the same as data (the `mime.tree` format), the text written from the record.
+`built.to_mermaid()` (`_mermaid.py`), the compiled graph as MADDENING's `to_mermaid` with the registered entry added under
+each node's name; a `Mermaid`, a `str` that a notebook shows as a diagram where its front end draws a Mermaid fence. Both are
+the same for the same experiment whatever the order of the calls that declared it, and `mime show` prints them
+([the guide](../../../docs/guide/graph_and_tree.md)).
 
 `built.live(...)`, a live session (`mime.live`); `built.binding()`, the stage binding,
 which field of the state moves which prim; `built.topology()`, the built graph in MIME's names, written as

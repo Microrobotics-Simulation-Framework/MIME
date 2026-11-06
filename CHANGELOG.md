@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The experiment's tree and its compiled graph, shown without running it** (`docs/guide/graph_and_tree.md`).
+  `experiment.tree()` is what the experiment declares (structures, media and what each fills, bodies and their parts,
+  apparatus with their chain, parts, fields and drives, each law with the things it binds, observations with what they
+  read, the controller with its reads and writes), each with its registered id and version: plain indented text
+  (`str(tree)`) or data (`tree.record()`, `mime.tree/1`); it is the topology, not the declared values, settings or run
+  settings. `built.to_mermaid()` is MADDENING's `to_mermaid` of the
+  compiled graph with the registered entry added to each node, and a notebook shows it as a diagram where its front end
+  draws a Mermaid fence (JupyterLab 4.1 and after and Notebook 7 do, measured; 4.0 shows the text with a pointer to a
+  renderer; VS Code was not measured). Colab does not draw a fence (measured), so there it is `text/html` that draws it with
+  Mermaid 11.17.2 from jsDelivr, held to its `integrity` hash; `to_mermaid().display(offline=True)` loads nothing. `mime show <folder>` prints the tree (`--tree`, the default, drawn as a
+  tree on a terminal, plain text piped, `--json` as data) or the graph (`--graph`), or both. Either is the same for the
+  same experiment whatever the order its script declared things in.
+
 - **Colab notebooks** (`docs/notebooks/`), linked first in the README: a steel ball settling in a tube of water, and
   de Jongh's screw-shaped magnetic robot driven along a tube by a rotating field (tutorial A's experiment). Written
   for a newcomer, step by step in plain words, each installs the released MIME from PyPI, runs its experiment with the
@@ -46,6 +59,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A folder saved by another development release is refused by its own refusal, `load.other-release`.** Development
+  releases (0.3.0.devN) make no compatibility promise, and MIME's version is part of a saved folder's input hash, so
+  `0.3.0.dev1`'s folders are not loaded by `0.3.0.dev2`. Until now the refusal was `load.input-hash`, whose message said
+  the document was changed. The new one names both versions ("saved by MIME 0.3.0.dev1, and this is MIME 0.3.0.dev2"),
+  says that development releases do not load each other's folders, and says what to do: run the script that built the
+  experiment under this MIME and save it again, `built.save(folder)`, or load the folder as it is under the MIME that
+  saved it. A folder unpacked from a published record (`mime pull`) says so and names the record's page.
+  It is the first thing `Experiment.load` does, before any entry resolves, so a folder whose document no longer resolves
+  under this release is still refused for the release that saved it. `load.input-hash` is raised only where the
+  versions agree, for a document changed after its lock was written; one loaded and then edited (a notebook cell run
+  after the load) is refused in words about the edit ("edited after it was loaded"), with the actions that work: load
+  the folder again, or make the same edit in the script that built the experiment and save from there (a loaded,
+  edited experiment can be neither built nor saved; `Experiment.based_on` will be named when it lands). The
+  compatibility policy for later releases is designed before the first users; this is not it, and two final releases
+  (0.3.0 and 0.3.1) still meet `load.input-hash` and its words about a changed document.
 - **`mime verify`, `mime env check` and `mime registry` draw tables on a terminal.** `mime verify` shows its checks as a
   table (the saved form, the input hash, the environment, the derived graph, the rerun and what it was held to, and a
   row for each field compared: "equal, bit for bit" where the comparison was bit for bit, otherwise the tolerance it was

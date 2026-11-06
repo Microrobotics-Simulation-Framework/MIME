@@ -632,14 +632,79 @@ class LoadReport:
         return "\n".join(lines)
 
 
-def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] | None = None) -> LoadReport:
-    """The three load checks, against the rebuilt experiment's ``record``. The input hash must match exactly; the
+def _is_development_release(version: str) -> bool:
+    try:
+        return Version(version).is_devrelease
+    except InvalidVersion:
+        return False
+
+
+def other_release_refusal(form: SavedForm, running: str | None = None) -> Refusal | None:
+    """``load.other-release`` when the MIME that saved ``form`` is another version than the one running and either is
+    a development release, which makes no compatibility promise (design #232): MIME's version is in the input hash, so
+    the hash check would refuse the folder too, and say the document was changed. This is that refusal in its own words,
+    both versions and what to do; a lock that records a publication is a folder unpacked from a published record
+    (``mime pull``), and the refusal says so and names the record's page. ``None`` where the versions agree, or
+    neither is a development release."""
+    saved = form.lock["environment"]["mime"]
+    current = running if running is not None else environment()["mime"]
+    if saved == current or not (_is_development_release(saved) or _is_development_release(current)):
+        return None
+    folder = str(form.folder)
+    publication = form.lock.get("publication")
+    message = (f"the folder {folder} was saved by MIME {saved}, and this is MIME {current}: development releases do "
+               "not load each other's folders (MIME's version is part of a saved experiment's input hash, and a "
+               "development release makes no promise that a saved form reads in the next)")
+    if publication is None:
+        action = (f"run the script that built the experiment under this MIME {current} and save it again, "
+                  f"`built.save({folder!r})`; or load the folder as it is under the MIME that saved it, "
+                  f"`pip install mime-engine=={saved}`")
+    else:
+        from mime.push._service import SERVICES
+
+        service = SERVICES.get(publication["service"])
+        page = f"{service.site}/records/{publication['record']}" if service is not None else \
+            f"the record {publication['record']} of {publication['service']}"
+        message += (f"; it came from `mime pull`, the published record {publication['doi']} (version "
+                    f"{publication['version']})")
+        action = (f"the record's page is {page}: ask its author for a record saved by MIME {current}, or load it as it "
+                  f"is under the MIME that saved it, `pip install mime-engine=={saved}`; with the script that built it, "
+                  f"run the script under this MIME and save it again, `built.save({folder!r})`")
+    return _refuse("load.other-release", RefusalClass.USER, message, action)
+
+
+#: Whether ``Experiment.based_on`` exists (U15). While it does not, a loaded experiment that was edited cannot be built
+#: or saved, and the action names what does work; set this to True when it lands and the action names it instead.
+_BASED_ON_EXISTS = False
+
+
+def _edited_after_load_action(folder: Path) -> str:
+    """What to do with a loaded experiment that was edited: only what works. A loaded experiment is checked against its
+    lock at every build, so the edited one can be neither built nor saved (a save builds first)."""
+    if _BASED_ON_EXISTS:
+        return (f"to keep the edit, start a new experiment from the folder, Experiment.based_on({str(folder)!r}), make "
+                f"the edit there and save it as a new folder; to drop it, load the folder again, "
+                f"Experiment.load({str(folder)!r})")
+    return (f"this experiment cannot be built or saved while it differs from its lock. To drop the edit, load the "
+            f"folder again, Experiment.load({str(folder)!r}). To keep it, make the same edit in the script that built "
+            f"the experiment and save from there, built.save(\"<new folder>\")")
+
+
+def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] | None = None, *,
+               edited_after_load: bool = False) -> LoadReport:
+    """The three load checks, against the rebuilt experiment's ``record``. A folder saved by another development
+    release is refused first, as ``load.other-release`` (:func:`other_release_refusal`), before the hash that would
+    refuse it for the version in it. ``edited_after_load`` is true for an experiment that was loaded and has been
+    built since, where a document that differs is one edited after it was loaded. The input hash must match exactly; the
     environment is compared and reported; the derived graph must match exactly within one environment, and
     otherwise is compared within the lock's tolerance and reported. A stage edited after its lock was written is
     refused, or reported where only its derived prims were edited (:func:`stage_change_refusals`). ``stages`` is the
     stage as each writer the lock's stage may be of (:func:`stage_writers`) rebuilds it; the rebuilt stage must be one
     of them, byte for byte, within one environment, and a stage of a writer this MIME does not have is refused.
     Raises :class:`LoadRefused`."""
+    other_release = other_release_refusal(form)
+    if other_release is not None:
+        raise LoadRefused([other_release])
     lock = form.lock
     stages = dict(stages) if stages else {STAGE_WRITER: record.stage}
     writer = next((held for held, text in sorted(stages.items()) if sha256_hex(text.encode("utf-8")) ==
@@ -669,7 +734,16 @@ def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] |
         detail = "; ".join(found) or "the document itself"
         own = bool(found) and all(line.startswith(f"resolved.{_PROFILE_RECORD}") for line in found) and \
             lock["environment"]["mime"] == environment()["mime"]
-        if edited:
+        if edited and edited_after_load:
+            from mime._notebook import WHERE, in_notebook
+
+            refusals.append(_refuse("load.input-hash", RefusalClass.USER,
+                                    f"this experiment was loaded from {form.folder} and edited after it was loaded, so "
+                                    f"it no longer reproduces the lock it was loaded with: {detail}"
+                                    + (f" ({WHERE}: a line or cell run after the load changed it)"
+                                       if in_notebook() else ""),
+                                    _edited_after_load_action(form.folder)))
+        elif edited:
             refusals.append(_refuse("load.input-hash", RefusalClass.USER,
                                     f"the document was changed after its lock was written: {detail}",
                                     "build the experiment and save it again, built.save(folder), which writes a new "

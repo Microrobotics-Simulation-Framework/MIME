@@ -1,0 +1,26 @@
+experiment full_toy  (profile exploratory)
+  structures: none
+  media
+    bath  (fills nothing declared)
+      flow toy.relaxation 0.1.0
+  bodies
+    probe  toy.body 0.1.0
+  apparatus
+    source
+      field push  toy.field 0.1.0
+  laws
+    toy.couple:probe  toy.couple 0.1.0
+      between body probe, medium bath
+    toy.drag:probe  toy.drag 0.2.0, rung quadratic
+      between body probe
+    toy.hold:probe  toy.hold 0.1.0
+      between body probe, field source.push
+    toy.lift:probe  toy.lift 0.1.0
+      between body probe, medium bath
+    toy.spring:probe  toy.spring 0.1.0
+      between body probe
+  observations
+    toy.recorder:probe  toy.recorder 0.1.0
+      reads body probe
+      gives last, samples
+  controller: none
