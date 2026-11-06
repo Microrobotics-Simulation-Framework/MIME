@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import math
+import os
 import struct
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -275,9 +276,15 @@ def write_mesh(path: Path, mesh: Mesh, name: str) -> Path:
         held.CreateExtentAttr(Vt.Vec3fArray.FromNumpy(np.stack([points.min(axis=0), points.max(axis=0)])))
     stage.SetDefaultPrim(held.GetPrim())
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.unlink(missing_ok=True)
-    if not layer.Export(str(path)):
-        raise OSError(f"usd-core could not write {path}")
+    partial = path.with_name(f".{path.stem}.partial{path.suffix}")
+    partial.unlink(missing_ok=True)
+    try:
+        if not layer.Export(str(partial)):
+            raise OSError(f"usd-core could not write {path}")
+        os.replace(partial, path)
+    except BaseException:
+        partial.unlink(missing_ok=True)  # a write that fails part-way (a full disk) leaves no half-written layer
+        raise
     return path
 
 

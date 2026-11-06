@@ -114,7 +114,7 @@ def test_the_earlier_visual_set_form_is_read_and_its_hand_written_tier_is_not_be
         assert held.file("meshes/a.STL") is not None
 
 
-@pytest.mark.parametrize("change", [{"format": "mime.asset_manifest/2"}, {"format": None}, {"tier": "open"},
+@pytest.mark.parametrize("change", [{"format": "mime.asset_manifest/3"}, {"format": None}, {"tier": "open"},
                                     {"assets": []}, {"files": {"x.STL": {"asset": "nobody"}}}])
 def test_a_manifest_of_another_format_or_shape_is_refused_never_misread(change):
     data = copy.deepcopy(assets.read_manifest(AR4_VISUALS).to_json())

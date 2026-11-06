@@ -18,7 +18,7 @@ from mime import __version__, _import_guard
 from mime._extras import VERIFY_EXTRA_MISSING
 from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
-from mime.assets import AssetRef
+from mime.assets import AssetRef, PlainAsker
 from mime.build import BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
 from mime.cli import _completion, _durations, _guide
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
@@ -30,6 +30,7 @@ from mime.experiment import Experiment
 
 if TYPE_CHECKING:
     from mime._transfers import Transfers
+    from mime.cli._display import SaidDisplay
     from mime.credentials import Token
     from mime.env import EnvReport
     from mime.cli._display import RunDisplay
@@ -171,6 +172,7 @@ def _pending(folder: Path) -> int:
     if profile is None:
         print("no profile: the build was refused before its profile was read", file=sys.stderr)
         return 2
+
     print(for_terminal(profile.text()), end="")
     return 1 if profile.pending else 0
 
@@ -440,6 +442,7 @@ def _visuals(arguments: argparse.Namespace) -> int:
     if arguments.visuals_command == "list":
         baked = {name for name, _ in viz.baked_layers()}
         held_sets = visual_sets()
+
         for name, held in sorted(held_sets.items()):
             print(for_terminal(f"{name}  {len(held.files)} files  {'baked' if name in baked else 'not fetched'}  "
                                f"{held.licence} ({held.verdict.tier}, {held.role})"))
@@ -452,14 +455,17 @@ def _visuals(arguments: argparse.Namespace) -> int:
     if arguments.visuals_command == "fetch":
         manifests = viz.manifests_for(arguments.set)
         for held in manifests:
-            viz.bake(held, say=_say)
+            with _gate_questions():
+                viz.bake(held, say=_say, accept_licences=arguments.accept_licence, yes=arguments.yes,
+                         force=arguments.force)
         names = [held.name for held in manifests]
         print(f"{', '.join(names)}: baked into the asset cache, at {viz.visuals_dir()}; never into a saved or run "
               f"folder")
         return 0
     if arguments.visuals_command == "web":
         return _visuals_web(arguments)
-    path, found = viz.view(arguments.target)
+    with _gate_questions():
+        path, found = viz.view(arguments.target, accept_licences=arguments.accept_licence)
     print(for_terminal(found.text()))
     print(path)
     return 0
@@ -559,7 +565,8 @@ def _assets_named(arguments: Sequence[str]) -> list[AssetRef]:
     return refs
 
 
-def _assets(command: str, arguments: Sequence[str]) -> int:
+def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[str] = (), yes: bool = False,
+            force: bool = False) -> int:
     from mime import assets
 
     refs = _assets_named(arguments) if arguments else list(assets.known().values())
@@ -576,22 +583,39 @@ def _assets(command: str, arguments: Sequence[str]) -> int:
     else:
         if not refs:
             print("nothing to fetch: the folder's lock references no asset")
-        for ref in refs:
-            stored = assets.fetch(ref, report=_say)
-            print(f"{ref.name}: hashed in full, at {stored}")
-        unplaced = [each for argument in arguments if Path(argument).is_dir() for each in _place(Path(argument))]
+        with _gate_questions(), assets.approved(refs, accept_licences=accept_licences, yes=yes, force=force):
+            for ref in refs:
+                stored = assets.fetch(ref, report=_say)
+                print(f"{ref.name}: hashed in full, at {stored}")
+        unplaced = [each for argument in arguments if Path(argument).is_dir()
+                    for each in _place(Path(argument), accept_licences)]
         if unplaced:
             raise BuildRefused(unplaced)
     return 0
 
 
-def _place(folder: Path) -> list[Refusal]:
+def _licences(revoke: str | None) -> int:
+    """``mime assets licences``: the licences accepted on this machine; with ``--revoke <id>``, remove one (1 where none
+    of that id was kept)."""
+    from mime import assets
+
+    if revoke is not None:
+        if assets.revoke(revoke):
+            print(for_terminal(f"{revoke}: no longer accepted; the next download under it asks again"))
+            return 0
+        print(for_terminal(f"{revoke}: no such acceptance is kept (`mime assets licences` lists them)"), file=sys.stderr)
+        return 1
+    print(for_terminal(assets.acceptances_text()))
+    return 0
+
+
+def _place(folder: Path, accept_licences: Sequence[str] = ()) -> list[Refusal]:
     """Put the folder's files that travel as references in place from the cache, saying what it did; an
     ``asset.missing`` for each it could not place, with why."""
     from mime import saved
     from mime.saved._terms import unplaced_refusals
 
-    placed = saved.place_referenced(folder)
+    placed = saved.place_referenced(folder, accept_licences=accept_licences)
     for path in placed.placed:
         print(for_terminal(f"{path}: placed from the asset cache"))
     return unplaced_refusals(folder, placed)
@@ -675,6 +699,47 @@ def _ask(question: str) -> bool:
         return False
 
 
+class _PlainTerminalAsker(PlainAsker):
+    """The download gates' questions where the display draws nothing (``--plain``, ``NO_COLOR``, ``TERM=dumb``, standard
+    output piped) and a person can still answer: the library's plain lines and prompt, and no line saying what the
+    download takes, which is new output a plain command line never had."""
+
+    @override
+    def line(self, text: str) -> None:
+        return None
+
+
+@contextmanager
+def _gate_questions(voice: _Voice | None = None) -> Generator[None]:
+    """Who asks the download gates' questions (``mime.assets``: a licence's conditions, the size of a large download) for
+    this command: the display, on a terminal it draws on (``voice``'s own for ``pull``, so that its blocks keep their
+    order); the library's plain lines where a person can answer but nothing is drawn; and nobody where there is no one to
+    answer, so that the gate refuses and names the flag. The questions and the refusals are the library's; this only
+    chooses the voice."""
+    from mime import assets
+
+    if not assets.can_ask():
+        with assets.asking(None):
+            yield
+        return
+    if voice is not None and voice.display is not None:
+        with assets.asking(voice.display):
+            yield
+        return
+    if styled(sys.stdout):
+        from mime.cli._display import SaidDisplay
+
+        display = SaidDisplay(sys.stdout)
+        try:
+            with assets.asking(display):
+                yield
+        finally:
+            display.close()
+        return
+    with assets.asking(_PlainTerminalAsker()):
+        yield
+
+
 def _controlling_terminal() -> io.TextIOBase | None:
     """The terminal this process answers at (``/dev/tty``), open for writing, or ``None`` where it has none."""
     try:
@@ -744,6 +809,7 @@ class _Voice:
         self.ask: Callable[[str], bool] = _ask
         self.typed: Callable[[str], str] = _typed
         self.progress: Transfers | None = None
+        self.display: SaidDisplay | None = None
         self._open: list[Callable[[], None]] = []
         self._abandoned = False
         transfers = None
@@ -757,6 +823,7 @@ class _Voice:
             from mime.cli._display import SaidDisplay
 
             drawing = SaidDisplay(sys.stdout, transfers)
+            self.display = drawing
             self.say, self.ask, self.typed = self._drawn(drawing.say), drawing.ask, drawing.typed
             self._open.insert(0, drawing.close)
 
@@ -821,15 +888,17 @@ def _pull_source(arguments: argparse.Namespace) -> str | Token:
 
 
 def _pull(source: str | Token, into: Path | None, no_assets: bool, yes: bool, max_bundle_bytes: int,
-          from_service: str | None = None, signed_in: bool = False) -> int:
+          from_service: str | None = None, signed_in: bool = False, force: bool = False,
+          accept_licences: Sequence[str] = ()) -> int:
     from mime import assets, saved
 
     voice = _Voice("downloading")
     try:
-        with assets.watching_downloads(voice.progress) if voice.progress is not None else nullcontext():
+        with (assets.watching_downloads(voice.progress) if voice.progress is not None else nullcontext(),
+              _gate_questions(voice)):
             saved.pull(source, into=into, fetch_assets=not no_assets, yes=yes,
                        confirm=voice.ask if _a_terminal() else None, say=voice.say, max_bundle_bytes=max_bundle_bytes,
-                       from_service=from_service, signed_in=signed_in)
+                       from_service=from_service, signed_in=signed_in, force=force, accept_licences=accept_licences)
     finally:
         voice.close()
     return 0
@@ -1037,6 +1106,22 @@ def _survive_a_narrow_stream() -> None:
             stream.reconfigure(errors="backslashreplace")
 
 
+def _gate_arguments(command: argparse.ArgumentParser, *, yes_help: str | None = None) -> None:
+    """The three options of a command that downloads (``mime.assets``' gates): ``--accept-licence <id>`` to accept the
+    conditions of one licence by name (repeat it for more), ``-y/--yes`` to answer the question asked of a large
+    download, and ``-f/--force`` to download though it would leave the drive almost full. Neither of the last two accepts
+    a licence: no generic option does."""
+    command.add_argument("--accept-licence", action="append", default=[], metavar="ID",
+                         help="accept the conditions of this licence, by its id, without being asked (repeat it for "
+                              "more); the only way to accept one where there is no terminal to ask at")
+    command.add_argument("-y", "--yes", action="store_true",
+                         help=yes_help or "answer yes to the question a large download is asked (over 1 GB, or a "
+                                          "tenth of the free space); it never accepts a licence")
+    command.add_argument("-f", "--force", action="store_true",
+                         help="download though it would leave under 2 GB or 5%% of the drive free; it never accepts "
+                              "a licence")
+
+
 def build_parser() -> _guide.MimeParser:
     """The ``mime`` command's parser: every command, grouped, with its example."""
     parser = _guide.MimeParser(prog="mime", epilog=_ROOT_EXAMPLES,
@@ -1120,7 +1205,12 @@ def build_parser() -> _guide.MimeParser:
     fetch.add_argument("names", nargs="*", metavar="name-or-folder",
                        help="an asset's name, or an experiment folder: exactly the assets its lock references")
     fetch.add_argument("--all", action="store_true", help="every known asset")
+    _gate_arguments(fetch)
     held_commands.add_parser(assets.CHECK, help="re-hash every cached asset in full")
+    licences = held_commands.add_parser(assets.LICENCES, help="the licences you have accepted on this machine "
+                                                              "(downloads under one ask once); --revoke removes one")
+    licences.add_argument("--revoke", metavar="ID", help="forget your acceptance of this licence, so that the next "
+                                                          "download under it asks again")
     sources = held_commands.add_parser(assets.SOURCES, help="each asset's terms, tier and locations, each looked at "
                                                             "now (reachable or not, and why), downloading nothing")
     sources.add_argument("names", nargs="+", metavar="name-or-folder",
@@ -1166,7 +1256,8 @@ def build_parser() -> _guide.MimeParser:
     pull.add_argument("--into", type=Path, help="the new folder (default: ./<the experiment's name>/)")
     pull.add_argument("--no-assets", action="store_true", help="unpack only; fetch the assets later with "
                                                                "`mime assets fetch <folder>`")
-    pull.add_argument("--yes", action="store_true", help="download assets over the size MIME asks about without asking")
+    _gate_arguments(pull, yes_help="download assets over the size MIME asks about without asking (it never accepts a "
+                                    "licence)")
     pull.add_argument("--max-bundle-bytes", type=int, default=assets.RETRIEVE_LIMIT_BYTES, metavar="BYTES",
                       help="the most a bundle may be when nothing states its size (default: "
                            f"{assets.size_text(assets.RETRIEVE_LIMIT_BYTES)})")
@@ -1264,9 +1355,14 @@ def build_parser() -> _guide.MimeParser:
                                help="a description's folder (its visuals.json), a description or manifest file, a "
                                     "saved or run folder (the manifests its lock holds), or a set's name from mime "
                                     "visuals list")
+    _gate_arguments(visuals_fetch)
     visuals_view = visual_commands.add_parser("view", help="the layer that opens a stage, a recording or a folder's "
                                                            "with the baked meshes drawn, for any USD viewer")
     visuals_view.add_argument("target", type=Path, help="a stage or recording file, a run folder or a saved folder")
+    visuals_view.add_argument("--accept-licence", action="append", default=[], metavar="ID",
+                              help="accept the conditions of this licence, by its id, without being asked (repeat it "
+                                   "for more): a baked mesh is drawn only once its licence is accepted, and a mesh "
+                                   "whose licence is not is left out where there is no terminal to ask at")
     visuals_web = visual_commands.add_parser("web", help="one web page of a stage, a recording or a folder's, to "
                                                          "open in a browser or share: the scene, its recording and "
                                                          "the meshes whose terms let them be shared")
@@ -1541,6 +1637,8 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         if arguments.assets_command == assets.SOURCES:
             print(for_terminal("\n".join(assets.sources_text(assets.assets_of(name)) for name in arguments.names)))
             return 0
+        if arguments.assets_command == assets.LICENCES:
+            return _licences(arguments.revoke)
         if arguments.assets_command == assets.AUDIT:
             reports = [assets.audit(target, manifests=arguments.manifest) for target in arguments.targets]
             for report in reports:
@@ -1548,14 +1646,17 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
             return 1 if any(report.findings for report in reports) else 0
         if arguments.assets_command == assets.FETCH and bool(arguments.names) == arguments.all:
             parser.error("fetch takes asset names, or --all")
-        return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else ())
+        return _assets(arguments.assets_command, arguments.names if arguments.assets_command == assets.FETCH else (),
+                       getattr(arguments, "accept_licence", ()), getattr(arguments, "yes", False),
+                       getattr(arguments, "force", False))
     if arguments.command == "pack":
         return _pack(arguments.folder, arguments.out)
     if arguments.command == "card":
         return _card(arguments.folder, arguments.out, arguments.notice)
     if arguments.command == "pull":
         return _pull(_pull_source(arguments), arguments.into, arguments.no_assets, arguments.yes,
-                     arguments.max_bundle_bytes, arguments.from_service, arguments.signed_in)
+                     arguments.max_bundle_bytes, arguments.from_service, arguments.signed_in, arguments.force,
+                     arguments.accept_licence)
     if arguments.command == "credentials":
         return _credentials(arguments.credentials_command, arguments.service)
     if arguments.command == "push":

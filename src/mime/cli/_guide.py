@@ -49,6 +49,7 @@ EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("assets", "check"): "mime assets check",
     ("assets", "sources"): "mime assets sources my_experiment",
     ("assets", "audit"): "mime assets audit dist/mime_engine-0.3.0-py3-none-any.whl",
+    ("assets", "licences"): "mime assets licences --revoke LicenseRef-Annin-Robotics-NonCommercial",
     ("visuals",): "mime visuals list",
     ("visuals", "list"): "mime visuals list",
     ("visuals", "fetch"): "mime visuals fetch examples/descriptions/ar4/",

@@ -32,6 +32,7 @@ from mime._said import DONE, STOPPED, kind_of
 from mime.build import BuildRefused
 from mime.cli import main
 from mime.experiment import Experiment
+from mime.assets import _gates
 from mime.saved import _bundle, _pull, pack, pull
 from mime.testing.toys import full_toy
 
@@ -556,14 +557,14 @@ def test_the_control_a_pull_that_is_whole_still_gets_its_tick(saved_toy: Path, t
 @pytest.fixture
 def large(saved_toy: Path, tmp_path: Path, rig: Rig, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, assets.AssetRef]:
     """A bundle whose one asset is over the (lowered) threshold."""
-    monkeypatch.setattr(_pull, "ASSET_CONFIRM_BYTES", 1000)
+    monkeypatch.setattr(_gates, "CONFIRM_ABOVE_BYTES", 1000)
     monkeypatch.chdir(tmp_path)
     ref = table_reference(rig)
     return with_assets(saved_toy, tmp_path, ref), ref
 
 
-def test_the_threshold_is_a_gigabyte():
-    assert _pull.ASSET_CONFIRM_BYTES == 1_000_000_000
+def test_the_threshold_is_a_gigabyte_or_a_tenth_of_the_free_space():
+    assert (assets.CONFIRM_ABOVE_BYTES, assets.CONFIRM_ABOVE_FRACTION) == (1_000_000_000, 0.10)
 
 
 def test_a_download_over_the_threshold_is_asked_about_and_goes_ahead_when_accepted(large: tuple[Path, assets.AssetRef],
@@ -572,7 +573,7 @@ def test_a_download_over_the_threshold_is_asked_about_and_goes_ahead_when_accept
     asked: list[str] = []
     lines, keywords = said(confirm=lambda question: asked.append(question) or True)
     pull(bundle, into="out", **keywords)  # type: ignore[arg-type]
-    assert asked == ["Download 2 kB of assets now?"] and assets.is_cached(ref)
+    assert asked == ["Download 2.0 kB now?"] and assets.is_cached(ref)
     assert "1 downloaded (2 kB)" in lines[-1]
 
 
@@ -601,15 +602,15 @@ def test_without_a_terminal_and_without_yes_it_stops_with_the_command(large: tup
     lines, keywords = said()
     with pytest.raises(BuildRefused) as stopped:
         pull(bundle, into="out", **keywords)  # type: ignore[arg-type]
-    assert stopped.value.codes() == ["pull.assets-large"]
-    assert "mime assets fetch ./out/" in str(stopped.value) and "2 kB" in str(stopped.value)
+    assert stopped.value.codes() == ["asset.download-large"]
+    assert "--yes" in str(stopped.value) and "2.0 kB" in str(stopped.value)
     assert rig.requests == before and not assets.is_cached(ref)
     assert (Path("out") / "mime.lock").is_file() and "not downloaded" in lines[-1], "the folder and its summary are kept"
 
 
 def test_an_asset_under_the_threshold_is_not_asked_about(saved_toy: Path, tmp_path: Path, rig: Rig,
                                                          monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(_pull, "ASSET_CONFIRM_BYTES", len(TABLE))
+    monkeypatch.setattr(_gates, "CONFIRM_ABOVE_BYTES", len(TABLE))
     monkeypatch.chdir(tmp_path)
     ref = table_reference(rig)
 
@@ -622,7 +623,7 @@ def test_an_asset_under_the_threshold_is_not_asked_about(saved_toy: Path, tmp_pa
 
 def test_a_cached_asset_is_not_counted_in_the_size_asked_about(large: tuple[Path, assets.AssetRef], rig: Rig):
     bundle, ref = large
-    assets.fetch(ref)
+    assets.fetch(ref, yes=True)
 
     def never(question: str) -> bool:
         raise AssertionError("asked about an asset already here")
@@ -651,8 +652,8 @@ def test_the_command_exits_two_on_a_refusal_and_names_the_command_for_a_large_do
     bundle, ref = large
     assert main(["pull", str(bundle), "--into", "out"]) == 2
     captured = capsys.readouterr()
-    assert "pull.assets-large" in captured.err and "mime assets fetch ./out/" in captured.err
-    assert "Bundle 'full_toy' unpacked" in captured.out
+    assert "asset.download-large" in captured.err and "--yes" in captured.err
+    assert "Bundle 'full_toy' unpacked" in captured.out and "mime assets fetch ./out/" in captured.out
     assert main(["pull", str(bundle), "--into", "again", "--yes"]) == 0
     assert assets.is_cached(ref)
 
@@ -667,7 +668,7 @@ def test_the_command_asks_on_a_terminal(large: tuple[Path, assets.AssetRef], cap
 
     monkeypatch.setattr("sys.stdin", Terminal("n\n"))
     assert main(["pull", str(bundle), "--into", "no"]) == 0
-    assert not assets.is_cached(ref) and "Download 2 kB of assets now? [y/N]" in capsys.readouterr().out
+    assert not assets.is_cached(ref) and "Download 2.0 kB now? [y/N]" in capsys.readouterr().out
     monkeypatch.setattr("sys.stdin", Terminal("y\n"))
     assert main(["pull", str(bundle), "--into", "yes"]) == 0
     assert assets.is_cached(ref)

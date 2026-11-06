@@ -94,7 +94,7 @@ def baked_tier(tmp_path: Path, licence: str) -> str:
         if licence.startswith("LicenseRef-"):
             held["licences"] = {licence: {"title": "a maker's", "url": "https://example.org/l",
                                           "redistribution": "not_permitted"}}
-        (baked,) = bake(assets.read_manifest_data(held, "made"), say=lambda line: None)
+        (baked,) = bake(assets.read_manifest_data(held, "made"), say=lambda line: None, accept_licences={licence})
         written = json.loads(baked.layer.with_suffix(".json").read_text(encoding="utf-8"))
         assert written["tier"] == baked.record["tier"]
         findings = assets.audit(baked.layer).findings
