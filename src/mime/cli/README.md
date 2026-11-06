@@ -77,11 +77,15 @@
   description's meshes from the manifest beside it (or the manifests a saved folder's lock holds); `mime visuals
   list` lists the sets installed packages ship and every baked one.
 - `mime visuals web <run folder | saved folder | stage | recording> [--out <file>] [--glb <file>] [--slow-motion
-  <factor>] [--caption <text>] [--cdn] [--open]`: one web page of the scene and its recording, to open in a browser
+  <factor>] [--caption <text>] [--cdn] [--no-scale-bar] [--no-legend] [--no-apparatus-shapes] [--focus <body>]
+  [--follow <body>] [--open]`: one web page of the scene and its recording, to open in a browser
   or share: the GLB inside it and Google's `<model-viewer>` 4.3.1 inlined, so it needs no network (`--cdn` loads the
   viewer from jsDelivr, held to its hash, for a page smaller by the viewer, about a megabyte and a half); only the baked meshes whose tier lets them be shared,
   the others drawn as their frames' simple shapes and said so. `--out` defaults to `<the experiment's name>.html`
   here, and is refused inside a saved or run folder (`visuals.web-out`); `--open` opens it in the default browser.
+  The scale bar, the arrow legend and an apparatus's motor and magnet (drawn for the view alone) are on, each left out
+  by its `--no-` flag; `--focus` and `--follow` name a body to frame at the start and to keep the camera on, and a name
+  the scene does not hold is refused with the nearest (`visuals.unknown-body`).
   See [recordings](../../../docs/recordings.md#a-view-in-the-browser).
 
 - `mime pack <folder> [--out <file>]`: write the saved experiment in the folder as one **bundle** file

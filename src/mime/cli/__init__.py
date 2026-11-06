@@ -460,7 +460,9 @@ def _visuals_web(arguments: argparse.Namespace) -> int:
     from mime import viz
 
     written, result = viz.web(arguments.target, arguments.out, cdn=arguments.cdn, caption=arguments.caption,
-                              slow=arguments.slow_motion, glb=arguments.glb)
+                              slow=arguments.slow_motion, glb=arguments.glb, scale_bar=not arguments.no_scale_bar,
+                              legend=not arguments.no_legend, apparatus_shapes=not arguments.no_apparatus_shapes,
+                              focus=arguments.focus, follow=arguments.follow)
     for line in result.lines():
         print(for_terminal(line))
     size = written.stat().st_size
@@ -1381,6 +1383,20 @@ def build_parser() -> _guide.MimeParser:
     visuals_web.add_argument("--cdn", action="store_true",
                              help="load the viewer from jsDelivr, held to its hash, rather than inline it (1.4 MB "
                                   "smaller; the page then needs the network)")
+    visuals_web.add_argument("--no-scale-bar", action="store_true",
+                             help="leave out the scale bar (a round length in SI units that follows the zoom; on by "
+                                  "default)")
+    visuals_web.add_argument("--no-legend", action="store_true",
+                             help="leave out the arrow legend (what each arrow is, its colour, its scale and its cap; "
+                                  "on by default)")
+    visuals_web.add_argument("--no-apparatus-shapes", action="store_true",
+                             help="leave out the motor and magnet an apparatus's frames stand for, which the view "
+                                  "draws for itself and never writes into the stage (on by default)")
+    visuals_web.add_argument("--focus", default=None, metavar="BODY",
+                             help="frame the named body at the start (off by default; an unknown name is refused "
+                                  "with the nearest)")
+    visuals_web.add_argument("--follow", default=None, metavar="BODY",
+                             help="keep the camera on the named body through the recording (off by default)")
     visuals_web.add_argument("--open", action="store_true", help="open the page in the default browser")
     from mime.live import DEFAULT_COMMANDS, DEFAULT_FRAMES
 

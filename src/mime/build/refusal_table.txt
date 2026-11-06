@@ -419,6 +419,7 @@ verify.nothing-saved          user
 visuals.convert               environment
 visuals.no-stage              user
 visuals.not-shareable         user
+visuals.unknown-body          user
 visuals.unknown-set           user
 visuals.web-out               user
 vocabulary.reserved           user
