@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
 from pathlib import Path
@@ -526,14 +526,18 @@ class Experiment:
 
     @classmethod
     @public
-    def based_on(cls, source: str | PathLike[str], *, name: str) -> Experiment:
+    def based_on(cls, source: str | PathLike[str], *, name: str, accept_licences: Collection[str] = (),
+                 yes: bool = False, force: bool = False) -> Experiment:
         """A new experiment made from a saved one, to change and save as an experiment of its own: it holds the saved
         experiment's declarations under ``name``, with no lock, and saving it writes a new folder with a lock of its
         own. ``source`` is a saved folder, a bundle file, or what ``mime pull`` takes (a DOI, an address): a source that
-        is not a folder is pulled first, as ``mime pull <source>`` pulls it (its assets fetched into the asset cache),
-        into ``./<its name>/``, which must not exist yet, and the experiment is based on that folder. The saved
-        experiment is loaded as :meth:`load` loads it, and refused, with the load's reasons, where it does not load;
-        its folder is read and never written.
+        is not a folder is pulled first, as ``mime pull <source>`` pulls it, into ``./<its name>/``, which must not
+        exist yet, and the experiment is based on that folder. Its assets are fetched into the asset cache through
+        the download gates (:func:`mime.saved.pull`): a licence with conditions beyond credit is asked about where a
+        person can answer, or accepted by name in ``accept_licences``; ``yes`` answers the question a large download
+        asks, and ``force`` overrides the stop of one that would leave the drive almost full; neither accepts a
+        licence. The saved experiment is loaded as :meth:`load` loads it, and refused, with the load's reasons, where
+        it does not load; its folder is read and never written.
 
         A declaration taken from the saved experiment, made again and changed, replaces the one taken, in a script as
         in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), with a warning that names what
@@ -549,7 +553,7 @@ class Experiment:
         from mime.saved._based_on import based_on_of
 
         held = Path(source)
-        parent = cls.load(held if held.is_dir() else _pulled(source))
+        parent = cls.load(held if held.is_dir() else _pulled(source, accept_licences, yes, force))
         assert parent._saved is not None
         settings = replace(parent._settings, experiment=name, based_on=based_on_of(parent._saved))
         experiment = cls._declared(settings, parent._declarations)
@@ -557,13 +561,13 @@ class Experiment:
         return experiment
 
 
-def _pulled(source: str | PathLike[str]) -> Path:
+def _pulled(source: str | PathLike[str], accept_licences: Collection[str], yes: bool, force: bool) -> Path:
     """The folder ``mime pull <source>`` unpacks ``source`` into (``./<its name>/``), for :meth:`Experiment.based_on`:
     a folder there already is refused as pull refuses it, with the call that bases the experiment on it instead."""
     from mime.saved import pull
 
     try:
-        return Path(pull(source))
+        return Path(pull(source, accept_licences=accept_licences, yes=yes, force=force))
     except BuildRefused as refused:
         if "pull.destination" not in refused.codes():
             raise

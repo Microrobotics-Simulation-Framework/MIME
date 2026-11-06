@@ -12,20 +12,22 @@ be redistributed still a reference; the parent's licence is the new experiment's
 identifiers are MIME's own and ``sharing.yaml``'s, with no relation to the parent (that relation is a new kind of
 Zenodo action, rehearsed on the sandbox first)."""
 
+import dataclasses
 import json
 import warnings
 import zipfile
 from pathlib import Path
 
 import pytest
-from assets_rig import Rig
+from assets_rig import Rig, reference
+from bundles import lock_with_assets, write_bundle
 from fake_zenodo import DOI, zenodo
 from folder_state import untouched
 from push_cases import copy_of, with_token, write_sharing
 from terms_cases import NO_REDISTRIBUTION, layered, write_mesh
 from zenodo_records import FakeRecords
 
-from mime import push
+from mime import assets, push
 from mime.build import BuildRefused
 from mime.experiment import Experiment
 from mime.push import _plan
@@ -116,6 +118,36 @@ def test_a_doi_is_pulled_and_its_record_named_by_the_lock_push_packed_is_recorde
                                                "mime": lock_of(saved_toy)["environment"]["mime"], "doi": DOI}
     assert "publication" not in lock_of(work / "child"), "the child is no record yet: its push makes its own"
     assert f"- **Based on full_toy (DOI {DOI})**" in card_text(work / "child").splitlines()
+
+
+def test_a_pulled_sources_assets_pass_the_licence_gate_and_are_accepted_by_name(saved_toy: Path, rig: Rig,
+                                                                               tmp_path: Path,
+                                                                               monkeypatch: pytest.MonkeyPatch):
+    """A bundle whose lock names an asset under a non-commercial licence: with nobody to ask, ``based_on`` is refused
+    as ``pull`` is, naming the licence and ``accept_licences``; accepted by name, the asset is fetched and the new
+    experiment made. ``yes`` and ``force`` accept no licence."""
+    payload = b"a table under a non-commercial licence" * 30
+    rig.server.files["/t/table.bin"] = payload
+    ref = dataclasses.replace(reference(payload, rig.server.url("/t/table.bin"), name="table"),
+                              licence="CC-BY-NC-4.0")
+    files = {path.relative_to(saved_toy).as_posix(): path.read_bytes() for path in saved_toy.rglob("*")
+             if path.is_file()}
+    bundle = write_bundle(tmp_path / "full_toy.mimebundle", files, "full_toy", lock_with_assets(files, ref))
+    for attempt, given in enumerate(({}, {"yes": True, "force": True})):
+        work = tmp_path / f"refused{attempt}"
+        work.mkdir()
+        monkeypatch.chdir(work)
+        with assets.asking(None), pytest.raises(BuildRefused) as refused:
+            Experiment.based_on(bundle, name="child", **given)
+        assert refused.value.codes() == ["asset.licence-not-accepted"]
+        assert "accept_licences={'CC-BY-NC-4.0'}" in refused.value.refusals[0].action
+        assert not assets.is_cached(ref)
+    work = tmp_path / "accepted"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    with assets.asking(None):
+        child = Experiment.based_on(bundle, name="child", accept_licences={"CC-BY-NC-4.0"})
+    assert assets.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
 
 
 # --- pack and push -------------------------------------------------------------------------------------------------------

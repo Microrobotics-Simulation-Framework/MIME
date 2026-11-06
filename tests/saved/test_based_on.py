@@ -176,6 +176,26 @@ def test_in_a_notebook_both_a_taken_declaration_and_one_made_after_are_replaced(
     child.build()
 
 
+def test_a_loaded_experiment_edited_in_a_notebook_is_refused_by_its_lock_pointing_to_based_on(
+        parent: Path, monkeypatch: pytest.MonkeyPatch):
+    """The lock's refusal of a loaded experiment that a notebook's cell changed names the call that keeps the change,
+    and that call does."""
+    import builtins
+
+    monkeypatch.setattr(builtins, "get_ipython", lambda: None, raising=False)
+    loaded = Experiment.load(parent)
+    with pytest.warns(UserWarning):
+        stiffer(loaded)
+    with pytest.raises(LoadRefused) as refused:
+        loaded.build()
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "load.input-hash" and 'Experiment.based_on("<folder>", name="<a new name>")' in refusal.action
+    child = Experiment.based_on(parent, name="stiffer_toy")
+    with pytest.warns(UserWarning):
+        stiffer(child)
+    assert child.build().load_report is None
+
+
 # --- the parent's folder -------------------------------------------------------------------------------------------------
 
 

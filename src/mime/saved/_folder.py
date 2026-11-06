@@ -681,7 +681,9 @@ def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] |
                                     "build the experiment and save it again, built.save(folder), which writes a new "
                                     "lock; to build the "
                                     "edited document as it is, "
-                                    "Experiment.from_document(\"<folder>/experiment.mime.yaml\")"))
+                                    "Experiment.from_document(\"<folder>/experiment.mime.yaml\"); to keep a change made "
+                                    "to an experiment after it was loaded, make a new one from the folder and change "
+                                    "that, Experiment.based_on(\"<folder>\", name=\"<a new name>\")"))
         elif own:
             # the profile's record is MIME's own, under the MIME that wrote the lock: a difference is MIME's defect,
             # never the installed entries'
