@@ -303,7 +303,7 @@ def test_tutorial_as_field_cell_run_again_under_a_filter_that_ignores_warnings_s
 
 def test_control_a_re_bind_that_keeps_the_old_apparatus_fails_the_natural_edit_every_run(notebook, tmp_path, monkeypatch):
     """The note says it replaced; the earlier apparatus stays, so the run keeps its parameters under the new name."""
-    def keeps_the_old_one(held, earlier, declaration, known, name, replaced):
+    def keeps_the_old_one(held, earlier, declaration, known, name, replaced, why):
         warnings.warn(f"{known.call} declares {known.noun} again, not the same as before: in a notebook or IPython the "
                       f"last one run wins, so it replaces the earlier one", UserWarning)
 

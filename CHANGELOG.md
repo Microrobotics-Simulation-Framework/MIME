@@ -28,6 +28,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live display, plots it with matplotlib, shows the browser view, and ends with changes to try.
   `tests/examples/test_notebooks.py` builds each notebook's experiment against the checkout and runs A's for a few
   steps; `scripts/colab_links.py` points every Colab link at one branch.
+- **`Experiment.based_on(source, name=...)`: a saved experiment changed as a new one, which records it.** `source` is
+  a saved folder, a bundle file, or what `mime pull` takes (a DOI, an address), pulled first into `./<its name>/` as
+  `mime pull` pulls it; where that folder already holds the same experiment (the same input hash: a notebook's cell
+  run again), it is used as it is, its assets passing the same gates, and where it holds anything else it is refused.
+  The saved experiment is loaded and checked against its lock as `Experiment.load` does, and its folder is never
+  written. The new experiment holds its declarations and run settings under the new name with no
+  lock; a declaration taken from it, made again and changed, replaces the one taken, in a script as in a notebook,
+  with a warning recorded in `plan().replaced` (`exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)`). Saving
+  it writes a new folder with its own lock, whose document records the saved experiment as `based_on`: its name, the
+  input hash its lock records, the MIME version that saved it, and its DOI: the record it was pulled from, where
+  `source` is a DOI (a bundle uploaded by hand is named by it too, and a lock that names another record is warned of,
+  naming both), and otherwise the record its lock names, if any. A DOI that is not a DOI's shape (`10.<registrant>/...`,
+  no whitespace or control character, at most 256 characters) is not recorded, and the warning says why. Only the
+  immediate one: each parent's document records its own. `mime card` names it (`Based on <name> (<its
+  DOI, or its input hash>)`). The parent's third-party files keep their terms and tiers, so `mime pack` carries and
+  references the same files. **`mime push` sends what it sent before**: no relation to the parent and no line naming
+  it in the description, until that relation (DataCite's `IsDerivedFrom`) is rehearsed on Zenodo's sandbox.
+- **The saved form is version 7** (`mime.document/7`, `mime.lock/7`): the document's `based_on`, written only where
+  an experiment was made from another, inside the document and input hashes. A folder of version 6 loads as before,
+  and one of version 6 holding `based_on` is refused. 0.3.0.dev1, which reads up to version 6, refuses a folder of
+  version 7 as `load.newer-form`, the document and the lock each once.
 
 - **Download gates: a licence's conditions are accepted before a download, and the disk is checked** (design #237), in
   the library, so a script and a notebook meet them as `mime assets fetch`, `mime visuals fetch` and `mime pull` do. An
@@ -70,8 +91,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under this release is still refused for the release that saved it. `load.input-hash` is raised only where the
   versions agree, for a document changed after its lock was written; one loaded and then edited (a notebook cell run
   after the load) is refused in words about the edit ("edited after it was loaded"), with the actions that work: load
-  the folder again, or make the same edit in the script that built the experiment and save from there (a loaded,
-  edited experiment can be neither built nor saved; `Experiment.based_on` will be named when it lands). The
+  the folder again, or keep the edit in a new experiment made from the folder, `Experiment.based_on(<folder>,
+  name=...)` (a loaded, edited experiment can be neither built nor saved). The
   compatibility policy for later releases is designed before the first users; this is not it, and two final releases
   (0.3.0 and 0.3.1) still meet `load.input-hash` and its words about a changed document.
 - **`mime verify`, `mime env check` and `mime registry` draw tables on a terminal.** `mime verify` shows its checks as a
@@ -134,6 +155,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clean). `cap_rings` now hands out a copy of the layout each call. Float64 is unchanged; `mime verify` was never
   affected (its reference and its rerun are both later builds, and `Experiment.load` builds once before the user's
   `.build()`).
+- **A document of version 6 that declares a run's length reads.** The load refused `run.duration` in any document of
+  a version below the current one, where version 5 added it; with the form at 7, that would have refused every
+  version 6 folder that declares its run's length. It is refused only below version 5, as the key's message says.
 - **The magnetic laws read the field where the magnet is: `magnetic.torque` 0.2.0 and `magnetic.force` 0.2.0.** In a
   field that varies in space, both read the field and its gradient at the body's `magnet_centre` turned by its
   orientation, the point a read now names fixed in the body (`Read(..., offset=...)`) and a provider that claims
