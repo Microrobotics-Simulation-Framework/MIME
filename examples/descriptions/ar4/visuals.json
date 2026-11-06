@@ -1,5 +1,5 @@
 {
-  "format": "mime.asset_manifest/1",
+  "format": "mime.asset_manifest/2",
   "name": "ar4_mk5",
   "title": "the visual meshes of Annin Robotics' AR4 robot arm (mk5)",
   "credit": "Annin Robotics (anninrobotics.com): the AR4 robot arm and its 3D models, from Annin Robotics' ar4_ros_driver repository",
@@ -8,7 +8,13 @@
     "LicenseRef-Annin-Robotics-NonCommercial": {
       "title": "Annin Robotics Open Source Non-Commercial License Agreement, version 1.1",
       "url": "https://github.com/Annin-Robotics/ar4-hmi/blob/main/LICENSE.txt",
-      "redistribution": "not_permitted"
+      "redistribution": "not_permitted",
+      "conditions": [
+        "non-commercial use only: education, research or personal use",
+        "no redistribution or hosting in any form, converted or decimated copies included",
+        "no commercial use without Annin Robotics' written permission",
+        "keep the logos and names as they are; do not use the Annin Robotics name to suggest endorsement"
+      ]
     }
   },
   "upstream": {

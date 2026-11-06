@@ -34,9 +34,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, cast
 
+#: The longest line of a custom licence's conditions: they are shown as short lines, and the licence's text is behind
+#: its link.
+CONDITION_LINE_LIMIT = 160
 #: SPDX's word for a licence nobody stated: accepted alone as a licence, and read as unknown.
 NO_ASSERTION = "NOASSERTION"
 CUSTOM_PREFIX = "LicenseRef-"
@@ -202,12 +205,18 @@ def ids_of(expression: str) -> tuple[str, ...]:
 class CustomLicence:
     """A licence of its own: a ``LicenseRef-`` id, its title and an https link to its text. ``redistribution`` is
     what a person says it allows: ``unknown`` (the default) or ``not_permitted``; a licence that permits is declared as
-    a :class:`Permission`, with its evidence."""
+    a :class:`Permission`, with its evidence.
+
+    ``conditions`` are the licence's conditions beyond credit in short lines (``non-commercial use only``), which a
+    download of a file under it shows and asks to be accepted (``mime.assets``): written in an asset manifest or in the
+    records a package ships, never in a saved folder, and left out of equality, so that the same licence declared
+    with and without them is one licence."""
 
     id: str
     title: str
     url: str
     redistribution: Status = "unknown"
+    conditions: tuple[str, ...] = field(default=(), compare=False)
 
     def problem(self) -> str | None:
         if not isinstance(cast(object, self.id), str) or not _CUSTOM_ID.fullmatch(self.id):
@@ -220,6 +229,12 @@ class CustomLicence:
         if self.redistribution not in CUSTOM_STATUSES:
             return (f"the custom licence {self.id}'s redistribution is one of {', '.join(CUSTOM_STATUSES)}: a licence "
                     f"that permits redistribution is declared as a Permission, with its evidence")
+        held = cast(object, self.conditions)
+        if not isinstance(held, tuple) or not all(isinstance(each, str) and each.strip() and each.isprintable()
+                                                  and len(each) <= CONDITION_LINE_LIMIT
+                                                  for each in cast("tuple[object, ...]", held)):
+            return (f"the custom licence {self.id}'s conditions are short lines of text, each one printable line of "
+                    f"at most {CONDITION_LINE_LIMIT} characters")
         return None
 
 
@@ -485,8 +500,8 @@ def freest(verdicts: Sequence[Verdict]) -> Verdict:
     return min(verdicts, key=_rank)
 
 
-__all__ = ["CONDITIONAL", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY", "DIFFERING_CONDITIONS_BY",
-           "EVIDENCE_KINDS", "NON_COMMERCIAL", "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN",
+__all__ = ["CONDITIONAL", "CONDITION_LINE_LIMIT", "CUSTOM_PREFIX", "CUSTOM_STATUSES", "DERIVED_BY",
+           "DIFFERING_CONDITIONS_BY", "EVIDENCE_KINDS", "NON_COMMERCIAL", "NOTICE_TEXT_REQUIRED", "NO_ASSERTION", "NO_DERIVATIVES", "OPEN",
            "ROLES", "SHARE_ALIKE", "CustomLicence", "Evidence", "EvidenceKind", "LicenceGiven", "Permission", "Role",
            "Scope", "Status", "Terms", "Tier", "Verdict", "canonical", "derived_verdict", "expression_of", "freest",
            "ids_of", "licence_problem", "licence_verdict", "packaging_version", "permission_problems",

@@ -126,6 +126,60 @@ def test_the_overlay_draws_the_baked_meshes_and_hides_the_bones(cache, stage_fil
     assert not [p for p in alone.Traverse() if p.IsA(UsdGeom.Mesh) and "/visuals/" in str(p.GetPath())]
 
 
+def test_the_overlay_draws_a_baked_set_only_once_its_licence_is_accepted_at_its_first_use(cache, stage_file):
+    """The AR4's licence has conditions: a cache filled before the gates (or by a script that named the licence for one
+    call) holds meshes nobody has accepted the conditions of, and the overlay is where their bytes are first read."""
+    from mime import assets
+
+    planted(accepted=False)
+    with assets.asking(None):
+        found = overlay(stage_file)
+        assert found.drawn == 0 and found.unaccepted == {"ar4_mk5": 18} and found.missing == {} and found.path is None
+        assert "--accept-licence LicenseRef-Annin-Robotics-NonCommercial" in found.text()
+        assert "conditions that have not been accepted" in found.text()
+        assert overlay(stage_file, accept_licences=["LicenseRef-Someone-Else"]).drawn == 0
+        named = overlay(stage_file, accept_licences={"LicenseRef-Annin-Robotics-NonCommercial"})
+        assert named.drawn == 18 and named.unaccepted == {}
+        assert assets.read_acceptances() == [], "named for the call, not remembered"
+    refusing = Scripted(licence=False)
+    with assets.asking(refusing):
+        assert overlay(stage_file).drawn == 0
+    assert refusing.asked == [("LicenseRef-Annin-Robotics-NonCommercial",)] and assets.read_acceptances() == []
+    asked = Scripted()
+    with assets.asking(asked):
+        assert overlay(stage_file).drawn == 18
+        assert overlay(stage_file).drawn == 18
+    assert asked.asked == [("LicenseRef-Annin-Robotics-NonCommercial",)], "asked once, then remembered"
+    assert [each.licence.id for each in assets.read_acceptances()] == ["LicenseRef-Annin-Robotics-NonCommercial"]
+    assert any("non-commercial" in line for line in asked.shown[0]), "the lines are the manifest's, from the cached index"
+
+
+class Scripted:
+    """An asker that answers the licence question as told and keeps what it was shown."""
+
+    def __init__(self, *, licence: bool = True) -> None:
+        self.answer, self.asked, self.shown = licence, [], []
+
+    def licences(self, licences, notice):
+        self.asked.append(tuple(each.id for each in licences))
+        self.shown.append([line for each in licences for line in each.conditions])
+        return self.answer
+
+    def confirm(self, question):
+        return True
+
+    def line(self, text):
+        pass
+
+
+def test_a_mesh_whose_tier_is_open_needs_no_acceptance(cache, stage_file):
+    from mime import assets
+
+    planted(tier="open", accepted=False)
+    with assets.asking(None):
+        assert overlay(stage_file).drawn == 18
+
+
 def test_a_description_with_no_visuals_draws_bones_from_its_frames():
     from chain_cases import C_ARM
 
