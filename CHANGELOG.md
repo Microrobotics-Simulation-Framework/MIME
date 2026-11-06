@@ -30,13 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   steps; `scripts/colab_links.py` points every Colab link at one branch.
 - **`Experiment.based_on(source, name=...)`: a saved experiment changed as a new one, which records it.** `source` is
   a saved folder, a bundle file, or what `mime pull` takes (a DOI, an address), pulled first into `./<its name>/` as
-  `mime pull` pulls it. The saved experiment is loaded and checked against its lock as `Experiment.load` does, and its
-  folder is never written. The new experiment holds its declarations and run settings under the new name with no
+  `mime pull` pulls it; where that folder already holds the same experiment (the same input hash: a notebook's cell
+  run again), it is used as it is, its assets passing the same gates, and where it holds anything else it is refused.
+  The saved experiment is loaded and checked against its lock as `Experiment.load` does, and its folder is never
+  written. The new experiment holds its declarations and run settings under the new name with no
   lock; a declaration taken from it, made again and changed, replaces the one taken, in a script as in a notebook,
   with a warning recorded in `plan().replaced` (`exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)`). Saving
   it writes a new folder with its own lock, whose document records the saved experiment as `based_on`: its name, the
-  input hash its lock records, the MIME version that saved it, and the DOI of the record its lock names, where it names
-  one. Only the immediate one: each parent's document records its own. `mime card` names it (`Based on <name> (<its
+  input hash its lock records, the MIME version that saved it, and its DOI: the record it was pulled from, where
+  `source` is a DOI (a bundle uploaded by hand is named by it too, and a lock that names another record is warned of,
+  naming both), and otherwise the record its lock names, if any. A DOI that is not a DOI's shape (`10.<registrant>/...`,
+  no whitespace or control character, at most 256 characters) is not recorded, and the warning says why. Only the
+  immediate one: each parent's document records its own. `mime card` names it (`Based on <name> (<its
   DOI, or its input hash>)`). The parent's third-party files keep their terms and tiers, so `mime pack` carries and
   references the same files. **`mime push` sends what it sent before**: no relation to the parent and no line naming
   it in the description, until that relation (DataCite's `IsDerivedFrom`) is rehearsed on Zenodo's sandbox.

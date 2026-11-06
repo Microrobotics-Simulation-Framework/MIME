@@ -614,13 +614,15 @@ class Experiment:
         """A new experiment made from a saved one, to change and save as an experiment of its own: it holds the saved
         experiment's declarations under ``name``, with no lock, and saving it writes a new folder with a lock of its
         own. ``source`` is a saved folder, a bundle file, or what ``mime pull`` takes (a DOI, an address): a source that
-        is not a folder is pulled first, as ``mime pull <source>`` pulls it, into ``./<its name>/``, which must not
-        exist yet, and the experiment is based on that folder. Its assets are fetched into the asset cache through
-        the download gates (:func:`mime.saved.pull`): a licence with conditions beyond credit is asked about where a
-        person can answer, or accepted by name in ``accept_licences``; ``yes`` answers the question a large download
-        asks, and ``force`` overrides the stop of one that would leave the drive almost full; neither accepts a
-        licence. The saved experiment is loaded as :meth:`load` loads it, and refused, with the load's reasons, where
-        it does not load; its folder is read and never written.
+        is not a folder is pulled first, as ``mime pull <source>`` pulls it, into ``./<its name>/``, and the experiment
+        is based on that folder. Where that folder already holds the same experiment (the same input hash: a
+        notebook's cell run again), it is used as it is, and nothing is unpacked into it; where it holds anything else,
+        it is refused as pull refuses it. Its assets are fetched into the asset cache through the download gates
+        (:func:`mime.saved.pull`): a licence with conditions beyond credit is asked about where a person can answer, or
+        accepted by name in ``accept_licences``; ``yes`` answers the question a large download asks, and ``force``
+        overrides the stop of one that would leave the drive almost full; neither accepts a licence. The saved
+        experiment is loaded as :meth:`load` loads it, and refused, with the load's reasons, where it does not load;
+        its folder is read and never written.
 
         A declaration taken from the saved experiment, made again and changed, replaces the one taken, in a script as
         in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), with a warning that names what
@@ -629,34 +631,45 @@ class Experiment:
         conditions, the profile and the run's length) are the saved experiment's.
 
         The new experiment's document records the one it was made from as ``based_on``: its name, the input hash its
-        lock records, the MIME version that saved it, and the DOI of the record it was published as, where its lock
-        names one (every bundle ``mime push`` publishes does). Only that one: an experiment made from one that was
-        itself made from another records the one it was made from, whose own document records the next.
-        ``mime card`` names it."""
+        lock records, the MIME version that saved it, and the DOI of the record it was published as: the record it was
+        pulled from, where ``source`` is a DOI (a lock that names another record is warned of, naming both), and
+        otherwise the one its lock names (every bundle ``mime push`` publishes does); a DOI that is not a DOI's shape is
+        not recorded, with a warning that says why. Only that one: an experiment made from one that was itself made
+        from another records the one it was made from, whose own document records the next. ``mime card`` names it."""
         from mime.saved._based_on import based_on_of
 
         held = Path(source)
-        parent = cls.load(held if held.is_dir() else _pulled(source, accept_licences, yes, force))
+        folder, pulled_doi = (held, None) if held.is_dir() else _pulled(source, accept_licences, yes, force)
+        parent = cls.load(folder)
         assert parent._saved is not None
-        settings = replace(parent._settings, experiment=name, based_on=based_on_of(parent._saved))
+        record, notes = based_on_of(parent._saved, pulled_doi)
+        for note in notes:
+            warn_at_script(note, UserWarning)
+        settings = replace(parent._settings, experiment=name, based_on=record)
         experiment = cls._declared(settings, parent._declarations)
         experiment._inherited, experiment._parent = tuple(experiment._declarations), parent.name
         return experiment
 
 
-def _pulled(source: str | PathLike[str], accept_licences: Collection[str], yes: bool, force: bool) -> Path:
-    """The folder ``mime pull <source>`` unpacks ``source`` into (``./<its name>/``), for :meth:`Experiment.based_on`:
-    a folder there already is refused as pull refuses it, with the call that bases the experiment on it instead."""
-    from mime.saved import pull
+def _pulled(source: str | PathLike[str], accept_licences: Collection[str], yes: bool,
+            force: bool) -> tuple[Path, str | None]:
+    """The folder ``mime pull <source>`` unpacks ``source`` into (``./<its name>/``), or the one there already that
+    holds the same experiment, and, for a DOI, the DOI of the record it was pulled from, for
+    :meth:`Experiment.based_on` (:func:`mime.saved._pull.pulled_parent`). A folder there that holds another is refused
+    as pull refuses it, with what to do in its place (pull's own action names ``--into``, which ``based_on`` does not
+    take)."""
+    from mime.saved._pull import pulled_parent
 
     try:
-        return Path(pull(source, accept_licences=accept_licences, yes=yes, force=force))
+        return pulled_parent(source, accept_licences=accept_licences, yes=yes, force=force)
     except BuildRefused as refused:
         if "pull.destination" not in refused.codes():
             raise
-        raise BuildRefused([replace(each, action=f"{each.action}; or, where it holds this experiment pulled before, "
-                                                 f"base the new one on that folder: Experiment.based_on(\"<the folder>\", "
-                                                 f"name=...)") if each.code == "pull.destination" else each
+        action = ("based_on unpacks a source that is not a folder into ./<its name>/, and uses a folder there only where "
+                  "it holds the same experiment (the same input hash); this one holds another, so move or rename it, or "
+                  "work in another folder; to base the new experiment on what it holds, give its path: "
+                  "Experiment.based_on(\"<the folder>\", name=...)")
+        raise BuildRefused([replace(each, action=action) if each.code == "pull.destination" else each
                             for each in refused.refusals]) from None
 
 

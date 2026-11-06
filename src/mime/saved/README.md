@@ -324,9 +324,20 @@ and within its tolerances in another.
 
 `Experiment.based_on(source, name=...)` makes a new experiment from a saved one, to change and save as an experiment of
 its own (`mime.experiment`). `source` is a folder, a bundle file, or what `mime pull` takes, pulled first into
-`./<its name>/` as `mime pull` pulls it, its assets into the cache. The saved experiment is loaded and checked against
-its lock as `Experiment.load` does, so a folder that does not load is refused with the load's reasons, and the input
-hash recorded is one this MIME reproduced; its folder is read and never written.
+`./<its name>/` as `mime pull` pulls it, its assets into the cache (`mime.saved._pull.pulled_parent`). Where that folder
+already holds the same experiment (its lock's input hash is the bundle's: a notebook's cell run again), it is used as it
+is, nothing unpacked or written in it, and its assets pass the same gates as pull's; where it holds anything else, it is
+refused as pull refuses it. The saved experiment is loaded and checked against its lock as `Experiment.load` does, so a
+folder that does not load is refused with the load's reasons, and the input hash recorded is one this MIME reproduced;
+its folder is read and never written.
+
+The DOI recorded is the record the parent was pulled from, where `source` is a DOI (the record's own DOI, as the
+repository states it: a concept DOI resolves to its latest version), so a bundle uploaded by hand, whose lock names no
+record, is named by it too; a lock that names another record is warned of, naming both. A folder or a bundle file is
+named by the record its lock's `publication` names, if any. A text that is not a DOI's shape (the DOI prefix, the
+registrant's number, a slash and a suffix, as `mime pull` takes one, with no whitespace and no control or format
+character, and no longer than `mime.saved._based_on.DOI_LIMIT`) is not recorded, and the warning says why: the record is
+a line of the card now, and a related identifier of a push later.
 
 The new experiment's document records it as `based_on`, part of the document and so of the input hash: editing the
 record by hand is refused at load as any edit is. Its lock is its own, and names no record (`publication`) until its

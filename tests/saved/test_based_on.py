@@ -4,7 +4,26 @@ The new experiment holds the parent's declarations under its own name, with no l
 parent, made again and changed, replaces it in a script as in a notebook; saving it writes a new folder with its own
 lock, whose document records the parent as ``based_on`` (its name, its input hash, the MIME version that saved it, and
 its DOI where its lock names one); and the parent's folder is never written. An experiment based on one that was itself
-based on another records its immediate parent, and the chain is followed through each parent's own document.
+based on another records its immediate parent, and the chain is followed through each parent's own document. A DOI
+that is not a DOI's shape is not recorded, and the warning says why.
+
+**A parent saved by the released 0.3.0.dev1** (saved form 6, the folder every user of that release holds):
+``form6/timed_toy`` was written by the ``mime-engine==0.3.0.dev1`` wheel from PyPI, in its own environment, in float64
+with one BLAS thread as the saved tests run, from the full toy with its run's length declared::
+
+    jax.config.update("jax_enable_x64", True)
+    experiment = declare_in_order(lambda: Experiment("timed_toy", scene=Scene.new(up=Z, units="m"),
+                                                     gravity=standard_gravity(), dt=DT, duration=s(0.04)),
+                                  full_declarations())  # mime.testing.toys._experiments, as 0.3.0.dev1 ships it
+    experiment.build().save(folder)
+
+Its files are pinned by their sha256. Like every folder of an earlier form here, it is re-stamped at a release's version
+bump (``restamp_version.py``), which moves the pins of its document and lock and nothing else. A child of it saves as
+form 7, loads against its own lock, rebuilds and reproduces its reference steps: a child whose lock was hashed in the
+parent's form is refused at that load. Which MIME each string names is held apart from the MIME running: with the
+running MIME a release (patched in, never in the repository) and the parent's lock edited to name an earlier one
+(outside the input hash), the record names the parent's and the child's lock the running one, three strings that all
+differ (the installed distribution's is the third).
 
 **The controls.** The parent's folder is held by every file's bytes, size and modification time and every folder's
 modification time, before and after (``tests/folder_state.py``): a write planted inside ``based_on`` (a byte appended to the parent's lock, a file
@@ -15,6 +34,8 @@ from the parent's (its hashes, no ``publication``), so reusing the parent's lock
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
 import json
 import shutil
 import warnings
@@ -28,6 +49,7 @@ import yaml
 from folder_state import untouched
 from script_a0 import a0
 
+import mime
 from mime.build import ArgumentRefused, BuildRefused
 from mime.experiment import Experiment
 from mime.saved import DOCUMENT_FILE, LOCK_FILE, LoadRefused, card_text, read_folder
@@ -229,9 +251,9 @@ def writing_into_the_parent(how: Callable[[Path], None]) -> Iterator[None]:
     """``based_on`` planted to write into the folder it is based on, as it reads it."""
     real = _based_on.based_on_of
 
-    def writing(form):  # type: ignore[no-untyped-def]
+    def writing(form, *rest):  # type: ignore[no-untyped-def]
         how(form.folder)
-        return real(form)
+        return real(form, *rest)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_based_on, "based_on_of", writing)
@@ -296,6 +318,118 @@ def test_an_experiment_based_on_one_that_was_itself_based_on_another_records_its
     assert recorded["input_hash"] != lock_of(parent)["hashes"]["input"], "the immediate parent, not the first"
     assert chain_of(tmp_path / "third", {"second": second, "full_toy": parent}) == ["third", "second", "full_toy"]
     assert Experiment.load(tmp_path / "third").load_report is not None
+
+
+# --- a parent saved by the released 0.3.0.dev1 (form 6) -----------------------------------------------------------------
+
+RELEASED = Path(__file__).parent / "form6" / "timed_toy"
+#: Its files as the 0.3.0.dev1 wheel wrote them (the document's and the lock's move only with ``restamp_version.py``).
+RELEASED_SHA256 = {
+    "experiment.mime.yaml": "66a4cc6a8afbe4ee98c729c117c4a7df7d13e565ffb33dd070f60c2873e0c03a",
+    "mime.lock": "a1cda39cf969f2cc2d2bc826339e6c132317258640dd6afe0ff8e67264082004",
+    "reference.npz": "84743bcaeaa0948ccd58deaab4ca4461029a6f776959aec5a319348ceb570159",
+    "scene/scene.usda": "78a93ae11ce3de31021b76e56c8f7d849d2ee1c1a292bdf78f83a7b136132039",
+}
+#: The run's length the released parent declares, which its child keeps.
+RELEASED_DURATION = {"value": 0.04, "unit": "s"}
+
+
+def test_the_released_parent_is_the_folder_the_wheel_wrote_byte_for_byte():
+    found = {path.relative_to(RELEASED).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+             for path in sorted(RELEASED.rglob("*")) if path.is_file()}
+    assert found == RELEASED_SHA256
+    document, lock = document_of(RELEASED), lock_of(RELEASED)
+    assert (document["schema"], lock["schema"]) == ("mime.document/6", "mime.lock/6")
+    assert document["run"]["duration"] == RELEASED_DURATION and lock["reference"]["steps"] > 0
+
+
+def test_a_child_of_a_folder_the_released_wheel_saved_saves_as_form_seven_loads_rebuilds_and_reproduces(
+        tmp_path: Path):
+    parent = Path(shutil.copytree(RELEASED, tmp_path / "timed_toy"))
+    loaded = Experiment.load(parent)
+    assert loaded.load_report is not None
+    assert loaded.load_report.text().splitlines()[1:3] == [
+        "saved form: mime.document/6, read as version 7", "input hash: reproduced exactly"]
+    assert loaded.build().verify().reproduced, "the parent, its run's length declared in form 6, loads and verifies"
+    with untouched(parent):
+        child = based_on_edited_saved(parent, tmp_path / "child", name="stiffer_timed_toy")
+    parent_lock, document = lock_of(parent), document_of(child)
+    assert (document["schema"], lock_of(child)["schema"]) == ("mime.document/7", "mime.lock/7")
+    assert document["based_on"] == {"experiment": "timed_toy", "input_hash": parent_lock["hashes"]["input"],
+                                    "mime": parent_lock["environment"]["mime"]}
+    assert document["run"]["duration"] == RELEASED_DURATION, "the run's length is the parent's"
+    reloaded = Experiment.load(child)
+    assert reloaded.load_report is not None and "input hash: reproduced exactly" in reloaded.load_report.text()
+    assert reloaded.build().verify().reproduced
+
+
+#: The running MIME (a release, patched in for the test) and the MIME a parent's lock is edited to name (an earlier
+#: one): neither is the installed distribution's development release, and neither is a development release, which
+#: makes no compatibility promise and whose folders another refuses.
+RUNNING, PARENT_SAVED_BY = "0.3.0", "0.2.1"
+
+
+def test_the_record_names_the_mime_of_the_parents_lock_and_the_childs_lock_names_the_one_running(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mime, "__version__", RUNNING)
+    parent = tmp_path / "full_toy"
+    full_toy().save(parent)
+    lock = lock_of(parent)
+    lock["environment"]["mime"] = PARENT_SAVED_BY
+    (parent / LOCK_FILE).write_text(json.dumps(lock), encoding="utf-8")
+    assert len({RUNNING, PARENT_SAVED_BY, importlib.metadata.version("mime-engine")}) == 3
+    child = based_on_edited_saved(parent, tmp_path / "child")
+    assert document_of(child)["based_on"]["mime"] == PARENT_SAVED_BY, "the parent's, not the running MIME's"
+    assert lock_of(child)["environment"]["mime"] == RUNNING, "the running MIME's, not the parent's"
+    assert Experiment.load(child).load_report is not None
+
+
+# --- a DOI that is not a DOI's shape ---------------------------------------------------------------------------------------
+
+
+def published_as(parent: Path, root: Path, doi: str) -> Path:
+    """The parent with its lock naming the record ``doi`` (outside the input hash), as a lock edited by hand may."""
+    folder = Path(shutil.copytree(parent, root / "full_toy"))
+    lock = lock_of(folder)
+    lock["publication"] = {**PUBLICATION, "doi": doi}
+    (folder / LOCK_FILE).write_text(json.dumps(lock), encoding="utf-8")
+    return folder
+
+
+#: What a lock's ``publication.doi`` may hold that is no DOI, with why it is not recorded.
+NOT_DOIS = {
+    "a newline and a YAML line": ("10.1/x\n- evil: 1", "control or format character"),
+    "a terminal's escape": ("10.1234/\x1b[31mred", "control or format character"),
+    "a right-to-left override": ("10.1234/abc\u202edef", "control or format character"),
+    "a Markdown link": ("x**) [a](http://e.example) **(", "not a DOI's shape"),
+    "5000 characters": ("1" * 5000, "5000 characters long, and a DOI recorded is at most 256"),
+    "nothing": ("", "not a DOI's shape"),
+    "a space": ("10.5281/zenodo 4242", "not a DOI's shape"),
+    "a registrant of one digit": ("10.1/x", "not a DOI's shape"),
+    "one character over the limit": ("10.1234/" + "a" * 249, "257 characters long"),
+}
+
+
+@pytest.mark.parametrize("doi, why", NOT_DOIS.values(), ids=list(NOT_DOIS))
+def test_a_doi_that_is_not_a_dois_shape_is_not_recorded_and_the_warning_says_why(parent: Path, tmp_path: Path,
+                                                                                 doi: str, why: str):
+    with pytest.warns(UserWarning, match="is not recorded") as caught:
+        child = Experiment.based_on(published_as(parent, tmp_path, doi), name="child")
+    (note,) = [str(each.message) for each in caught if "is not recorded" in str(each.message)]
+    assert why in note and "\n" not in note and "\x1b" not in note and len(note) < 400
+    assert "doi" not in child.document()["based_on"]
+    child.save(tmp_path / "child")
+    assert f"- **Based on full_toy (input hash {lock_of(parent)['hashes']['input']})**" in \
+        card_text(tmp_path / "child").splitlines()
+
+
+def test_the_control_a_doi_of_the_longest_length_recorded_is_recorded(parent: Path, tmp_path: Path):
+    longest = "10.1234/" + "a" * 248
+    assert len(longest) == _based_on.DOI_LIMIT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        child = Experiment.based_on(published_as(parent, tmp_path, longest), name="child")
+    assert child.document()["based_on"]["doi"] == longest
 
 
 # --- the card ------------------------------------------------------------------------------------------------------------

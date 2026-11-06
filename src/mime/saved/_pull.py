@@ -10,10 +10,12 @@ are listed with the command to install them.
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import os
 import re
 import shlex
 import tempfile
+import zipfile
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,7 +30,8 @@ from mime.assets._commands import fetch_command, folder_argument
 from mime.assets._reference import carries_key, redacted
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.credentials import Token
-from mime.saved._bundle import BUNDLE_SUFFIX, Unpacked, bundle_name, destination_problem, unpack
+from mime.saved._bundle import BUNDLE_SUFFIX, FOLDER_PREFIX, Unpacked, bundle_name, destination_problem, unpack
+from mime.saved._folder import LOCK_FILE
 from mime.saved._schema import Lock
 from mime.saved._terms import Placed, place_referenced
 
@@ -124,14 +127,25 @@ def _version_words(doi: str, repository: Any) -> str | None:
     return None
 
 
-def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None, str | None]:
+def _record_doi(doi: str, repository: Any) -> str:
+    """The DOI of the record ``doi`` resolved to, as the repository states it (Zenodo's record states its own: a concept
+    DOI resolves to its latest version, whose DOI this is), or ``doi`` where it states none in a DOI's shape."""
+    try:
+        found = repository.api_response.get("doi")
+    except Exception:  # noqa: BLE001 - a repository other than Zenodo has no such response
+        return doi
+    return found if isinstance(found, str) and _DOI.fullmatch(found) else doi
+
+
+def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None, str | None, str]:
     """The bundle file of the repository record ``doi`` names, the repository's checksum of it, the size it states (or
-    ``None``) and the words naming the version it is, through pooch's DOI support. The record must hold one
-    ``.mimebundle`` file, or ``wanted`` names it."""
+    ``None``), the words naming the version it is and the record's own DOI (:func:`_record_doi`), through pooch's DOI
+    support. The record must hold one ``.mimebundle`` file, or ``wanted`` names it."""
     import pooch
 
     registry: dict[str, str] = {}
     named: str | None = None
+    resolved = doi
     repository: Any = None
     try:
         with tempfile.TemporaryDirectory() as scratch:
@@ -143,6 +157,7 @@ def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None, st
             repository.populate_registry(listing)
             registry = dict(listing.registry)
             named = _version_words(doi, repository)
+            resolved = _record_doi(doi, repository)
     except Exception as error:  # noqa: BLE001 - pooch and requests raise unrelated types for a record that can't be read
         failed: BuildRefused | None = _refuse(
             "pull.record", RefusalClass.ENVIRONMENT,
@@ -162,7 +177,8 @@ def _record_file(doi: str, wanted: str | None) -> tuple[str, str, int | None, st
                       f"the record doi:{doi} lists {len(bundles)} bundle files (its files: {held})",
                       f"name the one to pull: `mime pull doi:{doi}/<file>{BUNDLE_SUFFIX}`")
     checksum = registry[chosen[0]]
-    return chosen[0], checksum if ":" in checksum else f"md5:{checksum}", _stated_size(repository, chosen[0]), named
+    return (chosen[0], checksum if ":" in checksum else f"md5:{checksum}", _stated_size(repository, chosen[0]), named,
+            resolved)
 
 
 def _limit(stated: int | None, allowed: int) -> int:
@@ -176,22 +192,23 @@ def _limit(stated: int | None, allowed: int) -> int:
 
 
 def _bundle_file(source: Source, say: Callable[[str], None] | None, max_bundle_bytes: int, yes: bool = False,
-                 force: bool = False) -> Path:
+                 force: bool = False) -> tuple[Path, str | None]:
+    """The bundle file ``source`` names, and, for a DOI, the DOI of the record it was read from (:func:`_record_doi`)."""
     if source.kind == "file":
-        return Path(source.value)
+        return Path(source.value), None
     if assets.offline():
         raise _offline_refusal(redacted(source.value))
     if source.kind == "url":
         return assets.locate(assets.retrieve(source.value, name="bundle", max_bytes=max_bundle_bytes,
-                                             exceeded_action=_RAISE_LIMIT, report=say, yes=yes, force=force))
+                                             exceeded_action=_RAISE_LIMIT, report=say, yes=yes, force=force)), None
     assets.downloads_doing(f"reading the file list of the record doi:{source.value}")
-    file, checksum, stated, named = _record_file(source.value, source.file)
+    file, checksum, stated, named, resolved = _record_file(source.value, source.file)
     if named is not None and say is not None:
         say(f"the record: {named}")
     limit = _limit(stated, max_bundle_bytes)
     return assets.locate(assets.retrieve(f"doi:{source.value}/{file}", name="bundle", known_hash=checksum,
                                          max_bytes=limit, exceeded_action=_RAISE_LIMIT, report=say, size=stated,
-                                         yes=yes, force=force))
+                                         yes=yes, force=force)), resolved
 
 
 def _from_service(service_name: str, record: str, say: Callable[[str], None] | None, max_bundle_bytes: int,
@@ -248,9 +265,11 @@ def _kept_secret(source: str | os.PathLike[str] | Token) -> str | Token:
 
 
 def _bundle_from(source: str | Token, say: Callable[[str], None] | None, max_bundle_bytes: int,
-                 from_service: str | None, signed_in: bool, yes: bool = False, force: bool = False) -> Path:
+                 from_service: str | None, signed_in: bool, yes: bool = False,
+                 force: bool = False) -> tuple[Path, str | None]:
     """The bundle ``source`` names: a share link's record (let in by its key), a record's number on ``from_service``
-    (signed in where asked), or a DOI, an address or a file. A source held as a secret (:func:`_kept_secret`) is read as
+    (signed in where asked), or a DOI, an address or a file; and, for a DOI, the DOI of the record it was read from
+    (:func:`_record_doi`). A source held as a secret (:func:`_kept_secret`) is read as
     a link first, and no refusal quotes the key it carries; one that is not a service's link is an address elsewhere,
     pulled as it was, its key hidden wherever the address is said."""
     from mime.push._client import Access
@@ -264,7 +283,8 @@ def _bundle_from(source: str | Token, say: Callable[[str], None] | None, max_bun
                           + (", and is pulled without --signed-in" if signed_in else
                              f", and is pulled from {link.service.name}, not from {from_service}"),
                           "pull the link alone, `mime pull '<the link>'`")
-        return _from_service(link.service.name, link.record, say, max_bundle_bytes, Access(key=link.key), yes, force)
+        return _from_service(link.service.name, link.record, say, max_bundle_bytes, Access(key=link.key), yes,
+                             force), None
     if isinstance(source, Token) and (from_service is not None or signed_in):
         raise _refuse("pull.source", RefusalClass.USER,
                       "with --from or --signed-in, pull takes a record's number, and this is an address that carries "
@@ -273,7 +293,7 @@ def _bundle_from(source: str | Token, say: Callable[[str], None] | None, max_bun
     if from_service is not None:
         assert not isinstance(source, Token)
         return _from_service(from_service, source, say, max_bundle_bytes,
-                             _signed_in(from_service) if signed_in else None, yes, force)
+                             _signed_in(from_service) if signed_in else None, yes, force), None
     if signed_in:
         raise _refuse("pull.source", RefusalClass.USER,
                       "--signed-in sends the token stored for the service --from names, and no --from is given",
@@ -430,7 +450,7 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
         refused = destination_problem(into)
         if refused is not None:
             raise refused
-    bundle = _bundle_from(source, say, max_bundle_bytes, from_service, signed_in, yes, force)
+    bundle, _ = _bundle_from(source, say, max_bundle_bytes, from_service, signed_in, yes, force)
     destination = Path(into) if into is not None else Path(bundle_name(bundle))
     assets.downloads_doing("unpacking the bundle, and checking each file in it")
     unpacked: Unpacked = unpack(bundle, destination)
@@ -461,4 +481,51 @@ def pull(source: str | os.PathLike[str] | Token, *, into: str | os.PathLike[str]
     return destination
 
 
-__all__ = ["Source", "adapters_needed", "packages_needed", "parse_source", "pull"]
+#: The largest lock read out of a bundle to tell whether a folder already holds its experiment.
+_LOCK_LIMIT_BYTES = 16_000_000
+
+
+def _input_hash_of(lock_text: str | bytes) -> str | None:
+    try:
+        found = json.loads(lock_text)["hashes"]["input"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return found if isinstance(found, str) else None
+
+
+def _holds_experiment_of(folder: Path, bundle: Path) -> bool:
+    """Whether ``folder`` holds the experiment ``bundle`` packs: its lock's input hash is the one the bundle's lock
+    records. A folder with no lock that reads, or a bundle whose lock cannot be read, does not."""
+    if not folder.is_dir():
+        return False
+    try:
+        held = _input_hash_of((folder / LOCK_FILE).read_bytes())
+        with zipfile.ZipFile(bundle) as archive:
+            member = archive.getinfo(FOLDER_PREFIX + LOCK_FILE)
+            packed = _input_hash_of(archive.read(member)) if member.file_size <= _LOCK_LIMIT_BYTES else None
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return False
+    return held is not None and held == packed
+
+
+def pulled_parent(source: str | os.PathLike[str], *, accept_licences: Collection[str] = (), yes: bool = False,
+                  force: bool = False) -> tuple[Path, str | None]:
+    """For ``Experiment.based_on``: the folder a source that is not a folder (a bundle file, an address, a DOI) is
+    read from, and, for a DOI, the DOI of the record its bundle was read from (the record's own, as the repository
+    states it: a concept DOI resolves to its latest version's). The bundle is fetched as ``mime pull <source>`` fetches
+    it, and unpacked as pull unpacks it into ``./<its name>/``. Where that folder already holds the same experiment (its
+    lock's input hash is the bundle's: a notebook's cell run again), it is used as it is, nothing unpacked or written
+    in it, and the assets its lock names pass the same gates as pull's and are fetched into the cache; a folder there
+    that holds anything else is refused as pull refuses it (``pull.destination``)."""
+    bundle, doi = _bundle_from(_kept_secret(source), None, assets.RETRIEVE_LIMIT_BYTES, None, False, yes, force)
+    destination = Path(bundle_name(bundle))
+    if not _holds_experiment_of(destination, bundle):
+        return pull(bundle, accept_licences=accept_licences, yes=yes, force=force), doi
+    outcome = _fetch_assets(destination, wanted=True, yes=yes, force=force, accept_licences=accept_licences,
+                            confirm=None, say=None)
+    if outcome.stopped is not None:
+        raise outcome.stopped
+    return destination, doi
+
+
+__all__ = ["Source", "adapters_needed", "packages_needed", "parse_source", "pull", "pulled_parent"]
