@@ -11,7 +11,8 @@ availability statement. A bundle carries it (format 2), and ``mime push`` will u
 evidence record until a1), what ``mime verify <folder>`` would check (the card runs no check), its validity lines, its
 licences and credit with every condition each file's licence or permission carries (non-commercial, share-alike,
 no-derivatives), its availability, and how to reproduce and cite it, exactly as ``mime push`` writes it as a record's
-description. **The record it is published as** (its version, DOI and, once minted, concept DOI, and so its pull and cite
+description; and, for an experiment made from another (``Experiment.based_on``), a line naming that one, which push's
+description leaves out until push states the relation between the two records (rehearsed on the sandbox first). **The record it is published as** (its version, DOI and, once minted, concept DOI, and so its pull and cite
 lines) comes from the ``publication`` of the lock it is written for: ``mime card`` reads the folder's own lock, and
 ``mime push`` gives it the staged lock's, so a published record's description says what the record is. A first version's
 concept DOI is minted when it is published, so its card names it from version 2 on. Both refuse a licence that names an id the installed packaging does not list
@@ -32,6 +33,7 @@ from mime._shell import quoted
 from mime._terminal import plain
 from mime.assets import size_text
 from mime.build import BuildRefused, BuildReport
+from mime.saved._based_on import based_on_words
 from mime.saved._folder import named_files, read_folder
 from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc, PublicationRecord
 from mime.saved._terms import FileTerms, FolderTerms, folder_terms
@@ -323,18 +325,23 @@ def _cite_line(publication: PublicationRecord | None) -> str:
 
 
 def card_text(folder: str | os.PathLike[str]) -> str:
-    """The card of a saved folder as Markdown, naming the record its lock's ``publication`` names, or none.
-    Deterministic within one environment."""
+    """The card of a saved folder as Markdown, naming the record its lock's ``publication`` names, or none, and the
+    experiment it was based on, where it was (``Experiment.based_on``). Deterministic within one environment."""
     facts = card_facts(folder)
-    return card_of(facts, facts.lock.get("publication"))
+    return card_of(facts, facts.lock.get("publication"), based_on=True)
 
 
-def card_of(facts: CardFacts, publication: PublicationRecord | None) -> str:
-    """The card from its ``facts``, as the description of the record ``publication`` (``None``: of no record yet)."""
+def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on: bool = False) -> str:
+    """The card from its ``facts``, as the description of the record ``publication`` (``None``: of no record yet).
+    ``based_on`` names the experiment it was based on, where its document records one: ``mime card`` names it, and
+    ``mime push``'s description does not, until push states the relation between the two records (a change to what
+    push sends, rehearsed on the sandbox first)."""
     root, report, judged, document, lock = facts.root, facts.report, facts.judged, facts.document, facts.lock
     name = plain(document["experiment"])
     licences = sorted({file.licence for file in judged.files if file.licence is not None})
-    lines = [f"# {name}", "", *_publication_lines(publication),
+    parent = document.get("based_on") if based_on else None
+    lines = [f"# {name}", "", *([f"- **{based_on_words(parent)}**"] if parent is not None else []),
+             *_publication_lines(publication),
              "- **Licence:** " + (plain(judged.licence) if judged.licence
                                   else "none declared (mime push will ask for one)"),
              f"- **Licences of its files:** {', '.join(plain(each) for each in licences) or 'none declared'}",

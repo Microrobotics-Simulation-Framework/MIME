@@ -37,14 +37,17 @@ from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, pars
 from mime.saved._record import SavedRecord, environment
 from mime.saved._schema import DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
 from mime.saved._versions import (
+    BASED_ON_ADDED,
     CURRENT,
     DOCUMENT_SCHEMAS,
+    DURATION_ADDED,
     LOCK_SCHEMAS,
     NEW_RUNG,
     OLD_RUNG,
     PREVIOUS_PROFILE,
     TERMS_ADDED,
     added_after,
+    based_on_held,
     duration_held,
     newer_form_refusal,
     physics_in_form,
@@ -192,9 +195,12 @@ def read_document_version(path: Path) -> tuple[ExperimentDocument | None, list[R
         problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds {', '.join(terms)}, which version {TERMS_ADDED} of "
                     f"the saved form added: a document of an earlier version declares no licence, terms or permission",
                     *problems]
-    if duration_held(data) and version < CURRENT:
-        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds run.duration, which version {CURRENT} of the saved "
-                    f"form added: a document of an earlier version declares no run length", *problems]
+    if duration_held(data) and version < DURATION_ADDED:
+        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds run.duration, which version {DURATION_ADDED} of the "
+                    f"saved form added: a document of an earlier version declares no run length", *problems]
+    if based_on_held(data) and version < BASED_ON_ADDED:
+        problems = [f"a {DOCUMENT_SCHEMAS[version]} document holds based_on, which version {BASED_ON_ADDED} of the "
+                    f"saved form added: a document of an earlier version was made from no other experiment", *problems]
     return document, [_refuse("load.document-shape", RefusalClass.USER, f"{path}: {problem}",
                               "write the document as experiment.save() writes it")
                       for problem in problems], version, renamed
@@ -576,7 +582,7 @@ class LoadReport:
     derived: str
     derived_differences: tuple[str, ...] = ()
     derived_prims_edited: tuple[str, ...] = ()
-    #: The saved form's version (``mime.document/6``), and the profile the experiment is read under.
+    #: The saved form's version (``mime.document/7``), and the profile the experiment is read under.
     schema: str = DOCUMENT_SCHEMA
     profile: str = PREVIOUS_PROFILE
     version: int = CURRENT
@@ -673,18 +679,18 @@ def other_release_refusal(form: SavedForm, running: str | None = None) -> Refusa
     return _refuse("load.other-release", RefusalClass.USER, message, action)
 
 
-#: Whether ``Experiment.based_on`` exists (U15). While it does not, a loaded experiment that was edited cannot be built
-#: or saved, and the action names what does work; set this to True when it lands and the action names it instead.
-_BASED_ON_EXISTS = False
+#: Whether ``Experiment.based_on`` exists (U15, which it does): a loaded experiment that was edited cannot be built or
+#: saved, and the action names the call that keeps the edit in a new experiment; without it, what else works.
+_BASED_ON_EXISTS = True
 
 
 def _edited_after_load_action(folder: Path) -> str:
     """What to do with a loaded experiment that was edited: only what works. A loaded experiment is checked against its
     lock at every build, so the edited one can be neither built nor saved (a save builds first)."""
     if _BASED_ON_EXISTS:
-        return (f"to keep the edit, start a new experiment from the folder, Experiment.based_on({str(folder)!r}), make "
-                f"the edit there and save it as a new folder; to drop it, load the folder again, "
-                f"Experiment.load({str(folder)!r})")
+        return (f"to keep the edit, start a new experiment from the folder, Experiment.based_on({str(folder)!r}, "
+                f"name=\"<a new name>\"), make the edit there and save it as a new folder; to drop it, load the folder "
+                f"again, Experiment.load({str(folder)!r})")
     return (f"this experiment cannot be built or saved while it differs from its lock. To drop the edit, load the "
             f"folder again, Experiment.load({str(folder)!r}). To keep it, make the same edit in the script that built "
             f"the experiment and save from there, built.save(\"<new folder>\")")

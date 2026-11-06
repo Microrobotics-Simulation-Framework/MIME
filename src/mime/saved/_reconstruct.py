@@ -283,4 +283,4 @@ def declarations_from(document: ExperimentDocument, locked: Sequence[EntryRecord
         raise LoadRefused(reader.refusals)
     scene = scene_from(document, held)
     return RunSettings(document["experiment"], scene, gravity, dt, run["seed"], None, conditions or None,
-                       document["profile"], duration), declarations
+                       document["profile"], duration, document.get("based_on")), declarations
