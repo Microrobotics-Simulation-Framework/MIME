@@ -46,9 +46,9 @@ def run_steps(folder: Path, out: Path, *extra: str) -> tuple[int, int | None]:
 def test_the_duration_is_saved_as_run_duration_in_the_current_form(tmp_path: Path):
     folder = saved_ball(tmp_path)
     document = yaml.safe_load((folder / DOCUMENT_FILE).read_text())
-    assert document["schema"] == DOCUMENT_SCHEMAS[CURRENT] == "mime.document/6"
+    assert document["schema"] == DOCUMENT_SCHEMAS[CURRENT] == "mime.document/7"
     assert document["run"]["duration"] == {"value": 0.005, "unit": "s"}
-    assert json.loads((folder / LOCK_FILE).read_text())["schema"] == "mime.lock/6"
+    assert json.loads((folder / LOCK_FILE).read_text())["schema"] == "mime.lock/7"
 
 
 def test_a_saved_folder_runs_as_long_as_it_declared_with_no_duration_given(tmp_path: Path, capfd):
@@ -118,7 +118,7 @@ def test_the_control_an_earlier_form_holding_the_key_of_version_five_is_refused(
         with pytest.raises(LoadRefused) as refused:
             Experiment.load(folder)
         assert "load.document-shape" in refused.value.codes()
-        assert any("run.duration" in each.message and f"version {CURRENT}" in each.message
+        assert any("run.duration" in each.message and f"version {DURATION_ADDED}" in each.message
                    for each in refused.value.refusals), [each.message for each in refused.value.refusals]
 
 

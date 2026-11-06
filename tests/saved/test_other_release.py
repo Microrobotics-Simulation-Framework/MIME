@@ -274,8 +274,8 @@ def test_an_experiment_edited_after_it_was_loaded_is_refused_in_words_about_the_
     assert refusal.code == "load.input-hash" and refusal.category is RefusalClass.USER
     assert "edited after it was loaded" in refusal.message and "second" in refusal.message
     assert "notebook" not in refusal.message and "changed after its lock was written" not in refusal.message
-    assert "Experiment.load(" in refusal.action and "script that built the experiment" in refusal.action
-    assert "cannot be built or saved" in refusal.action and "based_on" not in refusal.action
+    assert f"Experiment.load({str(saved)!r})" in refusal.action
+    assert f"Experiment.based_on({str(saved)!r}, name=\"<a new name>\")" in refusal.action
 
 
 def _edit(experiment):
@@ -283,8 +283,8 @@ def _edit(experiment):
 
 
 def test_the_actions_the_edited_refusal_names_work_and_the_one_it_rules_out_is_refused(saved, tmp_path):
-    """Load the folder again; or make the edit in the script that built it and save from there. Saving the loaded,
-    edited experiment is what the refusal says cannot be done, and it cannot."""
+    """Load the folder again; or make the edit in a new experiment based on the folder and save that. Saving the
+    loaded, edited experiment is what cannot be done, and it cannot."""
     edited = Experiment.load(saved)
     _edit(edited)
     with pytest.raises(LoadRefused):
@@ -294,23 +294,31 @@ def test_the_actions_the_edited_refusal_names_work_and_the_one_it_rules_out_is_r
     assert refused.value.refusals[0].code == "load.input-hash"
     again = Experiment.load(saved)  # drop the edit
     assert again.load_report is not None and "second" not in (saved / DOCUMENT_FILE).read_text()
-    script = full_toy()  # keep it: the same edit, in the script that built the experiment, saved from there
-    _edit(script)
-    script.save(tmp_path / "from_the_script")
-    kept = Experiment.load(tmp_path / "from_the_script")
-    assert kept.load_report is not None and "second" in (tmp_path / "from_the_script" / DOCUMENT_FILE).read_text()
+    based = Experiment.based_on(saved, name="with_a_second_body")  # keep it: the edit in a new experiment
+    _edit(based)
+    based.save(tmp_path / "from_based_on")
+    kept = Experiment.load(tmp_path / "from_based_on")
+    assert kept.load_report is not None and "second" in (tmp_path / "from_based_on" / DOCUMENT_FILE).read_text()
 
 
-def test_the_action_names_based_on_where_it_exists(saved, monkeypatch):
-    """The one-line switch for U15: with ``_BASED_ON_EXISTS`` true the action names ``Experiment.based_on``."""
-    monkeypatch.setattr(saved_folder, "_BASED_ON_EXISTS", True)
+def edited_after_load_action(saved):
     experiment = Experiment.load(saved)
     _edit(experiment)
     with pytest.raises(LoadRefused) as refused:
         experiment.build()
-    action = refused.value.refusals[0].action
-    assert f"Experiment.based_on({str(saved)!r})" in action and f"Experiment.load({str(saved)!r})" in action
-    assert "cannot be built or saved" not in action
+    return refused.value.refusals[0].action
+
+
+def test_the_action_names_based_on_now_that_it_exists(saved, monkeypatch):
+    """``Experiment.based_on`` exists (U15): the action names it, with the name it requires, and says how to drop the
+    edit. The control: with the switch set back, the action names what worked before it and not ``based_on``."""
+    assert saved_folder._BASED_ON_EXISTS is True
+    action = edited_after_load_action(saved)
+    assert f"Experiment.based_on({str(saved)!r}, name=\"<a new name>\")" in action
+    assert f"Experiment.load({str(saved)!r})" in action and "cannot be built or saved" not in action
+    monkeypatch.setattr(saved_folder, "_BASED_ON_EXISTS", False)
+    before = edited_after_load_action(saved)
+    assert "Experiment.based_on" not in before and "cannot be built or saved" in before
 
 
 def test_the_edit_after_a_load_in_a_notebook_or_ipython_says_so(saved, monkeypatch):

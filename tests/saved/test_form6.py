@@ -17,7 +17,8 @@ from mime.saved import _versions
 from mime.saved._versions import RECORDS_ADDED, records_held, upgraded_lock
 
 FORM5 = Path(__file__).parent / "form5" / "chain_screw"
-CURRENT = Path(__file__).parent / "current" / "chain_screw"
+#: The same folder as version 6 wrote it (the current form is version 7: ``test_form7.py``).
+FORM6 = Path(__file__).parent / "form6" / "chain_screw"
 RUNS = 20
 
 
@@ -30,7 +31,7 @@ def test_a_version_five_lock_reads_under_the_current_form():
     assert version == 5 == RECORDS_ADDED - 1 and conforms(held, Lock)[1] == []
 
 
-@pytest.mark.parametrize("folder", [FORM5, CURRENT], ids=["form5", "current"])
+@pytest.mark.parametrize("folder", [FORM5, FORM6], ids=["form5", "form6"])
 def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Path):
     from mime.saved._document import document_hash, parse_yaml
     from mime.saved._record import input_hash
@@ -44,13 +45,14 @@ def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Pa
 def test_saving_again_under_form_six_moves_the_document_and_input_hashes_and_never_the_others():
     """The same experiment, saved under form 5 and under form 6: its document names its form, and so its document
     and input hashes move; what it computes and observes does not."""
-    five, six = lock5()["hashes"], json.loads((CURRENT / "mime.lock").read_text(encoding="utf-8"))["hashes"]
+    five, six = lock5()["hashes"], json.loads((FORM6 / "mime.lock").read_text(encoding="utf-8"))["hashes"]
     assert [key for key in ("document", "input", "derived", "observations")
             if five[key] != six[key]] == ["document", "input"]  # type: ignore[index]
 
 
-def test_the_current_lock_conforms():
-    assert conforms(json.loads((CURRENT / "mime.lock").read_text(encoding="utf-8")), Lock)[1] == []
+def test_the_version_six_lock_reads_under_the_current_form():
+    held, version = upgraded_lock(json.loads((FORM6 / "mime.lock").read_text(encoding="utf-8")))
+    assert version == 6 and conforms(held, Lock)[1] == []
 
 
 @pytest.mark.parametrize("change", ["visuals", "record"])

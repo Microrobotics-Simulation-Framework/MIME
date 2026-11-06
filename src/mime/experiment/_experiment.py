@@ -4,7 +4,7 @@ import json
 import math
 import re
 import weakref
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
 from pathlib import Path
@@ -292,6 +292,11 @@ class Experiment:
         #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again):
         #: what a warnings filter cannot remove, shown by ``plan()`` and the build report. Not part of the saved form.
         self._replaced: list[str] = []
+        #: The declarations an experiment made by :meth:`based_on` took from the saved experiment it is based on (the
+        #: objects themselves), and that experiment's name: one of them declared again, changed, is replaced, in a
+        #: script as in a notebook.
+        self._inherited: tuple[Declaration, ...] = ()
+        self._parent: str | None = None
         #: Likewise for each declaration removed (``remove``).
         self._removed: list[str] = []
         #: Every replacement and removal of this session, in order, which a build, a result and a view remember the
@@ -316,6 +321,7 @@ class Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
                          seed=settings.seed, up=settings.up, conditions=settings.conditions, profile=settings.profile,
                          duration=settings.duration)
+        experiment._settings = replace(experiment._settings, based_on=settings.based_on)
         experiment._declarations = list(declarations)
         return experiment
 
@@ -323,7 +329,7 @@ class Experiment:
         """``declaration`` added by the rule of a declaration made a second time (``_redeclared``), with the change it
         made (a replacement) recorded and the place it was declared at kept."""
         before = len(self._replaced)
-        add_declaration(self._declarations, declaration, self._replaced)
+        add_declaration(self._declarations, declaration, self._replaced, self._inherited, self._parent)
         known = known_as(declaration)
         if len(self._replaced) > before and known is not None:
             self._changes.append(Change("replacement", known.noun, self._replaced[-1]))
@@ -367,6 +373,8 @@ class Experiment:
         self._sites = {key: place for key, place in self._sites.items() if key in held}
 
     def _place_of(self, declaration: Declaration) -> str:
+        if any(declaration is each for each in self._inherited):
+            return f"taken from {self._parent!r}, the saved experiment this one is based on"
         return self._sites.get(id(declaration), "declared in the loaded document")
 
     def _add(self, thing: Any, cls: type) -> None:
@@ -609,6 +617,71 @@ class Experiment:
         experiment.load_report = experiment.build().load_report
         experiment._load_checked = True
         return experiment
+
+    @classmethod
+    @public
+    def based_on(cls, source: str | PathLike[str], *, name: str, accept_licences: Collection[str] = (),
+                 yes: bool = False, force: bool = False) -> Experiment:
+        """A new experiment made from a saved one, to change and save as an experiment of its own: it holds the saved
+        experiment's declarations under ``name``, with no lock, and saving it writes a new folder with a lock of its
+        own. ``source`` is a saved folder, a bundle file, or what ``mime pull`` takes (a DOI, an address): a source that
+        is not a folder is pulled first, as ``mime pull <source>`` pulls it, into ``./<its name>/``, and the experiment
+        is based on that folder. Where that folder already holds the same experiment (the same input hash: a
+        notebook's cell run again), it is used as it is, and nothing is unpacked into it; where it holds anything else,
+        it is refused as pull refuses it. Its assets are fetched into the asset cache through the download gates
+        (:func:`mime.saved.pull`): a licence with conditions beyond credit is asked about where a person can answer, or
+        accepted by name in ``accept_licences``; ``yes`` answers the question a large download asks, and ``force``
+        overrides the stop of one that would leave the drive almost full; neither accepts a licence. The saved
+        experiment is loaded as :meth:`load` loads it, and refused, with the load's reasons, where it does not load;
+        its folder is read and never written.
+
+        A declaration taken from the saved experiment, made again and changed, replaces the one taken, in a script as
+        in a notebook (``exp.declare("rpm.magnetic_moment", A_m2(25.0), reason=...)``), with a warning that names what
+        follows it, recorded in ``plan().replaced`` as a notebook's replacements are; a declaration made after this
+        call follows the rule any experiment's does. The run settings (the step, the seed, gravity, the scene, the
+        conditions, the profile and the run's length) are the saved experiment's.
+
+        The new experiment's document records the one it was made from as ``based_on``: its name, the input hash its
+        lock records, the MIME version that saved it, and the DOI of the record it was published as: the record it was
+        pulled from, where ``source`` is a DOI (a lock that names another record is warned of, naming both), and
+        otherwise the one its lock names (every bundle ``mime push`` publishes does); a DOI that is not a DOI's shape is
+        not recorded, with a warning that says why. Only that one: an experiment made from one that was itself made
+        from another records the one it was made from, whose own document records the next. ``mime card`` names it."""
+        from mime.saved._based_on import based_on_of
+
+        held = Path(source)
+        folder, pulled_doi = (held, None) if held.is_dir() else _pulled(source, accept_licences, yes, force)
+        parent = cls.load(folder)
+        assert parent._saved is not None
+        record, notes = based_on_of(parent._saved, pulled_doi)
+        for note in notes:
+            warn_at_script(note, UserWarning)
+        settings = replace(parent._settings, experiment=name, based_on=record)
+        experiment = cls._declared(settings, parent._declarations)
+        experiment._inherited, experiment._parent = tuple(experiment._declarations), parent.name
+        return experiment
+
+
+def _pulled(source: str | PathLike[str], accept_licences: Collection[str], yes: bool,
+            force: bool) -> tuple[Path, str | None]:
+    """The folder ``mime pull <source>`` unpacks ``source`` into (``./<its name>/``), or the one there already that
+    holds the same experiment, and, for a DOI, the DOI of the record it was pulled from, for
+    :meth:`Experiment.based_on` (:func:`mime.saved._pull.pulled_parent`). A folder there that holds another is refused
+    as pull refuses it, with what to do in its place (pull's own action names ``--into``, which ``based_on`` does not
+    take)."""
+    from mime.saved._pull import pulled_parent
+
+    try:
+        return pulled_parent(source, accept_licences=accept_licences, yes=yes, force=force)
+    except BuildRefused as refused:
+        if "pull.destination" not in refused.codes():
+            raise
+        action = ("based_on unpacks a source that is not a folder into ./<its name>/, and uses a folder there only where "
+                  "it holds the same experiment (the same input hash); this one holds another, so move or rename it, or "
+                  "work in another folder; to base the new experiment on what it holds, give its path: "
+                  "Experiment.based_on(\"<the folder>\", name=...)")
+        raise BuildRefused([replace(each, action=action) if each.code == "pull.destination" else each
+                            for each in refused.refusals]) from None
 
 
 #: What :meth:`BuiltExperiment.run_to` writes into its folder: the outputs, their manifest (``outputs.json``), the run's

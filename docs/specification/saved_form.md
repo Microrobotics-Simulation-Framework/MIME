@@ -63,7 +63,10 @@ refusal table's (`mime/build/refusal_table.txt`).
   *Cases:* `tests/saved/test_previous_form.py::test_a_previous_folder_loads_as_exploratory`,
   `tests/saved/test_previous_form.py::test_the_control_a_previous_document_holding_a_key_of_version_two_is_refused`,
   `tests/saved/test_terms_saved.py::test_an_earlier_version_given_a_terms_key_is_refused`,
-  `tests/saved/test_duration_saved.py::test_the_control_an_earlier_form_holding_the_key_of_version_five_is_refused`.
+  `tests/saved/test_duration_saved.py::test_the_control_an_earlier_form_holding_the_key_of_version_five_is_refused`,
+  `tests/saved/test_form7.py::test_an_earlier_document_holding_based_on_is_refused`,
+  `tests/saved/test_form7.py::test_control_an_upgrade_that_accepts_based_on_in_an_earlier_document_is_caught_every_run`,
+  `tests/saved/test_form7.py::test_a_version_six_document_that_declares_a_run_length_reads`.
 - **[document.duration]** The run's length, where the experiment declares one (`Experiment(..., duration=...)`), is
   saved as `run.duration` and is part of the hashed input: a duration edited after its lock was written is refused as
   `load.input-hash`. `mime run` on the folder runs that long when it is given no `--duration`, and the option still
@@ -76,6 +79,23 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_duration_saved.py::test_the_control_a_folder_with_no_duration_still_needs_one`,
   `tests/saved/test_duration_saved.py::test_an_earlier_form_loads_without_a_duration_and_still_needs_one`,
   `tests/saved/test_duration_saved.py::test_the_control_a_duration_a_run_would_refuse_is_refused_at_the_build_and_never_saved`.
+- **[document.based-on]** An experiment made from a saved one (`Experiment.based_on`) records it as `based_on`: its
+  name, the input hash its lock records, the MIME version that saved it, and its DOI (the record it was pulled from,
+  where it was pulled by a DOI, and otherwise the record its lock names, if any; a text of no DOI's shape is not
+  recorded); the immediate one alone. It is part of the hashed input: a record edited after its lock was
+  written is refused as `load.input-hash`, as any edit is. The new experiment's lock is its own and names no record;
+  the folder it was made from is never written. A reader of the sixth form (that of 0.3.0.dev1) refuses a folder of the
+  seventh as `load.newer-form`.
+  *Cases:* `tests/saved/test_based_on.py::test_saving_writes_a_new_folder_whose_document_records_the_parent_and_whose_lock_is_its_own`,
+  `tests/saved/test_based_on.py::test_the_record_names_the_parents_doi_where_its_lock_names_the_record_it_was_published_as`,
+  `tests/saved/test_based_on.py::test_the_record_edited_by_hand_after_its_lock_was_written_is_refused`,
+  `tests/saved/test_based_on.py::test_an_experiment_based_on_one_that_was_itself_based_on_another_records_its_immediate_parent`,
+  `tests/saved/test_based_on.py::test_the_parents_folder_is_never_written`,
+  `tests/saved/test_based_on.py::test_a_child_of_a_folder_the_released_wheel_saved_saves_as_form_seven_loads_rebuilds_and_reproduces`,
+  `tests/saved/test_based_on.py::test_the_record_names_the_mime_of_the_parents_lock_and_the_childs_lock_names_the_one_running`,
+  `tests/saved/test_based_on.py::test_a_doi_that_is_not_a_dois_shape_is_not_recorded_and_the_warning_says_why`,
+  `tests/sharing/test_based_on_shared.py::test_a_bundle_whose_lock_names_another_record_records_the_one_it_was_pulled_from_and_warns_naming_both`,
+  `tests/saved/test_form7.py::test_dev1s_reader_refuses_a_folder_of_version_seven_as_newer_each_file_once`.
 - **[document.terms]** The document's licence, custom licences, terms and permissions are read in the form `save`
   writes them; terms in any other form are refused by their own codes.
   *Cases:* `tests/saved/test_terms_saved.py::test_terms_edited_by_hand_are_refused_at_load_by_their_code`.
@@ -232,11 +252,11 @@ refusal table's (`mime/build/refusal_table.txt`).
   after the load) is refused at its next build as `load.input-hash`, in words about the edit: "edited after it was
   loaded", naming what changed and, in a notebook or IPython, saying that a line or cell run after the load changed
   it. A loaded experiment is checked against its lock at every build, and a save builds first, so the edited experiment
-  can be neither built nor saved. The action is to load the folder again, which drops the edit, or to make the same
-  edit in the script that built the experiment and save from there. Where `Experiment.based_on` exists, the action
-  names it instead.
+  can be neither built nor saved. The action is to load the folder again, which drops the edit, or to keep the edit in
+  a new experiment made from the folder, `Experiment.based_on(<folder>, name=...)`, and save that.
   *Cases:* `tests/saved/test_other_release.py::test_an_experiment_edited_after_it_was_loaded_is_refused_in_words_about_the_edit`,
-  `tests/saved/test_other_release.py::test_the_actions_the_edited_refusal_names_work_and_the_one_it_rules_out_is_refused`.
+  `tests/saved/test_other_release.py::test_the_actions_the_edited_refusal_names_work_and_the_one_it_rules_out_is_refused`,
+  `tests/saved/test_other_release.py::test_the_action_names_based_on_now_that_it_exists`.
 - **[rebuild.stage]** A stage written by a stage writer this MIME does not have is refused as `load.stage-writer`; in
   the environment the lock was written in, a rebuilt stage of other bytes is refused as `load.stage-hash`.
   *Cases:* `tests/saved/test_stage_writer.py::test_the_control_a_lock_naming_another_writer_or_a_stage_neither_writes_is_refused`.

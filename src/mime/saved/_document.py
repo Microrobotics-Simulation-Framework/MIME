@@ -37,6 +37,7 @@ from mime.saved._schema import (
     DOCUMENT_SCHEMA,
     AcceptanceDoc,
     AssetDoc,
+    BasedOnDoc,
     FileDoc,
     BoundEntryDoc,
     ConditionDoc,
@@ -576,6 +577,11 @@ def document_of(settings: RunSettings, declarations: Sequence[Declaration]) -> E
     }
     if gravity is not None:
         document["gravity"] = gravity
+    if settings.based_on is not None:
+        # written beside the experiment's own name, where a reader of the file looks for what it is
+        held = cast(dict[str, Any], document)
+        named = {key: held[key] for key in ("schema", "mime", "experiment")}
+        document = cast(ExperimentDocument, {**named, "based_on": cast(BasedOnDoc, dict(settings.based_on)), **held})
     encoded, refusals = encode(declared_of_terms(settings, declarations))
     if refusals:
         raise TermsUnsavable(refusals)

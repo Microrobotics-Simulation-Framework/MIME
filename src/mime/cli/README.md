@@ -109,7 +109,9 @@
 - `mime card <folder> [--out <file>] [--notice]`: the experiment's **card** (Markdown: what it is, what it bounds and
   estimates, what reproduces, its validity lines, its licences and credit, its availability, how to reproduce and cite
   it), or with `--notice` its NOTICE (each file's licence, credit, verdict and declared permission), offline and
-  byte for byte as `mime push` will publish them; printed, or written to `--out`. It loads the folder as `pack` does.
+  byte for byte as `mime push` will publish them, but for the card's line naming the experiment it was based on
+  (`Experiment.based_on`), which push's description leaves out until push states that relation; printed, or written to
+  `--out`. It loads the folder as `pack` does.
   Exits zero, or two when refused.
 - `mime pull <doi | address | file> [--into <folder>] [--no-assets] [--yes] [--force] [--accept-licence <id>]... [--max-bundle-bytes <n>]`: get a bundle,
   check its hashes, unpack it into a new folder, fetch its assets (unless `--no-assets`) and say what is still needed:

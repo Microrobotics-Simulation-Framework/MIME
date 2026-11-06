@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/6"
-LOCK_SCHEMA = "mime.lock/6"
+DOCUMENT_SCHEMA = "mime.document/7"
+LOCK_SCHEMA = "mime.lock/7"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -231,6 +231,17 @@ class RunDoc(TypedDict, closed=True):
     duration: NotRequired[DurationDoc]
 
 
+class BasedOnDoc(TypedDict, closed=True):
+    """The saved experiment this one was made from (``Experiment.based_on``, version 7): its name, the input hash its
+    lock records, the MIME version that saved it, and the DOI of the record it was published as, where its lock names
+    one. The immediate parent alone: its own document records its parent, and so on."""
+
+    experiment: ReadOnly[str]
+    input_hash: ReadOnly[str]
+    mime: ReadOnly[str]
+    doi: NotRequired[ReadOnly[str]]
+
+
 class ReferenceDoc(TypedDict, closed=True):
     """An asset layer referenced into the scene: the prim it is referenced at, its file below the document's
     folder, and its pin."""
@@ -327,11 +338,13 @@ class ExperimentDocument(TypedDict, closed=True):
 
     Version 5 adds ``run.duration``, the length of a run of the experiment, absent where it declares none. Version 6
     adds nothing to the document; its schema moves with the lock's, which holds an asset's full record and the
-    manifests of the meshes its stage draws."""
+    manifests of the meshes its stage draws. Version 7 adds ``based_on``, the saved experiment this one was made from
+    (``Experiment.based_on``), absent where it was made from none."""
 
-    schema: ReadOnly[Literal["mime.document/6"]]
+    schema: ReadOnly[Literal["mime.document/7"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
+    based_on: NotRequired[BasedOnDoc]
     profile: ReadOnly[Literal["exploratory", "research", "strict"]]
     run: RunDoc
     scene: SceneDoc
@@ -766,7 +779,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/6"]]
+    schema: ReadOnly[Literal["mime.lock/7"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -909,7 +922,7 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
+    "BasedOnDoc", "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
     "ScopeDoc", "TermsDoc",
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",
