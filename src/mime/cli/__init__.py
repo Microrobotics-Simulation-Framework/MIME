@@ -101,10 +101,15 @@ def _xla_cache(arguments: argparse.Namespace) -> AbstractContextManager[object]:
 def _cache_clear() -> int:
     from mime.env import clear_user_xla_cache, user_xla_cache_root
 
+    from mime.assets import bytes_text
+
     root = user_xla_cache_root()
     freed = clear_user_xla_cache(root)
-    _say(f"removed {freed} bytes of XLA's compilation cache from {root}" if freed else
-         f"no XLA compilation cache to remove at {root}")
+    if freed and styled(sys.stdout):  # a terminal is told how much, in a size a person reads; no question: it rebuilds
+        _say(f"freed {bytes_text(freed)} (XLA's compilation cache, {root}): it is made again by the next run")
+    else:
+        _say(f"removed {freed} bytes of XLA's compilation cache from {root}" if freed else
+             f"no XLA compilation cache to remove at {root}")
     return 0
 
 
@@ -173,7 +178,15 @@ def _pending(folder: Path) -> int:
         print("no profile: the build was refused before its profile was read", file=sys.stderr)
         return 2
 
-    print(for_terminal(profile.text()), end="")
+    text = for_terminal(profile.text())
+
+    def draw() -> None:
+        from mime.cli._display import show_pending
+
+        show_pending(text, sys.stdout)
+
+    if not _drawn(draw):
+        print(text, end="")
     return 1 if profile.pending else 0
 
 
@@ -443,6 +456,19 @@ def _visuals(arguments: argparse.Namespace) -> int:
         baked = {name for name, _ in viz.baked_layers()}
         held_sets = visual_sets()
 
+        def draw() -> None:
+            from mime.assets import size_text
+            from mime.cli._display import show_visual_sets
+
+            show_visual_sets(
+                [(name, str(len(held.files)), size_text(sum(ref.size for ref in held.assets)),
+                  "baked" if name in baked else "not fetched", held.licence, held.verdict.tier, held.role)
+                 for name, held in sorted(held_sets.items())]
+                + [(name, "-", "-", "baked", "-", "-", "its manifest is beside the description it came with")
+                   for name in sorted(baked - set(held_sets))], sys.stdout)
+
+        if (held_sets or baked) and _drawn(draw):
+            return 0
         for name, held in sorted(held_sets.items()):
             print(for_terminal(f"{name}  {len(held.files)} files  {'baked' if name in baked else 'not fetched'}  "
                                f"{held.licence} ({held.verdict.tier}, {held.role})"))
@@ -571,9 +597,16 @@ def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[st
 
     refs = _assets_named(arguments) if arguments else list(assets.known().values())
     if command == assets.LIST:
-        for ref in refs:
-            print(for_terminal(f"{ref.name}  {assets.size_text(ref.size)}  "
-                               f"{'cached' if assets.is_cached(ref) else 'missing'}  {ref.licence}"))
+        def draw() -> None:
+            from mime.cli._display import show_assets
+
+            show_assets([(ref.name, assets.size_text(ref.size), "cached" if assets.is_cached(ref) else "missing",
+                          ref.licence, ref.tier) for ref in refs], sys.stdout)
+
+        if not _drawn(draw):
+            for ref in refs:
+                print(for_terminal(f"{ref.name}  {assets.size_text(ref.size)}  "
+                                   f"{'cached' if assets.is_cached(ref) else 'missing'}  {ref.licence}"))
     elif command == assets.CHECK:
         outcomes = {ref.name: assets.check(ref) for ref in refs}
         for name, outcome in outcomes.items():
@@ -594,6 +627,22 @@ def _assets(command: str, arguments: Sequence[str], accept_licences: Sequence[st
     return 0
 
 
+def _sources(names: Sequence[str]) -> int:
+    """``mime assets sources``: each asset's terms and where it can be fetched from, each location looked at now."""
+    from mime import assets
+
+    named = [assets.assets_of(name) for name in names]
+
+    def draw() -> None:
+        from mime.cli._display import show_sources
+
+        show_sources([view for refs in named for view in assets.sources_view(refs)], sys.stdout)
+
+    if not _drawn(draw):
+        print(for_terminal("\n".join(assets.sources_text(refs) for refs in named)))
+    return 0
+
+
 def _licences(revoke: str | None) -> int:
     """``mime assets licences``: the licences accepted on this machine; with ``--revoke <id>``, remove one (1 where none
     of that id was kept)."""
@@ -605,7 +654,15 @@ def _licences(revoke: str | None) -> int:
             return 0
         print(for_terminal(f"{revoke}: no such acceptance is kept (`mime assets licences` lists them)"), file=sys.stderr)
         return 1
-    print(for_terminal(assets.acceptances_text()))
+    held = assets.read_acceptances()
+
+    def draw() -> None:
+        from mime.cli._display import show_acceptances
+
+        show_acceptances(held, sys.stdout)
+
+    if not held or not _drawn(draw):
+        print(for_terminal(assets.acceptances_text()))
     return 0
 
 
@@ -1635,8 +1692,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
                            not arguments.skip_evidence, not arguments.skip_example_runs)
     if arguments.command == assets.GROUP:
         if arguments.assets_command == assets.SOURCES:
-            print(for_terminal("\n".join(assets.sources_text(assets.assets_of(name)) for name in arguments.names)))
-            return 0
+            return _sources(arguments.names)
         if arguments.assets_command == assets.LICENCES:
             return _licences(arguments.revoke)
         if arguments.assets_command == assets.AUDIT:

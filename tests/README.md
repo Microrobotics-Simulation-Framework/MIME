@@ -28,7 +28,8 @@
   a run read as bytes. What each platform supports is in [`docs/platforms.md`](../docs/platforms.md).
 - `test_canary.py`: CI's planted failures. A manual run with `plant_failure` set must turn every lane red, which
   proves each lane really runs its tests; one with `plant_slow_tests` set makes two tests take 21 s and 6 s, which the
-  time budget must fail and warn on.
+  time budget must fail and warn on; one with `plant_completion_failure` set fails the shell-completion tests job of every
+  lane (the planted test is in `cli/test_completion.py`), and each lane's required check must go red (`test_completion_job.py`).
 - `conftest.py`: each test's own CPU time and its children's, written into the JUnit XML for the durations report;
   and one OpenBLAS thread per process, set before SciPy loads it, since its spinning threads slowed many small solves
   sevenfold with every core busy.

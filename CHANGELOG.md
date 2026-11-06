@@ -46,7 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1 GB or a tenth of it, it is asked about (`-y/--yes`); if it would leave under 2 GB or 5 % of the drive, it is stopped
   (`-f/--force`); `visuals fetch` counts 30 % of the meshes' size more for what baking writes. New refusals:
   `asset.licence-not-accepted`, `asset.licence-declined`, `asset.disk-low`, `asset.download-large`,
-  `asset.download-declined`, `asset.licences-file`. Output that is not going to a terminal is byte for byte what it was.
+  `asset.download-declined`, `asset.licences-file`. `mime assets list`, `assets sources`, `assets licences` and `visuals
+  list` are tables on a terminal; `mime pending` sets the lines to paste apart as blocks that are never wrapped; `mime
+  cache clear` says how much it freed. Output that is not going to a terminal is byte for byte what it was.
   **Moves:** the asset manifest format is `mime.asset_manifest/2` (it adds `conditions` to a custom licence; `/1` is still
   read, and a `/1` manifest holding `conditions` is refused); the AR4's `visuals.json` is `/2` with its licence's four
   condition lines; a saved folder's lock (form 6) holds the manifest as `/1` without the lines. `mime pull`'s question
@@ -79,12 +81,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that laws, observations, values or the controller name: they hold it by its name, so they find the new one, and the one
   warning names each (change `field_strength` and run the field cell again). A name declared again as another kind, or a
   declaration that holds the earlier thing's object and not its name, is kept beside the new one and refused at the build,
-  saying a line or cell has probably run twice; so is a law or an observation that a source or the controller
-  names. A value declared of a thing replaced still applies and overrides what the new declaration brings, and the
+  saying a line or cell has probably run twice. A law or an observation that a source or the controller names is
+  replaced too, and the source or controller follows it by its id (the note lists it). A value declared of a thing replaced still applies and overrides what the new declaration brings, and the
   warning says so. The warning is also recorded on the experiment (`plan().replaced` and the build report), because a
   warnings filter removes a warning; a warning raised as an error stops the call before anything changes. The words
   say "a notebook or IPython": the rule also applies to a script run by `ipython script.py` or `%run`. The same scene
   reference made again is kept once. The notebooks pin 0.3.0.dev1 and keep its advice (run again from the cell that makes the experiment) until they move to the release that ships this.
+
+- **`exp.remove(name or handle)`** takes a declaration out, in a script and in a notebook: a thing, a law (by the id
+  `attach` returned), an observation, a declared value, a source, or the controller (`exp.remove(kind="controller")`).
+  It is refused while another declaration still names it (`remove.named`), listing each with the cell or line that made
+  it and the call that removes it; nothing is removed with it. A removal is recorded
+  (`plan().removed`, the build report's "removed in this session") and raises no warning, being your own call
+  (a replacement warns, because it happens without your asking). Removing and declaring
+  again under the same name is how a thing's kind changes.
+- **A build, a result and a view that predate a replacement or a removal say so.** `built.stale`, `result.stale` and the
+  view's `stale` name what changed since (`this build predates the replacement of the apparatus 'field'`). Running
+  (`run`, `run_to`), saving or opening a live session on a stale build is refused in a notebook or IPython
+  (`run.stale`, action: build the experiment again) and warned about in a script; the build report's first lines, a
+  result shown (`repr`, `text()`) and a view (`viz.display` of a run folder `run_to` wrote, `RunWritten.view`) carry the
+  same line. A fresh build clears it; a change put back, or a declaration only added, is not stale. The run folder and
+  the report's summary written into it are not changed. A file inside the run folder and `viz.web` carry the mark too; a copy of the folder, which no session knows, is shown
+  with no mark. A result pickled (sent back from a worker process) keeps no link to the experiment: it still pickles and
+  deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
 
