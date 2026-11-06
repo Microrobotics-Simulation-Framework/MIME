@@ -167,7 +167,8 @@ refusal table's (`mime/build/refusal_table.txt`).
   lock that names none (every lock before the eighth form). A save takes the reference from the build's own graph and
   puts it back where its runs left it, so a run goes on from there bit for bit; from a graph built afresh where the
   build's graph was edited since the build.
-  *Cases:* `tests/saved/test_save_reference.py::test_the_saved_reference_is_the_run_graphs_and_a_fresh_graph_reruns_it_bit_for_bit`,
+  *Cases:* `tests/saved/test_reference_table.py::test_in_float32_on_a_first_build_the_saved_reference_is_what_a_fresh_graph_reruns`,
+  `tests/saved/test_reference_table.py::test_in_float64_the_saved_reference_is_what_a_fresh_graph_reruns`,
   `tests/saved/test_save_reference.py::test_verify_builds_one_fresh_graph_and_reproduces_a_one_step_reference_bit_for_bit`,
   `tests/saved/test_save_reference.py::test_mime_verify_in_a_fresh_process_reproduces_a_one_step_reference_bit_for_bit`,
   `tests/saved/test_save_reference.py::test_control_the_lock_naming_the_other_program_fails_verify_where_the_two_differ`,

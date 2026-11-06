@@ -11,10 +11,13 @@ where its writes' latency split the periods into single steps; otherwise the his
     python reference_programs.py <case> <steps>
 
 prints one JSON line: the case, the precision, the path the save took (``one-step``, ``history`` or ``fresh``), the
-arrays compared, those that differ from a fresh graph's history scan (``moved``: the save before form 8) and those that
-differ from a fresh graph run by the same program (``verify_moved``: what ``verify`` reruns, which must be none), and
-those in which the history scan on the run's graph differs from a fresh graph's (``history_moved``: what a run not
-chunked by one step saves, which must be none), each with its largest difference and the first step it differs at."""
+arrays compared, and, each with its largest difference and the first step it differs at, the arrays of the save's
+reference that differ from: a fresh graph's history scan (``moved``: the save before form 8); a fresh graph run by the
+same program (``verify_moved``: what ``verify`` reruns, which must be none); and the run's own first steps
+(``own_moved``: the reference is those steps, run again from the initial state, which must be none); and those in which
+the history scan on the run's graph differs from a fresh graph's (``history_moved``: what a run not chunked by one step
+saves, which must be none). One fresh graph serves the rerun and, reset to its initial state, the history scan (a reset
+graph holds a fresh one's state, bit for bit). ``table_row`` is also called in a pytest worker, for the float64 rows."""
 
 from __future__ import annotations
 
@@ -52,24 +55,28 @@ def experiment_of(name: str) -> Experiment:
 
 def table_row(name: str, steps: int) -> dict[str, Any]:
     built = experiment_of(name).build()
-    dt = float(built.report.dt)
+    dt = float(built.report.dt)  # type: ignore[arg-type]
     period = built._runs.chunk or 1  # noqa: SLF001
     whole = -(-steps // period) * period
     if built._runs.chunk is None:  # noqa: SLF001
-        built.run(s(whole * dt), history=True, hook=lambda chunk: None, chunk=s(dt))
+        ran = built.run(s(whole * dt), history=True, hook=lambda chunk: None, chunk=s(dt))
     else:
-        built.run(s(whole * dt), history=True)
+        ran = built.run(s(whole * dt), history=True)
+    assert ran.history is not None
+    own = {node: {field: value[:steps] for field, value in fields.items()} for node, fields in ran.history.items()}
     reused = step_reads(built.graph).unchanged_since(built._built_reads)  # noqa: SLF001
     taken, program = built._reference(steps)  # noqa: SLF001
-    rerun = built._history_on(construct(built._plans, built._law)[0], steps, program)  # noqa: SLF001
-    before = built._history_on(construct(built._plans, built._law)[0], steps, None)  # noqa: SLF001
+    fresh = construct(built._plans, built._law)[0]
+    rerun = built._history_on(fresh, steps, program)  # noqa: SLF001
+    fresh.reset_state()
+    before = built._history_on(fresh, steps, None)  # noqa: SLF001
     with state_put_back(built.graph):  # the history scan on the run's graph: what a run not chunked by one step saves
         built.graph.reset_state()
         history = built._history_on(built.graph, steps, None)  # noqa: SLF001
     return {"case": name, "x64": bool(jax.config.jax_enable_x64), "steps": steps,
             "path": program or ("history" if reused else "fresh"), "compared": sum(map(len, before.values())),
             "moved": moved(taken, before), "verify_moved": moved(taken, rerun),
-            "history_moved": moved(history, before),
+            "history_moved": moved(history, before), "own_moved": moved(taken, own),
             "usable_cpus": len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()}
 
 

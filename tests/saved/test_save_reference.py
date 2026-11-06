@@ -7,15 +7,8 @@ nothing is built or compiled), else by the history scan of whole control periods
 step reads anything the build did not give it, the graph is built afresh, as every save did before.
 
 **What carries the contract** is that ``verify`` reruns, on a graph built afresh, the program the lock names: the rerun
-and the save then run one program, and agree bit for bit within one environment whatever another program computes. The
-table (``test_the_saved_reference_is_the_run_graphs_and_a_fresh_graph_reruns_it_bit_for_bit``) measures, in a fresh
-process per case (the build is the process's first, MIME-ANO-138's condition), float32 and float64: the save's
-reference against a fresh graph run by the same program (must be equal, every case), the history scan on the run's
-graph against a fresh graph's (must be equal, every case), and the save's reference against what a save wrote before
-form 8 (the history scan on a fresh graph). The last is equal where the two programs agree and differs where a scan of
-one step and a longer scan compute other last bits (PR #104's MRS sphere in float64; 15 of 28 cases in float32 and 12
-of 28 in float64, measured on a laptop): it is asserted equal for the cases measured equal and recorded for the rest
-(``record_property``), not asserted.
+and the save then run one program, and agree bit for bit within one environment whatever another program computes.
+``test_reference_table.py`` measures it case by case.
 
 **The controls.** The compile listener sees a compile: a save after a run chunked by two compiles, and one with the
 guard tripped builds a graph. Saving then running on is bit for bit against a run that never saved, and the same with
@@ -42,6 +35,7 @@ from typing import Any
 import jax
 import numpy as np
 import pytest
+from _platform_support import needs_readable_cpu_flags
 from chain_cases import tracked_rpm
 from script_a import script_a
 
@@ -57,6 +51,9 @@ from mime.testing._saved import _compilations
 from mime.testing.toys import full_toy
 from mime.units import s
 
+#: An affinity to set in a child process: ``os.sched_setaffinity``, which Linux has.
+needs_affinity = pytest.mark.skipif(not hasattr(os, "sched_setaffinity"),
+                                    reason="sets a child process's affinity (os.sched_setaffinity, Linux only)")
 HERE = Path(__file__).parent
 TESTS = HERE.parent
 STEPS = 8
@@ -121,55 +118,6 @@ def counted_constructs() -> Iterator[list[int]]:
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(_experiment, "construct", counted)
         yield calls
-
-
-# --- the table: the reference from the run's graph, in a fresh process per case -------------------------------------
-
-#: The cases of ``tests/saved/cases.py`` that build and PR #104's MRS sphere (12 steps), in both precisions; the tube
-#: demo in float32, the precision it runs in (its float64 row, measured on the laptop, is equal too: 27 of 27).
-TABLE_CASES = ("script_a_body", "script_a", "script_a_kept", "script_a_records", "hull_contact", "coupled_toy",
-               "full_toy", "walled_toy", "anchored_toy", "nudged_toy", "bound_robot", "bound_robot_with_parts",
-               "probed_shapes", "kinematic_rpm", "gantry_magnet", "tracked_rpm", "dynamic_rpm", "swing_magnet_kept",
-               "massive_rpm", "mrs_free_space", "mrs_point_forces", "mrs_kept", "mrs_solids", "mrs_tube",
-               "rigid_explicit", "lab_bead", "sphere_settling")
-TABLE = [pytest.param(case, x64, id=f"{case}-{'float64' if x64 else 'float32'}")
-         for case in TABLE_CASES for x64 in (False, True)] + [pytest.param("sphere_settling_tube", False,
-                                                                          id="sphere_settling_tube-float32")]
-#: Where the save's reference equals what a save wrote before form 8, measured on a laptop's CPU (24 CPUs, a fresh
-#: process per case): 13 of 28 cases in float32 and 16 of 28 in float64. The rest differ in the last bits of a scan of
-#: one step against a longer scan's (the recorded property ``moved``; at most 4.2e-7 in float32, a probe's unit normal,
-#: and 4.4e-16 in float64).
-EQUAL_BEFORE = {
-    False: {"script_a_body", "full_toy", "anchored_toy", "bound_robot", "bound_robot_with_parts", "gantry_magnet",
-            "tracked_rpm", "dynamic_rpm", "swing_magnet_kept", "massive_rpm", "rigid_explicit", "sphere_settling",
-            "sphere_settling_tube"},
-    True: {"script_a_body", "coupled_toy", "full_toy", "walled_toy", "anchored_toy", "bound_robot",
-           "bound_robot_with_parts", "probed_shapes", "kinematic_rpm", "gantry_magnet", "tracked_rpm", "dynamic_rpm",
-           "swing_magnet_kept", "massive_rpm", "rigid_explicit", "sphere_settling_tube"},
-}
-
-
-def table_row(case: str, x64: bool) -> dict[str, Any]:
-    steps = 12 if case == "sphere_settling" else STEPS
-    environment = {**os.environ, "JAX_ENABLE_X64": "1" if x64 else "0",
-                   "PYTHONPATH": os.pathsep.join([str(TESTS), str(HERE), os.environ.get("PYTHONPATH", "")])}
-    done = subprocess.run([sys.executable, str(HERE / "reference_programs.py"), case, str(steps)],
-                          capture_output=True, text=True, check=False, env=environment)
-    assert done.returncode == 0, done.stderr[-4000:]
-    return json.loads(done.stdout.splitlines()[-1])
-
-
-@pytest.mark.parametrize(("case", "x64"), TABLE)
-def test_the_saved_reference_is_the_run_graphs_and_a_fresh_graph_reruns_it_bit_for_bit(case: str, x64: bool,
-                                                                                       record_property):
-    row = table_row(case, x64)
-    record_property("table_row", json.dumps(row, sort_keys=True))
-    assert row["x64"] is x64 and row["compared"] > 0
-    assert row["path"] == "one-step", "a run chunked by one step compiled the one-step history program"
-    assert row["verify_moved"] == {}, "verify, a fresh graph run by the lock's program, reproduces the saved reference"
-    assert row["history_moved"] == {}, "the history scan on the run's graph is a fresh graph's"
-    if case in EQUAL_BEFORE[x64]:
-        assert row["moved"] == {}, "measured equal to what a save wrote before form 8"
 
 
 # --- nothing compiled, and the listener sees a compile --------------------------------------------------------------
@@ -314,6 +262,7 @@ def one_step_folder(tmp_path: Path) -> Path:
     return tmp_path / "one_step"
 
 
+@needs_readable_cpu_flags
 def test_verify_builds_one_fresh_graph_and_reproduces_a_one_step_reference_bit_for_bit(one_step_folder: Path):
     built = Experiment.load(one_step_folder).build()
     with counted_constructs() as constructed:
@@ -321,6 +270,7 @@ def test_verify_builds_one_fresh_graph_and_reproduces_a_one_step_reference_bit_f
     assert constructed == [1] and report.reproduced and report.same_environment
 
 
+@needs_readable_cpu_flags
 def test_mime_verify_in_a_fresh_process_reproduces_a_one_step_reference_bit_for_bit(one_step_folder: Path):
     done = subprocess.run([sys.executable, "-c", "import sys; from mime.cli import main; sys.exit(main(sys.argv[1:]))",
                            "verify", str(one_step_folder)], capture_output=True, text=True, check=False,
@@ -341,6 +291,7 @@ def with_reference(folder: Path, change: Callable[[dict[str, np.ndarray]], None]
     (folder / LOCK_FILE).write_text(json.dumps(lock), encoding="utf-8")
 
 
+@needs_readable_cpu_flags
 def test_control_a_one_ulp_change_at_any_array_of_the_reference_fails_verify(one_step_folder: Path, tmp_path: Path):
     """One element of one array at step 3 moved by one ulp, for every array of floating type in turn: ``verify``'s
     resolution is the last bit of one element, and each plant is caught."""
@@ -371,6 +322,7 @@ def script_a_folder(folder: Path, run: Callable[[BuiltExperiment, int], Any]) ->
     return folder
 
 
+@needs_readable_cpu_flags
 @pytest.mark.parametrize("planted", ["one_step_named_none", "history_named_one_step"])
 def test_control_the_lock_naming_the_other_program_fails_verify_where_the_two_differ(planted: str, tmp_path: Path):
     """Script A in float64, where a scan of one step and the history scan differ in their last bits (measured: the
@@ -397,6 +349,7 @@ def toy_folder(tmp_path: Path) -> Path:
     return tmp_path / "toy"
 
 
+@needs_readable_cpu_flags
 def test_a_folder_verified_at_the_count_it_was_saved_at_is_the_same_environment_bit_for_bit(toy_folder: Path):
     lock = read_folder(toy_folder).lock
     assert lock["environment"]["usable_cpus"] == _record.usable_cpus()
@@ -420,6 +373,7 @@ def test_a_folder_verified_at_another_count_is_another_environment(toy_folder: P
     assert not report.same_environment and report.tolerance.startswith("within rtol")
 
 
+@needs_affinity
 def test_mime_verify_under_another_affinity_in_a_fresh_process_reports_another_environment(toy_folder: Path):
     """The process's affinity set to one CPU before JAX starts, as ``taskset -c`` would: XLA's thread pools are sized
     by it, and the lock's count is another."""
