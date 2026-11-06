@@ -247,7 +247,10 @@ def test_the_defaults_of_the_script_are_the_ones_the_docstring_gives(tmp_path):
             f"runpy.run_path({str(RUN_JOBS)!r}, run_name='__main__')\n")
     done = subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True, check=False, timeout=60)
     assert done.returncode == 1 and calls(folder) == 5, done
-    assert re.findall(r"sleep ([0-9.]+)", done.stderr) == ["10.0", "20.0", "40.0", "60.0"], done.stderr
+    # subprocess polls with sleeps of a few milliseconds while it waits for a call with a time limit, and the recorder
+    # catches those too (it did, on a CI runner: "sleep 0.001"): the script's own waits are the ones of seconds
+    waits = [wait for wait in re.findall(r"sleep ([0-9.]+)", done.stderr) if float(wait) >= 1]
+    assert waits == ["10.0", "20.0", "40.0", "60.0"], done.stderr
 
 
 @needs_posix
