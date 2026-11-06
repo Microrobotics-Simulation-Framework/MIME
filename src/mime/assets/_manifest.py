@@ -9,7 +9,13 @@ description writes (``meshes/ar4_mk5/Link_1_Aluminum.STL``) to a record by name,
 a repository (which names it in any clone, and in Software Heritage). No tier is written: each record's is the verdict
 of its licence (:mod:`mime.terms`).
 
-The format is ``mime.asset_manifest/1``. The earlier visual-set form (``mime.visual_set/1``) is still read: its
+The format is ``mime.asset_manifest/2``. Its one addition to ``/1`` is the **conditions** of a custom licence: each
+entry of ``licences`` may hold ``conditions``, a list of short lines (``non-commercial use only``) that a download of a
+file under that licence shows and asks to be accepted (:mod:`mime.assets._gates`), beside the manifest's ``notice``,
+which stays as the licence's own words. ``/1`` is still read, as a manifest whose licences state no condition lines; a
+``/1`` manifest that holds ``conditions`` is refused, never read as stating them, and a MIME that reads only ``/1``
+refuses a ``/2`` manifest by its format. A saved folder's lock (saved form 6) holds a manifest as ``/1``, with no
+condition lines: its form has no key for them. The earlier visual-set form (``mime.visual_set/1``) is still read: its
 hand-written tier is dropped and the verdict computed, and its licence, which it named with a link alone, is read as a
 custom licence whose redistribution nobody stated (unknown, so referenced). Any other format is refused
 (``asset.manifest``), never misread.
@@ -25,11 +31,15 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, cast
 
+from mime._terminal import for_terminal, plain
 from mime.assets._reference import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.terms import CustomLicence, Verdict, strictest
 
-MANIFEST_FORMAT = "mime.asset_manifest/1"
+MANIFEST_FORMAT = "mime.asset_manifest/2"
+#: The first form of a manifest: the same, with no conditions on a custom licence. Read, and what a saved folder's lock
+#: holds.
+FIRST_FORMAT = "mime.asset_manifest/1"
 #: The earlier form of a description's meshes, before a visual set was a manifest of records.
 VISUAL_SET_FORMAT = "mime.visual_set/1"
 #: The manifest MIME looks for beside a description, and the name it takes after the description's own stem.
@@ -92,23 +102,28 @@ class Manifest:
     def role(self) -> str:
         return ", ".join(dict.fromkeys(held.role or "results" for held in self.assets))
 
-    def text(self) -> str:
-        """The credit, licence, tier and notice, as a command prints them before it fetches."""
-        links = "; ".join(f"{each.id}: {each.title} ({each.url})"
+    def text(self, *, notice: bool = True) -> str:
+        """The credit, licence, tier and notice, as a command prints them before it fetches (without the notice where
+        a licence panel has just shown it). Every word is a stranger's, so it is written as plain characters
+        (:mod:`mime._terminal`): an escape sequence in a title cannot rewrite the screen it is printed on."""
+        links = "; ".join(f"{plain(each.id)}: {plain(each.title)} ({plain(each.url)})"
                           for each in {c.id: c for held in self.assets for c in held.licences}.values())
-        return (f"{self.title}\ncredit: {self.credit}\nlicence: {self.licence}" + (f" ({links})" if links else "")
-                + f"; tier {self.verdict.tier}, role {self.role}\n{self.notice}")
+        return (f"{plain(self.title)}\ncredit: {plain(self.credit)}\nlicence: {plain(self.licence)}"
+                + (f" ({links})" if links else "")
+                + f"; tier {self.verdict.tier}, role {plain(self.role)}"
+                + (f"\n{for_terminal(self.notice)}" if notice else ""))
 
-    def to_json(self) -> dict[str, Any]:
-        """The manifest as its file holds it: each record whole, with no tier."""
-        held: dict[str, Any] = {"format": MANIFEST_FORMAT, "name": self.name, "title": self.title,
-                                "credit": self.credit, "notice": self.notice}
+    def to_json(self, *, lock: bool = False) -> dict[str, Any]:
+        """The manifest as its file holds it (``/2``): each record whole, with no tier. With ``lock``, as a saved
+        folder's lock holds it (``/1``), the licences' condition lines left out."""
+        held: dict[str, Any] = {"format": FIRST_FORMAT if lock else MANIFEST_FORMAT, "name": self.name,
+                                "title": self.title, "credit": self.credit, "notice": self.notice}
         if self.upstream:
             held["upstream"] = dict(self.upstream)
         held["archives"] = list(self.archives)
         if self.archive_checked is not None:
             held["archive_checked"] = self.archive_checked
-        held["assets"] = [dict(each.to_record()) for each in self.assets]
+        held["assets"] = [dict(each.to_record(conditions=not lock)) for each in self.assets]
         held["files"] = {each.path: {"asset": each.asset, **({"git_blob": each.git_blob} if each.git_blob else {})}
                          for each in self.files}
         return held
@@ -140,17 +155,24 @@ def _text(record: Mapping[str, object], key: str, where: str) -> str:
     return value
 
 
-def _custom(held: object, where: str) -> tuple[CustomLicence, ...]:
+def _custom(held: object, where: str, *, conditions: bool = True) -> tuple[CustomLicence, ...]:
     if held is None:
         return ()
+    shape = ("its licences are an object of LicenseRef- id to title, url and redistribution"
+             + (", and conditions (a list of short lines) where it has them" if conditions
+                else f" ({FIRST_FORMAT} has no conditions: write the manifest as {MANIFEST_FORMAT} to state them)"))
     if not isinstance(held, dict):
-        raise _refused(where, "its licences are an object of LicenseRef- id to title, url and redistribution")
+        raise _refused(where, shape)
     found: list[CustomLicence] = []
     for key, value in cast(dict[object, object], held).items():
-        entry = cast(dict[str, object], value) if isinstance(value, dict) else None
-        if not isinstance(key, str) or entry is None or set(entry) != {"title", "url", "redistribution"}:
-            raise _refused(where, "its licences are an object of LicenseRef- id to title, url and redistribution")
-        licence = CustomLicence(key, str(entry["title"]), str(entry["url"]), cast(Any, entry["redistribution"]))
+        entry = dict(cast(dict[str, object], value)) if isinstance(value, dict) else None
+        said = entry.pop("conditions", ()) if entry is not None and conditions else ()
+        lines = cast(list[object], said) if isinstance(said, list) else None
+        if (not isinstance(key, str) or entry is None or set(entry) != {"title", "url", "redistribution"}
+                or (lines is None and said != ()) or not all(isinstance(each, str) for each in lines or ())):
+            raise _refused(where, shape)
+        licence = CustomLicence(key, str(entry["title"]), str(entry["url"]), cast(Any, entry["redistribution"]),
+                                tuple(str(each) for each in lines or ()))
         problem = licence.problem()
         if problem is not None:
             raise _refused(where, problem)
@@ -173,15 +195,15 @@ def read_manifest_data(data: object, where: str) -> Manifest:
     stated = record.get("format")
     if stated == VISUAL_SET_FORMAT:
         return _from_visual_set(record, where)
-    if stated != MANIFEST_FORMAT:
+    if stated not in (MANIFEST_FORMAT, FIRST_FORMAT):
         raise _refused(where, f"its format is {stated!r}, and this MIME reads {MANIFEST_FORMAT} (and the earlier "
-                              f"{VISUAL_SET_FORMAT}); a later one is written by a later MIME")
+                              f"{FIRST_FORMAT} and {VISUAL_SET_FORMAT}); a later one is written by a later MIME")
     unknown = sorted(set(record) - _KEYS)
     if unknown:
         raise _refused(where, f"it holds keys a manifest does not: {', '.join(unknown)}")
     name, title = _text(record, "name", where), _text(record, "title", where)
     credit, notice = _text(record, "credit", where), _text(record, "notice", where)
-    custom = _custom(record.get("licences"), where)
+    custom = _custom(record.get("licences"), where, conditions=stated == MANIFEST_FORMAT)
     listed = record.get("assets")
     if not isinstance(listed, list) or not listed:
         raise _refused(where, "its assets are a list of records, at least one")
@@ -193,6 +215,9 @@ def read_manifest_data(data: object, where: str) -> Manifest:
             refs.append(_filled(AssetRef.from_record(cast(dict[str, object], each)), credit, custom))
         except BuildRefused as refused:
             raise _refused(where, "; ".join(str(r.message) for r in refused.refusals)) from None
+    if stated == FIRST_FORMAT and any(held.conditions for ref in refs for held in ref.licences):
+        raise _refused(where, f"a record of it states conditions of a licence, which {FIRST_FORMAT} has no key for "
+                              f"(write the manifest as {MANIFEST_FORMAT})")
     names = [ref.name for ref in refs]
     if len(set(names)) != len(names):
         raise _refused(where, "two of its records have one name")
@@ -263,7 +288,7 @@ def read_manifest(path: Path | Traversable, where: str | None = None) -> Manifes
 def is_manifest_data(data: object) -> bool:
     """Whether a JSON value says it is a manifest (of either form): what a package's folder of records holds beside
     plain lists of records."""
-    return isinstance(data, dict) and cast(dict[str, object], data).get("format") in (MANIFEST_FORMAT,
+    return isinstance(data, dict) and cast(dict[str, object], data).get("format") in (MANIFEST_FORMAT, FIRST_FORMAT,
                                                                                        VISUAL_SET_FORMAT)
 
 
@@ -275,5 +300,5 @@ def beside(description: Path, chosen: str | None = None) -> Path | None:
     return next((folder / name for name in names if (folder / name).is_file()), None)
 
 
-__all__ = ["BESIDE_NAME", "BESIDE_SUFFIX", "MANIFEST_FORMAT", "VISUAL_SET_FORMAT", "Manifest", "ManifestFile",
+__all__ = ["BESIDE_NAME", "BESIDE_SUFFIX", "FIRST_FORMAT", "MANIFEST_FORMAT", "VISUAL_SET_FORMAT", "Manifest", "ManifestFile",
            "beside", "is_manifest_data", "mesh_path", "read_manifest", "read_manifest_data"]

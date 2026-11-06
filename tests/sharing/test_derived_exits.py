@@ -83,10 +83,10 @@ def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def placed(cache: Path, data: bytes, record: AssetRef | None = None) -> None:
     """``data`` in the cache under its sha256, as a lab without the network places a file; checked in full where it
-    is an asset's."""
+    is an asset's. A person who placed it has accepted its licence (a first use of a cached file asks)."""
     (cache / sha(data)).write_bytes(data)
     if record is not None:
-        assets.fetch(record)
+        assets.fetch(record, accept_licences={each.id for each in assets.licences_of(record)})
 
 
 @pytest.fixture

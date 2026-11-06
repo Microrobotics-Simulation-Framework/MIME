@@ -166,7 +166,7 @@ def test_the_sdist_ships_the_ar4s_description_with_its_mit_notice_and_the_wheel_
     assert hashlib.sha256((ROOT / AR4_FOLDER / "LICENSE").read_bytes()).hexdigest() == AR4_LICENSE_SHA256
     assert licence.startswith("MIT License\n\nCopyright (c) 2021 Dexter Ong\n")
     assert "The above copyright notice and this permission notice shall be included" in licence
-    assert b'"format": "mime.asset_manifest/1"' in _sdist_member(sdist, f"{AR4_FOLDER}/visuals.json")
+    assert b'"format": "mime.asset_manifest/2"' in _sdist_member(sdist, f"{AR4_FOLDER}/visuals.json")
     assert not [name for name in wheel.namelist() if "ar4" in name.lower()]
 
 

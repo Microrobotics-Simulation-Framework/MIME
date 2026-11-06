@@ -6,7 +6,13 @@
 asset.audit                   user
 asset.conflict                environment
 asset.derivation-check        user
+asset.disk-low                user
+asset.download-declined       user
+asset.download-large          user
 asset.hash-mismatch           environment
+asset.licence-declined        user
+asset.licence-not-accepted    user
+asset.licences-file           user
 asset.locations-file          user
 asset.lock                    user
 asset.manifest                user environment
@@ -265,7 +271,6 @@ profile.tables                internal
 profile.unknown               user
 provider.part                 user
 provider.reader-inside        user
-pull.assets-large             user
 pull.destination              user
 pull.record                   environment
 pull.restricted               user

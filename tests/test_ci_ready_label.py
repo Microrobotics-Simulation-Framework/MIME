@@ -10,10 +10,10 @@ needs is skipped unless its own ``if`` names a status function; a matrix expande
 summary job's steps do (the steps that run, the refusing step's script run in ``bash -e``, and a failed step's
 ``continue-on-error`` honoured, so the job's own result is what is judged). What this shows:
 
-- **Full** (a push, a manual run, a pull request whose labels hold ``ready`` when the run starts): 58 jobs, 59 for a
+- **Full** (a push, a manual run, a pull request whose labels hold ``ready`` when the run starts): 63 jobs, 64 for a
   manual run (``usd-core-newest``), the required checks among them, none refusing.
-- **Reduced** (a pull request without ``ready``): 18 jobs, the typecheck, the confidentiality scan, the docs check and
-  ``default`` on Python 3.12 with all its shards. The four required jobs that did not run their lane (``default`` on
+- **Reduced** (a pull request without ``ready``): 19 jobs, the typecheck, the confidentiality scan, the docs check and
+  ``default`` on Python 3.12 with all its shards and its completion tests job. The four required jobs that did not run their lane (``default`` on
   3.13 and 3.14, ``maddening-main``, ``openmaterica-main``) start, run nothing but the refusing step, and fail with its
   message. Every required name starts in both modes: no required job's ``if`` can skip it.
 - **The mode is read when a run starts**, never from the event: a re-run (attempt 2) of a reduced run after ``ready``
@@ -116,26 +116,26 @@ class Run:
     read: tuple[str, ...] = ()
     attempt: int = 1
     mode: str = "full"
-    jobs: int | None = 58
+    jobs: int | None = 63
     platforms: int | None = 5
 
 
 FULL, REDUCED = "full", "reduced"
 SCENARIOS: dict[str, Run] = {
     "a push to a branch": Run("push"),
-    "a manual run": Run("workflow_dispatch", jobs=59),
-    "a pull request opened without the label": Run("pull_request", "opened", mode=REDUCED, jobs=18, platforms=1),
-    "a push to a pull request without the label": Run("pull_request", "synchronize", mode=REDUCED, jobs=18,
+    "a manual run": Run("workflow_dispatch", jobs=64),
+    "a pull request opened without the label": Run("pull_request", "opened", mode=REDUCED, jobs=19, platforms=1),
+    "a push to a pull request without the label": Run("pull_request", "synchronize", mode=REDUCED, jobs=19,
                                                       platforms=1),
     "a push to a pull request with another label": Run("pull_request", "synchronize", ("stress",), ("stress",),
-                                                       mode=REDUCED, jobs=18, platforms=1),
+                                                       mode=REDUCED, jobs=19, platforms=1),
     "a push to a pull request carrying ready": Run("pull_request", "synchronize", ("ready",), ("stress", "ready")),
     "a pull request opened with ready, its payload without it": Run("pull_request", "opened", (), ("ready",)),
     "ready removed before the run read the labels": Run("pull_request", "synchronize", ("ready",), (), mode=REDUCED,
-                                                        jobs=18, platforms=1),
+                                                        jobs=19, platforms=1),
     "the label Ready, capitalised": Run("pull_request", "synchronize", ("Ready",), ("Ready",)),
     "a re-run after ready was added": Run("pull_request", "synchronize", (), ("ready",), attempt=2),
-    "a re-run without ready": Run("pull_request", "synchronize", (), (), attempt=2, mode=REDUCED, jobs=18, platforms=1),
+    "a re-run without ready": Run("pull_request", "synchronize", (), (), attempt=2, mode=REDUCED, jobs=19, platforms=1),
     # The count job passed, so it is not re-run: the run keeps the mode its first attempt read.
     "a re-run of the failed jobs after ready was added": Run("pull_request", "synchronize", (), (), attempt=2,
                                                              mode=REDUCED, jobs=None, platforms=None),
@@ -499,15 +499,16 @@ def test_a_copy_of_the_workflows_passes_too(tmp_path):
 
 
 def test_the_reduced_set_is_what_the_brief_names(tmp_path):
-    """18 jobs, and the names are the four things that run plus the four refusals."""
+    """19 jobs, and the names are the five things that run plus the four refusals."""
     run = SCENARIOS["a push to a pull request without the label"]
     workflow = load(WORKFLOWS, "ci.yml")
     full, found = read_mode(workflow, "ci.yml", run, tmp_path)
     assert (full, found) == ("false", [])
     names = job_names(workflow, base_context(run, "CI").with_values(**{"needs.shards.outputs.full": full}))
     assert sorted(set(names) - {f"default tests (Python 3.12, shard {k} of {SHARDS})" for k in range(1, SHARDS + 1)}) == sorted(
-        [*REFUSING, "default (Python 3.12)", "typecheck (pyright, Python 3.12)", "no private name or path", "shard count"])
-    assert sum(name.startswith("default tests (Python 3.12") for name in names) == SHARDS and len(names) == 18
+        [*REFUSING, "default (Python 3.12)", "completion tests (default, Python 3.12)", "typecheck (pyright, Python 3.12)",
+        "no private name or path", "shard count"])
+    assert sum(name.startswith("default tests (Python 3.12") for name in names) == SHARDS and len(names) == 19
 
 
 def test_the_mode_step_reads_the_pull_request_and_nothing_else_on_a_push(tmp_path):
@@ -603,24 +604,24 @@ PLANTS = {
         "ci.yml: maddening-main: the refusal runs only if"),
     "every-python-in-a-reduced-run": (
         "ci.yml", lambda t: EXCLUDE.sub("", t),
-        "a push to a pull request without the label: starts 38 jobs; the reduced set is 18"),
+        "a push to a pull request without the label: starts 41 jobs; the reduced set is 19"),
     "the-other-lanes-in-a-reduced-run": (
         "ci.yml", lambda t: in_job(t, "openmaterica-main-tests", f" && {FULL}", ""),
-        "a push to a pull request without the label: starts 28 jobs; the reduced set is 18"),
+        "a push to a pull request without the label: starts 29 jobs; the reduced set is 19"),
     "a-required-job-renamed": (
         "ci.yml", lambda t: re.sub(r"(  confidential:\n    name: ).*\n", r"\1confidentiality\n", t),
         "a push to a branch: the required check 'no private name or path' does not start"),
     # The mode read from the event: a re-run reads the payload of the run it repeats, so it would stay reduced.
     "the-matrix-reads-the-event": (
         "ci.yml", lambda t: t.replace(f"fromJSON({FULL} && '[]'", f"fromJSON({FROM_THE_EVENT} && '[]'"),
-        "a re-run after ready was added: starts 38 jobs; the full set is 58"),
+        "a re-run after ready was added: starts 41 jobs; the full set is 63"),
     "a-summary-reads-the-event": (
         "ci.yml", lambda t: in_job(t, "maddening-main", f"MIME_CI_RUNS: ${{{{ {FULL} }}}}", f"MIME_CI_RUNS: ${{{{ {FROM_THE_EVENT} }}}}"),
         "a re-run after ready was added: 'maddening-main' refuses, and its lane runs here"),
     "the-mode-step-reads-every-event": (
         "ci.yml", lambda t: in_job(t, "shards", '          if [ "$EVENT" = pull_request ]; then\n' + READ + "          fi\n",
                                    READ.replace("            ", "          ", 1)),
-        "a push to a branch: starts 18 jobs; the full set is 58"),
+        "a push to a branch: starts 19 jobs; the full set is 63"),
     "the-mode-step-swallows-an-unread-label": (
         "ci.yml", lambda t: in_job(t, "shards", READ, READ.replace("\")')\n", "\")' || echo false)\n")),
         "ci.yml: the mode step passes when the labels cannot be read"),
