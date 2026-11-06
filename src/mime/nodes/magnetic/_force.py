@@ -31,7 +31,7 @@ class MagneticForceInputs(TypedDict, closed=True):
 
 
 class MagneticForceNode(MimeNode):
-    """``F = G^T m``, with ``G_ij = dB_i/dx_j`` the field's gradient where the body is and ``m`` its body-frame
+    """``F = G^T m``, with ``G_ij = dB_i/dx_j`` the field's gradient where the law reads it and ``m`` its body-frame
     ``moment`` turned by the body's orientation ``q``: the force on a point dipole in a current-free field. It acts at
     the magnet's centroid, ``magnet_centre`` in the body frame turned by ``q``, so the wrench about the centre of mass
     is ``[F; l x F]``. No torque of the field itself: that is ``m x B``, another law's."""
@@ -41,7 +41,7 @@ class MagneticForceNode(MimeNode):
         description="The force of a field's gradient on a body's permanent moment, F = G^T m, and its torque about the "
                     "centre of mass where the magnet sits off it.",
         governing_equations=EQUATIONS,
-        assumptions=("A point dipole in a current-free field, the gradient read at the body's centre of mass",
+        assumptions=("A point dipole in a current-free field, the gradient read where the law reads it",
                      "A rigid, permanent moment"),
         references=(Reference("Jackson1998", "the force on a magnetic dipole in a field's gradient"),),
     )

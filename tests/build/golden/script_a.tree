@@ -22,7 +22,7 @@ experiment script_a  (profile exploratory)
       between body umr, medium water
     gravity:umr  gravity 0.1.0
       between body umr, medium water
-    magnetic.torque:umr  magnetic.torque 0.1.0
+    magnetic.torque:umr  magnetic.torque 0.2.0
       between body umr, field field.magnetic
   observations
     swim_speed:umr  swim_speed 0.1.0
