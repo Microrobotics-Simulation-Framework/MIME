@@ -180,8 +180,9 @@ class ResolvedTarget:
 @dataclass(frozen=True)
 class ResolvedRead:
     """Where a read comes from. A state read names the publishing node's field. A field read names the provider's
-    output port for its reader slot, and ``points`` the state read its points come from. ``units`` are the
-    vocabulary's, which the edge carrying the read is labelled with."""
+    output port for its reader slot, ``points`` the state read its points come from, and ``offset`` the label of the
+    reader's value that is the point fixed in that pose's frame where the field is read (``Read.offset``). ``units``
+    are the vocabulary's, which the edge carrying the read is labelled with."""
 
     node: str
     field: str
@@ -189,6 +190,7 @@ class ResolvedRead:
     units: str
     points: ResolvedRead | None = None
     slot: str | None = None
+    offset: str | None = None
 
 
 @dataclass(frozen=True)
@@ -337,11 +339,14 @@ class ScenePlan:
 
 @dataclass(frozen=True)
 class Slot:
-    """A reader slot of a field provider: ``points_<name>`` in, ``<prefix>_<name>`` out for each interface read."""
+    """A reader slot of a field provider: ``points_<name>`` in, ``<prefix>_<name>`` out for each interface read.
+    ``offset`` is the point fixed in the reader's pose where the slot is read (in that pose's frame, SI), or ``None``
+    for the pose's position itself."""
 
     name: str
     reader: str
     interfaces: tuple[str, ...]
+    offset: tuple[float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -2598,9 +2603,14 @@ class _Planner:
     def plan_reads(self, plan: EntryPlan, where: str) -> None:
         cls = plan.reader_cls()
         assert plan.plan is not None
-        sources: dict[tuple[str, ResolvedRead | None], str] = {}
+        sources: dict[tuple[str, ResolvedRead | None, str | None], str] = {}
         for label in sorted(plan.plan.reads):
             read = plan.plan.reads[label]
+            if read.offset is not None and (read.at is None or read.offset not in plan.plan.values):
+                self.defect(cls, f"read {label!r}: its offset {read.offset!r} is a point fixed in the pose a field is "
+                                 f"read at, and names a value its plan reads; the read gives no pose (at=) or its plan "
+                                 f"reads no value {read.offset!r}")
+                continue
             if cls.roles.get(read.role) is not RoleKind.FIELD:
                 if read.at is not None:
                     self.defect(cls, f"read {label!r}: only a field is read at points")
@@ -2641,10 +2651,17 @@ class _Planner:
             points = None if uniform or read.at is None else self.state_read(plan, where, read.at)
             if points is None and not uniform:
                 continue
-            key = (path, points)
+            # A uniform field is the same at every point, so a point fixed in the body changes nothing it reads.
+            offset = read.offset if points is not None else None
+            if offset is not None and (provider.record is None or Capability.BODY_POINTS not in provider.record.flags):
+                self.defect(cls, f"read {label!r} of field {read.interface!r} is at the point {offset!r} fixed in the "
+                                 f"body, and its provider {provider.describe()} evaluates at the pose's position only: "
+                                 f"its support rows must require Capability.BODY_POINTS")
+                continue
+            key = (path, points, offset)
             slot = sources.setdefault(key, _sanitize(plan.owner) + (f"_{len(sources)}" if sources else ""))
             plan.reads[label] = ResolvedRead(provider.owner, f"{prefix.field}_{slot}", read.interface, entry.units,
-                                             points, slot)
+                                             points, slot, offset)
 
     def target(self, plan: EntryPlan, where: str, delivery: Delivery) -> ResolvedTarget | None:
         cls = plan.reader_cls()
@@ -3252,7 +3269,8 @@ class _Planner:
                     self.refuse("slot.collision", RefusalClass.INTERNAL,
                                 f"field {read.node!r}: readers {held.reader} and {plan.owner} map to one slot name "
                                 f"{read.slot!r}", MIME_DEFECT)
-                slots[read.node][read.slot] = Slot(read.slot, plan.owner, tuple(dict.fromkeys(interfaces)))
+                slots[read.node][read.slot] = Slot(read.slot, plan.owner, tuple(dict.fromkeys(interfaces)),
+                                                   self.slot_offset(plan, read))
         for path, provider in list(self.providers.items()):
             provider.slots = [slots[path][name] for name in sorted(slots.get(path, {}))]
             if not provider.slots:
@@ -3260,31 +3278,61 @@ class _Planner:
                 self.declared.remove(provider)
                 del self.providers[path]
 
+    def slot_offset(self, plan: EntryPlan, read: ResolvedRead) -> tuple[float, float, float] | None:
+        """The point fixed in the reader's pose where ``read``'s slot is read, in SI, from the value its offset names;
+        ``None`` for a read at the pose's position, or where that value was refused (unresolved, or not a point)."""
+        held = plan.values.get(read.offset) if read.offset is not None else None
+        if held is None:
+            return None
+        value = held.value
+        if not (isinstance(value, tuple) and len(value) == 3):
+            self.defect(plan.registered.cls, f"its offset {read.offset!r} reads {held.path}, {value!r}, which is not a "
+                                             f"point (three lengths)")
+            return None
+        x, y, z = value
+        return (float(x), float(y), float(z))
+
     def check_readers_outside_parts(self) -> None:
-        """A provider whose field is valid outside its parts only (``outside_parts``) is not read by a body that starts
-        inside the smallest sphere about a part's centroid that holds the part: the field is singular at the centroid
-        and the model is not faithful that near (MIME-ANO-100)."""
+        """A provider whose field is valid outside its parts only (``outside_parts``) is not read at a point inside
+        the smallest sphere about a part's centroid that holds the part: the field is singular at the centroid and the
+        model is not faithful that near (MIME-ANO-100). The point is the one the law reads: the body's position, or,
+        for a read at a point fixed in the body (``Read.offset``, the magnet's centre for the magnetic laws 0.2.0),
+        that point in the pose the body starts in."""
         for path, provider in self.providers.items():
             if not cast(type[FieldProvider], provider.registered.cls).outside_parts:
                 continue
-            readers = [reader for reader in self.readers if any(read.node == path for read in reader.reads.values())]
+            offsets = {slot.name: slot.offset for slot in provider.slots}
+            readers = [(reader, [read for read in reader.reads.values() if read.node == path]) for reader in self.readers]
             for part in provider.parts.values():
                 start = composed(part.mount.initial_pose, part.offset) if part.mount else part.offset
-                for reader in readers:
+                for reader, reads in readers:
                     for body in reader.bindings.values():
                         found = self.dynamics.get(body)
                         position = found.initial.get("position") if found is not None else None
-                        if position is None:
+                        if found is None or position is None or not reads:
                             continue
-                        distance = math.dist(position, start[:3])
-                        if distance < part.radius:
-                            self.refuse(
-                                "provider.reader-inside", RefusalClass.USER,
-                                f"body {body!r} starts {distance:.6g} m from the centroid of {part.apparatus!r}'s part "
-                                f"{part.name!r}, inside the {part.radius:.6g} m sphere that holds the magnet: {path} "
-                                f"is evaluated outside the magnet, and singular at its centroid",
-                                f"start {body!r} outside the magnet, State(position=...) farther than its radius from "
-                                f"{part.name!r}'s centroid (MIME-ANO-100 asks for five times that)")
+                        turned = rotation_matrix(found.initial.get("orientation", (1.0, 0.0, 0.0, 0.0)))
+                        for label, lever in dict.fromkeys(
+                                (read.offset, offsets.get(read.slot) if read.slot is not None else None)
+                                for read in reads):
+                            read_at = position if lever is None else \
+                                tuple(np.asarray(position, dtype=np.float64) + turned @ np.asarray(lever))
+                            distance = math.dist(read_at, start[:3])
+                            if distance < part.radius:
+                                self.refuse_reader_inside(path, body, part, distance, label, lever)
+
+    def refuse_reader_inside(self, path: str, body: str, part: ResolvedPart, distance: float, label: str | None,
+                             lever: tuple[float, float, float] | None) -> None:
+        where = (f"body {body!r} starts {distance:.6g} m from" if lever is None else
+                 f"body {body!r} reads {path} at {label!r}, {_vec(lever)} m fixed in it and turned by the orientation "
+                 f"it starts in, which starts {distance:.6g} m from")
+        self.refuse(
+            "provider.reader-inside", RefusalClass.USER,
+            f"{where} the centroid of {part.apparatus!r}'s part {part.name!r}, inside the {part.radius:.6g} m sphere "
+            f"that holds the magnet: {path} is evaluated outside the magnet, and singular at its centroid",
+            f"start {body!r} outside the magnet, State(position=...) farther than its radius from {part.name!r}'s "
+            f"centroid" + ("" if lever is None else f", or change {label!r}, so that the point the law reads is "
+                                                    f"outside it") + " (MIME-ANO-100 asks for five times that)")
 
     def collect_targets(self) -> dict[tuple[str, str], ResolvedTarget]:
         targets: dict[tuple[str, str], ResolvedTarget] = {}

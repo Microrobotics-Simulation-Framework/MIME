@@ -52,9 +52,9 @@ experiment tutorial_a0  (profile exploratory)
       between body umr, medium water
     gravity:umr  gravity 0.1.0
       between body umr, medium water
-    magnetic.force:umr  magnetic.force 0.1.0
+    magnetic.force:umr  magnetic.force 0.2.0
       between body umr, field rpm.magnetic
-    magnetic.torque:umr  magnetic.torque 0.1.0
+    magnetic.torque:umr  magnetic.torque 0.2.0
       between body umr, field rpm.magnetic
   observations
     swim_speed:umr  swim_speed 0.1.0
@@ -103,8 +103,8 @@ flowchart LR
     n4["rpm.motor<br/>motor 0.2.0 (rung kinematic)<br/>KinematicMotorNode"]
     n5["rpm.magnetic<br/>point_dipole 0.1.0<br/>PointDipoleNode"]
     n6["drag:umr<br/>drag 0.4.0 (rung surrogate)<br/>SurrogateDragNode"]
-    n7["magnetic.force:umr<br/>magnetic.force 0.1.0<br/>MagneticForceNode"]
-    n8["magnetic.torque:umr<br/>magnetic.torque 0.1.0<br/>MagneticTorqueNode"]
+    n7["magnetic.force:umr<br/>magnetic.force 0.2.0<br/>MagneticForceNode"]
+    n8["magnetic.torque:umr<br/>magnetic.torque 0.2.0<br/>MagneticTorqueNode"]
     n9["umr<br/>rigid_inertial 0.3.0<br/>RigidInertialMidpointNode"]
     n10["swim_speed:umr<br/>swim_speed 0.1.0<br/>SwimSpeedNode"]
     n9 -->|"pose→read_body_pose"| n0

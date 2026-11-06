@@ -44,7 +44,7 @@ EQUATIONS = (r"\mathbf{B} = \frac{\mu_{0}}{4 \pi} \, \frac{3 (\mathbf{m} \cdot \
              r"- \mathbf{m}}{r^{3}}, \quad "
              r"G_{ij} = \frac{\partial B_{i}}{\partial x_{j}} = \frac{3 \mu_{0}}{4 \pi r^{5}} \left( (\mathbf{m} \cdot "
              r"\mathbf{r}) \, \delta_{ij} + m_{i} r_{j} + r_{i} m_{j} - \frac{5 (\mathbf{m} \cdot \mathbf{r}) \, r_{i} "
-             r"r_{j}}{r^{2}} \right), \quad \mathbf{r} = \mathbf{x} - \mathbf{c}; \quad "
+             r"r_{j}}{r^{2}} \right), \quad \mathbf{r} = \mathbf{x} + R(\mathbf{u}) \, \mathbf{o} - \mathbf{c}; \quad "
              r"(\mathbf{c}, \mathbf{q}) = \mathbf{M}_{j} \circ \mathbf{O}, \quad \mathbf{m} = R(\mathbf{q}) \, "
              r"\mathbf{p}")
 
@@ -58,14 +58,18 @@ class PointDipoleState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
 
 
 class PointDipoleInputs(MountInputs, extra_items=ReadOnly[Float[Array, "7"]]):
-    """``mount_poses``, and ``points_<slot>`` for each reader slot: a pose, read at its position."""
+    """``mount_poses``, and ``points_<slot>`` for each reader slot: a pose, read at its position, or at the point fixed
+    in it that the slot's offset names."""
 
 
 class PointDipoleNode(MountedNode):
-    """The flux density and its gradient, at each reader slot's point (the position of the pose it takes as
-    ``points_<slot>``), of a point dipole: the moment ``moment`` of a magnet part, in the part's frame, at the part's
-    centroid, the part placed by ``placement`` on the frame it is mounted on. Each slot publishes
-    ``flux_density_<slot>`` and ``gradient_<slot>``. Faithful only far from the magnet (MIME-ANO-100): ``magnet_radius``, the radius of the
+    """The flux density and its gradient, at each reader slot's point, of a point dipole: the moment ``moment`` of a
+    magnet part, in the part's frame, at the part's centroid, the part placed by ``placement`` on the frame it is
+    mounted on. A slot's point is the position of the pose it takes as ``points_<slot>``; for a slot in
+    ``offset_slots``, the point fixed in that pose at its row of ``offsets`` (three numbers a slot, in the pose's
+    frame), the position plus
+    the pose's orientation applied to it (a body's magnet's centroid). Each slot publishes ``flux_density_<slot>`` and
+    ``gradient_<slot>``. Faithful only far from the magnet (MIME-ANO-100): ``magnet_radius``, the radius of the
     smallest sphere about the part's centroid that holds it, is the length that far field is judged against."""
 
     meta = NodeMeta(
@@ -85,6 +89,10 @@ class PointDipoleNode(MountedNode):
                f"{_MODULE}.point_dipole"),
         Symbol(r"\mathbf{x}", SymbolKind.INPUT, "points_{slot}", POSE_UNITS,
                f"{_NODE}.advance"),
+        Symbol(r"\mathbf{u}", SymbolKind.INPUT, "points_{slot}", POSE_UNITS,
+               f"{_NODE}.reader_point"),
+        Symbol(r"\mathbf{o}", SymbolKind.PARAMETER, "offsets", "m",
+               f"{_NODE}.reader_point"),
         Symbol(r"\mathbf{c}", SymbolKind.STATE, "centre", "m",
                f"{_NODE}.advance"),
         Symbol(r"\mathbf{q}", SymbolKind.STATE, "orientation", "1",
@@ -99,20 +107,39 @@ class PointDipoleNode(MountedNode):
 
     def __init__(self, name: str, timestep: float, *, slots: Sequence[str], moment: Sequence[float],
                  placement: Sequence[float], magnet_radius: float, mount_index: int = -1, mount_count: int = 0,
-                 initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)) -> None:
+                 initial_mount_pose: Sequence[float] = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                 offset_slots: Sequence[str] = (), offsets: Sequence[float] = ()) -> None:
+        # A node no slot of which reads at a body point keeps the parameters it had before there were any, so that a
+        # folder saved then rebuilds the same graph (its derived hash).
+        at_body_points = {"offset_slots": tuple(offset_slots), "offsets": flattened(offsets)} if offset_slots else {}
         super().__init__(name, timestep, slots=tuple(slots), moment=flattened(moment), placement=flattened(placement),
                          magnet_radius=float(magnet_radius), mount_index=int(mount_index),
-                         mount_count=int(mount_count), initial_mount_pose=flattened(initial_mount_pose))
+                         mount_count=int(mount_count), initial_mount_pose=flattened(initial_mount_pose),
+                         **at_body_points)
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
         return {**super().param_specs(), "moment": ParamSpec(units="A m^2"),
                 "placement": ParamSpec(units=POSE_UNITS),
                 "magnet_radius": ParamSpec(trainable=False, units="m", description="the far field is judged against "
-                                                                                   "it; the field does not read it")}
+                                                                                   "it; the field does not read it"),
+                "offsets": ParamSpec(units="m", description="each offset slot's point, in the frame of the pose it "
+                                                            "reads; a node with no offset slot has none")}
 
     def _slots(self) -> tuple[str, ...]:
         return cast(tuple[str, ...], self.constants()["slots"])
+
+    def _offset_slots(self) -> tuple[str, ...]:
+        return cast(tuple[str, ...], self.constants().get("offset_slots", ()))
+
+    def reader_point(self, p: Mapping[str, Any], slot: str, pose: Array) -> Array:
+        """Where ``slot`` reads the field from the pose ``pose`` it takes: its position, or for an offset slot the
+        point fixed in it, ``x + R(u) o``. A slot with no offset adds nothing, so its arithmetic is the position's."""
+        held = self._offset_slots()
+        if slot not in held:
+            return pose[:3]
+        offset = jnp.reshape(jnp.asarray(p["offsets"], dtype=pose.dtype), (-1, 3))[held.index(slot)]
+        return pose[:3] + quaternion.rotate(pose[3:], offset)
 
     def _fields(self, part: Array, readings: Mapping[str, tuple[Array, Array]]) -> NodeFields:
         out: NodeFields = {"centre": part[:3], "orientation": part[3:]}
@@ -136,7 +163,7 @@ class PointDipoleNode(MountedNode):
                 dt: float) -> NodeFields:
         part = self.base(p, typed_view(PointDipoleInputs, boundary_inputs))
         moment = quaternion.rotate(part[3:], jnp.asarray(p["moment"], dtype=part.dtype))
-        readings = {slot: point_dipole(moment, part[:3], boundary_inputs[f"points_{slot}"][:3])
+        readings = {slot: point_dipole(moment, part[:3], self.reader_point(p, slot, boundary_inputs[f"points_{slot}"]))
                     for slot in self._slots()}
         return self._fields(part, readings)
 
