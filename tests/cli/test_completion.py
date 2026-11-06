@@ -9,8 +9,9 @@ comparison to find them, every run.
 bash and fish are asked for real (`COMP_WORDS` and the function; `complete -C`). zsh is asked with its completion
 builtins (`compadd`, `_describe`, `_files`, `compset`) replaced by functions that print what they were given: that checks
 the script's own logic, and not compsys, which wants a terminal (the script was also tried by hand under compinit on a
-pseudo-terminal). A shell that is not installed skips its tests on a machine, and fails them under CI, whose shard that
-holds this file installs every one (a skipped test fails a CI lane)."""
+pseudo-terminal). A shell that is not installed skips its tests on a machine, and fails them under CI, whose completion
+tests job (`.github/workflows/ci.yml`) installs every one and runs this file alone, the shards deselecting it (a skipped
+test fails that job, `scripts/check_no_skips.py`)."""
 
 import argparse
 import functools
@@ -35,8 +36,8 @@ def shell_path(shell: str) -> str:
     found = shutil.which(shell)
     if found is None:
         if os.environ.get("CI"):
-            pytest.fail(f"{shell} is not installed; the CI shard that holds this file installs bash, zsh and fish for it "
-                        "(.github/workflows/ci.yml, scripts/shard_of_file.py)")
+            pytest.fail(f"{shell} is not installed; the CI job that runs this file alone installs bash, zsh and fish for "
+                        "it (.github/workflows/ci.yml, scripts/install_shells.sh); a shard deselects the file")
         pytest.skip(f"{shell} is not installed")
     return found
 
@@ -292,3 +293,9 @@ def test_the_installed_command_pipes_the_same_bytes_and_nothing_on_the_error_str
                           timeout=TIMEOUT * 3)
     assert done.returncode == 0 and done.stderr == ""
     assert done.stdout == _completion.script("bash", build_parser())
+
+
+def test_the_planted_failure_of_the_completion_tests_job_is_off_unless_a_manual_run_plants_it():
+    """The ``plant_completion_failure`` input of a manual CI run sets ``MIME_CI_PLANT_COMPLETION_FAILURE=1`` in the completion
+    tests jobs only; each lane's required check must then be red (``tests/test_completion_job.py``). Elsewhere it is off."""
+    assert os.environ.get("MIME_CI_PLANT_COMPLETION_FAILURE") != "1", "planted failure: MIME_CI_PLANT_COMPLETION_FAILURE=1"
