@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flags, later and in words about the drag. `result.containment` (and `result.text()`, the manifest, `outputs.json`, the
   `.mat` file and the end-of-run summary) now says the step, the depth past the wall and the fix (`Contact.Projection`
   reads the orientation). A run that kept the pose is read at every step it kept (`record=` keeps it for this); one that
-  kept nothing at its last step alone, and says so. The depth is of the hull's samples, which fall a few micrometres short
+  kept nothing at its last step alone, and says so. It is read when first asked for (the result's `containment`, its
+  text, manifest and exports, the summary), so a run that never looks pays nothing. The depth is of the hull's samples, which fall a few micrometres short
   of the body. `tests/results/test_containment.py` holds the reproduced case, the false-alarm cases (script A as it is,
   the record arm), the hull contact's run, an independent depth and three mutants.
 

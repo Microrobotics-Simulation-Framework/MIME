@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -1092,6 +1093,14 @@ class BuiltExperiment:
         """Each flag of the layout as a scan tests it, for a run that keeps no step's state to reduce them over."""
         return tuple(FlagTest(flag.node, flag.field, flag.limits) for flag in self.layout.flags)
 
+    def _poses_kept(self, stacked: History | None) -> History | None:
+        """The poses of the bodies the containment watch reads, from ``stacked`` where the run kept them, and nothing
+        else of it, so that a result holds no more than the watch needs until the watch is read."""
+        if stacked is None:
+            return None
+        return {plan.node: {plan.field: stacked[plan.node][plan.field]} for plan in self._plans.watches
+                if isinstance(plan, ContainmentPlan) and plan.field in stacked.get(plan.node, {})}
+
     def result_of(self, start: int, steps: int, final: History, stacked: History | None = None,
                   recorded: Sequence[OutputLayout] = (), spacing: int = 1, *, history: bool = False,
                   stopped: Stopped | None = None, tally: FlagTally | None = None) -> RunResult:
@@ -1116,8 +1125,9 @@ class BuiltExperiment:
         return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
                          watches=read_watches(self._plans.watches, final, stacked if history else None),
-                         containment=read_containments(self._plans.watches, final, stacked,
-                                                       last_step=start + steps, dt=self._plans.dt),
+                         containment=functools.partial(read_containments, self._plans.watches, final,
+                                                       self._poses_kept(stacked), last_step=start + steps,
+                                                       dt=self._plans.dt),
                          report=self.report_summary(), stopped=stopped, origin=self._origin)
 
     @public

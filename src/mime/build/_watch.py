@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -103,6 +102,16 @@ class WatchPlan:
         return f"{self.owner}: the Reynolds number after each run for {what}, {held}{gaps}{before}"
 
 
+#: The spacing of the points the containment watch compares with the surface, as a share of the hull's enclosing radius
+#: (about 0.2 mm for FL-9, whose samples then fall 20 um short of the body and whose convex hull has about 500
+#: vertices): coarser than the hull contact's, which must hold the body to its margin, since the watch reads a run
+#: after it, at every step it kept, and its cost is the vertices times the steps; it quotes the shortfall.
+WATCH_SPACING = 0.05
+#: The hulls made in this process (``ContainmentPlan.made``), and the most kept.
+_MADE: dict[tuple[object, ...], tuple[np.ndarray, float]] = {}
+_MADE_MOST = 8
+
+
 @dataclass(frozen=True)
 class ContainmentPlan:
     """What the containment watch needs for a body the centre-held contact (0.1.0) holds, which has a hull it does not
@@ -133,25 +142,36 @@ class ContainmentPlan:
     spacing: float
     convex: bool
 
-    @cached_property
+    @property
+    def made(self) -> tuple[np.ndarray, float]:
+        """The hull's points to compare with the surface (``vertices``) and how far the samples fall short of the body
+        (``shortfall``, m), made once per process for the same hull: a study builds the same body many times."""
+        key = (self.kind.name, self.kind.version, tuple(sorted((n, repr(v)) for n, v in self.settings.items())),
+               self.centre, self.rotation, self.spacing, self.convex)
+        if key not in _MADE:
+            from mime.nodes.body._rigid_inertial import hull_vertices
+            from mime.scene._sampling import quadrature_arrays, quadrature_counts, samples_shortfall
+
+            patches = tuple(self.kind.patches)
+            counts = quadrature_counts(self.kind, self.settings, self.spacing, patches)
+            points = quadrature_arrays(self.kind, self.settings, patches, counts)[0]
+            turn = np.asarray(self.rotation, dtype=np.float64).reshape(3, 3)
+            placed = points @ turn.T + np.asarray(self.centre, dtype=np.float64)
+            _MADE[key] = (placed[hull_vertices(placed)] if self.convex else placed,
+                          float(samples_shortfall(self.kind, self.settings, self.spacing)))
+            while len(_MADE) > _MADE_MOST:
+                del _MADE[next(iter(_MADE))]
+        return _MADE[key]
+
+    @property
     def vertices(self) -> np.ndarray:
         """The hull's points to compare with the surface, in the body's frame, ``K x 3`` in float64."""
-        from mime.nodes.body._rigid_inertial import hull_vertices
-        from mime.scene._sampling import quadrature_arrays, quadrature_counts
+        return self.made[0]
 
-        patches = tuple(self.kind.patches)
-        counts = quadrature_counts(self.kind, self.settings, self.spacing, patches)
-        points = quadrature_arrays(self.kind, self.settings, patches, counts)[0]
-        turn = np.asarray(self.rotation, dtype=np.float64).reshape(3, 3)
-        placed = points @ turn.T + np.asarray(self.centre, dtype=np.float64)
-        return placed[hull_vertices(placed)] if self.convex else placed
-
-    @cached_property
+    @property
     def shortfall(self) -> float:
         """How far the samples fall short of the body in any direction (m)."""
-        from mime.scene._sampling import samples_shortfall
-
-        return float(samples_shortfall(self.kind, self.settings, self.spacing))
+        return self.made[1]
 
     def range_warning(self) -> str | None:
         """None: a run's pose is what the watch reads, so there is nothing to warn before one."""
@@ -164,4 +184,4 @@ class ContainmentPlan:
                 f"surface, at each step the run kept or at its last step; flagged, never a refusal")
 
 
-__all__ = ["ContainmentPlan", "WatchPlan", "WATCHED_FAMILY", "turning_reynolds"]
+__all__ = ["WATCH_SPACING", "WATCHED_FAMILY", "ContainmentPlan", "WatchPlan", "turning_reynolds"]

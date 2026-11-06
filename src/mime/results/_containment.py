@@ -133,7 +133,8 @@ def rotations(quaternions: NDArray[np.float64]) -> NDArray[np.float64]:
 def depths(plan: ContainmentPlan, poses: NDArray[np.float64]) -> NDArray[np.float64]:
     """The largest signed distance from the plan's surface, over the hull's points, at each of ``poses`` (``n x 7``:
     position, then the quaternion ``(w, x, y, z)``), in float64 whatever the run's precision (m, positive past the
-    surface)."""
+    surface). One compiled function of a block of poses, so that the points of every step in the block are placed and
+    read in one fused pass."""
     shape = shape_named(plan.shape)
     vertices = plan.vertices
     block = max(1, BLOCK // (3 * len(vertices)))
@@ -141,11 +142,20 @@ def depths(plan: ContainmentPlan, poses: NDArray[np.float64]) -> NDArray[np.floa
     with cast(Any, jax).enable_x64(True):
         parameters = {name: (jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple)) else value)
                       for name, value in plan.parameters.items()}
+        held = jnp.asarray(vertices, dtype=jnp.float64)
+
+        @cast(Any, jax).jit
+        def deepest(blocked: Any) -> Any:
+            w, x, y, z = (blocked[:, 3 + i] for i in range(4))
+            turn = jnp.stack([
+                jnp.stack([1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)], -1),
+                jnp.stack([2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)], -1),
+                jnp.stack([2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)], -1)], -2)
+            world = blocked[:, None, :3] + jnp.einsum("nij,kj->nki", turn, held)
+            return jnp.max(shape.signed_distance(parameters, world), axis=-1)
+
         for start in range(0, len(poses), block):
-            held = poses[start:start + block]
-            world = held[:, None, :3] + np.einsum("nij,kj->nki", rotations(held[:, 3:]), vertices)
-            found[start:start + block] = np.asarray(
-                jnp.max(shape.signed_distance(parameters, jnp.asarray(world, dtype=jnp.float64)), axis=-1))
+            found[start:start + block] = np.asarray(deepest(jnp.asarray(poses[start:start + block], dtype=jnp.float64)))
     return found
 
 

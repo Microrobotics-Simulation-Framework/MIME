@@ -797,7 +797,7 @@ class _Planner:
         body's orientation, so the hull may leave the region the centre is held in, which the watch reads after the
         run from the pose. A body with no hull is held as the sphere of its extent, which that contact holds exactly,
         and a surface whose shape takes one point at a time is not watched."""
-        from mime.interactions.contact import SPACING_FLOOR
+        from mime.build._watch import WATCH_SPACING
 
         found: list[ContainmentPlan] = []
         for body, dynamics in sorted(self.dynamics.items()):
@@ -811,7 +811,7 @@ class _Planner:
                 port = dynamics.record.publishes.get(vocabulary.POSE.name) if dynamics.record is not None else None
                 if owner is None or port is None:
                     continue
-                spacing = max(held.margin, SPACING_FLOOR * float(cast(Any, hull.kind).enclosing_radius(hull.settings)))
+                spacing = WATCH_SPACING * float(cast(Any, hull.kind).enclosing_radius(hull.settings))
                 found.append(ContainmentPlan(
                     held.id, owner.reader_cls().label(), body, held.surface, dynamics.node_name(port.node), port.field,
                     held.shape, held.parameters, held.margin, hull.label(), hull.kind, hull.settings, hull.centre,

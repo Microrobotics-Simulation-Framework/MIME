@@ -131,8 +131,11 @@ a result its author may want to read, so the watch says where, and the run is no
   extent, which that contact holds exactly, and is not watched; a surface whose shape takes one point at a time is not
   watched either.
 - **The fix is in the text.** `Contact.Projection(margin=...)` holds the hull, its orientation read.
-- **Cost.** No node, no edge: the graph and its derived hash are what they would be without it. After the run it
-  evaluates the surface at the convex hull's vertices of the hull's samples at every step it reads, in blocks of bounded size; the hull's points are made once, when first read, not at the build.
+- **Cost.** No node, no edge: the graph and its derived hash are what they would be without it. It is read when first
+  asked for (`result.containment`, `result.text()`, the manifest, the exports and the end-of-run summary), so a run that
+  never looks pays nothing: then it evaluates the surface at the convex hull's vertices of the hull's samples (at a
+  coarser spacing than the hull contact's, a share of the hull's size) at every step it reads, in blocks of bounded size
+  and one compiled function. The hull's points are made once per process for the same hull, not at the build.
 
 ## Exports
 

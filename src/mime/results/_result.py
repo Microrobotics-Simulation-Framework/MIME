@@ -8,7 +8,7 @@ from __future__ import annotations
 import csv
 import json
 import math
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
@@ -264,7 +264,7 @@ class RunResult:
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
                  loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
                  clock: str | None = None, watches: Sequence[WatchRead] = (),
-                 containment: Sequence[ContainmentRead] = (),
+                 containment: Sequence[ContainmentRead] | Callable[[], Sequence[ContainmentRead]] = (),
                  report: Mapping[str, Any] | None = None, stopped: Stopped | None = None,
                  origin: Origin | None = None) -> None:
         self.steps = steps
@@ -286,10 +286,8 @@ class RunResult:
         #: The post-run watches (:class:`~mime.results.WatchRead`), read from the run's end state and, where the run
         #: kept it, its history: a flag on the result, never a refusal.
         self.watches: tuple[WatchRead, ...] = tuple(watches)
-        #: The post-run containment watches (:class:`~mime.results.ContainmentRead`), one per body a contact holds by
-        #: its centre that has a hull: whether the hull stayed inside the region, read from the run's poses. A flag on
-        #: the result, never a refusal.
-        self.containment: tuple[ContainmentRead, ...] = tuple(containment)
+        self._containment: tuple[ContainmentRead, ...] | Callable[[], Sequence[ContainmentRead]] = \
+            containment if callable(containment) else tuple(containment)
         #: The build report's summary (:data:`REPORT_FORMAT`): the built experiment's for a run in memory, a run
         #: folder's ``report.json`` for one read back, ``None`` for a folder written before run folders held it.
         self.report: Mapping[str, Any] | None = report
@@ -297,6 +295,16 @@ class RunResult:
         #: ``mime.report/N``), or ``"not JSON"``. The run reads regardless; ``report`` is ``None`` then.
         self.report_unreadable: str | None = None
         self._clock = np.dtype(clock) if clock is not None else None
+
+    @property
+    def containment(self) -> tuple[ContainmentRead, ...]:
+        """The post-run containment watches (:class:`~mime.results.ContainmentRead`), one per body a contact holds by
+        its centre that has a hull: whether the hull stayed inside the region, read from the run's poses. A flag on
+        the result, never a refusal. Read when first asked for (here, in :meth:`text`, the manifest, the summary and the
+        exports), from the poses the run kept: a run that never looks pays nothing for it."""
+        if callable(self._containment):
+            self._containment = tuple(self._containment())
+        return self._containment
 
     @property
     def stale(self) -> str | None:

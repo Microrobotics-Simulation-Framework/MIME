@@ -299,3 +299,17 @@ def test_each_mutant_is_caught_by_the_reproduced_case_or_the_case_not_flagged(re
 def test_read_containments_reads_only_its_own_plans(reproduced):
     both = (*reproduced.built.report.watches,)
     assert len(read_containments(both, reproduced.result.final, None, last_step=STEPS, dt=DT)) == 1
+
+
+def test_the_watch_is_read_when_first_asked_for_and_once(monkeypatch):
+    """A run that never looks pays nothing for the watch: a script that runs many arms (the differential tests) is not
+    slowed, and the read is the same when it comes."""
+    calls = []
+    real = _containment.depths
+    monkeypatch.setattr(_containment, "depths", lambda plan, held: calls.append(len(held)) or real(plan, held))
+    built = case(inertia=False)
+    result = built.run(s(0.1), history=True)
+    assert calls == [], "nothing was read by running"
+    first = result.containment
+    assert calls == [200] and result.containment is first, "read once, at the first ask"
+    assert result.text() and calls == [200]
