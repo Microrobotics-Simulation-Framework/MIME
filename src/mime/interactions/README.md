@@ -26,7 +26,7 @@
 
 Also:
 - **`magnetic.py`**: `Magnetic.Torque()` (`magnetic.torque` 0.2.0), `tau = m x B` on the body's permanent moment
-  turned by its orientation, from a uniform field; it reads the pose at the start of the step, a one-step lag of
+  turned by its orientation, from a field read at the magnet's centroid (a uniform field as before); it reads the pose at the start of the step, a one-step lag of
   `omega dt` in phase that lag accounting shows;
 - **`gravity.py`**: `Gravity()` (`gravity` 0.1.0), weight minus buoyancy `(m - rho_f V) g` with gravity from the
   declared up axis, and the couple when the body's centre of buoyancy is off its centre of mass (reading the pose
@@ -62,7 +62,7 @@ Stokes sphere, is registered by MIME's tests only; no public `Drag.Stokes` is bu
 
 **`Magnetic.Force`** (`magnetic.force` 0.2.0): the force of a field's gradient on a body's
 permanent moment, `F = G^T m`, read at its magnet's centroid (`magnet_centre`) and acting there, so with its torque. It is in the magnetic family, whose sign rule holds both its laws, and its pair law, the equal and
-opposite force between two point dipoles, is tested on the law alone. Its reaction on the source is not delivered.
+opposite force between two point dipoles, is tested on the law alone. Its reaction on the source is delivered where the source is mounted on a segment that takes loads (below).
 
 **the magnetic laws' reactions**: where the field's source is a part mounted on a segment that takes
 loads (a dynamic one), `Magnetic.Torque` and `Magnetic.Force` each deliver the reaction of their wrench on the body to
@@ -78,7 +78,9 @@ evaluates (`PointDipole` does), so that the two together are the derivative of a
 net work round a closed loop of the pose. The magnetic family's closed-loop case holds them to it. Their 0.1.0, which
 read it at the centre of mass (MIME-ANO-137), stay registered (`KEPT`), and the frozen sim2real register keeps the
 torque's. A body with parts and several magnets among them, or none (its moment declared), is refused for either in a
-field that varies in space unless its `magnet_centre` is declared; several magnets each need their own point, later.
+field that varies in space unless its `magnet_centre` is declared (the refusal says so); several magnets each need their own point, later. The near-field
+check (`provider.reader-inside`) judges the point a law reads: the magnet's centroid, turned by the orientation the body
+starts in, for 0.2.0, and the centre of mass for the kept 0.1.0.
 
 Releases are explained in the [package manifest](../README.md#status).
 

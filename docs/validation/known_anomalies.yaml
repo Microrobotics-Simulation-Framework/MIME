@@ -2520,8 +2520,9 @@ anomalies:
       Capability.BODY_POINTS), so the pair is the derivative of U = -m . B(x + R l): at the operating point above
       their loop work is 6e-18 of the summed absolute work in float64. The magnetic family's suite holds every magnetic
       law to it (its closed-loop case: no net work round closed loops of the pose in a drawn point dipole's field), and
-      0.1.0, built through its registered entries, fails it on every draw with a lever but the geometry that leaves it
-      exactly no work (a turn's work averages to -pi (a . G a) a . (l x m), zero where the axis, lever and moment are
+      0.1.0, built through its registered entries, fails it on every draw with a lever in float64 but the geometry that
+      leaves it exactly no work, and in float32 on all but the few draws below its resolution (3 of 524 in the draws
+      measured; a turn's work averages to -pi (a . G a) a . (l x m), zero where the axis, lever and moment are
       coplanar). Through the build, a free body spun at 400 rad/s on a fixed dipole's axis (the rig above with its
       source fixed), judged at whole turns over three steps by Richardson's limit, 0.1.0 keeps -pi (a . G a) a . (l x m)
       a turn whatever the step and 0.2.0 no part independent of the step; with three steps and the run's own scale the
@@ -2573,7 +2574,10 @@ anomalies:
       saved with 0.1.0, or a script that builds it from KEPT, keeps the defect: a study of an off-centre magnet in a
       field with a gradient on 0.1.0 carries a torque error of order m l |G| that is not conservative. The closed-loop
       case's resolution in float32 is about 1e-4 of a loop's summed absolute work (a lever of 5.6 um at the operating
-      point above), and in float64 about 2e-13 (1e-14 m). A body with several magnets is refused unless its
-      magnet_centre is declared; several magnets each need their own point, which is not built.
+      point above fails, 4.5 um passes), so a draw with a weak field and a short lever (0.2 to 0.64 mm at 14.5 to
+      17 cm from the source: 3 of 524 draws with a lever, fresh seeds, the least work 0.59 of the tolerance) is not
+      seen by 0.1.0's control in float32; in float64 the resolution is about 2e-13 (1e-14 m). A body with several
+      magnets is refused unless its magnet_centre is declared; several magnets each need their own point, which is
+      not built.
     workaround: "Use magnetic.torque 0.2.0 and magnetic.force 0.2.0 (Magnetic.Torque(), Magnetic.Force()); with 0.1.0, declare magnet_centre at the centre of mass where the lever is negligible, or keep l |G| / |B| small"
-    planned_resolution: "Done in dev2's phase P0: magnetic.torque 0.2.0 and magnetic.force 0.2.0 read B and G at the magnet's centroid (x + R l), so the pair is the derivative of U = -m . B(x + R l); 0.1.0 stays registered. The oracle is the magnetic family's closed-loop case (no net work round closed loops of the pose in a drawn point dipole's field, within the loop's quadrature error plus its rounding floor), and its control is 0.1.0, built through its registered entries, which fails it on every draw with a lever but the geometry that leaves it exactly no work"
+    planned_resolution: "Done in dev2's phase P0: magnetic.torque 0.2.0 and magnetic.force 0.2.0 read B and G at the magnet's centroid (x + R l), so the pair is the derivative of U = -m . B(x + R l); 0.1.0 stays registered. The oracle is the magnetic family's closed-loop case (no net work round closed loops of the pose in a drawn point dipole's field, within the loop's quadrature error plus its rounding floor), and its control is 0.1.0, built through its registered entries, which fails it on every draw with a lever in float64 but the geometry that leaves it exactly no work, and in float32 on all but the few draws below its resolution"

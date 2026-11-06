@@ -49,14 +49,14 @@ def experiment(name: str) -> Experiment:
 
 
 def add_body(exp: Experiment, *, position=mm((0.0, 0.0, -1.0)), magnet_centre=m((0.0, 0.0, 0.0)),
-             velocity=m_per_s((0.0, 0.0, -1e-3))) -> None:
+             velocity=m_per_s((0.0, 0.0, -1e-3)), orientation=(1.0, 0.0, 0.0, 0.0)) -> None:
     """A millimetre body in script A's tube (along x, a quarter inch across), held in it by projection: it starts
     0.2 um above the floor, moving down into it at 1 mm/s, so that the projection holds it from the first step, as
     script A's body rides its floor."""
     exp.add_structure(Structure("tube", geometry=Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(3.175), wall=mm(1.6),
                                                       length=mm(100.0))))
     exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
-        position=position, orientation=(1.0, 0.0, 0.0, 0.0), velocity=velocity,
+        position=position, orientation=orientation, velocity=velocity,
         angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
     exp.declare("umr.mass", kg(BODY_MASS), reason="a millimetre body, round numbers of its order")
     exp.declare("umr.inertia", kg_m2(BODY_INERTIA), reason="a millimetre body, round numbers of its order")
@@ -121,15 +121,21 @@ def gantry_magnet(name: str = "gantry_magnet", *, magnet_at=None) -> Experiment:
 
 
 def fixed_magnet(name: str = "fixed_magnet", *, at=m((0.0, 0.0, 0.1)), law=None, body_position=None,
-                 magnet_centre=m((0.0, 0.0, 0.0))) -> Experiment:
-    """A magnet fixed in the world, with no chain, above a body (its own magnet at ``magnet_centre``): the smallest
-    apparatus a dipole needs."""
+                 magnet_centre=m((0.0, 0.0, 0.0)), body_orientation=(1.0, 0.0, 0.0, 0.0),
+                 magnet_size=None, provider=PointDipole) -> Experiment:
+    """A magnet fixed in the world, with no chain, above a body (its own magnet at ``magnet_centre``, the body
+    starting in ``body_orientation``): the smallest apparatus a dipole needs. ``magnet_size`` is the magnet
+    cylinder's (radius, length) in metres, de Jongh's 35 x 20 mm rotor magnet by default; ``provider`` the field's
+    class, from the part."""
     exp = experiment(name)
-    exp.add_apparatus(Apparatus("stand", parts={"magnet": magnet_part(None, at=at)},
+    part = magnet_part(None, at=at) if magnet_size is None else Part(
+        Cylinder(radius=m(magnet_size[0]), length=m(magnet_size[1]), axis=(1.0, 0.0, 0.0)), at=at)
+    exp.add_apparatus(Apparatus("stand", parts={"magnet": part},
                                 magnets={"magnet": PermanentMagnet(direction=(0.0, 0.0, 1.0))},
-                                fields={"magnetic": PointDipole(part="magnet")}))
+                                fields={"magnetic": provider(part="magnet")}))
     exp.declare("stand.magnetic_moment", A_m2(MAGNET_MOMENT), reason="de Jongh's rotor magnet, on a stand")
-    add_body(exp, magnet_centre=magnet_centre, **({} if body_position is None else {"position": body_position}))
+    add_body(exp, magnet_centre=magnet_centre, orientation=body_orientation,
+             **({} if body_position is None else {"position": body_position}))
     exp.attach(law if law is not None else Magnetic.Force(), body="umr", field="stand.magnetic")
     return exp
 

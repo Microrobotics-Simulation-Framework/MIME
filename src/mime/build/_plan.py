@@ -3291,30 +3291,46 @@ class _Planner:
         return (float(x), float(y), float(z))
 
     def check_readers_outside_parts(self) -> None:
-        """A provider whose field is valid outside its parts only (``outside_parts``) is not read by a body that starts
-        inside the smallest sphere about a part's centroid that holds the part: the field is singular at the centroid
-        and the model is not faithful that near (MIME-ANO-100)."""
+        """A provider whose field is valid outside its parts only (``outside_parts``) is not read at a point inside
+        the smallest sphere about a part's centroid that holds the part: the field is singular at the centroid and the
+        model is not faithful that near (MIME-ANO-100). The point is the one the law reads: the body's position, or,
+        for a read at a point fixed in the body (``Read.offset``, the magnet's centre for the magnetic laws 0.2.0),
+        that point in the pose the body starts in."""
         for path, provider in self.providers.items():
             if not cast(type[FieldProvider], provider.registered.cls).outside_parts:
                 continue
-            readers = [reader for reader in self.readers if any(read.node == path for read in reader.reads.values())]
+            offsets = {slot.name: slot.offset for slot in provider.slots}
+            readers = [(reader, [read for read in reader.reads.values() if read.node == path]) for reader in self.readers]
             for part in provider.parts.values():
                 start = composed(part.mount.initial_pose, part.offset) if part.mount else part.offset
-                for reader in readers:
+                for reader, reads in readers:
                     for body in reader.bindings.values():
                         found = self.dynamics.get(body)
                         position = found.initial.get("position") if found is not None else None
-                        if position is None:
+                        if found is None or position is None or not reads:
                             continue
-                        distance = math.dist(position, start[:3])
-                        if distance < part.radius:
-                            self.refuse(
-                                "provider.reader-inside", RefusalClass.USER,
-                                f"body {body!r} starts {distance:.6g} m from the centroid of {part.apparatus!r}'s part "
-                                f"{part.name!r}, inside the {part.radius:.6g} m sphere that holds the magnet: {path} "
-                                f"is evaluated outside the magnet, and singular at its centroid",
-                                f"start {body!r} outside the magnet, State(position=...) farther than its radius from "
-                                f"{part.name!r}'s centroid (MIME-ANO-100 asks for five times that)")
+                        turned = rotation_matrix(found.initial.get("orientation", (1.0, 0.0, 0.0, 0.0)))
+                        for label, lever in dict.fromkeys(
+                                (read.offset, offsets.get(read.slot) if read.slot is not None else None)
+                                for read in reads):
+                            read_at = position if lever is None else \
+                                tuple(np.asarray(position, dtype=np.float64) + turned @ np.asarray(lever))
+                            distance = math.dist(read_at, start[:3])
+                            if distance < part.radius:
+                                self.refuse_reader_inside(path, body, part, distance, label, lever)
+
+    def refuse_reader_inside(self, path: str, body: str, part: ResolvedPart, distance: float, label: str | None,
+                             lever: tuple[float, float, float] | None) -> None:
+        where = (f"body {body!r} starts {distance:.6g} m from" if lever is None else
+                 f"body {body!r} reads {path} at {label!r}, {_vec(lever)} m fixed in it and turned by the orientation "
+                 f"it starts in, which starts {distance:.6g} m from")
+        self.refuse(
+            "provider.reader-inside", RefusalClass.USER,
+            f"{where} the centroid of {part.apparatus!r}'s part {part.name!r}, inside the {part.radius:.6g} m sphere "
+            f"that holds the magnet: {path} is evaluated outside the magnet, and singular at its centroid",
+            f"start {body!r} outside the magnet, State(position=...) farther than its radius from {part.name!r}'s "
+            f"centroid" + ("" if lever is None else f", or change {label!r}, so that the point the law reads is "
+                                                    f"outside it") + " (MIME-ANO-100 asks for five times that)")
 
     def collect_targets(self) -> dict[tuple[str, str], ResolvedTarget]:
         targets: dict[tuple[str, str], ResolvedTarget] = {}

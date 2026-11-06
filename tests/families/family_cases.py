@@ -116,8 +116,8 @@ CentreMagneticTorque, _ = KEPT["magnetic.torque", "0.1.0"]
 CentreMagneticForce, _ = KEPT["magnetic.force", "0.1.0"]
 #: What the magnetic laws 0.1.0 fail: they read the field at the centre of mass, and with a magnet off it the pair does
 #: net work round a closed loop of the pose in a static field. ``tests/oracles/test_closed_loop.py`` is the control:
-#: 0.1.0, built through its registered entries, fails on every draw with a lever but the geometry that leaves it exactly
-#: no work.
+#: 0.1.0, built through its registered entries, fails on every draw with a lever in float64 but the geometry that leaves
+#: it exactly no work (in float32, on all but the few below its resolution: the family walk asks one failing draw).
 CENTRE_OF_MASS_READ = {CaseKind.CLOSED_LOOP: "MIME-ANO-137"}
 TOY = "a toy with no physics, which exercises the build: the toy family has one member, the toy drag"
 FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {

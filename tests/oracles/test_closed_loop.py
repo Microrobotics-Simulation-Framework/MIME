@@ -24,9 +24,14 @@ control, in float64, where its resolution is finest.
   (Hypothesis draws the lever along the moment, a real geometry) or ``a . G a`` is zero. Measured before it was
   written, over the same 1,100 draws: in float64, 505 had a lever, 15 of them that geometry, and all 490 others failed
   (by at least 1.4e8 times the tolerance); in float32, 446, 24 and all 422 (by at least 1.23 times it). The control
-  draws a lever on every draw, so its filter removes that geometry alone (about 3 %).
+  draws a lever on every draw, so its filter removes that geometry alone (about 3 %). **Float32 is not every draw**: on
+  a second, larger sample (1,200 draws, fresh seeds, 524 with a lever outside that geometry), 0.1.0 failed 521 and
+  passed 3, a weak field and a short lever (0.2 to 0.64 mm at 14.5 to 17 cm), their work 0.59, 0.77 and 0.80 times the
+  tolerance: below float32's resolution, which a lever up to 2 mm at 20 cm cannot always clear (the work goes as the
+  lever over the distance). The float32 draws' control is therefore "fails somewhere in the walk's 200", and the
+  every-draw control is this module's float64 one.
 - **The smallest lever** 0.1.0 still fails at, at the operating point: 1e-14 m in float64, which passes at 5.6e-15 m;
-  in float32, 5.6 micrometres, which passes at 3.2 micrometres.
+  in float32, 5.6 micrometres (1.21 times the tolerance), which passes at 4.5 (0.97), both pinned below.
 - **A law alone**: 0.2.0's torque without its force is not the derivative of an energy, and fails a turn; the case
   needs ``together=``.
 - **Closed loops only.** Every loop the case drives returns the pose to its start (whole turns, a closed translation):
@@ -34,6 +39,7 @@ control, in float64, where its resolution is finest.
   case's dynamic counterpart through the build, over whole turns, is ``test_closed_loop_dynamic.py``.
 """
 
+import jax
 import numpy as np
 import pytest
 from hypothesis import assume, given, settings
@@ -190,6 +196,27 @@ def test_control_the_pair_0_1_0_fails_the_case_on_every_draw_with_a_lever(drawn)
 def test_the_smallest_lever_the_pair_0_1_0_still_fails_at_is_a_hundredth_of_a_picometre(lever, fails):
     """At the anomaly's operating point, in float64: the case's resolution there, where its floor (2.2e-17 J) meets the
     work 0.1.0 leaves, 2.5e-3 J per metre of lever."""
+    (found,) = works("0.1.0", anomalys_point(lever))
+    print(f"\n{lever:.3g} m: {found.describe()}")
+    assert found.holds is not fails
+
+
+@pytest.fixture
+def float32():
+    """The module's float64, switched off for one test and restored: the family walk runs the case in float32."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    yield
+    jax.config.update("jax_enable_x64", held)
+
+
+@pytest.mark.parametrize("lever, fails", [(1.1e-5, True), (5.6e-6, True), (4.5e-6, False), (2.2e-6, False)])
+def test_the_smallest_lever_the_pair_0_1_0_still_fails_at_in_float32_is_a_few_micrometres(float32, lever, fails):
+    """At the anomaly's operating point, in float32 (the family walk's dtype): the case's resolution there, where its
+    floor meets the work 0.1.0 leaves. The work is 2.4 times the tolerance at 11 micrometres, 1.21 at 5.6 (fails),
+    0.97 at 4.5 and 0.48 at 2.2 (pass): a lever below that is not seen in float32. That is why the every-draw control
+    is the float64 one above, and the family walk asks of this one that 0.1.0 fail the case somewhere in its draws."""
+    assert not jax.config.jax_enable_x64
     (found,) = works("0.1.0", anomalys_point(lever))
     print(f"\n{lever:.3g} m: {found.describe()}")
     assert found.holds is not fails

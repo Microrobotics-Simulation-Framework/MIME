@@ -84,7 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a 1 mm lever 50 mm from a 10 A m^2 dipole (MIME-ANO-137). The magnetic family's suite gains a closed-loop case: the
   laws together do no net work round closed loops of the pose (turns about drawn axes, a translation) in a drawn point
   dipole's field, within the loop's quadrature error plus its rounding floor; 0.1.0, built through its registered
-  entries, fails it on every draw with a lever (but the geometry that leaves it exactly no work). Through the build, a
+  entries, fails it on every draw with a lever in float64 (but the geometry that leaves it exactly no work; in float32,
+  on all but the few that are below its resolution). Through the build, a
   body spun in a dipole's field for whole turns at three steps keeps no part of its energy drift independent of the step
   on 0.2.0, and on 0.1.0 keeps that work a turn whatever the step (`tests/oracles/test_closed_loop_dynamic.py`). 0.1.0
   stays registered (`mime.interactions.KEPT`), so a folder saved with it loads and reproduces, and the frozen sim2real
@@ -92,7 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   centre of mass, or in a uniform field, the two compute the same: A0, A0 on its dynamic rungs and script A were
   measured the same to the last bit on 0.2.0 as on 0.1.0, in float32 and float64. A body with parts and several magnets
   among them, or none (its moment declared), is refused for the torque too in a field that varies in space, as it was
-  for the force, unless its `magnet_centre` is declared.
+  for the force, unless its `magnet_centre` is declared (the refusal names both cures). The near-field check
+  (`provider.reader-inside`) judges the point the law reads, the magnet's centroid for 0.2.0, as 0.1.0 keeps judging
+  the centre of mass.
 - **`Experiment.save` and `Experiment.load` warn at the script's line.** A `DescriptionWarning` or a range warning raised
   while they build showed MIME's own line (`return self.build().save(...)`); the build now finds the script's frame
   itself, whichever public call it was reached through (`mime.errors._frames.warn_at_script`), and so does the view's
