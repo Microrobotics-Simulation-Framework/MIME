@@ -9,6 +9,16 @@
   does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report and the
   verdict, and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the load or the build is refused.
   Ctrl+C ends it (130), the second press at once.
+- `mime show <folder> [--tree] [--graph] [--json]`: what a saved experiment is made of, without running it. `--tree` (the
+  default) is its topology as declared, read from the document alone (nothing is built): structures, media and what each
+  fills, bodies and their parts, apparatus with their chain, parts, fields and drives, each law with the things it binds,
+  observations with what they read, the controller with its reads and writes, each line with the entry's id and version;
+  drawn as a tree on a terminal, plain indented text when piped or under `--plain`, `NO_COLOR` or `TERM=dumb`, and
+  `--json` the same as data (the `mime.tree` format). `--graph` builds the experiment as `mime pending` does and prints the
+  MADDENING graph it compiles to as Mermaid text; with both flags the tree comes first and a blank line separates them,
+  and `--json` is the tree's, so `--json --graph` is refused. `<folder>` may be the document (`experiment.mime.yaml`).
+  Exits zero, or two when the load or the build is refused. The same views are `Experiment.tree()` and
+  `BuiltExperiment.to_mermaid()` (see [`mime.experiment`](../experiment/README.md)).
 - `mime cache clear`: delete the XLA compilation cache that `mime run` and `mime serve` keep in the user's cache
   directory, and say how much it held (see [the compilation cache](../../../docs/compilation_cache.md)). `mime run` and
   `mime serve` use it by default, prune its oldest entries at their start once it passes its cap, and take
@@ -61,7 +71,9 @@
   `mime/assets/_commands.py`.
 - `mime assets sources <name-or-folder>...`: each asset's terms, tier and locations in the order a fetch tries them
   (this machine's locations file's first), each looked at now without downloading it: reachable or not, and why;
-  offline, it says it did not look.
+  offline, it says it did not look. On a terminal `assets list`, `assets sources` and `visuals list` are tables (name,
+  size, cached, licence, tier, and for `sources` how many locations answered, with the lines under it); `assets licences`
+  is a table too.
 - `mime assets licences [--revoke <id>]`: the licences accepted on this machine (id, title, link, date); `--revoke`
   forgets one (exit 1 where none of that id is kept).
 - `mime assets audit <wheel|sdist|archive|directory>... [--manifest FILE]`: the guard. It hashes every file, inside
@@ -284,12 +296,15 @@ loads it).
   fails when one is left out). Refusals whose actions differ are never merged; a code is a block of its own for each
   action. Piped, in a file, with `--plain`, `NO_COLOR` or `TERM=dumb`, each refusal is its three lines as before, in
   the same order, and `--record` writes the same JSON.
+- **`mime pending`** on a terminal sets the lines to paste (a pending item's Python line and document fragment) apart as
+  blocks that are never wrapped: a line is written whole, with its indentation, and the terminal wraps it on the screen,
+  which copying leaves out; a line wrapped by the display would break the paste. The words are the plain output's.
 - **A damaged compilation-cache entry**: JAX's warning is shown as it is, and once beside it a note that `mime cache
   clear` removes the cache.
 - **Plain text is right for** bare `mime`, `mime pack`, `mime card`, `mime credentials`, `mime cache clear`, `mime modal` and
   `mime registry --json`, and they are not drawn on, so nobody boxes them later. `pack` prints three lines whose point is a
   path and a sha256 to copy; `card` is a document people redirect to a file; `credentials` asks for a token with a
-  hidden prompt; `cache clear` is one line; `modal` prints the commands to paste; bare `mime` is a list of commands, done
+  hidden prompt; `cache clear` is one line (on a terminal it says how much it freed, and asks nothing: the cache rebuilds itself); `modal` prints the commands to paste; bare `mime` is a list of commands, done
   already; `registry --json` is read by a program. A box or a table around any of them adds width and takes away
   selectability, which a person copies from. A command is drawn when its output is a list a table reads better, or a wait that a line
   of progress shortens, and not otherwise.

@@ -226,7 +226,7 @@ repaired it: `fetch` hashes in full and downloads again a file MIME wrote whose 
 
 The words are in one place, `_commands.py`.
 
-- `mime assets list`: every known asset with its size, cached or missing.
+- `mime assets list`: every known asset with its size, cached or missing (a table on a terminal).
 - `mime assets fetch <name-or-folder>... | --all`: resolve, hashing the file in full (a cached file too), and download
   again what is wrong. An argument that is a directory is an
   experiment folder, and stands for exactly the assets its lock references and nothing else (write `./name` to mean a

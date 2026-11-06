@@ -12,6 +12,8 @@ the concept pages, which this guide links to where you meet each idea and does n
 - [Tutorial A0](tutorial_a0.md): the same screw driven by a magnet on a robot arm, in a closed loop.
 - The tutorial for experiment G waits for a1.
 - [Reading a build report](build_report.md): each part of the report, and what to do with it.
+- [Showing an experiment](graph_and_tree.md): its topology as a tree and the graph it compiles to as Mermaid, from Python, the
+  command line and a notebook.
 - [The command line](cli.md): every command and flag, generated from the parser.
 - [Scope and limits](scope.md): what MIME declares and what it does not claim, with the profiles.
 

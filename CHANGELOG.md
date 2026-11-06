@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The experiment's tree and its compiled graph, shown without running it** (`docs/guide/graph_and_tree.md`).
+  `experiment.tree()` is what the experiment declares (structures, media and what each fills, bodies and their parts,
+  apparatus with their chain, parts, fields and drives, each law with the things it binds, observations with what they
+  read, the controller with its reads and writes), each with its registered id and version: plain indented text
+  (`str(tree)`) or data (`tree.record()`, `mime.tree/1`); it is the topology, not the declared values, settings or run
+  settings. `built.to_mermaid()` is MADDENING's `to_mermaid` of the
+  compiled graph with the registered entry added to each node, and a notebook shows it as a diagram where its front end
+  draws a Mermaid fence (JupyterLab 4.1 and after and Notebook 7 do, measured; 4.0 shows the text with a pointer to a
+  renderer; VS Code was not measured). Colab does not draw a fence (measured), so there it is `text/html` that draws it with
+  Mermaid 11.17.2 from jsDelivr, held to its `integrity` hash; `to_mermaid().display(offline=True)` loads nothing. `mime show <folder>` prints the tree (`--tree`, the default, drawn as a
+  tree on a terminal, plain text piped, `--json` as data) or the graph (`--graph`), or both. Either is the same for the
+  same experiment whatever the order its script declared things in.
+
 - **Colab notebooks** (`docs/notebooks/`), linked first in the README: a steel ball settling in a tube of water, and
   de Jongh's screw-shaped magnetic robot driven along a tube by a rotating field (tutorial A's experiment). Written
   for a newcomer, step by step in plain words, each installs the released MIME from PyPI, runs its experiment with the
@@ -33,7 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1 GB or a tenth of it, it is asked about (`-y/--yes`); if it would leave under 2 GB or 5 % of the drive, it is stopped
   (`-f/--force`); `visuals fetch` counts 30 % of the meshes' size more for what baking writes. New refusals:
   `asset.licence-not-accepted`, `asset.licence-declined`, `asset.disk-low`, `asset.download-large`,
-  `asset.download-declined`, `asset.licences-file`. Output that is not going to a terminal is byte for byte what it was.
+  `asset.download-declined`, `asset.licences-file`. `mime assets list`, `assets sources`, `assets licences` and `visuals
+  list` are tables on a terminal; `mime pending` sets the lines to paste apart as blocks that are never wrapped; `mime
+  cache clear` says how much it freed. Output that is not going to a terminal is byte for byte what it was.
   **Moves:** the asset manifest format is `mime.asset_manifest/2` (it adds `conditions` to a custom licence; `/1` is still
   read, and a `/1` manifest holding `conditions` is refused); the AR4's `visuals.json` is `/2` with its licence's four
   condition lines; a saved folder's lock (form 6) holds the manifest as `/1` without the lines. `mime pull`'s question
