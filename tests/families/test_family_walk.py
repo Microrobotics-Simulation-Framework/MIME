@@ -200,13 +200,12 @@ def test_a_projection_to_the_wrong_radius_fails_the_contact_oracle():
     is judged on the rounding of metres, about a tenth of a micrometre in float32 on a generic draw, where in 4b the
     whole state's floor (about 15 micrometres, from the quaternion) let a micrometre pass in about one run in eight.
 
-    The control sits well above what the oracle resolves. Measured over 220 independent runs of this oracle case each,
-    as the largest ratio of the planted error to the oracle's tolerance over a run's 200 draws (a run catches the plant
-    when it is above 1): a margin 70 nm off, which this test planted before, 1.22 at the lowest and 2.4 at the median
-    (220 caught, but a lognormal fit to the ratios extrapolates a run's miss to about 1 in 2,000, and one CI run missed
-    it: job 127414267313, head 882f9a2); a margin 1 um off, 17.8 at the lowest and 36.6 at the median, caught in 220
-    of 220 runs, the planted error 18 times the tolerance in the least favourable run measured. 70 nm was the
-    oracle's resolution, not a margin above it."""
+    The control sits well above what the oracle resolves. Measured over independent runs of this oracle case, float32,
+    each run a fresh set of draws: a margin 1 um off was caught in 220 of 220 runs and in 40 of 40 in a second set; a
+    margin 70 nm off, which this test planted before, in 220 of 220 and 40 of 40 as well, yet one CI run missed it (job
+    127414267313, head 882f9a2), so a rate measured over hundreds of runs could not show a miss this rare; 20 nm was
+    caught in 2 of 40. The oracle's resolution therefore sits between about 20 and 70 nm: 70 nm was at its edge, not a
+    margin above it, and 1 um is more than ten times above it."""
     def too_far(read, settings):
         return projected(read, {**settings, "margin": settings["margin"] + 1e-6})
 

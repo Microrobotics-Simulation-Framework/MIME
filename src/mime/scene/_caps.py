@@ -129,10 +129,11 @@ def radial_weights(nodes: tuple[Fraction, ...]) -> tuple[Fraction, ...]:
 
 def cap_rings(total: int, starts: int) -> CapRings:
     """The cap's ``total`` samples (one its centre) in rings, for a section of ``starts`` starts. The arrays are the
-    caller's own, a copy of the cached layout each call: JAX can keep a numpy array's float32 conversion, made while a
-    step was traced with x64 off, and give it back for a later conversion made with x64 on, so that a float64 build
-    made after the first in a process held cap samples rounded to float32 (MIME-ANO-138). A fresh array each call has
-    no earlier conversion to give back."""
+    caller's own, a copy of the cached layout each call (MIME-ANO-138). Measured at MIME's level: ``jnp.asarray`` with
+    x64 on returned float32 for the same array object a step had been traced with under x64 off, and float64 for a
+    copy of it (as did ``jax.device_put`` and ``jax.clear_caches()``), the cached arrays themselves unchanged. So the
+    first build in a process held the float64 cap samples and every later one samples rounded to float32. It was not
+    reduced to a case without MIME, so it is not attributed to JAX in general."""
     held = _cap_rings(total, starts)
     own = [array.copy() for array in (held.fraction, held.angle, held.share)]
     for array in own:

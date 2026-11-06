@@ -2558,6 +2558,12 @@ anomalies:
       to about 1e-5 in the resistance, so the same program built twice in one process differs between its first build
       and the rest from step 0. In float64 there is nothing to round and the builds are the same.
 
+      The mechanism, as far as it was measured (at MIME's level): jnp.asarray with x64 on returned float32 for the same
+      ndarray object the traced step had used under x64 off; a copy of it, jax.device_put of it, or jax.clear_caches()
+      each gave float64; the cached arrays themselves are unchanged (bytes, dtype, read-only flag). It was not reduced
+      to a case without MIME (the builder's and the review's variants all stayed float64), so it is not attributed to
+      JAX in general.
+
       Measured (examples/screw_in_tube.py as written: FL-9 on the axis of the tube in glycerol, 1 Hz, 5 mT, the MRS drag
       with the tube's wall kind, dt 100 ms, 3 s; three fresh processes, three builds each, every history array compared
       byte for byte): in float32, 11 of 28 arrays differ between the first build and the second, first at step 0, the same
@@ -2569,21 +2575,33 @@ anomalies:
       compilation cache cold and then warm in a second process; one BLAS thread. The held matrix's inputs (the samples)
       differ between the first and later builds and nothing else does: the table's leaves, the viscosity, the blob and
       the placement are the same bytes in every build. With the cached layout cleared before each build, or handed out
-      as copies, every build holds the first build's matrix.
+      as copies, every build holds the first build's matrix. The cylinder, whose caps take the same layout
+      (mime.scene._solids), was exposed too: a cylinder in the same tube, three builds in a fresh float32 process, 9 of
+      28 history arrays differed before the fix (the resistance by 7.75e-6) and none after.
 
-      What it does not do: it does not make mime verify report a difference. A saved folder's reference outputs, and
-      mime verify's rerun of them, are each run on a graph constructed afresh after the first build of the process
-      (Experiment.save and BuiltExperiment.verify construct again from the same plans), so each is a later build. Four
-      arrangements were run in float32, each in fresh processes: saved from a second build and verified as the first
-      build of a fresh process, saved from a first build and verified after a discarded build, and the two same-kind
-      controls; all four reproduced the 8 steps bit for bit. What it touches is a run of a built experiment compared
-      with another run of the same program: a run in a fresh process (the first build) and the same run after any
-      earlier build in that process differ at this size. A saved reference is made on a later build, so a run of a
-      first build would differ from it by the same (an inference from the code, not a run).
+      What the user meets. In a script, the process's first build is run, the experiment is saved, and that run is
+      compared with the reference the save wrote (the reference is made on a later build): in float32 with the layout
+      as it was, the comparison reports the run moved, on the drag's resistance (by 2.5e-5, first at step 0) and on
+      every quantity downstream of it (asymmetry, least eigenvalue, wall gap, the torque, the swim speed, the pose and
+      twist); built.verify() on the same object is clean. With the fix both are clean (the last two tests below).
 
-      Severity: minor, as MIME-ANO-125 (a bitwise difference at rounding size between runs of one program). Nothing
-      physical moves: the cap samples differ at float32's rounding and the distance swum by 3e-11 m in 3 s, far below
-      the rung's discretisation error. What it breaks is the claim that one program builds to one answer.
+      What it does not do: it does not make mime verify report a difference. Experiment.save and BuiltExperiment.verify
+      each run the reference on a graph constructed afresh from an already-built experiment, so each is a later build
+      (read: Experiment._fresh_history), and Experiment.load builds once before the user's .build(), so a loaded
+      folder's build is never a process's first build (measured, legacy layout, float32 fresh process: the held matrix
+      of Experiment.load(folder).build() is the later builds' 739c87ab4635, a script's own first build 7901d110c69a).
+      The four arrangements first run for this entry, in float32 in fresh processes (saved from a second build and
+      verified by a load in a fresh process; saved from a first build and verified after a discarded build; and two
+      same-kind controls), all reproduced the 8 steps bit for bit; they were described as mixing first and later
+      builds, and by the above each was a later build against a later build, which is the reason they agree. That
+      mime verify is unaffected stands, for that reason.
+
+      Severity: minor. The resistance differs by about 1.1e-5 relative (2.07e-5 on 1.878), about 90 float32 epsilons,
+      from inputs that differ by 2 to 3 epsilons (2.0e-7 and 3.5e-7), amplified by the solve's conditioning (about 90
+      times). It stays minor because both held matrices are valid discretisations of the same body, the difference is
+      three orders under the rung's discretisation error (a few per cent), and the distance swum differs by 2.9e-11 m
+      in 3 s: a reproducibility defect, not an accuracy one. It bounds nothing about the rung's accuracy; what it breaks
+      is the claim that one program builds to one answer.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -2597,17 +2615,31 @@ anomalies:
       - "node: MRSDragNode; the held part of the resistance (held_in_body_frame), built from the screw's cap samples"
       - "entry: geometry screw 0.1.0; the cap patches' layout (cap_rings)"
     verification:
-      - "tests/oracles/test_mrs_builds_alike.py::test_three_builds_of_the_screw_in_the_tube_hold_the_same_matrix_in_float32"
-      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest"
+      - "tests/oracles/test_mrs_builds_alike.py::test_three_builds_hold_the_same_matrix_in_float32[screw]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_three_builds_hold_the_same_matrix_in_float32[cylinder]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest[screw]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest[cylinder]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_the_first_build_of_a_process_run_agrees_with_the_reference_it_saves"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_first_build_run_with_the_layout_as_one_cached_array_moves_the_resistance_from_step_0"
     residual_risk: >
-      What is measured: the screw on the tube's axis at 2 mm in the test (three builds, a fresh process) and at 0.7 mm
-      by hand, on one machine and one JAX (0.12.0.1). What is not: the mechanism inside JAX. The cause is established
-      at the level of the cached arrays (clearing the cache, or a copy of the arrays each call, removes the difference;
-      the arrays' being read-only does not matter), and that JAX returns an earlier conversion of the same array object
-      is an inference; a minimal reproduction without MIME was not found in two tries, so it is not stated as JAX's
-      behaviour. The same layout feeds the cylinder-like solids' caps (mime.scene._solids), which take the fix with it
-      and were not measured. Any other numpy array a process caches and converts to JAX under both settings of x64 could
-      do the same; none other was looked for.
+      What is measured: the screw on the tube's axis at 2 mm in the tests (a fresh process each) and at 0.7 mm by hand,
+      and a cylinder in the same tube, on one machine and one JAX (0.12.0.1). What is not: the mechanism inside JAX,
+      beyond the statement above; it was not reduced to a case without MIME.
+
+      The same exposure class (a numpy array the process keeps and hands to both a float64 precompute and a float32
+      traced step) was checked in src/mime by reading, not by a proof that nothing else is exposed. The module-level
+      numpy arrays are _HERMITE and _LINEAR (core/tables/_compile.py), ODD_IN_ANGLE and ODD_ALONG
+      (nodes/hydro/mrs/_tube.py), CANONICAL (surrogates/generator.py) and _ENTRY_AT, _IN_LOWER_TRIANGLE and
+      _ON_DIAGONAL (surrogates/_cholesky_mlp.py); the cached functions are cap_rings (this entry) and tube_table_from
+      (a Table of float64 arrays that the held matrix's precompute and the step both read), the others returning
+      records, bytes, floats or a manifest. Read: every constant above holds small integers or booleans, which are the
+      same in float32 and float64, so a stale float32 conversion of one would change no value. Measured, after the fix,
+      in a fresh float32 process, three builds, every history array compared byte for byte: the screw in the tube 0 of
+      28 differ, script A (the surrogate drag, so the MLP's constants) 0 of 19, the sphere settling in the tube (the
+      table and its parity constants) 0 of 27, tutorial A0 0 of 29, a cylinder in the tube 0 of 28 (9 before the
+      fix); the control arm, the same probe with the cap layout handed out as it was, shows 9 of 28 differ for the
+      screw. No other array was exposed on those programs, so nothing else was changed. Not done: every jnp.asarray of
+      a reused numpy object in src/mime, or any program the five above do not run.
     workaround: "Run in float64, or build the experiment once more before the run that is compared (the second build on)"
     planned_resolution: "Done: cap_rings hands every caller its own copies of the cached layout's arrays, so no conversion of them is shared between builds"
 
@@ -2639,7 +2671,10 @@ anomalies:
       screw in a tube and tutorial A's notebook declare a constant (10 Hz, 1 Hz and the notebook's one number, changed
       between runs); a live session's `set` changes only a live input a controller
       declares, and the one shipped controller, ArmTracking, writes a joint position, not a field's frequency. Script A0
-      turns its magnet with a motor, not with this field. So no shipped script, example or test experiment is affected.
+      turns its magnet with a motor, not with this field. So no shipped script or example is affected, and no test experiment
+      other than this entry's own, whose result reads the field's angle, commands a changing frequency (tests/build/test_rebind.py and
+      tests/build/test_notebook_gaps.py wire a test controller's tick count, which changes every step, to
+      field.frequency, but assert on what the controller wrote, not on the field's angle).
       A controller a user or a lab registers that writes a field's frequency (the command's name is `frequency`) is, as
       is a drive added later, and any study that sweeps the frequency inside one run (a ramp to find a step-out
       frequency, for instance). A frequency changed between runs, each run constant, is not.
