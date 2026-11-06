@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text, manifest and exports, the summary), so a run that never looks pays nothing. The depth is of the hull's samples, which fall a few micrometres short
   of the body. `tests/results/test_containment.py` holds the reproduced case, the false-alarm cases (script A as it is,
   the record arm), the hull contact's run, an independent depth and three mutants.
+- **The experiment's tree and its compiled graph, shown without running it** (`docs/guide/graph_and_tree.md`).
+  `experiment.tree()` is what the experiment declares (structures, media and what each fills, bodies and their parts,
+  apparatus with their chain, parts, fields and drives, each law with the things it binds, observations with what they
+  read, the controller with its reads and writes), each with its registered id and version: plain indented text
+  (`str(tree)`) or data (`tree.record()`, `mime.tree/1`); it is the topology, not the declared values, settings or run
+  settings. `built.to_mermaid()` is MADDENING's `to_mermaid` of the
+  compiled graph with the registered entry added to each node, and a notebook shows it as a diagram where its front end
+  draws a Mermaid fence (JupyterLab 4.1 and after and Notebook 7 do, measured; 4.0 shows the text with a pointer to a
+  renderer; VS Code was not measured). Colab does not draw a fence (measured), so there it is `text/html` that draws it with
+  Mermaid 11.17.2 from jsDelivr, held to its `integrity` hash; `to_mermaid().display(offline=True)` loads nothing. `mime show <folder>` prints the tree (`--tree`, the default, drawn as a
+  tree on a terminal, plain text piped, `--json` as data) or the graph (`--graph`), or both. Either is the same for the
+  same experiment whatever the order its script declared things in.
 
 - **Colab notebooks** (`docs/notebooks/`), linked first in the README: a steel ball settling in a tube of water, and
   de Jongh's screw-shaped magnetic robot driven along a tube by a rotating field (tutorial A's experiment). Written
