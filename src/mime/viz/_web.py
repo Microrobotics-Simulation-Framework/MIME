@@ -19,6 +19,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import override
 
+from mime._lineage import Origin, origin_of_folder
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.things._handles import did_you_mean
@@ -437,22 +438,46 @@ class WebPage:
     html: str
     result: GltfResult
     height: int = 720
+    #: The declarations the run came from, for a view of a run made in this process (``mime._lineage``).
+    origin: Origin | None = None
+
+    @property
+    def stale(self) -> str | None:
+        """Why this view no longer matches its experiment, or ``None``: the replacements and removals made since the
+        build its run came from, and what to do. Shown wherever the view is shown."""
+        return self.origin.stale("this view", "it shows a run of the declarations before: build and run again") \
+            if self.origin is not None else None
 
     @override
     def __repr__(self) -> str:
         """One line, not the page: Jupyter shows ``text/plain`` beside the HTML, and the page is megabytes."""
+        stale = self.stale
         return (f"<WebPage {self.result.name!r}, {len(self.html.encode('utf-8')) / 1e3:.0f} kB: a notebook cell shows it "
                 f"when it is the cell's last expression; elsewhere .save('view.html') writes the page, to open in a "
-                f"browser>")
+                f"browser" + (f"; STALE, {stale}" if stale is not None else "") + ">")
 
     def _repr_html_(self) -> str:
-        return (f'<iframe srcdoc="{html.escape(self.html, quote=True)}" style="width: 100%; height: {self.height}px; '
+        stale = self.stale
+        banner = f'<p style="color: #b3261e; font-weight: bold">STALE: {html.escape(stale)}</p>' if stale else ""
+        return (banner + f'<iframe srcdoc="{html.escape(self.html, quote=True)}" style="width: 100%; height: {self.height}px; '
                 f'border: 0" title="{html.escape(self.result.name)}"></iframe>')
 
     def save(self, path: str | Path) -> Path:
         written = Path(path)
         written.write_text(self.html, encoding="utf-8")
         return written
+
+
+def _stale_caption(origin: Origin | None, caption: str | None) -> str | None:
+    """``caption`` with the mark of a view of a run that predates a replacement or a removal (warned about, too), where
+    the run's folder is one this process wrote; the caption alone elsewhere (a copy of the folder, one another process
+    wrote, cannot be known stale and is shown with no mark)."""
+    stale = origin.stale("this view", "it shows a run of the declarations before: build and run again") \
+        if origin is not None else None
+    if stale is None:
+        return caption
+    warn_at_script(stale, UserWarning)
+    return f"STALE: {stale}. {caption}" if caption else f"STALE: {stale}"
 
 
 def display(target: str | Path, *, offline: bool = False, caption: str | None = None, slow: float | None = None,
@@ -467,8 +492,9 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
     the motor and magnet of an apparatus, drawn for the view alone); ``focus`` and ``follow`` (off until a body is
     named: ``focus="umr"`` frames it at the start, ``follow="umr"`` keeps the camera on it through the recording)."""
     result = gltf(target, slow=slow, apparatus_shapes=apparatus_shapes)
-    held = page(result, cdn=not offline, caption=caption, scale_bar=scale_bar, legend=legend, focus=focus,
-                follow=follow)
+    origin = origin_of_folder(target)
+    held = page(result, cdn=not offline, caption=_stale_caption(origin, caption), scale_bar=scale_bar, legend=legend,
+                focus=focus, follow=follow)
     size = len(held.encode("utf-8"))
     if size > OUTPUT_WARNING_BYTES:
         warn_at_script(
@@ -476,7 +502,7 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
             f"output rate: record more coarsely (stage_every=), bake meshes to fewer triangles (TriangleBudget), "
             f"{'leave the viewer to jsDelivr (offline=False), ' if offline else ''}or write a page instead "
             f"(mime visuals web {target})", UserWarning)
-    return WebPage(held, result)
+    return WebPage(held, result, origin=origin)
 
 
 def _held_by(path: Path) -> Path | None:
@@ -493,8 +519,10 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
         apparatus_shapes: bool = True, focus: str | None = None, follow: str | None = None) -> tuple[Path, GltfResult]:
     """Write the view of ``target`` as one page, ``out`` (``<name>.html`` in the working folder by default), the
     viewer inlined unless ``cdn``; and its GLB alone where ``glb`` names a file. A view is never written into a saved
-    or a run folder (``visuals.web-out``). The switches are :func:`display`'s."""
+    or a run folder (``visuals.web-out``). The switches are :func:`display`'s, and so is the mark: a page of a run this
+    process wrote, before a replacement or a removal, says STALE in its notes."""
     result = gltf(target, slow=slow, apparatus_shapes=apparatus_shapes)
+    caption = _stale_caption(origin_of_folder(target), caption)
     written = Path(out) if out is not None else Path(f"{result.name}.html")
     for path in (written, *((Path(glb),) if glb is not None else ())):
         folder = _held_by(path)

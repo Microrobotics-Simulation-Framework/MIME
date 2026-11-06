@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -58,28 +59,80 @@ def _terms_line(ref: AssetRef) -> str:
     return "; ".join(parts)
 
 
-def sources_text(refs: Sequence[AssetRef]) -> str:
-    """Each asset's terms, tier, cache state and locations, as ``mime assets sources`` prints them."""
+@dataclass(frozen=True)
+class SourceLocation:
+    """One location of an asset, looked at: its address, where it came from (``this machine's locations file``) when not
+    the record, and whether it was reachable (``None``: not looked at) with why."""
+
+    location: str
+    where: str
+    reachable: bool | None
+    why: str
+
+    def line(self) -> str:
+        state = {True: "reachable", False: "not reachable", None: "not looked at"}[self.reachable]
+        return f"    {self.location}{self.where}: {state}: {self.why}"
+
+
+@dataclass(frozen=True)
+class SourceView:
+    """What ``mime assets sources`` found of one asset: its record, whether it is cached, and each location looked at in
+    the order a fetch tries them."""
+
+    ref: AssetRef
+    cached: bool
+    locations: tuple[SourceLocation, ...]
+
+    @property
+    def reachable(self) -> str:
+        """The locations that answered, as a table cell: ``2 of 3``, or ``not looked at`` where none was."""
+        looked = [each for each in self.locations if each.reachable is not None]
+        if not looked:
+            return "not looked at"
+        return f"{sum(1 for each in looked if each.reachable)} of {len(looked)}"
+
+    def head(self) -> str:
+        return (f"{self.ref.name}  {size_text(self.ref.size)}  {'cached' if self.cached else 'not cached'}  "
+                f"sha256 {self.ref.sha256}")
+
+    def detail(self) -> list[str]:
+        """Every line of the asset's text after the first: its terms, what a referenced tier means, its locations and
+        its adapters."""
+        ref = self.ref
+        lines = [f"  terms: {_terms_line(ref)}"]
+        if ref.tier == "referenced":
+            lines.append("  its bytes never travel inside a bundle, a push or a package: only this record does")
+        lines.append("  locations, in the order a fetch tries them:")
+        lines += [each.line() for each in self.locations]
+        for scheme, package in ref.adapters:
+            lines.append(f"  the scheme {scheme} is read by an adapter from {package or 'a script'}")
+        return lines
+
+
+def sources_view(refs: Sequence[AssetRef]) -> list[SourceView]:
+    """Each asset looked at now: its cache state and each of its locations, in the order a fetch tries them, probed
+    without downloading."""
     from mime.assets._fetch import tried_locations
 
     extra = read_locations()
-    lines: list[str] = []
+    views: list[SourceView] = []
     for ref in refs:
-        lines.append(f"{ref.name}  {size_text(ref.size)}  {'cached' if is_cached(ref) else 'not cached'}  "
-                     f"sha256 {ref.sha256}")
-        lines.append(f"  terms: {_terms_line(ref)}")
-        if ref.tier == "referenced":
-            lines.append("  its bytes never travel inside a bundle, a push or a package: only this record does")
         mine = set(extra.extra(ref.name, ref.sha256))
-        lines.append("  locations, in the order a fetch tries them:")
+        found: list[SourceLocation] = []
         for location in tried_locations(ref):
-            found = probe(location, ref)
+            seen = probe(location, ref)
             where = " (this machine's locations file)" if location in mine and location not in ref.locations else ""
-            state = {True: "reachable", False: "not reachable", None: "not looked at"}[found.reachable]
-            lines.append(f"    {found.location}{where}: {state}: {found.why}")
-        for scheme, package in ref.adapters:
-            lines.append(f"  the scheme {scheme} is read by an adapter from {package or 'a script'}")
+            found.append(SourceLocation(seen.location, where, seen.reachable, seen.why))
+        views.append(SourceView(ref, is_cached(ref), tuple(found)))
+    return views
+
+
+def sources_text(refs: Sequence[AssetRef]) -> str:
+    """Each asset's terms, tier, cache state and locations, as ``mime assets sources`` prints them."""
+    lines: list[str] = []
+    for view in sources_view(refs):
+        lines += [view.head(), *view.detail()]
     return "\n".join(lines) if lines else "no asset"
 
 
-__all__ = ["assets_of", "sources_text"]
+__all__ = ["SourceLocation", "SourceView", "assets_of", "sources_text", "sources_view"]

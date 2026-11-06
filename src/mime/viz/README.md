@@ -68,6 +68,8 @@
 ## Status
 
 The recording layer, the mesh importer, the visuals in the asset cache, and the shareable view (a GLB and a web page).
-Viewports stay with the clients.
+Viewports stay with the clients. A view of a run folder `run_to` wrote in this process says it is stale (`WebPage.stale`, a
+warning and a line in its page and notes, also for a file inside the folder and for `web`) once the experiment has had a
+replacement or a removal since. A copy of the folder has no session to compare with and is shown with no mark.
 
 Releases are explained in the [package manifest](../README.md#status).

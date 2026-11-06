@@ -63,7 +63,7 @@ if TYPE_CHECKING:
     from mime.control import Progress, StopRequest
     from mime.live import ServeState
 
-    from mime.assets import Licence
+    from mime.assets import Acceptance, Licence, SourceView
     from mime.build import MimeError, Refusal
     from mime.cli._summary import RunSummary
     from mime.env import EnvReport
@@ -833,6 +833,89 @@ def show_registry(entries: Sequence[tuple[str, str, str, str]], not_loaded: dict
     console.print(table)
     for name, reason in not_loaded.items():
         console.print(_text(f"not loaded: {name} ({reason})"), soft_wrap=True)
+
+
+def show_assets(rows: Sequence[tuple[str, str, str, str, str]], stream: IO[str]) -> None:
+    """``mime assets list`` on a terminal: a row for each asset with its name, size, whether it is cached, its licence and
+    its tier. ``rows`` are the plain output's lines, taken apart."""
+    console = _console_of(stream)
+    table = _table("", ("name", "size", "cached", "licence", "tier"))
+    for name, size, cached, licence, tier in rows:
+        table.add_row(_text(name), _text(size), _text(cached, "green" if cached == "cached" else "yellow"),
+                      _text(licence), _text(tier))
+    console.print(table)
+
+
+def show_sources(views: Sequence[SourceView], stream: IO[str]) -> None:
+    """``mime assets sources`` on a terminal: a row for each asset with its name, size, whether it is cached, its licence,
+    its tier and how many of its locations answered; then, for each, the lines the plain output prints under its name (its
+    sha256, its terms and each location with what was found), which are the reason a location did not answer."""
+    console = _console_of(stream)
+    table = _table("", ("name", "size", "cached", "licence", "tier", "reachable"))
+    for view in views:
+        ref = view.ref
+        table.add_row(_text(ref.name), _text(_size_text(ref.size)), _text("cached" if view.cached else "not cached",
+                                                                           "green" if view.cached else "yellow"),
+                      _text(ref.licence), _text(ref.tier), _text(view.reachable))
+    console.print(table)
+    for view in views:
+        console.print(_text(view.head(), "bold"), soft_wrap=True)
+        for line in view.detail():
+            console.print(_text(line), soft_wrap=True)
+
+
+def _size_text(size: int) -> str:
+    from mime.assets import size_text
+
+    return size_text(size)
+
+
+def show_visual_sets(rows: Sequence[tuple[str, str, str, str, str, str, str]], stream: IO[str]) -> None:
+    """``mime visuals list`` on a terminal: a row for each visual set with its name, files, size, whether it is baked, its
+    licence, its tier and its role."""
+    console = _console_of(stream)
+    table = _table("", ("set", "files", "size", "baked", "licence", "tier", "role"))
+    for name, files, size, baked, licence, tier, role in rows:
+        table.add_row(_text(name), _text(files), _text(size), _text(baked, "green" if baked == "baked" else "yellow"),
+                      _text(licence), _text(tier), _text(role))
+    console.print(table)
+
+
+def show_acceptances(held: Sequence[Acceptance], stream: IO[str]) -> None:
+    """``mime assets licences`` on a terminal: a row for each licence accepted on this machine."""
+    console = _console_of(stream)
+    table = _table("", ("licence", "title", "link", "accepted"))
+    if all(len(each.licence.id) + 2 <= console.width // 2 for each in held):
+        table.columns[0].no_wrap = True  # the id is what `--revoke` takes: whole where the terminal has room for it
+    for each in held:
+        table.add_row(_text(plain(each.licence.id)), _text(plain(each.licence.title)), _text(plain(each.licence.url)),
+                      _text(plain(each.date)))
+    console.print(table)
+
+
+#: A pending item's lines to paste are indented at least this far (its labels are indented three).
+_PASTE_INDENT = 7
+
+
+def show_pending(text: str, stream: IO[str]) -> None:
+    """``mime pending`` on a terminal: the plain output, with the lines to paste set apart as blocks that are **never
+    wrapped**. Rich wraps a line it draws by putting a line end in it, and a wrapped line pasted into a script or the
+    document breaks it; a block's lines are written whole, with their indentation, and the terminal wraps them on the
+    screen, a wrap that copying leaves out. The words are the plain output's: nothing is left out or changed."""
+    console = _console_of(stream)
+    lines = text.splitlines()
+    in_block = False
+    for line in lines:
+        code = line.startswith(" " * _PASTE_INDENT) and line.strip() != ""
+        if code != in_block:
+            console.print()
+            in_block = code
+        if code:
+            console.print(_text(line, "cyan"), soft_wrap=True)
+        else:
+            console.print(_text(line, "bold" if line[:1].isdigit() else ""))
+    if in_block:
+        console.print()
 
 
 #: How each kind of plan line is drawn (the words are the line's own; the style only sets it apart).
