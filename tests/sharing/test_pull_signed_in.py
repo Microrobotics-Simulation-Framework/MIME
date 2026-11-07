@@ -32,6 +32,7 @@ from __future__ import annotations
 import http.server
 import logging
 import os
+import re
 import socket
 import threading
 import traceback
@@ -578,3 +579,33 @@ def test_link_is_refused_without_its_value_where_it_is_not_dash_or_env(
     code, said = pulled(["--link", "-", "--into", str(tmp_path / "z")], capsys)
     assert code == 2 and "no share link was typed" in said
     assert restricted.seen == []
+
+
+# --- a second pull of the same record takes its bundle from the asset cache --------------------------------------------
+
+
+def bundle_requests(fake: FakeRecords) -> int:
+    """How many times a record's file bytes (a ``.../files/<name>/content`` address) were asked for so far."""
+    return sum(1 for method, path, _, _ in fake.seen
+               if method == "GET" and re.fullmatch(r"/records/\d+/files/[^/]+/content", path))
+
+
+@pytest.mark.parametrize("route", ["--from", "a share link", "--signed-in"])
+def test_a_second_pull_of_the_same_record_asks_for_no_bundle_bytes_on_any_route(
+        restricted: FakeRecords, tmp_path: Path, route: str):
+    """The cache's note of the record's checksum serves every route that reads the checksum from the record, not the DOI
+    alone: the second pull reads the record again (its checksum is what names the bundle) and asks for the bundle once
+    in all."""
+    if route == "--from":
+        restricted.records[NUMBER].body["access"] = {"record": "public", "files": "public"}
+    words = {"--from": dict(from_service="zenodo-sandbox"),
+             "a share link": dict(from_service=None),
+             "--signed-in": dict(from_service="zenodo-sandbox", signed_in=True)}[route]
+    source = f"{restricted.site}/records/{NUMBER}?token={KEY}" if route == "a share link" else NUMBER
+    first = pull(source, into=tmp_path / "first", **words)
+    assert bundle_requests(restricted) == 1, "the first pull asks for the bundle"
+    reads = len(restricted.seen)
+    second = pull(source, into=tmp_path / "second", **words)
+    assert len(restricted.seen) > reads, "the second pull reads the record again"
+    assert bundle_requests(restricted) == 1, "and asks for no bundle bytes"
+    assert first != second and second.is_dir()
