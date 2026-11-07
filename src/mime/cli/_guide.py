@@ -17,7 +17,7 @@ from mime.cli._shell import quoted
 
 #: The commands, by what one is doing. Every command is in exactly one group (a test holds it).
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Run", ("run", "serve", "verify", "pending", "show")),
+    ("Run", ("run", "study", "serve", "verify", "pending", "show")),
     ("Share", ("pack", "card", "pull", "push", "credentials")),
     ("Environment", ("env", "modal", "cache", "assets", "visuals", "completion")),
     ("Reference", ("registry", "docs")),
@@ -26,6 +26,9 @@ GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
 #: One worked example for every command, by its words after ``mime``. Every leaf command has one (a test holds it).
 EXAMPLES: Mapping[tuple[str, ...], str] = {
     ("run",): "mime run my_experiment --duration 10s --out my_run",
+    ("study",): "mime study plan study.mime.yaml",
+    ("study", "plan"): "mime study plan study.mime.yaml",
+    ("study", "run"): "mime study run study.mime.yaml --out my_study --pilot",
     ("serve",): "mime serve my_experiment --start",
     ("verify",): "mime verify my_experiment",
     ("pending",): "mime pending my_experiment",
