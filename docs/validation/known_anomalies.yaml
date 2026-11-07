@@ -2995,3 +2995,107 @@ anomalies:
       force-point count on which fusion is chosen. One agent, one rig, one pose family, one JAX version.
     workaround: "Do not differentiate the wall read at a pose where force points share a height or an azimuth exactly: move the points by a small amount first (a nudge of 1e-9 m on the 338 points gave rotation derivatives matching central differences to 2e-7, measured), or check a derivative against central differences at the pose it is used at. Evaluating eagerly matched in every case measured, but is not a guarantee."
     planned_resolution: "A tangent at ties that does not depend on the fusion: take dz once and use the one value for both its sign and its absolute value (an odd smooth form, or a jax.custom_jvp for the folded read whose tangent is the table's slope times the tangent of dz), with the two-point case here (a pair at equal height, jitted, forward and reverse) as the control that fails on the shipped code on every run and the 338-point case as the whole-body check. A later PR; this entry changes no code."
+
+  - anomaly_id: MIME-ANO-144
+    title: "The hull contact's Newton search can end at points millimetres apart under a change of one unit in the last place of the pose, for a group seeded beyond the margin of the shrunk wall; measured to reach no force, net wrench, flag or short run, but the held point it records moves"
+    description: >
+      The contact 0.4.0 finds each group's deepest point against the wall by CONTACT_NEWTON (12) Newton steps from the
+      group's kept start (mime.nodes.body._contact.searched), and counts the search converged where |x - s(x)| is within
+      the square root of the dtype's resolution times the hull's size (1.47 um in float32 for FL-9) [read]. For a group
+      whose nearest sample stands beyond the margin of the shrunk wall, the code says the search may end anywhere on the
+      body: _contact.shallower returns zero for such a row ("there the search may end anywhere on the body ... and the row
+      holds nothing") [read]. This entry records how far "anywhere" goes, and that it is not stable: on a draw seeded so,
+      the end of the search, and so the row's held point, changes by millimetres when one entry of the pose moves by one
+      unit in the last place.
+
+      Measured (float32, CPU, the contact 0.4.0 on the release branch's tip, FL-9 in a tube of 3.175 mm radius at a margin
+      of 0.1 mm and a spacing of 0.4 mm, eight groups, a step of 0.5 ms; each draw's pose, and the same pose with each
+      nonzero entry moved up and then down by one unit in the last place, 12 poses; a row counts as moving where its
+      held point moves by more than 128 units of the dtype's resolution times the hull's size, 65 nm):
+      - Five draws have such a row, each exactly one. Two are the draws that the looped-contact pull request (#185) captured
+        on its stress and CI runs: draw A (spin, tilt, about, towards, gap: 1.0, 1.0, 2.0, 1.03 rad, 0 um) and draw B
+        (5.796875, 1.0, 0.3984375, 5.78125 rad, 0 um), the row's kept start 885 and 920 um from the shrunk wall. Three
+        are draws 8, 27 and 30 of 80 made with numpy's default_rng(0) from the ranges of that pull request's property
+        test (spin, about, towards in 0 to 2 pi, tilt in 0 to 1.5, gap in -0.5 to 1.0 margins): draw 8 (3.5910, 0.4828,
+        3.7341, 2.1232, 8.7 um), 27 (2.5943, 1.2272, 3.9365, 6.0261, 5.4 um) and 30 (0.0625, 0.5476, 0.4940, 4.1005,
+        -8.9 um), starts 819, 1110 and 1272 um from the wall. A start is 8 to 13 times the margin from the wall.
+      - The row's gap at the pose, and at the nudged poses where it moved: draw A 415 um, then 885; draw B -12.7 um, then 652
+        or 920; draw 8 2.0 um, then 602; draw 27 858 um, then 280; draw 30 1557 um, then 573, 678 or -15 um. The row's held
+        point moves by 2.0 to 8.2 mm in 19 of the 60 nudged poses (12 for each draw).
+      - At the pose, the search of each such row had converged. At the 19 nudged poses where the row moved, it ended converged
+        at another point in 12 (other fixed points of x = s(n(x)), 2.0 to 8.2 mm away) and not converged in 7 (|x - s|
+        from 7 um to 0.85 mm), where the contact holds the group's nearest sample instead (contact.search). That these are two fixed points, and what sends the search to one or the other, is an
+        inference: the iterates were not traced.
+      - In float64 the same five draws, each pose entry moved by one unit in the float64 resolution, moved no row. The float64
+        draws have ends of their own (draw 8's row 4 ends at a gap of 1074 um where float32 has 2 um): nothing is claimed for
+        float64 beyond these five draws.
+      - Of the 80 random draws, 3 (3.75 %) had a row that moved; the other 77 had none under any of the 12 nudges. One seed.
+
+      Reach: whether the end of such a row reaches a force, the net wrench, a flag or a run.
+      - A row takes a force only where its gap is below the step's reach, |v| dt along the wall's normal: about 0.5 um at 1 mm/s,
+        5 um at 1 cm/s and 500 um at 1 m/s [arithmetic]. The moving rows' ends are 280 to 1557 um from the shrunk wall, except
+        where an end falls on the deepest point itself (draw B at the pose, -12.7 um; draw 8 at the pose, 2.0 um; draw 30
+        at a nudged pose, -15 um), or on the end of other rows (draw 27's nudged 280 um is the end of three other rows):
+        there the moving row is tied with rows that already carry the force.
+      - A real step, 41 cases on the five draws (the body moving into the wall at 1 mm/s; at 1 cm/s with 250 rad/s about the
+        tube's axis; at 1 m/s, as a bound; and, for each end the moving row had, pressed at 1 cm/s and at 1 m/s towards the wall
+        at that end), the pose against each of the 12 nudged poses. The moving row's force is zero at the pose and at the
+        nudged poses, but for draw 8 at the pose (1.3e-10 N of 1.2e-3 N at 1 cm/s, 2.1e-8 N of 7.1e-2 N at 1 m/s), draw 27 at a
+        nudged pose at 1 m/s (2.8e-2 N, all of it, the end tied with three rows that carry it at the pose) and draw 30 at the
+        nudged poses whose end fell at -15 um (up to 7.0e-2 N, all of it): in each the force moves between rows tied at one
+        point. The net force and net torque (each row's force times its row [n; r x n], summed), the twist and the position,
+        each judged on the scale it came from (m|v|/dt, I w/dt, |v|, w, the hull's size), largest over the nudged poses, in
+        units of the dtype's resolution: at most 10.8 (net force), 9.9 (net torque), 11.4 (speed), 6.8 (angular velocity)
+        and 0.8 (position) in 38 of the 41 cases. The other three, all draw 8 at 1 cm/s, read 327 to 332 (net force and
+        speed), 6.7 to 694 (net torque) and 6.8 to 713 (angular velocity). The same measure on three draws where no row moves
+        (draws 7, 10 and 3 of the 80; rows seeded 0 to 133 um from the wall among them; 9 cases): at most 13.6, 5.0, 13.7, 5.1
+        and 0.6.
+      - Those three are the solve's own conditioning, not the search's end: with every row's body point given (the step run
+        on held points, contacts_at), moving one row's point by one unit in the last place moves the step by 163 to 355 units of
+        the resolution in those cases, and swapping the moving row's other end in changes it by at most 0.54.
+      - The same swap on all 41 cases (112 swaps: the step with the moving row's body point replaced by each other end it had,
+        everything else identical) changes the net force, net torque, speed or angular velocity by at most 3.4 units of the
+        resolution. Control, a planted change: the largest-force row and every row tied to it moved 50 um along the body's
+        x axis changes the same quantities by at least 22,407 units in each of the 36 cases (of all 50, three controls
+        included) that have a row taking a force, against resolutions of at most 355: at least 63 times, and at least 8,500
+        times each case's own. A first plant that moved a single force-taking row was not seen in 5 of those 36 cases (a row
+        tied to it took the force instead); it was replaced.
+      - A run: 40 steps of 0.5 ms from each draw under a constant push towards the wall (half the body's weight) and a
+        constant torque of 2e-7 N m about the tube's axis, the pose against each of the 12 nudged poses. At step 40 the
+        largest divergence is 2.4 nm in position (4.8 units of the resolution times the hull's size), 2.3e-6 rad in orientation
+        and 4.0e-4 rad/s in angular velocity on the five draws; 2.0 nm, 1.7e-6 rad and 5.1e-4 rad/s on the three draws where no
+        row moves. In every run contact_short stayed at 0 m and the solve's residual was at most 6.8e-5 (the flag
+        unconverged is at 5e-3).
+      - support_short cannot rise on such a row by construction: its start is beyond the margin, so _contact.shallower reads
+        zero [read; zero in every case above]. The flag touching (any row takes a force) was not compared directly: the net
+        forces above agree, and where a moving row took a force, rows tied to it carried it at the other pose [inference].
+      - What does change is a recorded value: the state's contact_points holds the world point of every row, taking a force or
+        not, and the moving row's moves by millimetres. Nothing in src/ reads it but the flag layout's text [read], so it is
+        an output and not an input to anything.
+      - Derivatives, float64 only: forward mode (jax.jacfwd) of every row's held point and gap in the pose is finite on the
+        eight draws, the point's derivative with norms of 0 to 7.9 m per unit of pose (0.5 to 7.3 on the three controls). The
+        derivative of the whole step was not taken.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      Over the draws above, the search's end does not reach a force, the net wrench, the state or a flag: it is
+      ill-conditioned where the row holds nothing. That is a measurement at five draws of one hull, not a proof that it
+      cannot, so the entry is not marked as unable to affect a safety-relevant path. A user who reads the held point of a row
+      that takes no force, or who compares two programs' search ends, would use a value set by rounding; a gradient through such
+      a row is finite in float64 where measured, and was not taken through the whole step.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: interaction contact 0.4.0"
+      - "node: RigidInertialNode; the hull contact's search (mime.nodes.body._contact.searched, pair_contacts)"
+    residual_risk: >
+      Not measured: any hull but FL-9's (the sphere, capsule, cylinder and ellipsoid have a support too), any spacing, margin,
+      tube or other wall, a step other than 0.5 ms, speeds above 1 m/s, runs beyond 20 ms, platforms other than one CPU, the
+      whole step's derivative, and the rate of such draws beyond 80 draws of one seed. A force would be reached by a moving row
+      whose end falls within |v| dt of the wall while the body presses on it and no row tied to it carries the force: the
+      ends in this record are 280 um or more from the wall, or on a point that rows already carrying the force hold. Whatever
+      reads the search's ends as a program output is exposed: the pull request (#185) that found this compared the contact
+      0.5.0's looped search with 0.4.0's, and recorded 0.4.0 itself unstable under one unit in the last place at its two
+      draws.
+    workaround: "None needed for forces, the state or the flags as measured. Do not use the contact_points of a row that takes no force as a position, and do not compare two programs' search ends group by group without first dropping the groups whose own end moves under one unit in the last place of the pose."
+    planned_resolution: "None filed. Routes, none taken: (1) hold a group whose nearest sample is beyond the margin at that sample, which the contact does already where the search has not converged, so that the recorded point is the sample and not an end set by rounding; (2) leave the point and say in the state field's description that it is unspecified for a row that takes no force; (3) test a looped or otherwise rewritten search only on the groups its reference resolves under one unit in the last place. This entry changes no code."
