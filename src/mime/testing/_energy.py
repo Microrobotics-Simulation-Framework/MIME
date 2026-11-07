@@ -3,9 +3,11 @@ dynamics, as the energy case (``CaseKind.ENERGY``, ``mime.testing.conformance``)
 
 :func:`step_identity`: the receiver's node, metered for one synthetic law on each input its port kind pairs (a load
 read at the step's start, an operator solved for in the step), books ``H' - H = sum W - N`` within 16 eps of the step's
-scale on drawn states, and its unattributed input pairs no work, exactly. Drawn per port kind (:data:`PORT_DRAWS`): a
-rigid body's at a millimetre swimmer's scales (:func:`rigid_body_states`); a port kind with no draws yet fails the
-case, naming it. A dynamics that names no port kind passes with its reason for being unmetered, and fails without
+scale on drawn states, and **work fed into its unattributed input is booked as unattributed** (a draw is fed into the
+input that sums what no law owns, the unattributed work comes out above zero, and the identity closes with it): a node
+that books such work under a law, or loses it, fails the case on every draw. Drawn per port kind
+(:data:`PORT_DRAWS`): a rigid body's at a millimetre swimmer's scales (:func:`rigid_body_states`); a port kind with no
+draws yet fails the case, naming it. A dynamics that names no port kind passes with its reason for being unmetered, and fails without
 one."""
 
 from __future__ import annotations
@@ -61,8 +63,8 @@ def _rotation(q: np.ndarray) -> np.ndarray:
 def rigid_body_states(draw: Callable[..., Any]) -> dict[str, np.ndarray]:
     """A rigid body's state and what its laws deliver, at a millimetre swimmer's scales: its mass to a factor of two
     of FL-9's, principal moments 0.5 to 3 e-10 kg m^2 within the triangle inequality about drawn axes, its position to
-    a centimetre, speeds to a centimetre a second, rates to 100 rad/s, a load to 1e-5 N and 1e-8 N m, and a symmetric
-    positive definite resistance of FL-9's in a tube (4e-5 N s/m, 8e-10 N m s, coupled up to 0.3 of their geometric
+    a centimetre, speeds to a centimetre a second, rates to 100 rad/s, a load (and a second, fed to the unattributed
+    input) to 1e-5 N and 1e-8 N m, and a symmetric positive definite resistance of FL-9's in a tube (4e-5 N s/m, 8e-10 N m s, coupled up to 0.3 of their geometric
     mean) turned by a drawn rotation; each component drawn 0.1 to 1 of its scale with its own sign."""
     least = draw(st.floats(0.5, 1.5)) * SWIMMER_MOMENT
     middle = least * (1.0 + draw(st.floats(0.0, 0.6)))
@@ -80,6 +82,7 @@ def rigid_body_states(draw: Callable[..., Any]) -> dict[str, np.ndarray]:
             "pose": np.concatenate([_vector(draw, 1e-5, 1e-2), _unit(draw, 4)]),
             "twist": np.concatenate([_vector(draw, 1e-4, 1e-2), _vector(draw, 0.1, 100.0)]),
             "load": np.concatenate([_vector(draw, 1e-8, 1e-5), _vector(draw, 1e-12, 1e-8)]),
+            "unattributed": np.concatenate([_vector(draw, 1e-8, 1e-5), _vector(draw, 1e-12, 1e-8)]),
             "resistance": resistance}
 
 
@@ -114,14 +117,15 @@ def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
                   max_examples: int = 200) -> VerificationResult:
     """``dynamics``' step identity on drawn states (the module's docstring), on ``node`` (its node as a build makes
     it; by default as :func:`dynamics_rig` builds it): one step of its metered twin from each draw of its port kind's
-    states, the identity within its floor and the unattributed input's paired work exactly zero. A dynamics that
-    names no port kind passes with its reason for being unmetered, and fails with none. A failing draw is reported
-    as drawn."""
+    states, the identity within its floor and work fed into its unattributed input booked as unattributed. A dynamics
+    that names no port kind passes with its reason for being unmetered, and fails with none. A failing draw is
+    reported as drawn."""
     from hypothesis import HealthCheck, Phase, given, settings
 
     if not dynamics.port:
         if dynamics.unmetered:
-            return VerificationResult("step identity", "PASS", detail=f"unmetered: {dynamics.unmetered}")
+            return VerificationResult("step identity", "PASS", detail=f"unmetered: {dynamics.unmetered} (a pass by that "
+                                                                     f"declaration alone: nothing was checked)")
         return _failed(f"{type(dynamics).label()} names no port kind (Dynamics.port) and states no reason for "
                        f"being unmetered (Dynamics.unmetered)")
     draws = PORT_DRAWS.get(dynamics.port)
@@ -139,6 +143,12 @@ def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
     floor = ULPS * float(np.finfo(dtype).eps)
     last: dict[str, Any] = {}
     count = 0
+    # The input that sums what no law owns, which the case feeds a load of its own: work that must come out booked as
+    # unattributed.
+    unattributed_input = next((d.field for d in deliveries if d.kind == ledger.LOAD), "")
+    if not unattributed_input:
+        return _failed(f"{type(dynamics).label()}'s port kind pairs no load, so there is no input to feed unattributed "
+                       f"work")
 
     def step(drawn: Mapping[str, Any]) -> Mapping[str, Any]:
         p = {key: jnp.asarray(value, dtype=dtype) for key, value in held._step_constants(None).items()}
@@ -151,6 +161,7 @@ def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
                                            if not key.startswith(ledger.RECORDS)})
         inputs = {name: jnp.zeros(tuple(entry.shape), dtype=dtype) for name, entry in held.boundary_input_spec().items()
                   if ledger.own_input(name) is None}
+        inputs[unattributed_input] = jnp.asarray(drawn["unattributed"], dtype=dtype)
         for index, delivery in enumerate(deliveries):
             value = drawn["resistance"] if delivery.kind == ledger.SOLVED else drawn["load"]
             inputs[ledger.law_input(delivery.field, index)] = jnp.asarray(value, dtype=dtype)
@@ -167,7 +178,9 @@ def step_identity(dynamics: Dynamics, node: SimulationNode | None = None, *,
         stepped = step(drawn)
         over = float(stepped[f"{ledger.RECORDS}step_identity"]) / floor
         assert over <= 1.0, f"the step identity's residual is {over:.3g} of its floor"
-        assert float(stepped[f"{ledger.RECORDS}unattributed_worst"]) == 0.0, "work arrived unattributed"
+        booked = float(stepped[f"{ledger.RECORDS}unattributed_worst"])
+        assert booked > 0.0, (f"work fed into the unattributed input ({unattributed_input}) was not booked as "
+                              f"unattributed work: it was booked under a law or lost")
 
     try:
         prop()

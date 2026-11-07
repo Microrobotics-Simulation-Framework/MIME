@@ -23,11 +23,23 @@ useful work as a share of what was supplied.
 - As a measurement of a model's accuracy: it checks that the books close and that each law is the class it says it is;
   a drag scaled wrong, a coupling's sign flipped or a wrong parameter passes every check (each family's oracles are
   what see those).
+- To find a wrong delivery between laws: the build compares its graph with the deliveries it made and refuses a
+  swap, a duplicate or a missing delivery by name (`post-build.ledger-inputs`). The books cannot see them, and a law's
+  residual shows only a swap that involves gravity and a moving load.
 - On a body whose dynamics is not metered yet (a chain segment's): the build report lists it, with the reason, and the
   account leaves it out.
 - On a run read back from a folder: the account needs each law's parameters, which only the built experiment holds.
 
-**Its derivative** passes through the account's sums: a propulsive efficiency's derivative in a drive's parameter is
-taken through the compiled step with the ledger attached.
+**Its derivative** passes through the account's sums. Called inside a function being differentiated,
+`mime.results.energy_account` forms `supplied_total`, `efficiency(useful)` and each potential's change from the final
+state and the parameters by traced arithmetic, so that a propulsive efficiency's derivative in a drive's parameter, taken
+through the compiled step with the ledger attached, agrees with central differences. A `result.energy` read from a
+finished run holds numbers (and its `text()` formats them); take the derivative of the function that forms the account.
+
+**What `supplied` is.** The account takes it from the dissipation side, an estimate under the ledger's exact identity,
+not a bound: it differs from the work the laws paired in the steps (the paired supply, in `text(details=True)`) by
+the scheme's own terms (small on script A, large on a case at a coarse step), and which of the two lies nearer the
+continuum value is not established at that step. Shared among several things outside, it is a ratio of their paired
+works, unbounded where they nearly cancel.
 
 **Versions.** `energy_ledger` 0.1.0 is its first.

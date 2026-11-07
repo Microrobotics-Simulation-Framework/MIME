@@ -396,7 +396,10 @@ _POSE_AND_RESISTANCE = {POSE.name: unit_quaternion, RESISTANCE.name: positive_se
 MAGNETIC = register_family(Family(
     name="magnetic", rig=magnetic_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
-           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.CLOSED_LOOP, CaseKind.ENERGY),
+           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.CLOSED_LOOP,
+           # Passes both magnetic laws by their declared reason alone, checking nothing; P1b builds the family's energy
+           # and its loop test, and gives the laws their class.
+           CaseKind.ENERGY),
     sign=SignRule("the field turns the body's moment toward it (tau . (m x B) is not negative), and its gradient pulls "
                   "the moment up the gradient of its alignment (F . (G^T m) is not negative): an aligned moment is "
                   "pulled toward the stronger field", _magnetic_sign, reads=(("body", POSE.name),),

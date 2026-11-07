@@ -117,6 +117,37 @@ def test_a_step_that_gives_64_floors_unbooked_fails_its_step_identity():
     assert result.failed and "of its floor" in result.detail
 
 
+def misbooking(base: type) -> type:
+    """``base`` (a body's node) with a step that books the work of its unattributed input under its first law, as an
+    honest-looking account of a hidden delivery: the identity closes and nothing is unattributed."""
+
+    class MisbookedBody(base):  # type: ignore[misc, valid-type]
+        def identity_terms(self, p: Any, held: Any, state: Any, boundary_inputs: Any, ended: Any, parts: Any,
+                           dt: float) -> Any:
+            account = super().identity_terms(p, held, state, boundary_inputs, ended, parts, dt)
+            return dataclasses.replace(account, work=account.work.at[0].add(account.unattributed),
+                                       unattributed=jnp.zeros_like(account.unattributed))
+
+    return MisbookedBody
+
+
+def test_work_booked_under_a_law_that_was_fed_to_the_unattributed_input_fails_its_step_identity_on_every_draw():
+    """The assertion that unattributed work is booked as such can fail: the plant closes the identity (the work is in
+    the books, under a law) and leaves nothing unattributed, so only that assertion sees it. It reads zero on every
+    draw (Hypothesis stops at the first and replays it), and every draw feeds a load whose paired work is far above
+    zero, so it is caught on every run."""
+    node = dynamics_rig(RigidInertial())
+    assert not isinstance(node, str), node
+    held: Any = node
+    misbooked = misbooking(type(held))(held.name, float(held.delta_t), **dict(held.params))
+    for _ in range(3):
+        result = step_identity(RigidInertial(), misbooked, max_examples=20)
+        print(f"\n{result}")
+        assert result.failed and "was not booked as unattributed work" in result.detail
+        assert result.n_examples <= 2, "Hypothesis stops at the first draw, which fails it, and replays it once"
+    assert step_identity(RigidInertial(), node, max_examples=20).passed
+
+
 def test_a_dynamics_with_no_port_kind_passes_by_its_reason_and_fails_without_one(monkeypatch):
     arm = classes(("dynamics", "arm", "0.1.0"))
     assert step_identity(arm.__new__(arm)).passed

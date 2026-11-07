@@ -13,7 +13,7 @@ from maddening.core.edge import EdgeSpec
 from maddening.core.node import BoundaryInputSpec
 
 from mime.build._control import Mode, ReadClass
-from mime.build._ledger import misattributed
+from mime.build._ledger import EnergyBoundary, misattributed
 from mime.build._maddening import edge_transform, external_inputs, graph_edges, inputs, node_dict, node_fields_of
 from mime.build._plan import PlanSet, Section
 from mime.things import did_you_mean
@@ -27,6 +27,18 @@ def _params(node: object) -> Mapping[str, Any]:
     """A node's constructor arguments as MADDENING keeps them (``params``), or none."""
     held: object = getattr(node, "params", None)
     return cast(Mapping[str, Any], held) if isinstance(held, Mapping) else {}
+
+
+def ledger_wiring_refusals(graph: GraphManager, plans: PlanSet, energy: EnergyBoundary | None) -> list[Refusal]:
+    """With the energy ledger attached, the graph as built against the deliveries its wiring made (``energy.wiring``):
+    each law delivers into its own input on its receiver, once, and nothing else does (``misattributed``)."""
+    if energy is None:
+        return []
+    receivers = {name: held for name in graph.node_names
+                 for held in (ledger.deliveries(_params(graph.get_node(name))),) if held}
+    return [_refuse("post-build.ledger-inputs", f"with the energy ledger attached, {problem}: each law delivers into "
+                                                f"its own input on its receiver, once, and nothing else does")
+            for problem in misattributed(graph_edges(graph), receivers, plans.owner_of, energy.wiring)]
 
 
 def _refuse(code: str, message: str) -> Refusal:
@@ -241,11 +253,6 @@ def post_build_checks(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
                                     f"{spec['target_field']}) is also an external input: an external input replaces "
                                     f"everything delivered into its field, so a target is never one"))
     refusals += _writer_refusals(graph, plans) + _read_refusals(graph, plans)
-    receivers = {name: held for name in graph.node_names
-                 for held in (ledger.deliveries(_params(graph.get_node(name))),) if held}
-    refusals += [_refuse("post-build.ledger-inputs", f"with the energy ledger attached, {problem}: each law delivers "
-                                                     f"into its own input on its receiver, and nothing else does")
-                 for problem in misattributed(graph_edges(graph), receivers, plans.owner_of)]
     refusals += _units_refusals(graph, built_by)
     refusals += node_refusals(graph, built_by)
     for name in graph.node_names:

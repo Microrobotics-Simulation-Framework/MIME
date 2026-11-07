@@ -107,13 +107,15 @@ Also:
   and its loads doing no positive work on the flow it reads (zero where it reads none); a dissipative law held in its
   body's step (a contact) giving no energy through the solve nor by its rule at arrival, on the body's node metered for
   it alone, from states placed on its surface moving outward (`onto_the_surface`, `OUTWARD_SPEED`); a law with no class
-  states its reason (`unmetered`), or fails. Its controls (`tests/families/test_energy_case.py`): a weight a hundredth
+  states its reason (`unmetered`), or fails; **a law that states its reason passes by that declaration alone** (the two
+  magnetic laws, until their family's energy and loop test are built, P1b), and the result says so. Its controls (`tests/families/test_energy_case.py`): a weight a hundredth
   heavier, an indefinite part in the surrogate's resistance, a contact whose rule speeds up the velocity it projects
   and a law that says nothing each fail it.
 - **a dynamics' step identity** (`step_identity`, `_energy.py`): its node, as a build makes it for one body
   (`dynamics_rig`), metered for one synthetic law on each input its port kind pairs (`metered_twin`), books its step
   identity within the ledger's rounding floor on the step's scale, on drawn states (`PORT_DRAWS`: a rigid body's, `rigid_body_states`, at a
-  millimetre swimmer's scales) with nothing unattributed; a dynamics with no port kind states its reason, or fails.
+  millimetre swimmer's scales) and work fed into its unattributed input booked as unattributed (a node that books it
+  under a law fails on every draw); a dynamics with no port kind states its reason, or fails.
   `tests/energy/test_metered_entries.py` walks every registered dynamics and interaction of MIME's through both.
 
 Also:

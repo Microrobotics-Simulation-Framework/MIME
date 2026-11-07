@@ -1106,7 +1106,8 @@ def check_nodes(probe: Probe, law: Interaction, node_case: NodeCase | None) -> V
 #: The rounding floor the energy case judges against, in units of eps on its scale: the ledger's.
 ENERGY_ULPS = ledger.IDENTITY_ULPS
 #: How fast a body placed on its confining surface is drawn moving outward, at the least (m/s): enough that a step
-#: carries it past the surface by more than the contact's band of rounding, so the law acts on every draw.
+#: carries it past the surface by more than the contact's band of rounding, so the law acts on almost every draw (in
+#: float32 the real rule's removal at arrival is below one floor on about 5 % of them).
 OUTWARD_SPEED = 1e-3
 
 
@@ -1125,12 +1126,14 @@ def check_energy(probe: Probe, law: Interaction, family: Family, max_examples: i
     positive work on the flow it reads, or is zero where it reads none (a force read at a state, which does work on some
     motion, is no dissipation). A dissipative law **held in its receiver's step** (a contact) gives no energy through
     the step's solve nor by its rule at arrival, on the receiver's step metered for it alone, from states placed on its
-    surface moving outward (:func:`onto_the_surface`), so that it acts on every draw. A workless law's identity comes
+    surface moving outward (:func:`onto_the_surface`), so that it acts on almost every draw (a rule's removal at arrival is below one floor on about 5 % of float32 draws,
+    exactly zero on a few). A workless law's identity comes
     with its family."""
     cls = type(law)
     if law.energy_class is None:
         if cls.unmetered:
-            return VerificationResult("energy", "PASS", detail=f"unmetered: {cls.unmetered}")
+            return VerificationResult("energy", "PASS", detail=f"unmetered: {cls.unmetered} (a pass by that declaration "
+                                                               f"alone: nothing about the law was checked)")
         return _fail("energy", f"{cls.label()} declares no energy class (Interaction.energy_class) and states no reason "
                                f"for being unmetered (Interaction.unmetered)")
     if law.energy_class is EnergyClass.POTENTIAL:
@@ -1235,7 +1238,7 @@ def _shape(interface: str) -> tuple[int, ...] | None:
 def onto_the_surface(probe: Probe) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
     """For a law that confines a body on a cylinder (its node's ``surface_shape``), a map of drawn states onto the
     shrunk surface (its radius less the body's extent and the margin), in the drawn direction about the axis, with
-    the drawn speed along it and at least :data:`OUTWARD_SPEED` outward across it: where the law acts on every draw.
+    the drawn speed along it and at least :data:`OUTWARD_SPEED` outward across it: where the law acts on almost every draw (see :data:`OUTWARD_SPEED`).
     ``None`` for another surface."""
     own = cast(Mapping[str, Any], cast(Any, probe.node).params)
     if own.get("surface_shape") != "cylinder":

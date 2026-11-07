@@ -24,6 +24,7 @@ With the ledger attached:
 from __future__ import annotations
 
 import dataclasses
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -50,6 +51,11 @@ class EnergyBoundary:
     outside: tuple[str, ...]
     supplied_by: Mapping[str, tuple[str, ...]]
     lines: tuple[str, ...]
+    #: Every delivery the wiring moved into a law's own input, as ``(source node, source field, receiver, own
+    #: input)``: what the graph must hold into the receivers' own inputs, once each, and nothing else. Read from the
+    #: edges the builders declared, before they were moved, so that the post-build check compares the graph as built
+    #: with the delivery each law made, not with the rule that places it.
+    wiring: tuple[tuple[str, str, str, str], ...] = ()
 
 
 def ledger_attached(plans: PlanSet) -> bool:
@@ -150,7 +156,9 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
     lines.append(f"outside: {', '.join(outside) or 'nothing'} (receives no delivery from the components)")
     rewired = [dataclasses.replace(e, target=moved[position]) if position in moved else e
                for position, e in enumerate(edges)]
-    return built, rewired, EnergyBoundary(receivers, outside, supplied_by, tuple(lines)), refusals
+    wiring = tuple((edges[position].source[0], edges[position].source[1], *moved[position])
+                   for position in sorted(moved))
+    return built, rewired, EnergyBoundary(receivers, outside, supplied_by, tuple(lines), wiring), refusals
 
 
 def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[tuple[str, str]],
@@ -216,27 +224,42 @@ def _unmetered_refusal(owner: str, what: str, declares: str) -> Refusal:
 
 
 def misattributed(graph_edges: Sequence[tuple[str, str, str, str]], receivers: Mapping[str, Any],
-                  owner_of: Any) -> list[str]:
-    """Each delivery the graph holds into a metered receiver's input that is not its law's own: an edge into a law's
-    own input from a node another entry owns (two laws' loads swapped between their inputs), or an edge from a law
-    the receiver holds into another input of its kind (its own, or the summed one, where it would arrive
-    unattributed). ``receivers`` maps each metered node to its deliveries; ``owner_of`` gives a node's entry id."""
+                  owner_of: Any, wiring: Sequence[tuple[str, str, str, str]]) -> list[str]:
+    """Each way the graph's edges into a metered receiver differ from the deliveries the wiring made (``wiring``: each
+    as ``(source node, source field, receiver, own input)``). Into a law's own input: an edge the wiring did not make
+    there (a delivery in another law's input, another field's, or the same law's other input, **whatever the shapes**);
+    a delivery made and missing (an edge dropped); a delivery there more than once (an edge duplicated). Into any
+    other input of the receiver: an edge from a law the receiver holds, where its work would arrive unattributed or
+    not at all. ``receivers`` maps each metered node to its deliveries; ``owner_of`` gives a node's entry id."""
     found: list[str] = []
-    for source, source_field, target, field in graph_edges:
+    expected = Counter(wiring)
+    seen: Counter[tuple[str, str, str, str]] = Counter()
+    for edge in graph_edges:
+        source, source_field, target, field = edge
         held = receivers.get(target)
         if not held:
             continue
-        own = ledger.own_input(field)
         owner = owner_of(source)
-        if own is not None:
-            base, index = own
-            expected = held[index].law if index < len(held) else None
-            if expected != owner or held[index].field != base:
-                found.append(f"{source}.{source_field} -> {target}.{field}: {target}'s input for {expected} "
-                             f"({held[index].field if expected else 'none'}) takes a delivery from {owner}")
-        elif any(d.law == owner and d.field == field for d in held):
-            found.append(f"{source}.{source_field} -> {target}.{field}: {owner}'s delivery arrives in the summed "
-                         f"input, where its work is unattributed")
+        if ledger.own_input(field) is not None:
+            seen[edge] += 1
+        elif any(d.law == owner for d in held):
+            found.append(f"{source}.{source_field} -> {target}.{field}: {owner}'s delivery arrives in {field}, which "
+                         f"takes what no law owns, where its work is unattributed or missing")
+    for edge in sorted(set(expected) | set(seen)):
+        source, source_field, target, field = edge
+        held = receivers.get(target)
+        if not held or seen[edge] == expected[edge]:
+            continue
+        index = ledger.own_input(field)
+        law = held[index[1]].law if index is not None and index[1] < len(held) else None
+        stands = f"the input of {law}" if law else "an input of no law"
+        delivery = f"{owner_of(source)}'s delivery {source}.{source_field} -> {target}.{field} ({stands})"
+        if not expected[edge]:
+            found.append(f"{delivery} is not one the wiring made")
+        elif not seen[edge]:
+            found.append(f"{delivery} is missing from the graph")
+        else:
+            found.append(f"{delivery} is in the graph {seen[edge]} times, not {expected[edge]}")
     return found
 
 

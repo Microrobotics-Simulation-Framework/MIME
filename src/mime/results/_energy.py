@@ -2,7 +2,9 @@
 end: per role, in plain words, what is stored, lost, supplied (named by what supplies it) and held in each potential.
 
 **Supplied, as the account states it, is taken from the dissipation side**: what was lost plus the change in what is
-stored, each potential's included. The work the laws supplied from outside paired in the receivers' steps (the paired
+stored, each potential's included. It is an estimate under the ledger's exact identity, not a bound: it differs from
+the paired supply by the scheme's own terms (1 % on script A, 28 % on a case at a coarse step), and which of the two is
+nearer the continuum value is not established at that step. The work the laws supplied from outside paired in the receivers' steps (the paired
 supply) stays inside the step identity's check, in the detailed account beside the scheme's own numerical terms,
 which are never a loss: a load read at a step's start and paired with the step's turn departs from its limit at first
 order in the step (on a body wobbling fast against its step the paired supply ran 35 % above its limit while the
@@ -12,7 +14,16 @@ in proportion to what each one's laws paired.
 **A potential's change** is taken from the run's two ends with the law's own parameters, as the run had them, at the
 configuration its receiver kept at the run's start and the one it ended at; its residual, the law's paired work plus
 that change, is zero to rounding where the law's force is evaluated where it is paired (gravity without a couple),
-and holds the step's own first-order error otherwise (a couple paired with the step's turn): reported, not judged."""
+and holds the step's own first-order error otherwise (a couple paired with the step's turn): reported, not judged.
+
+**Traced.** Every sum the account holds (``stored``, ``lost``, ``potentials``, ``supplied``, :attr:`EnergyAccount.
+supplied_total` and :meth:`EnergyAccount.efficiency`) is formed from the records and the laws' own parameters by
+arithmetic JAX traces, with no conversion to NumPy on the way, so that ``energy_account`` called inside a function
+being differentiated (``jax.grad`` of a scan's end, parameters traced) is differentiable, the potentials' change
+included. Under a trace the values are traced scalars; outside one they are Python floats, as before. What a trace
+cannot hold is text (:meth:`EnergyAccount.text` formats numbers), the step counts (carried traced, not converted to
+integers), and a shared ``supplied`` over a sum of paired work that is exactly zero (zero, where outside a trace it is
+empty)."""
 
 from __future__ import annotations
 
@@ -20,12 +31,48 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+import jax
+import jax.numpy as jnp
 import numpy as np
+from jax import Array
 
 from mime.core import ledger
 
 if TYPE_CHECKING:
     from mime.core import MimeNode
+
+
+#: A quantity of the account in joules: a Python float, or the traced scalar it is while a function is being
+#: differentiated or compiled.
+Scalar = float | Array
+#: A step count: an integer, or traced.
+Count = int | Array
+
+
+_TRACER: type = cast(Any, jax).core.Tracer
+
+
+def _traced(value: Any) -> bool:
+    return isinstance(value, _TRACER)
+
+
+def _scalar(value: Any) -> Scalar:
+    """``value`` as a float (float64), or itself where it is traced (no NumPy on a traced path)."""
+    return cast(Array, value) if _traced(value) else float(np.asarray(value, dtype=np.float64))
+
+
+def _count(value: Any) -> Count:
+    return cast(Array, value) if _traced(value) else int(float(np.asarray(value, dtype=np.float64)))
+
+
+def _sum(value: Any) -> Scalar:
+    """The sum of the elements of ``value``, traced or not."""
+    return jnp.sum(value) if _traced(value) else float(np.sum(np.asarray(value)))
+
+
+def _taken(value: Any) -> Any:
+    """A vector of joules, as float64 where concrete."""
+    return value if _traced(value) else np.asarray(value, dtype=np.float64)
 
 
 @dataclass(frozen=True)
@@ -40,15 +87,15 @@ class LawEnergy:
     law: str
     receiver: str
     energy_class: str
-    work: float
-    lost: float = 0.0
+    work: Scalar
+    lost: Scalar = 0.0
     supplied_by: tuple[str, ...] = ()
-    potential_change: float | None = None
-    residual: float | None = None
-    residual_floor: float | None = None
-    host_term: float | None = None
-    gift_steps: int = 0
-    indefinite_steps: int = 0
+    potential_change: Scalar | None = None
+    residual: Scalar | None = None
+    residual_floor: Scalar | None = None
+    host_term: Scalar | None = None
+    gift_steps: Count = 0
+    indefinite_steps: Count = 0
 
     def line(self) -> str:
         parts = [f"{self.law} on {self.receiver}: {self.energy_class}, paired work {self.work:+.4g} J"]
@@ -80,37 +127,40 @@ class EnergyAccount:
     law's), ``identity_worst`` (each receiver's step identity's worst step over its rounding floor: above one is a
     finding), and ``balance``, the receivers' books summed over the run, with ``balance_floor``, its rounding."""
 
-    stored: Mapping[str, float]
-    lost: Mapping[str, float]
-    potentials: Mapping[str, float]
-    supplied: Mapping[str, float]
+    stored: Mapping[str, Scalar]
+    lost: Mapping[str, Scalar]
+    potentials: Mapping[str, Scalar]
+    supplied: Mapping[str, Scalar]
     laws: tuple[LawEnergy, ...]
-    numerical: Mapping[str, float]
-    paired_supply: Mapping[str, float]
-    unattributed: Mapping[str, float]
-    identity_worst: Mapping[str, float]
-    balance: float
-    balance_floor: float
+    numerical: Mapping[str, Scalar]
+    paired_supply: Mapping[str, Scalar]
+    unattributed: Mapping[str, Scalar]
+    identity_worst: Mapping[str, Scalar]
+    balance: Scalar
+    balance_floor: Scalar
     steps: int = 0
     notes: tuple[str, ...] = field(default_factory=tuple[str, ...])
 
     @property
-    def supplied_total(self) -> float:
+    def supplied_total(self) -> Scalar:
         """What was supplied, from the dissipation side: the losses plus the change in what is stored, each
-        potential's included."""
-        return float(sum(self.lost.values()) + sum(self.stored.values()) + sum(self.potentials.values()))
+        potential's included. Differentiable: traced where the account was formed under a trace."""
+        return _scalar(sum(self.lost.values()) + sum(self.stored.values()) + sum(self.potentials.values()))
 
-    def efficiency(self, useful: float) -> float:
+    def efficiency(self, useful: Scalar) -> Scalar:
         """``useful`` work (J, the output a study names: a swimmer's towing work at its mean speed) as a share of what
-        was supplied, the losses plus the change in what is stored (:attr:`supplied_total`)."""
+        was supplied, the losses plus the change in what is stored (:attr:`supplied_total`). Differentiable in
+        ``useful`` and in everything the account was formed from; ``nan`` where nothing was supplied."""
         total = self.supplied_total
+        if _traced(total) or _traced(useful):
+            return jnp.where(total == 0, jnp.nan, useful / jnp.where(total == 0, 1.0, total))
         return float(useful / total) if total else float("nan")
 
     def text(self, *, details: bool = False) -> str:
         """The account in plain words; with ``details``, each law on each receiver, the scheme's numerical terms, the
         paired supply and the checks besides."""
 
-        def joules(held: Mapping[str, float]) -> str:
+        def joules(held: Mapping[str, Scalar]) -> str:
             return ", ".join(f"{name} {value:+.4g} J" for name, value in held.items()) or "none"
 
         lines = [f"energy over {self.steps} steps from the build's start:",
@@ -133,10 +183,6 @@ class EnergyAccount:
         return "\n".join(lines)
 
 
-def _float(value: Any) -> float:
-    return float(np.asarray(value, dtype=np.float64))
-
-
 def _laws_nodes(graph: Any, law: str) -> list[MimeNode]:
     """The law's nodes that state an energy (a potential law's): its node named by its id, or by its id and a local
     name."""
@@ -152,7 +198,7 @@ def _laws_nodes(graph: Any, law: str) -> list[MimeNode]:
 
 
 def _potential_change(graph: Any, law: str, receiver: Any, final: Mapping[str, Any], params: Mapping[str, Any],
-                      dtype: Any) -> tuple[float, float] | None:
+                      dtype: Any) -> tuple[Scalar, Scalar] | None:
     """A potential law's energy's change over the run, from its own parameters as the run had them, at its receiver's
     configuration at the run's start (kept in its records) and at its end; and the energies' magnitude at the two ends,
     which their difference's rounding is judged on. ``None`` where the law states no energy."""
@@ -162,17 +208,17 @@ def _potential_change(graph: Any, law: str, receiver: Any, final: Mapping[str, A
     end = receiver.configuration(receiver.constants(params.get(receiver.name)), final)
     if start is None or end is None:
         return None
-    changes: list[float] = []
-    sizes: list[float] = []
+    changes: list[Scalar] = []
+    sizes: list[Scalar] = []
     for node in _laws_nodes(graph, law):
         p = node.constants(params.get(node.name))
         try:
             ends = [node.energy(p, jnp.asarray(at, dtype=dtype)) for at in (start, end)]
         except NotImplementedError:
             continue
-        changes.append(_float(ends[1]) - _float(ends[0]))
-        sizes.append(abs(_float(ends[0])) + abs(_float(ends[1])))
-    return (sum(changes), sum(sizes)) if changes else None
+        changes.append(_scalar(ends[1]) - _scalar(ends[0]))
+        sizes.append(abs(_scalar(ends[0])) + abs(_scalar(ends[1])))
+    return (_scalar(sum(changes)), _scalar(sum(sizes))) if changes else None
 
 
 def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: Mapping[str, Any] | None = None,
@@ -181,42 +227,44 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
     parameters as the run had them (``params``, the parameter tree's nodes; the graph's own where not given); ``None``
     for a graph with no metered receiver."""
     nodes = dict(params or {})
-    stored: dict[str, float] = {}
-    lost: dict[str, float] = {}
-    potentials: dict[str, float] = {}
-    numerical: dict[str, float] = {}
-    paired: dict[str, float] = {}
-    unattributed: dict[str, float] = {}
-    worst: dict[str, float] = {}
+    stored: dict[str, Scalar] = {}
+    lost: dict[str, Scalar] = {}
+    potentials: dict[str, Scalar] = {}
+    numerical: dict[str, Scalar] = {}
+    paired: dict[str, Scalar] = {}
+    unattributed: dict[str, Scalar] = {}
+    worst: dict[str, Scalar] = {}
     lines: list[LawEnergy] = []
     notes: list[str] = []
-    balance = floor = 0.0
+    balance: Scalar = 0.0
+    floor: Scalar = 0.0
     for name in cast(list[str], graph.node_names):
         receiver = graph.get_node(name)
         held = ledger.deliveries(dict(getattr(receiver, "params", {}) or {}))
         if not held:
             continue
         records = final[name]
-        dtype = np.asarray(records[f"{ledger.RECORDS}work"]).dtype
+        dtype = records[f"{ledger.RECORDS}work"].dtype
         eps = float(np.finfo(dtype).eps)
-        stored[name] = _float(ledger.stored(records))
-        numerical[name] = _float(np.sum(np.asarray(records[f"{ledger.RECORDS}terms"])))
-        unattributed[name] = _float(records[f"{ledger.RECORDS}unattributed"])
-        worst[name] = _float(records[f"{ledger.RECORDS}identity_worst"]) / (ledger.IDENTITY_ULPS * eps)
-        balance += _float(ledger.balance(records))
-        floor += _float(ledger.balance_floor(records))
-        scale = _float(records[f"{ledger.RECORDS}scale"])
-        taken = np.asarray(ledger.losses(records, held), dtype=np.float64)
+        stored[name] = _scalar(ledger.stored(records))
+        numerical[name] = _sum(records[f"{ledger.RECORDS}terms"])
+        unattributed[name] = _scalar(records[f"{ledger.RECORDS}unattributed"])
+        worst[name] = _scalar(records[f"{ledger.RECORDS}identity_worst"]) / (ledger.IDENTITY_ULPS * eps)
+        balance += _scalar(ledger.balance(records))
+        floor += _scalar(ledger.balance_floor(records))
+        scale = _scalar(records[f"{ledger.RECORDS}scale"])
+        taken = _taken(ledger.losses(records, held))
         for row, law in enumerate(ledger.laws(held)):
             first = next(d for d in held if d.law == law)
-            work = _float(records[f"{ledger.RECORDS}work"][row])
-            line = LawEnergy(law, name, first.energy_class, work, float(taken[row]),
+            work = _scalar(records[f"{ledger.RECORDS}work"][row])
+            line = LawEnergy(law, name, first.energy_class, work, _scalar(taken[row]),
                              tuple(first.supplied_by.split(",")) if first.supplied_by else (),
-                             gift_steps=int(_float(records[f"{ledger.RECORDS}gift_steps"][row])),
-                             indefinite_steps=int(_float(records[f"{ledger.RECORDS}indefinite_steps"][row])))
+                             gift_steps=_count(records[f"{ledger.RECORDS}gift_steps"][row]),
+                             indefinite_steps=_count(records[f"{ledger.RECORDS}indefinite_steps"][row]))
             if first.kind == ledger.HOSTED:
-                line = _replaced(line, host_term=_float(records[f"{ledger.RECORDS}hosted"][row, 1]))
-                numerical[f"{law} (its host's projection)"] = line.host_term or 0.0
+                host = _scalar(records[f"{ledger.RECORDS}hosted"][row, 1])
+                line = _replaced(line, host_term=host)
+                numerical[f"{law} (its host's projection)"] = host
             if first.energy_class == ledger.DISSIPATIVE:
                 lost[law] = lost.get(law, 0.0) + line.lost
             if first.energy_class == ledger.POTENTIAL:
@@ -237,10 +285,22 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
     if not stored:
         return None
     total = sum(lost.values()) + sum(stored.values()) + sum(potentials.values())
-    whole = sum(paired.values())
-    supplied = {producer: total * share / whole for producer, share in paired.items()} if whole else {}
+    supplied = _shared(total, paired)
     return EnergyAccount(stored, lost, potentials, supplied, tuple(lines), numerical, paired, unattributed, worst,
                          balance, floor, steps, tuple(notes))
+
+
+def _shared(total: Scalar, paired: Mapping[str, Scalar]) -> dict[str, Scalar]:
+    """``total`` shared among the things outside in proportion to the work each one's laws paired. **A share is a
+    ratio of paired works, so it is unbounded where they nearly cancel**: two things outside supplying work of opposite
+    sign, or a sum near zero, give shares far outside 0 to 1 (script A has one thing outside, whose share is 1). Where
+    the paired work sums to zero exactly the account shares nothing: empty outside a trace, zero under one."""
+    whole = sum(paired.values())
+    if _traced(whole) or _traced(total):
+        zero = whole == 0
+        return {producer: jnp.where(zero, 0.0, total * share / jnp.where(zero, 1.0, whole))
+                for producer, share in paired.items()}
+    return {producer: total * share / whole for producer, share in paired.items()} if whole else {}
 
 
 def _replaced(line: LawEnergy, **changed: Any) -> LawEnergy:

@@ -9,8 +9,10 @@ planted with one defect, on every run. The family walk runs the case on every me
   symmetric part taken off along its eigenvector), its scaled least eigenvalue about -0.1 against a floor of 16 eps:
   not positive semidefinite, on every draw;
 - a contact whose rule at arrival gives energy (the velocity it projects kept 1 % faster): the body placed on its
-  surface moving outward, so that the rule acts on every draw, the rule's removal is negative by 2 % of the body's
-  kinetic energy of translation, about 1e5 floors in float32;
+  surface moving outward, so that the rule acts on almost every draw (about 5 % of float32 draws leave the real rule's
+  removal below one floor, and a few exactly zero; the plant keeps the velocity 1.01 times whatever the removal, so it
+  is caught on every draw), the rule's removal is negative by 2 % of the body's kinetic energy of translation, about
+  1e5 floors in float32;
 - a law that declares no class and states no reason: refused by the case, whatever its draws.
 
 **What energy cannot see**, shown: a drag scaled by 0.9, or its coupling's sign flipped, passes the energy case and
@@ -228,8 +230,9 @@ def test_a_law_that_declares_no_class_and_states_no_reason_fails_the_energy_case
 
 
 @pytest.mark.parametrize("family", ["magnetic"])
-def test_an_unmetered_law_passes_with_its_reason(family):
+def test_an_unmetered_law_passes_by_its_declaration_alone_and_says_so(family):
     from mime.interactions import Magnetic
 
     result = energy_of(Magnetic.Torque(), family)
     assert result.passed and result.detail.startswith("unmetered: ")
+    assert "a pass by that declaration alone" in result.detail

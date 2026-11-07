@@ -25,7 +25,7 @@ from mime.build._builders import (
     ProviderBuilder,
     RestrictedBuilder,
 )
-from mime.build._checks import node_lines, post_build_checks
+from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks
 from mime.build._control import Mode
 from mime.build._derived import DerivedGraph, derive
 from mime.build._in_graph import controller_nodes, in_graph_order, order_refusals
@@ -392,7 +392,7 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     _testing.run_hook(graph, plans)
     external = tuple(f"{e['target_node']}.{e['target_field']}"
                      for e in cast(list[dict[str, Any]], graph_config(graph)["external_inputs"]))
-    refusals = post_build_checks(graph, plans)
+    refusals = post_build_checks(graph, plans) + ledger_wiring_refusals(graph, plans, held.energy)
     if _testing.refusing_unplanned_loops():
         refusals += unplanned_refusals(lags, dict(owners))
     refusals += order_refusals(plans.controller, lags, physics_lags)
