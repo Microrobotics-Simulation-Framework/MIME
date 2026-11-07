@@ -31,6 +31,7 @@ from mime.assets._cache import (
     INCOMING_INFIX,
     OFFLINE_VARIABLE,
     PLACED,
+    CHECKSUM_SUFFIX,
     RECORD_SUFFIX,
     cache_dir,
     cheap_problem,
@@ -39,6 +40,8 @@ from mime.assets._cache import (
     lock_path,
     mime_wrote,
     offline,
+    remember_checksum,
+    remembered_checksum,
     sha256_of_file,
     size_text,
     where_text,
@@ -623,8 +626,8 @@ def _file_name(location: str) -> str | None:
     """The name of the file a location serves: the last part of an ``https://`` URL's path, or the file of a
     ``doi:`` location."""
     last = (location.rpartition("/")[2] if location.startswith("doi:") else urlsplit(location).path.rpartition("/")[2])
-    ok = _FILE_NAME.fullmatch(last) and not last.endswith((RECORD_SUFFIX, LOCK_SUFFIX, ".partial")) \
-        and INCOMING_INFIX not in last
+    ok = _FILE_NAME.fullmatch(last) and INCOMING_INFIX not in last \
+        and not last.endswith((RECORD_SUFFIX, CHECKSUM_SUFFIX, LOCK_SUFFIX, ".partial"))
     return last if ok else None
 
 
@@ -933,7 +936,12 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
 
     ``known_hash`` is the repository's own checksum of the file (``md5:...`` from Zenodo's record), which pooch holds the
     download to; it guards the transfer, and nothing else vouches for the bytes until someone pins their sha256 in a
-    later :func:`resolve`. The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
+    later :func:`resolve`. Once such a download is stored, the cache keeps a note of which sha256 that checksum named
+    (``<algorithm>-<digits>.checksum``, beside the file); a later call with the same checksum finds the file by it and
+    downloads nothing, as long as the file is there and passes the cache's cheap check (:func:`locate`'s). With the note
+    gone, the file gone or changed, or another checksum (a new version of the record), it downloads as it did.
+
+    The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
     once it has passed ``max_bytes`` (the size a record states, or :data:`RETRIEVE_LIMIT_BYTES`), refused as
     ``asset.size-exceeded`` with ``exceeded_action`` as what to do. ``size``, where the record states one, is what a
     terminal's progress counts towards (:func:`watching_downloads`); it holds the download to nothing. ``fetcher``, where
@@ -953,6 +961,12 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
             "asset.offline", RefusalClass.ENVIRONMENT,
             f"{name} is not cached, and {OFFLINE_VARIABLE} is set, so nothing is downloaded",
             f"unset {OFFLINE_VARIABLE} (`unset {OFFLINE_VARIABLE}`), or pass the file you copied here")])
+    if known_hash is not None:
+        remembered = remembered_checksum(known_hash, name, location)
+        if remembered is not None and cheap_problem(remembered) is None:
+            if report is not None:
+                report(f"{name}: already in the cache, not downloaded again")
+            return remembered
     # A bundle of unstated size is held to its cap: the disk stop counts the most it may take (the question does not ask
     # about a size nobody stated).
     approve([], yes=yes, force=force, bundle=(name, size if size is not None else max_bytes), bounded=size is None)
@@ -978,11 +992,12 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
         assert arrived is not None
         ref = AssetRef(name, sha256_of_file(arrived), arrived.stat().st_size, NO_ASSERTION, (location,))
         with exclusive(lock_path(ref)):
-            if cheap_problem(ref) is None:
-                return ref
-            stored, replace = _look_at_what_is_there(ref)
-            if not stored:
-                _install(ref, arrived, replace=replace)
+            if cheap_problem(ref) is not None:
+                stored, replace = _look_at_what_is_there(ref)
+                if not stored:
+                    _install(ref, arrived, replace=replace)
+        if known_hash is not None:
+            remember_checksum(known_hash, ref)
         return ref
     finally:
         shutil.rmtree(incoming, ignore_errors=True)

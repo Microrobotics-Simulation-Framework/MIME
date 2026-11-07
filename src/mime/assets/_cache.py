@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,10 +25,12 @@ from mime.assets._commands import fetch_command
 from mime.assets._exclusive import LOCK_SUFFIX, exclusive
 from mime.assets._reference import AssetRef
 from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.terms import NO_ASSERTION
 
 ASSETS_DIR_VARIABLE = "MIME_ASSETS_DIR"
 OFFLINE_VARIABLE = "MIME_OFFLINE"
 RECORD_SUFFIX = ".verified"
+CHECKSUM_SUFFIX = ".checksum"
 INCOMING_INFIX = ".incoming-"
 DOWNLOADED = "downloaded by MIME"
 PLACED = "placed by a person"
@@ -81,6 +84,48 @@ def record_path(ref: AssetRef) -> Path:
 
 def lock_path(ref: AssetRef) -> Path:
     return cache_dir() / (ref.sha256 + LOCK_SUFFIX)
+
+
+_CHECKSUM = re.compile(r"[a-z0-9]+:[0-9a-f]+")
+
+
+def checksum_path(checksum: str) -> Path | None:
+    """Where the cache keeps what a repository's ``checksum`` (``md5:...``) of a bundle was found to be, or ``None`` for
+    a text that is no checksum's shape."""
+    return cache_dir() / (checksum.replace(":", "-") + CHECKSUM_SUFFIX) if _CHECKSUM.fullmatch(checksum) else None
+
+
+def remember_checksum(checksum: str, ref: AssetRef) -> None:
+    """Record that the file a repository's ``checksum`` names is ``ref``'s (its sha256 and size), after a download held to
+    that checksum was stored under the sha256, so that the next call for the same checksum finds it in the cache. The
+    record is written to a temporary name of its own and renamed into place."""
+    path = checksum_path(checksum)
+    if path is None:
+        return
+    descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".", suffix=".partial", dir=cache_dir())
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(json.dumps({"checksum": checksum, "sha256": ref.sha256, "size": ref.size}, indent=2) + "\n")
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def remembered_checksum(checksum: str, name: str, location: str) -> AssetRef | None:
+    """The reference, named ``name`` and located at ``location``, to the file a repository's ``checksum`` was recorded to
+    name (:func:`remember_checksum`), or ``None`` where none is recorded or the record does not read."""
+    path = checksum_path(checksum)
+    if path is None:
+        return None
+    try:
+        held = json.loads(path.read_text(encoding="utf-8"))
+        if held["checksum"] != checksum or not isinstance(held["sha256"], str) or isinstance(held["size"], bool) \
+                or not isinstance(held["size"], int):
+            return None
+        return AssetRef(name, held["sha256"], held["size"], NO_ASSERTION, (location,))
+    except (OSError, ValueError, KeyError, TypeError, BuildRefused):
+        return None
 
 
 def sha256_of_file(path: Path) -> str:

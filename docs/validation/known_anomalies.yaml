@@ -2880,3 +2880,51 @@ anomalies:
       not tried, and the BLAS count's share of these differences was not separated from the CPU count's.
     workaround: "Verify at the counts, and on the machine, the folder was saved on, where the comparison is bit for bit; across environments, read each moved line against its field's scale, and know that the tube demo's twist and drag asymmetry move by about 1e-3 of their largest element between CPU counts"
     planned_resolution: "U17: scale-relative across-environment comparison, with its tolerance set from measurement (this entry's sizes are the starting table), per field"
+
+  - anomaly_id: MIME-ANO-142
+    title: "A cached bundle changed in place, with its size and modification time kept, is served as the verified file and survives a fresh download, so based_on and pull refuse it with advice that does not apply"
+    description: >
+      The asset cache serves a file by the cheap check (cheap_problem in mime/assets/_cache.py): its size is the reference's,
+      its '<sha256>.verified' record exists, and the size and modification time the record holds are the file's. A file with a good record
+      is never hashed again [read]. A byte changed inside the file (bit rot, or an edit) that keeps the size and restores the
+      modification time therefore passes, and is served as the file its sha256 names.
+
+      Measured by the refuting review of PR #184 (U15b), on the pull tests' fake repository (no contact with Zenodo): run
+      Experiment.based_on(<DOI>, name="child"), flip one byte in the middle of the cached bundle '<cache>/<sha256>' keeping its
+      size and st_mtime_ns, run it again.
+        The cache serves the changed file (the bundle request count stays at 1). Reading the bundle's lock raises BadZipFile
+        (bad CRC of experiment/mime.lock), so the folder test (_holds_experiment_of) says the folder holds another experiment, and
+        pull refuses 'pull.destination' ("exists and is not an empty folder ... this one holds another, so move or rename
+        it") while the folder holds the very experiment. 'mime pull <DOI>' into a new place refuses 'bundle.unreadable' with
+        "fetch it again, mime pull <doi | url>", which downloads nothing new: it serves the same file.
+      Before PR #184 the same was measured with the shortcut disabled: the changed file is downloaded over, its md5 passes, and
+      retrieve then finds cheap_problem(ref) is None for that sha256 path and returns the changed file, never installing the
+      new bytes. The refusals and the advice were the same. So the entry is the cache's, not that PR's: the PR removes a
+      useless download from a path that served the same file.
+      A flip inside the archive's checked bytes was refused downstream in every case measured (bundle.unreadable, or
+      bundle.manifest for a flip in the header); no changed bundle was used. A flip in the file's unchecked bytes was not
+      tried.
+
+      Severity: minor, by the registry's table, for what was measured: a bundle refused with advice that does not apply,
+      no result changed, and the workaround is to delete the cached file (and its '.verified' record). The cache's check is
+      the same for an asset's file (a mesh, a table); a changed asset served as verified would change a result, and that was
+      not measured here.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A bundle served from the cache with changed bytes was refused downstream on every flip tried, so no wrong experiment was
+      run; the harm measured is two refusals whose advice (rename the folder, fetch it again) does not apply and cannot
+      succeed. Whether an asset file changed the same way is served and used in a run was not tried; if it is, the result
+      would be wrong without a refusal, which is why this is not stated as having no bearing on a result.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "mime.assets: the cache's cheap check (cheap_problem), which a bundle fetched by its repository's checksum and an asset share"
+    residual_risk: >
+      Measured on one bundle, one byte flip in the middle of the file, on the fake repository. A flip elsewhere, several flips,
+      and the same change to a cached asset's file (the cheap check is the same code) were not measured. Whether a changed
+      asset is then used by a run, and what it would change, is unknown. A hand-edited '<algorithm>-<digits>.checksum' note
+      naming another cached bundle serves that bundle [measured by the same review]; it needs write access to the cache
+      directory, where '<sha256>.verified' can already be written to the same effect [inference].
+    workaround: "Delete the cached file '<cache>/<sha256>' and its '<sha256>.verified' record, then pull again; the cache is the directory in MIME_ASSETS_DIR, else the platform's cache directory for mime (assets)"
+    planned_resolution: "A cache PR in two steps: compare the cached file's digest with the checksum the caller holds on the cheap-check shortcut (a local read, not a download), and install the freshly downloaded file over one whose full check disagrees; then re-measure the asset path"

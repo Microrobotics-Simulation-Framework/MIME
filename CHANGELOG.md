@@ -226,6 +226,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A DOI run again does not download its bundle again** (`Experiment.based_on("10.5281/zenodo.N", name=...)`, a second
+  `mime pull` of the same record). Measured on the fake repository: a re-run read the record and downloaded the bundle's
+  bytes again before comparing its lock with the folder's. The asset cache now keeps a note, beside the stored bundle, of
+  which sha256 the repository's checksum named (`md5-<digits>.checksum`), and `assets.retrieve` finds the bundle by it
+  where the file is there and passes the cache's cheap check: the re-run reads the record's metadata (which names the
+  checksum) and nothing else. A cleared cache, a missing or changed file, or a new version of the record (another
+  checksum) downloads as before. A folder is still judged by its input hash against the bundle's, never by the
+  checksum, so a folder that holds another experiment is refused as it was. The licence and download gates apply to the
+  assets on a re-run as on the first run.
+  A bare `https://` bundle address has no repository checksum and downloads again. A cached bundle changed in place with its
+  size and modification time kept is served as the verified file, here as before this change (MIME-ANO-142, open, the
+  asset cache's check).
 - **In float32 every build of a screw or a cylinder in a process holds the first build's matrix, to the bit** (MIME-ANO-138).
   The first build in a process made the MRS node's held matrix from cap samples in float64; every later build made it
   from the same samples rounded to float32 (1e-7 of themselves), because the cap layout the process caches was handed
