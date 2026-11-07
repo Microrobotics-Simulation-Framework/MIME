@@ -1,6 +1,7 @@
-"""Bodies held by their hulls' points (the contact 0.4.0): FL-9 in script A's tube, turned and placed so that its hull's
-points are at the wall from the first step, which the registry walk, the golden outputs and the switch scan run; and
-the placement that puts a hull's nearest point a given gap from the wall less the margin.
+"""Bodies held by their hulls' points (the contact 0.5.0, or the 0.4.0 kept registered): FL-9 in script A's tube,
+turned and placed so that its hull's points are at the wall from the first step, which the registry walk, the golden
+outputs and the switch scan run; and the placement that puts a hull's nearest point a given gap from the wall less the
+margin.
 
 Every value is script A's (``script_a.py``), but the inertia, the parts' diagonal (FL-9's axial moment the smallest,
 as review 7l-c's anisotropic arms have it), and the contact: ``Contact.Projection``, holding the hull."""
@@ -69,11 +70,11 @@ def turned(angle: float) -> tuple[float, float, float, float]:
 
 
 def hull_contact(name: str = "hull_contact", *, angle: float = math.radians(12.0), gap: float = 1e-7,
-                 spacing: float = SPACING, margin: float = MARGIN, part=None) -> Experiment:
+                 spacing: float = SPACING, margin: float = MARGIN, part=None, contact=Contact) -> Experiment:
     """FL-9 turned ``angle`` across script A's tube and lowered until its hull's nearest point is ``gap`` from the
     wall less the margin, under gravity and the field turning at 10 Hz, moving down into the wall at 1 mm/s: held at
     its hull's points from the first steps. ``part``, a kind in FL-9's place (placed as FL-9 would be), for a plan's
-    checks."""
+    checks; ``contact``, the contact's class (the current one, or the 0.4.0 kept registered)."""
     quaternion = turned(angle)
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(9.81), dt=ms(0.5))
     tube = experiment.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=m(TUBE_RADIUS),
@@ -91,7 +92,7 @@ def hull_contact(name: str = "hull_contact", *, angle: float = math.radians(12.0
         experiment.declare(path, value, reason="script A's values, FL-9's parts' diagonal inertia")
     experiment.attach(Magnetic.Torque(), body=umr, field=field.magnetic)
     experiment.attach(Gravity(), body=umr, medium=water)
-    experiment.attach(Contact.Projection(margin=m(margin), spacing=m(spacing)), body=umr, surface=tube.inner_surface)
+    experiment.attach(contact.Projection(margin=m(margin), spacing=m(spacing)), body=umr, surface=tube.inner_surface)
     return experiment
 
 
@@ -125,13 +126,16 @@ def rod_contact(name: str = "rod_contact") -> Experiment:
 
 def hull_node(kind, settings, spacing: float, *, groups=None, mass: float = 1e-5,
               inertia=(1e-11, 1e-11, 1e-11), pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dt: float = 5e-4,
-              margin: float = MARGIN, radius: float = TUBE_RADIUS):
+              margin: float = MARGIN, radius: float = TUBE_RADIUS, loops: bool = False):
     """A body's node held by ``kind``'s hull points (its quadrature at ``spacing``) in a tube along x through the
-    origin, as the contact 0.4.0 builds it; ``groups``, rows of the points' indices, in place of the node's own."""
+    origin, as the contact 0.4.0 builds it (its loops unrolled), or with ``loops`` as 0.5.0 does; ``groups``, rows of
+    the points' indices, in place of the node's own."""
     from mime.nodes.body import HULL, RigidInertialNode
 
     patches = tuple(kind.patches)
     held = {} if groups is None else {"hull_groups": np.asarray(groups, dtype=np.int32)}
+    if loops:
+        held["contact_loops"] = True
     return RigidInertialNode(
         "umr", dt, mass=mass, inertia=inertia, initial_pose=pose, initial_twist=(0.0,) * 6, surface_shape="cylinder",
         margin=margin, velocity_rule="remove_outward", hull_kind=kind.name, hull_kind_version=kind.version,
