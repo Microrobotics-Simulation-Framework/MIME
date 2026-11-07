@@ -8,7 +8,7 @@ from typing import Any, cast, override
 
 from jax import Array
 from jaxtyping import Float, Int
-from maddening.core.compliance.metadata import NodeMeta
+from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
@@ -60,6 +60,8 @@ class UniformRotatingNode(MimeNode):
                      "The frequency and amplitude commanded at a step are the ones that step's field is made with: "
                      "the phase is the present frequency times the time since the start, not the integral of a "
                      "frequency that changes"),
+        references=(Reference("Peyer2013", "a uniform magnetic field rotating about an axis as the actuation of a "
+                                           "helical magnetic swimmer"),),
     )
     symbols = (
         Symbol(r"\mathbf{B}", SymbolKind.STATE, "flux_density_{slot}", "T", _ADVANCE),
@@ -171,6 +173,12 @@ class IntegratingRotatingNode(MimeNode):
                      "sum, so its rounding per step is far below the phase's own last place and does not carry the "
                      "phase's size (the bound and its measurement are in tests/oracles/test_uniform_rotating_phase.py)",
                      "The amplitude commanded at a step is the one that step's field is made with"),
+        references=(Reference("Peyer2013", "a uniform magnetic field rotating about an axis as the actuation of a "
+                                           "helical magnetic swimmer"),
+                    Reference("Dekker1971", "the sum of two floating-point numbers as a rounded sum and an exact "
+                                            "error term, and the product as a rounded product and an exact residual"),
+                    Reference("Knuth1997", "the two-sum: the sum of any two floating-point numbers as a rounded sum "
+                                           "and an exact error term")),
     )
     symbols = (
         Symbol(r"\mathbf{B}", SymbolKind.STATE, "flux_density_{slot}", "T", _INTEGRATE),
