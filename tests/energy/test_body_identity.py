@@ -10,8 +10,9 @@ configuration's change. Both dtypes, drawn in the dtype the node computes in.
 fails the identity in both dtypes (``tests/energy/predictions.json``: by more than 20 times the floor in float32). It
 is drawn on the free body at FL-9's own resistance, where what the step keeps is most of what it had: where a stiff
 solve, or a velocity rule at arrival, has taken most of the step's energy, a share of what is left falls below the
-step's rounding, which is the floor's purpose (on the centre-held arm Hypothesis found one 2.2 times the floor in
-float32, its outward speed removed by the rule).
+step's rounding (on the held arms, in float32, a share of the twist is below the floor on 12 to 15 % of draws: the
+first review measured it). **The held arms and the scheme's terms are controlled in the floor's own units**, by plants
+of 64 floors, in ``test_planted.py``.
 
 **The run's books**: over a 2000-step driven run of the free body, the balance (the residuals' sum) within 16 eps of
 the run's summed step scale."""
@@ -54,13 +55,13 @@ class UnbookedLoss(RigidInertialTensorNode):
 DTYPES = pytest.mark.parametrize("name", ["float32", "float64"])
 
 
-NODES: dict[tuple[type, str], RigidInertialNode] = {}
+NODES: dict[tuple[type, str, bool], RigidInertialNode] = {}
 
 
-def node(held: str = "", node_class: type[RigidInertialNode] = RigidInertialTensorNode):
-    if (node_class, held) not in NODES:
-        NODES[node_class, held] = metered_body(node_class, held=held)
-    return NODES[node_class, held]
+def node(held: str = "", node_class: type[RigidInertialNode] = RigidInertialTensorNode, loops: bool = False):
+    if (node_class, held, loops) not in NODES:
+        NODES[node_class, held, loops] = metered_body(node_class, held=held, loops=loops)
+    return NODES[node_class, held, loops]
 
 
 @DTYPES
@@ -69,8 +70,10 @@ def node(held: str = "", node_class: type[RigidInertialNode] = RigidInertialTens
 def test_a_free_body_s_step_books_close_within_rounding(name, drawn):
     with in_dtype(name) as dtype:
         found = one_step(node(), drawn, dtype)
+        gifts = float(jnp.sum(found["ledger_gift_steps"]))
     assert identity_over_floor(found) <= 1.0, identity_over_floor(found)
     assert float(found["ledger_unattributed_worst"]) == 0.0
+    assert gifts == 0.0, "the drag, dissipative, gave no energy"
 
 
 @DTYPES
@@ -96,15 +99,20 @@ def test_a_centre_held_body_s_step_books_close_with_the_contact_s_terms_under_it
     assert float(found["ledger_terms"][2]) == 0.0, "the configuration's term goes to the hosted contact"
     rounding = books.IDENTITY_ULPS * float(jnp.finfo(name).eps) * float(found["ledger_scale"])
     assert float(found["ledger_hosted"][contact, 0]) >= -rounding, "the velocity rule only removes energy"
+    assert float(found["ledger_gift_steps"][contact]) == 0.0, "the contact's work over the step is not positive"
 
 
 @DTYPES
+@pytest.mark.parametrize("loops", [False, True], ids=["unrolled (0.4.0)", "looped (0.5.0)"])
 @settings(deadline=None)
 @given(drawn=hull_held_states())
-def test_a_hull_held_body_s_step_books_close_with_the_projection_s_turn(name, drawn):
+def test_a_hull_held_body_s_step_books_close_with_the_projection_s_turn(name, loops, drawn):
+    """Both of the contact's programs: 0.4.0's unrolled sweeps and search, and 0.5.0's XLA loops (the build's default)."""
     with in_dtype(name) as dtype:
-        found = one_step(node("hull"), drawn, dtype)
+        found = one_step(node("hull", loops=loops), drawn, dtype)
     assert identity_over_floor(found) <= 1.0, identity_over_floor(found)
+    contact = books.laws(books.deliveries(node("hull", loops=loops).constants())).index("contact:case")
+    assert float(found["ledger_gift_steps"][contact]) == 0.0, "the hull contact only holds, whatever it dissipates"
 
 
 @DTYPES

@@ -120,7 +120,10 @@ parameters, inputs, state and step included, every bit of the program unchanged.
   books from them.
 - **Definiteness at run time**, for a law whose operator's definiteness depends on the state:
   `definite_at_floor`, one Cholesky factorisation of its scaled symmetric part shifted by `DEFINITE_ULPS` units of
-  rounding, so that a semidefinite operator passes where a plain factorisation fails on it.
+  rounding, so that a semidefinite operator passes where a plain factorisation fails on it (a zero diagonal entry
+  passes only with its row zero, judged exactly).
+- **A dissipative law's sign**, read from its own row: `gift_steps` counts the steps in which its paired work was
+  positive beyond the identity's floor. The identity does not see it: it books the gift under the law's name.
 - **A potential law** states its family's energy (`MimeNode.energy`) on its node, from the parameters a study moves;
   its class is settled on the law alone, and no per-step residual of it is kept.
 

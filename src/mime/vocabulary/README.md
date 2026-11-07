@@ -74,4 +74,10 @@ resistance and confinement solved for in its step), `joint` (a chain segment's j
 frames, which reach them through its Jacobian), `delivered_inertia` and `flow_in`; `DeliveryKind`, `EnergyClass`,
 `Definiteness`, and `POWER` and `ENERGY`, what a delivery and its flow pair to.
 
+**What a kind checks, and what nothing reads yet.** A kind fixes the flow and the delivery kind of each interface it
+accepts, and pairs their units to watts; shape and sign live on the interface entries and are not compared, and an
+interface listed in `mapped` skips the unit pairing (its map is the receiver's own). No law's declaration (a port, a
+class, a definiteness, `unmetered`) is consumed by the build yet: until the registry walk of the ledger's second
+part reads them, "a declaration cannot silence a failing check" holds because nothing is checked by declaration.
+
 Releases are explained in the [package manifest](../README.md#status).

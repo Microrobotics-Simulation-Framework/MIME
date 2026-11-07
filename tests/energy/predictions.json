@@ -70,6 +70,14 @@
     },
     "definite_at_floor": "the first review's matrices (FL-9's resistance with one turning entry exactly zero and its coupling to the force row at 1e-9, 1e-8, 1e-7): indefinite in float32 and float64 (the old code passed all three in float32 and failed them in float64); two coupled zero diagonal entries with nothing else: indefinite",
     "gate_1_on_the_merged_tree": "the five default programs and the reproduction arm saved with the ledger off, the merged head against release/v0.3.0 at 81fa3c3 (U3's PR 3, the contact 0.5.0 the default): every array identical and the folder byte-identical, in both dtypes, at 6 usable CPUs, OpenBLAS 1 thread, XLA 6 intra-op threads; controls as before (the base twice identical; the first moment one ulp up: arrays differ). The ledger's code adds no operation without the ledger and the contact's loops are the base's own",
-    "times": "from the clock of the commit"
+    "times": "from the clock of the commit",
+    "measured": {
+      "run": "probes (not in the repository) count200.py over tests/energy/test_planted.py's own plants and strategies, 200 fresh Hypothesis draws a cell (database off), at the head the tests ran at, on a loaded 24-core machine",
+      "sized_plants": "every plant read 64 floors within one floor on 200 of 200 draws in every cell: free body 8 plants (a gift, the translational gift, the three scheme terms each sign) x 200, float32 read 63.76 to 64.24, float64 63.70 to 64.31; centre held, hull held (unrolled) and hull held (looped), 11 plants each (the gift, the three scheme terms each sign, the contact's loss and its shift each sign) x 200, read 63.65 to 64.35 over the six cells; unplanted: identity at most 0.12 to 0.35 of the floor, no gift counted, 200 of 200",
+      "contact_gives_energy": "net work of +64 floors, identity within one floor, counted by gift_steps: 200 of 200 in float32 and in float64 on centre, hull and hull looped",
+      "hold_reversed_100_times": "caught wherever the hold acts: centre 200/200 acting, 200 caught, both dtypes; hull unrolled 154/200 acting in float32 and 146/200 in float64, all caught; hull looped 169 and 172 of 200 acting, all caught; least work 1.2e5 floors (float32), 7e13 (float64). The draws on which the hull holds nothing are 14 to 27 %: the predicted 70 % lower bound held (73 % least)",
+      "translational_gift_in_a_held_body": "identity within one floor, 200 of 200 in every held cell (absorbed by the loss, as predicted)",
+      "scheme_terms_halved_float64": "above 1000 floors on 200 of 200 in every arm, least 6.1e5 (free), 3.2e7 (centre), 1.6e7 (hull), 4.5e8 (hull looped)"
+    }
   }
 }

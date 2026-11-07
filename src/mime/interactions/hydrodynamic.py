@@ -402,8 +402,10 @@ class PointForceDrag(Interaction):
     @override
     def definiteness(self) -> Definiteness | None:
         """The surrogate's resistance is its network's ``L L^T`` carried through congruences, with the lubrication's
-        positive semidefinite part added: definite whatever its inputs, checked once in the family's suite. The MRS's
-        is solved at the body's state, and near a wall its definiteness depends on it: checked at run time."""
+        positive semidefinite part added: definite by that construction, and measured so in the family's suite over
+        script A's tube (the centre anywhere in its room, rolled, tilted up to 5 degrees, either end first), which is
+        the domain the measurement covers. The MRS's is solved at the body's state, and near a wall its definiteness
+        depends on it: checked at run time."""
         return Definiteness.CONSTRUCTION if self.rung == "surrogate" else Definiteness.STATE
 
     @override

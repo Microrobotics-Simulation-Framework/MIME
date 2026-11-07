@@ -84,11 +84,11 @@ class UnrolledContact(Contact):
 
 #: What a rigid body must offer a magnetic law: it publishes its pose and takes an applied wrench.
 _RIGID_BODY = requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name], publishes=[POSE.name])
-#: Where 0.1.0's validity stood: one point, the body's centre of mass, for the whole body.
 #: Why the kept 0.1.0 pair has no class for the energy ledger.
 _NO_CLASS = ("with its magnet off the centre of mass, in a field that varies in space, the pair reads the field at the "
              "centre of mass while the force acts at the magnet's centroid, and does net work round a closed loop of "
              "the pose (MIME-ANO-137)")
+#: Where 0.1.0's validity stood: one point, the body's centre of mass, for the whole body.
 _AT_THE_CENTRE = ("valid while the field varies little across the body, and outside a point dipole's near field "
                   "(MIME-ANO-100); with the magnet off the centre of mass, in a field that varies in space, the torque "
                   "misses m x (G l) and the pair with the force is not conservative (MIME-ANO-137)")

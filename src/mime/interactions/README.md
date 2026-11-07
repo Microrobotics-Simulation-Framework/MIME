@@ -136,7 +136,8 @@ the near-contact physics' design; its seam is the sweeps' rows.
 **Energy classes** (for the energy ledger, `mime.core.ledger`): `gravity` is a potential law, its family's energy
 stated on its node (`GravityNode.energy`), of which its wrench is the negative gradient; the drag is dissipative, its
 resistance definite by construction on the surrogate rung (its network's `L L^T` through congruences, the
-lubrication's semidefinite part added) and at the state on the MRS rung, checked at run time; the contact is
+lubrication's semidefinite part added; measured over script A's tube, to 5 degrees of tilt, which is the domain the
+check covers) and at the state on the MRS rung, checked at run time; the contact is
 dissipative, held in its body's step, which books its loss and its projection's term under its name. The magnetic
 laws declare no class yet, each with its reason (`unmetered`): 0.2.0's waits on the magnetic family's energy at the
 magnet's centroid; the kept 0.1.0 pair does net work round a closed loop (MIME-ANO-137).

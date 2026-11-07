@@ -23,7 +23,9 @@ numerical terms (``MimeNode.LEDGER_TERMS``) and its storage at the step's start 
 returns. :func:`recorded` keeps running sums of them in the receiver's state, with the identity's residual, ``dH - W +
 N``, judged each step against :data:`IDENTITY_ULPS` units of rounding on the step's scale. A potential law's energy
 is not judged per step: its class is settled on the law alone, and its energy's change over a run is taken from the
-run's ends.
+run's ends. A dissipative law's class is read from its own row of the paired work: a step in which it was positive
+beyond the same floor is counted (``gift_steps``), which the identity cannot see, since it books the gift under the
+law's name.
 
 **The books are read, never stepped on.** No state a step reads depends on a record: the magnitudes the scale is
 formed from and the worst steps kept are diagnostics, so their non-smooth operations select no branch of the physics,
@@ -164,15 +166,20 @@ def definite_at_floor(matrix: Array, ulps: float = DEFINITE_ULPS) -> Array:
     """Whether ``matrix``'s symmetric part is positive semidefinite to ``ulps`` units of rounding: one Cholesky
     factorisation of that part, scaled by its diagonal (a congruence, which keeps the signs of its eigenvalues, so a
     force's and a torque's rows compare), shifted up by the floor. A semidefinite matrix passes, where a plain
-    factorisation fails on it; a negative diagonal entry, or a zero one with its row not zero, fails. Traced: a boolean
+    factorisation fails on it; a negative diagonal entry fails. **A zero diagonal entry passes only with its whole row
+    zero**, which is what a positive semidefinite matrix has (a nonzero entry beside a zero diagonal makes a ``2 x 2``
+    minor negative), judged exactly: no scale stands in for the zero entry's own, so a coupling of any size in SI units
+    is seen, where scaling that row by 1 beside rows scaled to unit diagonal put it below the shift. Traced: a boolean
     array."""
     symmetric = 0.5 * (matrix + matrix.T)
     diagonal = jnp.diagonal(symmetric)
-    scale = jnp.sqrt(jnp.where(diagonal != 0.0, jnp.abs(diagonal), 1.0))
+    zero = diagonal == 0.0
+    scale = jnp.sqrt(jnp.where(zero, 1.0, jnp.abs(diagonal)))
     scaled = symmetric / (scale[:, None] * scale[None, :])
     floor = ulps * jnp.finfo(matrix.dtype).eps
     factor = jnp.linalg.cholesky(scaled + floor * jnp.eye(matrix.shape[0], dtype=matrix.dtype))
-    return jnp.all(jnp.isfinite(factor))
+    rows_zero = jnp.all(symmetric == 0.0, axis=1)
+    return jnp.all(jnp.isfinite(factor)) & jnp.all(rows_zero | ~zero)
 
 
 @dataclass(frozen=True)
@@ -216,7 +223,7 @@ def initial_records(held: Sequence[LedgerDelivery], terms: int, storage: Any) ->
         f"{RECORDS}unattributed": zero(), f"{RECORDS}unattributed_worst": zero(),
         f"{RECORDS}storage_start": as_run_array(storage), f"{RECORDS}storage": as_run_array(storage),
         f"{RECORDS}step_identity": zero(), f"{RECORDS}identity_worst": zero(), f"{RECORDS}scale": zero(),
-        f"{RECORDS}indefinite_steps": zero(rows),
+        f"{RECORDS}indefinite_steps": zero(rows), f"{RECORDS}gift_steps": zero(rows),
     }
 
 
@@ -225,16 +232,25 @@ def unrecorded(state: Mapping[str, Array]) -> dict[str, Array]:
     return {key: value for key, value in state.items() if not key.startswith(RECORDS)}
 
 
-def recorded(state: Mapping[str, Array], step: StepAccount) -> dict[str, Array]:
+def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[LedgerDelivery] = ()) -> dict[str, Array]:
     """The ledger's fields after ``step``: running sums, each check's worst over the run, and the step's own values
     beside them (what a recorded history shows per step). The identity's residual is kept relative to the step's scale
     (``step_identity``; over :data:`IDENTITY_ULPS` times eps it has failed), the unattributed work as its largest
-    magnitude (above zero it has failed), and per law the count of steps whose operator failed its definiteness."""
+    magnitude (above zero it has failed), and per law the count of steps whose operator failed its definiteness
+    (``indefinite_steps``) and, per **dissipative** law of ``held``, the count of steps in which its paired work was
+    positive beyond :data:`IDENTITY_ULPS` units of eps on the step's scale (``gift_steps``: a dissipative law gives
+    no energy, whatever it is delivered; this is its class's sign, read from the law's own row, and it is silent on
+    the identity, which books the gift under the law's name)."""
     dtype = step.work.dtype
     relative = jnp.abs(step.residual()) / jnp.maximum(step.scale, jnp.finfo(dtype).tiny)
     indefinite = jnp.zeros_like(state[f"{RECORDS}indefinite_steps"])
     for row, operator in step.operators.items():
         indefinite = indefinite.at[row].set((~definite_at_floor(operator)).astype(dtype))
+    gifts = jnp.zeros_like(state[f"{RECORDS}gift_steps"])
+    rows = laws(held)
+    floor = IDENTITY_ULPS * jnp.finfo(dtype).eps * step.scale
+    for row in sorted({rows.index(d.law) for d in held if d.energy_class == DISSIPATIVE}):
+        gifts = gifts.at[row].set((step.work[row] > floor).astype(dtype))
     r = RECORDS
     return {
         f"{r}work": state[f"{r}work"] + step.work, f"{r}step_work": step.work,
@@ -246,6 +262,7 @@ def recorded(state: Mapping[str, Array], step: StepAccount) -> dict[str, Array]:
         f"{r}step_identity": relative, f"{r}identity_worst": jnp.maximum(state[f"{r}identity_worst"], relative),
         f"{r}scale": state[f"{r}scale"] + step.scale,
         f"{r}indefinite_steps": state[f"{r}indefinite_steps"] + indefinite,
+        f"{r}gift_steps": state[f"{r}gift_steps"] + gifts,
     }
 
 
@@ -286,7 +303,7 @@ def metered_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mappi
     own = unrecorded(state)
     ended, parts = step(p, own, summed(spec, held, boundary_inputs), dt)
     account = node.identity_terms(p, held, own, boundary_inputs, ended, parts, dt)
-    return {**ended, **recorded(state, account)}
+    return {**ended, **recorded(state, account, held)}
 
 
 __all__ = ["CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES", "FLOW_IN", "HOSTED",

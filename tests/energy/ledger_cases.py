@@ -9,6 +9,7 @@ so none underflows and none sits on an axis plane."""
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -170,11 +171,63 @@ def hull_held_states(draw: Callable[..., Any]) -> dict[str, np.ndarray]:
             "twist": np.concatenate([along + speed * outward, drawn["twist"][3:]])}
 
 
+#: The defects a :class:`PlantedBody` can carry, each sized in the step's own floors (``IDENTITY_ULPS`` units of eps on
+#: the step's scale, from the unplanted step), so that a plant clears the floor on every draw by construction:
+#: ``ANGULAR_GIFT`` and ``LINEAR_GIFT`` raise the end of the step's storage by that many floors by scaling the ended
+#: twist's angular or translational part, unbooked; ``CONTACT_GIFT`` makes the contact's net work over the step that
+#: many floors, positive (a contact that gives energy, honestly accounted: the angular gift booked under the contact's
+#: name, which the identity cannot see); the rest add that many floors
+#: (either sign) to a booked term, a misbooking in the step's account: the hosted contact's loss and its projection's
+#: shift, and the three terms of the scheme.
+ANGULAR_GIFT, LINEAR_GIFT, CONTACT_GIFT, HOSTED_LOSS, HOSTED_SHIFT, EULER, GYROSCOPIC, CONFIGURATION = range(8)
+PLANTS = ("angular_gift", "linear_gift", "contact_gift", "hosted_loss", "hosted_shift", "backward_euler", "gyroscopic",
+          "configuration")
+
+
+class PlantedBody(RigidInertialTensorNode):
+    """A plant, one node for every defect so that each arm compiles once per dtype: ``rigid_inertial`` 0.4.0's node
+    whose step is the unplanted step, then the defects of ``p["plant"]`` (floors each, zero for none, in the order of
+    :data:`PLANTS`), the account formed from the planted end of the step. With every size zero it is the unplanted
+    node, bit for bit."""
+
+    def advance(self, p, state, boundary_inputs, dt):
+        held = books.deliveries(self.constants())
+        own = books.unrecorded(state)
+        ended, parts = self.stepped_with_parts(p, own, books.summed(self.own_inputs(), held, boundary_inputs), dt)
+        clean = self.identity_terms(p, held, own, boundary_inputs, ended, parts, dt)
+        dtype = ended["twist"].dtype
+        floor = books.IDENTITY_ULPS * jnp.finfo(dtype).eps * clean.scale
+        plant = p["plant"]
+        twist = ended["twist"]
+        inertia = self._world_inertia(p, ended)
+        linear = 0.5 * p["mass"] * jnp.dot(twist[:3], twist[:3])
+        angular = 0.5 * jnp.dot(twist[3:], inertia @ twist[3:])
+        rows = books.laws(held)
+        contacts = [rows.index(d.law) for d in held if d.kind == books.HOSTED]
+        # The contact gives energy: its net work over the step ends at ``CONTACT_GIFT`` floors, whatever it dissipated
+        # in the unplanted step, the step's storage raised by the same, so that the identity closes.
+        planted_contact = plant[CONTACT_GIFT] != 0.0
+        gifts = [jnp.where(planted_contact, plant[CONTACT_GIFT] * floor - clean.work[row], 0.0) for row in contacts]
+        given = sum(gifts, jnp.zeros((), dtype=dtype))
+        raise_by = jnp.stack([plant[LINEAR_GIFT] * floor, plant[ANGULAR_GIFT] * floor + given])
+        share = jnp.sqrt(1.0 + raise_by / jnp.stack([linear, angular]))
+        planted = {**ended, "twist": jnp.concatenate([share[0] * twist[:3], share[1] * twist[3:]])}
+        account = self.identity_terms(p, held, own, boundary_inputs, planted, parts, dt)
+        work, hosted = account.work, account.hosted
+        for row, gift in zip(contacts, gifts, strict=True):
+            work = work.at[row].add(gift)
+            hosted = hosted.at[row].add(floor * jnp.stack([plant[HOSTED_LOSS], plant[HOSTED_SHIFT]]))
+        account = dataclasses.replace(account, work=work, hosted=hosted,
+                                      terms=account.terms + floor * plant[EULER:CONFIGURATION + 1])
+        return {**planted, **books.recorded(state, account, held)}
+
+
 def metered_body(node_class: type[RigidInertialNode] = RigidInertialTensorNode, *, held: str = "",
                  extent: float = 1.5e-3, laws: tuple[books.LedgerDelivery, ...] = (LOAD_LAW, DRAG_LAW),
-                 dt: float = 5e-4) -> RigidInertialNode:
+                 dt: float = 5e-4, loops: bool = False) -> RigidInertialNode:
     """``node_class`` metered for ``laws`` (and the contact, where ``held`` is ``"centre"`` or ``"hull"``): free, its
-    centre held in script A's tube by ``extent`` plus the margin, or its hull's points (the rod's) held."""
+    centre held in script A's tube by ``extent`` plus the margin, or its hull's points (the rod's) held, its sweeps
+    and search XLA loops (the contact 0.5.0, the build's default) where ``loops``, unrolled (0.4.0) otherwise."""
     confinement: dict[str, Any] = {}
     if held:
         laws = (*laws, CONTACT_LAW)
@@ -189,6 +242,8 @@ def metered_body(node_class: type[RigidInertialNode] = RigidInertialTensorNode, 
         confinement.update(hull_kind=kind.name, hull_kind_version=kind.version, hull_patches=patches,
                            hull_counts=quadrature_counts(kind, settings, ROD_SPACING, patches),
                            **{f"{HULL}{name}": value for name, value in settings.items()})
+        if loops:
+            confinement["contact_loops"] = True
     nine = issubclass(node_class, RigidInertialTensorNode)
     return node_class("umr", dt, mass=MASS, inertia=tuple(np.eye(3).reshape(9) * 1e-10) if nine else (1e-10,) * 3,
                       initial_pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), initial_twist=(0.0,) * 6,
@@ -212,15 +267,19 @@ def law_inputs(node: RigidInertialNode, load: Any, resistance: Any, dtype: Any,
 
 
 def one_step(node: RigidInertialNode, drawn: Mapping[str, np.ndarray], dtype: Any,
-             unattributed_share: float = 0.0) -> dict[str, jax.Array]:
+             unattributed_share: float = 0.0, plant: Mapping[int, float] | None = None) -> dict[str, jax.Array]:
     """The node's state after one metered step from ``drawn``, its records included; ``unattributed_share`` of the
-    load delivered into the summed input too, an edge no law owns. A node of an earlier version, which takes three
+    load delivered into the summed input too, an edge no law owns. ``plant``, for a :class:`PlantedBody`, maps a
+    defect's index to its size in the step's own floors. A node of an earlier version, which takes three
     moments about the body's axes, takes the drawn tensor's diagonal."""
+    planted = np.zeros(len(PLANTS))
+    for index, floors in (plant or {}).items():
+        planted[index] = floors
     inertia = drawn["tensor"] if isinstance(node, RigidInertialTensorNode) else np.diag(drawn["tensor"])
     return stepper(node, dtype, unattributed_share)(
         *(jnp.asarray(drawn[k], dtype=dtype) for k in ("mass", "pose", "twist", "load", "resistance")),
         jnp.asarray(inertia, dtype=dtype), jnp.asarray(drawn.get("extent", node.constants()["extent"]), dtype=dtype),
-        float(drawn["dt"]))
+        jnp.asarray(planted, dtype=dtype), float(drawn["dt"]))
 
 
 _steppers: dict[tuple[int, str, float], Callable[..., dict[str, jax.Array]]] = {}
@@ -231,15 +290,15 @@ def stepper(node: RigidInertialNode, dtype: Any, share: float) -> Callable[..., 
     key = (id(node), str(jnp.dtype(dtype)), share)
     if key not in _steppers:
         def step(mass: Any, pose: Any, twist: Any, load: Any, resistance: Any, inertia: Any, extent: Any,
-                 dt: float) -> dict[str, jax.Array]:
+                 planted: Any, dt: float) -> dict[str, jax.Array]:
             p = {**{k: jnp.asarray(v, dtype=dtype) for k, v in node._step_constants(None).items()}, "mass": mass,
-                 "inertia": jnp.reshape(inertia, (-1,)), "extent": extent}
+                 "inertia": jnp.reshape(inertia, (-1,)), "extent": extent, "plant": planted}
             state = {**{k: jnp.asarray(v, dtype=dtype) for k, v in node.initial_state().items()},
                      "pose": pose, "twist": twist}
             inputs = law_inputs(node, load, resistance, dtype, share * load if share else None)
             return node.advance(p, state, inputs, dt)
 
-        _steppers[key] = jax.jit(step, static_argnums=7)
+        _steppers[key] = jax.jit(step, static_argnums=8)
     return _steppers[key]
 
 
@@ -249,5 +308,7 @@ def identity_over_floor(found: Mapping[str, jax.Array]) -> float:
     return float(found["ledger_step_identity"]) / (books.IDENTITY_ULPS * eps)
 
 
-__all__ = ["CHECKED_DRAG", "in_dtype", "CONTACT_LAW", "DRAG_LAW", "LOAD_LAW", "MASS", "centre_held_states", "free_states",
-           "hull_held_states", "identity_over_floor", "law_inputs", "metered_body", "one_step", "unit", "vector"]
+__all__ = ["ANGULAR_GIFT", "CHECKED_DRAG", "CONFIGURATION", "CONTACT_GIFT", "CONTACT_LAW", "DRAG_LAW", "EULER",
+           "GYROSCOPIC", "HOSTED_LOSS", "HOSTED_SHIFT", "LINEAR_GIFT", "LOAD_LAW", "MASS", "PLANTS", "PlantedBody",
+           "centre_held_states", "free_states", "hull_held_states", "identity_over_floor", "in_dtype", "law_inputs",
+           "metered_body", "one_step", "unit", "vector"]

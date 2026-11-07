@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from ledger_cases import CONTACT_LAW, DRAG_LAW, LOAD_LAW, metered_body
+from ledger_cases import CONTACT_LAW, DRAG_LAW, LOAD_LAW, in_dtype, metered_body
 
 from mime.core import MimeNode
 from mime.core import ledger as books
@@ -129,3 +129,29 @@ def test_a_body_built_without_the_ledger_is_the_body_it_was():
     assert sorted(set(metered.boundary_input_spec()) - set(plain.boundary_input_spec())) == [
         books.law_input("applied_wrench", 0), books.law_input("resistance", 1)]
     assert all(key.startswith(books.RECORDS) for key in set(metered.initial_state()) - {"pose", "twist"})
+
+
+@pytest.mark.parametrize("name", ["float32", "float64"])
+@pytest.mark.parametrize("coupling", [1e-9, 1e-8, 1e-7, 1e-12])
+def test_a_zero_diagonal_with_a_coupled_row_is_indefinite_at_any_size_of_the_coupling(name, coupling):
+    """The review's matrix: FL-9's resistance with one turning entry exactly zero and a coupling to the force row, its
+    least eigenvalue negative (``-coupling^2 / 4e-5``, from -2.5e-14 to -2.5e-10). A zero diagonal entry was scaled by
+    1 where the others were scaled to unit diagonal, so in SI units its coupling fell below the shift (16 eps, 1.9e-6
+    in float32) and the matrix passed in float32: it is now indefinite by the exact identity (a positive semidefinite
+    matrix's zero diagonal entry has its whole row zero), not by a scale."""
+    resistance = np.diag([4e-5] * 3 + [8e-10] * 3)
+    resistance[3, 3] = 0.0
+    resistance[0, 3] = resistance[3, 0] = coupling
+    assert np.linalg.eigvalsh(resistance)[0] < 0.0
+    with in_dtype(name) as dtype:
+        assert not bool(books.definite_at_floor(jnp.asarray(resistance, dtype=dtype)))
+        resistance[0, 3] = resistance[3, 0] = 0.0
+        assert bool(books.definite_at_floor(jnp.asarray(resistance, dtype=dtype))), "its row zero, it is semidefinite"
+
+
+@pytest.mark.parametrize("name", ["float32", "float64"])
+def test_two_zero_diagonal_entries_coupled_to_each_other_alone_are_indefinite(name):
+    resistance = np.diag([4e-5, 4e-5, 4e-5, 0.0, 0.0, 8e-10])
+    resistance[3, 4] = resistance[4, 3] = 1e-12
+    with in_dtype(name) as dtype:
+        assert not bool(books.definite_at_floor(jnp.asarray(resistance, dtype=dtype)))
