@@ -442,4 +442,13 @@ the fourth to the sixth versions added the terms, the run's length, and the lock
 MIME that reads up to the sixth (0.3.0.dev1) refuses a folder of the seventh as `load.newer-form`, rather than reading a
 key it does not know.
 
+The saved form is in its ninth version since the resolved record holds the full inertia tensor a body's parts give
+(nine numbers, where the eighth and before held its diagonal, its products dropped); the eighth added the lock's
+reference program and its counts of usable CPUs and BLAS threads. A declared inertia keeps the form it was declared in.
+A folder of an earlier form names `rigid_inertial` 0.3.0 or 0.2.0, which builds its node from the diagonal as it did,
+and its rebuilt record is written back into its own form (`resolved_in_form`: the parts' tensor as its diagonal, a
+declaration's source naming the parts' tensor as the three numbers it named) for its input hash; one that rested on
+exploratory's waiver of the products is refused at load by that version's words. A reader of the eighth refuses a
+folder of the ninth as `load.newer-form`.
+
 Releases are explained in the [package manifest](../README.md#status).

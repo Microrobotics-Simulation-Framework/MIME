@@ -14,6 +14,8 @@ Nodes, dynamics entries and controllers import it; it imports nothing from MIME 
   quaternions; forward kinematics to every frame; frame Jacobians; inverse kinematics by damped least squares; the
   mass matrix by the composite-rigid-body algorithm; inverse dynamics by the recursive Newton-Euler algorithm (both
   after Featherstone, *Rigid Body Dynamics Algorithms*, 2008); forward dynamics ``q_ddot = M^-1 (tau - h)``.
+- **A body's 6 x 6 mass matrix** (:class:`MassMatrix`): symmetric positive definite, checked where it is built; a rigid
+  body's from its mass and full inertia tensor, an added part summed in, turned into the world on request.
 
 **Closed chains are out of scope.** A closed-chain (parallel) mechanism, a delta robot or a four-bar linkage, is a tree
 plus loop closures; the tree holds the closures, but every algorithm here is for open trees and refuses a tree that
@@ -27,6 +29,7 @@ from mime.core.multibody._articulation import ROOT, Articulation, articulate
 from mime.core.multibody._dynamics import bias_forces, cholesky_solve, forward_dynamics, frame_forces, gravity_forces, \
     inverse_dynamics, mass_matrix
 from mime.core.multibody._ik import InverseKinematics, damped_least_squares, inverse_kinematics
+from mime.core.multibody._mass_matrix import MassMatrix
 from mime.core.multibody._kinematics import Model, forward_kinematics, frame_angular_jacobians, frame_jacobian, \
     frame_motions, frame_pose, frame_poses
 from mime.core.multibody._se3 import Pose, compose, inverse, pose_error, relative_turn, rotation_vector, \
@@ -63,6 +66,7 @@ __all__ = [
     "JointKind",
     "JointLimits",
     "LoopClosure",
+    "MassMatrix",
     "Model",
     "MultibodyTree",
     "Payload",

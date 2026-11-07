@@ -22,7 +22,9 @@ version, until the law was given its own.
 - **The surrogate rung does not see the pin**: its arm, built on the screw 0.2.0, is script A's reproduction arm
   (``tests/script_a.py``, the screw 0.3.0) node for node, edge for edge and leaf for leaf, bitwise
   (``same_as_script_a``): script A's and A0's preregistered comparisons run that rung and read no sampling, so they
-  build the current kinds and nothing of theirs moved.
+  build the current kinds and nothing of theirs moved. Script A's arm is held so on ``rigid_inertial`` 0.3.0, whose
+  inertia leaf is three moments as the pinned 0.2.0's is; on 0.4.0 the inertia leaf alone differs, nine numbers whose
+  diagonal the three are.
 - **The interactions too**: every law ``operating_point.experiment`` attaches names the version
   ``operating_point.FROZEN_INTERACTIONS`` names, read from the document, through ``pinned_law``, and that table is the
   versions registered when the register froze, each registered (the current version or one
@@ -33,8 +35,9 @@ version, until the law was given its own.
   same).
 - **Controls**, failing on every run: the experiment with the pin bypassed names the screw 0.3.0 and fails the first
   check; with the law's pin bypassed it names drag 0.4.0, the contact 0.4.0 and the magnetic torque 0.2.0; a script that builds ``fl9()``
-  unpinned fails the source scan; the experiment with the dynamics' pin bypassed names ``rigid_inertial`` 0.3.0,
-  fails the dynamics check, and its transverse-inertia arm runs at 3.20747 mm/s.
+  unpinned fails the source scan; the experiment with the dynamics' pin bypassed names the current ``rigid_inertial``
+  (0.4.0, the full inertia tensor, since phase I1; 0.3.0 before it), fails the dynamics check, and its
+  transverse-inertia arm runs at 3.20747 mm/s (a diagonal tensor, which 0.4.0 steps as 0.3.0 did).
 
 Nothing here builds a graph or solves; the register's numbers are its scripts' to reproduce."""
 
@@ -43,10 +46,11 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from mime.dynamics.body import KEPT as KEPT_DYNAMICS
-from mime.dynamics.body import RigidInertial
+from mime.dynamics.body import RigidInertial, RigidInertialMoments
 from mime.interactions import KEPT as KEPT_LAWS
 from mime.interactions import Contact, Drag, Gravity, Magnetic
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Screw, Sphere, Tube
@@ -188,8 +192,16 @@ def test_the_transverse_inertia_arm_reproduces_the_registers_speed():
     assert abs(speed - REGISTER_X4_32_MM_S) <= REGISTER_DIGITS
 
 
-def test_the_surrogate_arm_built_pinned_is_script_as_reproduction_arm_leaf_for_leaf():
-    """With its control, as ``surrogate.py`` plants it: the contact's margin moved by a micrometre is found."""
+def test_the_surrogate_arm_built_pinned_is_script_as_reproduction_arm_leaf_for_leaf(monkeypatch):
+    """With its control, as ``surrogate.py`` plants it: the contact's margin moved by a micrometre is found. Script A's
+    arm is compared on the kept ``rigid_inertial`` 0.3.0 (``tests/script_a.py`` builds it by name), whose inertia leaf
+    is three moments as the register's pinned 0.2.0's is; on the current version, 0.4.0, the one leaf that differs is
+    that inertia, its nine numbers the three moments' diagonal tensor (the register's script is frozen and compares
+    leaves as they are)."""
+    current = op.same_as_script_a(op.experiment().build())
+    moments = np.diag(np.asarray(op.A.INERTIA.value, dtype=np.float64)).reshape(9).tolist()
+    assert current == [f"umr.inertia: {list(op.A.INERTIA.value)} != {moments}"]
+    monkeypatch.setattr(op.A, "RigidInertial", RigidInertialMoments)
     assert op.same_as_script_a(op.experiment().build()) == []
     assert op.same_as_script_a(op.experiment(margin_mm=0.1001).build()) != []
 
@@ -248,7 +260,8 @@ def test_control_a_script_that_builds_the_shell_unpinned_fails_the_source_scan(t
 def test_control_the_experiment_with_the_dynamics_pin_bypassed_names_the_law_the_gyroscopic_fix_moved(monkeypatch):
     monkeypatch.setattr(op, "pinned_dynamics", lambda dynamics: dynamics)
     document = op.experiment(rung="bem").document()
-    assert unfrozen_dynamics(document) == ["umr: rigid_inertial 0.3.0, the register froze 0.2.0"]
+    assert unfrozen_dynamics(document) == [f"umr: rigid_inertial {RigidInertial.version}, the register froze 0.2.0"]
+    assert RigidInertial.version == "0.4.0"
 
 
 def test_control_the_transverse_inertia_arm_on_the_current_law_is_off_the_registers_speed():

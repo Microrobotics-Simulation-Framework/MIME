@@ -1,4 +1,4 @@
-schema: mime.document/8
+schema: mime.document/9
 mime: 0.3.0.dev1
 experiment: chain_screw
 profile: exploratory

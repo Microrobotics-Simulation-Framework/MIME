@@ -8,9 +8,10 @@ A lock of version 7 reads under the current form as it was: it names no program,
 scan, and it records no count, so its environment is compared without one (``form7/timed_toy``, written by MIME at the
 last commit of form 7, loads and verifies; its environment's lines never name the count). One of version 7 that holds
 either key is refused, never read as declaring it. The committed folders of either form hold the hashes their
-documents make: saving again under form 8 moves the ``document`` and ``input`` hashes, never ``derived`` or
+documents make: saving again under form 8 moved the ``document`` and ``input`` hashes, never ``derived`` or
 ``observations``. A reader of version 7 (this MIME before the step) and one of version 6 (0.3.0.dev1's) refuse a folder
-of version 8 as ``load.newer-form``, the document and the lock each once.
+of version 8 or later as ``load.newer-form``, the document and the lock each once. The current form is version 9
+(``test_form9.py``); the folder as version 8 wrote it is ``form8/chain_screw``.
 
 **The controls.** An upgrade planted to accept the keys in an earlier lock reads it, and the refusal test fails on every
 run. The form left unstepped (the folder's files stating version 7) is read by version 7's reader without a
@@ -36,7 +37,7 @@ from mime.testing.toys import full_toy
 
 SAVED = Path(__file__).parent
 FORM7 = SAVED / "form7" / "chain_screw"
-CURRENT_FOLDER = SAVED / "current" / "chain_screw"
+FORM8 = SAVED / "form8" / "chain_screw"
 #: The timed toy saved by MIME at the last commit of form 7 (f2cdac6), as ``form6/timed_toy`` was by the 0.3.0.dev1
 #: wheel: float64, one BLAS thread, ``test_based_on.py``'s declarations.
 TIMED7 = SAVED / "form7" / "timed_toy"
@@ -58,16 +59,16 @@ def lock_of(folder: Path) -> dict:
     return json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
 
 
-def test_this_mime_writes_version_eight_and_a_version_seven_lock_reads_under_it():
-    assert CURRENT == PROGRAM_ADDED == 8
-    assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/8" and LOCK_SCHEMAS[CURRENT] == "mime.lock/8"
+def test_version_eight_added_the_program_and_a_version_seven_lock_reads_under_the_current_form():
+    assert PROGRAM_ADDED == 8 < CURRENT
+    assert DOCUMENT_SCHEMAS[PROGRAM_ADDED] == "mime.document/8" and LOCK_SCHEMAS[PROGRAM_ADDED] == "mime.lock/8"
     held, version = upgraded_lock(lock_of(FORM7))
     assert version == 7 and conforms(held, Lock)[1] == []
     assert "usable_cpus" not in held["environment"] and "blas_threads" not in held["environment"]
     assert "program" not in held["reference"]
 
 
-@pytest.mark.parametrize("folder", [FORM7, CURRENT_FOLDER], ids=["form7", "current"])
+@pytest.mark.parametrize("folder", [FORM7, FORM8], ids=["form7", "form8"])
 def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Path):
     document = parse_yaml((folder / DOCUMENT_FILE).read_text(encoding="utf-8"))
     lock = lock_of(folder)
@@ -75,8 +76,8 @@ def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Pa
     assert lock["hashes"]["input"] == input_hash(document, lock["resolved"], lock["entries"])  # type: ignore[arg-type]
 
 
-def test_saving_again_under_form_eight_moves_the_document_and_input_hashes_and_never_the_others():
-    seven, eight = lock_of(FORM7)["hashes"], lock_of(CURRENT_FOLDER)["hashes"]
+def test_saving_again_under_form_eight_moved_the_document_and_input_hashes_and_never_the_others():
+    seven, eight = lock_of(FORM7)["hashes"], lock_of(FORM8)["hashes"]
     assert [key for key in ("document", "input", "derived", "observations") if seven[key] != eight[key]] == \
         ["document", "input"]
 
@@ -86,7 +87,7 @@ def test_a_save_records_the_count_and_a_save_with_no_run_names_no_program(tmp_pa
     scan's, and the lock names no program."""
     full_toy().save(tmp_path / "toy")
     lock = lock_of(tmp_path / "toy")
-    assert lock["schema"] == "mime.lock/8" and "program" not in lock["reference"]
+    assert lock["schema"] == LOCK_SCHEMAS[CURRENT] and "program" not in lock["reference"]
     assert isinstance(lock["environment"]["usable_cpus"], int) and lock["environment"]["usable_cpus"] >= 1
     assert isinstance(lock["environment"]["blas_threads"], int) and lock["environment"]["blas_threads"] >= 1
 
@@ -160,7 +161,7 @@ def test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_e
     loaded = Experiment.load(folder)
     assert loaded.load_report is not None
     assert loaded.load_report.text().splitlines()[1:3] == [
-        "saved form: mime.document/7, read as version 8", "input hash: reproduced exactly"]
+        f"saved form: mime.document/7, read as version {CURRENT}", "input hash: reproduced exactly"]
     asked: list[object] = []
     real = _experiment.BuiltExperiment._history_on
 

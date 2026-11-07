@@ -651,7 +651,15 @@ class Experiment:
             raise _folder.LoadRefused([other_release])
         experiment = cls._declared(*declarations_from(form.document, form.lock["entries"], Path(folder)))
         experiment._saved = form
-        experiment.load_report = experiment.build().load_report
+        try:
+            experiment.load_report = experiment.build().load_report
+        except BuildRefused as refused:
+            from mime.saved._versions import products_waiver_refusals
+
+            worded = products_waiver_refusals(refused)
+            if worded is refused:
+                raise
+            raise worded from None
         experiment._load_checked = True
         return experiment
 

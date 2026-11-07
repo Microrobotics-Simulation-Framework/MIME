@@ -21,7 +21,9 @@ The controls: the same node with the term taken explicitly (planted by overridin
 ``rigid_inertial`` 0.2.0) gains more than half again its kinetic energy in the second on both spins, and its flips
 are off by 3.6e-3 of the half period (first order), every run (the draws are fixed, and the scheme has no
 randomness); a Jacobian formed from the world inertia, as the first version of the fix did, is not exactly zero for
-an isotropic body at a turned pose, and moves its result in the last bits.
+an isotropic body at a turned pose, and moves its result in the last bits, on the node alone and in script A's
+compiled graph, which since ``rigid_inertial`` 0.4.0 builds the full tensor's node (its products' part exactly zero
+for script A's isotropic body).
 """
 
 import jax
@@ -33,7 +35,7 @@ from scipy.special import ellipk
 from mime.dynamics import RigidInertial
 from mime.dynamics.body import RigidInertialExplicit
 from mime.dynamics.body._rigid_inertial import RATE_TIMES_STEP
-from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, gyroscopic_jacobian
+from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, RigidInertialTensorNode, gyroscopic_jacobian
 
 INERTIA = (1.0e-10, 1.2e-10, 0.8e-10)
 SPINS = {"general": (150.0, 100.0, 100.0), "largest": (30.0, 200.0, 30.0)}
@@ -284,26 +286,31 @@ def test_script_a_in_its_compiled_graph_steps_as_the_term_explicit_does_bit_for_
     assert current == script_a_history()
 
 
-def test_control_the_product_difference_form_of_the_jacobian_moves_script_a_in_its_compiled_graph(monkeypatch):
-    """``[I w]x - [w]x I`` taken in the body frame, as the fix first had it: exactly zero for equal moments on the node
-    alone (the stepping test above passes with it), and a rounding residual in the compiled graph, where the compiler
-    contracts the products (an x86-64 or arm64 host with fused multiply-add, as every CI runner is)."""
-    def product_difference(self, rotation, moments, omega):
-        w = rotation.T @ omega
-        return rotation @ (cross_matrix(moments * w) - cross_matrix(w) * moments[None, :]) @ rotation.T
+def test_control_the_jacobian_from_the_world_inertia_moves_script_a_in_its_compiled_graph(monkeypatch):
+    """``[I w]x - [w]x I`` from the world inertia ``I = R J R^T``, planted in the node script A builds (``rigid_inertial``
+    0.4.0's, which takes the tensor's nine numbers): not exactly zero for script A's isotropic body at a turned pose,
+    so its compiled graph's results move. Planted on the node the build does not build (0.3.0's) it would leave them
+    as they are, a control that could not fail; and the body-frame form taken whole on the tensor, ``[J w]x - [w]x J``
+    with ``J`` the 3 x 3, left script A's bits unchanged too (F0's reference implementation), so it is not this test's
+    plant."""
+    def world_form(self, rotation, moments, omega):
+        inertia = rotation @ jnp.reshape(moments, (3, 3)) @ rotation.T
+        return cross_matrix(inertia @ omega) - cross_matrix(omega) @ inertia
 
     current = script_a_history()
-    monkeypatch.setattr(RigidInertialMidpointNode, "gyroscopic_jacobian", product_difference)
+    monkeypatch.setattr(RigidInertialTensorNode, "gyroscopic_jacobian", world_form)
     assert current != script_a_history()
 
 
-def test_the_kept_version_is_the_explicit_term():
-    """``rigid_inertial`` 0.2.0, as registered, builds the node that takes the term explicit, and the current version
-    the node that takes it implicit at the midpoint."""
+def test_the_kept_versions_are_the_explicit_term_and_the_three_moments():
+    """``rigid_inertial`` 0.2.0, as registered, builds the node that takes the term explicit; 0.3.0 the node that takes
+    it implicit at the midpoint from three moments; and the current version that node's step on the full tensor."""
     from mime.dynamics.body import KEPT
 
     kept, _ = KEPT[("rigid_inertial", "0.2.0")]
-    assert kept.builds[""] == (RigidInertialNode,) and RigidInertial.builds[""] == (RigidInertialMidpointNode,)
+    moments, _ = KEPT[("rigid_inertial", "0.3.0")]
+    assert kept.builds[""] == (RigidInertialNode,) and moments.builds[""] == (RigidInertialMidpointNode,)
+    assert RigidInertial.builds[""] == (RigidInertialTensorNode,)
     energy, _ = invariants(RigidInertialNode, SPINS["general"], 1e-3)
     assert energy[-1] > 1.5
 

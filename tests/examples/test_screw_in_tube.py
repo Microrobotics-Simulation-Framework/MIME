@@ -7,21 +7,19 @@ example's speed at its starting spacing is far below the finest spacing the tabl
 spacing is itself no converged value (``docs/choosing_spacing.md``). The number the example prints is held to the
 table's row at the same spacing (a run that drifted from the table fails here), not to a reference.
 
-**The inertia.** The screw's parts give a tensor with a small product of inertia: ``exploratory`` uses the diagonal and
-stamps it pending, ``research`` refuses it and prints the diagonal to declare. The example declares the diagonal the
-refusal prints: a test reads it back from the research refusal and holds the example's constant to it, so that the example cannot drift from what the build says. In a viscous regime the answer does not
-depend on the inertia (the last test, at the coarsest spacing of the table, where the control is cheap)."""
+**The inertia.** The screw's parts give a tensor with a small product of inertia, which every profile builds as it is
+(``rigid_inertial`` 0.4.0). The example declares its diagonal, research's option: a test reads the tensor the parts
+give from a build and holds the example's constant to its diagonal, so that the example cannot drift from what the
+parts give. In a viscous regime the answer does not depend on the inertia (the last test, at the coarsest spacing of
+the table, where the control is cheap)."""
 
-import dataclasses
 import importlib.util
 import json
-import re
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from mime.build import BuildRefused
 from mime.results._watch import WITHIN
 from mime.units import s
 
@@ -59,14 +57,15 @@ def test_the_speed_is_the_tables_row_at_the_same_spacing(example, started):
     assert speed == pytest.approx(row["speed_m_per_s"], rel=0.01)
 
 
-def test_the_parts_own_tensor_is_refused_with_the_declaration_the_example_uses(example):
+def test_the_example_declares_the_diagonal_of_the_tensor_its_parts_give(example):
     from mime import Body, Experiment, State, Structure
     from mime.dynamics import RigidInertial
     from mime.scene import Scene, Screw, Tube, X, Z
     from mime.things import Part
     from mime.units import dimensionless, kg_per_m3, m_per_s, m_per_s2, mm, ms, rad_per_s
 
-    exp = Experiment("refused", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(20.0))
+    exp = Experiment("parts", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(20.0),
+                     profile="research")
     exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                       length=mm(100.0))))
     exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
@@ -75,15 +74,9 @@ def test_the_parts_own_tensor_is_refused_with_the_declaration_the_example_uses(e
             radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
             starts=2))}))
     exp.declare("umr.parts.shell.density", kg_per_m3(1410.0), reason="FL-9 resin plus its magnets, mean density")
-    exp._settings = dataclasses.replace(exp._settings, profile="research")
-    with pytest.raises(BuildRefused) as refused:
-        exp.build()
-    (refusal,) = [r for r in refused.value.refusals if r.code == "parts.inertia-axes"]
-    assert "in the body's frame (kg m^2)" in refusal.message and "principal moments" in refusal.message
-    printed = re.search(r'kg_m2\(\(([^)]*)\)\)', refusal.action)
-    assert printed is not None
-    numbers = tuple(float(n) for n in printed.group(1).split(","))
-    assert numbers == pytest.approx(example.INERTIA, rel=1e-9), "the example declares what the build prints"
+    tensor = np.asarray(exp.build().record.resolved["values"]["umr.inertia"]["value"]).reshape(3, 3)
+    assert tensor[1, 2] != 0.0, "the parts give a product of inertia, which a research build carries"
+    assert tuple(np.diag(tensor)) == example.INERTIA, "the example declares the diagonal of what the parts give"
 
 
 def test_in_this_regime_the_answer_does_not_depend_on_the_inertia_declared(example):
