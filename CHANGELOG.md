@@ -97,6 +97,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The contact 0.5.0: the hold's sweeps and its search's Newton steps are XLA loops** (`Contact.Projection` builds it).
+  The same updates in the same order, with bounds fixed when the step is traced, so both modes of derivative pass
+  through; the step's program is smaller and compiles faster. Its rounding is not 0.4.0's: a body held from its first
+  step (FL-9 in script A's tube) moves by a few units in the last place of its pose and twist, and the forces its held
+  points share among them by more, their net wrench by a few units of the momentum rate it came from
+  (`tests/oracles/test_contact_loops.py` holds the two versions to each other, with tolerances stated in units in the
+  last place). The contact 0.4.0 stays registered (`mime.interactions.KEPT`): a folder saved with it loads and
+  reproduces to the last bit, its program the one it was derived from. While a switch collector is open (the switch
+  harness, the switch scan's check of owners) the loops are unrolled, so the collector reads each update's values.
 - **A save runs its reference steps on the run's own graph, and after a run chunked by one step builds and compiles
   nothing for them (saved form 8).** `built.save` and the saved form `run_to` writes built a second graph and compiled
   the history scan for the reference outputs; now the reference steps run on the build's own graph, reset to its

@@ -873,14 +873,12 @@ def test_the_contacts_loops_unroll_while_a_collector_is_open_so_a_looped_nodes_r
 
 
 def test_control_without_the_collectors_fallback_a_looped_nodes_row_fails(monkeypatch):
-    """The fallback removed (no collector reported open): the sweeps' updates are traced once in the loop's body, and
-    the rows the collector keeps hold the body's tracers, not each update's values, so the row fails on every run."""
+    """The fallback removed (no collector reported open): the sweeps' updates are traced once in the loop's body, so
+    the rows the collector keeps hold the body's tracers, not each update's values, and the harness cannot read their
+    indicators: it fails on every run."""
     monkeypatch.setattr(switch, "collector_open", lambda: False)
-    try:
-        found = classify(impulse_row(declarations(), loops=True), KINK_LIMIT)
-    except jax.errors.UnexpectedTracerError:
-        return
-    assert found.problems != [], "the row measured as if the collector had each update's values"
+    with pytest.raises(jax.errors.TracerArrayConversionError, match="fori_loop"):
+        classify(impulse_row(declarations(), loops=True), KINK_LIMIT)
 
 
 # -- the kink limit ------------------------------------------------------------------------------------------------

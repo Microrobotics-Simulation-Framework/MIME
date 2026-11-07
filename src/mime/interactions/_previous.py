@@ -2,10 +2,11 @@
 saved with one still loads and reproduces: the contact 0.1.0, which holds the body's centre by its extent, its
 orientation unread; the contact 0.4.0, which unrolls the hold's sweeps and its search's Newton steps, whose rounding
 0.5.0's loops do not keep; and the magnetic torque and force 0.1.0, which read a field that varies in space at the
-body's centre of mass (MIME-ANO-137). Each kept version is its successor's entry in every respect but that one. A script that
-writes ``Contact.Projection(...)`` or ``Magnetic.Torque()`` gets the current version; a load of a document that names
-0.1.0 gets it from here, and so does an experiment whose comparisons were declared against it (script A's and A0's
-reproductions of the 0.2 line, whose contact held the centre; 7j's frozen register), by ``KEPT``."""
+body's centre of mass (MIME-ANO-137). Each kept version is its successor's entry in every respect but that one. A
+script that writes ``Contact.Projection(...)`` or ``Magnetic.Torque()`` gets the current version; a load of a document
+that names a kept version gets it from here, and so does an experiment whose comparisons were declared against one
+(script A's and A0's reproductions of the 0.2 line, whose contact held the centre; 7j's frozen register), by
+``KEPT``."""
 
 from __future__ import annotations
 

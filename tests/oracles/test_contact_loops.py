@@ -13,8 +13,8 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   hull's size on the rows whose search converged, and the converged flag the same outside a band of that width.
 - **The whole step**, the contact active: script A's FL-9 held from its first step (``hull_cases.hull_contact``, 20
   steps) and the tube demo (``examples/sphere_settling_tube.py``, 40), each built fresh on each version and run, in
-  float32 and float64: the pose's position and orientation, the twist's two parts and the held points each within
-  ``STEP_ULPS`` of its own scale over the run. The forces are judged by their net wrench on the body (each row's force
+  float32 and float64, by the history scan and by one-step chunks (the tube demo's own run): the pose's position and
+  orientation, the twist's two parts and the held points each within ``STEP_ULPS`` of its own scale over the run. The forces are judged by their net wrench on the body (each row's force
   times its row ``[n; r x n]``, summed), never row by row: the rows of one body share their forces in no unique way,
   and rounding redistributes them. It is judged on the scale it came from, the momentum rate that stops the body's
   motion in a step (``m |v| / dt``, ``I |omega| / dt``), within ``WRENCH_ULPS``; the per-row forces and the net
@@ -38,11 +38,12 @@ from functools import cache, partial
 from pathlib import Path
 from typing import Any
 
+import _cache_ceiling
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from hypothesis import assume, event, given, settings
+from hypothesis import assume, event, given, settings, target
 from hypothesis import strategies as st
 
 import mime.nodes.body._contact as contact
@@ -51,10 +52,27 @@ from mime.build import Attachment
 from mime.interactions import KEPT
 from mime.scene import Capsule, Cylinder, Ellipsoid, Screw, Sphere
 from mime.testing import first_steps
-from mime.units import dimensionless, mm
+from mime.units import dimensionless, mm, s
 
 UnrolledContact, _ = KEPT["contact", "0.4.0"]
 ROOT = Path(__file__).resolve().parents[2]
+#: How far above where a worker stands after giving its compiled programs back this file's tests let its resident memory
+#: grow before the next gives them back again (``tests/_cache_ceiling.py``, as ``test_hull_contact.py`` does): each case
+#: compiles both versions' programs, and the file run in one process held 3.6 GB at its end.
+HEADROOM_MIB = 1024
+LIMIT_MIB: list[float] = []  # one worker's limit: where it stood after the last give-back, plus the headroom
+
+
+@pytest.fixture(autouse=True)
+def programs_given_back():
+    yield
+    now = _cache_ceiling.resident_mib()
+    if now is None:
+        return
+    if not LIMIT_MIB or now > LIMIT_MIB[0]:
+        _cache_ceiling.give_back_programs()
+        LIMIT_MIB[:] = [(_cache_ceiling.resident_mib() or now) + HEADROOM_MIB]
+
 #: The tolerances, in units in the last place of each result's scale: committed with their predictions before the cases
 #: first ran (largest misses expected 16, 8, 12, 12 and 8), from the sizes measured on the pull request's first head:
 #: the held points 2.8 units, the state 10, the net wrench 10 of its momentum rate.
@@ -143,6 +161,7 @@ def test_the_looped_sweeps_are_the_unrolled_ones_to_rounding(dtype, solve):
     coupling, start, count = solve
     found = sweeps_miss(coupling, start, count, dtype)
     event("bit for bit" if found == 0.0 else "rounding apart")
+    target(found, label="units of the inputs' scale apart")
     assert found <= SWEEPS_ULPS, f"{found:.3g} units of the inputs' scale apart, rows {len(start)}, count {count}"
 
 
@@ -295,6 +314,7 @@ def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding(dtype, name, 
     missed = max(ulps(x_l[judged], x_u[judged], size, np.dtype(dtype)),
                  ulps(s_l[judged], s_u[judged], size, np.dtype(dtype)))
     event("bit for bit" if missed == 0.0 and not flipped.any() else "rounding apart")
+    target(missed, label="units of the hull's size apart")
     assert not flipped.any(), f"{name}: the converged flag differs off its band at rows {np.flatnonzero(flipped)}"
     assert missed <= NEWTON_ULPS, f"{name}: {missed:.3g} units of the hull's size apart"
 
@@ -323,6 +343,19 @@ def tube_demo():
 
 
 CASES = {"hull_contact": (hull_contact, 20), "tube_demo": (tube_demo, 40)}
+#: The programs a run compiles: the history scan of a run asked for its steps (``first_steps``, what the goldens and a
+#: save's history take), and the one-step program of a run chunked by one step (``run_to``'s ``stage_every``, the tube
+#: demo's own run), each compared within itself: bit for bit is per compiled program.
+SHAPES = ("history scan", "one-step chunks")
+
+
+def steps_of(built: Any, steps: int, shape: str) -> dict[str, dict[str, Any]]:
+    if shape == "history scan":
+        return first_steps(built, steps)
+    dt = float(built.report.dt)
+    history = built.run(s(steps * dt), history=True, hook=lambda chunk: None, chunk=s(dt)).history
+    assert history is not None
+    return history
 
 
 def net_wrench(node: Any, history: dict[str, np.ndarray], initial: np.ndarray) -> np.ndarray:
@@ -338,13 +371,14 @@ def net_wrench(node: Any, history: dict[str, np.ndarray], initial: np.ndarray) -
     return np.einsum("tk,tki->ti", forces, rows)
 
 
+@pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("case", CASES)
-def test_the_whole_step_on_the_looped_contact_is_the_unrolled_ones_to_rounding(case, dtype):
+def test_the_whole_step_on_the_looped_contact_is_the_unrolled_ones_to_rounding(case, dtype, shape):
     make, steps = CASES[case]
     with jax.enable_x64(DTYPES[dtype]):
         built = {"0.4.0": on_the_kept_contact(make()).build(), "0.5.0": make().build()}
-        histories = {version: first_steps(arm, steps) for version, arm in built.items()}
+        histories = {version: steps_of(arm, steps, shape) for version, arm in built.items()}
     (body,) = [name for name, fields in histories["0.4.0"].items() if "contact_forces" in fields]
     nodes = {version: arm.graph.get_node(body) for version, arm in built.items()}
     assert (nodes["0.4.0"].loops, nodes["0.5.0"].loops) == (False, True), "the arms are one program"
@@ -378,8 +412,8 @@ def test_the_whole_step_on_the_looped_contact_is_the_unrolled_ones_to_rounding(c
     rows = ulps(found["contact_forces"], reference["contact_forces"],
                 float(np.max(np.abs(np.asarray(reference["contact_forces"])))), eps_dtype)
     same = sorted(k for k in reference if np.array_equal(np.asarray(reference[k]), np.asarray(found[k])))
-    print(f"\n{case} {dtype}: {pushed} of {steps} steps pushed; bit for bit: {same}; state and points, units of each "
-          f"part's scale: {', '.join(f'{k} {v:.3g}' for k, v in missed.items())}; net wrench, units of its "
+    print(f"\n{case} {dtype} {shape}: {pushed} of {steps} steps pushed; bit for bit: {same}; state and points, units "
+          f"of each part's scale: {', '.join(f'{k} {v:.3g}' for k, v in missed.items())}; net wrench, units of its "
           f"momentum rate: force {wrench_missed['force']:.3g}, torque {wrench_missed['torque']:.3g}; not judged: of "
           f"its own magnitude force {own['force']:.3g}, torque {own['torque']:.3g}, per-row forces {rows:.3g}")
     assert {k: v for k, v in missed.items() if v > STEP_ULPS} == {}

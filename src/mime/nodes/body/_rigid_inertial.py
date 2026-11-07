@@ -363,8 +363,8 @@ class RigidInertialNode(MimeNode):
             if contact_loops:
                 hull["contact_loops"] = True
         elif contact_loops:
-            raise ValueError("contact_loops runs a hull contact's sweeps and search as XLA loops, and the node holds no "
-                             "hull (hull_kind)")
+            raise ValueError("contact_loops runs a hull contact's sweeps and search as XLA loops, and the node "
+                             "holds no hull (hull_kind)")
         super().__init__(name, timestep, mass=mass, inertia=tuple(inertia), initial_pose=tuple(initial_pose),
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
                          margin=margin, velocity_rule=velocity_rule, **hull, **surface,
