@@ -96,10 +96,11 @@ The surrogate rung reads its weights through the evaluator its surrogate's recor
 (`mime.surrogates.Surrogate`), which also states the surrogate's accuracy per use and its provenance; what it computes
 is unchanged. The mrs rung's plan names the shipped table its wall kind reads, and a saved experiment's lock records it.
 
-**`Contact.Projection`** (`contact` 0.4.0 since its second fix round; 0.2.0 and 0.3.0, in no release, are not kept)
-holds the body's hull, its orientation read, each point
-kept `margin` from the surface, by impulses through the body's implicit solve with the rotation coupled in (projected
-Gauss-Seidel over one point per group of the hull's samples at `spacing`) and a projection of the pose after the step
+**`Contact.Projection`** (`contact` 0.5.0, which runs the hold's sweeps and its search's Newton steps as XLA loops where
+0.4.0, kept registered for its folders, unrolled them; 0.2.0 and 0.3.0, in no release, are not kept) holds the body's
+hull, its orientation read, each point kept `margin` from the surface, by impulses through the body's implicit solve
+with the rotation coupled in (projected Gauss-Seidel over one point per group of the hull's samples at `spacing`) and a
+projection of the pose after the step
 in two passes, the second choosing each group's point again where the first left the body and holding it beside the
 first's (MIME-ANO-136),
 inelastic and frictionless, in the body's own update (`RigidInertialNode`). The point each group holds is the body's
@@ -126,7 +127,10 @@ held its centre by its extent and let it through the wall (a body held by 0.1.0 
 flagged after the run by the containment watch, in exploratory and research: [the results note](../../../docs/results.md)). A body with no hull is held as a sphere of its extent, as
 before; a body whose hull no point reaches the margin steps as it did, to the last bit. 0.1.0 is kept registered
 (`mime.interactions.KEPT`) for folders saved with it and for the experiments whose comparisons were declared against
-it, script A's and A0's reproductions. **A contact handles admissibility only**: it never adds near-wall lubrication,
+it, script A's and A0's reproductions; 0.4.0 is kept for the folders saved with it, its program the one they were
+derived from (0.5.0's loops round otherwise: a held body's float32 velocity moves by about a millionth of its size, its rows' forces
+by up to two parts in a thousand of their scale and its net force by under a thousandth of the momentum rate, float64
+by a hundred-billionth or less: `tests/oracles/test_contact_loops.py`). **A contact handles admissibility only**: it never adds near-wall lubrication,
 which a drag that includes it declares (`Interaction.includes_lubrication`: the surrogate rung with `lubrication=`),
 and the plan refuses two laws on one body that include it (`lubrication.twice`). Friction at the contact is left to
 the near-contact physics' design; its seam is the sweeps' rows.

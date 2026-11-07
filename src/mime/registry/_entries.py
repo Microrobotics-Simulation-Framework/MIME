@@ -139,7 +139,8 @@ class Confinement:
 
     With ``spacing`` (m) it holds the body's hull instead, orientation read: its hull kind's own samples at that
     spacing on every patch (``mime.scene.body_reach``'s points), each kept ``margin`` from the surface, and no extent
-    is read (``extent`` is ``None``)."""
+    is read (``extent`` is ``None``); with ``loops`` too, the dynamics runs the hold's sweeps and its search's Newton
+    steps as XLA loops (the contact 0.5.0), not unrolled (0.4.0)."""
 
     role: str
     target: str
@@ -148,6 +149,7 @@ class Confinement:
     rule: str
     extent: str | None = "extent"
     spacing: float | None = None
+    loops: bool = False
 
 
 @dataclass(frozen=True)

@@ -21,8 +21,8 @@ never reach the contact; 27 of 27 arrays equal to the save before); and bound_ro
 massive_rpm, mrs_free_space and mrs_solids, both precisions, whose entries the rows here build in lighter cases
 (bound_robot; kinematic_rpm, tracked_rpm and swing_magnet_kept; mrs_kept, mrs_point_forces, mrs_tube and lab_bead).
 Every row of those, and the float64 rows not run here, held the contract (the verify and history columns empty; the
-own-steps column was added after, and is asserted here). The hull contact runs here in float32 alone, as the one case
-whose contact acts from the first step."""
+own-steps column was added after, and is asserted here). The hull contact runs here in float32 alone, on each version
+(0.4.0, its loops unrolled; 0.5.0, looped), as the cases whose contact acts from the first step."""
 
 from __future__ import annotations
 
@@ -42,10 +42,10 @@ STEPS = 8
 
 #: The cases each in a fresh float32 process: those of ``tests/saved/cases.py`` that build, less the five measured on the
 #: laptop alone (the module's docstring), and PR #104's MRS sphere.
-FLOAT32 = ("script_a_body", "script_a", "script_a_kept", "script_a_records", "hull_contact", "coupled_toy", "full_toy",
-           "walled_toy", "anchored_toy", "nudged_toy", "bound_robot", "probed_shapes", "kinematic_rpm", "gantry_magnet",
-           "tracked_rpm", "swing_magnet_kept", "mrs_point_forces", "mrs_kept", "mrs_tube", "rigid_explicit", "lab_bead",
-           "sphere_settling")
+FLOAT32 = ("script_a_body", "script_a", "script_a_kept", "script_a_records", "hull_contact", "hull_contact_looped",
+           "coupled_toy", "full_toy", "walled_toy", "anchored_toy", "nudged_toy", "bound_robot", "probed_shapes",
+           "kinematic_rpm", "gantry_magnet", "tracked_rpm", "swing_magnet_kept", "mrs_point_forces", "mrs_kept",
+           "mrs_tube", "rigid_explicit", "lab_bead", "sphere_settling")
 #: The float64 rows run in this process: the cases that differ from the save before in float64 (script A, the nudged
 #: toy, the MRS rows, #104's sphere) and four that do not (the coupled and full toys, the probed shapes, A0's arm).
 FLOAT64 = ("script_a", "script_a_records", "nudged_toy", "mrs_point_forces", "mrs_kept", "lab_bead", "sphere_settling",

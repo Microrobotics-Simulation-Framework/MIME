@@ -200,7 +200,8 @@ class ResolvedConfinement:
     binds (``tube.inner_surface``), the shape that surface's free side is evaluated with and its parameters in SI,
     the margin and the body's extent in metres, and the velocity rule. A confinement that holds the body's hull
     carries the hull (its kind, settings and placement in the body) and the counts of its samples on each of its
-    kind's patches at the confinement's spacing, and an extent of zero, which it does not read."""
+    kind's patches at the confinement's spacing, an extent of zero, which it does not read, and whether its sweeps and
+    search run as XLA loops (``Confinement.loops``)."""
 
     id: str
     subject: str
@@ -212,6 +213,7 @@ class ResolvedConfinement:
     rule: str
     hull: Hull | None = None
     counts: tuple[tuple[int, ...], ...] = ()
+    loops: bool = False
 
 
 @dataclass(frozen=True)
@@ -3212,7 +3214,8 @@ class _Planner:
             return
         counts = quadrature_counts(hull.kind, hull.settings, spacing, patches)
         dynamics.confinements.append(ResolvedConfinement(plan.owner, body, surface, shape, parameters,
-                                                         confinement.margin, 0.0, confinement.rule, hull, counts))
+                                                         confinement.margin, 0.0, confinement.rule, hull, counts,
+                                                         confinement.loops))
         from mime.nodes.body._contact import CONVERGED
 
         held = len(quadrature_arrays(hull.kind, hull.settings, patches, counts)[0])
