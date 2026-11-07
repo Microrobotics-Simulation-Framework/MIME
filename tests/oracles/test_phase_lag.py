@@ -191,4 +191,5 @@ def test_an_observation_of_a_field_no_law_reads_is_refused(float64):
     with pytest.raises(BuildRefused) as refused:
         exp.build()
     assert "observation.field-read" in refused.value.codes()
-    assert "which no law reads" in next(r.message for r in refused.value.refusals if r.code == "observation.field-read")
+    message = next(r.message for r in refused.value.refusals if r.code == "observation.field-read")
+    assert "no law reads field.magnetic.flux_density from it" in message

@@ -26,8 +26,9 @@ of a study run from rest that way, and `mime.study.ramp_crossings` a ramp's, fro
 - Where the body's laws read its pose inside a coupling group with it: they read the current iterate there, not the
   pose at the start of the step, and the correction is a step too many.
 - For a body that tilts out of the plane as it turns: the turn back is its spin about the axis alone.
-- Where the field is read anywhere but where a law reads it: an observation reads a uniform field where a law reads it,
-  and refuses one no law reads (it would need its own instance of the provider).
+- Where the field is read anywhere but where a law reads it: an observation reads a uniform field where a law reads its
+  flux density (the build report names the law), and refuses one no law reads so (it would need its own instance of
+  the provider).
 - For a claim: it is a number the run produced; what it bounds or estimates is for the experiment to state.
 
 **Its derivative** is piecewise: the window's edge is a switch, as the swim speed's is, declared in its gradient record

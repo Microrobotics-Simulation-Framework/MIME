@@ -3341,25 +3341,31 @@ class _Planner:
     def share_uniform_reads(self) -> None:
         """Each observation's read of a uniform field resolved to the slot a law already reads it by (the first such
         law by id): a uniform field is the same at every point, so the observation reads what that law reads and adds
-        no slot to the provider, whose node is then what it is without the observation. Refused
-        (``observation.field-read``) where no law reads the field, since a slot of the observation's own would change
-        the provider's node."""
+        no slot to the provider, whose node is then what it is without the observation. Only a law's read of the same
+        interface is shared (a law that reads the field's gradient lends no slot to an observation of the field itself).
+        Refused (``observation.field-read``) where no law reads the field as that interface, since a slot of the
+        observation's own would change the provider's node. The build report names the law, among the lines the build
+        computed."""
         for plan, label, path, prefix, interface, units, where in self.uniform_reads:
             node = self.providers[path].node_name()
-            shared = sorted((reader.owner, read) for reader in self.readers if reader.section is Section.INTERACTION
-                            for read in reader.reads.values()
-                            if read.node == node and read.interface == interface and read.points is None
-                            and read.slot is not None and read.field.startswith(f"{prefix}_"))
+            shared = sorted(((reader.owner, read) for reader in self.readers if reader.section is Section.INTERACTION
+                             for read in reader.reads.values()
+                             if read.node == node and read.interface == interface and read.points is None
+                             and read.slot is not None and read.field.startswith(f"{prefix}_")),
+                            key=lambda pair: (pair[0], pair[1].field))
             if not shared:
                 self.refuse("observation.field-read", RefusalClass.USER,
-                            f"{where} reads the field {path!r}, which no law reads: an observation reads a uniform "
-                            f"field where a law reads it, and any other through its own instance of the provider, "
-                            f"which is not built yet",
+                            f"{where} reads {interface} from the field {path!r}, and no law reads {interface} from "
+                            f"it: an observation reads a uniform field where a law reads the same, and any other "
+                            f"through its own instance of the provider, which is not built yet",
                             "attach the law the field acts through (exp.attach(Magnetic.Torque(), body=..., "
                             "field=...)), or observe the state the field acts on instead")
                 continue
-            held = shared[0][1]
+            owner, held = shared[0]
             plan.reads[label] = ResolvedRead(held.node, held.field, interface, units)
+            self.checked[plan.owner] = (*self.checked.get(plan.owner, ()),
+                                        f"reads {interface} from the uniform field {path!r} where {owner} reads it, "
+                                        f"{held.node}.{held.field}, adding no slot to the provider")
 
     def collect_registrations_and_slots(self) -> None:
         for dynamics in self.dynamics.values():
