@@ -40,6 +40,14 @@ Every node types its state and its inputs, statically, in the same way.
   or holds anything but arrays. Both are casts: nothing is checked at run time, and no run-time type-checking
   dependency is added.
 - **`params`** stays `Mapping[str, Any] | None`, read through the node's own helper.
+- **A field's type says how `mime verify` judges it** in another environment (`mime.core`'s field types, read from the
+  state's TypedDict by `field_kinds`; see [`mime.saved`](../saved/README.md)). A body's twist, [v; w], is `Twist`,
+  judged by its body's surface points' speed, the size computed from its hull or its mass and inertia; a share of the
+  quantity it measures (the MRS drag's `asymmetry`) is `Ratio`, judged against one; a constraint's held points and the
+  force each took are `HeldPoints` and `HeldForces`, the points judged only on the rows whose force acts. Any other
+  field is judged against its own largest magnitude. The type is the field's, never the node's class: a new node that
+  writes its twist as `Twist` is judged as one, with nothing declared beside it, and a field whose type none of these
+  fits keeps the default until a measured reason gives it its own.
 
 ```python
 class BodyState(TypedDict, closed=True):
