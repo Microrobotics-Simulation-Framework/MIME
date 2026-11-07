@@ -2659,7 +2659,7 @@ anomalies:
       - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest[screw]"
       - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest[cylinder]"
       - "tests/oracles/test_mrs_builds_alike.py::test_the_first_build_of_a_process_run_agrees_with_the_reference_it_saves"
-      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_first_build_run_with_the_layout_as_one_cached_array_moves_the_resistance_from_step_0"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_first_build_saved_with_the_layout_as_one_cached_array_fails_verify_from_step_0"
     residual_risk: >
       What is measured: the screw on the tube's axis at 2 mm in the tests (a fresh process each) and at 0.7 mm by hand,
       and a cylinder in the same tube, on one machine and one JAX (0.12.0.1). What is not: the mechanism inside JAX,
@@ -2744,3 +2744,139 @@ anomalies:
       tried here. The node reports nothing of it.
     workaround: "Command a constant frequency in each run (drives.Constant, or a controller that writes one value), and change the frequency between runs"
     planned_resolution: "An integrating version of the field (UniformRotating 0.2.0), in step with S2b of dev2, pending the maintainer's decision: its phase is a state the node advances by 2 pi f dt each step, so a change of frequency changes the rate and not the angle. 0.1.0 stays registered. Options for a guard on 0.1.0, which are the maintainer's call and are not taken here: (1) a refusal at the build when a controller writes the field's frequency; (2) a flag raised at a step where the commanded frequency differs from the previous step's; (3) a warning at the build naming the assumption; (4) none, the assumption as the node states it. The tests above flip on the integrating version: the ramp's ratio reads 1 and the step's offset zero"
+
+  - anomaly_id: MIME-ANO-140
+    title: "A folder saved under one count of usable CPUs or of BLAS threads and verified under another was read as the same environment, so verify compared bit for bit and reported outputs moved that only the count had moved"
+    description: >
+      Two thread counts decide the last bits of a CPU run, and the lock's environment recorded neither.
+
+      The usable CPUs. XLA's CPU backend sizes its thread pools by the process's affinity when JAX first computes, and
+      partitions a program's work by it [measured: the tf_XLAEigen, tf_XLACompile and tf_XLAExecute pools held 2, 4, 8
+      and 24 threads under taskset -c 0,1, 0-3, 0-7 and none, equal to len(os.sched_getaffinity(0)) and never to
+      os.cpu_count(), which said 24 each time; an affinity changed after the first computation left them at 24]. So one
+      program computes other bits under another count: the tube demo's 40 states hash to one value in all 9 unpinned
+      processes and to another in all 3 pinned to 2 CPUs of one core [measured on the development branch before saved
+      form 8 (U3's baseline), laptop CPU, float32].
+
+      The BLAS threads. JAX's CPU LAPACK kernels (jaxlib 0.12.0.1) run on the OpenBLAS that SciPy ships, not on NumPy's
+      [read: jaxlib takes its routines from scipy.linalg.cython_lapack; measured: a breakpoint on OpenBLAS's threaded
+      dispatcher (exec_blas) hit in SciPy's library, from XLA's threads, while the compiled steps of mrs_point_forces
+      ran (8 hits in 4 steps), and 973 times in the tube demo's build and 4 steps]. Its pool is set by
+      OPENBLAS_NUM_THREADS, else GOTO_NUM_THREADS, else OMP_NUM_THREADS, and is the affinity's CPU count where none is
+      set; MKL_NUM_THREADS does not touch it [measured, by reading the pool through the library's own getter under each
+      setting]. A routine split over the pool sums in another order. Setting NumPy's pool and SciPy's apart (both by the
+      library's setter, before any use), then hashing every field of 8 steps of float32 history [measured]:
+      SciPy's pool at 24 and at 1 gives two hashes in mrs_point_forces and in the tube demo, whichever NumPy's pool is
+      (24 or 1); NumPy's pool at 24 and at 1 gives one hash in each of mrs_point_forces, sphere_settling and the tube
+      demo, whichever SciPy's is, and sphere_settling gives one hash in all four settings. NumPy's own pool is reached
+      at the build (the Gauss-Legendre nodes of the sphere sampler, numpy.polynomial.legendre.leggauss, by eigh: 300
+      threaded calls in sphere_settling's build, 420 in the tube demo's) but moved no bit in these three cases;
+      script_a and probed_shapes reach no threaded call of either pool [measured, the same breakpoint, 0 hits]. The
+      experiments exposed, on this stack and these sizes, are the MRS drag's (mrs_point_forces and the tube demo);
+      whether a larger case reaches NumPy's pool in a way that moves bits was not tried. The lock recorded the CPU's
+      model and the hash of its flags but neither count: a folder saved at OPENBLAS_NUM_THREADS=24 and verified at 1
+      (and the reverse) was read as "environment: the one the lock was written in" and reported 3 outputs moved
+      (mrs_point_forces, float32) [measured by the PR's review on the development branch before saved form 8].
+
+      So a folder saved unpinned and verified under taskset -c 0,1 was read as the same environment, verify compared
+      bit for bit, and reported 11 outputs moved, exit 1 [measured on the tube folders U3's baseline saved]. The
+      outputs had moved only by what the count moves (MIME-ANO-141 sizes it); the comparison was the wrong one.
+
+      Fixed for folders saved in saved form 8: the lock's environment records the usable CPUs (usable_cpus: the
+      affinity where the system has one, else os.cpu_count(); None where neither says) and the BLAS threads
+      (blas_threads: the pool of SciPy's OpenBLAS, read through its own getter; None where SciPy ships none or the
+      library cannot be opened), and a load or verify under another count of either is another environment, so verify
+      takes the comparison within the lock's tolerance [measured on the branch: the tube demo saved unpinned and
+      verified under taskset -c 0,1 reports "usable_cpus: built under 24, loaded under 2"; mrs_point_forces saved at
+      OPENBLAS_NUM_THREADS=1 and verified at 2 reports "blas_threads: built under 1, loaded under 2", and the
+      tolerant comparison reports 1 output moved (screw.twist, at most 4.8e-7), exit 1]. That comparison can still
+      report outputs moved (MIME-ANO-141), so the false "moved" is not yet gone for these cases; what is fixed is the
+      environment's report. A folder of saved form 7 or earlier records neither count and is compared as before, so it
+      keeps the false "moved" under another count: 11 outputs for the tube folder of U3's baseline verified at 2 CPUs,
+      3 for mrs_point_forces verified at another BLAS count [measured]. Folders of form 8 saved by an earlier head of
+      this change record usable_cpus only; none was released.
+
+      Severity: major, by the registry's table ("incorrect results, workaround exists"): verify's verdict is wrong for
+      a folder verified under another count, and verifying at the counts it was saved at gives the right one.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      Verify's verdict is what a reader of a saved or published experiment relies on to say it reproduces. Under
+      another count it said "moved" in the environment it claimed was the lock's own, so a reproducible experiment
+      read as not reproducing, and a reader could not tell the count from a real change. No simulated result is
+      wrong: the run and its outputs are what the program computes under that count.
+    resolution_status: partially_resolved
+    affected_versions: ">=0.3.0.dev1"
+    resolution_version: "0.3.0.dev2"
+    affected_components:
+      - "mime.saved: the lock's environment record and the load's comparison of it"
+      - "mime.env: the host record (usable_cpus, blas_threads)"
+    verification:
+      - "tests/saved/test_save_reference.py::test_a_folder_verified_at_the_count_it_was_saved_at_is_the_same_environment_bit_for_bit"
+      - "tests/saved/test_save_reference.py::test_a_folder_verified_at_another_count_is_another_environment"
+      - "tests/saved/test_save_reference.py::test_mime_verify_under_another_affinity_in_a_fresh_process_reports_another_environment"
+      - "tests/saved/test_save_reference.py::test_a_count_either_side_could_not_read_is_never_the_same"
+      - "tests/saved/test_save_reference.py::test_the_lock_records_the_blas_threads_and_a_folder_loaded_at_that_count_is_the_same_environment"
+      - "tests/saved/test_save_reference.py::test_a_folder_loaded_at_another_blas_count_is_another_environment"
+      - "tests/saved/test_save_reference.py::test_control_the_blas_count_dropped_from_the_comparison_fails_the_test_above"
+      - "tests/saved/test_save_reference.py::test_the_mrs_case_saved_at_one_blas_count_reproduces_at_it_and_is_another_environment_at_another"
+      - "tests/saved/test_form8.py::test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_environment_names_no_count"
+    residual_risk: >
+      The CPU count is read when the lock is written and when it is compared, not when XLA made its pools: a process
+      that changes its affinity after JAX's first computation records a count XLA does not use. The BLAS count is
+      read when called, so it is the pool's size then; a pool resized between the run and the save (threadpoolctl, the
+      library's setter) is recorded as it stands at the save. Measured on Linux only; elsewhere the CPU count is
+      os.cpu_count(), which was not compared with what XLA uses there, and the BLAS count is None where SciPy ships no
+      OpenBLAS (macOS on Arm, a distribution's own SciPy), which is never the same as anything, so such a platform
+      always reads as another environment. NumPy's own BLAS pool is not recorded: it moved no bit in the three cases
+      tried, and a case that does move with it only is not caught. A GPU's results do not depend on the CPU count in
+      the same way, but both counts are compared there too, as the CPU's model is.
+    workaround: "Verify a folder at the counts it was saved at: unpinned where it was saved unpinned, under the same taskset where it was saved pinned, and with the same OPENBLAS_NUM_THREADS (else GOTO_NUM_THREADS or OMP_NUM_THREADS) where one was set; a folder of saved form 8 says which in its environment's usable_cpus and blas_threads"
+    planned_resolution: "Done for saved form 8: the lock's environment records usable_cpus and blas_threads and the load compares them. Older folders keep the workaround"
+
+  - anomaly_id: MIME-ANO-141
+    title: "Across environments verify holds each element to rtol of itself and an absolute atol of 1e-9, and the differences a thread count makes in the tube demo's twist and drag asymmetry are about 10^-3 of their field's largest element, which the tolerance reports as moved"
+    description: >
+      Verify compares a rerun with the reference outputs bit for bit in the lock's environment and, in another, with
+      np.allclose(saved, rerun, rtol=1e-6, atol=1e-9) element by element [read: verify_history in
+      mime/saved/_folder.py, the lock's reference tolerance]. The tolerance of an element is 1e-9 plus 1e-6 of that
+      element, not of its field's scale.
+
+      Measured on the tube demo saved on 24 CPUs and rerun by its one-step program under taskset on 2 and on 16 CPUs
+      (float32, laptop CPU), the lock's count making it another environment (MIME-ANO-140): 3 outputs reported moved,
+      each from step 0. Their differences against the field's largest element (the array's largest absolute value, over
+      the 8 steps) are:
+        ball.twist, 2 CPUs: largest difference 1.99e-6 of an array whose largest element is 1.04e-3, a ratio of 1.9e-3;
+        24 of 48 elements outside the tolerance. 16 CPUs: 1.71e-6, 1.6e-3, 24 of 48.
+        the drag's asymmetry, 2 CPUs: 2.18e-8 of 1.95e-5, 1.1e-3; 7 of 8 elements outside. 16 CPUs: 3.1e-8, 1.6e-3, 8 of 8.
+        ball.pose, 2 CPUs: 6.3e-9 of 1.0, 6.3e-9; 11 of 56 elements outside.
+      The twist and the asymmetry differ by about 10^-3 of their largest element, about 10^4 times a float32 rounding
+      unit of it [arithmetic], and at 16 CPUs as at 2. They are not last-bit differences of the large elements carried
+      into small ones, as an earlier text of this entry said. The resistance matrices the two runs hold differ by about
+      2e-7 of their scale (measured by the same review), so an amplification of that through an ill-conditioned solve
+      is a candidate; it was not measured, and the mechanism is not established.
+
+      A scale-relative comparison (each field against its own largest magnitude, this entry's planned resolution, U17)
+      at a tolerance like the lock's 1e-6 would still report the twist and the asymmetry moved: 1.6e-3 to 1.9e-3 of
+      their largest element is 10^3 times that tolerance. So U17's tolerance must be set from measurement, field by
+      field and by the sizes above, and may not be assumed to resolve this case; a reader who reads each moved line
+      against its field's scale sees 10^-3, which reads as a change.
+
+      Severity: major, by the registry's table: verify's verdict across environments can say "moved" for an experiment
+      that reproduces under another thread count, and the workaround is to verify where the folder was saved.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A false "moved" across environments makes a reproducible experiment read as not reproducing on another machine
+      or another CPU count; a reader who trusts the verdict discards a valid result or hunts a change that is not
+      there. A real change smaller than the tolerance in a large element is not what this entry is about.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "mime.saved: verify's comparison across environments (verify_history)"
+    residual_risk: >
+      Measured on one experiment (the tube demo), one machine, float32, between 24 and 16 and 2 CPUs. The mechanism
+      is not established. Other experiments, other precisions and other environments (a GPU, another CPU model) were
+      not tried, and the BLAS count's share of these differences was not separated from the CPU count's.
+    workaround: "Verify at the counts, and on the machine, the folder was saved on, where the comparison is bit for bit; across environments, read each moved line against its field's scale, and know that the tube demo's twist and drag asymmetry move by about 1e-3 of their largest element between CPU counts"
+    planned_resolution: "U17: scale-relative across-environment comparison, with its tolerance set from measurement (this entry's sizes are the starting table), per field"

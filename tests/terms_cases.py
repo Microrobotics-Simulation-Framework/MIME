@@ -107,7 +107,7 @@ _reference_runs: dict[int, object] = {}
 def same_reference_run() -> Iterator[None]:
     """Every save's reference outputs, the toy's first steps, run once and reused: they are a run of the toy's graph,
     which no layer, licence or terms changes, and the tests of terms read none of them. A save is otherwise real."""
-    real = _experiment.BuiltExperiment._fresh_history
+    real = _experiment.BuiltExperiment._reference
 
     def cached(self: _experiment.BuiltExperiment, steps: int) -> object:
         if steps not in _reference_runs:
@@ -115,5 +115,5 @@ def same_reference_run() -> Iterator[None]:
         return _reference_runs[steps]
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(_experiment.BuiltExperiment, "_fresh_history", cached)
+        patch.setattr(_experiment.BuiltExperiment, "_reference", cached)
         yield

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from mime.env._host import cpu_record
+from mime.env._host import blas_threads, cpu_record
 from mime.experiment import Experiment
 from mime.results import RunResult
 from mime.saved import DOCUMENT_FILE, LOCK_FILE, read_folder
@@ -30,6 +30,9 @@ TEXT = (".json", ".yaml", ".yml", ".lock", ".usda", ".txt", ".urdf")
 
 #: Whether this machine can read the CPU's flags (Linux), which a load needs to call an environment the same one.
 FLAGS_READABLE = cpu_record()["flags_sha256"] is not None
+#: Whether this machine's SciPy ships the OpenBLAS whose thread pool the lock records; where it does not (the macOS
+#: runner's), the count is unreadable and never the same as another.
+BLAS_READABLE = blas_threads() is not None
 
 
 def mime_command(*arguments: str, cwd: Path, **environment: str) -> subprocess.CompletedProcess[bytes]:
@@ -102,8 +105,10 @@ def test_off_linux_the_only_difference_from_the_environment_a_save_was_made_in_i
         assert report.same_environment and report.environment == ()
     else:
         assert not report.same_environment
-        assert len(report.environment) == 1 and report.environment[0].startswith("cpu.flags_sha256:"), report.environment
-        assert "unreadable" in report.environment[0]
+        assert report.environment[-1].startswith("cpu.flags_sha256:"), report.environment
+        assert len(report.environment) == (1 if BLAS_READABLE else 2), report.environment
+        assert all("unreadable" in line for line in report.environment)
+        assert BLAS_READABLE or report.environment[0].startswith("blas_threads:"), report.environment
 
 
 def test_a_run_through_the_command_writes_a_folder_the_library_reads_and_the_command_verifies(saved, tmp_path):

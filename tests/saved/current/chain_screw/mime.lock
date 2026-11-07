@@ -250,6 +250,7 @@
   }
  ],
  "environment": {
+  "blas_threads": 24,
   "cpu": {
    "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
    "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
@@ -268,14 +269,15 @@
   "python": "3.14.5",
   "runner": {},
   "runner_info": {},
+  "usable_cpus": 24,
   "usd_core": "26.11",
   "x64": true,
   "xla_flags": ""
  },
  "hashes": {
   "derived": "sha256:a5fe214b3dbd9851d5859c47c80c10610955ae5d6c2ac6f64c4292ad68824de2",
-  "document": "sha256:a24c2ddc26f6a6c698d3f2e3d93c3112d89fe33ddf1b42166932d6649ca491e2",
-  "input": "sha256:fc054982adcc5a082432bec7a00a0b941e0cb98ef0d3198193d74e92b829f053",
+  "document": "sha256:53067fa922ef5ad576289c062cdf9267d9a5077d7767342ea238fa5d273acfc3",
+  "input": "sha256:d7661b1a1d5faa8f83ca0056e7c989aec3cba216642aea58dbb952612b9a2336",
   "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
   "recipe": "mime.hash/1"
  },
@@ -685,7 +687,7 @@
    "mime": "0.3.0.dev1"
   }
  },
- "schema": "mime.lock/7",
+ "schema": "mime.lock/8",
  "seeds": {},
  "stage": {
   "file": "scene/scene.usda",

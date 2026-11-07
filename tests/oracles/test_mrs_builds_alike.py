@@ -13,9 +13,12 @@ attributed to JAX in general.
 The screw and a cylinder (whose caps take the same layout) are each built, at a coarse spacing so that a build takes
 seconds, three times in a fresh process (float32 is the default, and the first build of a process is the one in
 question; this process has built before), and the held matrix of each is read. The path a user meets has a process of
-its own: the screw's first build is run, then saved, and that run is compared with the reference the save wrote. The
-controls hand the layout out as the one cached array, as it was: the first build then differs from the second and
-third, and its run is reported moved against the saved reference, on every run (nothing in them is drawn).
+its own: the screw's first build is run, then saved, and that run is compared with the reference the save wrote, which
+saved form 8 takes from the run's own graph (the first build's); ``verify`` then reruns it on a graph built afresh (a
+later build's). The controls hand the layout out as the one cached array, as it was: the first build then differs from
+the second and third, and ``verify`` reports the first build's saved reference moved from step 0, on every run (nothing
+in them is drawn). Before form 8 a save took its reference from a later build, so there the run was the one reported
+moved; the first build's difference is seen either way.
 
 The builds are compared with each other; that the held matrix is the float64 one is not asserted here. The layout's
 samples are pinned against an extended-precision reference by ``tests/scene/test_screw_caps.py``, which kills a layout
@@ -64,7 +67,8 @@ THREE_BUILDS = PRELUDE + """
 print(json.dumps({"held": [held(build()) for _ in range(3)]}))
 """
 
-#: The first build of the process, run, saved, and that run compared with the reference the save wrote; then ``verify``.
+#: The first build of the process, run, saved (the reference from its own graph), and that run compared with the
+#: reference the save wrote; then ``verify``, on a later build.
 FIRST_BUILD_RUN = PRELUDE + """
 from mime.saved import verify_history
 from mime.testing._saved import first_steps
@@ -110,13 +114,13 @@ def test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_fro
 
 def test_the_first_build_of_a_process_run_agrees_with_the_reference_it_saves(tmp_path):
     """The path a user meets: in a script the process's first build is run and saved, and that run is compared with
-    the saved reference (a later build's); ``verify`` reruns the reference."""
+    the saved reference (the first build's own); ``verify`` reruns the reference on a later build."""
     done = first_build_run("as_handed_out", tmp_path)
     assert done["moved"] == [] and done["verify_moved"] == []
 
 
-def test_control_the_first_build_run_with_the_layout_as_one_cached_array_moves_the_resistance_from_step_0(tmp_path):
+def test_control_the_first_build_saved_with_the_layout_as_one_cached_array_fails_verify_from_step_0(tmp_path):
     done = first_build_run("as_cached", tmp_path)
-    moved = [line for line in done["moved"] if line.startswith(MOVED)]
-    assert len(moved) == 1 and "first at step 0" in moved[0], done["moved"]
-    assert done["verify_moved"] == [], done["verify_moved"]  # verify compares two later builds, either way
+    assert done["moved"] == [], done["moved"]  # the run and its saved reference are both the first build's
+    moved = [line for line in done["verify_moved"] if line.startswith(MOVED)]
+    assert len(moved) == 1 and "first at step 0" in moved[0], done["verify_moved"]

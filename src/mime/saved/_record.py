@@ -22,12 +22,14 @@ from mime.build._plan import EntryPlan
 from mime.build._stage import stage_manifests
 from mime.data import Asset, asset_source
 from mime.env._host import (
+    blas_threads,
     cpu_record,
     deterministic,
     gpu_record,
     matmul_precision,
     runner_info,
     runner_record,
+    usable_cpus,
     xla_flags,
 )
 from mime.materials import RECORDS, LoadedRecord
@@ -92,8 +94,9 @@ from mime.vocabulary import MIME_NAMESPACE, namespace_of
 def environment() -> EnvironmentRecord:
     """What this process builds under: the versions that decide what a build computes, the platform, the device,
     the precision and the PRNG's implementation and flag (the values drawn for a key depend on both); and what no pin
-    holds: the GPU and its driver and libraries, the CPU, the matmul precision, XLA's flags and its deterministic
-    mode, and the runner's own record (``MIME_RUNNER``) and information (``MIME_RUNNER_INFO``, never compared)."""
+    holds: the GPU and its driver and libraries, the CPU, how many of its CPUs the process may use and how many threads its BLAS
+    uses, the matmul precision, XLA's flags and its deterministic mode, and the runner's own record (``MIME_RUNNER``) and information
+    (``MIME_RUNNER_INFO``, never compared)."""
     from mime import __version__
 
     config = cast(Any, jax.config)
@@ -112,6 +115,8 @@ def environment() -> EnvironmentRecord:
         "prng": f"{config.jax_default_prng_impl} (jax_threefry_partitionable={config.jax_threefry_partitionable})",
         "gpu": cast(GpuRecordDoc | None, gpu_record()),
         "cpu": cast(CpuRecordDoc, cpu_record()),
+        "usable_cpus": usable_cpus(),
+        "blas_threads": blas_threads(),
         "matmul_precision": matmul_precision(),
         "xla_flags": flags,
         "deterministic": deterministic(flags),

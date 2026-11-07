@@ -35,9 +35,11 @@ from mime.build._refusals import MIME_DEFECT
 from mime.materials import RECORDS
 from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
-from mime.saved._schema import DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument, Json, Lock, ReferenceRecord, conforms
+from mime.saved._schema import DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument, Json, Lock, ReferenceProgram, \
+    ReferenceRecord, conforms
 from mime.saved._versions import (
     BASED_ON_ADDED,
+    COUNT_KEYS,
     CURRENT,
     DOCUMENT_SCHEMAS,
     DURATION_ADDED,
@@ -45,12 +47,14 @@ from mime.saved._versions import (
     NEW_RUNG,
     OLD_RUNG,
     PREVIOUS_PROFILE,
+    PROGRAM_ADDED,
     TERMS_ADDED,
     added_after,
     based_on_held,
     duration_held,
     newer_form_refusal,
     physics_in_form,
+    program_keys_held,
     resolved_in_form,
     terms_keys_held,
     upgraded_document,
@@ -104,9 +108,10 @@ def lock_text(lock: Lock | Mapping[str, object]) -> str:
 
 
 def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mapping[str, np.ndarray]],
-                 steps: int) -> Lock:
+                 steps: int, program: ReferenceProgram | None = None) -> Lock:
     """Write the document, the lock and the reference outputs (``history``, every field over ``steps`` steps,
-    with the static arrays beside them) into ``folder``."""
+    with the static arrays beside them, run by ``program``: the history scan of whole control periods where it is
+    ``None``) into ``folder``."""
     if record.unsavable or record.document is None:
         raise BuildRefused(record.unsavable)
     folder.mkdir(parents=True, exist_ok=True)
@@ -116,6 +121,8 @@ def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mappin
     np.savez(folder / REFERENCE_FILE, allow_pickle=False, **arrays)
     reference: ReferenceRecord = {"file": REFERENCE_FILE, "sha256": arrays_hash(arrays), "steps": steps,
                                   "rtol": DEFAULT_RTOL, "atol": DEFAULT_ATOL}
+    if program is not None:
+        reference = {**reference, "program": program}
     lock = record.lock(reference)
     stage = lock["stage"]
     (folder / stage["file"]).parent.mkdir(parents=True, exist_ok=True)
@@ -343,6 +350,11 @@ def read_folder(folder: Path, *, absent_referenced: bool = False) -> SavedForm:
             if added:
                 problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version "
                             f"{TERMS_ADDED} of the saved form added", *problems]
+            added = program_keys_held(data) if lock_version < PROGRAM_ADDED else []
+            if added:
+                problems = [f"a {LOCK_SCHEMAS[lock_version]} lock holds {', '.join(added)}, which version "
+                            f"{PROGRAM_ADDED} of the saved form added: a lock of an earlier version names no program "
+                            f"and records no count of CPUs", *problems]
             if lock is not None:
                 problems = lock_text_problems(lock)
                 lock = lock if not problems else None
@@ -557,16 +569,20 @@ def _differences_of(key: str, saved: object, here: object) -> list[str]:
         return [f"{key}.{name}: built under {held[name]!r}, loaded under {now[name]!r}"
                 + (" (unreadable, so not the same)" if held[name] is None or now[name] is None else "")
                 for name in sorted(now) if held.get(name) is None or now[name] is None or held[name] != now[name]]
+    if key in COUNT_KEYS and (saved is None or here is None):
+        return [f"{key}: built under {saved!r}, loaded under {here!r} (unreadable, so not the same)"]
     if saved != here:
         return [f"{key}: built under {saved!r}, loaded under {here!r}"]
     return []
 
 
 def environment_differences(lock: Lock) -> list[str]:
-    """Every way this process differs from the one the lock was written in, the runner's information aside."""
+    """Every way this process differs from the one the lock was written in, the runner's information aside. A lock of a
+    form before version 8 records neither count (of usable CPUs, of BLAS threads), and is compared without them, as it
+    was. A count either side could not read is never equal to anything, as a device's field is not."""
     here = cast(dict[str, object], environment())
     saved = cast(dict[str, object], lock["environment"])
-    found = [line for key in sorted(here) if key not in INFORMATION_ONLY
+    found = [line for key in sorted(here) if key not in INFORMATION_ONLY and (key in saved or key not in COUNT_KEYS)
              for line in _differences_of(key, saved[key], here[key])]
     return found + _distribution_versions(lock["entries"])
 
@@ -582,7 +598,7 @@ class LoadReport:
     derived: str
     derived_differences: tuple[str, ...] = ()
     derived_prims_edited: tuple[str, ...] = ()
-    #: The saved form's version (``mime.document/7``), and the profile the experiment is read under.
+    #: The saved form's version (``mime.document/8``), and the profile the experiment is read under.
     schema: str = DOCUMENT_SCHEMA
     profile: str = PREVIOUS_PROFILE
     version: int = CURRENT

@@ -19,7 +19,7 @@ with one BLAS thread as the saved tests run, from the full toy with its run's le
 
 Its files are pinned by their sha256. Like every folder of an earlier form here, it is re-stamped at a release's version
 bump (``restamp_version.py``), which moves the pins of its document and lock and nothing else. A child of it saves as
-form 7, loads against its own lock, rebuilds and reproduces its reference steps: a child whose lock was hashed in the
+the current form, loads against its own lock, rebuilds and reproduces its reference steps: a child whose lock was hashed in the
 parent's form is refused at that load. Which MIME each string names is held apart from the MIME running: with the
 running MIME a release (patched in, never in the repository) and the parent's lock edited to name an earlier one
 (outside the input hash), the record names the parent's and the child's lock the running one, three strings that all
@@ -345,18 +345,18 @@ def test_the_released_parent_is_the_folder_the_wheel_wrote_byte_for_byte():
     assert document["run"]["duration"] == RELEASED_DURATION and lock["reference"]["steps"] > 0
 
 
-def test_a_child_of_a_folder_the_released_wheel_saved_saves_as_form_seven_loads_rebuilds_and_reproduces(
+def test_a_child_of_a_folder_the_released_wheel_saved_saves_in_the_current_form_loads_rebuilds_and_reproduces(
         tmp_path: Path):
     parent = Path(shutil.copytree(RELEASED, tmp_path / "timed_toy"))
     loaded = Experiment.load(parent)
     assert loaded.load_report is not None
     assert loaded.load_report.text().splitlines()[1:3] == [
-        "saved form: mime.document/6, read as version 7", "input hash: reproduced exactly"]
+        "saved form: mime.document/6, read as version 8", "input hash: reproduced exactly"]
     assert loaded.build().verify().reproduced, "the parent, its run's length declared in form 6, loads and verifies"
     with untouched(parent):
         child = based_on_edited_saved(parent, tmp_path / "child", name="stiffer_timed_toy")
     parent_lock, document = lock_of(parent), document_of(child)
-    assert (document["schema"], lock_of(child)["schema"]) == ("mime.document/7", "mime.lock/7")
+    assert (document["schema"], lock_of(child)["schema"]) == ("mime.document/8", "mime.lock/8")
     assert document["based_on"] == {"experiment": "timed_toy", "input_hash": parent_lock["hashes"]["input"],
                                     "mime": parent_lock["environment"]["mime"]}
     assert document["run"]["duration"] == RELEASED_DURATION, "the run's length is the parent's"

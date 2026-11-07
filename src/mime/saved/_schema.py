@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/7"
-LOCK_SCHEMA = "mime.lock/7"
+DOCUMENT_SCHEMA = "mime.document/8"
+LOCK_SCHEMA = "mime.lock/8"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -339,9 +339,11 @@ class ExperimentDocument(TypedDict, closed=True):
     Version 5 adds ``run.duration``, the length of a run of the experiment, absent where it declares none. Version 6
     adds nothing to the document; its schema moves with the lock's, which holds an asset's full record and the
     manifests of the meshes its stage draws. Version 7 adds ``based_on``, the saved experiment this one was made from
-    (``Experiment.based_on``), absent where it was made from none."""
+    (``Experiment.based_on``), absent where it was made from none. Version 8 adds nothing to the document; its schema
+    moves with the lock's, which records the program the reference outputs were run by, the CPUs the build could use
+    and the threads of its BLAS."""
 
-    schema: ReadOnly[Literal["mime.document/7"]]
+    schema: ReadOnly[Literal["mime.document/8"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -383,10 +385,12 @@ class CpuRecordDoc(TypedDict, closed=True):
 
 class EnvironmentRecord(TypedDict, closed=True):
     """What a build ran under. A load compares it and reports every difference; it never refuses on one. Besides the
-    versions, the platform, the device and the precision: the GPU (``None`` on a CPU) and the CPU, the matmul
-    precision, XLA's flags and whether they turn its deterministic GPU mode on, the runner's own record of strings,
-    which MIME stores and compares and never reads, and the runner's information, strings it stores and never compares
-    (a workspace's image ID, a client's version)."""
+    versions, the platform, the device and the precision: the GPU (``None`` on a CPU) and the CPU, how many CPUs the
+    process could use (version 8; ``None`` where the system did not say), how many threads its BLAS used (version 8; ``None`` where
+    it could not be read), the matmul precision, XLA's flags and whether
+    they turn its deterministic GPU mode on, the runner's own record of strings, which MIME stores and compares and
+    never reads, and the runner's information, strings it stores and never compares (a workspace's image ID, a client's
+    version). A lock of version 7 or earlier records neither count, and a load compares it without them, as it did."""
 
     mime: ReadOnly[str]
     maddening: ReadOnly[str]
@@ -401,6 +405,13 @@ class EnvironmentRecord(TypedDict, closed=True):
     prng: ReadOnly[str]
     gpu: ReadOnly[GpuRecordDoc | None]
     cpu: ReadOnly[CpuRecordDoc]
+    #: How many CPUs the process could use (``mime.env._host.usable_cpus``): XLA's CPU backend partitions a program's
+    #: work by it, so another count is another environment (version 8).
+    usable_cpus: NotRequired[ReadOnly[int | None]]
+    #: How many threads the BLAS under JAX's CPU LAPACK kernels uses (``mime.env._host.blas_threads``, SciPy's
+    #: OpenBLAS pool): a routine split over them sums in another order, so another count is another environment
+    #: (version 8).
+    blas_threads: NotRequired[ReadOnly[int | None]]
     matmul_precision: ReadOnly[str | None]
     xla_flags: ReadOnly[str]
     deterministic: ReadOnly[bool]
@@ -707,15 +718,23 @@ class DerivedRecord(TypedDict, closed=True):
     observations: ReadOnly[dict[str, Json]]
 
 
+#: The program the reference outputs were run by, where it is not the history scan of whole control periods: every
+#: step its own compiled scan (``one-step``), the program a run chunked by one step runs.
+type ReferenceProgram = Literal["one-step"]
+
+
 class ReferenceRecord(TypedDict, closed=True):
     """The golden outputs ``verify`` reruns against: every field of every node over the first ``steps`` steps, in
-    ``file``, with the tolerance used across environments (within one environment they match bit for bit)."""
+    ``file``, with the tolerance used across environments (within one environment they match bit for bit), and the
+    program that ran them where it is not the history scan of whole control periods (version 8): ``verify`` runs the
+    same one, since two programs of the same steps can differ in their last bits."""
 
     file: ReadOnly[str]
     sha256: ReadOnly[str]
     steps: ReadOnly[int]
     rtol: ReadOnly[float]
     atol: ReadOnly[float]
+    program: NotRequired[ReadOnly[ReferenceProgram]]
 
 
 class RecordFileRecord(TypedDict, closed=True):
@@ -779,7 +798,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/7"]]
+    schema: ReadOnly[Literal["mime.lock/8"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -933,7 +952,8 @@ __all__ = [
     "HashRecord", "Json",
     "Lock", "MagnetDoc", "ManifestFileRecord", "ManifestRecord", "MagnetRecord", "MaterialDoc", "NominalDoc",
     "PartDoc", "PartRecord", "QuantityDoc",
-    "PublicationRecord", "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceRecord",
+    "PublicationRecord", "ReadRecord", "RecordDoc", "RecordFileRecord", "ReferenceDoc", "ReferenceProgram",
+    "ReferenceRecord",
     "RegistrationRecord", "RemoteAssetRecord",
     "ResolvedController", "ResolvedEntry", "ResolvedMaterials", "ResolvedRecord", "ResolvedRun", "ResolvedScene",
     "RunDoc", "SceneDoc", "SegmentDoc", "SettingValue", "SlotRecord", "StageRecord", "ThingDoc", "ValueRecord",
