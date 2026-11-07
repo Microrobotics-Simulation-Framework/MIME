@@ -1,0 +1,25 @@
+{
+  "written": "2026-11-08T04:40+01:00, before any gate case of tests/study ran",
+  "seen_before": "one smoke run of the machinery (script A, float32, 4 points over the frequency and the mass, 0.1 s, the default 1 OpenBLAS thread): a member against its own overridden run differed by at most 0.012 eps of a field's scale. Not a gate case: fewer points, a tenth of the duration, no series compared.",
+  "gate_1": {
+    "case": "script A's reproduction arm, 8 points: field.commands.frequency in {10, 20, 30, 40} Hz (every one below the 43.25 Hz from-rest bracket, so locked) by umr.mass in {8.0e-5, 9.0e-5} kg; 1 s (2000 steps); swim_speed:umr.speed recorded every step; each member against run(override=...) of its point on a fresh build of the base",
+    "compared": "every field of the final state, and the recorded series",
+    "rule": "per field, max |member - reference| <= tolerance_eps * eps(dtype) * scale, the scale being the reference field's largest magnitude over what is compared (the final value's components; the series over its samples and components); a field whose scale is zero, and every integer field, compared exactly",
+    "tolerance_eps": {"float32": 150, "float64": 300},
+    "largest_miss_expected_eps": {"float32": 20, "float64": 60},
+    "reasoning": "probe B (5 s, locked set L, 4 CPUs, OpenBLAS 4): members against their own unbatched pure scans 1 to 51 eps (float32) and 1 to 66 eps (float64), the torque's wrench worst; in float64 the unbatched pure scan against MIME's own run added 41 eps, in float32 none. The reference here is MIME's own run, so float64 can carry both (about 66 + 41 = 107 eps at 5 s); these runs are a fifth as long, so I expect a third to a half of that. The tolerances are about three times the probe's 5 s figures, and well below the controls' sizes.",
+    "controls": {
+      "frequency_moved_1e-6": "one member's frequency leaf moved by 1e-6 relative: its field turns 2 pi f t 1e-6 = 1.3e-4 rad further by 1 s at 20 Hz, so its pose moves by about 1e3 float32 eps and 6e11 float64 eps of the quaternion's scale: fails both tolerances on every run",
+      "neighbour_shift": "every member given its neighbour's parameters (an index shift): the frequencies differ by 10 Hz or the masses by 12 %: fails by orders of magnitude"
+    },
+    "coupled_toy": "the full toy (a coupling group, an observation at half the base rate), float64, 8 points over the probe's spring stiffness: members within 300 eps as above; expected near 0 (S10: 1.3e-15 relative, a few eps)"
+  },
+  "bit_for_bit": {
+    "batch_of_one": "a batch of 1 member is bit for bit its own unbatched pure scan (the same scan, unvmapped), in float32 and float64 (probe B)",
+    "chunks": "batched chunks of 2, 10 and the whole run are bit for bit each other, in both dtypes (probe C); a chunk of 1 is not claimed",
+    "override_at_base": "run(override=...) with the base's own values runs the base's compiled program: bit for bit run() without one",
+    "batches_of_2_to_16": "not bit for bit their own runs, and no lane claimed bit for bit (probe B)"
+  },
+  "gate_2": "a group of 8 points compiles once in its run (one batch, one chunk length); a planted node whose static is derived from the swept leaf splits the study into one group per value",
+  "counts_at": "every bit-for-bit claim above at the usable CPU count and OpenBLAS thread count the test runs at, as CI's lane and a local run each hold them (MIME-ANO-140, -141)"
+}
