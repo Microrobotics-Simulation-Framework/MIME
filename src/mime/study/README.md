@@ -44,7 +44,9 @@
   its values declared. The readings name their quantity and never mix them: `step_out(result, lag, axis)` the bracket
   from rest over a swept frequency at each value of the other axes (each member's mean spin over its frequency against
   `threshold=0.99`), `ramp_crossings(result, lag, window=...)` where each ramp's member steps out (`ramp up`) or is caught (`ramp
-  down`), from the spin recorded every step over sliding windows, against the frequency the ramp commanded.
+  down`), from the spin recorded every step over sliding windows, against the frequency the ramp commanded. Each member's start is read first, over the last window of the hold: a ramp
+up from a body that is not locked there, and a ramp down from one that is, report that start (`Crossing.read` false),
+never the start frequency as a step-out or a catch.
 
 ## Boundaries
 

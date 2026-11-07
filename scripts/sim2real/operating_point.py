@@ -77,6 +77,26 @@ FROZEN_DYNAMICS = {"rigid_inertial": "0.2.0"}
 #: dated amendment moves them, through ``pinned_law``; ``tests/differential/test_frozen_register_pins.py`` fails on any
 #: other version.
 FROZEN_INTERACTIONS = {"drag": "0.3.0", "magnetic.torque": "0.1.0", "gravity": "0.1.0", "contact": "0.1.0"}
+#: The field providers' versions it froze: ``uniform_rotating`` 0.1.0 makes the phase as ``2 pi f t``, 0.2.0 holds it as
+#: the integral of the frequency in a pair of floats (a constant frequency's field differs from 0.1.0's by that version's
+#: own rounding of the phase, so a register run on 0.2.0 moves in its last bits). Every field built here is at these until
+#: a dated amendment moves them, through ``pinned_field``; ``tests/differential/test_frozen_register_pins.py`` fails on any
+#: other version.
+FROZEN_FIELDS = {"uniform_rotating": "0.1.0"}
+
+
+def pinned_field(provider: Any) -> Any:
+    """``provider`` at the version :data:`FROZEN_FIELDS` names for it: itself where it is that version, or the same
+    settings on the version ``mime.fields.KEPT`` keeps registered."""
+    from dataclasses import fields
+
+    from mime.fields import KEPT
+
+    version = FROZEN_FIELDS[provider.name]
+    if provider.version == version:
+        return provider
+    held, _ = KEPT[(provider.name, version)]
+    return held(**{f.name: getattr(provider, f.name) for f in fields(provider) if f.init})
 
 
 def pinned_law(law: Any) -> Any:
@@ -156,7 +176,7 @@ def experiment(rung: str = "surrogate", *, name: str = "script_a_7ja", weights: 
         position=mm(start_mm), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
         angular_velocity=rad_per_s((0.0, 0.0, 0.0))), parts={"shell": Part(pinned(A.fl9()))}))
     field = built.add_apparatus(Apparatus("field", fields={
-        "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
+        "magnetic": pinned_field(UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0)))},
         commands={"frequency": Hz(frequency_hz), "amplitude": mT(amplitude_mT)}))
     volume = float(A.VOLUME.value)
     mass = float(A.MASS.value) if body_density is None else body_density * volume
@@ -193,7 +213,15 @@ def same_as_script_a(built: Any) -> list[str]:
     its nodes in order, its edges, and every parameter leaf, bitwise. Empty when it is that arm."""
     from mime.build._maddening import graph_edges, graph_schedule
 
-    reference = A.reproduction_arm().build()
+    # Script A's arm too is built on the field the register froze, as the register's own arm is (FROZEN_FIELDS).
+    from mime.fields import KEPT as KEPT_FIELDS
+
+    current = A.UniformRotating
+    A.UniformRotating = KEPT_FIELDS[("uniform_rotating", FROZEN_FIELDS["uniform_rotating"])][0]
+    try:
+        reference = A.reproduction_arm().build()
+    finally:
+        A.UniformRotating = current
     found: list[str] = []
     if graph_schedule(built.graph) != graph_schedule(reference.graph):
         found.append(f"schedule {graph_schedule(built.graph)} != {graph_schedule(reference.graph)}")

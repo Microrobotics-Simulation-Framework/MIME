@@ -133,8 +133,8 @@ IntegratingRotatingNode \mathbf{B}  # pinned at landing
 IntegratingRotatingNode G  # pinned at landing
 IntegratingRotatingNode B_{0}  # pinned at landing
 IntegratingRotatingNode f_{n}  # pinned at landing
-IntegratingRotatingNode f_{n-1}  # pinned at landing
-IntegratingRotatingNode C_{n}  # pinned at landing
+IntegratingRotatingNode \Theta_{n}  # pinned at landing
+IntegratingRotatingNode \theta_{n}  # pinned at landing
 IntegratingRotatingNode \mathbf{a}  # pinned at landing
 IntegratingRotatingNode \mathbf{d}  # pinned at landing
 IntegratingRotatingNode n  # pinned at landing

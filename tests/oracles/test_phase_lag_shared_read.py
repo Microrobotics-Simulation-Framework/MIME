@@ -173,9 +173,11 @@ def test_the_observation_shares_the_slot_of_the_law_that_reads_its_interface_and
     assert (lag["flux_density"].node, lag["flux_density"].field) == (torque["flux_density"].node,
                                                                        torque["flux_density"].field)
     assert "magnetic_force" not in lag["flux_density"].field
-    named = built.report.checked[LAG]
+    named = [line for line in built.report.checked[LAG] if line.startswith("reads ")]
     assert len(named) == 1 and f"where {TORQUE} reads it, {FIELD}.{SLOT}" in named[0]
     assert "magnetic.force" not in named[0]
+    (lag_line,) = (line for line in built.report.checked[LAG] if line.startswith("the lag is"))
+    assert "magnetic.force" not in lag_line, "a law that reads the gradient is not one that turns the body here"
     assert any(line.startswith(f"validity of {LAG} (computed at build): reads") for line in built.report.summary())
 
 

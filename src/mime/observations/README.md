@@ -23,8 +23,9 @@
 direction each step, and its mean over the steps that end after `after`, kept in its own node's state.
 
 **`PhaseLag(body, field=..., about=tube.axis, after=...)`** (`phase_lag` 0.1.0): the angle from the field to the
-body's moment in the plane of rotation each step, net of the step the magnetic laws read the body's pose behind (the
-build report's lags), and the body's spin about the axis in turns per second, with their means over the steps that end
+body's moment in the plane of rotation each step, net of the lag the build declares for the laws bound to the body and the field (the build report's lags: the
+magnetic torque reads the pose a step behind, unless a coupling group solves it with the body, and a build whose laws
+disagree is refused, `observation.lag-ambiguous`), and the body's spin about the axis in turns per second, with their means over the steps that end
 after `after`. An observation reads a uniform field where a law already reads the same interface of it (the flux
 density where the torque reads it, never where the force reads the gradient), adding no slot to its provider (so the
 provider's node is what it is without the observation); the build report names the law, among the lines the build

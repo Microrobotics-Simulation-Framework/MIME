@@ -21,11 +21,12 @@ Each provider builds one node, with one reader slot per thing that reads it.
 **`UniformRotating`** (`uniform_rotating` 0.2.0): a uniform magnetic field turning
 right-handed about `rotation_axis` (`tube.axis`, by reference) from `initial_direction`, at its commands `frequency`
 and `amplitude`, which drives or a controller write; its phase is the integral of its frequency, each step's held over
-the step, so a frequency may change during a run (a ramp, `drives.Ramp`). It holds the phase by summation by parts, as
-the frequency times the time less a correction kept as a fraction of a turn, so its rounding does not grow with the
-run, and for a constant frequency it computes 0.1.0's field to the last bit; its time is its step count times its
-timestep, never a sum (0.2's float32 sum
-drifted by about 1e-4 in phase). It claims `Capability.UNIFORM`, so its
+the step, so a frequency may change during a run (a ramp, `drives.Ramp`). It holds the phase in turns as a pair of
+floating numbers, to which each step adds the frequency times the timestep as an exact product by an error-free sum,
+so that the phase's error does not grow with the turns the run has made (in float32 it stays within the spacing of an
+angle in a turn of the integral of the frequencies written, at the end of a long run as at its start), where the frequency times the
+time carries a rounding of the phase's own size. For a constant frequency it is no longer 0.1.0's field to the last
+bit: 0.1.0's product carries that rounding. Its step is the node's own timestep, never a sum of traced steps. It claims `Capability.UNIFORM`, so its
 readers' slots take no points; its gradient is zero. Version 0.1.0, whose phase is the present frequency times the
 time (MIME-ANO-139), is kept registered for saved folders (`KEPT`), and refuses any writer of its frequency but a
 constant drive (`command.held-constant`). A provider declares the commands it reads as constant over a run

@@ -19,6 +19,7 @@ the pose as the previous step and the observation's as this step, one step apart
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Iterator
 
@@ -29,7 +30,7 @@ from mrs_cases import drag_node
 from regularised_sphere import regularised_rotational_drag
 from rigid_oracles import ConstantResistance, resistance
 
-import mime.observations._phase_lag as phase_lag_module
+import mime.build._declared_lags as declared_lags_module
 from mime import Apparatus, Body, Experiment, Medium, State
 from mime.build import BuildRefused, Lag
 from mime.build._maddening import parameter_leaves
@@ -156,22 +157,82 @@ def test_control_the_lag_without_its_correction_misses_by_omega_dt(sphere, float
 
 
 def test_mutant_phase_lag_without_its_correction_fails_the_gate(float64, monkeypatch):
-    monkeypatch.setattr(phase_lag_module, "LAWS_READ_BEHIND", 0)
+    """The build's declared lag planted at zero steps (the torque's pose read taken as this step's): the node is built
+    net of nothing, and the gate fails by ``omega dt``."""
+    monkeypatch.setattr(declared_lags_module, "STEPS_BEHIND", {**declared_lags_module.STEPS_BEHIND,
+                                                              Lag.PREVIOUS_STEP: 0})
     lag, _ = lag_and_spin(constant(5e-4).build())
     assert abs(lag - PHI) > 10 * EXACT
     assert abs(abs(lag - PHI) - OMEGA * 5e-4) < 1e-6
 
 
-def test_the_correction_is_the_lag_the_build_reports(float64):
-    """The torque reads the pose a step behind the observation, and the field in the same step: the report's lags."""
+def lag_series(built: BuiltExperiment) -> tuple[np.ndarray, np.ndarray]:
+    history = built.run(s(0.05), history=True).history
+    assert history is not None
+    return np.asarray(history[LAG]["lag"], np.float64), np.asarray(history[LAG]["spin"], np.float64)
+
+
+def test_a_declared_lag_of_two_steps_is_removed_exactly(float64, monkeypatch):
+    """The lag removed is the one the build declares, not a constant of the observation: plant the torque's pose read
+    two steps behind the observation's (the build's declaration, not the physics: the body's motion is the same run)
+    and the lag moves from the one-step lag by exactly one more step of the body's turn, ``2 pi spin dt``, at every
+    step. The node built with the lag fixed at one step does not move, so it fails this on every run."""
     built = constant(5e-4).build()
-    lags = {edge.text: edge.lag for edge in built.report.lags}
-    assert lags["ball.pose -> magnetic.torque:ball.pose"] is Lag.PREVIOUS_STEP
-    assert lags["ball.pose -> phase_lag:ball.pose"] is Lag.THIS_STEP
-    field = next(text for text in lags if text.endswith("-> magnetic.torque:ball.flux_density"))
-    assert lags[field] is Lag.THIS_STEP
-    assert lags[field.replace("magnetic.torque:ball.flux_density", "phase_lag:ball.flux_density")] is Lag.THIS_STEP
-    assert phase_lag_module.LAWS_READ_BEHIND == 1
+    assert built.graph.get_node(LAG).constants()["behind"] == 1.0
+    one, spin = lag_series(built)
+    monkeypatch.setattr(declared_lags_module, "STEPS_BEHIND", {**declared_lags_module.STEPS_BEHIND,
+                                                              Lag.PREVIOUS_STEP: 2})
+    planted = constant(5e-4).build()
+    assert planted.graph.get_node(LAG).constants()["behind"] == 2.0
+    two, spin_two = lag_series(planted)
+    assert np.array_equal(spin, spin_two), "the physics is the run it was"
+    step = 2.0 * math.pi * spin * 5e-4
+    moved = (two - one - step + math.pi) % (2.0 * math.pi) - math.pi
+    print(f"\nthe two-step lag against the one-step: largest miss of one more step's turn {np.max(np.abs(moved)):.2e} "
+          f"rad, against that turn's {np.max(step):.4f} rad")
+    assert np.max(np.abs(moved)) < 1e-12 and np.max(step) > 0.03
+
+
+def test_the_build_reports_the_lag_it_removed_and_the_edges_it_read(float64):
+    built = constant(5e-4).build()
+    (line,) = (c for c in built.report.checked[LAG] if c.startswith("the lag is"))
+    assert line.startswith("the lag is net of 1 step(s) of the body's turn: magnetic.torque:ball reads the body's pose by "
+                           "ball.pose -> magnetic.torque:ball.pose (previous step)")
+    assert "validity of phase_lag:ball (computed at build)" in built.report.text()
+    assert not any("net of" in text for text in built.report.validity.get(LAG, ())), "no longer a declared line"
+
+
+def planted_lags(built: BuiltExperiment, edge: str, lag: Lag) -> list:
+    """The build's lag accounting with the edge ``edge`` declared another lag."""
+    return [dataclasses.replace(e, lag=lag) if e.text == edge else e for e in built.report.lags]
+
+
+def test_a_law_in_a_coupling_group_with_the_body_reads_the_current_iterate_and_the_build_removes_no_lag(float64):
+    """The declared lag of the torque's pose read planted as the current iterate (a law solved with the body): nothing
+    to remove, where the one-step lag would be a step too many."""
+    built = constant(5e-4).build()
+    observation = next(p for p in built.plans.entries if p.owner == LAG)
+    lags = planted_lags(built, "ball.pose -> magnetic.torque:ball.pose", Lag.CURRENT_ITERATE)
+    steps, why = declared_lags_module.declared_lag(built.plans, observation, lags)
+    assert steps == 0 and "ball.pose -> magnetic.torque:ball.pose (current iterate)" in why
+    steps, _ = declared_lags_module.declared_lag(built.plans, observation, built.report.lags)
+    assert steps == 1, "control: as the build declares it"
+
+
+def test_a_lag_the_build_cannot_net_out_is_refused(float64):
+    """The torque reading the field a step behind the observation's read: the field's turn is not the body's to remove.
+    And two laws on the body and field that read the pose different numbers of steps behind."""
+    built = constant(5e-4).build()
+    observation = next(p for p in built.plans.entries if p.owner == LAG)
+    nodes = [built.graph.get_node(name) for name in built.graph.node_names]
+    flux = "field.magnetic.flux_density_magnetic_torque_ball -> magnetic.torque:ball.flux_density"
+    lags = planted_lags(built, flux, Lag.PREVIOUS_STEP)
+    steps, why = declared_lags_module.declared_lag(built.plans, observation, lags)
+    assert steps is None and "behind the observation's read" in why
+    _, refusals = declared_lags_module.net_of_declared_lags(built.plans, nodes, lags)
+    assert [r.code for r in refusals] == ["observation.lag-ambiguous"]
+    _, refusals = declared_lags_module.net_of_declared_lags(built.plans, nodes, built.report.lags)
+    assert refusals == [], "control: as the build declares it"
 
 
 def test_the_observation_reads_the_uniform_field_where_the_torque_reads_it_adding_no_slot(float64):

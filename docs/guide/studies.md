@@ -119,8 +119,12 @@ print(caught.text())   # member 0, ramp down: is caught at 31.73 Hz (276.087 s),
 
 Held at a high frequency from rest the body rocks; ramped down slowly it is caught below the from-rest step-out
 (`tests/study/test_ramp_relock.py`), and a body locked at a lower frequency and ramped up stays locked far past it,
-until a frequency far outside the drag's declared Reynolds number (the build warns of it before the run, and the
-post-run watch after it), which is about the model's limits, not the body's. The
+until a frequency far outside the drag's declared Reynolds number. The whole curve lies outside it, the from-rest
+and ramp-down readings as well (the build warns of it before the run, and the post-run watch after it), which is about the
+model's limits, not the body's. `ramp_crossings` reads the state a ramp starts from over the last window of its hold: a
+ramp up from a body that is not locked there, or a ramp down from one that is, reports that start and no crossing, since
+its start frequency would be the from-rest figure under another name (or no catch at all). A printed crossing does not
+carry the drag's validity status: read it from the build report's warning and the watch. The
 field must integrate its frequency for a ramp to mean what it says: `UniformRotating` 0.2.0 does, and 0.1.0, kept for
 saved folders, refuses a ramp. These figures are acceptance tests of the sweep and the inertial body, not claims about
 where a real body steps out.

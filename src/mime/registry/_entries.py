@@ -960,6 +960,11 @@ class Observation(Entry):
     id_roles: ClassVar[tuple[str, ...] | None] = None
     reads: ClassVar[Mapping[str, Read]] = _EMPTY
     outputs: ClassVar[tuple[Output, ...]] = ()
+    #: The roles ``(body, field)`` whose laws an observation is net of: the laws bound to that body and field read the
+    #: body's pose and the field a number of steps behind the observation's own read, as the build's lag accounting
+    #: declares (the build report's edges), and the build hands the difference to :meth:`net_of`. ``None`` for an
+    #: observation that is not net of any.
+    net_of_lag: ClassVar[tuple[str, str] | None] = None
     setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({
         "rate": convention(NUMERICAL, "an observation reads every base step unless the experiment chooses a slower "
                                       "rate")})
@@ -967,6 +972,12 @@ class Observation(Entry):
 
     def bindings(self) -> dict[str, Any]:
         return {role: getattr(self, role, None) for role in self.roles}
+
+    def net_of(self, node: Any, behind: int, why: str) -> Any:
+        """``node`` (the one this observation built) made net of ``behind`` steps, the lag the build declares for the
+        laws bound to its body and field, and ``why`` in words for the build report. Called once for an observation
+        with :attr:`net_of_lag`, after every edge's lag is classified and before the graph is made."""
+        raise NotImplementedError
 
     def plan(self, ctx: PlanContext) -> Plan:
         return Plan(reads=dict(self.reads))

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from dataclasses import field as setting
-from typing import TYPE_CHECKING, Annotated, Any, override
+from typing import TYPE_CHECKING, Annotated, Any, cast, override
 
 from mime.core import switch
 from mime.gradients import GradientStatus
@@ -30,11 +30,6 @@ from mime.vocabulary import FLUX_DENSITY, POSE, TWIST, Capability
 
 if TYPE_CHECKING:
     from mime.build import ObservationBuilder
-
-#: How many steps behind the end of a step the laws that turn a body read its pose: MIME's canonical order has every
-#: law read its body's published state as it stood at the start of the step (the build report's lags list
-#: ``<body>.pose -> <law>.pose`` as the previous step), and an observation read it at the step's end.
-LAWS_READ_BEHIND = 1
 
 
 @register_observation
@@ -77,21 +72,19 @@ class PhaseLag(Observation):
     ))
     references = ()
     validity = (
-        "net of a read of the body's pose one step behind the field's by the laws that turn it, as MIME's canonical "
-        "order plans a law outside a coupling group: a law that reads the pose inside a coupling group with the "
-        "body reads the current iterate, and the correction is a step too many there",
         "the turn back over the declared step is the body's spin about the axis times the step: exact for a body "
         "turning about the axis, as the rigid body turns by its new angular velocity; a tilting body's turn about "
         "other axes is not taken",
     )
     builds = {"": (PhaseLagNode,)}
     roles = {"body": RoleKind.BODY, "field": RoleKind.FIELD}
+    net_of_lag = ("body", "field")
     reads = {"pose": Read("body", POSE.name), "twist": Read("body", TWIST.name),
              "flux_density": Read("field", FLUX_DENSITY.name)}
     outputs = (
         Output("lag", DIMENSIONLESS, "the angle from the field to the body's moment in the plane of rotation, in "
-                                     "radians, positive where the field leads, net of the step the laws read the "
-                                     "pose behind, each step"),
+                                     "radians, positive where the field leads, net of the lag the build declares, "
+                                     "each step"),
         Output("spin", FREQUENCY, "the body's rate of turning about the field's axis, in turns per second, each "
                                   "step"),
         Output("mean_lag", DIMENSIONLESS, "the mean of the lag over the steps that end after the setting after, in "
@@ -130,11 +123,14 @@ class PhaseLag(Observation):
         return Plan(reads=reads, values={**values, "magnet_centre": Value("body", "magnet_centre")})
 
     @override
+    def net_of(self, node: Any, behind: int, why: str) -> PhaseLagNode:
+        return cast(PhaseLagNode, node).netted(behind, why)
+
+    @override
     def build(self, ctx: BuildContext, b: ObservationBuilder) -> None:
         moment = ctx.values["moment"]
         node = b.add_node(PhaseLagNode(ctx.node_name(), ctx.timestep,
                                        moment=moment if isinstance(moment, Sequence) else (moment,),
-                                       about=ctx.vector("about"), behind=float(LAWS_READ_BEHIND),
-                                       after=ctx.scalar("after")))
+                                       about=ctx.vector("about"), after=ctx.scalar("after")))
         for label in ("pose", "twist", "flux_density"):
             b.connect(b.read(label), into=node[label])

@@ -32,8 +32,6 @@ src/mime/docs/README.md  0.2  #1                                                
 src/mime/docs/README.md  0.3  #1                                                                   # present at D1-min
 src/mime/docs/README.md  0.2 0.2  #1                                                               # present at D1-min
 src/mime/dynamics/README.md  0.3  #1                                                               # present at D1-min
-src/mime/fields/README.md  0.2  #1                                                                 # present at D1-min
-src/mime/fields/README.md  1e-4  #1                                                                # present at D1-min
 src/mime/interactions/README.md  0.2 1  #1                                                         # present at D1-min
 src/mime/interactions/README.md  0.655  #1                                                         # present at D1-min
 src/mime/interactions/README.md  2.65 6.24  #1                                                     # present at D1-min

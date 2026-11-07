@@ -71,8 +71,8 @@ class PhaseLagNode(MimeNode):
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-121",
-        description="The angle from a field to a body's moment in the plane the field turns in, net of the step the "
-                    "laws that turn the body read its pose behind, and the body's spin about the field's axis, each "
+        description="The angle from a field to a body's moment in the plane the field turns in, net of the lag the "
+                    "build declares for the laws that turn the body, and the body's spin about the field's axis, each "
                     "step and their means over the steps that end after a start time, kept in the node's own state.",
         governing_equations=EQUATIONS,
         assumptions=("The field and the moment are each taken in the plane perpendicular to the axis: their angle is "
@@ -105,9 +105,23 @@ class PhaseLagNode(MimeNode):
     )
 
     def __init__(self, name: str, timestep: float, *, moment: Sequence[float], about: Sequence[float],
-                 behind: float = 1.0, after: float = 0.0) -> None:
+                 behind: float = 0.0, after: float = 0.0, declared: str = "") -> None:
+        """``behind``, the steps the laws read the pose behind this node's read, is declared by the build from its
+        lag accounting (:meth:`netted`) and ``declared`` says how; a node made on its own is net of no lag."""
         super().__init__(name, timestep, moment=tuple(float(c) for c in moment), about=tuple(float(c) for c in about),
-                         behind=float(behind), after=float(after))
+                         behind=float(behind), after=float(after), declared=declared)
+
+    def netted(self, behind: int, declared: str) -> PhaseLagNode:
+        """This node made net of ``behind`` steps, the lag the build declares, with ``declared`` its account of it."""
+        own = self.constants()
+        return PhaseLagNode(self.name, self.delta_t, moment=own["moment"], about=own["about"], behind=float(behind),
+                            after=own["after"], declared=declared)
+
+    def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
+        """The lag the build removed, and from what it read it."""
+        del start, closest_approach
+        own = self.constants()
+        return [f"the lag is {own.get('declared') or 'not declared'}"]
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:

@@ -29,8 +29,9 @@ class UniformRotating(FieldProvider):
     (cos(phi) e1 + sin(phi) axis x e1)``, where ``e1`` is ``initial_direction`` projected onto the plane of rotation,
     the field's direction at ``t = 0``, and the phase ``phi`` is ``2 pi`` times the integral of the commanded
     frequency, each step's frequency held over the step. Its commands are ``frequency`` and ``amplitude``, and either
-    may change during a run (a ramp, ``drives.Ramp``, or a controller). For a constant frequency the phase is
-    ``2 pi f t``, computed as version 0.1.0 computed it, to the last bit. Being uniform, a reader's slot takes no
+    may change during a run (a ramp, ``drives.Ramp``, or a controller). The phase is held in turns as a pair
+    of floating numbers to which each step adds ``f h`` exactly, so its error does not grow with the run (a constant
+    frequency's field differs from version 0.1.0's ``2 pi f t`` by that version's rounding). Being uniform, a reader's slot takes no
     points, and its gradient is zero.
 
     Version 0.1.0 made the phase as the present frequency times the time since the start, so a frequency that changed

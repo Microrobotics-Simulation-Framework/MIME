@@ -13,6 +13,8 @@ end, to rounding on the run's scale: float64 within 1e-11 rad, float32 within 2e
 ``tests/study/predictions_drives.json`` before this ran. The field's direction is read from the recorded flux
 density. The control: 0.1.0's formula, the present frequency times the time, misses the closed form by ``pi k t^2``,
 6.3 rad at 1 s, on every run; and the node planted with that formula in place of its own (a mutant) fails the gate.
+The float32 arm's resolution is its tolerance, 2e-5 rad: a ramp value read 1/500 of a step early (1.3e-5 rad) is below
+it and passes there (the float64 arm catches it, and 1/5000 of a step too); the planted mutants are far above it.
 
 **A controller's writes.** The same field under a test controller that writes the frequency each step (a ramp from
 zero, a step from 1 to 2 Hz at 0.8 s): the angle is ``2 pi`` times the cumulative sum of what it wrote, one step of
@@ -20,12 +22,24 @@ zero, a step from 1 to 2 Hz at 0.8 s): the angle is ``2 pi`` times the cumulativ
 read 2 and an offset of 0.799 of a turn (the anomaly's measure, turned round). The control: a constant frequency
 agrees with the integral to float32's rounding, so the measure agrees where the node is right.
 
+**The long run (MIME-ANO-139's rounding).** The phase is held as a pair of floating numbers to which each step adds the
+step's turns as an exact product by an error-free sum, so its rounding does not grow with the turns made. Read for 1000
+s of 0.5 ms steps (2e6 steps, up to 165 000 turns) under a constant frequency, a ramp and a controller-like noisy writer,
+the field's angle is within ``LONG_RUN["float32"]`` of the integral of the frequencies written, an exact sum, at every
+step, in float32, and the error at 100 s and at 1000 s alike: float32's resolution of an angle in one turn, which the
+output's cosine and sine round to (the previous scheme, the present frequency times the time less a correction, was
+0.003 to 0.13 rad off by 100 to 1000 s, growing with the phase). The control: that scheme's main term in float32, the
+product of the frequency and the time, misses by more than ``CONTROL_MISS`` at 100 s, so the bound can fail. In float64
+the field is within ``LONG_RUN["float64"]`` of the exact turns at both (read one step before a whole 100 s and 1000 s,
+where the constant and the ramp stand at a whole turn).
+
 **The guard.** 0.1.0 refuses the ramp and the controller on its frequency, and builds with a constant drive (no false
-refusal), computing for it, to the last bit, what 0.2.0 computes (the same process, so at one usable CPU count and one
-OpenBLAS thread count). A planted 0.1.0 that guards nothing builds the ramp: the guard's test fails on it."""
+refusal), computing for it the field 0.2.0 computes to 0.1.0's own rounding of the phase (not bit for bit: the pair
+avoids the rounding of ``2 pi f t``). A planted 0.1.0 that guards nothing builds the ramp: the guard's test fails on it."""
 
 import dataclasses
 import math
+from fractions import Fraction
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
@@ -44,6 +58,7 @@ from mime.fields import KEPT, UniformRotating
 from mime.gradients import GradientStatus
 from mime.interactions import Magnetic
 from mime.nodes.actuation import IntegratingRotatingNode
+from mime.nodes.actuation._turns import advance_phase, turns_of_step
 from mime.registry import ControlLaw, Controller, Signal, register_controller
 from mime.scene import Scene, Sphere, X, Z
 from mime.things import Part
@@ -58,6 +73,12 @@ F0, K = 1.0, 2.0
 #: The closed form's tolerance at every step, rad, per precision (committed before the gate ran).
 CLOSED_FORM = {"float64": 1e-11, "float32": 2e-5}
 OLD, _ = KEPT["uniform_rotating", "0.1.0"]
+#: The long run: 1000 s of 0.5 ms steps, read at 100 s and at the end; the angle's bound per precision (rad): float32's
+#: spacing of an angle in a turn, 4.8e-7, doubled (the output's cosine and sine round to it); float64's, the exact
+#: turns' reading to 1e-13 (the angle's own rounding at pi is 4e-16). The control must miss by more than CONTROL_MISS at 100 s.
+LONG_STEP, LONG_STEPS, LONG_CHECK = 5e-4, 2_000_000, 200_000
+LONG_RUN = {"float32": 1e-6, "float64": 1e-13}
+CONTROL_MISS = 1e-3
 
 
 @register_controller
@@ -188,11 +209,11 @@ def test_mutant_the_node_with_the_present_frequency_times_the_time_fails_the_gat
     traced before the plant is reused; JAX's caches are cleared on each side of it."""
 
     def planted(self: Any, p: Any, state: Any, boundary_inputs: Any, dt: float) -> Any:
-        zero = jnp.zeros((), dtype=state["previous"].dtype)
+        zero = jnp.zeros((), dtype=state["phase"].dtype)
         steps = state["steps"] + 1
         frequency = boundary_inputs.get("frequency", zero)
         phase = 2 * jnp.pi * frequency * steps.astype(zero.dtype) * dt
-        return self._fields(steps, frequency, state["correction"],
+        return self._fields(steps, state["phase"], state["residual"],
                             self.field_at(p, phase, boundary_inputs.get("amplitude", zero)))
 
     held = jax.config.jax_enable_x64
@@ -270,17 +291,173 @@ def on_the_kept_field(experiment: Experiment) -> Experiment:
     return cast(Experiment, held._declared(held._settings, declarations))
 
 
-def test_with_a_constant_drive_the_kept_version_builds_and_the_current_one_computes_its_field_to_the_last_bit(
-        precision):
-    """No false refusal; and script A's every field, over 200 steps, the same on either version, bit for bit (in one
-    process: one usable CPU count, one OpenBLAS thread count)."""
+def field_angle(history: Mapping[str, Any]) -> np.ndarray:
+    return angle_of({name: fields for name, fields in history.items() if name.startswith("field.")})
+
+
+def test_with_a_constant_drive_the_kept_version_builds_and_the_current_one_computes_the_same_field(precision):
+    """No false refusal; and script A's field, over 200 steps, the same on either version to the precision's own
+    rounding of a turn: ``2 pi f t`` as the kept version computes it carries a relative rounding of the phase, the
+    current version's phase does not, so the two differ by up to the kept version's rounding (a few float32 places of
+    the angle over one turn), and are not bit for bit the same."""
     old = on_the_kept_field(script_a()).build()
     assert next(p for p in old.plans.entries if p.owner == "field.magnetic").registered.cls is OLD
     before = old.run(s(0.1), history=True).history
     after = script_a().build().run(s(0.1), history=True).history
     assert before is not None and after is not None
-    moved = [f"{node}.{name}" for node, fields in before.items() for name, value in fields.items()
-             if not np.array_equal(np.asarray(value), np.asarray(after[node][name]))]
-    assert not moved, moved
-    assert set(after["field.magnetic"]) - set(before["field.magnetic"]) == {"previous", "correction"}
-    assert not np.any(np.asarray(after["field.magnetic"]["correction"])), "a constant frequency leaves it zero"
+    miss = float(np.max(apart(field_angle(before), field_angle(after))))
+    print(f"\n{precision}: the kept and the current field's angle over script A's 200 steps differ by {miss:.2e} rad")
+    assert miss < {"float32": 2e-6, "float64": 1e-13}[precision]
+    assert set(after["field.magnetic"]) - set(before["field.magnetic"]) == {"phase", "residual"}
+
+
+def long_writer(shape: str, steps: np.ndarray) -> np.ndarray:
+    """The frequency written at each (1-based) step of the long run, float64: a constant 40 Hz, a ramp from 40 Hz at
+    0.25 Hz/s (the ramp's value at the step's middle) and a controller-like writer, 40 Hz and two bounded oscillations."""
+    middle = (steps - 0.5) * LONG_STEP
+    if shape == "constant":
+        return np.full(steps.shape, 40.0)
+    if shape == "ramp":
+        return 40.0 + 0.25 * middle
+    return 40.0 + 3.0 * np.sin(0.37 * steps) + 0.5 * np.sin(1.7 * steps)
+
+
+def long_run_angles(frequencies: np.ndarray) -> np.ndarray:
+    """The integrating node's field angle (rad, float64) at each step of a run that writes ``frequencies``, from the
+    node's own ``advance`` scanned, in the process's precision."""
+    node = IntegratingRotatingNode("f", LONG_STEP, slots=("s",), rotation_axis=(1.0, 0.0, 0.0),
+                                   initial_direction=(0.0, 1.0, 0.0))
+    p = {"rotation_axis": jnp.asarray((1.0, 0.0, 0.0)), "initial_direction": jnp.asarray((0.0, 1.0, 0.0))}
+    start = node.initial_state()
+
+    def body(state: Any, written: Any) -> Any:
+        out = node.advance(p, state, {"frequency": written, "amplitude": jnp.asarray(1.0, dtype=written.dtype)}, LONG_STEP)
+        flux = out["flux_density_s"]
+        return out, jnp.arctan2(flux[2], flux[1])
+
+    dtype = start["phase"].dtype
+    _, angle = jax.jit(lambda f: jax.lax.scan(body, start, f))(jnp.asarray(frequencies, dtype=dtype))
+    return np.asarray(angle, np.float64)
+
+
+def exact_turns(written: np.ndarray, count: int) -> float:
+    """The turns the first ``count`` of ``written`` (floats) make, ``sum(f) h`` mod 1, by exact integer and rational
+    arithmetic (each float is a multiple of 2^-60 at these sizes)."""
+    total = sum(int(math.ldexp(float(value), 60)) for value in written[:count])
+    return float((Fraction(total, 1 << 60) * Fraction(LONG_STEP)) % 1)
+
+
+@pytest.mark.parametrize("shape", ["constant", "ramp", "noisy"])
+def test_the_phase_does_not_grow_with_the_run_in_float32(shape, record_property):
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    try:
+        written = long_writer(shape, np.arange(1, LONG_STEPS + 1, dtype=np.float64)).astype(np.float32)
+        angle = long_run_angles(written)
+    finally:
+        jax.config.update("jax_enable_x64", held)
+    turns = np.cumsum(written.astype(np.longdouble)) * np.longdouble(LONG_STEP)  # exact sums: float32 inputs
+    wrapped = np.asarray(turns - np.floor(turns), np.float64)
+    miss = apart(angle, 2.0 * math.pi * wrapped)
+    early, late = float(np.max(miss[:LONG_CHECK])), float(np.max(miss[-LONG_CHECK:]))
+    record_property("largest_miss_rad", float(np.max(miss)))
+    print(f"\n{shape}, float32, {float(turns[-1]):.0f} turns: the angle's largest miss over the first 100 s {early:.2e} "
+          f"rad, over the last 100 s {late:.2e} rad, over the run {float(np.max(miss)):.2e} rad")
+    assert float(np.max(miss)) <= LONG_RUN["float32"], "the run's largest miss, 1000 s"
+    assert late <= LONG_RUN["float32"] and early <= LONG_RUN["float32"], "the same at 100 s and at 1000 s"
+
+
+def test_control_float32s_product_of_the_frequency_and_the_time_is_off_by_100_s():
+    """The scheme's main term: ``2 pi f t`` in float32 at 40 Hz misses by 0.003 rad at 100 s (and 0.025 at 1000 s): the
+    long-run bound can fail, and does for the scheme whose error grows with the phase."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    try:
+        count = jnp.arange(LONG_CHECK - 999, LONG_CHECK + 1, dtype=jnp.float32)
+        angle = np.asarray(2 * jnp.pi * jnp.float32(40.0) * count * jnp.float32(LONG_STEP), np.float64)
+    finally:
+        jax.config.update("jax_enable_x64", held)
+    exact = 2.0 * math.pi * ((40.0 * np.arange(LONG_CHECK - 999, LONG_CHECK + 1, dtype=np.float64) * LONG_STEP) % 1.0)
+    assert float(np.max(apart(angle, exact))) > CONTROL_MISS
+
+
+@pytest.mark.parametrize("shape", ["constant", "ramp", "noisy"])
+def test_the_phase_is_exact_in_float64_over_the_long_run(shape, record_property):
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        written = long_writer(shape, np.arange(1, LONG_STEPS + 1, dtype=np.float64))
+        angle = long_run_angles(written)
+    finally:
+        jax.config.update("jax_enable_x64", held)
+    misses = [float(apart(angle[count - 1:count], np.asarray([2.0 * math.pi * exact_turns(written, count)]))[0])
+              for count in (LONG_CHECK - 1, LONG_STEPS - 1)]
+    record_property("miss_100s_rad", misses[0])
+    record_property("miss_1000s_rad", misses[1])
+    print(f"\n{shape}, float64: the angle's miss of the exact turns, at 100 s {misses[0]:.2e} rad, at 1000 s "
+          f"{misses[1]:.2e} rad")
+    assert max(misses) <= LONG_RUN["float64"]
+
+
+def test_the_phase_pair_adds_the_exact_product_of_the_frequency_and_the_step_in_float32():
+    """The building block: ``frequency * timestep`` as a pair is exact to ``eps^2``, where the plain float32 product is
+    off by ``eps`` (the control)."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    try:
+        frequency = np.random.default_rng(7).uniform(0.5, 600.0, 20000).astype(np.float32)
+        p, e = jax.jit(jax.vmap(lambda f: turns_of_step(f, LONG_STEP)))(jnp.asarray(frequency))
+        plain = np.asarray(jnp.asarray(frequency) * jnp.float32(LONG_STEP), np.float64)
+    finally:
+        jax.config.update("jax_enable_x64", held)
+    exact = np.asarray(frequency, np.longdouble) * np.longdouble(LONG_STEP)
+    pair = np.abs((np.asarray(p, np.longdouble) + np.asarray(e, np.longdouble) - exact) / exact)
+    control = np.abs((plain - np.asarray(exact, np.float64)) / np.asarray(exact, np.float64))
+    print(f"\nrelative error of the pair {float(np.max(pair)):.2e}; of the plain float32 product {float(np.max(control)):.2e}")
+    assert float(np.max(pair)) < 1e-13 and float(np.max(control)) > 1e-8
+
+
+def test_the_derivative_of_the_phase_with_respect_to_each_frequency_written_is_the_step():
+    """``d Theta_n / d f_j = h`` for every ``j <= n`` (the fraction's reduction drops whole turns, not slope), through
+    the pair's arithmetic: its tangent is given, so the arithmetic is not differentiated."""
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        written = jnp.asarray(np.linspace(30.0, 50.0, 64))
+
+        def phase(frequencies: Any) -> Any:
+            def body(state: Any, f: Any) -> Any:
+                hi, lo = advance_phase(state[0], state[1], f, LONG_STEP)
+                return (hi, lo), None
+
+            (hi, lo), _ = jax.lax.scan(body, (jnp.asarray(0.0), jnp.asarray(0.0)), frequencies)
+            return hi + lo
+
+        grad = np.asarray(jax.grad(phase)(written))
+        slope = float(jax.jvp(phase, (written,), (jnp.ones_like(written),))[1])
+    finally:
+        jax.config.update("jax_enable_x64", held)
+    assert np.allclose(grad, LONG_STEP, rtol=1e-14, atol=0.0) and slope == pytest.approx(64 * LONG_STEP, rel=1e-14)
+
+
+def test_mutant_a_phase_held_as_one_float_wrapped_each_step_fails_the_long_run_bound(monkeypatch):
+    """The pair planted as a single float32 fraction, ``frac(phase + f h)`` each step (the naive accumulator): the
+    float32 ramp misses the bound within 100 s on every run."""
+    import mime.nodes.actuation._uniform_field as field_module
+
+    def naive(hi: Any, lo: Any, frequency: Any, timestep: float) -> Any:
+        total = hi + frequency * jnp.asarray(timestep, dtype=hi.dtype)
+        return total - jnp.floor(total), lo
+
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    try:
+        monkeypatch.setattr(field_module, "advance_phase", naive)
+        written = long_writer("ramp", np.arange(1, LONG_CHECK + 1, dtype=np.float64)).astype(np.float32)
+        angle = long_run_angles(written)
+    finally:
+        jax.config.update("jax_enable_x64", held)
+    turns = np.cumsum(written.astype(np.longdouble)) * np.longdouble(LONG_STEP)
+    miss = float(np.max(apart(angle, 2.0 * math.pi * np.asarray(turns - np.floor(turns), np.float64))))
+    print(f"\nthe naive accumulator: largest miss over 100 s {miss:.2e} rad, against the bound {LONG_RUN['float32']:.0e}")
+    assert miss > 100 * LONG_RUN["float32"]

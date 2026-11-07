@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, cast
 
+import jax
 import numpy as np
 import pytest
 from range_cases import rotating_screw
@@ -67,21 +68,25 @@ def test_a_ramps_rate_is_in_the_commands_units_per_second():
     assert refused.value.codes() == ["setting.units"]
 
 
-def test_the_turning_rate_the_build_reads_of_a_ramp_is_the_largest_it_reaches():
-    """The post-run watch's turning rate, read from the field's drive: a ramp's is the largest it reaches."""
+@pytest.mark.parametrize(("start", "to", "largest"), [(5.0, 8.0, 8.0), (3.0, -5.0, 5.0), (-9.0, 4.0, 9.0)],
+                         ids=["up", "through zero, the end larger", "through zero, the start larger"])
+def test_the_turning_rate_the_build_reads_of_a_ramp_is_the_largest_it_reaches(start, to, largest):
+    """The post-run watch's turning rate, read from the field's drive: a ramp's is the largest it reaches, in
+    magnitude, so a ramp that crosses zero is watched at the end that turns fastest."""
     exp = rotating_screw()
     held = cast(Any, exp)
     swapped = []
     for declaration in held._declarations:
         thing = getattr(declaration, "thing", None)
         if isinstance(thing, Apparatus) and thing.name == "field":
-            ramp = drives.Ramp(Hz(5.0), to=Hz(8.0), rate=Hz(1.0) / s(1.0))
+            ramp = drives.Ramp(Hz(start), to=Hz(to), rate=Hz(1.0) / s(1.0))
             declaration = ThingDeclaration(dataclasses.replace(thing, commands={**thing.commands, "frequency": ramp}))
         swapped.append(declaration)
     watch = next(w for w in held._declared(held._settings, swapped).plan().watches
                  if isinstance(w, WatchPlan) and w.turning_rate is not None)
-    assert watch.turning_rate == pytest.approx(2.0 * np.pi * 8.0)
-    assert watch.turning_from == "field.frequency is ramped to 8 Hz at the most, a rate of 2 pi x 8 rad/s"
+    assert watch.turning_rate == pytest.approx(2.0 * np.pi * largest)
+    assert watch.turning_from == (f"field.frequency is ramped to {largest:g} Hz at the most, a rate of 2 pi x "
+                                  f"{largest:g} rad/s")
 
 
 def protocol_study(protocol: object, values=(Hz(20.0), Hz(30.0)), **sweep) -> Study:
@@ -153,3 +158,67 @@ def test_the_ramp_protocol_refuses_a_command_already_driven_by_a_ramp():
         study.plan()
     assert refused.value.codes() == ["study.protocol-command"]
     assert "gives it the drive Ramp" in refused.value.refusals[0].message
+
+
+@pytest.fixture
+def float64():
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    try:
+        yield
+    finally:
+        jax.config.update("jax_enable_x64", held)
+
+
+def started(start: float, to: float, rate: float, *, hold: float = 3.0, duration: float = 5.0):
+    """The one crossing of script A's reproduction arm held at ``start`` Hz for ``hold`` s then ramped to ``to`` at
+    ``rate`` Hz/s (float64, 0.5 ms), with the mean spin over frequency of the last 0.2 s of the hold."""
+    experiment = reproduction_arm(frequency=Hz(start))
+    experiment.observe(PhaseLag("umr", field="field.magnetic", about=X))
+    frequency = experiment.handle("field").commands.frequency  # type: ignore[union-attr]
+    result = Study(experiment).sweep(
+        grid({frequency: [Hz(start)]}), duration=s(duration), record=[f"{LAG}.spin"],
+        protocol=Ramp(frequency, to=Hz(to), rate=Hz(rate) / s(1.0), hold=s(hold))).run()
+    (found,) = ramp_crossings(result, LAG, window=s(0.2))
+    spin = np.asarray(result.member(0)[LAG].spin.raw, dtype=np.float64)
+    end = round(hold / DT)
+    return found, float(spin[end - 400:end].mean()) / start
+
+
+def test_a_ramp_up_from_an_unlocked_body_is_not_read_as_a_step_out_at_its_start_frequency(float64):
+    """Script A held at 50 Hz from rest is not locked (its step-out from rest is 43.25 / 43.5 Hz): ramped up from there
+    it reports its start, never ``steps out at 50.00 Hz``, the from-rest figure under another name."""
+    found, ratio = started(50.0, 60.0, 8.0)
+    print(f"\n{found.text()}")
+    assert ratio < 0.1, "the body is unlocked at the end of the hold"
+    assert found.quantity == "ramp up" and found.start == "unlocked" and not found.read
+    assert found.at is None and found.time is None
+    assert found.held == pytest.approx(ratio, abs=1e-3)
+    assert "steps out" not in found.text() and "starts the ramp unlocked" in found.text()
+
+
+def test_a_ramp_down_from_a_locked_body_is_not_read_as_a_catch_at_its_start_frequency(float64):
+    """Script A held at 35 Hz is locked the whole time (ratio 1.0): ramped down from there it reports its start, never
+    ``is caught at 35.00 Hz``."""
+    found, ratio = started(35.0, 20.0, 1.0)
+    print(f"\n{found.text()}")
+    assert ratio > 0.99, "the body is locked at the end of the hold"
+    assert found.quantity == "ramp down" and found.start == "locked" and not found.read
+    assert found.at is None and found.time is None
+    assert "is caught" not in found.text() and "starts the ramp locked" in found.text()
+
+
+def test_control_a_ramp_up_from_a_locked_body_is_read_and_a_ramp_that_never_steps_out_says_so(float64):
+    """The same reading with the right start: a body locked at 30 Hz and ramped to 40 Hz (below the from-rest step-out)
+    is read, as a ramp up that never steps out."""
+    found, ratio = started(30.0, 40.0, 4.0)
+    assert ratio > 0.99 and found.start == "locked" and found.read
+    assert found.at is None and found.text() == \
+        "member 0, ramp up: never steps out in the run"
+
+
+def test_a_hold_shorter_than_the_window_leaves_the_start_unread():
+    found = ramp_crossings(protocol_study(Ramp("field.commands.frequency", to=Hz(5.0), rate=Hz(1.0) / s(1.0),
+                                                hold=ms(1.0)), record=[f"{LAG}.spin"]).run(), LAG,
+                           window=ms(5.0))[0]
+    assert found.start == "unread" and not found.read and found.at is None and "not read" in found.text()

@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, kw_only=True)
 class ClockRotating(UniformRotating):
     """``uniform_rotating`` 0.1.0: the phase is ``2 pi f t``, the frequency commanded at a step times the time since
-    the start, not the integral of the frequency. For a constant frequency that is the integral, and 0.2.0 computes the
-    same to the last bit; for one that changes in a run it turns the field at ``2 pi (f + t df/dt)`` and jumps its angle
+    the start, not the integral of the frequency. For a constant frequency that is the integral, and 0.2.0 computes it
+    without this version's rounding of the phase; for one that changes in a run it turns the field at ``2 pi (f + t df/dt)`` and jumps its angle
     where the frequency steps (MIME-ANO-139). So it refuses, when the experiment is built, any drive of its frequency but
     the constant and a controller that writes it, naming 0.2.0 as the route."""
 

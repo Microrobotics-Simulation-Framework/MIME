@@ -11,9 +11,12 @@ edge into the physics, and keeps what it measures in its own node's state. Its o
 (each step, a series when the run records it) and, at the end of the run, `mean_lag`, `mean_spin`, `lagged` and
 `turned` (their integrals over the counted steps, the latter in turns) and `observed`.
 
-**Net of the declared lag.** The magnetic torque reads the body's pose at the start of the step and the field at its end,
-as the build report's lags list them, so the moment it turns is the one before the step, a step's turn of the body
-behind the one an observation reads after it. The lag is that angle, the one the torque acts on: the moment after the
+**Net of the declared lag.** The build declares, in its report's lags, the step each law reads the body's pose and the
+field from: the magnetic torque reads the pose at the start of the step and the field at its end, so the moment it turns
+is the one before the step, a step's turn of the body behind the one an observation reads after it. `PhaseLag` removes
+the lag the build declares for the laws bound to its body and field (the build report's computed line names the edges it
+read), not a number of its own; the build refuses (`observation.lag-ambiguous`) where those laws disagree, or read the
+field a different number of steps behind, since the field's turn is not the body's to remove. The lag is that angle, the one the torque acts on: the moment after the
 step turned back about the axis by the body's spin over the step. In a steady lock below step-out it meets the torque
 balance `m B sin(lag) = R omega`, with `R` the body's rotational resistance and `omega` the field's angular rate; the
 angle between the field and the moment as they both stand after the step is smaller by `omega dt`, more than any
@@ -23,8 +26,9 @@ A body is locked where its mean spin over the window is its field's frequency: `
 of a study run from rest that way, and `mime.study.ramp_crossings` a ramp's, from the spin recorded every step.
 
 **When not to use it.**
-- Where the body's laws read its pose inside a coupling group with it: they read the current iterate there, not the
-  pose at the start of the step, and the correction is a step too many.
+- Where the laws bound to the body and field do not agree on the step they read the pose from, or read the field
+  behind the observation's own read: the build refuses. A law inside a coupling group with the body reads the current
+  iterate and the observation removes no lag for it.
 - For a body that tilts out of the plane as it turns: the turn back is its spin about the axis alone.
 - Where the field is read anywhere but where a law reads it: an observation reads a uniform field where a law reads its
   flux density (the build report names the law), and refuses one no law reads so (it would need its own instance of

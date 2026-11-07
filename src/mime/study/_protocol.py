@@ -172,10 +172,17 @@ class StepOut:
 
 @dataclass(frozen=True)
 class Crossing:
-    """Where a ramp's member changes state: on a ramp up, the first window after the hold whose mean spin over its mean
-    commanded frequency is below ``threshold`` (it steps out); on a ramp down, the first at or above it
-    (it is caught). ``at`` is the commanded frequency at that window's centre (Hz), ``time`` the centre's time (s),
-    ``None`` both where it never crosses; ``quantity`` is ``ramp up`` or ``ramp down``."""
+    """Where a ramp's member changes state. A ramp up starts from a body locked at the point's frequency and reads the
+    first window after the hold whose mean spin over its mean commanded frequency is below ``threshold`` (it steps
+    out); a ramp down starts from a body that rocks and reads the first at or above it (it is caught). ``at`` is the
+    commanded frequency at that window's centre (Hz), ``time`` the centre's time (s); ``quantity`` is ``ramp up`` or
+    ``ramp down``.
+
+    The state the ramp starts from is read over the last window of the hold (``held``, its mean spin over its mean
+    frequency, and ``start``, ``locked``, ``unlocked`` or ``unread`` where the hold is shorter than a window). Where
+    it is not the quantity's precondition (a ramp up from an unlocked body, a ramp down from a locked one) there is no
+    crossing to report: ``at`` and ``time`` are ``None`` and the text says what the start was, never naming the start
+    frequency a step-out or a catch. ``at`` and ``time`` are ``None`` too where the body never crosses."""
 
     member: int
     quantity: str
@@ -183,14 +190,28 @@ class Crossing:
     threshold: float
     at: float | None
     time: float | None
+    start: str = "unread"
+    held: float | None = None
+
+    @property
+    def read(self) -> bool:
+        """Whether the ramp started from the state its quantity needs."""
+        return self.start == ("locked" if self.quantity == "ramp up" else "unlocked")
 
     def text(self) -> str:
+        head = f"member {self.member}, {self.quantity}: "
+        if not self.read:
+            needs = "locked" if self.quantity == "ramp up" else "rocking"
+            if self.start == "unread":
+                return head + (f"not read, the hold is shorter than the {self.window:g} s window that tells whether "
+                               f"the body starts the ramp {needs}")
+            return head + (f"not read, the body starts the ramp {self.start} (mean spin over frequency "
+                           f"{self.held:.4f} over the last {self.window:g} s of the hold, against {self.threshold:g}), "
+                           f"and a {self.quantity} starts from a body that is {needs}")
         if self.at is None or self.time is None:
-            return f"member {self.member}, {self.quantity}: " + \
-                ("never steps out in the run" if self.quantity == "ramp up" else "never caught in the run")
+            return head + ("never steps out in the run" if self.quantity == "ramp up" else "never caught in the run")
         what = "steps out" if self.quantity == "ramp up" else "is caught"
-        return f"member {self.member}, {self.quantity}: {what} at {self.at:.2f} Hz ({self.time:.3f} s), by " \
-               f"{self.window:g} s windows"
+        return head + f"{what} at {self.at:.2f} Hz ({self.time:.3f} s), by {self.window:g} s windows"
 
 
 def _lag_id(lag: object) -> str:
@@ -254,8 +275,10 @@ def ramp_crossings(result: StudyResult, lag: object, *, window: Quantity = s(0.2
     recorded ``spin`` (``lag``; the study records it every step): the windowed mean spin over the mean frequency the
     ramp commanded over the window, each window ``window`` long and centred at a step's end after the
     hold, against ``threshold``. A rising ramp's first window below it is where the body steps out (``ramp up``); a
-    falling ramp's first window at or above it where it is caught (``ramp down``). Refused for a study run from rest
-    (``study.protocol-quantity``)."""
+    falling ramp's first window at or above it where it is caught (``ramp down``). Each member's start is read first,
+    over the last window of the hold: a ramp up from a body that is not locked there, and a ramp down from one that is,
+    report no crossing and say what the start was (a :class:`Crossing` with ``read`` false), never the starting
+    frequency as a step-out or a catch. Refused for a study run from rest (``study.protocol-quantity``)."""
     if not isinstance(result.protocol, Ramp):
         raise ArgumentRefused([Refusal(
             "study.protocol-quantity", RefusalClass.USER,
@@ -283,9 +306,20 @@ def ramp_crossings(result: StudyResult, lag: object, *, window: Quantity = s(0.2
         ends = np.arange(count, len(series) + 1)
         ratio = (sums[ends] - sums[ends - count]) / (commanded_sums[ends] - commanded_sums[ends - count])
         centre = (ends - count / 2.0) * dt
-        hold = _ramp_numbers(drive)[3]
-        start, to, _, _ = _ramp_numbers(drive)
+        start, to, _, hold = _ramp_numbers(drive)
         rising = to > start
+        quantity = "ramp up" if rising else "ramp down"
+        # The state the ramp starts from: the last window that ends within the hold (a step's end within rounding of it).
+        held_steps = math.floor(hold / dt + 1e-9)
+        if held_steps < count or held_steps > len(series):
+            found.append(Crossing(member, quantity, width, threshold, None, None))
+            continue
+        held = float(ratio[held_steps - count])
+        locked = held >= threshold
+        state = "locked" if locked else "unlocked"
+        if locked != rising:
+            found.append(Crossing(member, quantity, width, threshold, None, None, state, held))
+            continue
         after = centre > hold
         crossed = (ratio < threshold) if rising else (ratio >= threshold)
         hits = np.flatnonzero(after & crossed)
@@ -293,7 +327,7 @@ def ramp_crossings(result: StudyResult, lag: object, *, window: Quantity = s(0.2
         if hits.size:
             time = float(centre[hits[0]])
             at = float(ramp_value(drive, np.asarray([time]))[0])
-        found.append(Crossing(member, "ramp up" if rising else "ramp down", width, threshold, at, time))
+        found.append(Crossing(member, quantity, width, threshold, at, time, state, held))
     return tuple(found)
 
 

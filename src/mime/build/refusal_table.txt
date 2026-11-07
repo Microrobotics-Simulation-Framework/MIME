@@ -238,6 +238,7 @@ material.not-a-record         user
 material.require              user
 modal.wheel                   environment
 observation.field-read        user
+observation.lag-ambiguous     user
 override.baked-leaf           user
 override.callback             user
 override.initial-after-start  user

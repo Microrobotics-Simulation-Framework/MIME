@@ -865,8 +865,10 @@ class _Planner:
                     continue
                 held = [drive.settings.get(name) for name in (("value",) if isinstance(drive.entry, Constant)
                                                               else ("start", "to"))]
-                turns = max((value for value in held if isinstance(value, float) and math.isfinite(value)),
-                            key=abs, default=None)
+                numbers = [value for value in held if isinstance(value, float) and math.isfinite(value)]
+                # A ramp's largest rate is the largest of its ends' magnitudes (a ramp from +3 Hz to -5 Hz reaches 5).
+                turns = max(map(abs, numbers), default=None) if isinstance(drive.entry, Ramp) else \
+                    max(numbers, key=abs, default=None)
                 if turns is not None and turns > 0.0:
                     how = f"is declared {turns:g} Hz" if isinstance(drive.entry, Constant) else \
                         f"is ramped to {turns:g} Hz at the most"
