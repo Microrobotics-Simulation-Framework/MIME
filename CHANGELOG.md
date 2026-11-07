@@ -126,6 +126,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three moments and that the folder is re-created from its script on the current version, where the products are
   carried. A reader of version 8 refuses a
   folder of version 9 as `load.newer-form`, the document and the lock each once.
+- **Known anomaly MIME-ANO-143 (open): under jit, the tube wall read's derivative can have the wrong sign for a pair of force points at exactly
+  equal height**, in forward and in reverse mode, with the pair set depending on XLA's fusion (measured on the tube demo's
+  338 points in float64 and on two-point cases; eager evaluation and points nudged apart match finite differences). No
+  derivative in `src/` goes through the wall read; nothing about the primal values changes. Filed with its reach and the
+  route (one value of the offset for the sign and the absolute value); no code changes here.
 - **A save runs its reference steps on the run's own graph, and after a run chunked by one step builds and compiles
   nothing for them (saved form 8).** `built.save` and the saved form `run_to` writes built a second graph and compiled
   the history scan for the reference outputs; now the reference steps run on the build's own graph, reset to its
