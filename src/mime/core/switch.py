@@ -164,6 +164,14 @@ def collecting() -> Generator[list[Row]]:
         yield collector.rows
 
 
+def collector_open() -> bool:
+    """Whether a collector (:func:`collecting`) is open, read while a step is traced. A site in a loop's body is
+    evaluated once a trace, on the body's tracers, which a collector's rows would keep beyond the loop; so a step
+    that loops over switches unrolls its loop while one is open, a call each iteration, as it would be written
+    without the loop. The test-only setting acts on the values the body traces, and leaves the loop as it is."""
+    return isinstance(_context.get(), _Collector)
+
+
 @contextmanager
 def forcing(branches: Mapping[str, bool]) -> Generator[Reached]:
     """Test-only: every site of each owner in ``branches`` takes the branch given (true: the one the call names
@@ -453,6 +461,6 @@ SWITCH_FUNCTIONS = ("maximum", "minimum", "absolute", "clip", "norm", "where", "
 SELECTIONS = ("domain_guard", "nonzero_norm", "static_select", "without_slope")
 
 __all__ = ["OWNER_FORM", "ROUNDING_ULPS", "SELECTIONS", "SWITCH_FUNCTIONS", "Buckets", "Declaration", "Lazy", "Reached",
-           "Row", "absolute", "argmin", "clip", "collecting", "domain_guard", "forcing", "maximum", "minimum", "nonzero_norm",
-           "norm", "predicate", "replacing_fallbacks", "rounding", "searchsorted", "static_select", "where",
-           "without_slope"]
+           "Row", "absolute", "argmin", "clip", "collecting", "collector_open", "domain_guard", "forcing", "maximum",
+           "minimum", "nonzero_norm", "norm", "predicate", "replacing_fallbacks", "rounding", "searchsorted",
+           "static_select", "where", "without_slope"]

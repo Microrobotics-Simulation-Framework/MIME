@@ -7,7 +7,8 @@ block per body; nothing here assumes one body and one wall."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from functools import partial
 from typing import Any, NamedTuple, cast
 
 import numpy as np
@@ -20,7 +21,7 @@ from mime.registry import Geometry
 #: The most of the search's Newton steps, their gradients stopped, that take each group's kept start (``kept``) towards
 #: the body's own deepest point near it against a wall, the point where the wall's outward normal is the body's
 #: (``x = s(n(x))``, ``s`` the hull's support), before one step with them flowing, so the point's derivatives are the
-#: implicit function's (``deepest``). Unrolled, a step each, since a loop's body may hold no switch. A declaration,
+#: implicit function's (``deepest``). An XLA loop's iterations (``repeated``), a step each. A declaration,
 #: measured on the review of the first fix (#116): a search started within the margin of the shrunk wall converged in
 #: 4 steps at the 99th percentile and in at most 9 to 11; one started farther off whose point still reached the wall,
 #: in 16 at the 99th percentile, some never within 30. A search that has not converged after them holds its group's
@@ -184,8 +185,7 @@ def climbed(pair: Pair, seeds: Array, count: int) -> tuple[Array, Array]:
     held = lax.stop_gradient((seeds, hull.pose, _numbers(hull.parameters), _numbers(wall.parameters), wall.margin))
     x, pose, parameters = held[0], held[1], {**hull.parameters, **held[2]}
     surface = Wall(wall.shape, {**wall.parameters, **held[3]}, held[4])
-    for _ in range(count):
-        x = _step(pair, x, pose, parameters, surface)
+    x = repeated(count, lambda _, x: _step(pair, x, pose, parameters, surface), x)
     return x, _supported(pair, x, pose, parameters, surface)[0]
 
 
@@ -363,20 +363,37 @@ def held_at(pair: Pair, local: Array) -> Contacts:
                     jnp.zeros_like(gaps))
 
 
+def repeated(count: int, body: Callable[[Any, Any], Any], value: Any) -> Any:
+    """``value`` after ``body(i, value)`` for ``i`` from 0 to ``count - 1``, each call taking the last's value: an
+    XLA loop (``lax.fori_loop``) whose bounds are fixed when the step is traced, so that it lowers to a scan, through
+    which both modes of derivative pass. While a switch collector is open (``switch.collector_open``) it is unrolled,
+    a call each iteration, so that the collector gathers each iteration's rows as values of the step."""
+    if switch.collector_open():
+        for i in range(count):
+            value = body(i, value)
+        return value
+    return cast(Any, lax).fori_loop(0, count, body, value)  # its hints read as partly unknown
+
+
 def sweeps(coupling: Array, start: Array, count: int, *, owner: str) -> Array:
     """The multipliers ``x >= 0`` with ``start + coupling x >= 0`` and ``x (start + coupling x) = 0``, by ``count``
-    projected Gauss-Seidel sweeps from zero, each update exact for its own multiplier with the others held; a row of
-    no length (a point on the surface's axis, where it has no normal) is never moved."""
+    projected Gauss-Seidel sweeps from zero, each update exact for its own multiplier with the others held, the rows
+    in their order; a row of no length (a point on the surface's axis, where it has no normal) is never moved. The
+    sweeps, and each sweep's updates, are XLA loops' iterations (``repeated``)."""
     own = jnp.diagonal(coupling)
     held = switch.domain_guard(own > 0, own, 1.0)
-    found = jnp.zeros_like(start)
-    for _ in range(count):
-        for k in range(start.shape[0]):
-            residual = start[k] + jnp.dot(coupling[k], found)
-            moved = found[k] - RELAXATION * residual / held[k]
-            found = found.at[k].set(switch.maximum(moved, 0.0, owner=owner, indicator=moved, resolution=lambda:
-                                                   switch.rounding(jnp.abs(found[k]) + jnp.abs(residual / held[k]))))
-    return found
+    update = partial(_updated, coupling, start, held, owner=owner)
+    rows = start.shape[0]
+    return repeated(count, lambda _, found: repeated(rows, update, found), jnp.zeros_like(start))
+
+
+def _updated(coupling: Array, start: Array, held: Array, k: Any, found: Array, *, owner: str) -> Array:
+    """``found`` with row ``k``'s multiplier moved to its own exact value with the others held, and kept at zero or
+    above: one update of the sweeps."""
+    residual = start[k] + jnp.dot(coupling[k], found)
+    moved = found[k] - RELAXATION * residual / held[k]
+    return found.at[k].set(switch.maximum(moved, 0.0, owner=owner, indicator=moved, resolution=lambda:
+                                          switch.rounding(jnp.abs(found[k]) + jnp.abs(residual / held[k]))))
 
 
 def no_work(coupling: Array, start: Array, forces: Array) -> Array:
@@ -411,5 +428,5 @@ def residual(coupling: Array, start: Array, forces: Array, rows: Array, moved: A
 
 __all__ = ["CONTACT_NEWTON", "CONVERGED", "RELAXATION", "SCREEN_STEPS", "START_APART", "SUPPORT_SHORT", "Contacts",
            "Hull", "Pair", "Wall", "climbed", "deepest", "held_at", "joined", "kept", "nearest_samples", "no_work",
-           "pair_contacts", "residual", "search_tolerance", "searched", "shallower", "spacing_of", "start_count",
-           "starts", "sweeps"]
+           "pair_contacts", "repeated", "residual", "search_tolerance", "searched", "shallower", "spacing_of",
+           "start_count", "starts", "sweeps"]
