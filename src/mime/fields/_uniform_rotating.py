@@ -42,7 +42,7 @@ class UniformRotating(FieldProvider):
     version = "0.2.0"
     setting_roles = {"rotation_axis": DESIGN, "initial_direction": DESIGN}
     differentiability = GradientStatus.EXACT
-    references = ()
+    references = ("Peyer2013", "Dekker1971", "Knuth1997")
     builds = {"": (IntegratingRotatingNode,)}
     flags = frozenset({Capability.PROVISION_EVALUATED, Capability.UNIFORM})
     publishes = {FLUX_DENSITY.name: "flux_density", GRADIENT.name: "gradient"}
