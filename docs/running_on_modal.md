@@ -165,7 +165,7 @@ So there are **two levels of claim**:
   made that way judges it **within tolerance** on every machine, the GPU it came from included. Its save warns once,
   and its verification ends with the same line: deterministic mode is off, so the reference verifies within tolerance,
   not bit for bit; for bit-for-bit reproducibility, rerun with `--deterministic`. What the tolerance was set from is
-  one T4, one demo, eight steps, in float32, one run of each kind: the T4's spread planted in the demo's reference
+  one T4, one demo, eight steps, in float32, one run of each kind: that GPU's spread planted in the demo's reference
   verifies within it, a third of each floor at most, and that is all it shows; another GPU, another experiment or
   float64 on a GPU was not measured, and could read moved. A reference saved on such a GPU measures its resolution
   with the GPU's own run-to-run spread in it, so its floors are wider than a CPU's (not measured).

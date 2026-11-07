@@ -16,8 +16,11 @@ reference that differ from: a fresh graph's history scan (``moved``: the save be
 same program (``verify_moved``: what ``verify`` reruns, which must be none); and the run's own first steps
 (``own_moved``: the reference is those steps, run again from the initial state, which must be none); and those in which
 the history scan on the run's graph differs from a fresh graph's (``history_moved``: what a run not chunked by one step
-saves, which must be none). One fresh graph serves the rerun and, reset to its initial state, the history scan (a reset
-graph holds a fresh one's state, bit for bit). ``table_row`` is also called in a pytest worker, for the float64 rows."""
+saves, which must be none). And what the save's two reference runs (the reference, and the same steps from a start one
+ulp off, from which it measures each field's resolution) leave behind: the arrays of the run's state they changed
+(``left_moved``, which must be none) and whether the graph holds its own parameters again (``params_kept``). One
+fresh graph serves the rerun and, reset to its initial state, the history scan (a reset graph holds a fresh one's
+state, bit for bit). ``table_row`` is also called in a pytest worker, for the float64 rows."""
 
 from __future__ import annotations
 
@@ -65,7 +68,11 @@ def table_row(name: str, steps: int) -> dict[str, Any]:
     assert ran.history is not None
     own = {node: {field: value[:steps] for field, value in fields.items()} for node, fields in ran.history.items()}
     reused = step_reads(built.graph).unchanged_since(built._built_reads)  # noqa: SLF001
-    taken, program = built._reference(steps)  # noqa: SLF001
+    standing, params = built.current_state(), built.graph.params
+    taken, _, program = built._reference(steps)  # noqa: SLF001
+    left = moved({node: {field: value[None] for field, value in fields.items()}
+                  for node, fields in built.current_state().items()},
+                 {node: {field: value[None] for field, value in fields.items()} for node, fields in standing.items()})
     fresh = construct(built._plans, built._law)[0]
     rerun = built._history_on(fresh, steps, program)  # noqa: SLF001
     fresh.reset_state()
@@ -77,6 +84,7 @@ def table_row(name: str, steps: int) -> dict[str, Any]:
             "path": program or ("history" if reused else "fresh"), "compared": sum(map(len, before.values())),
             "moved": moved(taken, before), "verify_moved": moved(taken, rerun),
             "history_moved": moved(history, before), "own_moved": moved(taken, own),
+            "left_moved": left, "params_kept": built.graph.params is params,
             "usable_cpus": len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()}
 
 

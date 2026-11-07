@@ -159,13 +159,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the surface points' speed (the review of #195, design #266); each is now reported, and a control holds each on every
   run. Held points are judged only on the rows whose force acts (MIME-ANO-144). A save writes its precision's
   tolerance, 1e-5 in float32 and 2e-14 in float64, and `k` = 30: 5.5 times the largest need measured (the MRS drag's
-  asymmetry, the T4's spread against its CPU's one-ulp resolution) and a quarter of the tube ball's angular velocity
-  over its resolution. Each is pinned in a table of the measurements it rests on, and the measurements the repository
-  holds are computed again from it. The measurement covers one T4, one laptop's CPU at three counts, one demo, eight
-  steps, float32; float64 on the CPU only. A folder keeps the tolerance it was written with, and one of the ninth form
-  or earlier is judged as its form says, element by element with its own numbers (1e-6 and 1e-9), in `verify`, `verify
-  --run` and the load's comparison of the derived graph, which from the tenth form holds each list of numbers and each
-  static array to its own largest magnitude. The cost is one more run of the reference steps at save.
+  asymmetry, the spread of an NVIDIA T4 GPU against its CPU's one-ulp resolution) and a quarter of the tube ball's
+  angular velocity over its resolution. Each is pinned in a table of the measurements it rests on, and the
+  measurements the repository holds are computed again from it. The measurement covers one T4, one laptop's CPU at
+  three counts, one demo, eight steps, float32; float64 on the CPU only. A folder keeps the tolerance it was written
+  with, and one of the ninth form or earlier is judged as its form says, element by element with its own numbers (1e-6
+  and 1e-9), in `verify`, `verify --run` and the load's comparison of the derived graph, which from the tenth form
+  holds each list of numbers and each static array to its own largest magnitude. The cost is one more run of the
+  reference steps at save.
 - **A GPU reference made without XLA's deterministic mode is judged within tolerance, never bit for bit**, on every
   machine, the GPU it was made on included: two such runs of one program differ in their last bits, so `verify` no
   longer reports a tenth-form folder of one moved where it was made (a folder of an earlier form keeps its
