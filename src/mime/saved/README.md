@@ -30,7 +30,7 @@ The loader is the authority, and the schemas' known gaps against it are listed o
   and compares and never reads, and the runner's information, from `MIME_RUNNER_INFO`, which it stores and never
   compares); every entry used, with the distribution it came from and that
   distribution's version; the derived seeds; the hashes; the resolved record; the derived graph; the record of
-  the reference outputs; and, where there are any, the remote assets (`assets`, each record whole in the current form:
+  the reference outputs (their file, hash, steps, program and tolerance); and, where there are any, the remote assets (`assets`, each record whole in the current form:
   its credit, role, kind, custom licences and the packages of the adapters its locations need, and only the record's
   own locations, never a machine's locations file's), the files that travel as references, each with the asset that
   holds its bytes (`referenced_files`), and the manifests of the meshes the stage draws (`visuals`: their
@@ -102,14 +102,35 @@ lists each pin a source no longer agrees with, and never takes the other version
    - **the environment**, by report: every difference from the one the lock was written in, never a refusal;
    - **the derived graph**: within the environment the lock was written in it must match hash for hash (a factory
      that builds something else under the same version is refused); in another, its values and static arrays are
-     compared within the lock's tolerance and reported. The rebuilt stage is held to the lock's hash the same way.
+     compared within the lock's tolerance and reported (from the tenth form, each list of numbers and each static
+     array against its own largest magnitude). The rebuilt stage is held to the lock's hash the same way.
 
 `BuiltExperiment.verify()` and `mime verify <folder>` rerun the reference steps from the initial state, on a graph
 built afresh, by the program the lock names (the history scan where it names none, as every lock before the eighth
 form does): bit for
 bit within the environment the lock was written in, and within the lock's tolerance in another. **"The same result" means
 bit for bit within one environment; across environments the checks report differences within tolerances and claim no
-bits.** **"The same environment" means equal on every field of the lock's environment but the runner's information**: the
+bits.** A reference made on a GPU with XLA's deterministic mode off is the exception: two such runs of one program
+differ in their last bits, so it is held to the tolerance everywhere, the GPU it came from included, and its save warns
+once and its verification ends with the line saying so (deterministic mode is off; for bit-for-bit reproducibility,
+rerun with `--deterministic`). Made in deterministic mode (`--deterministic` on `mime run`, `mime verify` and `mime
+modal`, or `mime.env.deterministic_mode()` before anything computes), it verifies bit for bit in the same environment
+again. The CPU is as it was.
+
+**What the tolerance claims** ([`_scales.py`](_scales.py)). From the tenth form, a field is within tolerance when its
+largest difference over the reference steps is at most the lock's `rtol` times its **source scale** (`atol` is
+written as zero: no absolute part): its own largest magnitude over the reference, or the scale its type in its node's typed
+state gives, never one its node declares. A twist (`mime.core.Twist`) is judged by its body's surface points' speed,
+`|dv| + L |dw|` against the largest `|v| + L |w|`, L computed as the body's largest reach from its hull or, without a
+hull, its radius of gyration from the mass and inertia its node holds; a ratio (`Ratio`, such as the MRS drag's
+asymmetry `|R - R^T| / |R|`) against one; held points (`HeldPoints`) only on the rows whose paired force (`HeldForces`)
+acts. The save writes the tolerance of its precision (`FLOAT32_RTOL`, `FLOAT64_RTOL`), each set from spreads measured
+across environments with a margin, both of which its comment names (in float32 between runs on a T4 GPU, between it
+and its CPU, and across CPU counts; in float64 across CPU counts, no GPU measured there), and the folder keeps the one
+it was written with; a test pins each against its measurement, and raising
+one needs a design decision on a new measurement. It bounds how another machine's rounding, or a non-deterministic
+GPU's, is judged; it says nothing of accuracy, which the oracles test. A folder of the ninth form or earlier is judged as
+its form says, element by element, `|a - b| <= atol + rtol |b|` with its own numbers. **"The same environment" means equal on every field of the lock's environment but the runner's information**: the
 versions, the platform, the device and the precision, and the GPU and its driver and libraries, the CPU, the count
 of CPUs the process could use and the threads of its BLAS, the matmul precision, XLA's flags and deterministic mode, and the runner's record. A
 difference in any one of them, in the lock or in the process that loads it, makes the load another environment: one
@@ -332,7 +353,8 @@ mime verify ./fl9_water/
 `pull` ends with a summary in names and sizes: whether the manifest, scene and records are right, which assets were
 cached or downloaded (and the command to fetch those left), and the packages to install first. Install them, then
 `mime verify`. "The same result" is as everywhere in this form: bit for bit in the environment the lock was written in,
-and within its tolerances in another.
+and within its tolerances in another; a reference made on a GPU with deterministic mode off, within its tolerances in
+both.
 
 ## Based on another
 
@@ -450,5 +472,10 @@ and its rebuilt record is written back into its own form (`resolved_in_form`: th
 declaration's source naming the parts' tensor as the three numbers it named) for its input hash; one that rested on
 exploratory's waiver of the products is refused at load by that version's words. A reader of the eighth refuses a
 folder of the ninth as `load.newer-form`.
+
+The saved form is in its tenth version since the lock's `reference.rtol` is over each field's source scale and its
+`atol` is written as zero (What the tolerance claims, above). The tenth adds and removes no key: a folder of the ninth or
+earlier loads as it was and is judged element by element with the numbers it holds, and saving it again writes the
+tenth with its precision's tolerance. A reader of the ninth refuses a folder of the tenth as `load.newer-form`.
 
 Releases are explained in the [package manifest](../README.md#status).
