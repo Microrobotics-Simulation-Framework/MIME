@@ -1,0 +1,46 @@
+{
+  "written": "2026-11-07 10:40 CET, committed before any gate case of the drives, the integrating field, PhaseLag or the step-out gates ran (the commit that adds this file is the timestamp). Nothing of this phase had been built or run when it was written.",
+  "seen_before": "the design's step-out measurements only (no run of this phase): script A from rest, 5 s, the window from 2.5 s, 0.25 Hz grid, last locked 43.25 Hz and first unlocked 43.5 Hz in float64 at dt 0.5 ms, with the integrating provider written for the measurement and with 0.1.0; the same in float32 and at dt 0.1 ms; a ramp down from an unlocked body at 100 Hz relocking (first locked 0.2 s window) at 31.73 Hz at 0.25 Hz/s, good to about the rate times 0.1 s; a ramp up from locked unlocking near 580 Hz at dt 0.1 ms (512 to 581 Hz over 32 to 256 Hz/s), and not below 300 Hz at dt 0.5 ms",
+  "gate_5_from_rest": {
+    "case": "script A's reproduction arm, float64, dt 0.5 ms, protocol FromRest, 5 s, PhaseLag's window from 2.5 s; a point is unlocked where its mean spin about the field's axis over the window divided by 2 pi f is below 0.99; field.commands.frequency from 39 to 48 Hz every 0.25 Hz (37 points)",
+    "bracket": {"last_locked_hz": 43.25, "first_unlocked_hz": 43.5},
+    "bracket_from_two_unbatched_runs": "the same: 43.25 locked, 43.5 unlocked, each run alone on a fresh build",
+    "why": "the integrating field 0.2.0 computes, for a constant frequency, the phase 0.1.0 computes, to the last bit (its correction term is an exact zero), so the from-rest bracket is O1's and the design measurement's whichever version the field is",
+    "if_it_differs": "stop and report; no criterion is adjusted"
+  },
+  "gate_5_amplitude_control": {
+    "case": "the same sweep at 0.9 times the amplitude, 1.08 mT",
+    "prediction": "the bracket moves down by 2.25 Hz to last locked 41.0 Hz, first unlocked 41.25 Hz, within one grid step either way (40.75 to 41.5)",
+    "why": "from-rest capture at script A is inertia-dominated (no drag mode moved it; the step-out de-risk measured an under-damped pendulum's capture), whose limit scales as the square root of m B / I: 43.25 x sqrt(0.9) = 41.03 Hz. An overdamped limit, linear in B, would put it near 38.9 Hz, below the grid; the gate needs it to move by more than one grid step either way",
+    "gate": "the control's bracket lies below 43.25 Hz by more than one grid step (0.25 Hz)"
+  },
+  "ramp_down_gated": {
+    "case": "script A's reproduction arm, float64, dt 0.5 ms, protocol Ramp: the field held at 100 Hz for 3 s from rest (unlocked), then down at 0.25 Hz/s towards 5 Hz; PhaseLag's spin recorded every step; the windowed ratio of the spin over 2 pi times the commanded frequency over 0.2 s windows, the first window centred after the hold with the ratio at least 0.99, read at the commanded frequency at its centre",
+    "prediction": "31.73 Hz, within 0.03 Hz (the design measurement's stated resolution, the rate times half the window); the last unlocked window near 31.56 Hz (reported)",
+    "why": "the ramp's value over each step is its mean over the step (half a step earlier than the measurement's end-of-step sample, 6e-5 Hz at this rate) and the field turns by its exact integral; both differ from the measurement's by far less than the resolution, but the body rocks for 270 s before it relocks and nearby trajectories separate there, so the figure may move within the band where the measurement saw the body lock and unlock intermittently (31.73 to 31.56 Hz)",
+    "if_it_differs": "stop and report; no criterion is adjusted"
+  },
+  "ramp_up_reported": {
+    "case": "script A's reproduction arm, float64, dt 0.1 ms, held at 40 Hz for 3 s (locked), then up at 32 and 64 Hz/s towards 800 Hz; the first 0.2 s window centred after the hold with the ratio below 0.99",
+    "prediction": "about 580 Hz at both rates (579 and 581 in the measurement), each flagged by the drag's validity (a turning Reynolds number of order 3e4 against the declared 0.1)",
+    "gated": false
+  },
+  "gate_6_ramp_phase": {
+    "case": "a sphere's field through the front door, the integrating field 0.2.0 driven by drives.Ramp from f0 by k per second, dt 1 ms, 1000 steps; the field's angle read from the recorded flux density at every step",
+    "prediction": "the angle equals 2 pi (f0 t + k t^2 / 2) at every step's end to rounding on the run's scale: float64 within 1e-11 rad, float32 within 2e-5 rad (the phase reaches about 13 rad, whose float32 rounding over a few operations is some 1e-5)",
+    "control": "0.1.0's formula, 2 pi f(t) t with f the present frequency, misses the closed form by pi k t^2, about 6 rad at 1 s for k = 2 Hz/s: fails on every run, as does a planted 0.2.0 that integrates nothing",
+    "guard": "0.1.0 refuses the ramp on its frequency and a controller writing it (command.held-constant), naming 0.2.0; it accepts a constant drive"
+  },
+  "gate_7_phase_lag": {
+    "case": "a 1 mm sphere in free space on the MRS rung at its defaults, a moment turned by the integrating field below step-out, f = 10 Hz, dt 0.5 ms, the moment chosen so that the torque balance against the regularised sphere's exact rotational resistance gives phi = 0.5 rad; and the same balance against a constant rotational resistance (exact)",
+    "prediction": "PhaseLag's mean lag over the window equals arcsin(2 pi f R / (m B)) within tan(0.5) x 4e-4 = 2.2e-4 rad on the MRS rung (its stated discretisation, 4e-4 relative in the resistance), and within 1e-9 rad against the constant resistance",
+    "omega_dt": "2 pi x 10 Hz x 0.5 ms = 0.0314 rad, 143 times the MRS tolerance and 3e7 times the constant resistance's",
+    "control": "PhaseLag without its lag correction (the moment as it stands after the step, not as the torque read it at the step's start) misses by omega dt, 0.0314 rad: fails on every run"
+  },
+  "mutants": {
+    "ramp_phase_as_present_frequency_times_time": "caught by gate 6 on every run",
+    "phase_lag_without_its_correction": "caught by gate 7 on every run",
+    "kept_field_accepting_a_ramp_on_frequency": "caught by the guard's test on every run"
+  },
+  "counts_at": "every bit-for-bit claim at the usable CPU count and OpenBLAS thread count the test runs at (MIME-ANO-140, -141)"
+}
