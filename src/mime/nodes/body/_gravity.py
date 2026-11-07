@@ -91,6 +91,19 @@ class GravityNode(MimeNode):
         return jnp.concatenate([force, jnp.cross(lever, buoyancy)])
 
     @override
+    def energy(self, p: Mapping[str, Any], configuration: Array) -> Array:
+        """The gravity family's energy at the body's pose ``configuration``, of which :meth:`wrench` is the negative
+        gradient: ``U = -(m g + F_b) . x - F_b . (R_q c_b)``, ``F_b = -rho_f V g`` the buoyancy, acting at the centre of
+        buoyancy ``c_b`` (body frame); its last term only where the law is given ``c_b``, as the wrench's couple is."""
+        g = jnp.asarray(p["gravity"], dtype=configuration.dtype)
+        buoyancy = -p["fluid_density"] * p["buoyant_volume"] * g
+        held = -jnp.dot(p["mass"] * g + buoyancy, configuration[:3])
+        if not self._couples():
+            return held
+        lever = quaternion.rotate(configuration[3:], jnp.asarray(p["centre_of_buoyancy"], dtype=configuration.dtype))
+        return held - jnp.dot(buoyancy, lever)
+
+    @override
     def initial_state(self) -> NodeFields:
         return node_fields(Wrench(wrench=as_run_array(jnp.zeros(6))))
 

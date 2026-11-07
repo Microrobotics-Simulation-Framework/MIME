@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The energy ledger's machinery on the body, off unless attached** (`mime.core.ledger`; the first half of the
+  ledger, whose build wiring, observation and account come next). The vocabulary's port kinds (`PortKind`,
+  `register_port_kind`; MIME's `rigid_body`, `joint`, `delivered_inertia`, `flow_in`), each delivery's units paired
+  with its flow's to watts when the kind is made, and the energy classes (`EnergyClass`: dissipative, potential,
+  workless; no source class) with a dissipative law's `Definiteness`. The recorder: one pairing rule (a load read at
+  the step's start with the configuration's actual change, a force solved for in the step with the step's solution),
+  per-law inputs on a receiver so that attribution is the check that the unattributed inputs paired no work, exactly
+  zero, and running sums of each law's paired work and of the receiver's step identity. Any node takes `ledger`;
+  `rigid_inertial`'s node (every version) books `V^T M V / 2`, backward Euler's and the gyroscopic term's numerical
+  terms and the hosted contact's loss and projection term under the contact's name, judged within 16 units of
+  rounding on the step's scale (the magnitude of the arithmetic its terms are formed by, a stiff solve's included).
+  The laws' classes: gravity a potential, its family's energy on its node (`GravityNode.energy`); the drag
+  dissipative, definite by construction on the surrogate rung and checked at the state on the MRS rung, by a Cholesky
+  factorisation at its floor (a semidefinite resistance passes); the contact dissipative, hosted in its body's step;
+  the magnetic laws unmetered, each with its reason. **Without the ledger nothing moves**: every history array of
+  script A (the example and the reproduction arm), A0, script A with the hull contact and the screw-in-tube example is
+  identical to the bit to the release before it, in float32 and float64 (at 6 usable CPUs and one OpenBLAS thread), and
+  script A saved with the ledger off is byte-identical. `tests/energy/` holds the cases, their predictions written
+  before they ran: the body's identity (free, its centre held, its hull held, the hull contact's unrolled and looped
+  programs) at 0.13 to 0.28 of its floor over 300 fresh draws a case and dtype, an unbooked loss of 0.1 % of the
+  free body's twist caught on every draw (a sample minimum of 290 times the floor in float32 over 200 draws, not a
+  bound); on every arm, a gift of 64 floors, a contact's loss and its projection's shift and each of the scheme's
+  three terms misbooked by 64 floors (either sign), each read as 64 floors on every draw in both dtypes, and a
+  contact that gives energy caught by the dissipative law's sign (`ledger_gift_steps`) on every draw; the unattributed
+  work exactly zero, and a hidden 1e-3 and 1e-6 of a load caught on every draw;
+  gravity's wrench the negative gradient of its energy on the rotation group (at most 0.16 of its floor), a weight 1 %
+  heavier caught at least 477 times over; the surrogate's resistance definite at every drawn pose (its scaled least
+  eigenvalue 0.68 to 0.93, measured over script A's tube and 5 degrees of tilt) and an indefinite part planted in it
+  (1.1 times its least scaled eigenvalue taken off) caught on every draw (-0.17 to -0.10); the definiteness check
+  fails a zero diagonal entry that has a coupled row, whatever the coupling's size. **Not in this part, by design:**
+  attribution sees a load delivered where no law owns it, not a swap of two laws' loads between their own inputs
+  (the family cases of the second part check each law's delivery against its own row, with a plant); and no
+  declaration of a port, a class or a definiteness is read by anything yet, so a kind or a class cannot silence a
+  failing check by a declaration vacuously, until the second part's registry walk reads them.
 - **A containment watch: a body the centre-held contact holds whose hull leaves its region is flagged after the run**
   (in every profile that can be built, exploratory and research; never a refusal, no node or edge, so the graph and its
   derived hash are what they were). The contact 0.1.0 holds a body's centre by its extent and never reads its

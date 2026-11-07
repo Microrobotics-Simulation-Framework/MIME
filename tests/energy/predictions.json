@@ -1,0 +1,83 @@
+{
+  "written": "2026-11-07T09:52+01:00 (the time of the commit that holds it, e12ad46), before any gate case of P1a-1 ran (the default program's bits, tests/energy)",
+  "seen_before": [
+    "FU1's controls rerun against release/v0.3.0 at 68c1d15 beside the release's own body (the spike's recording node, 50 drawn starts of script A's reproduction arm, 2000 steps each, both dtypes): the hidden edge at 1e-3 and 1e-6 of the torque, the weight times 1.01 and the indefinite drag each caught on 50 of 50 draws by its own check and by no other, no check firing on the two unplanted arms; the least margins as FU1's (float32: the 1e-6 edge 17 times its floor, the weight plant 22 times; the indefinite part's scaled least eigenvalue -0.141, the definite control's 0.401)",
+    "development probes of the new body's step identity on seeded draws (not gate cases: no plant, no Hypothesis): free and centre-held bodies, 200 draws a set, both dtypes, worst 3.4 to 4.9 eps of the step's scale; stiff and ill-conditioned resistances (dt |R| / m to 1e3, scaled condition to 1e8) within 5 eps"
+  ],
+  "counts_at": "every bit-for-bit claim at 6 usable CPUs (taskset 0-5), OpenBLAS 1 thread, XLA 6 intra-op threads, processes started the same way (MIME-ANO-140, -141); the tests at whatever CI's lanes hold",
+  "gate_1_default_program_unchanged": {
+    "case": "five programs without the ledger, every history array of the head against release/v0.3.0 at the merge base by np.array_equal, float64 and float32: A (examples/script_a.py, 10 000 steps), A_repro (tests/script_a.py reproduction_arm, 10 000), A0 (tests/script_a0.py a0, 4000), A_hull (the reproduction arm with the current hull contact, 10 000), SIT (examples/screw_in_tube.py, the MRS drag, 30 steps of 100 ms)",
+    "predicted": "every array identical in all ten (19, 19, 29, 23 and 28 arrays): the step's arithmetic is moved into one method unchanged, the ledger's hooks add no operation without the ledger, and a node's parameters, inputs and state are the ones it had",
+    "controls": {
+      "repeat": "the base recorded twice: every array identical (the harness's own determinism at these counts)",
+      "one_ulp": "A_repro with its first moment of inertia one ulp up: arrays differ in both dtypes, from within the first few steps (the reference: 7 arrays from step 0 in float64): the comparison can fail"
+    },
+    "saved_form": "script A's reproduction arm saved with the ledger off from the base and from the head: every file of the two folders byte-identical (no saved-form step; nothing in the document, lock or outputs changes)"
+  },
+  "gate_2_body_identity": {
+    "case": "tests/energy/test_body_identity.py: rigid_inertial 0.4.0's node with a ledger of a load law and a resistance law (and the contact hosted, in the held arms), one step from each Hypothesis draw (pose, twist, tensor, load, resistance at FL-9's scales, in the dtype the node computes in), three arms: free, the centre held on its surface moving outward, the hull held at the wall",
+    "floor": "16 eps of the step's scale, the scale being the magnitude of the arithmetic that forms the identity's terms (each product's factors in magnitude, the solve's dt |V'|^T |M'/dt + R| |dV| included)",
+    "predicted_worst_eps": {
+      "free": 8,
+      "centre_held": 8,
+      "hull": 10
+    },
+    "plant": "a step that keeps 0.999 of its twist without booking it: caught on every draw, both dtypes, the least margin above 20 times the floor in float32 and above 1e8 in float64",
+    "balance": "a 2000-step driven run of the free body: the balance within 16 eps of the run's summed step scale, at most 0.1 of it"
+  },
+  "gate_2_attribution": {
+    "case": "tests/energy/test_attribution.py: every law in its own input; the unattributed inputs' paired work",
+    "predicted": "exactly 0.0 on every draw, both dtypes",
+    "plants": "a share of the law's load, 1e-3 and 1e-6, delivered into the summed input: the unattributed work non-zero on every draw, both dtypes (the load drawn pushing along the body's motion, so that it does work)"
+  },
+  "gate_2_gravity_class": {
+    "case": "tests/energy/test_gravity_class.py: GravityNode's wrench against the negative gradient of its energy, the torque by the gradient on the rotation group, on Hypothesis draws of the law and the pose, both dtypes",
+    "floor": "16 eps of the force's and the couple's arithmetic in magnitude",
+    "predicted_worst_eps": 4,
+    "plant": "the weight's term times 1.01: caught on every draw, the least margin above 50 times the floor in float32"
+  },
+  "gate_2_drag_definiteness": {
+    "case": "tests/energy/test_drag_definiteness.py: script A's surrogate drag node, its delivered resistance at Hypothesis-drawn poses in the tube (offset, roll, either end first), definite at the floor (16 eps on its symmetric part scaled by its diagonal) by one Cholesky factorisation",
+    "predicted": "definite on every draw, its scaled least eigenvalue above 0.5 (FU1 on the floor: 0.699 to 0.701)",
+    "plant": "FU1's indefinite part, 1.1 times the scaled least eigenvalue taken off along its eigenvector: caught on every draw (its scaled least eigenvalue about -0.07 to -0.14); the sign of the drag's work alone catches it on few or none",
+    "run_time": "the body's run-time check on a law whose definiteness is the state's: every step with the planted resistance counted, none with the definite one; a semidefinite matrix passes, where a plain Cholesky factorisation fails on it"
+  },
+  "not_in_this_pr": "the build's wiring (ledger=), EnergyLedger, the results' view, the conformance() case kinds, the end-to-end items (script A's account and balance, the gradient through the ledger, the physics bits with the ledger on): P1a-2",
+  "amendments": [
+    {
+      "written": "2026-11-07T10:06+01:00 (the time of its commit), after the first local run of tests/energy/test_body_identity.py, before the amended control ran",
+      "found": "the unbooked-loss plant held its predicted margin nowhere near the centre-held arm: Hypothesis found a draw at 2.2 times the floor in float32 and one at 3.5e7 in float64, where the velocity rule at arrival had removed most of the step's energy, so that 0.1 % of what the step kept was a small share of the step's scale (still above the floor, but not on every draw by construction)",
+      "amended": "the control drawn on the free body at FL-9's own resistance alone, its margins as predicted (above 20 times the floor in float32, above 1e8 in float64); and the driven run's balance read inside its dtype (read outside the float64 context it was cast to float32, and missed by 6e-18 J for that reason)",
+      "steps": "the steps drawn from four values (0.1, 0.25, 0.5 and 1 ms), each compiled once, the hull's arm at 0.5 ms: a drawn continuous step compiled a program per example"
+    }
+  ],
+  "times": "the written times were first set by hand, ahead of the clock (10:40 and 11:15); corrected to the commits' own times, which are the record of the order: the predictions at 09:52, gate 1's first recording from 09:54, the amendment at 10:06",
+  "fix_round_1": {
+    "written": "2026-11-07T13:11+01:00 (the time of the commit that holds it), after development probes (20 draws a cell: the plants' calibration, the sign of the contact's work) and before the 200-draw counts and the bits on the merged tree",
+    "seen_before": [
+      "the first review's probes (200 draws a cell, release/v0.3.0 at the PR's head): the amendment's unbooked-loss control missed on 29 of 200 float32 centre-held draws and 24 of 200 hull-held (minimum margin 0.05 and 1e-4 of the floor); the contact's loss and shift misbooked by half missed on 200 of 200 float32 centre-held draws; the scheme's terms halved missed on 114 of 200 float32 free-body draws; a contact that gives energy (the hold reversed) passed every check, its positive work at 0.887 to 2e5 floors (centre, float32) and zero on the hull's draws on which the hold does not act",
+      "development probes of this round's plants, 20 draws a cell, both dtypes, three arms: every plant of 64 floors read 63.75 to 64.25 floors on the identity; the contact's work, with the gift booked under its name, read 63.8 to 64.0 floors; one hull float32 draw read the booked gift 62.9 floors in the planted step's own floor (the contact had dissipated thousands of floors in the unplanted step, so the gift raised the planted step's scale by a share of a percent): the plant's size is read in the unplanted step's floor"
+    ],
+    "m1_plants_sized_in_floors": {
+      "case": "tests/energy/test_planted.py: PlantedBody (one node for every defect, so each arm compiles once per dtype), a plant a number of the step's floors (16 eps of the unplanted step's scale), 64 floors, on the free body, the centre held, the rod held by its hull (the contact 0.4.0's unrolled program and the 0.5.0's loops)",
+      "predicted": "a gift of 64 floors (the end of the step's storage raised by scaling the ended angular twist, unbooked), and the contact's loss, the contact's projection shift and each of the three scheme terms misbooked by +64 and by -64 floors, read 64 floors on the identity within one floor, on 200 of 200 draws a cell in float32 and in float64; the free body's translational gift the same",
+      "translational_gift_in_a_held_body": "NOT seen by the identity, by construction: the hosted velocity rule's loss is the difference between the solve's speed and the step's end speed, so a translational gift at the end reads as that much less loss; predicted: the identity within one floor and the contact's loss 64 floors lower than unplanted, on every draw (the plant shows the limit, it is not a control)",
+      "scheme_terms_by_value": "float64 only: the three terms halved read above 1000 floors on 200 of 200 draws (the first review's minimum 6e5); in float32 the floor sits above half a term on about half the free body's draws, so by value the formulae are checked in float64 and by weight (64 floors) in both"
+    },
+    "m2_contact_class": {
+      "case": "the contact's class (dissipative) checked by its sign: ledger_gift_steps, per dissipative law, the steps in which the law's paired work was positive beyond 16 eps of the step's scale, read in the receiver's per-law record",
+      "predicted": "an unplanted step on every arm counts no gift (the contact, the drag), on 200 of 200 draws a cell and dtype; a contact whose net work is made +64 floors (the gift booked under its name, the identity closed within one floor) is counted on 200 of 200; the hold reversed 100 times over is counted on every draw on which the hold acts (the centre-held arm every draw; the hull arm on 70 % or more of its draws, 75 % at the reversal of 1 in the first review's probe, the rest having no hold to reverse, where the reversed step is the unplanted step bit for bit)"
+    },
+    "definite_at_floor": "the first review's matrices (FL-9's resistance with one turning entry exactly zero and its coupling to the force row at 1e-9, 1e-8, 1e-7): indefinite in float32 and float64 (the old code passed all three in float32 and failed them in float64); two coupled zero diagonal entries with nothing else: indefinite",
+    "gate_1_on_the_merged_tree": "the five default programs and the reproduction arm saved with the ledger off, the merged head against release/v0.3.0 at 81fa3c3 (U3's PR 3, the contact 0.5.0 the default): every array identical and the folder byte-identical, in both dtypes, at 6 usable CPUs, OpenBLAS 1 thread, XLA 6 intra-op threads; controls as before (the base twice identical; the first moment one ulp up: arrays differ). The ledger's code adds no operation without the ledger and the contact's loops are the base's own",
+    "times": "from the clock of the commit",
+    "measured": {
+      "run": "probes (not in the repository) count200.py over tests/energy/test_planted.py's own plants and strategies, 200 fresh Hypothesis draws a cell (database off), at the head the tests ran at, on a loaded 24-core machine",
+      "sized_plants": "every plant read 64 floors within one floor on 200 of 200 draws in every cell: free body 8 plants (a gift, the translational gift, the three scheme terms each sign) x 200, float32 read 63.76 to 64.24, float64 63.70 to 64.31; centre held, hull held (unrolled) and hull held (looped), 11 plants each (the gift, the three scheme terms each sign, the contact's loss and its shift each sign) x 200, read 63.65 to 64.35 over the six cells; unplanted: identity at most 0.12 to 0.35 of the floor, no gift counted, 200 of 200",
+      "contact_gives_energy": "net work of +64 floors, identity within one floor, counted by gift_steps: 200 of 200 in float32 and in float64 on centre, hull and hull looped",
+      "hold_reversed_100_times": "caught wherever the hold acts: centre 200/200 acting, 200 caught, both dtypes; hull unrolled 154/200 acting in float32 and 146/200 in float64, all caught; hull looped 169 and 172 of 200 acting, all caught; least work 1.2e5 floors (float32), 7e13 (float64). The draws on which the hull holds nothing are 14 to 27 %: the predicted 70 % lower bound held (73 % least)",
+      "translational_gift_in_a_held_body": "identity within one floor, 200 of 200 in every held cell (absorbed by the loss, as predicted)",
+      "scheme_terms_halved_float64": "above 1000 floors on 200 of 200 in every arm, least 6.1e5 (free), 3.2e7 (centre), 1.6e7 (hull), 4.5e8 (hull looped)"
+    }
+  }
+}
