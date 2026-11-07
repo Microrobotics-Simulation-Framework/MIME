@@ -332,6 +332,21 @@ class Experiment:
         """An experiment of ``settings`` and ``declarations``, as data: what a study builds a group's point as."""
         return cls._declared(settings, declarations)
 
+    def redeclared(self, settings: RunSettings, declarations: Sequence[Declaration]) -> None:
+        """Take ``settings`` and the declarations among ``declarations`` that this experiment does not hold (by
+        identity) in the place of what they replace, as declaring them one by one would: each replacement is recorded in
+        ``plan().replaced``, with no warning. What a study's bridge (``RunResult.as_experiment``) makes an experiment of
+        a member with."""
+        import warnings
+
+        self._settings = settings
+        held = {id(declaration) for declaration in self._declarations}
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for declaration in declarations:
+                if id(declaration) not in held:
+                    self._declare(declaration)
+
     @classmethod
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
         experiment = cls(settings.experiment, scene=settings.scene, gravity=settings.gravity, dt=settings.dt,
