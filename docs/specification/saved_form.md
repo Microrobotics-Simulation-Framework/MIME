@@ -213,47 +213,68 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_form9.py::test_a_folder_holding_a_full_inertia_tensor_round_trips_in_a_fresh_process`,
   `tests/saved/test_form9.py::test_version_eights_reader_refuses_a_folder_of_version_nine_as_newer_each_file_once`,
   `tests/saved/test_form9.py::test_control_the_form_left_unstepped_is_read_by_version_eights_reader_with_no_newer_form`.
-- **[lock.source-scale]** From the tenth form, the lock's `reference.rtol` bounds each field's largest difference over
-  the reference steps as a share of its **source scale**, and `reference.atol` is written as zero, no absolute part; the
-  form adds and removes no key. The source scale is the field's own largest magnitude over the reference, or the one
-  its type in its node's typed state gives (`mime.core.FieldKind`), never one its node declares: a twist (`Twist`) by
-  its body's surface points' speed, each step's `|dv| + L |dw|` against the reference's largest `|v| + L |w|`, L the
-  body's largest reach from its hull or, where it has none, its radius of gyration from the mass and inertia its node
-  holds, computed and never declared; a ratio (`Ratio`, the MRS drag's asymmetry) against one; held points
-  (`HeldPoints`) only on the rows whose paired force (`HeldForces`) acts, in the reference or the rerun. A field that
-  is not of floating point is compared exactly. A folder of the ninth form or earlier is judged as its form says,
-  element by element (`|a - b| <= atol + rtol |b|` with its own numbers), in `verify`, `verify --run` and the load's
-  comparison of the derived graph. A reader of the ninth form refuses a folder of the tenth as `load.newer-form`.
-  *Cases:* `tests/saved/test_form10.py::test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part`,
+- **[lock.blocks]** From the tenth form, where `verify` claims no bits, every saved field is split into **blocks by
+  unit**, read from the units MIME declares for it (its node's symbol table, the edges that read it, the stage's
+  binding, the observations' outputs, a flag's): a composite's units list its parts, separated by semicolons, its
+  leading parts vectors of three, so a pose is its position and its quaternion, a twist its velocity and its angular velocity, a
+  wrench its force and its torque, and a resistance its translational, coupling and rotational blocks. A field of one
+  unit is one block, and so is one whose units are not declared. A block is within tolerance when at every reference
+  step its largest difference is at most `max(rtol` times its largest magnitude over the reference,
+  `resolution_factor` times its `resolution``)` plus `atol`, written as zero. The **resolution** is measured at save:
+  the reference steps run once more, by the same compiled program, from a start one unit in the last place off (every
+  nonzero floating number of the initial state, and of the small parameters the compiled step reads (`NUDGED_SIZE`),
+  one ulp up; a body released at rest at the origin starts from zeros, which the state alone cannot move), and the lock
+  records each block's largest divergence (`reference.resolution`, `null` where it is not finite) and the factor
+  (`reference.resolution_factor`), the two keys the form adds. A resolution that is zero or not finite gives no floor.
+  Held points (`HeldPoints`) are judged only on the rows whose paired force (`HeldForces`) acts in the reference or the
+  rerun, their magnitude and resolution too. A field that is not of floating point is compared exactly. A folder of the
+  ninth form or earlier is judged as its form says, element by element (`|a - b| <= atol + rtol |b|` with its own
+  numbers), in `verify`, `verify --run` and the load's comparison of the derived graph, and one that holds either new
+  key is refused. A reader of the ninth form refuses a folder of the tenth as `load.newer-form`.
+  *Cases:* `tests/saved/test_form10.py::test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part_and_each_fields_resolution`,
   `tests/saved/test_form10.py::test_a_form_nine_folder_loads_with_the_tolerance_it_was_written_with_and_verifies_element_by_element`,
-  `tests/saved/test_form10.py::test_a_form_nine_folder_is_judged_element_by_element_and_the_same_rerun_as_form_ten_on_its_source_scale`,
+  `tests/saved/test_form10.py::test_a_form_nine_folder_is_judged_element_by_element_and_the_same_rerun_as_form_ten_block_by_block`,
+  `tests/saved/test_form10.py::test_a_form_nine_lock_holding_a_resolution_is_refused_and_the_same_lock_without_it_loads`,
   `tests/saved/test_form10.py::test_version_nines_reader_refuses_a_folder_of_version_ten_as_newer_each_file_once`,
   `tests/saved/test_form10.py::test_control_the_form_left_unstepped_is_read_by_version_nines_reader_with_no_newer_form`,
-  `tests/saved/test_source_scale.py::test_the_tube_demos_fields_take_their_source_scales_from_their_types`,
-  `tests/saved/test_source_scale.py::test_the_sliding_balls_twist_is_sized_by_its_hulls_reach_and_one_row_takes_its_weight`,
-  `tests/saved/test_source_scale.py::test_a_twists_angular_part_changed_at_ten_times_the_tolerance_is_moved_at_every_step_and_component`,
-  `tests/saved/test_source_scale.py::test_an_asymmetry_of_1e_4_of_the_resistances_scale_is_moved_at_every_step`,
-  `tests/saved/test_source_scale.py::test_a_default_scale_field_changed_at_ten_times_the_tolerance_is_moved_at_every_step`,
-  `tests/saved/test_source_scale.py::test_a_held_point_of_a_row_that_takes_a_force_moved_at_ten_times_the_tolerance_is_moved_at_every_step`,
-  `tests/saved/test_source_scale.py::test_a_held_point_of_a_row_that_takes_no_force_jumping_two_millimetres_is_not_reported`,
-  `tests/unit/test_field_kinds.py::test_a_new_nodes_twist_typed_field_gets_the_twist_scale_sized_by_its_radius_of_gyration`,
-  `tests/unit/test_field_kinds.py::test_a_twist_with_nothing_to_size_it_by_is_judged_against_its_own_largest_magnitude`,
-  `tests/unit/test_field_kinds.py::test_a_ratio_is_judged_against_one_and_held_points_pair_with_the_one_field_of_held_forces`,
+  `tests/saved/test_verify_blocks.py::test_a_pose_twist_and_wrench_split_into_their_first_three_and_the_rest`,
+  `tests/saved/test_verify_blocks.py::test_a_resistance_splits_into_its_translational_coupling_and_rotational_blocks`,
+  `tests/saved/test_verify_blocks.py::test_one_unit_is_one_block_and_so_is_a_field_whose_units_are_not_declared_or_do_not_fit`,
+  `tests/saved/test_verify_blocks.py::test_every_composite_interface_of_the_vocabulary_splits_into_one_block_per_unit`,
+  `tests/saved/test_verify_blocks.py::test_the_sliding_balls_fields_take_their_units_from_its_build_and_its_lock_records_each_blocks_resolution`,
+  `tests/saved/test_verify_blocks.py::test_m1_the_balls_position_moved_8e_6_m_is_moved_at_every_step`,
+  `tests/saved/test_verify_blocks.py::test_m2_the_balls_angular_velocity_zeroed_flipped_or_doubled_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_m3_a_resistances_rotational_or_coupling_block_times_100_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_a_torque_where_the_reference_holds_none_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_a_plant_just_beyond_a_blocks_bound_is_caught_at_every_step_with_either_sign`,
+  `tests/saved/test_verify_blocks.py::test_a_resolution_that_is_zero_or_not_a_finite_positive_number_gives_no_floor`,
+  `tests/saved/test_verify_blocks.py::test_a_held_point_of_a_row_that_takes_a_force_moved_at_ten_times_its_bound_is_moved_at_every_step`,
+  `tests/saved/test_verify_blocks.py::test_a_held_point_of_a_row_that_takes_no_force_jumping_two_millimetres_is_not_reported`,
+  `tests/saved/test_save_reference.py::test_a_save_after_a_run_chunked_by_one_step_builds_and_compiles_nothing`,
+  `tests/unit/test_field_kinds.py::test_a_new_nodes_held_points_pair_with_its_one_field_of_held_forces`,
   `tests/unit/test_field_kinds.py::test_control_a_typed_state_that_does_not_name_exactly_the_fields_types_none_of_them`.
 - **[lock.tolerance]** A save of the tenth form writes its precision's `rtol` (`FLOAT32_RTOL` or `FLOAT64_RTOL` of
-  `mime.saved._scales`), each set from spreads measured across environments with a margin, both of which its comment
-  names (in float32 between runs on one GPU, between it and its CPU, and across CPU counts; in float64 across CPU
-  counts, no GPU measured), and a folder keeps the tolerance it was written with. A tolerance is raised only with a new measurement and a design decision recorded beside it;
-  lowering one needs neither. The tolerance governs how another environment's rounding, or a non-deterministic GPU's,
-  is judged; it states nothing of accuracy.
-  *Cases:* `tests/saved/test_tolerance_ratchet.py::test_each_tolerance_holds_its_pin`,
-  `tests/saved/test_tolerance_ratchet.py::test_each_pin_is_its_measurement_times_its_margin_and_the_comment_says_both`,
-  `tests/saved/test_tolerance_ratchet.py::test_control_a_raised_tolerance_whose_comment_is_unchanged_fails`,
-  `tests/saved/test_tolerance_ratchet.py::test_a_raised_tolerance_whose_comment_names_a_new_row_and_measurement_passes_and_a_lowered_one_always`,
+  `mime.saved._scales`) and the floor's factor (`RESOLUTION_FACTOR`), and a folder keeps the ones it was written with.
+  Each is pinned in a table of the measurements it was set from, with where each was made and its margin
+  (`tests/saved/test_tolerance_ratchet.py`): in float32 the spreads between runs on one T4 GPU and against its CPU,
+  and across three counts of usable CPUs of one laptop, on one demo over eight steps; in float64 across CPU counts
+  only, no GPU measured; the factor against the demo's one-ulp resolution, and below the angular velocity's ceiling. The
+  measurements the repository holds are computed again from it. A constant is raised only by a new measurement and a
+  design decision entered in that table; lowering one needs neither. The tolerance governs how another environment's
+  rounding, or a non-deterministic GPU's, is judged on runs like the one measured; it states nothing of accuracy, and is
+  no promise that no other machine or experiment reads moved.
+  *Cases:* `tests/saved/test_tolerance_ratchet.py::test_each_constant_is_at_most_its_pin`,
+  `tests/saved/test_tolerance_ratchet.py::test_control_each_constant_raised_fails_and_lowered_passes`,
+  `tests/saved/test_tolerance_ratchet.py::test_each_pin_stands_its_margin_above_its_largest_measurement`,
+  `tests/saved/test_tolerance_ratchet.py::test_the_measurements_the_repository_holds_are_what_its_artefacts_give`,
+  `tests/saved/test_tolerance_ratchet.py::test_k_stands_below_the_ceiling_the_angular_velocity_needs_by_its_margin`,
+  `tests/saved/test_tolerance_ratchet.py::test_a_save_writes_the_pinned_constants_into_its_lock`,
   `tests/saved/test_form10.py::test_a_folder_keeps_the_tolerance_it_was_written_with`,
-  `tests/saved/test_source_scale.py::test_across_cpu_counts_every_field_is_within_its_precisions_tolerance_on_its_source_scale`,
-  `tests/saved/test_source_scale.py::test_no_false_moved_the_t4_spread_planted_per_field_verifies_within_tolerance_with_the_warning`,
-  `tests/saved/test_source_scale.py::test_today_the_same_plant_is_moved`.
+  `tests/saved/test_verify_blocks.py::test_across_cpu_counts_every_block_is_within_its_bound`,
+  `tests/saved/test_verify_blocks.py::test_control_without_its_resolution_the_angular_velocity_across_counts_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_no_false_moved_the_t4_spread_planted_per_block_verifies_within_tolerance_with_the_warning`,
+  `tests/saved/test_verify_blocks.py::test_no_false_moved_is_not_on_the_edge_the_t4_spread_sits_well_inside_each_floor`,
+  `tests/saved/test_verify_blocks.py::test_today_the_same_plant_is_moved`.
 - **[lock.pins]** The lock's records are the experiment's pins: a load reads each asset under the hash its lock names,
   whatever a shared source holds under that name now, and the build report names each source that holds another
   version; one not stored is refused as `asset.missing`. A saved stage's meshes keep the manifest and sha256 it names
@@ -372,13 +393,13 @@ refusal table's (`mime/build/refusal_table.txt`).
 - **[rebuild.same]** A folder saved and loaded in one environment rebuilds the same experiment, and `mime verify`
   reruns it to the reference outputs bit for bit, unless its reference was made on a GPU with XLA's deterministic mode
   off: two such runs of one program differ in their last bits, so it is judged within the lock's tolerance everywhere,
-  the GPU it was made on included (on each field's source scale from the tenth form; a folder of an earlier form keeps
-  its element-by-element rule). Made in deterministic mode, it verifies bit for bit in the same environment again. In another environment every folder is judged within its
+  the GPU it was made on included (block by block from the tenth form; a folder of an earlier form keeps its
+  element-by-element rule, under which such a folder can still read moved where it was made). Made in deterministic mode, it verifies bit for bit in the same environment again. In another environment every folder is judged within its
   tolerance. `mime verify --run` claims the same of a run folder, and the card's tolerance line states the same levels.
   *Cases:* `tests/saved/test_load.py::test_a_saved_experiment_loads_and_verifies_bit_for_bit`,
-  `tests/saved/test_source_scale.py::test_a_deterministic_folder_verified_in_the_same_environment_is_bit_for_bit`,
-  `tests/saved/test_source_scale.py::test_the_sliding_ball_verifies_bit_for_bit_where_its_lock_was_written`,
-  `tests/saved/test_source_scale.py::test_a_gpu_reference_made_with_deterministic_mode_off_reruns_within_tolerance_with_the_warning`,
+  `tests/saved/test_verify_blocks.py::test_a_deterministic_folder_verified_in_the_same_environment_is_bit_for_bit`,
+  `tests/saved/test_verify_blocks.py::test_the_sliding_ball_verifies_bit_for_bit_where_its_lock_was_written`,
+  `tests/saved/test_verify_blocks.py::test_a_gpu_reference_made_with_deterministic_mode_off_reruns_within_tolerance_with_the_warning`,
   `tests/saved/test_deterministic_warning.py::test_verify_of_a_cpu_or_a_deterministic_reference_never_warns`,
   `tests/saved/test_deterministic_warning.py::test_the_cards_tolerance_line_states_each_level_and_the_rule_of_the_folders_form`.
 - **[rebuild.deterministic]** A reference written on a GPU with deterministic mode off carries one warning where the
@@ -388,8 +409,9 @@ refusal table's (`mime/build/refusal_table.txt`).
   turns the mode on before JAX's backend starts, since XLA reads its flags only then (`mime modal --deterministic`
   sets it in the script it writes); from Python,
   `mime.env.deterministic_mode()` does the same before anything computes, and is refused as `env.deterministic-late`
-  once the backend has started, unless the flags already turn the mode on. On the CPU it changes nothing, says so in one
-  line, and the lock records the flags as they were.
+  once the backend has started, unless the flags already turn the mode on or an earlier call set them itself, which a
+  second call answers as it did. On the CPU it changes nothing, says so in one line, and the lock records the flags as
+  they were.
   *Cases:* `tests/saved/test_deterministic_warning.py::test_a_save_on_a_gpu_with_deterministic_mode_off_warns_once`,
   `tests/saved/test_deterministic_warning.py::test_a_save_on_the_cpu_never_warns`,
   `tests/saved/test_deterministic_warning.py::test_a_save_on_a_gpu_in_deterministic_mode_never_warns`,
@@ -399,6 +421,7 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/env/test_deterministic_mode.py::test_after_the_backend_started_the_python_route_is_refused_naming_the_routes_that_work`,
   `tests/env/test_deterministic_mode.py::test_with_the_mode_already_in_the_flags_it_is_not_refused_and_on_the_cpu_it_is_not_on`,
   `tests/env/test_deterministic_mode.py::test_in_a_fresh_cpu_process_it_changes_nothing_and_the_flags_are_as_they_were`,
+  `tests/env/test_deterministic_mode.py::test_in_a_fresh_cpu_process_a_second_call_answers_as_the_first_and_is_not_refused`,
   `tests/env/test_deterministic_mode.py::test_mime_verify_deterministic_on_the_cpu_says_it_changes_nothing_and_verifies_as_without_it`,
   `tests/env/test_deterministic_mode.py::test_mime_run_deterministic_on_the_cpu_records_the_flags_as_they_were`.
 

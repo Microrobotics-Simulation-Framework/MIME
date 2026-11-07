@@ -14,10 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backend started took no effect, one set after `import jax` and `import mime` did), and recorded in the lock as before.
   The Python call is refused once the backend has started (`env.deterministic-late`), naming the routes that work,
   unless the flags already turn the mode on. On the CPU either says in one line that it changes nothing there.
-- **Field types in a node's typed state** (`mime.core.Twist`, `Ratio`, `HeldPoints`, `HeldForces`, read by
-  `field_kinds`): what `verify` judges a field's source scale by. `rigid_inertial`'s twist and contact points and the
-  MRS drag's asymmetry are typed so; a new node whose state writes a field as `Twist` is judged as a twist with nothing
-  declared beside it.
+- **Held points' type in a node's typed state** (`mime.core.HeldPoints`, `HeldForces`, read by `field_kinds`):
+  `rigid_inertial`'s contact points are judged by `verify` only on the rows whose force acts; a new node whose state
+  writes a field as `HeldPoints` beside one `HeldForces` field is judged so, with nothing declared beside it.
 - **A containment watch: a body the centre-held contact holds whose hull leaves its region is flagged after the run**
   (in every profile that can be built, exploratory and research; never a refusal, no node or edge, so the graph and its
   derived hash are what they were). The contact 0.1.0 holds a body's centre by its extent and never reads its
@@ -106,25 +105,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`mime verify` judges each field on the scale it comes from, and the saved form is version 10** (`mime.document/10`,
-  `mime.lock/10`; no key added or removed). Where `verify` claims no bits, in another environment or of a reference no
-  run repeats bit for bit, a field is within tolerance when its largest difference over the reference steps is at most
-  the lock's `rtol` times its source scale, and `atol` is written 0.0. The source scale is the field's own largest
-  magnitude over the reference, or the one its type in its node's typed state gives, never one a node declares: a twist
-  by its body's surface points' speed, `|dv| + L |dw|`, L computed as the body's largest reach from its hull (or its
-  radius of gyration from its mass and inertia where it has no hull); a ratio, such as the MRS drag's asymmetry,
-  against one; a contact's held points only on the rows whose force acts (MIME-ANO-144). Without them the twist (1.9e-3
-  of its own scale, all of it in the angular part but for rounding) and the asymmetry (1.3e-3) already moved across CPU
-  counts. A save writes its precision's tolerance, 1e-5 in float32 (about 9 times the largest spread measured between
-  runs on a T4 GPU and between it and its CPU, 1.07e-6, and 42 times the spread across 24, 4 and 2 CPUs, 2.4e-7) and
-  2e-14 in float64 (36 times the spread across CPU counts, 5.5e-16; no GPU was measured in float64, and the number rests
-  on the spread being rounding, which scales with the resolution). A folder keeps the tolerance it was written with, a
-  test pins each tolerance to its measurement and margin so that raising one fails without a new measurement, and each
-  source scale has a control in which a physically meaningful change in that field is reported on every run. The
-  tolerance bounds how another environment's rounding is judged; it says nothing of accuracy, which the oracles test.
-  A folder of the ninth form or earlier is judged as its form says, element by element with its own numbers (1e-6 and
-  1e-9), in `verify`, `verify --run` and the load's comparison of the derived graph, which from the tenth form holds
-  each list of numbers and each static array to its own largest magnitude.
+- **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,
+  `mime.lock/10`). Where `verify` claims no bits, in another environment or of a reference no run repeats bit for bit,
+  every field is split into blocks by the units MIME already declares for it (a pose into its position and its
+  quaternion, a twist into its velocity and its angular velocity, a wrench into its force and its torque, a
+  resistance into its translational, coupling and rotational blocks; a field of one unit, or whose units are not
+  declared, is one block), and each block is within tolerance when its largest difference at every reference step is
+  at most `max(rtol` times its largest magnitude, `k` times its **resolution**`)`, with no absolute part. The save
+  measures the resolution: the reference steps run once more, by the same compiled program, from a start one ulp off
+  (every nonzero floating number of the initial state and of the small parameters the step reads, one ulp up), and the
+  lock records each block's divergence (`reference.resolution`) and `k` (`reference.resolution_factor`), the two keys
+  the form adds. Judged whole, a field that mixed units hid a change in its smaller part: in float32 an 8e-6 m shift of
+  the tube ball's position under its quaternion's 1.0, and its whole angular velocity, zeroed, flipped or doubled, under
+  the surface points' speed (the review of #195, design #266); each is now reported, and a control holds each on every
+  run. Held points are judged only on the rows whose force acts (MIME-ANO-144). A save writes its precision's
+  tolerance, 1e-5 in float32 and 2e-14 in float64, and `k` = 30: 5.5 times the largest need measured (the MRS drag's
+  asymmetry, the T4's spread against its CPU's one-ulp resolution) and a quarter of the tube ball's angular velocity
+  over its resolution. Each is pinned in a table of the measurements it rests on, and the measurements the repository
+  holds are computed again from it. The measurement covers one T4, one laptop's CPU at three counts, one demo, eight
+  steps, float32; float64 on the CPU only. A folder keeps the tolerance it was written with, and one of the ninth form
+  or earlier is judged as its form says, element by element with its own numbers (1e-6 and 1e-9), in `verify`, `verify
+  --run` and the load's comparison of the derived graph, which from the tenth form holds each list of numbers and each
+  static array to its own largest magnitude. The cost is one more run of the reference steps at save.
 - **A GPU reference made without XLA's deterministic mode is judged within tolerance, never bit for bit**, on every
   machine, the GPU it was made on included: two such runs of one program differ in their last bits, so `verify` no
   longer reports a tenth-form folder of one moved where it was made (a folder of an earlier form keeps its

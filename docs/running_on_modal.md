@@ -110,8 +110,8 @@ Two runs are **the same environment**, for a claim of bits, only when everything
 the record), the device kind and driver, the CPU model and flags' hash, the precision, `XLA_FLAGS` and the
 deterministic mode. A field of a device that either run could not read (a driver `nvidia-smi` did not give) is never
 equal to anything. A run's saved form records its own environment, so a later run of it in the same environment is
-checked bit for bit (a GPU run's only in deterministic mode), and anywhere else within the lock's tolerance. An experiment saved on a laptop is always another
-environment on Modal. A "within tolerances" verdict from `::verify --run` can come from a different CPU host or driver
+checked bit for bit (a GPU run's only in deterministic mode), and anywhere else within the lock's tolerance. An
+experiment saved on a laptop is always another environment on Modal. A "within tolerances" verdict from `::verify --run` can come from a different CPU host or driver
 alone, with no numerical difference: it is a refusal to claim bits, not evidence of a change.
 
 `mime env check` also refuses a module Python imports from outside this environment's site-packages (a `PYTHONPATH`
@@ -154,16 +154,21 @@ run a fresh process; one run of each kind unless said): two plain GPU runs of on
 their states and reference outputs; with `--xla_gpu_deterministic_ops=true`, two runs repeated bit for bit, and two
 commits whose programs are the same agreed bit for bit; the mode cost about 57 % more compile time and 4 to 11 % more
 time per step. Between plain runs, and between the GPU and its CPU, each physical field agreed to about 1e-6 of its own
-largest magnitude, the twist's angular part, the resistance's asymmetry and the contact's held points on rows that take
-no force excepted, which `mime verify` judges on the scale they come from (the saved form's `rtol`,
-[`mime.saved`](../src/mime/saved/README.md)).
+largest magnitude, but for three: the ball's angular velocity (up to 1.4e-5 rad/s, 4 % of its largest), the
+resistance's asymmetry (1.3 % of itself) and the contact's held points on rows that take no force. `mime verify` judges
+each field block by block, a block on its share of its largest magnitude or on a multiple of the rounding its own save
+measured in it, and the held points only where a force acts ([`mime.saved`](../src/mime/saved/README.md)).
 
 So there are **two levels of claim**:
 
 - **By default a GPU run is not deterministic** (fast, for prototyping). `mime verify` of a folder whose reference was
-  made that way judges it **within tolerance** on every machine, the GPU it came from included, and never reports a false
-  "moved". Its save warns once, and its verification ends with the same line: deterministic mode is off, so the
-  reference verifies within tolerance, not bit for bit; for bit-for-bit reproducibility, rerun with `--deterministic`.
+  made that way judges it **within tolerance** on every machine, the GPU it came from included. Its save warns once,
+  and its verification ends with the same line: deterministic mode is off, so the reference verifies within tolerance,
+  not bit for bit; for bit-for-bit reproducibility, rerun with `--deterministic`. What the tolerance was set from is
+  one T4, one demo, eight steps, in float32, one run of each kind: the T4's spread planted in the demo's reference
+  verifies within it, a third of each floor at most, and that is all it shows; another GPU, another experiment or
+  float64 on a GPU was not measured, and could read moved. A reference saved on such a GPU measures its resolution
+  with the GPU's own run-to-run spread in it, so its floors are wider than a CPU's (not measured).
 - **Deterministic mode is opt in**: `--deterministic` on `mime run`, `mime verify` and `mime modal`, or
   `mime.env.deterministic_mode()` in Python before anything computes. The lock records it, and the same environment then
   verifies **bit for bit**, any other within tolerance. XLA reads `XLA_FLAGS` once, when JAX's backend starts, so the

@@ -117,20 +117,27 @@ rerun with `--deterministic`). Made in deterministic mode (`--deterministic` on 
 modal`, or `mime.env.deterministic_mode()` before anything computes), it verifies bit for bit in the same environment
 again. The CPU is as it was.
 
-**What the tolerance claims** ([`_scales.py`](_scales.py)). From the tenth form, a field is within tolerance when its
-largest difference over the reference steps is at most the lock's `rtol` times its **source scale** (`atol` is
-written as zero: no absolute part): its own largest magnitude over the reference, or the scale its type in its node's typed
-state gives, never one its node declares. A twist (`mime.core.Twist`) is judged by its body's surface points' speed,
-`|dv| + L |dw|` against the largest `|v| + L |w|`, L computed as the body's largest reach from its hull or, without a
-hull, its radius of gyration from the mass and inertia its node holds; a ratio (`Ratio`, such as the MRS drag's
-asymmetry `|R - R^T| / |R|`) against one; held points (`HeldPoints`) only on the rows whose paired force (`HeldForces`)
-acts. The save writes the tolerance of its precision (`FLOAT32_RTOL`, `FLOAT64_RTOL`), each set from spreads measured
-across environments with a margin, both of which its comment names (in float32 between runs on a T4 GPU, between it
-and its CPU, and across CPU counts; in float64 across CPU counts, no GPU measured there), and the folder keeps the one
-it was written with; a test pins each against its measurement, and raising
-one needs a design decision on a new measurement. It bounds how another machine's rounding, or a non-deterministic
-GPU's, is judged; it says nothing of accuracy, which the oracles test. A folder of the ninth form or earlier is judged as
-its form says, element by element, `|a - b| <= atol + rtol |b|` with its own numbers. **"The same environment" means equal on every field of the lock's environment but the runner's information**: the
+**What the tolerance claims** ([`_scales.py`](_scales.py)). From the tenth form, every field is split into **blocks
+by unit**, from the units MIME already declares for it (its node's symbol table, the edges that read it, the stage's
+binding, the observations' outputs, a flag's): a pose into its position, in metres, and its quaternion, a twist into its
+velocity and its angular velocity, a wrench into its force and its torque, a resistance into its translational,
+coupling and rotational blocks. A field of one unit is one block, and so is a field whose units MIME does not declare
+(on the demos: the contact's held points and forces, the MRS drag's diagnostics and its stop record). Each block is
+within tolerance when, at every reference step, its largest difference is at most **`max(rtol` times its largest
+magnitude, `resolution_factor` times its resolution`)`** (`atol` is written as zero: no absolute part). The
+**resolution** is measured at save: the reference steps run once more, by the same compiled program, from a start one
+unit in the last place off, and the lock records each block's largest divergence (`reference.resolution`). It is the
+run's own rounding in that block, so the angular velocity of a body that barely turns is judged on how far rounding
+moves it, not against its velocity, and a sign error in it is caught. A resolution that measures zero gives no floor.
+One mask stays: held points (`HeldPoints`) count only on the rows whose paired force (`HeldForces`) acts, their
+magnitude and resolution too. The save writes the tolerance of its precision (`FLOAT32_RTOL`, `FLOAT64_RTOL`) and the
+floor's factor (`RESOLUTION_FACTOR`), and the folder keeps the ones it was written with; a test pins each in a table
+of the measurements it was set from, with their margins, and raising one needs a design decision on a new
+measurement. **What the measurement covers:** one T4 GPU (run to run, and against its CPU), one laptop's CPU at three
+counts of usable CPUs, one demo (the tube's settling ball), eight steps, float32; float64 on the CPU only. It bounds how
+another machine's rounding, or a non-deterministic GPU's, is judged on runs like that one; it is not a promise that no
+other machine or experiment reads moved, and it says nothing of accuracy, which the oracles test. A folder of the ninth
+form or earlier is judged as its form says, element by element, `|a - b| <= atol + rtol |b|` with its own numbers. **"The same environment" means equal on every field of the lock's environment but the runner's information**: the
 versions, the platform, the device and the precision, and the GPU and its driver and libraries, the CPU, the count
 of CPUs the process could use and the threads of its BLAS, the matmul precision, XLA's flags and deterministic mode, and the runner's record. A
 difference in any one of them, in the lock or in the process that loads it, makes the load another environment: one
@@ -473,9 +480,10 @@ declaration's source naming the parts' tensor as the three numbers it named) for
 exploratory's waiver of the products is refused at load by that version's words. A reader of the eighth refuses a
 folder of the ninth as `load.newer-form`.
 
-The saved form is in its tenth version since the lock's `reference.rtol` is over each field's source scale and its
-`atol` is written as zero (What the tolerance claims, above). The tenth adds and removes no key: a folder of the ninth or
-earlier loads as it was and is judged element by element with the numbers it holds, and saving it again writes the
-tenth with its precision's tolerance. A reader of the ninth refuses a folder of the tenth as `load.newer-form`.
+The saved form is in its tenth version since `verify` judges each field block by block, on each block's largest
+magnitude or its resolution, and the lock's `atol` is written as zero (What the tolerance claims, above). The tenth adds
+two keys below the lock's `reference`, `resolution` and `resolution_factor`: a folder of the ninth or earlier loads as
+it was and is judged element by element with the numbers it holds (one that holds either key is refused), and saving it
+again writes the tenth. A reader of the ninth refuses a folder of the tenth as `load.newer-form`.
 
 Releases are explained in the [package manifest](../README.md#status).

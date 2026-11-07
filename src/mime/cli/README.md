@@ -7,8 +7,8 @@
 - `mime verify <folder> [--deterministic]`: load a saved experiment, rebuild it, check it against its lock, and rerun
   its reference steps (`Experiment.load(folder)`, then `.build().verify()`), in the precision the lock records (as
   `mime run` does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report
-  and the verdict, bit for bit or within the lock's tolerance (each field on its source scale from the tenth form; see
-  [`mime.saved`](../saved/README.md)), and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the
+  and the verdict, bit for bit or within the lock's tolerance (block by block from the tenth form, each on its largest
+  magnitude or its measured resolution; see [`mime.saved`](../saved/README.md)), and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the
   load or the build is refused. A reference made on a GPU with XLA's deterministic mode off is judged within tolerance
   everywhere, and the verdict ends with a line saying so. `--deterministic` turns XLA's deterministic GPU mode on before
   JAX starts (`mime.env.deterministic_mode()`); on the CPU it changes nothing, and says so in one line. Ctrl+C ends it
