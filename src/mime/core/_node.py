@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from functools import cached_property
 from typing import Any, ClassVar, cast, override
 
@@ -63,13 +63,49 @@ class MimeNode(SimulationNode):
     :meth:`constants` inside it.
 
     A node documented for its pages carries MADDENING's ``meta`` (a ``NodeMeta``, whose ``governing_equations`` are
-    the equations' one home) and ``symbols``, the rows joining each symbol of those equations to the code."""
+    the equations' one home) and ``symbols``, the rows joining each symbol of those equations to the code.
+
+    **The energy ledger's hooks** (``mime.core.ledger``). A node that writes its step identity (a dynamics: its
+    storage, and its step's terms) names its own scheme's numerical terms in :attr:`LEDGER_TERMS` and gives
+    :meth:`storage` and :meth:`identity_terms`; a potential law gives its family's :meth:`energy`. Any node takes
+    ``ledger``, the deliveries it is metered for, which only the build gives it, only where the ledger is attached:
+    it is then a constant of the node, read while its step is traced, and without it the node is the node it always
+    was, its parameters included."""
 
     symbols: ClassVar[tuple[Symbol, ...]] = ()
+    #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
+    #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
+    LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
 
-    def __init__(self, name: str, timestep: float, **params: object) -> None:
+    def __init__(self, name: str, timestep: float, *, ledger: Sequence[str] = (), **params: object) -> None:
+        if ledger and type(self).LEDGER_TERMS is None:
+            raise TypeError(f"{type(self).__name__} writes no step identity (LEDGER_TERMS), so the ledger cannot "
+                            f"meter it")
         held: Any = super()
-        held.__init__(name, timestep, **params)
+        held.__init__(name, timestep, **params, **({"ledger": tuple(str(d) for d in ledger)} if ledger else {}))
+
+    @property
+    def metered(self) -> bool:
+        """Whether the node was built with the ledger attached."""
+        return bool(self.constants().get("ledger"))
+
+    def storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
+        """The energy the node stores at ``state`` (J), from its constants ``p``: what its step identity's change in
+        storage is taken between, the states its step takes and returns."""
+        raise NotImplementedError(f"{type(self).__name__} states no storage")
+
+    def identity_terms(self, p: Mapping[str, Any], held: Sequence[Any], state: Mapping[str, Array],
+                       boundary_inputs: Mapping[str, Array], ended: Mapping[str, Array], parts: Any,
+                       dt: float) -> Any:
+        """The terms of the node's step identity (a ``mime.core.ledger.StepAccount``) over one step from ``state`` to
+        ``ended``: each of the ``held`` deliveries paired by the one rule from its own input in ``boundary_inputs``,
+        what the step left for its books in ``parts``, and its own scheme's terms."""
+        raise NotImplementedError(f"{type(self).__name__} writes no step identity")
+
+    def energy(self, p: Mapping[str, Any], configuration: Array) -> Array:
+        """A potential law's energy (J) at its receiver's ``configuration`` (a body's pose), from its constants ``p``:
+        its family's energy, of which its delivery is the negative gradient."""
+        raise NotImplementedError(f"{type(self).__name__} states no energy")
 
     def constants(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """The constructor's arguments, with the graph's live ``params`` written over them when given: what the step

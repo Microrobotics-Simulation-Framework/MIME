@@ -19,6 +19,7 @@ from mime.vocabulary import (
     CONFINEMENT,
     POSE,
     RESISTANCE,
+    RIGID_BODY,
     TWIST,
     Capability,
 )
@@ -139,6 +140,7 @@ class RigidInertial(Dynamics):
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,
                        Capability.PROJECTS_CONFINEMENT, Capability.HOLDS_HULL})
     publishes = {POSE.name: Port("pose"), TWIST.name: Port("twist")}
+    port = RIGID_BODY.name
     accepts = {APPLIED_WRENCH.name: Port("applied_wrench"), RESISTANCE.name: Port("resistance"),
                BACKGROUND_LOAD.name: Port("background_load"), CONFINEMENT.name: Port("confinement")}
     initial_state = {"position": LENGTH, "orientation": DIMENSIONLESS, "velocity": VELOCITY,

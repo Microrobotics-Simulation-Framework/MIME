@@ -61,7 +61,7 @@ from mime.registry import (
 )
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
-from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, Capability
+from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, Capability, Definiteness, EnergyClass
 from mime.walls import RESERVED
 
 if TYPE_CHECKING:
@@ -319,6 +319,7 @@ class PointForceDrag(Interaction):
     )
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     rungs = ("surrogate", "mrs")
+    energy_class = EnergyClass.DISSIPATIVE
     support = (SupportRow("surrogate", {
         "body": requires(Capability.RIGID, accepts=[RESISTANCE.name, BACKGROUND_LOAD.name], publishes=[POSE.name]),
     }, note="a rigid body whose dynamics takes a resistance, in a medium at rest filling a straight tube"),
@@ -397,6 +398,13 @@ class PointForceDrag(Interaction):
     @classmethod
     def MRS(cls, **settings: Any) -> Self:  # noqa: N802 - a rung's alias reads as a class
         return cls(rung="mrs", **settings)
+
+    @override
+    def definiteness(self) -> Definiteness | None:
+        """The surrogate's resistance is its network's ``L L^T`` carried through congruences, with the lubrication's
+        positive semidefinite part added: definite whatever its inputs, checked once in the family's suite. The MRS's
+        is solved at the body's state, and near a wall its definiteness depends on it: checked at run time."""
+        return Definiteness.CONSTRUCTION if self.rung == "surrogate" else Definiteness.STATE
 
     @override
     def includes_lubrication(self) -> bool:
