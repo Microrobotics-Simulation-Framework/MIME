@@ -97,6 +97,11 @@ def test_a_leaf_every_member_shares_enters_the_step_once_with_no_member_axis():
             assert tree["nodes"][node][leaf] is first[node][leaf], (node, leaf)
     weights = max(((n, k) for n, k, a in axes if a is None), key=lambda nk: first[nk[0]][nk[1]].nbytes)
     assert tree["nodes"][weights[0]][weights[1]].shape == first[weights[0]][weights[1]].shape
+    # Every point holds the first point's own array for each leaf they share: a table is held once, not per point.
+    for index in group.members[1:]:
+        own = plan.points[index].tree
+        assert all(own[n][k] is first[n][k] for n, k, a in axes if a is None)
+        assert own["drive:field.frequency"]["value"] is not first["drive:field.frequency"]["value"]
 
 
 def _toy(rate: float):
