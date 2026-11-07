@@ -7,10 +7,13 @@ name = "mime-engine"
 dynamic = ["version"]
 description = "MIcrorobotics Multiphysics Engine — domain-specific physics for microrobot simulation"
 readme = "README.md"
-# MIME is Apache-2.0; the files derived from usd2gltf (src/mime/viz/_gltf/) are MIT, and the inlined viewer's bundle
-# (src/mime/viz/_viewer/) holds MIT and BSD-3-Clause parts beside its Apache-2.0 code: each licence's text is listed.
-license = "Apache-2.0 AND MIT AND BSD-3-Clause"
-license-files = ["LICENSE", "NOTICE", "src/mime/viz/_gltf/LICENSE", "src/mime/viz/_viewer/LICENSE.*"]
+# MIME is Apache-2.0; the files derived from usd2gltf (src/mime/viz/_gltf/) are MIT, the inlined viewer's bundle
+# (src/mime/viz/_viewer/) holds MIT and BSD-3-Clause parts beside its Apache-2.0 code, and the inlined Mermaid
+# (src/mime/experiment/_mermaid_lib/) holds MIT, ISC, BSD-3-Clause, Apache-2.0 and Unlicense parts (DOMPurify's
+# MPL-2.0-or-Apache-2.0 used as Apache-2.0): each licence's text is listed.
+license = "Apache-2.0 AND MIT AND BSD-3-Clause AND ISC AND Unlicense"
+license-files = ["LICENSE", "NOTICE", "src/mime/viz/_gltf/LICENSE", "src/mime/viz/_viewer/LICENSE.*",
+                 "src/mime/experiment/_mermaid_lib/LICENSE.*"]
 requires-python = ">=3.12"
 authors = [
     { name = "Nicholas Ehsan Roy" },

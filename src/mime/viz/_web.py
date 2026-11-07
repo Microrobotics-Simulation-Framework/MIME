@@ -505,7 +505,7 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
     return WebPage(held, result, origin=origin)
 
 
-def _held_by(path: Path) -> Path | None:
+def held_by(path: Path) -> Path | None:
     """The saved or run folder ``path`` would be written inside, where it is inside one."""
     for folder in path.resolve().parents:
         if (folder / "mime.lock").is_file() or (folder / "experiment" / "mime.lock").is_file() \
@@ -525,7 +525,7 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
     caption = _stale_caption(origin_of_folder(target), caption)
     written = Path(out) if out is not None else Path(f"{result.name}.html")
     for path in (written, *((Path(glb),) if glb is not None else ())):
-        folder = _held_by(path)
+        folder = held_by(path)
         if folder is not None:
             raise ArgumentRefused([Refusal(
                 "visuals.web-out", RefusalClass.USER,
@@ -540,4 +540,4 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
 
 
 __all__ = ["BAR_PIXELS", "CLOSEST", "CREDIT", "FOCUS_FACTOR", "OUTPUT_WARNING_BYTES", "VIEWER_CDN", "VIEWER_FILE", "VIEWER_SHA256", "VIEWER_SRI",
-           "VIEWER_VERSION", "WebPage", "closest_radius", "display", "page", "viewer_bytes", "web"]
+           "VIEWER_VERSION", "WebPage", "closest_radius", "display", "held_by", "page", "viewer_bytes", "web"]

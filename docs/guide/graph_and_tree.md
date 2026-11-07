@@ -135,51 +135,57 @@ lag of every edge. `direction=` is MADDENING's (`LR`, `RL`, `TB` or `BT`): `TB` 
 
 ## In a notebook
 
-`built.to_mermaid()` returns a `str` that also tells a notebook how to show it, in one of two ways:
+`built.to_mermaid()` returns a `str` that also tells a notebook how to show it: **as a page of its own, in an `<iframe
+srcdoc>`**, the same page in Google Colab, JupyterLab, Notebook 7 and VS Code. Mermaid (11.17.2) draws the diagram inside
+it, and you move around it:
 
-- **In Google Colab,** a drawn diagram: `text/html` that loads Mermaid's library (11.17.2) from jsDelivr and draws the diagram
-  with an explicit `mermaid.run()`. The library's URL names its exact version and the element carries an `integrity` hash, so a
-  browser runs the file only if it is the file MIME pinned, as the 3D view does for its viewer. Colab does not draw a Markdown
-  Mermaid fence: the maintainer ran the one-cell check below there, and it showed the Mermaid text. If the library
-  does not load (no network, a changed file), the element still holds the text, with the pointer line under it.
-- **Anywhere else,** a `text/markdown` Mermaid fence, which a front end that draws Mermaid in Markdown draws as a diagram, and
-  which any other shows as the Mermaid text, with a line under it saying where to draw it (mermaid.live); under a diagram that
-  is drawn, the line reads as a pointer to where it can be edited. Nothing is loaded from a network to draw it.
+- **drag** to pan, **scroll the wheel or pinch** to zoom toward the pointer;
+- the buttons **+**, **−**, **Fit** (the whole graph in the frame), **1:1** (one graph pixel to one screen pixel) and **Full
+  screen**; the keys arrows, `+`, `-`, `0` (fit) and `1` (1:1) when the frame has the focus;
+- the frame is **560 pixels high and can be dragged taller or shorter** by the handle at its bottom right. It is a fixed
+  height and not one worked out from the graph, because the graph's size in pixels is known only after the browser has laid
+  it out.
 
-`built.to_mermaid().display(offline=True)` shows the text and the pointer line and loads nothing, in Colab as elsewhere, for a
-notebook that must not reach a network. `print(built.to_mermaid())` is the plain text.
+A graph that fits the frame at a readable size (75% or more) opens fitted. A larger one opens at 75% from its top left corner,
+with a line saying so, and is read by panning; **Fit** shows all of it. The page is readable in a light and in a dark
+theme (it follows the browser's setting, not the notebook's).
 
-What the front ends do with the fence was measured on 2026-11-05, by opening a notebook that held the output in a Chrome 148
-driven by a script, and looking for a drawn diagram in the page (and for any request leaving the machine: there was none):
+Where the library comes from:
 
-| Front end | Draws the Mermaid fence |
-|---|---|
-| JupyterLab 4.1.8, 4.2.7 and 4.6.5 | yes, as a diagram |
-| Jupyter Notebook 7.6.4 | yes, as a diagram |
-| JupyterLab 4.0.13 | no: the Mermaid text, in a code block, with the line pointing to a renderer |
-| VS Code's notebooks | not measured: the measurement needs the editor, which was not available |
-| Google Colab | no, measured by the maintainer in Colab: the Mermaid text. Colab gets the HTML route above |
+- **A notebook's output loads it from jsDelivr**, pinned to an exact version and held to its `integrity` hash (a browser runs
+  the file only if it is the one MIME pinned), because an output that carried the library would be 4.8 MB, and a Jupyter
+  server drops an output that large (its default limit on a kernel's output rate is a million bytes a second).
+- **`built.to_mermaid().display(inline=True)`** carries the copy shipped in MIME's wheel instead (3.6 MB, pinned by its
+  sha256, with the licence of every package its bundle can hold), so the page needs no network; it warns that the output is
+  large. **`built.to_mermaid().save("graph.html")`** writes that page as a file to open in a browser, and
+  **`mime show <folder> --html graph.html`** writes the same from a saved experiment (never inside a saved or run folder).
+  `cdn=True` (`--cdn`) writes the page with the library from jsDelivr, 12 kB instead of 4.8 MB.
+- If the library does not load (no network, a changed file), the page shows the Mermaid text and says why.
 
-The HTML route was measured in a desktop Chrome, not in Colab: the page drew the diagram (every node and edge of a two-body toy's graph) from the pinned library, made one request, to jsDelivr, and with a changed `integrity` the browser refused the
-file and the text stayed. Colab's own output frame is the part not measured from here; to check the route there, run in a Colab
-cell (after installing MIME from the branch or release you want to check):
+`built.to_mermaid().display(offline=True)` shows the text and a line saying where to draw it (mermaid.live), and loads nothing,
+in any front end. `print(built.to_mermaid())` is the plain text, and the text is also the `text/plain` part of the output.
+**A front end that runs no script** (GitHub's preview of a notebook, for one) draws nothing of the page: it shows the note under
+the frame, which says to print the object for the text, or nothing where it drops the frame.
+
+**Colab.** MIME used to put the diagram's HTML (the Mermaid library from jsDelivr, then a script calling `mermaid.run()`)
+straight into the cell's output, and Colab showed the Mermaid text on a CPU and on a T4 runtime (measured by the maintainer,
+2026-11-07). Why is not established. A page in an `<iframe srcdoc>` is a document of its own whose scripts run in order, as
+in a browser, which is how the 3-D view is shown; whether Colab draws this page is what the cell below shows. To check it
+there, run, after installing MIME from the branch or release you want to check:
 
 <!-- mime-fragment: a cell for Colab, not a script; it needs the notebook front end -->
 ```python
 from mime.testing.toys import full_toy
+full_toy().build().to_mermaid()
+```
+
+and drag and scroll the diagram. Where the graph is not the cell's last expression (in a loop or a function), show it with:
+
+<!-- mime-fragment: a cell for a notebook, not a script; it needs the notebook front end -->
+```python
+from mime.testing.toys import full_toy
 full_toy().build().to_mermaid().display()
 ```
-
-A cell shows whether a front end draws the Markdown fence, in one line:
-
-<!-- mime-fragment: a cell for a notebook, not a script; it shows the fence the page describes -->
-```python
-from IPython.display import display
-display({"text/markdown": "```mermaid\nflowchart LR\n    a --> b\n```"}, raw=True)
-```
-
-If it shows two boxes and an arrow, the front end draws Mermaid; if it shows the text, it does not, and the one line under the
-output of `to_mermaid()` says where to paste it.
 
 ## What these views do not say
 

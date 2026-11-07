@@ -74,7 +74,9 @@ run's result carries the profile's stamp.
 and observations by id, each with its registered id and version and what it binds, the controller with its reads and writes;
 `str(tree)` is plain indented text and `tree.record()` the same as data (the `mime.tree` format), the text written from the record.
 `built.to_mermaid()` (`_mermaid.py`), the compiled graph as MADDENING's `to_mermaid` with the registered entry added under
-each node's name; a `Mermaid`, a `str` that a notebook shows as a diagram where its front end draws a Mermaid fence. Both are
+each node's name; a `Mermaid`, a `str` that a notebook shows as a page in an `<iframe srcdoc>` that draws the diagram with pan and zoom
+(`_mermaid_page.py`; Mermaid shipped in `_mermaid_lib/` with its licences, or from jsDelivr), and `.page()` and `.save(path)`
+write as one file. Both are
 the same for the same experiment whatever the order of the calls that declared it, and `mime show` prints them
 ([the guide](../../../docs/guide/graph_and_tree.md)).
 

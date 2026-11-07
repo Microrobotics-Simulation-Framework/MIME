@@ -24,12 +24,15 @@ dependence (the build skipping its canonical order, the tree not sorted) and sho
 
 from __future__ import annotations
 
+import base64
 import copy
+import hashlib
 import html
 import os
 import re
 import sys
 import types
+import warnings
 from collections import Counter
 from pathlib import Path
 
@@ -37,12 +40,15 @@ import pytest
 from hypothesis import HealthCheck, find, given, settings
 from hypothesis import strategies as st
 
+import mime.experiment._mermaid_page as page_module
 import mime.experiment._tree as tree_module
 from views_cases import tutorial_a0, two_bodies, two_body_declarations
 from mime.build import _testing
 from mime.build._plan import Section
 from mime.experiment import BuiltExperiment, Experiment, Mermaid
-from mime.experiment._mermaid import MERMAID_CDN, MERMAID_SRI, MERMAID_VERSION, POINTER, _escaped, in_colab
+from mime.experiment._mermaid import POINTER, _escaped
+from mime.experiment._mermaid_page import (CREDIT, MERMAID_CDN, MERMAID_SRI, MERMAID_VERSION, NOTE, OUTPUT_WARNING_BYTES,
+                                           library_bytes)
 from mime.testing import declaration_orders, declare_in_order
 from mime.testing.toys import ToyDrag, full_declarations, toy_experiment
 
@@ -300,38 +306,20 @@ def test_control_an_escaping_that_forgets_the_hash_differs_from_maddenings():
 
 
 # --- the notebook's display ------------------------------------------------------------------------------------------
-
-
-def test_the_mermaid_is_a_string_and_a_notebook_shows_it_as_a_fenced_diagram_with_the_text_as_the_fallback(built):
-    mermaid = built.to_mermaid()
-    assert isinstance(mermaid, str) and isinstance(mermaid, Mermaid)
-    assert mermaid == str(mermaid) and mermaid.startswith("flowchart LR\n") and mermaid.endswith("\n")
-    bundle = mermaid._repr_mimebundle_()
-    assert set(bundle) == {"text/markdown", "text/plain"}
-    assert bundle["text/plain"] == str(mermaid)
-    assert bundle["text/markdown"] == f"```mermaid\n{mermaid}```\n\n*{POINTER}*\n"
-    assert POINTER.count("https://mermaid.live") == 1
-    assert "<script" not in bundle["text/markdown"], "no script is loaded to draw it"
-    assert repr(mermaid) == repr(str(mermaid))
-
-
-def test_no_text_in_a_node_name_can_end_the_fence(built):
-    """The fence ends at three backticks; MADDENING escapes a backtick in a name, so the diagram's own text cannot."""
-    assert "`" not in built.to_mermaid()
-
-
-# --- Colab: the diagram drawn by the pinned library -----------------------------------------------------------------------
 #
-# What this bounds: the HTML Colab is given holds the library's pinned URL and integrity, loads nothing else, draws with
-# an explicit ``mermaid.run()``; Colab is told apart by ``google.colab`` being loaded; offline loads no script. What it
-# does not: that Colab draws it (no Colab here to run it; the PR gives the cell), and that the pinned hash is the file
-# jsDelivr serves at the URL today (measured once, when the pin was written, with the command beside the constants).
+# What this bounds: the bundle a notebook gets is the same page in every front end (an ``<iframe srcdoc>`` that unescapes
+# to the page, and the Mermaid text as ``text/plain``); the page holds the graph's text exactly once, the library either
+# inlined (the shipped bytes, held to their pinned sha256) or from jsDelivr (held to its sha384, which is the sha384 of
+# those same bytes), and loads nothing else; the same experiment gives the same page byte for byte. What it does not: that
+# a front end draws it (the page was drawn, panned and zoomed by hand in headless Chrome, which the PR records, and the
+# PR gives the cell the maintainer runs in Colab), and that the pinned hash is the file jsDelivr serves today (measured once, when the
+# pin was written, with the command beside the constants).
 
 
-@pytest.fixture
-def in_colab_kernel(monkeypatch):
-    monkeypatch.setitem(sys.modules, "google.colab", types.ModuleType("google.colab"))
-    assert in_colab()
+MERMAID_SHA256 = "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8"
+SCRIPT_TAG = re.compile(r"<script\b[^>]*>")
+URL = re.compile(r"https?://[^\s\"'<>)]+")
+IFRAME_SRCDOC = re.compile(r'<iframe srcdoc="([^"]*)"')
 
 
 @pytest.fixture
@@ -346,45 +334,176 @@ def shown(monkeypatch):
     return calls
 
 
-SCRIPT_TAG = re.compile(r"<script\b[^>]*>")
+def page_of_frame(fragment: str) -> str:
+    """The page a notebook's ``<iframe srcdoc>`` holds, unescaped as a browser reads the attribute."""
+    (srcdoc,) = IFRAME_SRCDOC.findall(fragment)
+    return html.unescape(srcdoc)
 
 
-def test_outside_colab_the_notebook_gets_the_markdown_fence_and_no_html(built):
-    assert not in_colab()
-    assert set(built.to_mermaid()._repr_mimebundle_()) == {"text/markdown", "text/plain"}
+def element_text(page: str) -> str:
+    (element,) = re.findall(r'<pre class="mermaid" id="source">(.*?)</pre>', page, re.DOTALL)
+    return html.unescape(element)
 
 
-def test_in_colab_the_notebook_gets_html_that_draws_the_diagram_and_no_markdown_fence(built, in_colab_kernel):
+def urls_outside_the_credit(page: str) -> list[str]:
+    held = re.sub(r'src="data:[^"]+"', "", page).replace(CREDIT, "")
+    return URL.findall(held)
+
+
+def test_the_mermaid_is_a_string_and_a_notebook_shows_it_as_a_page_in_a_frame_with_the_text_as_the_fallback(built):
     mermaid = built.to_mermaid()
+    assert isinstance(mermaid, str) and isinstance(mermaid, Mermaid)
+    assert mermaid == str(mermaid) and mermaid.startswith("flowchart LR\n") and mermaid.endswith("\n")
     bundle = mermaid._repr_mimebundle_()
-    assert set(bundle) == {"text/html", "text/plain"} and bundle["text/plain"] == str(mermaid)
-    page = bundle["text/html"]
-    assert page == mermaid.html()
+    assert set(bundle) == {"text/html", "text/plain"}
+    assert bundle["text/plain"] == str(mermaid)
+    fragment = bundle["text/html"]
+    assert fragment == mermaid.frame() and len(IFRAME_SRCDOC.findall(fragment)) == 1
+    assert page_of_frame(fragment) == mermaid.page(cdn=True), "a notebook's output loads the library from jsDelivr"
+    assert 'sandbox="allow-scripts"' in fragment and "allowfullscreen" in fragment
+    assert NOTE in html.unescape(fragment), "what shows where the frame is blank"
+    assert repr(mermaid) == repr(str(mermaid))
+
+
+def test_no_text_in_a_node_name_can_end_the_fence(built):
+    """The offline text is a Markdown code block that ends at three backticks; MADDENING escapes a backtick in a name,
+    so the diagram's own text cannot."""
+    assert "`" not in built.to_mermaid()
+
+
+def test_the_bundle_is_the_same_in_colab_as_anywhere_else(built, monkeypatch):
+    mermaid = built.to_mermaid()
+    outside = mermaid._repr_mimebundle_()
+    monkeypatch.setitem(sys.modules, "google.colab", types.ModuleType("google.colab"))
+    assert mermaid._repr_mimebundle_() == outside
+
+
+def test_the_page_holds_the_graphs_text_exactly_once_escaped_for_the_frame(built):
+    mermaid = built.to_mermaid()
+    page = mermaid.page()
+    assert element_text(page) == str(mermaid)
+    assert page.count(html.escape(str(mermaid), quote=False)) == 1
+    fragment = mermaid.frame()
+    srcdoc = IFRAME_SRCDOC.findall(fragment)[0]
+    assert '"' not in srcdoc and "<" not in srcdoc, "an attribute holds no raw quote or tag"
+    assert html.unescape(srcdoc).count(html.escape(str(mermaid), quote=False)) == 1
+
+
+def test_control_a_changed_character_of_the_graph_changes_the_page_and_the_text_it_holds(built):
+    mermaid = built.to_mermaid()
+    changed = Mermaid(mermaid.replace("flowchart LR", "flowchart TB", 1))
+    assert changed != mermaid and changed.page() != mermaid.page() and changed.page(cdn=True) != mermaid.page(cdn=True)
+    assert element_text(changed.page()) == str(changed) != str(mermaid)
+    assert html.escape(str(mermaid), quote=False) not in changed.page()
+
+
+def test_the_shipped_library_is_the_pinned_file_and_its_sha384_is_the_one_jsdelivrs_copy_is_held_to():
+    data = library_bytes()
+    assert len(data) == 3_572_661 and hashlib.sha256(data).hexdigest() == MERMAID_SHA256 == page_module.MERMAID_SHA256
+    assert MERMAID_SRI == "sha384-" + base64.b64encode(hashlib.sha384(data).digest()).decode()
+
+
+def test_the_page_sizes_the_docs_state_are_the_ones_measured(built):
+    """``docs/guide/graph_and_tree.md`` and the CLI's README give the page's sizes: 12 kB from jsDelivr, 4.8 MB inlined, the
+    library 3.6 MB; a test holds them, and the number allowlist's reasons name it."""
+    mermaid = built.to_mermaid()
+    assert 3_550_000 < len(library_bytes()) < 3_650_000
+    assert 4_750_000 < len(mermaid.page()) < 4_850_000 and 4_750_000 < len(mermaid.frame(inline=True)) < 4_950_000
+    assert 11_000 < len(mermaid.page(cdn=True)) < 14_000
+    assert str(page_module.FRAME_HEIGHT) == "560" and "const READABLE = 0.75," in page_module.SCRIPT
+
+
+def test_control_a_changed_byte_in_the_shipped_copy_fails_the_hash_test(monkeypatch):
+    data = bytearray((Path(page_module.__file__).parent / "_mermaid_lib" / page_module.MERMAID_FILE).read_bytes())
+    for index in (0, len(data) // 2, len(data) - 1):
+        planted = bytearray(data)
+        planted[index] ^= 1
+
+        class Held:
+            def joinpath(self, *names):
+                return self
+
+            def read_bytes(self, _planted=bytes(planted)):
+                return _planted
+
+        monkeypatch.setattr(page_module, "files", lambda package: Held())
+        with pytest.raises(ValueError, match="not the library MIME pins"):
+            library_bytes()
+        assert hashlib.sha256(bytes(planted)).hexdigest() != MERMAID_SHA256
+
+
+def test_the_inlined_page_carries_the_shipped_bytes_and_loads_nothing(built):
+    page = built.to_mermaid().page()
+    (encoded,) = re.findall(r'<script src="data:text/javascript;base64,([A-Za-z0-9+/=]+)"></script>', page)
+    assert base64.b64decode(encoded) == library_bytes()
+    assert urls_outside_the_credit(page) == []
+    assert MERMAID_CDN not in page and "integrity" not in page
+    assert len(SCRIPT_TAG.findall(page)) == 2, "the library, and the page's own script"
+
+
+def test_the_jsdelivr_page_names_the_library_with_its_integrity_and_loads_nothing_else(built):
+    page = built.to_mermaid().page(cdn=True)
     tags = SCRIPT_TAG.findall(page)
-    assert len(tags) == 2, "the library, and the module that draws"
-    assert tags[0] == f'<script src="{MERMAID_CDN}" integrity="{MERMAID_SRI}" crossorigin="anonymous">'
-    assert tags[1] == '<script type="module">'
+    assert tags == [f'<script src="{MERMAID_CDN}" integrity="{MERMAID_SRI}" crossorigin="anonymous">', "<script>"]
     assert re.fullmatch(r"https://cdn\.jsdelivr\.net/npm/mermaid@\d+\.\d+\.\d+/dist/mermaid\.min\.js", MERMAID_CDN)
     assert MERMAID_CDN.count(MERMAID_VERSION) == 1 and re.fullmatch(r"sha384-[A-Za-z0-9+/]{64}", MERMAID_SRI)
-    assert re.findall(r'(?:src|href)="([^"]*)"', page) == [MERMAID_CDN], "no other file is loaded"
-    assert "mermaid.initialize({startOnLoad: false})" in page and "await mermaid.run({nodes: [element]})" in page
-    assert "```" not in page
+    assert urls_outside_the_credit(page) == [MERMAID_CDN] and "text/javascript;base64" not in page
+    assert len(page) < 100_000
 
 
-def test_the_html_element_holds_the_text_exactly_so_that_the_library_reads_the_diagram_and_a_failed_load_shows_it(
-        built, in_colab_kernel):
+def test_control_a_url_planted_outside_the_credit_is_found(built):
+    page = built.to_mermaid().page().replace("<body>", '<body><img src="https://example.org/x.png">')
+    assert urls_outside_the_credit(page) == ["https://example.org/x.png"]
+
+
+def test_the_page_draws_with_a_fixed_id_and_holds_nothing_that_varies(built):
+    page = built.to_mermaid().page(cdn=True)
+    assert 'mermaid.render("mime-graph"' in page and "deterministicIds: true" in page
+    assert not re.search(r"Math\.random|Date\.now|new Date|crypto\.", page_module.SCRIPT)
+
+
+def test_the_same_experiment_gives_the_same_page_byte_for_byte_and_another_experiment_another_page(experiment, built):
+    first, second = built.to_mermaid(), experiment.build().to_mermaid()
+    assert first.page() == second.page() and first.page(cdn=True) == second.page(cdn=True)
+    assert first.frame() == second.frame() and first.frame(inline=True) == second.frame(inline=True)
+    others = [make().build().to_mermaid() for make in MAKERS.values()]
+    assert len({other.page(cdn=True) for other in others}) == len(MAKERS), "experiments that differ give different pages"
+
+
+def test_save_writes_the_page_and_returns_the_path(built, tmp_path):
     mermaid = built.to_mermaid()
-    (element,) = re.findall(r'<pre class="mermaid" id="[^"]+">(.*?)</pre>', mermaid.html(), re.DOTALL)
-    assert html.unescape(element) == str(mermaid)
-    assert "<script" not in element and POINTER.split(" ")[0] in mermaid.html()
+    written = mermaid.save(tmp_path / "graph.html")
+    assert written == tmp_path / "graph.html" and written.read_text(encoding="utf-8") == mermaid.page()
+    assert mermaid.save(tmp_path / "cdn.html", cdn=True).read_text(encoding="utf-8") == mermaid.page(cdn=True)
 
 
-def test_the_html_escapes_what_would_end_the_element_or_open_a_tag():
+def test_the_page_escapes_what_would_end_the_element_or_open_a_tag():
     text = Mermaid('flowchart LR\n    n0["a</pre><script>x</script> & b"]\n')
-    page = text.html()
+    page = text.page(cdn=True)
     assert len(SCRIPT_TAG.findall(page)) == 2 and "<script>x" not in page
-    (element,) = re.findall(r'<pre class="mermaid" id="[^"]+">(.*?)</pre>', page, re.DOTALL)
-    assert html.unescape(element) == str(text)
+    assert element_text(page) == str(text)
+
+
+def test_display_shows_what_returning_the_diagram_from_a_cell_shows(built, shown):
+    mermaid = built.to_mermaid()
+    mermaid.display()
+    ((bundle, kwargs),) = shown
+    assert kwargs == {"raw": True} and bundle == mermaid._repr_mimebundle_()
+
+
+def test_display_inline_carries_the_library_and_warns_that_the_output_is_large(built, shown):
+    mermaid = built.to_mermaid()
+    with pytest.warns(UserWarning, match="MB as a notebook output"):
+        mermaid.display(inline=True)
+    ((bundle, _),) = shown
+    page = page_of_frame(bundle["text/html"])
+    assert page == mermaid.page() and MERMAID_CDN not in page
+    assert len(bundle["text/html"]) > OUTPUT_WARNING_BYTES, "the warning is for an output over the rate limit"
+    shown.clear()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        mermaid.display()
+    assert len(shown[0][0]["text/html"]) < OUTPUT_WARNING_BYTES, "the control: the default output is far below it"
 
 
 def test_offline_the_notebook_gets_the_text_and_the_pointer_and_no_script_in_colab_or_elsewhere(built, shown, monkeypatch):
@@ -399,15 +518,6 @@ def test_offline_the_notebook_gets_the_text_and_the_pointer_and_no_script_in_col
         assert bundle["text/markdown"] == f"```text\n{mermaid}```\n\n*{POINTER}*\n"
         assert "<script" not in bundle["text/markdown"] and MERMAID_CDN not in bundle["text/markdown"]
         assert "```mermaid" not in bundle["text/markdown"], "offline shows the text, not a diagram to be drawn"
-
-
-def test_display_shows_what_returning_the_diagram_from_a_cell_shows(built, shown, monkeypatch):
-    mermaid = built.to_mermaid()
-    mermaid.display()
-    monkeypatch.setitem(sys.modules, "google.colab", types.ModuleType("google.colab"))
-    mermaid.display()
-    (outside, _), (inside, _) = shown
-    assert outside["text/markdown"] == mermaid.fence() and inside["text/html"] == mermaid.html()
 
 
 def test_display_without_ipython_says_what_to_do_instead(built, monkeypatch):

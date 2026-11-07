@@ -14,41 +14,35 @@ names.
 **Determinism.** MADDENING numbers the nodes in the order they were added, and MIME adds them in its canonical order,
 which the order of a script's calls cannot change, so the same experiment gives the same text byte for byte.
 
-**In a notebook** the text is a :class:`Mermaid`, a ``str`` that also tells a notebook how to show itself. Colab does not
-draw a Markdown Mermaid fence (measured by the maintainer, 2026-11-05), so there it is ``text/html``: a page that loads
-Mermaid's library from jsDelivr, pinned to an exact version and held to its hash (``integrity``), as the viewer of
-:mod:`mime.viz._web` is, and draws the diagram with an explicit ``mermaid.run()``. Anywhere else it is a ``text/markdown``
-Mermaid fence, which a front end that draws Mermaid in Markdown draws (JupyterLab 4.1 and after, Notebook 7), and which
-one that does not shows as the Mermaid text, with a line saying where to draw it; that loads no script and makes no
-network call. :meth:`Mermaid.display` with ``offline=True`` shows the text and the line anywhere and loads nothing."""
+**In a notebook** the text is a :class:`Mermaid`, a ``str`` that also tells a notebook how to show itself: as a page of its own
+in an ``<iframe srcdoc>``, in which Mermaid draws the diagram and a reader pans and zooms it (:mod:`mime.experiment._mermaid_page`),
+the same in Colab, JupyterLab, Notebook 7 and VS Code. The page loads Mermaid from jsDelivr, pinned to an exact version
+and held to its hash, because an output that carried the library would be 4.8 MB and a Jupyter server drops an output
+that large; ``display(inline=True)`` carries the copy shipped in the wheel instead and ``save(path)`` writes the page with
+it, so a page can be had with no network. ``display(offline=True)`` shows the text and a line saying where to draw it and
+loads nothing. A front end that runs no script (a static preview of the notebook) draws nothing of the page, and shows
+the note under it and the ``text/plain`` part, which is the text. Colab showed the text and no diagram when the HTML was
+put in its output directly (measured by the maintainer, 2026-11-07); the cause is not known, and the iframe is a
+document that does not depend on how the front end inserts scripts."""
 
 from __future__ import annotations
 
-import hashlib
-import html
 import re
-import sys
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
+
+from mime.errors._frames import warn_at_script
+from mime.experiment import _mermaid_page as view
+from mime.experiment._mermaid_page import (MERMAID_CDN, MERMAID_SRI, MERMAID_VERSION, OUTPUT_WARNING_BYTES, RENDERER)
 
 if TYPE_CHECKING:
     from maddening import GraphManager
 
     from mime.build._report import BuildReport
 
-#: Where to draw Mermaid text that a front end shows as text.
-RENDERER = "https://mermaid.live"
-#: The line a notebook shows under the Mermaid, drawn or not: a ``text/markdown`` output cannot be shown to some front ends
-#: and not to others, so the line is worded to read well under a diagram and under the text.
+#: The line a notebook shows under the text it shows in place of a diagram (``display(offline=True)``).
 POINTER = f"Mermaid diagram. If your notebook shows its text instead, paste it into {RENDERER} to draw it."
-
-#: The library Colab's output loads to draw the diagram: Mermaid's single-file build (a classic script, so that
-#: ``integrity`` holds every byte it runs: the ES-module build loads further files that an ``integrity`` attribute does not
-#: cover), pinned to an exact version. The integrity is sha384 as SRI writes it, of the file jsDelivr serves at
-#: ``MERMAID_CDN``; to check a bump: ``curl -sL <MERMAID_CDN> | openssl dgst -sha384 -binary | openssl base64 -A``.
-MERMAID_VERSION = "11.17.2"
-MERMAID_SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2"
-MERMAID_CDN = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"
 
 _NODE_LINE = re.compile(r'^(?P<head>\s*n\d+\[")(?P<name>.*?)<br/>(?P<type>.*)(?P<tail>"\])$')
 
@@ -67,62 +61,57 @@ def _escaped(text: str) -> str:
     return out.replace("\r\n", "<br/>").replace("\n", "<br/>").replace("\r", "<br/>")
 
 
-def in_colab() -> bool:
-    """Whether the kernel is Google Colab's (its ``google.colab`` package is loaded)."""
-    return "google.colab" in sys.modules
-
-
 class Mermaid(str):
     """Mermaid flowchart text. It is a ``str`` in every way (``print`` it, write it, paste it into a renderer), and a
-    notebook shows it as a diagram: in Colab by loading the pinned library (see :meth:`html`), elsewhere as a Markdown
-    Mermaid fence, which a front end that draws one draws and any other shows as the text with a pointer to a
-    renderer."""
+    notebook shows it as a diagram a reader can pan and zoom: a page in an ``<iframe srcdoc>`` (see :meth:`page`)."""
 
     __slots__ = ()
 
-    def fence(self) -> str:
-        """The text as a Markdown fence, with the pointer under it."""
-        return f"```mermaid\n{self}```\n\n*{POINTER}*\n"
+    def page(self, *, cdn: bool = False) -> str:
+        """The text as one self-contained HTML page that draws it, with buttons and gestures to pan and zoom: Mermaid's
+        library inlined from the copy shipped in the wheel, so the page needs no network, or from jsDelivr, held to its
+        hash, with ``cdn=True`` (3.6 MB smaller). The same text gives the same page byte for byte."""
+        return view.page(str(self), cdn=cdn)
 
-    def html(self) -> str:
-        """The text as an HTML fragment that draws the diagram: Mermaid's library from jsDelivr (held to its
-        ``integrity``), then a module script that draws the element with ``mermaid.run()``. The element holds the text, so
-        where the library does not load (no network, a changed file) the text is shown, with the pointer line."""
-        ident = "mime-mermaid-" + hashlib.sha256(str(self).encode("utf-8")).hexdigest()[:12]
-        return (
-            f'<pre class="mermaid" id="{ident}">{html.escape(str(self), quote=False)}</pre>\n'
-            f'<p><em>{html.escape(POINTER, quote=False)}</em></p>\n'
-            f'<script src="{MERMAID_CDN}" integrity="{MERMAID_SRI}" crossorigin="anonymous"></script>\n'
-            '<script type="module">\n'
-            f'const element = document.getElementById("{ident}");\n'
-            "if (globalThis.mermaid && element) {\n"
-            "  mermaid.initialize({startOnLoad: false});\n"
-            "  await mermaid.run({nodes: [element]});\n"
-            "}\n"
-            "</script>\n")
+    def save(self, path: str | Path, *, cdn: bool = False) -> Path:
+        """Write :meth:`page` to ``path`` (to open in a browser) and return it."""
+        written = Path(path)
+        written.write_text(self.page(cdn=cdn), encoding="utf-8")
+        return written
+
+    def frame(self, *, inline: bool = False) -> str:
+        """The page as a notebook shows it: in an ``<iframe srcdoc>`` the reader can drag taller or shorter, with a note
+        under it. The library is jsDelivr's unless ``inline``, which puts the shipped copy in the output (4.8 MB more)."""
+        return view.frame(self.page(cdn=not inline))
 
     def text_with_pointer(self) -> str:
         """The text as a Markdown code block (not a diagram) with the pointer line: what is shown where nothing may be
         loaded, and nothing draws a diagram."""
         return f"```text\n{self}```\n\n*{POINTER}*\n"
 
-    def display(self, *, offline: bool = False) -> None:
-        """Show the diagram in the notebook now, as it would be shown by returning it from a cell: drawn in Colab by the
-        pinned library from jsDelivr, as a Markdown Mermaid fence elsewhere. ``offline=True`` shows the text and the
-        pointer line and loads nothing, anywhere."""
+    def display(self, *, offline: bool = False, inline: bool = False) -> None:
+        """Show the diagram in the notebook now, as it would be shown by returning it from a cell: a page that draws it,
+        with pan and zoom, Mermaid from jsDelivr (held to its hash). ``inline=True`` carries the library in the output
+        instead, so the page needs no network (and the output is 4.8 MB, which a Jupyter server may drop at its default
+        output rate: it warns). ``offline=True`` shows the text and the pointer line and loads nothing, anywhere."""
         try:
             from IPython.display import display as show  # pyright: ignore[reportMissingImports, reportUnknownVariableType]
         except ImportError as error:
             raise RuntimeError("Mermaid.display shows in a notebook, and IPython is not installed: print the "
                                "diagram instead (print(built.to_mermaid()))") from error
-        show(self._bundle(offline=offline), raw=True)
+        bundle = self._bundle(offline=offline, inline=inline)
+        size = len(bundle.get("text/html", "").encode("utf-8"))
+        if size > OUTPUT_WARNING_BYTES:
+            warn_at_script(
+                f"the diagram is {size / 1e6:.1f} MB as a notebook output, which Jupyter may drop at its default output "
+                "rate: leave the library to jsDelivr (inline=False), or write a page instead (diagram.save('graph.html'))",
+                UserWarning)
+        show(bundle, raw=True)
 
-    def _bundle(self, *, offline: bool = False) -> dict[str, str]:
+    def _bundle(self, *, offline: bool = False, inline: bool = False) -> dict[str, str]:
         if offline:
             return {"text/markdown": self.text_with_pointer(), "text/plain": str(self)}
-        if in_colab():
-            return {"text/html": self.html(), "text/plain": str(self)}
-        return {"text/markdown": self.fence(), "text/plain": str(self)}
+        return {"text/html": self.frame(inline=inline), "text/plain": str(self)}
 
     def _repr_mimebundle_(self, include: object = None, exclude: object = None) -> dict[str, str]:
         return self._bundle()
@@ -144,3 +133,6 @@ def mermaid_of(graph: GraphManager, report: BuildReport, *, direction: str = "LR
             line = f"{found['head']}{found['name']}<br/>{entries[found['name']]}<br/>{found['type']}{found['tail']}"
         lines.append(line)
     return Mermaid("\n".join(lines) + "\n")
+
+
+__all__ = ["MERMAID_CDN", "MERMAID_SRI", "MERMAID_VERSION", "POINTER", "RENDERER", "Mermaid", "mermaid_of"]

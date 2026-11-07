@@ -1,5 +1,5 @@
 """``mime show``: a saved experiment's topology as a tree (``--tree``, the default) and the graph it compiles to as
-Mermaid text (``--graph``), without running it.
+Mermaid text (``--graph``), without running it; and the graph as one page to pan and zoom (``--html``).
 
 **What this bounds.** That the command prints what the Python calls print (``Experiment.tree()``, ``built.to_mermaid()``)
 for a saved folder, byte for byte when its output is not going to a terminal; that on a terminal the tree is drawn
@@ -228,6 +228,54 @@ def test_the_saved_two_body_experiment_shows_the_tree_and_the_graph_of_the_one_t
     assert capsys.readouterr().out == str(experiment.build().to_mermaid()) == (GOLDEN / "two_bodies.mmd").read_text()
     assert mime_main(["show", str(saved_two_bodies), "--json"]) == 0
     assert capsys.readouterr().out == experiment.tree().json()
+
+
+# --- the graph as a page (--html) ---------------------------------------------------------------------------------------
+
+
+def test_html_writes_the_page_of_the_graph_the_python_call_gives_and_prints_what_it_wrote(saved, tmp_path, capsys):
+    """The page is ``Mermaid.page()`` of the graph the saved experiment builds, byte for byte, Mermaid inlined by default
+    and from jsDelivr with ``--cdn``; the control is the committed text of the same graph, which the page holds."""
+    from html import unescape
+
+    written = tmp_path / "graph.html"
+    assert mime_main(["show", str(saved), "--html", str(written)]) == 0
+    out = capsys.readouterr().out
+    page = written.read_text(encoding="utf-8")
+    assert page == full_toy().build().to_mermaid().page() and str(written) in out and "no network" in out
+    assert unescape(page).count(MERMAID) == 1
+    assert not page.startswith("flowchart") and page != MERMAID, "the page is not the text"
+    cdn = tmp_path / "cdn.html"
+    assert mime_main(["show", str(saved), "--html", str(cdn), "--cdn"]) == 0
+    assert cdn.read_text(encoding="utf-8") == full_toy().build().to_mermaid().page(cdn=True)
+    assert "jsDelivr" in capsys.readouterr().out and cdn.stat().st_size < 100_000 < written.stat().st_size
+
+
+def test_html_is_refused_inside_the_saved_folder_and_writes_nothing_there(saved, tmp_path, capsys):
+    import shutil
+
+    folder = tmp_path / "folder"
+    shutil.copytree(saved, folder)
+    aged(folder)
+    before = folder_state(folder)
+    assert mime_main(["show", str(folder), "--html", str(folder / "graph.html")]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "visuals.web-out" in captured.err
+    assert folder_state(folder) == before
+
+
+@pytest.mark.parametrize("words", [("--json",), ("--tree",)])
+def test_html_does_not_go_with_the_tree_or_json_and_cdn_needs_html(saved, tmp_path, capsys, words):
+    with pytest.raises(SystemExit) as stopped:
+        mime_main(["show", str(saved), "--html", str(tmp_path / "x.html"), *words])
+    assert stopped.value.code == 2 and not (tmp_path / "x.html").exists()
+    assert "--html" in capsys.readouterr().err
+
+
+def test_cdn_without_html_is_refused(saved, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        mime_main(["show", str(saved), "--cdn"])
+    assert stopped.value.code == 2 and "--html" in capsys.readouterr().err
 
 
 # --- nothing is written into the folder ------------------------------------------------------------------------------

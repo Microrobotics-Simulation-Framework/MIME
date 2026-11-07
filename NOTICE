@@ -16,3 +16,9 @@ includes three.js (Copyright 2010-2026 three.js authors, MIT License), lit
 (Copyright 2017 Google LLC, BSD 3-Clause License), fflate (Copyright 2023
 Arjun Barrett, MIT License) and gainmap-js (Copyright 2023 MONOGRID, MIT
 License); the text of each licence is beside it in that folder.
+
+This product includes Mermaid 11.17.2, Copyright (c) 2014-2022 Knut Sveidqvist, under the MIT License, in
+src/mime/experiment/_mermaid_lib/: its single-file build, which holds D3 (ISC and BSD-3-Clause), KaTeX, Cytoscape,
+roughjs, marked, dayjs, Langium, lodash-es and others (MIT), Chevrotain (Apache-2.0), DOMPurify (MPL-2.0 or
+Apache-2.0, used as Apache-2.0) and robust-predicates (Unlicense). The name, version, licence and text of each
+package are in LICENSE.mermaid in that folder.

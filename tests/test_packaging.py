@@ -109,19 +109,21 @@ def test_the_wheel_ships_the_package_and_not_only_the_marker(wheel):
     assert len(modules) > 40 and "mime/saved/_schema.py" in modules and "mime/testing/_fresh_load.py" in modules
 
 
-#: The licence files the wheel lists: MIME's, the copy of usd2gltf's (MIT) and the inlined viewer's parts'.
-LICENCE_FILES = ["LICENSE", "NOTICE", "src/mime/viz/_gltf/LICENSE",
+#: The licence files the wheel lists: MIME's, the copy of usd2gltf's (MIT), the inlined viewer's parts' and the one file
+#: that holds the licences of the inlined Mermaid and of the packages its bundle can hold.
+LICENCE_FILES = ["LICENSE", "NOTICE", "src/mime/experiment/_mermaid_lib/LICENSE.mermaid", "src/mime/viz/_gltf/LICENSE",
                  *(f"src/mime/viz/_viewer/LICENSE.{part}" for part in ("fflate", "gainmap-js", "lit", "model-viewer",
                                                                       "three"))]
 
 
 def test_the_wheel_declares_its_licence_by_expression_and_ships_every_licence_file(wheel):
     """PEP 639: the licence is an SPDX expression (MIME's Apache-2.0, the MIT of the code derived from usd2gltf and of
-    the viewer's three.js, fflate and gainmap-js, the BSD-3-Clause of its lit) and its files are listed and shipped,
+    the viewer's three.js, fflate and gainmap-js, the BSD-3-Clause of its lit, the ISC and Unlicense of the parts of the
+    inlined Mermaid's bundle) and its files are listed and shipped,
     with no licence classifier beside them."""
     (metadata,) = [name for name in wheel.namelist() if name.endswith(".dist-info/METADATA")]
     headers = wheel.read(metadata).decode().partition("\n\n")[0].splitlines()
-    assert "License-Expression: Apache-2.0 AND MIT AND BSD-3-Clause" in headers
+    assert "License-Expression: Apache-2.0 AND MIT AND BSD-3-Clause AND ISC AND Unlicense" in headers
     assert [line for line in headers if line.startswith("License-File:")] == [f"License-File: {name}"
                                                                               for name in LICENCE_FILES]
     assert not [line for line in headers if line.startswith(("License:", "Classifier: License ::"))]
@@ -130,7 +132,8 @@ def test_the_wheel_declares_its_licence_by_expression_and_ships_every_licence_fi
         LICENCE_FILES)
     for name in LICENCE_FILES:
         assert wheel.read(licences + name) == (ROOT / name).read_bytes(), name
-    for name in ("mime/viz/_gltf/LICENSE", "mime/viz/_viewer/model-viewer.min.js", "mime/viz/_viewer/LICENSE.lit"):
+    for name in ("mime/viz/_gltf/LICENSE", "mime/viz/_viewer/model-viewer.min.js", "mime/viz/_viewer/LICENSE.lit",
+                 "mime/experiment/_mermaid_lib/mermaid.min.js", "mime/experiment/_mermaid_lib/LICENSE.mermaid"):
         assert wheel.read(name) == (ROOT / "src" / name).read_bytes(), name
 
 

@@ -16,7 +16,10 @@
   drawn as a tree on a terminal, plain indented text when piped or under `--plain`, `NO_COLOR` or `TERM=dumb`, and
   `--json` the same as data (the `mime.tree` format). `--graph` builds the experiment as `mime pending` does and prints the
   MADDENING graph it compiles to as Mermaid text; with both flags the tree comes first and a blank line separates them,
-  and `--json` is the tree's, so `--json --graph` is refused. `<folder>` may be the document (`experiment.mime.yaml`).
+  and `--json` is the tree's, so `--json --graph` is refused. `--html <file>` writes the graph instead as one page to pan
+  and zoom (Mermaid inlined, 4.8 MB, so it needs no network; `--cdn` loads it from jsDelivr, held to its hash, for a page of
+  12 kB), refused inside a saved or run folder (`visuals.web-out`) and with `--tree` or `--json`.
+  `<folder>` may be the document (`experiment.mime.yaml`).
   Exits zero, or two when the load or the build is refused. The same views are `Experiment.tree()` and
   `BuiltExperiment.to_mermaid()` (see [`mime.experiment`](../experiment/README.md)).
 - `mime cache clear`: delete the XLA compilation cache that `mime run` and `mime serve` keep in the user's cache
