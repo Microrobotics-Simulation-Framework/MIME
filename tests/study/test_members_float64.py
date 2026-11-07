@@ -25,7 +25,7 @@ def gate():
 def test_every_member_is_within_the_committed_tolerance_of_its_own_run(gate, record_property):
     tolerance = gate["tolerance"]
     worst_each = [worst(found) for found in gate["found"]]
-    record_property("largest_miss_eps", max(miss for _, miss in worst_each))
+    record_property("largest_miss_eps", float(max(miss for _, miss in worst_each)))
     print({i: (where, round(miss, 2)) for i, (where, miss) in enumerate(worst_each)})
     assert len(gate["result"]) == 8 and len(gate["plan"].groups) == 1
     for index, (where, miss) in enumerate(worst_each):
@@ -36,7 +36,7 @@ def test_a_member_moved_by_one_part_in_a_million_fails(gate, record_property):
     """Its field turns 2 pi f t 1e-6 further by the run's end: at least twice the tolerance (float32: about 480 eps
     measured on the field's flux density, against 150)."""
     where, miss = worst(gate["planted"])
-    record_property("planted_miss_eps", miss)
+    record_property("planted_miss_eps", float(miss))
     assert miss > 2 * gate["tolerance"], (where, miss)
 
 
