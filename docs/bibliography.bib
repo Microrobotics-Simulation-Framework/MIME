@@ -432,3 +432,25 @@
   urldate       = {2026-10-24},
   note          = {The quaternion exponential, Exp(phi u) = [cos(phi/2); u sin(phi/2)] (its Eq. 101, Section 2.4.3), and its zeroth-order integration with the rate at the end of the step held over it, q_{n+1} = q_n (x) q{omega_{n+1} dt} (Eq. 216, Section 4.6.1), written there for a rate in the body frame; a world-frame rate's kinematics, qdot = omega_G (x) q / 2, and the frames' relation, omega_G = R omega_L (Eqs. 201 and 204, Section 4.5). rigid_inertial's q' = exp(dt omega') q, with omega' the world-frame rate after the step, is that step written with the world-frame rate: q (x) Exp(R^T omega' dt) = Exp(omega' dt) (x) q. Hamilton's convention, (w, x, y, z), body to world, as MIME's (Section 3).},
 }
+
+@article{Dekker1971,
+  author  = {Dekker, T. J.},
+  title   = {A floating-point technique for extending the available precision},
+  journal = {Numerische Mathematik},
+  year    = {1971},
+  volume  = {18},
+  number  = {3},
+  pages   = {224--242},
+  doi     = {10.1007/BF01397083},
+  note    = {The sum of two floating-point numbers, the larger in magnitude first, as a rounded sum and an exact error term; and the product of two floating-point numbers as a rounded product and an exact residual, built of the exact partial products of each factor's split halves. The phase of the integrating rotating field adds each step's turns by these two, in the run's precision.},
+}
+
+@book{Knuth1997,
+  author    = {Knuth, Donald E.},
+  title     = {The Art of Computer Programming, Volume 2: Seminumerical Algorithms},
+  publisher = {Addison-Wesley},
+  year      = {1997},
+  edition   = {3},
+  isbn      = {978-0-201-89684-8},
+  note      = {Section 4.2.2, Accuracy of floating-point arithmetic: the sum of any two floating-point numbers, in either order of magnitude, as a rounded sum and an exact error term (the two-sum). The integrating rotating field adds a step's turns to its phase by it.},
+}
