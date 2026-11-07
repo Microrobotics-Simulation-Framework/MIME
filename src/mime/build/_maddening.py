@@ -560,3 +560,35 @@ def topological_order(order: Sequence[str], edges: Sequence[tuple[str, str]]) ->
 def initial_fields(node: SimulationNode) -> dict[str, Array]:
     """``node``'s state at the start, before it is in a graph."""
     return cast(dict[str, Array], _held(node).initial_state())
+
+
+#: The most numbers a parameter :func:`params_one_ulp_up` moves holds: a body's or a medium's constants, a frame, an
+#: inertia tensor. A table or a precomputed array is kept: moving it would copy it to every call, and the constants
+#: already move the rounding of every step that reads the body.
+NUDGED_SIZE = 64
+
+
+@contextmanager
+def params_one_ulp_up(graph: GraphManager) -> Generator[None]:
+    """For the block, every parameter of a node that ``graph``'s compiled step reads (MADDENING's own record of it), of
+    at most :data:`NUDGED_SIZE` numbers, with each nonzero floating entry one unit in the last place up, in its dtype;
+    the tree put back after, the same object. Zeros, integers and flags are kept, and so is every parameter where the
+    step's reads cannot be told. The step reads its parameters on every call, so nothing is traced or compiled again."""
+    held = _held(graph)
+    tree = cast(dict[str, Any], held.params)
+    reads = cast(set[tuple[str, str]] | None, held._params_read_by_step())  # noqa: SLF001
+    nodes = cast(dict[str, dict[str, Any]], tree.get("nodes", {}))
+    moved = {owner: dict(leaves) for owner, leaves in nodes.items()}
+    for owner, key in sorted(reads or ()):
+        leaf = moved.get(owner, {}).get(key)
+        if leaf is None or not hasattr(leaf, "dtype") or int(np.size(leaf)) > NUDGED_SIZE:
+            continue
+        value = np.asarray(leaf)
+        if value.dtype.kind == "f":
+            up = np.nextafter(value, np.asarray(np.inf, dtype=value.dtype))
+            moved[owner][key] = device_array(np.where((value != 0) & np.isfinite(value), up, value).astype(value.dtype))
+    held.params = {**tree, "nodes": moved}
+    try:
+        yield
+    finally:
+        held.params = tree

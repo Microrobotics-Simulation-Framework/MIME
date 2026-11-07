@@ -35,6 +35,7 @@ from mime.build._refusals import MIME_DEFECT
 from mime.materials import RECORDS
 from mime.saved._document import DESCRIPTIONS, SCENE_FOLDER, dump_document, parse_yaml
 from mime.saved._record import SavedRecord, environment
+from mime.saved._scales import OWN, RESOLUTION_FACTOR, SCALED_ATOL, SCALED_FROM, FieldUnits, judge, tolerance_for
 from mime.saved._schema import DOCUMENT_SCHEMA, EntryRecord, ExperimentDocument, Json, Lock, ReferenceProgram, \
     ReferenceRecord, conforms
 from mime.saved._versions import (
@@ -71,10 +72,12 @@ DOCUMENT_FILE = "experiment.mime.yaml"
 LOCK_FILE = "mime.lock"
 REFERENCE_FILE = "reference.npz"
 
-#: How many steps the reference outputs cover, and the tolerance ``verify`` compares them with across environments.
+#: How many steps the reference outputs cover. The tolerance a save writes is its precision's
+#: (``mime.saved._scales.tolerance_for``), over each block's largest magnitude; a lock of the ninth form or earlier holds
+#: ``rtol`` 1e-6 and ``atol`` 1e-9, element by element (``PREVIOUS_RTOL``, ``PREVIOUS_ATOL``).
 DEFAULT_STEPS = 8
-DEFAULT_RTOL = 1e-6
-DEFAULT_ATOL = 1e-9
+PREVIOUS_RTOL = 1e-6
+PREVIOUS_ATOL = 1e-9
 
 _PYTHON_TAG = "tag:yaml.org,2002:python/"
 
@@ -108,10 +111,12 @@ def lock_text(lock: Lock | Mapping[str, object]) -> str:
 
 
 def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mapping[str, np.ndarray]],
-                 steps: int, program: ReferenceProgram | None = None) -> Lock:
+                 steps: int, program: ReferenceProgram | None = None,
+                 resolution: Mapping[str, Mapping[str, float | None]] | None = None) -> Lock:
     """Write the document, the lock and the reference outputs (``history``, every field over ``steps`` steps,
     with the static arrays beside them, run by ``program``: the history scan of whole control periods where it is
-    ``None``) into ``folder``."""
+    ``None``) into ``folder``, with each field's resolution by block (``mime.saved._scales.resolution``, by its label
+    ``node.field``)."""
     if record.unsavable or record.document is None:
         raise BuildRefused(record.unsavable)
     folder.mkdir(parents=True, exist_ok=True)
@@ -120,9 +125,13 @@ def write_folder(folder: Path, record: SavedRecord, history: Mapping[str, Mappin
     arrays.update({static_key(path): value for path, value in record.derived.static.items()})
     np.savez(folder / REFERENCE_FILE, allow_pickle=False, **arrays)
     reference: ReferenceRecord = {"file": REFERENCE_FILE, "sha256": arrays_hash(arrays), "steps": steps,
-                                  "rtol": DEFAULT_RTOL, "atol": DEFAULT_ATOL}
+                                  "rtol": tolerance_for(environment()["x64"]), "atol": SCALED_ATOL}
     if program is not None:
         reference = {**reference, "program": program}
+    if resolution is not None:
+        reference = {**reference, "resolution": {label: dict(sorted(held.items()))
+                                                 for label, held in sorted(resolution.items()) if held},
+                     "resolution_factor": RESOLUTION_FACTOR}
     lock = record.lock(reference)
     stage = lock["stage"]
     (folder / stage["file"]).parent.mkdir(parents=True, exist_ok=True)
@@ -529,15 +538,27 @@ def differences(saved: object, found: object, path: str = "", limit: int = 12) -
     return out
 
 
-def _numbers_beyond(saved: Json, found: Json, rtol: float, atol: float, at: str, out: list[str]) -> None:
+def _number(value: Json) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _numbers_beyond(saved: Json, found: Json, rtol: float, atol: float, at: str, out: list[str], *,
+                    scaled: bool = False) -> None:
+    """Each number of the derived graph's physics beyond the tolerance: element by element (a form before the tenth),
+    or, ``scaled``, each list of numbers against its own largest magnitude and each number against its own."""
     if isinstance(saved, dict) and isinstance(found, dict):
         for key in sorted(set(saved) & set(found)):
-            _numbers_beyond(saved[key], found[key], rtol, atol, f"{at}.{key}", out)
+            _numbers_beyond(saved[key], found[key], rtol, atol, f"{at}.{key}", out, scaled=scaled)
     elif isinstance(saved, list) and isinstance(found, list) and len(saved) == len(found):
+        if scaled and saved and all(_number(a) for a in saved) and all(_number(b) for b in found):
+            held, rebuilt = np.asarray(saved, dtype=np.float64), np.asarray(found, dtype=np.float64)
+            if not judge(held, rebuilt, OWN, rtol, atol, steps=False).within:
+                out.append(f"{at}: max |difference| {float(np.max(np.abs(held - rebuilt))):.3e}")
+            return
         for i, (a, b) in enumerate(zip(saved, found, strict=True)):
-            _numbers_beyond(a, b, rtol, atol, f"{at}[{i}]", out)
-    elif (isinstance(saved, (int, float)) and isinstance(found, (int, float)) and not isinstance(saved, bool)
-          and not isinstance(found, bool) and not math.isclose(saved, found, rel_tol=rtol, abs_tol=atol)):
+            _numbers_beyond(a, b, rtol, atol, f"{at}[{i}]", out, scaled=scaled)
+    elif (_number(saved) and _number(found)
+          and not math.isclose(cast(float, saved), cast(float, found), rel_tol=rtol, abs_tol=atol)):
         out.append(f"{at}: {saved!r} -> {found!r}")
 
 
@@ -598,7 +619,7 @@ class LoadReport:
     derived: str
     derived_differences: tuple[str, ...] = ()
     derived_prims_edited: tuple[str, ...] = ()
-    #: The saved form's version (``mime.document/9``), and the profile the experiment is read under.
+    #: The saved form's version (``mime.document/10``), and the profile the experiment is read under.
     schema: str = DOCUMENT_SCHEMA
     profile: str = PREVIOUS_PROFILE
     version: int = CURRENT
@@ -821,15 +842,17 @@ def check_load(form: SavedForm, record: SavedRecord, stages: Mapping[int, str] |
         derived = "differs from the saved graph; compared within the lock's tolerance"
         derived_differences = []
         rtol, atol = lock["reference"]["rtol"], lock["reference"]["atol"]
+        scaled = form.version >= SCALED_FROM
         _numbers_beyond(lock["derived"]["physics"], physics_in_form(record.derived.physics, form.version), rtol, atol,
-                        "physics", derived_differences)
+                        "physics", derived_differences, scaled=scaled)
         for path, array in sorted(record.derived.static.items()):
             held = form.reference.get(static_key(path))
             if held is None or held.shape != array.shape:
                 derived_differences.append(f"static array {path}: missing or of another shape")
-            elif not np.allclose(held, array, rtol=rtol, atol=atol):
+            elif not (judge(held, array, OWN, rtol, atol, steps=False).within if scaled
+                      else np.allclose(held, array, rtol=rtol, atol=atol)):
                 derived_differences.append(f"static array {path}: max |difference| "
-                                           f"{float(np.max(np.abs(held - array))):.3e}")
+                                           f"{float(np.max(np.abs(held.astype(np.float64) - array))):.3e}")
     if refusals:
         raise LoadRefused(refusals)
     return LoadReport(str(form.folder), same, tuple(env), derived, tuple(derived_differences), tuple(derived_prims),
@@ -867,10 +890,33 @@ def asset_refusals(lock: Lock, record: SavedRecord) -> list[Refusal]:
 SHAPE_MOVED = "missing or of another shape"
 
 
+#: What ``verify`` says of a reference made on a GPU with XLA's deterministic mode off, and what a save says where it
+#: writes one: once, never on the CPU, never in deterministic mode.
+DETERMINISTIC_OFF = ("deterministic mode is off: this reference was made on a GPU without XLA's deterministic mode, so it "
+                     "verifies within tolerance, not bit for bit; for bit-for-bit reproducibility, rerun with "
+                     "--deterministic")
+SAVED_DETERMINISTIC_OFF = ("deterministic mode is off: this reference was written on a GPU without XLA's deterministic "
+                           "mode, so it verifies within tolerance, not bit for bit; for bit-for-bit reproducibility, rerun "
+                           "with --deterministic (`mime run <folder> --deterministic`, or `mime.env.deterministic_mode()` "
+                           "before anything computes)")
+
+
+class NondeterministicReference(UserWarning):
+    """A reference written on a GPU with XLA's deterministic mode off (:data:`SAVED_DETERMINISTIC_OFF`)."""
+
+
+def nondeterministic_gpu(environment: Mapping[str, object]) -> bool:
+    """Whether a reference written under ``environment`` (a lock's) came from a GPU with XLA's deterministic mode off:
+    two such runs of one program differ in their last bits, so no run repeats it bit for bit."""
+    return environment.get("device") == "gpu" and not environment.get("deterministic", False)
+
+
 @dataclass(frozen=True)
 class VerifyReport:
-    """A rerun of the first ``steps`` steps against the reference outputs. Within the environment the lock was written
-    in every field must match bit for bit; across environments, within the lock's tolerance."""
+    """A rerun of the first ``steps`` steps against the reference outputs: bit for bit in the environment the lock was
+    written in, unless its reference was made on a GPU with deterministic mode off (``bits``), and otherwise within the
+    lock's tolerance: from the tenth form each field block by block, on its largest magnitude or its measured
+    resolution (``scaled``, ``mime.saved._scales``), before it element by element."""
 
     steps: int
     same_environment: bool
@@ -880,11 +926,28 @@ class VerifyReport:
     moved: tuple[str, ...] = field(default_factory=tuple)
     #: Every field the rerun was compared on (``node.field``, sorted); a line of ``moved`` starts with its field's label.
     compared: tuple[str, ...] = field(default_factory=tuple)
+    #: Whether the fields were held bit for bit; ``None`` reads as ``same_environment``.
+    bits: bool | None = None
+    #: Whether each field was judged block by block (the tenth form on), not element by element.
+    scaled: bool = False
+    #: The warning of a reference made on a GPU with deterministic mode off (:data:`DETERMINISTIC_OFF`), or ``None``.
+    warning: str | None = None
+    #: The factor over each block's measured resolution its floor is (``reference.resolution_factor``), where judged so.
+    factor: float = RESOLUTION_FACTOR
+
+    @property
+    def bit_for_bit(self) -> bool:
+        return self.same_environment if self.bits is None else self.bits
 
     @property
     def tolerance(self) -> str:
         """What the comparison held the fields to, in words."""
-        return "bit for bit" if self.same_environment else f"within rtol {self.rtol}, atol {self.atol}"
+        if self.bit_for_bit:
+            return "bit for bit"
+        if self.scaled:
+            return (f"within rtol {self.rtol} of each block's largest magnitude, or {self.factor:g} times its measured "
+                    f"resolution" + (f", atol {self.atol}" if self.atol else ""))
+        return f"within rtol {self.rtol}, atol {self.atol}"
 
     @property
     def reproduced(self) -> bool:
@@ -892,39 +955,100 @@ class VerifyReport:
 
     def text(self) -> str:
         if self.reproduced:
-            return f"verify: reproduced {self.steps} steps {self.tolerance} on {self.environment}"
-        lines = [f"verify: {len(self.moved)} reference output(s) moved over {self.steps} steps on {self.environment}"]
-        return "\n".join(lines + [f"  {line}" for line in self.moved])
+            lines = [f"verify: reproduced {self.steps} steps {self.tolerance} on {self.environment}"]
+        else:
+            lines = [f"verify: {len(self.moved)} reference output(s) moved over {self.steps} steps on {self.environment}"]
+            lines += [f"  {line}" for line in self.moved]
+        return "\n".join(lines + ([self.warning] if self.warning else []))
 
 
-def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarray]]) -> VerifyReport:
+def moved_line(label: str, saved: np.ndarray, found: np.ndarray, *, bits: bool, scaled: bool, rtol: float,
+               atol: float, field: FieldUnits = OWN, resolutions: Mapping[str, object] | None = None,
+               factor: float = RESOLUTION_FACTOR, forces: tuple[np.ndarray, np.ndarray] | None = None,
+               steps: bool = True) -> str | None:
+    """The line of a field that moved, ``None`` where it did not: bit for bit, block by block (``scaled``: on each
+    block's largest magnitude or ``factor`` times its resolution, ``resolutions`` by block), or element by element.
+    ``saved`` and ``found`` are of one shape, the first axis the steps where ``steps``."""
+    if bits:
+        if np.array_equal(saved, found):
+            return None
+    elif scaled:
+        judged = judge(saved, found, field, rtol, atol, resolutions=resolutions, factor=factor, forces=forces,
+                       steps=steps)
+        block = judged.beyond
+        if block is None:
+            return None
+        said = "it differs" if judged.exact else block.words(rtol, factor)
+        held = " on the rows whose force acts" if field.forces is not None and forces is not None else ""
+        return f"{label}: {said}{held}" + (f", first at step {judged.first}" if steps else "")
+    elif np.allclose(saved, found, rtol=rtol, atol=atol):
+        return None
+    delta = np.abs(saved.astype(np.float64) - found.astype(np.float64))
+    if not steps:
+        return f"{label}: max |difference| {float(np.max(delta)):.3e}"
+    step = int(np.argmax(np.any(delta.reshape(delta.shape[0], -1) > 0, axis=1)))
+    return f"{label}: max |difference| {float(np.max(delta)):.3e}, first at step {step}"
+
+
+def recorded_resolution(lock: Lock) -> tuple[Mapping[str, Mapping[str, object]], float]:
+    """The resolution each field's blocks were measured to at save, by label, and the floor's factor over it, as the
+    lock records them; a lock that records none gives every block no floor."""
+    reference = cast(Mapping[str, object], lock["reference"])
+    held = reference.get("resolution")
+    factor = reference.get("resolution_factor")
+    return (cast(Mapping[str, Mapping[str, object]], held) if isinstance(held, dict) else {},
+            float(factor) if isinstance(factor, (int, float)) and not isinstance(factor, bool) else RESOLUTION_FACTOR)
+
+
+def verify_history(form: SavedForm, history: Mapping[str, Mapping[str, np.ndarray]],
+                   fields: Mapping[str, FieldUnits] | None = None) -> VerifyReport:
+    """The rerun's ``history`` against the reference outputs. ``fields`` are the fields' declared units and pairings
+    by label (``node.field``, ``BuiltExperiment.field_units``): a field without one is one block."""
     lock = form.lock
     reference = lock["reference"]
     steps, rtol, atol = reference["steps"], reference["rtol"], reference["atol"]
     same = not environment_differences(lock)
+    made = cast(Mapping[str, object], lock["environment"])
+    bits = same and not nondeterministic_gpu(made)
+    scaled = form.version >= SCALED_FROM
+    held_fields = fields or {}
+    resolutions, factor = recorded_resolution(lock)
     here = environment()
     moved: list[str] = []
     compared: list[str] = []
-    found = {history_key(node, name): np.asarray(value) for node, fields in history.items()
-             for name, value in fields.items()}
+    found = {history_key(node, name): np.asarray(value) for node, named in history.items()
+             for name, value in named.items()}
     saved = {key: value for key, value in form.reference.items() if key.startswith("history/")}
+
+    def label_of(key: str) -> str:
+        return key.removeprefix("history/").replace("/", ".", 1)
+
     for key in sorted(set(saved) | set(found)):
         a, b = saved.get(key), found.get(key)
-        label = key.removeprefix("history/").replace("/", ".", 1)
+        label = label_of(key)
         compared.append(label)
         if a is None or b is None or a.shape != b.shape:
             moved.append(f"{label}: {SHAPE_MOVED}")
             continue
-        equal = np.array_equal(a, b) if same else np.allclose(a, b, rtol=rtol, atol=atol)
-        if not equal:
-            delta = np.abs(a.astype(np.float64) - b.astype(np.float64))
-            step = int(np.argmax(np.any(delta.reshape(delta.shape[0], -1) > 0, axis=1)))
-            moved.append(f"{label}: max |difference| {float(np.max(delta)):.3e}, first at step {step}")
+        units = held_fields.get(label, OWN)
+        forces = None
+        if units.forces is not None:
+            node, _, name = units.forces.partition(".")
+            pair = saved.get(history_key(node, name)), found.get(history_key(node, name))
+            if pair[0] is not None and pair[1] is not None and pair[0].shape == pair[1].shape:
+                forces = (pair[0], pair[1])
+        line = moved_line(label, a, b, bits=bits, scaled=scaled, rtol=rtol, atol=atol, field=units,
+                          resolutions=resolutions.get(label), factor=factor, forces=forces)
+        if line is not None:
+            moved.append(line)
     device = f"{here['device']}, {'float64' if here['x64'] else 'float32'}"
-    return VerifyReport(steps, same, rtol, atol, device, tuple(moved), tuple(compared))
+    return VerifyReport(steps, same, rtol, atol, device, tuple(moved), tuple(compared), bits=bits, scaled=scaled,
+                        warning=DETERMINISTIC_OFF if nondeterministic_gpu(made) else None, factor=factor)
 
 
-__all__ = ["DEFAULT_STEPS", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "LoadRefused", "LoadReport", "lock_text",
+__all__ = ["DEFAULT_STEPS", "DETERMINISTIC_OFF", "DOCUMENT_FILE", "LOCK_FILE", "REFERENCE_FILE", "SAVED_DETERMINISTIC_OFF",
+           "LoadRefused", "LoadReport", "NondeterministicReference", "lock_text", "moved_line", "nondeterministic_gpu",
+           "recorded_resolution",
            "SavedForm", "VerifyReport", "absent_referenced_files", "asset_refusals", "check_load", "differences",
            "environment_differences", "missing_referenced",
            "layout_problem", "lock_text_problems", "named_files", "read_document", "read_document_version",

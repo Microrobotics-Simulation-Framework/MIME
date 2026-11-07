@@ -34,6 +34,7 @@ from mime.core._shapes import (
     Sphere,
     nearest_point,
 )
+from mime.core._field_kinds import FieldKind, HeldForces, HeldPoints, Units, field_kinds, paired_forces, typed_units
 from mime.core._node import MimeNode, as_run_array, jit, jnp, node_input, run_dtype
 from mime.core._node_fields import NodeFields, node_fields, typed_view
 from mime.core._symbols import Symbol, SymbolKind
@@ -53,6 +54,9 @@ __all__ = [
     "VELOCITY_RULES",
     "Capsule",
     "Cylinder",
+    "FieldKind",
+    "HeldForces",
+    "HeldPoints",
     "MimeNode",
     "NodeFields",
     "Screw",
@@ -61,13 +65,16 @@ __all__ = [
     "Sphere",
     "Symbol",
     "SymbolKind",
+    "Units",
     "VelocityRule",
     "as_run_array",
+    "field_kinds",
     "jit",
     "jnp",
     "nearest_point",
     "node_fields",
     "node_input",
+    "paired_forces",
     "quaternion",
     "register_shape",
     "remove_outward",
@@ -76,5 +83,6 @@ __all__ = [
     "shape_names",
     "shape_switches",
     "switch",
+    "typed_units",
     "typed_view",
 ]

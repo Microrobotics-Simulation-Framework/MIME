@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--deterministic` on `mime run` and `mime verify`, and `mime.env.deterministic_mode()`**: XLA's deterministic GPU
+  mode turned on before JAX's backend starts, since XLA reads its flags only then (measured: a flag set after the
+  backend started took no effect, one set after `import jax` and `import mime` did), and recorded in the lock as before.
+  The Python call is refused once the backend has started (`env.deterministic-late`), naming the routes that work,
+  unless the flags already turn the mode on. On the CPU either says in one line that it changes nothing there.
+- **Held points' type in a node's typed state** (`mime.core.HeldPoints`, `HeldForces`, read by `field_kinds`):
+  `rigid_inertial`'s contact points are judged by `verify` only on the rows whose force acts; a new node whose state
+  writes a field as `HeldPoints` beside one `HeldForces` field is judged so, with nothing declared beside it.
 - **The energy ledger's machinery on the body, off unless attached** (`mime.core.ledger`; the first half of the
   ledger, whose build wiring, observation and account come next). The vocabulary's port kinds (`PortKind`,
   `register_port_kind`; MIME's `rigid_body`, `joint`, `delivered_inertia`, `flow_in`), each delivery's units paired
@@ -153,6 +161,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,
+  `mime.lock/10`). Where `verify` claims no bits, in another environment or of a reference no run repeats bit for bit,
+  every field is split into blocks by the units MIME declares for it (a pose into its position and its
+  quaternion, a twist into its velocity and its angular velocity, a wrench into its force and its torque, a
+  resistance into its translational, coupling and rotational blocks; a field of one unit, or whose units are not
+  declared, is one block), and each block is within tolerance when its largest difference at every reference step is
+  at most `max(rtol` times its largest magnitude, `k` times its **resolution**`)`, with no absolute part. The save
+  measures the resolution: the reference steps run once more, by the same compiled program, from a start one ulp off
+  (every nonzero floating number of the initial state and of the small parameters the step reads, one ulp up), and the
+  lock records each block's divergence (`reference.resolution`) and `k` (`reference.resolution_factor`), the two keys
+  the form adds. Judged whole, a field that mixed units hid a change in its smaller part: in float32 an 8e-6 m shift of
+  the tube ball's position under its quaternion's 1.0, and its whole angular velocity, zeroed, flipped or doubled, under
+  the surface points' speed (the review of #195, design #266); each is now reported, and a control holds each on every
+  run. Held points are judged only on the rows whose force acts (MIME-ANO-144). A save writes its precision's
+  tolerance, 1e-5 in float32 and 2e-14 in float64, and `k` = 30: 5.5 times the largest need measured (the MRS drag's
+  asymmetry, the spread of an NVIDIA T4 GPU against its CPU's one-ulp resolution) and a quarter of the tube ball's
+  angular velocity over its resolution. Each is pinned in a table of the measurements it rests on, and the
+  measurements the repository holds are computed again from it. The measurement covers one T4, one laptop's CPU at
+  three counts, one demo, eight steps, float32; float64 on the CPU only. A folder keeps the tolerance it was written
+  with, and one of the ninth form or earlier is judged as its form says, element by element with its own numbers (1e-6
+  and 1e-9), in `verify`, `verify --run` and the load's comparison of the derived graph, which from the tenth form
+  holds each list of numbers and each static array to its own largest magnitude. The cost is one more run of the
+  reference steps at save: where the start moves a parameter an MRS drag holds a value made from, that run makes the
+  value afresh at each step (on the MRS sphere in float64 on a laptop, 12 steps took 12 s against 0.01 s for the
+  state moved alone, which measured no divergence there).
+- **A node's typed state declares the units of the fields nothing else declares** (`mime.core.Units`, beside the
+  field's type: `Annotated[HeldPoints, Units("m")]`; read by `mime.core.typed_units`, after the symbol table and before
+  the edges, the binding, the observations and the flags). Every field a save writes now has declared units, and a
+  test fails a new one without them: the hull contact's held points (m), forces (N, read as a flag's `1` before) and
+  shortfall (m); the MRS drag's stop record (its pose split as a pose is), its diagnostics and its wall gap; the kept
+  `rigid_inertial` 0.2.0's pose and twist, whose twist had been judged whole where no edge read it; the swim speed's
+  count; the toy body's position and velocity.
+- **A GPU reference made without XLA's deterministic mode is judged within tolerance, never bit for bit**, on every
+  machine, the GPU it was made on included: two such runs of one program differ in their last bits, so `verify` no
+  longer reports a tenth-form folder of one moved where it was made (a folder of an earlier form keeps its
+  element-by-element rule, under which such a folder can still read moved; saving it again writes the tenth). Its save
+  warns once, and `verify`'s report ends with the same
+  line: deterministic mode is off, so the reference verifies within tolerance, not bit for bit; for bit-for-bit
+  reproducibility, rerun with `--deterministic`. A reference made in deterministic mode verifies bit for bit in the same
+  environment, and the CPU is as it was. The card's tolerance line states each level and the rule of the folder's form.
+  `docs/running_on_modal.md`'s "the flag stays optional" is replaced by the measurement.
 - **`rigid_inertial` 0.4.0 carries a body's full inertia tensor** (F0-3, phase I1). A body's `inertia` is three principal
   moments about its axes, as before, or the symmetric 3 x 3 tensor about its centre of mass in its frame, nine numbers
   row-major (`kg_m2((Ixx, Ixy, Ixz, Ixy, Iyy, Iyz, Ixz, Iyz, Izz))`), checked symmetric and positive definite at build
