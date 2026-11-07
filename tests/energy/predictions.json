@@ -1,0 +1,42 @@
+{
+  "written": "2026-11-07T10:40+01:00, before any gate case of P1a-1 ran (the default program's bits, tests/energy)",
+  "seen_before": [
+    "FU1's controls rerun against release/v0.3.0 at 68c1d15 beside the release's own body (the spike's recording node, 50 drawn starts of script A's reproduction arm, 2000 steps each, both dtypes): the hidden edge at 1e-3 and 1e-6 of the torque, the weight times 1.01 and the indefinite drag each caught on 50 of 50 draws by its own check and by no other, no check firing on the two unplanted arms; the least margins as FU1's (float32: the 1e-6 edge 17 times its floor, the weight plant 22 times; the indefinite part's scaled least eigenvalue -0.141, the definite control's 0.401)",
+    "development probes of the new body's step identity on seeded draws (not gate cases: no plant, no Hypothesis): free and centre-held bodies, 200 draws a set, both dtypes, worst 3.4 to 4.9 eps of the step's scale; stiff and ill-conditioned resistances (dt |R| / m to 1e3, scaled condition to 1e8) within 5 eps"
+  ],
+  "counts_at": "every bit-for-bit claim at 6 usable CPUs (taskset 0-5), OpenBLAS 1 thread, XLA 6 intra-op threads, processes started the same way (MIME-ANO-140, -141); the tests at whatever CI's lanes hold",
+  "gate_1_default_program_unchanged": {
+    "case": "five programs without the ledger, every history array of the head against release/v0.3.0 at the merge base by np.array_equal, float64 and float32: A (examples/script_a.py, 10 000 steps), A_repro (tests/script_a.py reproduction_arm, 10 000), A0 (tests/script_a0.py a0, 4000), A_hull (the reproduction arm with the current hull contact, 10 000), SIT (examples/screw_in_tube.py, the MRS drag, 30 steps of 100 ms)",
+    "predicted": "every array identical in all ten (19, 19, 29, 23 and 28 arrays): the step's arithmetic is moved into one method unchanged, the ledger's hooks add no operation without the ledger, and a node's parameters, inputs and state are the ones it had",
+    "controls": {
+      "repeat": "the base recorded twice: every array identical (the harness's own determinism at these counts)",
+      "one_ulp": "A_repro with its first moment of inertia one ulp up: arrays differ in both dtypes, from within the first few steps (the reference: 7 arrays from step 0 in float64): the comparison can fail"
+    },
+    "saved_form": "script A's reproduction arm saved with the ledger off from the base and from the head: every file of the two folders byte-identical (no saved-form step; nothing in the document, lock or outputs changes)"
+  },
+  "gate_2_body_identity": {
+    "case": "tests/energy/test_body_identity.py: rigid_inertial 0.4.0's node with a ledger of a load law and a resistance law (and the contact hosted, in the held arms), one step from each Hypothesis draw (pose, twist, tensor, load, resistance at FL-9's scales, in the dtype the node computes in), three arms: free, the centre held on its surface moving outward, the hull held at the wall",
+    "floor": "16 eps of the step's scale, the scale being the magnitude of the arithmetic that forms the identity's terms (each product's factors in magnitude, the solve's dt |V'|^T |M'/dt + R| |dV| included)",
+    "predicted_worst_eps": {"free": 8, "centre_held": 8, "hull": 10},
+    "plant": "a step that keeps 0.999 of its twist without booking it: caught on every draw, both dtypes, the least margin above 20 times the floor in float32 and above 1e8 in float64",
+    "balance": "a 2000-step driven run of the free body: the balance within 16 eps of the run's summed step scale, at most 0.1 of it"
+  },
+  "gate_2_attribution": {
+    "case": "tests/energy/test_attribution.py: every law in its own input; the unattributed inputs' paired work",
+    "predicted": "exactly 0.0 on every draw, both dtypes",
+    "plants": "a share of the law's load, 1e-3 and 1e-6, delivered into the summed input: the unattributed work non-zero on every draw, both dtypes (the load drawn pushing along the body's motion, so that it does work)"
+  },
+  "gate_2_gravity_class": {
+    "case": "tests/energy/test_gravity_class.py: GravityNode's wrench against the negative gradient of its energy, the torque by the gradient on the rotation group, on Hypothesis draws of the law and the pose, both dtypes",
+    "floor": "16 eps of the force's and the couple's arithmetic in magnitude",
+    "predicted_worst_eps": 4,
+    "plant": "the weight's term times 1.01: caught on every draw, the least margin above 50 times the floor in float32"
+  },
+  "gate_2_drag_definiteness": {
+    "case": "tests/energy/test_drag_definiteness.py: script A's surrogate drag node, its delivered resistance at Hypothesis-drawn poses in the tube (offset, roll, either end first), definite at the floor (16 eps on its symmetric part scaled by its diagonal) by one Cholesky factorisation",
+    "predicted": "definite on every draw, its scaled least eigenvalue above 0.5 (FU1 on the floor: 0.699 to 0.701)",
+    "plant": "FU1's indefinite part, 1.1 times the scaled least eigenvalue taken off along its eigenvector: caught on every draw (its scaled least eigenvalue about -0.07 to -0.14); the sign of the drag's work alone catches it on few or none",
+    "run_time": "the body's run-time check on a law whose definiteness is the state's: every step with the planted resistance counted, none with the definite one; a semidefinite matrix passes, where a plain Cholesky factorisation fails on it"
+  },
+  "not_in_this_pr": "the build's wiring (ledger=), EnergyLedger, the results' view, the conformance() case kinds, the end-to-end items (script A's account and balance, the gradient through the ledger, the physics bits with the ledger on): P1a-2"
+}
