@@ -231,7 +231,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three moments and that the folder is re-created from its script on the current version, where the products are
   carried. A reader of version 8 refuses a
   folder of version 9 as `load.newer-form`, the document and the lock each once.
-- **Known anomaly MIME-ANO-143 (open): under jit, the tube wall read's derivative can have the wrong sign for a pair of force points at exactly
+- **Known anomaly MIME-ANO-143 (filed open, resolved in this release: see Fixed): under jit, the tube wall read's derivative can have the wrong sign for a pair of force points at exactly
   equal height**, in forward and in reverse mode, with the pair set depending on XLA's fusion (measured on the tube demo's
   338 points in float64 and on two-point cases; eager evaluation and points nudged apart match finite differences). No
   derivative in `src/` goes through the wall read; nothing about the primal values changes. Filed with its reach and the
@@ -353,6 +353,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deep-copies, and says "staleness unknown" (`stale_unknown`), neither stale nor fresh.
 
 ### Fixed
+
+- **The tube wall read's derivative has the right sign through samples tied in height or in azimuth under jit**
+  (MIME-ANO-143). Jitted, the read's derivative along a rigid motion came out of the opposite sign for some pairs of
+  force points at exactly equal height or azimuth (2.0 of the column's largest entry), in forward and in reverse mode,
+  which pairs depending on how XLA fused the program; and in reverse mode with a cotangent for each entry
+  (`jax.jacrev`) also where no two samples tied, through a sample's pair with itself, which is a tie in both (one of
+  the test's eight pairs apart, and 10 of 12 random pairs apart in a reviewer's own harness, in both precisions). XLA computes
+  the axial offset and the angle's sine inside each fusion that reads them, and near zero a difference of products is
+  not the same number in every fusion, so the sign of an odd component and the derivative of the absolute value it is
+  read at could see numbers of opposite sign. `pair_block` now holds the sine and the offset once (`held_once`, a
+  custom derivative rule: the value itself in a program that takes no derivative, an optimization barrier's output in
+  one that does) wherever a derivative is taken through them. A run takes no derivative, so its program is unchanged:
+  measured, every field of the tube demo's 40 steps (the history scan and one-step chunks) and of the screw in the
+  tube's 30 steps, in float32 and float64, is the program before the fix to the last bit, so the tube wall kind keeps
+  its version 0.1.0; the primal of a program that does take a derivative is not bit for bit the plain program's (measured
+  on the tube demo's step under `jax.jvp`: 4 to 7 of 27 state leaves differ in the last bits, see the entry's residual risk).
+  `tests/oracles/test_tube_tie_derivative.py` holds the derivative through ties and self-pairs at
+  seventeen pairs (jitted in both modes, eager, in both precisions, and under a barrier on the sine) and on the tube demo's 338 force
+  points, against central differences, with the read before the fix as the control that fails.
 
 - **A DOI run again does not download its bundle again** (`Experiment.based_on("10.5281/zenodo.N", name=...)`, a second
   `mime pull` of the same record). Measured on the fake repository: a re-run read the record and downloaded the bundle's

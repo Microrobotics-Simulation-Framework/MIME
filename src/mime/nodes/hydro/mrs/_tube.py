@@ -65,6 +65,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any, NamedTuple, cast
 
+import jax
 import numpy as np
 from jax import Array
 
@@ -89,6 +90,9 @@ ALONG = "tube.axial"
 AXIS = "tube.axis"
 #: Knots mirrored past each symmetric end of the angle's and the axial offset's axes.
 MIRRORED = 2
+#: ``jax.lax`` and ``jax.custom_jvp``, read through ``Any``: jaxlib ships no stubs.
+_lax: Any = cast(Any, jax).lax
+_custom_jvp: Any = cast(Any, jax).custom_jvp
 
 
 def _parity(odd: np.ndarray) -> np.ndarray:
@@ -237,13 +241,38 @@ class Reads(NamedTuple):
     accepted: Array
 
 
+def _itself(x: Array) -> Array:
+    return x
+
+
+def _held_once_jvp(primals: tuple[Array], tangents: tuple[Array]) -> tuple[Array, Array]:
+    return _lax.optimization_barrier(primals[0]), tangents[0]
+
+
+#: ``x`` itself, held as one value wherever a derivative is taken through it (MIME-ANO-143): under ``jvp``, and so
+#: under ``grad``, it is an optimization barrier's output, which every consumer reads, so that a sign test of ``x`` and
+#: its absolute value see the same number; a program that takes no derivative through it is unchanged.
+held_once = _custom_jvp(_itself)
+held_once.defjvp(_held_once_jvp)
+
+
 def pair_block(table: TableArrays, rho_t: Array, rho_s: Array, sine: Array, cosine: Array,
                offset: Array) -> tuple[Array, Array]:
     """The table's read for pairs, broadcast together: the target at ``rho_t`` and the source at ``rho_s`` (the tube's
     radii), the sine and cosine of the angle from the source's direction across the axis to the target's, and the
     target's axial offset from the source. The block's rows are in the source's frame (``H``), its odd components signed
     by the sine and the offset, and whether every read was accepted. The switches of the fold are here, so that a row of
-    the switch harness places a single pair."""
+    the switch harness places a single pair.
+
+    **One value of the sine and of the offset in a derivative** (MIME-ANO-143). An odd component, the sign of ``dz``
+    times the read at ``|dz|``, has the derivative ``f'(|dz|)`` through ``dz = 0`` only where its sign test and the
+    absolute value's derivative see the same ``dz`` (the sine's fold likewise). XLA computes a value inside each fusion
+    that reads it, and near zero a difference of products is not the same number in every fusion. Jitted, without the
+    hold, a derivative came out of the opposite sign at pairs of samples of exactly equal height or azimuth, and in
+    reverse mode at a sample's pair with itself, which is a tie in both, where no two samples tied (measured; that the
+    fusions round the difference differently, a fused multiply-add in one and not in another, is an inference). Each
+    is held once (``held_once``) wherever a derivative is taken; a run, which takes none, runs the program it ran."""
+    sine, offset = held_once(sine), held_once(offset)
     folded = jnp.arctan2(switch.absolute(sine, owner="tube.angle", resolution=lambda: switch.rounding(1.0),
                                          indicator=sine), cosine)
     along = switch.absolute(offset, owner="tube.axial", resolution=lambda: switch.rounding(1.0), indicator=offset)
@@ -440,6 +469,6 @@ TUBE_CORRECTION = register_wall_correction(tube_wall(TUBE, TUBE_VERSION, shipped
 __all__ = ["ALONG", "ANGLE", "AXIS", "MIRRORED", "ODD_ALONG", "ODD_IN_ANGLE", "PROVENANCE_ARRAYS", "TABLE", "TUBE",
            "TABLE_PAIR_VALUES", "TUBE_CORRECTION", "TUBE_PARAMETERS", "TUBE_UNITS", "TUBE_VERSION", "UNIT_TUBE", "PairReads",
            "Reads", "across_the_axis",
-           "axial_reach", "frame_across", "into_the_source_frame", "pair_block", "shipped_unit_tube",
+           "axial_reach", "frame_across", "held_once", "into_the_source_frame", "pair_block", "shipped_unit_tube",
            "table_provenance", "target_weight", "tube_correction", "tube_distance", "tube_image", "tube_pair_reads",
            "tube_preparation", "tube_reads", "tube_table_from", "tube_wall", "unit_tube_table", "weight_between"]
