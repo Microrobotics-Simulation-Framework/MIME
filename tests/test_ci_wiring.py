@@ -663,7 +663,7 @@ PLANTS = {
         "tests; the suite skips none in CI"),
     "a-shard-job-without-a-timeout": (
         "  default-tests:\n    name: default tests (Python ${{ matrix.python-version }}, shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n"
-        "    needs: shards\n    if: github.event_name != 'schedule'\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+        "    needs: shards\n    if: github.event_name != 'schedule'\n    runs-on: ubuntu-latest\n    timeout-minutes: 30\n",
         "  default-tests:\n    name: default tests (Python ${{ matrix.python-version }}, shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n"
         "    needs: shards\n    if: github.event_name != 'schedule'\n    runs-on: ubuntu-latest\n",
         "'default (Python 3.12)': the shard job default-tests has no timeout-minutes; a hung shard holds the lane for "
