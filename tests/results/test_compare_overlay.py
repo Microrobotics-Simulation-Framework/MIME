@@ -154,3 +154,36 @@ def test_the_stage_samples_are_in_the_group_file_and_the_manifest_records_the_sp
     names = zipfile.ZipFile(study_folder / "groups/0/outputs.npz").namelist()
     assert {"m0/stage/steps.npy", "m0/stage/meta.npy", "m0/stage/fields/umr/pose.npy"} <= set(names)
     assert "stage_every: " in (study_folder / "study.mime.yaml").read_text()
+
+
+def test_a_member_drawn_with_a_borrowed_geometry_says_so_where_a_viewer_reads_it_and_warns_at_write_time(tmp_path):
+    import warnings
+
+    from mime.study import DT
+
+    out = tmp_path / "study"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        Study(reproduction_arm()).sweep(grid({DT: [ms(0.5), ms(1.0)]}), duration=s(0.01), every=ms(2.0), stage_every=ms(2.0),
+                                        record=["swim_speed:umr.speed"]).run_to(out)
+        result = StudyResult.read(out)
+        assert len(set(result.groups)) == 2          # the two steps are two compiled programs: two groups
+        caught.clear()
+        path = result.write_compare(0)
+    assert [str(w.message) for w in caught if "geometry" in str(w.message)] != []
+    layer = Sdf.Layer.FindOrOpen(str(path))
+    borrowed = layer.GetPrimAtPath("/Compare/m1").customData["mime_compare"]
+    reference = layer.GetPrimAtPath("/Compare/m0").customData["mime_compare"]
+    assert borrowed["own_build"] is False and borrowed["geometry_from"] == "m0"
+    assert reference["own_build"] is True and reference["geometry_from"] == "m0"
+
+
+def test_a_member_of_the_references_group_has_its_own_build_and_the_write_does_not_warn(overlay):
+    import warnings
+
+    path, result = overlay
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result.write_compare(0)                       # control: one group, nothing borrowed, nothing warned
+    layer = Sdf.Layer.FindOrOpen(str(path))
+    assert all(layer.GetPrimAtPath(f"/Compare/m{i}").customData["mime_compare"]["own_build"] is True for i in range(3))

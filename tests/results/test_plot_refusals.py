@@ -82,3 +82,75 @@ def test_the_overlay_names_the_stage_it_cannot_ghost():
     assert code_of(lambda: compare_layer(staged(record("/World/a", [0]), record("/World/a", [0])))) == "compare.stage"
     assert code_of(lambda: compare_layer(staged(record("/World/a", [0, 5]), record("/World/b", [0, 5])))) == "compare.scene"
     assert code_of(lambda: compare_layer(staged(record("/World/a", [0, 5]), record("/World/a", [0, 5])), reference=5)) == "compare.reference"
+
+
+def test_a_gap_is_called_a_gap_and_the_route_fits_where_the_reference_is_a_member_of_the_same_study():
+    import math
+
+    from mime.units import Hz
+
+    t = np.concatenate([np.arange(1, 6) * 0.001, [0.017, 0.018, 0.019, 0.020]])
+    gap = Measured("m", s(t), {"probe:p.speed": m_per_s(2000.0 * t)})
+    with pytest.raises(ArgumentRefused) as error:
+        study().compare(gap, drives=[Hz(50.0)])
+    assert "gap of 0.012 s" in error.value.refusals[0].message and "sampled every 0.012" not in error.value.refusals[0].message
+    slow = study_of([run_of(SPEEDS, 0.010), run_of(SPEEDS, 0.010)], [1.0, 2.0])
+    with pytest.raises(ArgumentRefused) as inside:
+        slow.compare(0, drives=[Hz(50.0)])
+    assert "every=" in inside.value.refusals[0].action and "reference sampled at least twice" not in inside.value.refusals[0].action
+    assert math.isclose(0.010, 0.5 / 50.0)
+
+
+def test_a_vector_series_is_drawn_by_its_first_component_and_the_comparison_says_so():
+    wide = Quantity.of(np.stack([np.arange(1.0, 5.0), np.arange(1.0, 5.0)], axis=1), VELOCITY)
+    reference = Measured("m", s(np.arange(1, 5) * 0.001), {"probe:p.speed": wide})
+    two = Measured("n", s(np.arange(1, 5) * 0.001), {"probe:p.speed": wide + wide})
+    from mime.results._compare import compare
+
+    class One:
+        """A study of one hand-built result, to compare two vector series."""
+
+        experiment, axes, points, groups = "x", ("a",), (0, 1), (0, 0)
+        coordinates = {"a": Quantity.of(np.asarray([1.0, 2.0]), VELOCITY)}
+
+        def __len__(self) -> int:
+            return 2
+
+        def coordinate(self, path: str, index: int) -> object:
+            return m_per_s(float(index))
+
+        def member_data(self, index: int):
+            return reference if index == 0 else two
+
+    result = compare(One(), 0, tolerance=m_per_s(100.0))     # type: ignore[arg-type]
+    assert any("component" in note for note in result.notes)
+
+
+def test_a_figure_page_says_what_it_needs_where_scripts_cannot_run():
+    from mime.results._figure import figure_page
+
+    assert "<noscript>" in figure_page("{}", "t", cdn=True, caption=None, name="n")
+
+
+def test_the_overlay_draws_every_chosen_members_validity_band_not_only_the_first_ones():
+    members = study_of([run_of(SPEEDS, 0.001), run_of(SPEEDS, 0.001, limited=True)], [10.0, 20.0])
+    bands = members.figure("probe:p.speed", kind="overlay").description.panels[0].bands
+    assert [b.label for b in bands] == ["probe:p.speed_limit limit"]
+    first = members.figure("probe:p.speed", kind="overlay", members=[0]).description.panels[0].bands
+    assert first == ()       # control: member 0 alone has none
+
+
+def test_a_folder_written_before_stage_every_names_that_key_and_the_route(copy_of_study):
+    import json
+
+    from mime.results import StudyResult
+
+    path = copy_of_study / "study.json"
+    document = json.loads(path.read_text())
+    del document["run"]["stage_every"]
+    path.write_text(json.dumps(document, indent=1))
+    with pytest.raises(ArgumentRefused) as error:
+        StudyResult.read(copy_of_study)
+    refusal = error.value.refusals[0]
+    assert refusal.code == "study.manifest" and "stage_every" in refusal.message
+    assert "before" in refusal.action and "run_to" in refusal.action and "the MIME that wrote it" not in refusal.action

@@ -16,6 +16,7 @@ from mime.build._refusals import ArgumentRefused, BuildRefused
 from mime.results import FigurePage, FigureRecipe, StudyResult
 from mime.results._figure import PLOTLY_CDN, PLOTLY_JS_SHA256, PLOTLY_JS_SRI, figure_page, library_tag
 from mime.results._study_folder import layout_problems
+from mime.units import s
 
 MEAN = "swim_speed:umr.mean_speed"
 
@@ -37,8 +38,10 @@ def test_a_recipe_holds_what_it_reads_by_path_and_sha256_and_no_pickle(copy_of_s
     result = StudyResult.read(copy_of_study)
     result.figure(MEAN, name="curve").write_recipe()
     document = json.loads((copy_of_study / "figures" / "curve.json").read_text())
-    assert [r["path"] for r in document["reads"]] == ["groups/0/outputs.npz"]
-    assert document["reads"][0]["sha256"] == hashlib.sha256((copy_of_study / "groups/0/outputs.npz").read_bytes()).hexdigest()
+    assert [r["path"] for r in document["reads"]] == ["study.json", "groups/0/outputs.npz", "groups/0/report.json"]
+    assert {r["path"]: r["sha256"] for r in document["reads"]} == {
+        path: hashlib.sha256((copy_of_study / path).read_bytes()).hexdigest()
+        for path in ("study.json", "groups/0/outputs.npz", "groups/0/report.json")}
     assert document["spec"] == {"kind": "curve", "outputs": [MEAN], "against": None, "members": None}
     assert not [p for p in (copy_of_study / "figures").iterdir() if p.suffix in {".pkl", ".pickle"}]
 
@@ -144,3 +147,68 @@ def test_a_page_is_written_beside_a_folder_and_never_into_one_and_its_name_is_it
     written = recipe.web(cdn=True)
     assert written.name == "script_a.curve.figure.html" and written.name != "script_a.html"
     assert written.read_text() == recipe.page(cdn=True)
+
+
+def test_control_every_file_a_figure_reads_is_hashed_and_a_changed_byte_in_any_is_refused_by_name(copy_of_study):
+    result = StudyResult.read(copy_of_study)
+    result.figure(MEAN, name="curve").write_recipe()
+    reads = [r["path"] for r in json.loads((copy_of_study / "figures" / "curve.json").read_text())["reads"]]
+    assert "study.json" in reads and "groups/0/outputs.npz" in reads and "groups/0/report.json" in reads
+    refused = trials = 0
+    for name in reads:
+        data = copy_of_study / name
+        original = data.read_bytes()
+        for position in (0, len(original) // 2, len(original) - 1):
+            changed = bytearray(original)
+            changed[position] ^= 0x01
+            data.write_bytes(bytes(changed))
+            trials += 1
+            with pytest.raises(ArgumentRefused) as error:
+                FigureRecipe.read(copy_of_study, "curve")
+            refusal = error.value.refusals[0]
+            refused += refusal.code == "plot.data-changed" and name in refusal.message
+        data.write_bytes(original)
+    assert refused == trials == 3 * len(reads)
+    FigureRecipe.read(copy_of_study, "curve")
+
+
+def test_a_coordinate_edited_in_the_study_manifest_refuses_the_redraw(copy_of_study):
+    result = StudyResult.read(copy_of_study)
+    result.figure(MEAN, name="curve").write_recipe()
+    path = copy_of_study / "study.json"
+    document = json.loads(path.read_text())
+    document["points"][0]["values"][0]["value"] = 400.0       # 10 Hz to 400 Hz, which the step-out curve's x reads
+    path.write_text(json.dumps(document, indent=1))
+    with pytest.raises(ArgumentRefused) as error:
+        FigureRecipe.read(copy_of_study, "curve")
+    assert error.value.refusals[0].code == "plot.data-changed" and "study.json" in error.value.refusals[0].message
+
+
+def test_a_runs_recipe_hashes_its_manifest_its_arrays_and_its_report(tmp_path):
+    from script_a import reproduction_arm
+
+    from mime.units import ms
+
+    folder = tmp_path / "run"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        built = reproduction_arm().build()
+        built.run_to(folder, s(0.02), record=[SPEED], every=ms(5.0))
+    from mime.results import RunResult
+
+    RunResult.read(folder).figure(SPEED, name="speed").write_recipe()
+    reads = [r["path"] for r in json.loads((folder / "figures" / "speed.json").read_text())["reads"]]
+    assert reads == ["outputs.json", "outputs.npz", "report.json"]
+    refused = 0
+    for name in reads:
+        data = folder / name
+        original = data.read_bytes()
+        changed = bytearray(original)
+        changed[len(original) // 2] ^= 0x01
+        data.write_bytes(bytes(changed))
+        with pytest.raises(ArgumentRefused) as error:
+            FigureRecipe.read(folder, "speed")
+        refused += error.value.refusals[0].code == "plot.data-changed" and name in error.value.refusals[0].message
+        data.write_bytes(original)
+    assert refused == 3
+    FigureRecipe.read(folder, "speed")

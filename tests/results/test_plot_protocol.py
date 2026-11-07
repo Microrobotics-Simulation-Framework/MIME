@@ -9,7 +9,7 @@ import json
 
 import numpy as np
 import pytest
-from rigs_plot import run_of
+from rigs_plot import run_of, study_of
 
 from mime.build._refusals import ArgumentRefused
 from mime.results import Measured, RunData, figure
@@ -118,3 +118,60 @@ def test_a_result_with_no_series_and_a_time_base_that_is_not_one_are_refused_by_
     with pytest.raises(ArgumentRefused) as base2:
         Measured("m", Hz(3.0), {"x": m_per_s([1, 2, 3])})  # type: ignore[arg-type]
     assert base2.value.refusals[0].code == "plot.time-base"
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The caption: what a figure bounds and estimates is drawn on it, not left in its description (the refuting review's M5)
+
+
+def drawn_text(figure) -> str:
+    from matplotlib.text import Text
+
+    return " ".join(t.get_text() for t in figure.findobj(Text)).replace("\n", " ")
+
+
+def plotly_text(figure) -> str:
+    return " ".join(str(a.text) for a in figure.layout.annotations).replace("<br>", " ")
+
+
+def test_the_drawn_figure_carries_the_bounds_against_estimates_marking_and_the_interpolations_name():
+    members = study_of([run_of(SPEEDS, DT), run_of([x + 0.25 for x in SPEEDS], DT)], [10.0, 20.0])
+    off_grid = Measured("m", s([0.0015, 0.0045, 0.0075]), {"probe:p.speed": m_per_s([1.0, 2.0, 3.0])})
+    comparison = members.compare(off_grid, tolerance=m_per_s(1.0))
+    for text in (drawn_text(comparison.plot()), plotly_text(comparison.plot_interactive())):
+        assert "bounds the model's error from above only" in text and "linearly interpolated onto the reference's times" in text
+    run_text = drawn_text(figure(run_of(SPEEDS, DT), "probe:p.speed").plot())
+    assert "what the model computes" in run_text and "estimate" in run_text
+    assert "what the model computes" in plotly_text(figure(run_of(SPEEDS, DT), "probe:p.speed").plot_interactive())
+    # the page carries it too, as the figure's own annotation
+    assert "what the model computes" in figure(run_of(SPEEDS, DT), "probe:p.speed").page().replace("\\u003cbr>", " ")
+
+
+def test_a_measured_result_is_captioned_as_measured_and_never_as_what_the_model_computes():
+    data = Measured("video", s(np.arange(1, 6) * DT), {"x": m_per_s([1, 2, 3, 4, 5])}, uncertainty={"x": ("std", m_per_s([0.1] * 5))})
+    recipe = figure(data, "x")
+    assert not any("what the model computes" in note for note in recipe.description.notes)
+    assert any("measured" in note for note in recipe.description.notes)
+    for text in (drawn_text(recipe.plot()), plotly_text(recipe.plot_interactive())):
+        assert "measured" in text and "what the model computes" not in text and "standard deviation" in text
+    simulated = describe_run(RunData(run_of(SPEEDS, DT)))
+    assert any("what the model computes" in note for note in simulated.notes)       # control: a simulated one is
+    members = study_of([run_of(SPEEDS, DT)], [10.0])
+    against_measurement = members.compare(Measured("video", s(np.arange(1, 5) * DT), {"probe:p.speed": m_per_s(SPEEDS[:4])}),
+                                          tolerance=m_per_s(1.0))
+    assert "measurement" in against_measurement.description.notes[0] and "another run of the model" not in against_measurement.description.notes[0]
+
+
+def test_a_measured_results_inputs_are_checked_where_it_is_built():
+    t = s(np.arange(1, 6) * DT)
+    series = {"x": m_per_s([1, 2, 3, 4, 5])}
+    for wrong in ({"uncertainty": {"x": ("std", m_per_s([0.1, 0.1]))}},        # the wrong length
+                  {"uncertainty": {"x": ("std", m_per_s([-0.1] * 5))}},        # a negative spread
+                  {"flags": {"f": [True, False]}},                              # a flag shorter than the time base
+                  {"flags": {"f": [True] * 9}},                                 # and longer
+                  {"limits": [("nothing", -1.0, 1.0, "a limit on no series")]}):
+        with pytest.raises(ArgumentRefused) as error:
+            Measured("m", t, series, **wrong)
+        assert error.value.refusals[0].code.startswith("plot."), wrong
+    Measured("m", t, series, uncertainty={"x": ("std", m_per_s([0.1] * 5))}, flags={"f": [True] * 5},
+             limits=[("x", -1.0, 1.0, "a limit")])    # control: the same inputs, right
