@@ -113,6 +113,48 @@ class RigidContactState(TypedDict, closed=True):
     contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
 
 
+class _BodyRecords(TypedDict):
+    """The energy ledger's records in a metered body's state (``mime.core.ledger.initial_records``), with their units:
+    each law's paired work over the run and over the step, each hosted law's two terms and the scheme's own terms, the
+    unattributed work, the storage at the run's start and now, the run's summed step scale (J); the step identity's
+    residual over the step's scale and its worst, and the counts of indefinite and gift steps per law (1); and the
+    pose at the run's start, which a potential law's energy is evaluated at."""
+
+    ledger_configuration_start: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]]
+    ledger_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_step_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_hosted: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    ledger_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_step_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_unattributed: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_unattributed_worst: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage_start: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_step_identity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_identity_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_scale: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_indefinite_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+    ledger_gift_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+
+
+class MeteredRigidInertialState(_BodyRecords, closed=True):
+    """A metered body's state: its pose and twist, and its records."""
+
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
+
+
+class MeteredRigidContactState(_BodyRecords, closed=True):
+    """A metered body held by its hull: :class:`RigidContactState`'s fields, and its records."""
+
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
+    contact_points: ReadOnly[Annotated[HeldPoints, Units("m")]]
+    contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
+    contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
+    contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+
+
 class RigidInertialInputs(TypedDict, closed=True):
     applied_wrench: NotRequired[ReadOnly[Float[Array, "6"]]]
     resistance: NotRequired[ReadOnly[Float[Array, "6 6"]]]  # noqa: F722 - a jaxtyping shape
