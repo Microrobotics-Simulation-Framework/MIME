@@ -80,6 +80,7 @@ def holds_the_contract(row: dict[str, Any], x64: bool, record_property: Any) -> 
     assert row["verify_moved"] == {}, "verify, a fresh graph run by the lock's program, reproduces the saved reference"
     assert row["own_moved"] == {}, "the saved reference is the run's own first steps"
     assert row["history_moved"] == {}, "the history scan on the run's graph is a fresh graph's"
+    assert row["left_moved"] == {} and row["params_kept"], "the save's two reference runs leave the build as they found it"
     if row["case"] in EQUAL_BEFORE[x64]:
         assert row["moved"] == {}, "measured equal to what a save wrote before form 8"
 

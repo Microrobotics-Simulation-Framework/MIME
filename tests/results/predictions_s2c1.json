@@ -1,0 +1,45 @@
+{
+  "written": "2026-11-08, committed before any gate case of S2c-1 ran (the commit that adds this file is the timestamp)",
+  "round_trip": {
+    "case": "script A's reproduction arm, a study over field.commands.frequency and dt (so the members' series are ragged: another dt gives another sample count), recorded, written by Study.run_to and read back by StudyResult.read",
+    "prediction": "every coordinate, reading, series, flag and final-state field is equal, np.array_equal, to the in-memory result's: the folder holds the arrays as they are, and the reader returns them. Not a tolerance: exact.",
+    "control": "two members' coordinates exchanged in study.json: the read-back must differ from the in-memory result in that coordinate. Predicted detection 1.0 of every pair tried, every run."
+  },
+  "mat": {
+    "prediction": "scipy.io.loadmat of to_mat gives the coordinates and every output equal to the in-memory values (float64 stored from float32 is exact), with the units present and the name map in the file",
+    "controls": "a dropped unit, and a transposed member axis: each must fail the comparison. Predicted detection 1.0 over every output compared, every run."
+  },
+  "layout": {
+    "prediction": "the folder's experiment/ is byte-identical to a plain save() of the base (the lock holds no clock), and saved/_versions.CURRENT equals the value on the tip this branch last merged",
+    "controls": "a stray file is refused, a key added to study.json is refused, a newer format version is refused. Predicted detection 1.0, every run."
+  },
+  "resume": {
+    "prediction": "a study stopped after k members resumes and runs exactly the missing members (counted by the batches the run reports), and its finished folder equals an uninterrupted one: study.json except its measured seconds, and every group's outputs.npz byte for byte, at the usable CPU count and BLAS thread count the test names. This holds when the stop falls on a batch boundary: a batch cut by a changed content key is rerun at another batch size, which is not claimed bit for bit.",
+    "control": "a member whose content key's source hash changed is run again, never reused. Predicted detection 1.0 in each of 5 repeats of the control in one test."
+  },
+  "order": {
+    "prediction": "on a manufactured toy f(h) = f0 + C h^p with p = 1 and p = 2 at three levels h, h/2, h/4, the observed order is p within 1e-9 and the extrapolated value is f0 within 1e-9 relative; levels whose ratios disagree by more than the stated 0.1 are refused",
+    "control": "the first-order plant reads 1, not 2 (|p - 1| < 1e-9 and |p - 2| > 0.9), on every run"
+  },
+  "bridge": {
+    "case": "script A's reproduction arm, 2 points over field.commands.frequency (10 Hz and 30 Hz, both locked), 0.5 s; member(i).as_experiment(name), saved, loaded, run alone with the same record, against the member's own series and final state",
+    "tolerance_eps": {"float32": 150, "float64": 300},
+    "largest_miss_expected_eps": {"float32": 20, "float64": 60},
+    "reasoning": "the same comparison as S2b-1's gate 1 (a member against a fresh unbatched run of its point), whose tolerances and expectations these are, held at a shorter run: a batch of 2 against a batch of 1 differs by tens of eps while locked; the bridge's run adds no step beyond what gate 1's override run does, the declarations being the same",
+    "controls": "a member whose override is dropped from the bridge (the experiment run at the base's frequency) and two members exchanged: each must fail the tolerance by orders of magnitude. Predicted detection 1.0 on every run.",
+    "lineage": "the bridge experiment's saved folder's based_on names the base (its name and input hash)",
+    "amendment_1": {
+      "when": "2026-11-07, in the fix round after the refuting review; committed before the bridge test runs again",
+      "what": "the points are 20 Hz and 30 Hz (were 10 Hz and 30 Hz) and the run is 0.2 s (was 0.5 s). The comparison, the tolerances (150 / 300 eps), the expected misses (20 / 60 eps) and the controls are unchanged",
+      "why_points": "10 Hz is the base's own frequency, so for a 10 Hz member the control 'override dropped' is the member's own run and cannot fail: a control that cannot discriminate. At 20 Hz neither member is at the base's value, so the dropped-override control can fail for each",
+      "why_duration": "CI's time, as the PR's first body gave it ('shortened for CI time'); the tolerances stay those of the longer run",
+      "disclosure": "the test ran at 20 and 30 Hz for 0.2 s before this amendment (the PR's first head: largest miss 1.05 eps in float32, 0.066 eps in float64), and the PR's first body named the shorter run but not the changed point. So this amendment records the points the outcome was measured at; it is not a prediction made before them",
+      "regime": "both points locked, measured before this commit on the base run alone at each point (script A's reproduction arm from rest, every step kept, 0.2 s; the same to the digits shown in float32 and float64): the lag of the body's moment behind the field about the tube's axis stays within 50.5 deg (20 Hz) and 80.8 deg (30 Hz) at every step, never past 90 deg, and the body turns 3.929 of the field's 4 turns (20 Hz) and 5.933 of its 6 (30 Hz), so no turn is slipped. The tolerance is the locked regime's. The test checks the regime on every run: each member's run alone keeps its lag within 90 deg at every step"
+    }
+  },
+  "reason_per_axis": {
+    "prediction": "a research study whose swept axis has no reason is refused naming the axis (study.axis-reason); the same study with a reason runs, and the reason is in study.json (axes) and in each member's overrides there; an exploratory study without a reason runs, stamped with the generic study reason",
+    "control": "the exploratory study without a reason runs"
+  },
+  "counts": "every bit-for-bit claim above at the usable CPU count and BLAS thread count the test runs at (MIME-ANO-140, -141)"
+}

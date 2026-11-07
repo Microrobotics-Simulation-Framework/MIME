@@ -107,13 +107,14 @@ def checked_digests(graph: Any, tree: Arrays) -> dict[str, str]:
 
 def build_point(index: int, settings: RunSettings, declarations: Sequence[Declaration],
                 values: Mapping[Axis, object], reason: str,
-                reference: Callable[[str], Point | None] | None = None, protocol: Protocol | None = None) -> Point:
+                reference: Callable[[str], Point | None] | None = None,
+                reasons: Mapping[str, str] | None = None, protocol: Protocol | None = None) -> Point:
     """Point ``index``: ``values`` declared in the base, then its ``protocol`` (a ramp's drive in place of its
     command's value; from rest, nothing), planned in full, its controller's law made, assembled with nothing compiled,
     and its key, tree and state read. ``reference`` gives the point already built with the same key, if any: a node
     with checks of its own (``built_problems``, ``built_lines``) whose leaves and starting inputs differ from that
     point's is judged here, on this point's nodes; one that is the same shares its verdict."""
-    held = declared(settings, declarations, values, reason)
+    held = declared(settings, declarations, values, reason, reasons)
     ramp: Ramp | None = None
     if protocol is not None:
         ramped, ramp = declared_with(protocol, held.declarations)

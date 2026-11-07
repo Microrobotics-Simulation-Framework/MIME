@@ -44,9 +44,24 @@
   its values declared. The readings name their quantity and never mix them: `step_out(result, lag, axis)` the bracket
   from rest over a swept frequency at each value of the other axes (each member's mean spin over its frequency against
   `threshold=0.99`), `ramp_crossings(result, lag, window=...)` where each ramp's member steps out (`ramp up`) or is caught (`ramp
-  down`), from the spin recorded every step over sliding windows, against the frequency the ramp commanded. Each member's start is read first, over the last window of the hold: a ramp
-up from a body that is not locked there, and a ramp down from one that is, report that start (`Crossing.read` false),
-never the start frequency as a step-out or a catch.
+  down`), from the spin recorded every step over sliding windows, against the frequency the ramp commanded. Each
+  member's start is read first, over the last window of the hold: a ramp up from a body that is not locked there, and a
+  ramp down from one that is, report that start (`Crossing.read` false), never the start frequency as a step-out or a
+  catch.
+
+- **A study in a folder** (`_folder_run.py`, `_record.py`, `_content.py`, `_spec.py`): `study.run_to(folder)` writes a
+  study folder (see `mime.results`) group by group and batch by batch, into a new or empty folder or one that holds the
+  same study (anything else is refused and left untouched; `study.json` is written first and marks the folder as the
+  study's), and a run into a folder that holds the same study resumes: a member is reused only if it is `done` under the
+  same content key (its point, its group's structure key, the base's input hash, the run, and the code: every file of
+  the installed `mime` package and of a package its classes come from, with the versions of MADDENING, OpenMaterica,
+  JAX, jaxlib, NumPy and SciPy), so any change to MIME's files runs every member again. The spec file `study.mime.yaml`
+  is the study as data (safe-loaded, closed, versioned, no code; `Study.from_spec`), `mime study plan` and `mime study
+  run` (`--out`, `--pilot`, `--shard i/k`, by structure group) work on it, and `mime modal --study` adds a `study`
+  entrypoint.
+  In the research profile each axis needs its own reason (`sweep(..., reasons={...})`, `study.axis-reason`).
+- **From a member to an experiment** (`_bridge.py`): `result.member(i).as_experiment(name)`, `Experiment.based_on(<the
+  base>, name=name)` with the member's values declared, each with the reason `from study <id>, member <i>`.
 
 ## Boundaries
 
@@ -55,8 +70,8 @@ never the start frequency as a step-out or a catch.
 
 ## Status
 
-Sweeps and overrides are built (dev2, the study layer's first phase), and the drives that ramp a command with the
-step-out readings (its second). Saving a study and its table, checkpoints and forks, variants, fits and sensitivities
-come later.
+Sweeps, overrides, the drives that ramp a command with the step-out readings, the study folder, the spec file and
+`mime study`, resume and the bridge to an experiment are built (dev2, the study layer's first three phases). Plots and
+comparisons, checkpoints and forks, variants, fits and sensitivities come later.
 
 Releases are explained in the [package manifest](../README.md#status).

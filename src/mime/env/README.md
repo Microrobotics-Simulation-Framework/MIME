@@ -41,6 +41,13 @@
     XLA's compilation cache under its directory.
 - **What the lock records of what no pin holds** (`gpu_record`, `cpu_record`, `runner_record`, `runner_info`,
   `xla_flags`, `deterministic`): see [`mime.saved`](../saved/README.md).
+- **XLA's deterministic GPU mode from Python** (`deterministic_mode`): what `--deterministic` does for `mime run` and
+  `mime verify`. XLA reads `XLA_FLAGS` once, when JAX's backend starts (its first `jax.devices()` or computation), not at
+  `import jax` or `import mime`, so the call sets the flag and starts the backend, and must come before anything
+  computes. On a GPU the mode is then on and the lock of what the process saves records it; on the CPU it changes
+  nothing (`CPU_DETERMINISTIC`, the line the commands print), the flags are put back as they were, and it returns
+  `False`. Called once the backend has started, it is refused (`env.deterministic-late`), naming the routes that work,
+  unless the flags already turn the mode on.
 - **XLA's cache directory**: `<root>/jaxlib-<release>/<platform>/<device>`, the device being the GPU's compute
   capability (`sm_80` for both A100s) or, on a CPU, the first hex digits of the hash of its flags. JAX's cache key holds
   no CPU feature while XLA compiles for the host's, so an entry is never read on another CPU; on a GPU JAX's key still
@@ -70,7 +77,9 @@ when it imports a module that one of MIME's own requirements provides and the en
 `env.shadow` (a module imported from outside the environment), `env.device` (the devices), `env.gpu-type` (a loose or
 unknown GPU type), `env.variant`, `env.lock` (no precision to apply), `env.precision` (a GPU run whose lock records a
 matmul precision other than the highest), `env.lab` (a lab file that is not pins), `env.runner` (a `MIME_RUNNER` or
-`MIME_RUNNER_INFO` that is not a JSON object of strings), and `modal.wheel` (no wheel of this MIME on PyPI).
+`MIME_RUNNER_INFO` that is not a JSON object of strings), `env.deterministic-late` (deterministic mode asked for from
+Python after JAX's backend started, when XLA would no longer read it), and `modal.wheel` (no wheel of this MIME on
+PyPI).
 
 ## Status
 

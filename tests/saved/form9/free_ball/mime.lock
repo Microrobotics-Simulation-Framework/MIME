@@ -1,0 +1,330 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "ball",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1.675516081914556e-12,
+       0.0,
+       0.0,
+       0.0,
+       1.675516081914556e-12,
+       0.0,
+       0.0,
+       0.0,
+       1.675516081914556e-12
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.001,
+       0.0,
+       0.0,
+       30.0,
+       -20.0,
+       10.0
+      ],
+      "margin": 0.0,
+      "mass": 4.1887902047863905e-06,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialTensorNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "ball": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.4.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 4,
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:483e817a2c84db5073eb5088781aef64c3c77fe18a1e86d6cb6fcee89d925dac",
+  "document": "sha256:3bb25140553b3af48fdda5c6271ff6992900d31e9ea208039e55b86ce1d4a9f0",
+  "input": "sha256:8880de905aeac1acce678393b667b2a613465ea30a64eef5cc7fbc3e5424a5c6",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "rtol": 1e-06,
+  "sha256": "sha256:68bae38db0a97428b775e63e1508aaa27e7d0dae50c14bfec869ea22c98cbf85",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "ball": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      30.0,
+      -20.0,
+      10.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.001,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "ball"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.4.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "ball": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        4e-07,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4e-07,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        4e-07
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "sphere",
+       "settings": {
+        "radius": {
+         "unit": "m",
+         "value": 0.001
+        }
+       },
+       "version": "0.2.0"
+      },
+      "volume": 4.188790204786391e-09
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "ball"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {},
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "free_ball",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "ball": "/World/ball"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "ball": "body"
+  },
+  "values": {
+   "ball.inertia": {
+    "details": [
+     "shell: sphere 0.2.0 of 4.18879e-06 kg about its centroid (0, 0, 0) m, by the parallel-axis theorem",
+     "ball.parts.shell.density = 1000.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "from shell (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "kg m^2",
+    "value": [
+     1.675516081914556e-12,
+     0.0,
+     0.0,
+     0.0,
+     1.675516081914556e-12,
+     0.0,
+     0.0,
+     0.0,
+     1.675516081914556e-12
+    ]
+   },
+   "ball.mass": {
+    "details": [
+     "shell: 1000 kg/m^3 x 4.18879e-09 m^3 = 4.18879e-06 kg",
+     "ball.parts.shell.density = 1000.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "from shell (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "kg",
+    "value": 4.1887902047863905e-06
+   },
+   "ball.parts.shell.density": {
+    "details": [],
+    "read_by": [
+     "ball's part resolver"
+    ],
+    "reason": "a water-dense bead",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1000.0
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/9",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "d51cb2b2367c4e4d4fb4a63b1db3db91b3bfd1225b4aeaef5a163d37ab3bcea4",
+  "writer": 2
+ }
+}

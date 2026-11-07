@@ -16,10 +16,10 @@ from jaxtyping import Bool, Float
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
-from typing_extensions import NotRequired, ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, \
-    quaternion, typed_view
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
+    node_input, quaternion, typed_view
 from mime.nodes.hydro.mrs._quadrature import (
     Chunks,
     padded,
@@ -204,8 +204,8 @@ def quadrature_move(found: np.ndarray, reference: np.ndarray) -> float:
 
 class MRSDragState(TypedDict, closed=True):
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
-    background_load: ReadOnly[Float[Array, "6"]]
-    wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    background_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
+    wall_accepted: ReadOnly[Annotated[Bool[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
 class SeparatedDragState(TypedDict, closed=True):
@@ -217,21 +217,21 @@ class SeparatedDragState(TypedDict, closed=True):
     resistance first turned indefinite."""
 
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
-    background_load: ReadOnly[Float[Array, "6"]]
-    wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    least_eigenvalue: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    asymmetry: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    indefinite: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    near_wall: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    asymmetric: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    wall_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    wall_gap_spacings: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    wall_cells_short: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    steps: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    stopped_at: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    stopped_pose: ReadOnly[Float[Array, "7"]]
-    stopped_gap: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    stopped_least: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    background_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
+    wall_accepted: ReadOnly[Annotated[Bool[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    least_eigenvalue: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    asymmetry: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    indefinite: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    near_wall: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    asymmetric: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    wall_gap: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
+    wall_gap_spacings: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    wall_cells_short: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stopped_at: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stopped_pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    stopped_gap: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
+    stopped_least: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
 def stops_where(accepted: Array, least: Array) -> Array:

@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `study.protocol-command`, `study.protocol-quantity`, `study.series-every-step`. `ramp_crossings` reads the state a ramp
   starts from over the last window of its hold: a ramp up from an unlocked body and a ramp down from a locked one report
   that start, not a step-out or a catch at the start frequency.
+- **`--deterministic` on `mime run` and `mime verify`, and `mime.env.deterministic_mode()`**: XLA's deterministic GPU
+  mode turned on before JAX's backend starts, since XLA reads its flags only then (measured: a flag set after the
+  backend started took no effect, one set after `import jax` and `import mime` did), and recorded in the lock as before.
+  The Python call is refused once the backend has started (`env.deterministic-late`), naming the routes that work,
+  unless the flags already turn the mode on. On the CPU either says in one line that it changes nothing there.
+- **Held points' type in a node's typed state** (`mime.core.HeldPoints`, `HeldForces`, read by `field_kinds`):
+  `rigid_inertial`'s contact points are judged by `verify` only on the rows whose force acts; a new node whose state
+  writes a field as `HeldPoints` beside one `HeldForces` field is judged so, with nothing declared beside it.
 - **The energy ledger's machinery on the body, off unless attached** (`mime.core.ledger`; the first half of the
   ledger, whose build wiring, observation and account come next). The vocabulary's port kinds (`PortKind`,
   `register_port_kind`; MIME's `rigid_body`, `joint`, `delivered_inertia`, `flow_in`), each delivery's units paired
@@ -58,6 +66,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (the family cases of the second part check each law's delivery against its own row, with a plant); and no
   declaration of a port, a class or a definiteness is read by anything yet, so a kind or a class cannot silence a
   failing check by a declaration vacuously, until the second part's registry walk reads them.
+- **A study written to a folder, resumed, read back and made an experiment of** (`mime.results`, `mime.study`).
+  `StudyResult` is complete: a long `table()`, `to_csv`, `to_npz`, `to_mat` (the member axis first, units in the file),
+  `grid()`, `manifest()`, `order(output, along=...)` (the observed order of convergence over three levels and the
+  extrapolated value, refused where the levels are not in the asymptotic range) and `read(folder)` of a partial study.
+  `study.run_to(folder)` writes a study folder (`study.json`, the spec file `study.mime.yaml`, the base saved once, each
+  group's arrays, each group file's sha256 in the manifest and each member's content key in its entries; closed
+  manifest, checked layout, no saved-form step) batch by batch, into a new or empty folder or one that holds the same
+  study (anything else is refused and left untouched), and a run into the same folder reuses only the members that are
+  done under the same content key (the point, the group's structure key, the base's input hash, the run, and the code:
+  every file of the installed `mime` package and of a package its classes come from, with the versions of MADDENING,
+  OpenMaterica, JAX, jaxlib, NumPy and SciPy, so any change to MIME's files runs every member again). `read` refuses a
+  group file that is not the manifest's (`study.group-file`). `mime study plan` and `mime study run` work on the spec
+  file (`--shard i/k` by structure group); `mime modal --study` adds a `study` entrypoint (one container by default,
+  `--shards` explicit). The research profile
+  needs one reason per swept axis (`study.axis-reason`). `result.member(i).as_experiment(name)` makes a member an
+  experiment of its own through `Experiment.based_on`. A law's axis given as a string now resolves when the law's id
+  holds a dot of its own (`toy.spring:probe.k`), which S2b-1's resolution did not.
 - **A containment watch: a body the centre-held contact holds whose hull leaves its region is flagged after the run**
   (in every profile that can be built, exploratory and research; never a refusal, no node or edge, so the graph and its
   derived hash are what they were). The contact 0.1.0 holds a body's centre by its extent and never reads its
@@ -151,6 +176,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,
+  `mime.lock/10`). Where `verify` claims no bits, in another environment or of a reference no run repeats bit for bit,
+  every field is split into blocks by the units MIME declares for it (a pose into its position and its
+  quaternion, a twist into its velocity and its angular velocity, a wrench into its force and its torque, a
+  resistance into its translational, coupling and rotational blocks; a field of one unit, or whose units are not
+  declared, is one block), and each block is within tolerance when its largest difference at every reference step is
+  at most `max(rtol` times its largest magnitude, `k` times its **resolution**`)`, with no absolute part. The save
+  measures the resolution: the reference steps run once more, by the same compiled program, from a start one ulp off
+  (every nonzero floating number of the initial state and of the small parameters the step reads, one ulp up), and the
+  lock records each block's divergence (`reference.resolution`) and `k` (`reference.resolution_factor`), the two keys
+  the form adds. Judged whole, a field that mixed units hid a change in its smaller part: in float32 an 8e-6 m shift of
+  the tube ball's position under its quaternion's 1.0, and its whole angular velocity, zeroed, flipped or doubled, under
+  the surface points' speed (the review of #195, design #266); each is now reported, and a control holds each on every
+  run. Held points are judged only on the rows whose force acts (MIME-ANO-144). A save writes its precision's
+  tolerance, 1e-5 in float32 and 2e-14 in float64, and `k` = 30: 5.5 times the largest need measured (the MRS drag's
+  asymmetry, the spread of an NVIDIA T4 GPU against its CPU's one-ulp resolution) and a quarter of the tube ball's
+  angular velocity over its resolution. Each is pinned in a table of the measurements it rests on, and the
+  measurements the repository holds are computed again from it. The measurement covers one T4, one laptop's CPU at
+  three counts, one demo, eight steps, float32; float64 on the CPU only. A folder keeps the tolerance it was written
+  with, and one of the ninth form or earlier is judged as its form says, element by element with its own numbers (1e-6
+  and 1e-9), in `verify`, `verify --run` and the load's comparison of the derived graph, which from the tenth form
+  holds each list of numbers and each static array to its own largest magnitude. The cost is one more run of the
+  reference steps at save: where the start moves a parameter an MRS drag holds a value made from, that run makes the
+  value afresh at each step (on the MRS sphere in float64 on a laptop, 12 steps took 12 s against 0.01 s for the
+  state moved alone, which measured no divergence there).
+- **A node's typed state declares the units of the fields nothing else declares** (`mime.core.Units`, beside the
+  field's type: `Annotated[HeldPoints, Units("m")]`; read by `mime.core.typed_units`, after the symbol table and before
+  the edges, the binding, the observations and the flags). Every field a save writes now has declared units, and a
+  test fails a new one without them: the hull contact's held points (m), forces (N, read as a flag's `1` before) and
+  shortfall (m); the MRS drag's stop record (its pose split as a pose is), its diagnostics and its wall gap; the kept
+  `rigid_inertial` 0.2.0's pose and twist, whose twist had been judged whole where no edge read it; the swim speed's
+  count; the toy body's position and velocity.
+- **A GPU reference made without XLA's deterministic mode is judged within tolerance, never bit for bit**, on every
+  machine, the GPU it was made on included: two such runs of one program differ in their last bits, so `verify` no
+  longer reports a tenth-form folder of one moved where it was made (a folder of an earlier form keeps its
+  element-by-element rule, under which such a folder can still read moved; saving it again writes the tenth). Its save
+  warns once, and `verify`'s report ends with the same
+  line: deterministic mode is off, so the reference verifies within tolerance, not bit for bit; for bit-for-bit
+  reproducibility, rerun with `--deterministic`. A reference made in deterministic mode verifies bit for bit in the same
+  environment, and the CPU is as it was. The card's tolerance line states each level and the rule of the folder's form.
+  `docs/running_on_modal.md`'s "the flag stays optional" is replaced by the measurement.
 - **`rigid_inertial` 0.4.0 carries a body's full inertia tensor** (F0-3, phase I1). A body's `inertia` is three principal
   moments about its axes, as before, or the symmetric 3 x 3 tensor about its centre of mass in its frame, nine numbers
   row-major (`kg_m2((Ixx, Ixy, Ixz, Ixy, Iyy, Iyz, Ixz, Iyz, Izz))`), checked symmetric and positive definite at build
@@ -180,7 +246,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three moments and that the folder is re-created from its script on the current version, where the products are
   carried. A reader of version 8 refuses a
   folder of version 9 as `load.newer-form`, the document and the lock each once.
-- **Known anomaly MIME-ANO-143 (open): under jit, the tube wall read's derivative can have the wrong sign for a pair of force points at exactly
+- **Known anomaly MIME-ANO-143 (filed open, resolved in this release: see Fixed): under jit, the tube wall read's derivative can have the wrong sign for a pair of force points at exactly
   equal height**, in forward and in reverse mode, with the pair set depending on XLA's fusion (measured on the tube demo's
   338 points in float64 and on two-point cases; eager evaluation and points nudged apart match finite differences). No
   derivative in `src/` goes through the wall read; nothing about the primal values changes. Filed with its reach and the
@@ -311,6 +377,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is off by up to 0.13 rad. For a constant frequency it is no longer 0.1.0's field to the last bit (0.1.0 carries the
   product's rounding), and the frozen register's scripts build the field at 0.1.0. `UniformRotating(...)` builds 0.2.0; 0.1.0 stays registered (`mime.fields.KEPT`) for saved folders and
   refuses any writer of its frequency but a constant drive (`command.held-constant`), naming 0.2.0.
+- **The tube wall read's derivative has the right sign through samples tied in height or in azimuth under jit**
+  (MIME-ANO-143). Jitted, the read's derivative along a rigid motion came out of the opposite sign for some pairs of
+  force points at exactly equal height or azimuth (2.0 of the column's largest entry), in forward and in reverse mode,
+  which pairs depending on how XLA fused the program; and in reverse mode with a cotangent for each entry
+  (`jax.jacrev`) also where no two samples tied, through a sample's pair with itself, which is a tie in both (one of
+  the test's eight pairs apart, and 10 of 12 random pairs apart in a reviewer's own harness, in both precisions). XLA computes
+  the axial offset and the angle's sine inside each fusion that reads them, and near zero a difference of products is
+  not the same number in every fusion, so the sign of an odd component and the derivative of the absolute value it is
+  read at could see numbers of opposite sign. `pair_block` now holds the sine and the offset once (`held_once`, a
+  custom derivative rule: the value itself in a program that takes no derivative, an optimization barrier's output in
+  one that does) wherever a derivative is taken through them. A run takes no derivative, so its program is unchanged:
+  measured, every field of the tube demo's 40 steps (the history scan and one-step chunks) and of the screw in the
+  tube's 30 steps, in float32 and float64, is the program before the fix to the last bit, so the tube wall kind keeps
+  its version 0.1.0; the primal of a program that does take a derivative is not bit for bit the plain program's (measured
+  on the tube demo's step under `jax.jvp`: 4 to 7 of 27 state leaves differ in the last bits, see the entry's residual risk).
+  `tests/oracles/test_tube_tie_derivative.py` holds the derivative through ties and self-pairs at
+  seventeen pairs (jitted in both modes, eager, in both precisions, and under a barrier on the sine) and on the tube demo's 338 force
+  points, against central differences, with the read before the fix as the control that fails.
+
 - **A DOI run again does not download its bundle again** (`Experiment.based_on("10.5281/zenodo.N", name=...)`, a second
   `mime pull` of the same record). Measured on the fake repository: a re-run read the record and downloaded the bundle's
   bytes again before comparing its lock with the folder's. The asset cache now keeps a note, beside the stored bundle, of

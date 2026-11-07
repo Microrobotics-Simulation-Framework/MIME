@@ -113,6 +113,23 @@ def _cache_clear() -> int:
     return 0
 
 
+#: ``--deterministic`` on ``mime run`` and ``mime verify``.
+_DETERMINISTIC_HELP = ("turn XLA's deterministic GPU mode on (--xla_gpu_deterministic_ops), before JAX starts, and "
+                       "record it in the lock: a reference made so verifies bit for bit on the same GPU, where one made "
+                       "without it verifies within tolerance; on the CPU it changes nothing")
+
+
+def _deterministic(on: bool) -> None:
+    """``--deterministic``: XLA's deterministic GPU mode turned on before JAX's backend starts
+    (``mime.env.deterministic_mode``); on the CPU, a line saying it changes nothing there."""
+    if not on:
+        return
+    from mime.env import CPU_DETERMINISTIC, deterministic_mode
+
+    if not deterministic_mode():
+        _warn(CPU_DETERMINISTIC)
+
+
 def _verify(folder: Path, run: bool = False) -> int:
     with Interrupt():
         try:
@@ -589,8 +606,39 @@ def _modal(arguments: argparse.Namespace) -> int:
                                python=arguments.python, out=arguments.out, checkout=arguments.checkout,
                                lab_requirements=arguments.lab_requirements, xla_cache=not arguments.no_xla_cache,
                                timeout=arguments.timeout, max_containers=arguments.max_containers,
-                               cpu=arguments.cpu, memory=arguments.memory)
+                               cpu=arguments.cpu, memory=arguments.memory, study=arguments.study,
+                               shards=arguments.shards)
     print(written.text())
+    return 0
+
+
+def _shard(text: str | None) -> tuple[int, int] | None:
+    """``--shard i/k`` as ``(i, k)``."""
+    if text is None:
+        return None
+    first, slash, second = text.partition("/")
+    if not (slash and first.isdigit() and second.isdigit() and 0 <= int(first) < int(second)):
+        raise BuildRefused([Refusal("study.shard", RefusalClass.USER,
+                                    f"--shard {text!r} is not i/k with i below k", "write it as --shard 0/4")])
+    return int(first), int(second)
+
+
+def _study(arguments: argparse.Namespace) -> int:
+    from mime.env import apply_lock_precision
+    from mime.study._spec import read_spec, study_from_spec
+
+    spec = Path(arguments.spec)
+    base = arguments.base
+    held = read_spec(spec)
+    apply_lock_precision(base if base is not None else (spec.parent / str(held["base"]["folder"])).resolve())
+    study, _ = study_from_spec(spec, base)
+    if arguments.study_command == "plan":
+        plan = study.plan()
+        print(for_terminal(plan.text()))
+        return 1 if plan.refused and not plan.drop_refused else 0
+    result = study.run_to(arguments.out, shard=_shard(arguments.shard), pilot=arguments.pilot, say=_say)
+    print(for_terminal(result.text()))
+    print(f"wrote the study folder {arguments.out}; read it with mime.results.StudyResult.read(\"{arguments.out}\")")
     return 0
 
 
@@ -1242,6 +1290,7 @@ def build_parser() -> _guide.MimeParser:
                         help="the folder is a run folder (mime run's --out, or run_to's): make its run again from its "
                              "experiment/ with the overrides, duration and series its run.json records, and compare it "
                              "with its outputs, bit for bit in the environment it was made in")
+    verify.add_argument("--deterministic", action="store_true", help=_DETERMINISTIC_HELP)
     pending = commands.add_parser("pending", help="what a saved experiment leaves pending, with the lines to paste "
                                                   "to seal it")
     pending.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
@@ -1455,6 +1504,7 @@ def build_parser() -> _guide.MimeParser:
     run.add_argument("--commands", type=Path, default=None, metavar="LOG",
                      help="replay a live session from the command log it wrote (commands.jsonl): its run folder again, "
                           "in place of --duration")
+    run.add_argument("--deterministic", action="store_true", help=_DETERMINISTIC_HELP)
     held_visuals = commands.add_parser("visuals", help="descriptions' meshes MIME does not ship, baked into the asset "
                                                        "cache, and the overlay that draws them on a stage")
     visual_commands = held_visuals.add_subparsers(dest="visuals_command", required=True)
@@ -1584,6 +1634,36 @@ def build_parser() -> _guide.MimeParser:
                                                                      "(default: 1)")
     modal.add_argument("--cpu", type=float, default=4.0, help="CPU cores to request (default: 4)")
     modal.add_argument("--memory", type=int, default=8192, help="MiB of memory to request (default: 8192)")
+    modal.add_argument("--study", type=Path, metavar="SPEC",
+                       help="add a `study` entrypoint that runs this study spec (study.mime.yaml) in one container, a "
+                            "pilot first; the same --name resumes it")
+    modal.add_argument("--shards", type=int, default=1, metavar="K",
+                       help="split the study over K containers, one shard each, each into a study folder of its own "
+                            "(needs --max-containers K). Sharding is by structure group: K is at most the study's "
+                            "groups (`mime study plan` prints them), and a container past them refuses before it writes; "
+                            "by default one container runs every group")
+    study = commands.add_parser("study", help="plan and run a study from its spec file (study.mime.yaml)")
+    study_commands = study.add_subparsers(dest="study_command", required=True)
+    study_plan = study_commands.add_parser("plan", help="what a study will do, before anything runs: its groups, "
+                                                         "compiles, memory and refused points")
+    study_run = study_commands.add_parser("run", help="run a study into a folder, group by group; run again into the "
+                                                       "same folder, it resumes")
+    for each in (study_plan, study_run):
+        each.add_argument("spec", type=Path, help="a study spec file (study.mime.yaml)")
+        each.add_argument("--base", type=Path, default=None, metavar="FOLDER",
+                          help="the saved experiment the spec is of, in place of the folder it names (its input hash "
+                               "is still held to the spec's)")
+    study_run.add_argument("--out", type=Path, required=True,
+                           help="the study folder to write; one that holds another study is refused")
+    study_run.add_argument("--shard", default=None, metavar="I/K",
+                           help="run only the structure groups whose number is I modulo K, the others left pending in "
+                                "this folder. Sharding is by group (`mime study plan` prints them): K above their count is "
+                                "refused. Shards run one after another into one folder add up to the whole study; shards "
+                                "run at once go to a folder each (into one, each would rewrite its study.json)")
+    study_run.add_argument("--pilot", action="store_true",
+                           help="before the rest, run the first chunk of the first group twice and print what a member "
+                                "costs")
+    study_run.add_argument("--no-xla-cache", action="store_true", help=no_cache_help)
     completion = commands.add_parser("completion", help="print a completion script for bash, zsh or fish",
                                      epilog="install:\n" + "\n".join(
                                          f"  {shell}: {_completion.INSTALL[shell]}{_completion.WHERE[shell]}"
@@ -1708,6 +1788,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     from mime import assets
 
     if arguments.command == "verify":
+        _deterministic(arguments.deterministic)
         return _verify(arguments.folder, arguments.run)
     if arguments.command == "pending":
         return _pending(arguments.folder)
@@ -1728,9 +1809,13 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         duration = option_seconds("--duration", arguments.duration)
         every = option_seconds("--every", arguments.every)
         stage_every = option_seconds("--stage-every", arguments.stage_every)
+        _deterministic(arguments.deterministic)
         with _xla_cache(arguments):
             return _run(arguments.folder, duration, arguments.out, arguments.history, arguments.record,
                         every, stage_every, arguments.commands, arguments.full, arguments.override)
+    if arguments.command == "study":
+        with _xla_cache(arguments) if arguments.study_command == "run" else nullcontext():
+            return _study(arguments)
     if arguments.command == "serve":
         with _xla_cache(arguments):
             return _serve(arguments)

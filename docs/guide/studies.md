@@ -83,7 +83,8 @@ compiled step, each with its own law.
 - `result.groups`, the group each member ran in, and `result.flags`, the union of the members' flags, where a flag a
   member's build does not declare reads `not declared`, never "not raised".
 
-Saving a study, its long table and `.mat` come next, on this shape.
+`result.table()`, `to_csv`, `to_npz`, `to_mat`, `grid()` and `order()` read it further, and `study.run_to(folder)` writes it to a folder
+that a stopped run resumes from: see [reading a study's result](../results.md).
 
 ## The step-out curve
 

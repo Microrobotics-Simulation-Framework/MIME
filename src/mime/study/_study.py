@@ -8,13 +8,15 @@ from __future__ import annotations
 import itertools
 import math
 from collections.abc import Callable, Mapping, Sequence
+from os import PathLike
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast, override
 
 import numpy as np
 from jax import monitoring
 
-from mime.build import BuildRefused, Refusal, RefusalClass
+from mime.build import BuildRefused, Refusal, RefusalClass, RunSettings
 from mime.build._construct import report_of
 from mime.build._checks import node_lines
 from mime.build._key import split_reasons, structure_key
@@ -36,6 +38,7 @@ from mime.study._axes import STUDY_REASON, Axis, differ, resolve, value_text
 from mime.study._point import Point, build_point, precision, same_run
 from mime.study._protocol import FromRest, Protocol, protocol_of
 from mime.units import Quantity
+from mime.validity import Profile
 
 if TYPE_CHECKING:
     from mime.experiment import BuiltExperiment, Experiment
@@ -51,6 +54,10 @@ class Points:
 
     axes: tuple[object, ...]
     rows: tuple[tuple[object, ...], ...]
+    #: How the rows were made: ``"grid"`` (every combination of ``lists``), ``"along"`` (``lists`` taken together) or
+    #: ``"table"`` (rows as given), and each axis's list of values for the first two: what a spec file writes.
+    kind: str = "table"
+    lists: tuple[tuple[object, ...], ...] = ()
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -76,7 +83,7 @@ def grid(axes: Mapping[object, Sequence[object]]) -> Points:
     """Every combination of the axes' values, the last axis varying fastest: ``grid({field.commands.frequency:
     [Hz(10.0), Hz(20.0)], "umr.mass": [kg(8e-5), kg(9e-5)]})`` is four points."""
     held = _values(axes, "grid")
-    return Points(tuple(held), tuple(itertools.product(*held.values())))
+    return Points(tuple(held), tuple(itertools.product(*held.values())), "grid", tuple(held.values()))
 
 
 @public
@@ -89,7 +96,7 @@ def along(axes: Mapping[object, Sequence[object]]) -> Points:
             "study.axis-values", RefusalClass.USER,
             f"along takes axes of one length; they list {', '.join(f'{len(v)} ({p})' for p, v in held.items())}",
             "give each axis as many values, or take every combination with grid({...})")])
-    return Points(tuple(held), tuple(zip(*held.values(), strict=True)))
+    return Points(tuple(held), tuple(zip(*held.values(), strict=True)), "along", tuple(held.values()))
 
 
 def _points(given: object) -> Points:
@@ -107,7 +114,8 @@ def _points(given: object) -> Points:
             raise ArgumentRefused([Refusal(
                 "study.axis-values", RefusalClass.USER, "a table of points names the same axes in every row",
                 "give every row the same axes: `[{\"umr.mass\": kg(8e-5)}, {\"umr.mass\": kg(9e-5)}]`")])
-        return Points(axes, tuple(tuple(row[axis] for axis in axes) for row in held))
+        rows = tuple(tuple(row[axis] for axis in axes) for row in held)
+        return Points(axes, rows, "along", tuple(tuple(row[i] for row in rows) for i in range(len(axes))))
     raise ArgumentRefused([Refusal(
         "call.wrong-type", RefusalClass.USER, f"sweep takes points from grid(...), along(...) or a list of rows, not "
                                               f"{type(cast(object, given)).__name__}",
@@ -231,6 +239,17 @@ class StudyPlan:
     groups: tuple[Group, ...]
     steps: int
     drop_refused: bool
+    #: What the sweep asked besides its points: each axis's own reason (by path), the run's length, what it records and
+    #: how often, the largest batch, and the base experiment's name, profile and seed.
+    reasons: Mapping[str, str] = field(default_factory=dict[str, str])
+    duration: Quantity | None = None
+    record: tuple[str, ...] = ()
+    every: Quantity | None = None
+    batch: int | None = None
+    experiment: str = ""
+    profile: str = ""
+    seed: int = 0
+    #: How the members' commands move in time: from rest (the default) or a ramp of one command.
     protocol: Protocol = field(default_factory=FromRest)
 
     @property
@@ -365,24 +384,28 @@ class Study:
         self._batch: int | None = None
         self._drop = False
         self._protocol: Protocol = FromRest()
+        self._reasons: dict[str, str] = {}
         self._plan: StudyPlan | None = None
 
     @public
     def sweep(self, points: object, *, duration: Quantity, record: Sequence[OutputRef | str] = (),
               every: Quantity | None = None, protocol: object = None, batch: int | None = None,
-              drop_refused: bool = False) -> Study:
+              drop_refused: bool = False, reasons: Mapping[object, str] | None = None) -> Study:
         """The points (``grid({...})``, ``along({...})`` or a list of rows) and each member's run: ``duration`` from
         the start, the per-step outputs ``record`` names kept every ``every`` (as :meth:`BuiltExperiment.run` takes
         them), how its commands move in time (``protocol``: ``FromRest()``, the default, or a ``Ramp(...)`` of one
         command from its point's value), at most ``batch`` members at once (the whole group when not given), and with
-        ``drop_refused`` the points nothing refuses run while the refused ones are recorded on the result. Returns the
-        study."""
+        ``drop_refused`` the points nothing refuses run while the refused ones are recorded on the result. ``reasons``
+        gives each axis its own reason (by the axis, or its path), one string per axis: the research profile refuses a
+        study whose axis has none (``study.axis-reason``), and the exploratory profile declares every value with the
+        generic study reason where an axis has none. Returns the study."""
         if batch is not None and (not isinstance(cast(object, batch), int) or batch < 1):
             raise ArgumentRefused([Refusal("study.batch", RefusalClass.USER,
                                            f"batch= is a number of members of at least one, not {batch!r}",
                                            "write batch=16, or leave it out for the whole group at once")])
         self._points, self._duration, self._record, self._every = _points(points), duration, tuple(record), every
         self._batch, self._drop, self._protocol, self._plan = batch, drop_refused, protocol_of(protocol), None
+        self._reasons = {str(axis): reason for axis, reason in (reasons or {}).items()}
         return self
 
     @public
@@ -396,7 +419,7 @@ class Study:
             raise ArgumentRefused([Refusal("study.no-sweep", RefusalClass.USER, "the study has no points to plan",
                                            "name them first: Study(exp).sweep(grid({...}), duration=s(1.0))")])
         self._plan = _plan(self._experiment, self._points, self._duration, self._record, self._every, self._batch,
-                           self._drop, self._protocol)
+                           self._drop, self._reasons, self._protocol)
         return self._plan
 
     @public
@@ -418,13 +441,66 @@ class Study:
         assert self._duration is not None
         return run_study(plan, self._record, self._every)
 
+    @public
+    def run_to(self, out: str | PathLike[str], *, shard: tuple[int, int] | None = None, pilot: bool = False,
+               say: Callable[[str], None] | None = None) -> StudyResult:
+        """Run the study into the folder ``out``, group by group and batch by batch, and return what it holds
+        (:meth:`mime.results.StudyResult.read`). The folder is a study folder (``mime.results``): the base experiment
+        saved once, the spec file, a manifest that says which members are done, and each group's arrays. ``out`` is a
+        new or empty folder, or one that holds this study: a folder that holds anything else is refused and left as it
+        is. A run into a folder that holds this study resumes: a member that is ``done`` under the same content key is
+        not run again, and every other is. The key is its point, its group's structure key, the base's input hash, the
+        run, and the code: every file of the installed ``mime`` package (and of a package a class of its nodes, entries
+        or law comes from), with the versions of MADDENING, OpenMaterica, JAX, jaxlib, NumPy and SciPy and the
+        precision. So any change to MIME's files runs every member again. ``shard=(i, k)`` runs only the structure
+        groups whose number is ``i`` modulo ``k`` (``k`` at most the study's groups), the rest left ``pending``; shards
+        run one after another into one folder add up to the whole study. ``pilot`` has ``say`` the measured cost of a
+        chunk of the first group this run runs, before the rest."""
+        from mime.study._folder_run import run_study_to
+
+        self.plan()
+        assert self._points is not None
+        return run_study_to(self, self._experiment, self._points, Path(out), shard=shard, pilot=pilot, say=say)
+
+    @classmethod
+    @public
+    def from_spec(cls, spec: str | PathLike[str], *, base: str | PathLike[str] | None = None) -> Study:
+        """The study a spec file (``study.mime.yaml``) describes, over the saved experiment it names (or ``base``)."""
+        from mime.study._spec import study_from_spec
+
+        return study_from_spec(Path(spec), None if base is None else Path(base))[0]
+
     @override
     def __repr__(self) -> str:
         return f"<Study of {self._experiment.name}: {len(self._points) if self._points is not None else 0} points>"
 
 
+def _reason_refusals(settings: RunSettings, axes: Sequence[Axis], reasons: Mapping[str, str]) -> list[Refusal]:
+    """The refusals of the reasons a sweep gives: a reason for a path that is no axis of it, and, in the research
+    profile, each axis without a reason of its own."""
+    found: list[Refusal] = []
+    known = [axis.path for axis in axes]
+    stray = [path for path in reasons if path not in known]
+    if stray:
+        found.append(Refusal("study.reason-no-axis", RefusalClass.USER,
+                             f"a reason is given for {', '.join(stray)}, which no axis of the sweep is",
+                             f"give each reason for an axis of the sweep, `reasons={{'<axis>': '<why>'}}`: {', '.join(known)}"))
+    bare = [path for path in known if not reasons.get(path, "").strip()]
+    if settings.profile == Profile.RESEARCH.value and bare:
+        found.append(Refusal(
+            "study.axis-reason", RefusalClass.USER,
+            f"the research profile needs each axis of a study to say why it is varied, and {', '.join(bare)} "
+            f"{'has' if len(bare) == 1 else 'have'} no reason",
+            "give one string per axis, not one per point: Study(exp).sweep(grid({...}), duration=..., reasons={"
+            + ", ".join(f"{path!r}: '<why this axis is varied, and over what range>'" for path in bare)
+            + "}); in a spec file, a `reason:` under each axis",
+            why="a swept value is a declared value, and the research profile asks each declared value for its basis"))
+    return found
+
+
 def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Sequence[OutputRef | str],
-          every: Quantity | None, batch: int | None, drop: bool, protocol: Protocol | None = None) -> StudyPlan:
+          every: Quantity | None, batch: int | None, drop: bool, reasons: Mapping[str, str],
+          protocol: Protocol | None = None) -> StudyPlan:
     from mime.experiment import Experiment
     from mime.saved._pins import keeping_pins
 
@@ -434,19 +510,21 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     if len(set(seen)) != len(seen):
         raise ArgumentRefused([Refusal("study.axis-twice", RefusalClass.USER, f"an axis is named twice: {seen}",
                                        "name each axis once in `grid({...})`")])
+    if refusals := _reason_refusals(settings, axes, reasons):
+        raise BuildRefused(refusals)
     first: dict[str, Point] = {}
     records: dict[str, Any] = {}
     points: list[Point] = []
     with keeping_pins(saved):
         for index, row in enumerate(given.rows):
             point = build_point(index, settings, declarations, dict(zip(axes, row, strict=True)), STUDY_REASON,
-                                first.get, protocol)
+                                first.get, reasons, protocol)
             points.append(point)
             if point.key is not None and point.key not in first and not point.refused:
                 first[point.key] = point
 
         def probe(values: Mapping[Axis, object]) -> Point:
-            return build_point(-1, settings, declarations, values, STUDY_REASON, first.get, protocol)
+            return build_point(-1, settings, declarations, values, STUDY_REASON, first.get, reasons, protocol)
 
         inert = inert_axes(axes, points, probe)
         if inert:
@@ -480,7 +558,9 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     for group in groups:
         with precision(points[group.members[0]].declared.x64):
             _settle(group, points, axes, duration, record, every, batch)
-    return StudyPlan(axes, tuple(points), tuple(groups), steps, drop, protocol or FromRest())
+    return StudyPlan(axes, tuple(points), tuple(groups), steps, drop, dict(reasons), duration,
+                     tuple(str(getattr(each, "path", each)) for each in record), every, batch, settings.experiment,
+                     settings.profile, settings.seed, protocol or FromRest())
 
 
 def inert_axes(axes: Sequence[Axis], points: Sequence[Point],

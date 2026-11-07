@@ -53,7 +53,9 @@ Options: `--gpu` takes an exact type only (`A100-40GB`, `A100-80GB`, `H100!` and
 `mime.env.EXACT_GPUS`); a name Modal may serve with another model of GPU (`A100`, `H100`, `B200+`) is refused. For
 float64, the A100s, the H100, the H200 and the B200 compute at half their float32 rate by NVIDIA's tables; the others,
 the B300 among them, at a small fraction of it. `--deterministic` turns XLA's deterministic GPU mode on; it is off by
-default, optional, and the run's lock records whether it was on (the measurement below could not show it is needed).
+default, and the run's lock records whether it was on. Off, a GPU run is not deterministic: its folder verifies within
+tolerance on every machine, the GPU it came from included, and never bit for bit; on, it verifies bit for bit in the
+same environment ([Deterministic mode](#deterministic-mode), below).
 `--python` picks the image's Python series, by default the lock's. Every function runs in at most one container
 (`--max-containers`, default 1) and is never retried, so a loop of `.remote()` calls or a `.map()` cannot fan out and
 a failed run is not paid for again unasked; `--timeout` (default 7200 s) bounds each function.
@@ -70,6 +72,30 @@ the check accepts either A100 (the 40 GB SXM, the 80 GB SXM and the 80 GB PCIe c
 lock records the device kind actually served. A claim of bits compares that kind: a run on the other card is another
 environment. The upgrade cost nothing in the one bill read: it listed an `A100-40GB` line only, none for the 80 GB
 (observed on one bill, 2026-10-29).
+
+## Running a study
+
+`mime modal <folder> --study study.mime.yaml` copies a study's spec file beside the script and adds a `study` entrypoint.
+The spec must be of this experiment (its `base.input_hash` is the folder's), checked before anything is written:
+
+<!-- mime-fragment: commands that start a Modal job, shown and never run by a check -->
+```sh
+mime modal fl9_water/ --study study.mime.yaml          # writes fl9_water-modal/ with study.mime.yaml beside the script
+modal run fl9_water-modal/modal_app.py::study --name step_out
+modal volume get mime-runs fl9_water/study-step_out .
+```
+
+One container runs every group, by default: it checks the environment, then runs `mime study run` on the spec against the
+mounted experiment, with `--pilot` (the first chunk of the first group, run twice, prints what a member costs before the
+rest runs), into `study-<name>` on the `mime-runs` Volume. The same `--name` again resumes the study from what the
+Volume holds: a member that is `done` under the same content key is not run again, and a change to any of MIME's files
+runs every member again. The only fan-out is explicit and recorded in the script: `--shards K --max-containers K` runs
+`K` containers, each `mime study run --shard i/K`, each writing a study folder of its own
+(`study-<name>/shard-<i>-of-<K>`) that holds its groups' members and reads, with `StudyResult.read`, as a study with the
+other shards' members missing. Sharding is by structure group: `K` is at most the study's groups (`mime study plan`
+lists them; a sweep whose points all compile alike is one group), and with more, each container refuses (`study.shard`)
+before it writes anything. Merging the shard folders into one is not built. Nothing is retried, and the timeout is the
+function's, as for a run.
 
 ## The image
 
@@ -108,8 +134,8 @@ Two runs are **the same environment**, for a claim of bits, only when everything
 the record), the device kind and driver, the CPU model and flags' hash, the precision, `XLA_FLAGS` and the
 deterministic mode. A field of a device that either run could not read (a driver `nvidia-smi` did not give) is never
 equal to anything. A run's saved form records its own environment, so a later run of it in the same environment is
-checked bit for bit, and anywhere else within the lock's tolerances. An experiment saved on a laptop is always another
-environment on Modal. A "within tolerances" verdict from `::verify --run` can come from a different CPU host or driver
+checked bit for bit (a GPU run's only in deterministic mode), and anywhere else within the lock's tolerance. An
+experiment saved on a laptop is always another environment on Modal. A "within tolerances" verdict from `::verify --run` can come from a different CPU host or driver
 alone, with no numerical difference: it is a refusal to claim bits, not evidence of a change.
 
 `mime env check` also refuses a module Python imports from outside this environment's site-packages (a `PYTHONPATH`
@@ -142,9 +168,38 @@ guarantees.
 | Hashing an 898 MB asset | 0.8 s (CPU) to 2.9 s (GPU) per start |
 
 What the bits observation does and does not say: **one dense-assembly-plus-LU program, at one size, agreed bit for bit
-in every run**. No run disagreed, so the measurement cannot show that `--xla_gpu_deterministic_ops` is needed, or what
-it costs; the flag stays optional. It is not a promise that any experiment reruns bit for bit on a GPU, and the CPU test
-never reached an AVX-512 CPU.
+in every run**. It is not a promise that any experiment reruns bit for bit on a GPU, and the CPU test never reached an
+AVX-512 CPU. A later measurement, below, found an experiment that does not.
+
+## Deterministic mode
+
+**Measured** on a Colab T4 on 2026-11-07 (jax 0.11.1, float32, the tube demo `examples/sphere_settling_tube.py`, each
+run a fresh process; one run of each kind unless said): two plain GPU runs of one program differed in every digest of
+their states and reference outputs; with `--xla_gpu_deterministic_ops=true`, two runs repeated bit for bit, and two
+commits whose programs are the same agreed bit for bit; the mode cost about 57 % more compile time and 4 to 11 % more
+time per step. Between plain runs, and between the GPU and its CPU, each physical field agreed to about 1e-6 of its own
+largest magnitude, but for three: the ball's angular velocity (up to 1.4e-5 rad/s, 4 % of its largest), the
+resistance's asymmetry (1.3 % of itself) and the contact's held points on rows that take no force. `mime verify` judges
+each field block by block, a block on its share of its largest magnitude or on a multiple of the rounding its own save
+measured in it, and the held points only where a force acts ([`mime.saved`](../src/mime/saved/README.md)).
+
+So there are **two levels of claim**:
+
+- **By default a GPU run is not deterministic** (fast, for prototyping). `mime verify` of a folder whose reference was
+  made that way judges it **within tolerance** on every machine, the GPU it came from included. Its save warns once,
+  and its verification ends with the same line: deterministic mode is off, so the reference verifies within tolerance,
+  not bit for bit; for bit-for-bit reproducibility, rerun with `--deterministic`. What the tolerance was set from is
+  one T4, one demo, eight steps, in float32, one run of each kind: that GPU's spread planted in the demo's reference
+  verifies within it, a third of each floor at most, and that is all it shows; another GPU, another experiment or
+  float64 on a GPU was not measured, and could read moved. A reference saved on such a GPU measures its resolution
+  with the GPU's own run-to-run spread in it, so its floors are wider than a CPU's (not measured).
+- **Deterministic mode is opt in**: `--deterministic` on `mime run`, `mime verify` and `mime modal`, or
+  `mime.env.deterministic_mode()` in Python before anything computes. The lock records it, and the same environment then
+  verifies **bit for bit**, any other within tolerance. XLA reads `XLA_FLAGS` once, when JAX's backend starts, so the
+  Python call is refused once the backend has started (`env.deterministic-late`).
+
+The CPU is unchanged: deterministic at the counts the lock records, bit for bit there with or without the flag, which
+changes nothing on it and says so. Not measured: float64 on a GPU, and any GPU but the T4.
 
 **Acceptance run of a generated script, 2026-10-31** (client 1.6.3, one workspace, about six minutes; script A on the CPU
 and an A100, `::main` and `::verify`). It ran with uv pulled by tag, because the digest reference failed (above); the

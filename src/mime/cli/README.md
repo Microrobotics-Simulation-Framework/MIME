@@ -4,11 +4,15 @@
 
 ## Commands
 
-- `mime verify <folder>`: load a saved experiment, rebuild it, check it against its lock, and rerun its reference
-  steps (`Experiment.load(folder)`, then `.build().verify()`), in the precision the lock records (as `mime run`
-  does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report and the
-  verdict, and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the load or the build is refused.
-  Ctrl+C ends it (130), the second press at once.
+- `mime verify <folder> [--deterministic]`: load a saved experiment, rebuild it, check it against its lock, and rerun
+  its reference steps (`Experiment.load(folder)`, then `.build().verify()`), in the precision the lock records (as
+  `mime run` does, so that a float64 experiment is not reported moved by a float32 process). It prints the load report
+  and the verdict, bit for bit or within the lock's tolerance (block by block from the tenth form, each on its largest
+  magnitude or its measured resolution; see [`mime.saved`](../saved/README.md)), and exits 0 when the outputs are reproduced, 1 when one moved, and 2 when the
+  load or the build is refused. A reference made on a GPU with XLA's deterministic mode off is judged within tolerance
+  everywhere, and the verdict ends with a line saying so. `--deterministic` turns XLA's deterministic GPU mode on before
+  JAX starts (`mime.env.deterministic_mode()`); on the CPU it changes nothing, and says so in one line. Ctrl+C ends it
+  (130), the second press at once.
 - `mime show <folder> [--tree] [--graph] [--json]`: what a saved experiment is made of, without running it. `--tree` (the
   default) is its topology as declared, read from the document alone (nothing is built): structures, media and what each
   fills, bodies and their parts, apparatus with their chain, parts, fields and drives, each law with the things it binds,
@@ -172,7 +176,8 @@
 - `mime credentials set | status | remove <service>`: the token `mime push` uses, for `zenodo` and `zenodo-sandbox`
   (see [`mime.credentials`](../credentials/README.md)). The token is asked for, hidden, and is never an argument;
   one typed as an argument is refused without being printed.
-- `mime run <folder> [--duration <time>] --out <dir> [--history] [--record <output>]... [--every <time>] [--full]`: load
+- `mime run <folder> [--duration <time>] --out <dir> [--history] [--record <output>]... [--every <time>] [--full]
+  [--deterministic]`: load
   and rebuild a saved experiment in the precision its lock records, run it for `--duration`, or for the length the
   experiment declared (`Experiment(..., duration=...)`, saved as `run.duration`) when none is given, and write into `<dir>` its outputs
   (`outputs.npz`: every field after the last step, with `--history` at every step, each series `--record` names as
@@ -184,6 +189,9 @@
   attention: see [On a terminal](#on-a-terminal)). A `<time>` is `10s`, `500ms`, `250us`, `2min` or `1h`; a bare number is seconds. It is thin over
   `BuiltExperiment.run_to`, which a script calls to write the same, and `mime.results.RunResult.read(<dir>)` reads the
   folder back. Exits zero, or two when the load, the build, the duration or what to record is refused.
+  `--deterministic` turns XLA's deterministic GPU mode on before JAX starts, and the run folder's lock records it, so
+  `mime verify --run` of the folder on the same GPU is bit for bit; without it, a GPU run's folder verifies within
+  tolerance, and its save warns once. On the CPU it changes nothing, and says so in one line.
 
   **Ctrl+C.** A run is compiled chunks (about 64 of one length, a divisor of the steps where one lies near, else two
   lengths; a controller's period or `--stage-every` sets them where there is one), which, at two steps or more,
@@ -206,10 +214,21 @@
   precision holds in the process it runs in, so a runner calls it in the run's own process
   (`mime.cli.main(["env", "check", ...])`), as the Modal script does.
 - `mime modal <folder> [--gpu <type>] [--deterministic] [--python <series>] [--out <dir>] [--checkout <dir>]
-  [--lab-requirements <file>] [--no-xla-cache] [--timeout <s>] [--max-containers <n>] [--cpu <n>] [--memory <MiB>]`: write the script that
+  [--lab-requirements <file>] [--no-xla-cache] [--timeout <s>] [--max-containers <n>] [--cpu <n>] [--memory <MiB>]
+  [--study <spec>] [--shards <k>]`: write the script that
   runs the saved experiment on Modal, by default into `<folder>-modal/` beside it, with MIME's requirements file
   for the variant copied byte for byte (see [Running on Modal](../../../docs/running_on_modal.md)). It never imports
-  `modal`. A loose GPU type is refused, and so is `--deterministic` without a GPU. Exits zero, or two when refused.
+  `modal`. A loose GPU type is refused, and so is `--deterministic` without a GPU. `--study` copies a study's spec file
+  beside the script and adds a `study` entrypoint (one container runs every group, resuming by `--name`); `--shards` splits
+  the groups over that many containers and needs `--max-containers` to be the same. Exits zero, or two when refused.
+- `mime study plan <spec> [--base <folder>]` and `mime study run <spec> --out <folder> [--base <folder>] [--shard <i/k>]
+  [--pilot] [--no-xla-cache]`: a study from its spec file (`study.mime.yaml`, see [reading a study's result](../../../docs/results.md)).
+  `plan` prints what the study will do before anything runs and exits one where a point is refused; `run` writes the
+  study folder group by group into a new or empty folder and resumes one that holds the same study (a member is reused
+  only under the same content key), refuses a folder that holds another study or anything else, and with `--pilot` first
+  prints what a member costs. `--shard i/k` runs the structure groups whose number is `i` modulo `k`, `k` at most the
+  study's groups; shards run one after another into one folder add up to the whole study. Exits zero, or two when
+  refused.
 - `mime completion bash|zsh|fish`: print a completion script for the shell to standard output, written from the same
   parser the command runs on, so every command, flag and choice is completed and none is listed by hand. The script is
   static: pressing Tab runs the shell's own code and no Python (importing MIME imports JAX, which takes seconds), so it

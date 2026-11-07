@@ -74,7 +74,7 @@ def names_of(kind: str, originals: Sequence[str], *, taken: Sequence[str] = ()) 
             raise ArgumentRefused([Refusal(
                 "result.matlab-name", RefusalClass.USER,
                 f"the {kind} {original!r} maps to the MATLAB name {mapped!r}, which is one of the file's own variables "
-                f"({', '.join(RESERVED)})",
+                f"({', '.join(taken)})",
                 "write NPZ, result.to_npz(path), or rename it")])
         if mapped in owner and owner[mapped] != original:
             raise ArgumentRefused([Refusal(
@@ -227,6 +227,12 @@ def variables_of(result: RunResult) -> dict[str, Any]:
                                             for original, mapped in outputs[held.id].items()}
                     for held in result.layout.observations},
         **({"flags": {mapped: original for original, mapped in flags.items()}} if flags else {})}
+    check_sizes(variables)
+    return variables
+
+
+def check_sizes(variables: Mapping[str, Any]) -> None:
+    """Refuses a variable of 2 GiB or more, naming it and NPZ."""
     for name, value in variables.items():
         size = _bytes_of(value)
         if size >= VARIABLE_BYTES:
@@ -236,15 +242,19 @@ def variables_of(result: RunResult) -> dict[str, Any]:
                 "may (MATLAB reads larger ones only from version 7.3 files, which MIME does not write)",
                 "write NPZ, result.to_npz(path), which has no such limit, or record fewer series in record=[...] or "
                 "with a larger every=")])
-    return variables
+
+
+def write_variables(variables: Mapping[str, Any], path: str | PathLike[str]) -> Path:
+    """``variables`` as a MATLAB v5 file at ``path`` (as it is named, with no ``.mat`` added)."""
+    target = Path(path)
+    _savemat(str(target), dict(variables), appendmat=False, long_field_names=True, oned_as="column")
+    return target
 
 
 def write_mat(result: RunResult, path: str | PathLike[str]) -> Path:
     """Write ``result`` to ``path`` (as it is named, with no ``.mat`` added) as a MATLAB v5 file."""
-    variables = variables_of(result)
-    target = Path(path)
-    _savemat(str(target), variables, appendmat=False, long_field_names=True, oned_as="column")
-    return target
+    return write_variables(variables_of(result), path)
 
 
-__all__ = ["LONGEST_NAME", "RESERVED", "VARIABLE_BYTES", "matlab_name", "names_of", "variables_of", "write_mat"]
+__all__ = ["LONGEST_NAME", "RESERVED", "VARIABLE_BYTES", "check_sizes", "matlab_name", "names_of", "variables_of",
+           "write_mat", "write_variables"]

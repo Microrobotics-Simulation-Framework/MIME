@@ -219,31 +219,49 @@ def _units() -> dict[str, Any]:
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
 
 
-def parse_override(text: str) -> tuple[str, object]:
-    """An override as ``mime run --override`` takes it, ``path=value``: the path as a study's axis is written
-    (``field.commands.frequency``), and the value a number or numbers split by commas, with a unit of ``mime.units``
-    (``20Hz``, ``1.2 mT``, ``0,0,-1 mm``), or a bare number for a dimensionless value."""
+def parse_value(text: str) -> Quantity | None:
+    """A value as ``--override`` and a spec file write it: a number or numbers split by commas, with a unit of
+    ``mime.units`` (``20Hz``, ``1.2 mT``, ``0,0,-1 mm``) or a unit symbol of the saved form (``m^2 kg s^-1``), or a bare
+    number for a dimensionless value; ``None`` for text that is not one."""
     import re
 
+    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9/^ -]*)?\s*", text)
+    if found is None:
+        return None
+    numbers = [float(n) for n in found[1].split(",")]
+    magnitude = numbers[0] if len(numbers) == 1 else tuple(numbers)
+    symbol = (found[2] or "1").strip()
+    unit = _units().get(symbol.replace(" ", ""))
+    if unit is not None:
+        return cast(Quantity, unit(magnitude))
+    try:
+        return Quantity(magnitude, parse_unit(symbol))
+    except ValueError:
+        return None
+
+
+def parse_override(text: str) -> tuple[str, object]:
+    """An override as ``mime run --override`` takes it, ``path=value``: the path as a study's axis is written
+    (``field.commands.frequency``), and the value as :func:`parse_value` reads it."""
     path, equals, value = text.partition("=")
-    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9/^ ]*)?\s*", value)
-    unit = _units().get((found[2] or "1").replace(" ", "")) if found is not None else None
-    if not equals or not path.strip() or found is None or unit is None:
+    quantity = parse_value(value)
+    if not equals or not path.strip() or quantity is None:
         raise BuildRefused([Refusal(
             "override.written", RefusalClass.USER,
             f"--override {text!r} is not path=value with a value of numbers and a unit of mime.units",
             "write it as --override field.commands.frequency=20Hz, --override umr.initial.position=0,0,-1mm or "
             "--override umr.mass=8.5e-5kg")])
-    numbers = [float(n) for n in found[1].split(",")]
-    return path.strip(), unit(numbers[0] if len(numbers) == 1 else tuple(numbers))
+    return path.strip(), quantity
 
 
 def verify_run(folder: Any) -> Any:
     """``mime verify --run``: the run a run folder holds, made again from its saved form (``experiment/``) with the
     overrides, the duration and the series its ``run.json`` records, and compared with its ``outputs.npz``, every field
-    of the final state and every recorded series: bit for bit in the environment the run was made in, within its
-    lock's tolerance in another. A run written with its chunks set by ``stage_every`` is replayed in automatic chunks,
-    which compute the same bits for chunks of two steps or more."""
+    of the final state and every recorded series: bit for bit in the environment the run was made in, unless it was
+    made on a GPU with deterministic mode off, and otherwise within its lock's tolerance, from the tenth form each field
+    block by block, on each block's largest magnitude or its resolution as the save measured it over the reference
+    steps (a series of an observation's output by its output's). A run written with its chunks set by
+    ``stage_every`` is replayed in automatic chunks, which compute the same bits for chunks of two steps or more."""
     import json
     from pathlib import Path
 
@@ -251,7 +269,9 @@ def verify_run(folder: Any) -> Any:
     from mime.experiment import Experiment
     from mime.experiment._experiment import RUN_EXPERIMENT, RUN_RECORD
     from mime.results import RunResult, Series
-    from mime.saved._folder import VerifyReport, environment_differences
+    from mime.saved._folder import DETERMINISTIC_OFF, VerifyReport, environment_differences, moved_line, \
+        nondeterministic_gpu, recorded_resolution
+    from mime.saved._scales import OWN, SCALED_FROM, FieldUnits
     from mime.saved._record import environment
     from mime.units import s
 
@@ -271,26 +291,50 @@ def verify_run(folder: Any) -> Any:
     assert form is not None
     lock = form.lock
     same = not environment_differences(lock)
+    made = cast(Mapping[str, object], lock["environment"])
+    bits, scaled = same and not nondeterministic_gpu(made), form.version >= SCALED_FROM
     reference = cast(Mapping[str, Any], lock["reference"])
     rtol, atol = float(reference["rtol"]), float(reference["atol"])
-    pairs: dict[str, tuple[np.ndarray, np.ndarray]] = {
-        f"final {node}.{name}": (np.asarray(value), np.asarray(again.final[node][name]))
-        for node, fields in saved.final.items() for name, value in fields.items() if name in again.final.get(node, {})}
+    finals = {node: {name: np.asarray(value) for name, value in fields.items()} for node, fields in saved.final.items()}
+    units = built.field_units(finals)
+    resolutions, factor = recorded_resolution(lock)
+    pairs: dict[str, tuple[np.ndarray, np.ndarray, str, FieldUnits, tuple[np.ndarray, np.ndarray] | None]] = {}
+    for node, fields in finals.items():
+        for name, value in fields.items():
+            if name not in again.final.get(node, {}):
+                continue
+            held = units.get(f"{node}.{name}", OWN)
+            forces = None
+            if held.forces is not None:
+                held_node, _, held_name = held.forces.partition(".")
+                if held_name in finals.get(held_node, {}) and held_name in again.final.get(held_node, {}):
+                    forces = (finals[held_node][held_name], np.asarray(again.final[held_node][held_name]))
+            pairs[f"final {node}.{name}"] = (value, np.asarray(again.final[node][name]), f"{node}.{name}", held, forces)
     for path in saved.recorded:
         observation, _, output = path.rpartition(".")
         mine, theirs = saved[observation][output], again[observation][output]
         if isinstance(mine, Series) and isinstance(theirs, Series):
-            pairs[f"series {path}"] = (np.asarray(mine.raw), np.asarray(theirs.raw))
+            pairs[f"series {path}"] = (np.asarray(mine.raw), np.asarray(theirs.raw), path, FieldUnits(mine.unit), None)
     moved: list[str] = []
-    for label, (a, b) in sorted(pairs.items()):
-        equal = a.shape == b.shape and (np.array_equal(a, b, equal_nan=True) if same or a.dtype.kind not in "fc"
-                                        else np.allclose(a, b, rtol=rtol, atol=atol, equal_nan=True))
-        if not equal:
-            delta = float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))) if a.shape == b.shape else float("inf")
-            moved.append(f"{label}: max |difference| {delta:.3e}")
+    for label, (a, b, source, held, forces) in sorted(pairs.items()):
+        if a.shape != b.shape:
+            moved.append(f"{label}: max |difference| inf")
+            continue
+        if bits or a.dtype.kind not in "fc":
+            line = None if np.array_equal(a, b, equal_nan=True) else \
+                f"{label}: max |difference| {float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))):.3e}"
+        elif scaled:
+            line = moved_line(label, a, b, bits=False, scaled=True, rtol=rtol, atol=atol, field=held,
+                              resolutions=resolutions.get(source), factor=factor, forces=forces, steps=False)
+        else:
+            line = None if np.allclose(a, b, rtol=rtol, atol=atol, equal_nan=True) else \
+                f"{label}: max |difference| {float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))):.3e}"
+        if line is not None:
+            moved.append(line)
     here = environment()
     return VerifyReport(int(saved.steps), same, rtol, atol, f"{here['device']}, {'float64' if here['x64'] else 'float32'}",
-                        tuple(moved), tuple(sorted(pairs)))
+                        tuple(moved), tuple(sorted(pairs)), bits=bits, scaled=scaled,
+                        warning=DETERMINISTIC_OFF if nondeterministic_gpu(made) else None, factor=factor)
 
 
-__all__ += ["parse_override", "verify_run"]
+__all__ += ["parse_override", "parse_value", "verify_run"]

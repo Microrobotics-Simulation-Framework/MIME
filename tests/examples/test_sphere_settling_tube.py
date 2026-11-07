@@ -122,6 +122,26 @@ def test_a_disturbance_decays_along_the_tube_as_the_slowest_mode_the_docstring_n
     assert tail_miss(axisymmetric) > 1.0 and tail_miss(slowest(2)) > 1.0
 
 
+def test_its_save_splits_each_field_into_the_blocks_of_the_units_its_build_declares(written):
+    """``mime verify``'s blocks by unit, on the demo's own save: each field's resolution is recorded by the blocks the
+    units the artefact records give (``tests/saved/test_verify_blocks.py`` judges the demo's arrays by them), so the
+    build still declares those units."""
+    import json
+
+    from mime.saved import LOCK_FILE, read_folder
+    from mime.saved._scales import blocks
+
+    measured = json.loads((ROOT / "tests" / "saved" / "artefacts" / "tube_demo_resolution.json").read_text(
+        encoding="utf-8"))
+    resolution = json.loads((written.experiment / LOCK_FILE).read_text(encoding="utf-8"))["reference"]["resolution"]
+    reference = read_folder(written.experiment).reference
+    assert sorted(resolution) == sorted(measured["resolution"]["float32"])
+    for label, held in resolution.items():
+        shape = reference[f"history/{label.replace('.', '/', 1)}"].shape[1:]
+        assert sorted(held) == sorted(name for name, _ in blocks(measured["units"].get(label), shape)), label
+    assert sorted(resolution["ball.pose"]) == ["1", "m"] and sorted(resolution["ball.twist"]) == ["m/s", "rad/s"]
+
+
 def test_the_run_and_its_view_state_the_limit(example, written, tmp_path):
     from mime import viz
 
