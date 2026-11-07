@@ -68,6 +68,7 @@ chain.spinner-speed           user
 chain.spinner-tilted          user
 chain.spinner-unbalanced      user
 command.ambiguous             user
+command.held-constant         user
 command.undriven              user
 command.unknown               user
 conditions.form               user
@@ -411,7 +412,10 @@ study.no-member               user
 study.no-observation          user
 study.no-sweep                user
 study.precision               user
+study.protocol-command        user
+study.protocol-quantity       user
 study.refused-points          user
+study.series-every-step       user
 study.series-time-axes        user
 study.unknown-path            user
 study.unset-group             user

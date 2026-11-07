@@ -119,3 +119,117 @@ class UniformRotatingNode(MimeNode):
         zero = as_run_array(0.0)
         time = steps.astype(zero.dtype) * dt
         return self._fields(steps, self.field_at(p, given.get("frequency", zero), given.get("amplitude", zero), time))
+
+
+INTEGRATING_EQUATIONS = (
+    r"\mathbf{B} = \frac{B_{0}}{\left\| \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) \mathbf{a} \right\|} "
+    r"\left( \cos\left( 2 \pi (f_{n} n h - C_{n}) \right) \left( \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) "
+    r"\mathbf{a} \right) + \sin\left( 2 \pi (f_{n} n h - C_{n}) \right) \, \mathbf{a} \times \mathbf{d} \right), "
+    r"\quad C_{n} = \operatorname{frac}\left( C_{n-1} + (n - 1) h \left( f_{n} - f_{n-1} \right) \right), \quad G = 0")
+
+#: Where the integrating node's symbol rows' function is.
+_INTEGRATE = "mime.nodes.actuation._uniform_field.IntegratingRotatingNode.advance"
+
+
+class IntegratingRotatingState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
+    """``steps``, ``previous`` (the frequency commanded at the step before), ``correction`` (a fraction of a turn), and
+    ``flux_density_<slot>`` and ``gradient_<slot>`` for each reader slot."""
+
+    steps: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    previous: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    correction: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+
+
+class IntegratingRotatingNode(MimeNode):
+    """The uniform rotating field whose phase is the integral of its commanded frequency: the angle turned over step
+    ``n`` is ``2 pi f_n h``, the frequency commanded for the step times its length, whatever writes the frequency
+    (a drive, a controller), so a frequency that changes changes the rate the field turns at and never jumps its angle.
+
+    The phase is held exactly against rounding by summation by parts: ``phi_n = 2 pi (f_n t_n - C_n)``, where the
+    correction ``C_n = C_{n-1} + t_{n-1} (f_n - f_{n-1})`` is kept as a fraction of a turn in ``[0, 1)`` (its whole turns
+    are the same direction of the field). Its difference from step to step is ``2 pi f_n h`` exactly, in exact
+    arithmetic. A frequency that never changes leaves the correction an exact zero (``t_0`` is zero, and ``f - f`` is
+    zero), so the phase is ``2 pi f t_n`` computed as ``UniformRotatingNode`` computes it, to the last bit, however long
+    the run: no sum of ``f h`` over the steps, whose rounding would grow with them. Where it changes, the rounding each
+    step adds is of the fraction's size, a turn, never of the phase's. Its time is its step count times its timestep."""
+
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-119",
+        description="A uniform magnetic field turning right-handed about a fixed axis by the integral of a commanded "
+                    "frequency, at a commanded amplitude: the same at every point, with a zero gradient.",
+        governing_equations=INTEGRATING_EQUATIONS,
+        assumptions=("The field is uniform: it is the same at every point of every reader slot, and its gradient is "
+                     "zero",
+                     "The rotation axis in the equation is a unit vector: the node normalises `rotation_axis` before "
+                     "it reads it",
+                     "The frequency commanded at a step holds over that step: the field turns by the frequency times "
+                     "the step's length, so its angle is the integral of the frequency held over each step",
+                     "Time is the step count times the timestep, never a sum of timesteps",
+                     "The amplitude commanded at a step is the one that step's field is made with"),
+    )
+    symbols = (
+        Symbol(r"\mathbf{B}", SymbolKind.STATE, "flux_density_{slot}", "T", _INTEGRATE),
+        Symbol("G", SymbolKind.STATE, "gradient_{slot}", "T/m", _INTEGRATE),
+        Symbol("B_{0}", SymbolKind.INPUT, "amplitude", "T", _INTEGRATE),
+        Symbol("f_{n}", SymbolKind.INPUT, "frequency", "Hz", _INTEGRATE),
+        Symbol("f_{n-1}", SymbolKind.STATE, "previous", "Hz", _INTEGRATE),
+        Symbol("C_{n}", SymbolKind.STATE, "correction", "1", _INTEGRATE),
+        Symbol(r"\mathbf{a}", SymbolKind.PARAMETER, "rotation_axis", "1", _INTEGRATE),
+        Symbol(r"\mathbf{d}", SymbolKind.PARAMETER, "initial_direction", "1", _INTEGRATE),
+        Symbol("n", SymbolKind.STATE, "steps", "1", _INTEGRATE),
+    )
+
+    def __init__(self, name: str, timestep: float, *, slots: Sequence[str], rotation_axis: Sequence[float],
+                 initial_direction: Sequence[float]) -> None:
+        axis = tuple(float(c) for c in rotation_axis)
+        start = tuple(float(c) for c in initial_direction)
+        along = sum(a * s for a, s in zip(axis, start, strict=True)) / math.sqrt(sum(a * a for a in axis))
+        if math.sqrt(sum(s * s for s in start)) * (1 - 1e-6) <= abs(along):
+            raise ValueError(f"initial_direction {start} lies along the rotation axis {axis}: the field's direction at "
+                             f"t = 0 must have a part in the plane of rotation")
+        super().__init__(name, timestep, slots=tuple(slots), rotation_axis=axis, initial_direction=start)
+
+    def _slots(self) -> tuple[str, ...]:
+        return cast(tuple[str, ...], self.constants()["slots"])
+
+    def _fields(self, steps: Array, previous: Array, correction: Array, field: Array) -> NodeFields:
+        out: NodeFields = {"steps": steps, "previous": previous, "correction": correction}
+        for slot in self._slots():
+            out[f"flux_density_{slot}"] = field
+            out[f"gradient_{slot}"] = jnp.zeros((3, 3), dtype=field.dtype)
+        return out
+
+    @override
+    def param_specs(self) -> dict[str, ParamSpec]:
+        return {**super().param_specs(), "rotation_axis": ParamSpec(units="1"),
+                "initial_direction": ParamSpec(units="1")}
+
+    @override
+    def initial_state(self) -> NodeFields:
+        zero = as_run_array(0.0)
+        return self._fields(jnp.asarray(0, dtype=jnp.int32), zero, zero, as_run_array(jnp.zeros(3)))
+
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        return {"frequency": node_input("Hz", ()), "amplitude": node_input("T", ())}
+
+    def field_at(self, p: Mapping[str, Any], phase: Array, amplitude: Array) -> Array:
+        axis = _unit(jnp.asarray(p["rotation_axis"], dtype=phase.dtype))
+        start = jnp.asarray(p["initial_direction"], dtype=phase.dtype)
+        first = _unit(start - jnp.dot(start, axis) * axis)
+        return amplitude * (jnp.cos(phase) * first + jnp.sin(phase) * jnp.cross(axis, first))
+
+    @override
+    def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
+                dt: float) -> NodeFields:
+        held = typed_view(IntegratingRotatingState, state)
+        given = typed_view(UniformRotatingInputs, boundary_inputs)
+        zero = as_run_array(0.0)
+        frequency = given.get("frequency", zero)
+        steps = held["steps"] + 1
+        before = held["steps"].astype(zero.dtype) * dt
+        time = steps.astype(zero.dtype) * dt
+        turned = held["correction"] + before * (frequency - held["previous"])
+        correction = turned - jnp.floor(turned)
+        phase = 2 * jnp.pi * frequency * time - 2 * jnp.pi * correction
+        return self._fields(steps, frequency, correction, self.field_at(p, phase, given.get("amplitude", zero)))

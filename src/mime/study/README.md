@@ -38,6 +38,14 @@
   override changes nothing the run computes from (`override.no-effect`); recorded in `run.json` and replayed by
   `mime verify --run`.
 
+- **The drives' protocols** (`_protocol.py`): `sweep(..., protocol=FromRest())`, the default, holds every command at
+  its point's value from the start; `protocol=Ramp(field.commands.frequency, to=..., rate=..., hold=...)` declares on
+  each point a `drives.Ramp` starting from the point's value of the command, so the point is still the experiment with
+  its values declared. The readings name their quantity and never mix them: `step_out(result, lag, axis)` the bracket
+  from rest over a swept frequency at each value of the other axes (each member's mean spin over its frequency against
+  `threshold=0.99`), `ramp_crossings(result, lag, window=...)` where each ramp's member steps out (`ramp up`) or is caught (`ramp
+  down`), from the spin recorded every step over sliding windows, against the frequency the ramp commanded.
+
 ## Boundaries
 
 - It builds and runs experiments through `experiment` and `build`; it holds no code of the user's, so a study is data.
@@ -45,7 +53,8 @@
 
 ## Status
 
-Sweeps and overrides are built (dev2, the study layer's first phase). The drives that ramp a command, the step-out study, saving a study and its
-table, checkpoints and forks, variants, fits and sensitivities come later.
+Sweeps and overrides are built (dev2, the study layer's first phase), and the drives that ramp a command with the
+step-out readings (its second). Saving a study and its table, checkpoints and forks, variants, fits and sensitivities
+come later.
 
 Releases are explained in the [package manifest](../README.md#status).

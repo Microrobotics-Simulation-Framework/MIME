@@ -72,6 +72,9 @@ class SettingKind:
 Direction = SettingKind("Direction", "a direction: a thing's direction such as tube.axis, or three numbers")
 #: A drive's quantity, in the dimension of the command it drives, which phase 1 checks it against.
 Commanded = SettingKind("Commanded", "a quantity in the dimension of the command it drives")
+#: A drive's rate of change, in the dimension of the command it drives per second (a frequency's ramp in Hz per
+#: second), which phase 1 checks it against.
+CommandedRate = SettingKind("CommandedRate", "a quantity in the dimension of the command it drives, per second")
 
 type DirectionLike = TypedPath | str | tuple[float, float, float]
 
@@ -390,7 +393,7 @@ def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, ...]:
 class DimensionedSetting:
     """A setting whose annotation declares its dimension, ``Annotated[Quantity, Length]``; ``optional`` when the
     annotation admits ``None`` (``Annotated[Quantity | None, Length]``). ``kind`` is set instead of a dimension for a
-    setting marked :data:`Direction` or :data:`Commanded`."""
+    setting marked :data:`Direction`, :data:`Commanded` or :data:`CommandedRate`."""
 
     dimension: Dimension | None
     optional: bool = False
@@ -891,8 +894,12 @@ class FieldProvider(Entry):
     values: ClassVar[Mapping[str, str]] = MappingProxyType({})
     outside_parts: ClassVar[bool] = False
     #: The command whose value, in turns per second, is the rate the field turns at, or ``None``: what the build reads
-    #: to estimate the rate a body that follows the field turns at, from the command's declared constant drive.
+    #: to estimate the rate a body that follows the field turns at, from the command's declared drive.
     turns_at: ClassVar[str | None] = None
+    #: The commands its field reads as constant over a run, each with why and what to write instead (the refusal's
+    #: route): the build refuses (``command.held-constant``) a drive other than the constant on each, and a controller
+    #: that writes one.
+    constant_commands: ClassVar[Mapping[str, tuple[str, str]]] = MappingProxyType({})
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags),

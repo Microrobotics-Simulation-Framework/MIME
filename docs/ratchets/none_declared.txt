@@ -7,10 +7,15 @@
 # does not hold fails. The toys' and a lab's entries are outside the list, counted in the build's summary, not
 # judged. It records a cut, so a line added needs its reason logged.
 drive drive.constant 0.1.0 references  # present at D1b
-field_provider uniform_rotating 0.1.0 references  # present at D1b
+field_provider uniform_rotating 0.2.0 references  # a definition: a uniform field turning by the integral of a commanded frequency, given by its formula and resting on no work, as 0.1.0's was (present at D1b) (dev2, the drives); route: a `Reference` for the rotating-field formula, as the node's line below says
+drive drive.ramp 0.1.0 references  # a definition: a value held, moved at a rate and held, resting on no work (dev2, the drives); route: none to close unless the drive takes a modelled schedule
+observation phase_lag 0.1.0 references  # a definition: the angle between two projected vectors and a running mean, resting on no work (dev2, the drives); route: none to close unless the observation takes a modelled quantity
 geometry tube 0.1.0 references  # present at D1b
 observation swim_speed 0.1.0 references  # present at D1b
 wall_kind free_space 0.1.0 references  # a definition, no wall: it adds nothing to the kernel and rests on no work (phase 7h)
 node ConstantNode references  # a definition: the value it was built with, resting on no work (docs phase D3); route: none to close unless the node grows past a stored value, when a `Reference` on the class closes it; until then the line records that one was looked for
 node SwimSpeedNode references  # a definition: a projection of the velocity on a direction and a running sum, resting on no work (docs phase D3); route: none to close unless the node takes a modelled quantity, when a `Reference` on the class closes it; until then the line records that one was looked for
-node UniformRotatingNode references  # a definition: a uniform field turning at a commanded rate, given by its formula and resting on no work (docs phase D3); route: a `Reference` for the rotating-field formula on the class, added with the entry's own line above (field_provider uniform_rotating 0.1.0 references), as GravityNode and MagneticTorqueNode carry theirs
+node UniformRotatingNode references  # a definition: a uniform field turning at a commanded rate, given by its formula and resting on no work (docs phase D3); route: a `Reference` for the rotating-field formula on the class, added with the entry's own line above (field_provider uniform_rotating 0.2.0 references), as GravityNode and MagneticTorqueNode carry theirs
+node IntegratingRotatingNode references  # a definition: the same field turned by the integral of its frequency, by summation by parts, resting on no work (dev2, the drives); route: as UniformRotatingNode's line
+node RampNode references  # a definition: a held, moved and held value, resting on no work (dev2, the drives); route: as ConstantNode's line
+node PhaseLagNode references  # a definition: an angle between projections and running means, resting on no work (dev2, the drives); route: as SwimSpeedNode's line

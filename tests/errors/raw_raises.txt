@@ -67,6 +67,7 @@ nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's 
 nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_reaction.py::SourceReactionNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_uniform_field.py::IntegratingRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 6  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded (a confining shape with no curvature for a hull with a support is refused first by the plan, coded confinement.surface-shape; contact_loops with no hull, which the build sets only beside a hull's settings; the node layer constructs no refusal)

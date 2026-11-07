@@ -12,7 +12,7 @@ from mime.nodes.actuation._chain import (
     MountInputs,
     SegmentNode,
 )
-from mime.nodes.actuation._drive import Command, ConstantNode
+from mime.nodes.actuation._drive import Command, ConstantNode, RampNode, RampState
 from mime.nodes.actuation._dynamic import (
     SWEEPS,
     WRENCH_UNITS,
@@ -32,6 +32,8 @@ from mime.nodes.actuation._point_dipole import (
 )
 from mime.nodes.actuation._reaction import SourceReactionInputs, SourceReactionNode, SourceReactionState
 from mime.nodes.actuation._uniform_field import (
+    IntegratingRotatingNode,
+    IntegratingRotatingState,
     UniformRotatingInputs,
     UniformRotatingNode,
     UniformRotatingState,
@@ -52,6 +54,8 @@ __all__ = [
     "DynamicMotorInputs",
     "DynamicMotorNode",
     "DynamicMotorState",
+    "IntegratingRotatingNode",
+    "IntegratingRotatingState",
     "KinematicArmNode",
     "KinematicMotorNode",
     "MotorInputs",
@@ -61,6 +65,8 @@ __all__ = [
     "PointDipoleInputs",
     "PointDipoleNode",
     "PointDipoleState",
+    "RampNode",
+    "RampState",
     "SegmentNode",
     "SourceReactionInputs",
     "SourceReactionNode",

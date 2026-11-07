@@ -62,6 +62,7 @@ from mime.registry import (
     ChainSegment,
     Command,
     Commanded,
+    CommandedRate,
     Confinement,
     Controller,
     DefaultKind,
@@ -579,6 +580,9 @@ class _Planner:
         self.dynamics: dict[str, EntryPlan] = {}
         self.providers: dict[str, EntryPlan] = {}
         self.readers: list[EntryPlan] = []
+        #: Each observation's read of a uniform field, held until every law's reads are planned: (its plan, its
+        #: label, the field's path, the port's prefix, the interface, its units, where it is declared).
+        self.uniform_reads: list[tuple[EntryPlan, str, str, str, str, str, str]] = []
         self.declared: list[EntryPlan] = []
         self.drives: list[EntryPlan] = []
         self.geometries: dict[str, GeometryPlan] = {}
@@ -664,6 +668,7 @@ class _Planner:
         self.resolve_values()
         self.plan_confinements()
         self.plan_lubrication()
+        self.share_uniform_reads()
         self.collect_registrations_and_slots()
         self.check_readers_outside_parts()
         self.declare_controller()
@@ -841,8 +846,8 @@ class _Planner:
         """The rate (rad/s) at which the fields acting on ``body`` turn a body that follows them, where an interaction
         binds the body to a field that turns at a command (``FieldProvider.turns_at``) and a constant drive declares
         that command, and what it was computed from; ``None`` where the experiment declares none. The largest where
-        several fields do."""
-        from mime.drives import Constant
+        several fields do, and for a ramp the largest it reaches."""
+        from mime.drives import Constant, Ramp
 
         found: list[tuple[float, str]] = []
         for plan in self.readers:
@@ -856,12 +861,17 @@ class _Planner:
                     continue
                 apparatus = plan.bindings[role].partition(".")[0]
                 drive = next((d for d in self.drives if d.owner == f"drive:{apparatus}.{command}"), None)
-                if drive is None or not isinstance(drive.entry, Constant):
+                if drive is None or not isinstance(drive.entry, (Constant, Ramp)):
                     continue
-                turns = drive.settings.get("value")
-                if isinstance(turns, float) and math.isfinite(turns) and turns > 0.0:
-                    found.append((2.0 * math.pi * turns, f"{apparatus}.{command} is declared {turns:g} Hz, a rate of "
-                                                         f"2 pi x {turns:g} rad/s"))
+                held = [drive.settings.get(name) for name in (("value",) if isinstance(drive.entry, Constant)
+                                                              else ("start", "to"))]
+                turns = max((value for value in held if isinstance(value, float) and math.isfinite(value)),
+                            key=abs, default=None)
+                if turns is not None and turns > 0.0:
+                    how = f"is declared {turns:g} Hz" if isinstance(drive.entry, Constant) else \
+                        f"is ramped to {turns:g} Hz at the most"
+                    found.append((2.0 * math.pi * turns, f"{apparatus}.{command} {how}, a rate of 2 pi x {turns:g} "
+                                                         f"rad/s"))
         return max(found, default=None)
 
     # -- run settings -----------------------------------------------------------------------------------------
@@ -2004,7 +2014,8 @@ class _Planner:
                     if found is not None:
                         values[name] = found
                 continue
-            dimension = commanded if declared.kind is Commanded else declared.dimension
+            dimension = commanded if declared.kind is Commanded else \
+                commanded / TIME if declared.kind is CommandedRate and commanded is not None else declared.dimension
             if dimension is None:
                 continue
             try:
@@ -2112,6 +2123,8 @@ class _Planner:
             if record is None:
                 continue
             provider, spec = taken[command]
+            if not self.held_constant(provider, apparatus.name, command, drive, where):
+                continue
             plan = EntryPlan(Section.DRIVE, f"drive:{apparatus.name}.{command}", cast(Drive, drive), record, ("",), 1,
                              index, thing=apparatus.name, thing_kind=ThingKind.APPARATUS,
                              settings=self.settings_in_si(cast(Drive, drive), record, where,
@@ -2139,6 +2152,8 @@ class _Planner:
                             "set_controller(writes=...)")
                 continue
             plan, spec = taken[command]
+            if not self.held_constant(plan, apparatus.name, command, None, where):
+                continue
             self.writes[label] = ResolvedWrite(label, path, plan.node_name(), spec.port, unit_symbol(spec.dimension),
                                                spec.shape)
             self.write_units[label] = rate_symbol(spec.dimension)
@@ -2149,6 +2164,26 @@ class _Planner:
                             f"apparatus {apparatus.name!r}'s command {command!r} has no drive, and MIME assumes no "
                             f"command's value", f"give it one: commands={{{command!r}: <a {spec.dimension} quantity, "
                                                 f"or a drive>}}, or have the controller write it")
+
+    def held_constant(self, provider: EntryPlan, apparatus: str, command: str, drive: object, where: str) -> bool:
+        """Whether ``command`` may be written as it is: a field provider that reads it as constant over a run
+        (``FieldProvider.constant_commands``) takes the constant drive alone, and refuses any other drive and a
+        controller's write (``drive`` ``None``) with its reason and route (``command.held-constant``)."""
+        from mime.drives import Constant
+
+        cls = provider.registered.cls
+        held = cast(Mapping[str, tuple[str, str]], getattr(cls, "constant_commands", {})).get(command) \
+            if provider.section is Section.PROVIDER else None
+        if held is None or isinstance(drive, Constant):
+            return True
+        why, route = held
+        writer = f"the drive {cast(Entry, drive).label()}" if drive is not None else "the controller"
+        self.refuse("command.held-constant", RefusalClass.USER,
+                    f"{where}: {writer} changes {apparatus}.{command} during a run, and the field that reads it, "
+                    f"{cls.label()}, takes it as constant: {why}",
+                    f"{route}; or hold it constant in each run, commands={{{command!r}: <a quantity>}}, and change it "
+                    f"between runs")
+        return False
 
     # -- the controller ----------------------------------------------------------------------------------------
 
@@ -2688,6 +2723,10 @@ class _Planner:
                                 EntryKind.FIELD_PROVIDER, lambda r, name=read.interface: name in r.publishes))
                 continue
             if plan.section is Section.OBSERVATION:
+                if uniform and read.at is None:
+                    # A uniform field is the same at every point: read where a law reads it, adding no slot.
+                    self.uniform_reads.append((plan, label, path, prefix.field, read.interface, entry.units, where))
+                    continue
                 self.refuse("observation.field-read", RefusalClass.USER,
                             f"{where} reads the field {path!r}; an observation reads a field through its own "
                             f"instance of the provider, which is not built yet",
@@ -3301,6 +3340,35 @@ class _Planner:
                             + (RAN_TWICE if in_notebook() else ""),
                             RUN_AGAIN if in_notebook() else "remove the duplicate exp.attach(...) or exp.observe(...)")
             seen[plan.owner] = plan
+
+    def share_uniform_reads(self) -> None:
+        """Each observation's read of a uniform field resolved to the slot a law already reads it by (the first such
+        law by id): a uniform field is the same at every point, so the observation reads what that law reads and adds
+        no slot to the provider, whose node is then what it is without the observation. Only a law's read of the same
+        interface is shared (a law that reads the field's gradient lends no slot to an observation of the field itself).
+        Refused (``observation.field-read``) where no law reads the field as that interface, since a slot of the
+        observation's own would change the provider's node. The build report names the law, among the lines the build
+        computed."""
+        for plan, label, path, prefix, interface, units, where in self.uniform_reads:
+            node = self.providers[path].node_name()
+            shared = sorted(((reader.owner, read) for reader in self.readers if reader.section is Section.INTERACTION
+                             for read in reader.reads.values()
+                             if read.node == node and read.interface == interface and read.points is None
+                             and read.slot is not None and read.field.startswith(f"{prefix}_")),
+                            key=lambda pair: (pair[0], pair[1].field))
+            if not shared:
+                self.refuse("observation.field-read", RefusalClass.USER,
+                            f"{where} reads {interface} from the field {path!r}, and no law reads {interface} from "
+                            f"it: an observation reads a uniform field where a law reads the same, and any other "
+                            f"through its own instance of the provider, which is not built yet",
+                            "attach the law the field acts through (exp.attach(Magnetic.Torque(), body=..., "
+                            "field=...)), or observe the state the field acts on instead")
+                continue
+            owner, held = shared[0]
+            plan.reads[label] = ResolvedRead(held.node, held.field, interface, units)
+            self.checked[plan.owner] = (*self.checked.get(plan.owner, ()),
+                                        f"reads {interface} from the uniform field {path!r} where {owner} reads it, "
+                                        f"{held.node}.{held.field}, adding no slot to the provider")
 
     def collect_registrations_and_slots(self) -> None:
         for dynamics in self.dynamics.values():

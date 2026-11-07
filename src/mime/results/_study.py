@@ -17,6 +17,8 @@ from mime.results._series import Reading, Series
 from mime.units import Quantity
 
 if TYPE_CHECKING:
+    from mime.drives import Ramp
+    from mime.study._protocol import Protocol
     from mime.study._study import StudyPlan
 
 #: What a member's flag reads where the member's build declares no such flag: not "not raised".
@@ -69,7 +71,10 @@ class StudyResult:
 
     def __init__(self, experiment: str, axes: Sequence[str], coordinates: Mapping[str, Sequence[object]],
                  members: Sequence[RunResult], groups: Sequence[int], points: Sequence[int],
-                 dropped: Sequence[Dropped] = (), compiles: Sequence[int] = ()) -> None:
+                 dropped: Sequence[Dropped] = (), compiles: Sequence[int] = (), protocol: object = None,
+                 ramps: Sequence[Ramp | None] = ()) -> None:
+        from mime.study._protocol import FromRest
+
         self.experiment = experiment
         self.axes = tuple(axes)
         self._coordinates = {path: tuple(values) for path, values in coordinates.items()}
@@ -81,6 +86,11 @@ class StudyResult:
         self.dropped = tuple(dropped)
         #: The XLA programs each group's run compiled, as JAX's monitoring counted them.
         self.compiles = tuple(compiles)
+        #: How the members' commands moved in time (``mime.study.FromRest`` or ``mime.study.Ramp``), which names the
+        #: quantity a step-out read from them is.
+        self.protocol: Protocol = cast("Protocol", protocol) if protocol is not None else FromRest()
+        #: The drive the protocol gave each member's ramped command (``None`` from rest), by member.
+        self.ramps = tuple(ramps) if ramps else (None,) * len(self._members)
 
     @classmethod
     def of(cls, plan: StudyPlan, members: Sequence[RunResult | None], compiles: Sequence[int]) -> StudyResult:
@@ -93,7 +103,8 @@ class StudyResult:
                            tuple(f"[{r.code}] {r.message}" for r in point.refusals)) for point in plan.refused]
         name = str(plan.groups[0].built.plans.settings.experiment) if plan.groups and plan.groups[0].built else ""
         return cls(name, [axis.path for axis in plan.axes], coordinates,
-                   [cast(RunResult, members[i]) for i in ran], [group_of[i] for i in ran], ran, dropped, compiles)
+                   [cast(RunResult, members[i]) for i in ran], [group_of[i] for i in ran], ran, dropped, compiles,
+                   plan.protocol, [plan.points[i].ramp for i in ran])
 
     def __len__(self) -> int:
         return len(self._members)
@@ -109,6 +120,10 @@ class StudyResult:
                 "study.no-member", RefusalClass.USER, f"the study has {len(self._members)} members, and no member {index}",
                 f"take one of its members, `result.member(0)` to `result.member({len(self._members) - 1})`")])
         return self._members[index]
+
+    def coordinate(self, path: str, index: int) -> object:
+        """Member ``index``'s value of the axis ``path``, as the sweep gave it."""
+        return self._coordinates[path][index]
 
     @property
     def coordinates(self) -> dict[str, Quantity | tuple[object, ...]]:
