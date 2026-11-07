@@ -1,5 +1,5 @@
 """``mime show``: a saved experiment's topology as a tree (``--tree``, the default) and the graph it compiles to as
-Mermaid text (``--graph``), without running it.
+Mermaid text (``--graph``), without running it; and the graph as one page to pan and zoom (``--out``).
 
 **What this bounds.** That the command prints what the Python calls print (``Experiment.tree()``, ``built.to_mermaid()``)
 for a saved folder, byte for byte when its output is not going to a terminal; that on a terminal the tree is drawn
@@ -228,6 +228,87 @@ def test_the_saved_two_body_experiment_shows_the_tree_and_the_graph_of_the_one_t
     assert capsys.readouterr().out == str(experiment.build().to_mermaid()) == (GOLDEN / "two_bodies.mmd").read_text()
     assert mime_main(["show", str(saved_two_bodies), "--json"]) == 0
     assert capsys.readouterr().out == experiment.tree().json()
+
+
+# --- the graph as a page (--out), as ``mime visuals web --out`` writes the 3-D view --------------------------------------
+
+
+def test_out_writes_the_page_of_the_graph_the_python_call_gives_and_prints_what_it_wrote(saved, tmp_path, capsys):
+    """The page is ``Mermaid.page()`` of the graph the saved experiment builds, byte for byte, Mermaid inlined by default
+    and from jsDelivr with ``--cdn``; the control is the committed text of the same graph, which the page holds."""
+    from html import unescape
+
+    written = tmp_path / "graph.html"
+    assert mime_main(["show", str(saved), "--out", str(written)]) == 0
+    out = capsys.readouterr().out
+    page = written.read_text(encoding="utf-8")
+    assert page == full_toy().build().to_mermaid().page() and str(written) in out and "no network" in out
+    assert unescape(page).count(MERMAID) == 1
+    assert not page.startswith("flowchart") and page != MERMAID, "the page is not the text"
+    cdn = tmp_path / "cdn.html"
+    assert mime_main(["show", str(saved), "--out", str(cdn), "--cdn"]) == 0
+    assert cdn.read_text(encoding="utf-8") == full_toy().build().to_mermaid().page(cdn=True)
+    assert "jsDelivr" in capsys.readouterr().out and cdn.stat().st_size < 100_000 < written.stat().st_size
+
+
+def test_out_with_no_file_writes_the_experiments_graph_page_here_and_never_the_3d_pages_name(saved, tmp_path, monkeypatch, capsys):
+    """``mime visuals web`` writes ``<experiment>.html`` by default; the graph's page beside it is ``<experiment>.graph.html``,
+    so neither overwrites the other. The control: the 3-D page's file is there first, with other content."""
+    monkeypatch.chdir(tmp_path)
+    three_d = tmp_path / "full_toy.html"
+    three_d.write_text("the 3-D view", encoding="utf-8")
+    assert mime_main(["show", str(saved), "--out"]) == 0
+    assert "full_toy.graph.html" in capsys.readouterr().out
+    assert three_d.read_text(encoding="utf-8") == "the 3-D view"
+    assert (tmp_path / "full_toy.graph.html").read_text(encoding="utf-8") == full_toy().build().to_mermaid().page()
+    assert mime_main(["show", str(saved), "--graph", "--out", "--cdn"]) == 0, "--out takes no file before another flag"
+    assert (tmp_path / "full_toy.graph.html").read_text(encoding="utf-8") == full_toy().build().to_mermaid().page(cdn=True)
+
+
+def test_caption_and_open_go_with_the_page(saved, tmp_path, monkeypatch, capsys):
+    import webbrowser
+
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", lambda url, *a, **k: opened.append(url) or True)
+    written = tmp_path / "graph.html"
+    assert mime_main(["show", str(saved), "--out", str(written), "--caption", "a caption", "--open"]) == 0
+    capsys.readouterr()
+    assert written.read_text(encoding="utf-8") == full_toy().build().to_mermaid().page(caption="a caption")
+    assert "<p>a caption</p>" in written.read_text(encoding="utf-8") and opened == [written.resolve().as_uri()]
+
+
+def test_out_is_refused_inside_the_saved_folder_and_writes_nothing_there(saved, tmp_path, capsys):
+    import shutil
+
+    folder = tmp_path / "folder"
+    shutil.copytree(saved, folder)
+    aged(folder)
+    before = folder_state(folder)
+    assert mime_main(["show", str(folder), "--out", str(folder / "graph.html")]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "visuals.web-out" in captured.err and "mime show" in captured.err
+    assert folder_state(folder) == before
+
+
+@pytest.mark.parametrize("words", [("--json",), ("--tree",)])
+def test_out_does_not_go_with_the_tree_or_json(saved, tmp_path, capsys, words):
+    with pytest.raises(SystemExit) as stopped:
+        mime_main(["show", str(saved), "--out", str(tmp_path / "x.html"), *words])
+    assert stopped.value.code == 2 and not (tmp_path / "x.html").exists()
+    assert "--out" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", [("--cdn",), ("--caption", "x"), ("--open",)])
+def test_the_page_flags_need_out(saved, capsys, flag):
+    with pytest.raises(SystemExit) as stopped:
+        mime_main(["show", str(saved), *flag])
+    assert stopped.value.code == 2 and f"{flag[0]} goes with the page --out writes" in capsys.readouterr().err
+
+
+def test_the_old_flag_is_gone(saved, tmp_path, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        mime_main(["show", str(saved), "--html", str(tmp_path / "x.html")])
+    assert stopped.value.code == 2 and not (tmp_path / "x.html").exists()
 
 
 # --- nothing is written into the folder ------------------------------------------------------------------------------
