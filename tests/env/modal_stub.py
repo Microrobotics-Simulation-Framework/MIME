@@ -113,6 +113,18 @@ script._mime = lambda *arguments: calls.append(list(arguments))
 script._check("/experiment", "/out/env-check.json")
 record["check_arguments"] = calls[0]
 record["builder"] = __import__("os").environ.get("MODAL_IMAGE_BUILDER_VERSION")
+record["constants"] = {"STUDY": script.STUDY, "SHARDS": script.SHARDS}
+if script.STUDY is not None:
+    calls.clear()
+    script.run_study("mine", 1, script.SHARDS, {}, {})
+    record["study_calls"] = [list(call) for call in calls]
+    seen = []
+    script.fetch_assets.remote = lambda *a, **k: None
+    script.run_study.remote = lambda *a, **k: seen.append(["remote", list(a[:3])]) or "/runs/x/study-" + a[0]
+    script.run_study.map = lambda *its: seen.append(["map", [list(each) for each in its[:3]]]) or [
+        f"/runs/x/study-{its[0][0]}/shard-{i}" for i in its[1]]
+    script.study("mine")
+    record["entry_calls"] = seen
 print(json.dumps(record))
 '''
 

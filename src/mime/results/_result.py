@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
-from typing import Any, Protocol, cast, override
+from typing import TYPE_CHECKING, Any, Protocol, cast, override
 
 import numpy as np
 from numpy.typing import NDArray
@@ -43,6 +43,9 @@ from mime.results._series import (
 )
 from mime.things._handles import did_you_mean
 from mime.units import TIME, Quantity, parse_unit
+
+if TYPE_CHECKING:
+    from mime.experiment import Experiment
 from mime.validity import Stamp
 
 type Arrays = Mapping[str, Mapping[str, NDArray[Any]]]
@@ -76,6 +79,20 @@ class _Identified(Protocol):
 
 
 @dataclass(frozen=True)
+class MemberOf:
+    """What makes a run a member of a study: the study's id, its index among the study's members and the point it is,
+    the axes' values it ran with (path and value, in the sweep's order), the base experiment's saved folder where the
+    study is on disk, and each axis's reason. ``as_experiment`` is made from it."""
+
+    study: str
+    member: int
+    point: int
+    values: tuple[tuple[str, object], ...]
+    base: Path | None
+    reasons: Mapping[str, str]
+
+
+@dataclass(frozen=True)
 class OutputRef:
     """An observation's output by name, as ``record=`` takes it: what an observation's handle gives for one of its
     outputs (``swim.speed``)."""
@@ -104,6 +121,18 @@ def flag_key(path: str) -> str:
     return f"flags/{path}"
 
 
+class Archive(Protocol):
+    """What a result reads its arrays from: the keys it holds, one array by key, and several at once. An NPZ file is one
+    (:class:`_Npz`), and so is one member's share of a study group's (``mime.results._study_folder``)."""
+
+    @property
+    def files(self) -> Sequence[str]: ...
+
+    def __getitem__(self, key: str) -> NDArray[Any]: ...
+
+    def many(self, keys: Sequence[str]) -> dict[str, NDArray[Any]]: ...
+
+
 class _Npz:
     """An NPZ file read lazily, each array on first use and kept: a large run folder is opened without reading what
     is not asked for."""
@@ -129,7 +158,7 @@ class _Npz:
 
 
 class _Fields(Mapping[str, NDArray[Any]]):
-    def __init__(self, npz: _Npz, prefix: str, names: Sequence[str]) -> None:
+    def __init__(self, npz: Archive, prefix: str, names: Sequence[str]) -> None:
         self._npz, self._prefix, self._names = npz, prefix, list(names)
 
     @override
@@ -150,7 +179,7 @@ class _Fields(Mapping[str, NDArray[Any]]):
 class _Nodes(Mapping[str, Mapping[str, NDArray[Any]]]):
     """The arrays of an NPZ under ``<prefix>/<node>/<field>``, by node and field, each read when first used."""
 
-    def __init__(self, npz: _Npz, prefix: str) -> None:
+    def __init__(self, npz: Archive, prefix: str) -> None:
         self._npz, self._prefix = npz, prefix
         found: dict[str, list[str]] = {}
         for key in npz.files:
@@ -263,13 +292,15 @@ class RunResult:
     def __init__(self, steps: int, final: Arrays, history: Arrays | None = None, *, layout: Layout,
                  start_step: int = 0, recorded: Mapping[str, Samples] | None = None,
                  tracks: Mapping[str, FlagTrack] | None = None, every: int | None = None,
-                 loader: Mapping[str, str] | None = None, npz: _Npz | None = None,
+                 loader: Mapping[str, str] | None = None, npz: Archive | None = None,
                  clock: str | None = None, watches: Sequence[WatchRead] = (),
                  containment: Sequence[ContainmentRead] | Callable[[], Sequence[ContainmentRead]] = (),
                  report: Mapping[str, Any] | None = None, stopped: Stopped | None = None,
                  origin: Origin | None = None, overrides: Sequence[Mapping[str, Any]] = (),
                  energy: Callable[[], EnergyAccount | None] | None = None) -> None:
         self.steps = steps
+        #: Set when the run is a member of a study (:class:`MemberOf`).
+        self.member_of: MemberOf | None = None
         #: The values the run declared for itself (``run(..., override=...)``), each as ``run.json`` records it (its
         #: path, its value with its unit, its SI value and the leaves it wrote): every output of such a run is
         #: stamped "overridden" with them. Empty for a run of the experiment as built.
@@ -590,6 +621,18 @@ class RunResult:
         return write_mat(self, path)
 
     @public
+    def as_experiment(self, name: str, *, base: str | PathLike[str] | None = None) -> Experiment:
+        """This member of a study as an experiment of its own: ``Experiment.based_on(<the study's base>, name=name)``
+        with the member's values declared in it, each value with the reason ``from study <id>, member <i>`` (and its
+        axis's own, where it has one). The new experiment is not saved; run alone it is this member's run, and saving it
+        records the base it was made from. ``base`` names the base experiment's saved folder where the result does not
+        know it (a study that was not written to a folder). Refused (``study.not-a-member``) for a run that is no
+        member, and (``study.no-base``) for a member of a study with no saved base."""
+        from mime.study._bridge import member_as_experiment
+
+        return member_as_experiment(self, name, None if base is None else Path(base))
+
+    @public
     def text(self) -> str:
         stale = self.stale
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
@@ -654,7 +697,7 @@ class RunResult:
         return cls.from_manifest(manifest, npz)
 
     @classmethod
-    def from_manifest(cls, manifest: Mapping[str, Any], npz: _Npz) -> RunResult:
+    def from_manifest(cls, manifest: Mapping[str, Any], npz: Archive) -> RunResult:
         if manifest.get("format") != MANIFEST_FORMAT or manifest.get("version") not in READ_VERSIONS:
             raise ArgumentRefused([Refusal(
                 "result.format", RefusalClass.USER,
@@ -734,5 +777,5 @@ def layout_of(manifest: Mapping[str, Any]) -> Layout:
 
 
 __all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NPZ_MANIFEST", "REPORT_FORMAT", "RUN_MANIFEST", "RUN_REPORT",
-           "ObservationOutputs", "OutputRef", "RunResult", "Samples", "Stopped", "flag_key", "layout_of", "read_report",
+           "MemberOf", "ObservationOutputs", "OutputRef", "RunResult", "Samples", "Stopped", "flag_key", "layout_of", "read_report",
            "series_key"]

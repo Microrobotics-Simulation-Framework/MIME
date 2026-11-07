@@ -6,6 +6,8 @@
     modal run modal_app.py::verify               # check the environment, then rerun the reference steps
     modal run modal_app.py::verify --run <id>    # the same for a run saved earlier: bit for bit in its environment
     modal run modal_app.py::fetch                # store the assets the experiment's lock references on the Volume
+    modal run modal_app.py::study --name <name>  # with --study: run the study spec beside this script (`mime study run`),
+                                                 # a pilot first, into <name> on the runs Volume; the same name resumes
 
 The image is built once per MIME release, Python series and variant, never per experiment, and every input to it is
 pinned by hash or digest (uv included). The experiment, its assets and XLA's cache travel beside the image, never
@@ -36,6 +38,7 @@ UV_IMAGE = f"ghcr.io/astral-sh/uv@{UV_DIGEST}"
 UV_BINARY = "/.uv/uv"
 PINS_DIR = "/.pins"
 EXPERIMENT_DIR = "/experiment"
+STUDY_DIR = "/study"
 LAB_FILE = "/mime-run/lab-requirements.txt"
 RUNS_DIR = "/runs"
 dev_wheel_sha256 = None
@@ -85,7 +88,10 @@ def _image():
         image = _install(image, HERE / LAB, PINNED if LAB_HASHED else "--no-deps")
         image = image.add_local_file(str(HERE / LAB), LAB_FILE, copy=False)
     # The experiment is mounted when a container starts: never a layer, so a new experiment rebuilds nothing.
-    return image.add_local_dir(str((HERE / EXPERIMENT).resolve()), EXPERIMENT_DIR, copy=False)
+    image = image.add_local_dir(str((HERE / EXPERIMENT).resolve()), EXPERIMENT_DIR, copy=False)
+    if STUDY is not None:
+        image = image.add_local_file(str(HERE / STUDY), f"{STUDY_DIR}/{STUDY}", copy=False)
+    return image
 
 
 app = modal.App(f"mime-{NAME}")
@@ -141,6 +147,21 @@ def run_experiment(duration: float, runner: dict, info: dict, record: str = "", 
 
 
 @app.function(**RUN)
+def run_study(name: str, shard: int, shards: int, runner: dict, info: dict) -> str:
+    """`mime study run` on the spec beside this script, into the study's folder on the runs Volume (a shard's own, below
+    it, when the study is split). A second run of the same name resumes: a member that is done under the same content
+    key is not run again."""
+    _record_runner(runner, info)
+    out = f"{RUNS_DIR}/{NAME}/study-{name}" + (f"/shard-{shard}-of-{shards}" if shards > 1 else "")
+    # Outside the study folder, which holds only a study's own files.
+    _check(EXPERIMENT_DIR, f"{RUNS_DIR}/{NAME}/study-{name}.env-check-{shard}.json")
+    _mime("study", "run", f"{STUDY_DIR}/{STUDY}", "--base", EXPERIMENT_DIR, "--out", out, "--pilot",
+          *(["--shard", f"{shard}/{shards}"] if shards > 1 else []))
+    runs.commit()
+    return out
+
+
+@app.function(**RUN)
 def verify_experiment(run_id: str, runner: dict, info: dict) -> int:
     from mime.cli import main as mime
 
@@ -187,6 +208,23 @@ def main(duration: float = 0.0, record: str = "", every: float = 0.0):
     # The destination is the current directory, which exists: the client (1.6.3) fails on a folder it must create.
     print(f"saved run {run_id}; fetch it into the current directory with: modal volume get mime-runs {NAME}/{run_id} . "
           f"and read it with mime.results.RunResult.read(\"{run_id}\")")
+
+
+@app.local_entrypoint()
+def study(name: str = "study"):
+    if STUDY is None:
+        raise SystemExit("this script was written without a study: `mime modal <folder> --study study.mime.yaml`")
+    if ASSETS:
+        fetch_assets.remote()
+    runner, info = _runner()
+    if SHARDS == 1:
+        outs = [run_study.remote(name, 0, 1, runner, info)]
+    else:
+        # SHARDS containers at once, the limit this script states and `--max-containers` matched.
+        outs = list(run_study.map([name] * SHARDS, range(SHARDS), [SHARDS] * SHARDS, [runner] * SHARDS, [info] * SHARDS))
+    for out in outs:
+        print(f"saved study folder {out}; fetch it with: modal volume get mime-runs {out.removeprefix(RUNS_DIR + '/')} . "
+              f"and read it with mime.results.StudyResult.read(...)")
 
 
 @app.local_entrypoint()

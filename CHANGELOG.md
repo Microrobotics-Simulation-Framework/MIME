@@ -66,6 +66,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attribution sees a load delivered where no law owns it, not a swap of two laws' loads between their own inputs
   (refused by the second part's post-build check); and no declaration of a port, a class or a definiteness was read by
   anything in this part (the second part's wiring and registry walk read them).
+- **A study written to a folder, resumed, read back and made an experiment of** (`mime.results`, `mime.study`).
+  `StudyResult` is complete: a long `table()`, `to_csv`, `to_npz`, `to_mat` (the member axis first, units in the file),
+  `grid()`, `manifest()`, `order(output, along=...)` (the observed order of convergence over three levels and the
+  extrapolated value, refused where the levels are not in the asymptotic range) and `read(folder)` of a partial study.
+  `study.run_to(folder)` writes a study folder (`study.json`, the spec file `study.mime.yaml`, the base saved once, each
+  group's arrays, each group file's sha256 in the manifest and each member's content key in its entries; closed
+  manifest, checked layout, no saved-form step) batch by batch, into a new or empty folder or one that holds the same
+  study (anything else is refused and left untouched), and a run into the same folder reuses only the members that are
+  done under the same content key (the point, the group's structure key, the base's input hash, the run, and the code:
+  every file of the installed `mime` package and of a package its classes come from, with the versions of MADDENING,
+  OpenMaterica, JAX, jaxlib, NumPy and SciPy, so any change to MIME's files runs every member again). `read` refuses a
+  group file that is not the manifest's (`study.group-file`). `mime study plan` and `mime study run` work on the spec
+  file (`--shard i/k` by structure group); `mime modal --study` adds a `study` entrypoint (one container by default,
+  `--shards` explicit). The research profile
+  needs one reason per swept axis (`study.axis-reason`). `result.member(i).as_experiment(name)` makes a member an
+  experiment of its own through `Experiment.based_on`. A law's axis given as a string now resolves when the law's id
+  holds a dot of its own (`toy.spring:probe.k`), which S2b-1's resolution did not.
 - **A containment watch: a body the centre-held contact holds whose hull leaves its region is flagged after the run**
   (in every profile that can be built, exploratory and research; never a refusal, no node or edge, so the graph and its
   derived hash are what they were). The contact 0.1.0 holds a body's centre by its extent and never reads its

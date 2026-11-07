@@ -11,6 +11,7 @@ from mime.results._result import (
     REPORT_FORMAT,
     RUN_MANIFEST,
     RUN_REPORT,
+    MemberOf,
     NoOutput,
     NotARunFolder,
     ObservationOutputs,
@@ -19,12 +20,15 @@ from mime.results._result import (
     Samples,
     Stopped,
 )
-from mime.results._study import NOT_DECLARED, Dropped, StackedSeries, StudyOutputs, StudyResult
+from mime.results._order import Order, observed_order
+from mime.results._study import NOT_DECLARED, Dropped, StackedSeries, StudyGrid, StudyOutputs, StudyResult
 from mime.results._series import FlagRead, FlagTrack, FlagWhole, NotInResult, NotRecorded, Reading, Series, Table
 from mime.results._watch import WatchRead, read_watches
 
 __all__ = ["MANIFEST_FORMAT", "MANIFEST_VERSION", "NOT_DECLARED", "REPORT_FORMAT", "RUN_MANIFEST", "RUN_REPORT",
-           "ContainmentRead", "Dropped", "EnergyAccount", "LawEnergy", "StackedSeries", "StudyOutputs", "StudyResult",
+           "ContainmentRead", "Dropped", "EnergyAccount", "LawEnergy", "MemberOf", "Order", "StackedSeries", "StudyGrid",
+           "StudyOutputs", "StudyResult",
            "FlagLayout", "FlagRead", "FlagTrack", "FlagWhole", "Layout", "NoOutput", "NotARunFolder", "NotInResult",
            "NotRecorded", "ObservationLayout", "ObservationOutputs", "OutputLayout", "OutputRef", "Reading", "RunResult",
-           "Samples", "Series", "Stopped", "Table", "WatchRead", "energy_account", "read_containments", "read_watches"]
+           "Samples", "Series", "Stopped", "Table", "WatchRead", "energy_account", "observed_order", "read_containments",
+           "read_watches"]
