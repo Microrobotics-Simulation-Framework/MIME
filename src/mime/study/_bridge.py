@@ -1,8 +1,9 @@
 """The bridge from a study to an experiment: ``result.member(i).as_experiment(name)``. A member is the study's base
-experiment with its point's values declared; this makes that an experiment of its own, through
-``Experiment.based_on(<the base>, name=name)`` and the declarations a person would make, so that the lineage is never
-lost: the new experiment records the base it was made from, each value declared carries the reason ``from study <id>,
-member <i>``, and each declaration it replaced is in ``plan().replaced``."""
+experiment with its point's values declared (and, for a study run on a ramp, its ramp declared from the point's value,
+as the study declared it); this makes that an experiment of its own, through ``Experiment.based_on(<the base>,
+name=name)`` and the declarations a person would make, so that the lineage is never lost: the new experiment records
+the base it was made from, each value declared carries the reason ``from study <id>, member <i>``, and each declaration
+it replaced is in ``plan().replaced``."""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.results._study_folder import BASE_DIR
 from mime.saved._folder import LOCK_FILE
 from mime.study._axes import STUDY_REASON, AxisKind, declared, resolve
+from mime.study._protocol import Ramp, declared_with
 
 if TYPE_CHECKING:
     from mime.experiment import Experiment
@@ -52,7 +54,10 @@ def member_as_experiment(run: RunResult, name: str, base: Path | None) -> Experi
     reasons = {axis.path: f"{why}: {member.reasons[axis.path]}" for axis in axes
                if member.reasons.get(axis.path, STUDY_REASON) != STUDY_REASON}
     held = declared(settings, declarations, axes, why, reasons)
-    experiment.redeclared(held.settings, held.declarations)
+    ramped = held.declarations
+    if isinstance(member.protocol, Ramp):
+        ramped, _ = declared_with(member.protocol, held.declarations)
+    experiment.redeclared(held.settings, ramped)
     return experiment
 
 

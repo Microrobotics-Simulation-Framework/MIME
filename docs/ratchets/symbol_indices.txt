@@ -46,3 +46,6 @@ GravityNode q  # the body's orientation, an input the node declares only where t
 MagneticTorqueNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol; route: the function convention
 SwimSpeedNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 UniformRotatingNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+IntegratingRotatingNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+PhaseLagNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+RampNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt

@@ -2720,6 +2720,33 @@ anomalies:
 
       Severity: major, by the registry's table ("incorrect results, workaround exists"): the field's angle is wrong by a
       factor of two for a ramp, with no flag and no refusal; the workaround below removes it.
+
+      Resolution (dev2, the drives' phase): UniformRotating 0.2.0 (node IntegratingRotatingNode) turns the field by the
+      integral of its frequency, each step's frequency held over the step, for any writer (a drive, a controller). It
+      holds the phase in turns as a fraction, a pair of floating numbers (a high part in [0, 1) and the part of it
+      below the high part's last place), and each step adds f_n h, the frequency written for the step times the
+      timestep, as an exact product of two floating numbers (Dekker's residual of the product, built of partial
+      products that are exact because each factor is split in halves by an integer mask) by an error-free sum (Knuth's
+      two-sum). A first version of 0.2.0 kept the phase as 2 pi (f_n t_n - C_n) with a correction C_n and claimed its
+      rounding did not grow with the run; that is false in float32, where f_n t_n carries a relative rounding of the
+      phase's own size (measured against an exact sum of the frequencies written: 4.1e-3 rad at 100 s and 0.13 rad at
+      1000 s on a ramp of 0.25 Hz/s from 40 Hz, 2.9e-3 and 2.5e-2 rad at a constant 40 Hz), and the pair replaces it.
+      Measured, 1000 s of 0.5 ms steps (2e6 steps, up to 165 000 turns), the field's angle against the exact sum of
+      the frequencies written: float32, at every step, at most 2.2e-7 rad (constant 40 Hz), 4.4e-7 rad (the ramp)
+      and 4.7e-7 rad (a noisy writer), the same over the first 100 s as over the last (float32's spacing of an angle
+      in a turn is 4.8e-7 rad, which the output's cosine and sine round to); float64, below 4e-16 rad, the check's own
+      rounding, at 100 s and 1000 s for the three writers. What rounds in a step is one addition into the pair's low
+      part, at most about 2e-15 turns in float32, which over N steps is N times as much in the worst case (4e-9 turns
+      at 2e6 steps) and less in practice; that bound grows with the run, slowly, where the first version's error was of
+      the phase's size. For a frequency that never changes the field is no longer 0.1.0's to the last bit: 0.1.0's
+      f t carries the rounding the pair avoids, and script A's field over 200 steps differs from 0.1.0's by 9.6e-7
+      rad in float32 and 8.9e-16 rad in float64 (the kept version's rounding, not the pair's). A script that writes
+      UniformRotating(...) gets 0.2.0. 0.1.0 stays registered for a folder saved with it (mime.fields.KEPT) and is
+      guarded: its build refuses any drive of its frequency but the constant, and a controller that writes it
+      (command.held-constant), naming 0.2.0 as the route. With drives.Ramp, which writes each step the ramp's value
+      at the step's middle, 0.2.0's field points along 2 pi (f0 t + k t^2 / 2) at every step's end within 1.8e-15 rad
+      in float64 and 4.5e-7 rad in float32 (1000 steps of 1 ms, f0 1 Hz, k 2 Hz/s); the tests above, turned round,
+      read the ramp's ratio 1 and the step's offset zero.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -2727,23 +2754,40 @@ anomalies:
       changes; a body that follows the field (a screw, a swimmer near its step-out frequency) is driven at up to twice
       the commanded rate on a ramp, and a result read as the response to a commanded ramp is the response to another.
       No shipped experiment commands a changing frequency, so nothing shipped is touched.
-    resolution_status: open
+    resolution_status: resolved
     affected_versions: ">=0.3.0.dev1"
+    resolution_version: "0.3.0.dev2"
     affected_components:
-      - "entry: field_provider uniform_rotating 0.1.0"
+      - "entry: field_provider uniform_rotating 0.1.0; kept registered, and it still carries it, guarded"
       - "node: UniformRotatingNode"
     verification:
       - "tests/oracles/test_uniform_rotating_phase.py::test_control_a_constant_frequency_turns_the_field_by_its_integral"
-      - "tests/oracles/test_uniform_rotating_phase.py::test_a_ramp_from_zero_turns_the_field_twice_as_fast_as_commanded"
-      - "tests/oracles/test_uniform_rotating_phase.py::test_a_step_in_frequency_moves_the_fields_angle_by_two_pi_df_t_and_the_offset_stays"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_a_ramp_from_zero_turns_the_field_by_the_commanded_integral"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_a_step_in_frequency_turns_the_field_at_each_rate_and_leaves_no_offset"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_the_ramps_field_turns_by_its_closed_form_integral_at_every_step"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_mutant_the_node_with_the_present_frequency_times_the_time_fails_the_gate"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_the_kept_version_refuses_a_ramp_on_its_frequency_naming_the_current_one"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_the_kept_version_refuses_a_controller_on_its_frequency"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_with_a_constant_drive_the_kept_version_builds_and_the_current_one_computes_the_same_field"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_the_phase_does_not_grow_with_the_run_in_float32"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_the_phase_is_exact_in_float64_over_the_long_run"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_control_float32s_product_of_the_frequency_and_the_time_is_off_by_100_s"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_mutant_a_phase_held_as_one_float_wrapped_each_step_fails_the_long_run_bound"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_the_phase_pair_adds_the_exact_product_of_the_frequency_and_the_step_in_float32"
+      - "tests/oracles/test_uniform_rotating_phase.py::test_the_derivative_of_the_phase_with_respect_to_each_frequency_written_is_the_step"
     residual_risk: >
-      What is measured: the three cases above at one step size (1 ms), in float32, on a graph with a test controller. What
-      is not: a frequency that changes slowly (the error is t df/dt in the rate, so small only where the frequency
-      changes little over the time since the start: a change of 1 % of f at t = 10 turns is a rate error of 1 % of f
-      times 10 turns, which is not small), and a drive or controller of a lab that changes the frequency in a way not
-      tried here. The node reports nothing of it.
-    workaround: "Command a constant frequency in each run (drives.Constant, or a controller that writes one value), and change the frequency between runs"
-    planned_resolution: "An integrating version of the field (UniformRotating 0.2.0), in step with S2b of dev2, pending the maintainer's decision: its phase is a state the node advances by 2 pi f dt each step, so a change of frequency changes the rate and not the angle. 0.1.0 stays registered. Options for a guard on 0.1.0, which are the maintainer's call and are not taken here: (1) a refusal at the build when a controller writes the field's frequency; (2) a flag raised at a step where the commanded frequency differs from the previous step's; (3) a warning at the build naming the assumption; (4) none, the assumption as the node states it. The tests above flip on the integrating version: the ramp's ratio reads 1 and the step's offset zero"
+      What is measured: a ramp from a drive and from a controller, a step in frequency and a constant, at one step size
+      (1 ms), in float32 and float64, on a graph of one magnetised sphere, and script A at a constant frequency. 0.1.0,
+      kept for saved folders, still makes its phase as before, and now refuses every writer of its frequency but a
+      constant drive, so a saved folder that recorded a changing frequency on it no longer builds (none is known: the
+      only drive before this was the constant, and the shipped controller writes a joint). The long run is measured for
+      1000 s of 0.5 ms steps at 40 Hz (constant, a ramp of 0.25 Hz/s and a noisy writer), not for a longer run or a
+      timestep other than 0.5 ms; the pair's worst-case rounding grows with the number of steps (4e-9 turns at 2e6
+      steps, a fraction of float32's resolution of a turn, and 100 times that at 2e8 steps), which the measurement does
+      not reach. The field's node was run on the CPU: the exactness of the product relies on integer masks and on sums
+      that no compiler may reorder, which holds on XLA's CPU backend here, and a GPU was not run.
+    workaround: "Build the field's current version, UniformRotating(...) (0.2.0); on 0.1.0, command a constant frequency in each run and change it between runs"
+    planned_resolution: "Done in uniform_rotating 0.2.0 (the maintainer's decision, design row #255: guard option (1), the refusal at the build, on 0.1.0, kept registered for saved folders)"
 
   - anomaly_id: MIME-ANO-140
     title: "A folder saved under one count of usable CPUs or of BLAS threads and verified under another was read as the same environment, so verify compared bit for bit and reported outputs moved that only the count had moved"

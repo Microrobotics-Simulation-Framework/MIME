@@ -86,9 +86,10 @@ override that narrows a parameter are each refused.
 The body side of the first experiment, each ported from the 0.2 line behind the new contracts and
 writing its step as `MimeNode.advance`:
 - **`body/`**: `RigidInertialNode` (implicit resistance, the exponential turn, the confinement's projection),
-  `GravityNode` (weight, buoyancy and its couple), `SwimSpeedNode`;
+  `GravityNode` (weight, buoyancy and its couple), `SwimSpeedNode`, `PhaseLagNode`;
 - **`magnetic/`**: `MagneticTorqueNode`;
-- **`actuation/`**: `UniformRotatingNode` and `ConstantNode`, a drive's.
+- **`actuation/`**: `IntegratingRotatingNode` (the rotating field 0.2.0, whose phase integrates its frequency),
+  `UniformRotatingNode` (0.1.0's, kept), and the drives' `ConstantNode` and `RampNode`.
 
 Each passes `verify_node` in the node walk, has a golden output, and (but for the swim speed and the drive) a
 differential against the 0.2 port's node on fixed inputs (`tests/differential/`).
@@ -110,8 +111,8 @@ impulses through the step's system by projected Gauss-Seidel sweeps) and `Dynami
 its mount, `reaction`), each first order in time; and `SourceReactionNode`, a law's wrench on a body as its reaction
 on the field's source, moved to the frame the source is mounted on. Each with `NodeMeta` and its symbol table.
 
-`ConstantNode`, `GravityNode`, `MagneticTorqueNode`, `SwimSpeedNode` and `UniformRotatingNode`
-carry `NodeMeta` and their symbol tables too, each declaring the units of its parameters, so that the node walk checks
+`ConstantNode`, `RampNode`, `GravityNode`, `MagneticTorqueNode`, `SwimSpeedNode`, `PhaseLagNode`,
+`UniformRotatingNode` and `IntegratingRotatingNode` carry `NodeMeta` and their symbol tables too, each declaring the units of its parameters, so that the node walk checks
 them.
 
 Every segment node publishes `frame_angular_velocities` beside `frame_poses`, and reads its mount's

@@ -49,6 +49,7 @@ from mime.results._study_folder import (
 )
 from mime.results import RunResult
 from mime.study._point import precision
+from mime.study._protocol import FromRest
 from mime.study._record import document_of
 from mime.study._run import run_group
 from mime.study._study import StudyPlan, run_members
@@ -152,6 +153,12 @@ def run_study_to(study: Study, experiment: Experiment, points: Points, out: Path
     from mime.study._spec import spec_text
 
     plan = study.plan()
+    if not isinstance(plan.protocol, FromRest):
+        raise _refuse("study.protocol-folder", RefusalClass.USER,
+                      f"the study runs {plan.protocol.text()}, and a study folder records no protocol yet (its "
+                      f"{STUDY_FILE} and {SPEC_FILE} have no place for one), so it would read back as run from rest",
+                      "run it in memory, `study.run()`, and read it there with ramp_crossings(result, lag); or sweep "
+                      "from rest, `sweep(..., protocol=FromRest())`, into the folder")
     _shard_checked(plan, shard)
     out.mkdir(parents=True, exist_ok=True)
     old = _old_document(out)

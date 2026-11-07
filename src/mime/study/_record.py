@@ -20,6 +20,7 @@ from mime.results._study_folder import (
 )
 from mime.study import _content
 from mime.study._axes import STUDY_REASON, Axis, value_text
+from mime.study._protocol import Ramp
 from mime.units import Quantity, unit_symbol
 
 if TYPE_CHECKING:
@@ -46,12 +47,25 @@ def seed_record(plan: StudyPlan) -> dict[str, Any]:
                     "member differs by a draw"}
 
 
+def protocol_record(plan: StudyPlan) -> dict[str, Any] | None:
+    """A ramp's command and numbers, as the study's identity holds them; ``None`` from rest, which leaves the identity
+    of every study run from rest as it was."""
+    protocol = plan.protocol
+    if not isinstance(protocol, Ramp):
+        return None
+    owner, command = protocol.path
+    return {"ramp": f"{owner}.commands.{command}", "to": encode_value(protocol.to, "to"),
+            "rate": encode_value(protocol.rate, "rate"), "hold": encode_value(protocol.hold, "hold")}
+
+
 def study_id(plan: StudyPlan, input_hash: str | None) -> str:
-    """The study's identity: the base's input hash, the axes with their reasons, every point, the run, the drop and the
-    seed policy. The same spec on the same base is the same study, whatever has been run of it."""
+    """The study's identity: the base's input hash, the axes with their reasons, every point, the run, the drop, the
+    seed policy and a ramp's protocol. The same spec on the same base is the same study, whatever has been run of it."""
     held = {"input": input_hash, "axes": [axis_record(axis, plan) for axis in plan.axes],
             "points": [[encode_value(point.values[axis], axis.path) for axis in plan.axes] for point in plan.points],
             "run": run_record(plan), "drop_refused": plan.drop_refused, "seed": seed_record(plan)}
+    if (ramp := protocol_record(plan)) is not None:
+        held["protocol"] = ramp
     return hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -111,4 +125,4 @@ def document_of(plan: StudyPlan, input_hash: str | None, *, compiles: Sequence[i
 
 
 
-__all__ = ["axis_record", "document_of", "member_keys", "run_record", "seed_record", "study_id"]
+__all__ = ["axis_record", "document_of", "member_keys", "protocol_record", "run_record", "seed_record", "study_id"]

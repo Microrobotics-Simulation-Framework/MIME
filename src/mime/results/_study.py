@@ -24,7 +24,9 @@ from mime.results._series import Reading, Series, Table, column_name
 from mime.units import Quantity, unit_symbol
 
 if TYPE_CHECKING:
+    from mime.drives import Ramp
     from mime.results._order import Order
+    from mime.study._protocol import Protocol
     from mime.study._study import StudyPlan
 
 #: What a member's flag reads where the member's build declares no such flag: not "not raised".
@@ -121,7 +123,10 @@ class StudyResult:
     def __init__(self, experiment: str, axes: Sequence[str], coordinates: Mapping[str, Sequence[object]],
                  members: Sequence[RunResult | Callable[[], RunResult]], groups: Sequence[int], points: Sequence[int],
                  dropped: Sequence[Dropped] = (), compiles: Sequence[int] = (), *,
-                 record: Mapping[str, Any] | None = None, base: Path | None = None, missing: Sequence[int] = ()) -> None:
+                 record: Mapping[str, Any] | None = None, base: Path | None = None, missing: Sequence[int] = (),
+                 protocol: object = None, ramps: Sequence[Ramp | None] = ()) -> None:
+        from mime.study._protocol import FromRest
+
         self.experiment = experiment
         self.axes = tuple(axes)
         self._coordinates = {path: tuple(values) for path, values in coordinates.items()}
@@ -141,6 +146,11 @@ class StudyResult:
         self.base = base
         #: The points a partial study folder lacks: their index among the study's points.
         self.missing = tuple(missing)
+        #: How the members' commands moved in time (``mime.study.FromRest`` or ``mime.study.Ramp``), which names the
+        #: quantity a step-out read from them is.
+        self.protocol: Protocol = cast("Protocol", protocol) if protocol is not None else FromRest()
+        #: The drive the protocol gave each member's ramped command (``None`` from rest), by member.
+        self.ramps = tuple(ramps) if ramps else (None,) * len(self._members)
 
     @classmethod
     def of(cls, plan: StudyPlan, members: Sequence[RunResult | None], compiles: Sequence[int], *,
@@ -157,7 +167,7 @@ class StudyResult:
         record = document_of(plan, input_hash, compiles=compiles, seconds=seconds)
         return cls(name, [axis.path for axis in plan.axes], coordinates,
                    [cast(RunResult, members[i]) for i in ran], [group_of[i] for i in ran], ran, dropped, compiles,
-                   record=record)
+                   record=record, protocol=plan.protocol, ramps=[plan.points[i].ramp for i in ran])
 
     def __len__(self) -> int:
         return len(self._members)
@@ -178,7 +188,7 @@ class StudyResult:
             held.member_of = MemberOf(str(self.record.get("id", "")), rank.get(self.points[index], index),
                                       self.points[index], values, self.base,
                                       {str(axis["path"]): str(axis["reason"]) for axis in self.record.get("axes", [])
-                                       if axis.get("reason") and axis["reason"] != STUDY_REASON})
+                                       if axis.get("reason") and axis["reason"] != STUDY_REASON}, self.protocol)
         return held
 
     @public
@@ -190,6 +200,10 @@ class StudyResult:
                 "study.no-member", RefusalClass.USER, f"the study has {len(self._members)} members, and no member {index}",
                 f"take one of its members, `result.member(0)` to `result.member({len(self._members) - 1})`")])
         return self._member(index % len(self._members))
+
+    def coordinate(self, path: str, index: int) -> object:
+        """Member ``index``'s value of the axis ``path``, as the sweep gave it."""
+        return self._coordinates[path][index]
 
     @property
     def coordinates(self) -> dict[str, Quantity | tuple[object, ...]]:

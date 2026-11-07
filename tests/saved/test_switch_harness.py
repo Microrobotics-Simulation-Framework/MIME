@@ -76,6 +76,8 @@ from mime.control._arm_tracking import _outer
 from mime.core.multibody import frame_pose, mass_matrix
 from mime.core.tables import Axis, Table, evaluate
 from mime.core import CAPSULE, CYLINDER, SCREW, SLAB, SPHERE, quaternion, shape_names, shape_switches, switch
+from mime.nodes.actuation import RampNode
+from mime.nodes.body import PhaseLagNode
 from mime.scene import Cylinder, Ellipsoid, Screw, Sphere
 from mime.units import dimensionless, mm
 from mime.docs import load_namespaces
@@ -111,7 +113,8 @@ def declarations() -> dict[str, switch.Declaration]:
                                 ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
                                 ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
-                                ("wall kind", "tube", "0.1.0"), ("geometry", "cylinder", "0.1.0")):
+                                ("wall kind", "tube", "0.1.0"), ("geometry", "cylinder", "0.1.0"),
+                                ("observation", "phase_lag", "0.1.0"), ("drive", "drive.ramp", "0.1.0")):
         record = lookup(EntryKind(kind), name, version)
         assert record is not None
         found.update({d.owner: d for d in declared_switches(record.cls)})
@@ -354,6 +357,38 @@ def swim_rows(graph, declared) -> list[SwitchRow]:
     return [
         SwitchRow(declared["swim.window"], lambda o: swim_at(graph, after=11 * DT - o), 1e-5),
         SwitchRow(declared["swim.mean"], lambda o: swim_at(graph, observed=DT / 2 + o), 1e-7),
+    ]
+
+
+# -- the phase lag and the ramp: standalone nodes ---------------------------------------------------------------------
+
+def lag_at(*, steps=10, lagged=2e-4, turned=1e-2, observed=1e-3, after=1.0):
+    """The phase lag's outputs after one step from a window already open (or not), the body turning at 10 rad/s about
+    +x with its moment 0.3 rad behind the field."""
+    node = PhaseLagNode("phase_lag:umr", DT, moment=(0.0, 1e-3, 0.0), about=(1.0, 0.0, 0.0), after=after)
+    zero = jnp.asarray(0.0)
+    state = {"lag": zero, "spin": zero, "mean_lag": zero, "mean_spin": zero, "lagged": jnp.asarray(lagged),
+             "turned": jnp.asarray(turned), "observed": jnp.asarray(observed), "steps": jnp.asarray(steps, jnp.int32)}
+    given = {"pose": jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)),
+             "twist": jnp.asarray((0.0, 0.0, 0.0, 10.0, 0.0, 0.0)),
+             "flux_density": jnp.asarray((0.0, 1.2e-3 * math.cos(0.3), 1.2e-3 * math.sin(0.3)))}
+    return node.fresh_update(state, given, DT, params={"after": jnp.asarray(after)})
+
+
+def ramp_at(*, steps=10, hold=0.0, duration=1.0):
+    """The ramp's value after one step, from 10 at 2 per second."""
+    node = RampNode("drive:field.frequency", DT, start=10.0, rate=2.0, duration=duration, hold=hold)
+    state = {"value": jnp.asarray(10.0), "steps": jnp.asarray(steps, jnp.int32)}
+    return node.fresh_update(state, {}, DT, params={"hold": jnp.asarray(hold), "duration": jnp.asarray(duration)})
+
+
+def lag_and_ramp_rows(declared) -> list[SwitchRow]:
+    middle = 10.5 * DT
+    return [
+        SwitchRow(declared["phase_lag.window"], lambda o: lag_at(after=11 * DT - o), 1e-5),
+        SwitchRow(declared["phase_lag.mean"], lambda o: lag_at(observed=DT / 2 + o), 1e-7),
+        SwitchRow(declared["ramp.start"], lambda o: ramp_at(hold=middle - o), 1e-5),
+        SwitchRow(declared["ramp.end"], lambda o: ramp_at(duration=middle + o), 1e-5),
     ]
 
 
@@ -825,7 +860,7 @@ def all_rows(graph) -> dict[str, SwitchRow]:
     declared = declarations()
     rows = [*body_rows(graph, declared), *cylinder_rows(declared), *solid_rows(declared), *drag_rows(graph, declared),
             *swim_rows(graph, declared), *chain_rows(declared), *tracking_rows(declared), *tube_rows(declared),
-            *hull_rows(declared)]
+            *hull_rows(declared), *lag_and_ramp_rows(declared)]
     return {row.declaration.owner: row for row in rows}
 
 
@@ -840,7 +875,8 @@ OWNERS = sorted(["contact.band", "contact.outward", "contact.hold", "contact.clo
                  "arm.friction.low", "arm.friction.high", "arm.stick",
                  "arm_tracking.reach.low", "arm_tracking.reach.high", "arm_tracking.half_turn",
                  "arm_tracking.small_turn", "arm_tracking.parallel", "arm_tracking.hemisphere",
-                 "tube.table", "tube.angle", "tube.axial", "tube.axis"])
+                 "tube.table", "tube.angle", "tube.axial", "tube.axis", "phase_lag.window", "phase_lag.mean",
+                 "ramp.start", "ramp.end"])
 
 
 def test_every_owner_mime_declares_has_a_row():
@@ -1015,7 +1051,7 @@ def guard_points(graph):
     """Points where each domain guard of a node's step has its condition false: the body at the world's origin, on
     the tube's axis and free (the norm's, the cylinder's two and the hold's); a body held by its hull's points, one of
     them on the tube's axis (the sweeps'); the drag on the axis; the swim speed
-    before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; and
+    before it has observed; the phase lag in no field before it has observed; the point dipole read away from its own centre, where its ``nonzero_norm`` is reached; and
     the drag's MRS samples on FL-9's screw and on an ellipsoid, where each kind's surface element (each sample's
     ``nonzero_norm``) is."""
 
@@ -1115,7 +1151,19 @@ def guard_points(graph):
         return {"value": evaluate(log_table, query, owner="planted.table").value}
 
     not_positive = jnp.asarray(-1.0)
+
+    def lag_with(field):
+        """The phase lag before it has observed (its window opening later), in a field of zero amplitude: the angle's
+        two guards (no field in the plane) and the mean's (nothing observed)."""
+        node = PhaseLagNode("phase_lag:umr", DT, moment=(0.0, 1e-3, 0.0), about=(1.0, 0.0, 0.0), after=1.0)
+        given = {"pose": jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)),
+                 "twist": jnp.asarray((0.0, 0.0, 0.0, 10.0, 0.0, 0.0)), "flux_density": field}
+        return node.fresh_update(node.initial_state(), given, DT)
+
+    no_field = jnp.zeros(3)
     return {
+        "the phase lag in no field, before observing": (lambda: lag_with(no_field),
+                                                        lambda: jax.jacfwd(lag_with)(no_field)),
         "the body at the origin, on the axis, free": (lambda: body(body_state), lambda: jax.jacfwd(body)(body_state)),
         "the hull contact, its point on the tube's axis": (lambda: held_rod(body_state),
                                                            lambda: jax.jacfwd(held_rod)(body_state)),
