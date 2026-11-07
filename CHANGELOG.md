@@ -97,6 +97,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`rigid_inertial` 0.4.0 carries a body's full inertia tensor** (F0-3, phase I1). A body's `inertia` is three principal
+  moments about its axes, as before, or the symmetric 3 x 3 tensor about its centre of mass in its frame, nine numbers
+  row-major (`kg_m2((Ixx, Ixy, Ixz, Ixy, Iyy, Iyz, Ixz, Iyz, Izz))`), checked symmetric and positive definite at build
+  (`value.not-positive`). A body's parts now give the full tensor, its products of inertia carried as they are, in every
+  profile: the refusal `parts.inertia-axes` (research) and exploratory's waiver that dropped the products with a pending
+  stamp (#225) are gone, with the finding class `simplification`, its two profile rules and the general
+  simplification channel that had no other producer. Research may still declare the diagonal with a reason, a modelling
+  choice; the build report names the parts' tensor it takes the place of. The node (`RigidInertialTensorNode`) is
+  0.3.0's midpoint step with the gyroscopic Jacobian split: 0.3.0's difference formula for the diagonal and the general
+  form for the products alone, so a body with no products moves as it did on 0.3.0, every history array identical in
+  float32 and float64 on the released programs (script A, its reproduction and record arms, A with the hull contact,
+  A0 and its dynamic rungs, the screw example and the frozen register's transverse arm), and its derivative is finite
+  through equal moments, where carrying the tensor as principal moments and axes is not. The derived graph's `inertia`
+  is now nine numbers for every rigid body, so every such experiment has a new derived hash; nothing it computes moved.
+  0.3.0 stays registered for saved folders (`RigidInertialMoments`): it takes the diagonal and refuses a tensor whose
+  products it did not take as none; 0.2.0 is its explicit variant, as before. The frozen register keeps 0.2.0. A small
+  shared 6 x 6 mass-matrix type, `mime.core.multibody.MassMatrix`, checked symmetric and positive definite where it is
+  built, is what the multibody library and a later added mass share; the rigid node keeps its own arithmetic.
+- **The saved form is version 9** (`mime.document/9`, `mime.lock/9`). No key is added: the resolved record now holds
+  the inertia a body's parts give as the full tensor, nine numbers, where version 8 and before held its diagonal, and
+  a declaration in place of it names the parts' nine numbers in its source. A declared inertia keeps the form it was
+  declared in. A folder of an earlier form loads as before: its document names `rigid_inertial` 0.3.0 (or 0.2.0),
+  which builds its node from the diagonal, and its record is compared in its own form. A folder that rested on
+  exploratory's waiver of a body's products is refused at load (`value.not-positive`), saying that 0.3.0 takes three
+  moments; build it under this MIME and save it again, and the products are carried. A reader of version 8 refuses a
+  folder of version 9 as `load.newer-form`, the document and the lock each once.
 - **A save runs its reference steps on the run's own graph, and after a run chunked by one step builds and compiles
   nothing for them (saved form 8).** `built.save` and the saved form `run_to` writes built a second graph and compiled
   the history scan for the reference outputs; now the reference steps run on the build's own graph, reset to its

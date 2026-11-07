@@ -1,0 +1,350 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "umr",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1.3043197461318855e-10,
+       4.631130043564001e-10,
+       4.570054968582633e-10
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "margin": 0.0,
+      "mass": 8.4911160207252e-05,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialMidpointNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "umr": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.3.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 4,
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:d84e7934dde14f1e3429790cdfb83b2b23425cc4386d2d0ebf639075798bd304",
+  "document": "sha256:0b1b4b14e73e709b5c2a2becdff8e5dcf9f02cff63517c7ba0b2804384d783d9",
+  "input": "sha256:c98b9c4ea2d0d03bd179d5f7f874c039088dc7da2ff17c5df0d7743f640a904f",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "rtol": 1e-06,
+  "sha256": "sha256:bc339240f4dc5064321e1390ec882b449182d6214539b335fb581f89e0d4a3c5",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "umr": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "umr"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.3.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "umr": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        1.5360993100886725e-06,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        5.454088758486272e-06,
+        5.860749414725356e-09
+       ],
+       [
+        0.0,
+        5.860749414725356e-09,
+        5.382160551602401e-06
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "screw",
+       "settings": {
+        "length": {
+         "unit": "m",
+         "value": 0.00747
+        },
+        "modulation": {
+         "unit": "1",
+         "value": 0.33
+        },
+        "radius": {
+         "unit": "m",
+         "value": 0.0015600000000000002
+        },
+        "starts": 2,
+        "wavenumber": {
+         "unit": "1",
+         "value": 2.33
+        }
+       },
+       "version": "0.3.0"
+      },
+      "volume": 6.022068099805107e-08
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "umr"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {},
+   "listed": [],
+   "pending": [
+    {
+     "codes": [
+      "inertia_products_dropped"
+     ],
+     "target": "umr.inertia"
+    }
+   ],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": [
+    {
+     "basis": {
+      "pending": true
+     },
+     "generated": true,
+     "reasons": [
+      "inertia_products_dropped"
+     ],
+     "target": "umr.inertia"
+    }
+   ]
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "screw",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "umr": "/World/umr"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "umr": "body"
+  },
+  "values": {
+   "umr.inertia": {
+    "details": [
+     "shell: screw 0.3.0 of 8.49112e-05 kg about its centroid (0, 0, 0) m, by the parallel-axis theorem",
+     "umr's inertia is the diagonal of the tensor its parts give, the products of inertia dropped (largest 4.98e-13 kg m^2 against 4.63e-10 kg m^2 on the diagonal); waived by the exploratory profile with its reason pending: the largest product is 0.11% of the largest moment; the principal axes lie at most 4.63 degrees from the body's; the principal moments differ from the diagonal's by at most 0.0087% of the largest",
+     "umr.parts.shell.density = 1410.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "from shell (screw 0.3.0)",
+    "source": "derived from its parts",
+    "unit": "kg m^2",
+    "value": [
+     1.3043197461318855e-10,
+     4.631130043564001e-10,
+     4.570054968582633e-10
+    ]
+   },
+   "umr.mass": {
+    "details": [
+     "shell: 1410 kg/m^3 x 6.02207e-08 m^3 = 8.49112e-05 kg",
+     "umr.parts.shell.density = 1410.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "from shell (screw 0.3.0)",
+    "source": "derived from its parts",
+    "unit": "kg",
+    "value": 8.4911160207252e-05
+   },
+   "umr.parts.shell.density": {
+    "details": [],
+    "read_by": [
+     "umr's part resolver"
+    ],
+    "reason": "FL-9 resin plus magnets, mean density",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1410.0
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/8",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "13e0f7f05828fb490a2ef3c9e71db5764efd9ea4da5d48be51fff4381a3998f9",
+  "writer": 2
+ }
+}

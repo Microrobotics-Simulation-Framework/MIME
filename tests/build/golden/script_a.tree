@@ -8,7 +8,7 @@ experiment script_a  (profile exploratory)
     water  fills tube.lumen
       still, no flow dynamics
   bodies
-    umr  rigid_inertial 0.3.0
+    umr  rigid_inertial 0.4.0
       part shell  screw 0.3.0
   apparatus
     field

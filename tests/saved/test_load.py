@@ -174,7 +174,7 @@ def test_mime_verify_exits_with_what_it_found(saved, capsys, monkeypatch):
     _edit_lock(saved, lambda lock: lock["environment"].update(jax="0.0.1"))
     monkeypatch.setattr(toy_nodes, "PHASE", (0.0, 0.25, -0.75))
     assert mime_main(["verify", str(saved)]) == 1
-    _edit(saved, DOCUMENT_FILE, lambda t: t.replace("schema: mime.document/8", "schema: mime.document/0"))
+    _edit(saved, DOCUMENT_FILE, lambda t: t.replace("schema: mime.document/9", "schema: mime.document/0"))
     assert mime_main(["verify", str(saved)]) == 2
     assert "load.document-shape" in capsys.readouterr().err
 
@@ -220,7 +220,7 @@ def test_a_document_saved_before_a_version_changed_is_refused_naming_the_entry(t
 
     script_a().save(tmp_path)
     document = (tmp_path / DOCUMENT_FILE).read_text()
-    versions = {"rigid_inertial": ("        ", "0.3.0", "0.1.0"), "drag": ("  ", "0.4.0", "0.2.0")}
+    versions = {"rigid_inertial": ("        ", "0.4.0", "0.1.0"), "drag": ("  ", "0.4.0", "0.2.0")}
     for name, (indent, now, before) in versions.items():
         assert f"name: {name}\n{indent}version: {now}" in document
         _edit(tmp_path, DOCUMENT_FILE, lambda t, name=name, indent=indent, now=now, before=before: t.replace(
@@ -232,6 +232,7 @@ def test_a_document_saved_before_a_version_changed_is_refused_naming_the_entry(t
     print(f"\n{refused.value}")
     assert {r.code for r in refused.value.refusals} == {"load.version"}
     messages = " | ".join(r.message for r in refused.value.refusals)
-    assert ("dynamics rigid_inertial 0.1.0, and the installed packages register rigid_inertial at 0.2.0, 0.3.0 only"
+    assert ("dynamics rigid_inertial 0.1.0, and the installed packages register rigid_inertial at 0.2.0, 0.3.0, 0.4.0 "
+            "only"
             in messages)
     assert "interaction drag 0.2.0, and the installed packages register drag at 0.3.0, 0.4.0 only" in messages

@@ -67,35 +67,14 @@ class PartMass:
     reach: float | None = None
 
 
-#: The finding code of a derived inertia whose products were dropped (finding_classes.txt).
-INERTIA_PRODUCTS_DROPPED = "inertia_products_dropped"
-
-
-@dataclass(frozen=True)
-class Simplification:
-    """What deriving a value left out, which a profile may waive: the finding's ``code``, what is left out in a few
-    words (``kind``, as the stamp names it), in plain words (``text``), how much in numbers (``measured``, and
-    ``size``, a few words for the stamp), and the ``problem``
-    a profile that does not waive it refuses the build with, whose action states the value to declare in its place."""
-
-    code: str
-    kind: str
-    text: str
-    measured: str
-    size: str
-    problem: Problem
-
-
 @dataclass(frozen=True)
 class Derived:
     """A value derived from a body's parts, in SI, with one line per input, or the problem that keeps it from being
-    derived. ``simplified`` is what the derivation left out of a value it gives all the same (an inertia's products,
-    dropped): a profile either waives it, with the value used, or refuses it as its ``problem`` says."""
+    derived."""
 
     value: Magnitude | None
     details: tuple[str, ...] = ()
     problems: tuple[Problem, ...] = field(default_factory=tuple[Problem, ...])
-    simplified: Simplification | None = None
 
 
 def _vec(values: Sequence[float]) -> str:
@@ -131,9 +110,10 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
     """Each of ``DERIVED`` for ``body`` from its ``parts``, given each part's ``density`` (kg/m^3, by part name)
     and each magnet part's ``magnetisation`` (A/m, in the body's frame); ``magnet_parts`` names the magnet parts, whose
     centroid is ``magnet_centre`` when there is one. A value whose inputs are missing is not derived, and says which
-    input is missing; the body's centre of mass off its origin is a problem of the values that depend on it. An
-    inertia whose principal axes are not the body frame's is its diagonal, with the products dropped as ``simplified``
-    says, for a profile to waive or refuse."""
+    input is missing; the body's centre of mass off its origin is a problem of the values that depend on it. The
+    inertia is the full tensor about the centre of mass in the body's frame, its nine numbers row-major (its symmetric
+    part: the parallel-axis sums are symmetric, and rounding is all this takes off), its products of inertia carried
+    as they are, in every profile."""
     bulk = _bulk(parts)
     found: dict[str, Derived] = {}
     volume = math.fsum(part.volume for part in bulk)
@@ -172,15 +152,10 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
             found["mass"] = Derived(mass, mass_lines)
             tensor = [[math.fsum(_shifted(part.inertia_per_mass, masses[part.name], part.centre)[i][j]
                                  for part in bulk) for j in range(3)] for i in range(3)]
-            diagonal = (tensor[0][0], tensor[1][1], tensor[2][2])
-            largest = max(abs(c) for c in diagonal)
-            across = max(abs(tensor[i][j]) for i in range(3) for j in range(3) if i != j)
             inertia_lines = tuple(f"{part.name}: {part.solid} of {masses[part.name]:.6g} kg about its centroid "
                                   f"{_vec(part.centre)} m, by the parallel-axis theorem" for part in bulk)
-            if across > 1e-12 * largest:
-                found["inertia"] = Derived(diagonal, inertia_lines, simplified=_products_dropped(body, tensor))
-            else:
-                found["inertia"] = Derived(diagonal, inertia_lines)
+            found["inertia"] = Derived(tuple(0.5 * (tensor[i][j] + tensor[j][i]) for i in range(3) for j in range(3)),
+                                       inertia_lines)
     found["extent"] = _extent(body, bulk)
     magnets = [part for part in parts if part.name in magnetisation]
     if not magnets:
@@ -194,65 +169,6 @@ def derive(body: str, parts: Sequence[PartMass], density: Mapping[str, float],
             f"direction (mu_0 = {VACUUM_PERMEABILITY!r} N A^-2), a rigid magnetisation" for part in magnets))
     found["magnet_centre"] = _magnet_centre(body, [part for part in parts if part.name in magnet_parts])
     return found
-
-
-#: The product of inertia, as a fraction of the largest diagonal moment, above which the refusal offers placing the
-#: parts symmetrically before dropping the products: a convention for the order of the advice, not a threshold of
-#: accuracy (the effect of dropping products on a run is not measured here).
-LARGE_PRODUCT = 0.01
-
-
-def _products_dropped(body: str, tensor: Sequence[Sequence[float]]) -> Simplification:
-    """The simplification of an inertia tensor whose principal axes are not the body frame's: its diagonal is the
-    body's ``inertia`` (the three moments about the body's axes), the products of inertia left out. It holds how large
-    they are (the largest as a share of the largest moment, the principal axes' angle from the body's, and the shift
-    of the principal moments from the diagonal's) and the refusal of a profile that does not waive it: the tensor the
-    parts give, in the body's frame with its units, its principal moments and axes, and the declaration that states
-    the diagonal with its products dropped, written out to paste. The action is ordered by the products' size:
-    declaring the diagonal first where they are small beside the moments, and placing the parts symmetrically first
-    (with how far the diagonal is from the tensor) where they are not."""
-    import numpy as np
-
-    held = np.array(tensor, dtype=np.float64)
-    diagonal = (float(held[0, 0]), float(held[1, 1]), float(held[2, 2]))
-    largest = max(abs(c) for c in diagonal)
-    across = float(max(abs(held[i, j]) for i in range(3) for j in range(3) if i != j))
-    moments, axes = np.linalg.eigh(held)
-    turn = float(np.degrees(max(np.arccos(min(1.0, float(np.abs(axes[:, k]).max()))) for k in range(3))))
-    shift = float(np.abs(moments - np.sort(np.array(diagonal))).max()) / largest
-    share = 100.0 * across / largest
-    rows = "\n".join("      [" + "  ".join(f"{c:+.6e}" for c in row) + " ]" for row in held)
-    principal = "\n".join(f"      {m:.6e} kg m^2 about {_vec(tuple(float(c) for c in axes[:, k]))}"
-                          for k, m in enumerate(moments))
-    reason = (f"the parts' inertia tensor about the body's axes, its products of inertia (the largest {across:.3g} kg "
-              f"m^2, {share:.2g}% of the largest moment) dropped: a modelling choice, not a "
-              f"measurement")
-    message = (f"body {body}'s parts give an inertia tensor whose principal axes are not the body frame's: a "
-               f"product of inertia of {across:.3g} kg m^2 against {largest:.3g} kg m^2 on the diagonal\n"
-               f"    the tensor about the body's centre of mass, in the body's frame (kg m^2):\n{rows}\n"
-               f"    its principal moments, with their axes in the body's frame:\n{principal}\n"
-               f"    its axes lie at most {turn:.3g} degrees from the body's (axes of moments that nearly agree turn "
-               f"easily), and its principal moments differ from the diagonal's by at most {100.0 * shift:.2g}% of "
-               f"the largest")
-    declaration = (f"exp.declare(\"{body}.inertia\", kg_m2(({diagonal[0]!r}, {diagonal[1]!r}, {diagonal[2]!r})), "
-                   f"reason=\"{reason}\")")
-    if across > LARGE_PRODUCT * largest:
-        action = (f"place the parts symmetrically about the body frame's axes, Part(..., at=...), since the products are "
-                  f"{share:.2g}% of the largest moment, above the {100.0 * LARGE_PRODUCT:.0f}% past "
-                  f"which dropping them is not offered first (the diagonal's moments lie {100.0 * shift:.2g}% of the "
-                  f"largest from the tensor's principal moments, and the tensor's axes {turn:.3g} degrees from the "
-                  f"body's); or, to use the diagonal all the same, declare the moments about the body's axes with the "
-                  f"products dropped, {declaration}")
-    else:
-        action = (f"declare the moments about the body's axes with the products dropped, {declaration}, or place the "
-                  f"parts symmetrically about the body frame's axes, Part(..., at=...)")
-    measured = (f"the largest product is {share:.2g}% of the largest moment; the principal axes lie at most "
-                f"{turn:.3g} degrees from the body's; the principal moments differ from the diagonal's by at most "
-                f"{100.0 * shift:.2g}% of the largest")
-    text = (f"{body}'s inertia is the diagonal of the tensor its parts give, the products of inertia dropped "
-            f"(largest {across:.3g} kg m^2 against {largest:.3g} kg m^2 on the diagonal)")
-    return Simplification(INERTIA_PRODUCTS_DROPPED, "products of inertia dropped", text, measured,
-                          f"{share:.2g}% of the largest moment", ("parts.inertia-axes", message, action))
 
 
 def _extent(body: str, bulk: Sequence[PartMass]) -> Derived:
@@ -300,5 +216,4 @@ def magnetisation(remanence: float, direction: Vector) -> Vector:
     return _scaled(direction, remanence / VACUUM_PERMEABILITY)
 
 
-__all__ = ["DERIVED", "INERTIA_PRODUCTS_DROPPED", "Derived", "Part", "PartMass", "Simplification", "derive",
-           "magnetisation"]
+__all__ = ["DERIVED", "Derived", "Part", "PartMass", "derive", "magnetisation"]

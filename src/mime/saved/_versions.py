@@ -60,7 +60,19 @@ OpenBLAS pool), which splits a routine's sums: a load under another count of eit
 of an earlier version names no program, its reference outputs being the history scan's, and records neither count, and
 a load compares its environment without them, as before; one of an earlier version that holds any of the keys is
 refused, never read as declaring it. The document holds
-no new key; its schema moves with the lock's."""
+no new key; its schema moves with the lock's.
+
+**Version 9** (``mime.document/9``, ``mime.lock/9``) adds no key. It changes what the resolved record holds for a
+body's ``inertia`` that its parts give: the full tensor about its centre of mass in the body's frame, nine numbers
+row-major, where an earlier form held its diagonal, three moments (the products of inertia dropped, and in exploratory
+stamped pending; ``rigid_inertial`` 0.4.0 carries them). A declared inertia keeps the form it was declared in, and a
+declaration in place of the parts' value names the parts' nine numbers in its source, where an earlier form named the
+three and said where the products were dropped. A load of an earlier form writes the rebuilt record back so: the
+parts' tensor as its diagonal, and such a source as the three numbers it named, with the words where any product
+was above what 0.3.0 took as none. The folder's document names ``rigid_inertial`` 0.3.0 or 0.2.0, kept registered,
+which builds its node from the diagonal as before; they refuse a tensor whose products they would have dropped, so a
+folder that rested on exploratory's waiver of them is refused at load, by the version's own words, and not
+reproduced. The document's and the lock's schemas move with the form."""
 
 from __future__ import annotations
 
@@ -72,21 +84,24 @@ from mime.build import Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 8
+CURRENT = 9
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
-                                       7: "mime.document/7", CURRENT: DOCUMENT_SCHEMA}
+                                       7: "mime.document/7", 8: "mime.document/8", CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
-                                   5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", CURRENT: LOCK_SCHEMA}
+                                   5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", 8: "mime.lock/8",
+                                   CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
-#: experiment an experiment was made from, and the version whose lock names the program the reference outputs were
-#: run by and records the CPUs the build could use.
+#: experiment an experiment was made from, the version whose lock names the program the reference outputs were
+#: run by and records the CPUs the build could use, and the version whose resolved record holds the full inertia
+#: tensor a body's parts give.
 TERMS_ADDED = 4
 DURATION_ADDED = 5
 RECORDS_ADDED = 6
 BASED_ON_ADDED = 7
 PROGRAM_ADDED = 8
+INERTIA_TENSOR_ADDED = 9
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
@@ -119,6 +134,16 @@ _PREVIOUS_RESOLVED_PROFILE: Mapping[str, object] = {"profile": PREVIOUS_PROFILE,
 OLD_RUNG, NEW_RUNG = "bem", "mrs"
 OLD_NODE, NEW_NODE = "BEMDragNode", "MRSDragNode"
 _DRAG = "drag"
+#: A body's inertia, the value version 9 resolves to the full tensor where its parts give it, and how the resolved
+#: record says it came from its parts (``mime.materials.DERIVED_FROM_PARTS``).
+_INERTIA = ".inertia"
+_FROM_PARTS = "derived from its parts"
+#: A declaration's source naming the inertia the parts would give in its place: its numbers, then its unit.
+_IN_PLACE_OF_PARTS = re.compile(r"(in place of the value its parts give, )\(([^()]*)\)( kg m\^2)$")
+#: The products of inertia 0.3.0's part resolver took as none, as a share of the largest moment
+#: (``mime.dynamics.body.PRODUCTS_TAKEN_AS_NONE``): above it, an earlier form's source said they were dropped.
+_PRODUCTS_TAKEN_AS_NONE = 1e-12
+_PRODUCTS_DROPPED = ", its products of inertia dropped"
 #: ``body umr's`` as version 3 writes a possessive in a value's source, and ``body 'umr''s`` as version 2 wrote it. Only
 #: a name that is an identifier is written back: ``repr`` quotes any other name differently.
 _PLAIN_POSSESSIVE = re.compile(r"\b(body|material) ([A-Za-z_][A-Za-z0-9_]*)'s\b")
@@ -322,9 +347,53 @@ def _value_in_form(record: Any) -> Any:
     return {**held, "source": _quoted_possessive(held.get("source"))}
 
 
+def _diagonal(numbers: Sequence[Any]) -> list[Any]:
+    return [numbers[0], numbers[4], numbers[8]]
+
+
+def _source_of_parts_in_form(source: str) -> str:
+    """A declared inertia's source as a form before version 9 wrote it: the parts' tensor it names, nine numbers as
+    the source prints them, written as their diagonal, with the words an earlier form added where a product was above
+    what 0.3.0 took as none (judged on the six digits the source prints, as near that line as they resolve). Any other
+    source is left as it is."""
+    found = _IN_PLACE_OF_PARTS.search(source)
+    numbers = found.group(2).split(", ") if found is not None else []
+    if found is None or len(numbers) != 9:
+        return source
+    try:
+        values = [float(text) for text in numbers]
+    except ValueError:
+        return source
+    largest = max(abs(values[0]), abs(values[4]), abs(values[8]))
+    across = max(abs(c) for i, c in enumerate(values) if i not in (0, 4, 8))
+    dropped = _PRODUCTS_DROPPED if across > _PRODUCTS_TAKEN_AS_NONE * largest else ""
+    return (f"{source[:found.start()]}{found.group(1)}({', '.join(_diagonal(numbers))}){found.group(3)}"
+            f"{dropped}")
+
+
+def _inertia_in_form(path: str, record: Any) -> Any:
+    """A value's record of the resolved record as a form before version 9 wrote it: a body's inertia its parts give
+    as its diagonal, and a declared one's source naming the parts' tensor as :func:`_source_of_parts_in_form` writes
+    it."""
+    if not path.endswith(_INERTIA) or not isinstance(record, dict):
+        return record
+    held = cast("dict[str, Any]", record)
+    value, source = held.get("value"), held.get("source")
+    if source == _FROM_PARTS and isinstance(value, list) and len(cast("list[Any]", value)) == 9:
+        return {**held, "value": _diagonal(cast("list[Any]", value))}
+    if isinstance(source, str):
+        return {**held, "source": _source_of_parts_in_form(source)}
+    return held
+
+
 def resolved_in_form(resolved: Mapping[str, Any], version: int) -> dict[str, Any]:
-    """A resolved record written back into the form of ``version``: version 3's is the current one."""
+    """A resolved record written back into the form of ``version``: before version 9, a body's inertia from its parts
+    as its diagonal; before version 3, the rung, the possessive and the profile as version 2 and 1 wrote them."""
     held = dict(resolved)
+    values = held.get("values")
+    if version < INERTIA_TENSOR_ADDED and isinstance(values, dict):
+        held["values"] = {path: _inertia_in_form(path, record)
+                          for path, record in cast("dict[str, Any]", values).items()}
     if version >= RUNG_RENAMED:
         return held
     entries = held.get("entries")
@@ -350,7 +419,8 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
     return held
 
 
-__all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS", "DURATION_ADDED", "DURATION_KEY", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
+__all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS",
+           "DURATION_ADDED", "DURATION_KEY", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
            "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
            "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RUNG_RENAMED", "TERMS_ADDED", "TERMS_KEYS",
            "USABLE_CPUS_KEY", "added_after", "based_on_held", "document_in_form", "duration_held", "newer_form_refusal",

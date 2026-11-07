@@ -96,7 +96,7 @@ def test_a_refusal_says_what_why_what_to_do_where_and_its_page():
 
 def test_a_quoted_name_with_a_possessive_reads_plain_and_a_quoted_name_alone_keeps_its_quotes():
     assert plain_possessive("body 'umr''s part 'shell''s solid") == "body umr's part shell's solid"
-    held = Refusal("parts.inertia-axes", RefusalClass.USER, "body 'umr''s parts", "declare 'umr''s inertia")
+    held = Refusal("parts.density", RefusalClass.USER, "body 'umr''s parts", "declare 'umr''s inertia")
     assert held.message == "body umr's parts" and held.action == "declare umr's inertia"
     assert plain_possessive("setting 'radius' needs units") == "setting 'radius' needs units"
 
