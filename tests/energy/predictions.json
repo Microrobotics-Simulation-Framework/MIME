@@ -79,5 +79,54 @@
       "translational_gift_in_a_held_body": "identity within one floor, 200 of 200 in every held cell (absorbed by the loss, as predicted)",
       "scheme_terms_halved_float64": "above 1000 floors on 200 of 200 in every arm, least 6.2e5 (free), 1.4e8 (centre), 4.4e8 (hull), 4.5e8 (hull looped)"
     }
+  },
+  "p1a_2": {
+    "written": "2026-11-07 (the time of the commit that holds it), before any gate case of P1a-2 ran: the default programs' bits, the ledger-on physics bits, the end-to-end books, the gradient, the plants' detection counts, the cost",
+    "seen_before": [
+      "development probes through the build's new wiring (not gate cases: no plant, no Hypothesis, one run): script A's reproduction arm with EnergyLedger, 0.25 s in float32: the identity's worst step 0.0915 of its floor, nothing unattributed, the balance 7.25e-13 J against its floor 5.16e-10 J, gravity's residual against its energy's change from the run's ends 4.4e-15 J",
+      "the energy case run once on every member of the four families at 50 draws, float32: every member passes (the magnetic laws with their reasons); the four planted laws (a weight a hundredth heavier, an indefinite resistance, a contact whose rule keeps 1.01 of the velocity it projects, a law with no class and no reason) each fail it, one run each, float32",
+      "the step identity case at 50 draws, float32, on rigid_inertial 0.2.0, 0.3.0 and 0.4.0: each passes"
+    ],
+    "counts_at": "every bit-for-bit claim at 6 usable CPUs (taskset 0-5), OpenBLAS 1 thread, XLA 6 intra-op threads, processes started the same way, against release/v0.3.0 at 25df876 recorded the same way; the tests at whatever CI's lanes hold",
+    "gate_1_default_program_unchanged": {
+      "case": "five programs without the ledger, every history array of the head against 25df876 by np.array_equal, float64 and float32: A (10 000 steps), A_repro (10 000), A0 (4000), A_hull (the reproduction arm with the contact 0.5.0, 10 000), SIT (the screw in its tube, the MRS drag, 30 steps)",
+      "predicted": "every array identical in all ten: without an observation that meters energy the build takes none of the new branch, the post-build checks only read, and no node's parameters, inputs or state change",
+      "controls": {
+        "repeat": "the base recorded twice: identical",
+        "one_ulp": "A_repro with its first moment one ulp up: arrays differ in both dtypes from the first steps"
+      },
+      "saved_form": "the reproduction arm saved with the ledger off from the base and from the head: every file byte-identical; CURRENT unchanged (no saved-form step)"
+    },
+    "gate_4_physics_with_the_ledger": {
+      "case": "A_repro, A0 and A_hull built with EnergyLedger through the build, every array the base records (the physics, the ledger's records apart) against the base's ledger-off history, np.array_equal, both dtypes",
+      "predicted": "identical: each receiver sums its per-law inputs in the order the graph summed the edges (each input's laws in the order of their ids) from a zero, and a + 0 is a in IEEE arithmetic; the ledger-on programs are new programs, so a difference here is reported, not a stop (the final brief: judged by the identity, not by bits)"
+    },
+    "gate_2_end_to_end": {
+      "case": "script A's reproduction arm and A with the hull contact, 5 s with EnergyLedger through the build, float64 and float32; A0, 2 s",
+      "floors": "the identity: 16 eps of each step's scale; the balance: 16 eps of the run's summed step scale; a potential's residual (its paired work plus its energy's change from the run's two ends with its own parameters): 16 eps of the run's summed scale plus the energy's magnitude at the two ends; unattributed: exactly zero",
+      "predicted": "identity worst at most 0.2 of its floor (P1a-1's hand wiring: 0.094 to 0.17); unattributed 0.0 exactly; the balance within 0.05 of its floor; gravity's residual within 0.01 of its floor (no couple on script A's body); no gift step, no indefinite step; the account's supplied (the dissipation side) within 2 % of the paired supply on A (P1a-1: the scheme's term 1.2 % of it) and further off on A0 (the scheme's term 26 % of the paired supply there)"
+    },
+    "gate_2_attribution_end_to_end": {
+      "plants": {
+        "hidden_edge": "an edge carrying 1e-3 and 1e-6 of the field's torque into the body's summed input, added to the built graph: the unattributed work non-zero, both dtypes, on every drawn start (FU1's starts: roll, spin, height), 50 a dtype and share",
+        "unattributed_by_the_wiring": "the build's wiring leaving one law's delivery in the summed input: refused by post-build.ledger-inputs on every build",
+        "swap": "the build's wiring swapping gravity's and the torque's own inputs on the body: refused by post-build.ledger-inputs on every build; with that check taken out, gravity's residual over 0.25 s some 1e3 times its floor and more (the torque's work, about 1e-6 J, against a floor near 5e-10 J in float32), on every drawn start"
+      }
+    },
+    "gate_3_gradient": {
+      "case": "a propulsive efficiency, the drag's axial resistance times the mean speed squared times the time over what was supplied (lost plus the change in what is stored), over 0.2 s of script A with EnergyLedger, its derivative in the field's amplitude by reverse mode through the compiled step, float64, against central differences",
+      "predicted": "agreement falling as h squared down to the differences' rounding: within 1e-6 of the derivative at h = 1e-4 of the amplitude (the reference: 9.8e-8 at 1e-4, 9.8e-10 at 1e-5)"
+    },
+    "gate_5_what_energy_cannot_see": {
+      "case": "script A with a drag scaled by 0.9, and with the drag's coupling blocks' sign flipped, both with EnergyLedger",
+      "predicted": "both pass every ledger check (identity, attribution, no gift, definiteness: the flip is a congruence by diag(1, -1)); the hydrodynamic family's oracle case fails each"
+    },
+    "family_cases": {
+      "energy_case": "every member of the magnetic, gravity, contact and hydrodynamic families passes (the magnetic laws by their stated reasons)",
+      "controls": "each fails the case on every run, and each draw is caught (200 draws a dtype, counted in a probe): gravity's weight a hundredth heavier (at least 50 floors in float32; P1a-1 measured 477 on the law alone); an indefinite part in script A's surrogate resistance (scaled least eigenvalue about -0.1, the floor 16 eps); a contact whose rule keeps 1.01 of the velocity it projects, the body placed on its surface moving outward (the rule's removal negative by 2 % of the kinetic energy of translation, about 1e5 floors in float32); a law with no class and no reason (refused whatever its draws)",
+      "step_identity": "rigid_inertial 0.2.0, 0.3.0 and 0.4.0 each pass; the control, an unbooked gift of 64 floors in the step's ended angular twist, read as 64 floors on every draw, both dtypes",
+      "registry_walk": "every dynamics and interaction of MIME's own declares a port kind or a class, or states why not; an entry with neither is caught by name; the lab fixture's nudge (no class, no reason) is logged under exploratory and refused under research (ledger.unmetered)"
+    },
+    "cost": "the ledger's overhead on script A's step through the build's wiring, compiled 10 000-step scan, best of five, interleaved, 6 CPUs: +40 to +80 % in float64 and +15 to +35 % in float32 (P1a-1's hand wiring: +57 % and +23 %), noisy on a shared machine; the default program pays nothing (gate 1)"
   }
 }
