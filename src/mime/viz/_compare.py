@@ -24,7 +24,7 @@ only ``/World``; this is the overlay on a root prim of its own (``mime.scene``).
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -50,8 +50,8 @@ def member_name(point: int) -> str:
     return f"m{point}"
 
 
-def _refused(code: str, message: str, action: str) -> ArgumentRefused:
-    return ArgumentRefused([Refusal(code, RefusalClass.USER, message, action)])
+def _refuse(code: str, category: RefusalClass, message: str, action: str) -> ArgumentRefused:
+    return ArgumentRefused([Refusal(code, category, message, action)])
 
 
 def _bound(record: StageRecord) -> list[Bound]:
@@ -89,32 +89,40 @@ def _stage_of(study: StudyResult, group: int) -> str:
     return own if group and study.folder is not None and (study.folder / own).is_file() else f"{BASE_DIR}/{STAGE_FILE}"
 
 
+def _ghost_path(name: str) -> Callable[[str], str]:
+    """Where one member's things sit: ``/World/<thing>/...`` of the stage is ``/Compare/<member>/<thing>/...``."""
+    def path_of(prim: str) -> str:
+        return f"/{COMPARE_ROOT}/{name}/" + prim.split("/", 2)[2]
+
+    return path_of
+
+
 def compare_layer(study: StudyResult, reference: int = 0, *, stage: str | None = None) -> Any:
     """The overlay as an anonymous layer, its sublayer the reference's stage (a path relative to where it is written)."""
     count = len(study)
     if not -count <= reference < count:
-        raise _refused("compare.reference", f"the reference is a member number 0 to {count - 1}, not {reference!r}",
+        raise _refuse("compare.reference", RefusalClass.USER, f"the reference is a member number 0 to {count - 1}, not {reference!r}",
                        "name a member of the study: result.write_compare(reference=0)")
     reference %= count
     records: list[StageRecord] = []
     for index in range(count):
         record = study.member(index).stage
         if record is None:
-            raise _refused("compare.stage", f"member {index} kept no stage samples, so there is nothing to ghost",
+            raise _refuse("compare.stage", RefusalClass.USER, f"member {index} kept no stage samples, so there is nothing to ghost",
                            "keep them in the sweep: Study(exp).sweep(..., stage_every=ms(10)), and run it again")
         records.append(record)
     first = records[reference]
     times = [np.asarray(r.steps, dtype=np.float64) * r.dt for r in records]
     if any(len(t) != len(times[reference]) or not np.allclose(t, times[reference], rtol=0, atol=1e-12) for t in times):
-        raise _refused("compare.stage", "the members' stage samples are not at the same simulated times (another duration, "
-                       "a run stopped early, or another stage_every)", "compare members run for the same duration")
+        raise _refuse("compare.stage", RefusalClass.USER, "the members' stage samples are not at the same simulated times (another duration, "
+                       "a run stopped early, or another stage_every)", "compare members run for the same duration: `Study(exp).sweep(..., duration=s(0.05))`")
     sample = float(times[reference][1] - times[reference][0]) if len(times[reference]) > 1 else 0.0
     if not sample > 0.0:
-        raise _refused("compare.stage", "the members kept fewer than two stage samples", "run longer than stage_every=")
+        raise _refuse("compare.stage", RefusalClass.USER, "the members kept fewer than two stage samples", "run longer than stage_every=")
     entries = _bound(first)
     if any([e.prim for e in _bound(r)] != [e.prim for e in entries] for r in records):
-        raise _refused("compare.scene", "the members bind different things to their stages",
-                       "compare members of the same scene")
+        raise _refuse("compare.scene", RefusalClass.USER, "the members bind different things to their stages",
+                       "compare members of the same scene: `result.write_compare(reference=0)`")
     layer = Sdf.Layer.CreateAnonymous(".usda")
     layer.subLayerPaths.append(stage or f"{BASE_DIR}/{STAGE_FILE}")
     layer.startTimeCode, layer.endTimeCode = 0.0, float(len(times[reference]) - 1)
@@ -155,7 +163,7 @@ def compare_layer(study: StudyResult, reference: int = 0, *, stage: str | None =
             ghost = Sdf.PrimSpec(member, thing, Sdf.SpecifierDef)
             ghost.referenceList.Prepend(Sdf.Reference("", Sdf.Path(f"/World/{thing}")))
         write_entries(layer, entries, {k: np.asarray(v, dtype=np.float64) for k, v in records[index].fields.items()},
-                      scale, scales, path_of=lambda prim, n=names[index]: f"/{COMPARE_ROOT}/{n}/" + prim.split("/", 2)[2])
+                      scale, scales, path_of=_ghost_path(names[index]))
     return layer
 
 
@@ -163,7 +171,7 @@ def write_compare(study: StudyResult, reference: int = 0) -> Path:
     """Write ``compare.usda`` into the study's folder (see the module). The folder is the study's; a result in memory has
     none (``compare.folder``)."""
     if study.folder is None:
-        raise _refused("compare.folder", "this study is in memory, and the overlay's references lie inside a study folder",
+        raise _refuse("compare.folder", RefusalClass.USER, "this study is in memory, and the overlay's references lie inside a study folder",
                        "run it into a folder, study.run_to(folder), and write the overlay from that result")
     group = study.groups[reference % len(study)]
     layer = compare_layer(study, reference, stage=_stage_of(study, group))

@@ -13,8 +13,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-import numpy as np
-
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._missing import missing_dependency
 from mime.results._plot import Panel, PlotDescription
@@ -46,7 +44,7 @@ class FigureOptions:
         if self.legend not in LEGENDS:
             raise ArgumentRefused([Refusal("plot.option", RefusalClass.USER, f"legend= is one of {', '.join(LEGENDS)}, not {self.legend!r}",
                                            "place the legend with one of them, or legend='off'")])
-        if len(self.size) != 2 or not all(isinstance(v, (int, float)) and v > 0 for v in self.size):
+        if len(self.size) != 2 or not all(v > 0 for v in self.size):
             raise ArgumentRefused([Refusal("plot.option", RefusalClass.USER, f"size= is (width, height) in inches, both positive, not {self.size!r}",
                                            "write size=(6.4, 4.8)")])
 
@@ -59,7 +57,7 @@ class FigureOptions:
         extra = sorted(set(held) - OPTION_KEYS)
         if extra:
             raise ArgumentRefused([Refusal("plot.option", RefusalClass.USER, f"a figure's options hold {', '.join(map(repr, extra))}, which this format does not "
-                                           f"(its keys: {', '.join(sorted(OPTION_KEYS))})", "edit the recipe to the keys it names")])
+                                           f"(its keys: {', '.join(sorted(OPTION_KEYS))})", "edit the recipe to the keys it names, or set them with `figure.with_options(legend=\"best\")`")])
         size = held.get("size", (6.4, 4.8))
         return cls(held.get("title"), held.get("x_label"), held.get("y_label"), str(held.get("legend", "best")),
                    (float(size[0]), float(size[1])), held.get("style"))
@@ -68,7 +66,7 @@ class FigureOptions:
 _BAND = {"std": "± 1 standard deviation", "bound": "± the stated bound"}
 
 
-def _import(module: str) -> Any:
+def import_optional(module: str) -> Any:
     import importlib
 
     try:
@@ -83,7 +81,7 @@ def _import(module: str) -> Any:
 def draw_matplotlib(description: PlotDescription, options: FigureOptions) -> MatplotlibFigure:
     """The description as a matplotlib figure: a panel under another, the intervals of a flag shaded over the x axis, a
     band shaded over the y axis."""
-    _import("matplotlib")
+    import_optional("matplotlib")
     from matplotlib import style as mpl_style
     from matplotlib.figure import Figure
 
@@ -92,7 +90,7 @@ def draw_matplotlib(description: PlotDescription, options: FigureOptions) -> Mat
         axes = figure.subplots(len(description.panels), 1, squeeze=False)[:, 0]
         for axis, panel in zip(axes, description.panels, strict=True):
             _panel(axis, panel, options)
-        figure.suptitle(options.title if options.title is not None else description.title)
+        cast(Any, figure).suptitle(options.title if options.title is not None else description.title)
     return figure
 
 
@@ -127,8 +125,8 @@ def _panel(axis: Any, panel: Panel, options: FigureOptions) -> None:
 def draw_plotly(description: PlotDescription, options: FigureOptions) -> PlotlyFigure:
     """The description as a plotly figure, with the same content: a row for each panel, the flags as shaded rectangles
     over the x axis, the bands over the y axis."""
-    go = _import("plotly.graph_objects")
-    subplots = _import("plotly.subplots")
+    go = import_optional("plotly.graph_objects")
+    subplots = import_optional("plotly.subplots")
     rows = len(description.panels)
     figure = subplots.make_subplots(rows=rows, cols=1, shared_xaxes=False, vertical_spacing=0.12 if rows > 1 else 0.0)
     uid = 0
@@ -176,7 +174,7 @@ def draw_plotly(description: PlotDescription, options: FigureOptions) -> PlotlyF
 
 def plotly_json(figure: PlotlyFigure) -> str:
     """The figure's own JSON (plotly's data and layout, safe to share and to edit), the same bytes for the same figure."""
-    return str(figure.to_json(pretty=True, remove_uids=False)) + "\n"
+    return str(cast(Any, figure).to_json(pretty=True, remove_uids=False)) + "\n"
 
 
-__all__ = ["LEGENDS", "OPTION_KEYS", "FigureOptions", "draw_matplotlib", "draw_plotly", "plotly_json"]
+__all__ = ["LEGENDS", "OPTION_KEYS", "FigureOptions", "draw_matplotlib", "draw_plotly", "import_optional", "plotly_json"]

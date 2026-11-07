@@ -4,7 +4,7 @@ after another on it where a controller is called between chunks, each member's r
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -127,7 +127,7 @@ def _warn_aliasing(plan: StudyPlan, group: Group, recorded: int | None, stage: i
 
     built = group.built
     assert built is not None
-    rates = largest([plan.points[i].plans.turning for i in group.members if plan.points[i].plans is not None])
+    rates = largest([cast(Any, plan.points[i].plans).turning for i in group.members if plan.points[i].plans is not None])
     for spacing, what in ((recorded, "the study's recorded series"), (stage, "the study's stage samples")):
         if spacing is not None:
             warn_aliasing(rates, spacing, built.plans.dt, what)

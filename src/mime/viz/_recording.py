@@ -15,7 +15,7 @@ it holds (0.8.0), which OpenUSD 24.08 reads, and exported fresh, with no bytes o
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -94,14 +94,14 @@ def _turn(vector: np.ndarray) -> Any:
 
 
 def write_entries(layer: Any, entries: Any, held: Mapping[tuple[str, str], np.ndarray], scale: float,
-                  scales: Mapping[str, float], path_of: Any = lambda prim: prim) -> None:
+                  scales: Mapping[str, float], path_of: Callable[[str], str] | None = None) -> None:
     """Time samples of the bound ``entries`` into ``layer``, from ``held`` (each (node, field)'s values over the samples,
     the first axis the sample's time code), on the prims ``path_of`` maps their stage paths to (themselves, for a run's
     own recording; ``/Compare/<member>/...`` for one member's ghost)."""
     for entry in entries:
         values = held[(entry.node, entry.field)]
         rows = values if entry.index is None else values[:, entry.index]
-        prim = _prim_spec(layer, path_of(entry.prim))
+        prim = _prim_spec(layer, entry.prim if path_of is None else path_of(entry.prim))
         if entry.kind == "pose":
             translate = _attribute(prim, "xformOp:translate", Sdf.ValueTypeNames.Double3)
             orient = _attribute(prim, "xformOp:orient", Sdf.ValueTypeNames.Quatd)

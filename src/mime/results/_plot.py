@@ -137,8 +137,8 @@ class PlotDescription:
                             "bands": [b.label for b in p.bands]} for p in self.panels]}
 
 
-def refuse(code: str, message: str, action: str) -> ArgumentRefused:
-    return ArgumentRefused([Refusal(code, RefusalClass.USER, message, action)])
+def refuse(code: str, category: RefusalClass, message: str, action: str) -> ArgumentRefused:
+    return ArgumentRefused([Refusal(code, category, message, action)])
 
 
 def label(name: str, unit: str) -> str:
@@ -208,11 +208,11 @@ def describe_run(data: ResultData, outputs: Sequence[str] = (), *, title: str | 
         by_name = {series.path: series for series in held}
         absent = [name for name in outputs if name not in by_name]
         if absent:
-            raise refuse("plot.output", f"the result holds no series {', '.join(absent)}; it holds "
+            raise refuse("plot.output", RefusalClass.USER, f"the result holds no series {', '.join(absent)}; it holds "
                          f"{', '.join(by_name) or 'none'}", "plot an output the run recorded: record=[...] names it")
         held = [by_name[name] for name in outputs]
     if not held:
-        raise refuse("plot.nothing", "the result holds no series, so there is no curve to draw (an output at the "
+        raise refuse("plot.nothing", RefusalClass.USER, "the result holds no series, so there is no curve to draw (an output at the "
                      "end is one number)", "record one: run(..., record=[swim.speed])")
     spans, notes = run_spans(data)
     limits = list(data.limits_data())
@@ -243,11 +243,11 @@ def _member_text(study: StudyData, member: int) -> str:
 def _output_of(path: str) -> None:
     observation, _, name = path.rpartition(".")
     if not observation or not name:
-        raise refuse("plot.output", f"{path!r} is not an output path (<observation>.<output>)",
+        raise refuse("plot.output", RefusalClass.USER, f"{path!r} is not an output path (<observation>.<output>)",
                      "name an output as result[swim].mean_speed has it: 'swim_speed:umr.mean_speed'")
 
 
-def _kind_of(study: StudyData, path: str) -> str:
+def kind_of(study: StudyData, path: str) -> str:
     """``per_step`` or ``at_end``: how some member declares the output."""
     _output_of(path)
     for index in range(len(study)):
@@ -255,7 +255,7 @@ def _kind_of(study: StudyData, path: str) -> str:
             if found == path:
                 return kind
     every = sorted({p for i in range(len(study)) for p, _, _ in study.member_data(i).declared()})
-    raise refuse("plot.output", f"no member of the study observes {path}", f"name an output of the study: {', '.join(every)}")
+    raise refuse("plot.output", RefusalClass.USER, f"no member of the study observes {path}", f"name an output of the study, `result.plot('{every[0]}')`: {', '.join(every)}")
 
 
 def _reading(study: StudyData, path: str) -> tuple[NDArray[np.float64], str]:
@@ -266,13 +266,13 @@ def _reading(study: StudyData, path: str) -> tuple[NDArray[np.float64], str]:
         found = next((r for r in study.member_data(index).readings_data() if r.path == path), None)
         if found is None:
             if any(s.path == path for s in study.member_data(index).series_data()):
-                raise refuse("plot.shape", f"{path} is a series, and this plot draws one number a member",
+                raise refuse("plot.shape", RefusalClass.USER, f"{path} is a series, and this plot draws one number a member",
                              "plot an output at the end, or overlay the series: kind='overlay'")
-            raise refuse("plot.output", f"member {index} does not observe {path}", "plot an output every member observes")
+            raise refuse("plot.output", RefusalClass.USER, f"member {index} does not observe {path}", "plot an output every member observes: `result.plot('swim_speed:umr.mean_speed')`")
         value = np.asarray(found.value, dtype=np.float64)
         if value.size != 1:
-            raise refuse("plot.shape", f"{path} is a vector for each member, and this plot draws one number a member",
-                         "plot a scalar output")
+            raise refuse("plot.shape", RefusalClass.USER, f"{path} is a vector for each member, and this plot draws one number a member",
+                         "plot a scalar output: `result.plot('swim_speed:umr.mean_speed')`")
         values.append(float(value.ravel()[0]) if found.observed else float("nan"))
         unit = found.unit
     return np.asarray(values), unit
@@ -283,20 +283,20 @@ def _coordinate(study: StudyData, against: str | None) -> tuple[str, NDArray[np.
 
     def varies(path: str) -> bool:
         held = study.coordinates[path]
-        return len({repr(v) for v in (held.value.tolist() if isinstance(held, Quantity) else held)}) > 1
+        return len({repr(v) for v in (np.asarray(held.value).tolist() if isinstance(held, Quantity) else held)}) > 1
 
     paths = [p for p in study.axes if varies(p)] or list(study.axes)
     if against is None:
         if len(paths) != 1:
-            raise refuse("plot.coordinate", f"the study varies {', '.join(paths)}; name the one to draw against",
+            raise refuse("plot.coordinate", RefusalClass.USER, f"the study varies {', '.join(paths)}; name the one to draw against",
                          f"plot(..., against={paths[0]!r})")
         against = paths[0]
     held = study.coordinates.get(against)
     if held is None:
-        raise refuse("plot.coordinate", f"{against!r} is no axis of the study (its axes: {', '.join(study.axes)})",
+        raise refuse("plot.coordinate", RefusalClass.USER, f"{against!r} is no axis of the study (its axes: {', '.join(study.axes)})",
                      "name an axis: plot(..., against='field.commands.frequency')")
     if not isinstance(held, Quantity) or np.asarray(held.value).ndim != 1:
-        raise refuse("plot.coordinate", f"{against} holds names or vectors, which a curve has no axis for",
+        raise refuse("plot.coordinate", RefusalClass.USER, f"{against} holds names or vectors, which a curve has no axis for",
                      "draw against an axis of numbers with a unit, or overlay the members: kind='overlay'")
     return against, np.asarray(held.value, dtype=np.float64), unit_symbol(held.dimension)
 
@@ -333,7 +333,7 @@ def _curve(study: StudyData, path: str, against: str | None, title: str | None) 
 
     def text(p: str, i: int) -> str:
         held = study.coordinates[p]
-        return repr(held.value[i]) if isinstance(held, Quantity) else repr(held[i])
+        return repr(np.asarray(held.value)[i]) if isinstance(held, Quantity) else repr(held[i])
 
     keys = [tuple(text(p, i) for p in others) for i in range(len(study))]
     flags = member_flags(study)
@@ -369,7 +369,7 @@ def _overlay(study: StudyData, path: str, members: Sequence[int] | None, title: 
         data = study.member_data(index)
         series = next((s for s in data.series_data() if s.path == path), None)
         if series is None:
-            raise refuse("plot.output", f"member {index} did not record {path}", "name it in the sweep's record=")
+            raise refuse("plot.output", RefusalClass.USER, f"member {index} did not record {path}", "name it in the sweep's record=")
         unit = series.unit
         if series.uncertainty is not None:
             kinds.add(series.uncertainty.kind)
@@ -390,7 +390,7 @@ def _distribution(study: StudyData, path: str, title: str | None) -> PlotDescrip
     values, unit = _reading(study, path)
     finite = values[np.isfinite(values)]
     if not len(finite):
-        raise refuse("plot.nothing", f"{path} has no finite value in any member", "check the members' windows")
+        raise refuse("plot.nothing", RefusalClass.USER, f"{path} has no finite value in any member", "check the members' windows: `observe(..., after=s(0.0))`")
     edges = np.histogram_bin_edges(finite, bins="auto")
     counts, _ = np.histogram(finite, bins=edges)
     centres = (edges[:-1] + edges[1:]) / 2.0
@@ -407,16 +407,16 @@ def describe_study(study: StudyData, outputs: Sequence[str], *, kind: str | None
     members drawn from a distribution). The default is by the output: a series is overlaid, an output at the end is a
     curve."""
     if len(outputs) != 1:
-        raise refuse("plot.output", f"a study plot draws one output, and {len(outputs)} were named",
+        raise refuse("plot.output", RefusalClass.USER, f"a study plot draws one output, and {len(outputs)} were named",
                      "plot one: result.plot('swim_speed:umr.mean_speed')")
     path = outputs[0]
     if not len(study):
-        raise refuse("plot.nothing", "the study has no members to draw", "run it first: study.run_to(folder)")
-    output_kind = _kind_of(study, path)
+        raise refuse("plot.nothing", RefusalClass.USER, "the study has no members to draw", "run it first: study.run_to(folder)")
+    output_kind = kind_of(study, path)
     if kind is None:
         kind = "overlay" if output_kind == "per_step" else "curve"
     if kind not in KINDS or kind == "series":
-        raise refuse("plot.kind", f"a study plot is a 'curve', an 'overlay' or a 'distribution', not {kind!r}",
+        raise refuse("plot.kind", RefusalClass.USER, f"a study plot is a 'curve', an 'overlay' or a 'distribution', not {kind!r}",
                      "plot(..., kind='curve')")
     if kind == "overlay":
         return _overlay(study, path, members, title)
@@ -426,4 +426,4 @@ def describe_study(study: StudyData, outputs: Sequence[str], *, kind: str | None
 
 
 __all__ = ["BAND_TEXT", "ESTIMATES", "KINDS", "PLOT_FORMAT", "STUDY_ESTIMATES", "Band", "Panel", "PlotDescription", "Span",
-           "Trace", "describe_run", "describe_study", "label", "member_flags", "run_spans", "runs_of"]
+           "Trace", "describe_run", "describe_study", "kind_of", "label", "member_flags", "run_spans", "runs_of"]

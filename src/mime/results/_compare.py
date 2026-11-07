@@ -13,8 +13,14 @@ is reported and not judged.
 model's error from above only against a measurement whose own error is known, and a comparison here names none. The
 description of its figure says so.
 
-A comparison is accepted across two studies whose members have the same declared outputs (path, kind and unit), since a
-study's two arms may be two experiments; where both kept stage samples, the same bound things."""
+A comparison is accepted across two studies, since a study's two arms may be two experiments: the members declare every
+output the reference does (path, kind and unit), and those are what is compared. The reference may be any result that
+reads as the protocol (:mod:`mime.results._data`), a measurement included.
+
+**The time base is the reference's.** A member sampled at other times is put on the reference's: its own sample where it
+has one at the reference's time, else linearly interpolated, and the result and the figure say which. A reference sampled
+as sparsely as half the period of a drive either run declares (or the caller names) cannot resolve it, and the comparison
+is refused (``compare.time-base``): the aliasing rule's condition."""
 
 from __future__ import annotations
 
@@ -184,7 +190,7 @@ def _aligned(member: SeriesData, reference: SeriesData, window: tuple[float, flo
     if vm.shape[1] != vr.shape[1]:
         raise ArgumentRefused([Refusal("compare.shape", RefusalClass.USER,
                                        f"{member.path} has {vm.shape[1]} components in the member and {vr.shape[1]} in the reference",
-                                       "compare outputs of the same shape")])
+                                       "compare outputs of the same shape: `result.compare(reference)`")])
     keep = (tr >= tm.min() * (1 - 1e-12)) & (tr <= tm.max() * (1 + 1e-12))
     if window is not None:
         keep &= (tr > window[0]) & (tr <= window[1] * (1 + 1e-9))
@@ -240,11 +246,11 @@ def check_time_base(reference: ResultData, member: ResultData, extra: Sequence[t
         if hertz > 0.0 and gap >= 0.5 / hertz * (1.0 - 1e-9):
             raise ArgumentRefused([Refusal(
                 "compare.time-base", RefusalClass.USER,
-                f"the reference's {series.path} is sampled every {gap:g} s, and {fastest[1]}: {hertz:g} Hz, a period of "
-                f"{1.0 / hertz:g} s that is no more than twice that spacing. The comparison is made on the reference's "
+                f"the reference's {series.path} is sampled every {gap:g} s, and {fastest[1]} ({hertz:g} Hz), whose period "
+                f"{1.0 / hertz:g} s is no more than twice that spacing. The comparison is made on the reference's "
                 f"time base, which cannot resolve that frequency",
-                f"compare against a reference sampled at least twice as often ({0.5 / hertz:g} s apart or less), or compare an "
-                f"output that does not move at the drive's frequency (a reading at the end)",
+                f"compare against a reference sampled at least twice as often ({0.5 / hertz:g} s apart or less), `result.compare(reference)`, "
+                f"or compare an output that does not move at the drive's frequency (a reading at the end)",
                 why="a coarse reference shows a fast motion as a slower one")])
 
 
@@ -294,11 +300,11 @@ def compare(study: StudyData, reference: int | ResultData | RunResult = 0, *,
             if reading.path in ref_readings:
                 rows.append(_reading_miss(reading, ref_readings[reading.path], index, inside, tolerance))
         notes += [f"member {index}: {p} is a per-step output not recorded in both, so it is not compared"
-                  for p in sorted({o[0] for o in member.declared() if o[1] == "per_step"} - mine_series.keys() | set())
-                  if p in ref_series]
+                  for p in sorted(path for path, kind, _ in member.declared()
+                                  if kind == "per_step" and (path not in mine_series or path not in ref_series))]
     if not rows:
         raise ArgumentRefused([Refusal("compare.nothing", RefusalClass.USER,
-                                       "the members and the reference compare on no output", "give the study more than one member")])
+                                       "the members and the reference compare on no output", "give the study more than one member: `Study(exp).sweep(grid({...: [a, b]}), duration=...)`")])
     rule = (f"between members of one study, {TOLERANCE_EPS['float32']:g} (float32) or {TOLERANCE_EPS['float64']:g} (float64) "
             f"machine epsilons of the output's largest magnitude over the reference's run (the study's rule), a trajectory "
             f"held to it only while no flag is raised; a tolerance stated by the caller otherwise, and none means not judged"
@@ -307,15 +313,17 @@ def compare(study: StudyData, reference: int | ResultData | RunResult = 0, *,
 
 
 def _same_declared_outputs(member: ResultData, ref: ResultData, name: str) -> None:
-    """The member and the reference declare the same outputs (path, kind, unit): the condition for comparing two arms."""
+    """Every output the reference declares is declared by the member, with the same kind and unit: the condition for
+    comparing two arms (outputs only the member declares are not compared)."""
     mine, theirs = member.declared(), ref.declared()
-    if mine != theirs:
-        differ = sorted(f"{p} ({k}, {u})" for p, k, u in mine ^ theirs)
+    differ = sorted(f"{p} ({k}, {u})" for p, k, u in theirs - mine)
+    if differ or not theirs:
         raise ArgumentRefused([Refusal(
             "compare.outputs", RefusalClass.USER,
-            f"the member and {name} do not declare the same outputs: {', '.join(differ[:4])}{' ...' if len(differ) > 4 else ''}",
-            "compare results that declare the same things; two arms of one question may be two experiments, but "
-            "they declare the same outputs")])
+            f"the member does not declare what {name} declares, with the same kind and unit: "
+            f"{', '.join(differ[:4]) or 'it declares nothing'}{' ...' if len(differ) > 4 else ''}",
+            "compare results that declare the same things, `result.compare(reference)`; two arms of one question may be "
+            "two experiments, but the member declares every output the reference does")])
 
 
 def _verdict(miss: float, bound: float | None, judged: bool, why: str) -> tuple[str, str]:
@@ -332,7 +340,7 @@ def _series_miss(mine: SeriesData, theirs: SeriesData, index: int, window: tuple
     if not len(times):
         raise ArgumentRefused([Refusal("compare.window", RefusalClass.USER,
                                        f"member {index}'s {mine.path} and the reference share no time in the window",
-                                       "widen the window, or compare results that overlap in time")])
+                                       "widen the window, `window=(s(0.0), s(0.05))`, or compare results that overlap in time")])
     miss = values - ref_values
     largest = np.abs(miss).max(axis=1)
     at = int(np.argmax(largest))

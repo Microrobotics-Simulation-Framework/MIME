@@ -84,6 +84,17 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   saved-form step. A study run on a ramp is not written to a folder yet: the folder records no protocol, so it would
   read back as run from rest (`study.protocol-folder`). See
   [docs/results.md](../../../docs/results.md).
+- **Plots, recipes, comparisons** (`_plot.py`, `_draw.py`, `_figure.py`, `_compare.py`, over the result protocol of `_data.py`): the
+  one backend-neutral description (traces, flags as intervals, validity limits and uncertainty as bands, a bounds-against-
+  estimates note) that `plot()` (matplotlib) and `plot_interactive()` (plotly) draw, both behind the `plot` extra; a figure
+  as a recipe in `figures/` (what it shows, the options, the data files by sha256, plotly's own JSON beside it), redrawn
+  from the folder and refused by name where a data file changed; pages that follow the other views' names (`display`,
+  `web`, `offline=`, `cdn=`); `StudyResult.compare` (misses on the reference's time base, a tolerance that is a rule or a
+  stated quantity and never a fixed absolute, refused where the reference cannot resolve a declared drive); and a result
+  built by hand (`Measured`) that does all of it as a simulated one does. A study run with `stage_every=` keeps each
+  member's bound poses under `m<point>/stage/` (`_stage.py`), and `write_compare` writes `compare.usda` from them
+  (`mime.viz._compare`: one prim `/Compare/<member>` each, with visibility and metadata). See
+  [docs/results.md](../../../docs/results.md).
 - **`RunResult.as_experiment(name)`** on a member of a study (`MemberOf` says which): the bridge to an experiment of its
   own, in `mime.study._bridge`.
 - **An overridden run** (`run(..., override=...)`) carries its `overrides` (each one's path, value with its unit, SI

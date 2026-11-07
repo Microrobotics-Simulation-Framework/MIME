@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, cast, override
 from mime._lineage import Origin
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
-from mime.results._draw import FigureOptions, draw_matplotlib, draw_plotly, plotly_json
+from mime.results._draw import FigureOptions, draw_matplotlib, draw_plotly, import_optional, plotly_json
 from mime.results._study_folder import FIGURES_DIR as FIGURES
 from mime.results._plot import KINDS, PlotDescription, describe_run, describe_study, refuse
 
@@ -78,8 +78,8 @@ class FigureSpec:
 
     @classmethod
     def from_dict(cls, held: Mapping[str, Any]) -> FigureSpec:
-        if set(held) != SPEC_KEYS or held["kind"] not in KINDS:
-            raise refuse("plot.recipe", f"a recipe's spec holds exactly {', '.join(sorted(SPEC_KEYS))} and a kind of "
+        if frozenset(held) != SPEC_KEYS or held["kind"] not in KINDS:
+            raise refuse("plot.recipe", RefusalClass.USER, f"a recipe's spec holds exactly {', '.join(sorted(SPEC_KEYS))} and a kind of "
                          f"{', '.join(KINDS)}", "write the recipe with result.figure(...).write_recipe()")
         members = held["members"]
         return cls(str(held["kind"]), tuple(map(str, held["outputs"])), held["against"],
@@ -100,7 +100,7 @@ def describe(result: Target, spec: FigureSpec, title: str | None = None) -> Plot
         return describe_study(cast("StudyData", result), spec.outputs, kind=spec.kind, against=spec.against,
                               members=spec.members, title=title)
     if spec.kind != "series":
-        raise refuse("plot.kind", f"a run's plot is a 'series', not {spec.kind!r}", "plot(...) with no kind=")
+        raise refuse("plot.kind", RefusalClass.USER, f"a run's plot is a 'series', not {spec.kind!r}", "plot(...) with no kind=")
     data = RunData(result) if isinstance(result, RunResult) else cast("ResultData", result)
     return describe_run(data, spec.outputs, title=title)
 
@@ -117,7 +117,7 @@ def reads_of(result: Target) -> tuple[Path, list[str]]:
     """The folder a result was read from and the data files a figure of it reads (relative to the folder)."""
     folder = getattr(result, "folder", None)
     if folder is None:
-        raise refuse("plot.recipe-folder", "this result is in memory, and a recipe names the files it reads in a folder",
+        raise refuse("plot.recipe-folder", RefusalClass.USER, "this result is in memory, and a recipe names the files it reads in a folder",
                      "write it to a folder first (a run: run_to; a study: study.run_to(folder)), and read it from there")
     if not is_study(result):
         return folder, ["outputs.npz"]
@@ -175,7 +175,7 @@ class FigureRecipe:
         it (``<name>.plotly.json``)."""
         held = name or self.name
         if not held or "/" in held or held.startswith("."):
-            raise refuse("plot.recipe", f"a figure's name is a file name without folders, not {held!r}",
+            raise refuse("plot.recipe", RefusalClass.USER, f"a figure's name is a file name without folders, not {held!r}",
                          "name it: result.figure(..., name='step_out')")
         folder, _ = reads_of(self.result)
         document = self.document(held)
@@ -197,15 +197,15 @@ class FigureRecipe:
         try:
             document = cast(object, json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError) as error:
-            raise refuse("plot.recipe", f"{path} is not a recipe that can be read ({error})",
+            raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not a recipe that can be read ({error})",
                          "write one with result.figure(...).write_recipe()") from error
         if not isinstance(document, dict) or cast(dict[str, Any], document).get("format") != RECIPE_FORMAT \
                 or cast(dict[str, Any], document).get("version") != RECIPE_VERSION:
-            raise refuse("plot.recipe", f"{path} is not a {RECIPE_FORMAT!r} version {RECIPE_VERSION} recipe: this MIME "
-                         f"reads that one", "read it with the MIME that wrote it, or write the figure again")
+            raise refuse("plot.recipe", RefusalClass.USER, f"{path} is not a {RECIPE_FORMAT!r} version {RECIPE_VERSION} recipe: this MIME "
+                         f"reads that one", "read it with the MIME that wrote it, or write the figure again with `result.figure(...).write_recipe()`")
         held = cast(dict[str, Any], document)
-        if set(held) != RECIPE_KEYS:
-            raise refuse("plot.recipe", f"{path} holds {sorted(set(held) ^ RECIPE_KEYS)}, which a recipe's closed keys do not",
+        if frozenset(held) != RECIPE_KEYS:
+            raise refuse("plot.recipe", RefusalClass.USER, f"{path} holds {sorted(set(held) ^ RECIPE_KEYS)}, which a recipe's closed keys do not",
                          "write the recipe with result.figure(...).write_recipe()")
         for read in cast(list[dict[str, str]], held["reads"]):
             data = root / read["path"]
@@ -314,11 +314,9 @@ def library_tag(cdn: bool) -> str:
     version this MIME pins, or jsDelivr's copy of that file held to its sha384."""
     if cdn:
         return f'<script src="{PLOTLY_CDN}" integrity="{PLOTLY_JS_SRI}" crossorigin="anonymous"></script>'
-    from mime.results._draw import _import
-
-    data = _import("plotly.offline").get_plotlyjs().encode("utf-8")
+    data = import_optional("plotly.offline").get_plotlyjs().encode("utf-8")
     if hashlib.sha256(data).hexdigest() != PLOTLY_JS_SHA256:
-        raise refuse("plot.library", f"the installed plotly ships a plotly.js that is not the {PLOTLY_JS_VERSION} this MIME "
+        raise refuse("plot.library", RefusalClass.USER, f"the installed plotly ships a plotly.js that is not the {PLOTLY_JS_VERSION} this MIME "
                      f"pins, so a page cannot inline it held to a hash",
                      "write the page with cdn=True (jsDelivr's copy, held to its hash), or install the plotly the lock pins")
     return f'<script src="data:text/javascript;base64,{base64.b64encode(data).decode("ascii")}"></script>'
@@ -359,14 +357,14 @@ def figure_of(result: Target, outputs: Sequence[object], *, kind: str | None, ag
     paths = tuple(str(getattr(each, "path", each)) for each in outputs)
     if not is_study(result):
         if kind not in (None, "series") or against is not None or members is not None:
-            raise refuse("plot.kind", "a run's plot is its recorded series against time: kind=, against= and members= "
+            raise refuse("plot.kind", RefusalClass.USER, "a run's plot is its recorded series against time: kind=, against= and members= "
                          "are for a study's", "plot(...) with the outputs alone")
         spec = FigureSpec("series", paths)
     else:
-        from mime.results._plot import _kind_of  # the default kind is by the output
+        from mime.results._plot import kind_of  # the default kind is by the output
 
         if len(paths) == 1 and kind is None:
-            kind = "overlay" if _kind_of(cast("StudyData", result), paths[0]) == "per_step" else "curve"
+            kind = "overlay" if kind_of(cast("StudyData", result), paths[0]) == "per_step" else "curve"
         spec = FigureSpec(kind or "curve", paths, against, None if members is None else tuple(members))
     return FigureRecipe(result, spec, FigureOptions.from_dict({**FigureOptions().to_dict(), **options}), name)
 

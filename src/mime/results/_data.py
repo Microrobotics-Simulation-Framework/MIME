@@ -170,21 +170,23 @@ class RunData:
         return found
 
     def flags_data(self) -> Sequence[FlagData]:
-        run, found = self.run, []
+        run = self.run
+        found: list[FlagData] = []
         for flag in run.layout.flags:
             track = run.tracks.get(flag.path)
             if track is None:
                 continue
             if track.raised is None:
                 note = ""
-                if track.whole is not None and track.whole.count:
-                    note = (f"{flag.path} was raised at {track.whole.count} steps, first at {track.whole.first} and last at "
-                            f"{track.whole.last}, and this run kept no per-step track, so no interval is drawn")
+                if track.whole is not None and track.whole.raised:
+                    note = (f"{flag.path} was raised at {track.whole.raised} steps, first at {track.whole.first_step} and "
+                            f"last at {track.whole.last_step}, and this run kept no per-step track, so no interval is drawn")
                 found.append(FlagData(flag.path, flag.meaning, np.zeros(0, np.int64), np.zeros(0), None, note,
                                       track.was_raised))
                 continue
             steps = run.start_step + 1 + np.arange(len(track.raised), dtype=np.int64)
-            found.append(FlagData(flag.path, flag.meaning, steps, steps * run.dt, np.asarray(track.raised, dtype=bool),
+            found.append(FlagData(flag.path, flag.meaning, steps, np.asarray(steps * run.dt, dtype=np.float64),
+                                  np.asarray(track.raised, dtype=bool),
                                   "", track.was_raised))
         return found
 
@@ -228,13 +230,13 @@ class Measured:
         self._time = np.asarray(time.value, dtype=np.float64)
         if self._time.ndim != 1 or (len(self._time) > 1 and not np.all(np.diff(self._time) > 0)):
             raise ArgumentRefused([Refusal("plot.time-base", RefusalClass.USER, "the time base is a strictly increasing 1-D array",
-                                           "give the samples' times in increasing order")])
+                                           "give the samples' times in increasing order: `time=s(np.arange(n) / 30.0)`")])
         self._series = dict(series)
         for key, quantity in self._series.items():
             if np.shape(quantity.value)[:1] != self._time.shape:
                 raise ArgumentRefused([Refusal("plot.time-base", RefusalClass.USER,
                                                f"{key} has {np.shape(quantity.value)[:1]} samples and the time base {self._time.shape}",
-                                               "give each series one value for each time")])
+                                               "give each series one value for each time: `{\"x\": m_per_s(values)}`")])
         self._readings = dict(readings or {})
         self._uncertainty = dict(uncertainty or {})
         self._flags = {k: np.asarray(v, dtype=bool) for k, v in (flags or {}).items()}
@@ -252,7 +254,7 @@ class Measured:
         return self._drives
 
     def series_data(self) -> Sequence[SeriesData]:
-        found = []
+        found: list[SeriesData] = []
         for key, q in self._series.items():
             held = self._uncertainty.get(key)
             found.append(SeriesData(key, unit_symbol(q.dimension), self._time, np.asarray(q.value, dtype=np.float64),
