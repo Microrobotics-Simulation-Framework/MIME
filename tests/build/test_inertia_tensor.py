@@ -218,7 +218,12 @@ def test_a_body_whose_parts_give_products_runs_under_the_hull_contact_and_the_pr
     than a hundred times the run's own resolution, which is the pose's divergence under a one-ulp change of the start's
     angular velocity (measured: 7.5e-9, against 3.0e-5 for the diagonal, 4 000 times it, in float32 on CPU). (2) The
     same body without the contact ends 0.046 from the held one (six million times the resolution), so the contact is in
-    play. A resolution that measures zero would make the first control prove nothing, and is refused."""
+    play. A resolution that measures zero would make the first control prove nothing, and is refused.
+
+    This holds that the products reach the run, not by which path: the products enter both the world inertia and the
+    gyroscopic term's Jacobian, so a body inertia reduced to its diagonal while the Jacobian keeps the products passes
+    here (measured). The mass matrix's use of them is held by ``tests/oracles/test_full_inertia_tensor.py``, whose
+    principal-frame oracle catches that reduction on every run."""
     built = screw_held_in_tube().build()
     tensor = node_inertia(built).reshape(3, 3)
     assert type(built.graph.get_node("umr")) is RigidInertialTensorNode
