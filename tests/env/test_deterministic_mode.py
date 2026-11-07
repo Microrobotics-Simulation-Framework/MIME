@@ -1,8 +1,9 @@
 """XLA's deterministic GPU mode, opt in: ``--deterministic`` on ``mime run`` and ``mime verify``, and
 ``mime.env.deterministic_mode()`` in Python. XLA reads ``XLA_FLAGS`` once, when JAX's backend starts, so the mode is set
 before that or not at all: once the backend has started, the Python route is refused by its code
-(``env.deterministic-late``), naming the routes that work. On the CPU it changes nothing, and says so in a line; the
-lock then records the flags as they were.
+(``env.deterministic-late``), naming the routes that work, unless an earlier call set the flags itself, which a second
+call answers as it did. On the CPU it changes nothing, and says so in a line; the lock then records the flags as they
+were.
 
 No GPU runs here: what the mode does on one is measured elsewhere (``docs/running_on_modal.md``). The finding these rest on,
 that the flags are read when the backend starts and not when JAX is imported, is measured here on the CPU with a flag
@@ -61,7 +62,10 @@ def test_xla_reads_its_flags_once_when_the_backend_starts_and_importing_mime_sta
 
 def test_after_the_backend_started_the_python_route_is_refused_naming_the_routes_that_work(
         monkeypatch: pytest.MonkeyPatch):
+    from mime.env import _host
+
     monkeypatch.delenv("XLA_FLAGS", raising=False)
+    monkeypatch.setattr(_host, "_ANSWERED", {})
     jax.devices()
     with pytest.raises(BuildRefused) as refused:
         deterministic_mode()
@@ -92,6 +96,25 @@ def test_in_a_fresh_cpu_process_it_changes_nothing_and_the_flags_are_as_they_wer
     done = fresh(ROUTE, env={"XLA_FLAGS": flags} if flags is not None else None)
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout.splitlines()[-1]) == [False, flags, flags or ""]
+
+
+TWICE = """
+import os, json
+import jax
+import mime.env, mime.saved
+first = mime.env.deterministic_mode()
+started = jax.devices()
+second = mime.env.deterministic_mode()
+print(json.dumps([first, second, os.environ.get("XLA_FLAGS"), mime.saved.environment()["xla_flags"]]))
+"""
+
+
+def test_in_a_fresh_cpu_process_a_second_call_answers_as_the_first_and_is_not_refused():
+    """The first call starts the backend and takes the flag off again; the second, with the backend started and the flag
+    not set, is not a late call: the first set the flags itself. The control is the late first call above, refused."""
+    done = fresh(TWICE)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout.splitlines()[-1]) == [False, False, None, ""]
 
 
 @pytest.fixture(scope="module")

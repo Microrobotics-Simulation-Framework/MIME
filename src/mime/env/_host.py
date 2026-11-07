@@ -182,6 +182,12 @@ CPU_DETERMINISTIC = ("--deterministic changes nothing on the CPU: XLA's CPU prog
                      "lock records, with it or without it")
 
 
+#: What :func:`deterministic_mode` answered where it set the flag itself, so a second call answers the same: on the CPU
+#: the first takes the flag off again after the backend starts, and a second would otherwise read a started backend
+#: without it as a late call.
+_ANSWERED: dict[str, bool] = {}
+
+
 def deterministic_mode() -> bool:
     """Turn XLA's deterministic GPU mode on for this process, as ``--deterministic`` does for ``mime run`` and ``mime
     verify``, and say whether it is on. XLA reads ``XLA_FLAGS`` once, when JAX's backend starts (its first
@@ -190,12 +196,15 @@ def deterministic_mode() -> bool:
     mode is on, and the lock of what this process saves records it. On the CPU it changes nothing (:data:`CPU_DETERMINISTIC`):
     the flag is taken off again, so the lock records the flags as they were, and it returns ``False``. Once the backend
     has started, the flag would reach the lock and not XLA, so it is refused (``env.deterministic-late``) unless the
-    flags already turn the mode on."""
+    flags already turn the mode on, or an earlier call set them itself: a second call answers as the first did, on the
+    CPU too."""
     from jax._src import xla_bridge
 
     flags = os.environ.get(XLA_FLAGS_VARIABLE)
     if deterministic(flags or ""):
         return jax.default_backend() == "gpu"
+    if "on" in _ANSWERED:
+        return _ANSWERED["on"]
     if xla_bridge.backends_are_initialized():
         raise BuildRefused([Refusal(
             "env.deterministic-late", RefusalClass.USER,
@@ -206,11 +215,13 @@ def deterministic_mode() -> bool:
             f"`mime run <folder> --deterministic`")])
     os.environ[XLA_FLAGS_VARIABLE] = with_deterministic(flags or "", True)
     if jax.default_backend() == "gpu":
+        _ANSWERED["on"] = True
         return True
     if flags is None:
         del os.environ[XLA_FLAGS_VARIABLE]
     else:
         os.environ[XLA_FLAGS_VARIABLE] = flags
+    _ANSWERED["on"] = False
     return False
 
 
