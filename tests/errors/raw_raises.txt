@@ -9,7 +9,7 @@ assets/_adapters.py::register_adapter ValueError 1  # construction: a script reg
 assets/_derivation.py::DerivationRecord.from_json ValueError 3  # invariant: a shipped derivation record's own form, which its test reads
 assets/_derivation.py::derivation_of KeyError 1  # a derivation record looked up by an asset's name, from the asset tooling; outside a script's public call
 assets/_fetch.py::_download_held_to ValueError 1  # a location under the test prefix, which doi.org does not resolve: raised inside the download, which every caller turns into a coded refusal or the next location (asset.unreachable)
-build/_construct.py::construct ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+build/_construct.py::assemble ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_derived.py::plain TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_lags.py::latency_in_steps ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 build/_refusals.py::Refusal.__post_init__ UncataloguedRefusal 1  # invariant: a refusal constructed with a code its table lacks; the refusal table's test holds every code
@@ -99,6 +99,7 @@ registry/_registry.py::register_setting_group ValueError 1  # registration: an e
 registry/_registry.py::setting_group_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 results/_result.py::ObservationOutputs.__getattr__ AttributeError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 results/_result.py::_Fields.__getitem__ KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+results/_study.py::StudyOutputs.__getattr__ AttributeError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 saved/_record.py::SavedRecord.hashes ValueError 1  # invariant: save refuses an unsavable record (save.unsavable) before it hashes one
 saved/_schema.py::shape_problems TypeError 2  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_caps.py::_rings ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
@@ -164,7 +165,10 @@ testing/_nodes.py::entry_key ValueError 1  # tooling: MIME's documentation, its 
 testing/_nodes.py::jit_consistent_off_switches ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_shape_suite.py::capability KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 things/_handles.py::ApparatusHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+things/_handles.py::LawHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+things/_handles.py::SettingPath.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 things/_handles.py::StructureHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+things/_handles.py::_Names.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 units.py::Dimension.of ValueError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__hash__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call
 units.py::Quantity.__mul__ TypeError 1  # construction: raised where the script makes the value or the entry, outside every public call

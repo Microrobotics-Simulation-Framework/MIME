@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import difflib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import fields, is_dataclass
 from typing import override
 
 from mime.things._things import ThingKind
@@ -137,21 +138,134 @@ class MediumHandle(Handle):
     thing_kind = ThingKind.MEDIUM
 
 
-class BodyHandle(Handle):
+class CommandPath(TypedPath):
+    """A command of an apparatus, its value as a study or an override sets it: ``field.commands.frequency``,
+    ``(apparatus, "commands", command)``."""
+
     __slots__ = ()
+
+    @property
+    def owner(self) -> str:
+        return self.parts[0]
+
+    @property
+    def command(self) -> str:
+        return self.parts[-1]
+
+
+class InitialPath(TypedPath):
+    """A value of a body's initial state: ``umr.initial.position``, ``(body, "initial", name)``."""
+
+    __slots__ = ()
+
+    @property
+    def owner(self) -> str:
+        return self.parts[0]
+
+    @property
+    def name(self) -> str:
+        return self.parts[-1]
+
+
+class SettingPath(TypedPath):
+    """A setting of an attached law, by the id ``attach`` returned: ``drag.spacing`` is ``("drag:umr", "spacing")``,
+    and a setting of a group of settings ``drag.lubrication.epsilon``. It saves as its dotted string,
+    ``drag:umr.lubrication.epsilon``. ``value`` is what the law declares there, which a group's settings are read
+    from."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, *parts: str, value: object = None) -> None:
+        super().__init__(*parts)
+        self.value = value
+
+    @property
+    def owner(self) -> str:
+        return self.parts[0]
+
+    @property
+    def setting(self) -> str:
+        return ".".join(self.parts[1:])
+
+    def __getattr__(self, name: str) -> SettingPath:
+        if name.startswith("_") or name == "value":
+            raise AttributeError(name)
+        held = object.__getattribute__(self, "value")
+        names = _settings_of(held)
+        if name in names:
+            return SettingPath(*self.parts, name, value=getattr(held, name))
+        raise AttributeError(f"the setting {self} has no setting {name!r}. {did_you_mean(name, names)}")
+
+
+def _settings_of(value: object) -> tuple[str, ...]:
+    """The settings of an entry or a group of settings: its dataclass fields. A quantity is a setting's value, whose
+    own fields are no settings."""
+    from mime.units import Quantity
+
+    if isinstance(value, Quantity) or not is_dataclass(value) or isinstance(value, type):
+        return ()
+    return tuple(held.name for held in fields(value))
+
+
+class _Names:
+    """A handle's namespace of typed paths (``field.commands``, ``umr.initial``): each name it holds is an attribute,
+    and any other is an ``AttributeError`` on the line that names it."""
+
+    __slots__ = ("_make", "_names", "_what")
+
+    def __init__(self, names: Iterable[str], make: Callable[[str], TypedPath], what: str) -> None:
+        self._names, self._make, self._what = tuple(names), make, what
+
+    def __getattr__(self, name: str) -> TypedPath:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if name in self._names:
+            return self._make(name)
+        raise AttributeError(f"{self._what} has no {name!r}. {did_you_mean(name, self._names)}")
+
+    @override
+    def __dir__(self) -> list[str]:
+        return list(self._names)
+
+
+class BodyHandle(Handle):
+    """Its initial state's values are typed paths, as a study and an override set them: ``umr.initial.position``."""
+
+    __slots__ = ("_initial",)
     thing_kind = ThingKind.BODY
+
+    def __init__(self, name: str, initial: Iterable[str] = ()) -> None:
+        super().__init__(name)
+        self._initial = tuple(initial)
+
+    @property
+    def initial(self) -> _Names:
+        def path(key: str) -> TypedPath:
+            return InitialPath(self.name, "initial", key)
+
+        return _Names(self._initial, path, f"body {self.name!r}'s initial state")
 
 
 class ApparatusHandle(Handle):
     """Its fields are typed paths: ``source.push`` is a :class:`FieldPath`, and an unknown field is an
-    ``AttributeError`` on the line that names it."""
+    ``AttributeError`` on the line that names it. Its commands are typed paths in a namespace of their own,
+    ``field.commands.frequency`` (:class:`CommandPath`), so that no field's name collides with them: ``commands`` is
+    reserved, and no field takes that name."""
 
-    __slots__ = ("_fields",)
+    __slots__ = ("_fields", "_commands")
     thing_kind = ThingKind.APPARATUS
 
-    def __init__(self, name: str, fields: Iterable[str]) -> None:
+    def __init__(self, name: str, fields: Iterable[str], commands: Iterable[str] = ()) -> None:
         super().__init__(name)
         self._fields = tuple(fields)
+        self._commands = tuple(commands)
+
+    @property
+    def commands(self) -> _Names:
+        def path(command: str) -> TypedPath:
+            return CommandPath(self.name, "commands", command)
+
+        return _Names(self._commands, path, f"apparatus {self.name!r}'s commands")
 
     def __getattr__(self, field: str) -> FieldPath:
         if field.startswith("_"):
@@ -159,3 +273,25 @@ class ApparatusHandle(Handle):
         if field in self._fields:
             return FieldPath(self.name, field)
         raise AttributeError(f"apparatus {self.name!r} has no field {field!r}. {did_you_mean(field, self._fields)}")
+
+
+class LawHandle(str):
+    """What ``attach`` returns: the law's id, a ``str`` (``"drag:umr"``) as it always was, carrying the law's
+    settings as typed paths (``drag.spacing``, ``drag.lubrication.epsilon``: :class:`SettingPath`), which a study and
+    an override set."""
+
+    law: object
+
+    def __new__(cls, id: str, law: object = None) -> LawHandle:
+        held = super().__new__(cls, id)
+        held.law = law
+        return held
+
+    def __getattr__(self, name: str) -> SettingPath:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        law = object.__getattribute__(self, "law")
+        names = _settings_of(law)
+        if name in names:
+            return SettingPath(str(self), name, value=getattr(law, name))
+        raise AttributeError(f"the law {str(self)!r} has no setting {name!r}. {did_you_mean(name, names)}")
