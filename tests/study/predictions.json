@@ -22,7 +22,7 @@
     "amendment_1": {
       "when": "2026-11-07, after the first float64 run of gate 1 and before any other gate case; committed before the gate ran again",
       "what_failed": "the committed rule judged a final-state field on its final value's own magnitude. Member 5 (30 Hz, 9.0e-5 kg) missed by 1015 eps on magnetic.torque:umr.wrench; the other seven members' worst fields were 7 to 117 eps (float64).",
-      "diagnosis": "measured (probe/diag5.py in the work folder): the reference's final wrench is 9.4e-9 N m against 2.0e-6 at its largest over the run, so the last step sits near a zero of the turning torque; the member's difference, 2.1e-21, is 4.7 eps of the run's scale. The rule compared against the result's scale where terms cancel, which CLAUDE.md's property-test section names as a cause of false failures, and the draft brief defines the scale as 'its largest magnitude over the run'.",
+      "diagnosis": "measured (a diagnosis run, the reference kept every step): the reference's final wrench is 9.4e-9 N m against 2.0e-6 at its largest over the run, so the last step sits near a zero of the turning torque; the member's difference, 2.1e-21, is 4.7 eps of the run's scale. The rule compared against the result's scale where terms cancel, which CLAUDE.md's property-test section names as a cause of false failures, and the draft brief defines the scale as 'its largest magnitude over the run'.",
       "amended_rule": "per field, the scale is the reference field's largest magnitude over the run (its history, every step), for the final state and the series alike; the tolerances (float32 150, float64 300 eps) and the expected misses are unchanged"
     }
   },
