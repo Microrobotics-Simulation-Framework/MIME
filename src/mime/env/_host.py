@@ -177,6 +177,43 @@ def with_deterministic(flags: str, on: bool) -> str:
     return " ".join([*kept, f"{DETERMINISTIC_FLAG}={'true' if on else 'false'}"])
 
 
+#: The line ``--deterministic`` (and :func:`deterministic_mode`) says on the CPU, where it changes nothing.
+CPU_DETERMINISTIC = ("--deterministic changes nothing on the CPU: XLA's CPU programs repeat bit for bit at the counts the "
+                     "lock records, with it or without it")
+
+
+def deterministic_mode() -> bool:
+    """Turn XLA's deterministic GPU mode on for this process, as ``--deterministic`` does for ``mime run`` and ``mime
+    verify``, and say whether it is on. XLA reads ``XLA_FLAGS`` once, when JAX's backend starts (its first
+    ``jax.devices()`` or computation), and never again [measured: a flag set after the backend started took no effect,
+    one set after ``import jax`` and ``import mime`` did], so this sets the flag and starts the backend. On a GPU the
+    mode is on, and the lock of what this process saves records it. On the CPU it changes nothing (:data:`CPU_DETERMINISTIC`):
+    the flag is taken off again, so the lock records the flags as they were, and it returns ``False``. Once the backend
+    has started, the flag would reach the lock and not XLA, so it is refused (``env.deterministic-late``) unless the
+    flags already turn the mode on."""
+    from jax._src import xla_bridge
+
+    flags = os.environ.get(XLA_FLAGS_VARIABLE)
+    if deterministic(flags or ""):
+        return jax.default_backend() == "gpu"
+    if xla_bridge.backends_are_initialized():
+        raise BuildRefused([Refusal(
+            "env.deterministic-late", RefusalClass.USER,
+            "XLA's deterministic GPU mode was asked for after JAX's backend started, and XLA reads its flags only when "
+            "the backend starts: the mode would be recorded and not used",
+            f"call mime.env.deterministic_mode() before anything computes (before the first build or jax call), set "
+            f"{XLA_FLAGS_VARIABLE}={DETERMINISTIC_FLAG}=true before Python starts, or run from the command line, "
+            f"`mime run <folder> --deterministic`")])
+    os.environ[XLA_FLAGS_VARIABLE] = with_deterministic(flags or "", True)
+    if jax.default_backend() == "gpu":
+        return True
+    if flags is None:
+        del os.environ[XLA_FLAGS_VARIABLE]
+    else:
+        os.environ[XLA_FLAGS_VARIABLE] = flags
+    return False
+
+
 def matmul_precision() -> str | None:
     return cast(Any, jax.config).jax_default_matmul_precision
 
@@ -212,6 +249,7 @@ def runner_info(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     return runner_record(environ, variable=RUNNER_INFO_VARIABLE)
 
 
-__all__ = ["DETERMINISTIC_FLAG", "RUNNER_INFO_VARIABLE", "RUNNER_VARIABLE", "XLA_FLAGS_VARIABLE", "CpuRecord",
-           "GpuRecord", "blas_threads", "cpu_record", "deterministic", "gpu_record", "matmul_precision", "runner_info",
+__all__ = ["CPU_DETERMINISTIC", "DETERMINISTIC_FLAG", "RUNNER_INFO_VARIABLE", "RUNNER_VARIABLE", "XLA_FLAGS_VARIABLE",
+           "CpuRecord", "GpuRecord", "blas_threads", "cpu_record", "deterministic", "deterministic_mode", "gpu_record",
+           "matmul_precision", "runner_info",
            "runner_record", "usable_cpus", "with_deterministic", "xla_flags"]

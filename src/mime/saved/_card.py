@@ -34,7 +34,8 @@ from mime._terminal import plain
 from mime.assets import size_text
 from mime.build import BuildRefused, BuildReport
 from mime.saved._based_on import based_on_words
-from mime.saved._folder import named_files, read_folder
+from mime.saved._folder import named_files, nondeterministic_gpu, read_folder
+from mime.saved._scales import SCALED_FROM
 from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc, PublicationRecord
 from mime.saved._terms import FileTerms, FolderTerms, folder_terms
 from mime.saved._versions import DOCUMENT_SCHEMAS, TERMS_ADDED
@@ -363,12 +364,22 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     reference = lock["reference"]
     environment = lock["environment"]
     precision = "float64" if environment["x64"] else "float32"
+    written = (f"(Python {plain(environment['python'])} on {plain(environment['platform'])}, "
+               f"{plain(environment['device'])}, {precision}, JAX {plain(environment['jax'])})")
+    if judged.version >= SCALED_FROM:
+        within = (f"within rtol {reference['rtol']!r} of each field's source scale (its own largest magnitude; a "
+                  f"twist's by its body's surface points' speed, a ratio's by one, held points' on the rows whose "
+                  f"force acts), with no absolute part")
+    else:
+        within = f"within rtol {reference['rtol']!r} and atol {reference['atol']!r}, element by element"
+    if nondeterministic_gpu(environment):
+        claim = (f"within tolerance everywhere, the GPU it was made on {written} included, and never bit for bit: its "
+                 f"reference was made with XLA's deterministic mode off. That tolerance is {within}")
+    else:
+        claim = f"bit for bit in the environment the lock was written in {written}, and {within} in another"
     lines += [f"`mime verify <folder>` reruns the first {reference['steps']} steps of every field and checks them "
-              f"against the reference outputs the lock pins: bit for bit in the environment the lock was written in "
-              f"(Python {plain(environment['python'])} on {plain(environment['platform'])}, "
-              f"{plain(environment['device'])}, {precision}, JAX {plain(environment['jax'])}), and within rtol "
-              f"{reference['rtol']!r} and atol {reference['atol']!r} in another. This card states what it would "
-              f"check; it ran no check.", "",
+              f"against the reference outputs the lock pins: {claim}. This card states what it would check; it ran "
+              f"no check.", "",
               "## Validity lines", ""]
     validity = [f"- validity of {plain(owner)} (declared, not yet checked): {plain(line)}"
                 for owner, held in sorted(report.validity.items()) for line in held]

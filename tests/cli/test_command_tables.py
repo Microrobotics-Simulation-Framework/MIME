@@ -188,11 +188,11 @@ def verify_in_process(saved, monkeypatch, *, planted: bool = False, other_enviro
 
     real = experiment_module.verify_history
 
-    def moved(form, history):
+    def moved(form, history, scales=None):
         history = {node: dict(fields) for node, fields in history.items()}
         history["probe"]["x"] = np.asarray(history["probe"]["x"]) + 1e-6
         history["probe"]["v"] = np.asarray(history["probe"]["v"]) * 1.5
-        return real(form, history)
+        return real(form, history, scales)
 
     with monkeypatch.context() as patch:
         if planted:
@@ -249,8 +249,9 @@ def test_verify_with_a_field_moved_names_the_numbers_that_moved_and_the_toleranc
 def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal_or_bit_for_bit(saved, monkeypatch):
     """Both arms of the words: a field within the tolerance is not equal, and a table that said 'equal' (or 'bit for bit',
     or the tolerance's two numbers the wrong way round, or the environment's sentence the wrong way round) is found
-    here. The first run is the control: the same environment says 'equal, bit for bit'."""
-    tolerance = "within rtol 1e-06, atol 1e-09"
+    here. The first run is the control: the same environment says 'equal, bit for bit'. The folder is of the current
+    form, float64, so its tolerance is 2e-14 of each field's source scale (``mime.saved._scales``)."""
+    tolerance = "within rtol 2e-14 of each field's source scale"
     text, code = verify_in_process(saved, monkeypatch, other_environment=True)
     assert code == 0, text
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
@@ -261,8 +262,11 @@ def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal
     text, code = verify_in_process(saved, monkeypatch, planted=True, other_environment=True)
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     assert code == 1
-    assert cells["probe.v"] == f"moved: max |difference| 2.472e-01, first at step 0; held to {tolerance}"
-    assert cells["probe.x"] == f"moved: max |difference| 1.000e-06, first at step 0; held to {tolerance}"
+    # the cell runs past the column and folds onto the row below: its first line is read here
+    assert cells["probe.v"].startswith("moved: largest difference 5.000e-01 of its source scale, its own largest "
+                                       "magnitude, 4.944e-01, first at step 0; held to")
+    assert cells["probe.x"].startswith("moved: largest difference ") and "first at step 0; held to" in cells["probe.x"]
+    assert " ".join(text.split()).count(f"held to {tolerance}") == 3, "the held-to row and the two moved fields"
 
 
 @needs_pty
@@ -320,9 +324,9 @@ def test_a_verification_lists_every_field_it_compared_among_them_one_the_rerun_l
     from mime.saved import verify_history
 
     monkeypatch.setattr("mime.saved._folder.environment_differences", lambda lock: [])
-    lock = {"reference": {"steps": 3, "rtol": 1e-6, "atol": 1e-9}}
+    lock = {"reference": {"steps": 3, "rtol": 1e-6, "atol": 1e-9}, "environment": {"device": "cpu"}}
     reference = {"history/n/kept": np.zeros(3), "history/n/lost": np.zeros(3), "history/n/reshaped": np.zeros(3)}
-    form = SimpleNamespace(lock=lock, reference=reference)
+    form = SimpleNamespace(lock=lock, reference=reference, version=9)
     history = {"n": {"kept": np.zeros(3), "reshaped": np.zeros((3, 2)), "extra": np.zeros(3)}}
     report = verify_history(form, history)
     assert report.compared == ("n.extra", "n.kept", "n.lost", "n.reshaped")

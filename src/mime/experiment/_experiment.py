@@ -97,7 +97,9 @@ from mime.saved import (
     verify_history,
     write_folder,
 )
-from mime.saved._folder import LoadRefused, stage_writers
+from mime.saved._folder import SAVED_DETERMINISTIC_OFF, LoadRefused, NondeterministicReference, nondeterministic_gpu, \
+    stage_writers
+from mime.saved._scales import SourceScale, source_scales
 from mime.saved._schema import ReferenceProgram
 from mime.scene import STAGE_WRITER, STAGE_WRITERS, Scene, stage_text
 from mime.things import (
@@ -1687,13 +1689,22 @@ class BuiltExperiment:
         except OSError as error:
             raise _not_writable(path, error) from error
         self._saved = read_folder(path)
+        if nondeterministic_gpu(cast(Mapping[str, object], lock["environment"])):
+            warn_at_script(SAVED_DETERMINISTIC_OFF, NondeterministicReference)
         return lock
+
+    def source_scales(self, history: Mapping[str, Mapping[str, np.ndarray]]) -> dict[str, SourceScale]:
+        """Each field of ``history``'s source scale, by its label (``node.field``), from its node's typed state and
+        its body's hull (``mime.saved._scales``): what ``verify`` judges a field on where it claims no bits."""
+        nodes = {name: self._graph.get_node(name) for name in history if name in self._graph.node_names}
+        return source_scales(nodes, {name: tuple(fields) for name, fields in history.items()}, self._plans.hulls)
 
     @public
     def verify(self) -> VerifyReport:
         """Rerun the reference outputs' steps from the initial state, on a graph built afresh, by the program the lock
-        names, and compare: bit for bit in the environment the lock was written in, within the lock's tolerance in
-        another."""
+        names, and compare: bit for bit in the environment the lock was written in, unless its reference was made on a
+        GPU with XLA's deterministic mode off, and otherwise within the lock's tolerance, each field on its source
+        scale from the tenth form (:meth:`source_scales`)."""
         if self._saved is None:
             raise ArgumentRefused([Refusal(
                 "verify.nothing-saved", RefusalClass.USER,
@@ -1702,4 +1713,5 @@ class BuiltExperiment:
                 "built.save(folder)")])
         reference = self._saved.lock["reference"]
         graph, _, _ = construct(self._plans, self._law)
-        return verify_history(self._saved, self._history_on(graph, reference["steps"], reference.get("program")))
+        history = self._history_on(graph, reference["steps"], reference.get("program"))
+        return verify_history(self._saved, history, self.source_scales(history))

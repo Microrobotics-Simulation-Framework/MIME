@@ -1,0 +1,37 @@
+{
+  "written": "2026-11-07T15:40+01:00, before any gate case of U17 ran (tests/saved/test_source_scale.py, test_form10.py, tests/saved/test_tolerance_ratchet.py, tests/unit/test_field_kinds.py, tests/env/test_deterministic_mode.py)",
+  "seen_before": [
+    "the tube demo's reference arrays at 24, 4 and 2 usable CPUs, both precisions (tests/saved/artefacts/tube_demo_counts.npz), compared with a script under the proposed rule: float32 largest judged 2.4e-7 (least eigenvalue), the twist 1.2e-7 to 2.3e-7 of its surface points' speed and 1.8e-3 to 1.9e-3 of its own largest magnitude, all of its difference angular (|dv| 1-2e-10 m/s, |dw| 2.0-2.2e-6 rad/s); float64 largest 5.5e-16; the same count repeated: identical",
+    "the T4's spread per array, own scale, from the Colab verify-spread run of 2026-11-07 (the largest over its eight pairs): least eigenvalue 1.07e-6, resistance 5.9e-7, speeds up to 4.5e-7, pose 5.3e-8, twist 1.37e-2, asymmetry 1.27e-2, held points 0.319 on rows that take no force",
+    "a probe of the sliding ball (a 10 um sphere on a 60 um tube's floor, the hull contact, gravity, 1 mm/s along the tube, 20 rad/s): one row of eight takes a force at every step (2.8e-10 N), the others none; the twist's L from its hull 1.0e-5 m; build 2 s, save 9 s, load and build 3 s, verify 11 s on this laptop",
+    "XLA_FLAGS read once when JAX's backend starts: a dump flag set before the backend wrote 18 files, after it none (a CPU probe)"
+  ],
+  "no_false_moved": {
+    "case": "the float32 24-CPU tube reference, the T4 spread planted per field (each element moved by the spread times the field's own largest magnitude, the twist's in its angular part), a form-10 lock of a GPU with deterministic mode off, the same environment",
+    "predicted": "reproduced within rtol 1e-05 of each field's source scale, the largest judged ratio the least eigenvalue's 1.07e-6, the twist's about 1.4e-7 of its surface points' speed, the asymmetry's about 2.5e-7 against one, the held points not compared (no row takes a force); the warning line present",
+    "today": "the same arrays under a form-9 lock: moved, element by element and bit for bit alike, among them ball.twist, drag:ball.asymmetry and ball.contact_points",
+    "control": "the twist's spread planted in its linear part instead: moved (1.4e-2 of the ball's speed)"
+  },
+  "cpu_counts": {
+    "predicted": "every pair of counts within its precision's tolerance under form 10 (float32 largest 2.4e-7, float64 5.5e-16); float32 under the form-9 rule moved, ball.twist among the moved"
+  },
+  "deterministic_same_environment": {
+    "predicted": "a form-10 lock of a GPU in deterministic mode, the same environment, the rerun equal: bit for bit, no warning",
+    "control": "one ulp of one twist entry: moved, bit for bit"
+  },
+  "plants_at_ten_times": {
+    "twist_angular": "w moved so that L |dw| is 10 times the tolerance times the surface points' speed, at each of the 8 steps and each of the 3 components, both precisions: moved at every placement, the ratio 10 times the tolerance",
+    "asymmetry": "1e-4 added at each step, both precisions: moved at every placement",
+    "default_field": "the least eigenvalue and the pose moved by 10 times the tolerance times their own largest magnitude at each step: moved at every placement",
+    "held_point_force_row": "the sliding ball's force-taking row moved by 10 times the tolerance times the points' largest magnitude, at each step: moved at every placement",
+    "held_point_far_row": "a row that takes no force moved by 2 mm at each step: not reported; the same jump judged against the field's own largest magnitude (no pairing): moved"
+  },
+  "twist_size": "the sliding ball's L from its hull: 1.0e-5 m to 1e-6 of it; a new node whose typed state writes its twist as Twist, with mass and inertia and no hull: L its radius of gyration, sqrt(max eig(I) / m)",
+  "warning": {
+    "save": "one NondeterministicReference at a save under a GPU environment with deterministic mode off; none on the CPU; none in deterministic mode",
+    "verify": "the line in the report of a GPU folder made with deterministic mode off; none for a CPU folder; none for a deterministic one"
+  },
+  "ratchet": "the tolerances pass as they are; a raised value with the constant's comment unchanged fails; a raised value whose comment names a new design row and a new measurement's date passes; a lowered value passes",
+  "form_10": "9's reader refuses a folder of 10 as load.newer-form, each file once; the form left unstepped is not refused; form9/free_ball loads, its lock's rtol 1e-6 and atol 1e-9 as written, and verifies; a change of 1e-7 of each element: reproduced under its form-9 lock, moved restated as form 10",
+  "deterministic_mode": "in a process whose backend started: refused as env.deterministic-late; in a fresh CPU process: returns False and leaves XLA_FLAGS as it was; mime verify --deterministic on the CPU says it changes nothing there, exits 0, bit for bit"
+}

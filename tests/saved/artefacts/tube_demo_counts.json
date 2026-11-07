@@ -1,0 +1,54 @@
+{
+ "arms": {
+  "float32/2": {
+   "blas_threads": 2,
+   "reference_sha256": "sha256:d4458460e6bc187194161fc6d99955fd4b5c99f2eb59472194ca2e4a592b3cca",
+   "usable_cpus": 2,
+   "x64": false
+  },
+  "float32/24": {
+   "blas_threads": 24,
+   "reference_sha256": "sha256:783fbf5dedc160ee3a63a5c67ca323bb8770694a09ffeb7f5f7e516085cf7004",
+   "usable_cpus": 24,
+   "x64": false
+  },
+  "float32/4": {
+   "blas_threads": 4,
+   "reference_sha256": "sha256:d63be312ca0d1e88a4544e5b15f17300e4317ee3156f3f4f4b3d4b9cf4897f38",
+   "usable_cpus": 4,
+   "x64": false
+  },
+  "float64/2": {
+   "blas_threads": 2,
+   "reference_sha256": "sha256:bc903f170c24b18fe941d4495b8a3c9ad21f9fcc34101cc812a9b9a4b3959d5a",
+   "usable_cpus": 2,
+   "x64": true
+  },
+  "float64/24": {
+   "blas_threads": 24,
+   "reference_sha256": "sha256:b9b56565e258a9c58422e7f27563aa3cbbefe6cae77921ffc2fcfafdd97978db",
+   "usable_cpus": 24,
+   "x64": true
+  },
+  "float64/4": {
+   "blas_threads": 4,
+   "reference_sha256": "sha256:cc121c91757c034a851861a3f3585d53df7887ea9a9ba72729370df71254612d",
+   "usable_cpus": 4,
+   "x64": true
+  }
+ },
+ "cpu": "12th Gen Intel(R) Core(TM) i7-12850HX",
+ "jax": "0.12.0.1",
+ "maddening": "0.4.2",
+ "measured": "2026-11-07, release/v0.3.0 at cb701e8",
+ "mime": "0.3.0.dev1",
+ "nodes": {
+  "ball": "RigidInertialTensorNode",
+  "drag:ball": "MRSDragNode",
+  "gravity:ball": "GravityNode"
+ },
+ "program": "one-step",
+ "python": "3.14.5",
+ "steps": 8,
+ "what": "the tube demo's reference outputs (examples/sphere_settling_tube.py, its history arrays alone), saved by run_to(80 ms, record=['swim_speed:ball.speed'], stage_every=2 ms), one fresh process an arm, each under taskset to 24, 4 or 2 CPUs (its BLAS threads following the count), float32 and float64"
+}
