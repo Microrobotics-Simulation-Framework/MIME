@@ -114,3 +114,25 @@ def test_the_compile_counter_hears_a_compile():
     with Compiles() as compiled:
         jax.jit(lambda x: x * 3.0 + 1.0)(jnp.arange(7.0)).block_until_ready()
     assert compiled.count >= 1
+
+
+def test_a_point_its_full_build_refuses_is_refused_with_every_point_that_shares_its_verdict(monkeypatch):
+    """What only the full build judges (a node's own check at the start, the post-build checks) refuses the group's
+    first point, and every point whose checked nodes it shared: here the first build is made to refuse, and the toy's
+    points have no node with checks of its own, so all three share its verdict and are listed refused, none raising."""
+    from mime.build import Refusal, RefusalClass
+    from mime.experiment import Experiment
+
+    original = Experiment.build
+    calls = []
+
+    def build(self):
+        calls.append(self)
+        if len(calls) == 1:
+            raise BuildRefused([Refusal("drag.mrs-resistance", RefusalClass.USER, "planted", "planted")])
+        return original(self)
+
+    monkeypatch.setattr(Experiment, "build", build)
+    plan = _spring_study("double", K[:3]).plan()
+    assert [point.refused for point in plan.points] == [True, True, True] and not plan.groups, plan.text()
+    assert len(calls) == 1

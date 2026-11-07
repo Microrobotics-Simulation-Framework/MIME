@@ -1279,6 +1279,11 @@ class BuiltExperiment:
         return self._declared
 
     @property
+    def saved_form(self) -> SavedForm | None:
+        """The saved form it was loaded from or saved to, whose pins a build of its points keeps; ``None`` for neither."""
+        return self._saved
+
+    @property
     def law(self) -> ControlLaw | None:
         """The controller's law the build made from its settings, or ``None``."""
         return self._law

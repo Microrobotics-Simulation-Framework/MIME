@@ -19,6 +19,7 @@ from mime.build._key import structure_key
 from mime.build._maddening import static_dependencies, unreadable_leaves
 from mime.build._plan import Section
 from mime.registry import Role
+from mime.saved._pins import keeping_pins
 from mime.study._axes import OVERRIDE_REASON, Axis, AxisKind, resolve, value_text
 from mime.study._point import Point, build_point
 from mime.units import Quantity, parse_unit, si, unit_symbol
@@ -107,7 +108,8 @@ def base_point(built: BuiltExperiment) -> Point:
         return held
     declarations, settings = built.declared
     plans = built.plans
-    assembled = assemble(plans, built.law)
+    with keeping_pins(built.saved_form):
+        assembled = assemble(plans, built.law)
     observing = [n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()]
     found = structure_key(assembled.graph, observing)
     assert declarations is not None and settings is not None
@@ -137,7 +139,8 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
             "make their own law, or run the controller inside the compiled step (mode='graph')"))
     if refusals:
         raise BuildRefused(refusals)
-    point = build_point(0, settings, declarations, axes, OVERRIDE_REASON)
+    with keeping_pins(built.saved_form):
+        point = build_point(0, settings, declarations, axes, OVERRIDE_REASON)
     if point.refused:
         raise BuildRefused(list(point.refusals))
     base = base_point(built)
@@ -168,7 +171,8 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
                       "build the experiment again and run that build with the override from its start")
     records: list[dict[str, Any]] = []
     for axis, value in axes.items():
-        alone = point if len(axes) == 1 else build_point(0, settings, declarations, {axis: value}, OVERRIDE_REASON)
+        with keeping_pins(built.saved_form):
+            alone = point if len(axes) == 1 else build_point(0, settings, declarations, {axis: value}, OVERRIDE_REASON)
         records.append(_record(axis, value, _leaves(alone.tree, base.tree)))
     return Overridden(point, tuple(records), {"nodes": point.tree, "mappings": {}}, tuple(starting))
 

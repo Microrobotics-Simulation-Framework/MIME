@@ -144,7 +144,7 @@ class Group:
 
 
 def _mib(count: int) -> str:
-    return f"{count / 2**20:.1f} MiB"
+    return f"{count / 2**20:.1f} MiB" if count >= 2**20 else f"{count / 2**10:.1f} KiB"
 
 
 @dataclass(frozen=True)
@@ -332,19 +332,34 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
             if point.key is not None and point.key not in first and not point.refused:
                 first[point.key] = point
         groups: list[Group] = []
-        for key, builder in first.items():
-            members = [p.index for p in points if p.key == key and not p.refused]
-            with precision(builder.declared.x64):
-                built = Experiment.declared_from(builder.declared.settings, builder.declared.declarations).build()
-                observing = [n for p in built.plans.entries if p.section is Section.OBSERVATION
-                             for n in p.node_names()]
-                records[key] = structure_key(built.graph, observing).record
-            groups.append(Group(key, members, built=built))
+        for key in first:
+            built = None
+            while built is None:
+                candidates = [p for p in points if p.key == key and not p.refused]
+                if not candidates:
+                    break
+                builder = candidates[0]
+                try:
+                    with precision(builder.declared.x64):
+                        built = Experiment.declared_from(builder.declared.settings,
+                                                         builder.declared.declarations).build()
+                        observing = [n for p in built.plans.entries if p.section is Section.OBSERVATION
+                                     for n in p.node_names()]
+                        records[key] = structure_key(built.graph, observing).record
+                except BuildRefused as refused:
+                    # The full build judges what assembling did not: the node's own checks at the start, the post-build
+                    # checks. Refused for this point, and for each point whose checked nodes it shared.
+                    for point in candidates:
+                        if point is builder or point.checked == builder.checked:
+                            point.refusals = tuple(refused.refusals)
+                    continue
+                groups.append(Group(key, [p.index for p in candidates], built=built))
     for group in groups[1:]:
         group.reasons = tuple(dict.fromkeys(split_reasons(records[groups[0].key], records[group.key])))
     steps = groups[0].built.steps_in(duration) if groups and groups[0].built is not None else 0
     for group in groups:
-        _settle(group, points, axes, duration, record, every, batch)
+        with precision(points[group.members[0]].declared.x64):
+            _settle(group, points, axes, duration, record, every, batch)
     return StudyPlan(axes, tuple(points), tuple(groups), steps, drop)
 
 
