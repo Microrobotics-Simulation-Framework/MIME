@@ -13,10 +13,14 @@ LIST = "docs/ratchets/none_declared.txt"
 MAP = "docs/ratchets/renames.txt"
 SOURCE = "src/mime/observations/_swim_speed.py"
 KIND, NEW, OLD = "observation", "swim_speed", "swim_speed_x"
+#: The list's line for the entry has its own reason now (the start is closed), so the control plants it with the shared
+#: start reason, in the head and, as the old name, in the base: the rule under test is that reason's.
 HEAD_LINE = f"{KIND} {NEW} 0.1.0 references  # present at D1b"
 BASE_LINE = f"{KIND} {OLD} 0.1.0 references  # present at D1b"
 #: The line's number in the list, where the check names it.
-NUMBER = (Path(__file__).parents[2] / LIST).read_text(encoding="utf-8").splitlines().index(HEAD_LINE) + 1
+NUMBER = 1 + next(number for number, line in enumerate(
+    (Path(__file__).parents[2] / LIST).read_text(encoding="utf-8").splitlines())
+    if line.startswith(f"{KIND} {NEW} 0.1.0 references  # "))
 NOT_NEW = (f"{LIST}:{NUMBER}: '{KIND} {NEW} 0.1.0 references' is not on the list at HEAD, and 'present at D1b' is the "
            f"reason of the cases that stood when the list landed, which only shrinks; fix the empty field, or give the "
            f"line its own reason (logged)")
@@ -26,6 +30,9 @@ def renamed_since_the_base(tmp_path, mapped: str, head_line: str = HEAD_LINE):
     """A checkout whose base committed the entry as ``OLD`` and whose working copy has it as ``NEW`` (this checkout's),
     with ``mapped`` as the rename map."""
     root = copy_checkout(tmp_path)
+    text = (root / LIST).read_text(encoding="utf-8").splitlines()
+    (root / LIST).write_text("\n".join(HEAD_LINE if line.startswith(HEAD_LINE.split("#")[0]) else line
+                                        for line in text) + "\n", encoding="utf-8")
     edit(root / SOURCE, f'name = "{NEW}"', f'name = "{OLD}"')
     edit(root / LIST, HEAD_LINE, BASE_LINE)
     committed(root)
