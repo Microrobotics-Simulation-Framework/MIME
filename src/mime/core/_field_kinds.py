@@ -1,8 +1,7 @@
-"""The kinds of field a node's typed state gives by a field's type, which ``mime verify`` reads to judge each saved
-field on the scale it comes from (``mime.saved``): a twist by the speed of its body's surface points, a ratio against
-one, a constraint's held points only on the rows whose forces act. A field of any other type is judged against its own
-largest magnitude. The kind is the field's type, never its node's class: a new node whose typed state writes a field
-as ``Twist`` is judged as a twist, with nothing declared beside it.
+"""The kinds of field a node's typed state gives by a field's type, which ``mime verify`` reads where a field's values
+mean nothing on some rows: a constraint's held points, judged only on the rows whose forces act (``mime.saved``). A
+field of any other type is judged on all of it. The kind is the field's type, never its node's class: a new node whose
+typed state writes a field as ``HeldPoints`` is judged so, with nothing declared beside it.
 
 A node's typed state is the closed TypedDict that names exactly the fields it holds (``mime.nodes``'s README), found
 among those its class's module and its bases' modules hold (:func:`field_kinds`)."""
@@ -19,11 +18,6 @@ from jaxtyping import Float
 from typing_extensions import Annotated, NoExtraItems, NotRequired, ReadOnly, Required, get_args, get_origin, \
     get_type_hints, is_typeddict
 
-#: A body's twist about its centre of mass, [velocity; angular velocity] in the world (m/s; rad/s).
-type Twist = Float[Array, "6"]
-#: A share of the quantity it measures, its unit one relative to that quantity: the share a resistance's symmetric part
-#: drops (``|R - R^T| / |R|``).
-type Ratio = Float[Array, ""]  # noqa: F722 - a jaxtyping shape
 #: The point a constraint held, a row per group, in the world (m): a row stands for a contact only where its paired
 #: force acts, and elsewhere is wherever the search ended (MIME-ANO-144).
 type HeldPoints = Float[Array, "groups 3"]  # noqa: F722 - a jaxtyping shape
@@ -32,17 +26,14 @@ type HeldForces = Float[Array, "groups"]  # noqa: F722 - a jaxtyping shape
 
 
 class FieldKind(Enum):
-    """How a saved field is judged: against its own largest magnitude (``OWN``), or by its type's source scale."""
+    """How a saved field is judged: on all of it (``OWN``), or, for held points, on the rows whose paired force acts."""
 
     OWN = "own"
-    TWIST = "twist"
-    RATIO = "ratio"
     HELD_POINTS = "held points"
     HELD_FORCES = "held forces"
 
 
-_KINDS: Mapping[object, FieldKind] = {Twist: FieldKind.TWIST, Ratio: FieldKind.RATIO,
-                                      HeldPoints: FieldKind.HELD_POINTS, HeldForces: FieldKind.HELD_FORCES}
+_KINDS: Mapping[object, FieldKind] = {HeldPoints: FieldKind.HELD_POINTS, HeldForces: FieldKind.HELD_FORCES}
 _QUALIFIERS = (ReadOnly, NotRequired, Required)
 
 
@@ -131,4 +122,4 @@ def paired_forces(kinds: Mapping[str, FieldKind]) -> str | None:
     return forces[0] if len(forces) == 1 else None
 
 
-__all__ = ["FieldKind", "HeldForces", "HeldPoints", "Ratio", "Twist", "field_kinds", "paired_forces"]
+__all__ = ["FieldKind", "HeldForces", "HeldPoints", "field_kinds", "paired_forces"]

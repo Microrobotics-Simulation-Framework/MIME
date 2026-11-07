@@ -74,16 +74,20 @@ which builds its node from the diagonal as before; they refuse a tensor whose pr
 folder that rested on exploratory's waiver of them is refused at load, by the version's own words, and not
 reproduced. The document's and the lock's schemas move with the form.
 
-**Version 10** (``mime.document/10``, ``mime.lock/10``) adds and removes no key. It changes what the lock's
-``reference.rtol`` and ``reference.atol`` mean where ``verify`` claims no bits (in another environment, or from a
-reference made on a GPU with XLA's deterministic mode off): a field is within tolerance when its largest difference over
-the reference steps is at most ``rtol`` times its source scale plus ``atol`` (``mime.saved._scales``), and the load's
-comparison of the derived graph in another environment holds each list of numbers and each static array to its own
-largest magnitude the same way. The tenth form writes ``rtol`` for its precision, 1e-5 in float32 and 2e-14 in float64,
-and ``atol`` 0.0, and a folder keeps the tolerance it was written with. A lock of an earlier form is judged as it was,
-element by element, ``|a - b| <= atol + rtol |b|`` with its own numbers (1e-6 and 1e-9): in ``verify``, in ``verify
---run`` and in the load's comparison of the derived graph. Nothing it holds is written back; its schema moves with the
-form."""
+**Version 10** (``mime.document/10``, ``mime.lock/10``) adds two keys below the lock's ``reference``:
+``resolution``, each saved field's resolution by block (its largest divergence over the reference steps run again,
+by the same program, from a start one unit in the last place off; ``null`` where it was not finite), and
+``resolution_factor``, the floor's factor over it. It changes what ``reference.rtol`` and ``reference.atol`` mean where
+``verify`` claims no bits (in another environment, or from a reference made on a GPU with XLA's deterministic mode
+off): every field is split into blocks by its declared units, and a block is within tolerance when its largest
+difference at every step is at most ``max(rtol`` times its largest magnitude, ``resolution_factor`` times its
+resolution``)`` plus ``atol`` (``mime.saved._scales``); the load's comparison of the derived graph in another
+environment holds each list of numbers and each static array to its own largest magnitude. The tenth form writes
+``rtol`` for its precision, 1e-5 in float32 and 2e-14 in float64, and ``atol`` 0.0, and a folder keeps the tolerance
+and the factor it was written with. A lock of an earlier form is judged as it was, element by element, ``|a - b| <=
+atol + rtol |b|`` with its own numbers (1e-6 and 1e-9): in ``verify``, in ``verify --run`` and in the load's comparison
+of the derived graph; one that holds either key is left for the schema check to refuse. Nothing it holds is written
+back; its schema moves with the form."""
 
 from __future__ import annotations
 
@@ -108,8 +112,8 @@ LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
 #: experiment an experiment was made from, the version whose lock names the program the reference outputs were
 #: run by and records the CPUs the build could use, the version whose resolved record holds the full inertia
-#: tensor a body's parts give, and the version whose reference tolerance is over each field's source scale
-#: (``mime.saved._scales.SCALED_FROM``).
+#: tensor a body's parts give, and the version whose reference tolerance is over each field's blocks by unit, with
+#: their measured resolution (``mime.saved._scales.SCALED_FROM``).
 TERMS_ADDED = 4
 DURATION_ADDED = 5
 RECORDS_ADDED = 6
@@ -137,6 +141,8 @@ PROGRAM_KEY = "program"
 USABLE_CPUS_KEY = "usable_cpus"
 BLAS_THREADS_KEY = "blas_threads"
 COUNT_KEYS = (USABLE_CPUS_KEY, BLAS_THREADS_KEY)
+#: The lock's keys version 10 added, below its ``reference``: each field's resolution by block, and the floor's factor.
+RESOLUTION_KEYS = ("resolution", "resolution_factor")
 
 #: The profile a version 1 document is read under, and the keys version 2 added, with the values a version 1 form holds.
 PREVIOUS_PROFILE = "exploratory"
@@ -285,6 +291,14 @@ def program_keys_held(data: object) -> list[str]:
     return found
 
 
+def resolution_held(data: object) -> list[str]:
+    """The keys version 10 added that a lock holds: ``reference.resolution`` and ``reference.resolution_factor``."""
+    below = cast("dict[str, object]", data).get("reference") if isinstance(data, dict) else None
+    if not isinstance(below, dict):
+        return []
+    return [f"reference.{key}" for key in RESOLUTION_KEYS if key in cast("dict[str, object]", below)]
+
+
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
     terms keys in one of an earlier version, version 5's duration and version 7's ``based_on`` in one earlier than
@@ -321,7 +335,8 @@ def upgraded_lock(data: object) -> tuple[object, int]:
     """``data`` as the current schema reads it, and the version it was written in. The lock's contents stay in the form
     it was written in: a load compares the rebuilt experiment written back into that form. A lock of an earlier
     version that holds a key a later one added (version 4's ``referenced_files``, version 6's ``visuals`` or a key of
-    an asset record beyond the five, version 8's program or count) is left as it is, for the schema check to refuse."""
+    an asset record beyond the five, version 8's program or count, version 10's resolution) is left as it is, for the
+    schema check to refuse."""
     if not isinstance(data, dict):
         return data, CURRENT
     held = dict(cast("dict[str, object]", data))
@@ -333,6 +348,8 @@ def upgraded_lock(data: object) -> tuple[object, int]:
     if version < RECORDS_ADDED and records_held(held):
         return held, version
     if version < PROGRAM_ADDED and program_keys_held(held):
+        return held, version
+    if version < SOURCE_SCALE_ADDED and resolution_held(held):
         return held, version
     resolved = held.get("resolved")
     if version == 1 and isinstance(resolved, dict) and _RESOLVED_ADDED not in resolved:
@@ -460,7 +477,8 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
 __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS",
            "DURATION_ADDED", "DURATION_KEY", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
            "PRODUCTS_REFUSAL", "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
-           "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RUNG_RENAMED", "TERMS_ADDED", "TERMS_KEYS",
-           "USABLE_CPUS_KEY", "added_after", "based_on_held", "document_in_form", "duration_held", "newer_form_refusal",
-           "physics_in_form", "products_waiver_refusals", "program_keys_held", "resolved_in_form", "terms_keys_held",
+           "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RESOLUTION_KEYS", "RUNG_RENAMED",
+           "SOURCE_SCALE_ADDED", "TERMS_ADDED", "TERMS_KEYS", "USABLE_CPUS_KEY", "added_after", "based_on_held",
+           "document_in_form", "duration_held", "newer_form_refusal", "physics_in_form", "products_waiver_refusals",
+           "program_keys_held", "resolution_held", "resolved_in_form", "terms_keys_held",
            "upgraded_document", "upgraded_lock", "version_of"]

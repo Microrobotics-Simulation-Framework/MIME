@@ -35,7 +35,7 @@ from mime.assets import size_text
 from mime.build import BuildRefused, BuildReport
 from mime.saved._based_on import based_on_words
 from mime.saved._folder import named_files, nondeterministic_gpu, read_folder
-from mime.saved._scales import SCALED_FROM
+from mime.saved._scales import RESOLUTION_FACTOR, SCALED_FROM
 from mime.saved._schema import ExperimentDocument, Lock, PermissionDoc, PublicationRecord
 from mime.saved._terms import FileTerms, FolderTerms, folder_terms
 from mime.saved._versions import DOCUMENT_SCHEMAS, TERMS_ADDED
@@ -367,9 +367,11 @@ def card_of(facts: CardFacts, publication: PublicationRecord | None, *, based_on
     written = (f"(Python {plain(environment['python'])} on {plain(environment['platform'])}, "
                f"{plain(environment['device'])}, {precision}, JAX {plain(environment['jax'])})")
     if judged.version >= SCALED_FROM:
-        within = (f"within rtol {reference['rtol']!r} of each field's source scale (its own largest magnitude; a "
-                  f"twist's by its body's surface points' speed, a ratio's by one, held points' on the rows whose "
-                  f"force acts), with no absolute part")
+        within = (f"within rtol {reference['rtol']!r} of the largest magnitude of each block of a field (its parts "
+                  f"by unit: a pose's position and quaternion, a twist's velocity and angular velocity), or "
+                  f"{reference.get('resolution_factor', RESOLUTION_FACTOR)!r} times the block's resolution, its "
+                  f"divergence over the reference steps rerun from a start one ulp off; held points on the rows "
+                  f"whose force acts; with no absolute part")
     else:
         within = f"within rtol {reference['rtol']!r} and atol {reference['atol']!r}, element by element"
     if nondeterministic_gpu(environment):

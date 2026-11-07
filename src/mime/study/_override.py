@@ -242,8 +242,9 @@ def verify_run(folder: Any) -> Any:
     """``mime verify --run``: the run a run folder holds, made again from its saved form (``experiment/``) with the
     overrides, the duration and the series its ``run.json`` records, and compared with its ``outputs.npz``, every field
     of the final state and every recorded series: bit for bit in the environment the run was made in, unless it was
-    made on a GPU with deterministic mode off, and otherwise within its lock's tolerance, each field on its source scale
-    from the tenth form (a series against its own largest magnitude). A run written with its chunks set by
+    made on a GPU with deterministic mode off, and otherwise within its lock's tolerance, from the tenth form each field
+    block by block, on each block's largest magnitude or its resolution as the save measured it over the reference
+    steps (a series of an observation's output by its output's). A run written with its chunks set by
     ``stage_every`` is replayed in automatic chunks, which compute the same bits for chunks of two steps or more."""
     import json
     from pathlib import Path
@@ -253,8 +254,8 @@ def verify_run(folder: Any) -> Any:
     from mime.experiment._experiment import RUN_EXPERIMENT, RUN_RECORD
     from mime.results import RunResult, Series
     from mime.saved._folder import DETERMINISTIC_OFF, VerifyReport, environment_differences, moved_line, \
-        nondeterministic_gpu
-    from mime.saved._scales import OWN, SCALED_FROM, SourceScale
+        nondeterministic_gpu, recorded_resolution
+    from mime.saved._scales import OWN, SCALED_FROM, FieldUnits
     from mime.saved._record import environment
     from mime.units import s
 
@@ -279,26 +280,27 @@ def verify_run(folder: Any) -> Any:
     reference = cast(Mapping[str, Any], lock["reference"])
     rtol, atol = float(reference["rtol"]), float(reference["atol"])
     finals = {node: {name: np.asarray(value) for name, value in fields.items()} for node, fields in saved.final.items()}
-    scales = built.source_scales(finals)
-    pairs: dict[str, tuple[np.ndarray, np.ndarray, SourceScale, tuple[np.ndarray, np.ndarray] | None]] = {}
+    units = built.field_units(finals)
+    resolutions, factor = recorded_resolution(lock)
+    pairs: dict[str, tuple[np.ndarray, np.ndarray, str, FieldUnits, tuple[np.ndarray, np.ndarray] | None]] = {}
     for node, fields in finals.items():
         for name, value in fields.items():
             if name not in again.final.get(node, {}):
                 continue
-            scale = scales.get(f"{node}.{name}", OWN)
+            held = units.get(f"{node}.{name}", OWN)
             forces = None
-            if scale.forces is not None:
-                held_node, _, held_name = scale.forces.partition(".")
+            if held.forces is not None:
+                held_node, _, held_name = held.forces.partition(".")
                 if held_name in finals.get(held_node, {}) and held_name in again.final.get(held_node, {}):
                     forces = (finals[held_node][held_name], np.asarray(again.final[held_node][held_name]))
-            pairs[f"final {node}.{name}"] = (value, np.asarray(again.final[node][name]), scale, forces)
+            pairs[f"final {node}.{name}"] = (value, np.asarray(again.final[node][name]), f"{node}.{name}", held, forces)
     for path in saved.recorded:
         observation, _, output = path.rpartition(".")
         mine, theirs = saved[observation][output], again[observation][output]
         if isinstance(mine, Series) and isinstance(theirs, Series):
-            pairs[f"series {path}"] = (np.asarray(mine.raw), np.asarray(theirs.raw), OWN, None)
+            pairs[f"series {path}"] = (np.asarray(mine.raw), np.asarray(theirs.raw), path, FieldUnits(mine.unit), None)
     moved: list[str] = []
-    for label, (a, b, scale, forces) in sorted(pairs.items()):
+    for label, (a, b, source, held, forces) in sorted(pairs.items()):
         if a.shape != b.shape:
             moved.append(f"{label}: max |difference| inf")
             continue
@@ -306,8 +308,8 @@ def verify_run(folder: Any) -> Any:
             line = None if np.array_equal(a, b, equal_nan=True) else \
                 f"{label}: max |difference| {float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))):.3e}"
         elif scaled:
-            line = moved_line(label, a, b, bits=False, scaled=True, rtol=rtol, atol=atol, scale=scale, forces=forces,
-                              steps=False)
+            line = moved_line(label, a, b, bits=False, scaled=True, rtol=rtol, atol=atol, field=held,
+                              resolutions=resolutions.get(source), factor=factor, forces=forces, steps=False)
         else:
             line = None if np.allclose(a, b, rtol=rtol, atol=atol, equal_nan=True) else \
                 f"{label}: max |difference| {float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))):.3e}"
@@ -316,7 +318,7 @@ def verify_run(folder: Any) -> Any:
     here = environment()
     return VerifyReport(int(saved.steps), same, rtol, atol, f"{here['device']}, {'float64' if here['x64'] else 'float32'}",
                         tuple(moved), tuple(sorted(pairs)), bits=bits, scaled=scaled,
-                        warning=DETERMINISTIC_OFF if nondeterministic_gpu(made) else None)
+                        warning=DETERMINISTIC_OFF if nondeterministic_gpu(made) else None, factor=factor)
 
 
 __all__ += ["parse_override", "verify_run"]

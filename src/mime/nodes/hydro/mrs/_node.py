@@ -18,7 +18,7 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Ratio, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, \
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, \
     quaternion, typed_view
 from mime.nodes.hydro.mrs._quadrature import (
     Chunks,
@@ -220,7 +220,7 @@ class SeparatedDragState(TypedDict, closed=True):
     background_load: ReadOnly[Float[Array, "6"]]
     wall_accepted: ReadOnly[Bool[Array, ""]]  # noqa: F722 - a jaxtyping shape
     least_eigenvalue: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    asymmetry: NotRequired[ReadOnly[Ratio]]
+    asymmetry: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
     indefinite: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     near_wall: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     asymmetric: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape

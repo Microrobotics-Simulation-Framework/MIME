@@ -500,8 +500,6 @@ class PlanSet:
     replaced: tuple[str, ...] = ()
     #: The note of each declaration removed in this session (``exp.remove``), set by the experiment likewise.
     removed: tuple[str, ...] = ()
-    #: Each body's hull, by body, where its parts give one (``_Planner.hull_of``): what ``verify`` sizes a twist by.
-    hulls: Mapping[str, Hull] = field(default_factory=dict[str, Hull])
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -705,8 +703,7 @@ class _Planner:
                        {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
                        controller, self.masses, dict(sorted(self.models.items())), self.outcome,
                        self.watch_plans(), checked=dict(sorted(self.checked.items())),
-                       kicks=self.kicks, hulls={name: hull for name in sorted(self.parts)
-                                                for hull in (self.hull_of(name),) if hull is not None})
+                       kicks=self.kicks)
 
     def approaches(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, float]:
         """The closest approach of each body an entry binds to the wall of the region its medium fills, by role

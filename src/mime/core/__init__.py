@@ -34,7 +34,7 @@ from mime.core._shapes import (
     Sphere,
     nearest_point,
 )
-from mime.core._field_kinds import FieldKind, HeldForces, HeldPoints, Ratio, Twist, field_kinds, paired_forces
+from mime.core._field_kinds import FieldKind, HeldForces, HeldPoints, field_kinds, paired_forces
 from mime.core._node import MimeNode, as_run_array, jit, jnp, node_input, run_dtype
 from mime.core._node_fields import NodeFields, node_fields, typed_view
 from mime.core._symbols import Symbol, SymbolKind
@@ -61,12 +61,10 @@ __all__ = [
     "NodeFields",
     "Screw",
     "Shape",
-    "Ratio",
     "Slab",
     "Sphere",
     "Symbol",
     "SymbolKind",
-    "Twist",
     "VelocityRule",
     "as_run_array",
     "field_kinds",

@@ -25,7 +25,6 @@ from mime.core import (
     NodeFields,
     Symbol,
     SymbolKind,
-    Twist,
     as_run_array,
     jnp,
     node_fields,
@@ -76,7 +75,7 @@ def gyroscopic_jacobian(rotation: Array, moments: Array, omega: Array) -> Array:
 
 class RigidInertialState(TypedDict, closed=True):
     pose: ReadOnly[Float[Array, "7"]]
-    twist: ReadOnly[Twist]
+    twist: ReadOnly[Float[Array, "6"]]
 
 
 class RigidContactState(TypedDict, closed=True):
@@ -87,7 +86,7 @@ class RigidContactState(TypedDict, closed=True):
     held points (``_contact.residual``)."""
 
     pose: ReadOnly[Float[Array, "7"]]
-    twist: ReadOnly[Twist]
+    twist: ReadOnly[Float[Array, "6"]]
     contact_points: ReadOnly[HeldPoints]
     contact_forces: ReadOnly[HeldForces]
     contact_short: ReadOnly[Float[Array, "groups"]]

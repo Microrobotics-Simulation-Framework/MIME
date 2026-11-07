@@ -726,10 +726,12 @@ type ReferenceProgram = Literal["one-step"]
 class ReferenceRecord(TypedDict, closed=True):
     """The golden outputs ``verify`` reruns against: every field of every node over the first ``steps`` steps, in
     ``file``, with the tolerance used where ``verify`` claims no bits (another environment, or a reference made on a GPU
-    with deterministic mode off; elsewhere they match bit for bit): from version 10 each field's largest difference
-    within ``rtol`` of its source scale plus ``atol`` (written 0.0), before it element by element; and the program that
-    ran them where it is not the history scan of whole control periods (version 8): ``verify`` runs the same one, since
-    two programs of the same steps can differ in their last bits."""
+    with deterministic mode off; elsewhere they match bit for bit): from version 10 each field block by block, within
+    ``rtol`` of each block's largest magnitude or ``resolution_factor`` times its ``resolution`` (each block's largest
+    divergence over the steps rerun from a start one ulp off, by field and block, ``null`` where it was not finite), plus
+    ``atol`` (written 0.0), before it element by element; and the program that ran them where it is not the history
+    scan of whole control periods (version 8): ``verify`` runs the same one, since two programs of the same steps can
+    differ in their last bits."""
 
     file: ReadOnly[str]
     sha256: ReadOnly[str]
@@ -737,6 +739,8 @@ class ReferenceRecord(TypedDict, closed=True):
     rtol: ReadOnly[float]
     atol: ReadOnly[float]
     program: NotRequired[ReadOnly[ReferenceProgram]]
+    resolution: NotRequired[ReadOnly[dict[str, dict[str, float | None]]]]
+    resolution_factor: NotRequired[ReadOnly[float]]
 
 
 class RecordFileRecord(TypedDict, closed=True):

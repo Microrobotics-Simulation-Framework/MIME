@@ -188,11 +188,11 @@ def verify_in_process(saved, monkeypatch, *, planted: bool = False, other_enviro
 
     real = experiment_module.verify_history
 
-    def moved(form, history, scales=None):
-        history = {node: dict(fields) for node, fields in history.items()}
+    def moved(form, history, fields=None):
+        history = {node: dict(held) for node, held in history.items()}
         history["probe"]["x"] = np.asarray(history["probe"]["x"]) + 1e-6
         history["probe"]["v"] = np.asarray(history["probe"]["v"]) * 1.5
-        return real(form, history, scales)
+        return real(form, history, fields)
 
     with monkeypatch.context() as patch:
         if planted:
@@ -250,8 +250,9 @@ def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal
     """Both arms of the words: a field within the tolerance is not equal, and a table that said 'equal' (or 'bit for bit',
     or the tolerance's two numbers the wrong way round, or the environment's sentence the wrong way round) is found
     here. The first run is the control: the same environment says 'equal, bit for bit'. The folder is of the current
-    form, float64, so its tolerance is 2e-14 of each field's source scale (``mime.saved._scales``)."""
-    tolerance = "within rtol 2e-14 of each field's source scale"
+    form, float64, so its tolerance is 2e-14 of each block's largest magnitude, or 30 times its measured resolution
+    (``mime.saved._scales``)."""
+    tolerance = "within rtol 2e-14 of each block's largest magnitude, or 30 times its measured resolution"
     text, code = verify_in_process(saved, monkeypatch, other_environment=True)
     assert code == 0, text
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
@@ -263,9 +264,9 @@ def test_verify_in_another_environment_says_within_the_tolerance_and_never_equal
     cells = {row[0]: row[1] for row in parsed_table(text, "check", "found")}
     assert code == 1
     # the cell runs past the column and folds onto the row below: its first line is read here
-    assert cells["probe.v"].startswith("moved: largest difference 5.000e-01 of its source scale, its own largest "
-                                       "magnitude, 4.944e-01, first at step 0; held to")
-    assert cells["probe.x"].startswith("moved: largest difference ") and "first at step 0; held to" in cells["probe.x"]
+    assert cells["probe.v"].startswith("moved: its block in m/s: largest difference 2.472e-01 against a bound of ")
+    assert cells["probe.x"].startswith("moved: its block in m: largest difference 1.000e-06 against a bound of ")
+    assert " ".join(text.split()).count("first at step 0; held to") == 2, "each moved field's cell ends so"
     assert " ".join(text.split()).count(f"held to {tolerance}") == 3, "the held-to row and the two moved fields"
 
 

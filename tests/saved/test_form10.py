@@ -1,8 +1,10 @@
-"""Saved form 10: no key added or removed. From the tenth form the lock's ``reference.rtol`` is each field's largest
-difference over its source scale (``mime.saved._scales``) and ``atol`` is written 0.0, the tolerance of the save's
-precision (1e-5 in float32, 2e-14 in float64), which the folder keeps. A folder of the ninth form or earlier is judged
-as its form says, element by element with its own numbers (1e-6 and 1e-9), in ``verify``, ``verify --run`` and the
-load's comparison of the derived graph; nothing of it is written back.
+"""Saved form 10: two keys added below the lock's ``reference``, ``resolution`` (each field's resolution by block, its
+divergence over the reference steps run again from a start one ulp off) and ``resolution_factor``. From the tenth form
+every field is judged block by block, on ``rtol`` times each block's largest magnitude or the factor times its
+resolution (``mime.saved._scales``), and ``atol`` is written 0.0; the save writes its precision's tolerance (1e-5 in
+float32, 2e-14 in float64) and the factor, which the folder keeps. A folder of the ninth form or earlier is judged as
+its form says, element by element with its own numbers (1e-6 and 1e-9), in ``verify``, ``verify --run`` and the load's
+comparison of the derived graph; nothing of it is written back, and one that holds either new key is refused.
 
 The folders of the ninth form, each written by MIME at the last commit of form 9 (ce43659):
 
@@ -15,7 +17,8 @@ A reader of version 9 refuses a folder of version 10 as ``load.newer-form``, the
 
 **The controls.** The same planted rerun of ``form9/free_ball`` is reproduced under its own lock and moved under the same
 lock restated as form 10: the rule is the form's. The form left unstepped (the folder's files stating version 9) is read
-by version 9's reader without a ``load.newer-form``, so the refusal is the step's."""
+by version 9's reader without a ``load.newer-form``, so the refusal is the step's. A form-9 lock with a resolution
+added is refused, where the same lock without it loads."""
 
 import hashlib
 import json
@@ -35,7 +38,7 @@ from mime.saved import _folder, _scales
 from mime.saved._document import document_hash, parse_yaml
 from mime.saved._record import input_hash
 from mime.saved._scales import FLOAT64_RTOL, tolerance_for
-from mime.saved._versions import CURRENT, DOCUMENT_SCHEMAS, LOCK_SCHEMAS, SOURCE_SCALE_ADDED
+from mime.saved._versions import CURRENT, DOCUMENT_SCHEMAS, LOCK_SCHEMAS, RESOLUTION_KEYS, SOURCE_SCALE_ADDED
 
 SAVED = Path(__file__).parent
 FREE9 = SAVED / "form9" / "free_ball"
@@ -54,15 +57,22 @@ def lock_of(folder: Path) -> dict:
     return json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))
 
 
-def test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part(tmp_path: Path):
+def test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part_and_each_fields_resolution(tmp_path: Path):
     from mime.testing.toys import full_toy
 
     assert CURRENT == SOURCE_SCALE_ADDED == _scales.SCALED_FROM == 10
     assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/10" and LOCK_SCHEMAS[CURRENT] == "mime.lock/10"
     lock = full_toy().save(tmp_path / "toy")
+    reference = lock["reference"]
     assert lock["schema"] == "mime.lock/10"
-    assert (lock["reference"]["rtol"], lock["reference"]["atol"]) == (tolerance_for(lock["environment"]["x64"]), 0.0)
+    assert (reference["rtol"], reference["atol"]) == (tolerance_for(lock["environment"]["x64"]), 0.0)
     assert tolerance_for(False) == 1e-5 and tolerance_for(True) == 2e-14
+    assert reference["resolution_factor"] == _scales.RESOLUTION_FACTOR
+    floating = {key.removeprefix("history/").replace("/", ".", 1) for key, value in read_folder(tmp_path / "toy")
+                .reference.items() if key.startswith("history/") and value.dtype.kind == "f"}
+    assert set(reference["resolution"]) == floating, "every floating field's blocks"
+    assert any(value for held in reference["resolution"].values() for value in held.values()), \
+        "the start one ulp off moved the toy"
 
 
 @pytest.mark.parametrize("folder", [FORM9_CHAIN, CURRENT_FOLDER], ids=["form9", "current"])
@@ -79,8 +89,19 @@ def test_saving_again_under_form_ten_moves_the_document_and_input_hashes_and_the
             if nine["hashes"][key] != ten["hashes"][key]] == ["document", "input"]
     assert (nine["reference"]["rtol"], nine["reference"]["atol"]) == (1e-6, 1e-9)
     assert (ten["reference"]["rtol"], ten["reference"]["atol"]) == (FLOAT64_RTOL, 0.0)
-    assert {key: value for key, value in nine["reference"].items() if key not in ("rtol", "atol")} == \
-        {key: value for key, value in ten["reference"].items() if key not in ("rtol", "atol")}
+    assert sorted(set(ten["reference"]) - set(nine["reference"])) == sorted(RESOLUTION_KEYS)
+    kept = ("rtol", "atol", *RESOLUTION_KEYS)
+    assert {key: value for key, value in nine["reference"].items() if key not in kept} == \
+        {key: value for key, value in ten["reference"].items() if key not in kept}
+
+
+def test_a_form_nine_lock_holding_a_resolution_is_refused_and_the_same_lock_without_it_loads(tmp_path: Path):
+    folder = Path(shutil.copytree(FREE9, tmp_path / "free_ball"))
+    assert codes_of(folder) == [], "the control: the folder as its commit wrote it"
+    lock = lock_of(folder)
+    lock["reference"]["resolution"] = {"ball.pose": {"m": 1e-18, "1": 1e-16}}
+    (folder / LOCK_FILE).write_text(json.dumps(lock), encoding="utf-8")
+    assert codes_of(folder) != []
 
 
 def test_the_form_nine_folder_is_the_folder_its_commit_wrote_byte_for_byte():
@@ -113,10 +134,11 @@ def planted(form, change: float) -> dict[str, dict[str, np.ndarray]]:
     return held
 
 
-def test_a_form_nine_folder_is_judged_element_by_element_and_the_same_rerun_as_form_ten_on_its_source_scale(
+def test_a_form_nine_folder_is_judged_element_by_element_and_the_same_rerun_as_form_ten_block_by_block(
         monkeypatch: pytest.MonkeyPatch):
     """1e-7 of each element is within the ninth form's rtol of 1e-6 element by element, and beyond the tenth form's 2e-14
-    of each field's own largest magnitude: the folder is judged by its own form's rule."""
+    of each block's largest magnitude (the restated lock records no resolution, so no floor): the folder is judged by
+    its own form's rule."""
     monkeypatch.setattr("mime.saved._folder.environment_differences", lambda lock: ["usable_cpus: built under 4"])
     form = read_folder(FREE9)
     rerun = planted(form, 1e-7)

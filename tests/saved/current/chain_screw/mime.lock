@@ -285,6 +285,43 @@
  "reference": {
   "atol": 0.0,
   "file": "reference.npz",
+  "resolution": {
+   "drive:spin.motor.angle.value": {
+    "the command's own": 5.551115123125783e-17
+   },
+   "magnetic.torque:umr.wrench": {
+    "N": 0.0,
+    "N m": 8.470329472543003e-22
+   },
+   "spin.magnetic.centre": {
+    "m": 1.3877787807814457e-17
+   },
+   "spin.magnetic.flux_density_magnetic_torque_umr": {
+    "T": 3.2526065174565133e-19
+   },
+   "spin.magnetic.gradient_magnetic_torque_umr": {
+    "T/m": 1.3877787807814457e-17
+   },
+   "spin.magnetic.orientation": {
+    "1": 4.440892098500626e-16
+   },
+   "spin.motor.angle": {
+    "1": 5.551115123125783e-17
+   },
+   "spin.motor.frame_poses": {
+    "1": 2.220446049250313e-16,
+    "m": 1.3877787807814457e-17
+   },
+   "umr.pose": {
+    "1": 0.0,
+    "m": 2.168404344971009e-19
+   },
+   "umr.twist": {
+    "m/s": 0.0,
+    "rad/s": 2.842170943040401e-14
+   }
+  },
+  "resolution_factor": 30.0,
   "rtol": 2e-14,
   "sha256": "sha256:c3aad116f6576ac7ee87c954eff409de354c1fdb7f3374fd4fa1add0579fe921",
   "steps": 8

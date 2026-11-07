@@ -103,7 +103,8 @@ def test_the_cards_tolerance_line_states_each_level_and_the_rule_of_the_folders_
     here = reproduces(tenth)
     assert "bit for bit in the environment the lock was written in" in here and "never bit for bit" not in here
     rtol = tenth.lock["reference"]["rtol"]
-    assert f"within rtol {rtol!r} of each field's source scale" in here and "with no absolute part" in here
+    assert f"within rtol {rtol!r} of the largest magnitude of each block of a field" in here
+    assert "30.0 times the block's resolution" in here and "with no absolute part" in here
     assert "element by element" not in here
     off = reproduces(tenth, device="gpu", deterministic=False)
     assert "within tolerance everywhere, the GPU it was made on" in off and "never bit for bit" in off
@@ -113,4 +114,4 @@ def test_the_cards_tolerance_line_states_each_level_and_the_rule_of_the_folders_
         "a reference made in deterministic mode is claimed bit for bit where it was written, as the CPU's"
     ninth = card_facts(Path(shutil.copytree(FREE9, tmp_path / "free_ball")))
     held = reproduces(ninth)
-    assert "within rtol 1e-06 and atol 1e-09, element by element" in held and "source scale" not in held
+    assert "within rtol 1e-06 and atol 1e-09, element by element" in held and "resolution" not in held
