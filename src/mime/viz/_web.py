@@ -31,8 +31,9 @@ VIEWER_FILE = "model-viewer.min.js"
 VIEWER_SHA256 = "283b0672384614b4847636c306fc93fe4b1fcadc76d668b4e47f0ca76bcf033b"
 VIEWER_SRI = "sha384-cprcVQt7wbUl0xngF3PGP6yBB7n4/t+4AoAMG9biiMCGFiWOdzUH10Ie2COTqFNW"
 VIEWER_CDN = f"https://cdn.jsdelivr.net/npm/@google/model-viewer@{VIEWER_VERSION}/dist/{VIEWER_FILE}"
-#: Above this many bytes a notebook's output may be dropped (Jupyter's default limit on a kernel's output rate is a
-#: million bytes a second): ``display`` warns, and says how to make it smaller.
+#: Above this many bytes a notebook's output is a large share of the notebook's own file (every display is saved in it):
+#: ``display`` warns, and says how to make it smaller. Not a limit of Jupyter's: its output rate limit counts a kernel's
+#: stream output only, so a displayed value of any size is not dropped by it.
 OUTPUT_WARNING_BYTES = 1_000_000
 #: The speeds offered, display seconds per second.
 SPEEDS = (0.25, 0.5, 1.0, 2.0)
@@ -485,7 +486,7 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
             follow: str | None = None) -> WebPage:
     """``target`` (a stage or recording file, a run folder or a saved folder) as a notebook output: the view's page,
     the viewer from jsDelivr (``offline=True`` inlines it, 1.4 MB more), ``caption`` above its notes. Warns above
-    ``OUTPUT_WARNING_BYTES``, which a notebook may drop.
+    ``OUTPUT_WARNING_BYTES``, which a notebook saves into its file with every display.
 
     Four things in the view are switched here, each in the page's notes: ``scale_bar`` and ``legend`` (on by default:
     they cost the page a few hundred bytes and answer "how big?" and "what is this arrow?"); ``apparatus_shapes`` (on:
@@ -498,14 +499,14 @@ def display(target: str | Path, *, offline: bool = False, caption: str | None = 
     size = len(held.encode("utf-8"))
     if size > OUTPUT_WARNING_BYTES:
         warn_at_script(
-            f"the view of {target} is {size / 1e6:.1f} MB as a notebook output, which Jupyter may drop at its default "
-            f"output rate: record more coarsely (stage_every=), bake meshes to fewer triangles (TriangleBudget), "
+            f"the view of {target} is {size / 1e6:.1f} MB as a notebook output, and every display saves it into the "
+            f"notebook's file: record more coarsely (stage_every=), bake meshes to fewer triangles (TriangleBudget), "
             f"{'leave the viewer to jsDelivr (offline=False), ' if offline else ''}or write a page instead "
             f"(mime visuals web {target})", UserWarning)
     return WebPage(held, result, origin=origin)
 
 
-def _held_by(path: Path) -> Path | None:
+def held_by(path: Path) -> Path | None:
     """The saved or run folder ``path`` would be written inside, where it is inside one."""
     for folder in path.resolve().parents:
         if (folder / "mime.lock").is_file() or (folder / "experiment" / "mime.lock").is_file() \
@@ -525,7 +526,7 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
     caption = _stale_caption(origin_of_folder(target), caption)
     written = Path(out) if out is not None else Path(f"{result.name}.html")
     for path in (written, *((Path(glb),) if glb is not None else ())):
-        folder = _held_by(path)
+        folder = held_by(path)
         if folder is not None:
             raise ArgumentRefused([Refusal(
                 "visuals.web-out", RefusalClass.USER,
@@ -540,4 +541,4 @@ def web(target: str | Path, out: str | Path | None = None, *, cdn: bool = False,
 
 
 __all__ = ["BAR_PIXELS", "CLOSEST", "CREDIT", "FOCUS_FACTOR", "OUTPUT_WARNING_BYTES", "VIEWER_CDN", "VIEWER_FILE", "VIEWER_SHA256", "VIEWER_SRI",
-           "VIEWER_VERSION", "WebPage", "closest_radius", "display", "page", "viewer_bytes", "web"]
+           "VIEWER_VERSION", "WebPage", "closest_radius", "display", "held_by", "page", "viewer_bytes", "web"]

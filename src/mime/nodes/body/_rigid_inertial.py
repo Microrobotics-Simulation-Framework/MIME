@@ -5,7 +5,7 @@ points held against the surface by impulses through the step's system and projec
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, cast, override
+from typing import Any, NamedTuple, cast, override
 
 import jax
 import numpy as np
@@ -34,6 +34,7 @@ from mime.core import (
     switch,
     typed_view,
 )
+from mime.core import ledger as books
 from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.nodes.body._contact import (
     START_APART,
@@ -71,6 +72,19 @@ def gyroscopic_jacobian(rotation: Array, moments: Array, omega: Array) -> Array:
     zero = jnp.zeros_like(w[0])
     cross = jnp.stack([jnp.stack([zero, w[2], w[1]]), jnp.stack([w[2], zero, w[0]]), jnp.stack([w[1], w[0], zero])])
     return rotation @ (gap[:, None] * cross) @ rotation.T
+
+
+class StepParts(NamedTuple):
+    """What the energy ledger's books read of a step, besides the state it takes and returns: the mass matrix ``M`` at
+    the step's start (in the world), the matrix of its solve ``M'/dt + R``, the twist the solve gives with no
+    confinement, the twist the confinement held in the solve, and the orientation before the projection after the
+    step."""
+
+    mass_matrix: Array
+    system: Array
+    free: Array
+    solved: Array
+    before_projection: Array
 
 
 class RigidInertialState(TypedDict, closed=True):
@@ -304,7 +318,7 @@ class RigidInertialNode(MimeNode):
                  hull_kind_version: str = "", hull_patches: Sequence[str] = (),
                  hull_counts: Sequence[Sequence[int]] = (), hull_centre: Sequence[float] = (0.0, 0.0, 0.0),
                  hull_rotation: Sequence[float] = _IDENTITY, hull_groups: np.ndarray | None = None,
-                 contact_loops: bool = False, **constants: object) -> None:
+                 contact_loops: bool = False, ledger: Sequence[str] = (), **constants: object) -> None:
         surface = {key: value for key, value in constants.items() if key.startswith(SURFACE)}
         settings = {key.removeprefix(HULL): value for key, value in constants.items() if key.startswith(HULL)}
         unknown = set(constants) - set(surface) - {f"{HULL}{name}" for name in settings}
@@ -326,6 +340,16 @@ class RigidInertialNode(MimeNode):
                                  f"{velocity_rule!r}")
         elif surface:
             raise TypeError(f"surface parameters {sorted(surface)} with no surface_shape")
+        metering = books.deliveries({books.LEDGER: ledger})
+        hosted = [d.law for d in metering if d.kind == books.HOSTED]
+        if ledger and len(hosted) != (1 if surface_shape else 0):
+            raise ValueError(f"a metered body holds its confinement's law in its step, one hosted delivery for it: "
+                             f"{'one confinement' if surface_shape else 'no confinement'}, and the ledger hosts "
+                             f"{hosted or 'none'}")
+        checked = [d.law for d in metering if d.check == books.CHECK_DEFINITE and d.field != "resistance"]
+        if checked:
+            raise ValueError(f"a body checks the definiteness of an operator it takes, its resistance, and {checked} "
+                             f"deliver none")
         hull: dict[str, object] = {}
         if hull_kind:
             record = registered_kind(hull_kind, hull_kind_version)
@@ -371,7 +395,7 @@ class RigidInertialNode(MimeNode):
         super().__init__(name, timestep, mass=mass, inertia=tuple(inertia), initial_pose=tuple(initial_pose),
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
                          margin=margin, velocity_rule=velocity_rule, **hull, **surface,
-                         **{f"{HULL}{name}": value for name, value in settings.items()})
+                         **{f"{HULL}{name}": value for name, value in settings.items()}, ledger=ledger)
 
     def _body_points(self, hull: Mapping[str, Any], settings: Mapping[str, object]) -> np.ndarray:
         """The hull's points in the body's frame at its settings as built, in float64: what its groups are made of."""
@@ -456,22 +480,30 @@ class RigidInertialNode(MimeNode):
 
     @override
     def initial_state(self) -> NodeFields:
+        """The initial pose and twist (and, held by its hull, the contact's fields at zero); with the ledger attached,
+        its records too (``mime.core.ledger.initial_records``)."""
         p = self.constants()
         pose, twist = as_run_array(p["initial_pose"]), as_run_array(p["initial_twist"])
         if self.holds_hull:
             groups = len(self.groups)
-            return node_fields(RigidContactState(pose=pose, twist=twist,
-                                                 contact_points=as_run_array(np.zeros((groups, 3))),
-                                                 contact_forces=as_run_array(np.zeros(groups)),
-                                                 contact_short=as_run_array(np.zeros(groups)),
-                                                 contact_residual=as_run_array(np.zeros(()))))
-        return node_fields(RigidInertialState(pose=pose, twist=twist))
+            return books.with_records(self, node_fields(RigidContactState(
+                pose=pose, twist=twist, contact_points=as_run_array(np.zeros((groups, 3))),
+                contact_forces=as_run_array(np.zeros(groups)), contact_short=as_run_array(np.zeros(groups)),
+                contact_residual=as_run_array(np.zeros(())))))
+        return books.with_records(self, node_fields(RigidInertialState(pose=pose, twist=twist)))
 
-    @override
-    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+    def own_inputs(self) -> dict[str, BoundaryInputSpec]:
+        """The body's inputs without the ledger: the applied wrench, the resistance and the background load, each the
+        sum of every delivery into it."""
         return {"applied_wrench": node_input("N; N m", (6,), additive=True),
                 "resistance": node_input("N s/m; N s; N m s", (6, 6), additive=True),
                 "background_load": node_input("N; N m", (6,), additive=True)}
+
+    @override
+    def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
+        """:meth:`own_inputs`; with the ledger attached, each law's own input beside the one it would sum into
+        (``mime.core.ledger.with_law_inputs``)."""
+        return books.with_law_inputs(self.own_inputs(), books.deliveries(self.constants()))
 
     def body_inertia(self, p: Mapping[str, Any], dtype: Any) -> Array:
         """The inertia about the centre of mass in the body's frame, 3 x 3: here the diagonal of the three principal
@@ -652,6 +684,16 @@ class RigidInertialNode(MimeNode):
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
+        """The step (:meth:`stepped_with_parts`); with the ledger attached, its books recorded beside it
+        (``mime.core.ledger.metered_step``), decided while the step is traced."""
+        if not self.metered:
+            return self.stepped_with_parts(p, state, boundary_inputs, dt)[0]
+        return books.metered_step(self, self.own_inputs(), p, state, boundary_inputs, dt, self.stepped_with_parts)
+
+    def stepped_with_parts(self, p: Mapping[str, Any], state: Mapping[str, Array],
+                           boundary_inputs: Mapping[str, Array], dt: float) -> tuple[NodeFields, StepParts]:
+        """The step, and what the ledger's books read of it (:class:`StepParts`): the step's arithmetic is the same
+        whether the ledger is attached or not, so a program without it keeps every bit."""
         held, given = typed_view(RigidInertialState, state), typed_view(RigidInertialInputs, boundary_inputs)
         pose, twist = held["pose"], held["twist"]
         position, orientation = pose[:3], pose[3:]
@@ -663,13 +705,123 @@ class RigidInertialNode(MimeNode):
                                                                     orientation))
             ended, carried = self.hull_projected(p, body, jnp.concatenate([position + dt * moved[:3], orientation]),
                                                  moved, mass_matrix)
-            return node_fields(RigidContactState(pose=ended, twist=carried, contact_points=points,
-                                                 contact_forces=forces, contact_short=short, contact_residual=left))
+            return (node_fields(RigidContactState(pose=ended, twist=carried, contact_points=points,
+                                                  contact_forces=forces, contact_short=short, contact_residual=left)),
+                    StepParts(mass_matrix, system, free, moved, orientation))
         moved = self.held(p, position, system, free, dt)
         position, velocity = self._confined(p, position + dt * moved[:3], moved[:3])
         orientation = quaternion.normalized(quaternion.multiply(quaternion.exponential(dt * moved[3:]), orientation))
-        return node_fields(RigidInertialState(pose=jnp.concatenate([position, orientation]),
-                                              twist=jnp.concatenate([velocity, moved[3:]])))
+        return (node_fields(RigidInertialState(pose=jnp.concatenate([position, orientation]),
+                                               twist=jnp.concatenate([velocity, moved[3:]]))),
+                StepParts(mass_matrix, system, free, moved, orientation))
+
+    # ------------------------------------------------------------------------------------------- the energy ledger
+
+    #: The body's own scheme's numerical terms, in the order its records keep them: backward Euler's ``(1/2) dV^T M
+    #: dV``; the gyroscopic term's, ``-dt V'. g - V'^T (M - M') dV`` (``g = [0; -omega x I omega]``, ``M'`` the
+    #: stepping mass); and the loads' work on the configuration's change beyond the step's solution, ``F . (dq -
+    #: dt V')``: the rounding of the position's update, where no law is hosted in the step (a hosted contact's
+    #: projection books it under its own name).
+    LEDGER_TERMS = ("backward_euler", "gyroscopic", "configuration")
+
+    @override
+    def storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
+        """``V^T M(q) V / 2``, the body's kinetic energy at its pose and twist, ``M = diag(m 1, R_q J R_q^T)``."""
+        twist, inertia = jnp.asarray(state["twist"]), self._world_inertia(p, state)
+        return 0.5 * (p["mass"] * jnp.dot(twist[:3], twist[:3]) + jnp.dot(twist[3:], inertia @ twist[3:]))
+
+    def _world_inertia(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
+        twist = jnp.asarray(state["twist"])
+        rotation = quaternion.rotation_matrix(jnp.asarray(state["pose"])[3:])
+        return rotation @ self.body_inertia(p, twist.dtype) @ rotation.T
+
+    def _storage_magnitude(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
+        """:meth:`storage`'s arithmetic in magnitude: ``(m |v|.|v| + |omega|^T |I| |omega|) / 2``."""
+        twist = jnp.abs(jnp.asarray(state["twist"]))
+        return 0.5 * (p["mass"] * jnp.dot(twist[:3], twist[:3])
+                      + twist[3:] @ jnp.abs(self._world_inertia(p, state)) @ twist[3:])
+
+    @override
+    def identity_terms(self, p: Mapping[str, Any], held: Sequence[books.LedgerDelivery], state: Mapping[str, Array],
+                       boundary_inputs: Mapping[str, Array], ended: Mapping[str, Array], parts: StepParts,
+                       dt: float) -> books.StepAccount:
+        """The step's identity, ``H' - H = sum_law W_law + W_unattributed - N``, each delivery paired by the one rule:
+        a load with the configuration's actual change ``(x' - x, dt omega' + the projection's turn)``, the resistance
+        with the step's solution ``V'`` (``-dt V'^T R V'``), the hosted contact's force ``(M'/dt + R)(V' - V_free)``
+        with ``V'`` too. From ``M' dV / dt = F + g - R V' + c`` and ``H(V', q) - H(V, q) = dV^T M V' - (1/2) dV^T M
+        dV`` (the step's turn, about ``omega'``, leaves ``omega'^T I omega'`` as it is; the hull's projection carries
+        the twist with its turn, and so leaves it too). The hosted contact's two terms are under its name: the velocity
+        rule's removal at arrival, its loss, ``(m/2)(|v'|^2 - |v_end|^2)``; and the loads' work on the projection's
+        shift, ``F . (dq - dt V')``, its host's scheme's term, which takes either sign (the projection lifts the body
+        against its weight). The step's scale is each product's arithmetic in magnitude, the solve's
+        ``dt |V'|^T |M'/dt + R| |dV|`` among them, so that it grows with a stiff solve's rounding."""
+        pose, twist = state["pose"], state["twist"]
+        dtype = twist.dtype
+        mass_matrix, system, free, solved = parts.mass_matrix, parts.system, parts.free, parts.solved
+        rotation = quaternion.rotation_matrix(pose[3:])
+        omega = twist[3:]
+        stepping = self.stepping_mass(p, mass_matrix, rotation, omega, dt)
+        gyroscopic = jnp.concatenate([jnp.zeros(3, dtype=dtype), -jnp.cross(omega, mass_matrix[3:, 3:] @ omega)])
+        position, orientation, carried = ended["pose"][:3], ended["pose"][3:], ended["twist"]
+        turned = dt * solved[3:]
+        if self.holds_hull:
+            projection = quaternion.multiply(orientation, quaternion.conjugate(parts.before_projection))
+            turned = turned + 2.0 * projection[1:]
+        change = jnp.concatenate([position - pose[:3], turned])
+        moved = solved - twist
+        own = self.own_inputs()
+        given = books.summed(own, held, boundary_inputs)
+        loads = given["applied_wrench"] + given["background_load"]
+        beyond = change - dt * solved
+        shift = jnp.dot(loads, beyond)
+        size = jnp.dot(jnp.abs(loads), jnp.abs(beyond)) + self._storage_magnitude(p, state) \
+            + self._storage_magnitude(p, ended)
+        rows = books.laws(held)
+        work = jnp.zeros(len(rows), dtype=dtype)
+        hosted = jnp.zeros((len(rows), 2), dtype=dtype)
+        operators: dict[int, Array] = {}
+        configuration = shift
+        for index, delivery in enumerate(held):
+            row = rows.index(delivery.law)
+            if delivery.kind == books.HOSTED:
+                force = system @ (solved - free)
+                work = work.at[row].add(books.paired_work(books.HOSTED, force, solution=solved, dt=dt))
+                rule = 0.5 * p["mass"] * (jnp.dot(solved[:3], solved[:3]) - jnp.dot(carried[:3], carried[:3]))
+                hosted = hosted.at[row].set(jnp.stack([rule, shift]))
+                configuration = jnp.zeros((), dtype=dtype)
+                size = size + dt * jnp.abs(solved) @ jnp.abs(system) @ jnp.abs(solved - free) \
+                    + 0.5 * p["mass"] * (jnp.dot(solved[:3], solved[:3]) + jnp.dot(carried[:3], carried[:3]))
+                continue
+            effort = boundary_inputs[books.law_input(delivery.field, index)]
+            paired, magnitude = self._paired(delivery.field, effort, change, solved, dt)
+            work, size = work.at[row].add(paired), size + magnitude
+            if delivery.check == books.CHECK_DEFINITE:
+                operators[row] = effort
+        unattributed = jnp.zeros((), dtype=dtype)
+        for field, entry in own.items():
+            paired, magnitude = self._paired(field, boundary_inputs.get(field, jnp.asarray(entry.default)), change,
+                                             solved, dt)
+            unattributed, size = unattributed + paired, size + magnitude
+        backward_euler = 0.5 * moved @ mass_matrix @ moved
+        gyroscopic_term = -dt * jnp.dot(solved, gyroscopic) - solved @ (mass_matrix - stepping) @ moved
+        size = size + 0.5 * jnp.abs(moved) @ jnp.abs(mass_matrix) @ jnp.abs(moved) \
+            + dt * jnp.dot(jnp.abs(solved), jnp.abs(gyroscopic)) \
+            + jnp.abs(solved) @ jnp.abs(mass_matrix - stepping) @ jnp.abs(moved) \
+            + dt * jnp.abs(solved) @ jnp.abs(system) @ jnp.abs(free - twist)
+        return books.StepAccount(
+            work=work, hosted=hosted, unattributed=unattributed,
+            terms=jnp.stack([backward_euler, gyroscopic_term, configuration]),
+            storage_start=self.storage(p, state), storage_end=self.storage(p, ended), scale=size, operators=operators)
+
+    @staticmethod
+    def _paired(field: str, effort: Array, change: Array, solved: Array, dt: float) -> tuple[Array, Array]:
+        """A delivery into ``field`` paired by the one rule, with the magnitude of that arithmetic: the resistance,
+        solved for in the step, with the step's solution (its force there ``-R V'``); a load, read at the step's start,
+        with the configuration's change."""
+        if field == "resistance":
+            return (books.paired_work(books.SOLVED, -(effort @ solved), solution=solved, dt=dt),
+                    dt * jnp.abs(solved) @ jnp.abs(effort) @ jnp.abs(solved))
+        return books.paired_work(books.LOAD, effort, change=change), jnp.dot(jnp.abs(effort), jnp.abs(change))
 
 
 #: Where the symbol rows' function is.

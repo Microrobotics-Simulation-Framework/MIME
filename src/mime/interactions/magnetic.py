@@ -64,6 +64,12 @@ def build_reaction(ctx: BuildContext, b: InteractionBuilder, law: NodeRef) -> No
     b.connect(node["link_wrench"], into=b.target(REACTION))
 
 
+#: Why the magnetic laws declare no class for the energy ledger yet: their work on the body is recorded and attributed
+#: to them all the same.
+_UNMETERED = ("its class waits on the magnetic family's energy, -m . B at the magnet's centroid, of which the pair is "
+              "the derivative, stated with the family")
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class MagneticTorque(Interaction):
@@ -88,6 +94,7 @@ class MagneticTorque(Interaction):
 
     name = "magnetic.torque"
     version = "0.2.0"
+    unmetered = _UNMETERED
     differentiability = GradientStatus.EXACT
     references = ("Ling2016UniversityPhysics2",)
     family = "magnetic"
@@ -155,6 +162,7 @@ class MagneticForce(Interaction):
 
     name = "magnetic.force"
     version = "0.2.0"
+    unmetered = _UNMETERED
     differentiability = GradientStatus.EXACT
     references = ("Jackson1998",)
     family = "magnetic"

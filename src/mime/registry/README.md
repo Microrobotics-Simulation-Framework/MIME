@@ -129,4 +129,9 @@ that is not a convention or determined, a numerical default without its rule and
 method. A determined or numerical default that depends on other inputs is the entry's method `by`, called with the
 plan's context for an interaction's or observation's setting; the build records each default it takes.
 
+**For the energy ledger**: an `Interaction` declares its `energy_class` (`mime.vocabulary.EnergyClass`), its
+deliveries and reactions together, or none with its reason in `unmetered`, and a dissipative law where its operators
+are shown definite (`definiteness()`: by construction or at the state); a `Dynamics` names the `port` kind its node's
+inputs are paired by, or none with its reason in `unmetered`.
+
 Releases are explained in the [package manifest](../README.md#status).

@@ -1069,7 +1069,7 @@ class BuiltExperiment:
         MIME's names added; ``direction`` is MADDENING's (``LR``, ``RL``, ``TB`` or ``BT``). A ``str`` that a notebook
         also shows as a diagram where its front end draws Mermaid. The same text for the same experiment, whatever the
         order of the calls that declared it."""
-        return mermaid_of(self._graph, self.report, direction=direction)
+        return mermaid_of(self._graph, self.report, direction=direction, origin=self._origin)
 
     @property
     def stage_text(self) -> str:
