@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/9"
-LOCK_SCHEMA = "mime.lock/9"
+DOCUMENT_SCHEMA = "mime.document/10"
+LOCK_SCHEMA = "mime.lock/10"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -343,7 +343,7 @@ class ExperimentDocument(TypedDict, closed=True):
     moves with the lock's, which records the program the reference outputs were run by, the CPUs the build could use
     and the threads of its BLAS."""
 
-    schema: ReadOnly[Literal["mime.document/9"]]
+    schema: ReadOnly[Literal["mime.document/10"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -725,9 +725,11 @@ type ReferenceProgram = Literal["one-step"]
 
 class ReferenceRecord(TypedDict, closed=True):
     """The golden outputs ``verify`` reruns against: every field of every node over the first ``steps`` steps, in
-    ``file``, with the tolerance used across environments (within one environment they match bit for bit), and the
-    program that ran them where it is not the history scan of whole control periods (version 8): ``verify`` runs the
-    same one, since two programs of the same steps can differ in their last bits."""
+    ``file``, with the tolerance used where ``verify`` claims no bits (another environment, or a reference made on a GPU
+    with deterministic mode off; elsewhere they match bit for bit): from version 10 each field's largest difference
+    within ``rtol`` of its source scale plus ``atol`` (written 0.0), before it element by element; and the program that
+    ran them where it is not the history scan of whole control periods (version 8): ``verify`` runs the same one, since
+    two programs of the same steps can differ in their last bits."""
 
     file: ReadOnly[str]
     sha256: ReadOnly[str]
@@ -798,7 +800,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/9"]]
+    schema: ReadOnly[Literal["mime.lock/10"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]

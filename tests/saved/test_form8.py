@@ -10,8 +10,8 @@ last commit of form 7, loads and verifies; its environment's lines never name th
 either key is refused, never read as declaring it. The committed folders of either form hold the hashes their
 documents make: saving again under form 8 moved the ``document`` and ``input`` hashes, never ``derived`` or
 ``observations``. A reader of version 7 (this MIME before the step) and one of version 6 (0.3.0.dev1's) refuse a folder
-of version 8 or later as ``load.newer-form``, the document and the lock each once. The current form is version 9
-(``test_form9.py``); the folder as version 8 wrote it is ``form8/chain_screw``.
+of version 8 or later as ``load.newer-form``, the document and the lock each once. The current form is version 10
+(``test_form10.py``); the folder as version 8 wrote it is ``form8/chain_screw``.
 
 **The controls.** An upgrade planted to accept the keys in an earlier lock reads it, and the refusal test fails on every
 run. The form left unstepped (the folder's files stating version 7) is read by version 7's reader without a

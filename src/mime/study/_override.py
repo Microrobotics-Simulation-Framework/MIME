@@ -241,9 +241,10 @@ def parse_override(text: str) -> tuple[str, object]:
 def verify_run(folder: Any) -> Any:
     """``mime verify --run``: the run a run folder holds, made again from its saved form (``experiment/``) with the
     overrides, the duration and the series its ``run.json`` records, and compared with its ``outputs.npz``, every field
-    of the final state and every recorded series: bit for bit in the environment the run was made in, within its
-    lock's tolerance in another. A run written with its chunks set by ``stage_every`` is replayed in automatic chunks,
-    which compute the same bits for chunks of two steps or more."""
+    of the final state and every recorded series: bit for bit in the environment the run was made in, unless it was
+    made on a GPU with deterministic mode off, and otherwise within its lock's tolerance, each field on its source scale
+    from the tenth form (a series against its own largest magnitude). A run written with its chunks set by
+    ``stage_every`` is replayed in automatic chunks, which compute the same bits for chunks of two steps or more."""
     import json
     from pathlib import Path
 
@@ -251,7 +252,9 @@ def verify_run(folder: Any) -> Any:
     from mime.experiment import Experiment
     from mime.experiment._experiment import RUN_EXPERIMENT, RUN_RECORD
     from mime.results import RunResult, Series
-    from mime.saved._folder import VerifyReport, environment_differences
+    from mime.saved._folder import DETERMINISTIC_OFF, VerifyReport, environment_differences, moved_line, \
+        nondeterministic_gpu
+    from mime.saved._scales import OWN, SCALED_FROM, SourceScale
     from mime.saved._record import environment
     from mime.units import s
 
@@ -271,26 +274,49 @@ def verify_run(folder: Any) -> Any:
     assert form is not None
     lock = form.lock
     same = not environment_differences(lock)
+    made = cast(Mapping[str, object], lock["environment"])
+    bits, scaled = same and not nondeterministic_gpu(made), form.version >= SCALED_FROM
     reference = cast(Mapping[str, Any], lock["reference"])
     rtol, atol = float(reference["rtol"]), float(reference["atol"])
-    pairs: dict[str, tuple[np.ndarray, np.ndarray]] = {
-        f"final {node}.{name}": (np.asarray(value), np.asarray(again.final[node][name]))
-        for node, fields in saved.final.items() for name, value in fields.items() if name in again.final.get(node, {})}
+    finals = {node: {name: np.asarray(value) for name, value in fields.items()} for node, fields in saved.final.items()}
+    scales = built.source_scales(finals)
+    pairs: dict[str, tuple[np.ndarray, np.ndarray, SourceScale, tuple[np.ndarray, np.ndarray] | None]] = {}
+    for node, fields in finals.items():
+        for name, value in fields.items():
+            if name not in again.final.get(node, {}):
+                continue
+            scale = scales.get(f"{node}.{name}", OWN)
+            forces = None
+            if scale.forces is not None:
+                held_node, _, held_name = scale.forces.partition(".")
+                if held_name in finals.get(held_node, {}) and held_name in again.final.get(held_node, {}):
+                    forces = (finals[held_node][held_name], np.asarray(again.final[held_node][held_name]))
+            pairs[f"final {node}.{name}"] = (value, np.asarray(again.final[node][name]), scale, forces)
     for path in saved.recorded:
         observation, _, output = path.rpartition(".")
         mine, theirs = saved[observation][output], again[observation][output]
         if isinstance(mine, Series) and isinstance(theirs, Series):
-            pairs[f"series {path}"] = (np.asarray(mine.raw), np.asarray(theirs.raw))
+            pairs[f"series {path}"] = (np.asarray(mine.raw), np.asarray(theirs.raw), OWN, None)
     moved: list[str] = []
-    for label, (a, b) in sorted(pairs.items()):
-        equal = a.shape == b.shape and (np.array_equal(a, b, equal_nan=True) if same or a.dtype.kind not in "fc"
-                                        else np.allclose(a, b, rtol=rtol, atol=atol, equal_nan=True))
-        if not equal:
-            delta = float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))) if a.shape == b.shape else float("inf")
-            moved.append(f"{label}: max |difference| {delta:.3e}")
+    for label, (a, b, scale, forces) in sorted(pairs.items()):
+        if a.shape != b.shape:
+            moved.append(f"{label}: max |difference| inf")
+            continue
+        if bits or a.dtype.kind not in "fc":
+            line = None if np.array_equal(a, b, equal_nan=True) else \
+                f"{label}: max |difference| {float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))):.3e}"
+        elif scaled:
+            line = moved_line(label, a, b, bits=False, scaled=True, rtol=rtol, atol=atol, scale=scale, forces=forces,
+                              steps=False)
+        else:
+            line = None if np.allclose(a, b, rtol=rtol, atol=atol, equal_nan=True) else \
+                f"{label}: max |difference| {float(np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))):.3e}"
+        if line is not None:
+            moved.append(line)
     here = environment()
     return VerifyReport(int(saved.steps), same, rtol, atol, f"{here['device']}, {'float64' if here['x64'] else 'float32'}",
-                        tuple(moved), tuple(sorted(pairs)))
+                        tuple(moved), tuple(sorted(pairs)), bits=bits, scaled=scaled,
+                        warning=DETERMINISTIC_OFF if nondeterministic_gpu(made) else None)
 
 
 __all__ += ["parse_override", "verify_run"]

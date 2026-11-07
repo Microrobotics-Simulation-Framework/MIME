@@ -72,7 +72,18 @@ parts' tensor as its diagonal, and such a source as the three numbers it named, 
 was above what 0.3.0 took as none. The folder's document names ``rigid_inertial`` 0.3.0 or 0.2.0, kept registered,
 which builds its node from the diagonal as before; they refuse a tensor whose products they would have dropped, so a
 folder that rested on exploratory's waiver of them is refused at load, by the version's own words, and not
-reproduced. The document's and the lock's schemas move with the form."""
+reproduced. The document's and the lock's schemas move with the form.
+
+**Version 10** (``mime.document/10``, ``mime.lock/10``) adds and removes no key. It changes what the lock's
+``reference.rtol`` and ``reference.atol`` mean where ``verify`` claims no bits (in another environment, or from a
+reference made on a GPU with XLA's deterministic mode off): a field is within tolerance when its largest difference over
+the reference steps is at most ``rtol`` times its source scale plus ``atol`` (``mime.saved._scales``), and the load's
+comparison of the derived graph in another environment holds each list of numbers and each static array to its own
+largest magnitude the same way. The tenth form writes ``rtol`` for its precision, 1e-5 in float32 and 2e-14 in float64,
+and ``atol`` 0.0, and a folder keeps the tolerance it was written with. A lock of an earlier form is judged as it was,
+element by element, ``|a - b| <= atol + rtol |b|`` with its own numbers (1e-6 and 1e-9): in ``verify``, in ``verify
+--run`` and in the load's comparison of the derived graph. Nothing it holds is written back; its schema moves with the
+form."""
 
 from __future__ import annotations
 
@@ -85,24 +96,27 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 9
+CURRENT = 10
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
-                                       7: "mime.document/7", 8: "mime.document/8", CURRENT: DOCUMENT_SCHEMA}
+                                       7: "mime.document/7", 8: "mime.document/8", 9: "mime.document/9",
+                                       CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
                                    5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", 8: "mime.lock/8",
-                                   CURRENT: LOCK_SCHEMA}
+                                   9: "mime.lock/9", CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
 #: experiment an experiment was made from, the version whose lock names the program the reference outputs were
-#: run by and records the CPUs the build could use, and the version whose resolved record holds the full inertia
-#: tensor a body's parts give.
+#: run by and records the CPUs the build could use, the version whose resolved record holds the full inertia
+#: tensor a body's parts give, and the version whose reference tolerance is over each field's source scale
+#: (``mime.saved._scales.SCALED_FROM``).
 TERMS_ADDED = 4
 DURATION_ADDED = 5
 RECORDS_ADDED = 6
 BASED_ON_ADDED = 7
 PROGRAM_ADDED = 8
 INERTIA_TENSOR_ADDED = 9
+SOURCE_SCALE_ADDED = 10
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
