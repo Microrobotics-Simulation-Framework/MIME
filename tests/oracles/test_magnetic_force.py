@@ -122,6 +122,18 @@ def test_control_an_asymmetry_a_millionth_of_the_pairs_scale_breaks_the_pair_law
     assert float(np.max(np.abs(on_first + planted))) / (EPS * scale) > ROUNDINGS
 
 
+def test_the_pairs_scale_is_half_the_force_of_two_coaxial_dipoles():
+    """The scale the pair law is judged in, ``3 mu_0 |m1| |m2| / (4 pi r^4)``, is pinned to a force known exactly: two
+    equal dipoles on their common axis pull with ``3 mu_0 m1 m2 / (2 pi r^4)``, twice the scale. The planted control
+    above is sized on the same scale, so a scale too large would loosen the pair law and leave that control passing;
+    this test is what sees it."""
+    moment = np.array([0.0, 0.0, 1.0])
+    on_first, on_second, scale = pair_forces(jax.jit(the_gradient), moment, np.zeros(3), moment,
+                                             np.array([0.0, 0.0, 0.5]))
+    assert np.isclose(float(np.linalg.norm(on_first)), 2.0 * scale, rtol=1e-5)
+    assert np.isclose(float(np.linalg.norm(on_second)), 2.0 * scale, rtol=1e-5)
+
+
 def body_force(built, moment: tuple[float, float, float]) -> np.ndarray:
     """The force the law delivers on a body at its start pose with ``moment``, from the field as the graph reads it."""
     graph = built.graph
