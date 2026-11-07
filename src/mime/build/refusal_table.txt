@@ -3,6 +3,7 @@
 # Every code MIME constructs is here, and nothing else: a Refusal whose code is not here and is not in a registered
 # namespace's own (labx.too-far) raises when it is constructed. The rows are generated from a scan of the source, and
 # `mime docs check` fails, naming the row to add, delete or change, when they differ from what the source constructs.
+apparatus.reserved-field      user
 asset.audit                   user
 asset.conflict                environment
 asset.derivation-check        user
@@ -48,6 +49,7 @@ bundle.unscannable            user
 call.missing-setting          user
 call.renamed                  user
 call.units                    user
+call.unknown-name             user
 call.wrong-type               user
 chain.armature                user
 chain.articulated-payload     user
@@ -235,6 +237,15 @@ material.not-a-record         user
 material.require              user
 modal.wheel                   environment
 observation.field-read        user
+override.baked-leaf           user
+override.callback             user
+override.initial-after-start  user
+override.leaf-unread          user
+override.no-declarations      user
+override.structural           user
+override.unreplayable         user
+override.variant              user
+override.written              user
 part.apparatus-material       user
 part.at                       user
 part.at-on-asset              user
@@ -391,6 +402,18 @@ state.outside-region          user
 state.units                   user
 state.unknown                 user
 state.value                   user
+study.axis-twice              user
+study.axis-values             user
+study.batch                   user
+study.leaf-unread             user
+study.no-member               user
+study.no-observation          user
+study.no-sweep                user
+study.precision               user
+study.refused-points          user
+study.series-time-axes        user
+study.unknown-path            user
+study.unset-group             user
 support.unsupported           user
 target.chain-link             user
 target.exclusive              user

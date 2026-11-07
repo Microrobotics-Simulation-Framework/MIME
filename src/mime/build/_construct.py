@@ -7,6 +7,7 @@ from __future__ import annotations
 import math
 import warnings
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 
 from maddening import GraphManager
@@ -277,10 +278,27 @@ def derived_inputs(plans: PlanSet) -> list[tuple[str, str]]:
     return [(write.node, write.field) for write in controller.writes]
 
 
-def construct(plans: PlanSet, law: ControlLaw | None = None,
-              models: tuple[str, ...] | None = None) -> tuple[GraphManager, BuildReport, DerivedGraph]:
-    """Phase 2. ``law`` is the controller's, made from its settings: a controller inside the compiled step is built
-    from it; ``models`` the segments whose built trees its law read, which the build report names."""
+@dataclass(frozen=True)
+class Assembled:
+    """Phase 2 before its checks: every node constructed and added with its edges, coupling groups and external inputs,
+    in the canonical order, with nothing checked, validated or compiled (``graph``). What a study assembles for each of
+    its points to find the compiled program the point needs (``mime.study``), and what :func:`construct` checks and
+    compiles."""
+
+    graph: GraphManager
+    order: tuple[str, ...]
+    groups: tuple[tuple[str, ...], ...]
+    lags: tuple[EdgeLag, ...]
+    physics_lags: tuple[EdgeLag, ...]
+    owners: Mapping[str, str]
+
+
+def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
+    """Phase 2's construction alone: each entry's nodes and edges, and the controller's inside the compiled step, added
+    to a graph in the canonical order with its coupling groups and external inputs. No post-build check, no MADDENING
+    validation and no compile run, so no XLA program is compiled. Refuses (``BuildRefused``) what construction finds
+    itself: an entry's build that raised or failed, an output or flag its node does not hold, a controller's step that
+    cannot run inside the compiled step, and a graph with no node."""
     canonical = not _testing.skipping_canonical_order()
     building = [plan for plan in plans.entries if plan.section is not Section.CONTROLLER]
     entry_order = building if canonical else sorted((p for p in plans.declared if p.section is not Section.CONTROLLER),
@@ -348,13 +366,24 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
         add_coupling_group(graph, group, max_iterations=held.max_iterations, tolerance=held.tolerance)
     for node, field in derived_inputs(plans):
         add_external_input(graph, node, field)
+    return Assembled(graph, tuple(order), tuple(tuple(group) for group in groups), tuple(lags), physics_lags, owners)
 
+
+def construct(plans: PlanSet, law: ControlLaw | None = None,
+              models: tuple[str, ...] | None = None) -> tuple[GraphManager, BuildReport, DerivedGraph]:
+    """Phase 2: :func:`assemble`, then the post-build checks, MADDENING's validation and compile, the probe of the
+    compiled step, and the derived hash. ``law`` is the controller's, made from its settings: a controller inside the
+    compiled step is built from it; ``models`` the segments whose built trees its law read, which the build report
+    names."""
+    held = assemble(plans, law)
+    graph, order, owners = held.graph, list(held.order), held.owners
+    groups, lags, physics_lags = [list(group) for group in held.groups], list(held.lags), held.physics_lags
     _testing.run_hook(graph, plans)
     external = tuple(f"{e['target_node']}.{e['target_field']}"
                      for e in cast(list[dict[str, Any]], graph_config(graph)["external_inputs"]))
     refusals = post_build_checks(graph, plans)
     if _testing.refusing_unplanned_loops():
-        refusals += unplanned_refusals(lags, owners)
+        refusals += unplanned_refusals(lags, dict(owners))
     refusals += order_refusals(plans.controller, lags, physics_lags)
     reported, refused_by_maddening, schedule_lines = _validate(graph)
     refusals += refused_by_maddening

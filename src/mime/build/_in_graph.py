@@ -56,7 +56,7 @@ def inlined(step: Any) -> Step:
 _ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
 
 
-def _program(closed: Any) -> tuple[str, list[Any]]:
+def program_of(closed: Any) -> tuple[str, list[Any]]:
     """A traced step as comparable data: the program's text with the addresses of its callables removed, and the
     values of the constants it closes over."""
     return _ADDRESS.sub("", str(closed)), [np.asarray(held) for held in closed.consts]
@@ -75,7 +75,7 @@ def impure_problems(step: Step, state: Mapping[str, Any], reads: Mapping[str, An
         second = make_jaxpr_with_shapes(once, dict(state), dict(reads))[0]
     except Exception:  # noqa: BLE001 - the first trace's failure is reported by trace_problems
         return []
-    (text, values), (again, held) = _program(first), _program(second)
+    (text, values), (again, held) = program_of(first), program_of(second)
     if text != again or len(values) != len(held) or any(
             a.shape != b.shape or not np.array_equal(a, b, equal_nan=True) for a, b in zip(values, held, strict=True)):
         return ["its step traces to a different program each time it is traced: it reads Python state that its own "

@@ -282,6 +282,7 @@ class ChunkedRun:
         self._one_step = False
         self._keep: frozenset[tuple[str, str]] | None = None
         self._tests: tuple[FlagTest, ...] = ()
+        self._params: Mapping[str, Any] | None = None
         #: What the last :meth:`run` reduced of the flags it was given to test, inside its compiled scans (``None`` for
         #: a run that was given none to test): each one's steps raised, and its first and last, from the graph's start.
         self.tally: FlagTally | None = None
@@ -298,7 +299,7 @@ class ChunkedRun:
     def run(self, steps: int, *, history: bool, hook: ChunkHook | None = None, chunk: int | None = None,
             keep: frozenset[tuple[str, str]] | None = None, automatic: bool = False,
             stop: StopRequest | None = None, tests: Sequence[FlagTest] = (),
-            one_step: bool = False) -> tuple[History, History | None]:
+            one_step: bool = False, params: Mapping[str, Any] | None = None) -> tuple[History, History | None]:
         """``steps`` base steps from where the graph stands, as compiled chunks of ``chunk`` steps (the control period
         when a controller is called between them), the hook called after each; or as one compiled scan when neither a
         controller nor a hook asks for chunks, unless ``automatic``, which splits it as :func:`automatic_chunks` does.
@@ -314,7 +315,12 @@ class ChunkedRun:
 
         ``one_step`` runs every step as a compiled scan of its own, the chunks and a controller's ticks unchanged: the
         program a run chunked by one step runs, which a saved form's reference outputs taken from such a run name
-        (``one-step``) and ``verify`` reruns."""
+        (``one-step``) and ``verify`` reruns.
+
+        ``params`` is a parameter tree every scan takes in place of the graph's own: an overridden run's, or a study's
+        member's. An argument of the compiled scans, it recompiles nothing; without it the run is the one it always was.
+        """
+        self._params = params
         self._tests = tuple(tests) if not history else ()
         self._one_step = one_step
         self.tally = FlagTally.none(len(self._tests)) if self._tests else None
@@ -375,13 +381,13 @@ class ChunkedRun:
                 stop = step + 1
             if history:
                 stop = min(stop, step + self.block())
-                final, held = scan_chunk_with_history(self.graph, stop - step, fed)
+                final, held = scan_chunk_with_history(self.graph, stop - step, fed, self._params)
                 stacked.append(_to_numpy(held, self._keep))
             elif self._tests:
-                final, reduced = scan_chunk_tallied(self.graph, stop - step, fed, self._tests)
+                final, reduced = scan_chunk_tallied(self.graph, stop - step, fed, self._tests, self._params)
                 self.tally = (self.tally or FlagTally.none(len(self._tests))).then(reduced.shifted(step))
             else:
-                final = scan_chunk(self.graph, stop - step, fed)
+                final = scan_chunk(self.graph, stop - step, fed, self._params)
             self.steps += stop - step
             step = stop
         ready(final)
