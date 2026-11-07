@@ -2986,8 +2986,8 @@ anomalies:
       hand-placed samples of distinct heights and azimuths; tests/oracles/test_tube_wall.py and test_tube_kind.py, in parameters
       that scale the tube, which keep a tie a tie and give dz a tangent of zero on both sides) do not evaluate at a tie where
       dz has a tangent [read, with the arithmetic for the scaling]. tests/saved/test_switch_harness.py takes jacfwd of the read
-      on the axis, at two heights that differ, to check for non-finite values, not the sign. scripts/sim2real/bem.py and
-      capfix.py differentiate a screw in a tube in the body's shape parameters (radius, length, wavenumber, modulation) and the
+      on the axis, at two heights that differ, to check for non-finite values, not the sign. the campaign scripts under scripts/sim2real/
+      differentiate a screw in a tube in the body's shape parameters (radius, length, wavenumber, modulation) and the
       tube's radius, compared with finite differences by design; whether the points of that body tie there was not examined, and
       those scripts are not collected by CI. A sphere or a screw ties often: the demo's sphere ties at 14 pairs at
       both poses tried. Not measured: any pose gradient of a whole node (the resistance in the pose) through the wall at a
