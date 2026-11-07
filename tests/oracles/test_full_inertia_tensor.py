@@ -7,8 +7,8 @@ body's, to rounding, at every step of the run. Drawn: the tensor (principal mome
 triangle inequality, about drawn axes; or FL-9's own tensor, which its parts give), the starting pose and rate, the
 body's moment and its resistance in its own frame; driven (a 1.2 mT field turning at 10 Hz, a drag, 0.5 ms steps) or
 free (200 rad/s, 0.1 ms steps). The equivalence holds within the draw's own floor over :data:`STEPS` steps: the larger of
-:data:`FLOOR` and :data:`RESOLUTION_FACTOR` times what the principal body itself moves under a one-ulp change of its
-moments or of its start (a driven draw amplifies rounding about a thousandfold per thousand steps, so an absolute floor
+:data:`FLOOR` and :data:`RESOLUTION_FACTOR` times what the principal body itself moves under a one-ulp change of any one
+of its inputs (each moment, start component, rate, moment and resistance entry, up and down) (a driven draw amplifies rounding about a thousandfold per thousand steps, so an absolute floor
 has no relation to a draw's own sensitivity). **The plants**, each caught on every draw, more than ten times that
 floor, so that a draw whose floor nears a plant fails and is never filtered away: a product's sign flipped in one place of the
 tensor, in both, the world inertia formed ``Q^T J Q``, the step's Jacobian transposed. The drawn tensors' principal
@@ -58,13 +58,17 @@ FREE = {"dt": 1e-4, "rate": 200.0, "field": 0.0, "frequency": 0.0}
 #: How far, in radians, the body's attitude may stand from the principal body's over a run at least, and ten times the
 #: draw's floor the least a plant must move it. The unplanted arm's resolution as first measured, 200 draws a set
 #: through this file's own strategies and runs (float64): at most 1.5e-12, 1.1e-11, 5.2e-11 and 2.0e-12 radians in the
-#: four sets (drawn tensors driven and free, FL-9's driven and free). That sample missed the tail: on CI one stress run
-#: in four had an FL-9 driven draw at 1.1e-9 to 2.2e-8, because the principal body itself, run twice with its start
-#: changed by one ulp, stands 1.3e-8 apart (error growth about 10^3 per thousand steps). So the floor is the larger of
-#: this constant and :data:`RESOLUTION_FACTOR` times the principal body's own divergence on the draw (:func:`resolution`).
-#: Measured over 1500 fresh draws a set (float64): the largest floor reached 2.4e-7 radians (FL-9 driven; 63 of its draws
-#: had a floor above this constant, 3 of the drawn tensors driven), the unplanted arm at most 0.14 of its floor, and the
-#: least plant 8.4e-4 radians, 8.4e5 times the floor of its draw, every plant clearing PLANT_FACTOR times it.
+#: four sets (drawn tensors driven and free, FL-9's driven and free). That sample missed the tail: on CI an FL-9 driven
+#: draw stood 1.6e-8 apart, because the principal body is sensitive to rounding (error growth about 10^3 per thousand
+#: steps, a response of about 4e7 radians per unit of relative change in its inputs, linear from 1e-16 to 1e-13). So the
+#: floor is the larger of this constant and :data:`RESOLUTION_FACTOR` times the principal body's own response to a
+#: one-ulp change of any one of its inputs (:func:`resolution`). The first form of it moved the moments together, and
+#: then the start; that is a direction of partial cancellation (60 times below one moment alone, 370 below the largest
+#: input), and the draw that flaked was where it missed. Measured over 1500 fresh draws a set (float64) with the
+#: resolution of every input in both directions: the largest floor reached 4.9e-7 radians (FL-9 driven; 90 of its draws
+#: had a floor above this constant, 4 of the drawn tensors driven), the unplanted arm at most 0.04 of its floor and at
+#: most 6.9 times the resolution (the factor is 100), and the least plant 7.4e-4 radians (FL-9 free), 7.4e5 times the
+#: floor of its draw, every plant clearing PLANT_FACTOR times it.
 FLOOR = 1e-9
 RESOLUTION_FACTOR = 100.0
 PLANT_FACTOR = 10.0
@@ -236,9 +240,10 @@ def flipped(tensor: np.ndarray, both: bool) -> np.ndarray:
 
 
 @cache
-def runner(node_class: type[RigidInertialNode], dt: float, driven: bool) -> Callable[..., jax.Array]:
+def runner(node_class: type[RigidInertialNode], dt: float, driven: bool, batched: bool = False) -> Callable[..., jax.Array]:
     """The compiled run of ``node_class`` for :data:`STEPS` steps of ``dt``, its quaternion after each: the node is
-    built once, and the tensor, the start and the forcing are the run's arguments."""
+    built once, and the tensor, the start and the forcing are the run's arguments. ``batched`` compiles the run over a
+    leading axis of every argument (the resolution's many runs at once)."""
     nine = node_class is not RigidInertialMidpointNode
     node = node_class("probe", dt, mass=MASS, inertia=tuple(np.eye(3).reshape(9) if nine else np.ones(3)),
                       initial_pose=(0.0,) * 7, initial_twist=(0.0,) * 6)
@@ -256,7 +261,7 @@ def runner(node_class: type[RigidInertialNode], dt: float, driven: bool) -> Call
         _, found = jax.lax.scan(one, {"pose": pose, "twist": twist}, jnp.arange(STEPS, dtype=pose.dtype))
         return found
 
-    return jax.jit(run)
+    return jax.jit(jax.vmap(run) if batched else run)
 
 
 def principal_attitude(drawn: Mapping[str, np.ndarray], driven: bool, moments: np.ndarray,
@@ -268,21 +273,41 @@ def principal_attitude(drawn: Mapping[str, np.ndarray], driven: bool, moments: n
         jnp.asarray(drawn["principal_moment"]), jnp.asarray(drawn["principal_resistance"])))
 
 
-def one_ulp_up(values: np.ndarray) -> np.ndarray:
-    """``values`` with each entry one unit in the last place further from zero."""
-    return np.nextafter(values, np.where(values >= 0.0, np.inf, -np.inf))
+def one_ulp_moves(values: np.ndarray) -> list[tuple[tuple[int, ...], np.ndarray]]:
+    """``values`` with one entry at a time moved one unit in the last place, up and then down: every entry that is not
+    zero (a zero entry is a structural zero, not a rounded value), a symmetric matrix's mirror entries together."""
+    moves = []
+    for index in zip(*np.nonzero(values), strict=True):
+        for direction in (np.inf, -np.inf):
+            moved = values.copy()
+            moved[index] = np.nextafter(values[index], direction)
+            if moved.ndim == 2 and moved.shape[0] == moved.shape[1]:
+                moved[index[::-1]] = moved[index]
+            moves.append((index, moved))
+    return moves
 
 
 def resolution(drawn: Mapping[str, np.ndarray], driven: bool) -> float:
     """The draw's own resolution: the most the principal body's attitude moves over the run under a one-ulp change of
-    its moments, and under a one-ulp change of its start (radians; infinite where a run is not finite). A comparison of
-    two arms that differ by rounding cannot be finer than this."""
-    reference = principal_attitude(drawn, driven, drawn["moments"], drawn["principal_start"])
-    moved = (principal_attitude(drawn, driven, one_ulp_up(drawn["moments"]), drawn["principal_start"]),
-             principal_attitude(drawn, driven, drawn["moments"], one_ulp_up(drawn["principal_start"])))
-    spread = [attitude_angle(reference, other) for other in moved]
-    return float(max(np.max(angle) for angle in spread)) if all(np.all(np.isfinite(a)) for a in spread) \
-        else float("inf")
+    any one of its inputs, taken one at a time and in both directions: each of its moments, each component of its start,
+    its rate, its moment and its resistance (radians; infinite where a run is not finite). The two arms of the
+    comparison differ by the rounding of all of these at once (the tensor, ``Q D Q^T``, the start, ``p Q``, the moment
+    and the resistance turned into the principal frame), so no direction of the rounding may be left unsampled. All
+    the moments moved together by one ulp is a direction in which the run partly cancels: on the draw that flaked on CI
+    it moved the attitude 2.8e-11 radians where one moment alone moved it 1.7e-9 and the largest single input 1.0e-8.
+    A comparison cannot be finer than the body's response to the rounding it carries. The largest over the directions
+    bounds the response in them, and the factor :data:`RESOLUTION_FACTOR` covers their sum. The runs are one batch, the
+    unmoved one among them, so every difference is between rows of one compiled program."""
+    arms = {"moments": drawn["moments"], "start": drawn["principal_start"], "twist": drawn["twist"],
+            "moment": drawn["principal_moment"], "resistance": drawn["principal_resistance"]}
+    rows = [dict(arms)] + [{**arms, name: moved} for name, values in arms.items() for _, moved in one_ulp_moves(values)]
+    found = np.asarray(runner(RigidInertialMidpointNode, (DRIVEN if driven else FREE)["dt"], driven, batched=True)(
+        jnp.asarray(np.stack([row["moments"] for row in rows])),
+        jnp.asarray(np.stack([np.r_[np.zeros(3), row["start"]] for row in rows])),
+        jnp.asarray(np.stack([row["twist"] for row in rows])), jnp.asarray(np.stack([row["moment"] for row in rows])),
+        jnp.asarray(np.stack([row["resistance"] for row in rows]))))
+    spread = attitude_angle(found[0], found[1:])
+    return float(np.max(spread)) if np.all(np.isfinite(spread)) else float("inf")
 
 
 def apart(drawn: Mapping[str, np.ndarray], node_class: type[RigidInertialNode], tensor: np.ndarray,
@@ -325,19 +350,44 @@ def float64():
         yield
 
 
+def assert_moves_as_principal_body_and_every_plant_is_caught(drawn: Mapping[str, np.ndarray], driven: bool) -> None:
+    found = judged(drawn, driven)
+    floor = floor_of(found)
+    assert np.isfinite(floor), "the principal body's own run is not finite: the draw has no resolution"
+    assert found.pop("unplanted") <= floor, floor
+    missed = {plant: distance for plant, distance in found.items() if not distance > PLANT_FACTOR * floor}
+    assert not missed, (floor, missed)
+
+
 @pytest.mark.usefixtures("float64")
 @pytest.mark.parametrize("name", SETS)
 @settings(deadline=None)
 @given(data=st.data())
 def test_a_body_with_products_moves_as_its_principal_body_and_every_plant_is_caught(name, data):
     operating, screw = SETS[name]
-    drawn = data.draw(draws(operating, screw))
-    found = judged(drawn, operating is DRIVEN)
-    floor = floor_of(found)
-    assert np.isfinite(floor), "the principal body's own run is not finite: the draw has no resolution"
-    assert found.pop("unplanted") <= floor, floor
-    missed = {plant: distance for plant, distance in found.items() if not distance > PLANT_FACTOR * floor}
-    assert not missed, (floor, missed)
+    assert_moves_as_principal_body_and_every_plant_is_caught(data.draw(draws(operating, screw)), operating is DRIVEN)
+
+
+#: The FL-9 driven draw that failed on CI (the unplanted arm 1.6e-8 radians from the principal body, against a floor of
+#: 2.8e-9 taken from the moments and the start moved together): kept as the example it was. ``st.data()`` takes no
+#: ``@example``, so it is a test of its own, on the same judgement as the property's.
+CI_DRAW = {
+    "tensor": np.array([[1.3043197461318855e-10, 0.0, 0.0], [0.0, 4.631130043564001e-10, 4.976430324883031e-13], [0.0, 4.976430324883031e-13, 4.570054968582633e-10]]),
+    "moments": np.array([1.3043197461318855e-10, 4.569652143199341e-10, 4.6315328689472937e-10]),
+    "turn": np.array([0.7350791638503132, -0.6779812850463679, 0.0, 0.0]),
+    "start": np.array([-0.5048632344798252, -0.3224309677718828, -0.7721030249600713, 0.21215160696955307]),
+    "principal_start": np.array([-0.5897166061289196, 0.1052755382960947, -0.7113916651118163, -0.3675231751899377]),
+    "twist": np.array([0.0007957479063127063, -0.0004560882297102824, -0.0003984580232831125, -1.9233298759015802, -3.934541836229653, 2.4125054875425676]),
+    "moment": np.array([-0.0006316055340712783, -0.0011056493552360732, 0.0010959078212133498]),
+    "principal_moment": np.array([-0.0006316055340712783, -0.0011815418130817438, -0.0010136238914262238]),
+    "resistance": np.array([[4e-05, 0.0, 0.0, 1.1672442677590713e-08, 1.0652574672436062e-08, 1.7888543819998318e-08], [0.0, 8e-05, 0.0, 0.0, 1.772945260193122e-08, 0.0], [0.0, 0.0, 8e-05, 1.754679909769211e-08, 0.0, 1.4396163137629335e-08], [1.1672442677590713e-08, 0.0, 1.754679909769211e-08, 8e-10, 0.0, 0.0], [1.0652574672436062e-08, 1.772945260193122e-08, 0.0, 0.0, 2.4e-09, 0.0], [1.7888543819998318e-08, 0.0, 1.4396163137629335e-08, 0.0, 0.0, 2.4e-09]]),
+    "principal_resistance": np.array([[4e-05, 0.0, 0.0, 1.1672442677590713e-08, -1.6970745101627173e-08, 1.2061142476872729e-08], [0.0, 8e-05, 3.9060123844476424e-22, -1.7489593588914006e-08, 1.4417861874834705e-08, 2.6806218852909574e-10], [0.0, -4.302203343210673e-23, 8.000000000000002e-05, 1.4157240795390388e-09, 2.680621885290957e-10, 1.7707753864725847e-08], [1.1672442677590713e-08, -1.7489593588914006e-08, 1.4157240795390388e-09, 8e-10, 0.0, 0.0], [-1.6970745101627173e-08, 1.4417861874834705e-08, 2.6806218852909574e-10, 0.0, 2.4000000000000004e-09, -1.9233300914088694e-27], [1.2061142476872729e-08, 2.680621885290957e-10, 1.7707753864725847e-08, 0.0, -4.488749638138054e-28, 2.4e-09]]),
+}
+
+
+@pytest.mark.usefixtures("float64")
+def test_the_fl9_driven_draw_that_failed_on_ci_moves_as_its_principal_body_and_every_plant_is_caught():
+    assert_moves_as_principal_body_and_every_plant_is_caught(CI_DRAW, driven=True)
 
 
 #: The gradient's run: FL-9 driven from a fixed start for a fifth of a second at script A's step.
