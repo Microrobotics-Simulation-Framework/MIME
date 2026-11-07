@@ -8,18 +8,22 @@ parts', not the resolver's rounding. ``rigid_inertial`` 0.3.0, kept for saved fo
 (and takes one whose products it took as none as its diagonal), so the products reach the entry and are not dropped on
 the way; the kept versions build their own nodes from three moments."""
 
+import math
+
 import numpy as np
 import pytest
+from hull_cases import SPACING, placed_at, turned
 from profile_cases import parts_screw
 
-from mime import Body, Experiment, State
+from mime import Body, Experiment, State, Structure
 from mime.build import BuildRefused
 from mime.dynamics import RigidInertial
 from mime.dynamics.body import KEPT, PRODUCTS_TAKEN_AS_NONE, RigidInertialExplicit, RigidInertialMoments
 from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, RigidInertialTensorNode
-from mime.scene import Scene, Screw, Sphere, Z
+from mime.interactions import Contact
+from mime.scene import Scene, Screw, Sphere, Tube, X, Z
 from mime.things import Part
-from mime.units import dimensionless, kg, kg_m2, kg_per_m3, m_per_s, m_per_s2, mm, ms, rad_per_s, s
+from mime.units import dimensionless, kg, kg_m2, kg_per_m3, m, m_per_s, m_per_s2, mm, ms, rad_per_s, s
 
 AT_REST = dict(position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
                angular_velocity=rad_per_s((0.0, 0.0, 0.0)))
@@ -173,3 +177,76 @@ def test_the_saved_forms_copy_of_the_line_0_3_0_drew_is_the_kept_versions():
     from mime.saved import _versions
 
     assert _versions._PRODUCTS_TAKEN_AS_NONE == PRODUCTS_TAKEN_AS_NONE  # pyright: ignore[reportPrivateUsage]
+
+
+TUBE_RADIUS, STEPS, ONE_ULP_OF_30 = 3.175e-3, 3, float(np.nextafter(np.float32(30.0), np.float32(np.inf)))
+
+
+def screw_held_in_tube(inertia=None, spin_x: float = 30.0, contact: bool = True) -> Experiment:
+    """``spinning_screw``'s body in script A's tube, turned 12 degrees across it and lowered until its hull's nearest
+    point is 1e-7 m from the wall less the margin, so the hull contact holds it from the first step; ``spin_x``, the
+    angular velocity's x component (rad/s), for the resolution's one-ulp change; ``inertia`` as in ``spinning_screw``;
+    ``contact=False``, the same body free in the tube."""
+    quaternion = turned(math.radians(12.0))
+    start = placed_at(1e-7, quaternion)
+    exp = Experiment("screw_held_in_tube", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1.0))
+    tube = exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=m(TUBE_RADIUS), wall=mm(1.6),
+                                                             length=mm(100.0))))
+    exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=m(tuple(float(c) for c in start)), orientation=quaternion, velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((spin_x, 60.0, 40.0))), parts={"shell": Part(Screw(
+            radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+            starts=2))}))
+    exp.declare("umr.parts.shell.density", kg_per_m3(1410.0), reason="FL-9 resin plus magnets, mean density")
+    if inertia is not None:
+        exp.declare("umr.inertia", kg_m2(inertia), reason="the parts' diagonal, the products left out")
+    if contact:
+        exp.attach(Contact.Projection(margin=m(1e-4), spacing=m(SPACING)), body="umr", surface=tube.inner_surface)
+    return exp
+
+
+def test_a_body_whose_parts_give_products_runs_under_the_hull_contact_and_the_products_reach_the_run():
+    """The hull contact's first end-to-end run of a tensor with products (the follow-up to #186), the body being
+    ``parts_screw``'s: FL-9, whose parts give a product of inertia of 4.98e-13 kg m^2, 0.107 % of its largest moment
+    (4.63e-10), torque-free in script A's tube, spinning across its transverse axes, held by its hull's points from the
+    first step. Three steps of 1 ms: the hull's nearest point starts 1e-7 m inside the margin, so the contact acts from the
+    first step; the products' effect on the pose grows with each step, and three put it well above the resolution.
+    The containment watch reads nothing for a hull the contact holds; the only flag raised is that the
+    contact touched.
+
+    **Controls.** (1) The same body with the parts' diagonal declared in the tensor's place ends apart from it by more
+    than a hundred times the run's own resolution, which is the pose's divergence under a one-ulp change of the start's
+    angular velocity (measured: 7.5e-9, against 3.0e-5 for the diagonal, 4 000 times it, in float32 on CPU). (2) The
+    same body without the contact ends 0.046 from the held one (six million times the resolution), so the contact is in
+    play. A resolution that measures zero would make the first control prove nothing, and is refused.
+
+    This holds that the products reach the run, not by which path: the products enter both the world inertia and the
+    gyroscopic term's Jacobian, so a body inertia reduced to its diagonal while the Jacobian keeps the products passes
+    here (measured). The mass matrix's use of them is held by ``tests/oracles/test_full_inertia_tensor.py``, whose
+    principal-frame oracle catches that reduction on every run."""
+    built = screw_held_in_tube().build()
+    tensor = node_inertia(built).reshape(3, 3)
+    assert type(built.graph.get_node("umr")) is RigidInertialTensorNode
+    resolved = built.record.resolved["values"]["umr.inertia"]
+    assert resolved["source"] == "derived from its parts"
+    assert np.array_equal(np.asarray(resolved["value"]), tensor.reshape(9))
+    assert tensor[1, 2] != 0.0 and abs(tensor[1, 2]) / np.max(np.diag(tensor)) > PRODUCTS_TAKEN_AS_NONE
+
+    carried = built.run(ms(STEPS), history=True)
+    diagonal = tuple(float(c) for c in np.diag(tensor))
+    left_out = screw_held_in_tube(diagonal).build().run(ms(STEPS), history=True)
+    nudged = screw_held_in_tube(spin_x=ONE_ULP_OF_30).build().run(ms(STEPS), history=True)
+    free = screw_held_in_tube(contact=False).build().run(ms(STEPS), history=True)
+    pose, control, one_ulp, uncontacted = (np.asarray(each.history["umr"]["pose"])
+                                           for each in (carried, left_out, nudged, free))
+
+    assert pose.shape == (STEPS, 7) and np.all(np.isfinite(pose))
+    assert np.all(np.isfinite(np.asarray(carried.history["umr"]["twist"])))
+    assert carried.containment == ()
+    raised = {read.path for read in carried.flags if read.raised}
+    assert raised == {"umr.touching"}, "the contact held the hull and nothing else was raised"
+
+    resolution = float(np.max(np.abs(one_ulp - pose)))
+    assert resolution > 0.0, "a one-ulp change that moves nothing cannot be the run's resolution"
+    assert np.max(np.abs(control - pose)) > 100.0 * resolution, "the products reached the run"
+    assert np.max(np.abs(uncontacted - pose)) > 100.0 * resolution, "the contact was in play"

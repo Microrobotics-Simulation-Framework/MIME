@@ -463,8 +463,9 @@
   and without the watch, and a build that does differ must hash differently. `build/test_inertia_tensor.py`: a
   body's parts give its full inertia tensor, products and all, in every profile, a declared tensor is carried as
   declared and refused where it is not symmetric or not definite, and the kept 0.3.0 refuses the products, so they
-  reach the entry (`oracles/test_full_inertia_tensor.py` holds the node to its principal frame, its gradients and its
-  invariants); `docs/test_spacing_tables.py` holds the tables
+  reach the entry, and the parts' tensor with its product runs end to end under the hull contact, its pose apart from the
+  diagonal's by thousands of times the run's own resolution (`oracles/test_full_inertia_tensor.py` holds the node to its
+  principal frame, its gradients and its invariants); `docs/test_spacing_tables.py` holds the tables
   and the numbers in the prose of `docs/choosing_spacing.md` to the measurements.
 - `oracles/test_tilt_flag.py` and `results/test_tilt_arms.py`: the surrogate drag's two flags for a tilt it cannot see
   (friction 4c): `tilt_fired` at the declared validity range and `bore_fired` where a body no longer fits the tube's
