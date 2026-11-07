@@ -1,12 +1,15 @@
 """The bridge from a study to an experiment, ``result.member(i).as_experiment(name)``: gate 6 of S2c-1.
 
-The gate: script A's reproduction arm at 20 and 30 Hz (both locked, the base at 10 Hz), the study written to its folder;
+The gate: script A's reproduction arm at 20 and 30 Hz (both locked, the base at 10 Hz: the points and the run of the
+predictions' amendment 1, with its reason), the study written to its folder;
 each member made an experiment of its own, built and run alone, is that member's run, within the tolerance of S2b-1's
 gate 1 per field in eps of the field's scale over the run (``predictions_s2c1.json``, committed before the run), in float32
 and in float64; and its saved folder's ``based_on`` names the base. The controls: a member made an experiment with its
 override dropped (it is the base, at 10 Hz) and a member made an experiment and compared with another member must each
-fail that tolerance, by orders of magnitude, on every trial. What the comparison does not claim: it is the sweep's
-acceptance (a batch against the same point alone), not an accuracy claim about the model."""
+fail that tolerance, by orders of magnitude, on every trial. The tolerance is the locked regime's, so the regime is
+checked on every run: each member's run alone keeps the lag of the body's moment behind the field within 90 degrees at
+every step (measured before the amendment: at most 50.5 and 80.8 degrees). What the comparison does not claim: it is the
+sweep's acceptance (a batch against the same point alone), not an accuracy claim about the model."""
 
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ import json
 import warnings
 
 import jax
+import numpy as np
 import pytest
 import yaml
 from compare import TOLERANCE_EPS, misses, worst
@@ -60,6 +64,23 @@ def gate(request, tmp_path_factory):
 def alone(experiment: Experiment):
     """The experiment run alone, keeping every step."""
     return experiment.build().run(DURATION, history=True)
+
+
+def lag(run) -> np.ndarray:
+    """The lag of the body's moment (its body y) behind the field about the tube's axis (x), at every step, in rad."""
+    from mime.core import quaternion
+
+    history = run.history
+    moments = np.asarray(jax.vmap(lambda q: quaternion.rotate(q, jax.numpy.array([0.0, 1.0, 0.0])))(
+        jax.numpy.asarray(history["umr"]["pose"][:, 3:])))
+    fields = np.asarray(history["field.magnetic"]["flux_density_magnetic_torque_umr"])
+    return np.arctan2(np.cross(moments, fields)[:, 0], np.sum(moments * fields, axis=1))
+
+
+def test_both_members_are_locked_so_that_the_tolerance_is_the_locked_regimes(gate):
+    worst_lag = {f: float(np.degrees(np.max(np.abs(lag(gate["runs"][i]))))) for i, f in enumerate(FREQUENCIES)}
+    print("largest lag behind the field, degrees", gate["dtype"], worst_lag)
+    assert all(value < 90.0 for value in worst_lag.values()), worst_lag
 
 
 def test_a_member_made_an_experiment_is_the_members_own_run(gate):

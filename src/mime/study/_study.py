@@ -439,12 +439,16 @@ class Study:
                say: Callable[[str], None] | None = None) -> StudyResult:
         """Run the study into the folder ``out``, group by group and batch by batch, and return what it holds
         (:meth:`mime.results.StudyResult.read`). The folder is a study folder (``mime.results``): the base experiment
-        saved once, the spec file, a manifest that says which members are done, and each group's arrays. A run into a
-        folder that holds this study resumes: a member that is ``done`` under the same content key (its point, its
-        group's structure key, the base's input hash, the run and the source hashes of what computes it) is not run
-        again, and every other is. A folder that holds another study, or something that is not one, is refused.
-        ``shard=(i, k)`` runs only the groups whose number is ``i`` modulo ``k``, the rest left ``pending``; ``pilot``
-        has ``say`` the measured cost of a chunk of the first group before the rest runs."""
+        saved once, the spec file, a manifest that says which members are done, and each group's arrays. ``out`` is a
+        new or empty folder, or one that holds this study: a folder that holds anything else is refused and left as it
+        is. A run into a folder that holds this study resumes: a member that is ``done`` under the same content key is
+        not run again, and every other is. The key is its point, its group's structure key, the base's input hash, the
+        run, and the code: every file of the installed ``mime`` package (and of a package a class of its nodes, entries
+        or law comes from), with the versions of MADDENING, OpenMaterica, JAX, jaxlib, NumPy and SciPy and the
+        precision. So any change to MIME's files runs every member again. ``shard=(i, k)`` runs only the structure
+        groups whose number is ``i`` modulo ``k`` (``k`` at most the study's groups), the rest left ``pending``; shards
+        run one after another into one folder add up to the whole study. ``pilot`` has ``say`` the measured cost of a
+        chunk of the first group this run runs, before the rest."""
         from mime.study._folder_run import run_study_to
 
         self.plan()

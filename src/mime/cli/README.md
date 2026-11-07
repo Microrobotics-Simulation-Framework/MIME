@@ -211,8 +211,10 @@
 - `mime study plan <spec> [--base <folder>]` and `mime study run <spec> --out <folder> [--base <folder>] [--shard <i/k>]
   [--pilot] [--no-xla-cache]`: a study from its spec file (`study.mime.yaml`, see [reading a study's result](../../../docs/results.md)).
   `plan` prints what the study will do before anything runs and exits one where a point is refused; `run` writes the
-  study folder group by group and resumes one that holds the same study (a member is reused only under the same content
-  key), refuses a folder that holds another, and with `--pilot` first prints what a member costs. Exits zero, or two when
+  study folder group by group into a new or empty folder and resumes one that holds the same study (a member is reused
+  only under the same content key), refuses a folder that holds another study or anything else, and with `--pilot` first
+  prints what a member costs. `--shard i/k` runs the structure groups whose number is `i` modulo `k`, `k` at most the
+  study's groups; shards run one after another into one folder add up to the whole study. Exits zero, or two when
   refused.
 - `mime completion bash|zsh|fish`: print a completion script for the shell to standard output, written from the same
   parser the command runs on, so every command, flag and choice is completed and none is listed by hand. The script is

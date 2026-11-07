@@ -156,6 +156,13 @@ def read_spec(path: Path) -> dict[str, Any]:
                                 f"write `{path_}: {{values: [...], reason: ...}}`")
     if held.get("combine", "grid") not in ("grid", "along"):
         raise _refuse("study.spec", RefusalClass.USER, f"`combine` is 'grid' or 'along', not {held['combine']!r}", "write `combine: grid`")
+    if not isinstance(held.get("drop_refused", False), bool):
+        raise _refuse("study.spec", RefusalClass.USER, f"`drop_refused` is {held['drop_refused']!r}, which is not true or false",
+                            "write `drop_refused: true` or `drop_refused: false`, unquoted")
+    record = held.get("record", [])
+    if not isinstance(record, list) or not all(isinstance(each, str) for each in cast(list[object], record)):
+        raise _refuse("study.spec", RefusalClass.USER, f"`record` is {record!r}, which is not a list of outputs",
+                            "write `record: [swim_speed:umr.speed]`, a list even for one output")
     policy = cast(dict[str, Any], held.get("seed") or {"policy": "experiment"})
     if set(policy) - {"policy"} or policy.get("policy") not in SEED_POLICIES:
         raise _refuse("study.spec", RefusalClass.USER, f"the seed policy is {policy!r}; this release has {', '.join(SEED_POLICIES)} (every member "
@@ -190,7 +197,7 @@ def study_from_spec(path: Path, base: Path | None = None) -> tuple[Study, dict[s
     study = Study(experiment).sweep(
         points, duration=duration, record=[str(r) for r in spec.get("record", [])],
         every=cast(Quantity, value_of(every, "every")) if every is not None else None,
-        batch=spec.get("batch"), drop_refused=bool(spec.get("drop_refused", False)),
+        batch=spec.get("batch"), drop_refused=spec.get("drop_refused", False),
         reasons={name: str(held["reason"]) for name, held in axes.items() if held.get("reason")})
     return study, spec
 

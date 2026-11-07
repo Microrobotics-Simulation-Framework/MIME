@@ -6,8 +6,9 @@
                                 the groups, each member's status, overrides and content key, the dropped points
     study.mime.yaml             the study's spec file: the study run again from it is this study
     experiment/                 the base experiment, a saved folder, byte for byte what ``save()`` wrote
-    groups/<k>/outputs.npz      every member of group k, its arrays under ``m<point>/`` and its manifest and report
-                                under ``m<point>/manifest`` and ``m<point>/report`` (JSON text)
+    groups/<k>/outputs.npz      every member of group k, its arrays under ``m<point>/``, its manifest and report
+                                under ``m<point>/manifest`` and ``m<point>/report`` (JSON text), and the content key it
+                                ran under, ``m<point>/content_key``; study.json holds the file's sha256
     groups/<k>/report.json      the build report's summary of the group's first member
     groups/<k>/experiment/      the group's own build as a saved folder, for a group whose compiled program differs
                                 from group 0's
@@ -15,10 +16,14 @@
 The folder is readable without MIME: JSON, YAML and NPZ. Its manifest is closed (a key it does not know is refused), its
 layout is checked (a file it does not know is refused), and a newer format is refused as ``result.format`` refuses one.
 A write is atomic file by file (a temporary file, then a rename), so a stopped run leaves a folder whose manifest says
-which members are done."""
+which members are done. A group's file is staged first, its sha256 written into the manifest with the members it adds
+marked done, and only then renamed into place: a run stopped between the two leaves the staged file, which is the one the
+manifest records, and the next run finishes the rename. The run's own temporaries have fixed names (:func:`temporaries`),
+and nothing else in a study folder is taken for one."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -41,10 +46,12 @@ BASE_DIR = "experiment"
 GROUPS_DIR = "groups"
 GROUP_OUTPUTS = "outputs.npz"
 GROUP_REPORT = "report.json"
-#: A temporary file a stopped write may leave; the layout accepts it and a resumed run removes it.
+#: The suffix of the run's own temporaries: each file or folder it writes, written under this suffix and renamed.
 TEMPORARY = ".tmp"
 #: A member's arrays in a group's NPZ are under ``m<point>/``.
 MEMBER = re.compile(r"m(\d+)/")
+#: The entry of a member in its group's NPZ that holds the content key it ran under (``m<point>/content_key``).
+CONTENT_KEY = "content_key"
 
 PENDING, DONE = "pending", "done"
 
@@ -58,14 +65,15 @@ RUN_KEYS = frozenset({"duration", "steps", "record", "every", "batch"})
 DROPPED_KEYS = frozenset({"index", "coordinates", "refusals"})
 SEED_KEYS = frozenset({"policy", "seed", "note"})
 GROUP_KEYS = frozenset({"index", "key", "reasons", "members", "batches", "batched", "compiles", "seconds",
-                        "experiment"})
+                        "experiment", "sha256"})
 MEMBER_KEYS = frozenset({"member", "point", "group", "status", "content_key", "overrides"})
 OVERRIDE_KEYS = frozenset({"path", "value", "reason"})
 LINEAGE_KEYS = frozenset({"base", "spec", "mime"})
 
 READING = ("each member's arrays are in groups/<group>/outputs.npz under m<point>/ (NumPy reads it); m<point>/manifest "
-           "is the member's outputs.json as JSON text; a value is {value, unit}: value in SI, unit its symbol; "
-           "members[].status is done or pending")
+           "is the member's outputs.json as JSON text and m<point>/content_key the key it ran under, which is its row's "
+           "content_key here; groups[].sha256 is the sha256 of that group's outputs.npz; a value is {value, unit}: value in "
+           "SI, unit its symbol; members[].status is done or pending")
 
 
 def refused(code: str, category: RefusalClass, message: str, action: str) -> ArgumentRefused:
@@ -100,13 +108,17 @@ def decode_value(record: Mapping[str, Any]) -> object:
     return Quantity(magnitude, parse_unit(str(unit)))
 
 
+def write_text(path: Path, text: str) -> None:
+    """``text`` written atomically: to its temporary (:func:`temporary_of`), then renamed."""
+    temporary = temporary_of(path)
+    temporary.write_text(text, encoding="utf-8", newline="\n")
+    os.replace(temporary, path)
+
+
 def write_json(path: Path, document: object) -> None:
     """``document`` written atomically (a temporary file, then a rename), sorted and indented, so that equal documents
     are equal bytes."""
-    temporary = path.with_name(path.name + TEMPORARY)
-    temporary.write_text(json.dumps(document, indent=1, sort_keys=True, allow_nan=True) + "\n", encoding="utf-8",
-                         newline="\n")
-    os.replace(temporary, path)
+    write_text(path, json.dumps(document, indent=1, sort_keys=True, allow_nan=True) + "\n")
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -134,12 +146,26 @@ def _array_bytes(array: NDArray[Any]) -> bytes:
     return buffer.getvalue()
 
 
-def write_entries(path: Path, new: Mapping[str, NDArray[Any]], drop_prefixes: Sequence[str] = ()) -> None:
+def file_sha256(path: Path) -> str:
+    """The sha256 of the file at ``path``, as study.json holds a group file's."""
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for block in iter(lambda: file.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def temporary_of(path: Path) -> Path:
+    """Where the run writes ``path`` before renaming it into place."""
+    return path.with_name(path.name + TEMPORARY)
+
+
+def stage_entries(path: Path, new: Mapping[str, NDArray[Any]], drop_prefixes: Sequence[str] = ()) -> Path:
     """The NPZ at ``path`` with ``new`` added to what it holds (the entries of ``drop_prefixes`` removed first, so that a
-    member run again replaces its old arrays), its entries sorted by name and carrying no clock, so that the same
-    arrays are the same bytes however the file was reached. Written to a temporary file and renamed, one old entry in
-    memory at a time."""
-    temporary = path.with_name(path.name + TEMPORARY)
+    member run again replaces its old arrays), written to its temporary (:func:`temporary_of`) and returned there, not
+    renamed: the caller records its sha256 first. Its entries are sorted by name and carry no clock, so that the same
+    arrays are the same bytes however the file was reached; one old entry is in memory at a time."""
+    temporary = temporary_of(path)
     old = zipfile.ZipFile(path) if path.is_file() else None
     try:
         kept = {} if old is None else {info.filename.removesuffix(".npy"): info for info in old.infolist()
@@ -155,7 +181,7 @@ def write_entries(path: Path, new: Mapping[str, NDArray[Any]], drop_prefixes: Se
     finally:
         if old is not None:
             old.close()
-    os.replace(temporary, path)
+    return temporary
 
 
 class GroupArchive:
@@ -235,7 +261,8 @@ def check_document(document: object) -> dict[str, Any]:
         raise refused("study.format", RefusalClass.USER, f"{STUDY_FILE} is not a JSON object",
                       "read a folder `Study.run_to(folder)` wrote: `StudyResult.read(folder)`")
     held = cast(dict[str, Any], document)
-    if held.get("format") != STUDY_FORMAT or held.get("version") != STUDY_VERSION:
+    version = held.get("version")
+    if held.get("format") != STUDY_FORMAT or type(version) is not int or version != STUDY_VERSION:
         raise refused("study.format", RefusalClass.USER,
                   f"a study manifest of {held.get('format')!r} version {held.get('version')!r}; this MIME reads "
                       f"{STUDY_FORMAT!r} version {STUDY_VERSION}",
@@ -258,33 +285,58 @@ def check_document(document: object) -> dict[str, Any]:
             raise refused("study.manifest", RefusalClass.USER,
                           f"a member's status is {row['status']!r}, and a status is {PENDING!r} or {DONE!r}",
                           "write the folder with `Study.run_to(folder)`")
+    groups = {group["index"] for group in cast(list[dict[str, Any]], held["groups"])}
+    points = [row["point"] for row in cast(list[dict[str, Any]], held["members"])]
+    if len(set(points)) != len(points) or any(row["group"] not in groups for row in held["members"]):
+        raise refused("study.manifest", RefusalClass.USER,
+                      f"{STUDY_FILE} names a point in two members, or a member in a group it does not list",
+                      "write the folder with `Study.run_to(folder)`: each member is one point, in one of its groups")
     return held
 
 
-def layout_problems(root: Path) -> list[str]:
-    """Every path under ``root`` that a study folder does not hold, as text; ``[]`` for a folder with only its own."""
+#: What a study folder holds at its top, and in each group's folder (``experiment/`` only past the first group).
+TOP_NAMES = (STUDY_FILE, SPEC_FILE, BASE_DIR, GROUPS_DIR)
+GROUP_NAMES = (GROUP_OUTPUTS, GROUP_REPORT, BASE_DIR)
+
+
+def _own(names: Sequence[str]) -> set[str]:
+    """The names of the run's own temporaries of ``names``: each one's temporary (:func:`temporary_of`)."""
+    return {name + TEMPORARY for name in names if name != GROUPS_DIR}
+
+
+def temporaries(root: Path) -> list[Path]:
+    """The run's own temporaries in the study folder ``root``, by their fixed names: a temporary of a file or folder the
+    folder holds, at the place it holds it. Nothing else is one, whatever its name."""
+    found = [root / name for name in sorted(_own(TOP_NAMES)) if (root / name).exists()]
+    for _, folder in iter_groups(root):
+        found += [folder / name for name in sorted(_own(GROUP_NAMES)) if (folder / name).exists()]
+    return found
+
+
+def layout_problems(root: Path, groups: int | None = None) -> list[str]:
+    """Every path under ``root`` that a study folder does not hold, as text; ``[]`` for a folder with only its own. With
+    ``groups`` (the manifest's count), a group folder past it is not the folder's, and group 0 holds no ``experiment/``
+    (its build is the base)."""
     found: list[str] = []
-    top = {STUDY_FILE, SPEC_FILE, BASE_DIR, GROUPS_DIR}
     for child in sorted(root.iterdir()):
-        if child.name.endswith(TEMPORARY):
-            continue
-        if child.name not in top:
+        if child.name not in TOP_NAMES and child.name not in _own(TOP_NAMES):
             found.append(child.name + ("/" if child.is_dir() else ""))
-    groups = root / GROUPS_DIR
-    if groups.is_dir():
-        for child in sorted(groups.iterdir()):
-            if not (child.is_dir() and child.name.isdigit()):
+    folder = root / GROUPS_DIR
+    if folder.is_dir():
+        for child in sorted(folder.iterdir()):
+            if not (child.is_dir() and child.name.isdigit()) or (groups is not None and int(child.name) >= groups):
                 found.append(f"{GROUPS_DIR}/{child.name}")
                 continue
+            names = GROUP_NAMES if child.name != "0" else (GROUP_OUTPUTS, GROUP_REPORT)
             for inside in sorted(child.iterdir()):
-                if inside.name not in (GROUP_OUTPUTS, GROUP_REPORT, BASE_DIR) and not inside.name.endswith(TEMPORARY):
+                if inside.name not in names and inside.name not in _own(names):
                     found.append(f"{GROUPS_DIR}/{child.name}/{inside.name}")
     return found
 
 
-def check_layout(root: Path) -> None:
+def check_layout(root: Path, groups: int | None = None) -> None:
     """Refuses (``study.stray-file``) a file or folder a study folder does not hold, naming each."""
-    stray = layout_problems(root)
+    stray = layout_problems(root, groups)
     if stray:
         raise refused("study.stray-file", RefusalClass.USER,
                   f"{root} holds {', '.join(stray)}, which a study folder does not: it holds {STUDY_FILE}, {SPEC_FILE}, "
@@ -301,7 +353,7 @@ def iter_groups(root: Path) -> Iterator[tuple[int, Path]]:
                 yield int(child.name), child
 
 
-__all__ = ["BASE_DIR", "DONE", "GROUPS_DIR", "GROUP_OUTPUTS", "GROUP_REPORT", "PENDING", "READING", "SPEC_FILE",
-           "STUDY_FILE", "STUDY_FORMAT", "STUDY_VERSION", "TEMPORARY", "GroupArchive", "MemberArchive", "check_document",
-           "check_layout", "decode_value", "encode_value", "iter_groups", "layout_problems", "refused", "write_entries",
-           "write_json"]
+__all__ = ["BASE_DIR", "CONTENT_KEY", "DONE", "GROUPS_DIR", "GROUP_OUTPUTS", "GROUP_REPORT", "PENDING", "READING",
+           "SPEC_FILE", "STUDY_FILE", "STUDY_FORMAT", "STUDY_VERSION", "TEMPORARY", "GroupArchive", "MemberArchive",
+           "check_document", "check_layout", "decode_value", "encode_value", "file_sha256", "iter_groups",
+           "layout_problems", "refused", "stage_entries", "temporaries", "temporary_of", "write_json", "write_text"]

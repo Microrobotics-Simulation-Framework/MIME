@@ -12,8 +12,14 @@ tests, each a refusal (``study.order``) that names what it saw:
    scheme refined by different factors at the two steps is not the one sequence the fit assumes;
 3. the successive differences have one sign and neither is zero: a value that goes past the limit and back, or does
    not move, is not converging from one side;
-4. the order found lies in :data:`ORDER_RANGE`, and within :data:`EXPECTED_AGREEMENT` of the formal order where the
-   caller gives it (``expected``)."""
+4. the order found lies in :data:`ORDER_RANGE`, and the ratio of the successive differences ``(f1 - f2) / (f2 - f3)``
+   is within :data:`ORDER_AGREEMENT` of the ratio a scheme of the formal order ``n`` gives at these levels,
+   ``(h1^n - h2^n) / (h2^n - h3^n)`` (``r^n`` for a constant ratio ``r``). The formal order is ``expected`` where the
+   caller gives it, and otherwise the whole number nearest the order found, at least 1: a scheme's formal order is
+   whole unless it is stated. So ``1 + 0.9 h + 5 h^2`` at ``h = 0.4, 0.2, 0.1``, a first-order scheme whose
+   second-order term still dominates, is refused: its differences' ratio 3.25 is 19 % from the 4 of the second order
+   it reads nearest (order 1.70). A contamination that moves the ratio by less than the bound is not seen
+   (``1 + 0.9 h + 5 h^3`` reads 1.88, its ratio 8 % from 4): three levels cannot show it, and a fourth level can."""
 
 from __future__ import annotations
 
@@ -30,8 +36,9 @@ from mime.units import Quantity
 RATIO_AGREEMENT = 0.1
 #: The orders taken as a convergence rate: below, the values hardly move with the step; above, they are rounding.
 ORDER_RANGE = (0.1, 10.0)
-#: How far the observed order may be from a given formal order, as a fraction of it.
-EXPECTED_AGREEMENT = 0.25
+#: How far the ratio of the successive differences may be from the formal order's ratio at the levels, as a fraction
+#: of the formal order's.
+ORDER_AGREEMENT = 0.1
 
 
 @dataclass(frozen=True)
@@ -102,14 +109,20 @@ def observed_order(levels: Quantity, values: Quantity, *, expected: float | None
         if high - low <= 4 * np.finfo(float).eps * high:
             break
     order = 0.5 * (low + high)
-    if expected is not None and abs(order - expected) > EXPECTED_AGREEMENT * expected:
-        raise _refuse("study.order", RefusalClass.USER, f"the observed order {order:.4g} is more than {EXPECTED_AGREEMENT:.0%} from the formal order "
-                      f"{expected:g}: not in the asymptotic range",
-                      "refine further, `grid({DT: [s(4e-3), s(2e-3), s(1e-3), s(5e-4)]})`, or the scheme is not of the formal order here")
+    formal = float(expected) if expected is not None else float(max(1, round(order)))
+    model = gap(formal) + target
+    if abs(target - model) > ORDER_AGREEMENT * model:
+        given = "the formal order given" if expected is not None else "the whole order nearest it"
+        raise _refuse("study.order", RefusalClass.USER,
+                      f"the ratio of the successive differences, {target:.4g} (order {order:.4g}), is more than "
+                      f"{ORDER_AGREEMENT:.0%} from the {model:.4g} that {given}, {formal:g}, gives at these levels: not in "
+                      f"the asymptotic range of a scheme of formal order {formal:g}",
+                      "refine further, `grid({DT: [s(4e-3), s(2e-3), s(1e-3), s(5e-4)]})`; or, for a scheme whose formal "
+                      "order is not whole, state it: `result.order(..., expected=1.5)`")
     coefficient = d23 / float(h[1] ** order - h[2] ** order)
     limit = float(f[2]) - coefficient * float(h[2] ** order)
     return Order(order, Quantity(limit, values.dimension), math.sqrt(first * second), h, f,
                  Quantity(float(f[2]) - limit, values.dimension))
 
 
-__all__ = ["EXPECTED_AGREEMENT", "ORDER_RANGE", "RATIO_AGREEMENT", "Order", "observed_order"]
+__all__ = ["ORDER_AGREEMENT", "ORDER_RANGE", "RATIO_AGREEMENT", "Order", "observed_order"]

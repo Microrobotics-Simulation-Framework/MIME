@@ -412,6 +412,7 @@ study.batch                   user
 study.bridge-precision        user
 study.folder-not-empty        user
 study.format                  user
+study.group-file              user
 study.leaf-unread             user
 study.manifest                user
 study.no-base                 user

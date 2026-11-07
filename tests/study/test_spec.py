@@ -2,7 +2,8 @@
 made from that spec is the same study (the same id, the same bytes in the folder it writes), the spec is read with the
 safe loader and holds no code, a key given twice, a key it does not know, another format and another base are refused,
 and ``mime study plan`` and ``run`` do what ``Study.plan`` and ``run_to`` do, a run into a folder that holds another study
-refused, ``--shard`` leaving the other groups pending and ``--pilot`` saying what a member costs."""
+refused, ``--shard`` leaving the other groups pending (shards one after another into one folder adding up to the whole
+study, and more shards than groups refused, sharding being by group) and ``--pilot`` saying what a member costs."""
 
 from __future__ import annotations
 
@@ -82,7 +83,9 @@ def test_what_a_spec_may_not_hold_is_refused_and_the_same_spec_without_the_fault
                                ("format", lambda d: d.update(format="mime-study/2"), "mime-study/2"),
                                ("combine", lambda d: d.update(combine="zip"), "combine"),
                                ("seed", lambda d: d.update(seed={"policy": "per-member"}), "per-member"),
-                               ("axis", lambda d: d["axes"]["dt"].update(extra=1), "dt")):
+                               ("axis", lambda d: d["axes"]["dt"].update(extra=1), "dt"),
+                               ("drop", lambda d: d.update(drop_refused="false"), "drop_refused"),
+                               ("record", lambda d: d.update(record="toy.recorder:probe.last"), "record")):
         with pytest.raises(ArgumentRefused) as refused:
             read_spec(damaged(written, tmp_path, name, change))
         assert refused.value.codes() == ["study.spec"] and word in refused.value.refusals[0].message, name
@@ -125,13 +128,22 @@ def test_mime_study_run_writes_the_folder_resumes_refuses_another_study_and_shar
     assert mime_main(["study", "run", str(different), "--out", str(out)]) == 2
     assert "study.other-study" in capsys.readouterr().err
     shard = tmp_path / "shard"
-    assert mime_main(["study", "run", str(written / SPEC), "--out", str(shard), "--shard", "1/2"]) == 0
+    assert mime_main(["study", "run", str(written / SPEC), "--out", str(shard), "--shard", "1/2", "--pilot"]) == 0
+    printed = capsys.readouterr()
+    assert "of group 1 took" in printed.err + printed.out, "the pilot runs a group this shard owns"
     partial = StudyResult.read(shard)
     assert partial.missing == (0, 2, 4) and set(partial.groups) == {1}
     assert json.loads((shard / STUDY_FILE).read_text())["members"][0]["status"] == "pending"
+    assert mime_main(["study", "run", str(written / SPEC), "--out", str(shard), "--shard", "0/2"]) == 0
     capsys.readouterr()
+    whole = StudyResult.read(shard)
+    assert len(whole) == 6 and whole.missing == (), "shards one after another into one folder are the whole study"
     assert mime_main(["study", "run", str(written / SPEC), "--out", str(tmp_path / "bad"), "--shard", "2/2"]) == 2
     assert "study.shard" in capsys.readouterr().err
+    assert mime_main(["study", "run", str(written / SPEC), "--out", str(tmp_path / "three"), "--shard", "0/3"]) == 2
+    refused = capsys.readouterr().err
+    assert "study.shard" in refused and "structure group" in refused and "--shard i/2" in refused
+    assert not (tmp_path / "three").exists(), "refused before anything is written"
 
 
 def test_a_spec_text_written_for_points_that_are_a_list_of_rows_is_an_along(tmp_path):

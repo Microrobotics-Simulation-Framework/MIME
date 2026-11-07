@@ -2,8 +2,9 @@
 (so the members' series are of two lengths, ragged), written by ``run_to`` and read by ``StudyResult.read``: every
 coordinate, reading, series, flag and final-state field equal to the in-memory result's, ``np.array_equal``, and the
 folder's layout and manifest closed. Controls: two members' coordinates exchanged in ``study.json`` must be seen (every
-pair of members with different coordinates is tried, and the detection rate asserted), a stray file, a key added to the
-manifest, and a newer format are refused."""
+pair of members with different coordinates is tried, and the detection rate asserted), a stray file (one named like a
+temporary, a group folder past the last, an ``experiment/`` in group 0), a key added to the manifest, a newer format (and a
+version that is ``true``), a point in two members and a member in no group are refused."""
 
 from __future__ import annotations
 
@@ -108,7 +109,14 @@ def test_a_stray_file_a_key_added_and_a_newer_format_are_refused(written, tmp_pa
             ("key", lambda c: _edit(c, lambda d: d.update(extra=1)), "study.manifest"),
             ("member_key", lambda c: _edit(c, lambda d: d["members"][0].update(extra=1)), "study.manifest"),
             ("newer", lambda c: _edit(c, lambda d: d.update(version=STUDY_VERSION + 1)), "study.format"),
-            ("other_format", lambda c: _edit(c, lambda d: d.update(format="mime-run-outputs")), "study.format")):
+            ("other_format", lambda c: _edit(c, lambda d: d.update(format="mime-run-outputs")), "study.format"),
+            ("version_true", lambda c: _edit(c, lambda d: d.update(version=True)), "study.format"),
+            ("named_like_a_temporary", lambda c: (c / "notes.tmp").write_text("x"), "study.stray-file"),
+            ("group_past_the_last", lambda c: (c / "groups" / "7").mkdir(), "study.stray-file"),
+            ("experiment_in_group_0", lambda c: (c / "groups" / "0" / "experiment").mkdir(), "study.stray-file"),
+            ("point_twice", lambda c: _edit(c, lambda d: d["members"][1].update(point=d["members"][0]["point"])),
+             "study.manifest"),
+            ("group_out_of_range", lambda c: _edit(c, lambda d: d["members"][0].update(group=9)), "study.manifest")):
         copy = tmp_path / name
         shutil.copytree(folder, copy)
         damage(copy)

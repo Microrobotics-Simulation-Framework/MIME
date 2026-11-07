@@ -59,9 +59,9 @@ def member_keys(plan: StudyPlan, input_hash: str | None) -> dict[int, str]:
     """The content key of every point that runs, by point index."""
     run = run_record(plan)
     keys: dict[int, str] = {}
+    builts = [group.built for group in plan.groups if group.built is not None]
+    digest = _content.digest_of(_content.source_hashes(builts))
     for group in plan.groups:
-        assert group.built is not None
-        digest = _content.digest_of(_content.source_hashes(group.built))
         for index in group.members:
             point = plan.points[index]
             keys[index] = _content.content_key([(axis.path, point.values[axis]) for axis in plan.axes], group.key,
@@ -71,8 +71,10 @@ def member_keys(plan: StudyPlan, input_hash: str | None) -> dict[int, str]:
 
 def document_of(plan: StudyPlan, input_hash: str | None, *, compiles: Sequence[int] = (),
                 seconds: Sequence[float | None] = (), status: Mapping[int, str] | None = None,
-                group_experiments: Mapping[int, str] | None = None) -> dict[str, Any]:
-    """The manifest of ``plan``: every member ``pending`` unless ``status`` (by point) says otherwise."""
+                group_experiments: Mapping[int, str] | None = None,
+                group_files: Mapping[int, str | None] | None = None) -> dict[str, Any]:
+    """The manifest of ``plan``: every member ``pending`` unless ``status`` (by point) says otherwise, and each group's
+    file the sha256 ``group_files`` gives it (none where it gives none)."""
     keys = member_keys(plan, input_hash)
     group_of = {index: number for number, group in enumerate(plan.groups) for index in group.members}
     effective = {axis.path: plan.reasons.get(axis.path, STUDY_REASON) for axis in plan.axes}
@@ -101,7 +103,8 @@ def document_of(plan: StudyPlan, input_hash: str | None, *, compiles: Sequence[i
         "groups": [{"index": number, "key": group.key, "reasons": list(group.reasons), "members": list(group.members),
                     "batches": list(group.batches), "batched": group.batched, "compiles": group.compiles,
                     "seconds": seconds[number] if number < len(seconds) else None,
-                    "experiment": (group_experiments or {}).get(number)} for number, group in enumerate(plan.groups)],
+                    "experiment": (group_experiments or {}).get(number),
+                    "sha256": (group_files or {}).get(number)} for number, group in enumerate(plan.groups)],
         "members": members,
         "lineage": {"base": BASE_DIR, "spec": SPEC_FILE, "mime": __version__},
         "reading": READING}

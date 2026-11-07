@@ -2,13 +2,18 @@
 is an uninterrupted one's, byte for byte except the group's measured seconds. The toy study has two groups of three
 members in batches of one, so a stop falls on a batch boundary: a planned batch cut by a member that is reused would run
 the rest as a smaller batch, which is not claimed bit for bit (the usable CPU count and the BLAS thread count do not
-matter here, both runs being in one process at one count; they are printed). Control: a member whose content key's source
-hash changed is run again, never reused, on each of five repeats, beside a rerun with nothing changed that runs none."""
+matter here, both runs being in one process at one count; they are printed). Controls: a member whose content key's source
+hash changed is run again, never reused, on each of five repeats, beside a rerun with nothing changed that runs none; and
+the refuting review's attempt on what the key hashes: an edit to a file of MIME that no node class is defined in
+(``nodes/body/_contact.py``, ``surrogates/__init__.py``), made in a copy of the installed package the key is pointed at,
+runs every member again, on each of four edits."""
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
+from pathlib import Path
 
 import pytest
 from folder_rigs import toy_study, tree_bytes
@@ -93,7 +98,7 @@ def test_a_finished_study_run_again_runs_nothing_and_a_changed_source_runs_every
     real = content.source_hashes
     reran = []
     for repeat in range(5):
-        monkeypatch.setattr(content, "source_hashes", lambda built, repeat=repeat: {**real(built), "planted": str(repeat)})
+        monkeypatch.setattr(content, "source_hashes", lambda builts=(), repeat=repeat: {**real(builts), "planted": str(repeat)})
         ran["asked"].clear()
         study.run_to(out)
         reran.append(sum(n for n in ran["asked"] if n))
@@ -101,8 +106,45 @@ def test_a_finished_study_run_again_runs_nothing_and_a_changed_source_runs_every
     assert reran == [3] * 5, reran
 
 
-def test_a_member_whose_arrays_are_not_in_the_group_file_is_run_again_though_the_manifest_says_done(ran, tmp_path):
+def test_the_key_hashes_every_file_of_the_installed_package_those_the_review_found_unhashed_among_them():
+    import mime
+
+    assert content.package_root() == Path(mime.__file__).parent
+    held = content.source_hashes()
+    assert {"mime/nodes/body/_contact.py", "mime/surrogates/__init__.py", "mime/study/_run.py", "mime/build/__init__.py",
+            "mime/units.py"} <= set(held)
+    assert not [name for name in held if "__pycache__" in name or name.endswith(".pyc")]
+    assert set(content.versions()) >= {"mime", "maddening", "openmaterica", "jax", "jaxlib", "x64"}
+
+
+def test_an_edit_to_a_file_of_mime_no_node_class_is_in_runs_every_member_again_on_every_edit(ran, tmp_path, monkeypatch):
+    tree = tmp_path / "installed" / "mime"
+    shutil.copytree(content.package_root(), tree, ignore=shutil.ignore_patterns("__pycache__"))
+    monkeypatch.setattr(content, "package_root", lambda: tree)
+    out = tmp_path / "study"
+    study = toy_study(steps=(), stiffnesses=(1.1, 1.7))
+    study.run_to(out)
+    reran = []
+    for edited in ("nodes/body/_contact.py", "surrogates/__init__.py") * 2:
+        with (tree / edited).open("a", encoding="utf-8") as file:
+            file.write("# an edit that changes the file's bytes and nothing else\n")
+        ran["asked"].clear()
+        study.run_to(out)
+        reran.append(sum(n for n in ran["asked"] if n))
+    ran["asked"].clear()
+    study.run_to(out)
+    unchanged = sum(n for n in ran["asked"] if n)
+    print("members rerun after each edit:", reran, "after none:", unchanged)
+    assert reran == [2] * 4 and unchanged == 0, (reran, unchanged)
+
+
+def test_a_group_file_that_is_not_the_one_recorded_is_refused_by_a_resumed_run_and_a_group_file_moved_out_reruns(
+        ran, tmp_path):
     import zipfile
+
+    from mime.build import BuildRefused
+
+    from folder_rigs import tree_bytes
 
     out = tmp_path / "study"
     study = toy_study(steps=(), stiffnesses=(1.1, 1.7))
@@ -114,6 +156,12 @@ def test_a_member_whose_arrays_are_not_in_the_group_file_is_run_again_though_the
     with zipfile.ZipFile(path, "w") as new:
         for name, data in kept.items():
             new.writestr(name, data)
+    before = tree_bytes(out)
     ran["asked"].clear()
+    with pytest.raises(BuildRefused) as refused:
+        study.run_to(out)
+    assert refused.value.codes() == ["study.group-file"] and "groups/0/outputs.npz" in refused.value.refusals[0].action
+    assert tree_bytes(out) == before and ran["asked"] == []
+    path.unlink()  # the route the refusal gives: the group file moved out, its members run again
     assert len(study.run_to(out)) == 2
-    assert sum(n for n in ran["asked"] if n) == 1
+    assert sum(n for n in ran["asked"] if n) == 2

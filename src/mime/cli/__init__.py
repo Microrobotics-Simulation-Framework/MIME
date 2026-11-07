@@ -1585,7 +1585,9 @@ def build_parser() -> _guide.MimeParser:
                        help="add a `study` entrypoint that runs this study spec (study.mime.yaml) in one container, a "
                             "pilot first; the same --name resumes it")
     modal.add_argument("--shards", type=int, default=1, metavar="K",
-                       help="split the study's groups over K containers, one shard each (needs --max-containers K); "
+                       help="split the study over K containers, one shard each, each into a study folder of its own "
+                            "(needs --max-containers K). Sharding is by structure group: K is at most the study's "
+                            "groups (`mime study plan` prints them), and a container past them refuses before it writes; "
                             "by default one container runs every group")
     study = commands.add_parser("study", help="plan and run a study from its spec file (study.mime.yaml)")
     study_commands = study.add_subparsers(dest="study_command", required=True)
@@ -1601,7 +1603,10 @@ def build_parser() -> _guide.MimeParser:
     study_run.add_argument("--out", type=Path, required=True,
                            help="the study folder to write; one that holds another study is refused")
     study_run.add_argument("--shard", default=None, metavar="I/K",
-                           help="run only the groups whose number is I modulo K; the others stay pending in this folder")
+                           help="run only the structure groups whose number is I modulo K, the others left pending in "
+                                "this folder. Sharding is by group (`mime study plan` prints them): K above their count is "
+                                "refused. Shards run one after another into one folder add up to the whole study; shards "
+                                "run at once go to a folder each (into one, each would rewrite its study.json)")
     study_run.add_argument("--pilot", action="store_true",
                            help="before the rest, run the first chunk of the first group twice and print what a member "
                                 "costs")

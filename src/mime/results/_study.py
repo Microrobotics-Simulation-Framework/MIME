@@ -131,7 +131,8 @@ class StudyResult:
         #: The point each member is, by member: its index among the study's points.
         self.points = tuple(points)
         self.dropped = tuple(dropped)
-        #: The XLA programs each group's run compiled, as JAX's monitoring counted them.
+        #: The XLA programs each group compiles: as JAX's monitoring counted them for a result run in memory, and the
+        #: plan's count for one read from a folder (its ``study.json`` holds the plan's count, not a measured one).
         self.compiles = tuple(compiles)
         #: The manifest this result was made with (:meth:`manifest` is it, with the members' statuses).
         self.record: dict[str, Any] = copy.deepcopy(dict(record)) if record is not None else {}
@@ -405,7 +406,8 @@ class StudyResult:
         of the members' own), ``flags`` (each flag's reading by member: ``true``, ``false``, ``unknown`` or ``not
         declared``), ``study`` (what ran), ``manifest`` (:meth:`manifest` as JSON text) and ``name_map`` from each
         MATLAB name to the study's. Names are mapped as :meth:`RunResult.to_mat` maps them. Read back by
-        ``scipy.io.loadmat`` in MIME's tests; MATLAB itself has not been run on one."""
+        ``scipy.io.loadmat`` in MIME's tests; MATLAB itself has not been run on one. It holds the observations every
+        member has: one that only some members have is left out (read those members alone, ``result.member(i)``)."""
         from mime.results._study_mat import write_study_mat
 
         return write_study_mat(self, path)

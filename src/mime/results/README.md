@@ -73,10 +73,13 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
 - **A study folder** (`_study_folder.py`, `_study_read.py`), what `Study.run_to` writes and `StudyResult.read` reads:
   `study.json` (format `mime-study-outputs`, versioned and closed: a key it does not know is refused), `study.mime.yaml` (the spec),
   `experiment/` (the base, a saved folder byte for byte), `groups/<k>/outputs.npz` (every member's arrays under
-  `m<point>/`, its manifest and report as JSON text; entries sorted and carrying no clock, so the same arrays are the
-  same bytes), `groups/<k>/report.json` and, for a group whose compiled program differs from the first group's,
-  `groups/<k>/experiment/`. Layout checked (a stray file is refused); readable without MIME; written atomically file by
-  file, each batch as it finishes, so a stopped study reads as what it holds (`missing`). No saved-form step. See
+  `m<point>/`, its manifest and report as JSON text, and the content key it ran under; entries sorted and carrying no
+  clock, so the same arrays are the same bytes; its sha256 in `study.json`), `groups/<k>/report.json` and, for a group
+  whose compiled program differs from the first group's, `groups/<k>/experiment/`. Layout checked (a stray file is
+  refused, a file named like a temporary among them); each group file checked against the manifest on read (its
+  sha256, and each done member's entries under its content key: `study.group-file`); readable without MIME; written
+  atomically file by file, each batch as it finishes, so a stopped study reads as what it holds (`missing`). No
+  saved-form step. See
   [docs/results.md](../../../docs/results.md).
 - **`RunResult.as_experiment(name)`** on a member of a study (`MemberOf` says which): the bridge to an experiment of its
   own, in `mime.study._bridge`.

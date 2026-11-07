@@ -3,7 +3,10 @@ S2c-1. The oracle is manufactured: ``f(h) = f0 + C h^p`` for p = 1 and p = 2 at 
 the extrapolated value f0 up to rounding, committed in ``predictions_s2c1.json`` as within 1e-9 before the run. Controls:
 the first-order plant reads 1 and not 2, on every level set tried; and each way a set of levels can be outside the
 asymptotic range (ratios that disagree, a value that crosses its limit, a flat value, an order out of range, a formal order
-it is not near) is refused, beside the same call on levels that are in it."""
+it is not near) is refused, beside the same call on levels that are in it. From the refuting review: a first-order scheme
+whose second-order term still dominates, ``1 + 0.9 h + 5 h^2``, which read as order 1.70 with no formal order given, is
+refused; a stated fractional order is taken; and the check's resolution is stated (a contamination that moves the
+differences' ratio by less than the bound, ``1 + 0.9 h + 5 h^3``, is not seen)."""
 
 from __future__ import annotations
 
@@ -12,7 +15,7 @@ import pytest
 
 from mime.build._refusals import ArgumentRefused
 from mime.results import observed_order
-from mime.results._order import RATIO_AGREEMENT
+from mime.results._order import ORDER_AGREEMENT, RATIO_AGREEMENT
 from mime.units import TIME, VELOCITY, Quantity
 
 TOLERANCE = 1e-9
@@ -67,3 +70,24 @@ def test_levels_outside_the_asymptotic_range_are_refused_each_by_what_is_wrong()
     assert "three distinct positive" in refused((0.4, 0.4, 0.1), f)
     assert "three distinct positive" in refused((0.4, 0.2, 0.1), [1.0, float("nan"), 2.0])
     assert "three levels" in refused((0.4, 0.2, 0.1, 0.05), [1.0, 2.0, 3.0, 4.0])
+
+
+def test_a_first_order_scheme_its_second_order_term_dominating_is_refused_without_a_formal_order_given():
+    h = np.array([0.4, 0.2, 0.1])
+    message = refused(h, 1.0 + 0.9 * h + 5.0 * h ** 2)
+    assert "whole order nearest" in message and f"{ORDER_AGREEMENT:.0%}" in message and "1.7" in message, message
+    assert "formal order given" in refused(h, 1.0 + 0.9 * h + 5.0 * h ** 2, expected=2.0), "stating 2 does not loosen it"
+    assert "formal order given" in refused(h, 1.0 + 0.9 * h + 5.0 * h ** 2, expected=1.0)
+    assert observed_order(*plant(h, 1.0)).order == pytest.approx(1.0), "the same levels, the pure first-order plant"
+
+
+def test_a_fractional_formal_order_is_taken_where_it_is_stated_and_refused_where_it_is_not():
+    h = (0.4, 0.2, 0.1)
+    assert observed_order(*plant(h, 1.5), expected=1.5).order == pytest.approx(1.5, abs=TOLERANCE)
+    assert "whole order nearest" in refused(h, plant(h, 1.5)[1].value)
+
+
+def test_the_resolution_a_contamination_that_moves_the_ratio_less_than_the_bound_is_not_seen():
+    h = np.array([0.4, 0.2, 0.1])
+    found = observed_order(Quantity.of(h, TIME), Quantity.of(1.0 + 0.9 * h + 5.0 * h ** 3, VELOCITY))
+    assert found.order == pytest.approx(1.88, abs=0.01), "documented in the module: three levels cannot show it"
