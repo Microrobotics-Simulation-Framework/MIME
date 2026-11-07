@@ -40,6 +40,7 @@ KinematicArmNode R  # the rotation matrix of a pose, R(.) of the base's pose in 
 KinematicMotorNode R  # the rotation matrix of a pose, R(.) of the base's pose in the rows: a function of rows' symbols
 DynamicArmNode R  # the rotation matrix of a pose, R(.) of the base's pose in the rows: a function of rows' symbols
 RigidInertialMidpointNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
+RigidInertialTensorNode t  # the time in d t, the step's own timestep, which MADDENING hands the step and no spec declares
 GravityNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol; route: the function convention
 GravityNode q  # the body's orientation, an input the node declares only where the centre of buoyancy is off the centre of mass, so no row can name it for every build; route: `held_where_read` extended to inputs
 MagneticTorqueNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol; route: the function convention

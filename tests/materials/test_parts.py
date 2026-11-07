@@ -84,8 +84,9 @@ def test_the_resolver_sums_parts_by_the_parallel_axis_theorem():
     m = 1000.0 * 1e-9
     own = m * (1e-6 + 1e-6) / 12
     assert found["mass"].value == pytest.approx(2 * m, rel=1e-15)
-    assert found["inertia"].value == pytest.approx((2 * own, 2 * own + 2 * m * a * a, 2 * own + 2 * m * a * a),
-                                                   rel=1e-14)
+    diagonal = (2 * own, 2 * own + 2 * m * a * a, 2 * own + 2 * m * a * a)
+    tensor = tuple(diagonal[i] if i == j else 0.0 for i in range(3) for j in range(3))
+    assert found["inertia"].value == pytest.approx(tensor, rel=1e-14, abs=0.0), "the full tensor, nine numbers"
     assert found["buoyant_volume"].value == pytest.approx(2e-9, rel=1e-15)
     assert found["centre_of_buoyancy"].value == (0.0, 0.0, 0.0)
     assert found["magnetic_moment"].value == pytest.approx((0.0, 1e6 * 1e-9, 0.0), rel=1e-15)
@@ -150,4 +151,6 @@ def test_a_bound_bodys_parts_are_placed_by_its_asset():
     assert np.allclose(magnet.rotation, ((0.0, -1.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, 1.0)), atol=1e-12)
     shell = 1410.0 * 4 / 3 * math.pi * 1.56e-3 ** 3
     assert values["UMR.mass"] == pytest.approx(shell, rel=1e-14)
-    assert values["UMR.inertia"] == pytest.approx((2 / 5 * shell * 1.56e-3 ** 2,) * 3, rel=1e-14)
+    sphere = 2 / 5 * shell * 1.56e-3 ** 2
+    assert values["UMR.inertia"] == pytest.approx(tuple(sphere if i == j else 0.0 for i in range(3) for j in range(3)),
+                                                  rel=1e-14, abs=1e-30)

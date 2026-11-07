@@ -1,0 +1,501 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "ball",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1.675516081914556e-12,
+       1.675516081914556e-12,
+       1.675516081914556e-12
+      ],
+      "initial_pose": [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.001,
+       0.0,
+       0.0,
+       30.0,
+       -20.0,
+       10.0
+      ],
+      "margin": 0.0,
+      "mass": 4.1887902047863905e-06,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialMidpointNode"
+    },
+    {
+     "name": "umr",
+     "params": {
+      "extent": 0.0,
+      "inertia": [
+       1.3043197461318855e-10,
+       4.631130043564001e-10,
+       4.570054968582633e-10
+      ],
+      "initial_pose": [
+       0.01,
+       0.0,
+       0.0,
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "initial_twist": [
+       0.0,
+       0.0,
+       0.0,
+       40.0,
+       30.0,
+       -20.0
+      ],
+      "margin": 0.0,
+      "mass": 8.4911160207252e-05,
+      "surface_shape": "",
+      "velocity_rule": ""
+     },
+     "timestep": 0.001,
+     "type": "RigidInertialMidpointNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "ball": {},
+    "umr": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "rigid_inertial",
+   "version": "0.3.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 4,
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:8698b7aacab90b81e3b29ff009b821949b5978df69240b978f4f0fe60df4b98b",
+  "document": "sha256:ebf5714ab74c253d42ab8684e4c39a9a931752eabeae6f46ad559e8256901f36",
+  "input": "sha256:145b0c2d7296ee83ee8e2e76245279b527315469aa48035faf0da8d6660d469b",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 1e-09,
+  "file": "reference.npz",
+  "program": "one-step",
+  "rtol": 1e-06,
+  "sha256": "sha256:db8f24fcdb688870a9313914c844e4b70bc0a99a7559486c9398459f429888ea",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "ball": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      30.0,
+      -20.0,
+      10.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.001,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "ball"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.3.0"
+   },
+   "umr": {
+    "binds": {},
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {
+     "angular_velocity": [
+      40.0,
+      30.0,
+      -20.0
+     ],
+     "orientation": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "position": [
+      0.01,
+      0.0,
+      0.0
+     ],
+     "velocity": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "kind": "dynamics",
+    "name": "rigid_inertial",
+    "nodes": [
+     "umr"
+    ],
+    "settings": {
+     "rate": null
+    },
+    "version": "0.3.0"
+   }
+  },
+  "fills": {},
+  "geometry": {},
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {
+    "ball": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        4e-07,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        4e-07,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        4e-07
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "sphere",
+       "settings": {
+        "radius": {
+         "unit": "m",
+         "value": 0.001
+        }
+       },
+       "version": "0.2.0"
+      },
+      "volume": 4.188790204786391e-09
+     }
+    },
+    "umr": {
+     "shell": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "inertia_per_mass": [
+       [
+        1.5360993100886725e-06,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        5.454088758486272e-06,
+        5.860749414725356e-09
+       ],
+       [
+        0.0,
+        5.860749414725356e-09,
+        5.382160551602401e-06
+       ]
+      ],
+      "inside": null,
+      "magnet": false,
+      "material": null,
+      "rotation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ],
+      "solid": {
+       "name": "screw",
+       "settings": {
+        "length": {
+         "unit": "m",
+         "value": 0.00747
+        },
+        "modulation": {
+         "unit": "1",
+         "value": 0.33
+        },
+        "radius": {
+         "unit": "m",
+         "value": 0.0015600000000000002
+        },
+        "starts": 2,
+        "wavenumber": {
+         "unit": "1",
+         "value": 2.33
+        }
+       },
+       "version": "0.3.0"
+      },
+      "volume": 6.022068099805107e-08
+     }
+    }
+   },
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "ball",
+   "umr"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {},
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.001,
+   "experiment": "rigid_parts",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -0.0
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "ball": "/World/ball",
+    "umr": "/World/umr"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "ball": "body",
+   "umr": "body"
+  },
+  "values": {
+   "ball.inertia": {
+    "details": [
+     "shell: sphere 0.2.0 of 4.18879e-06 kg about its centroid (0, 0, 0) m, by the parallel-axis theorem",
+     "ball.parts.shell.density = 1000.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "from shell (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "kg m^2",
+    "value": [
+     1.675516081914556e-12,
+     1.675516081914556e-12,
+     1.675516081914556e-12
+    ]
+   },
+   "ball.mass": {
+    "details": [
+     "shell: 1000 kg/m^3 x 4.18879e-09 m^3 = 4.18879e-06 kg",
+     "ball.parts.shell.density = 1000.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "ball"
+    ],
+    "reason": "from shell (sphere 0.2.0)",
+    "source": "derived from its parts",
+    "unit": "kg",
+    "value": 4.1887902047863905e-06
+   },
+   "ball.parts.shell.density": {
+    "details": [],
+    "read_by": [
+     "ball's part resolver"
+    ],
+    "reason": "a test sphere",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1000.0
+   },
+   "umr.inertia": {
+    "details": [],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "the diagonal of the parts' inertia tensor about the body's axes",
+    "source": "declared in the experiment, in place of the value its parts give, (1.30432e-10, 4.63113e-10, 4.57005e-10) kg m^2, its products of inertia dropped",
+    "unit": "kg m^2",
+    "value": [
+     1.3043197461318855e-10,
+     4.631130043564001e-10,
+     4.570054968582633e-10
+    ]
+   },
+   "umr.mass": {
+    "details": [
+     "shell: 1410 kg/m^3 x 6.02207e-08 m^3 = 8.49112e-05 kg",
+     "umr.parts.shell.density = 1410.0 kg/m^3, declared in the experiment (its own line)"
+    ],
+    "read_by": [
+     "umr"
+    ],
+    "reason": "from shell (screw 0.3.0)",
+    "source": "derived from its parts",
+    "unit": "kg",
+    "value": 8.4911160207252e-05
+   },
+   "umr.parts.shell.density": {
+    "details": [],
+    "read_by": [
+     "umr's part resolver"
+    ],
+    "reason": "FL-9 resin plus magnets, mean density",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1410.0
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/8",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "0fb2c8cb1512efd34423f839555ca777ffd974010e923afcace163882ed817ae",
+  "writer": 2
+ }
+}

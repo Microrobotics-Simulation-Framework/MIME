@@ -36,7 +36,7 @@ experiment tutorial_a0  (profile exploratory)
     water  fills tube.lumen
       still, no flow dynamics
   bodies
-    umr  rigid_inertial 0.3.0
+    umr  rigid_inertial 0.4.0
       part shell  screw 0.3.0
   apparatus
     rpm
@@ -105,7 +105,7 @@ flowchart LR
     n6["drag:umr<br/>drag 0.4.0 (rung surrogate)<br/>SurrogateDragNode"]
     n7["magnetic.force:umr<br/>magnetic.force 0.2.0<br/>MagneticForceNode"]
     n8["magnetic.torque:umr<br/>magnetic.torque 0.2.0<br/>MagneticTorqueNode"]
-    n9["umr<br/>rigid_inertial 0.3.0<br/>RigidInertialMidpointNode"]
+    n9["umr<br/>rigid_inertial 0.4.0<br/>RigidInertialTensorNode"]
     n10["swim_speed:umr<br/>swim_speed 0.1.0<br/>SwimSpeedNode"]
     n9 -->|"pose→read_body_pose"| n0
     n9 -->|"twist→read_body_twist"| n0

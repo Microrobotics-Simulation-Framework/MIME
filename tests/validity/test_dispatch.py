@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import pytest
-from profile_cases import Paperwork, parts_screw, settling_ball
+from profile_cases import Paperwork, settling_ball
 
 from mime.build import BuildRefused
 from mime.observations import SwimSpeed
@@ -79,7 +79,6 @@ SITES = {
     "unsourced": (lambda: settling_ball(STEEL), "ball.parts.shell.radius", "setting.source-required", None),
     "unevidenced": (lambda: settling_ball(STEEL), "dt", "setting.evidence-required", None),
     "undeclared_default": (labbed, "labdispatch.speed:ball.smoothing", "setting.undeclared-default", None),
-    "simplification": (parts_screw, "umr.inertia", "parts.inertia-axes", Action.REFUSE),
 }
 ACTIONS = [*Action, None]
 

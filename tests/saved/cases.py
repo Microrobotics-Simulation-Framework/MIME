@@ -5,6 +5,7 @@ A case whose build is refused (an entry that exists to be refused) round-trips i
 back in a fresh process, and refused there for the same reasons.
 """
 
+import dataclasses
 import importlib
 import os
 from collections.abc import Callable
@@ -17,9 +18,9 @@ from hull_cases import hull_contact
 from robot_asset import bound_robot, bound_robot_with_parts
 from script_a import ALL_RECORDS, EPSILON, fl9, script_a
 
-from mime.build import Attachment
+from mime.build import Attachment, ThingDeclaration
 from mime.data import asset
-from mime.dynamics.body import RigidInertialExplicit
+from mime.dynamics.body import RigidInertialExplicit, RigidInertialMoments
 from mime.interactions import KEPT
 from mime.experiment import Experiment
 from mime.interactions import Lubrication
@@ -95,8 +96,21 @@ def script_a_body() -> Experiment:
     """Script A's body side, with no drag, the body moving along the tube at 1 mm/s so that every leaf of every node
     acts within the walk's first steps: 4b's case, which the body side's golden outputs come from. Its torque is the
     one kept registered, 0.1.0, whose golden output came from it; in a uniform field 0.2.0 computes the same, and its
-    golden output comes from script A's case."""
-    return on_the_kept_magnetic_laws(script_a("script_a_body", velocity=m_per_s((1e-3, 0.0, 0.0)), drag=False))
+    golden output comes from script A's case. Its body's dynamics likewise: ``rigid_inertial`` 0.3.0, kept registered,
+    whose golden output came from it; 0.4.0 steps this isotropic body as 0.3.0 did, and its golden output comes from
+    script A's case."""
+    return on_the_kept_rigid_inertial(on_the_kept_magnetic_laws(script_a("script_a_body",
+                                                                         velocity=m_per_s((1e-3, 0.0, 0.0)),
+                                                                         drag=False)))
+
+
+def on_the_kept_rigid_inertial(experiment: Experiment) -> Experiment:
+    """``experiment`` with each body on ``rigid_inertial`` 0.3.0, kept registered, and nothing else changed."""
+    held = cast(Any, experiment)
+    declarations = [ThingDeclaration(dataclasses.replace(d.thing, dynamics=RigidInertialMoments()))
+                    if isinstance(d, ThingDeclaration) and isinstance(d.thing, Body) else d
+                    for d in held._declarations]
+    return cast(Experiment, held._declared(held._settings, declarations))
 
 
 def on_the_kept_magnetic_laws(experiment: Experiment) -> Experiment:

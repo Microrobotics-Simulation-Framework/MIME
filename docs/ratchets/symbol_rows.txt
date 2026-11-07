@@ -93,6 +93,15 @@ RigidInertialMidpointNode \mathbf{F}  # pinned at landing
 RigidInertialMidpointNode \mathbf{V}  # pinned at landing
 RigidInertialMidpointNode \boldsymbol{\omega}  # pinned at landing
 RigidInertialMidpointNode \mathbf{K}  # pinned at landing
+RigidInertialTensorNode \mathbf{M}  # pinned at landing
+RigidInertialTensorNode \mathbf{I}  # pinned at landing
+RigidInertialTensorNode \mathbf{R}  # pinned at landing
+RigidInertialTensorNode \mathbf{F}  # pinned at landing
+RigidInertialTensorNode \mathbf{V}  # pinned at landing
+RigidInertialTensorNode \boldsymbol{\omega}  # pinned at landing
+RigidInertialTensorNode \mathbf{K}  # pinned at landing
+RigidInertialTensorNode \mathbf{J}  # pinned at landing
+RigidInertialTensorNode \mathbf{Q}  # pinned at landing
 GravityNode \mathbf{F}  # pinned at landing
 GravityNode \boldsymbol{\tau}  # pinned at landing
 GravityNode m  # pinned at landing

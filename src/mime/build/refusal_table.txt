@@ -248,7 +248,6 @@ part.scaled                   user
 parts.centre-of-mass          user
 parts.density                 user
 parts.extent                  user
-parts.inertia-axes            user
 parts.no-bulk                 user
 parts.no-magnet               user
 parts.several-magnets         user
@@ -413,6 +412,7 @@ thing.prim-taken              user
 value.duplicate               user
 value.from-kind               user
 value.not-positive            user
+value.products-of-inertia     user
 value.reason                  user
 value.reason-pending          user
 value.undeclared              user

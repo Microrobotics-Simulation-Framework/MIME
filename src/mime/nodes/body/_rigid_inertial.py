@@ -196,7 +196,8 @@ def point_groups(points: np.ndarray, count: int) -> np.ndarray:
 class RigidInertialNode(MimeNode):
     """A rigid body: state ``pose = [x; q]`` and ``twist = [v; omega]``, in the world frame about the centre of mass.
 
-    Each step, with ``M = diag(m I, R_q diag(inertia) R_q^T)``, the delivered resistance ``R`` and load
+    Each step, with ``M = diag(m I, R_q J R_q^T)`` (``J = diag(inertia)``, the principal moments about the body's axes;
+    the full tensor in :class:`RigidInertialTensorNode`), the delivered resistance ``R`` and load
     ``F = applied_wrench + background_load + [0; -omega x (I omega)]`` (the gyroscopic term, explicit):
 
     ``(M/dt + R) dV = F - R V``, ``V' = V + dV``, then ``x' = x + dt v'`` and ``q' = exp(dt omega') q``, normalised.
@@ -454,6 +455,11 @@ class RigidInertialNode(MimeNode):
                 "resistance": node_input("N s/m; N s; N m s", (6, 6), additive=True),
                 "background_load": node_input("N; N m", (6,), additive=True)}
 
+    def body_inertia(self, p: Mapping[str, Any], dtype: Any) -> Array:
+        """The inertia about the centre of mass in the body's frame, 3 x 3: here the diagonal of the three principal
+        moments ``inertia``; the full tensor in :class:`RigidInertialTensorNode`."""
+        return jnp.diag(jnp.asarray(p["inertia"], dtype=dtype))
+
     def stepping_mass(self, p: Mapping[str, Any], mass_matrix: Array, rotation: Array, omega: Array,
                       dt: float) -> Array:
         """The mass matrix the step's solve uses, ``M'`` with ``M'/dt + R`` its matrix: ``M`` itself here, the term
@@ -615,7 +621,7 @@ class RigidInertialNode(MimeNode):
         ``M``, whose norm it needs symmetric."""
         rotation = quaternion.rotation_matrix(pose[3:])
         omega = twist[3:]
-        inertia = rotation @ jnp.diag(jnp.asarray(p["inertia"], dtype=twist.dtype)) @ rotation.T
+        inertia = rotation @ self.body_inertia(p, twist.dtype) @ rotation.T
         mass_matrix = jnp.zeros((6, 6), dtype=twist.dtype)
         mass_matrix = mass_matrix.at[:3, :3].set(p["mass"] * jnp.eye(3, dtype=twist.dtype)).at[3:, 3:].set(inertia)
         none = jnp.zeros_like(twist)
@@ -656,6 +662,13 @@ MIDPOINT_EQUATIONS = (r"\mathbf{V}^{\prime} = \mathbf{V} + (\mathbf{M} / \mathrm
                       r"\mathbf{R} \mathbf{V}), \quad \mathbf{K} = \partial (-\boldsymbol{\omega} \times "
                       r"(\mathbf{I} \boldsymbol{\omega})) / \partial \boldsymbol{\omega}")
 
+MIDPOINT_DISCRETIZATION = ("Linearly implicit midpoint (a Rosenbrock step with the exact Jacobian of the gyroscopic "
+                           "term), second order for the gyroscopic term alone: the resistance implicit, every other "
+                           "load at the start of the step; the position from the new velocity, the orientation turned "
+                           "by the exponential of the new angular velocity.")
+MIDPOINT_REFERENCES = (Reference("PeraireWidnall2009", "Euler's equations for a rigid body"),
+                       Reference("Sola2017", "the quaternion exponential of the turn"))
+
 
 class RigidInertialMidpointNode(RigidInertialNode):
     """A rigid body with the gyroscopic term linearly implicit at the midpoint (``rigid_inertial`` 0.3.0): the step of
@@ -692,16 +705,12 @@ class RigidInertialMidpointNode(RigidInertialNode):
                     "turned by the exponential of the new rate. Torque-free it keeps the kinetic energy and the "
                     "magnitude of the angular momentum to second order in the step.",
         governing_equations=MIDPOINT_EQUATIONS,
-        discretization="Linearly implicit midpoint (a Rosenbrock step with the exact Jacobian of the gyroscopic term), "
-                       "second order for the gyroscopic term alone: the resistance implicit, every other load at the "
-                       "start of the step; the position from the new velocity, the orientation turned by the "
-                       "exponential of the new angular velocity.",
+        discretization=MIDPOINT_DISCRETIZATION,
         assumptions=("A rigid body whose principal moments are about its body axes",
                      "The step's matrix is not symmetric for unequal moments (MIME-ANO-129)",
                      "The rotation rate times the step is below about one half: past it the gyroscopic term is not "
                      "resolved and nothing refuses the run (MIME-ANO-129)"),
-        references=(Reference("PeraireWidnall2009", "Euler's equations for a rigid body"),
-                    Reference("Sola2017", "the quaternion exponential of the turn")),
+        references=MIDPOINT_REFERENCES,
     )
     symbols = (
         Symbol(r"\mathbf{M}", SymbolKind.PARAMETER, "mass", "kg", _ADVANCE),
@@ -726,3 +735,87 @@ class RigidInertialMidpointNode(RigidInertialNode):
         jacobian = jnp.zeros_like(mass_matrix).at[3:, 3:].set(
             self.gyroscopic_jacobian(rotation, jnp.asarray(p["inertia"], dtype=mass_matrix.dtype), omega))
         return mass_matrix - 0.5 * dt * jacobian
+
+
+def _cross_matrix(v: Array) -> Array:
+    """``[v]x``, the matrix of ``v x``."""
+    zero = jnp.zeros_like(v[0])
+    return jnp.stack([jnp.stack([zero, -v[2], v[1]]), jnp.stack([v[2], zero, -v[0]]),
+                      jnp.stack([-v[1], v[0], zero])])
+
+
+def split_gyroscopic_jacobian(rotation: Array, tensor: Array, omega: Array) -> Array:
+    """``K = [J w]x - [w]x J`` in the body frame for the full symmetric inertia ``tensor`` ``J`` there, turned out as
+    ``R K_b R^T``, in the split form: the diagonal's part as :func:`gyroscopic_jacobian` forms it, from the moments'
+    differences (exactly zero for equal moments), and the products' part ``[P w]x - [w]x P``, ``P = J - diag(J)``,
+    added to it in the body frame. For a tensor with no products ``P`` is exactly zero, so is its part, and ``K`` is
+    0.3.0's. The general form from the world inertia ``R J R^T`` is not exactly zero for equal moments at a turned pose
+    and moves a compiled graph's last bits; taken whole from ``J`` it is exactly zero for equal moments only where the
+    compiler leaves its products unfused (see :func:`gyroscopic_jacobian`), which the differences never depend on."""
+    w = rotation.T @ omega
+    moments = jnp.stack([tensor[0, 0], tensor[1, 1], tensor[2, 2]])
+    gap = jnp.stack([moments[1] - moments[2], moments[2] - moments[0], moments[0] - moments[1]])
+    zero = jnp.zeros_like(w[0])
+    cross = jnp.stack([jnp.stack([zero, w[2], w[1]]), jnp.stack([w[2], zero, w[0]]), jnp.stack([w[1], w[0], zero])])
+    products = tensor - jnp.diag(moments)
+    return rotation @ (gap[:, None] * cross + _cross_matrix(products @ w) - _cross_matrix(w) @ products) @ rotation.T
+
+
+_BODY_INERTIA = "mime.nodes.body._rigid_inertial.RigidInertialTensorNode.body_inertia"
+#: The midpoint node's equations with the world inertia formed from the body frame's tensor, ``Q`` the body's rotation.
+TENSOR_EQUATIONS = MIDPOINT_EQUATIONS.replace(
+    r"\mathbf{K} = ", r"\mathbf{I} = \mathbf{Q} \mathbf{J} \mathbf{Q}^{\top}, \quad \mathbf{K} = ")
+
+
+class RigidInertialTensorNode(RigidInertialMidpointNode):
+    """A rigid body with its full inertia tensor (``rigid_inertial`` 0.4.0): the step of
+    :class:`RigidInertialMidpointNode` with ``inertia`` the symmetric 3 x 3 tensor ``J`` about the centre of mass in
+    the body's frame, nine numbers row-major, its products of inertia carried as they are. It is never turned into
+    principal moments and a rotation: that decomposition's derivative is not finite at equal moments, which every
+    axisymmetric body has.
+
+    The world inertia is ``I = Q J Q^T`` (``Q`` the body's rotation) and the gyroscopic Jacobian
+    :func:`split_gyroscopic_jacobian`: 0.3.0's difference formula for the diagonal, the general form for the products
+    alone. For a body with no products every history array is 0.3.0's to the bit, per compiled program, as the
+    released programs are held; with the Jacobian from the world inertia they are not."""
+
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-118",
+        description="A rigid body with its full inertia tensor in its body frame, the gyroscopic term linearly "
+                    "implicit at the midpoint: Newton's and Euler's equations for its centre of mass, every delivered "
+                    "resistance integrated implicitly, the pose turned by the exponential of the new rate. A body "
+                    "with no products of inertia steps as the midpoint node does, to the bit.",
+        governing_equations=TENSOR_EQUATIONS,
+        discretization=MIDPOINT_DISCRETIZATION,
+        assumptions=("A rigid body whose inertia about its centre of mass is a symmetric positive definite tensor in "
+                     "its body frame",
+                     "The step's matrix is not symmetric for unequal moments (MIME-ANO-129)",
+                     "The rotation rate times the step is below about one half: past it the gyroscopic term is not "
+                     "resolved and nothing refuses the run (MIME-ANO-129)"),
+        references=MIDPOINT_REFERENCES,
+    )
+    symbols = (
+        *RigidInertialMidpointNode.symbols,
+        Symbol(r"\mathbf{J}", SymbolKind.PARAMETER, "inertia", "kg m^2", _BODY_INERTIA),
+        Symbol(r"\mathbf{Q}", SymbolKind.STATE, "pose", "m; 1", _ADVANCE),
+    )
+
+    @override
+    def param_specs(self) -> dict[str, ParamSpec]:
+        held = super().param_specs()
+        held["mass"] = ParamSpec(bounds=(0.0, None), units="kg")
+        held["inertia"] = ParamSpec(units="kg m^2", description="the inertia tensor about the centre of mass in the "
+                                                                "body frame, nine numbers row-major: its products "
+                                                                "take either sign")
+        return held
+
+    @override
+    def body_inertia(self, p: Mapping[str, Any], dtype: Any) -> Array:
+        """The inertia tensor ``J`` about the centre of mass in the body's frame, from its nine numbers."""
+        return jnp.reshape(jnp.asarray(p["inertia"], dtype=dtype), (3, 3))
+
+    @override
+    def gyroscopic_jacobian(self, rotation: Array, moments: Array, omega: Array) -> Array:
+        """``K`` from the full tensor (:func:`split_gyroscopic_jacobian`; ``moments`` is ``inertia``'s nine
+        numbers)."""
+        return split_gyroscopic_jacobian(rotation, jnp.reshape(moments, (3, 3)), omega)
