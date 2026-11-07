@@ -188,7 +188,7 @@ class StudyResult:
             held.member_of = MemberOf(str(self.record.get("id", "")), rank.get(self.points[index], index),
                                       self.points[index], values, self.base,
                                       {str(axis["path"]): str(axis["reason"]) for axis in self.record.get("axes", [])
-                                       if axis.get("reason") and axis["reason"] != STUDY_REASON})
+                                       if axis.get("reason") and axis["reason"] != STUDY_REASON}, self.protocol)
         return held
 
     @public

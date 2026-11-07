@@ -61,7 +61,9 @@
   entrypoint.
   In the research profile each axis needs its own reason (`sweep(..., reasons={...})`, `study.axis-reason`).
 - **From a member to an experiment** (`_bridge.py`): `result.member(i).as_experiment(name)`, `Experiment.based_on(<the
-  base>, name=name)` with the member's values declared, each with the reason `from study <id>, member <i>`.
+  base>, name=name)` with the member's values declared, each with the reason `from study <id>, member <i>`, and a ramp's
+  member with its ramp declared as the study declared it. A study run on a ramp runs in memory: `run_to` refuses it
+  (`study.protocol-folder`), since the folder and the spec file record no protocol yet.
 
 ## Boundaries
 
@@ -71,7 +73,8 @@
 ## Status
 
 Sweeps, overrides, the drives that ramp a command with the step-out readings, the study folder, the spec file and
-`mime study`, resume and the bridge to an experiment are built (dev2, the study layer's first three phases). Plots and
-comparisons, checkpoints and forks, variants, fits and sensitivities come later.
+`mime study`, resume and the bridge to an experiment are built (dev2, the study layer's first three phases); a study
+folder does not yet record a protocol. Plots and comparisons, checkpoints and forks, variants, fits and sensitivities
+come later.
 
 Releases are explained in the [package manifest](../README.md#status).

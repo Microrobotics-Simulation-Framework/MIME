@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `study.protocol-command`, `study.protocol-quantity`, `study.series-every-step`. `ramp_crossings` reads the state a ramp
   starts from over the last window of its hold: a ramp up from an unlocked body and a ramp down from a locked one report
   that start, not a step-out or a catch at the start frequency.
+  A study run on a ramp runs in memory: a study folder records no protocol yet, so `run_to` refuses it
+  (`study.protocol-folder`) rather than write a folder that reads back as run from rest; a ramp's member made an
+  experiment (`as_experiment`) declares its ramp from the member's value, as the study did, and a ramp's protocol is
+  part of the study's id.
 - **`--deterministic` on `mime run` and `mime verify`, and `mime.env.deterministic_mode()`**: XLA's deterministic GPU
   mode turned on before JAX's backend starts, since XLA reads its flags only then (measured: a flag set after the
   backend started took no effect, one set after `import jax` and `import mime` did), and recorded in the lock as before.

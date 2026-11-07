@@ -429,6 +429,7 @@ study.order                   user
 study.other-study             user
 study.precision               user
 study.protocol-command        user
+study.protocol-folder         user
 study.protocol-quantity       user
 study.reason-no-axis          user
 study.refused-points          user

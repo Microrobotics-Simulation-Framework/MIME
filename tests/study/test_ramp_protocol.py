@@ -222,3 +222,51 @@ def test_a_hold_shorter_than_the_window_leaves_the_start_unread():
                                                 hold=ms(1.0)), record=[f"{LAG}.spin"]).run(), LAG,
                            window=ms(5.0))[0]
     assert found.start == "unread" and not found.read and found.at is None and "not read" in found.text()
+
+
+@pytest.fixture(scope="module")
+def rest_folder(tmp_path_factory):
+    """The study from rest written to its folder: the control of the folder's refusal, and the base the bridge takes."""
+    return protocol_study(FromRest()).run_to(tmp_path_factory.mktemp("rest") / "study")
+
+
+def test_a_study_on_a_ramp_is_refused_a_folder_and_one_from_rest_is_written(tmp_path, rest_folder):
+    """A study folder records no protocol yet, so a study run on a ramp would read back as run from rest: ``run_to``
+    refuses it before it writes anything. The control: the same study from rest is written."""
+    ramp = protocol_study(Ramp("field.commands.frequency", to=Hz(5.0), rate=Hz(100.0) / s(1.0)))
+    with pytest.raises(BuildRefused) as refused:
+        ramp.run_to(tmp_path / "ramp")
+    assert refused.value.codes() == ["study.protocol-folder"]
+    assert "study.run()" in refused.value.refusals[0].action and not (tmp_path / "ramp").exists()
+    assert rest_folder.base is not None and (rest_folder.base.parent / "study.json").is_file()
+    assert isinstance(rest_folder.protocol, FromRest) and len(rest_folder) == 2
+
+
+def test_a_ramps_member_made_an_experiment_ramps_from_the_members_value(rest_folder):
+    """The bridge declares a ramp's member as the study declared it, its ramp starting from the member's value, so the
+    experiment run alone commands what the member commanded. The control: a member of the same study from rest made an
+    experiment holds the member's value, which is not where the ramp ends."""
+    protocol = Ramp("field.commands.frequency", to=Hz(5.0), rate=Hz(100.0) / s(1.0), hold=ms(5.0))
+    ramped = protocol_study(protocol).run()
+    commands = {}
+    for name, result in (("ramped", ramped), ("rest", rest_folder)):
+        experiment = result.member(1).as_experiment(name, base=rest_folder.base)
+        (field,) = [d.thing for d in experiment.declared_as()[1]
+                    if isinstance(d, ThingDeclaration) and isinstance(d.thing, Apparatus) and d.thing.name == "field"]
+        commands[name] = field.commands["frequency"]
+        final = experiment.build().run(s(0.02)).final["drive:field.frequency"]["value"]
+        assert float(np.asarray(final)) == pytest.approx(
+            float(np.asarray(result.member(1).final["drive:field.frequency"]["value"])), rel=1e-6)
+    assert commands["ramped"] == protocol.drive(Hz(30.0))
+    assert not isinstance(commands["rest"], drives.Ramp)
+    assert float(np.asarray(ramped.member(1).final["drive:field.frequency"]["value"])) == pytest.approx(
+        30.0 - 100.0 * (0.02 - DT / 2 - 5e-3))
+
+def test_a_ramps_protocol_is_in_the_studys_identity_and_from_rest_leaves_it_as_it_was():
+    from mime.study._record import protocol_record, study_id
+
+    rest = protocol_study(FromRest()).plan()
+    slow, fast = (protocol_study(Ramp("field.commands.frequency", to=Hz(5.0), rate=Hz(rate) / s(1.0))).plan()
+                  for rate in (1.0, 2.0))
+    assert protocol_record(rest) is None
+    assert len({study_id(rest, None), study_id(slow, None), study_id(fast, None)}) == 3

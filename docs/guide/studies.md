@@ -130,6 +130,11 @@ field must integrate its frequency for a ramp to mean what it says: `UniformRota
 saved folders, refuses a ramp. These figures are acceptance tests of the sweep and the inertial body, not claims about
 where a real body steps out.
 
+A study run on a ramp runs in memory, `.run()`: a study folder does not record a protocol yet, so `run_to` refuses it
+(`study.protocol-folder`) rather than write a folder that would read back as run from rest. A ramp's member made an
+experiment, `result.member(i).as_experiment(name, base=...)`, declares its ramp from the member's value, as the study
+did.
+
 ## One run's overrides
 
 `built.run(duration, override={...})` runs one point alone, on the build's own compiled step: its overrides are declared,

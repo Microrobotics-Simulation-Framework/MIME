@@ -81,7 +81,8 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   refused, a file named like a temporary among them); each group file checked against the manifest on read (its
   sha256, and each done member's entries under its content key: `study.group-file`); readable without MIME; written
   atomically file by file, each batch as it finishes, so a stopped study reads as what it holds (`missing`). No
-  saved-form step. See
+  saved-form step. A study run on a ramp is not written to a folder yet: the folder records no protocol, so it would
+  read back as run from rest (`study.protocol-folder`). See
   [docs/results.md](../../../docs/results.md).
 - **`RunResult.as_experiment(name)`** on a member of a study (`MemberOf` says which): the bridge to an experiment of its
   own, in `mime.study._bridge`.
