@@ -134,7 +134,8 @@ class RigidInertial(Dynamics):
             hull = {"hull_kind": kind.name, "hull_kind_version": kind.version, "hull_patches": tuple(kind.patches),
                     "hull_counts": held.counts, "hull_centre": held.hull.centre,
                     "hull_rotation": tuple(c for row in held.hull.rotation for c in row),
-                    **{f"{HULL}{name}": value for name, value in settings.items()}}
+                    **{f"{HULL}{name}": value for name, value in settings.items()},
+                    **({"contact_loops": True} if held.loops else {})}
         surface: dict[str, Any] = {f"{SURFACE}{name}": value for name, value in held.parameters.items()}
         b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
                         initial_twist=twist, surface_shape=held.shape, extent=held.extent, margin=held.margin,

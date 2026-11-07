@@ -112,6 +112,7 @@ def linear(read, settings):
 
 
 CentreContact, _ = KEPT["contact", "0.1.0"]
+UnrolledContact, _ = KEPT["contact", "0.4.0"]
 CentreMagneticTorque, _ = KEPT["magnetic.torque", "0.1.0"]
 CentreMagneticForce, _ = KEPT["magnetic.force", "0.1.0"]
 #: What the magnetic laws 0.1.0 fail: they read the field at the centre of mass, and with a magnet off it the pair does
@@ -132,10 +133,13 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "contact", "0.1.0"): FamilyCase(
         lambda: CentreContact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
-    # The rig's body has no hull (its extent declared), which 0.3.0 holds as a sphere of its extent, by 0.1.0's
-    # projection: the family's closed form. Its hull's points have the oracles of their own
-    # (tests/oracles/test_hull_contact.py).
+    # The rig's body has no hull (its extent declared), which 0.3.0 and later hold as a sphere of its extent, by 0.1.0's
+    # projection: the family's closed form. Their hull's points have the oracles of their own
+    # (tests/oracles/test_hull_contact.py; 0.5.0's loops against 0.4.0's unrolled steps, test_contact_loops.py).
     ("interaction", "contact", "0.4.0"): FamilyCase(
+        lambda: UnrolledContact.Projection(margin=mm(0.1)), projected,
+        NodeCase(no_node="a projection, built into the body's node")),
+    ("interaction", "contact", "0.5.0"): FamilyCase(
         lambda: Contact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
     ("interaction", "drag", "0.3.0"): FamilyCase(kept_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),

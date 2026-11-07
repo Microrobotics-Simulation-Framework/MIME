@@ -41,6 +41,7 @@ from mime.units import N, kg, kg_m2, m, m_per_s, mm, rad_per_s
 
 KEPT_TORQUE, _ = KEPT["magnetic.torque", "0.1.0"]
 KEPT_FORCE, _ = KEPT["magnetic.force", "0.1.0"]
+KEPT_CONTACT, _ = KEPT["contact", "0.4.0"]
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,12 @@ def swing_magnet_kept() -> Experiment:
     return swing_magnet("swing_magnet_kept", magnetic=(KEPT_TORQUE, KEPT_FORCE))
 
 
+def hull_contact_kept() -> Experiment:
+    """FL-9 held by its hull's points from the first step on the contact kept registered, 0.4.0 (its loops unrolled):
+    what a folder saved before 0.5.0 names, and the case its golden output came from."""
+    return hull_contact(contact=KEPT_CONTACT)
+
+
 def script_a_with_drag() -> Experiment:
     """Script A, with the drag surrogate and its lubrication, the body moving as in the body side's case."""
     return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
@@ -181,8 +188,11 @@ CASES = (
     # Script A's surrogate on drag 0.3.0, kept registered: what a folder saved before the separated quadrature names.
     Case("script_a_kept", script_a_kept_drag),
     Case("script_a_records", script_a_records),
-    # FL-9 held by its hull's points from the first step: the contact 0.4.0's golden outputs come from it.
-    Case("hull_contact", hull_contact),
+    # FL-9 held by its hull's points from the first step, on the contact kept registered, 0.4.0: its golden outputs
+    # come from it.
+    Case("hull_contact", hull_contact_kept),
+    # The same on the contact 0.5.0, its loops XLA loops: 0.5.0's golden outputs come from it.
+    Case("hull_contact_looped", lambda: hull_contact("hull_contact_looped")),
     Case("coupled_toy", coupled_toy),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),

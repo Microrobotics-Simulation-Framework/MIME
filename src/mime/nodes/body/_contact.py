@@ -21,7 +21,8 @@ from mime.registry import Geometry
 #: The most of the search's Newton steps, their gradients stopped, that take each group's kept start (``kept``) towards
 #: the body's own deepest point near it against a wall, the point where the wall's outward normal is the body's
 #: (``x = s(n(x))``, ``s`` the hull's support), before one step with them flowing, so the point's derivatives are the
-#: implicit function's (``deepest``). An XLA loop's iterations (``repeated``), a step each. A declaration,
+#: implicit function's (``deepest``). Unrolled, a step each, in the contact 0.4.0; an XLA loop's iterations in 0.5.0
+#: (``repeated``). A declaration,
 #: measured on the review of the first fix (#116): a search started within the margin of the shrunk wall converged in
 #: 4 steps at the 99th percentile and in at most 9 to 11; one started farther off whose point still reached the wall,
 #: in 16 at the 99th percentile, some never within 30. A search that has not converged after them holds its group's
@@ -107,10 +108,12 @@ class Hull(NamedTuple):
 
 class Pair(NamedTuple):
     """A contact pair: a body's hull and what it touches, a fixed surface now (``Wall``); another body's ``Hull``
-    later."""
+    later; and whether its search's Newton steps are an XLA loop's iterations (``loops``, the contact 0.5.0) or
+    unrolled (0.4.0), as ``repeated`` takes them."""
 
     body: Hull
     other: Wall
+    loops: bool = False
 
 
 class Contacts(NamedTuple):
@@ -185,7 +188,7 @@ def climbed(pair: Pair, seeds: Array, count: int) -> tuple[Array, Array]:
     held = lax.stop_gradient((seeds, hull.pose, _numbers(hull.parameters), _numbers(wall.parameters), wall.margin))
     x, pose, parameters = held[0], held[1], {**hull.parameters, **held[2]}
     surface = Wall(wall.shape, {**wall.parameters, **held[3]}, held[4])
-    x = repeated(count, lambda _, x: _step(pair, x, pose, parameters, surface), x)
+    x = repeated(count, lambda _, x: _step(pair, x, pose, parameters, surface), x, loops=pair.loops)
     return x, _supported(pair, x, pose, parameters, surface)[0]
 
 
@@ -363,28 +366,32 @@ def held_at(pair: Pair, local: Array) -> Contacts:
                     jnp.zeros_like(gaps))
 
 
-def repeated(count: int, body: Callable[[Any, Any], Any], value: Any) -> Any:
-    """``value`` after ``body(i, value)`` for ``i`` from 0 to ``count - 1``, each call taking the last's value: an
-    XLA loop (``lax.fori_loop``) whose bounds are fixed when the step is traced, so that it lowers to a scan, through
-    which both modes of derivative pass. While a switch collector is open (``switch.collector_open``) it is unrolled,
-    a call each iteration, so that the collector gathers each iteration's rows as values of the step."""
-    if switch.collector_open():
+def repeated(count: int, body: Callable[[Any, Any], Any], value: Any, *, loops: bool) -> Any:
+    """``value`` after ``body(i, value)`` for ``i`` from 0 to ``count - 1``, each call taking the last's value. With
+    ``loops`` (the contact 0.5.0), an XLA loop (``lax.fori_loop``) whose bounds are fixed when the step is traced, so
+    that it lowers to a scan, through which both modes of derivative pass; otherwise (0.4.0) unrolled, a call each
+    iteration, the program the contact 0.4.0 compiled. The loop is unrolled too while a switch collector is open
+    (``switch.collector_open``), so that the collector gathers each iteration's rows as values of the step: a site in
+    a loop's body is evaluated once a trace, on the body's tracers, which the collector's rows would keep beyond it."""
+    if not loops or switch.collector_open():
         for i in range(count):
             value = body(i, value)
         return value
     return cast(Any, lax).fori_loop(0, count, body, value)  # its hints read as partly unknown
 
 
-def sweeps(coupling: Array, start: Array, count: int, *, owner: str) -> Array:
+def sweeps(coupling: Array, start: Array, count: int, *, owner: str, loops: bool = False) -> Array:
     """The multipliers ``x >= 0`` with ``start + coupling x >= 0`` and ``x (start + coupling x) = 0``, by ``count``
     projected Gauss-Seidel sweeps from zero, each update exact for its own multiplier with the others held, the rows
     in their order; a row of no length (a point on the surface's axis, where it has no normal) is never moved. The
-    sweeps, and each sweep's updates, are XLA loops' iterations (``repeated``)."""
+    sweeps, and each sweep's updates, are unrolled (the contact 0.4.0), or with ``loops`` an XLA loop's iterations
+    (0.5.0; ``repeated``)."""
     own = jnp.diagonal(coupling)
     held = switch.domain_guard(own > 0, own, 1.0)
     update = partial(_updated, coupling, start, held, owner=owner)
     rows = start.shape[0]
-    return repeated(count, lambda _, found: repeated(rows, update, found), jnp.zeros_like(start))
+    return repeated(count, lambda _, found: repeated(rows, update, found, loops=loops), jnp.zeros_like(start),
+                    loops=loops)
 
 
 def _updated(coupling: Array, start: Array, held: Array, k: Any, found: Array, *, owner: str) -> Array:

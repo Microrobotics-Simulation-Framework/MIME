@@ -107,6 +107,7 @@ def declarations() -> dict[str, switch.Declaration]:
     load_namespaces()
     found = {d.owner: d for name in shape_names() for d in shape_switches(name)}
     for kind, name, version in (("interaction", "contact", "0.1.0"), ("interaction", "contact", "0.4.0"),
+                                ("interaction", "contact", "0.5.0"),
                                 ("interaction", "drag", "0.3.0"),
                                 ("observation", "swim_speed", "0.1.0"), ("dynamics", "rigid_inertial", "0.2.0"),
                                 ("dynamics", "arm", "0.1.0"), ("controller", "arm_tracking", "0.1.0"),
