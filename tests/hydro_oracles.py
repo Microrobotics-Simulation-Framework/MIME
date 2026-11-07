@@ -36,7 +36,7 @@ from mime.nodes.hydro._surrogate_drag import END_TIE
 from mime.registry import BuildContext, Delivery, Interaction, Read, RoleKind, Value, register_interaction
 from mime.surrogates import DEJONGH_MLP_V2, TRIANGLE
 from mime.testing._mime_families import SCREW
-from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, register_namespace
+from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, EnergyClass, register_namespace
 
 register_namespace("oracle", "0.0.1")
 
@@ -74,6 +74,7 @@ class StokesSphere(Interaction):
     name = "oracle.stokes_sphere"
     version = "0.0.1"
     differentiability = GradientStatus.EXACT
+    energy_class = EnergyClass.DISSIPATIVE
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     reads = {"pose": Read("body", POSE.name)}
     delivers = {"resistance": Delivery("body", RESISTANCE.name), "background_load": Delivery("body", BACKGROUND_LOAD.name)}
