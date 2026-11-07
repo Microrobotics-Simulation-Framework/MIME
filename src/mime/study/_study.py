@@ -16,7 +16,6 @@ from jax import monitoring
 from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.build._construct import report_of
 from mime.build._checks import node_lines
-from mime.build._derived import static_arrays
 from mime.build._key import split_reasons, structure_key
 from mime.build._maddening import (
     META,
@@ -24,10 +23,7 @@ from mime.build._maddening import (
     FlagTest,
     batched_scan,
     full_state,
-    graph_params,
-    make_jaxpr_with_shapes,
     state_put_back,
-    step_function,
     unreadable_leaves,
 )
 from mime.build._plan import Section
@@ -176,8 +172,9 @@ class StudyPlan:
                    f"{', '.join(map(str, sorted(set(group.batches), reverse=True)))}" if group.batched else
                    "one after another on one compiled step (a controller is called on the host between chunks)")
             memory = (f"memory about {_mib(group.fixed)} + {len(group.members)} x {_mib(group.each)} "
-                      f"= {_mib(group.fixed + len(group.members) * group.each)} (the leaves shared once, each member's "
-                      f"state, varying leaves, series and the step's largest intermediate)")
+                      f"= {_mib(group.fixed + len(group.members) * group.each)} (XLA's buffer assignment of a chunk "
+                      f"of the step at one and two members, which leaves out a solver's own workspace; each point's own "
+                      f"leaves and state, its series and its report, measured)")
             lines.append(f"  group {number}: {len(group.members)} points, {how}, {group.compiles} compile"
                          f"{'s' if group.compiles != 1 else ''}; {memory}")
             if group.reasons:
@@ -208,32 +205,43 @@ def _nbytes(arrays: Mapping[str, Mapping[str, np.ndarray]]) -> int:
     return sum(value.nbytes for fields in arrays.values() for value in fields.values())
 
 
-def step_largest_intermediate(built: BuiltExperiment) -> int:
-    """The bytes of the largest array one step of ``built``'s graph computes, read from its trace: what a member adds
-    to the memory beyond what it holds, twice over for the value and its successor."""
+def device_bytes(built: BuiltExperiment, points: Sequence[Point], members: Sequence[int],
+                 varying: Sequence[tuple[str, str]], tests: Sequence[FlagTest], kept: Sequence[tuple[str, str]],
+                 chunk: int) -> tuple[int, int]:
+    """The device memory a batch of the group's members needs, ``fixed + B * each`` in bytes: XLA's buffer assignment
+    of one chunk of the batched step, compiled and not run, for a batch of one member and of two (the first member
+    twice where the group has one). A measurement of the program, not a count of its arrays."""
     graph = built.graph
+    with state_put_back(graph):
+        graph.reset_state()
+        meta = dict(full_state(graph).get(META) or {})
+    sizes: list[int] = []
+    for batch in ([members[0]], [members[0], members[1] if len(members) > 1 else members[0]]):
+        params, axes = stacked_tree(points, batch, varying)
+        state = stacked_state(points, batch, meta)
+        total, _, _ = batched_scan(graph, chunk, state, params, axes, tests, kept, measure=True)
+        sizes.append(int(cast(int, total)))
+    each = max(0, sizes[1] - sizes[0])
+    return sizes[0] - each, each
+
+
+def report_bytes(built: BuiltExperiment, point: Point) -> int:
+    """What one member's result holds on the host beyond its arrays, measured: the bytes Python allocates for its
+    report's summary, the largest part, as ``tracemalloc`` counts them."""
+    import tracemalloc
+
+    held = tracemalloc.is_tracing()
+    if not held:
+        tracemalloc.start()
     try:
-        closed, _ = make_jaxpr_with_shapes(step_function(graph), full_state(graph), {}, graph_params(graph))
-    except Exception:  # noqa: BLE001 - an estimate: a step that does not trace this way counts nothing here
-        return 0
-    largest = 0
-
-    def walk(jaxpr: Any) -> None:
-        nonlocal largest
-        for equation in jaxpr.eqns:
-            for var in equation.outvars:
-                aval = getattr(var, "aval", None)
-                shape, dtype = getattr(aval, "shape", None), getattr(aval, "dtype", None)
-                if shape is not None and dtype is not None:
-                    size = int(np.prod(cast(tuple[int, ...], shape)))
-                    largest = max(largest, size * np.dtype(dtype).itemsize)
-            for value in equation.params.values():
-                inner = getattr(value, "jaxpr", value)
-                if hasattr(inner, "eqns"):
-                    walk(inner)
-
-    walk(closed.jaxpr)
-    return 2 * largest
+        before = tracemalloc.get_traced_memory()[0]
+        summary = member_report(built, point)
+        after = tracemalloc.get_traced_memory()[0]
+    finally:
+        if not held:
+            tracemalloc.stop()
+    del summary
+    return max(0, after - before)
 
 
 class Study:
@@ -366,7 +374,8 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
 def _settle(group: Group, points: Sequence[Point], axes: Sequence[Axis], duration: Quantity,
             record: Sequence[OutputRef | str], every: Quantity | None, batch: int | None) -> None:
     """A group's run settled: its batches and chunks, the leaves that vary among its members, the refusal of a varying
-    leaf the step does not read, and its memory estimate."""
+    leaf the step does not read, and its memory estimate, measured by compiling one chunk of the batched step at one
+    and two members (``device_bytes``) and running nothing."""
     built = group.built
     assert built is not None
     steps = built.steps_in(duration)
@@ -397,15 +406,20 @@ def _settle(group: Group, points: Sequence[Point], axes: Sequence[Axis], duratio
             "declare it in the experiment, `exp.declare(...)`, once per study, or make each value an experiment of its "
             "own, `Experiment.based_on(...)`")])
     state = builder.state
-    shared = sum(value.nbytes for node, leaves in builder.tree.items() for leaf, value in leaves.items()
-                 if (node, leaf) not in set(varying))
-    statics = sum(array.nbytes for name in built.graph.node_names
-                  for array in static_arrays(built.graph.get_node(name)).values())
-    kept = {(output.node, output.field) for output in recorded}
+    kept = sorted({(output.node, output.field) for output in recorded})
     per_step = sum(state[node][name].nbytes for node, name in kept if node in state and name in state[node])
-    group.fixed = shared + statics
-    group.each = (2 * _nbytes(state) + sum(builder.tree[n][k].nbytes for n, k in varying) + per_step * steps
-                  + step_largest_intermediate(built))
+    if group.batched:
+        fixed, each = device_bytes(built, points, group.members, varying, built.flag_tests(), kept,
+                                   max(group.chunks, default=1))
+    else:
+        fixed, each = sum(v.nbytes for leaves in builder.tree.values() for v in leaves.values()), _nbytes(state)
+    group.fixed = fixed
+    second = points[group.members[1]] if len(group.members) > 1 else builder
+    own = sum(value.nbytes for node, leaves in second.tree.items() for leaf, value in leaves.items()
+              if value is not builder.tree[node][leaf])
+    own += sum(value.nbytes for node, fields in second.state.items() for name, value in fields.items()
+               if value is not builder.state[node][name])
+    group.each = each + per_step * steps + report_bytes(built, builder) + own
 
 
 @dataclass
@@ -514,4 +528,4 @@ def member_report(built: BuiltExperiment, point: Point) -> dict[str, Any]:
 
 
 __all__ = ["Compiles", "Group", "Points", "Study", "StudyPlan", "along", "grid", "member_report", "run_members",
-           "stacked_state", "stacked_tree", "step_largest_intermediate"]
+           "stacked_state", "stacked_tree", "device_bytes"]

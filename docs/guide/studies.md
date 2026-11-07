@@ -33,13 +33,16 @@ and the precision. Points that need one program are a **group**: built once, com
 `jax.vmap` over their own parameter leaves and initial states. A leaf every member shares (a table, a network's weights)
 enters the step once, never copied per member. The plan says how many groups and compiles there are, why each group split
 from the first (a static a node derives from a value, a changed node set, `dt`, the precision), every refused point with
-every reason, and the memory each group needs (the leaves shared once, and each member's state, varying leaves, series and
-the step's largest intermediate). It printed:
+every reason, and the memory each group needs, `fixed + B x each`: XLA's buffer assignment of one chunk of the batched
+step, compiled at one member and at two and not run, with each point's own leaves and state, its series and its report as
+the plan measures them (the plan pays those two compiles). XLA's assignment does not hold a solver's own workspace
+(the MRS rung's dense solves), so the estimate is low there: about four to five times per member on the MRS screw in a
+tube, measured on one laptop. It printed:
 
 <!-- mime-output: examples/studies.py -->
 ```text
 4 points over field.commands.frequency; 1 group, 1 compile; nothing refused
-  group 0: 4 points, batched in 1 batch of 4, 1 compile; memory about 144.7 KiB + 4 x 5.6 KiB = 167.2 KiB (the leaves shared once, each member's state, varying leaves, series and the step's largest intermediate)
+  group 0: 4 points, batched in 1 batch of 4, 1 compile; memory about 5.3 KiB + 4 x 27.3 KiB = 114.4 KiB (XLA's buffer assignment of a chunk of the step at one and two members, which leaves out a solver's own workspace; each point's own leaves and state, its series and its report, measured)
 10 Hz: swim speed 2.92 mm/s over the second half, 0.292 mm per turn
 20 Hz: swim speed 5.86 mm/s over the second half, 0.293 mm per turn
 30 Hz: swim speed 8.90 mm/s over the second half, 0.297 mm per turn

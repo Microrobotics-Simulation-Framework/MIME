@@ -316,14 +316,17 @@ META = "_meta"
 
 def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes: tuple[tuple[str, str, int | None], ...],
                  tests: Sequence[FlagTest], kept: Sequence[tuple[str, str]], *, batched: bool = True,
-                 fed: Fed | None = None) -> tuple[Any, tuple[Array, Array, Array], Any]:
+                 fed: Fed | None = None, measure: bool = False) -> tuple[Any, tuple[Array, Array, Array], Any]:
     """``steps`` steps of a batch of members of one compiled graph, as one compiled scan vmapped over the members: each
     member's state (every node field and ``_meta``, stacked along a leading member axis) and those parameter leaves
     ``axes`` marks ``0`` (``(node, leaf, axis)``), stacked likewise; a leaf marked ``None`` is shared by every member and
     enters the step once, never copied per member. Each flag of ``tests`` is reduced per member inside the scan (steps
     raised, first, last), and each field of ``kept`` (``(node, field)``) is kept at every step. The state it returns is
     each member's at the end, ``_meta`` included. ``batched=False`` runs the same scan unvmapped, on one member's state
-    and tree: the program a batch is compared with. Nothing is stored on the graph, which is left as it was."""
+    and tree: the program a batch is compared with. Nothing is stored on the graph, which is left as it was.
+    ``measure`` compiles the program and runs nothing: the first value returned is then the bytes XLA's buffer
+    assignment gives it (its temporaries, arguments and outputs, less what they alias, and its code and constants), the
+    others ``None``."""
     held = _held(graph)
     jnp = _held(jax.numpy)
     held._recover_from_escaped_tracers()  # noqa: SLF001
@@ -379,8 +382,13 @@ def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes:
                                                                                 "mappings": mappings})))
 
     structure = str(_held(jax).tree_util.tree_structure(params))
-    key = ("mime_batched_scan", int(steps), batched, axes, structure, tuple(tests), tuple(kept))
+    key = ("mime_batched_scan", int(steps), batched, axes, structure, tuple(tests), tuple(kept), measure)
     program = held._cached_scan(key, build)  # noqa: SLF001
+    if measure:
+        stats = program.lower(state, external, params).compile().memory_analysis()
+        total = (int(stats.temp_size_in_bytes) + int(stats.argument_size_in_bytes) + int(stats.output_size_in_bytes)
+                 - int(stats.alias_size_in_bytes) + int(stats.generated_code_size_in_bytes))
+        return cast(tuple[Any, tuple[Array, Array, Array], Any], (total, (None, None, None), None))
     return cast(tuple[Any, tuple[Array, Array, Array], Any], program(state, external, params))
 
 

@@ -72,6 +72,18 @@ class Point:
         return bool(self.refusals)
 
 
+def _share(own: Arrays, first: Arrays) -> None:
+    """Each array of ``own`` equal to its group's first point's replaced by that point's own array: a point holds only
+    what differs from it, so a table every point shares is held once, however many points there are."""
+    for node, fields in own.items():
+        held = first.get(node, {})
+        for name, value in fields.items():
+            other = held.get(name)
+            if other is not None and other.shape == value.shape and other.dtype == value.dtype and \
+                    np.array_equal(other, value):
+                fields[name] = other
+
+
 def _starting(graph: Any, name: str) -> dict[str, Any]:
     from mime.build._checks import starting_inputs  # noqa: PLC2701
 
@@ -118,6 +130,9 @@ def build_point(index: int, settings: RunSettings, declarations: Sequence[Declar
                                        **{f"input/{k}": v for k, v in _starting(graph, name).items()}})
                          for name in checking}
         first = reference(point.key) if reference is not None else None
+        if first is not None:
+            _share(point.tree, first.tree)
+            _share(point.state, first.state)
         if checking and first is not None and first.checked != point.checked:
             refusals = node_refusals(graph, lambda node: node)
             if refusals:
