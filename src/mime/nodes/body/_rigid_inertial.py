@@ -749,8 +749,9 @@ def split_gyroscopic_jacobian(rotation: Array, tensor: Array, omega: Array) -> A
     ``R K_b R^T``, in the split form: the diagonal's part as :func:`gyroscopic_jacobian` forms it, from the moments'
     differences (exactly zero for equal moments), and the products' part ``[P w]x - [w]x P``, ``P = J - diag(J)``,
     added to it in the body frame. For a tensor with no products ``P`` is exactly zero, so is its part, and ``K`` is
-    0.3.0's; the general form taken whole, from ``J`` or from the world inertia ``R J R^T``, moves a compiled graph's
-    last bit (see :func:`gyroscopic_jacobian`)."""
+    0.3.0's. The general form from the world inertia ``R J R^T`` is not exactly zero for equal moments at a turned pose
+    and moves a compiled graph's last bits; taken whole from ``J`` it is exactly zero for equal moments only where the
+    compiler leaves its products unfused (see :func:`gyroscopic_jacobian`), which the differences never depend on."""
     w = rotation.T @ omega
     moments = jnp.stack([tensor[0, 0], tensor[1, 1], tensor[2, 2]])
     gap = jnp.stack([moments[1] - moments[2], moments[2] - moments[0], moments[0] - moments[1]])
@@ -775,8 +776,8 @@ class RigidInertialTensorNode(RigidInertialMidpointNode):
 
     The world inertia is ``I = Q J Q^T`` (``Q`` the body's rotation) and the gyroscopic Jacobian
     :func:`split_gyroscopic_jacobian`: 0.3.0's difference formula for the diagonal, the general form for the products
-    alone. For a body with no products every history array is 0.3.0's to the bit, per compiled program; the general
-    form taken whole is not."""
+    alone. For a body with no products every history array is 0.3.0's to the bit, per compiled program, as the
+    released programs are held; with the Jacobian from the world inertia they are not."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-118",

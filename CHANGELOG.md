@@ -108,8 +108,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   0.3.0's midpoint step with the gyroscopic Jacobian split: 0.3.0's difference formula for the diagonal and the general
   form for the products alone, so a body with no products moves as it did on 0.3.0, every history array identical in
   float32 and float64 on the released programs (script A, its reproduction and record arms, A with the hull contact,
-  A0 and its dynamic rungs, the screw example and the frozen register's transverse arm), and its derivative is finite
-  through equal moments, where carrying the tensor as principal moments and axes is not. The derived graph's `inertia`
+  A0 and its dynamic rungs, script A on FL-9's own diagonal and the frozen register's transverse arm, each of which a
+  Jacobian from the world inertia, or one unit in the last place on a moment, moves; and the screw example, which
+  neither moves: in its viscous regime its inertia does not reach its bits), and its derivative is finite through
+  equal moments, where carrying the tensor as principal moments and axes is not. The derived graph's `inertia`
   is now nine numbers for every rigid body, so every such experiment has a new derived hash; nothing it computes moved.
   0.3.0 stays registered for saved folders (`RigidInertialMoments`): it takes the diagonal and refuses a tensor whose
   products it did not take as none; 0.2.0 is its explicit variant, as before. The frozen register keeps 0.2.0. A small
