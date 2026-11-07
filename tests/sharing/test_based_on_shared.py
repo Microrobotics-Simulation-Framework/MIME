@@ -19,7 +19,9 @@ Zenodo action, rehearsed on the sandbox first)."""
 
 import builtins
 import dataclasses
+import hashlib
 import json
+import shutil
 import warnings
 import zipfile
 from pathlib import Path
@@ -179,6 +181,119 @@ def test_a_notebook_cell_that_bases_an_experiment_on_a_doi_runs_again(saved_toy:
             documents.append(namespace["child"].document())
     assert documents[0] == documents[1] and documents[1]["based_on"]["doi"] == DOI
     assert [path.name for path in work.iterdir()] == ["full_toy"]
+
+
+# --- a cell run again does not download its bundle again ----------------------------------------------------------------
+
+
+def bundle_downloads(rig: Rig) -> int:
+    """How many times the fake record's bundle bytes were requested (its ``content`` address) so far."""
+    return sum(1 for request in rig.server.requests if request.endswith("/files/full_toy.mimebundle/content"))
+
+
+def record_reads(rig: Rig) -> int:
+    """How many times the fake record's metadata (its API address) was requested so far."""
+    return sum(1 for request in rig.server.requests if request.endswith(f"/zenodo/api/records/{RECORD}"))
+
+
+def fresh_work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str) -> Path:
+    work = tmp_path / name
+    work.mkdir()
+    monkeypatch.chdir(work)
+    return work
+
+
+def test_a_doi_run_again_reads_the_record_and_downloads_no_bundle(saved_toy: Path, rig: Rig, tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch):
+    """Measured on the fake repository: the first call reads the record and downloads the bundle once; the same call run
+    again reads the record (its checksum is what says the bundle is the one held) and takes the bundle from the cache."""
+    bundle = pack(published(saved_toy, tmp_path / "published"), out=tmp_path / "full_toy.mimebundle")
+    work = fresh_work(tmp_path, monkeypatch, "work")
+    with zenodo(rig, {"full_toy.mimebundle": bundle.read_bytes()}):
+        first = Experiment.based_on(DOI, name="child").document()
+        assert (bundle_downloads(rig), record_reads(rig) > 0) == (1, True)
+        reads = record_reads(rig)
+        with untouched(work / "full_toy"):
+            again = Experiment.based_on(DOI, name="child").document()
+        assert bundle_downloads(rig) == 1, "no bundle bytes the second time"
+        assert record_reads(rig) > reads, "the record is read again: its checksum names the bundle"
+    assert again == first and [path.name for path in work.iterdir()] == ["full_toy"]
+
+
+def test_a_changed_record_is_downloaded(saved_toy: Path, rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The record now lists another file (a new version: another checksum): it is not the cached bundle, so it is fetched
+    (here its experiment is the folder's name with other contents, which is refused as before)."""
+    bundle = pack(published(saved_toy, tmp_path / "published"), out=tmp_path / "full_toy.mimebundle")
+    stiffer = pack(stiffer_toy_saved_as_full_toy(saved_toy, tmp_path / "stiffer" / "full_toy"),
+                   out=tmp_path / "stiffer.mimebundle")
+    fresh_work(tmp_path, monkeypatch, "work")
+    with zenodo(rig, {"full_toy.mimebundle": bundle.read_bytes()}):
+        Experiment.based_on(DOI, name="child")
+    assert bundle_downloads(rig) == 1
+    with zenodo(rig, {"full_toy.mimebundle": stiffer.read_bytes()}), pytest.raises(BuildRefused) as refused:
+        Experiment.based_on(DOI, name="child")
+    assert bundle_downloads(rig) == 2 and refused.value.codes() == ["pull.destination"]
+
+
+@pytest.mark.parametrize("cleared", ["the whole cache", "the bundle alone, its checksum's note left",
+                                     "the bundle truncated, its note left"])
+def test_a_cache_without_the_bundle_downloads_it_again(saved_toy: Path, rig: Rig, tmp_path: Path,
+                                                   monkeypatch: pytest.MonkeyPatch, cleared: str):
+    bundle = pack(published(saved_toy, tmp_path / "published"), out=tmp_path / "full_toy.mimebundle")
+    work = fresh_work(tmp_path, monkeypatch, "work")
+    with zenodo(rig, {"full_toy.mimebundle": bundle.read_bytes()}):
+        first = Experiment.based_on(DOI, name="child").document()
+        if cleared == "the whole cache":
+            shutil.rmtree(rig.cache)
+        elif cleared.startswith("the bundle alone"):
+            (rig.cache / hashlib.sha256(bundle.read_bytes()).hexdigest()).unlink()
+        else:
+            held = rig.cache / hashlib.sha256(bundle.read_bytes()).hexdigest()
+            held.write_bytes(held.read_bytes()[:-1])
+        with untouched(work / "full_toy"):
+            again = Experiment.based_on(DOI, name="child").document()
+    assert bundle_downloads(rig) == 2 and again == first
+
+
+def test_control_a_folder_holding_another_experiment_is_refused_though_the_bundle_comes_from_the_cache(
+        saved_toy: Path, rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The cache knows the record's checksum, so no bundle bytes are fetched; the folder's input hash is still compared
+    with the bundle's, so a folder there that holds another experiment is refused and left as it was. The checksum is a
+    shortcut to the bytes and never to the verdict."""
+    bundle = pack(published(saved_toy, tmp_path / "published"), out=tmp_path / "full_toy.mimebundle")
+    fresh_work(tmp_path, monkeypatch, "first")
+    with zenodo(rig, {"full_toy.mimebundle": bundle.read_bytes()}):
+        Experiment.based_on(DOI, name="child")
+        assert bundle_downloads(rig) == 1
+        planted = stiffer_toy_saved_as_full_toy(saved_toy, fresh_work(tmp_path, monkeypatch, "second") / "full_toy")
+        assert lock_of(planted)["hashes"]["input"] != lock_of(saved_toy)["hashes"]["input"]
+        with untouched(planted), pytest.raises(BuildRefused) as refused:
+            Experiment.based_on(DOI, name="child")
+    assert refused.value.codes() == ["pull.destination"] and bundle_downloads(rig) == 1
+
+
+def test_a_doi_run_again_is_gated_on_its_assets_as_the_first_run_was(saved_toy: Path, rig: Rig, tmp_path: Path,
+                                                                    monkeypatch: pytest.MonkeyPatch):
+    """The bundle comes from the cache the second time, and its assets pass the same licence gate: refused again, naming
+    the licence, until it is accepted by name."""
+    payload = b"a table under a non-commercial licence" * 30
+    rig.server.files["/t/table.bin"] = payload
+    ref = dataclasses.replace(reference(payload, rig.server.url("/t/table.bin"), name="table"),
+                              licence="CC-BY-NC-4.0")
+    files = {path.relative_to(saved_toy).as_posix(): path.read_bytes() for path in saved_toy.rglob("*")
+             if path.is_file()}
+    bundle = write_bundle(tmp_path / "full_toy.mimebundle", files, "full_toy", lock_with_assets(files, ref))
+    work = fresh_work(tmp_path, monkeypatch, "work")
+    with zenodo(rig, {"full_toy.mimebundle": bundle.read_bytes()}):
+        for run in range(2):
+            with assets.asking(None), pytest.raises(BuildRefused) as refused, \
+                    (untouched(work / "full_toy") if run else warnings.catch_warnings()):
+                Experiment.based_on(DOI, name="child")
+            assert refused.value.codes() == ["asset.licence-not-accepted"] and not assets.is_cached(ref)
+        with assets.asking(None), untouched(work / "full_toy"):
+            child = Experiment.based_on(DOI, name="child", accept_licences={"CC-BY-NC-4.0"})
+    assert bundle_downloads(rig) == 1, "the bundle was downloaded once, by the first run"
+    assert assets.is_cached(ref) and child.document()["based_on"]["experiment"] == "full_toy"
 
 
 def test_an_address_is_pulled_through_the_asset_cache(saved_toy: Path, rig: Rig, tmp_path: Path,
