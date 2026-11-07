@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from chain_cases import BODY_MOMENT, MAGNET_MOMENT, add_body, experiment, fixed_magnet
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
 from mime.build._maddening import node_state, run_scan
@@ -64,10 +64,21 @@ def without_its_r_m_term(moment: Any, centre: Any, point: Any) -> Any:
     return gradient - 3.0 * DIPOLE_CONSTANT * jnp.outer(offset, moment) / jnp.sum(offset * offset) ** 2.5
 
 
-def pair_misfit(gradient_of, first, at_first, second, at_second) -> float:
+def pair_forces(gradient_of, first, at_first, second, at_second) -> tuple[np.ndarray, np.ndarray, float]:
+    """The force on each dipole from the other, and the scale of what the pair can exert:
+    ``3 mu_0 |m1| |m2| / (4 pi r^4)``. The scale comes from the inputs, never from the forces: for some pairs (moments
+    perpendicular to each other and to the line between them) the force is exactly zero, and the rounding of the
+    terms that cancel to it is not small against nothing."""
     on_second = force_on(second, gradient_of(jnp.asarray(first), jnp.asarray(at_first), jnp.asarray(at_second)))
     on_first = force_on(first, gradient_of(jnp.asarray(second), jnp.asarray(at_second), jnp.asarray(at_first)))
-    scale = max(float(np.max(np.abs(on_second))), float(np.max(np.abs(on_first))))
+    distance = float(np.linalg.norm(at_second - at_first))
+    scale = 3.0 * DIPOLE_CONSTANT * float(np.linalg.norm(first) * np.linalg.norm(second)) / distance**4
+    return on_first, on_second, scale
+
+
+def pair_misfit(gradient_of, first, at_first, second, at_second) -> float:
+    """The forces' sum, in roundings of the pair's scale."""
+    on_first, on_second, scale = pair_forces(gradient_of, first, at_first, second, at_second)
     return float(np.max(np.abs(on_first + on_second))) / (EPS * scale)
 
 
@@ -82,7 +93,14 @@ def the_gradient(moment: Any, centre: Any, point: Any) -> Any:
     return point_dipole(moment, centre, point)[1]
 
 
+#: A pair whose force is exactly zero (both moments perpendicular to each other and to the line between the dipoles), on
+#: which the law once failed by judging its rounding against the forces' own, vanishing size.
+NO_FORCE = (np.array([0.0, 0.0, 1.0]), np.zeros(3), np.array([0.70710678, 0.70710678, 0.0]),
+            np.array([0.70710678, -0.70710678, 0.0]))
+
+
 @PROPERTY
+@example(NO_FORCE)
 @given(pairs())
 def test_two_point_dipoles_pull_on_each_other_equally_and_oppositely(drawn):
     assert pair_misfit(jax.jit(the_gradient), *drawn) <= ROUNDINGS
@@ -93,6 +111,27 @@ def test_two_point_dipoles_pull_on_each_other_equally_and_oppositely(drawn):
 def test_control_a_gradient_missing_a_term_breaks_the_pair_law_on_every_draw(drawn):
     assume(generic(*drawn))
     assert pair_misfit(jax.jit(without_its_r_m_term), *drawn) > ROUNDINGS
+
+
+@PROPERTY
+@example(NO_FORCE)
+@given(pairs())
+def test_control_an_asymmetry_a_millionth_of_the_pairs_scale_breaks_the_pair_law_on_every_draw(drawn):
+    on_first, on_second, scale = pair_forces(jax.jit(the_gradient), *drawn)
+    planted = on_second + 1e-6 * scale * np.array([0.0, 0.0, 1.0])
+    assert float(np.max(np.abs(on_first + planted))) / (EPS * scale) > ROUNDINGS
+
+
+def test_the_pairs_scale_is_half_the_force_of_two_coaxial_dipoles():
+    """The scale the pair law is judged in, ``3 mu_0 |m1| |m2| / (4 pi r^4)``, is pinned to a force known exactly: two
+    equal dipoles on their common axis pull with ``3 mu_0 m1 m2 / (2 pi r^4)``, twice the scale. The planted control
+    above is sized on the same scale, so a scale too large would loosen the pair law and leave that control passing;
+    this test is what sees it."""
+    moment = np.array([0.0, 0.0, 1.0])
+    on_first, on_second, scale = pair_forces(jax.jit(the_gradient), moment, np.zeros(3), moment,
+                                             np.array([0.0, 0.0, 0.5]))
+    assert np.isclose(float(np.linalg.norm(on_first)), 2.0 * scale, rtol=1e-5)
+    assert np.isclose(float(np.linalg.norm(on_second)), 2.0 * scale, rtol=1e-5)
 
 
 def body_force(built, moment: tuple[float, float, float]) -> np.ndarray:

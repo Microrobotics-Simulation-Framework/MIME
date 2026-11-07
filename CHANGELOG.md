@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A command ramped, a body's phase lag, and a study's step-out by the quantity it is** (`docs/guide/studies.md`).
+  `drives.Ramp(start, to=..., rate=..., hold=...)` holds a command, moves it at a rate (the command's units per
+  second) and holds it where it ends, writing each step its value at the step's middle (`drive.ramp` 0.1.0).
+  `observations.PhaseLag(body, field=..., about=..., after=...)` (`phase_lag` 0.1.0) is the angle from the field to the
+  body's moment in the plane of rotation, net of the lag the build declares for the laws bound to the body and field (the
+  build report's lags, read from its lag accounting; refused, `observation.lag-ambiguous`, where they disagree), and the body's spin about the axis in turns per second, with their means over a window; it reads a uniform
+  field where a law reads it, adding no slot to the provider. A study's `protocol=` is `FromRest()` (the default) or
+  `Ramp(field.commands.frequency, ...)`, which ramps each point's command from its value; `step_out(result, lag, axis)`
+  reads the bracket from rest and `ramp_crossings(result, lag)` where a ramp's member steps out or is caught. Measured
+  on script A (float64, 0.5 ms, acceptance tests, not accuracy claims): from rest the body is last locked at 43.25 Hz
+  and first unlocked at 43.5 Hz (41.0 and 41.25 Hz at 0.9 times the amplitude); ramped down from 100 Hz at 0.25 Hz/s it
+  is caught at 31.73 Hz. Five refusal codes: `command.held-constant`, `observation.lag-ambiguous`,
+  `study.protocol-command`, `study.protocol-quantity`, `study.series-every-step`. `ramp_crossings` reads the state a ramp
+  starts from over the last window of its hold: a ramp up from an unlocked body and a ramp down from a locked one report
+  that start, not a step-out or a catch at the start frequency.
+  A study run on a ramp runs in memory: a study folder records no protocol yet, so `run_to` refuses it
+  (`study.protocol-folder`) rather than write a folder that reads back as run from rest; a ramp's member made an
+  experiment (`as_experiment`) declares its ramp from the member's value, as the study did, and a ramp's protocol is
+  part of the study's id.
 - **`--deterministic` on `mime run` and `mime verify`, and `mime.env.deterministic_mode()`**: XLA's deterministic GPU
   mode turned on before JAX's backend starts, since XLA reads its flags only then (measured: a flag set after the
   backend started took no effect, one set after `import jax` and `import mime` did), and recorded in the lock as before.
@@ -354,6 +373,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The uniform rotating field turns by the integral of its frequency: `uniform_rotating` 0.2.0** (MIME-ANO-139). 0.1.0
+  made the phase as the present frequency times the time, so a ramp turned the field at twice the commanded rate and a
+  step jumped its angle. 0.2.0 holds the phase in turns as a pair of floating numbers, to which each step adds the frequency times the
+  timestep as an exact product by an error-free sum, for any writer of the frequency; in float32 its angle stays within
+  float32's spacing of an angle in a turn of the exact integral over a 1000 s run, where a product of frequency and time
+  is off by up to 0.13 rad. For a constant frequency it is no longer 0.1.0's field to the last bit (0.1.0 carries the
+  product's rounding), and the frozen register's scripts build the field at 0.1.0. `UniformRotating(...)` builds 0.2.0; 0.1.0 stays registered (`mime.fields.KEPT`) for saved folders and
+  refuses any writer of its frequency but a constant drive (`command.held-constant`), naming 0.2.0.
 - **The tube wall read's derivative has the right sign through samples tied in height or in azimuth under jit**
   (MIME-ANO-143). Jitted, the read's derivative along a rigid motion came out of the opposite sign for some pairs of
   force points at exactly equal height or azimuth (2.0 of the column's largest entry), in forward and in reverse mode,

@@ -12,7 +12,7 @@ experiment script_a  (profile exploratory)
       part shell  screw 0.3.0
   apparatus
     field
-      field magnetic  uniform_rotating 0.1.0
+      field magnetic  uniform_rotating 0.2.0
       drive amplitude  drive.constant 0.1.0
       drive frequency  drive.constant 0.1.0
   laws
