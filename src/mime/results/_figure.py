@@ -27,7 +27,9 @@ from mime._lineage import Origin
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.errors._frames import warn_at_script
 from mime.results._draw import FigureOptions, draw_matplotlib, draw_plotly, import_optional, plotly_json
+from mime.results._result import RUN_MANIFEST, RUN_REPORT
 from mime.results._study_folder import FIGURES_DIR as FIGURES
+from mime.results._study_folder import GROUP_OUTPUTS, GROUP_REPORT, GROUPS_DIR, STUDY_FILE
 from mime.results._plot import KINDS, PlotDescription, describe_run, describe_study, refuse
 
 if TYPE_CHECKING:
@@ -114,14 +116,17 @@ def file_digest(path: Path) -> str:
 
 
 def reads_of(result: Target) -> tuple[Path, list[str]]:
-    """The folder a result was read from and the data files a figure of it reads (relative to the folder)."""
+    """The folder a result was read from and every file a redraw of a figure of it reads (relative to the folder): for a
+    run its manifest, arrays and report, for a study its manifest (the coordinates, the axes) and each group's arrays and
+    report. A report a folder lacks is listed too, recorded as absent, so that one appearing later is refused."""
     folder = getattr(result, "folder", None)
     if folder is None:
         raise refuse("plot.recipe-folder", RefusalClass.USER, "this result is in memory, and a recipe names the files it reads in a folder",
                      "write it to a folder first (a run: run_to; a study: study.run_to(folder)), and read it from there")
     if not is_study(result):
-        return folder, ["outputs.npz"]
-    return folder, [f"groups/{k}/outputs.npz" for k in sorted(set(cast("StudyData", result).groups))]
+        return folder, [RUN_MANIFEST, "outputs.npz", RUN_REPORT]
+    return folder, [STUDY_FILE] + [f"{GROUPS_DIR}/{k}/{name}" for k in sorted(set(cast("StudyData", result).groups))
+                                   for name in (GROUP_OUTPUTS, GROUP_REPORT)]
 
 
 class FigureRecipe:
@@ -167,7 +172,8 @@ class FigureRecipe:
         return {"format": RECIPE_FORMAT, "version": RECIPE_VERSION, "name": name,
                 "target": "study" if is_study(self.result) else "run",
                 "spec": self.spec.to_dict(), "options": self.options.to_dict(),
-                "reads": [{"path": path, "sha256": file_digest(folder / path)} for path in reads],
+                "reads": [{"path": path, "sha256": file_digest(folder / path) if (folder / path).is_file() else None}
+                          for path in reads],
                 "description": self.description.summary(), "reading": READING}
 
     def write_recipe(self, name: str | None = None) -> Path:
@@ -207,13 +213,16 @@ class FigureRecipe:
         if frozenset(held) != RECIPE_KEYS:
             raise refuse("plot.recipe", RefusalClass.USER, f"{path} holds {sorted(set(held) ^ RECIPE_KEYS)}, which a recipe's closed keys do not",
                          "write the recipe with result.figure(...).write_recipe()")
-        for read in cast(list[dict[str, str]], held["reads"]):
-            data = root / read["path"]
-            if not data.is_file() or file_digest(data) != read["sha256"]:
+        for read in cast(list[dict[str, str | None]], held["reads"]):
+            data = root / str(read["path"])
+            now = file_digest(data) if data.is_file() else None
+            if now != read["sha256"]:
                 raise ArgumentRefused([Refusal(
                     "plot.data-changed", RefusalClass.USER,
                     f"{data} is not the file the figure {name!r} was made from"
-                    + (" (it is not there)" if not data.is_file() else f" (its sha256 is {file_digest(data)}, and the recipe records {read['sha256']})"),
+                    + (" (it is not there)" if now is None else
+                       " (it is there, and the recipe records it as absent)" if read["sha256"] is None else
+                       f" (its sha256 is {now}, and the recipe records {read['sha256']})"),
                     "redraw from the folder the figure was made in, or make the figure again from this data: "
                     "result.figure(...).write_recipe()",
                     why="a figure is redrawn from the data it was made from, never from data that changed")])
@@ -333,7 +342,10 @@ def figure_page(figure_json: str, title: str, *, cdn: bool, caption: str | None,
              "<style>:root { --bg: #fff; --fg: #1f2328; } @media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) "
              "{ --bg: #0d1117; --fg: #e6edf3; } } :root[data-theme=\"dark\"] { --bg: #0d1117; --fg: #e6edf3; } "
              "body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; } "
-             "p { margin: 4px 12px; font-size: 12px; opacity: .75; }</style>", "</head><body>"]
+             "p { margin: 4px 12px; font-size: 12px; opacity: .75; }</style>", "</head><body>",
+             "<noscript><p>This page draws its figure with JavaScript, which is off here. The figure's data and layout are in "
+             "this page's source (the element with the figure's id, as JSON), and a figure saved as a recipe has them in "
+             "figures/&lt;name&gt;.plotly.json.</p></noscript>"]
     if caption:
         lines.append(f"<p>{html.escape(caption)}</p>")
     lines += [f'<div id="{div}"></div>', f'<script type="application/json" id="{div}-data">{safe}</script>',

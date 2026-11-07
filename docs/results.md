@@ -332,7 +332,7 @@ simulated run. An uncertainty says which it is, `std` (the data's spread, an est
 **A recipe.** `result.figure(output, name="step_out", title="...")` is the figure as an object: `plot()`,
 `plot_interactive()`, `with_options(title=..., x_label=..., y_label=..., legend=..., size=..., style=...)` and
 `write_recipe()`, which saves `figures/<name>.json` (what it shows, the options, and the data files it reads by path and
-sha256) and `figures/<name>.plotly.json` (plotly's own JSON, safe to share) beside the run or study folder.
+sha256, every file the redraw reads: for a study `study.json` and each group's arrays and report, for a run its manifest, arrays and report) and `figures/<name>.plotly.json` (plotly's own JSON, safe to share) beside the run or study folder.
 `FigureRecipe.read(folder, name)` redraws it from the folder's data, never by running the experiment again, and gives the same
 plotly bytes each time; a data file whose sha256 is not the recipe's refuses the redraw by name (`plot.data-changed`). A
 matplotlib pickle is never written. A matplotlib figure is compared by its description, not its pixels.
@@ -345,15 +345,21 @@ other view's.
 
 **A comparison.** `result.compare(reference=0)` puts every other member against the named one (or against any result, another
 study's member or a measurement): per declared output the signed miss at the end and the largest absolute miss over a
-`window=`, held to a tolerance. The tolerance is never a fixed absolute: between members of one study, with none named, it is
-the study's own rule (a stated number of machine epsilons of the output's float type times its largest magnitude over the reference's run,
-the acceptance the sweep phase measured, a trajectory judged only while no flag is raised); `tolerance=` states one (a quantity, or one per output
-path); with none stated the miss is reported and not judged. The comparison is made on the **reference's time base**: a
-member's own sample where it has one at the reference's time, else linear interpolation, which the result and the figure say;
-and it is refused (`compare.time-base`) where the reference is sampled as sparsely as half the period of a drive either run
-declares, or that `drives=[Hz(50.0)]` names (a result read from a folder keeps no drive). `comparison.plot()` overlays the members
-on the reference with a panel for the miss. A miss against another run of the model estimates how two runs differ; it bounds
-the model's error from above only against a measurement whose own error is known, and a comparison names none.
+`window=`. **Members at different coordinates are meant to differ, so their misses are reported and not judged** unless you
+state a tolerance (`tolerance=`: a quantity, or one per output path). The sweep's own rule, a stated number of machine epsilons
+of the output's float type times its largest magnitude over the reference's run, is the numerical-equivalence bound of a point
+against its own re-run; it gives a verdict only where the member and the reference share every coordinate (a re-run, or the
+same point in two environments) and both runs are in the locked regime, which is read from what they declare (a `PhaseLag`
+lag recorded, under a right angle at every recorded step), a trajectory only while no flag is raised. Where the regime cannot be
+read there is no verdict, and the result says why. The comparison is made on the **reference's time base**: a member's own
+sample where it has one at the reference's time, else linear interpolation, which the result and the figure name with each
+side's spacing. It is refused (`compare.time-base`) where either base, the coarser deciding, is sampled as sparsely as half the
+period of a drive either run declares, or that `drives=[Hz(50.0)]` names (a frequency in Hz: anything else is refused,
+`compare.drives`). A result read from a folder keeps no drives, so comparing one without `drives=` is refused
+(`compare.drives-unknown`; `drives=[]` states there are none). `comparison.plot()` overlays the members on the reference with a
+panel for the miss, and every figure carries, as a caption, what it bounds and what it estimates (a measured result is captioned
+as measured). A miss against another run of the model estimates how two runs differ; it bounds the model's error from above
+only against a measurement whose own error is known, and a comparison names none.
 
 **The ghosted overlay.** `sweep(..., stage_every=ms(10))` keeps each member's bound poses and vectors at its start and every
 `stage_every` (a whole number of every member's base step, refused otherwise with the nearest one that is,
@@ -363,7 +369,8 @@ reference's stage, animates `/World/<thing>` with the reference's poses, and put
 path, value, unit) and whether it is the reference, the member's things being references to the reference's with time samples
 from its recording. It is one sublayer, so a viewer mutes it whole, and each member's visibility switches that member alone.
 Everything it references lies inside the study folder. A member of a group whose build differs is drawn with the reference's
-geometry (the layer says so).
+geometry: its `mime_compare` says `own_build: false` and `geometry_from` names the member whose geometry it wears, and writing
+the layer warns.
 
 **The aliasing warning.** A run or study that records, or keeps its stage, at a spacing as long as half the period of a declared
 drive's frequency or longer warns (never a refusal): samples that far apart show a faster motion as a slower one.

@@ -9,6 +9,8 @@ same description and options."""
 
 from __future__ import annotations
 
+import html
+import textwrap
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -66,6 +68,13 @@ class FigureOptions:
 _BAND = {"std": "± 1 standard deviation", "bound": "± the stated bound"}
 
 
+def caption_lines(description: PlotDescription, characters: int) -> list[str]:
+    """The description's notes as the lines of a caption ``characters`` wide: what the figure bounds and estimates, the band's
+    kind and the interpolation's name, each note starting a line. A figure carries them, since a reader of a picture sees
+    nothing else."""
+    return [line for note in description.notes for line in textwrap.wrap(note, characters)]
+
+
 def import_optional(module: str) -> Any:
     import importlib
 
@@ -91,6 +100,9 @@ def draw_matplotlib(description: PlotDescription, options: FigureOptions) -> Mat
         for axis, panel in zip(axes, description.panels, strict=True):
             _panel(axis, panel, options)
         cast(Any, figure).suptitle(options.title if options.title is not None else description.title)
+        lines = caption_lines(description, max(30, int(options.size[0] * 16)))
+        if lines:
+            cast(Any, figure).supxlabel("\n".join(lines), fontsize="x-small", x=0.01, ha="left")
     return figure
 
 
@@ -166,8 +178,16 @@ def draw_plotly(description: PlotDescription, options: FigureOptions) -> PlotlyF
         figure.update_yaxes(title_text=options.y_label if options.y_label is not None else panel.y_label, row=row, col=1)
     width, height = (round(v * 96) for v in options.size)
     legend: dict[str, Any] = {"visible": options.legend != "off"}
+    lines = caption_lines(description, max(30, int(width / 6.5)))
+    extra = 0
+    if lines:
+        extra = 14 * len(lines) + 20
+        figure.add_annotation(text="<br>".join(html.escape(line, quote=False) for line in lines), xref="paper", yref="paper",
+                              x=0.0, y=0.0, xanchor="left", yanchor="top", yshift=-60, showarrow=False, align="left",
+                              font={"size": 10})
+        figure.update_layout(margin={"b": 60 + extra})
     figure.update_layout(title_text=options.title if options.title is not None else description.title, width=width,
-                         height=height * rows, showlegend=options.legend != "off", legend=legend,
+                         height=height * rows + extra, showlegend=options.legend != "off", legend=legend,
                          **({"template": options.style} if options.style else {}))
     return cast("PlotlyFigure", figure)
 
@@ -177,4 +197,4 @@ def plotly_json(figure: PlotlyFigure) -> str:
     return str(cast(Any, figure).to_json(pretty=True, remove_uids=False)) + "\n"
 
 
-__all__ = ["LEGENDS", "OPTION_KEYS", "FigureOptions", "draw_matplotlib", "draw_plotly", "import_optional", "plotly_json"]
+__all__ = ["LEGENDS", "OPTION_KEYS", "FigureOptions", "caption_lines", "draw_matplotlib", "draw_plotly", "import_optional", "plotly_json"]

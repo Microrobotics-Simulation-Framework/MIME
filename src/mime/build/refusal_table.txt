@@ -71,6 +71,8 @@ command.ambiguous             user
 command.held-constant         user
 command.undriven              user
 command.unknown               user
+compare.drives                user
+compare.drives-unknown        user
 compare.folder                user
 compare.no-series             user
 compare.nothing               user
@@ -281,8 +283,10 @@ parts.no-magnet               user
 parts.several-magnets         user
 plot.coordinate               user
 plot.data-changed             user
+plot.flag                     user
 plot.kind                     user
 plot.library                  user
+plot.limit                    user
 plot.nothing                  user
 plot.option                   user
 plot.output                   user

@@ -37,6 +37,9 @@ KINDS = ("series", "overlay", "curve", "distribution")
 
 ESTIMATES = ("These curves are what the model computes: they estimate the quantity, and say nothing of how far the model "
              "is from the system it stands for.")
+MEASURED = ("These curves are measured: they are data, with the measurement's own error (a band, where the data gives one), "
+            "not a model's output. Against a model's run, the miss estimates how far the model is from them; it bounds the "
+            "model's error from above only where the measurement's own error is known.")
 BAND_TEXT = {"std": "the band is one standard deviation of the data (its spread: an estimate, not a bound)",
              "bound": "the band is the data's stated bound on the value"}
 STUDY_ESTIMATES = ("The members are the same model run at other values: the differences between them are the model's "
@@ -137,6 +140,12 @@ class PlotDescription:
                             "bands": [b.label for b in p.bands]} for p in self.panels]}
 
 
+def estimates_note(data: ResultData) -> str:
+    """What the figure of ``data`` bounds and estimates, by the result's own origin: a simulated one is the model's
+    computation, a measured one is data."""
+    return ESTIMATES if data.provenance == "simulated" else MEASURED
+
+
 def refuse(code: str, category: RefusalClass, message: str, action: str) -> ArgumentRefused:
     return ArgumentRefused([Refusal(code, category, message, action)])
 
@@ -226,7 +235,7 @@ def describe_run(data: ResultData, outputs: Sequence[str] = (), *, title: str | 
         panels.append(Panel(", ".join(series.path for series in own), label("time", "s"), label("value", unit), traces,
                             tuple(spans), tuple(dict.fromkeys(bands)), ()))
     return PlotDescription("series", title or f"{data.name}: {', '.join(s.path for s in held)}", tuple(panels),
-                           (ESTIMATES, *(BAND_TEXT[k] for k in sorted(kinds)), *notes, *validity_note(data)))
+                           (estimates_note(data), *(BAND_TEXT[k] for k in sorted(kinds)), *notes, *validity_note(data)))
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -379,8 +388,7 @@ def _overlay(study: StudyData, path: str, members: Sequence[int] | None, title: 
         found_spans, more = run_spans(data, index)
         spans += found_spans
         notes += [f"member {index}: {line}" for line in more]
-        if index == chosen[0]:
-            bands = [Band(l.label, l.low, l.high, l.source) for l in data.limits_data() if l.series == path]
+        bands += [Band(l.label, l.low, l.high, l.source) for l in data.limits_data() if l.series == path]
     notes += [BAND_TEXT[k] for k in sorted(kinds)]
     panel = Panel(path, label("time", "s"), label(path, unit), tuple(traces), tuple(spans), tuple(dict.fromkeys(bands)))
     return PlotDescription("overlay", title or f"{study.experiment}: {path}, members overlaid", (panel,), tuple(notes))
@@ -425,5 +433,5 @@ def describe_study(study: StudyData, outputs: Sequence[str], *, kind: str | None
     return _curve(study, path, against, title)
 
 
-__all__ = ["BAND_TEXT", "ESTIMATES", "KINDS", "PLOT_FORMAT", "STUDY_ESTIMATES", "Band", "Panel", "PlotDescription", "Span",
-           "Trace", "describe_run", "describe_study", "kind_of", "label", "member_flags", "run_spans", "runs_of"]
+__all__ = ["BAND_TEXT", "ESTIMATES", "MEASURED", "KINDS", "PLOT_FORMAT", "STUDY_ESTIMATES", "Band", "Panel", "PlotDescription", "Span",
+           "Trace", "describe_run", "describe_study", "estimates_note", "kind_of", "label", "member_flags", "run_spans", "runs_of"]

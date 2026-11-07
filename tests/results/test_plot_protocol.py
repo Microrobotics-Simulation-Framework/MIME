@@ -165,13 +165,13 @@ def test_a_measured_result_is_captioned_as_measured_and_never_as_what_the_model_
 def test_a_measured_results_inputs_are_checked_where_it_is_built():
     t = s(np.arange(1, 6) * DT)
     series = {"x": m_per_s([1, 2, 3, 4, 5])}
-    for wrong in ({"uncertainty": {"x": ("std", m_per_s([0.1, 0.1]))}},        # the wrong length
-                  {"uncertainty": {"x": ("std", m_per_s([-0.1] * 5))}},        # a negative spread
-                  {"flags": {"f": [True, False]}},                              # a flag shorter than the time base
-                  {"flags": {"f": [True] * 9}},                                 # and longer
-                  {"limits": [("nothing", -1.0, 1.0, "a limit on no series")]}):
+    for wrong, code in (({"uncertainty": {"x": ("std", m_per_s([0.1, 0.1]))}}, "plot.uncertainty"),     # the wrong length
+                        ({"uncertainty": {"x": ("std", m_per_s([-0.1] * 5))}}, "plot.uncertainty"),     # a negative spread
+                        ({"flags": {"f": [True, False]}}, "plot.flag"),                                  # shorter than the time base
+                        ({"flags": {"f": [True] * 9}}, "plot.flag"),                                     # and longer
+                        ({"limits": [("nothing", -1.0, 1.0, "a limit on no series")]}, "plot.limit")):
         with pytest.raises(ArgumentRefused) as error:
             Measured("m", t, series, **wrong)
-        assert error.value.refusals[0].code.startswith("plot."), wrong
+        assert error.value.refusals[0].code == code, wrong
     Measured("m", t, series, uncertainty={"x": ("std", m_per_s([0.1] * 5))}, flags={"f": [True] * 5},
              limits=[("x", -1.0, 1.0, "a limit")])    # control: the same inputs, right

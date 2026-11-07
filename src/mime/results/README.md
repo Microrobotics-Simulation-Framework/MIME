@@ -89,8 +89,9 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   estimates note) that `plot()` (matplotlib) and `plot_interactive()` (plotly) draw, both behind the `plot` extra; a figure
   as a recipe in `figures/` (what it shows, the options, the data files by sha256, plotly's own JSON beside it), redrawn
   from the folder and refused by name where a data file changed; pages that follow the other views' names (`display`,
-  `web`, `offline=`, `cdn=`); `StudyResult.compare` (misses on the reference's time base, a tolerance that is a rule or a
-  stated quantity and never a fixed absolute, refused where the reference cannot resolve a declared drive); and a result
+  `web`, `offline=`, `cdn=`); `StudyResult.compare` (misses on the reference's time base; a verdict only from a stated tolerance, or from the sweep's
+  re-run rule where the pair shares every coordinate and is locked; refused where either base cannot resolve a declared
+  drive, and where a folder's result is given no `drives=`); and a result
   built by hand (`Measured`) that does all of it as a simulated one does. A study run with `stage_every=` keeps each
   member's bound poses under `m<point>/stage/` (`_stage.py`), and `write_compare` writes `compare.usda` from them
   (`mime.viz._compare`: one prim `/Compare/<member>` each, with visibility and metadata). See

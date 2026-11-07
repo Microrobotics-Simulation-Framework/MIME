@@ -254,10 +254,14 @@ class MemberArchive:
 def _closed(where: str, held: Mapping[str, Any], keys: frozenset[str]) -> None:
     extra, missing = sorted(set(held) - keys), sorted(keys - set(held))
     if extra or missing:
-        raise refused("study.manifest", RefusalClass.USER,
-                  f"{STUDY_FILE}'s {where} " + (f"holds {', '.join(map(repr, extra))}, which this format does not"
-                                                     if extra else "") + (" and " if extra and missing else "")
-                      + (f"lacks {', '.join(map(repr, missing))}" if missing else ""),
+        what = (f"{STUDY_FILE}'s {where} " + (f"holds {', '.join(map(repr, extra))}, which this format does not"
+                                              if extra else "") + (" and " if extra and missing else "")
+                + (f"lacks {', '.join(map(repr, missing))}" if missing else ""))
+        if missing and not extra:
+            raise refused("study.manifest", RefusalClass.USER, what,
+                          f"{', '.join(map(repr, missing))} is kept by a folder this MIME writes, and a folder written before it "
+                          f"was is not read: run the study again, `Study.run_to(folder)`, into a new folder")
+        raise refused("study.manifest", RefusalClass.USER, what,
                       f"a study folder's manifest is closed: write it with `Study.run_to(folder)`, and read it with the MIME "
                       f"that wrote it if it came from another")
 

@@ -311,9 +311,10 @@ class RunResult:
         self.stage: StageRecord | None = None
         #: The run folder this result was read from (``None`` for one in memory): where a figure's recipe is saved.
         self.folder: Path | None = None
-        #: The rates (rad/s) at which the build declares a drive turning a field, with what each is from (empty for a
-        #: result read from a folder, which does not keep them): what a comparison's time-base rule reads.
-        self.drives: tuple[tuple[float, str], ...] = ()
+        #: The rates (rad/s) at which the build declares a drive turning a field, with what each is from: what a
+        #: comparison's time-base rule reads. ``None`` for a result read from a folder, which does not keep them (so a
+        #: comparison asks for ``drives=``); empty for a run of a build that declares none.
+        self.drives: tuple[tuple[float, str], ...] | None = ()
         #: The values the run declared for itself (``run(..., override=...)``), each as ``run.json`` records it (its
         #: path, its value with its unit, its SI value and the leaves it wrote): every output of such a run is
         #: stamped "overridden" with them. Empty for a run of the experiment as built.
@@ -748,7 +749,7 @@ class RunResult:
         held = manifest.get("stopped")
         stopped = Stopped(str(cast(Mapping[str, Any], held)["reason"]), int(cast(Mapping[str, Any], held)["steps_asked"])) \
             if isinstance(held, Mapping) else None
-        return cls(int(manifest["steps"]), final, history, layout=layout, start_step=int(manifest["start_step"]),
+        result = cls(int(manifest["steps"]), final, history, layout=layout, start_step=int(manifest["start_step"]),
                    stopped=stopped,
                    tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz,
                    clock=cast(str | None, manifest.get("clock")),
@@ -756,6 +757,8 @@ class RunResult:
                    containment=[ContainmentRead.from_manifest(w)
                                 for w in cast(list[dict[str, Any]], manifest.get("containment", []))],
                    overrides=cast(list[Mapping[str, Any]], manifest.get("overrides", [])))
+        result.drives = None     # a result read back does not keep the drives its build declared
+        return result
 
 
 def _nothing_observed(value: object) -> NDArray[Any]:

@@ -303,13 +303,14 @@ class StudyResult:
         """Every other member against ``reference`` (a member's number, or a run: another study's member, since two
         arms of one question may be two experiments that declare the same outputs): each declared output's miss, the
         signed miss at the end and the largest absolute miss over ``window`` (a start and an end; the whole recording
-        when not given), held to a tolerance. The tolerance is never a fixed absolute: between members of one study, with
-        none named, it is the study's own rule (machine epsilons of each output's scale, a trajectory judged only while
-        no flag is raised); ``tolerance`` states one (a quantity, or one per output path), a spec's; with none stated
-        the miss is reported and not judged. The comparison is made on the reference's time base (the member's own
-        samples where it has one at the reference's time, else linearly interpolated onto it, which the result and its
-        figure say), and refused (``compare.time-base``) where the reference is sampled as sparsely as half the period of
-        a drive the runs declare, or of one of ``drives`` (frequencies; a run read from a folder keeps none). The
+        when not given). ``tolerance`` states a tolerance (a quantity, or one per output path), a spec's, and gives the
+        verdict; with none stated the miss is reported and not judged, except for a member at the reference's own
+        coordinates (a re-run) with both runs in the locked regime, which the sweep's numerical-equivalence rule judges.
+        The comparison is made on the reference's time base (the member's own samples where it has one at the reference's
+        time, else linearly interpolated onto it, which the result and its figure say), and refused
+        (``compare.time-base``) where the coarser of the two bases is sampled as sparsely as half the period of a drive
+        the runs declare, or of one of ``drives`` (frequencies in Hz; a result read from a folder keeps none, so it is
+        refused without ``drives=``, ``compare.drives-unknown``). The
         reference may be any result that reads as the protocol (:class:`~mime.results.Measured`). See
         :mod:`mime.results._compare`."""
         from mime.results._compare import compare

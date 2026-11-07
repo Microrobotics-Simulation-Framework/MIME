@@ -18,7 +18,9 @@ layer's own ``customLayerData`` ``mime:compare`` lists the members, the referenc
 refuses another, ``study.stage-every``, with the nearest valid one); the time code is the sample's index and
 ``timeCodesPerSecond`` is samples per simulated second, as a run's own recording is. **What it references** lies inside
 the study folder: the reference group's stage (``experiment/scene/scene.usda`` or the group's own build). A member of a
-group whose build differs is drawn with the reference's geometry, and the layer says so. The writer of a stage still emits
+group whose build differs is drawn with the reference's geometry, and the layer says so. Each member's ``mime_compare`` holds ``geometry_from`` (the member whose geometry
+it is drawn with) and ``own_build`` (whether its group is the reference's: ``false`` is drawn with a borrowed geometry), and
+writing the layer warns for such a member. The writer of a stage still emits
 only ``/World``; this is the overlay on a root prim of its own (``mime.scene``)."""
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ import numpy as np
 
 from mime.build._binding import Bound
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+from mime.errors._frames import warn_at_script
 from mime.results._study_folder import BASE_DIR, COMPARE_FILE, GROUPS_DIR
 from mime.scene import STAGE_FILE, VECTOR_SCALE, up_axis
 from mime.scene._pxr import Sdf, Vt
@@ -132,10 +135,16 @@ def compare_layer(study: StudyResult, reference: int = 0, *, stage: str | None =
     root.SetInfo("metersPerUnit", float(first.meta["meters_per_unit"]))
     root.SetInfo("defaultPrim", "World")
     names = [member_name(study.points[i]) for i in range(count)]
+    borrowed = [names[i] for i in range(count) if study.groups[i] != study.groups[reference]]
+    if borrowed:
+        warn_at_script(f"{', '.join(borrowed)} {'is' if len(borrowed) == 1 else 'are'} drawn with {names[reference]}'s geometry, "
+                       f"though {'its' if len(borrowed) == 1 else 'their'} group's build differs from the reference's (each prim's "
+                       f"mime_compare says own_build: false)", UserWarning)
     layer.customLayerData = {"mime:compare": {
         "format": COMPARE_FORMAT, "experiment": study.experiment, "reference": names[reference], "members": Vt.StringArray(names),
         "stage_every_s": sample, "samples": len(times[reference]),
-        "geometry": "every member is drawn with the reference's geometry"}}
+        "geometry": "every member is drawn with the reference's geometry; a member's own_build says whether its group's build is "
+                    "the reference's"}}
     scale = float(first.meta["meters_per_unit"])
     reference_layer = Sdf.Layer.FindOrOpen(str(study.folder / (stage or f"{BASE_DIR}/{STAGE_FILE}"))) \
         if study.folder is not None else None
@@ -152,6 +161,7 @@ def compare_layer(study: StudyResult, reference: int = 0, *, stage: str | None =
         flag = index == reference
         member.customData = {"mime_compare": {
             "member": index, "point": study.points[index], "name": names[index], "reference": flag,
+            "geometry_from": names[reference], "own_build": study.groups[index] == study.groups[reference],
             "coordinates": _coordinates(study, index)}}
         visibility = Sdf.AttributeSpec(member, "visibility", Sdf.ValueTypeNames.Token)
         visibility.default = "inherited"

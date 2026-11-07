@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.registry import OutputKind
-from mime.units import TIME, Quantity, unit_symbol
+from mime.units import FREQUENCY, TIME, Quantity, UnitError, si, unit_symbol
 
 if TYPE_CHECKING:
     from mime.results._result import RunResult
@@ -41,6 +41,10 @@ class Uncertainty:
             raise ArgumentRefused([Refusal("plot.uncertainty", RefusalClass.USER,
                                            f"an uncertainty is 'std' or 'bound', not {self.kind!r}",
                                            "say which: uncertainty=('std', amount)")])
+        if np.any(np.asarray(self.amount) < 0.0):
+            raise ArgumentRefused([Refusal("plot.uncertainty", RefusalClass.USER,
+                                           "an uncertainty is a spread or a bound, not negative",
+                                           "give its size at each sample: uncertainty={'x': ('std', m_per_s(np.abs(amount)))}")])
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,11 @@ class ReadingData:
     value: NDArray[np.float64]
     observed: bool = True
     dimension: Any = None
+    #: The largest magnitude over the run of the quantity this reading reduces, where the result kept that quantity (the
+    #: scale S2b-1's rule judges a reading on); ``None`` where it did not.
+    scale: float | None = None
+    #: The float type the reading was computed in (``float32`` or ``float64``).
+    precision: str = "float64"
 
 
 @dataclass(frozen=True)
@@ -103,6 +112,23 @@ class ResultData(Protocol):
         """Rates (rad/s) at which the run declares a drive turning a field, with what each is from."""
         ...
 
+    @property
+    def drives_known(self) -> bool:
+        """Whether :attr:`drives` is what the run declared: ``False`` for a result read from a folder, which does not keep
+        them, so that an empty :attr:`drives` there means unknown and not none."""
+        ...
+
+    @property
+    def provenance(self) -> str:
+        """``simulated`` (a model's output) or ``measured`` (data): how a figure captions what it draws."""
+        ...
+
+    @property
+    def point(self) -> Mapping[str, object] | None:
+        """The coordinates (axis path and value) this result is at in a study, or ``None`` where it is at none that is known
+        (a measurement, a run that is no member of a study)."""
+        ...
+
     def series_data(self) -> Sequence[SeriesData]: ...
 
     def readings_data(self) -> Sequence[ReadingData]: ...
@@ -139,6 +165,22 @@ class StudyData(Protocol):
 # ---------------------------------------------------------------------------------------------------------------
 
 
+def drive_rates(drives: Sequence[object], what: str) -> tuple[tuple[float, str], ...]:
+    """Drive frequencies as the rates (rad/s) the aliasing rule reads, each with what it is from. A drive is a frequency in
+    Hz (turns per second): a time, a velocity, a bare number or an angular velocity in rad/s is refused
+    (``compare.drives``) naming the unit."""
+    found: list[tuple[float, str]] = []
+    for drive in drives:
+        try:
+            hertz = float(cast(float, si(drive, FREQUENCY, what=what)))
+        except UnitError as error:
+            raise ArgumentRefused([Refusal(
+                "compare.drives", RefusalClass.USER, str(error),
+                f"write each drive as a frequency in Hz (turns per second): {what}=[Hz(50.0)]" + error.instead(lambda q: f"{what}=[{q}]"))]) from error
+        found.append((2.0 * math.pi * hertz, f"a declared drive of {hertz:g} Hz"))
+    return tuple(found)
+
+
 class RunData:
     """A :class:`~mime.results.RunResult` as a :class:`ResultData`."""
 
@@ -151,7 +193,20 @@ class RunData:
 
     @property
     def drives(self) -> Sequence[tuple[float, str]]:
-        return self.run.drives
+        return self.run.drives or ()
+
+    @property
+    def drives_known(self) -> bool:
+        return self.run.drives is not None
+
+    @property
+    def provenance(self) -> str:
+        return "simulated"
+
+    @property
+    def point(self) -> Mapping[str, object] | None:
+        held = self.run.member_of
+        return None if held is None else dict(held.values)
 
     def series_data(self) -> Sequence[SeriesData]:
         return [SeriesData(s.name, s.unit, np.asarray(s.time.value, dtype=np.float64), np.asarray(s.raw),
@@ -161,12 +216,18 @@ class RunData:
         from mime.results._series import Reading
 
         found: list[ReadingData] = []
+        series = {s.name: s for s in self.run.series()}
         for held in self.run.layout.observations:
             for output in held.outputs:
                 if output.kind is OutputKind.AT_END:
                     reading = cast(Reading, self.run.output(output))
-                    found.append(ReadingData(output.path, output.unit, np.asarray(reading.quantity.value, dtype=np.float64),
-                                             reading.observed, output.dimension))
+                    raw = np.asarray(reading.quantity.value)
+                    held_type = np.asarray(self.run.final[output.node][output.field]).dtype
+                    source = series.get(f"{output.observation}.{output.reduces}") if output.reduces else None
+                    scale = None if source is None or not np.size(source.raw) else float(
+                        np.max(np.abs(np.asarray(source.raw, dtype=np.float64))))
+                    found.append(ReadingData(output.path, output.unit, raw.astype(np.float64), reading.observed, output.dimension,
+                                             scale, held_type.name if held_type.kind == "f" else "float64"))
         return found
 
     def flags_data(self) -> Sequence[FlagData]:
@@ -239,11 +300,29 @@ class Measured:
                                                "give each series one value for each time: `{\"x\": m_per_s(values)}`")])
         self._readings = dict(readings or {})
         self._uncertainty = dict(uncertainty or {})
+        for key, (kind, amount) in self._uncertainty.items():
+            if key not in self._series or np.shape(amount.value)[:1] != self._time.shape:
+                raise ArgumentRefused([Refusal(
+                    "plot.uncertainty", RefusalClass.USER,
+                    f"the uncertainty of {key} " + ("is of no series of this result" if key not in self._series else
+                                                    f"has {np.shape(amount.value)[:1]} samples and the time base {self._time.shape}"),
+                    "give the uncertainty of a series, one amount for each of its times: uncertainty={'x': ('std', m_per_s(amounts))}")])
+            Uncertainty(kind, np.asarray(amount.value, dtype=np.float64))     # the kind and the sign are checked where it is built
         self._flags = {k: np.asarray(v, dtype=bool) for k, v in (flags or {}).items()}
+        for key, held in self._flags.items():
+            if held.shape != self._time.shape:
+                raise ArgumentRefused([Refusal("plot.flag", RefusalClass.USER,
+                                               f"the flag {key} has {held.shape} samples and the time base {self._time.shape}",
+                                               "give a flag one value for each time: flags={'f': [True, False, ...]} with as many as the time base")])
         self._meanings = dict(meanings or {})
         self._limits = tuple(limits)
-        self._drives = tuple((2.0 * math.pi * float(cast(float, q.value)), f"a declared drive of {float(cast(float, q.value)):g} Hz")
-                             for q in drives)
+        for name, _, _, _ in self._limits:
+            if name not in self._series:
+                raise ArgumentRefused([Refusal("plot.limit", RefusalClass.USER,
+                                               f"the limit names {name!r}, which is no series of this result (it holds "
+                                               f"{', '.join(self._series) or 'none'})",
+                                               "name a series: limits=[('x', low, high, 'what it limits')]")])
+        self._drives = drive_rates(drives, "drives")
 
     @property
     def name(self) -> str:
@@ -252,6 +331,18 @@ class Measured:
     @property
     def drives(self) -> Sequence[tuple[float, str]]:
         return self._drives
+
+    @property
+    def drives_known(self) -> bool:
+        return True       # what the caller built it with: none, or those
+
+    @property
+    def provenance(self) -> str:
+        return "measured"
+
+    @property
+    def point(self) -> Mapping[str, object] | None:
+        return None
 
     def series_data(self) -> Sequence[SeriesData]:
         found: list[SeriesData] = []
@@ -282,4 +373,4 @@ class Measured:
 
 
 __all__ = ["UNCERTAINTY_KINDS", "FlagData", "LimitData", "Measured", "ReadingData", "ResultData", "RunData", "SeriesData",
-           "StudyData", "Uncertainty"]
+           "StudyData", "Uncertainty", "drive_rates"]

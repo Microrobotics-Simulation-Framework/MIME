@@ -130,7 +130,7 @@ def test_against_a_result_that_is_not_a_member_a_miss_without_a_stated_tolerance
     reference = Measured("m", s(STEPS * DT), {"probe:p.speed": m_per_s(REFERENCE)}, readings={"probe:p.mean": m_per_s(REFERENCE.mean())})
     comparison = study().compare(reference)
     assert {row.verdict for row in comparison.rows} == {"not judged"}
-    assert all("no tolerance is stated" in row.why for row in comparison.rows)
+    assert all("coordinates are not known" in row.why and "state a tolerance" in row.why for row in comparison.rows)
     stated = study().compare(reference, tolerance=m_per_s(0.5))
     assert stated.of(0, "probe:p.speed").verdict == "within" and stated.of(2, "probe:p.speed").verdict == "exceeds"
     assert stated.of(1, "probe:p.mean").tolerance == 0.5
@@ -198,12 +198,13 @@ def test_a_member_coarser_than_the_reference_is_refused_as_a_reference_that_is_c
 
 
 def test_the_coarser_of_the_two_decides_and_the_interpolation_is_named_with_the_sides_spacings():
-    reference = Measured("m", s(np.arange(1, 11) * 0.004), {"probe:p.speed": m_per_s(np.arange(1, 11.0))})   # 4 ms
+    reference = Measured("m", s(0.0025 + np.arange(10) * 0.004), {"probe:p.speed": m_per_s(np.arange(1, 11.0))})   # 4 ms, off the grid
     members = study_of([run_of(REFERENCE, 0.001), run_of(MEMBER_A, 0.001)], [1.0, 2.0])                      # 1 ms
     comparison = members.compare(reference, tolerance=m_per_s(100.0), drives=[Hz(50.0)])      # 4 ms resolves 50 Hz (10 ms half)
     base = comparison.of(0, "probe:p.speed").base
     assert "member" in base and "reference" in base and "0.001" in base and "0.004" in base
-    coincident = study_of([run_of(REFERENCE, 0.004)], [1.0]).compare(reference, tolerance=m_per_s(100.0))
+    on_grid = Measured("m", s(np.arange(1, 11) * 0.004), {"probe:p.speed": m_per_s(np.arange(1, 11.0))})
+    coincident = study_of([run_of(REFERENCE, 0.004)], [1.0]).compare(on_grid, tolerance=m_per_s(100.0))
     assert coincident.of(0, "probe:p.speed").base.startswith("none")
     assert "linearly interpolated" in " ".join(comparison.description.notes)
 
