@@ -1,0 +1,38 @@
+{
+  "written": "2026-11-07, committed before any gate case of tests/study ran (the commit that adds this file is the timestamp)",
+  "seen_before": "one smoke run of the machinery (script A, float32, 4 points over the frequency and the mass, 0.1 s, the default 1 OpenBLAS thread): a member against its own overridden run differed by at most 0.012 eps of a field's scale. Not a gate case: fewer points, a tenth of the duration, no series compared.",
+  "gate_1": {
+    "case": "script A's reproduction arm, 8 points: field.commands.frequency in {10, 20, 30, 40} Hz (every one below the 43.25 Hz from-rest bracket, so locked) by umr.mass in {8.0e-5, 9.0e-5} kg; 1 s (2000 steps); swim_speed:umr.speed recorded every step; each member against run(override=...) of its point on a fresh build of the base",
+    "compared": "every field of the final state, and the recorded series",
+    "rule": "AMENDED (amendment_1): per field, max |member - reference| <= tolerance_eps * eps(dtype) * scale, the scale being the reference field's largest magnitude over what is compared over the run's every step (was: the final value's components); a field whose scale is zero, and every integer field, compared exactly",
+    "tolerance_eps": {
+      "float32": 150,
+      "float64": 300
+    },
+    "largest_miss_expected_eps": {
+      "float32": 20,
+      "float64": 60
+    },
+    "reasoning": "the design's batching measurement before this work (script A, 5 s, a locked set of points, 4 CPUs, OpenBLAS 4): members against their own unbatched pure scans 1 to 51 eps (float32) and 1 to 66 eps (float64), the torque's wrench worst; in float64 the unbatched pure scan against MIME's own run added 41 eps, in float32 none. The reference here is MIME's own run, so float64 can carry both (about 66 + 41 = 107 eps at 5 s); these runs are a fifth as long, so I expect a third to a half of that. The tolerances are about three times that measurement's 5 s figures, and well below the controls' sizes.",
+    "controls": {
+      "frequency_moved_1e-6": "one member's frequency leaf moved by 1e-6 relative: its field turns 2 pi f t 1e-6 = 1.3e-4 rad further by 1 s at 20 Hz, so its pose moves by about 1e3 float32 eps and 6e11 float64 eps of the quaternion's scale: fails both tolerances on every run",
+      "neighbour_shift": "every member given its neighbour's parameters (an index shift): the frequencies differ by 10 Hz or the masses by 12 %: fails by orders of magnitude"
+    },
+    "coupled_toy": "the full toy (a coupling group, an observation at half the base rate), float64, 8 points over the probe's spring stiffness: members within 300 eps as above; expected near 0 (S10: 1.3e-15 relative, a few eps)",
+    "amendment_1": {
+      "when": "2026-11-07, after the first float64 run of gate 1 and before any other gate case; committed before the gate ran again",
+      "what_failed": "the committed rule judged a final-state field on its final value's own magnitude. Member 5 (30 Hz, 9.0e-5 kg) missed by 1015 eps on magnetic.torque:umr.wrench; the other seven members' worst fields were 7 to 117 eps (float64).",
+      "diagnosis": "measured (a diagnosis run, the reference kept every step): the reference's final wrench is 9.4e-9 N m against 2.0e-6 at its largest over the run, so the last step sits near a zero of the turning torque; the member's difference, 2.1e-21, is 4.7 eps of the run's scale. The rule compared against the result's scale where terms cancel, which CLAUDE.md's property-test section names as a cause of false failures, and the draft brief defines the scale as 'its largest magnitude over the run'.",
+      "amended_rule": "per field, the scale is the reference field's largest magnitude over the run (its history, every step), for the final state and the series alike; the tolerances (float32 150, float64 300 eps) and the expected misses are unchanged",
+      "float32_under_the_committed_rule": "added by the review's fix round, so that the record shows both dtypes: the committed rule fails float32 too, and by more. The gate's own 8 members re-run under each rule (4 CPUs, OpenBLAS 4) give, under the committed rule, float32 2075 eps (member 4, 30 Hz and 8.0e-5 kg, on magnetic.torque:umr.wrench; member 5: 588 eps) and float64 1015 eps (member 5), and under the amended rule 9.8 eps (float32) and 17.3 eps (float64). Under the committed rule the other float64 members reached 117 eps, also past the prediction of at most 60: a second missed prediction, and the amendment was written after the float64 run alone. The tolerances, the expected misses and the amended rule are unchanged."
+    }
+  },
+  "bit_for_bit": {
+    "batch_of_one": "a batch of 1 member is bit for bit its own unbatched pure scan (the same scan, unvmapped), in float32 and float64 (the batching measurement above)",
+    "chunks": "batched chunks of 2, 10 and the whole run are bit for bit each other, in both dtypes (the design's measurement of batched chunks of 2, 10 and 100 steps, both dtypes, before this work); a chunk of 1 is not claimed",
+    "override_at_base": "run(override=...) with the base's own values runs the base's compiled program: bit for bit run() without one",
+    "batches_of_2_to_16": "not bit for bit their own runs, and no lane claimed bit for bit (the batching measurement above: the last lane differed even when every lane carried the same member)"
+  },
+  "gate_2": "a group of 8 points compiles once in its run (one batch, one chunk length); a planted node whose static is derived from the swept leaf splits the study into one group per value",
+  "counts_at": "every bit-for-bit claim above at the usable CPU count and OpenBLAS thread count the test runs at, as CI's lane and a local run each hold them (MIME-ANO-140, -141)"
+}

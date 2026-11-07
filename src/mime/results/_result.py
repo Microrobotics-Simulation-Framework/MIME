@@ -266,8 +266,12 @@ class RunResult:
                  clock: str | None = None, watches: Sequence[WatchRead] = (),
                  containment: Sequence[ContainmentRead] | Callable[[], Sequence[ContainmentRead]] = (),
                  report: Mapping[str, Any] | None = None, stopped: Stopped | None = None,
-                 origin: Origin | None = None) -> None:
+                 origin: Origin | None = None, overrides: Sequence[Mapping[str, Any]] = ()) -> None:
         self.steps = steps
+        #: The values the run declared for itself (``run(..., override=...)``), each as ``run.json`` records it (its
+        #: path, its value with its unit, its SI value and the leaves it wrote): every output of such a run is
+        #: stamped "overridden" with them. Empty for a run of the experiment as built.
+        self.overrides: tuple[Mapping[str, Any], ...] = tuple(overrides)
         #: The declarations the run came from, for a result of a run in this process (``mime._lineage``): what says,
         #: once the experiment has had a replacement or a removal since, that the result is of the declarations before.
         #: ``None`` for one read back from a folder.
@@ -530,7 +534,9 @@ class RunResult:
         stopped = {} if self.stopped is None else {"stopped": {
             "reason": self.stopped.reason, "steps_reached": self.steps, "steps_asked": self.stopped.steps_asked,
             "time_reached": self.steps * self.dt, "time_asked": self.stopped.steps_asked * self.dt}}
-        return {**stopped, "format": MANIFEST_FORMAT, "version": MANIFEST_VERSION, "experiment": self.layout.experiment,
+        overridden = {"overrides": [dict(held) for held in self.overrides]} if self.overrides else {}
+        return {**stopped, **overridden, "format": MANIFEST_FORMAT, "version": MANIFEST_VERSION,
+                "experiment": self.layout.experiment,
                 "stamp": self.layout.stamp.record() if self.layout.stamp is not None else None,
                 "dt": self.dt, "clock": self.clock.name, "start_step": self.start_step, "steps": self.steps,
                 "start": self.start_step * self.dt, "end": self.end_step * self.dt,
@@ -578,6 +584,7 @@ class RunResult:
                  *([f"STALENESS UNKNOWN: {self.stale_unknown}"] if self.stale_unknown is not None else []),
                  *([f"STOPPED, {self.stopped.reason}: {self.steps} of the {self.stopped.steps_asked} steps asked "
                     f"for"] if self.stopped is not None else []),
+                 *([self.overridden_text()] if self.overrides else []),
                  *(ObservationOutputs(self, held).text() for held in self.layout.observations),
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
@@ -585,6 +592,10 @@ class RunResult:
                  self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
                                                                                  "written before profiles)"]
         return "\n".join(lines)
+
+    def overridden_text(self) -> str:
+        """The stamp of an overridden run: each value it declared for itself."""
+        return "OVERRIDDEN for this run: " + "; ".join(f"{held['path']} = {held['value']}" for held in self.overrides)
 
     @override
     def __str__(self) -> str:
@@ -659,7 +670,8 @@ class RunResult:
                    clock=cast(str | None, manifest.get("clock")),
                    watches=[WatchRead.from_manifest(w) for w in cast(list[dict[str, Any]], manifest.get("watches", []))],
                    containment=[ContainmentRead.from_manifest(w)
-                                for w in cast(list[dict[str, Any]], manifest.get("containment", []))])
+                                for w in cast(list[dict[str, Any]], manifest.get("containment", []))],
+                   overrides=cast(list[Mapping[str, Any]], manifest.get("overrides", [])))
 
 
 def _nothing_observed(value: object) -> NDArray[Any]:

@@ -113,10 +113,10 @@ def _cache_clear() -> int:
     return 0
 
 
-def _verify(folder: Path) -> int:
+def _verify(folder: Path, run: bool = False) -> int:
     with Interrupt():
         try:
-            return _verified(folder)
+            return _verified_run(folder) if run else _verified(folder)
         except KeyboardInterrupt:
             _say("interrupted; nothing was verified")
             return INTERRUPTED
@@ -139,6 +139,14 @@ def _verified(folder: Path) -> int:
         if load is not None:
             print(for_terminal(load))
         print(for_terminal(report.text()))
+    return 0 if report.reproduced else 1
+
+
+def _verified_run(folder: Path) -> int:
+    from mime.study._override import verify_run
+
+    report = verify_run(folder)
+    print(for_terminal(report.text()))
     return 0 if report.reproduced else 1
 
 
@@ -254,7 +262,7 @@ def _document_of(folder: Path) -> Path:
 
 def _run(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str] = (),
          every: float | None = None, stage_every: float | None = None, commands: Path | None = None,
-         full: bool = False) -> int:
+         full: bool = False, overrides: Sequence[str] = ()) -> int:
     """``mime run``. Ctrl+C: the first press, while the experiment loads and builds, ends the command (130, nothing
     written); once the run is under way it stops the run at its next chunk and the run folder is written as the steps
     reached, marked stopped (130); the second quits at once, writing nothing (``mime._interrupt``).
@@ -267,7 +275,8 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
     interrupt = Interrupt(leave=display.leave, say=display.say) if display is not None else Interrupt()
     with damaged_cache_note(sys.stderr), interrupt:
         try:
-            return _ran(folder, duration, out, history, record, every, stage_every, commands, interrupt, display, full)
+            return _ran(folder, duration, out, history, record, every, stage_every, commands, interrupt, display, full,
+                        overrides)
         except KeyboardInterrupt:
             if display is not None:
                 display.close()
@@ -280,8 +289,12 @@ def _run(folder: Path, duration: float | None, out: Path, history: bool, record:
 
 def _ran(folder: Path, duration: float | None, out: Path, history: bool, record: Sequence[str],
          every: float | None, stage_every: float | None, commands: Path | None, interrupt: Interrupt,
-         display: RunDisplay | None, full: bool) -> int:
+         display: RunDisplay | None, full: bool, overrides: Sequence[str] = ()) -> int:
     import time
+
+    from mime.study._override import parse_override
+
+    override = dict(parse_override(text) for text in overrides)
 
     from mime.env import apply_lock_precision
     from mime.units import TIME, s, si
@@ -329,7 +342,7 @@ def _ran(folder: Path, duration: float | None, out: Path, history: bool, record:
                                every=s(every) if every is not None else None, source=folder,
                                load_seconds=time.perf_counter() - started,
                                stage_every=s(stage_every) if stage_every is not None else None,
-                               stop=stop, progress=False)
+                               stop=stop, progress=False, override=override or None)
     except RunFailed as failed:
         if display is not None:
             display.close()
@@ -1219,7 +1232,11 @@ def build_parser() -> _guide.MimeParser:
                             description="Load a saved experiment, rebuild it, check it against its lock and rerun "
                                         "its reference steps. It keeps no XLA compilation cache, whatever mime run "
                                         "does: a verification compiles as a fresh process would.")
-    verify.add_argument("folder", type=Path, help="a folder written by Experiment.save")
+    verify.add_argument("folder", type=Path, help="a folder written by Experiment.save, or with --run a run folder")
+    verify.add_argument("--run", action="store_true",
+                        help="the folder is a run folder (mime run's --out, or run_to's): make its run again from its "
+                             "experiment/ with the overrides, duration and series its run.json records, and compare it "
+                             "with its outputs, bit for bit in the environment it was made in")
     pending = commands.add_parser("pending", help="what a saved experiment leaves pending, with the lines to paste "
                                                   "to seal it")
     pending.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
@@ -1424,6 +1441,9 @@ def build_parser() -> _guide.MimeParser:
                      help="on a terminal, also print the load report, the build report's summary and every reading "
                           "(the summary leads with what needs attention and keeps the rest back; piped output is "
                           "always whole, and so are the files)")
+    run.add_argument("--override", action="append", default=[], metavar="PATH=VALUE",
+                     help="a value this run declares for itself, as a study's axis names it: field.commands.frequency=20Hz "
+                          "(repeat it for more); run.json records each, and every output is stamped overridden")
     run.add_argument("--commands", type=Path, default=None, metavar="LOG",
                      help="replay a live session from the command log it wrote (commands.jsonl): its run folder again, "
                           "in place of --duration")
@@ -1680,7 +1700,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     from mime import assets
 
     if arguments.command == "verify":
-        return _verify(arguments.folder)
+        return _verify(arguments.folder, arguments.run)
     if arguments.command == "pending":
         return _pending(arguments.folder)
     if arguments.command == "show":
@@ -1699,7 +1719,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         stage_every = option_seconds("--stage-every", arguments.stage_every)
         with _xla_cache(arguments):
             return _run(arguments.folder, duration, arguments.out, arguments.history, arguments.record,
-                        every, stage_every, arguments.commands, arguments.full)
+                        every, stage_every, arguments.commands, arguments.full, arguments.override)
     if arguments.command == "serve":
         with _xla_cache(arguments):
             return _serve(arguments)

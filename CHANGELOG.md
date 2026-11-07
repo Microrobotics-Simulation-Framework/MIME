@@ -135,6 +135,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   338 points in float64 and on two-point cases; eager evaluation and points nudged apart match finite differences). No
   derivative in `src/` goes through the wall read; nothing about the primal values changes. Filed with its reach and the
   route (one value of the offset for the sign and the absolute value); no code changes here.
+- **Known anomaly MIME-ANO-144 (open, minor): the hull contact's Newton search can end at points millimetres apart under a
+  change of one unit in the last place of the pose, for a group seeded beyond the margin of the shrunk wall.** In float32,
+  FL-9 in the tube: five draws have such a row (3 of 80 random draws), whose held point moves by 2.0 to 8.2 mm, to another
+  converged point or to the group's nearest sample. Measured on those draws, it reaches no force, net wrench, flag or
+  20 ms run beyond what a row that does not move shows: the rows it ends on are out of the step's reach, or tied with rows that
+  carry the force; the state's `contact_points` for that row does move. Filed with its reach, what was not measured and the
+  routes; no code changes here.
 - **A save runs its reference steps on the run's own graph, and after a run chunked by one step builds and compiles
   nothing for them (saved form 8).** `built.save` and the saved form `run_to` writes built a second graph and compiled
   the history scan for the reference outputs; now the reference steps run on the build's own graph, reset to its
