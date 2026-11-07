@@ -11,7 +11,10 @@ held to ``references/script_a_7d_reproduction.json``, and its steady quantities 
 control: with one inline value 1% off, neither holds. The arms here are built on ``rigid_inertial`` 0.2.0, the law
 those freezes were made with: 0.3.0 (the gyroscopic term implicit, MIME-ANO-129) builds another node type, and so
 another derived graph, and gives this isotropic body the same arrays bit for bit
-(``tests/oracles/test_gyroscopic_energy.py``, ``tests/differential/test_frozen_register_pins.py``).
+(``tests/oracles/test_gyroscopic_energy.py``, ``tests/differential/test_frozen_register_pins.py``). Their field is
+``uniform_rotating`` 0.1.0, likewise the field the freezes were made with: 0.2.0 (whose phase is the integral of the
+frequency, MIME-ANO-139) builds another node type, with two more state fields, and computes the same field to the last
+bit at script A's constant frequency (``tests/oracles/test_uniform_rotating_phase.py``).
 
 **Then the records, one at a time.** Each switch (water's density, water's viscosity, N45's remanence through two
 magnet parts) changes A's steady quantities by what ``script_a_record_switches.json`` predicted before any record arm
@@ -60,6 +63,7 @@ from script_a_steady import GATED
 
 from mime import units
 from mime.dynamics.body import RigidInertialExplicit
+from mime.fields import KEPT as KEPT_FIELDS
 
 HERE = Path(__file__).parent
 PREDICTED = json.loads((HERE / "script_a_record_switches.json").read_text())
@@ -90,9 +94,11 @@ def run_arm(built):
 
 @contextlib.contextmanager
 def the_law_the_freezes_were_made_with():
-    """Script A's body on ``rigid_inertial`` 0.2.0 while an arm is made (``tests/script_a.py`` builds it by name)."""
+    """Script A's body on ``rigid_inertial`` 0.2.0 and its field on ``uniform_rotating`` 0.1.0 while an arm is made
+    (``tests/script_a.py`` builds both by name)."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(script_a_module, "RigidInertial", RigidInertialExplicit)
+        patch.setattr(script_a_module, "UniformRotating", KEPT_FIELDS[("uniform_rotating", "0.1.0")][0])
         yield
 
 

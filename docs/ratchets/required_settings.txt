@@ -9,6 +9,9 @@ controller arm_tracking 0.1.0 home                       # design: the experimen
 controller arm_tracking 0.1.0 axis                       # design: the experimenter's choice
 controller arm_tracking 0.1.0 up                         # design: the experimenter's choice
 drive drive.constant 0.1.0 value                         # design: a command's value
+drive drive.ramp 0.1.0 start                             # design: a command's value, where the ramp starts
+drive drive.ramp 0.1.0 to                                # design: a command's value, where the ramp ends
+drive drive.ramp 0.1.0 rate                              # design: the rate the experiment moves the command at
 dynamics arm 0.1.0 mount                                 # physical: the frame a later segment of a chain mounts on (the first takes none, and is placed in the world)
 dynamics arm 0.1.0 rung                                  # design: the model is chosen explicitly, never picked
 dynamics arm 0.1.0 description                           # physical: the apparatus's own description file
@@ -25,6 +28,8 @@ dynamics motor 0.2.0 top_speed                           # design: the highest s
 field_provider point_dipole 0.1.0 part                   # physical: a fact about the setup, which MIME does not assume
 field_provider uniform_rotating 0.1.0 rotation_axis      # design: the experimenter's choice
 field_provider uniform_rotating 0.1.0 initial_direction  # design: the experimenter's choice
+field_provider uniform_rotating 0.2.0 rotation_axis      # design: the experimenter's choice
+field_provider uniform_rotating 0.2.0 initial_direction  # design: the experimenter's choice
 geometry box 0.1.0 size                                  # physical: a fact about the setup, which MIME does not assume
 geometry capsule 0.1.0 radius                            # physical: a fact about the setup, which MIME does not assume
 geometry capsule 0.1.0 height                            # physical: a fact about the setup, which MIME does not assume
@@ -61,4 +66,5 @@ interaction drag 0.3.0 rung                              # design: the model is 
 interaction drag 0.3.0 weights                           # design: the surrogate's weights are named, never picked (its rung refuses none)
 interaction drag 0.4.0 rung                              # design: the model is chosen explicitly, never picked
 interaction drag 0.4.0 weights                           # design: the surrogate's weights are named, never picked (its rung refuses none)
+observation phase_lag 0.1.0 about                        # design: the experimenter's choice
 observation swim_speed 0.1.0 along                       # design: the experimenter's choice

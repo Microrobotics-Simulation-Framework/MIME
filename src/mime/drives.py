@@ -1,7 +1,7 @@
 """Drives: in-graph command generators, each a node whose numbers are ``params`` leaves with one exclusive edge into
 the apparatus command it writes. A quantity written for a command is short for :class:`Constant`; :class:`Ramp` moves
-it at a rate from one value to another; a controller (phase 7) replaces the drive of each command it writes. A drive's
-id is ``drive:<apparatus>.<command>``. The value a drive writes for a step holds over the step."""
+it at a rate from one value to another; a controller replaces the drive of each command it writes. A drive's id is
+``drive:<apparatus>.<command>``. The value a drive writes for a step holds over the step."""
 
 from __future__ import annotations
 
