@@ -1389,6 +1389,11 @@ class _Planner:
         if isinstance(thing, Apparatus):
             self.plan_chain(thing, index)
             self.plan_apparatus_parts(thing)
+            if "commands" in thing.fields:
+                self.refuse("apparatus.reserved-field", RefusalClass.USER,
+                            f"apparatus {thing.name!r} names a field 'commands', a name its handle keeps for its "
+                            f"commands (field.commands.frequency)",
+                            "name the field otherwise: Apparatus(..., fields={'magnetic': ...})")
             for field_name, provider in thing.fields.items():
                 self.plan_provider(thing.name, field_name, provider, index)
         if isinstance(thing, Medium) and thing.fills is not None:

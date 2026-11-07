@@ -168,10 +168,13 @@ def run_scan_with_history(graph: GraphManager, steps: int, fed: Fed | None = Non
     return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed_inputs(graph, fed)))
 
 
-def scan_chunk(graph: GraphManager, steps: int, fed: Fed) -> NodeFields:
+def scan_chunk(graph: GraphManager, steps: int, fed: Fed, params: Mapping[str, Any] | None = None) -> NodeFields:
     """``steps`` steps as one compiled scan, ``fed`` held through them: a chunk of a run whose inputs
-    :func:`fed_inputs` has checked once, at its start."""
-    return cast(NodeFields, _held(graph).run_scan(steps, fed))
+    :func:`fed_inputs` has checked once, at its start. ``params`` is a parameter tree the run takes in place of the
+    graph's own (an overridden run's), an argument of the compiled scan, which it does not recompile."""
+    if params is None:
+        return cast(NodeFields, _held(graph).run_scan(steps, fed))
+    return cast(NodeFields, _held(graph).run_scan(steps, fed, params=params))
 
 
 @dataclass(frozen=True)
@@ -220,8 +223,8 @@ def _threshold(limit: float, dtype: np.dtype[Any]) -> float:
     return float(held)
 
 
-def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed,
-                       tests: Sequence[FlagTest]) -> tuple[NodeFields, FlagTally]:
+def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed, tests: Sequence[FlagTest],
+                       params: Mapping[str, Any] | None = None) -> tuple[NodeFields, FlagTally]:
     """:func:`scan_chunk` that also reduces each flag of ``tests`` over its steps, inside the scan, alongside the state
     and with no per-step output: how many steps raised it and the first and last, counted from the scan's start. The state it returns is the step function's, the one :func:`scan_chunk` runs; only the carry
     holds more. It does what MADDENING's ``run_scan`` does around its scan, because that has nowhere to carry more."""
@@ -233,7 +236,7 @@ def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed,
         held.compile()
     held._refuse_xla_loop_hazards("run_scan", scan=True)  # noqa: SLF001
     external = held._resolve_external_inputs(dict(fed))  # noqa: SLF001
-    params = held._params_or_default(None)  # noqa: SLF001
+    params = held._params_or_default(params)  # noqa: SLF001
     count = len(tests)
 
     def build() -> Callable[..., Any]:
@@ -274,14 +277,132 @@ def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed,
     return cast(NodeFields, held._user_state(final)), FlagTally(counted, first, last)  # noqa: SLF001
 
 
+def parameter_tree(graph: GraphManager) -> dict[str, dict[str, Array]]:
+    """The leaves each node's step reads, by node, as the graph's compile takes them from its nodes' constructor
+    arguments (``params_pytree``): what ``params["nodes"]`` holds after a compile, read from a graph assembled and not
+    compiled."""
+    return cast(dict[str, dict[str, Array]], _held(graph)._snapshot_params()["nodes"])  # noqa: SLF001
+
+
+def static_dependencies(node: SimulationNode) -> dict[str, tuple[str, ...]]:
+    """Which of ``node``'s parameters each of its static arrays is derived from (MADDENING's ``static_data_deps``)."""
+    return cast(dict[str, tuple[str, ...]], _held(node).static_data_deps())
+
+
+def unreadable_leaves(graph: GraphManager) -> dict[tuple[str, str], str]:
+    """Each leaf of a compiled graph's ``params["nodes"]`` that writing the tree alone could not change the step for,
+    with why: one a static is derived from, or one no operation of the compiled step takes as an input."""
+    return cast(dict[tuple[str, str], str], _held(graph)._param_leaves_the_step_cannot_read())  # noqa: SLF001
+
+
+def graph_params(graph: GraphManager) -> dict[str, Any]:
+    """The graph's whole parameter tree, ``params``, as its compiled step reads it."""
+    return cast(dict[str, Any], _held(graph).params)
+
+
+def set_node_state(graph: GraphManager, name: str, state: Mapping[str, Any]) -> None:
+    """Node ``name``'s state fields written, as a run from the start of an overridden initial state needs."""
+    _held(graph).set_node_state(name, dict(state))
+
+
+def full_state(graph: GraphManager) -> dict[str, Any]:
+    """The graph's state as its step carries it: every node's fields and MADDENING's own counters (``_meta``)."""
+    return cast(dict[str, Any], _held(graph)._state)  # noqa: SLF001
+
+
+#: The key of MADDENING's own counters in a graph's state: the multi-rate step counter, coupling groups' warm starts.
+META = "_meta"
+
+
+def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes: tuple[tuple[str, str, int | None], ...],
+                 tests: Sequence[FlagTest], kept: Sequence[tuple[str, str]], *, batched: bool = True,
+                 fed: Fed | None = None, measure: bool = False) -> tuple[Any, tuple[Array, Array, Array], Any]:
+    """``steps`` steps of a batch of members of one compiled graph, as one compiled scan vmapped over the members: each
+    member's state (every node field and ``_meta``, stacked along a leading member axis) and those parameter leaves
+    ``axes`` marks ``0`` (``(node, leaf, axis)``), stacked likewise; a leaf marked ``None`` is shared by every member and
+    enters the step once, never copied per member. Each flag of ``tests`` is reduced per member inside the scan (steps
+    raised, first, last), and each field of ``kept`` (``(node, field)``) is kept at every step. The state it returns is
+    each member's at the end, ``_meta`` included. ``batched=False`` runs the same scan unvmapped, on one member's state
+    and tree: the program a batch is compared with. Nothing is stored on the graph, which is left as it was.
+    ``measure`` compiles the program and runs nothing: the first value returned is then the bytes XLA's buffer
+    assignment gives it (its temporaries, arguments and outputs, less what they alias, and its code and constants), the
+    others ``None``."""
+    held = _held(graph)
+    jnp = _held(jax.numpy)
+    held._recover_from_escaped_tracers()  # noqa: SLF001
+    held._check_static_data_dirty()  # noqa: SLF001
+    if held._dirty or held._compiled_step is None:  # noqa: SLF001
+        held.compile()
+    held._refuse_xla_loop_hazards("run_scan", scan=True)  # noqa: SLF001
+    external = held._resolve_external_inputs(dict(fed or {}))  # noqa: SLF001
+    count = len(tests)
+
+    def build() -> Callable[..., Any]:
+        step_fn = held._build_step_fn()  # noqa: SLF001
+
+        def raised_by(state: Mapping[str, Mapping[str, Array]], test: FlagTest) -> Array:
+            values = jnp.reshape(state[test.node][test.field], (-1,))
+            if test.limits is None:
+                return jnp.any(values != 0)
+            limits = jnp.asarray([_threshold(limit, np.dtype(values.dtype)) for limit in test.limits],
+                                 dtype=values.dtype)
+            return jnp.any(jnp.abs(values) > limits)
+
+        def scan(state: Any, ext: Any, parameters: Any) -> tuple[Any, Any, Any]:
+            held._count_scan_trace()  # noqa: SLF001
+
+            def body(carry: Any, _: Any) -> tuple[Any, Any]:
+                state, counted, first, last, at = carry
+                state = step_fn(state, ext, parameters)
+                at = at + 1
+                raised = jnp.stack([raised_by(state, test) for test in tests]) if tests else \
+                    jnp.zeros((0,), dtype=bool)
+                out = {node: {name: state[node][name] for name in sorted({f for n, f in kept if n == node})}
+                       for node in sorted({n for n, _ in kept})}
+                return (state, counted + raised.astype(counted.dtype), jnp.where(raised & (first < 0), at, first),
+                        jnp.where(raised, at, last), at), out
+
+            none = FlagTally.none(count)
+            init = (state, jnp.asarray(none.count, jnp.int32), jnp.asarray(none.first, jnp.int32),
+                    jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
+            (final, counted, first, last, _), out = _held(jax).lax.scan(body, init, None, length=int(steps))
+            return final, (counted, first, last), out
+
+        if not batched:
+            return _held(jax).jit(scan)
+        marked = {(node, leaf): axis for node, leaf, axis in axes}
+        tree = cast(Mapping[str, Mapping[str, Mapping[str, Any]]], params)
+        nodes = {node: {leaf: marked.get((node, leaf)) for leaf in leaves} for node, leaves in tree["nodes"].items()}
+        mappings = {key: None for key in tree.get("mappings", {})}
+        def unbatched(_: object) -> None:
+            return None
+
+        external_axes = _held(jax).tree_util.tree_map(unbatched, external)
+        return _held(jax).jit(_held(jax).vmap(scan, in_axes=(0, external_axes, {"nodes": nodes,
+                                                                                "mappings": mappings})))
+
+    structure = str(_held(jax).tree_util.tree_structure(params))
+    key = ("mime_batched_scan", int(steps), batched, axes, structure, tuple(tests), tuple(kept), measure)
+    program = held._cached_scan(key, build)  # noqa: SLF001
+    if measure:
+        stats = program.lower(state, external, params).compile().memory_analysis()
+        total = (int(stats.temp_size_in_bytes) + int(stats.argument_size_in_bytes) + int(stats.output_size_in_bytes)
+                 - int(stats.alias_size_in_bytes) + int(stats.generated_code_size_in_bytes))
+        return cast(tuple[Any, tuple[Array, Array, Array], Any], (total, (None, None, None), None))
+    return cast(tuple[Any, tuple[Array, Array, Array], Any], program(state, external, params))
+
+
 def ready(state: NodeFields) -> None:
     """Wait until ``state`` has been computed: a scan returns at once, with arrays still being filled, and a chunk's end
     is where its last array is."""
     _held(jax).block_until_ready(state)
 
 
-def scan_chunk_with_history(graph: GraphManager, steps: int, fed: Fed) -> tuple[NodeFields, NodeFields]:
-    return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed))
+def scan_chunk_with_history(graph: GraphManager, steps: int, fed: Fed,
+                            params: Mapping[str, Any] | None = None) -> tuple[NodeFields, NodeFields]:
+    if params is None:
+        return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed))
+    return cast(tuple[NodeFields, NodeFields], _held(graph).run_scan_with_history(steps, fed, params=params))
 
 
 #: How MADDENING's scan cache names the history scan of one step (``run_scan_with_history``), after the compile
