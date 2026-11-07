@@ -372,7 +372,9 @@ def repeated(count: int, body: Callable[[Any, Any], Any], value: Any, *, loops: 
     that it lowers to a scan, through which both modes of derivative pass; otherwise (0.4.0) unrolled, a call each
     iteration, the program the contact 0.4.0 compiled. The loop is unrolled too while a switch collector is open
     (``switch.collector_open``), so that the collector gathers each iteration's rows as values of the step: a site in
-    a loop's body is evaluated once a trace, on the body's tracers, which the collector's rows would keep beyond it."""
+    a loop's body is evaluated once a trace, on the body's tracers, which the collector's rows would keep beyond it.
+    The harness's guard-coverage checks read a guard's condition on a value and count a tracer as unknown, so inside a
+    loop's body they are vacuous; the guarded expressions are 0.4.0's, which those checks do read (``loops=False``)."""
     if not loops or switch.collector_open():
         for i in range(count):
             value = body(i, value)

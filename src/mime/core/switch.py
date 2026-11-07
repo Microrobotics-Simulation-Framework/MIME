@@ -168,7 +168,10 @@ def collector_open() -> bool:
     """Whether a collector (:func:`collecting`) is open, read while a step is traced. A site in a loop's body is
     evaluated once a trace, on the body's tracers, which a collector's rows would keep beyond the loop; so a step
     that loops over switches unrolls its loop while one is open, a call each iteration, as it would be written
-    without the loop. The test-only setting acts on the values the body traces, and leaves the loop as it is."""
+    without the loop. The test-only setting acts on the values the body traces, and leaves the loop as it is.
+    A node's step caches its first trace (``Node._compiled``): a looped node first traced while a collector is open
+    keeps the unrolled program afterwards, and one first traced outside one keeps the loop under a later collector, whose
+    rows then hold the body's tracers; the harness builds a fresh node for each."""
     return isinstance(_context.get(), _Collector)
 
 

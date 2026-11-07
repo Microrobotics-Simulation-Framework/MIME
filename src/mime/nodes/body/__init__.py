@@ -10,9 +10,11 @@ from mime.nodes.body._rigid_inertial import (
     RigidInertialMidpointNode,
     RigidInertialNode,
     RigidInertialState,
+    RigidInertialTensorNode,
     convex_candidates,
     gyroscopic_jacobian,
     point_groups,
+    split_gyroscopic_jacobian,
 )
 from mime.nodes.body._swim_speed import SwimSpeedInputs, SwimSpeedNode, SwimSpeedState
 
@@ -26,6 +28,7 @@ __all__ = [
     "RigidInertialMidpointNode",
     "RigidInertialNode",
     "RigidInertialState",
+    "RigidInertialTensorNode",
     "SwimSpeedInputs",
     "SwimSpeedNode",
     "SwimSpeedState",
@@ -33,4 +36,5 @@ __all__ = [
     "convex_candidates",
     "gyroscopic_jacobian",
     "point_groups",
+    "split_gyroscopic_jacobian",
 ]

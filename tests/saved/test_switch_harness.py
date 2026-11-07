@@ -138,7 +138,8 @@ def body_at(graph, position, velocity=(0.0, 0.0, 0.0), orientation=(1.0, 0.0, 0.
                                        params=leaves(graph, "drag:umr"))["resistance"]
     after = jnp.asarray((*velocity, 0.0, 0.0, 0.0))
     mass = parameter_leaves(graph)["umr"]["mass"]
-    inertia = parameter_leaves(graph)["umr"]["inertia"]
+    tensor = jnp.reshape(parameter_leaves(graph)["umr"]["inertia"], (3, 3))  # rigid_inertial 0.4.0's leaf: nine numbers
+    inertia = jnp.diag(tensor)  # script A's inertia is isotropic: its tensor is diagonal, and this is its inverse's base
     inverse_mass = jnp.concatenate([jnp.full(3, 1.0 / mass), 1.0 / inertia])
     start = after + DT * inverse_mass * (resistance @ after)
     out = node.fresh_update({"pose": pose, "twist": start},

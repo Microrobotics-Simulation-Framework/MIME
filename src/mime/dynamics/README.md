@@ -27,18 +27,22 @@ constructed with the bodies it must include.
 
 ## Status
 
-**`body.RigidInertial`** (`rigid_inertial` 0.3.0 since the gyroscopic fix, MIME-ANO-129; 0.2.0, which
-takes the gyroscopic term explicit, stays registered in `body.KEPT`; 0.2.0 is the first corrected version, 0.1.0 the first): a rigid
-body with mass and inertia (principal moments about the body axes), its state the pose and twist of its centre of mass.
+**`body.RigidInertial`** (`rigid_inertial` 0.4.0 since it carries the full inertia tensor, phase I1; 0.3.0, which takes
+three principal moments about the body axes, and 0.2.0, which takes the gyroscopic term explicit as well, stay
+registered in `body.KEPT`; 0.2.0 is the first corrected version, 0.1.0 the first): a rigid body with mass and inertia
+(the symmetric tensor about its centre of mass in its frame, given as three principal moments or nine numbers), its
+state the pose and twist of its centre of mass.
 It sums every applied wrench and background load, integrates every delivered resistance implicitly, solved for the
 change in velocity, `(M/dt + R) dV = F - R V` (0.1.0 solved `(M/dt + R) V' = (M/dt) V + F`, which float32 rounded,
 MIME-ANO-113), with the gyroscopic term linearly implicit at the midpoint (0.3.0; 0.2.0 took it explicit, and gained
 energy: MIME-ANO-129; there is no explicit setting), so that the step's matrix is `M/dt + R` less half the term's Jacobian `K`,
 and it is not symmetric for unequal moments. It turns by the exponential of
 `dt omega'`, holds its confinement inside the solve while the body starts a step on its surface moving outward (from
-0.2.0), and projects it after the step. A moment of inertia that is not above zero is refused when the experiment is
-built (`value.not-positive`). Its node declares first order in time, which the node walk measures. It reads its body's
-`mass` and `inertia` (declared in the experiment until the part resolver lands). The arm and the motor are described below, and the rest land in a1 (the rewritten flow solver).
+0.2.0), and projects it after the step. The gyroscopic Jacobian is 0.3.0's difference formula for the diagonal with
+the products' part added alone (0.4.0), so a body with no products steps as it did on 0.3.0, to the bit per compiled
+program. An inertia that is not symmetric or not positive definite is refused when the experiment is built
+(`value.not-positive`). Its node declares first order in time, which the node walk measures. It reads its body's
+`mass` and `inertia`, declared in the experiment or derived from its parts (the full tensor). The arm and the motor are described below, and the rest land in a1 (the rewritten flow solver).
 
 An apparatus's **chain segments** (`apparatus/`), each a `mime.registry.ChainSegment` that publishes
 the world pose of every frame it names (`apparatus.frame_poses`), alike under every rung, and mounts on a frame of the

@@ -195,8 +195,10 @@ class Contact(Interaction):
 
     Version 0.5.0 runs the hold's sweeps and its search's Newton steps as XLA loops' iterations, the same updates in
     the same order, where 0.4.0 unrolled them, a call each: the step's program is smaller and compiles faster, and its
-    rounding is not 0.4.0's, so a body held from its first step moves by a few units in the last place of its state,
-    the forces its rows share among them by more (``tests/oracles/test_contact_loops.py`` holds the two to each other).
+    rounding is not 0.4.0's, so a body held from its first step (FL-9 in script A's tube) moves, in float32, its
+    velocity by about 1e-6 of its size, the forces among its rows by up to 2e-3 of their scale and its net force by
+    under 1e-3 of the momentum rate it came from; in float64 each by 1e-11 of its scale or less
+    (``tests/oracles/test_contact_loops.py`` holds the two to each other).
     Version 0.4.0 chooses each group's point again in the projection's second pass, at the pose its first left, and
     holds it with the first pass's points, where 0.3.0 (in no release) held the first pass's points alone: a group
     holding two of the body's local deepest points (a screw's rim and a crest pass beside it) could have the one it did

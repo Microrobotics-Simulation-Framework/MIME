@@ -16,7 +16,10 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   A group seeded far off the wall may end anywhere on the body (``_contact.shallower``), and there 0.4.0's own end
   moves by millimetres under a change of one ulp: neither its point nor its value is resolved, and it is reported, not
   judged. Two draws on which the versions ended 1.7 mm apart on CI's runners are checked on every run, with a
-  control: the looped search from each group's neighbour's start.
+  control: the looped search from each group's neighbour's start. The property counts the groups it leaves unjudged and
+  all it drew, per dtype, reports both (``record_property``, printed) and fails above ``UNJUDGED_CEILING`` of them; its
+  control sets the rule's width to zero, so that most groups read unresolved. It does not hold the Newton count to the
+  last step: a search one step short of ``CONTACT_NEWTON`` (11 of 12) passes, as searches converge in 9 to 11.
 - **The whole step**, the contact active: script A's FL-9 held from its first step (``hull_cases.hull_contact``, 20
   steps) and the tube demo (``examples/sphere_settling_tube.py``, 40), each built fresh on each version and run, in
   float32 and float64, by the history scan and by one-step chunks (the tube demo's own run): the pose's position and
@@ -29,13 +32,17 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   program is run again from its start one ulp up, and with its mass and moments one ulp up. The bound is the larger
   of the committed tolerance (``STEP_ULPS``, ``WRENCH_ULPS``) and ``RESOLUTIONS`` times that resolution, since FL-9's
   velocity moves by 60 to 100 units of its scale under a change of one ulp, on a laptop's CPU, past the committed 64.
-  The control: the looped sweeps' carry lost (no iteration, every force zero) misses FL-9's bound
-  ``PLANT_FACTOR`` times over.
+  The resolution samples two directions only (every nonzero start entry up together, then the mass and moments up
+  together, the larger taken), where the Newton rule samples each entry up and down; the factor of 100 is the margin
+  for what two directions can miss. The controls: the looped sweeps' carry lost (no iteration, every force zero) misses
+  FL-9's bound ``PLANT_FACTOR`` times over; a second plant, a mass scaled in the looped arm only, sized to land at
+  about twice the bound (``NEAR_BOUND``), must fail it too, and its size over the bound is recorded.
 - **The derivatives**, float64: forward mode of the couple's net wrench in its torque (the long rod pressed against both
   walls, ``test_hull_contact.py``'s statics) and of the held points in the pose (a rod and FL-9 1 um from the wall),
   within ``SLOPE_ULPS`` of each derivative's largest entry: they pass through the one flowing step at the stopped
   steps' point, which moves by a few units, and through the sweeps' forward derivative, which rounds as they do; and
-  reverse mode through the looped sweeps, which a fixed bound lets through, within ``SWEEPS_ULPS``.
+  reverse mode through the looped sweeps, which a fixed bound lets through, within ``SWEEPS_ULPS``, and through
+  FL-9's whole step at the wall (``jacrev`` against ``jacfwd`` of the pose, twist, held points and forces).
 - **Controls**, each failing on every run, on fixed hand-built coupled cases: the looped sweeps one short and with the
   rows' order reversed each miss the unrolled ones by ``PLANT_FACTOR`` times ``SWEEPS_ULPS`` or more. A third,
   ``tests/saved/test_switch_harness.py``'s, removes the collector's fallback to the unrolled loops and finds its row
@@ -63,10 +70,11 @@ from hypothesis import event, given, settings, target
 from hypothesis import strategies as st
 
 import mime.nodes.body._contact as contact
-from hull_cases import FL9_SETTINGS, MARGIN, TUBE_RADIUS, hull_contact, hull_node, kind_points, rotation
+from hull_cases import (FL9_SETTINGS, MARGIN, TUBE_RADIUS, hull_contact, hull_node, kind_points, placed_at, rotation,
+                        turned)
 from mime.build import Attachment
 from mime.interactions import KEPT
-from mime.nodes.body._rigid_inertial import RigidInertialNode
+from mime.nodes.body._rigid_inertial import RigidInertialNode, RigidInertialTensorNode
 from mime.scene import Capsule, Cylinder, Ellipsoid, Screw, Sphere
 from mime.testing import first_steps
 from mime.units import dimensionless, mm, s
@@ -100,6 +108,9 @@ SWEEPS_ULPS, NEWTON_ULPS, STEP_ULPS, WRENCH_ULPS, SLOPE_ULPS = 128, 128, 64, 64,
 RESOLUTIONS = 100
 #: How many of its bound a planted control misses by, at least, on every run.
 PLANT_FACTOR = 16
+#: The near-bound plant of the whole step: a mass error that lands at ``NEAR_BOUND`` times the bound, sized from a probe
+#: at a relative mass error of ``MASS_PROBE`` (large against the bound, small enough that the response is linear).
+NEAR_BOUND, MASS_PROBE = 2.0, 1e-3
 #: Each dtype, and whether x64 is on for it: a case runs in the dtype the node computes in.
 DTYPES = {"float32": False, "float64": True}
 #: A millimetre body's mass and principal moments (FL-9's, as ``test_hull_contact.py`` has them).
@@ -335,19 +346,22 @@ class Searched(NamedTuple):
     size: ``alone``, how far its point and its support stand from 0.4.0's at the pose (zero where neither converged;
     infinite where their converged flags differ off the flag's band); ``spread``, how far 0.4.0's own ends from the
     poses one ulp away (``one_ulp_away``) stand from its end at the pose, on the same measure; ``missed``, ``alone`` on
-    the groups 0.4.0 resolves (``spread`` within ``NEWTON_ULPS``), zero on the rest, where 0.4.0 alone ends elsewhere
-    under a change of one ulp; and ``value``, how far the wall's gap at its support stands from the gap at 0.4.0's
-    (the support's value there)."""
+    the groups 0.4.0 resolves (``resolved``), zero on the rest, where 0.4.0 alone ends elsewhere under a change of one
+    ulp; ``resolved``, the groups whose ``spread`` is within the rule's width (``NEWTON_ULPS``); and ``value``, how far
+    the wall's gap at its support stands from the gap at 0.4.0's (the support's value there)."""
 
     missed: np.ndarray
     alone: np.ndarray
     spread: np.ndarray
     value: np.ndarray
+    resolved: np.ndarray
 
 
-def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: Any = None) -> Searched:
+def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: Any = None,
+                           width: float = NEWTON_ULPS) -> Searched:
     """``Searched`` at ``pose``; ``planted``, a looped arm's search in place of 0.5.0's, given the node's constants, the
-    pose and the kept starts."""
+    pose and the kept starts; ``width``, how far 0.4.0's own ends one ulp away may stand from its end at the pose for
+    a group to be judged (``NEWTON_ULPS``; the rule's widening is the control of ``UNJUDGED_CEILING``)."""
     with jax.enable_x64(DTYPES[dtype]):
         p, size, seeds, unrolled, looped = searches(name, dtype)
         q, at = traced(p, dtype), np.asarray(jnp.asarray(pose, dtype=dtype))
@@ -371,22 +385,71 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
 
     alone = apart(x_l, s_l, w_l, x_u, s_u, w_u)
     spread = np.max([apart(x_k, s_k, w_k, x_u, s_u, w_u) for x_k, s_k, w_k in zip(x_moved, s_moved, w_moved)], axis=0)
-    return Searched(np.where(spread <= NEWTON_ULPS, alone, 0.0), alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit)
+    resolved = spread <= width
+    return Searched(np.where(resolved, alone, 0.0), alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit, resolved)
+
+
+#: The most groups of a run, in a dtype, that the Newton steps' property may leave unjudged (its groups where 0.4.0's own
+#: ends one ulp away stand past ``NEWTON_ULPS``): a share of all the groups its draws held. Measured on the pull
+#: request's review, the committed property replayed under seven seeds of 100 draws: float32 10 of 5,600 groups
+#: (0.18 %; on the screw alone 8 of 1,448, 0.55 %), float64 none of 4,800. The ceiling is about four times the worst
+#: of those, so that the set can grow a little before anything shows and cannot grow unseen; each run reports its own
+#: count (``record_property``, and printed).
+UNJUDGED_CEILING = 0.02
+
+
+def over_the_ceiling(unjudged: int, groups: int) -> bool:
+    return unjudged > UNJUDGED_CEILING * groups
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
-@settings(deadline=None)
-@given(name=st.sampled_from(sorted(SUPPORTED)), spin=st.floats(0.0, 2 * math.pi), tilt=st.floats(0.0, 1.5),
-       about=st.floats(0.0, 2 * math.pi), towards=st.floats(0.0, 2 * math.pi), share=st.floats(-0.5, 1.0))
-def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding_where_0_4_0_resolves_them(dtype, name, spin, tilt,
-                                                                                            about, towards, share):
-    found = searched_against_0_4_0(name, dtype, placed(name, spin, tilt, about, towards, share * MARGIN))
-    missed = float(np.max(found.missed))
-    event("bit for bit" if not np.any(found.alone) else "rounding apart")
-    event("0.4.0 ends elsewhere one ulp away" if np.any(found.spread > NEWTON_ULPS) else "0.4.0 settled one ulp away")
-    target(min(missed, 1e30), label="units of the hull's size apart where 0.4.0 resolves them")
-    assert missed <= NEWTON_ULPS, (f"{name}: groups {np.flatnonzero(found.missed > NEWTON_ULPS)}, where 0.4.0's end "
-                                   f"stays within one ulp of the pose, end {missed:.3g} units of the hull's size apart")
+def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding_where_0_4_0_resolves_them(dtype, record_property):
+    unjudged: dict[str, list[int]] = {}  # by kind: the groups left unjudged, the groups drawn
+
+    @settings(deadline=None)
+    @given(name=st.sampled_from(sorted(SUPPORTED)), spin=st.floats(0.0, 2 * math.pi), tilt=st.floats(0.0, 1.5),
+           about=st.floats(0.0, 2 * math.pi), towards=st.floats(0.0, 2 * math.pi), share=st.floats(-0.5, 1.0))
+    def draws(name, spin, tilt, about, towards, share):
+        found = searched_against_0_4_0(name, dtype, placed(name, spin, tilt, about, towards, share * MARGIN))
+        missed = float(np.max(found.missed))
+        counts = unjudged.setdefault(name, [0, 0])
+        counts[0] += int(np.sum(~found.resolved))
+        counts[1] += len(found.resolved)
+        event("bit for bit" if not np.any(found.alone) else "rounding apart")
+        event("0.4.0 ends elsewhere one ulp away" if np.any(~found.resolved) else "0.4.0 settled one ulp away")
+        target(min(missed, 1e30), label="units of the hull's size apart where 0.4.0 resolves them")
+        assert missed <= NEWTON_ULPS, (f"{name}: groups {np.flatnonzero(found.missed > NEWTON_ULPS)}, where 0.4.0's "
+                                       f"end stays within one ulp of the pose, end {missed:.3g} units of the hull's "
+                                       f"size apart")
+
+    draws()
+    left, groups = (sum(counts[i] for counts in unjudged.values()) for i in (0, 1))
+    measured = {"cpu": cpu_model(), "unjudged": left, "groups": groups, "share": left / groups if groups else 0.0,
+                "by kind": unjudged, "ceiling": UNJUDGED_CEILING}
+    record_property("unjudged", json.dumps(measured))
+    print(f"\nthe groups the Newton steps' property leaves unjudged, {dtype}: {measured}")
+    assert groups > 0 and not over_the_ceiling(left, groups), (
+        f"{left} of {groups} groups left unjudged, past the ceiling of {UNJUDGED_CEILING:.0%}: 0.4.0's own ends move "
+        f"under a change of one ulp on more groups than the rule was measured to leave out")
+
+
+#: Draws for the ceiling's control: each kind at one pose (the spin, tilt, about, towards and share of the property
+#: above), and the two draws that ended elsewhere.
+WIDENED_POSES = [("sphere", (1.0, 1.0, 2.0, 1.03, 0.5)), ("capsule", (4.0, 1.2, 0.7, 3.5, 0.2)),
+                 ("cylinder", (2.5, 0.8, 5.0, 2.2, 0.8)), ("ellipsoid", (0.3, 1.4, 3.3, 5.1, 0.4)),
+                 ("screw", (1.0, 1.0, 2.0, 1.03, 0.0)), ("screw", (5.796875, 1.0, 0.3984375, 5.78125, 0.0))]
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_control_the_rule_widened_so_that_most_groups_read_unresolved_is_over_the_ceiling(dtype):
+    """0.4.0's width of 128 units set to zero: a group is unresolved wherever 0.4.0's own end moves at all under a
+    change of one ulp, which is most of them. The ceiling must report it, on every run."""
+    left = groups = 0
+    for name, draw in WIDENED_POSES:
+        found = searched_against_0_4_0(name, dtype, placed(name, *draw[:4], draw[4] * MARGIN), width=0.0)
+        left, groups = left + int(np.sum(~found.resolved)), groups + len(found.resolved)
+    print(f"\nthe rule widened to zero, {dtype}: {left} of {groups} groups unresolved")
+    assert over_the_ceiling(left, groups)
 
 
 #: The two draws on which the looped and unrolled searches ended about 1.7 mm apart on CI's runners in the pull request's
@@ -511,6 +574,7 @@ def apart(node: Any, reference: dict[str, Any], found: dict[str, Any], dtype: An
     wrenches = [net_wrench(node, history, initial) for history in (reference, found)]
     twist = reference["twist"].astype(np.float64)
     dt = float(node.delta_t)
+    # The inertia is the tensor's nine numbers: its largest entry is a diagonal one, the scale of a moment.
     rate = {"force": float(constants["mass"]) * float(np.max(np.abs(twist[:, :3]))) / dt,
             "torque": float(np.max(constants["inertia"])) * float(np.max(np.abs(twist[:, 3:]))) / dt}
     for label, part in (("force", slice(0, 3)), ("torque", slice(3, 6))):
@@ -532,8 +596,21 @@ def start_moved(graph: Any, body: str) -> None:
 
 
 def inertia_moved(graph: Any, body: str) -> None:
+    """The body's mass and moments one ulp up: the ``mass`` leaf, and each nonzero entry of the ``inertia`` leaf, the
+    tensor's nine numbers row-major (zeros kept). A symmetric pair holds equal numbers, which move to equal numbers, so
+    the tensor stays symmetric (checked)."""
     leaves = graph.params["nodes"][body]
     leaves.update({name: one_ulp_up(leaves[name]) for name in ("mass", "inertia")})
+    tensor = np.asarray(leaves["inertia"]).reshape(3, 3)
+    assert tensor.shape == (3, 3) and np.array_equal(tensor, tensor.T), "the nudge left the inertia tensor unsymmetric"
+
+
+def mass_scaled(delta: float):
+    """A change for ``rerun``: the body's mass leaf times ``1 + delta``, in its dtype."""
+    def change(graph: Any, body: str) -> None:
+        leaves = graph.params["nodes"][body]
+        leaves["mass"] = np.asarray(leaves["mass"]) * np.asarray(1.0 + delta, dtype=np.asarray(leaves["mass"]).dtype)
+    return change
 
 
 def rerun(built: Any, steps: int, shape: str, body: str, change=None) -> dict[str, Any]:
@@ -582,6 +659,7 @@ def test_the_whole_step_on_the_looped_contact_is_the_unrolled_ones_within_its_ow
     (body,) = [name for name, fields in histories["0.4.0"].items() if "contact_forces" in fields]
     nodes = {version: arm.graph.get_node(body) for version, arm in built.items()}
     assert (nodes["0.4.0"].loops, nodes["0.5.0"].loops) == (False, True), "the arms are one program"
+    assert all(isinstance(n, RigidInertialTensorNode) for n in nodes.values()), "the body is not the tensor node"
     reference, found = (histories[version][body] for version in ("0.4.0", "0.5.0"))
     node, eps_dtype = nodes["0.4.0"], np.dtype(dtype)
     pushed = int(np.sum(np.any(np.asarray(reference["contact_forces"]) > 0, axis=-1)))
@@ -609,6 +687,19 @@ def test_the_whole_step_on_the_looped_contact_is_the_unrolled_ones_within_its_ow
                 "missed": missed, "per-row forces, not judged": rows}
 
     if case == "hull_contact":  # FL-9's bound is its resolution's; the tube demo's stays the committed tolerance
+        # A plant near the bound: the looped arm's mass scaled, sized from a probe's response (the misses are linear in
+        # a small mass error) to land at about twice the bound. It tests the power near the bound that the carry lost,
+        # at 500 bounds, cannot. It runs first: the plant below clears jax's caches, and these reruns would compile.
+        def over_the_bound(delta: float) -> float:
+            with jax.enable_x64(DTYPES[dtype]):
+                arm = rerun(built["0.5.0"], steps, shape, body, mass_scaled(delta))
+            return max(value / bound[label] for label, value in apart(node, reference, arm, eps_dtype).items())
+
+        probe = over_the_bound(MASS_PROBE)
+        assert probe > 0.0, "the mass probe moved nothing: the near-bound plant cannot be sized"
+        measured["near-bound plant, mass scaled by"] = NEAR_BOUND * MASS_PROBE / probe
+        measured["near-bound plant, of the bound"] = over_the_bound(NEAR_BOUND * MASS_PROBE / probe)
+
         with pytest.MonkeyPatch.context() as patch, jax.enable_x64(DTYPES[dtype]):
             patch.setattr(RigidInertialNode, "sweeps", sweeps_carry_lost)
             planted = steps_of(make().build(), steps, shape)[body]
@@ -620,6 +711,7 @@ def test_the_whole_step_on_the_looped_contact_is_the_unrolled_ones_within_its_ow
     assert {k: v for k, v in missed.items() if v > bound[k]} == {}
     if case == "hull_contact":
         assert measured["planted, the sweeps' carry lost, of the bound"] > PLANT_FACTOR
+        assert measured["near-bound plant, of the bound"] > 1.0, "a mass error of about twice the bound passed"
 
 
 # -- the derivatives ---------------------------------------------------------------------------------------------------
@@ -690,3 +782,39 @@ def test_the_derivatives_through_the_looped_contact_are_the_unrolled_ones_to_rou
     found = ulps(looped, unrolled, scale, np.float64)
     print(f"\n{quantity}: {found:.3g} units of its largest entry apart")
     assert found <= SLOPE_ULPS
+
+
+def whole_step(loops: bool):
+    """FL-9 1e-7 m from the shrunk wall, turned 12 degrees across the tube, moving: its node's whole step as a function
+    of the applied wrench, returning the pose, the twist, the held points and their forces as one vector."""
+    kind, settings = SUPPORTED["screw"]
+    quaternion = turned(math.radians(12.0))
+    pose = (*placed_at(1e-7, quaternion), *quaternion)
+    node = hull_node(kind, settings, SPACING, mass=MASS, inertia=INERTIA, pose=pose, loops=loops)
+    state = {**node.initial_state(), "pose": jnp.asarray(pose), "twist": jnp.asarray([1e-3, 0.0, -1e-3, 0.0, 0.0, 0.0])}
+
+    def step(wrench):
+        out = node.update(state, {"applied_wrench": wrench, "resistance": jnp.zeros((6, 6)),
+                                  "background_load": jnp.zeros(6)}, 5e-4)
+        return {"state": jnp.concatenate([out["pose"], out["twist"], out["contact_points"].ravel()]),
+                "forces": out["contact_forces"]}
+
+    return step, jnp.asarray([0.0, 0.0, -1e-6, 0.0, 0.0, 2e-9])
+
+
+def test_reverse_mode_through_the_whole_looped_step_is_forward_mode_to_rounding():
+    """One reverse-mode derivative through the whole 0.5.0 step, not only its sweeps: ``jacrev`` against ``jacfwd`` of
+    the pose, the twist, the held points and the forces in the applied wrench, FL-9 at the wall, float64. Both finite,
+    some forces active, each part within its tolerance of its largest entry: the state's and points' within
+    ``SLOPE_ULPS``, the forces', which the sweeps give, within ``SWEEPS_ULPS``. (Measured at the review, on a laptop's
+    CPU: 1 unit and 34 units.)"""
+    step, wrench = whole_step(loops=True)
+    forward, reverse = jax.jacfwd(step)(wrench), jax.jacrev(step)(wrench)
+    for part, bound in (("state", SLOPE_ULPS), ("forces", SWEEPS_ULPS)):
+        found, reference = np.asarray(reverse[part]), np.asarray(forward[part])
+        assert np.all(np.isfinite(found)) and np.all(np.isfinite(reference)), f"the {part}' derivative is not finite"
+        scale = float(np.max(np.abs(reference)))
+        assert scale > 0.0, f"the {part}' derivative is zero: the check cannot discriminate"
+        miss = ulps(found, reference, scale, np.float64)
+        print(f"\nreverse against forward mode through the whole step, {part}: {miss:.3g} units of its largest entry")
+        assert miss <= bound

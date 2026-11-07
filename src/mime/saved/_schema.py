@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/8"
-LOCK_SCHEMA = "mime.lock/8"
+DOCUMENT_SCHEMA = "mime.document/9"
+LOCK_SCHEMA = "mime.lock/9"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -343,7 +343,7 @@ class ExperimentDocument(TypedDict, closed=True):
     moves with the lock's, which records the program the reference outputs were run by, the CPUs the build could use
     and the threads of its BLAS."""
 
-    schema: ReadOnly[Literal["mime.document/8"]]
+    schema: ReadOnly[Literal["mime.document/9"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -798,7 +798,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/8"]]
+    schema: ReadOnly[Literal["mime.lock/9"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]

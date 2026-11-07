@@ -128,7 +128,8 @@ flagged after the run by the containment watch, in exploratory and research: [th
 before; a body whose hull no point reaches the margin steps as it did, to the last bit. 0.1.0 is kept registered
 (`mime.interactions.KEPT`) for folders saved with it and for the experiments whose comparisons were declared against
 it, script A's and A0's reproductions; 0.4.0 is kept for the folders saved with it, its program the one they were
-derived from (0.5.0's loops round otherwise, by a few units in the last place of a held body's state:
+derived from (0.5.0's loops round otherwise: a held body's float32 velocity moves by about 1e-6 of its size, its rows' forces by up
+to 2e-3 of their scale and its net force by under 1e-3 of the momentum rate, float64 by 1e-11 or less:
 `tests/oracles/test_contact_loops.py`). **A contact handles admissibility only**: it never adds near-wall lubrication,
 which a drag that includes it declares (`Interaction.includes_lubrication`: the surrogate rung with `lubrication=`),
 and the plan refuses two laws on one body that include it (`lubrication.twice`). Friction at the contact is left to

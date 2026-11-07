@@ -76,13 +76,15 @@ class ValueKind:
     """What a value of a thing is: its dimension, its shape (``()`` or ``(3,)``) and what it means, the record field
     it is read from when the thing's material is a record (``None``: no record holds it), and, for a value that is
     above zero by what it is, why (``above_zero``): one of zero or less is refused in every profile, wherever it comes
-    from."""
+    from. ``also`` is a second shape it may take, flat (``(9,)``, a 3 x 3 tensor's numbers row-major: a magnitude is
+    a flat tuple)."""
 
     dimension: Dimension
     shape: tuple[int, ...]
     meaning: str
     record: RecordField | None = None
     above_zero: AboveZero | None = None
+    also: tuple[int, ...] | None = None
 
 
 _APPARENT: Mapping[str, tuple[str, ...]] = MappingProxyType({"density_kind": ("apparent",)})
@@ -92,8 +94,9 @@ _APPARENT: Mapping[str, tuple[str, ...]] = MappingProxyType({"density_kind": ("a
 VALUE_KINDS: dict[ThingKind, dict[str, ValueKind]] = {
     ThingKind.BODY: {
         "mass": ValueKind(MASS, (), "the body's mass"),
-        "inertia": ValueKind(MOMENT_OF_INERTIA, (3,), "the principal moments of inertia about the centre of mass, "
-                                                      "along the body frame's axes"),
+        "inertia": ValueKind(MOMENT_OF_INERTIA, (3,), "the inertia about the centre of mass in the body frame: the "
+                                                      "three principal moments along its axes, or the symmetric 3 x 3 "
+                                                      "tensor's nine numbers, row-major", also=(9,)),
         "buoyant_volume": ValueKind(VOLUME, (), "the volume of fluid the body displaces"),
         "centre_of_buoyancy": ValueKind(LENGTH, (3,), "the centre of the displaced volume, from the centre of mass, "
                                                        "in the body frame"),
@@ -209,8 +212,9 @@ def _si(declared: Declared, kind: ValueKind) -> tuple[Magnitude | None, str]:
         return None, str(error)
     components = value if isinstance(value, tuple) else (value,)
     shape = (len(value),) if isinstance(value, tuple) else ()
-    if shape != kind.shape:
+    if shape != kind.shape and shape != kind.also:
         expected = "one number" if not kind.shape else f"{kind.shape[0]} components"
+        expected += f" or {kind.also[0]}" if kind.also else ""
         return None, f"the declared value {declared.path} is {kind.meaning}: {expected}, not {declared.value}"
     if not all(math.isfinite(c) for c in components):
         return None, f"the declared value {declared.path} is not finite: {declared.value}"

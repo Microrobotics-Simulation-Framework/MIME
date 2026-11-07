@@ -4,7 +4,7 @@ one of version 6 that holds ``based_on`` is refused, never read as declaring it.
 hold the hashes their documents make: saving again under form 7 moved the ``document`` and ``input`` hashes (the
 document names its form), never ``derived`` or ``observations``. A reader of version 6, that of 0.3.0.dev1, refuses a folder
 of version 7 or later as ``load.newer-form``, the document and the lock each once, rather than reading a key it does not
-know. The current form is version 8 (``test_form8.py``); the folder as version 7 wrote it is ``form7/chain_screw``.
+know. The current form is version 9 (``test_form9.py``); the folder as version 7 wrote it is ``form7/chain_screw``.
 
 **The controls.** An upgrade planted to accept ``based_on`` in an earlier document reads it, and the refusal test
 fails on every run. The form left unstepped (the folder's files stating version 6) is read by version 6's reader

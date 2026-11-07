@@ -18,10 +18,10 @@ a screw, written out). What that number is worth is in the table: since the quad
 points (drag 0.4.0) the speed is within a few per cent of a converged free-space reference at a few hundred force
 points, and the table says how it moves with ``spacing``; read it as a first look, not as a result.
 
-**The inertia.** The screw's parts give an inertia tensor with a small product of inertia. Left alone, an exploratory
-build uses its diagonal and stamps that pending, and a research build refuses it and prints the line to paste. Here the
-declaration below is that line; in this regime (viscous, Reynolds number a few hundredths) the speed does not depend on
-it, which the example's test checks.
+**The inertia.** The screw's parts give an inertia tensor with a small product of inertia, which every profile builds
+as it is when nothing is declared. The declaration below states its diagonal instead, the products left out, a
+modelling choice with its reason (the build report names the parts' tensor it takes the place of); in this regime
+(viscous, Reynolds number a few hundredths) the speed does not depend on it, which the example's test checks.
 """
 
 import argparse
@@ -63,7 +63,7 @@ START_DT_MS = 100.0
 def screw_in_tube(spacing_mm: float = START_SPACING_MM, *, inertia: tuple[float, float, float] | None = None,
                   dt_ms: float = START_DT_MS) -> Experiment:
     """The screw at rest on the tube's axis, its samples ``spacing_mm`` apart. ``inertia`` replaces the parts' tensor's
-    diagonal (kg m^2, about the body's axes) that the build prints."""
+    diagonal (kg m^2, about the body's axes) that the example declares."""
     exp = Experiment("screw_in_tube", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(dt_ms))
     tube = exp.add_structure(Structure("tube", geometry=Tube(axis=+X, inner_radius=mm(3.175), wall=mm(1.6),
                                                              length=mm(100.0))))
@@ -77,8 +77,8 @@ def screw_in_tube(spacing_mm: float = START_SPACING_MM, *, inertia: tuple[float,
             starts=2))}))
     exp.declare("umr.parts.shell.density", kg_per_m3(1410.0), reason="FL-9 resin plus its magnets, mean density")
     exp.declare("umr.inertia", kg_m2(inertia or INERTIA),
-                reason="the parts' inertia tensor about the body's axes with its products of inertia dropped, as the "
-                       "build prints it: a modelling choice, not a measurement")
+                reason="the diagonal of the parts' inertia tensor about the body's axes, its products of inertia "
+                       "left out: a modelling choice, not a measurement")
     exp.declare("umr.magnetic_moment", A_m2((0.0, 1.68e-3, 0.0)), reason="two magnets, across the screw's axis")
     field = exp.add_apparatus(Apparatus("field", fields={
         "magnetic": UniformRotating(rotation_axis=tube.axis, initial_direction=(0.0, 1.0, 0.0))},
@@ -90,7 +90,7 @@ def screw_in_tube(spacing_mm: float = START_SPACING_MM, *, inertia: tuple[float,
     return exp
 
 
-#: The diagonal of the parts' inertia tensor (kg m^2): what a research build's refusal of the parts' own tensor prints to paste.
+#: The diagonal of the parts' inertia tensor (kg m^2), about the body's axes.
 INERTIA = (1.3043197461318855e-10, 4.631130043564001e-10, 4.570054968582633e-10)
 
 

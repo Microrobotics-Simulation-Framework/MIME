@@ -24,6 +24,7 @@ core/_geometry.py::shape_named KeyError 1  # registration: an entry's, a kind's 
 core/multibody/_articulation.py::Articulation.frame_index KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/multibody/_articulation.py::Articulation.refuse_closures ClosedChainRefused 1  # caught where it is raised and refused with its code (chain.closed-loop)
 core/multibody/_articulation.py::articulate KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/multibody/_mass_matrix.py::MassMatrix.__post_init__ ValueError 4  # construction: a 6 x 6 mass matrix checked where a script makes it (shape, finite, symmetric, definite); no experiment's build or step constructs one (src holds no other use), so no user's declared value reaches it, and a script calling it directly meets the ValueError where it calls
 core/multibody/_tree.py::MultibodyTree.body KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/multibody/_tree.py::MultibodyTree.joint KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/multibody/_urdf.py::read_urdf DescriptionRefused 1  # caught where it is raised and refused with its code (chain.description, by the arm's segment and the controller's read)

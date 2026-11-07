@@ -2560,7 +2560,6 @@ class _Planner:
         # the reads the build's values rest on, not every value of a bound thing the planner resolved
         reads = self.materials_plan(self.value_lines()).reads if self.resolver is not None else ()
         self.work.reads(self.materials, reads, self.resolver.every_read() if self.resolver is not None else ())
-        self.work.simplifications(self.resolver.simplified() if self.resolver is not None else ())
         self.work.nominals(self.materials)
         sources = [(d.path, d.reason) for d in self.declarations if isinstance(d, SourceDeclaration)]
         roots: list[tuple[str, object]] = [(f"{type(thing).__name__.lower()} {getattr(thing, 'name', '?')!r}", thing)

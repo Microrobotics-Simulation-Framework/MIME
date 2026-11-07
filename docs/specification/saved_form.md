@@ -196,6 +196,23 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_save_reference.py::test_the_mrs_case_saved_at_one_blas_count_reproduces_at_it_and_is_another_environment_at_another`,
   `tests/saved/test_save_reference.py::test_a_count_either_side_could_not_read_is_never_the_same`,
   `tests/saved/test_form8.py::test_a_version_seven_folder_loads_and_verifies_by_the_history_scan_and_its_environment_names_no_count`.
+- **[lock.inertia-tensor]** The resolved record holds a body's `inertia` as its parts give it, the full tensor about
+  its centre of mass in the body's frame, nine numbers row-major, from the ninth form; a declared inertia keeps the form
+  it was declared in, three moments or nine numbers. A folder of an earlier form, whose record holds the parts' diagonal,
+  loads as it was: its document names `rigid_inertial` 0.3.0 or 0.2.0, which builds its node from the diagonal, and the
+  rebuilt record is compared in the folder's form, the parts' tensor written as its diagonal and a declaration's source
+  naming the parts' tensor as the three numbers it named. A folder that rested on exploratory's waiver of a body's
+  products of inertia is refused at load (`value.products-of-inertia`), by that version's words and naming the folder's
+  route (re-create it from its script on the current version), never reproduced with them carried. A reader of the eighth form refuses a folder of the ninth as `load.newer-form`.
+  *Cases:* `tests/saved/test_form9.py::test_version_nine_holds_the_parts_tensor_and_this_mime_writes_it`,
+  `tests/saved/test_form9.py::test_a_form_eight_folder_with_inertia_from_parts_loads_on_the_kept_version_and_verifies_by_its_program`,
+  `tests/saved/test_form9.py::test_control_with_the_write_back_removed_the_form_eight_folder_is_refused_naming_the_parts_inertia`,
+  `tests/saved/test_form9.py::test_the_write_back_writes_the_parts_tensor_as_its_diagonal_and_a_source_as_the_three_it_named`,
+  `tests/saved/test_form9.py::test_a_form_eight_folder_that_rested_on_the_waiver_of_its_products_is_refused_by_the_kept_versions_words`,
+  `tests/saved/test_form9.py::test_a_form_seven_based_on_child_loads_keeps_its_parent_and_verifies`,
+  `tests/saved/test_form9.py::test_a_folder_holding_a_full_inertia_tensor_round_trips_in_a_fresh_process`,
+  `tests/saved/test_form9.py::test_version_eights_reader_refuses_a_folder_of_version_nine_as_newer_each_file_once`,
+  `tests/saved/test_form9.py::test_control_the_form_left_unstepped_is_read_by_version_eights_reader_with_no_newer_form`.
 - **[lock.pins]** The lock's records are the experiment's pins: a load reads each asset under the hash its lock names,
   whatever a shared source holds under that name now, and the build report names each source that holds another
   version; one not stored is refused as `asset.missing`. A saved stage's meshes keep the manifest and sha256 it names
