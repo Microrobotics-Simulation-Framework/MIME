@@ -21,6 +21,13 @@ cli/__main__.py::<module> SystemExit 1  # the command's exit code
 control/_arm_tracking.py::ArmTracking.read ValueError 2  # caught where it is raised and refused with its code (the controller's law, an entry.defect naming it)
 core/_geometry.py::register_shape ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 core/_geometry.py::shape_named KeyError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+core/_node.py::MimeNode.__init__ TypeError 2  # a node's constructor given a ledger it cannot take (not a sequence of strings, or a node that writes no step identity), which only the build gives and only to a metered receiver: reached, it is error.uncoded
+core/_node.py::MimeNode.energy NotImplementedError 1  # the hook a potential law's node overrides; reached on another node, it is error.uncoded, keeping its class
+core/_node.py::MimeNode.identity_terms NotImplementedError 1  # the hook a metered receiver overrides; reached on another node, it is error.uncoded, keeping its class
+core/_node.py::MimeNode.storage NotImplementedError 1  # the hook a metered receiver overrides; reached on another node, it is error.uncoded, keeping its class
+core/ledger.py::LedgerDelivery.__post_init__ ValueError 4  # invariant: a delivery the build encodes into a receiver's ledger, with a kind, class and check the ledger knows; reached, it is error.uncoded, keeping its class
+core/ledger.py::paired_work ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+core/ledger.py::with_law_inputs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/multibody/_articulation.py::Articulation.frame_index KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 core/multibody/_articulation.py::Articulation.refuse_closures ClosedChainRefused 1  # caught where it is raised and refused with its code (chain.closed-loop)
 core/multibody/_articulation.py::articulate KeyError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
@@ -69,7 +76,7 @@ nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 1  # a node's 
 nodes/actuation/_reaction.py::SourceReactionNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 6  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded (a confining shape with no curvature for a hull with a support is refused first by the plan, coded confinement.surface-shape; contact_loops with no hull, which the build sets only beside a hull's settings; the node layer constructs no refusal)
+nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 8  # a node's constructor, which the build calls with what phase 1 checked (and, with the ledger attached, one hosted law for its confinement and a definiteness check on its resistance alone): reached, it is error.uncoded (a confining shape with no curvature for a hull with a support is refused first by the plan, coded confinement.surface-shape; contact_loops with no hull, which the build sets only beside a hull's settings; the node layer constructs no refusal)
 nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 7  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -187,6 +194,10 @@ viz/_meshes.py::read_stl ValueError 1  # an STL file with no triangles: caught w
 viz/_meshes.py::write_mesh OSError 1  # usd-core could not write a baked mesh into the asset cache: the file system's own error class, as save.not-writable keeps it
 viz/_recording.py::write_recording OSError 1  # usd-core could not write the recording into the run folder: the file system's own error class, as save.not-writable keeps it
 viz/_web.py::viewer_bytes ValueError 1  # invariant: the packaged viewer's bytes against their pinned sha256, which the packaging and viewer tests hold
+vocabulary/_ports.py::PortKind.__post_init__ ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+vocabulary/_ports.py::_dimension ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+vocabulary/_ports.py::_paired_dimensions ValueError 2  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+vocabulary/_ports.py::register_port_kind ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::Interface.__post_init__ TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::Interface.__post_init__ ValueError 5  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::define ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
