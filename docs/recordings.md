@@ -203,8 +203,8 @@ page, which in a saved notebook was most of the cell's output.
   (`mime/viz/_viewer/`, pinned by its sha256, with the licence of every part its bundle holds: the Apache License, and
   three.js, fflate and gainmap-js under MIT, lit under BSD), so the page draws from a file with no network.
   `mime.viz.display` leaves the viewer to jsDelivr by default, held to the same file's hash, because an inlined
-  viewer adds about a megabyte and a half to every saved notebook; `offline=True` inlines it. `display` warns above a million bytes, where
-  Jupyter's default output rate may drop the cell, and says how to make it smaller.
+  viewer adds about a megabyte and a half to every saved notebook; `offline=True` inlines it. `display` warns above a million bytes, a
+  large share of the notebook's own file (it is saved with every display), and says how to make it smaller.
 - **Where it does not draw.** GitHub's notebook preview runs no script, so there the cell is blank. That the inlined
   page draws with the network blocked is shown by hand in headless Chrome by `scripts/offline_view_proof.py` (WebGL
   through SwiftShader, every request sent to a closed port, the network log read; its control, the same page with the

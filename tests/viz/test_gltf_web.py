@@ -103,7 +103,7 @@ def test_display_warns_above_a_million_bytes(run, monkeypatch):
         display(run)  # the control: the ball's page is far smaller
     monkeypatch.setattr(web_module, "gltf", lambda target, slow=None, **_: type(result)(
         **{**result.__dict__, "glb": result.glb + b"\0" * 900_000}))
-    with pytest.warns(UserWarning, match="Jupyter may drop") as caught:
+    with pytest.warns(UserWarning, match="every display saves it") as caught:
         display(run)
     assert [w.filename for w in caught] == [__file__], "at the script's line, not display's"
 

@@ -15,8 +15,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: The SHA-256 of the Apache License 2.0 text as apache.org publishes it (LICENSE-2.0.txt).
 APACHE_2_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-#: The files allowed to name the earlier licence.
-HISTORY = {"NOTICE", "CHANGELOG.md", "docs/development/changes_0.3.0.dev1.md"}
+#: The files allowed to name the earlier licence: the history notes, and the licences of the inlined Mermaid's packages,
+#: whose text of the Mozilla Public License (DOMPurify's other licence, which MIME does not use) names it as a secondary
+#: licence a covered work may be combined with.
+HISTORY = {"NOTICE", "CHANGELOG.md", "docs/development/changes_0.3.0.dev1.md",
+           "src/mime/experiment/_mermaid_lib/LICENSE.mermaid"}
 #: Spelt in pieces, so that this file, which the search reads too, holds no mention of its own.
 EARLIER_ID, EARLIER_NAME = "G" + "PL", "Lesser " + "General Public"
 EARLIER_LICENCE = re.compile(rf"\bL?{EARLIER_ID}|{EARLIER_NAME}", re.IGNORECASE)
