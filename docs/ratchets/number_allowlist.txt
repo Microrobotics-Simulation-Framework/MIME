@@ -70,16 +70,27 @@ src/mime/cli/README.md  1 10  #1  # the download gates' declared thresholds in m
 src/mime/cli/README.md  2 5  #1  # the download gates' declared thresholds in mime.assets._gates, the bake allowance measured on the AR4 (1.9 % of its input in all, 28 % at worst for one small mesh; the constant is 30 %), and an example line's figures (U13, design #237)
 src/mime/cli/README.md  1  #2  # the download gates' declared thresholds in mime.assets._gates, the bake allowance measured on the AR4 (1.9 % of its input in all, 28 % at worst for one small mesh; the constant is 30 %), and an example line's figures (U13, design #237)
 src/mime/cli/README.md  2 5  #2  # the download gates' declared thresholds in mime.assets._gates, the bake allowance measured on the AR4 (1.9 % of its input in all, 28 % at worst for one small mesh; the constant is 30 %), and an example line's figures (U13, design #237)
-docs/guide/graph_and_tree.md  7  #1  # a front end's name (Jupyter Notebook 7), not a quantity
+docs/guide/graph_and_tree.md  7 3  #1  # a front end's name (Jupyter Notebook 7), and the 3-D view's name
 docs/guide/graph_and_tree.md  1 1  #1  # the label of the zoom button, 1:1 (one graph pixel to one screen pixel), a ratio and not a measurement
 docs/guide/graph_and_tree.md  0 1 1 1  #1  # the keys that fit the graph (0) and show it at one to one (1), and that button's label, 1:1: names, not measurements
-docs/guide/graph_and_tree.md  560  #1  # the notebook frame's height in pixels, the declared constant mime.experiment._mermaid_page.FRAME_HEIGHT, a choice that the page's text states and a test holds to it
+docs/guide/graph_and_tree.md  720 3  #1  # the notebook frame's height in pixels, the declared constant mime.experiment._mermaid_page.FRAME_HEIGHT (the 3-D view's own, WebPage.height), a choice that the page's text states and a test holds to it; and the 3-D view's name
+docs/guide/graph_and_tree.md  900  #1  # an example height in pixels for dataclasses.replace(page, height=900), not a measurement
 docs/guide/graph_and_tree.md  75% 75%  #1  # the scale below which a graph opens from its top left and not fitted, the declared constant READABLE of the page's script (a choice about legibility, not a measurement); a test holds the page's script to it
 docs/guide/graph_and_tree.md  4.8  #1  # the size in MB of a notebook output that carries the library (the shipped file, 3,572,661 bytes, as the base64 a data URI holds): measured, and tests/build/test_graph_and_tree.py holds the page's size to it
+docs/guide/graph_and_tree.md  4.8  #2  # the size in MB again, in the sentence that gives the reason for the default (the same measured output)
 docs/guide/graph_and_tree.md  3.6  #1  # the size in MB of the shipped library, 3,572,661 bytes: measured, and tests/build/test_graph_and_tree.py holds it to the byte
 docs/guide/graph_and_tree.md  12 4.8  #1  # the size of the page with the library from jsDelivr (12 kB) against the one with it inlined (4.8 MB): measured, and tests/build/test_graph_and_tree.py holds both
 docs/guide/graph_and_tree.md  2026 11 07  #1  # the date of the maintainer's Colab measurement the page records
 docs/guide/graph_and_tree.md  3  #1  # a name, the 3-D view
-src/mime/cli/README.md  4.8  #1  # the size in MB of the page with Mermaid inlined: measured, held by tests/build/test_graph_and_tree.py
+docs/guide/graph_and_tree.md  3  #2  # a name, the 3-D view
+docs/guide/graph_and_tree.md  3  #3  # a name, the 3-D view
+docs/guide/graph_and_tree.md  3  #4  # a name, the 3-D view
+docs/guide/graph_and_tree.md  3  #5  # a name, the 3-D view
+docs/guide/graph_and_tree.md  3  #6  # a name, the 3-D view
+docs/guide/graph_and_tree.md  3  #7  # a name, the 3-D view
+docs/guide/graph_and_tree.md  3  #8  # a name, the 3-D view
+src/mime/cli/README.md  3 4.8  #1  # the 3-D view's name, and the size in MB of the page with Mermaid inlined: measured, held by tests/build/test_graph_and_tree.py
+src/mime/cli/README.md  3  #1  # a name, the 3-D view
 src/mime/cli/README.md  12  #1  # the size in kB of the page with Mermaid from jsDelivr: measured, held by tests/build/test_graph_and_tree.py
+src/mime/experiment/README.md  3  #1  # a name, the 3-D view
 src/mime/experiment/_mermaid_lib/README.md  3 2.0 2.0 2.0 2.0  #1  # licence names (BSD-3-Clause, Apache-2.0, MPL-2.0), not quantities

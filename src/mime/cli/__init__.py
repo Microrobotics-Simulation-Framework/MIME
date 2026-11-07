@@ -19,7 +19,7 @@ from mime._extras import VERIFY_EXTRA_MISSING
 from mime._interrupt import INTERRUPTED, Interrupt
 from mime._terminal import for_terminal
 from mime.assets import AssetRef, PlainAsker
-from mime.build import ArgumentRefused, BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
+from mime.build import BuildRefused, InternalError, MimeError, Refusal, RefusalClass, RunFailed, UnrecognisedError
 from mime.cli import _completion, _durations, _guide
 from mime.cli._bounded import CLOSE_WAIT, BoundedWriter
 from mime.cli._display import set_plain, styled
@@ -198,24 +198,25 @@ def _pending(folder: Path) -> int:
     return 1 if profile.pending else 0
 
 
-def _show(folder: Path, graph: bool, tree: bool, as_json: bool, html_out: Path | None = None, cdn: bool = False) -> int:
+#: ``--out`` given with no file: the default name, ``<experiment>.graph.html`` (compared by identity, never by value).
+DEFAULT_PAGE = Path("<experiment>.graph.html")
+
+
+def _show(folder: Path, graph: bool, tree: bool, as_json: bool, out: Path | None = None, cdn: bool = False,
+          caption: str | None = None, open_page: bool = False) -> int:
     """What a saved experiment is made of, without running it: ``--tree``, its topology as declared (the default), and
     ``--graph``, the MADDENING graph it compiles to, as Mermaid text; both, the tree first and a blank line between.
     The tree is read from the document alone and builds nothing; the graph is built as ``mime pending`` builds it.
-    ``folder`` may be a document instead of a folder. ``--json`` is the tree as data. ``--html FILE`` writes the graph as
-    one page to pan and zoom, instead of printing it (never inside a saved or run folder, ``visuals.web-out``)."""
+    ``folder`` may be a document instead of a folder. ``--json`` is the tree as data. ``--out [FILE]`` writes the graph as
+    one page to pan and zoom, instead of printing it, as ``mime visuals web --out`` writes the 3-D view (the default name
+    is ``<experiment>.graph.html``, never the 3-D page's; never inside a saved or run folder, ``visuals.web-out``)."""
     from mime.env import apply_lock_precision
 
-    if html_out is not None:
-        from mime.viz._web import held_by
+    if out is not None and out is not DEFAULT_PAGE:
+        from mime.experiment._mermaid import written_outside
 
-        inside = held_by(html_out)
-        if inside is not None:
-            raise ArgumentRefused([Refusal(
-                "visuals.web-out", RefusalClass.USER,
-                f"{html_out} is inside {inside}, a saved or run folder, which never holds presentation: a page is "
-                f"written beside it, never into it",
-                f"name a file outside it: mime show {folder} --html graph.html")])
+        written_outside(out, f"mime show {folder} --graph --out graph.html")
+    if out is not None:
         graph = True
 
     if tree or not graph:
@@ -239,10 +240,14 @@ def _show(folder: Path, graph: bool, tree: bool, as_json: bool, html_out: Path |
             apply_lock_precision(folder)
             built = Experiment.load(folder).build()
         diagram = built.to_mermaid()
-        if html_out is not None:
-            written = diagram.save(html_out, cdn=cdn)
+        if out is not None:
+            written = diagram.save(None if out is DEFAULT_PAGE else out, cdn=cdn, caption=caption)
             where = "the library from jsDelivr, held to its hash" if cdn else "the library inlined: no network needed"
             print(for_terminal(f"{written}: {written.stat().st_size / 1e6:.2f} MB, the graph to pan and zoom, {where}"))
+            if open_page:
+                import webbrowser
+
+                webbrowser.open(written.resolve().as_uri())
         else:
             sys.stdout.write(for_terminal(diagram))
     return 0
@@ -1251,13 +1256,16 @@ def build_parser() -> _guide.MimeParser:
     show.add_argument("--graph", action="store_true", help="the MADDENING graph the experiment compiles to, as "
                                                            "Mermaid text; it builds the experiment")
     show.add_argument("--json", action="store_true", help="the tree as JSON (the mime.tree format)")
-    show.add_argument("--html", type=Path, default=None, metavar="FILE",
+    show.add_argument("--out", type=Path, nargs="?", const=DEFAULT_PAGE, default=None, metavar="FILE",
                       help="write the graph as one page to pan and zoom (Mermaid inlined, so it needs no network) "
-                           "instead of printing it; it builds the experiment, and is never written inside a saved or "
-                           "run folder")
+                           "instead of printing it (default name: <experiment>.graph.html here, never the 3-D page's); "
+                           "it builds the experiment, and is never written inside a saved or run folder. Name the "
+                           "folder before --out: a word after it is taken as the file")
     show.add_argument("--cdn", action="store_true",
-                      help="with --html, load Mermaid from jsDelivr, held to its hash, rather than inline it (3.6 MB "
+                      help="with --out, load Mermaid from jsDelivr, held to its hash, rather than inline it (3.6 MB "
                            "smaller; the page then needs the network)")
+    show.add_argument("--caption", default=None, metavar="TEXT", help="with --out, a line shown above the diagram")
+    show.add_argument("--open", action="store_true", help="with --out, open the page in the default browser")
     registry = commands.add_parser("registry", help="every registered entry and what it declares")
     registry.add_argument("--json", action="store_true", help="the whole export, as JSON")
     # A skip flag of the documentation's checks is only ever spelled in full: argparse would take ``--skip-ex`` for
@@ -1706,11 +1714,14 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     if arguments.command == "show":
         if arguments.json and arguments.graph:
             parser.error("--json is the tree as data; the graph is Mermaid text, so --json and --graph do not go together")
-        if arguments.html is not None and (arguments.json or arguments.tree):
-            parser.error("--html writes the graph as a page, so it does not go with --json or --tree")
-        if arguments.cdn and arguments.html is None:
-            parser.error("--cdn says where --html's page loads Mermaid from, and --html is not given")
-        return _show(arguments.folder, arguments.graph, arguments.tree, arguments.json, arguments.html, arguments.cdn)
+        if arguments.out is not None and (arguments.json or arguments.tree):
+            parser.error("--out writes the graph as a page, so it does not go with --json or --tree")
+        for flag, given in (("--cdn", arguments.cdn), ("--caption", arguments.caption is not None),
+                            ("--open", arguments.open)):
+            if given and arguments.out is None:
+                parser.error(f"{flag} goes with the page --out writes, and --out is not given")
+        return _show(arguments.folder, arguments.graph, arguments.tree, arguments.json, arguments.out, arguments.cdn,
+                     arguments.caption, arguments.open)
     if arguments.command == "registry":
         return _registry(arguments.json)
     if arguments.command == "run":

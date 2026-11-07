@@ -1,7 +1,9 @@
 The licences of Mermaid 11.17.2 (mermaid.min.js) and of the packages its bundle can hold.
 
 mermaid.min.js is Mermaid's single-file build: Mermaid and every package it depends on, minified into one file with no
-licence comments of its own beyond DOMPurify's. This file holds, for each package, its name, its version, the licence its
+licence comments of its own beyond DOMPurify's. This file holds, for each package, its name, the version the dependency tree
+resolves to when the file was written (not necessarily the version inside the bundle: the bundle's own comment names DOMPurify
+3.4.12, and this file lists 3.4.17; a package may be listed at more than one version), the licence its
 package.json states, and the text of its licence file as its npm package ships it. It lists every package of Mermaid's
 production dependency tree (npm install of mermaid@11.17.2, scripts off), without the packages that hold only type
 declarations (@types/*), and the packages that Mermaid's parser (@mermaid-js/parser 1.2.1) bundles into its own build,

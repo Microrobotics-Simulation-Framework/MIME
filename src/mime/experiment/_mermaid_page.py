@@ -10,8 +10,12 @@ loader it defines, the order it inserts scripts in) is in their way.
 runs, which the ES-module build's further files would escape), either inlined from the copy shipped in the wheel
 (``_mermaid_lib/mermaid.min.js``, with the licence of every package its bundle can hold, pinned by sha256) or from
 jsDelivr, held to its sha384 (``cdn=True``). A page written to a file is inlined by default (3.6 MB, 4.8 MB as the data
-URI that carries it) and needs no network. A notebook's output is the page with the library from jsDelivr by default: an
-inlined one is a 4.8 MB output, and Jupyter's default limit on a kernel's output rate is a million bytes a second.
+URI that carries it) and needs no network. A notebook's output is the page with the library from jsDelivr by default, as
+the 3-D view's is (:mod:`mime.viz._web`), and for two reasons that hold: an inlined page is a 4.8 MB output, which a
+notebook saves into its own file with every display, so a notebook that shows a few graphs weighs tens of megabytes; and
+one word means one thing across both views (``offline=True`` inlines, ``offline=False`` loads from jsDelivr). It is not
+because Jupyter would drop the output: a server's output rate limit counts only a kernel's stream output (``print``),
+not a displayed value, so that is not claimed.
 
 **Pan and zoom** are a short script of this page's own rather than a second library: drag to pan, wheel or pinch to zoom
 toward the pointer, buttons for zoom in, zoom out, fit and 1:1, and keys. It moves one element by a CSS transform, so
@@ -19,9 +23,14 @@ the diagram stays vector at every zoom. The page opens fitted when the whole gra
 and otherwise at that readable size from the graph's top left corner, so a large graph is read by panning, not shrunk
 to nothing; Fit shows all of it.
 
-**The frame's height** is fixed, with a handle to resize it, not computed from the graph: the graph's size in pixels is
-known only after the browser has laid it out, and a height guessed from the number of nodes would be wrong for a wide
-graph and for a tall one.
+**The frame's height** is a field of the page object (:class:`mime.experiment._mermaid.GraphPage`, 720 pixels as the 3-D
+view's), not computed from the graph: the graph's size in pixels is known only after the browser has laid it out, and a
+height guessed from the number of nodes would be wrong for a wide graph and for a tall one.
+
+**What the page can load.** A content security policy in the page (:data:`POLICY`) lets it run its own script and the
+library, and nothing else: no image, stylesheet, font, frame or request from the graph's text. A label a person wrote by
+hand (``Mermaid(str)``) can hold an ``<img src=...>`` that Mermaid's own sanitiser keeps, and without the policy an
+offline page would fetch that URL.
 
 **Determinism.** The page is built from constants and the graph's text and holds no random id, no time and no counter;
 Mermaid is given a fixed id for its drawing. The same text gives the same page byte for byte."""
@@ -32,6 +41,7 @@ import base64
 import hashlib
 import html
 from importlib.resources import files
+from urllib.parse import urlsplit
 
 #: The library, pinned. The sha256 is of the shipped file; the sha384 (as SRI writes it) is what jsDelivr's copy is held to,
 #: and to check a bump: ``curl -sL <MERMAID_CDN> | openssl dgst -sha384 -binary | openssl base64 -A``.
@@ -42,12 +52,11 @@ MERMAID_SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o
 MERMAID_CDN = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/{MERMAID_FILE}"
 #: Where to draw Mermaid text that a front end shows as text.
 RENDERER = "https://mermaid.live"
-#: The frame's height in a notebook, in pixels; it can be dragged taller or shorter.
-FRAME_HEIGHT = 560
-#: The strip under the frame that holds the resize handle: the handle sits over it and not over the page.
-HANDLE_HEIGHT = 14
-#: Above this many bytes a notebook's output may be dropped (Jupyter's default limit on a kernel's output rate is a million
-#: bytes a second).
+#: The frame's height in a notebook, in pixels: the 3-D view's (``WebPage.height``).
+FRAME_HEIGHT = 720
+#: Above this many bytes a notebook's output is a large share of the notebook's own file (every display is saved in it): a
+#: display warns. The same size as the 3-D view's, which is released. Not a limit of Jupyter's: its output rate limit
+#: counts a kernel's stream output only, so a displayed value of any size is not dropped by it.
 OUTPUT_WARNING_BYTES = 1_000_000
 
 CREDIT = ('Drawn with <a href="https://mermaid.js.org/">Mermaid</a> 11.17.2 (MIT) and the packages it bundles (MIT, ISC, '
@@ -102,6 +111,10 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system
 body[data-state="drawing"] pre.mermaid { visibility: hidden; }
 body[data-state="text"] #stage { overflow: auto; cursor: auto; touch-action: auto; user-select: text; -webkit-user-select: text; }
 body[data-state="text"] #world { position: static; }
+body[data-state="text"] .bar { display: none; }
+.notes { flex: 0 0 auto; padding: 4px 12px; }
+.notes p { margin: 4px 0; }
+.stale { color: #b3261e; font-weight: bold; }
 pre.mermaid { margin: 12px; white-space: pre-wrap; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
 #status { flex: 0 0 auto; margin: 0; padding: 4px 12px; border-top: 1px solid var(--edge); background: var(--panel); }
 #status[data-kind="error"] { color: #b3261e; }
@@ -123,10 +136,12 @@ SCRIPT = """
   const fail = function (text) { body.dataset.state = "text"; say(text, "error"); };
   if (typeof mermaid === "undefined") {
     fail("The Mermaid library did not load (no network, or the file was not the one MIME pins), so the graph is shown as " +
-         "its text. A page with the library inlined needs no network: diagram.display(inline=True) in a notebook, or diagram.save(path).");
+         "its text. A page with the library inlined needs no network: diagram.display(offline=True) in a notebook, or diagram.save(path).");
     return;
   }
-  const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  // The diagram's theme is chosen once, at load: the page's own colours follow a change of the browser's setting, the drawing does not.
+  const forced = document.documentElement.dataset.theme;
+  const dark = forced ? forced === "dark" : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   mermaid.initialize({
     startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default", deterministicIds: true,
     deterministicIDSeed: "mime", maxTextSize: 50000000, maxEdges: 100000, flowchart: {useMaxWidth: false, htmlLabels: true}});
@@ -272,13 +287,35 @@ SCRIPT = """
 """
 
 
-def page(text: str, *, cdn: bool = False) -> str:
+def script_hash() -> str:
+    """The page's own script as a content security policy names it: ``'sha256-...'`` of the text between its tags."""
+    return "'sha256-" + base64.b64encode(hashlib.sha256(SCRIPT.encode("utf-8")).digest()).decode("ascii") + "'"
+
+
+def policy(cdn: bool) -> str:
+    """What the page may load, as a content security policy: its own script (held by hash, so no other inline script runs,
+    and no ``on...`` attribute), the library (a data URI inlined, or jsDelivr's origin), its own inline style (Mermaid
+    sets styles on what it draws), and no image, no font, no frame and no request. A label a person wrote
+    by hand can hold an ``<img src=...>`` that Mermaid's sanitiser keeps; this is what stops the page fetching it."""
+    origin = "{0.scheme}://{0.netloc}".format(urlsplit(MERMAID_CDN))
+    library = origin if cdn else "data:"
+    return (f"default-src 'none'; script-src {script_hash()} {library}; style-src 'unsafe-inline'; base-uri 'none'; "
+            "form-action 'none'")
+
+
+def page(text: str, *, cdn: bool = False, caption: str | None = None, stale: str | None = None) -> str:
     """The page of the Mermaid ``text``: the library inlined, or from jsDelivr with ``cdn``. The text is in the page once,
-    in the element the library draws, so where nothing draws (no script, no library) it is shown."""
+    in the element the library draws, so where nothing draws (no script, no library) it is shown. ``caption`` is a line
+    above the diagram; ``stale`` (why the graph no longer matches its experiment) is a line above that, as the 3-D page's
+    notes lead with it."""
+    notes = ([f'<p class="stale" role="alert">STALE: {html.escape(stale, quote=False)}</p>'] if stale else []) \
+        + ([f"<p>{html.escape(caption, quote=False)}</p>"] if caption else [])
     parts = [
         "<!doctype html>", '<html lang="en">', "<head>", '<meta charset="utf-8">',
+        f'<meta http-equiv="Content-Security-Policy" content="{html.escape(policy(cdn), quote=True)}">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">', "<title>Compiled graph</title>",
         f"<style>{STYLE}</style>", "</head>", "<body>",
+        *([f'<div class="notes">{"".join(notes)}</div>'] if notes else []),
         '<div class="bar" role="toolbar" aria-label="Pan and zoom">'
         '<button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>'
         '<button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out (-)">−</button>'
@@ -297,17 +334,17 @@ def page(text: str, *, cdn: bool = False) -> str:
     return "\n".join(parts) + "\n"
 
 
-def frame(held: str, *, height: int = FRAME_HEIGHT) -> str:
-    """The notebook's fragment for the page ``held``: the page in a sandboxed ``<iframe srcdoc>`` in a box the reader can
-    drag taller or shorter, with the note under it. ``sandbox="allow-scripts"`` runs the page's script and no more: the
-    page is a document of its own, with no access to the notebook around it."""
+def frame(held: str, *, height: int = FRAME_HEIGHT, stale: str | None = None) -> str:
+    """The notebook's fragment for the page ``held``: the page in an ``<iframe srcdoc>`` as the 3-D view's is (full width,
+    ``height`` pixels, no border), with the red ``STALE`` line above it where the graph is stale, and the note under it.
+    ``sandbox="allow-scripts"`` runs the page's script and no more: the page is a document of its own with an opaque
+    origin, and no access to the notebook around it (the label text of a hand-built graph is a person's)."""
+    banner = f'<p style="color: #b3261e; font-weight: bold">STALE: {html.escape(stale)}</p>\n' if stale else ""
     return (
-        f'<div style="resize: vertical; overflow: hidden; width: 100%; min-height: 220px; height: {height + HANDLE_HEIGHT}px">'
-        f'<iframe srcdoc="{html.escape(held, quote=True)}" sandbox="allow-scripts" allowfullscreen '
-        f'style="display: block; width: 100%; height: calc(100% - {HANDLE_HEIGHT}px); border: 1px solid #8c959f; '
-        'border-radius: 6px" title="The compiled graph"></iframe></div>\n'
+        banner + f'<iframe srcdoc="{html.escape(held, quote=True)}" sandbox="allow-scripts" allowfullscreen '
+        f'style="width: 100%; height: {height}px; border: 0" title="The compiled graph"></iframe>\n'
         f'<p style="margin: 2px 0 8px; font: 12px/1.4 system-ui, sans-serif; opacity: 0.75"><em>{html.escape(NOTE, quote=False)}</em></p>\n')
 
 
 __all__ = ["CREDIT", "FRAME_HEIGHT", "MERMAID_CDN", "MERMAID_FILE", "MERMAID_SHA256", "MERMAID_SRI", "MERMAID_VERSION", "NOTE",
-           "OUTPUT_WARNING_BYTES", "RENDERER", "frame", "library_bytes", "library_tag", "page"]
+           "OUTPUT_WARNING_BYTES", "RENDERER", "frame", "library_bytes", "library_tag", "page", "policy", "script_hash"]

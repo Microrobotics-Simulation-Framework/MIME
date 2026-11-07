@@ -3,7 +3,7 @@
 `mermaid.min.js` is Mermaid 11.17.2's single-file build, the file `dist/mermaid.min.js` of the npm package `mermaid@11.17.2`,
 byte for byte: the same bytes from the npm tarball (whose sha512 is the registry's integrity, `V6K3C8EB...BBg==`) and from
 jsDelivr. `mime.experiment` inlines it into the page `Mermaid.page()` writes so that the page draws the graph with no network
-(`mime show <folder> --html <file>`), and pins it by its sha256 and by the integrity (sha384) a jsDelivr page holds it to
+(`mime show <folder> --graph --out <file>`), and pins it by its sha256 and by the integrity (sha384) a jsDelivr page holds it to
 (`mime.experiment._mermaid_page`, held by `tests/build/test_graph_and_tree.py`).
 
 It is a classic script, not the ES-module build: `integrity` holds every byte a classic script runs, where the module build

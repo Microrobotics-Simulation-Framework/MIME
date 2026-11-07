@@ -34,13 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings. `built.to_mermaid()` is MADDENING's `to_mermaid` of the
   compiled graph with the registered entry added to each node, and a notebook shows it as a page in an `<iframe srcdoc>`
   (the same in Colab, JupyterLab, Notebook 7 and VS Code) in which Mermaid 11.17.2 draws it and a reader pans and zooms it
-  (drag, wheel or pinch, buttons for zoom in, zoom out, fit and 1:1, full screen), in a frame that can be dragged taller.
-  The notebook's page loads Mermaid from jsDelivr, held to its `integrity` hash; `to_mermaid().display(inline=True)`
-  carries a copy shipped in the wheel (3.6 MB, with the licence of every package it can hold) and
-  `to_mermaid().save("graph.html")` writes the page with it, so a page needs no network; `display(offline=True)` shows the
-  text. `mime show <folder>` prints the tree (`--tree`, the default, drawn as a
-  tree on a terminal, plain text piped, `--json` as data) or the graph (`--graph`), or both, or `--html <file>` writes the
-  graph as that page. Either is the same for the
+  (drag, wheel or pinch, buttons for zoom in, zoom out, fit and 1:1, full screen), in a frame 720 pixels high as the 3-D
+  view's is. It takes the 3-D view's names and behaviour: the notebook's page loads Mermaid from jsDelivr, held to its
+  `integrity` hash; `to_mermaid().display(offline=True)` carries a copy shipped in the wheel (3.6 MB, with the licence of every
+  package it can hold) so the page needs no network, and returns a `GraphPage` as the 3-D view's `display` returns a `WebPage`;
+  `to_mermaid().save("graph.html")` writes the page with it; a graph built before a replacement or a removal says it is stale.
+  `mime show <folder>` prints the tree (`--tree`, the default, drawn as a
+  tree on a terminal, plain text piped, `--json` as data) or the graph (`--graph`), or both, or `--out [FILE]` writes the
+  graph as that page (`<experiment>.graph.html` by default). Either is the same for the
   same experiment whatever the order its script declared things in.
 
 - **Colab notebooks** (`docs/notebooks/`), linked first in the README: a steel ball settling in a tube of water, and

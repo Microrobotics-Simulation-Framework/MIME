@@ -56,8 +56,8 @@ def test_control_a_block_with_one_character_changed_fails_the_comparison(views, 
 
 
 #: Each way the page must tell a reader to get the graph's page, and what it shows where scripts do not run.
-WAYS = ("display(inline=True)", 'save("graph.html")', "--html graph.html", "display(offline=True)", "print(built.to_mermaid())",
-        "<iframe", "Fit", "1:1", "text/plain")
+WAYS = ("display(offline=True)", 'save("graph.html")', "--graph --out graph.html", "--graph --out [FILE]", "print(built.to_mermaid())",
+        "GraphPage", "WebPage", ".graph.html", "page.height", "STALE", "<iframe", "Fit", "1:1", "text/plain", "output rate limit counts")
 
 
 def missing_ways(page: str) -> list[str]:

@@ -20,7 +20,7 @@ from mime.experiment._mermaid_page import MERMAID_FILE
 
 ROOT = Path(__file__).resolve().parents[2]
 LIBRARY = ROOT / "src" / "mime" / "experiment" / "_mermaid_lib"
-LICENCE_SHA256 = "4961b1f3e53e0ee8dcbe11a19dfc6a336174e641b2f5439fba9f86c3e69e9660"
+LICENCE_SHA256 = "1639eb3f574089ab19d9b7d09ac580387f7fbad8e09b2ab96d124954f43cf436"
 #: Packages the file must list, with the licence each states (khroma's package states none: its file is the MIT License).
 EXPECTED = {
     "mermaid": "MIT", "d3": "ISC", "d3-sankey": "BSD-3-Clause", "d3-ease": "BSD-3-Clause", "dompurify":
@@ -67,6 +67,14 @@ def test_the_bundles_own_licence_comments_name_only_what_the_file_holds():
     named = re.findall(r"@license ([^|*]+)\|[^*]*?(Apache|Mozilla)", (LIBRARY / MERMAID_FILE).read_text(encoding="utf-8"))
     assert [name.strip() for name, _ in named] == ["DOMPurify 3.4.12"], "a licence comment the file may not cover"
     assert sections((LIBRARY / "LICENSE.mermaid").read_text(encoding="utf-8"))["dompurify"] == "(MPL-2.0 OR Apache-2.0)"
+
+
+def test_the_header_says_the_versions_are_the_dependency_trees_and_not_the_bundles():
+    """The file lists dompurify 3.4.17 where the bundle's comment names 3.4.12, and lodash-es at two versions; the header
+    must say its versions are the tree's, so no one reads them as the bundle's."""
+    header = (LIBRARY / "LICENSE.mermaid").read_text(encoding="utf-8").split("=" * 100, 1)[0]
+    assert " ".join(header.split()).count("the version the dependency tree resolves to") == 1
+    assert "not necessarily the version inside the bundle" in " ".join(header.split())
 
 
 def test_control_a_package_removed_or_a_licence_changed_is_found():

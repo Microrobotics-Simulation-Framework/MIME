@@ -26,9 +26,11 @@ from __future__ import annotations
 
 import base64
 import copy
+import dataclasses
 import hashlib
 import html
 import os
+import pickle
 import re
 import sys
 import types
@@ -44,8 +46,9 @@ import mime.experiment._mermaid_page as page_module
 import mime.experiment._tree as tree_module
 from views_cases import tutorial_a0, two_bodies, two_body_declarations
 from mime.build import _testing
+from mime.build._refusals import ArgumentRefused
 from mime.build._plan import Section
-from mime.experiment import BuiltExperiment, Experiment, Mermaid
+from mime.experiment import BuiltExperiment, Experiment, GraphPage, Mermaid
 from mime.experiment._mermaid import POINTER, _escaped
 from mime.experiment._mermaid_page import (CREDIT, MERMAID_CDN, MERMAID_SRI, MERMAID_VERSION, NOTE, OUTPUT_WARNING_BYTES,
                                            library_bytes)
@@ -307,31 +310,27 @@ def test_control_an_escaping_that_forgets_the_hash_differs_from_maddenings():
 
 # --- the notebook's display ------------------------------------------------------------------------------------------
 #
-# What this bounds: the bundle a notebook gets is the same page in every front end (an ``<iframe srcdoc>`` that unescapes
-# to the page, and the Mermaid text as ``text/plain``); the page holds the graph's text exactly once, the library either
+# What this bounds: the object a notebook gets is the same page in every front end (an ``<iframe srcdoc>`` that unescapes to
+# the page, and the Mermaid text as ``text/plain``); the page holds the graph's text exactly once, the library either
 # inlined (the shipped bytes, held to their pinned sha256) or from jsDelivr (held to its sha384, which is the sha384 of
-# those same bytes), and loads nothing else; the same experiment gives the same page byte for byte. What it does not: that
-# a front end draws it (the page was drawn, panned and zoomed by hand in headless Chrome, which the PR records, and the
-# PR gives the cell the maintainer runs in Colab), and that the pinned hash is the file jsDelivr serves today (measured once, when the
-# pin was written, with the command beside the constants).
+# those same bytes), and loads nothing else; the same experiment gives the same page byte for byte; the graph view takes
+# the 3-D view's names and behaviour (design row #264). What it does not: that a front end draws it (the page was drawn,
+# panned and zoomed by hand in headless Chrome, which the PR records, and the PR gives the cell the maintainer runs in
+# Colab), that the content security policy stops a fetch in a browser (measured by hand: a local server saw the image
+# requested without the policy and never with it; the tests hold the policy's text), and that the pinned hash is the
+# file jsDelivr serves today (measured once, when the pin was written, with the command beside the constants).
 
 
 MERMAID_SHA256 = "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8"
 SCRIPT_TAG = re.compile(r"<script\b[^>]*>")
 URL = re.compile(r"https?://[^\s\"'<>)]+")
 IFRAME_SRCDOC = re.compile(r'<iframe srcdoc="([^"]*)"')
+#: The review's payload: a label a person wrote by hand, holding an image Mermaid's sanitiser keeps.
+LEAK = 'flowchart LR\n n0["<img src=http://leak.invalid/p.png>x"]\n'
 
 
-@pytest.fixture
-def shown(monkeypatch):
-    """A stand-in for IPython's ``display``: the calls it received."""
-    calls: list[tuple[object, dict]] = []
-    package, module = types.ModuleType("IPython"), types.ModuleType("IPython.display")
-    module.display = lambda obj, **kwargs: calls.append((obj, kwargs))  # type: ignore[attr-defined]
-    package.display = module  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "IPython", package)
-    monkeypatch.setitem(sys.modules, "IPython.display", module)
-    return calls
+def fragment_of(mermaid: Mermaid, **kwargs) -> str:
+    return mermaid.display(**kwargs)._repr_html_()
 
 
 def page_of_frame(fragment: str) -> str:
@@ -346,8 +345,10 @@ def element_text(page: str) -> str:
 
 
 def urls_outside_the_credit(page: str) -> list[str]:
+    """Every URL the page holds but the credit's links and the policy's (which names jsDelivr's origin to allow, and is held by
+    its own test)."""
     held = re.sub(r'src="data:[^"]+"', "", page).replace(CREDIT, "")
-    return URL.findall(held)
+    return URL.findall(re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>', "", held))
 
 
 def test_the_mermaid_is_a_string_and_a_notebook_shows_it_as_a_page_in_a_frame_with_the_text_as_the_fallback(built):
@@ -358,16 +359,28 @@ def test_the_mermaid_is_a_string_and_a_notebook_shows_it_as_a_page_in_a_frame_wi
     assert set(bundle) == {"text/html", "text/plain"}
     assert bundle["text/plain"] == str(mermaid)
     fragment = bundle["text/html"]
-    assert fragment == mermaid.frame() and len(IFRAME_SRCDOC.findall(fragment)) == 1
+    assert fragment == fragment_of(mermaid) and len(IFRAME_SRCDOC.findall(fragment)) == 1
     assert page_of_frame(fragment) == mermaid.page(cdn=True), "a notebook's output loads the library from jsDelivr"
     assert 'sandbox="allow-scripts"' in fragment and "allowfullscreen" in fragment
+    assert f"height: {page_module.FRAME_HEIGHT}px; border: 0" in fragment, "the 3-D frame's: full width, a height, no border"
     assert NOTE in html.unescape(fragment), "what shows where the frame is blank"
     assert repr(mermaid) == repr(str(mermaid))
 
 
+def test_the_name_and_origin_ride_on_the_string_without_changing_what_it_is(built):
+    mermaid = built.to_mermaid()
+    assert mermaid.name == built.report.experiment and mermaid.origin is not None
+    plain = str(mermaid)
+    assert Mermaid(plain) == mermaid and hash(Mermaid(plain)) == hash(mermaid) == hash(plain)
+    assert Mermaid(plain).name is None and Mermaid(plain).origin is None and Mermaid(plain).stale is None
+    for copied in (copy.copy(mermaid), copy.deepcopy(mermaid), pickle.loads(pickle.dumps(mermaid))):
+        assert type(copied) is Mermaid and copied == mermaid and copied.name == mermaid.name
+    assert type(mermaid[:10]) is str and type(mermaid.replace("n0", "m0")) is str
+
+
 def test_no_text_in_a_node_name_can_end_the_fence(built):
-    """The offline text is a Markdown code block that ends at three backticks; MADDENING escapes a backtick in a name,
-    so the diagram's own text cannot."""
+    """The text-only block ends at three backticks; MADDENING escapes a backtick in a name, so the diagram's own text
+    cannot."""
     assert "`" not in built.to_mermaid()
 
 
@@ -383,7 +396,7 @@ def test_the_page_holds_the_graphs_text_exactly_once_escaped_for_the_frame(built
     page = mermaid.page()
     assert element_text(page) == str(mermaid)
     assert page.count(html.escape(str(mermaid), quote=False)) == 1
-    fragment = mermaid.frame()
+    fragment = fragment_of(mermaid)
     srcdoc = IFRAME_SRCDOC.findall(fragment)[0]
     assert '"' not in srcdoc and "<" not in srcdoc, "an attribute holds no raw quote or tag"
     assert html.unescape(srcdoc).count(html.escape(str(mermaid), quote=False)) == 1
@@ -405,12 +418,15 @@ def test_the_shipped_library_is_the_pinned_file_and_its_sha384_is_the_one_jsdeli
 
 def test_the_page_sizes_the_docs_state_are_the_ones_measured(built):
     """``docs/guide/graph_and_tree.md`` and the CLI's README give the page's sizes: 12 kB from jsDelivr, 4.8 MB inlined, the
-    library 3.6 MB; a test holds them, and the number allowlist's reasons name it."""
+    library 3.6 MB; a test holds them, and the number allowlist's reasons name it. A bump of Mermaid fails here and in
+    the three tests that hold the pinned bytes: update the pins, the sizes below and the docs together."""
     mermaid = built.to_mermaid()
     assert 3_550_000 < len(library_bytes()) < 3_650_000
-    assert 4_750_000 < len(mermaid.page()) < 4_850_000 and 4_750_000 < len(mermaid.frame(inline=True)) < 4_950_000
+    assert 4_750_000 < len(mermaid.page()) < 4_850_000
+    with pytest.warns(UserWarning, match="MB as a notebook output"):
+        assert 4_750_000 < len(fragment_of(mermaid, offline=True)) < 4_950_000
     assert 11_000 < len(mermaid.page(cdn=True)) < 14_000
-    assert str(page_module.FRAME_HEIGHT) == "560" and "const READABLE = 0.75," in page_module.SCRIPT
+    assert str(page_module.FRAME_HEIGHT) == "720" and "const READABLE = 0.75," in page_module.SCRIPT
 
 
 def test_control_a_changed_byte_in_the_shipped_copy_fails_the_hash_test(monkeypatch):
@@ -465,16 +481,11 @@ def test_the_page_draws_with_a_fixed_id_and_holds_nothing_that_varies(built):
 def test_the_same_experiment_gives_the_same_page_byte_for_byte_and_another_experiment_another_page(experiment, built):
     first, second = built.to_mermaid(), experiment.build().to_mermaid()
     assert first.page() == second.page() and first.page(cdn=True) == second.page(cdn=True)
-    assert first.frame() == second.frame() and first.frame(inline=True) == second.frame(inline=True)
+    assert fragment_of(first) == fragment_of(second)
+    with pytest.warns(UserWarning, match="MB as a notebook output"):
+        assert fragment_of(first, offline=True) == fragment_of(second, offline=True)
     others = [make().build().to_mermaid() for make in MAKERS.values()]
     assert len({other.page(cdn=True) for other in others}) == len(MAKERS), "experiments that differ give different pages"
-
-
-def test_save_writes_the_page_and_returns_the_path(built, tmp_path):
-    mermaid = built.to_mermaid()
-    written = mermaid.save(tmp_path / "graph.html")
-    assert written == tmp_path / "graph.html" and written.read_text(encoding="utf-8") == mermaid.page()
-    assert mermaid.save(tmp_path / "cdn.html", cdn=True).read_text(encoding="utf-8") == mermaid.page(cdn=True)
 
 
 def test_the_page_escapes_what_would_end_the_element_or_open_a_tag():
@@ -484,47 +495,237 @@ def test_the_page_escapes_what_would_end_the_element_or_open_a_tag():
     assert element_text(page) == str(text)
 
 
-def test_display_shows_what_returning_the_diagram_from_a_cell_shows(built, shown):
+# --- the Mermaid's security level, and what the page may load -----------------------------------------------------------
+#
+# Mermaid's ``securityLevel: "strict"`` is what keeps a ``click ... href "javascript:..."`` in a label from surviving into the
+# drawing (measured by hand in headless Chrome: under ``loose`` the href is kept). Mermaid's default is strict too, so
+# removing the line would be safe today; but the claim of a safe page rests on a setting, and nothing else holds it.
+
+
+def security_problems(script: str) -> list[str]:
+    """What is wrong with how a page's script configures Mermaid's security: not one ``initialize`` call, a level other
+    than ``"strict"`` or more than one, or any other call that could change the configuration after it."""
+    problems: list[str] = []
+    if script.count("mermaid.initialize(") != 1:
+        problems.append(f"{script.count('mermaid.initialize(')} initialize calls, not one")
+    levels = re.findall(r"securityLevel\s*:\s*([^,}\s]+)", script)
+    if levels != ['"strict"']:
+        problems.append(f"securityLevel is {levels}, not [\"strict\"]")
+    if script.count("securityLevel") != len(levels):
+        problems.append("securityLevel is named other than as a configuration key")
+    problems += [f"{name} could change the configuration" for name in ("setConfig", "updateSiteConfig", "mermaidAPI")
+                 if name in script]
+    return problems
+
+
+def test_the_page_configures_mermaids_security_level_as_strict_and_nothing_else(built):
+    page = built.to_mermaid().page(cdn=True)
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.DOTALL)
+    assert scripts == [page_module.SCRIPT], "the page's one inline script is the one that is checked"
+    assert security_problems(page_module.SCRIPT) == []
+
+
+@pytest.mark.parametrize("planted", [
+    pytest.param(lambda script: script.replace('securityLevel: "strict"', 'securityLevel: "loose"'), id="loose"),
+    pytest.param(lambda script: script.replace('securityLevel: "strict"', 'securityLevel: "antiscript"'), id="antiscript"),
+    pytest.param(lambda script: script.replace('securityLevel: "strict"', 'securityLevel: "sandbox"'), id="sandbox"),
+    pytest.param(lambda script: script.replace('securityLevel: "strict", ', ""), id="the key removed"),
+    pytest.param(lambda script: script.replace('securityLevel: "strict"', "securityLevel: level"), id="a variable"),
+    pytest.param(lambda script: script + '\nmermaid.initialize({securityLevel: "strict"});', id="a second initialize"),
+    pytest.param(lambda script: script + '\nmermaid.mermaidAPI.setConfig({securityLevel: "loose"});', id="setConfig"),
+])
+def test_control_every_planted_security_level_is_found_on_every_run(planted):
+    """The faults are enumerated and not drawn, so each is found every run (the review's mutant, ``loose``, once
+    survived the suite)."""
+    assert security_problems(page_module.SCRIPT) == []
+    assert security_problems(planted(page_module.SCRIPT)) != []
+
+
+def directives(policy: str) -> dict[str, list[str]]:
+    return {name: sources for name, *sources in (part.split() for part in policy.split(";") if part.strip())}
+
+
+@pytest.mark.parametrize("cdn", [False, True])
+def test_the_page_may_run_its_own_script_and_the_library_and_load_nothing_else(built, cdn):
+    """A content security policy in the page: the script held by hash (no other inline script, no ``on...`` attribute),
+    the library, the inline style Mermaid sets, and no image, font, frame or request. A hand-built label holding an
+    ``<img src=...>`` (the review's payload) is drawn by Mermaid's sanitiser with the image kept; this is what stops the page
+    fetching it."""
     mermaid = built.to_mermaid()
-    mermaid.display()
-    ((bundle, kwargs),) = shown
-    assert kwargs == {"raw": True} and bundle == mermaid._repr_mimebundle_()
+    page = mermaid.page(cdn=cdn)
+    (content,) = re.findall(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', page)
+    found = directives(html.unescape(content))
+    script_hash = "'sha256-" + base64.b64encode(hashlib.sha256(page_module.SCRIPT.encode("utf-8")).digest()).decode() + "'"
+    (inline,) = re.findall(r"<script>(.*?)</script>", page, re.DOTALL)
+    assert inline == page_module.SCRIPT and page_module.script_hash() == script_hash
+    library = "https://cdn.jsdelivr.net" if cdn else "data:"
+    assert found == {"default-src": ["'none'"], "script-src": [script_hash, library], "style-src": ["'unsafe-inline'"],
+                     "base-uri": ["'none'"], "form-action": ["'none'"]}, "no img-src, font-src, connect-src, frame-src"
+    assert "unsafe-eval" not in content and "unsafe-inline" not in found["script-src"] and "*" not in content
 
 
-def test_display_inline_carries_the_library_and_warns_that_the_output_is_large(built, shown):
-    mermaid = built.to_mermaid()
-    with pytest.warns(UserWarning, match="MB as a notebook output"):
-        mermaid.display(inline=True)
-    ((bundle, _),) = shown
-    page = page_of_frame(bundle["text/html"])
-    assert page == mermaid.page() and MERMAID_CDN not in page
-    assert len(bundle["text/html"]) > OUTPUT_WARNING_BYTES, "the warning is for an output over the rate limit"
-    shown.clear()
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        mermaid.display()
-    assert len(shown[0][0]["text/html"]) < OUTPUT_WARNING_BYTES, "the control: the default output is far below it"
+def test_control_a_loosened_policy_is_not_the_one_the_test_holds(built):
+    page = built.to_mermaid().page()
+    (escaped,) = re.findall(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', page)
+    content = html.unescape(escaped)
+    for planted in (content + "; img-src *", content.replace("default-src 'none'", "default-src *"),
+                    content.replace("data:", "data: https:"), content.replace("script-src", "script-src 'unsafe-inline'")):
+        assert planted != content and directives(planted) != directives(content)
 
 
-def test_offline_the_notebook_gets_the_text_and_the_pointer_and_no_script_in_colab_or_elsewhere(built, shown, monkeypatch):
-    mermaid = built.to_mermaid()
-    for colab in (False, True):
-        if colab:
-            monkeypatch.setitem(sys.modules, "google.colab", types.ModuleType("google.colab"))
-        shown.clear()
-        mermaid.display(offline=True)
-        ((bundle, kwargs),) = shown
-        assert kwargs == {"raw": True} and set(bundle) == {"text/markdown", "text/plain"}
-        assert bundle["text/markdown"] == f"```text\n{mermaid}```\n\n*{POINTER}*\n"
-        assert "<script" not in bundle["text/markdown"] and MERMAID_CDN not in bundle["text/markdown"]
-        assert "```mermaid" not in bundle["text/markdown"], "offline shows the text, not a diagram to be drawn"
+def test_a_hand_built_label_with_an_image_is_drawn_by_a_page_that_may_not_load_it():
+    """The image is in the page as the text of the element Mermaid reads (escaped), so the page itself holds no image to
+    fetch; once drawn, Mermaid's sanitiser keeps it, and the page's policy has no ``img-src`` and ``default-src 'none'``."""
+    page = Mermaid(LEAK).page()
+    assert "<img" not in page, "the payload is escaped text in the page, a tag only once Mermaid draws it"
+    assert html.escape("<img src=http://leak.invalid/p.png>", quote=False) in page
+    (content,) = re.findall(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', page)
+    found = directives(html.unescape(content))
+    assert found["default-src"] == ["'none'"] and "img-src" not in found
+    assert "leak.invalid" not in content
 
 
-def test_display_without_ipython_says_what_to_do_instead(built, monkeypatch):
+# --- the page object: what ``display`` returns, as the 3-D view's ``WebPage`` ----------------------------------------------
+
+
+def test_display_returns_a_page_object_without_ipython_and_it_is_what_a_cell_shows(built, monkeypatch):
     monkeypatch.setitem(sys.modules, "IPython", None)
     monkeypatch.setitem(sys.modules, "IPython.display", None)
-    with pytest.raises(RuntimeError, match="print"):
-        built.to_mermaid().display()
+    mermaid = built.to_mermaid()
+    shown = mermaid.display()
+    assert isinstance(shown, GraphPage) and shown.html == mermaid.page(cdn=True) and shown.height == 720
+    assert shown.name == built.report.experiment and shown.origin is mermaid.origin and shown.stale is None
+    assert shown._repr_html_() == mermaid._repr_mimebundle_()["text/html"]
+    (srcdoc,) = IFRAME_SRCDOC.findall(shown._repr_html_())
+    assert html.unescape(srcdoc) == shown.html
+    taller = dataclasses.replace(shown, height=900)
+    assert "height: 900px" in taller._repr_html_() and "height: 720px" not in taller._repr_html_()
+
+
+#: What Jupyter holds of a cell's value beside its HTML is its ``text/plain``, ``repr``: one line, not the page.
+PLAIN_TEXT_BYTES = 300
+
+
+def test_the_plain_text_of_a_page_object_is_one_short_line_saying_what_it_is_and_how_to_open_it(built):
+    shown = built.to_mermaid().display()
+    plain = repr(shown)
+    assert len(plain.encode("utf-8")) <= PLAIN_TEXT_BYTES and "\n" not in plain
+    assert shown.name in plain and f"{len(shown.html.encode('utf-8')) / 1e3:.0f} kB" in plain and "browser" in plain
+    assert shown.html not in plain and "<iframe" not in plain and "<html" not in plain
+    assert plain.startswith("<GraphPage ") and plain.endswith(">"), "a description, not a constructor call to evaluate"
+    assert "last expression" in plain and ".save(" in plain
+    assert repr(built.to_mermaid()) == repr(str(built.to_mermaid())), "the text's own repr stays the text; the two differ on purpose"
+
+
+def test_a_page_objects_save_writes_the_page_as_displayed_and_the_helper_inlines_by_default(built, tmp_path):
+    mermaid = built.to_mermaid()
+    shown = mermaid.display()
+    written = shown.save(tmp_path / "shown.html")
+    assert written == tmp_path / "shown.html" and written.read_text(encoding="utf-8") == shown.html == mermaid.page(cdn=True)
+    assert mermaid.save(tmp_path / "graph.html").read_text(encoding="utf-8") == mermaid.page()
+    assert mermaid.save(tmp_path / "cdn.html", cdn=True).read_text(encoding="utf-8") == mermaid.page(cdn=True)
+    assert MERMAID_CDN not in mermaid.page() and MERMAID_CDN in mermaid.page(cdn=True)
+
+
+def test_offline_inlines_the_library_as_in_the_3d_view_and_warns_that_the_output_is_large(built):
+    mermaid = built.to_mermaid()
+    with pytest.warns(UserWarning, match="MB as a notebook output") as caught:
+        offline = mermaid.display(offline=True)
+    assert [w.filename for w in caught] == [__file__], "at the script's line, not display's"
+    assert "leave the library to jsDelivr (offline=False)" in str(caught[0].message)
+    assert offline.html == mermaid.page() and MERMAID_CDN not in offline.html and "text/javascript;base64" in offline.html
+    assert len(offline.html.encode("utf-8")) > OUTPUT_WARNING_BYTES, "the warning is for an output over the limit"
+    assert page_of_frame(offline._repr_html_()) == offline.html
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        online = mermaid.display()
+    assert online.html == mermaid.page(cdn=True) and MERMAID_CDN in online.html
+    assert len(online.html.encode("utf-8")) < OUTPUT_WARNING_BYTES, "the control: the default output is far below it"
+
+
+def test_the_text_alone_is_the_string_and_the_pointer_block_not_a_flag_of_display(built):
+    mermaid = built.to_mermaid()
+    block = mermaid.text_with_pointer()
+    assert block == f"```text\n{mermaid}```\n\n*{POINTER}*\n"
+    assert "<script" not in block and MERMAID_CDN not in block and "```mermaid" not in block
+    with pytest.raises(TypeError):
+        mermaid.display(inline=True)  # type: ignore[call-arg]
+
+
+def test_a_caption_is_a_line_above_the_diagram_in_the_page(built):
+    mermaid = built.to_mermaid()
+    page = mermaid.display(caption="a <b> caption").html
+    assert "<p>a &lt;b&gt; caption</p>" in page and "<b>" not in page
+    assert page.index("a &lt;b&gt; caption") < page.index('id="stage"')
+    assert "caption" not in mermaid.page()
+
+
+# --- the default file name, and where a page may be written ---------------------------------------------------------------
+
+
+def test_the_default_file_name_is_never_the_3d_pages_so_the_graph_never_overwrites_a_view(built, tmp_path, monkeypatch):
+    """The 3-D view writes ``<experiment>.html`` (``mime.viz.web``) by default. A graph written beside a view of the same
+    experiment with the same name would overwrite it, silently."""
+    mermaid = built.to_mermaid()
+    monkeypatch.chdir(tmp_path)
+    three_d = tmp_path / f"{mermaid.name}.html"
+    three_d.write_text("the 3-D view", encoding="utf-8")
+    written = mermaid.save()
+    assert written == Path(f"{mermaid.name}.graph.html") and written != three_d.relative_to(tmp_path)
+    assert three_d.read_text(encoding="utf-8") == "the 3-D view", "the 3-D page is untouched"
+    assert (tmp_path / written).read_text(encoding="utf-8") == mermaid.page()
+    assert Mermaid("flowchart LR\n").save() == Path("graph.graph.html"), "a hand-built graph has no experiment's name"
+
+
+def test_a_page_is_refused_inside_a_saved_or_run_folder_by_the_library_as_by_the_command(built, tmp_path):
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    (folder / "run.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ArgumentRefused, match="visuals.web-out") as refused:
+        built.to_mermaid().save(folder / "graph.html")
+    assert "diagram.save(" in refused.value.refusals[0].action and not (folder / "graph.html").exists()
+
+
+# --- a stale graph says so, as a stale 3-D view does ---------------------------------------------------------------------
+
+
+def stale_graph() -> tuple[Mermaid, Mermaid]:
+    """A graph of a build and the same graph after the experiment lost a law, and a graph built after that."""
+    experiment = full_toy()
+    before = experiment.build().to_mermaid()
+    assert before.stale is None, "a fresh graph is not stale"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        experiment.remove("toy.spring:probe")
+    return before, experiment.build().to_mermaid()
+
+
+def test_a_graph_built_before_a_removal_says_it_is_stale_wherever_it_is_shown(tmp_path):
+    before, after = stale_graph()
+    said = "this graph predates the removal of the law toy.spring:probe: build the experiment again"
+    assert before.stale == said and after.stale is None, "the control: a graph built after the change is not stale"
+    banner = f"STALE: {said}"
+    bundle = before._repr_mimebundle_()
+    assert banner in html.unescape(bundle["text/html"]) and "color: #b3261e" in bundle["text/html"]
+    assert "STALE" not in bundle["text/plain"] and bundle["text/plain"] == str(before), "the text stays the str it is"
+    with pytest.warns(UserWarning, match="predates the removal") as caught:
+        shown = before.display()
+    assert [w.filename for w in caught] == [__file__]
+    assert shown.stale == said and f"; STALE, {said}>" in repr(shown) and banner in shown._repr_html_()
+    assert banner in html.unescape(IFRAME_SRCDOC.findall(shown._repr_html_())[0]) and shown.html.index("STALE:") < shown.html.index('id="stage"')
+    with pytest.warns(UserWarning, match="predates the removal"):
+        written = before.save(tmp_path / "stale.html")
+    assert "STALE: " + said in written.read_text(encoding="utf-8")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fresh = after.display()
+        after.save(tmp_path / "fresh.html")
+    assert "STALE" not in repr(fresh) and "STALE" not in fresh.html and "STALE" not in fresh._repr_html_()
+
+
+def test_a_graph_written_by_hand_or_of_a_loaded_experiment_is_never_stale():
+    hand = Mermaid("flowchart LR\n    n0[\"a\"]\n")
+    assert hand.stale is None and "STALE" not in hand.page() and "STALE" not in hand._repr_mimebundle_()["text/html"]
 
 
 # --- the tree --------------------------------------------------------------------------------------------------------
