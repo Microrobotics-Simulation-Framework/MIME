@@ -27,6 +27,7 @@ class ClockRotating(UniformRotating):
     the constant and a controller that writes it, naming 0.2.0 as the route."""
 
     version = "0.1.0"
+    references = ("Peyer2013",)
     builds = {"": (UniformRotatingNode,)}
     constant_commands = {"frequency": (
         "its phase is the present frequency times the time since the start, not the integral of the frequency, so a "
