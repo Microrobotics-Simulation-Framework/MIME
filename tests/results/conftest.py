@@ -10,15 +10,12 @@ from pathlib import Path
 
 import pytest
 from script_a import reproduction_arm
+from study_case import FREQUENCIES, SPEED, STAGE_EVERY
 
 from mime import Study
 from mime.results import StudyResult
 from mime.study import grid
 from mime.units import Hz, s
-
-SPEED = "swim_speed:umr.speed"
-FREQUENCIES = (10.0, 20.0, 30.0)
-STAGE_EVERY = 0.005
 
 
 @pytest.fixture(scope="session")

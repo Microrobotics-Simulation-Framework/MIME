@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import FREQUENCIES, STAGE_EVERY
+from study_case import FREQUENCIES, STAGE_EVERY
 from pxr import Sdf, Usd, UsdGeom
 from script_a import reproduction_arm
 

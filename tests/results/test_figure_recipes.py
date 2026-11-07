@@ -10,7 +10,7 @@ import warnings
 from pathlib import Path
 
 import pytest
-from conftest import FREQUENCIES, SPEED
+from study_case import FREQUENCIES, SPEED
 
 from mime.build._refusals import ArgumentRefused, BuildRefused
 from mime.results import FigurePage, FigureRecipe, StudyResult
