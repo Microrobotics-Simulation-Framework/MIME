@@ -134,27 +134,38 @@ def test_the_kept_versions_build_their_own_nodes_from_three_moments():
         assert node_inertia(built, "rod").tolist() == [1e-13, 2e-13, 3e-13]
 
 
-def test_a_body_whose_parts_give_products_runs_end_to_end_under_the_hull_contact_with_nothing_contained_or_flagged():
-    """The first released-path run with products of inertia: FL-9 in script A's tube, held at its hull's points from
-    the first step (the hull contact, so the containment watch of the centre-held contact does not apply: FL-9's tensor
-    under that contact turns the screw across the tube within 0.35 s), its inertia the parts' own, 20 steps of 0.5 ms.
-    The node is 0.4.0's, the tensor it holds has the parts' product, and the run is finite, with nothing flagged but
-    the touch."""
-    from hull_cases import hull_contact
+def spinning_screw(inertia=None) -> Experiment:
+    """FL-9's shape alone in free space, torque-free, spinning about axes that mix its transverse ones, its density
+    declared and its inertia the parts' own, or ``inertia`` declared in its place."""
+    exp = Experiment("spinning_screw", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1.0))
+    exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=mm((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((30.0, 60.0, 40.0))), parts={"shell": Part(Screw(
+            radius=mm(1.56), length=mm(7.47), wavenumber=dimensionless(2.33), modulation=dimensionless(0.33),
+            starts=2))}))
+    exp.declare("umr.parts.shell.density", kg_per_m3(1410.0), reason="FL-9 resin plus magnets, mean density")
+    if inertia is not None:
+        exp.declare("umr.inertia", kg_m2(inertia), reason="the parts' diagonal, the products left out")
+    return exp
 
-    experiment = hull_contact("products")
-    experiment.remove("umr.inertia", kind="value")
-    experiment.declare("umr.parts.shell.density", kg_per_m3(1410.0), reason="FL-9 resin plus magnets, mean density")
-    built = experiment.build()
-    node = built.graph.get_node("umr")
+
+def test_a_body_whose_parts_give_products_runs_end_to_end_and_the_products_turn_it():
+    """The first released-path run with products of inertia (a run, not a node or a saved fixture): FL-9's shape,
+    torque-free, spinning across its transverse axes for 0.2 s, its inertia the parts' own. The node is 0.4.0's, the
+    tensor it holds has the parts' product, and the run is finite. **The control:** the same body with the parts'
+    diagonal declared in the tensor's place, nothing else changed, ends at another attitude (0.028 apart here, the
+    product being 0.1 % of the moment it couples), so the run did carry the product. No contact is attached: the
+    centre-held contact would flag FL-9's tensor (the containment watch) and the hull contact's compile alone is over
+    the test budget."""
+    built = spinning_screw().build()
     tensor = node_inertia(built).reshape(3, 3)
-    assert type(node) is RigidInertialTensorNode and tensor[1, 2] != 0.0
-    result = built.run(s(0.01), history=True)
-    assert result.containment == ()
-    assert {read.path for read in result.flags if read.raised} <= {"umr.touching"}, "the hull is at the wall by design"
-    for name in ("pose", "twist"):
-        assert np.all(np.isfinite(np.asarray(result.history["umr"][name])))
-    assert np.max(np.abs(np.asarray(result.history["umr"]["twist"])[:, 3:])) > 1.0, "the field turned the body"
+    assert type(built.graph.get_node("umr")) is RigidInertialTensorNode and tensor[1, 2] != 0.0
+    carried = built.run(s(0.2), history=True)
+    left_out = spinning_screw(tuple(float(c) for c in np.diag(tensor))).build().run(s(0.2), history=True)
+    pose, control = (np.asarray(each.history["umr"]["pose"]) for each in (carried, left_out))
+    assert np.all(np.isfinite(pose)) and np.all(np.isfinite(np.asarray(carried.history["umr"]["twist"])))
+    assert carried.containment == () and not [read.path for read in carried.flags if read.raised]
+    assert np.max(np.abs(pose[:, 3:] - control[:, 3:])) > 1e-3, "the product turned the body"
 
 
 def test_the_saved_forms_copy_of_the_line_0_3_0_drew_is_the_kept_versions():
