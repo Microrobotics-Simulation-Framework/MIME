@@ -218,7 +218,7 @@ def test_tutorial_as_experiment_with_every_cell_run_again_builds_in_a_notebook_a
 
 @pytest.mark.parametrize(("first", "law", "replaced"), [
     ("experiment.attach(Drag.Surrogate(", "drag:robot", ("drag", "mrs")),
-    ("experiment.attach(SimpleWall.Projection(", "contact:robot", ("contact", "0.4.0")),
+    ("experiment.attach(SimpleWall.Projection(", "contact:robot", ("contact", "0.5.0")),
 ])
 def test_tutorial_as_swap_lines_run_in_a_notebook_replace_the_earlier_model(first, law, replaced, notebook):
     setup, _ = split_at_run(read_notebook("tutorial_a.ipynb"))

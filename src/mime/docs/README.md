@@ -282,7 +282,8 @@ The **refusal catalogue**: a page for every code of the refusal table (`errors/<
 their index, generated from the table and the scan of the source. The page of a code on the refusal
 list (`docs/ratchets/refusal_codes.txt`) says that no test names it (a test may raise a code without naming it, so the page never says "raises"
 until a hook records what is raised), and the build counts it as a hatch; the catalogue's hand-written meanings wait for a lab's reading of the pages. The ledger's
-entries and mechanisms other than the pilot's have their sources, the contact's among them (contact 0.4.0); five node classes carry
+entries and mechanisms other than the pilot's have their sources, the contact's among them (contact 0.4.0 and
+0.5.0); five node classes carry
 `NodeMeta` and a symbol table. Each row of a node page whose units the code does
 not declare is marked (`units declared, not checked`), and three concept notes (`docs/scene.md`, `docs/materials.md`,
 `docs/multibody.md`) hold the definitions the user guide links to.

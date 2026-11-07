@@ -725,12 +725,12 @@ def default_plan_misses() -> list[str]:
 
 
 def test_the_contact_that_holds_the_hull_declares_its_margin_and_the_default_plan_comes_from_it():
-    """The contact 0.4.0 (the body's hull points held, its orientation read, since 0.2.0) names its margin as how far it
+    """The contact 0.5.0 (the body's hull points held, its orientation read, since 0.2.0) names its margin as how far it
     holds the body off the surface (``Interaction.holds_off``), so the planner's ``PlanContext.approach`` reads it and
     the MRS rung's default force spacing keeps FL-9 CONFINED_GAP (0.55) force spacings or more off the tube's wall."""
     from mime.interactions import Contact
 
-    assert (Contact.version, Contact.holds_off) == ("0.4.0", "margin")
+    assert (Contact.version, Contact.holds_off) == ("0.5.0", "margin")
     assert default_plan_misses() == []
 
 

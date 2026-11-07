@@ -140,6 +140,10 @@
     last bits (MIME-ANO-129);
   - `test_projection.py`: a Hypothesis property of the confined body's node, after every step inside the lumen less
     its extent and margin and moving no further out where projected; the control, the unconfined node, fails it;
+  - `test_contact_loops.py`: the contact 0.5.0, whose sweeps and Newton steps are XLA loops, against 0.4.0's unrolled
+    program, within committed tolerances in units in the last place of each result's scale: the sweeps drawn, the
+    Newton steps on every kind with a support, the whole step on FL-9 and the tube demo in both precisions (the forces
+    by their net wrench), the derivatives in both modes; the controls one sweep short and the rows reversed;
   - `test_hull_contact.py`: the contact 0.4.0, which holds a body's hull points (`hull_cases.py`'s nodes and its
     FL-9 held from the first step), each oracle with a control that fails it on every run: a capped cylinder and
     FL-9 drawn turned and placed within what the tube admits, moving and driven, never past the wall nor past the

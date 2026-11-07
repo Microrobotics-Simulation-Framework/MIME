@@ -1,5 +1,5 @@
 ---
-describes: ["0.1.0", "0.4.0"]
+describes: ["0.1.0", "0.4.0", "0.5.0"]
 ---
 # A body against a surface
 
@@ -49,14 +49,21 @@ of the body's own deepest points tie or where a step changes the contact's branc
 
 **The surface and its free side.** A surface faces the region it bounds, and the contact keeps the body on that side: [the scene note](../../scene.md).
 
-**Versions.** `contact` 0.4.0 chooses each group's point again in the second pass of the projection after the step, at
-the pose the first pass left, and holds it beside the first pass's points: a group can hold two of the body's local
-deepest points (a screw's rim and the crest pass beside it), and the first pass's turn could leave the one it did not hold
-past the margin (MIME-ANO-136). 0.3.0, which was in no release, held the first pass's points alone; it started each
-group's search from as many places as the hull's shape needs and held the point only of a search that converged
-(MIME-ANO-134 and MIME-ANO-135 record what the earlier search did). 0.2.0, which was in no release, held the hull's points
-and climbed a fixed count of steps from the group's nearest sample. 0.1.0 held the body's
-centre by its extent about its own axis and never read its orientation, so a body that turned across a narrow tube passed
-through the wall (MIME-ANO-131); it stays registered (`mime.interactions.KEPT`), so a folder saved with it loads and
-reproduces, and a script that writes `Contact` gets 0.4.0. For a body whose hull no point reaches the margin of, the body
-steps as the free body does, to the last bit, in every version.
+**Versions.** `contact` 0.5.0 runs the hold's sweeps and its search's Newton steps as XLA loops, the same updates in the
+same order, where 0.4.0 unrolled them, a call each: the step's program is smaller and compiles faster, and its rounding
+is not 0.4.0's. A screw held from its first step in script A's tube moves, in float32, its velocity by about a millionth
+of its size; the forces among its held points move by up to two parts in a thousand of their scale, since their split
+is not unique, while their net force moves by under a thousandth of the momentum rate it came from, on the runners
+measured; in float64 each moves by a hundred-billionth of its scale or less, and a sphere in the tube demo is bit for bit (`tests/oracles/test_contact_loops.py` holds the two
+versions to each other). 0.4.0 stays registered (`mime.interactions.KEPT`), so a folder saved with it reproduces to the last bit.
+`contact` 0.4.0 chooses each group's point again in the second pass of the projection after the step, at the pose the
+first pass left, and holds it beside the first pass's points: a group can hold two of the body's local deepest points (a
+screw's rim and the crest pass beside it), and the first pass's turn could leave the one it did not hold past the margin
+(MIME-ANO-136). 0.3.0, which was in no release, held the first pass's points alone; it started each group's search from
+as many places as the hull's shape needs and held the point only of a search that converged (MIME-ANO-134 and
+MIME-ANO-135 record what the earlier search did). 0.2.0, which was in no release, held the hull's points and climbed a
+fixed count of steps from the group's nearest sample. 0.1.0 held the body's centre by its extent about its own axis and
+never read its orientation, so a body that turned across a narrow tube passed through the wall (MIME-ANO-131); it stays
+registered (`mime.interactions.KEPT`), so a folder saved with it loads and reproduces, and a script that writes
+`Contact` gets 0.5.0. For a body whose hull no point reaches the margin of, the body steps as the free body does, to the
+last bit, in every version.
