@@ -78,9 +78,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any, cast
 
-from mime.build import Refusal, RefusalClass
+from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
@@ -179,6 +180,29 @@ def newer_form_refusal(found: object, family: str, reads: Sequence[str], where: 
         f"{where} was written by a newer MIME: its form is {found}, and this MIME ({__version__}) reads "
         f"{', '.join(reads)}",
         "install the MIME that wrote it, a later one (`pip install -U mime-engine`), then load it again")
+
+
+#: The refusal of a kept ``rigid_inertial`` (0.3.0 or 0.2.0) given a tensor with products of inertia
+#: (``mime.dynamics.body``): at a load it means the folder rested on exploratory's waiver of them.
+PRODUCTS_REFUSAL = "value.products-of-inertia"
+
+
+def products_waiver_refusals(refused: BuildRefused) -> BuildRefused:
+    """``refused`` (the build of a loaded folder) with each refusal of products of inertia worded for a folder: the
+    kept version's own words say how to build a body, and a folder is not edited as a body. The folder rested on
+    exploratory's waiver of the products, which went with ``rigid_inertial`` 0.4.0, so it is re-created from its script
+    on the current version."""
+    if all(each.code != PRODUCTS_REFUSAL for each in refused.refusals):
+        return refused
+    found = [replace(
+        each,
+        message=f"{each.message}. This folder names that version, which dropped the products only under exploratory's "
+                f"waiver, and this version no longer gives the waiver: it is refused at load, not reproduced without "
+                f"them",
+        action="re-create the experiment from its script on this version, whose body carries the full tensor "
+               "(Body(..., dynamics=RigidInertial())), and save it again; a folder cannot be edited into one")
+        if each.code == PRODUCTS_REFUSAL else each for each in refused.refusals]
+    return type(refused)(found, refused.report)
 
 
 def _renamed_rungs(document: dict[str, object]) -> tuple[dict[str, object], tuple[str, ...]]:
@@ -421,8 +445,8 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
 
 __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS",
            "DURATION_ADDED", "DURATION_KEY", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
-           "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
+           "PRODUCTS_REFUSAL", "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
            "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RUNG_RENAMED", "TERMS_ADDED", "TERMS_KEYS",
            "USABLE_CPUS_KEY", "added_after", "based_on_held", "document_in_form", "duration_held", "newer_form_refusal",
-           "physics_in_form", "program_keys_held", "resolved_in_form", "terms_keys_held", "upgraded_document",
-           "upgraded_lock", "version_of"]
+           "physics_in_form", "products_waiver_refusals", "program_keys_held", "resolved_in_form", "terms_keys_held",
+           "upgraded_document", "upgraded_lock", "version_of"]

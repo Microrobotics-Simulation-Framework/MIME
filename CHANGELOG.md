@@ -122,8 +122,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a declaration in place of it names the parts' nine numbers in its source. A declared inertia keeps the form it was
   declared in. A folder of an earlier form loads as before: its document names `rigid_inertial` 0.3.0 (or 0.2.0),
   which builds its node from the diagonal, and its record is compared in its own form. A folder that rested on
-  exploratory's waiver of a body's products is refused at load (`value.not-positive`), saying that 0.3.0 takes three
-  moments; build it under this MIME and save it again, and the products are carried. A reader of version 8 refuses a
+  exploratory's waiver of a body's products is refused at load (`value.products-of-inertia`), saying that 0.3.0 takes
+  three moments and that the folder is re-created from its script on the current version, where the products are
+  carried. A reader of version 8 refuses a
   folder of version 9 as `load.newer-form`, the document and the lock each once.
 - **A save runs its reference steps on the run's own graph, and after a run chunked by one step builds and compiles
   nothing for them (saved form 8).** `built.save` and the saved form `run_to` writes built a second graph and compiled

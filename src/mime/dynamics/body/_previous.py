@@ -64,7 +64,7 @@ class RigidInertialMoments(RigidInertial):
         share = products_share(tensor_of(held if isinstance(held, tuple) else (held,)))
         if share <= PRODUCTS_TAKEN_AS_NONE:
             return []
-        return [Problem("value.not-positive",
+        return [Problem("value.products-of-inertia",
                         f"rigid_inertial {self.version} takes the principal moments about the body's axes, and the "
                         f"inertia has products of inertia, the largest {100.0 * share:.3g}% of the largest moment",
                         "build the body with the current version, which carries the full tensor, "

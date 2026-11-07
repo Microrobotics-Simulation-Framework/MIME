@@ -6,8 +6,11 @@ moments), its torque and its coupled resistance turned with it: its attitude, tu
 body's, to rounding, at every step of the run. Drawn: the tensor (principal moments at FL-9's scale, within the
 triangle inequality, about drawn axes; or FL-9's own tensor, which its parts give), the starting pose and rate, the
 body's moment and its resistance in its own frame; driven (a 1.2 mT field turning at 10 Hz, a drag, 0.5 ms steps) or
-free (200 rad/s, 0.1 ms steps). The equivalence holds within :data:`FLOOR` radians over :data:`STEPS` steps. **The
-plants**, each caught on every draw, more than ten times the floor: a product's sign flipped in one place of the
+free (200 rad/s, 0.1 ms steps). The equivalence holds within the draw's own floor over :data:`STEPS` steps: the larger of
+:data:`FLOOR` and :data:`RESOLUTION_FACTOR` times what the principal body itself moves under a one-ulp change of its
+moments or of its start (a driven draw amplifies rounding about a thousandfold per thousand steps, so an absolute floor
+has no relation to a draw's own sensitivity). **The plants**, each caught on every draw, more than ten times that
+floor, so that a draw whose floor nears a plant fails and is never filtered away: a product's sign flipped in one place of the
 tensor, in both, the world inertia formed ``Q^T J Q``, the step's Jacobian transposed. The drawn tensors' principal
 moments are distinct and their axes turned 20 to 70 degrees from the body's: a body of equal moments, or one whose
 principal axes are a permutation of the body's, has no products, and on such draws (4.5 % of a first strategy's, the
@@ -52,13 +55,18 @@ MASS = 8.491116020725203e-05
 STEPS = 2000
 DRIVEN = {"dt": 5e-4, "rate": 5.0, "field": 1.2e-3, "frequency": 10.0}
 FREE = {"dt": 1e-4, "rate": 200.0, "field": 0.0, "frequency": 0.0}
-#: How far, in radians, the body's attitude may stand from the principal body's over a run, and ten times it the least
-#: a plant must move it. Set from the unplanted arm's resolution as measured before the test was written, 200 draws a
-#: set through this file's own strategies and runs (float64): at most 1.5e-12, 1.1e-11, 5.2e-11 and 2.0e-12 radians
-#: in the four sets (drawn tensors driven and free, FL-9's driven and free), so the floor is nineteen times the largest;
-#: each plant moved it at least 1.1e-2, 1.4e-2, 1.1e-2 and 2.4e-3 radians, every plant on 200 of 200 draws in each set,
-#: so ten times the floor sits 2.4e5 times below the least.
+#: How far, in radians, the body's attitude may stand from the principal body's over a run at least, and ten times the
+#: draw's floor the least a plant must move it. The unplanted arm's resolution as first measured, 200 draws a set
+#: through this file's own strategies and runs (float64): at most 1.5e-12, 1.1e-11, 5.2e-11 and 2.0e-12 radians in the
+#: four sets (drawn tensors driven and free, FL-9's driven and free). That sample missed the tail: on CI one stress run
+#: in four had an FL-9 driven draw at 1.1e-9 to 2.2e-8, because the principal body itself, run twice with its start
+#: changed by one ulp, stands 1.3e-8 apart (error growth about 10^3 per thousand steps). So the floor is the larger of
+#: this constant and :data:`RESOLUTION_FACTOR` times the principal body's own divergence on the draw (:func:`resolution`).
+#: Measured over 1500 fresh draws a set (float64): the largest floor reached 2.4e-7 radians (FL-9 driven; 63 of its draws
+#: had a floor above this constant, 3 of the drawn tensors driven), the unplanted arm at most 0.14 of its floor, and the
+#: least plant 8.4e-4 radians, 8.4e5 times the floor of its draw, every plant clearing PLANT_FACTOR times it.
 FLOOR = 1e-9
+RESOLUTION_FACTOR = 100.0
 PLANT_FACTOR = 10.0
 TAU = 2.0 * np.pi
 
@@ -251,6 +259,32 @@ def runner(node_class: type[RigidInertialNode], dt: float, driven: bool) -> Call
     return jax.jit(run)
 
 
+def principal_attitude(drawn: Mapping[str, np.ndarray], driven: bool, moments: np.ndarray,
+                       start: np.ndarray) -> np.ndarray:
+    """The principal body's quaternion after each step, on 0.3.0's node, from ``moments`` and ``start``."""
+    dt = (DRIVEN if driven else FREE)["dt"]
+    return np.asarray(runner(RigidInertialMidpointNode, dt, driven)(
+        jnp.asarray(moments), jnp.asarray(np.r_[np.zeros(3), start]), jnp.asarray(drawn["twist"]),
+        jnp.asarray(drawn["principal_moment"]), jnp.asarray(drawn["principal_resistance"])))
+
+
+def one_ulp_up(values: np.ndarray) -> np.ndarray:
+    """``values`` with each entry one unit in the last place further from zero."""
+    return np.nextafter(values, np.where(values >= 0.0, np.inf, -np.inf))
+
+
+def resolution(drawn: Mapping[str, np.ndarray], driven: bool) -> float:
+    """The draw's own resolution: the most the principal body's attitude moves over the run under a one-ulp change of
+    its moments, and under a one-ulp change of its start (radians; infinite where a run is not finite). A comparison of
+    two arms that differ by rounding cannot be finer than this."""
+    reference = principal_attitude(drawn, driven, drawn["moments"], drawn["principal_start"])
+    moved = (principal_attitude(drawn, driven, one_ulp_up(drawn["moments"]), drawn["principal_start"]),
+             principal_attitude(drawn, driven, drawn["moments"], one_ulp_up(drawn["principal_start"])))
+    spread = [attitude_angle(reference, other) for other in moved]
+    return float(max(np.max(angle) for angle in spread)) if all(np.all(np.isfinite(a)) for a in spread) \
+        else float("inf")
+
+
 def apart(drawn: Mapping[str, np.ndarray], node_class: type[RigidInertialNode], tensor: np.ndarray,
           driven: bool) -> float:
     """The most the body's attitude, turned back by ``Q``, stands from the principal body's over the run (radians;
@@ -259,22 +293,26 @@ def apart(drawn: Mapping[str, np.ndarray], node_class: type[RigidInertialNode], 
     as_given = runner(node_class, dt, driven)(
         jnp.asarray(tensor.reshape(9)), jnp.asarray(np.r_[np.zeros(3), drawn["start"]]), jnp.asarray(drawn["twist"]),
         jnp.asarray(drawn["moment"]), jnp.asarray(drawn["resistance"]))
-    principal = runner(RigidInertialMidpointNode, dt, driven)(
-        jnp.asarray(drawn["moments"]), jnp.asarray(np.r_[np.zeros(3), drawn["principal_start"]]),
-        jnp.asarray(drawn["twist"]), jnp.asarray(drawn["principal_moment"]),
-        jnp.asarray(drawn["principal_resistance"]))
-    angle = attitude_angle(product(np.asarray(as_given), drawn["turn"]), np.asarray(principal))
+    principal = principal_attitude(drawn, driven, drawn["moments"], drawn["principal_start"])
+    angle = attitude_angle(product(np.asarray(as_given), drawn["turn"]), principal)
     return float(np.max(angle)) if np.all(np.isfinite(angle)) else float("inf")
 
 
 def judged(drawn: Mapping[str, np.ndarray], driven: bool) -> dict[str, float]:
-    """The unplanted arm's distance from the principal body and each plant's."""
+    """The draw's resolution, the unplanted arm's distance from the principal body and each plant's."""
     tensor = drawn["tensor"]
-    return {"unplanted": apart(drawn, RigidInertialTensorNode, tensor, driven),
+    return {"resolution": resolution(drawn, driven),
+            "unplanted": apart(drawn, RigidInertialTensorNode, tensor, driven),
             "sign in one place": apart(drawn, RigidInertialTensorNode, flipped(tensor, False), driven),
             "sign in both places": apart(drawn, RigidInertialTensorNode, flipped(tensor, True), driven),
             "world inertia Q^T J Q": apart(drawn, WorldInertiaTransposed, tensor, driven),
             "Jacobian transposed": apart(drawn, JacobianTransposed, tensor, driven)}
+
+
+def floor_of(found: dict[str, float]) -> float:
+    """The draw's floor from its judged distances (taking ``resolution`` out of them): the larger of :data:`FLOOR` and
+    :data:`RESOLUTION_FACTOR` times the resolution."""
+    return max(FLOOR, RESOLUTION_FACTOR * found.pop("resolution"))
 
 
 SETS = {"drawn tensors, driven": (DRIVEN, False), "drawn tensors, free": (FREE, False),
@@ -295,9 +333,11 @@ def test_a_body_with_products_moves_as_its_principal_body_and_every_plant_is_cau
     operating, screw = SETS[name]
     drawn = data.draw(draws(operating, screw))
     found = judged(drawn, operating is DRIVEN)
-    assert found.pop("unplanted") <= FLOOR
-    missed = {plant: distance for plant, distance in found.items() if not distance > PLANT_FACTOR * FLOOR}
-    assert not missed, missed
+    floor = floor_of(found)
+    assert np.isfinite(floor), "the principal body's own run is not finite: the draw has no resolution"
+    assert found.pop("unplanted") <= floor, floor
+    missed = {plant: distance for plant, distance in found.items() if not distance > PLANT_FACTOR * floor}
+    assert not missed, (floor, missed)
 
 
 #: The gradient's run: FL-9 driven from a fixed start for a fifth of a second at script A's step.

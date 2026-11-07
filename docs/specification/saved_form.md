@@ -202,8 +202,8 @@ refusal table's (`mime/build/refusal_table.txt`).
   loads as it was: its document names `rigid_inertial` 0.3.0 or 0.2.0, which builds its node from the diagonal, and the
   rebuilt record is compared in the folder's form, the parts' tensor written as its diagonal and a declaration's source
   naming the parts' tensor as the three numbers it named. A folder that rested on exploratory's waiver of a body's
-  products of inertia is refused at load by that version's own words (`value.not-positive`), never reproduced with them
-  carried. A reader of the eighth form refuses a folder of the ninth as `load.newer-form`.
+  products of inertia is refused at load (`value.products-of-inertia`), by that version's words and naming the folder's
+  route (re-create it from its script on the current version), never reproduced with them carried. A reader of the eighth form refuses a folder of the ninth as `load.newer-form`.
   *Cases:* `tests/saved/test_form9.py::test_version_nine_holds_the_parts_tensor_and_this_mime_writes_it`,
   `tests/saved/test_form9.py::test_a_form_eight_folder_with_inertia_from_parts_loads_on_the_kept_version_and_verifies_by_its_program`,
   `tests/saved/test_form9.py::test_control_with_the_write_back_removed_the_form_eight_folder_is_refused_naming_the_parts_inertia`,

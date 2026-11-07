@@ -213,10 +213,22 @@ def test_a_form_eight_folder_that_rested_on_the_waiver_of_its_products_is_refuse
     folder = Path(shutil.copytree(DROPPED8, tmp_path / "dropped_products"))
     with pytest.raises(BuildRefused) as refused:
         Experiment.load(folder)
-    assert refused.value.codes() == ["value.not-positive"], refused.value
+    assert refused.value.codes() == ["value.products-of-inertia"], refused.value
     (found,) = refused.value.refusals
     assert "rigid_inertial 0.3.0" in found.message and "products of inertia" in found.message
-    assert "dynamics=RigidInertial()" in found.action
+    assert "exploratory's waiver" in found.message and "refused at load" in found.message
+    assert "re-create the experiment from its script" in found.action and "exp.declare" not in found.action, \
+        "the folder's route, not a script's"
+
+
+def test_a_script_that_builds_the_kept_version_with_products_gets_the_scripts_route_under_the_same_code():
+    """The load's wording is the load's: the same refusal from a script's build names how to build a body."""
+    from mime.dynamics.body import RigidInertialMoments
+
+    found = RigidInertialMoments().value_problems(
+        {"inertia": (1e-10, 2e-11, 0.0, 2e-11, 1e-10, 0.0, 0.0, 0.0, 1e-10)})
+    assert [each.code for each in found] == ["value.products-of-inertia"]
+    assert "exp.declare" in found[0].action and "exploratory" not in found[0].message
 
 
 @contextmanager
