@@ -1,5 +1,7 @@
-"""The containment contact 0.4.0, which holds a body's hull points (``Contact.Projection``; the body's node,
-``RigidInertialNode``'s hull contact), against its oracles, each with a control that fails it on every run:
+"""The containment contact 0.5.0 and 0.4.0, which hold a body's hull points (``Contact.Projection``; the body's node,
+``RigidInertialNode``'s hull contact), against their oracles, each with a control that fails it on every run. The
+oracles' nodes are built as 0.4.0 builds them, its loops unrolled (``hull_cases.hull_node``); ``test_contact_loops.py``
+holds 0.5.0's looped program to that one:
 
 - **Never past the wall.** A capped cylinder, FL-9's screw and two screws of three and four starts at the most twist
   the kind admits (a wavenumber of 4), each at a spacing the guard admits, in script A's tube, drawn turned within

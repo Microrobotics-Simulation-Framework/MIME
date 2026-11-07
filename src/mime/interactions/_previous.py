@@ -1,15 +1,17 @@
 """The versions of interactions kept registered after a later version changed what they compute, so that a folder
 saved with one still loads and reproduces: the contact 0.1.0, which holds the body's centre by its extent, its
-orientation unread; and the magnetic torque and force 0.1.0, which read a field that varies in space at the body's
-centre of mass (MIME-ANO-137). Each kept version is its successor's entry in every respect but that one. A script that
-writes ``Contact.Projection(...)`` or ``Magnetic.Torque()`` gets the current version; a load of a document that names
-0.1.0 gets it from here, and so does an experiment whose comparisons were declared against it (script A's and A0's
-reproductions of the 0.2 line, whose contact held the centre; 7j's frozen register), by ``KEPT``."""
+orientation unread; the contact 0.4.0, which unrolls the hold's sweeps and its search's Newton steps, whose rounding
+0.5.0's loops do not keep; and the magnetic torque and force 0.1.0, which read a field that varies in space at the
+body's centre of mass (MIME-ANO-137). Each kept version is its successor's entry in every respect but that one. A
+script that writes ``Contact.Projection(...)`` or ``Magnetic.Torque()`` gets the current version; a load of a document
+that names a kept version gets it from here, and so does an experiment whose comparisons were declared against one
+(script A's and A0's reproductions of the 0.2 line, whose contact held the centre; 7j's frozen register), by
+``KEPT``."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import override
+from typing import ClassVar, override
 
 from mime.gradients import GradientStatus
 from mime.interactions.contact import CENTRE_SWITCHES, Contact
@@ -69,6 +71,17 @@ class CentreContact(Contact):
                     confines=(Confinement("body", CONFINEMENT.name, "surface", ctx.scalar("margin"), self.rule),))
 
 
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class UnrolledContact(Contact):
+    """The contact 0.4.0: 0.5.0's projection with the hold's sweeps and its search's Newton steps unrolled, a call
+    each, the program a folder saved with 0.4.0 was derived from; 0.5.0 runs the same updates in the same order as XLA
+    loops' iterations, whose rounding differs by a few units in the last place."""
+
+    version = "0.4.0"
+    loops: ClassVar[bool] = False
+
+
 #: What a rigid body must offer a magnetic law: it publishes its pose and takes an applied wrench.
 _RIGID_BODY = requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name], publishes=[POSE.name])
 #: Where 0.1.0's validity stood: one point, the body's centre of mass, for the whole body.
@@ -125,4 +138,4 @@ class CentreMagneticForce(MagneticForce):
              "gradient": Read("field", GRADIENT.name, at=Read("body", POSE.name))}
 
 
-__all__ = ["CentreContact", "CentreMagneticForce", "CentreMagneticTorque"]
+__all__ = ["CentreContact", "CentreMagneticForce", "CentreMagneticTorque", "UnrolledContact"]

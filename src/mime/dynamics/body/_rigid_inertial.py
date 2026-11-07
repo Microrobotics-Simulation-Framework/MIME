@@ -108,7 +108,7 @@ class RigidInertial(Dynamics):
     ``(M/dt + R) dV = F - R V``, ``V' = V + dV`` (there is no explicit setting), takes the gyroscopic term linearly
     implicit at the midpoint (it keeps a torque-free body's kinetic energy and the magnitude of its angular momentum
     to second order; MIME-ANO-129), and holds a confinement: its centre by its extent, projected after the step, or
-    its hull by impulses through the step's system and a projection after it (``Contact`` 0.4.0;
+    its hull by impulses through the step's system and a projection after it (``Contact`` 0.5.0, and 0.4.0 kept;
     ``RigidInertialNode``), which needs nothing of a body's dynamics but this capability, so both versions hold both.
 
     Version 0.3.0 takes the gyroscopic term linearly implicit at the midpoint, where 0.2.0 took it explicit: the
@@ -185,7 +185,8 @@ class RigidInertial(Dynamics):
             hull = {"hull_kind": kind.name, "hull_kind_version": kind.version, "hull_patches": tuple(kind.patches),
                     "hull_counts": held.counts, "hull_centre": held.hull.centre,
                     "hull_rotation": tuple(c for row in held.hull.rotation for c in row),
-                    **{f"{HULL}{name}": value for name, value in settings.items()}}
+                    **{f"{HULL}{name}": value for name, value in settings.items()},
+                    **({"contact_loops": True} if held.loops else {})}
         surface: dict[str, Any] = {f"{SURFACE}{name}": value for name, value in held.parameters.items()}
         b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
                         initial_twist=twist, surface_shape=held.shape, extent=held.extent, margin=held.margin,

@@ -1,13 +1,13 @@
 """The contact family: a body against a surface. Here now: projection against a fixed structure's surface, of the
-body's hull points (``Contact`` 0.4.0), or of its centre by its extent (0.1.0, kept registered:
-``mime.interactions.KEPT``)."""
+body's hull points (``Contact`` 0.5.0, and 0.4.0, kept registered: ``mime.interactions.KEPT``), or of its centre by
+its extent (0.1.0, kept registered)."""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, override
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, override
 
 from mime.core import switch
 from mime.gradients import GradientStatus
@@ -188,11 +188,17 @@ class Contact(Interaction):
 
     **Admissibility only.** The contact says where the body may be, and the force that keeps it there: it never adds
     near-wall lubrication, which a drag that includes it declares (``Interaction.includes_lubrication``), and the plan
-    refuses two laws on a body that include it. **Frictionless in 0.4.0**: friction at the contact (a traction law,
+    refuses two laws on a body that include it. **Frictionless in 0.5.0**: friction at the contact (a traction law,
     Coulomb's with static friction among it) is to be decided with the near-contact physics; its seam is the sweeps'
     rows, to which a traction law adds two along the surface at each point, bounded by its friction times the
     point's normal force.
 
+    Version 0.5.0 runs the hold's sweeps and its search's Newton steps as XLA loops' iterations, the same updates in
+    the same order, where 0.4.0 unrolled them, a call each: the step's program is smaller and compiles faster, and its
+    rounding is not 0.4.0's, so a body held from its first step (FL-9 in script A's tube) moves, in float32, its
+    velocity by about 1e-6 of its size, the forces among its rows by up to 2e-3 of their scale and its net force by
+    under 1e-3 of the momentum rate it came from; in float64 each by 1e-11 of its scale or less
+    (``tests/oracles/test_contact_loops.py`` holds the two to each other).
     Version 0.4.0 chooses each group's point again in the projection's second pass, at the pose its first left, and
     holds it with the first pass's points, where 0.3.0 (in no release) held the first pass's points alone: a group
     holding two of the body's local deepest points (a screw's rim and a crest pass beside it) could have the one it did
@@ -206,11 +212,14 @@ class Contact(Interaction):
     A's shaking and torque with the spacing (MIME-ANO-135). Version 0.2.0 held the body's hull, where 0.1.0 held the
     body's centre by its extent about its own axis and never read its orientation, so a body that turned across a
     narrow tube passed through the wall. A body whose hull no point reaches the margin of steps as the free body does,
-    to the last bit, in every version. 0.1.0 is kept registered (``mime.interactions.KEPT``), so a folder saved with it
-    loads and reproduces; 0.2.0 and 0.3.0, which nothing saved or frozen names, are not."""
+    to the last bit, in every version. 0.1.0 and 0.4.0 are kept registered (``mime.interactions.KEPT``), so a folder
+    saved with either loads and reproduces; 0.2.0 and 0.3.0, which nothing saved or frozen names, are not."""
 
     name = "contact"
-    version = "0.4.0"
+    version = "0.5.0"
+    #: Whether the body's dynamics runs the hold's sweeps and its search's Newton steps as XLA loops
+    #: (``Confinement.loops``): 0.5.0's, where 0.4.0 unrolled them.
+    loops: ClassVar[bool] = True
     holds_off = "margin"
     setting_roles = {
         "rung": DESIGN, "margin": NUMERICAL,
@@ -316,7 +325,8 @@ class Contact(Interaction):
             return Plan(nodes=(), values={"extent": Value("body", "extent")}, problems=unread,
                         confines=(Confinement("body", CONFINEMENT.name, "surface", ctx.scalar("margin"), self.rule),))
         return Plan(nodes=(), confines=(Confinement("body", CONFINEMENT.name, "surface", ctx.scalar("margin"),
-                                                    self.rule, extent=None, spacing=ctx.scalar("spacing")),))
+                                                    self.rule, extent=None, spacing=ctx.scalar("spacing"),
+                                                    loops=self.loops),))
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
