@@ -166,7 +166,7 @@ The full traceback is in <file>; --traceback shows it here.
 [exit 2]
 $ mime pull --from zenodo-sandbox 629525 --signed-in --into <tmp>/signed_in
 the record: the record 629525 on zenodo-sandbox (version 1, 10.5072/zenodo.629525; its concept, every version: 10.5072/zenodo.629524)
-bundle: from <fake>/api/records/629525/files/full_toy.mimebundle/content
+bundle: already in the cache, not downloaded again
 ✓ Bundle 'full_toy' unpacked to <tmp>/signed_in/
   - Manifest, scene and records: OK
   - Assets: none referenced
@@ -175,7 +175,7 @@ Next: mime verify <tmp>/signed_in/
 [exit 0]
 $ mime pull --link env --into <tmp>/linked
 the record: the record 629525 on zenodo-sandbox (version 1, 10.5072/zenodo.629525; its concept, every version: 10.5072/zenodo.629524)
-bundle: from <fake>/api/records/629525/files/full_toy.mimebundle/content
+bundle: already in the cache, not downloaded again
 ✓ Bundle 'full_toy' unpacked to <tmp>/linked/
   - Manifest, scene and records: OK
   - Assets: none referenced
