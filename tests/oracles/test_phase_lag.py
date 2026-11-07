@@ -31,7 +31,7 @@ from rigid_oracles import ConstantResistance, resistance
 
 import mime.observations._phase_lag as phase_lag_module
 from mime import Apparatus, Body, Experiment, Medium, State
-from mime.build import Lag
+from mime.build import BuildRefused, Lag
 from mime.build._maddening import parameter_leaves
 from mime.dynamics import RigidInertial
 from mime.experiment import BuiltExperiment
@@ -172,3 +172,23 @@ def test_the_correction_is_the_lag_the_build_reports(float64):
     assert lags[field] is Lag.THIS_STEP
     assert lags[field.replace("magnetic.torque:ball.flux_density", "phase_lag:ball.flux_density")] is Lag.THIS_STEP
     assert phase_lag_module.LAWS_READ_BEHIND == 1
+
+
+def test_the_observation_reads_the_uniform_field_where_the_torque_reads_it_adding_no_slot(float64):
+    """The provider's node is the same with the observation and without it: its reader slots are the torque's alone."""
+    with_lag = constant(5e-4).build()
+    plain = constant(5e-4)
+    plain.remove(LAG)
+    without = plain.build()
+    fields = [sorted(built.graph.get_node("field.magnetic").initial_state()) for built in (with_lag, without)]
+    assert fields[0] == fields[1] and "flux_density_magnetic_torque_ball" in fields[0]
+    assert not any("phase_lag" in name for name in fields[0])
+
+
+def test_an_observation_of_a_field_no_law_reads_is_refused(float64):
+    exp = constant(5e-4)
+    exp.remove("magnetic.torque:ball")
+    with pytest.raises(BuildRefused) as refused:
+        exp.build()
+    assert "observation.field-read" in refused.value.codes()
+    assert "which no law reads" in next(r.message for r in refused.value.refusals if r.code == "observation.field-read")
