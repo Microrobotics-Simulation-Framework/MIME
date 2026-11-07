@@ -4,12 +4,18 @@ field of any other type is judged on all of it. The kind is the field's type, ne
 typed state writes a field as ``HeldPoints`` is judged so, with nothing declared beside it.
 
 A node's typed state is the closed TypedDict that names exactly the fields it holds (``mime.nodes``'s README), found
-among those its class's module and its bases' modules hold (:func:`field_kinds`)."""
+among those its class's module and its bases' modules hold (:func:`field_kinds`).
+
+The typed state also declares a field's units where nothing else does (no row of the node's symbol table, no interface
+an edge carries it as): beside its type, ``stopped_pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]``
+(:func:`typed_units`). ``verify`` splits a field into blocks by its units, so a field that declares none is judged
+whole."""
 
 from __future__ import annotations
 
 import sys
 from collections.abc import Collection, Mapping
+from dataclasses import dataclass
 from enum import Enum
 from functools import cache
 
@@ -33,6 +39,15 @@ class FieldKind(Enum):
     HELD_FORCES = "held forces"
 
 
+@dataclass(frozen=True)
+class Units:
+    """A state field's units, declared beside its type in its node's typed state: ``Annotated[HeldPoints,
+    Units("m")]``. A composite lists its parts in order, separated by semicolons, its leading parts vectors of three
+    (``"m; 1"`` for a pose), as the symbol table and the vocabulary spell them."""
+
+    text: str
+
+
 _KINDS: Mapping[object, FieldKind] = {HeldPoints: FieldKind.HELD_POINTS, HeldForces: FieldKind.HELD_FORCES}
 _QUALIFIERS = (ReadOnly, NotRequired, Required)
 
@@ -44,6 +59,21 @@ def _kind_of(hint: object) -> FieldKind:
             hint = get_args(hint)[0]
             continue
         return _KINDS.get(hint, FieldKind.OWN)
+
+
+def _units_of(hint: object) -> str | None:
+    while True:
+        origin = get_origin(hint)
+        if origin in _QUALIFIERS:
+            hint = get_args(hint)[0]
+            continue
+        if origin is Annotated:
+            held = [mark.text for mark in getattr(hint, "__metadata__", ()) if isinstance(mark, Units)]
+            if held:
+                return held[0]
+            hint = get_args(hint)[0]
+            continue
+        return None
 
 
 def _states_near(node_class: type) -> tuple[type, ...]:
@@ -107,6 +137,28 @@ def _kinds(node_class: type, fields: frozenset[str]) -> Mapping[str, FieldKind]:
             for name in sorted(fields) for kinds in (found.get(name, {FieldKind.OWN}),)}
 
 
+@cache
+def _units(node_class: type, fields: frozenset[str]) -> Mapping[str, str]:
+    found: dict[str, set[str]] = {}
+    for state in _states_near(node_class):
+        typed = _typed(state)
+        if typed is None or not _names_exactly(state, fields):
+            continue
+        for name, hint in typed[0].items():
+            units = _units_of(hint)
+            if name in fields and units is not None:
+                found.setdefault(name, set()).add(units)
+    return {name: next(iter(held)) for name, held in sorted(found.items()) if len(held) == 1}
+
+
+def typed_units(node: object, fields: Collection[str]) -> dict[str, str]:
+    """The units ``node``'s typed state declares beside its fields' types (:class:`Units`), by field, read from the
+    TypedDict :func:`field_kinds` reads: the closed one, among those its class's module and its bases' modules hold,
+    that names exactly ``fields``. A field none declares, or that two such TypedDicts declare differently, is
+    absent."""
+    return dict(_units(type(node), frozenset(fields)))
+
+
 def field_kinds(node: object, fields: Collection[str]) -> dict[str, FieldKind]:
     """The kind of each of ``fields``, the fields ``node`` holds, from its typed state: the closed TypedDict, among
     those its class's module and its bases' modules hold, that names exactly those fields (every field it requires is
@@ -122,4 +174,4 @@ def paired_forces(kinds: Mapping[str, FieldKind]) -> str | None:
     return forces[0] if len(forces) == 1 else None
 
 
-__all__ = ["FieldKind", "HeldForces", "HeldPoints", "field_kinds", "paired_forces"]
+__all__ = ["FieldKind", "HeldForces", "HeldPoints", "Units", "field_kinds", "paired_forces", "typed_units"]

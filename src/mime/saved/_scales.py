@@ -2,10 +2,10 @@
 repeats bit for bit (one made on a GPU with XLA's deterministic mode off).
 
 From the tenth saved form every field is split into **blocks by unit**, read from the units MIME declares for it
-(:class:`FieldUnits`: the node's symbol table, the edges that read it, the stage's binding, the observations and the
-flags): a pose into its position and its quaternion, a twist into its velocity and its angular velocity, a wrench into
-its force and its torque, a resistance into its translational, coupling and rotational blocks. A field of one unit is
-one block, and so is a field whose units MIME does not declare. A block is within tolerance when, at every reference
+(:class:`FieldUnits`: the node's symbol table, its typed state's ``mime.core.Units``, the edges that read it, the
+stage's binding, the observations and the flags): a pose into its position and its quaternion, a twist into its
+velocity and its angular velocity, a wrench into its force and its torque, a resistance into its translational,
+coupling and rotational blocks. A field of one unit is one block, and so is a field whose units MIME does not declare. A block is within tolerance when, at every reference
 step, its largest difference is at most its **bound**::
 
     bound = max(rtol * the block's largest magnitude over the reference, RESOLUTION_FACTOR * its resolution) + atol
@@ -18,6 +18,13 @@ recorded in the lock (``reference.resolution``). It is how far the run's own rou
 rounding moves far beyond its share of its own magnitude (the angular velocity of a body that barely turns) is judged
 on its resolution, and every other block on its magnitude. A resolution that measures zero, or is not finite, gives no
 floor: the ``rtol`` term alone.
+
+**The parameters move too, on purpose** (kept beside design #266): on the tube demo, a start that moved the state alone
+measured every block's divergence zero, in both precisions, since a body released at rest at the origin starts from
+zeros; the resolution is the program's to the rounding of all its inputs. Moving a parameter an MRS drag holds a value
+made from (its part's placement, its blob) makes that value afresh at each step of the rerun
+(``held_or_made``), which is the rerun's cost on such a run: on the MRS sphere in float64 on a laptop, 12 steps took
+12 s, against 0.01 s with the state alone moved, which measured no divergence there.
 
 **One mask.** Held points (``mime.core.HeldPoints``) are judged only on the rows whose paired force (``HeldForces``)
 acts, in the reference or the rerun, and so are their largest magnitude and their resolution: a row that takes no force

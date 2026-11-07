@@ -46,7 +46,7 @@ ARTEFACTS = Path(__file__).parent / "artefacts"
 TUBE = ARTEFACTS / "tube_demo_counts.npz"
 TUBE_SHA256 = "474f4670acfe96febfad9a7bcfbc920d38eb7fc816d5709b6a88d1d802354b93"
 RESOLUTION = ARTEFACTS / "tube_demo_resolution.json"
-RESOLUTION_SHA256 = "5346bf9f93a6637a06f4ceb6f2ee23693d3db0c8ebd7ed7878ed437599e0fd13"
+RESOLUTION_SHA256 = "0a2087710ede834b695ca02a5caacfb3baf9348ee6e9d9f70de726686e273500"
 #: The units the tube demo's build declares for each field it declares them for, as the artefact records them (its
 #: nodes' symbol tables, the edges that read them, the stage's binding, the observations' outputs, the flags); every
 #: other field is one block. ``tests/examples/test_sphere_settling_tube.py`` holds the demo's own save to them.
@@ -308,8 +308,8 @@ def test_a_torque_where_the_reference_holds_none_is_moved(other_environment, pre
 
 #: Each plant: the field, its element at a step, and the block it is in; the review's twelve.
 EDGES = [*(("ball/twist", (component,), "m/s" if component < 3 else "rad/s") for component in range(6)),
-         ("drag:ball/asymmetry", (), UNDECLARED), ("ball/pose", (6,), "1"),
-         ("drag:ball/least_eigenvalue", (), UNDECLARED), ("drag:ball/wall_gap", (), UNDECLARED),
+         ("drag:ball/asymmetry", (), "1"), ("ball/pose", (6,), "1"),
+         ("drag:ball/least_eigenvalue", (), "1"), ("drag:ball/wall_gap", (), "m"),
          ("swim_speed:ball/speed", (), "m/s"), ("swim_speed:ball/distance", (), "m")]
 
 
@@ -500,12 +500,13 @@ def test_the_sliding_balls_fields_take_their_units_from_its_build_and_its_lock_r
     fields = sliding.fields
     assert (fields["ball.pose"], fields["ball.twist"]) == (FieldUnits("m; 1"), FieldUnits("m/s; rad/s"))
     assert fields["gravity:ball.wrench"] == FieldUnits("N; N m")
-    assert fields["ball.contact_points"] == FieldUnits(None, "ball.contact_forces"), "held points pair with the forces"
+    assert fields["ball.contact_points"] == FieldUnits("m", "ball.contact_forces"), "held points pair with the forces"
+    assert fields["ball.contact_forces"] == FieldUnits("N"), "the typed state's newtons, not the touching flag's 1"
     reference = sliding.form.lock["reference"]
     resolution = reference["resolution"]
     assert sorted(resolution["ball.pose"]) == ["1", "m"] and sorted(resolution["ball.twist"]) == ["m/s", "rad/s"]
     assert sorted(resolution["gravity:ball.wrench"]) == ["N", "N m"]
-    assert sorted(resolution["ball.contact_points"]) == [UNDECLARED]
+    assert sorted(resolution["ball.contact_points"]) == ["m"]
     assert reference["resolution_factor"] == RESOLUTION_FACTOR
     assert resolution["ball.pose"]["m"] > 0 and resolution["ball.twist"]["rad/s"] > 0, \
         "the start one ulp off moved the body: the rerun measured something"
@@ -524,7 +525,7 @@ def test_a_held_point_of_a_row_that_takes_a_force_moved_at_ten_times_its_bound_i
     row = int(np.flatnonzero(np.all(sliding.history["ball"]["contact_forces"] != 0, axis=0))[0])
     reference = sliding.form.lock["reference"]
     magnitude = float(np.max(np.abs(points[:, row].astype(np.float64))))
-    floor = reference["resolution"]["ball.contact_points"][UNDECLARED] or 0.0
+    floor = reference["resolution"]["ball.contact_points"]["m"] or 0.0
     size = 10.0 * max(reference["rtol"] * magnitude, RESOLUTION_FACTOR * floor)
     for step in range(STEPS):
         moved = points.astype(np.float64).copy()

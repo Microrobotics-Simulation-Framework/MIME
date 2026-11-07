@@ -214,23 +214,28 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_form9.py::test_version_eights_reader_refuses_a_folder_of_version_nine_as_newer_each_file_once`,
   `tests/saved/test_form9.py::test_control_the_form_left_unstepped_is_read_by_version_eights_reader_with_no_newer_form`.
 - **[lock.blocks]** From the tenth form, where `verify` claims no bits, every saved field is split into **blocks by
-  unit**, read from the units MIME declares for it (its node's symbol table, the edges that read it, the stage's
-  binding, the observations' outputs, a flag's): a composite's units list its parts, separated by semicolons, its
-  leading parts vectors of three, so a pose is its position and its quaternion, a twist its velocity and its angular velocity, a
-  wrench its force and its torque, and a resistance its translational, coupling and rotational blocks. A field of one
-  unit is one block, and so is one whose units are not declared. A block is within tolerance when at every reference
-  step its largest difference is at most `max(rtol` times its largest magnitude over the reference,
-  `resolution_factor` times its `resolution``)` plus `atol`, written as zero. The **resolution** is measured at save:
-  the reference steps run once more, by the same compiled program, from a start one unit in the last place off (every
-  nonzero floating number of the initial state, and of the small parameters the compiled step reads (`NUDGED_SIZE`),
-  one ulp up; a body released at rest at the origin starts from zeros, which the state alone cannot move), and the lock
-  records each block's largest divergence (`reference.resolution`, `null` where it is not finite) and the factor
-  (`reference.resolution_factor`), the two keys the form adds. A resolution that is zero or not finite gives no floor.
-  Held points (`HeldPoints`) are judged only on the rows whose paired force (`HeldForces`) acts in the reference or the
-  rerun, their magnitude and resolution too. A field that is not of floating point is compared exactly. A folder of the
-  ninth form or earlier is judged as its form says, element by element (`|a - b| <= atol + rtol |b|` with its own
-  numbers), in `verify`, `verify --run` and the load's comparison of the derived graph, and one that holds either new
-  key is refused. A reader of the ninth form refuses a folder of the tenth as `load.newer-form`.
+  unit**, read from the units MIME declares for it (its node's symbol table, else its node's typed state, where a
+  field's units stand beside its type as `Units`, then the edges that read it, the stage's binding, the observations'
+  outputs, a flag's): a composite's units list its parts, separated by semicolons, its leading parts vectors of three,
+  so a pose is its position and its quaternion, a twist its velocity and its angular velocity, a wrench its force and
+  its torque, and a resistance its translational, coupling and rotational blocks. A field of one unit is one block, and
+  so is one whose units are not declared; every field the saved cases' builds hold declares its units. A block is within
+  tolerance when at every reference step its largest difference is at most `max(rtol` times its largest magnitude over
+  the reference, `resolution_factor` times its `resolution``)` plus `atol`, written as zero. The **resolution** is
+  measured at save: the reference steps run once more, by the same compiled program, from a start one unit in the last
+  place off (every nonzero floating number of the initial state, and of the small parameters the compiled step reads
+  (`NUDGED_SIZE`), one ulp up), and the lock records each block's largest divergence (`reference.resolution`, `null`
+  where it is not finite) and the factor (`reference.resolution_factor`), the two keys the form adds. A resolution that
+  is zero or not finite gives no floor. The start moves the parameters as well as the state, on purpose: on the tube
+  demo a start that moved the state alone measured every block's divergence zero, in both precisions, since a body
+  released at rest at the origin starts from zeros. Where a parameter it moves is one an MRS drag holds a value made
+  from, the rerun makes that value afresh at each step, which is then most of the rerun's cost (measured in
+  `mime.saved._scales`). Held points (`HeldPoints`) are judged only on the rows whose paired force (`HeldForces`) acts
+  in the reference or the rerun, their magnitude and resolution too. A field that is not of floating point is compared
+  exactly. A folder of the ninth form or earlier is judged as its form says, element by element
+  (`|a - b| <= atol + rtol |b|` with its own numbers), in `verify`, `verify --run` and the load's comparison of the
+  derived graph, and one that holds either new key is refused. A reader of the ninth form refuses a folder of the tenth
+  as `load.newer-form`.
   *Cases:* `tests/saved/test_form10.py::test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part_and_each_fields_resolution`,
   `tests/saved/test_form10.py::test_a_form_nine_folder_loads_with_the_tolerance_it_was_written_with_and_verifies_element_by_element`,
   `tests/saved/test_form10.py::test_a_form_nine_folder_is_judged_element_by_element_and_the_same_rerun_as_form_ten_block_by_block`,
@@ -252,7 +257,12 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_verify_blocks.py::test_a_held_point_of_a_row_that_takes_no_force_jumping_two_millimetres_is_not_reported`,
   `tests/saved/test_save_reference.py::test_a_save_after_a_run_chunked_by_one_step_builds_and_compiles_nothing`,
   `tests/unit/test_field_kinds.py::test_a_new_nodes_held_points_pair_with_its_one_field_of_held_forces`,
-  `tests/unit/test_field_kinds.py::test_control_a_typed_state_that_does_not_name_exactly_the_fields_types_none_of_them`.
+  `tests/unit/test_field_kinds.py::test_control_a_typed_state_that_does_not_name_exactly_the_fields_types_none_of_them`,
+  `tests/unit/test_field_kinds.py::test_a_new_nodes_typed_state_declares_the_units_of_its_fields_beside_their_types`,
+  `tests/unit/test_field_kinds.py::test_control_units_two_typed_states_declare_otherwise_or_none_names_the_fields_leave_them_undeclared`,
+  `tests/saved/test_declared_units.py::test_every_field_a_save_writes_has_declared_units`,
+  `tests/saved/test_declared_units.py::test_control_without_the_typed_states_declarations_the_kept_bodys_twist_and_the_drags_diagnostics_are_reported`,
+  `tests/saved/test_declared_units.py::test_control_a_typed_state_that_disagrees_with_a_symbol_row_is_reported`.
 - **[lock.tolerance]** A save of the tenth form writes its precision's `rtol` (`FLOAT32_RTOL` or `FLOAT64_RTOL` of
   `mime.saved._scales`) and the floor's factor (`RESOLUTION_FACTOR`), and a folder keeps the ones it was written with.
   Each is pinned in a table of the measurements it was set from, with where each was made and its margin

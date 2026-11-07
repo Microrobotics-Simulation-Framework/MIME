@@ -118,15 +118,18 @@ modal`, or `mime.env.deterministic_mode()` before anything computes), it verifie
 again. The CPU is as it was.
 
 **What the tolerance claims** ([`_scales.py`](_scales.py)). From the tenth form, every field is split into **blocks
-by unit**, from the units MIME already declares for it (its node's symbol table, the edges that read it, the stage's
-binding, the observations' outputs, a flag's): a pose into its position, in metres, and its quaternion, a twist into its
-velocity and its angular velocity, a wrench into its force and its torque, a resistance into its translational,
-coupling and rotational blocks. A field of one unit is one block, and so is a field whose units MIME does not declare
-(on the demos: the contact's held points and forces, the MRS drag's diagnostics and its stop record). Each block is
+by unit**, from the units MIME declares for it (its node's symbol table, its node's typed state, where `Units`
+stands beside a field's type, the edges that read it, the stage's binding, the observations' outputs, a flag's): a
+pose into its position, in metres, and its quaternion, a twist into its velocity and its angular velocity, a wrench
+into its force and its torque, a resistance into its translational, coupling and rotational blocks. A field of one unit
+is one block, and so is a field whose units MIME does not declare; every field of the saved cases' builds (every
+registered entry's) declares them, and a test fails a new one that does not (`tests/saved/test_declared_units.py`). Each block is
 within tolerance when, at every reference step, its largest difference is at most **`max(rtol` times its largest
 magnitude, `resolution_factor` times its resolution`)`** (`atol` is written as zero: no absolute part). The
 **resolution** is measured at save: the reference steps run once more, by the same compiled program, from a start one
-unit in the last place off, and the lock records each block's largest divergence (`reference.resolution`). It is the
+unit in the last place off (the state's numbers and the small parameters the step reads: the state alone measured
+nothing on the tube demo, whose ball starts at rest), and the lock records each block's largest divergence
+(`reference.resolution`). It is the
 run's own rounding in that block, so the angular velocity of a body that barely turns is judged on how far rounding
 moves it, not against its velocity, and a sign error in it is caught. A resolution that measures zero gives no floor.
 One mask stays: held points (`HeldPoints`) count only on the rows whose paired force (`HeldForces`) acts, their

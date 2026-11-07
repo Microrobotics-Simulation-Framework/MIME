@@ -156,8 +156,8 @@ def test_the_measurements_the_repository_holds_are_what_its_artefacts_give():
     assert T4_SPREAD["drag:ball/least_eigenvalue"] == PINS["FLOAT32_RTOL"].sources[0].value
     float32, float64 = floor_needs("float32"), floor_needs("float64")
     factor = PINS["RESOLUTION_FACTOR"].sources
-    assert sorted(float32) == ["ball.twist rad/s", f"drag:ball.asymmetry {_scales.UNDECLARED}"], float32
-    assert float32[f"drag:ball.asymmetry {_scales.UNDECLARED}"] == pytest.approx(factor[0].value, rel=0.01, abs=0.0)
+    assert sorted(float32) == ["ball.twist rad/s", "drag:ball.asymmetry 1"], float32
+    assert float32["drag:ball.asymmetry 1"] == pytest.approx(factor[0].value, rel=0.01, abs=0.0)
     assert float32["ball.twist rad/s"] == pytest.approx(factor[1].value, rel=0.01, abs=0.0)
     assert max(float64.values()) == pytest.approx(factor[2].value, rel=0.01, abs=0.0), float64
 

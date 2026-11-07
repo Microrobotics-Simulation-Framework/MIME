@@ -19,10 +19,10 @@ from jax import Array
 from jaxtyping import Float
 from maddening.core.node import BoundaryInputSpec, SimulationNode
 from maddening.core.static_data import StaticArray
-from typing_extensions import NotRequired, ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.build._maddening import node_constructor_arguments
-from mime.core import MimeNode, NodeFields, nearest_point, node_fields, shape_named, typed_view
+from mime.core import MimeNode, NodeFields, Units, nearest_point, node_fields, shape_named, typed_view
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs, so a strict checker
 #: reads its array constructors as partly unknown; the toys call them through this name.
@@ -71,8 +71,8 @@ class ToyNode(SimulationNode):
 
 
 class ToyBodyState(TypedDict, closed=True):
-    x: ReadOnly[Vector]
-    v: ReadOnly[Vector]
+    x: ReadOnly[Annotated[Vector, Units("m")]]
+    v: ReadOnly[Annotated[Vector, Units("m/s")]]
 
 
 class ToyBodyInputs(TypedDict, closed=True):
