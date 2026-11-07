@@ -4,7 +4,10 @@ A build must not re-hash a file of about nine hundred megabytes, so :func:`locat
 is the reference's, and its size and modification time are the ones recorded at the full verification. That catches a
 truncated, replaced or edited file; it does not catch a flipped byte that leaves both unchanged, which only
 :func:`check` (a full re-hash) finds, and which it then marks, so that :func:`locate` refuses the file until a fetch
-repairs it.
+repairs it. A caller that holds the repository's checksum of the file (a bundle's ``md5:...``) can pass it: the check
+then also reads the file once and compares its digest, which does catch that flipped byte (and costs a local read of the
+whole file, no download). With no checksum the check hashes nothing and guards a file's size and its modification time,
+not its bytes.
 
 The record also says who wrote the file. A file MIME downloaded may be replaced by a new download; a file a person
 placed in the directory is never deleted or overwritten, whatever its bytes.
@@ -184,10 +187,29 @@ def size_text(size: int) -> str:
     return f"{size / 1e3:.0f} kB" if size >= 1_000 else f"{size} bytes"
 
 
-def cheap_problem(ref: AssetRef) -> str | None:
+def digest_problem(path: Path, checksum: str) -> str | None:
+    """Why the file at ``path`` is not the one a repository's ``checksum`` (``<algorithm>:<digits>``) names, or ``None``
+    when its digest is that. Reads the whole file, once. A checksum of an algorithm this machine does not have, or of
+    no checksum's shape, cannot be compared and is a problem too, never a pass."""
+    algorithm, _, digits = checksum.partition(":")
+    try:
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, lambda: hashlib.new(algorithm.lower(), usedforsecurity=False))
+    except ValueError:
+        return f"the checksum {algorithm!r} is not one this machine computes"
+    return None if digest.hexdigest() == digits.lower() else "its bytes are not the ones the checksum names"
+
+
+def cheap_problem(ref: AssetRef, checksum: str | None = None) -> str | None:
     """Why the cached file cannot be trusted without a re-hash, or ``None`` when its size is the reference's and it is
     the file, unchanged, that a full verification recorded as right. The reason names neither the hash nor the cache
-    path."""
+    path.
+
+    With ``checksum``, the repository's checksum of the file that the caller holds (``md5:...``), a file that passes all
+    that is also read once and its digest compared, so that a byte changed in place with the size and the modification
+    time kept, which nothing else here sees, is found: it is a problem, and the caller's way to the right bytes is a
+    fetch, which hashes the file in full and replaces one MIME wrote. Without it the shortcut hashes nothing and does
+    not guard the bytes."""
     try:
         seen = file_path(ref).stat()
     except OSError:
@@ -201,6 +223,10 @@ def cheap_problem(ref: AssetRef) -> str | None:
         return "is downloaded, but the file changed after its full check"
     if recorded.failed:
         return "is downloaded, but its full check found other bytes than the reference names"
+    if checksum is not None:
+        mismatch = digest_problem(file_path(ref), checksum)
+        if mismatch is not None:
+            return f"is downloaded, but {mismatch}"
     return None
 
 
@@ -209,12 +235,12 @@ def is_cached(ref: AssetRef) -> bool:
     return cheap_problem(ref) is None
 
 
-def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None) -> Path:
+def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
     """The cached file of ``ref``, checked cheaply (size, and the record of the full verification made when it was
-    stored). Never downloads: a file that is not there, or that fails the check, is refused as ``asset.missing``. The
+    stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that is not there, or that fails the check, is refused as ``asset.missing``. The
     action is the exact command that stores it: for everything the experiment ``folder`` needs when the folder is
     known, else for this asset by name."""
-    problem = cheap_problem(ref)
+    problem = cheap_problem(ref, checksum)
     if problem is not None:
         raise BuildRefused([Refusal(
             "asset.missing", RefusalClass.ENVIRONMENT,
