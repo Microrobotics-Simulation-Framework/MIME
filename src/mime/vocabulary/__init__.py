@@ -1,4 +1,5 @@
-"""Interface names with their kind, units, frame, shape, sign and dtype; the capability flags."""
+"""Interface names with their kind, units, frame, shape, sign and dtype; the capability flags; port kinds and energy
+classes, what the energy ledger pairs and judges."""
 
 from mime.vocabulary._vocabulary import (
     MIME_NAMESPACE,
@@ -30,15 +31,34 @@ from mime.vocabulary._mime import (
     RESISTANCE,
     TWIST,
 )
+from mime.vocabulary._ports import (
+    DELIVERED_INERTIA,
+    ENERGY,
+    FLOW_IN,
+    JOINT,
+    POWER,
+    RIGID_BODY,
+    Definiteness,
+    DeliveryKind,
+    EnergyClass,
+    PortKind,
+    port_kind,
+    port_kinds,
+    register_port_kind,
+)
 
 __all__ = [
     "APPLIED_WRENCH",
     "BACKGROUND_LOAD",
     "CONFINEMENT",
+    "DELIVERED_INERTIA",
+    "ENERGY",
+    "FLOW_IN",
     "FLUX_DENSITY",
     "FRAME_ANGULAR_VELOCITIES",
     "FRAME_POSES",
     "GRADIENT",
+    "JOINT",
     "JOINT_POSITIONS",
     "JOINT_VELOCITIES",
     "LINK_INERTIA",
@@ -46,16 +66,25 @@ __all__ = [
     "LINK_WRENCH",
     "MIME_NAMESPACE",
     "POSE",
+    "POWER",
     "RESISTANCE",
+    "RIGID_BODY",
     "TWIST",
     "Capability",
+    "Definiteness",
+    "DeliveryKind",
+    "EnergyClass",
     "Interface",
+    "PortKind",
     "ReadKind",
     "TargetKind",
     "define",
     "lookup",
     "names",
     "namespace_of",
+    "port_kind",
+    "port_kinds",
     "register_namespace",
+    "register_port_kind",
     "versions",
 ]

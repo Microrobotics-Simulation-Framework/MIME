@@ -1,7 +1,8 @@
 """The code copied in under MIT, and the inlined viewer's licences: every Python file of ``mime/viz/_gltf/`` carries
 exactly one SPDX line, the MIT ones naming usd2gltf 0.3.5 as their origin; the folder's ``LICENSE`` is usd2gltf's,
 byte for byte; the viewer's folder holds the licence of every part its bundle's own comments name, and the bundle
-names no other licence; NOTICE names both; and the wheel's metadata states the expression with every file. The
+names no other licence; NOTICE names both; and the wheel's metadata states the expression with every file (the inlined Mermaid's licences are
+``tests/build/test_mermaid_licence.py``'s). The
 control: a file planted with a second SPDX line, or with none, is found."""
 
 import hashlib
@@ -71,4 +72,4 @@ def test_notice_names_both_and_the_project_states_the_expression():
     assert "usd2gltf 0.3.5" in notice and "src/mime/viz/_gltf/" in notice and "<model-viewer> 4.3.1" in notice
     assert all(name in notice for name in ("three.js", "lit", "fflate", "gainmap-js"))
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'license = "Apache-2.0 AND MIT AND BSD-3-Clause"' in pyproject
+    assert 'license = "Apache-2.0 AND MIT AND BSD-3-Clause AND ISC AND Unlicense"' in pyproject

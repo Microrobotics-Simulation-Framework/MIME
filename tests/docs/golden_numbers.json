@@ -3,7 +3,7 @@
   "entries": {"mime": 35, "toy": 12, "labx": 4},
   "refusal_scan": {
     "literal_codes": 397,
-    "files": 79,
+    "files": 80,
     "variable_calls": 49,
     "tuple_codes": 51
   },

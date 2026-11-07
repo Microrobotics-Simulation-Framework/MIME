@@ -14,7 +14,7 @@ from mime.core import jnp, shape_named, shape_switches, switch
 from mime.gradients import RANK, GradientStatus
 from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Length, Magnitude, Quantity
-from mime.vocabulary import FRAME_POSES, Capability
+from mime.vocabulary import FRAME_POSES, Capability, Definiteness, EnergyClass
 
 if TYPE_CHECKING:
     from mime.build import (
@@ -700,13 +700,17 @@ class Dynamics(Entry):
     A dynamics with ``rungs`` has a ``rung`` setting with no default, as an interaction has; ``reserved_rungs`` maps a
     rung whose name and meaning are fixed but which is not built to the reason, and the build refuses it with that
     reason. ``limits`` states what its model leaves out, each line naming the anomaly that records it; its capability
-    record carries them.
+    record carries them. ``port`` names the port kind (``mime.vocabulary.port_kind``) its node's accepted inputs are
+    paired by when the energy ledger is attached, its node writing its step identity; empty for a dynamics the ledger
+    does not meter, with ``unmetered`` its reason.
     """
 
     applies_to: ClassVar[frozenset[ThingKind]]
     flags: ClassVar[frozenset[Capability]] = frozenset()
     publishes: ClassVar[Mapping[str, Port]] = _EMPTY
     accepts: ClassVar[Mapping[str, Port]] = _EMPTY
+    port: ClassVar[str] = ""
+    unmetered: ClassVar[str] = ""
     registration_kinds: ClassVar[frozenset[str]] = frozenset()
     initial_state: ClassVar[Mapping[str, Dimension]] = MappingProxyType({})
     values: ClassVar[Mapping[str, str]] = MappingProxyType({})
@@ -919,10 +923,19 @@ class Interaction(Entry):
     lists the constructions it supports, each as predicates over the bound dynamics' capability records.
     ``reserved_rungs`` maps a rung whose name and meaning are fixed but which is not built to the reason, and the
     build refuses it with that reason. ``family`` names the family whose suite it passes, if any.
+
+    ``energy_class`` is the law's class for the energy ledger, its deliveries and reactions together, settled by an
+    exact identity on the law alone in its family's suite; ``None`` leaves it unmetered, with ``unmetered`` its reason
+    (its work on its receiver is still recorded and attributed to it). A dissipative law says where its operators are
+    shown definite (:meth:`definiteness`); a potential law's node states its family's energy
+    (``MimeNode.energy``). A law held in its receiver's step (a contact, delivering a confinement) is hosted there,
+    which the build reads from its delivery.
     """
 
     roles: ClassVar[Mapping[str, RoleKind]]
     family: ClassVar[str | None] = None
+    energy_class: ClassVar[EnergyClass | None] = None
+    unmetered: ClassVar[str] = ""
     #: The setting, a length, by which the law holds the body bound to its body role off the surface bound to its
     #: surface role (a contact's margin), or ``None``: the planner reads it as the body's closest approach to that
     #: surface's wall (``PlanContext.approach``), which a law near the wall chooses its numbers by.
@@ -940,6 +953,12 @@ class Interaction(Entry):
 
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         raise NotImplementedError
+
+    def definiteness(self) -> Definiteness | None:
+        """For a dissipative law delivering an operator, where it is shown positive semidefinite: by its construction
+        (checked once in its family's suite) or at the state it reads (checked at run time where the ledger is
+        attached, by a Cholesky factorisation at a stated floor); ``None`` for a law that delivers none."""
+        return None
 
     def includes_lubrication(self) -> bool:
         """Whether the law includes near-wall lubrication, the resistance of the film between a body and a wall as their

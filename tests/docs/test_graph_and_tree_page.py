@@ -53,3 +53,22 @@ def test_control_a_block_with_one_character_changed_fails_the_comparison(views, 
     old = "drag:umr  drag 0.4.0" if which == "tree" else 'n0["controller<br/>arm_tracking 0.1.0'
     assert old in page
     assert differences(page.replace(old, old.replace("0.", "1.", 1)), views) == [which]
+
+
+#: Each way the page must tell a reader to get the graph's page, and what it shows where scripts do not run.
+WAYS = ("display(offline=True)", 'save("graph.html")', "--graph --out graph.html", "--graph --out [FILE]", "print(built.to_mermaid())",
+        "GraphPage", "WebPage", ".graph.html", "page.height", "STALE", "<iframe", "Fit", "1:1", "text/plain", "output rate limit counts")
+
+
+def missing_ways(page: str) -> list[str]:
+    return [way for way in WAYS if way not in page]
+
+
+def test_the_page_says_how_the_graph_is_shown_in_a_notebook_and_how_to_get_its_page_and_its_text():
+    assert missing_ways(PAGE.read_text(encoding="utf-8")) == []
+
+
+def test_control_a_page_without_one_of_the_ways_fails_the_check():
+    page = PAGE.read_text(encoding="utf-8")
+    for way in WAYS:
+        assert missing_ways(page.replace(way, "")) == [way]

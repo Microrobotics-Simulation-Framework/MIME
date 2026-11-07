@@ -21,7 +21,7 @@ from mime.registry import (
     requires,
 )
 from mime.units import Magnitude
-from mime.vocabulary import APPLIED_WRENCH, POSE, Capability
+from mime.vocabulary import APPLIED_WRENCH, POSE, Capability, EnergyClass
 
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
@@ -39,7 +39,11 @@ class Gravity(Interaction):
     one density. The weight acts at the centre of mass and the buoyancy at the centre of buoyancy, so when the body
     declares that point off its centre of mass the law also gives the couple, and reads the body's pose; only then.
     The medium is at rest: with a flow that carries its own hydrostatic load, buoyancy would be counted twice, and no
-    such flow is built yet."""
+    such flow is built yet.
+
+    A potential law: its family's energy, ``U = -(m g + F_b) . x - F_b . (R_q c_b)`` with ``F_b = -rho_f V g`` the
+    buoyancy (``GravityNode.energy``), of which the wrench is the negative gradient, the couple's by the gradient on the
+    rotation group."""
 
     name = "gravity"
     version = "0.1.0"
@@ -51,6 +55,7 @@ class Gravity(Interaction):
     support = (SupportRow(None, {"body": requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name])},
                           note="a rigid body in a medium at rest"),)
     delivers = {"wrench": Delivery("body", APPLIED_WRENCH.name)}
+    energy_class = EnergyClass.POTENTIAL
     values = {"mass": Value("body", "mass"), "buoyant_volume": Value("body", "buoyant_volume"),
               "fluid_density": Value("medium", "density"),
               "centre_of_buoyancy": Value("body", "centre_of_buoyancy")}
