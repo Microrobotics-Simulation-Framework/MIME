@@ -371,7 +371,10 @@ def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes:
         tree = cast(Mapping[str, Mapping[str, Mapping[str, Any]]], params)
         nodes = {node: {leaf: marked.get((node, leaf)) for leaf in leaves} for node, leaves in tree["nodes"].items()}
         mappings = {key: None for key in tree.get("mappings", {})}
-        external_axes = _held(jax).tree_util.tree_map(lambda _: None, external)
+        def unbatched(_: object) -> None:
+            return None
+
+        external_axes = _held(jax).tree_util.tree_map(unbatched, external)
         return _held(jax).jit(_held(jax).vmap(scan, in_axes=(0, external_axes, {"nodes": nodes,
                                                                                 "mappings": mappings})))
 
