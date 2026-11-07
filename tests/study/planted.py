@@ -24,7 +24,7 @@ from mime.things import Body
 from mime.units import Force, Length, N, Quantity, m
 from mime.vocabulary import register_namespace
 
-NAMESPACE = "planted"
+NAMESPACE = "studytoy"
 register_namespace(NAMESPACE, "0.1.0")
 
 
@@ -69,7 +69,7 @@ class BakedSpringNode(ToySpringNode):
 class PlantedSpring(Interaction):
     """A spring towards ``x0``, its node by ``kind``: ``static``, ``baked`` or ``double`` (the node is given ``2 k``)."""
 
-    name = "planted.spring"
+    name = "studytoy.spring"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
     builds = {"": (ToySpringNode, StaticSpringNode, BakedSpringNode)}

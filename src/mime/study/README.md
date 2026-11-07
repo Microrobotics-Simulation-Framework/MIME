@@ -37,7 +37,7 @@
 
 ## Status
 
-Sweeps and overrides are built (dev2, S2b-1). The drives that ramp a command, the step-out study, saving a study and its
+Sweeps and overrides are built (dev2, the study layer's first phase). The drives that ramp a command, the step-out study, saving a study and its
 table, checkpoints and forks, variants, fits and sensitivities come later.
 
 Releases are explained in the [package manifest](../README.md#status).

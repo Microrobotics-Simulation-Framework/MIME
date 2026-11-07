@@ -75,8 +75,14 @@ its plan is judged again, and every output is stamped:
 
 <!-- mime-include: examples/studies.py#override -->
 
-On the command line, `mime run <folder> --out <run> --duration 1s --override field.commands.frequency=20Hz`. The run
-folder's `run.json` records each override (its path, its value with its unit, its SI value and the leaves it writes),
+On the command line:
+
+<!-- mime-fragment: a command line on a saved folder of the reader's own, shown for its flags -->
+```sh
+mime run <folder> --out <run> --duration 1s --override field.commands.frequency=20Hz
+```
+
+The run folder's `run.json` records each override (its path, its value with its unit, its SI value and the leaves it writes),
 `report.json` is the point's, and `experiment/` stays the base's saved form; `mime verify --run <run>` makes the run again
 from them and compares. What would need another compiled step is refused with its route: a value baked into a static or
 the structure is a rebuild (a study, or `Experiment.based_on`), and a numerical setting, `dt`, the precision or a rung is a

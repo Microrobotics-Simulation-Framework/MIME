@@ -100,9 +100,9 @@ def test_a_leaf_the_build_derives_holds_the_derived_value_in_every_member():
 
     plan = _spring_study("double", K[:3]).plan()
     for point, value in zip(plan.points, K[:3], strict=True):
-        leaf = point.tree["planted.spring:probe"]["k"]
+        leaf = point.tree["studytoy.spring:probe"]["k"]
         built = Experiment.declared_from(point.declared.settings, point.declared.declarations).build()
-        assert np.array_equal(leaf, np.asarray(built.graph.params["nodes"]["planted.spring:probe"]["k"]))
+        assert np.array_equal(leaf, np.asarray(built.graph.params["nodes"]["studytoy.spring:probe"]["k"]))
         assert np.isclose(float(leaf), 2 * float(value.value)) and not np.isclose(float(leaf), float(value.value))
 
 
