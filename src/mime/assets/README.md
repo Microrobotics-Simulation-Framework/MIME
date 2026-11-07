@@ -146,15 +146,16 @@ or the adapter's open and close): reachable or not, and why. With `MIME_OFFLINE`
 ## The one resolver
 
 `resolve(ref)` is the single lookup of a content-addressed file. `fetch` is its name for the command, and `mime pull`
-uses it for a bundle (a packed experiment is a content-addressed file too) and for the bundle's assets alike, so
-they share the cache, the offline switch, the hash check, the refusal codes and the size report. A bundle named by its
-DOI or address has no hash to look up before it is downloaded, so `retrieve(location, name=..., known_hash=...)` stores
-such a file: the download is held to the repository's own checksum where there is one (Zenodo's md5), hashed in full,
-and stored in the cache under its sha256, where `locate` finds it. The cache also keeps a note of which sha256 the
-checksum named (`md5-<digits>.checksum`), so that the same checksum again (a notebook cell run again, a second pull of
-the same record) finds the stored bundle and downloads nothing; a cleared cache, a missing or changed file, or a new
-version of the record (another checksum) downloads as before. (`retrieve` downloads through pooch's downloader, which
-`mime pull --signed-in` replaces with its own; an asset's download goes through the adapters.) In order:
+uses it for a bundle (a packed experiment is a content-addressed file too) and for the bundle's assets alike, so they
+share the cache, the offline switch, the hash check, the refusal codes and the size report. A bundle named by its DOI,
+or a service's record by number or link, has no hash to look up before it is downloaded, so `retrieve(location,
+name=..., known_hash=...)` stores such a file: the download is held to the repository's own checksum where there is one
+(Zenodo's md5), hashed in full, and stored in the cache under its sha256, where `locate` finds it. The cache also keeps
+a note of which sha256 the checksum named (`md5-<digits>.checksum`), so that the same checksum again (a notebook cell
+run again, a second pull of the same record) finds the stored bundle and downloads nothing; a cleared cache, a missing
+or changed file, or a new version of the record (another checksum) downloads as before. A bare `https://` address has no
+repository checksum to look up by, so it downloads again each time. (`retrieve` downloads through pooch's downloader,
+which `mime pull --signed-in` replaces with its own; an asset's download goes through the adapters.) In order:
 
 1. **The cache**, keyed by the hash: a file whose full verification is recorded and unchanged. No network. (`fetch`
    skips this step and hashes the file in full.)

@@ -31,6 +31,7 @@ from mime.assets._cache import (
     INCOMING_INFIX,
     OFFLINE_VARIABLE,
     PLACED,
+    CHECKSUM_SUFFIX,
     RECORD_SUFFIX,
     cache_dir,
     cheap_problem,
@@ -625,8 +626,8 @@ def _file_name(location: str) -> str | None:
     """The name of the file a location serves: the last part of an ``https://`` URL's path, or the file of a
     ``doi:`` location."""
     last = (location.rpartition("/")[2] if location.startswith("doi:") else urlsplit(location).path.rpartition("/")[2])
-    ok = _FILE_NAME.fullmatch(last) and not last.endswith((RECORD_SUFFIX, LOCK_SUFFIX, ".partial")) \
-        and INCOMING_INFIX not in last
+    ok = _FILE_NAME.fullmatch(last) and INCOMING_INFIX not in last \
+        and not last.endswith((RECORD_SUFFIX, CHECKSUM_SUFFIX, LOCK_SUFFIX, ".partial"))
     return last if ok else None
 
 
@@ -938,7 +939,9 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     later :func:`resolve`. Once such a download is stored, the cache keeps a note of which sha256 that checksum named
     (``<algorithm>-<digits>.checksum``, beside the file); a later call with the same checksum finds the file by it and
     downloads nothing, as long as the file is there and passes the cache's cheap check (:func:`locate`'s). With the note
-    gone, the file gone or changed, or another checksum (a new version of the record), it downloads as it did. The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
+    gone, the file gone or changed, or another checksum (a new version of the record), it downloads as it did.
+
+    The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
     once it has passed ``max_bytes`` (the size a record states, or :data:`RETRIEVE_LIMIT_BYTES`), refused as
     ``asset.size-exceeded`` with ``exceeded_action`` as what to do. ``size``, where the record states one, is what a
     terminal's progress counts towards (:func:`watching_downloads`); it holds the download to nothing. ``fetcher``, where
