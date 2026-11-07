@@ -51,10 +51,10 @@ of the body's own deepest points tie or where a step changes the contact's branc
 
 **Versions.** `contact` 0.5.0 runs the hold's sweeps and its search's Newton steps as XLA loops, the same updates in the
 same order, where 0.4.0 unrolled them, a call each: the step's program is smaller and compiles faster, and its rounding
-is not 0.4.0's. A body held from its first step (FL-9 in script A's tube) moves, in float32, its velocity by about 1e-6 of its
-size; the forces among its held points move by up to 2e-3 of their scale, since their split is not unique, while their
-net force moves by under 1e-3 of the momentum rate it came from, on the runners measured; in float64 each moves by 1e-11
-of its scale or less, and a sphere in the tube demo is bit for bit (`tests/oracles/test_contact_loops.py` holds the two
+is not 0.4.0's. A screw held from its first step in script A's tube moves, in float32, its velocity by about a millionth
+of its size; the forces among its held points move by up to two parts in a thousand of their scale, since their split
+is not unique, while their net force moves by under a thousandth of the momentum rate it came from, on the runners
+measured; in float64 each moves by a hundred-billionth of its scale or less, and a sphere in the tube demo is bit for bit (`tests/oracles/test_contact_loops.py` holds the two
 versions to each other). 0.4.0 stays registered (`mime.interactions.KEPT`), so a folder saved with it reproduces to the last bit.
 `contact` 0.4.0 chooses each group's point again in the second pass of the projection after the step, at the pose the
 first pass left, and holds it beside the first pass's points: a group can hold two of the body's local deepest points (a
