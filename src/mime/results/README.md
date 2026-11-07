@@ -59,7 +59,14 @@ A result of a run in this process remembers the declarations its build came from
 `repr` and `text()` say so once the experiment has had a replacement or a removal since, and a result read from a folder
 never does. A pickled result (sent from a worker process) keeps no link to the experiment and says so, "staleness
 unknown" (`stale_unknown`), rather than being stale or fresh by accident.
-Later: `.mat` through a `matlab` extra and `StudyResult`, a result with a leading sweep axis whose table is long
-(dev2).
+- **`StudyResult`** (`_study.py`), a study's result in memory: one member axis in the order of the points that ran,
+  `coordinates[path]` (each axis's values over the members, an array quantity with its units), `groups` (the group each
+  member ran in), `result[swim].mean_speed` (an output at the end over the members) and `result[swim].speed` (a series
+  stacked over them where they share its time axis, refused otherwise with the route to `member(i)`), `member(i)` (a
+  `RunResult`), `flags` (the union, a flag a member's build does not declare reading `not declared`, never "not
+  raised"), and `dropped` (the points `drop_refused=True` left out, with their refusals). Saving it, its long table and
+  `.mat` are next (S2c), on this shape.
+- **An overridden run** (`run(..., override=...)`) carries its `overrides` (each one's path, value with its unit, SI
+  value and the leaves it wrote), in its text ("OVERRIDDEN for this run: ..."), its manifest and back from its folder.
 
 Releases are explained in the [package manifest](../README.md#status).

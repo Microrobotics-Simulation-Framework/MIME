@@ -18,7 +18,7 @@ import pytest
 from mime.docs._executable import hand_written, parse, run_script
 
 ROOT = Path(__file__).resolve().parents[2]
-TUTORIALS = ("examples/tutorial_a.py", "examples/tutorial_a0.py")
+TUTORIALS = ("examples/studies.py", "examples/tutorial_a.py", "examples/tutorial_a0.py")
 
 
 def output_blocks() -> dict[str, list[tuple[str, int, str]]]:
