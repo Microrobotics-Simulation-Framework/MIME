@@ -19,6 +19,7 @@ from mime.build._checks import node_refusals, node_lines  # noqa: PLC2701 - a no
 from mime.build._construct import assemble
 from mime.build._key import structure_key
 from mime.build._maddening import initial_fields
+from mime.build._control import Mode
 from mime.build._plan import Section
 from mime.control import law_and_models
 from mime.registry import ControlLaw
@@ -90,6 +91,16 @@ def _starting(graph: Any, name: str) -> dict[str, Any]:
     return starting_inputs(graph, name)
 
 
+def checked_digests(graph: Any, tree: Arrays) -> dict[str, str]:
+    """By node with checks of its own (``built_problems``, ``built_lines``), a digest of what they are judged at: the
+    node's leaves and starting inputs."""
+    checking = [name for name in graph.node_names
+                if callable(getattr(graph.get_node(name), "built_problems", None))
+                or callable(getattr(graph.get_node(name), "built_lines", None))]
+    return {name: _bytes({**{f"leaf/{k}": v for k, v in tree.get(name, {}).items()},
+                          **{f"input/{k}": v for k, v in _starting(graph, name).items()}}) for name in checking}
+
+
 def build_point(index: int, settings: RunSettings, declarations: Sequence[Declaration],
                 values: Mapping[Axis, object], reason: str,
                 reference: Callable[[str], Point | None] | None = None) -> Point:
@@ -123,12 +134,8 @@ def build_point(index: int, settings: RunSettings, declarations: Sequence[Declar
             {name: dict(leaves) for name, leaves in found.tree.items()}
         point.state = {name: {key: np.asarray(value) for key, value in initial_fields(graph.get_node(name)).items()}
                        for name in graph.node_names}
-        checking = [name for name in graph.node_names
-                    if callable(getattr(graph.get_node(name), "built_problems", None))
-                    or callable(getattr(graph.get_node(name), "built_lines", None))]
-        point.checked = {name: _bytes({**{f"leaf/{k}": v for k, v in point.tree.get(name, {}).items()},
-                                       **{f"input/{k}": v for k, v in _starting(graph, name).items()}})
-                         for name in checking}
+        point.checked = checked_digests(graph, point.tree)
+        checking = list(point.checked)
         first = reference(point.key) if reference is not None else None
         if first is not None:
             _share(point.tree, first.tree)
@@ -142,4 +149,49 @@ def build_point(index: int, settings: RunSettings, declarations: Sequence[Declar
     return point
 
 
-__all__ = ["Point", "build_point", "precision"]
+def _arrays_equal(a: Arrays, b: Arrays) -> bool:
+    if a.keys() != b.keys():
+        return False
+    for node, fields in a.items():
+        other = b[node]
+        if fields.keys() != other.keys():
+            return False
+        for name, value in fields.items():
+            held = other[name]
+            if value is not held and not (value.shape == held.shape and value.dtype == held.dtype
+                                          and np.array_equal(value, held)):
+                return False
+    return True
+
+
+def _law_context(point: Point) -> object:
+    """What a controller called on the host between chunks makes its law from, as data (``None`` for no such
+    controller): the entry itself, whose fields its law may read directly, its mode, period, latency and settings in
+    SI, and the base step. A law that read a segment's built tree is made from more than this holds, so it compares
+    unequal to every other."""
+    plans = point.plans
+    controller = plans.controller if plans is not None else None
+    if plans is None or controller is None or controller.mode is not Mode.CALLBACK:
+        return None
+    if point.models:
+        return object()
+    return (controller.entry, controller.mode.value, controller.period, controller.latency, float(plans.dt),
+            _bytes({name: np.asarray(value) for name, value in controller.settings.items()}))
+
+
+def _laws_equal(a: Point, b: Point) -> bool:
+    try:
+        return bool(_law_context(a) == _law_context(b))
+    except (TypeError, ValueError):  # an entry whose fields do not compare (an array's truth): taken as different
+        return False
+
+
+def same_run(a: Point, b: Point) -> bool:
+    """Whether two points run one computation: one compiled program (their structure keys), equal parameter leaves and
+    initial states, and, where a controller is called on the host, a law made from an equal entry and settings. Two
+    such points differ in nothing a run computes from."""
+    return a.key is not None and a.key == b.key and _arrays_equal(a.tree, b.tree) and \
+        _arrays_equal(a.state, b.state) and _laws_equal(a, b)
+
+
+__all__ = ["Point", "build_point", "checked_digests", "precision", "same_run"]

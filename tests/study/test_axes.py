@@ -57,6 +57,23 @@ def test_strings_resolve_as_the_typed_paths_save_and_an_unknown_one_is_refused_w
     assert "field.commands.frequency" in refused.value.refusals[0].action
 
 
+def test_a_settings_quantity_is_its_value_and_its_own_fields_are_no_axis():
+    """An axis stops at a quantity: ``drag.lubrication.epsilon`` is a setting, and the quantity's own fields under it
+    are refused: ``value`` and ``dimension`` as strings, and ``dimension`` as a typed path (``value`` is the path's own
+    attribute, the quantity the law declares). The control: the setting itself resolves, typed and as a string."""
+    exp = reproduction_arm()
+    _, declarations, _ = exp.declared_as()
+    epsilon = exp.handle("drag:umr").lubrication.epsilon  # type: ignore[union-attr]
+    assert resolve(epsilon, declarations).kind is AxisKind.SETTING
+    assert resolve("drag:umr.lubrication.epsilon", declarations).kind is AxisKind.SETTING
+    with pytest.raises(AttributeError, match="no setting 'dimension'"):
+        _ = epsilon.dimension  # type: ignore[attr-defined]
+    for field in ("value", "dimension"):
+        with pytest.raises(ArgumentRefused) as refused:
+            resolve(f"drag:umr.lubrication.epsilon.{field}", declarations)
+        assert refused.value.codes() == ["study.unknown-path"], field
+
+
 def test_a_field_named_commands_is_refused():
     from mime import Apparatus
     from mime.fields import UniformRotating
@@ -81,10 +98,13 @@ def test_grid_along_and_a_table_give_the_points_in_order():
 
 
 def test_the_plan_says_what_split_a_dt_axis_and_a_precision_axis_into_groups():
-    plan = Study(reproduction_arm()).sweep(grid({DT: [s(5e-4), s(2.5e-4)], PRECISION: ["float32", "float64"]}),
-                                           duration=s(0.01)).plan()
+    """Four groups, each split from the first by its step or its precision, and each member run in its own precision:
+    one study planned and run, so each group is built once."""
+    study = Study(reproduction_arm()).sweep(grid({DT: [s(5e-4), s(2.5e-4)], PRECISION: ["float32", "float64"]}),
+                                            duration=s(0.01))
+    plan = study.plan()
     assert len(plan.groups) == 4, plan.text()
     reasons = " ".join(" ".join(group.reasons) for group in plan.groups)
     assert "rate (dt)" in reasons and "precision" in reasons, reasons
-    result = Study(reproduction_arm()).sweep(grid({PRECISION: ["float32", "float64"]}), duration=s(0.01)).run()
-    assert [result.member(i).final["umr"]["pose"].dtype.name for i in range(2)] == ["float32", "float64"]
+    result = study.run()
+    assert [result.member(i).final["umr"]["pose"].dtype.name for i in range(4)] == ["float32", "float64"] * 2

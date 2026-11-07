@@ -198,8 +198,13 @@ class SettingPath(TypedPath):
 
 
 def _settings_of(value: object) -> tuple[str, ...]:
-    """The settings of an entry or a group of settings: its dataclass fields."""
-    return tuple(held.name for held in fields(value)) if is_dataclass(value) and not isinstance(value, type) else ()
+    """The settings of an entry or a group of settings: its dataclass fields. A quantity is a setting's value, whose
+    own fields are no settings."""
+    from mime.units import Quantity
+
+    if isinstance(value, Quantity) or not is_dataclass(value) or isinstance(value, type):
+        return ()
+    return tuple(held.name for held in fields(value))
 
 
 class _Names:

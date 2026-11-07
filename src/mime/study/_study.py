@@ -6,7 +6,8 @@ called between chunks."""
 from __future__ import annotations
 
 import itertools
-from collections.abc import Mapping, Sequence
+import math
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast, override
 
@@ -31,8 +32,8 @@ from mime.build._control import Mode
 from mime.build._refusals import ArgumentRefused
 from mime.control._run import automatic_chunks
 from mime.errors import public
-from mime.study._axes import STUDY_REASON, Axis, resolve, value_text
-from mime.study._point import Point, build_point, precision
+from mime.study._axes import STUDY_REASON, Axis, differ, resolve, value_text
+from mime.study._point import Point, build_point, precision, same_run
 from mime.units import Quantity
 
 if TYPE_CHECKING:
@@ -117,7 +118,7 @@ class Group:
     """Points that need one compiled program: its structure key, its members (point indices, in order), why it is not
     the first group (empty for the first), the built experiment it runs on, how its members run (``batched``, or one
     after another where a controller is called between chunks), the batches, the leaves that vary among its members
-    (``varying``), and the memory estimate's two terms in bytes, ``fixed + members * each``."""
+    (``varying``), and its memory estimate (:class:`Memory`)."""
 
     key: str
     members: list[int]
@@ -127,8 +128,7 @@ class Group:
     batches: tuple[int, ...] = ()
     chunks: tuple[int, ...] = ()
     varying: tuple[tuple[str, str], ...] = ()
-    fixed: int = 0
-    each: int = 0
+    memory: Memory | None = None
     steps: int = 0
 
     @property
@@ -139,8 +139,85 @@ class Group:
         return lengths * (len(set(self.batches)) if self.batched else 1)
 
 
-def _mib(count: int) -> str:
+def _mib(count: float) -> str:
     return f"{count / 2**20:.1f} MiB" if count >= 2**20 else f"{count / 2**10:.1f} KiB"
+
+
+#: How far the third measured batch size may lie off the line through the other two, as a fraction of the per-member
+#: bytes between it and the nearer of them, for the line to give a batch's device memory.
+LINE_MISS = 0.2
+
+
+def measured_sizes(batch: int) -> tuple[tuple[int, ...], int | None]:
+    """The batch sizes a group's step is measured at for batches of ``batch`` members: the two the line is drawn
+    through, and the one it is checked at, the batch itself always among them. From eight members, four and eight,
+    which lie where XLA's buffer assignment grows by one member's bytes a member (at one member it assigns otherwise:
+    on the MRS screw in a tube the step's temporaries grow by under 3 MiB from one member to two and by about 12 MiB a
+    member from three up), checked at the batch, or at three for a batch of eight. Below eight, the batch and half of
+    it, checked between them, or at three for a batch of two. A batch of one is measured at one alone."""
+    if batch <= 1:
+        return (1,), None
+    if batch >= 8:
+        return (4, 8), (batch if batch > 8 else 3)
+    low = batch // 2
+    between = list(range(low + 1, batch))
+    return (low, batch), (between[len(between) // 2] if between else batch + 1)
+
+
+@dataclass(frozen=True)
+class Memory:
+    """A group's memory estimate, in bytes. On the device: XLA's buffer assignment of one chunk of the batched step,
+    compiled and not run, at each batch size of ``at`` (members, bytes), the batch it runs among them, so that its
+    bytes (``device``) are measured and not extrapolated; and the line ``fixed + members * each`` through the first two,
+    with ``miss``, how far the third lies off it as a fraction of the per-member bytes between it and the nearer of the
+    two. The line gives a figure a member, for choosing a batch, only where it ``holds`` (``miss`` at most
+    :data:`LINE_MISS`). On the host, ``host`` a member: its own leaves and state, its series and its report.
+    ``batched`` is false where members run one after another on the build's own step, whose device memory is one
+    run's, not measured here."""
+
+    batch: int
+    members: int
+    host: int
+    at: tuple[tuple[int, int], ...] = ()
+    fixed: float | None = None
+    each: float | None = None
+    miss: float | None = None
+    batched: bool = True
+
+    @property
+    def holds(self) -> bool:
+        return self.miss is not None and self.miss <= LINE_MISS and self.fixed is not None and self.fixed >= 0
+
+    @property
+    def device(self) -> int | None:
+        """The device bytes of one batch, measured at its size."""
+        return dict(self.at).get(self.batch)
+
+    @property
+    def total(self) -> int | None:
+        device = self.device
+        return None if device is None else device + self.members * self.host
+
+    def text(self) -> str:
+        host = f"{self.members} x {_mib(self.host)} on the host (each member's own leaves and state, its series and its " \
+               f"report)"
+        device = self.device
+        if not self.batched or device is None:
+            return f"memory: one run's on the device at a time, and {host}"
+        head = (f"memory about {_mib(device + self.members * self.host)}: {_mib(device)} on the device for a batch of "
+                f"{self.batch} (XLA's buffer assignment of one chunk of the batched step at that size, compiled and not "
+                f"run)")
+        if len(self.at) < 3 or self.miss is None:
+            return f"{head}, and {host}"
+        (a, _), (b, _), (c, _) = self.at[:3]
+        off = f"{100 * self.miss:.0f} %" if math.isfinite(self.miss) else "far"
+        if self.holds and self.fixed is not None and self.each is not None:
+            line = (f"{_mib(self.fixed)} + {_mib(self.each)} a member on the line through {a} and {b} members, which "
+                    f"lies {off} of a member's bytes off the assignment at {c}")
+        else:
+            line = (f"no figure a member: at {c} members XLA's assignment lies {off} of a member's bytes off the line "
+                    f"through {a} and {b}")
+        return f"{head}; {line}; and {host}"
 
 
 @dataclass(frozen=True)
@@ -162,21 +239,23 @@ class StudyPlan:
     def compiles(self) -> int:
         return sum(group.compiles for group in self.groups)
 
-    def text(self) -> str:
+    def text(self, *, memory: bool = True) -> str:
+        """The plan as it prints. ``memory=False`` leaves out each group's memory estimate, whose bytes depend on the
+        machine, the jaxlib and the Python it is made on, for a text that is the same on each."""
         refused = self.refused
+        planning = sum(len(group.memory.at) for group in self.groups if group.memory is not None)
         lines = [f"{len(self.points)} points over {', '.join(axis.path for axis in self.axes)}; {len(self.groups)} "
                  f"group{'s' if len(self.groups) != 1 else ''}, {self.compiles} compile{'s' if self.compiles != 1 else ''}"
-                 f"; {f'{len(refused)} refused' if refused else 'nothing refused'}"]
+                 f" to run it (planning compiled {'each group' if len(self.groups) != 1 else 'the group'}'s build, "
+                 f"and its batched step {planning} time{'s' if planning != 1 else ''} for the memory estimate); "
+                 f"{f'{len(refused)} refused' if refused else 'nothing refused'}"]
         for number, group in enumerate(self.groups):
             how = (f"batched in {len(group.batches)} batch{'es' if len(group.batches) != 1 else ''} of "
                    f"{', '.join(map(str, sorted(set(group.batches), reverse=True)))}" if group.batched else
                    "one after another on one compiled step (a controller is called on the host between chunks)")
-            memory = (f"memory about {_mib(group.fixed)} + {len(group.members)} x {_mib(group.each)} "
-                      f"= {_mib(group.fixed + len(group.members) * group.each)} (XLA's buffer assignment of a chunk "
-                      f"of the step at one and two members, which leaves out a solver's own workspace; each point's own "
-                      f"leaves and state, its series and its report, measured)")
+            estimate = f"; {group.memory.text()}" if memory and group.memory is not None else ""
             lines.append(f"  group {number}: {len(group.members)} points, {how}, {group.compiles} compile"
-                         f"{'s' if group.compiles != 1 else ''}; {memory}")
+                         f"{'s' if group.compiles != 1 else ''}{estimate}")
             if group.reasons:
                 lines.append(f"    split from group 0 by: {'; '.join(group.reasons)}")
         for point in refused:
@@ -207,22 +286,40 @@ def _nbytes(arrays: Mapping[str, Mapping[str, np.ndarray]]) -> int:
 
 def device_bytes(built: BuiltExperiment, points: Sequence[Point], members: Sequence[int],
                  varying: Sequence[tuple[str, str]], tests: Sequence[FlagTest], kept: Sequence[tuple[str, str]],
-                 chunk: int) -> tuple[int, int]:
-    """The device memory a batch of the group's members needs, ``fixed + B * each`` in bytes: XLA's buffer assignment
-    of one chunk of the batched step, compiled and not run, for a batch of one member and of two (the first member
-    twice where the group has one). A measurement of the program, not a count of its arrays."""
+                 chunk: int, batch: int) -> tuple[tuple[tuple[int, int], ...], float | None, float | None, float | None]:
+    """The device memory of batches of the group's members: XLA's buffer assignment of one chunk of the batched step,
+    compiled and not run, at each batch size :func:`measured_sizes` gives for ``batch`` (its members taken in turn,
+    over again where the group has fewer: the bytes depend on the shapes, not the values). Returns the measurements,
+    and the line through the first two, ``fixed`` and ``each``, with the third's ``miss`` (``None`` for one size). A
+    measurement of the program, not a count of its arrays."""
     graph = built.graph
     with state_put_back(graph):
         graph.reset_state()
         meta = dict(full_state(graph).get(META) or {})
-    sizes: list[int] = []
-    for batch in ([members[0]], [members[0], members[1] if len(members) > 1 else members[0]]):
-        params, axes = stacked_tree(points, batch, varying)
-        state = stacked_state(points, batch, meta)
+    line, third = measured_sizes(batch)
+    sizes = [*line, *([third] if third is not None else [])]
+    at: list[tuple[int, int]] = []
+    for size in sizes:
+        chosen = [members[i % len(members)] for i in range(size)]
+        params, axes = stacked_tree(points, chosen, varying)
+        state = stacked_state(points, chosen, meta)
         total, _, _ = batched_scan(graph, chunk, state, params, axes, tests, kept, measure=True)
-        sizes.append(int(cast(int, total)))
-    each = max(0, sizes[1] - sizes[0])
-    return sizes[0] - each, each
+        at.append((size, int(cast(int, total))))
+    if third is None:
+        return tuple(at), None, None, None
+    return (tuple(at), *line_through(at))
+
+
+def line_through(at: Sequence[tuple[int, int]]) -> tuple[float, float, float]:
+    """The line ``fixed + members * each`` through the first two of three measurements (members, bytes), and how far
+    the third lies off it, as a fraction of the per-member bytes between the third and the nearer of the two."""
+    (a, ta), (b, tb), (c, tc) = at
+    each = (tb - ta) / (b - a)
+    fixed = ta - a * each
+    nearer = min((a, b), key=lambda size: abs(size - c))
+    span = abs(c - nearer) * each
+    off = abs(tc - (fixed + c * each))
+    return fixed, each, off / span if span > 0 else (0.0 if off == 0 else float("inf"))
 
 
 def report_bytes(built: BuiltExperiment, point: Point) -> int:
@@ -339,6 +436,13 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
             points.append(point)
             if point.key is not None and point.key not in first and not point.refused:
                 first[point.key] = point
+
+        def probe(values: Mapping[Axis, object]) -> Point:
+            return build_point(-1, settings, declarations, values, STUDY_REASON, first.get)
+
+        inert = inert_axes(axes, points, probe)
+        if inert:
+            raise BuildRefused(inert)
         groups: list[Group] = []
         for key in first:
             built = None
@@ -371,11 +475,53 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     return StudyPlan(axes, tuple(points), tuple(groups), steps, drop)
 
 
+def inert_axes(axes: Sequence[Axis], points: Sequence[Point],
+               probe: Callable[[Mapping[Axis, object]], Point]) -> list[Refusal]:
+    """The refusal of each axis whose values change nothing the study runs (``study.axis-inert``): every two points
+    that differ in its value alone run one computation (``same_run``: one structure key, equal leaves and initial
+    states, a host controller's law from equal settings). The pairs are the points' own where the sweep holds the other
+    axes fixed between them (a grid); otherwise one pair is made, the first point and the same point at another of the
+    axis's values (``probe``). An axis with one value, or whose pairs are refused, is not judged."""
+    found: list[Refusal] = []
+    held = [point for point in points if not point.refused and point.key is not None]
+    for axis in axes:
+        if len({value_text(point.values[axis]) for point in points}) < 2:
+            continue
+        others = [other for other in axes if other is not axis]
+        rows: dict[tuple[str, ...], list[Point]] = {}
+        for point in held:
+            rows.setdefault(tuple(value_text(point.values[other]) for other in others), []).append(point)
+        pairs = [(row[0], point) for row in rows.values() for point in row[1:]
+                 if differ(row[0].values[axis], point.values[axis])]
+        if not pairs and held:
+            start = held[0]
+            moved = next((point.values[axis] for point in points if differ(point.values[axis], start.values[axis])),
+                         None)
+            if moved is not None:
+                made = probe({**start.values, axis: moved})
+                if not made.refused and made.key is not None:
+                    pairs = [(start, made)]
+        if pairs and all(same_run(a, b) for a, b in pairs):
+            a, b = pairs[0]
+            found.append(Refusal(
+                "study.axis-inert", RefusalClass.USER,
+                f"the axis {axis.path} changes nothing the study runs: its values ({value_text(a.values[axis])} and "
+                f"{value_text(b.values[axis])}, and every other pair the sweep holds) give points with one compiled "
+                f"program, the same parameter leaves and the same initial state, so its members would run one "
+                f"computation. Either the experiment does not use the value, or the entry that consumes it keeps it "
+                f"outside its node's leaves and declared statics, where a study cannot see it",
+                "sweep a value the experiment's nodes hold in a leaf or a declared static; for a value an entry keeps "
+                "outside both, make each value an experiment of its own, `Experiment.based_on(...)`, and build each, "
+                "which bakes the value into that build, and report the entry: a node holds every value it consumes in "
+                "a leaf or a declared static"))
+    return found
+
+
 def _settle(group: Group, points: Sequence[Point], axes: Sequence[Axis], duration: Quantity,
             record: Sequence[OutputRef | str], every: Quantity | None, batch: int | None) -> None:
     """A group's run settled: its batches and chunks, the leaves that vary among its members, the refusal of a varying
-    leaf the step does not read, and its memory estimate, measured by compiling one chunk of the batched step at one
-    and two members (``device_bytes``) and running nothing."""
+    leaf the step does not read, and its memory estimate, measured by compiling one chunk of the batched step at two or
+    three batch sizes (``device_bytes``) and running nothing."""
     built = group.built
     assert built is not None
     steps = built.steps_in(duration)
@@ -408,18 +554,19 @@ def _settle(group: Group, points: Sequence[Point], axes: Sequence[Axis], duratio
     state = builder.state
     kept = sorted({(output.node, output.field) for output in recorded})
     per_step = sum(state[node][name].nbytes for node, name in kept if node in state and name in state[node])
-    if group.batched:
-        fixed, each = device_bytes(built, points, group.members, varying, built.flag_tests(), kept,
-                                   max(group.chunks, default=1))
-    else:
-        fixed, each = sum(v.nbytes for leaves in builder.tree.values() for v in leaves.values()), _nbytes(state)
-    group.fixed = fixed
     second = points[group.members[1]] if len(group.members) > 1 else builder
     own = sum(value.nbytes for node, leaves in second.tree.items() for leaf, value in leaves.items()
               if value is not builder.tree[node][leaf])
     own += sum(value.nbytes for node, fields in second.state.items() for name, value in fields.items()
                if value is not builder.state[node][name])
-    group.each = each + per_step * steps + report_bytes(built, builder) + own
+    host = per_step * steps + report_bytes(built, builder) + own + _nbytes(state)
+    largest = max(group.batches, default=1)
+    if group.batched:
+        at, fixed, each, miss = device_bytes(built, points, group.members, varying, built.flag_tests(), kept,
+                                             max(group.chunks, default=1), largest)
+        group.memory = Memory(largest, len(group.members), host, at, fixed, each, miss)
+    else:
+        group.memory = Memory(1, len(group.members), host, batched=False)
 
 
 @dataclass
@@ -527,5 +674,5 @@ def member_report(built: BuiltExperiment, point: Point) -> dict[str, Any]:
     return report_summary(report, run_layout(plans))
 
 
-__all__ = ["Compiles", "Group", "Points", "Study", "StudyPlan", "along", "grid", "member_report", "run_members",
-           "stacked_state", "stacked_tree", "device_bytes"]
+__all__ = ["LINE_MISS", "Compiles", "Group", "Memory", "Points", "Study", "StudyPlan", "along", "device_bytes", "grid",
+           "inert_axes", "line_through", "measured_sizes", "member_report", "run_members", "stacked_state", "stacked_tree"]

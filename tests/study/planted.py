@@ -1,6 +1,7 @@
 """Planted entries for the study's controls: a spring on the toy body whose node, by ``kind``, either derives a static
 array from its stiffness and declares it (``static``), consumes the stiffness when it is built and never reads the
-leaf (``baked``), or stores twice the stiffness the plan gives it (``double``)."""
+leaf (``baked``), keeps the stiffness in a Python attribute alone, its leaf the default whatever the plan gives
+(``hidden``), or stores twice the stiffness the plan gives it (``double``)."""
 
 from __future__ import annotations
 
@@ -64,15 +65,25 @@ class BakedSpringNode(ToySpringNode):
         return ToyLoad(load=-self.kept * (given.get("x", _zero3()) - jnp.asarray(p["x0"])))
 
 
+class HiddenSpringNode(BakedSpringNode):
+    """Keeps ``k`` in a Python attribute its law reads, and gives its leaf the default stiffness whatever it is built
+    with: no leaf, static or structure holds the value, so a study's key cannot see it and its tree never changes."""
+
+    def __init__(self, name: str, timestep: float, k: float = 1.7, x0: Sequence[float] = (0.05, -0.02, 0.01)) -> None:
+        super().__init__(name, timestep, k=1.7, x0=x0)
+        self.kept = float(k)
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class PlantedSpring(Interaction):
-    """A spring towards ``x0``, its node by ``kind``: ``static``, ``baked`` or ``double`` (the node is given ``2 k``)."""
+    """A spring towards ``x0``, its node by ``kind``: ``static``, ``baked``, ``hidden`` or ``double`` (the node is given
+    ``2 k``)."""
 
     name = "studytoy.spring"
     version = "0.1.0"
     differentiability = GradientStatus.EXACT
-    builds = {"": (ToySpringNode, StaticSpringNode, BakedSpringNode)}
+    builds = {"": (ToySpringNode, StaticSpringNode, BakedSpringNode, HiddenSpringNode)}
     roles = {"body": RoleKind.BODY}
     reads = {"x": Read("body", POSITION.name)}
     delivers = {"load": Delivery("body", LOAD.name)}
@@ -83,7 +94,8 @@ class PlantedSpring(Interaction):
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         k = ctx.scalar("k")
-        cls = {"static": StaticSpringNode, "baked": BakedSpringNode}.get(self.kind, ToySpringNode)
+        cls = {"static": StaticSpringNode, "baked": BakedSpringNode, "hidden": HiddenSpringNode}.get(self.kind,
+                                                                                                  ToySpringNode)
         node = b.add_response_node(cls(ctx.node_name(), ctx.timestep, k=2.0 * k if self.kind == "double" else k))
         b.connect(b.read("x"), into=node[cls.READS])
         b.connect(node[cls.OUTPUT], into=b.target("load"))

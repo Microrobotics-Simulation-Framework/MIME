@@ -289,7 +289,7 @@ def test_the_control_a_guard_call_missing_added_or_moved_is_caught_in_the_compar
     for line in ("    held._check_static_data_dirty()  # noqa: SLF001\n", "    held._recover_from_escaped_tracers()  # noqa: SLF001\n",
                  '    held._refuse_xla_loop_hazards("run_scan", scan=True)  # noqa: SLF001\n',
                  "    external = held._resolve_external_inputs(dict(fed))  # noqa: SLF001\n",
-                 "    params = held._params_or_default(None)  # noqa: SLF001\n"):
+                 "    params = held._params_or_default(params)  # noqa: SLF001\n"):
         assert source.count(line) == 1, f"the control's line is not in the source: {line!r}"
         assert mime_guards(source.replace(line, "")) != wanted, f"a missing call was not caught: {line!r}"
     moved = source.replace("    held._check_static_data_dirty()  # noqa: SLF001\n", "", 1).replace(

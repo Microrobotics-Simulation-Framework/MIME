@@ -379,15 +379,17 @@ class ChunkedRun:
                 self.checked = True
             if self._one_step:
                 stop = step + 1
+            # A tree only where one is given: a run without one makes the calls it always made.
+            given = {} if self._params is None else {"params": self._params}
             if history:
                 stop = min(stop, step + self.block())
-                final, held = scan_chunk_with_history(self.graph, stop - step, fed, self._params)
+                final, held = scan_chunk_with_history(self.graph, stop - step, fed, **given)
                 stacked.append(_to_numpy(held, self._keep))
             elif self._tests:
-                final, reduced = scan_chunk_tallied(self.graph, stop - step, fed, self._tests, self._params)
+                final, reduced = scan_chunk_tallied(self.graph, stop - step, fed, self._tests, **given)
                 self.tally = (self.tally or FlagTally.none(len(self._tests))).then(reduced.shifted(step))
             else:
-                final = scan_chunk(self.graph, stop - step, fed, self._params)
+                final = scan_chunk(self.graph, stop - step, fed, **given)
             self.steps += stop - step
             step = stop
         ready(final)

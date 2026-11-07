@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, cast
 
+import numpy as np
+
 from mime.build import (
     Attachment,
     Declaration,
@@ -33,6 +35,7 @@ from mime.things import (
     TypedPath,
     did_you_mean,
 )
+from mime.drives import Constant
 from mime.units import Quantity
 
 
@@ -162,7 +165,9 @@ def _setting(path: str, owner: str, setting: str, declarations: Sequence[Declara
                 "study.unset-group", RefusalClass.USER,
                 f"the setting {'.'.join(parts[:at])!r} of {owner} is not given, so {path} has no group to set",
                 f"give the group in the experiment ({parts[at - 1]}=...), then vary its settings")])
-        if held is None or not dataclasses.is_dataclass(held) or part not in {f.name for f in dataclasses.fields(held)}:
+        # A quantity is a setting's value, not a group of settings: its own fields are no axis.
+        if held is None or isinstance(held, Quantity) or not dataclasses.is_dataclass(held) or \
+                part not in {f.name for f in dataclasses.fields(held)}:
             raise _unknown(path, declarations, f"no law {owner!r} with a setting {setting!r}")
         held = getattr(held, part)
     return Axis(path, AxisKind.SETTING, owner, setting)
@@ -242,5 +247,36 @@ def value_text(value: object) -> str:
     return str(value) if isinstance(value, (Quantity, str)) else repr(value)
 
 
+def differ(a: object, b: object) -> bool:
+    """Whether two values of an axis are different values: quantities by their SI values and dimension (``Hz(10.0)``
+    and ``kHz(0.01)`` are one value), anything else as it is written."""
+    if isinstance(a, Quantity) and isinstance(b, Quantity):
+        return a.dimension != b.dimension or not np.array_equal(np.asarray(a.value, dtype=float),
+                                                                np.asarray(b.value, dtype=float))
+    return value_text(a) != value_text(b)
+
+
+def base_value(axis: Axis, settings: RunSettings, declarations: Sequence[Declaration]) -> object | None:
+    """The value the experiment itself declares where ``axis`` writes: a command's drive, a thing's declared value, a
+    law's setting, a body's initial value, the run's step. ``None`` where it declares none there (a value a record or
+    a default gives) or for the precision."""
+    if axis.kind is AxisKind.DT:
+        return settings.dt
+    if axis.kind is AxisKind.VALUE:
+        return next((d.value for d in declarations if isinstance(d, ValueDeclaration) and str(d.path) == axis.path), None)
+    if axis.kind is AxisKind.SETTING:
+        held: object = getattr(_laws(declarations).get(axis.owner), "law", None)
+        for part in axis.name.split("."):
+            held = getattr(held, part, None)
+        return held
+    thing = _things(declarations).get(axis.owner)
+    if axis.kind is AxisKind.COMMAND and isinstance(thing, Apparatus):
+        drive = thing.commands.get(axis.name)
+        return drive.value if isinstance(drive, Constant) else drive
+    if axis.kind is AxisKind.INITIAL and isinstance(thing, Body):
+        return dict(thing.initial).get(axis.name)
+    return None
+
+
 __all__ = ["DT", "OVERRIDE_REASON", "PRECISION", "PRECISIONS", "STUDY_REASON", "Axis", "AxisKind", "Declared", "RunPath",
-           "candidates", "declared", "resolve", "value_text"]
+           "base_value", "candidates", "declared", "differ", "resolve", "value_text"]

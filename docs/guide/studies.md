@@ -33,16 +33,23 @@ and the precision. Points that need one program are a **group**: built once, com
 `jax.vmap` over their own parameter leaves and initial states. A leaf every member shares (a table, a network's weights)
 enters the step once, never copied per member. The plan says how many groups and compiles there are, why each group split
 from the first (a static a node derives from a value, a changed node set, `dt`, the precision), every refused point with
-every reason, and the memory each group needs, `fixed + B x each`: XLA's buffer assignment of one chunk of the batched
-step, compiled at one member and at two and not run, with each point's own leaves and state, its series and its report as
-the plan measures them (the plan pays those two compiles). XLA's assignment does not hold a solver's own workspace
-(the MRS rung's dense solves), so the estimate is low there: about four to five times per member on the MRS screw in a
-tube, measured on one laptop. It printed:
+every reason, and the memory each group needs.
+
+On the device, the memory of a batch is XLA's buffer assignment of one chunk of the batched step, compiled at the batch's
+size and not run, so the plan measures it rather than extrapolating it. Beside it the plan gives `fixed + each` a
+member, for choosing `batch=`: the line through two batch sizes where the assignment grows by one member's bytes a
+member (four and eight members; a batch under eight at its own size and half of it), checked at a third. At one member
+XLA assigns otherwise: on the MRS screw in a tube the step grows far less from one member to two than from each member
+to the next once there are three, so a line through one and two members gave a small fraction of the bytes a member
+costs. Where the third size lies more than a fifth of a member's bytes off the line, the plan gives no figure a member.
+On the host, each member holds its own leaves and state, its series and its report. The plan pays those compiles. Its
+print below leaves the estimate out (`study.plan().text(memory=False)`), since the bytes depend on the machine, the
+jaxlib and the Python it runs on; `print(study.plan())` gives them. It printed:
 
 <!-- mime-output: examples/studies.py -->
 ```text
-4 points over field.commands.frequency; 1 group, 1 compile; nothing refused
-  group 0: 4 points, batched in 1 batch of 4, 1 compile; memory about 5.3 KiB + 4 x 27.3 KiB = 114.4 KiB (XLA's buffer assignment of a chunk of the step at one and two members, which leaves out a solver's own workspace; each point's own leaves and state, its series and its report, measured)
+4 points over field.commands.frequency; 1 group, 1 compile to run it (planning compiled the group's build, and its batched step 3 times for the memory estimate); nothing refused
+  group 0: 4 points, batched in 1 batch of 4, 1 compile
 10 Hz: swim speed 2.92 mm/s over the second half, 0.292 mm per turn
 20 Hz: swim speed 5.86 mm/s over the second half, 0.293 mm per turn
 30 Hz: swim speed 8.90 mm/s over the second half, 0.297 mm per turn
@@ -51,7 +58,12 @@ OVERRIDDEN for this run: field.commands.frequency = 20.0 Hz
 ```
 
 A value the compiled step does not read (one a node consumes when it is built, without declaring it) is refused, since
-sweeping it would change nothing. A point outside a validity limit is refused in every profile, and `study.run()` refuses
+sweeping it would change nothing, and so is an axis whose values change nothing a member runs from: no parameter leaf, no
+initial state, nothing the compiled step is built from (`study.axis-inert`; for a run's override, `override.no-effect`).
+A study sees a value only where a node holds it, so **a node must hold every value it consumes in a parameter leaf or a
+declared static**: one kept in a Python attribute alone is invisible to the study's key, and its members would all run
+the value the group was built with. Such an entry is a defect to report; its values run as experiments of their own,
+`Experiment.based_on(...)`, each built. A point outside a validity limit is refused in every profile, and `study.run()` refuses
 the study with every refused point at once; `sweep(..., drop_refused=True)` runs the rest and records the dropped points
 on the result. With a controller called on the host between chunks, a group's members run one after another on its one
 compiled step, each with its own law.
@@ -87,9 +99,10 @@ mime run <folder> --out <run> --duration 1s --override field.commands.frequency=
 
 The run folder's `run.json` records each override (its path, its value with its unit, its SI value and the leaves it writes),
 `report.json` is the point's, and `experiment/` stays the base's saved form; `mime verify --run <run>` makes the run again
-from them and compares. What would need another compiled step is refused with its route: a value baked into a static or
-the structure is a rebuild (a study, or `Experiment.based_on`), and a numerical setting, `dt`, the precision or a rung is a
-variant.
+from them and compares. The point is judged as a study's is, the nodes' own checks of their start included, so a start
+the build refuses is refused when the run is asked for. What would need another compiled step is refused with its route:
+a value baked into a static or the structure is a rebuild (a study, or `Experiment.based_on`), and a numerical setting,
+`dt`, the precision or a rung is a variant.
 
 ## What is bit for bit, and what is not
 

@@ -1,6 +1,6 @@
 """The batched scan's own claims, each with the comparison it can fail: a batch of one member is bit for bit its own
-unbatched pure scan; chunks of two steps and more are bit for bit the unchunked batch; a leaf every member shares enters
-the step once, with no member axis; ``_meta`` (the multi-rate counter, the coupling groups' warm starts) is carried per
+unbatched pure scan; chunks of two steps and more are bit for bit the unchunked batch; a leaf every member shares reaches
+the compiled step once, with no member axis, as the step's own arguments show; ``_meta`` (the multi-rate counter, the coupling groups' warm starts) is carried per
 member through the chunks; and members of an experiment with a coupling group and a node at a third of the base rate
 are within gate 1's tolerance of their own runs. Bits are claimed at the usable CPU count and OpenBLAS thread count the
 test runs at (MIME-ANO-140, -141)."""
@@ -81,9 +81,71 @@ def test_chunks_of_two_steps_and_more_are_bit_for_bit_the_unchunked_batch(dtype)
         assert _bits(whole, final), chunks
 
 
-def test_a_leaf_every_member_shares_enters_the_step_once_with_no_member_axis():
-    """Members differing only in a command: the surrogate's weights and every other leaf but the drive's value are the
-    first member's own arrays, marked unbatched (``None``), never stacked per member."""
+def _handed(monkeypatch) -> list[dict]:
+    """What each call of a batched run hands its compiled step, read from the program MADDENING hands out
+    (``GraphManager._cached_scan``), below every MIME caller: the lowered program's argument shapes, by node and leaf,
+    the batch size, and its argument bytes."""
+    from maddening import GraphManager
+
+    seen: list[dict] = []
+    real = GraphManager._cached_scan
+
+    def handing(self, key, build):
+        program = real(self, key, build)
+        if key[0] != "mime_batched_scan" or not key[2] or key[-1]:  # the batched run's own scan, not a measurement
+            return program
+
+        def called(*args):
+            info = program.lower(*args).args_info
+            (state, _, params), _ = info
+            leaves = jax.tree.leaves(info)
+            seen.append({
+                "batch": next(iter(jax.tree.leaves(state))).shape[0],
+                "leaves": {(node, leaf): info.shape for node, held in params["nodes"].items()
+                           for leaf, info in held.items()},
+                "state": sum(int(np.prod(a.shape)) * np.dtype(a.dtype).itemsize for a in jax.tree.leaves(state)),
+                "bytes": sum(int(np.prod(a.shape)) * np.dtype(a.dtype).itemsize for a in leaves)})
+            return program(*args)
+
+        return called
+
+    monkeypatch.setattr(GraphManager, "_cached_scan", handing)
+    return seen
+
+
+def test_a_leaf_every_member_shares_reaches_the_compiled_step_once_with_no_member_axis(monkeypatch):
+    """Members differing only in a command: what the compiled step is handed, at one member and at three. Every leaf
+    but the drive's value arrives with its own shape, no member axis, and the arguments of three members exceed one's
+    by exactly two members' own bytes (their states and the drive's value): no shared leaf is copied per member. A
+    regression anywhere between the plan and the step that broadcast the shared leaves would add their bytes (here 236
+    a member) and a leading axis, both of which this sees."""
+    plan = _plan([10.0, 20.0, 30.0, 40.0], s(0.01))
+    group = plan.groups[0]
+    first = plan.points[group.members[0]].tree
+    varying = set(group.varying)
+    assert varying == {("drive:field.frequency", "value")}
+    shared = [(n, k) for n in first for k in first[n] if (n, k) not in varying]
+    shared_bytes = sum(first[n][k].nbytes for n, k in shared)
+    assert shared and shared_bytes > 0, "a broadcast of the shared leaves would add nothing this could see"
+    seen = _handed(monkeypatch)
+    tests = group.built.flag_tests()
+    for size in (1, 3):
+        run_members(group.built, plan.points, group.members[:size], group.varying, group.chunks, tests, ())
+    calls = {call["batch"]: call for call in reversed(seen)}
+    assert sorted(calls) == [1, 3], sorted(calls)
+    for size, call in calls.items():
+        for node, leaf in shared:
+            assert call["leaves"][(node, leaf)] == first[node][leaf].shape, (size, node, leaf, call["leaves"][(node, leaf)])
+        for node, leaf in varying:
+            assert call["leaves"][(node, leaf)] == (size, *first[node][leaf].shape), (size, node, leaf)
+    own = calls[1]["state"] + sum(first[n][k].nbytes for n, k in varying)
+    assert calls[3]["bytes"] - calls[1]["bytes"] == 2 * own, (calls[3]["bytes"], calls[1]["bytes"], own)
+
+
+def test_points_and_the_batchs_tree_hold_the_first_points_own_array_for_each_leaf_they_share():
+    """On the host: the batch's tree marks every leaf but the drive's value unbatched (``None``) and holds the first
+    member's own array for it, and every point holds the first point's array for each leaf they share, so a table is
+    held once, not per point."""
     from mime.study._study import stacked_tree
 
     plan = _plan([10.0, 20.0, 30.0, 40.0], s(0.01))
@@ -95,9 +157,6 @@ def test_a_leaf_every_member_shares_enters_the_step_once_with_no_member_axis():
     for node, leaf, axis in axes:
         if axis is None:
             assert tree["nodes"][node][leaf] is first[node][leaf], (node, leaf)
-    weights = max(((n, k) for n, k, a in axes if a is None), key=lambda nk: first[nk[0]][nk[1]].nbytes)
-    assert tree["nodes"][weights[0]][weights[1]].shape == first[weights[0]][weights[1]].shape
-    # Every point holds the first point's own array for each leaf they share: a table is held once, not per point.
     for index in group.members[1:]:
         own = plan.points[index].tree
         assert all(own[n][k] is first[n][k] for n, k, a in axes if a is None)

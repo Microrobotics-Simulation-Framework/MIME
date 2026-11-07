@@ -100,3 +100,22 @@ def test_mime_run_takes_an_override(tmp_path):
     record = json.loads((tmp_path / "out" / "run.json").read_text())
     assert record["overrides"][0]["value"] == "15.0 Hz"
     assert verify_run(tmp_path / "out").reproduced
+
+
+def test_an_override_runs_the_nodes_own_checks_at_the_build_as_a_study_does():
+    """The MRS rung's own check of the start, judged on the overridden point by the code that judges a study's: a ball
+    started 4.45 mm off the axis of a 5 mm tube is refused when the run is asked for (``drag.mrs-resistance``, as its
+    own build and a study's point are), not at the run's first step, and the build has taken no step. The control: an
+    override of a start inside the rung's range is planned, its check judged on its own node and passed."""
+    from mrs_cases import mrs_tube
+
+    from mime.study._override import overridden
+    from mime.units import mm
+
+    built = mrs_tube().build()
+    with pytest.raises(BuildRefused) as refused:
+        built.run(ms(2), override={"ball.initial.position": mm((4.45, 0.0, 0.0))})
+    assert "drag.mrs-resistance" in refused.value.codes(), refused.value.codes()
+    assert built.steps_taken == 0
+    inside = overridden(built, {"ball.initial.position": mm((0.1, 0.0, 0.0))})
+    assert inside.starting == ("ball",) and inside.point.computed is not None

@@ -242,6 +242,7 @@ override.callback             user
 override.initial-after-start  user
 override.leaf-unread          user
 override.no-declarations      user
+override.no-effect            user
 override.structural           user
 override.unreplayable         user
 override.variant              user
@@ -402,6 +403,7 @@ state.outside-region          user
 state.units                   user
 state.unknown                 user
 state.value                   user
+study.axis-inert              user
 study.axis-twice              user
 study.axis-values             user
 study.batch                   user

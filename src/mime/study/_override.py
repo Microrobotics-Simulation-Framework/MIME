@@ -20,8 +20,8 @@ from mime.build._maddening import static_dependencies, unreadable_leaves
 from mime.build._plan import Section
 from mime.registry import Role
 from mime.saved._pins import keeping_pins
-from mime.study._axes import OVERRIDE_REASON, Axis, AxisKind, resolve, value_text
-from mime.study._point import Point, build_point
+from mime.study._axes import OVERRIDE_REASON, Axis, AxisKind, base_value, differ, resolve, value_text
+from mime.study._point import Point, build_point, checked_digests, same_run
 from mime.units import Quantity, parse_unit, si, unit_symbol
 
 if TYPE_CHECKING:
@@ -109,11 +109,12 @@ def base_point(built: BuiltExperiment) -> Point:
     observing = [n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()]
     found = structure_key(assembled.graph, observing)
     assert declarations is not None and settings is not None
-    point = Point(0, {}, Declared(settings, declarations, None), plans)
+    point = Point(0, {}, Declared(settings, declarations, None), plans, built.law)
     point.key, point.tree = found.key, {name: dict(leaves) for name, leaves in found.tree.items()}
     point.state = {name: {key: np.asarray(value) for key, value in
                           cast(Any, assembled.graph.get_node(name)).initial_state().items()}
                    for name in assembled.graph.node_names}
+    point.checked = checked_digests(assembled.graph, point.tree)
     built.own_point = point
     return point
 
@@ -136,11 +137,14 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
             "make their own law, or run the controller inside the compiled step (mode='graph')"))
     if refusals:
         raise BuildRefused(refusals)
+    base = base_point(built)
     with keeping_pins(built.saved_form):
-        point = build_point(0, settings, declarations, axes, OVERRIDE_REASON)
+        # The base as the reference: a node with checks of its own (the MRS rung's) whose leaves or starting inputs the
+        # overrides change is judged again on the run's own point, by the code that judges a study's.
+        point = build_point(0, settings, declarations, axes, OVERRIDE_REASON,
+                            lambda key: base if key == base.key else None)
     if point.refused:
         raise BuildRefused(list(point.refusals))
-    base = base_point(built)
     if point.key != base.key:
         baked = [(node, leaf) for node, leaf in _leaves(point.tree, base.tree)
                  if any(leaf in params for params in static_dependencies(built.graph.get_node(node)).values())]
@@ -177,11 +181,30 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
             "build again and run that build with the override from its start: `exp.build().run(duration, "
             "override={...})`")])
     records: list[dict[str, Any]] = []
+    inert: list[Refusal] = []
     for axis, value in axes.items():
         with keeping_pins(built.saved_form):
             alone = point if len(axes) == 1 else build_point(0, settings, declarations, {axis: value}, OVERRIDE_REASON)
+        own = base_value(axis, settings, declarations)
+        if not alone.refused and same_run(alone, base) and (own is None or differ(own, value)):
+            inert.append(_no_effect(axis, value, own))
         records.append(_record(axis, value, _leaves(alone.tree, base.tree)))
+    if inert:
+        raise BuildRefused(inert)
     return Overridden(point, tuple(records), {"nodes": point.tree, "mappings": {}}, tuple(starting))
+
+
+def _no_effect(axis: Axis, value: object, own: object | None) -> Refusal:
+    given = f"the experiment's own {value_text(own)}" if own is not None else "the value the experiment holds there"
+    return Refusal(
+        "override.no-effect", RefusalClass.USER,
+        f"the override {axis.path} = {value_text(value)} changes nothing this run computes from: against {given}, it "
+        f"writes no parameter leaf, sets no initial state and changes nothing the compiled step is built from, so the run "
+        f"would be the base's own. Either the value is the one the experiment already holds, or the entry that "
+        f"consumes it keeps it outside its node's leaves and declared statics",
+        "run without the override for the experiment's own value; for a value an entry keeps outside its leaves and "
+        "statics, declare it and build again, `Experiment.based_on(...)`, which bakes it into that build, and report "
+        "the entry: a node holds every value it consumes in a leaf or a declared static")
 
 
 __all__ = ["Overridden", "base_point", "overridden", "replayed"]

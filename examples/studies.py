@@ -15,7 +15,9 @@ experiment = script_a()
 field = experiment.handle("field")
 study = Study(experiment).sweep(grid({field.commands.frequency: [Hz(10.0), Hz(20.0), Hz(30.0), Hz(40.0)]}),
                                 duration=s(0.5), record=["swim_speed:umr.speed"])
-print(study.plan())
+# The plan's memory estimate is left out of this print: its bytes depend on the machine, the jaxlib and the Python it
+# is measured on. print(study.plan()) shows it.
+print(study.plan().text(memory=False))
 # endregion sweep
 
 # region: read
