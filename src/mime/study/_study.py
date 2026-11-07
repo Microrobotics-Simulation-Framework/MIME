@@ -108,7 +108,7 @@ def _points(given: object) -> Points:
         if any(tuple(row) != axes for row in held):
             raise ArgumentRefused([Refusal(
                 "study.axis-values", RefusalClass.USER, "a table of points names the same axes in every row",
-                "give every row the same axes, in the same order")])
+                "give every row the same axes: `[{\"umr.mass\": kg(8e-5)}, {\"umr.mass\": kg(9e-5)}]`")])
         return Points(axes, tuple(tuple(row[axis] for axis in axes) for row in held))
     raise ArgumentRefused([Refusal(
         "call.wrong-type", RefusalClass.USER, f"sweep takes points from grid(...), along(...) or a list of rows, not "
@@ -320,7 +320,7 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     seen = [axis.path for axis in axes]
     if len(set(seen)) != len(seen):
         raise ArgumentRefused([Refusal("study.axis-twice", RefusalClass.USER, f"an axis is named twice: {seen}",
-                                       "name each axis once")])
+                                       "name each axis once in `grid({...})`")])
     first: dict[str, Point] = {}
     records: dict[str, Any] = {}
     points: list[Point] = []
@@ -393,9 +393,9 @@ def _settle(group: Group, points: Sequence[Point], axes: Sequence[Axis], duratio
             f"the study's axes ({', '.join(written)}) write " + "; ".join(
                 f"params['nodes'][{node!r}][{leaf!r}], which changes nothing in the compiled step: {unread[(node, leaf)]}"
                 for node, leaf in baked),
-            "sweep what the step reads; a value a node consumes when it is built needs a rebuild for each value, so "
-            "declare it in the experiment once per study, or make each value an experiment of its own "
-            "(Experiment.based_on)")])
+            "sweep what the step reads; a value a node consumes when it is built needs a rebuild for each value: "
+            "declare it in the experiment, `exp.declare(...)`, once per study, or make each value an experiment of its "
+            "own, `Experiment.based_on(...)`")])
     state = builder.state
     shared = sum(value.nbytes for node, leaves in builder.tree.items() for leaf, value in leaves.items()
                  if (node, leaf) not in set(varying))

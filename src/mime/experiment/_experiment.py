@@ -461,7 +461,8 @@ class Experiment:
                    if isinstance(d, ObservationDeclaration))]
         raise ArgumentRefused([Refusal(
             "call.unknown-name", RefusalClass.USER, f"this experiment declares nothing named {name!r}",
-            f"name a thing, a law's id or an observation's id it declares. {did_you_mean(name, known)}")])
+            f"name a thing, a law's id or an observation's id it declares, as `exp.handle(\"field\")` or "
+            f"`exp.handle(\"drag:umr\")`. {did_you_mean(name, known)}")])
 
     @public
     def declare(self, path: TypedPath | str, value: Quantity, *, reason: Basis | None = None) -> None:

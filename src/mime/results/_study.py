@@ -107,7 +107,7 @@ class StudyResult:
         if not -len(self._members) <= index < len(self._members):
             raise ArgumentRefused([Refusal(
                 "study.no-member", RefusalClass.USER, f"the study has {len(self._members)} members, and no member {index}",
-                f"take one of 0 to {len(self._members) - 1}")])
+                f"take one of its members, `result.member(0)` to `result.member({len(self._members) - 1})`")])
         return self._members[index]
 
     @property
@@ -131,7 +131,8 @@ class StudyResult:
             known = sorted({held for member in self._members for held in member.observations})
             raise ArgumentRefused([Refusal(
                 "study.no-observation", RefusalClass.USER, f"no member of the study observes {id!r}",
-                f"index it by an observation it declares: {', '.join(known) or 'none'}")])
+                f"index it by the handle `exp.observe(...)` returned, `result[swim]`, or by an id it observes: "
+                f"{', '.join(known) or 'none'}")])
         return StudyOutputs(self, id)
 
     @public

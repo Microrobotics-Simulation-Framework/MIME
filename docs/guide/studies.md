@@ -7,7 +7,7 @@ step-out, from rest and under a ramp) comes with the drives that ramp the freque
 
 ## A sweep
 
-`examples/studies.py` sweeps script A's field below step-out (from rest the body stays locked up to 43.25 Hz):
+`examples/studies.py` sweeps script A's field below the frequency where, from rest, its body stops following:
 
 <!-- mime-include: examples/studies.py#sweep -->
 

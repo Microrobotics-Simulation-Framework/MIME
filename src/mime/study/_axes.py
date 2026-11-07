@@ -98,8 +98,9 @@ def candidates(declarations: Sequence[Declaration]) -> list[str]:
 def _unknown(path: str, declarations: Sequence[Declaration], why: str) -> ArgumentRefused:
     return ArgumentRefused([Refusal(
         "study.unknown-path", RefusalClass.USER, f"the axis {path!r} names nothing this experiment declares: {why}",
-        f"name it by a handle's typed path (field.commands.frequency, umr.initial.position, drag.spacing), dt or "
-        f"precision, or a thing's value as declare takes it ('umr.mass'). {did_you_mean(path, candidates(declarations))}")])
+        f"name it by a handle's typed path (`field.commands.frequency`, `umr.initial.position`, `drag.spacing`), "
+        f"`DT` or `PRECISION`, or a thing's value as declare takes it (`\"umr.mass\"`). "
+        f"{did_you_mean(path, candidates(declarations))}")])
 
 
 def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
@@ -118,7 +119,8 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
     if not isinstance(path, str):
         raise ArgumentRefused([Refusal(
             "call.wrong-type", RefusalClass.USER, f"an axis is a typed path or its string, not {type(path).__name__}",
-            "name it by a handle: field.commands.frequency, umr.initial.position, drag.spacing; or 'umr.mass'")])
+            "name it by a handle: `field.commands.frequency`, `umr.initial.position`, `drag.spacing`; or "
+            "`\"umr.mass\"`")])
     if path in ("dt", "precision"):
         return Axis(path, AxisKind.DT if path == "dt" else AxisKind.PRECISION)
     head, _, rest = path.partition(".")
@@ -153,7 +155,13 @@ def _initial(path: str, owner: str, name: str, declarations: Sequence[Declaratio
 def _setting(path: str, owner: str, setting: str, declarations: Sequence[Declaration]) -> Axis:
     attachment = _laws(declarations).get(owner)
     held: object = attachment.law if attachment is not None else None
-    for part in setting.split("."):
+    parts = setting.split(".")
+    for at, part in enumerate(parts):
+        if at and held is None:
+            raise ArgumentRefused([Refusal(
+                "study.unset-group", RefusalClass.USER,
+                f"the setting {'.'.join(parts[:at])!r} of {owner} is not given, so {path} has no group to set",
+                f"give the group in the experiment ({parts[at - 1]}=...), then vary its settings")])
         if held is None or not dataclasses.is_dataclass(held) or part not in {f.name for f in dataclasses.fields(held)}:
             raise _unknown(path, declarations, f"no law {owner!r} with a setting {setting!r}")
         held = getattr(held, part)
@@ -200,7 +208,7 @@ def declared(settings: RunSettings, declarations: Sequence[Declaration], values:
             if value not in PRECISIONS:
                 raise ArgumentRefused([Refusal(
                     "study.precision", RefusalClass.USER, f"precision is 'float32' or 'float64', not {value!r}",
-                    "write PRECISION's values as 'float32' and 'float64'")])
+                    "write the precisions as strings: `grid({PRECISION: [\"float32\", \"float64\"]})`")])
             x64 = value == "float64"
         elif axis.kind is AxisKind.VALUE:
             given = cast(object, getattr(value, "reason", None))

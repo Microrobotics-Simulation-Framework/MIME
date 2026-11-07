@@ -27,8 +27,6 @@ from mime.units import Quantity, parse_unit, si, unit_symbol
 if TYPE_CHECKING:
     from mime.experiment import BuiltExperiment
 
-REBUILD = ("a rebuild: run a Study over it, which builds each value it needs, or make a new experiment with "
-           "Experiment.based_on(...) and declare the value there")
 
 
 @dataclass(frozen=True)
@@ -46,10 +44,6 @@ class Overridden:
 def _site(axis: Axis) -> str:
     """The setting's path as the profile names it: a command's value is ``<apparatus>.<command>``."""
     return f"{axis.owner}.{axis.name}" if axis.kind is AxisKind.COMMAND else axis.path
-
-
-def _refuse(code: str, message: str, action: str, why: str | None = None) -> BuildRefused:
-    return BuildRefused([Refusal(code, RefusalClass.USER, message, action, why=why)])
 
 
 def _variants(built: BuiltExperiment, axes: Sequence[Axis]) -> list[Refusal]:
@@ -94,7 +88,9 @@ def replayed(record: Mapping[str, Any]) -> tuple[str, object]:
         raise BuildRefused([Refusal(
             "override.unreplayable", RefusalClass.USER,
             f"the override of {record.get('path')!r} was recorded without its SI value and unit ({record.get('value')}), "
-            "so it cannot be replayed", "run the experiment again with the override given as a quantity")])
+            "so it cannot be replayed",
+            "run it again with the override given as a quantity: "
+            "`built.run_to(out, duration, override={field.commands.frequency: Hz(20.0)})`")])
     value = tuple(float(v) for v in cast(Sequence[float], held)) if isinstance(held, list) else float(held)
     return str(record["path"]), Quantity(value, parse_unit(str(unit)))
 
@@ -126,8 +122,9 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
     """The point of a run of ``built`` with ``overrides``, or the refusal of each one an override cannot be."""
     declarations, settings = built.declared
     if declarations is None or settings is None:
-        raise _refuse("override.no-declarations", "this built experiment holds no declarations to override",
-                      "build it from an Experiment (exp.build()), then run(..., override={...})")
+        raise BuildRefused([Refusal(
+            "override.no-declarations", RefusalClass.USER, "this built experiment holds no declarations to override",
+            "build it from an Experiment, `exp.build().run(duration, override={...})`")])
     axes = {resolve(path, declarations): value for path, value in overrides.items()}
     controller = built.plans.controller
     refusals = _variants(built, list(axes))
@@ -148,27 +145,37 @@ def overridden(built: BuiltExperiment, overrides: Mapping[object, object]) -> Ov
         baked = [(node, leaf) for node, leaf in _leaves(point.tree, base.tree)
                  if any(leaf in params for params in static_dependencies(built.graph.get_node(node)).values())]
         if baked:
-            raise _refuse("override.baked-leaf",
-                          f"the override writes {', '.join(f'{n}.{k}' for n, k in baked)}, which a static of its node is "
-                          f"derived from when the node is built, so the compiled step does not read it",
-                          f"this needs {REBUILD}")
-        raise _refuse("override.structural",
-                      f"the override changes the compiled step's structure ({', '.join(a.path for a in axes)}): another "
-                      f"node set, a static array or a setting the program is built from", f"this needs {REBUILD}")
+            raise BuildRefused([Refusal(
+                "override.baked-leaf", RefusalClass.USER,
+                f"the override writes {', '.join(f'{n}.{k}' for n, k in baked)}, which a static of its node is derived "
+                f"from when the node is built, so the compiled step does not read it",
+                "this needs a rebuild: a study, which builds each value it needs, `Study(exp).sweep(grid({...}), "
+                "duration=...)`, or a new experiment with the value declared, `Experiment.based_on(...)`")])
+        raise BuildRefused([Refusal(
+            "override.structural", RefusalClass.USER,
+            f"the override changes the compiled step's structure ({', '.join(a.path for a in axes)}): another node set, "
+            f"a static array or a setting the program is built from",
+            "this needs a rebuild: a study, which builds each value it needs, `Study(exp).sweep(grid({...}), "
+            "duration=...)`, or a new experiment with the value declared, `Experiment.based_on(...)`")])
     changed = _leaves(point.tree, base.tree)
     unread = unreadable_leaves(built.graph)
     dead = [(node, leaf) for node, leaf in changed if (node, leaf) in unread and not leaf.startswith("initial_")]
     if dead:
-        raise _refuse("override.leaf-unread",
-                      "; ".join(f"the override writes params['nodes'][{n!r}][{k!r}], which changes nothing in the "
-                                f"compiled step: {unread[(n, k)]}" for n, k in dead), f"this needs {REBUILD}")
+        raise BuildRefused([Refusal(
+            "override.leaf-unread", RefusalClass.USER,
+            "; ".join(f"the override writes params['nodes'][{n!r}][{k!r}], which changes nothing in the compiled step: "
+                      f"{unread[(n, k)]}" for n, k in dead),
+            "this needs a rebuild: a study, which builds each value it needs, `Study(exp).sweep(grid({...}), "
+            "duration=...)`, or a new experiment with the value declared, `Experiment.based_on(...)`")])
     starting = [name for name, fields in point.state.items()
                 if any(not np.array_equal(value, base.state[name][key]) for key, value in fields.items())]
     if starting and built.steps_taken:
-        raise _refuse("override.initial-after-start",
-                      f"the override sets the initial state ({', '.join(starting)}), and this built has run "
-                      f"{built.steps_taken} steps, so its state is no longer the initial one",
-                      "build the experiment again and run that build with the override from its start")
+        raise BuildRefused([Refusal(
+            "override.initial-after-start", RefusalClass.USER,
+            f"the override sets the initial state ({', '.join(starting)}), and this built has run {built.steps_taken} "
+            f"steps, so its state is no longer the initial one",
+            "build again and run that build with the override from its start: `exp.build().run(duration, "
+            "override={...})`")])
     records: list[dict[str, Any]] = []
     for axis, value in axes.items():
         with keeping_pins(built.saved_form):
