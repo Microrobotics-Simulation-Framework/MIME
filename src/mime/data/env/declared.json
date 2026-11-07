@@ -13,5 +13,8 @@
   {"requirement": "rich>=13.9", "extra": null, "module": "rich"},
   {"requirement": "hypothesis>=6.165", "extra": "verify", "module": "hypothesis"},
   {"requirement": "maddening[verify]>=0.4.2,<0.5", "extra": "verify", "module": "maddening"},
+  {"requirement": "mime-engine[plot]", "extra": "verify", "module": "mime"},
+  {"requirement": "matplotlib>=3.10", "extra": "plot", "module": "matplotlib"},
+  {"requirement": "plotly>=6.0", "extra": "plot", "module": "plotly"},
   {"requirement": "jax[cuda12]", "extra": "cuda12", "module": "jax"}
 ]

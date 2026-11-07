@@ -24,7 +24,14 @@ from mime.results._series import Reading, Series, Table, column_name
 from mime.units import Quantity, unit_symbol
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure as MatplotlibFigure
+    from plotly.graph_objects import Figure as PlotlyFigure
+
     from mime.drives import Ramp
+    from mime.results._compare import Comparison
+    from mime.results._data import ResultData
+    from mime.results._figure import FigureRecipe
+    from mime.results._result import OutputRef, RunResult
     from mime.results._order import Order
     from mime.study._protocol import Protocol
     from mime.study._study import StudyPlan
@@ -68,6 +75,8 @@ def member_entries(point: int, member: RunResult) -> dict[str, NDArray[Any]]:
     found[prefix + "manifest"] = np.asarray(json.dumps(member.manifest(), sort_keys=True))
     if member.report is not None:
         found[prefix + "report"] = np.asarray(json.dumps(member.report, sort_keys=True))
+    if member.stage is not None:
+        found.update({prefix + key: value for key, value in member.stage.arrays().items()})
     return found
 
 
@@ -144,6 +153,8 @@ class StudyResult:
         #: The base experiment's saved folder, where the study is on disk (the bridge ``member(i).as_experiment`` is
         #: based on it).
         self.base = base
+        #: The study folder this result was read from (``None`` for one in memory): where a figure's recipe is saved.
+        self.folder: Path | None = None
         #: The points a partial study folder lacks: their index among the study's points.
         self.missing = tuple(missing)
         #: How the members' commands moved in time (``mime.study.FromRest`` or ``mime.study.Ramp``), which names the
@@ -268,6 +279,42 @@ class StudyResult:
         paths = sorted({path for held in declared for path in held})
         return {path: tuple(read.get(path, False) if path in own else NOT_DECLARED
                             for own, read in zip(declared, reads, strict=True)) for path in paths}
+
+    @public
+    def write_compare(self, reference: int = 0) -> Path:
+        """Write ``compare.usda`` into the study folder: the members' recorded poses as ghosts over the reference member's
+        stage, each member under its own prim ``/Compare/<member>`` with a ``visibility`` attribute and ``customData``
+        naming it, its coordinates (value and unit) and whether it is the reference, one sublayer that can be muted whole.
+        Needs the stage samples the sweep kept (``sweep(..., stage_every=...)``). See :mod:`mime.viz._compare`."""
+        from mime.viz._compare import write_compare
+
+        return write_compare(self, reference)
+
+    def member_data(self, index: int) -> ResultData:
+        """Member ``index`` as the protocol plots and comparisons read (``mime.results._data``)."""
+        from mime.results._data import RunData
+
+        return RunData(self.member(index))
+
+    @public
+    def compare(self, reference: int | RunResult | ResultData = 0, *, window: tuple[Quantity, Quantity] | None = None,
+                tolerance: Mapping[str, Quantity] | Quantity | None = None,
+                drives: Sequence[Quantity] | None = None) -> Comparison:
+        """Every other member against ``reference`` (a member's number, or a run: another study's member, since two
+        arms of one question may be two experiments that declare the same outputs): each declared output's miss, the
+        signed miss at the end and the largest absolute miss over ``window`` (a start and an end; the whole recording
+        when not given), held to a tolerance. The tolerance is never a fixed absolute: between members of one study, with
+        none named, it is the study's own rule (machine epsilons of each output's scale, a trajectory judged only while
+        no flag is raised); ``tolerance`` states one (a quantity, or one per output path), a spec's; with none stated
+        the miss is reported and not judged. The comparison is made on the reference's time base (the member's own
+        samples where it has one at the reference's time, else linearly interpolated onto it, which the result and its
+        figure say), and refused (``compare.time-base``) where the reference is sampled as sparsely as half the period of
+        a drive the runs declare, or of one of ``drives`` (frequencies; a run read from a folder keeps none). The
+        reference may be any result that reads as the protocol (:class:`~mime.results.Measured`). See
+        :mod:`mime.results._compare`."""
+        from mime.results._compare import compare
+
+        return compare(self, reference, window=window, tolerance=tolerance, drives=drives)
 
     @public
     def grid(self) -> StudyGrid:
@@ -402,6 +449,31 @@ class StudyResult:
         for row in cast(list[dict[str, Any]], found.get("members", [])):
             row["status"] = "done" if row["point"] in done else "pending"
         return found
+
+    @public
+    def figure(self, *outputs: OutputRef | str, kind: str | None = None, against: str | None = None,
+               members: Sequence[int] | None = None, name: str | None = None, **options: Any) -> FigureRecipe:
+        """A figure of the study as a recipe (:class:`~mime.results.FigureRecipe`): one backend-neutral description that
+        ``plot()`` (matplotlib) and ``plot_interactive()`` (plotly) draw, ``display()`` and ``web()`` show as a page, and
+        ``write_recipe()`` saves beside the result's folder, to be redrawn from its data. For a study the kinds are ``curve`` (an output at the end against a coordinate: the step-out curve; ``against=`` names the axis), ``overlay`` (a recorded series of the members on one time axis; ``members=`` chooses them) and ``distribution`` (an output at the end over the members, for sampled points). ``options`` are
+        ``title``, ``x_label``, ``y_label``, ``legend``, ``size`` (inches) and ``style``. Needs the ``plot`` extra."""
+        from mime.results._figure import figure_of
+
+        return figure_of(self, outputs, kind=kind, against=against, members=members, name=name, options=options)
+
+    @public
+    def plot(self, *outputs: OutputRef | str, kind: str | None = None, against: str | None = None,
+             members: Sequence[int] | None = None, **options: Any) -> MatplotlibFigure:
+        """The study's output as a matplotlib figure (static, for a paper; the ``plot`` extra): the :meth:`figure` of the same
+        arguments, drawn. The figure is matplotlib's own, to edit with matplotlib."""
+        return self.figure(*outputs, kind=kind, against=against, members=members, **options).plot()
+
+    @public
+    def plot_interactive(self, *outputs: OutputRef | str, kind: str | None = None, against: str | None = None,
+                         members: Sequence[int] | None = None, **options: Any) -> PlotlyFigure:
+        """The study's output as a plotly figure (interactive, for a card or a quick look; the ``plot`` extra): the
+        :meth:`figure` of the same arguments, drawn. The figure is plotly's own, to edit with plotly."""
+        return self.figure(*outputs, kind=kind, against=against, members=members, **options).plot_interactive()
 
     @public
     def to_npz(self, path: str | PathLike[str]) -> Path:
