@@ -19,6 +19,13 @@ any graph exists.
 - **Reserved names.** A name that is planned but not built fixes its kind, units, frame and sign now. Only its shape
   stays open. A later addition then cannot clash with what exists, and using it before it is built is refused with
   that reason.
+- **Port kinds and energy classes** (`_ports.py`): what the energy ledger pairs each delivery by, and the class a law
+  is. A port kind names a receiver's flow and, for each interface it accepts, what a delivery into it is
+  (`DeliveryKind`: a load read at the step's start, a force the step solves for, a flow handed in, a delivered
+  inertia); each delivery's units pair with the flow's to watts, part by part, checked when the kind is made. Kinds
+  are registered (`register_port_kind`), open to labs. A law is dissipative, potential or workless
+  (`EnergyClass`); there is no source class. A dissipative law's operators are definite by construction or at the
+  state (`Definiteness`).
 - **Contribution classes**, and the **closed list of capability flags**. Support tables match on these flags, never
   on model names, so a lab's own model can slot in.
 
@@ -60,5 +67,11 @@ velocity in the world, `rad/s`), which every MIME segment publishes on every run
 operators a dynamic segment takes from a spinner mounted on it, `apparatus.link_momentum` (a row per frame, the
 rotors' momentum about their axes, `N m s`, whose gyroscopic torque the segment applies) and `apparatus.link_inertia`
 (a row per frame, the rotors' inertia beyond the frame's own at the step's start and end, in kg m²).
+
+The port kinds and energy classes: `PortKind`, `register_port_kind`, `port_kind`, `port_kinds`; MIME's four kinds,
+`rigid_body` (a body's twist, against its applied wrench and background load read at the step's start, and its
+resistance and confinement solved for in its step), `joint` (a chain segment's joint rates, against the loads on its
+frames, which reach them through its Jacobian), `delivered_inertia` and `flow_in`; `DeliveryKind`, `EnergyClass`,
+`Definiteness`, and `POWER` and `ENERGY`, what a delivery and its flow pair to.
 
 Releases are explained in the [package manifest](../README.md#status).

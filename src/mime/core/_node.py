@@ -77,12 +77,16 @@ class MimeNode(SimulationNode):
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
 
-    def __init__(self, name: str, timestep: float, *, ledger: Sequence[str] = (), **params: object) -> None:
+    def __init__(self, name: str, timestep: float, **params: object) -> None:
+        ledger = params.pop("ledger", ())
+        if not isinstance(ledger, Sequence) or isinstance(ledger, str):
+            raise TypeError(f"ledger is the deliveries a node is metered for, a sequence of strings, not {ledger!r}")
         if ledger and type(self).LEDGER_TERMS is None:
             raise TypeError(f"{type(self).__name__} writes no step identity (LEDGER_TERMS), so the ledger cannot "
                             f"meter it")
         held: Any = super()
-        held.__init__(name, timestep, **params, **({"ledger": tuple(str(d) for d in ledger)} if ledger else {}))
+        held.__init__(name, timestep, **params,
+                      **({"ledger": tuple(str(d) for d in cast(Sequence[object], ledger))} if ledger else {}))
 
     @property
     def metered(self) -> bool:

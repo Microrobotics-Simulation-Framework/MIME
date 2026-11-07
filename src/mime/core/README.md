@@ -20,6 +20,9 @@
 - **[`tables/`](tables/)**, the table evaluator: one differentiable reader of tables on OpenMaterica's table
   description, for MIME's solver-output tables and OpenMaterica's material tables, refused at an edge and never
   clipped outside its readable range.
+- **The energy ledger's machinery** (`mime.core.ledger`), which a receiver's step runs only where the ledger is
+  attached: the one pairing rule, each law's paired work recorded beside the step, the step identity's terms and
+  running sums. See [The energy ledger](#the-energy-ledger).
 
 ## Switches
 
@@ -94,6 +97,33 @@ entry's round-trip case is enough; a node no case builds needs a configuration o
 it (`MimeNode.fresh_update`, or a new `jax.jit`); `update`'s compiled step was traced once and sees nothing. The
 switch log that the collector feeds comes later.
 
+## The energy ledger
+
+A **receiver** (a dynamics' node: the rigid body's) is metered when it is built with `ledger`, the deliveries it
+takes, each a law's id, its class, its delivery kind and its run-time check (`LedgerDelivery`). Only the build gives
+a node its ledger, and only where the experiment attaches it; without it the node is the node it always was, its
+parameters, inputs, state and step included, every bit of the program unchanged.
+
+- **Per-law inputs.** Each law delivers into an input of its own (`law_input`) beside the one every law sums into
+  without the ledger, which stays for anything unattributed. Attribution is then the check that the unattributed
+  inputs paired no work: exactly zero.
+- **One pairing rule** (`paired_work`), keyed by `mime.vocabulary.DeliveryKind`'s values as strings: a load read at
+  the step's start with the configuration's actual change; a force the step solves for with the step's solution; a
+  flow handed in with the effort returned; a delivered inertia by its change. A law hosted in its receiver's step (a
+  contact) is paired with the solution under its own name.
+- **The step identity.** A metered node names its own scheme's numerical terms (`MimeNode.LEDGER_TERMS`) and gives
+  its storage (`MimeNode.storage`) and its step's account (`MimeNode.identity_terms`, a `StepAccount`): `dH - W + N`
+  is judged against `IDENTITY_ULPS` units of rounding on the step's scale, the magnitude of the arithmetic that forms
+  its terms (each product's factors in magnitude, the solve's included), so that terms that cancel, and a stiff
+  solve, are judged on the size of what was rounded. `recorded` keeps running sums over the run's steps and
+  sub-steps in the receiver's state (the fields prefixed `ledger_`); `balance` and `balance_floor` read the run's
+  books from them.
+- **Definiteness at run time**, for a law whose operator's definiteness depends on the state:
+  `definite_at_floor`, one Cholesky factorisation of its scaled symmetric part shifted by `DEFINITE_ULPS` units of
+  rounding, so that a semidefinite operator passes where a plain factorisation fails on it.
+- **A potential law** states its family's energy (`MimeNode.energy`) on its node, from the parameters a study moves;
+  its class is settled on the law alone, and no per-step residual of it is kept.
+
 ## Status
 
 The typed node state helpers.
@@ -133,5 +163,9 @@ there and the normal zero, each with the derivative zero in the point; the cylin
 **`multibody`**, the canonical tree (bodies, joints, named frames, loop closures as data), the URDF
 reader sorting every element into read, recognised and not used, or refused, and the rigid-body maths in pure JAX,
 ported from the 0.2 line's `control/kinematics/` with its oracles (see its [README](multibody/README.md)).
+
+**`ledger`**, the energy ledger's machinery on a receiver (above), with `MimeNode`'s hooks (`ledger`, `metered`,
+`LEDGER_TERMS`, `storage`, `identity_terms`, `energy`); the rigid body's node is its first receiver. The build's wiring
+of it, its observation and its account come next.
 
 Releases are explained in the [package manifest](../README.md#status).

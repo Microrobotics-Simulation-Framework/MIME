@@ -82,8 +82,6 @@ field that varies in space unless its `magnet_centre` is declared (the refusal s
 check (`provider.reader-inside`) judges the point a law reads: the magnet's centroid, turned by the orientation the body
 starts in, for 0.2.0, and the centre of mass for the kept 0.1.0.
 
-Releases are explained in the [package manifest](../README.md#status).
-
 The drag reads the body's shape from its hull's kind (`ctx.geometry(of="body")`), not from declared
 values: the kind must be the one its surrogate was trained on (`screw`, at the surrogate's modulation and
 starts, along the body's x and centred on its origin), refused otherwise (`drag.body-kind`, `drag.outside-training`).
@@ -130,3 +128,13 @@ it, script A's and A0's reproductions. **A contact handles admissibility only**:
 which a drag that includes it declares (`Interaction.includes_lubrication`: the surrogate rung with `lubrication=`),
 and the plan refuses two laws on one body that include it (`lubrication.twice`). Friction at the contact is left to
 the near-contact physics' design; its seam is the sweeps' rows.
+
+**Energy classes** (for the energy ledger, `mime.core.ledger`): `gravity` is a potential law, its family's energy
+stated on its node (`GravityNode.energy`), of which its wrench is the negative gradient; the drag is dissipative, its
+resistance definite by construction on the surrogate rung (its network's `L L^T` through congruences, the
+lubrication's semidefinite part added) and at the state on the MRS rung, checked at run time; the contact is
+dissipative, held in its body's step, which books its loss and its projection's term under its name. The magnetic
+laws declare no class yet, each with its reason (`unmetered`): 0.2.0's waits on the magnetic family's energy at the
+magnet's centroid; the kept 0.1.0 pair does net work round a closed loop (MIME-ANO-137).
+
+Releases are explained in the [package manifest](../README.md#status).
