@@ -1,0 +1,11 @@
+{
+ "entry": "drive drive.ramp 0.1.0",
+ "case": "script_a_ramped",
+ "steps": 8,
+ "outputs": {
+  "drive:field.frequency": {
+   "steps": [1, 2, 3, 4, 5, 6, 7, 8],
+   "value": [10.0, 10.05, 10.15, 10.2, 10.2, 10.2, 10.2, 10.2]
+  }
+ }
+}

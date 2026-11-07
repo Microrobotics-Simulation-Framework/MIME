@@ -20,6 +20,10 @@ from script_a import ALL_RECORDS, EPSILON, fl9, script_a
 
 from mime.build import Attachment, ThingDeclaration
 from mime.data import asset
+from mime.drives import Ramp
+from mime.fields import KEPT as KEPT_FIELDS
+from mime.fields import UniformRotating
+from mime.observations import PhaseLag
 from mime.dynamics.body import RigidInertialExplicit, RigidInertialMoments
 from mime.interactions import KEPT
 from mime.experiment import Experiment
@@ -36,8 +40,9 @@ from mime.testing.toys import (
     full_toy,
     toy_experiment,
 )
-from mime.things import Body, Medium, State, Structure
-from mime.units import N, kg, kg_m2, m, m_per_s, mm, rad_per_s
+from mime.scene import X
+from mime.things import Apparatus, Body, Medium, State, Structure
+from mime.units import Hz, N, kg, kg_m2, m, m_per_s, mm, ms, rad_per_s, s
 
 
 KEPT_TORQUE, _ = KEPT["magnetic.torque", "0.1.0"]
@@ -98,10 +103,35 @@ def script_a_body() -> Experiment:
     one kept registered, 0.1.0, whose golden output came from it; in a uniform field 0.2.0 computes the same, and its
     golden output comes from script A's case. Its body's dynamics likewise: ``rigid_inertial`` 0.3.0, kept registered,
     whose golden output came from it; 0.4.0 steps this isotropic body as 0.3.0 did, and its golden output comes from
-    script A's case."""
-    return on_the_kept_rigid_inertial(on_the_kept_magnetic_laws(script_a("script_a_body",
-                                                                         velocity=m_per_s((1e-3, 0.0, 0.0)),
-                                                                         drag=False)))
+    script A's case. And its field: ``uniform_rotating`` 0.1.0, kept registered, whose golden output came from it;
+    0.2.0 computes the same field for its constant frequency, and its golden output comes from script A's case."""
+    return on_the_kept_field(on_the_kept_rigid_inertial(on_the_kept_magnetic_laws(
+        script_a("script_a_body", velocity=m_per_s((1e-3, 0.0, 0.0)), drag=False))))
+
+
+def on_the_kept_field(experiment: Experiment) -> Experiment:
+    """``experiment`` with each uniform rotating field at ``uniform_rotating`` 0.1.0, kept registered, and nothing else
+    changed."""
+    held = cast(Any, experiment)
+    kept, _ = KEPT_FIELDS["uniform_rotating", "0.1.0"]
+    declarations = []
+    for d in held._declarations:
+        if isinstance(d, ThingDeclaration) and isinstance(d.thing, Apparatus):
+            fields = {name: kept(**{f.name: getattr(v, f.name) for f in dataclasses.fields(v)})
+                      if isinstance(v, UniformRotating) else v for name, v in d.thing.fields.items()}
+            d = ThingDeclaration(dataclasses.replace(d.thing, fields=fields))
+        declarations.append(d)
+    return cast(Experiment, held._declared(held._settings, declarations))
+
+
+def script_a_ramped() -> Experiment:
+    """Script A with its field's frequency ramped from 10 Hz after a step's hold, at 200 Hz/s to 10.2 Hz, where it holds
+    from the fourth step (``drive.ramp``), and its phase lag observed (``phase_lag``), so that the ramp's hold, its rate
+    and its end act within the walk's first steps: the drive's and the observation's golden outputs come from it."""
+    experiment = script_a("script_a_ramped", velocity=m_per_s((1e-3, 0.0, 0.0)), frequency=Ramp(
+        Hz(10.0), to=Hz(10.2), rate=Hz(200.0) / s(1.0), hold=ms(0.5)))
+    experiment.observe(PhaseLag("umr", field="field.magnetic", about=X))
+    return experiment
 
 
 def on_the_kept_rigid_inertial(experiment: Experiment) -> Experiment:
@@ -246,6 +276,8 @@ CASES = (
     # The kept rigid_inertial 0.2.0 on a body of three different moments: what a folder saved with the explicit
     # gyroscopic term names.
     Case("rigid_explicit", rigid_explicit),
+    # Script A with its frequency ramped and its phase lag observed: the ramp's and the lag's golden outputs.
+    Case("script_a_ramped", script_a_ramped),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),

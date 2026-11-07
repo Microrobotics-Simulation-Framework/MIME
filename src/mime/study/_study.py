@@ -34,6 +34,7 @@ from mime.control._run import automatic_chunks
 from mime.errors import public
 from mime.study._axes import STUDY_REASON, Axis, differ, resolve, value_text
 from mime.study._point import Point, build_point, precision, same_run
+from mime.study._protocol import FromRest, Protocol, protocol_of
 from mime.units import Quantity
 
 if TYPE_CHECKING:
@@ -230,6 +231,7 @@ class StudyPlan:
     groups: tuple[Group, ...]
     steps: int
     drop_refused: bool
+    protocol: Protocol = field(default_factory=FromRest)
 
     @property
     def refused(self) -> tuple[Point, ...]:
@@ -258,6 +260,8 @@ class StudyPlan:
                          f"{'s' if group.compiles != 1 else ''}{estimate}")
             if group.reasons:
                 lines.append(f"    split from group 0 by: {'; '.join(group.reasons)}")
+        if not isinstance(self.protocol, FromRest):
+            lines.append(f"  protocol: {self.protocol.text()}")
         for point in refused:
             lines.append(f"  refused point {point.index} ({_coordinates(self.axes, point)}):")
             lines += [f"    [{refusal.code}] {refusal.message}" for refusal in point.refusals]
@@ -360,21 +364,25 @@ class Study:
         self._every: Quantity | None = None
         self._batch: int | None = None
         self._drop = False
+        self._protocol: Protocol = FromRest()
         self._plan: StudyPlan | None = None
 
     @public
     def sweep(self, points: object, *, duration: Quantity, record: Sequence[OutputRef | str] = (),
-              every: Quantity | None = None, batch: int | None = None, drop_refused: bool = False) -> Study:
+              every: Quantity | None = None, protocol: object = None, batch: int | None = None,
+              drop_refused: bool = False) -> Study:
         """The points (``grid({...})``, ``along({...})`` or a list of rows) and each member's run: ``duration`` from
         the start, the per-step outputs ``record`` names kept every ``every`` (as :meth:`BuiltExperiment.run` takes
-        them), at most ``batch`` members at once (the whole group when not given), and with ``drop_refused`` the
-        points nothing refuses run while the refused ones are recorded on the result. Returns the study."""
+        them), how its commands move in time (``protocol``: ``FromRest()``, the default, or a ``Ramp(...)`` of one
+        command from its point's value), at most ``batch`` members at once (the whole group when not given), and with
+        ``drop_refused`` the points nothing refuses run while the refused ones are recorded on the result. Returns the
+        study."""
         if batch is not None and (not isinstance(cast(object, batch), int) or batch < 1):
             raise ArgumentRefused([Refusal("study.batch", RefusalClass.USER,
                                            f"batch= is a number of members of at least one, not {batch!r}",
                                            "write batch=16, or leave it out for the whole group at once")])
         self._points, self._duration, self._record, self._every = _points(points), duration, tuple(record), every
-        self._batch, self._drop, self._plan = batch, drop_refused, None
+        self._batch, self._drop, self._protocol, self._plan = batch, drop_refused, protocol_of(protocol), None
         return self
 
     @public
@@ -388,7 +396,7 @@ class Study:
             raise ArgumentRefused([Refusal("study.no-sweep", RefusalClass.USER, "the study has no points to plan",
                                            "name them first: Study(exp).sweep(grid({...}), duration=s(1.0))")])
         self._plan = _plan(self._experiment, self._points, self._duration, self._record, self._every, self._batch,
-                           self._drop)
+                           self._drop, self._protocol)
         return self._plan
 
     @public
@@ -416,7 +424,7 @@ class Study:
 
 
 def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Sequence[OutputRef | str],
-          every: Quantity | None, batch: int | None, drop: bool) -> StudyPlan:
+          every: Quantity | None, batch: int | None, drop: bool, protocol: Protocol | None = None) -> StudyPlan:
     from mime.experiment import Experiment
     from mime.saved._pins import keeping_pins
 
@@ -432,13 +440,13 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     with keeping_pins(saved):
         for index, row in enumerate(given.rows):
             point = build_point(index, settings, declarations, dict(zip(axes, row, strict=True)), STUDY_REASON,
-                                first.get)
+                                first.get, protocol)
             points.append(point)
             if point.key is not None and point.key not in first and not point.refused:
                 first[point.key] = point
 
         def probe(values: Mapping[Axis, object]) -> Point:
-            return build_point(-1, settings, declarations, values, STUDY_REASON, first.get)
+            return build_point(-1, settings, declarations, values, STUDY_REASON, first.get, protocol)
 
         inert = inert_axes(axes, points, probe)
         if inert:
@@ -472,7 +480,7 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     for group in groups:
         with precision(points[group.members[0]].declared.x64):
             _settle(group, points, axes, duration, record, every, batch)
-    return StudyPlan(axes, tuple(points), tuple(groups), steps, drop)
+    return StudyPlan(axes, tuple(points), tuple(groups), steps, drop, protocol or FromRest())
 
 
 def inert_axes(axes: Sequence[Axis], points: Sequence[Point],
