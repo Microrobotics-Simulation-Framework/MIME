@@ -50,6 +50,7 @@ IMAGE_BUILDER_VERSION = "2026.10"
 MODAL_CLIENT = "1.6.3"
 SCRIPT_FILE = "modal_app.py"
 TEMPLATE = "modal_app.txt"
+STUDY_SPEC = "study.mime.yaml"
 MIME_REQUIREMENTS = "mime-requirements.txt"
 LAB_REQUIREMENTS = "lab-requirements.txt"
 PYPI_JSON = "https://pypi.org/pypi/{name}/{version}/json"
@@ -68,6 +69,8 @@ class ModalScript:
     gpu: str | None
     python: str
     dev: bool
+    study: Path | None = None
+    shards: int = 1
 
     def text(self) -> str:
         where = _shown(self.script)
@@ -75,6 +78,10 @@ class ModalScript:
                  f"{self.gpu or 'CPU'}{', MIME from the checkout' if self.dev else ''})"]
         lines += [f"  and {_shown(path)}" for path in self.files if path != self.script]
         lines += ["run it with:", f"  modal run {where}::main --duration <seconds>", f"  modal run {where}::verify"]
+        if self.study is not None:
+            lines += [f"  modal run {where}::study --name <name>   # the study in {self.study.name}: "
+                      + (f"{self.shards} containers, one shard of its groups each, each a partial study folder"
+                         if self.shards > 1 else "one container runs every group; the same name resumes it")]
         return "\n".join(lines)
 
 
@@ -157,6 +164,33 @@ def _python_series(lock: dict[str, object], requested: str | None) -> str:
     return series
 
 
+def _study_spec(study: str | os.PathLike[str] | None, shards: int, max_containers: int,
+                lock: dict[str, object]) -> Path | None:
+    """The spec file ``--study`` names, if it reads and is of this experiment (its input hash is the lock's); the shards
+    refused where there is no study or the containers are not as many."""
+    if study is None:
+        if shards != 1:
+            raise _refuse("modal.study-shards", RefusalClass.USER, "--shards splits a study, and no --study is given",
+                          "give the study: mime modal <folder> --study study.mime.yaml --shards 4 --max-containers 4")
+        return None
+    if shards < 1 or (shards > 1 and max_containers != shards):
+        raise _refuse("modal.study-shards", RefusalClass.USER,
+                      f"--shards {shards} runs {shards} containers at once, and --max-containers is {max_containers}",
+                      f"state both: --shards {shards} --max-containers {shards}; the fan-out is explicit, and one "
+                      f"container runs every group by default")
+    from mime.study._spec import read_spec
+
+    path = Path(study).resolve()
+    spec = read_spec(path)
+    wanted = cast(dict[str, object], spec["base"]).get("input_hash")
+    found = cast(dict[str, object], lock.get("hashes", {})).get("input")
+    if wanted is not None and wanted != found:
+        raise _refuse("modal.study-base", RefusalClass.USER,
+                      f"the spec {path.name} is of the experiment with input hash {wanted}, and this folder holds {found}",
+                      "write the script for the experiment the spec was written for: `mime modal <that folder> --study <spec>`")
+    return path
+
+
 def _constants(values: dict[str, object]) -> str:
     notes = {
         "EXPERIMENT": "the experiment's folder, from this script's",
@@ -170,6 +204,8 @@ def _constants(values: dict[str, object]) -> str:
         "XLA_FLAGS": "XLA's deterministic GPU mode is on only when --deterministic asked for it",
         "X64": "the precision the experiment's lock records",
         "MAX_CONTAINERS": "containers a function may run in at once; --max-containers",
+        "STUDY": "the study's spec file beside this script (--study); None: the script runs no study",
+        "SHARDS": "containers a study is split over (--shards), one shard of its groups each; 1: one container",
         "ASSETS": "whether the lock references assets, fetched onto the assets Volume first",
         "IMAGE_BUILDER_VERSION": f"Modal's image builder; the script was written against client {MODAL_CLIENT}",
     }
@@ -184,15 +220,20 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
                  python: str | None = None, out: str | os.PathLike[str] | None = None,
                  checkout: str | os.PathLike[str] | None = None, lab_requirements: str | os.PathLike[str] | None = None,
                  xla_cache: bool = True, timeout: int = 7200, max_containers: int = 1, cpu: float = 4.0,
-                 memory: int = 8192,
+                 memory: int = 8192, study: str | os.PathLike[str] | None = None, shards: int = 1,
                  wheel_sha256: WheelLookup = pypi_wheel_sha256) -> ModalScript:
     """Write the Modal script for the saved experiment in ``folder`` into ``out`` (``<folder>-modal/`` beside it), with
     MIME's requirements file for the variant and, as needed, MIME's and the lab's. ``gpu`` is an exact type (a loose
     one is refused); ``deterministic`` turns XLA's deterministic GPU mode on. MIME's wheel is a release's on PyPI,
     unless MIME is installed from a checkout or ``checkout`` names one: then the script builds that checkout's wheel.
+    ``study`` is a study's spec file (``study.mime.yaml``), copied beside the script, which then has a ``study``
+    entrypoint that runs ``mime study run`` on it in one container (a pilot first), into a folder on the runs Volume a
+    second run of the same ``--name`` resumes; ``shards`` (more than one, with ``max_containers`` the same) splits the
+    study's groups over that many containers, explicit and recorded in the script, each writing a partial study folder.
     Raises ``BuildRefused``."""
     where = Path(folder).resolve()
     lock = _read_lock(where)
+    spec_file = _study_spec(study, shards, max_containers, lock)
     requested = gpu_type(gpu) if gpu is not None else None
     if deterministic and requested is None:
         raise _refuse("env.gpu-type", RefusalClass.USER,
@@ -261,10 +302,16 @@ def modal_script(folder: str | os.PathLike[str], *, gpu: str | None = None, dete
         "CPU": cpu,
         "MEMORY": memory,
     }
+    if spec_file is not None:
+        (target / STUDY_SPEC).write_bytes(spec_file.read_bytes())
+        files.append(target / STUDY_SPEC)
+    values["STUDY"] = STUDY_SPEC if spec_file is not None else None
+    values["SHARDS"] = shards
     template = (importlib.resources.files("mime.env") / TEMPLATE).read_text(encoding="utf-8")
     script = target / SCRIPT_FILE
     script.write_text(template.replace("@@CONSTANTS@@", _constants(values)), encoding="utf-8", newline="\n")
-    return ModalScript(target, script, (script, *files), variant, requested, series, source is not None)
+    return ModalScript(target, script, (script, *files), variant, requested, series, source is not None,
+                       target / STUDY_SPEC if spec_file is not None else None, shards)
 
 
 __all__ = ["IMAGE_BUILDER_VERSION", "MODAL_CLIENT", "SCRIPT_FILE", "UV_VERSION", "ModalScript", "installed_checkout",
