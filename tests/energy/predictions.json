@@ -17,7 +17,11 @@
   "gate_2_body_identity": {
     "case": "tests/energy/test_body_identity.py: rigid_inertial 0.4.0's node with a ledger of a load law and a resistance law (and the contact hosted, in the held arms), one step from each Hypothesis draw (pose, twist, tensor, load, resistance at FL-9's scales, in the dtype the node computes in), three arms: free, the centre held on its surface moving outward, the hull held at the wall",
     "floor": "16 eps of the step's scale, the scale being the magnitude of the arithmetic that forms the identity's terms (each product's factors in magnitude, the solve's dt |V'|^T |M'/dt + R| |dV| included)",
-    "predicted_worst_eps": {"free": 8, "centre_held": 8, "hull": 10},
+    "predicted_worst_eps": {
+      "free": 8,
+      "centre_held": 8,
+      "hull": 10
+    },
     "plant": "a step that keeps 0.999 of its twist without booking it: caught on every draw, both dtypes, the least margin above 20 times the floor in float32 and above 1e8 in float64",
     "balance": "a 2000-step driven run of the free body: the balance within 16 eps of the run's summed step scale, at most 0.1 of it"
   },
@@ -38,5 +42,13 @@
     "plant": "FU1's indefinite part, 1.1 times the scaled least eigenvalue taken off along its eigenvector: caught on every draw (its scaled least eigenvalue about -0.07 to -0.14); the sign of the drag's work alone catches it on few or none",
     "run_time": "the body's run-time check on a law whose definiteness is the state's: every step with the planted resistance counted, none with the definite one; a semidefinite matrix passes, where a plain Cholesky factorisation fails on it"
   },
-  "not_in_this_pr": "the build's wiring (ledger=), EnergyLedger, the results' view, the conformance() case kinds, the end-to-end items (script A's account and balance, the gradient through the ledger, the physics bits with the ledger on): P1a-2"
+  "not_in_this_pr": "the build's wiring (ledger=), EnergyLedger, the results' view, the conformance() case kinds, the end-to-end items (script A's account and balance, the gradient through the ledger, the physics bits with the ledger on): P1a-2",
+  "amendments": [
+    {
+      "written": "2026-11-07T11:15+01:00, after the first local run of tests/energy/test_body_identity.py, before the amended control ran",
+      "found": "the unbooked-loss plant held its predicted margin nowhere near the centre-held arm: Hypothesis found a draw at 2.2 times the floor in float32 and one at 3.5e7 in float64, where the velocity rule at arrival had removed most of the step's energy, so that 0.1 % of what the step kept was a small share of the step's scale (still above the floor, but not on every draw by construction)",
+      "amended": "the control drawn on the free body at FL-9's own resistance alone, its margins as predicted (above 20 times the floor in float32, above 1e8 in float64); and the driven run's balance read inside its dtype (read outside the float64 context it was cast to float32, and missed by 6e-18 J for that reason)",
+      "steps": "the steps drawn from four values (0.1, 0.25, 0.5 and 1 ms), each compiled once, the hull's arm at 0.5 ms: a drawn continuous step compiled a program per example"
+    }
+  ]
 }
