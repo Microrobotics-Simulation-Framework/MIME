@@ -1,5 +1,5 @@
 {
-  "written": "2026-11-07T10:40+01:00, before any gate case of P1a-1 ran (the default program's bits, tests/energy)",
+  "written": "2026-11-07T09:52+01:00 (the time of the commit that holds it, e12ad46), before any gate case of P1a-1 ran (the default program's bits, tests/energy)",
   "seen_before": [
     "FU1's controls rerun against release/v0.3.0 at 68c1d15 beside the release's own body (the spike's recording node, 50 drawn starts of script A's reproduction arm, 2000 steps each, both dtypes): the hidden edge at 1e-3 and 1e-6 of the torque, the weight times 1.01 and the indefinite drag each caught on 50 of 50 draws by its own check and by no other, no check firing on the two unplanted arms; the least margins as FU1's (float32: the 1e-6 edge 17 times its floor, the weight plant 22 times; the indefinite part's scaled least eigenvalue -0.141, the definite control's 0.401)",
     "development probes of the new body's step identity on seeded draws (not gate cases: no plant, no Hypothesis): free and centre-held bodies, 200 draws a set, both dtypes, worst 3.4 to 4.9 eps of the step's scale; stiff and ill-conditioned resistances (dt |R| / m to 1e3, scaled condition to 1e8) within 5 eps"
@@ -45,10 +45,11 @@
   "not_in_this_pr": "the build's wiring (ledger=), EnergyLedger, the results' view, the conformance() case kinds, the end-to-end items (script A's account and balance, the gradient through the ledger, the physics bits with the ledger on): P1a-2",
   "amendments": [
     {
-      "written": "2026-11-07T11:15+01:00, after the first local run of tests/energy/test_body_identity.py, before the amended control ran",
+      "written": "2026-11-07T10:06+01:00 (the time of its commit), after the first local run of tests/energy/test_body_identity.py, before the amended control ran",
       "found": "the unbooked-loss plant held its predicted margin nowhere near the centre-held arm: Hypothesis found a draw at 2.2 times the floor in float32 and one at 3.5e7 in float64, where the velocity rule at arrival had removed most of the step's energy, so that 0.1 % of what the step kept was a small share of the step's scale (still above the floor, but not on every draw by construction)",
       "amended": "the control drawn on the free body at FL-9's own resistance alone, its margins as predicted (above 20 times the floor in float32, above 1e8 in float64); and the driven run's balance read inside its dtype (read outside the float64 context it was cast to float32, and missed by 6e-18 J for that reason)",
       "steps": "the steps drawn from four values (0.1, 0.25, 0.5 and 1 ms), each compiled once, the hull's arm at 0.5 ms: a drawn continuous step compiled a program per example"
     }
-  ]
+  ],
+  "times": "the written times were first set by hand, ahead of the clock (10:40 and 11:15); corrected to the commits' own times, which are the record of the order: the predictions at 09:52, gate 1's first recording from 09:54, the amendment at 10:06"
 }
