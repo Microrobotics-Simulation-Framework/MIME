@@ -21,7 +21,7 @@ import numpy as np
 from hypothesis import strategies as st
 
 from mime.core import ledger as books
-from mime.nodes.body import HULL, RigidInertialTensorNode
+from mime.nodes.body import HULL, RigidInertialNode, RigidInertialTensorNode
 from mime.scene import Cylinder
 from mime.scene._sampling import quadrature_arrays, quadrature_counts
 from mime.units import mm
@@ -170,9 +170,9 @@ def hull_held_states(draw: Callable[..., Any]) -> dict[str, np.ndarray]:
             "twist": np.concatenate([along + speed * outward, drawn["twist"][3:]])}
 
 
-def metered_body(node_class: type[RigidInertialTensorNode] = RigidInertialTensorNode, *, held: str = "",
+def metered_body(node_class: type[RigidInertialNode] = RigidInertialTensorNode, *, held: str = "",
                  extent: float = 1.5e-3, laws: tuple[books.LedgerDelivery, ...] = (LOAD_LAW, DRAG_LAW),
-                 dt: float = 5e-4) -> RigidInertialTensorNode:
+                 dt: float = 5e-4) -> RigidInertialNode:
     """``node_class`` metered for ``laws`` (and the contact, where ``held`` is ``"centre"`` or ``"hull"``): free, its
     centre held in script A's tube by ``extent`` plus the margin, or its hull's points (the rod's) held."""
     confinement: dict[str, Any] = {}
@@ -189,12 +189,13 @@ def metered_body(node_class: type[RigidInertialTensorNode] = RigidInertialTensor
         confinement.update(hull_kind=kind.name, hull_kind_version=kind.version, hull_patches=patches,
                            hull_counts=quadrature_counts(kind, settings, ROD_SPACING, patches),
                            **{f"{HULL}{name}": value for name, value in settings.items()})
-    return node_class("umr", dt, mass=MASS, inertia=tuple(np.eye(3).reshape(9) * 1e-10),
+    nine = issubclass(node_class, RigidInertialTensorNode)
+    return node_class("umr", dt, mass=MASS, inertia=tuple(np.eye(3).reshape(9) * 1e-10) if nine else (1e-10,) * 3,
                       initial_pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), initial_twist=(0.0,) * 6,
                       ledger=tuple(d.encoded() for d in laws), **confinement)
 
 
-def law_inputs(node: RigidInertialTensorNode, load: Any, resistance: Any, dtype: Any,
+def law_inputs(node: RigidInertialNode, load: Any, resistance: Any, dtype: Any,
                unattributed: Any = None) -> dict[str, jax.Array]:
     """The node's inputs: each law's own (the load's and the resistance's), and the summed ones, which take
     ``unattributed`` into the applied wrench where it is given and nothing otherwise."""
@@ -210,26 +211,29 @@ def law_inputs(node: RigidInertialTensorNode, load: Any, resistance: Any, dtype:
     return found
 
 
-def one_step(node: RigidInertialTensorNode, drawn: Mapping[str, np.ndarray], dtype: Any,
+def one_step(node: RigidInertialNode, drawn: Mapping[str, np.ndarray], dtype: Any,
              unattributed_share: float = 0.0) -> dict[str, jax.Array]:
     """The node's state after one metered step from ``drawn``, its records included; ``unattributed_share`` of the
-    load delivered into the summed input too, an edge no law owns."""
+    load delivered into the summed input too, an edge no law owns. A node of an earlier version, which takes three
+    moments about the body's axes, takes the drawn tensor's diagonal."""
+    inertia = drawn["tensor"] if isinstance(node, RigidInertialTensorNode) else np.diag(drawn["tensor"])
     return stepper(node, dtype, unattributed_share)(
-        *(jnp.asarray(drawn[k], dtype=dtype) for k in ("mass", "tensor", "pose", "twist", "load", "resistance")),
-        jnp.asarray(drawn.get("extent", node.constants()["extent"]), dtype=dtype), float(drawn["dt"]))
+        *(jnp.asarray(drawn[k], dtype=dtype) for k in ("mass", "pose", "twist", "load", "resistance")),
+        jnp.asarray(inertia, dtype=dtype), jnp.asarray(drawn.get("extent", node.constants()["extent"]), dtype=dtype),
+        float(drawn["dt"]))
 
 
 _steppers: dict[tuple[int, str, float], Callable[..., dict[str, jax.Array]]] = {}
 
 
-def stepper(node: RigidInertialTensorNode, dtype: Any, share: float) -> Callable[..., dict[str, jax.Array]]:
+def stepper(node: RigidInertialNode, dtype: Any, share: float) -> Callable[..., dict[str, jax.Array]]:
     """The node's metered step compiled once per node, dtype and share, the step's length static."""
     key = (id(node), str(jnp.dtype(dtype)), share)
     if key not in _steppers:
-        def step(mass: Any, inertia: Any, pose: Any, twist: Any, load: Any, resistance: Any, extent: Any,
+        def step(mass: Any, pose: Any, twist: Any, load: Any, resistance: Any, inertia: Any, extent: Any,
                  dt: float) -> dict[str, jax.Array]:
             p = {**{k: jnp.asarray(v, dtype=dtype) for k, v in node._step_constants(None).items()}, "mass": mass,
-                 "inertia": jnp.reshape(inertia, (9,)), "extent": extent}
+                 "inertia": jnp.reshape(inertia, (-1,)), "extent": extent}
             state = {**{k: jnp.asarray(v, dtype=dtype) for k, v in node.initial_state().items()},
                      "pose": pose, "twist": twist}
             inputs = law_inputs(node, load, resistance, dtype, share * load if share else None)

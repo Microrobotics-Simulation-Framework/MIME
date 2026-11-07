@@ -333,11 +333,16 @@ class RigidInertialNode(MimeNode):
                                  f"{velocity_rule!r}")
         elif surface:
             raise TypeError(f"surface parameters {sorted(surface)} with no surface_shape")
-        hosted = [d.law for d in books.deliveries({books.LEDGER: ledger}) if d.kind == books.HOSTED]
+        metering = books.deliveries({books.LEDGER: ledger})
+        hosted = [d.law for d in metering if d.kind == books.HOSTED]
         if ledger and len(hosted) != (1 if surface_shape else 0):
             raise ValueError(f"a metered body holds its confinement's law in its step, one hosted delivery for it: "
                              f"{'one confinement' if surface_shape else 'no confinement'}, and the ledger hosts "
                              f"{hosted or 'none'}")
+        checked = [d.law for d in metering if d.check == books.CHECK_DEFINITE and d.field != "resistance"]
+        if checked:
+            raise ValueError(f"a body checks the definiteness of an operator it takes, its resistance, and {checked} "
+                             f"deliver none")
         hull: dict[str, object] = {}
         if hull_kind:
             record = registered_kind(hull_kind, hull_kind_version)

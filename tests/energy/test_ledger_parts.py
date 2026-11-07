@@ -110,6 +110,13 @@ def test_a_held_body_s_ledger_hosts_one_law_for_its_confinement():
                                 surface_axis=(1.0, 0.0, 0.0), surface_radius=3e-3, ledger=(LOAD_LAW.encoded(),))
 
 
+def test_a_body_checks_the_definiteness_of_its_resistance_alone():
+    checked_load = books.LedgerDelivery("applied_wrench", "load:case", books.UNMETERED, books.LOAD,
+                                        books.CHECK_DEFINITE)
+    with pytest.raises(ValueError, match="definiteness"):
+        metered_body(laws=(checked_load, DRAG_LAW))
+
+
 def test_a_body_built_without_the_ledger_is_the_body_it_was():
     plain = RigidInertialTensorNode("umr", 5e-4, mass=1.0, inertia=tuple(np.eye(3).reshape(9)),
                                     initial_pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), initial_twist=(0.0,) * 6)

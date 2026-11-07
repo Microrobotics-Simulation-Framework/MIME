@@ -37,7 +37,7 @@ from ledger_cases import (
 )
 
 from mime.core import ledger as books
-from mime.nodes.body import RigidInertialTensorNode
+from mime.nodes.body import RigidInertialMidpointNode, RigidInertialNode, RigidInertialTensorNode
 
 #: The control's share of the twist the step keeps, unbooked.
 KEPT = 0.999
@@ -54,10 +54,10 @@ class UnbookedLoss(RigidInertialTensorNode):
 DTYPES = pytest.mark.parametrize("name", ["float32", "float64"])
 
 
-NODES: dict[tuple[type, str], RigidInertialTensorNode] = {}
+NODES: dict[tuple[type, str], RigidInertialNode] = {}
 
 
-def node(held: str = "", node_class: type[RigidInertialTensorNode] = RigidInertialTensorNode):
+def node(held: str = "", node_class: type[RigidInertialNode] = RigidInertialTensorNode):
     if (node_class, held) not in NODES:
         NODES[node_class, held] = metered_body(node_class, held=held)
     return NODES[node_class, held]
@@ -71,6 +71,18 @@ def test_a_free_body_s_step_books_close_within_rounding(name, drawn):
         found = one_step(node(), drawn, dtype)
     assert identity_over_floor(found) <= 1.0, identity_over_floor(found)
     assert float(found["ledger_unattributed_worst"]) == 0.0
+
+
+@DTYPES
+@pytest.mark.parametrize("version", [RigidInertialMidpointNode, RigidInertialNode], ids=["0.3.0", "0.2.0"])
+@settings(deadline=None)
+@given(drawn=free_states())
+def test_the_kept_versions_step_books_close_too(name, version, drawn):
+    """0.3.0's node (the gyroscopic term at the midpoint) and 0.2.0's (explicit, which gains energy every step for
+    unequal moments, MIME-ANO-129, booked as its scheme's term), a body whose principal axes are its own."""
+    with in_dtype(name) as dtype:
+        found = one_step(node("", version), drawn, dtype)
+    assert identity_over_floor(found) <= 1.0, identity_over_floor(found)
 
 
 @DTYPES
