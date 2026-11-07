@@ -27,7 +27,7 @@ from mime.registry import (
     requires,
 )
 from mime.units import Length, Magnitude, Quantity, m
-from mime.vocabulary import CONFINEMENT, Capability
+from mime.vocabulary import CONFINEMENT, Capability, EnergyClass
 
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
@@ -239,6 +239,9 @@ class Contact(Interaction):
     references = ("StewartTrinkle1996",)
     family = "contact"
     builds = {"projection": ()}
+    #: Held in its body's step, which books its paired work under its name, the velocity rule's removal at arrival as
+    #: its loss and the projection's shift against the loads as its host's scheme's term.
+    energy_class = EnergyClass.DISSIPATIVE
     roles = {"body": RoleKind.BODY, "surface": RoleKind.SURFACE}
     rungs = ("projection", "penalty")
     reserved_rungs = {"penalty": "penalty contact, delivering loads into each side's applied wrench, comes later"}
