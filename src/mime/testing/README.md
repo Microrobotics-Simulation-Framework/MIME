@@ -108,7 +108,7 @@ Also:
   body's step (a contact) giving no energy through the solve nor by its rule at arrival, on the body's node metered for
   it alone, from states placed on its surface moving outward (`onto_the_surface`, `OUTWARD_SPEED`); a law with no class
   states its reason (`unmetered`), or fails; **a law that states its reason passes by that declaration alone** (the two
-  magnetic laws, until their family's energy and loop test are built, P1b), and the result says so. Its controls (`tests/families/test_energy_case.py`): a weight a hundredth
+  magnetic laws, until their family's energy and loop test are built), and the result says so. Its controls (`tests/families/test_energy_case.py`): a weight a hundredth
   heavier, an indefinite part in the surrogate's resistance, a contact whose rule speeds up the velocity it projects
   and a law that says nothing each fail it.
 - **a dynamics' step identity** (`step_identity`, `_energy.py`): its node, as a build makes it for one body

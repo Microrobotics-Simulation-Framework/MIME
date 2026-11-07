@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   identity** on drawn states (`step_identity`); the registry walk requires every dynamics and interaction of MIME's to
   declare how it is metered or why not (the arm, the motor and the toys state why); **the magnetic family's energy case
   passes the two magnetic laws by their declaration alone** (their reason for being unmetered), which checks nothing about
-  them, until their family's energy and loop test are built (P1b). The step identity feeds work into the unattributed
+  them, until their family's energy and loop test are built. The step identity feeds work into the unattributed
   input and requires it booked as unattributed (a plant that books it under a law fails it on every draw). A dissipative law held in its
   body's step now also counts as giving energy where its rule at arrival adds energy. **Without the ledger nothing
   moves**: every history array of the five programs is identical to the bit to the release before it, in both dtypes,
