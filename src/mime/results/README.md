@@ -64,7 +64,9 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   member ran in), `result[swim].mean_speed` (an output at the end over the members) and `result[swim].speed` (a series
   stacked over them where they share its time axis, refused otherwise with the route to `member(i)`), `member(i)` (a
   `RunResult`), `flags` (the union, a flag a member's build does not declare reading `not declared`, never "not
-  raised"), and `dropped` (the points `drop_refused=True` left out, with their refusals). On that shape: `grid()` (a full
+  raised"), `dropped` (the points `drop_refused=True` left out, with their refusals), `protocol` (how the members'
+  commands moved in time, `FromRest` or `Ramp`, which names the quantity a step-out read from it is) and `ramps` (each
+  member's ramp, where the protocol gave one). On that shape: `grid()` (a full
   product reshaped), the long `table()` (coordinate columns with their units first, then `member`, `group`, the member's
   columns and `flags`; members of two sample counts in one table), `to_csv`, `to_npz`, `to_mat` (the member axis first
   in every array, the units in the file, read back by `scipy.io.loadmat` in the tests, MATLAB not run), `manifest()`
@@ -79,7 +81,8 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   refused, a file named like a temporary among them); each group file checked against the manifest on read (its
   sha256, and each done member's entries under its content key: `study.group-file`); readable without MIME; written
   atomically file by file, each batch as it finishes, so a stopped study reads as what it holds (`missing`). No
-  saved-form step. See
+  saved-form step. A study run on a ramp is not written to a folder yet: the folder records no protocol, so it would
+  read back as run from rest (`study.protocol-folder`). See
   [docs/results.md](../../../docs/results.md).
 - **`RunResult.as_experiment(name)`** on a member of a study (`MemberOf` says which): the bridge to an experiment of its
   own, in `mime.study._bridge`.

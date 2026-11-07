@@ -27,6 +27,7 @@ from mime.build._builders import (
 )
 from mime.build._checks import ledger_wiring_refusals, node_lines, post_build_checks
 from mime.build._control import Mode
+from mime.build._declared_lags import net_of_declared_lags
 from mime.build._derived import DerivedGraph, derive
 from mime.build._in_graph import controller_nodes, in_graph_order, order_refusals
 from mime.build._lags import EdgeLag, classify, cross_check, unplanned_refusals
@@ -363,6 +364,9 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
         # of the delivering entry's id.
         edges.sort(key=lambda e: (position[e.target[0]], e.target[1], e.by, e.seq))
     lags = classify(order, edges, groups)
+    nodes, refusals = net_of_declared_lags(plans, nodes, lags)
+    if refusals:
+        raise BuildRefused(refusals, report_of(plans, order, refusals))
     owners = {name: plan.owner for plan in plans.entries for name in plan.node_names()}
 
     graph = GraphManager()

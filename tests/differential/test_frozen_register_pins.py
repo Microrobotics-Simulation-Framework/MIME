@@ -33,6 +33,12 @@ version, until the law was given its own.
   0.1.0, the body's centre held by its extent; the magnetic torque 0.2.0 (MIME-ANO-137) reads a field that varies in
   space at the magnet's centroid, and every arm keeps 0.1.0 (the register's field is uniform, where the two compute the
   same).
+- **The field too**: every experiment's document names `uniform_rotating` at `operating_point.FROZEN_FIELDS`' version,
+  0.1.0, through `pinned_field`, and `same_as_script_a` builds script A's arm on that version too. The integrating
+  field (0.2.0, MIME-ANO-139) holds a constant frequency's phase without 0.1.0's rounding of `2 pi f t`, so a register
+  run on it would move in its last bits with no failing test; the pin keeps them (the register's surrogate arm gave the
+  same trajectory hash on both versions when the pin was added, an accident of the arithmetic this makes no longer
+  matter).
 - **Controls**, failing on every run: the experiment with the pin bypassed names the screw 0.3.0 and fails the first
   check; with the law's pin bypassed it names drag 0.4.0, the contact 0.4.0 and the magnetic torque 0.2.0; a script that builds ``fl9()``
   unpinned fails the source scan; the experiment with the dynamics' pin bypassed names the current ``rigid_inertial``
@@ -51,6 +57,8 @@ import pytest
 
 from mime.dynamics.body import KEPT as KEPT_DYNAMICS
 from mime.dynamics.body import RigidInertial, RigidInertialMoments
+from mime.fields import KEPT as KEPT_FIELDS
+from mime.fields import UniformRotating
 from mime.interactions import KEPT as KEPT_LAWS
 from mime.interactions import Contact, Drag, Gravity, Magnetic
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Screw, Sphere, Tube
@@ -65,14 +73,18 @@ CURRENT = {cls.name: cls.version for cls in (Screw, Sphere, Capsule, Box, Cylind
 #: The interactions' versions registered on 2026-10-31, and the current ones.
 REGISTER_FROZE_INTERACTIONS = {"drag": "0.3.0", "magnetic.torque": "0.1.0", "gravity": "0.1.0", "contact": "0.1.0"}
 CURRENT_INTERACTIONS = {cls.name: cls.version for cls in (Drag, Magnetic.Torque, Gravity, Contact)}
+#: The field providers' versions registered on 2026-10-31, and the current ones.
+REGISTER_FROZE_FIELDS = {"uniform_rotating": "0.1.0"}
+CURRENT_FIELDS = {UniformRotating.name: UniformRotating.version}
 #: What an experiment of the register's names with the laws' pin bypassed: the three laws that have moved since.
 MOVED_SINCE = [f"contact:umr: contact {Contact.version}, the register froze 0.1.0",
                f"drag:umr: drag {Drag.version}, the register froze 0.3.0",
                f"magnetic.torque:umr: magnetic.torque {Magnetic.Torque.version}, the register froze 0.1.0"]
 #: What builds a geometry or an experiment in a script: a kind's class, script A's shell or arms, an experiment.
 BUILDERS = {cls.__name__ for cls in (Screw, Sphere, Capsule, Box, Cylinder, Ellipsoid, Tube)} | {
-    held.__name__ for held, _ in KEPT.values()} | {"fl9", "script_a", "record_arm", "Experiment"} | {
-    cls.__name__ for cls in (RigidInertial, *(held for held, _ in KEPT_DYNAMICS.values()))}
+    held.__name__ for held, _ in KEPT.values()} | {"fl9", "script_a", "record_arm", "Experiment", "UniformRotating"} | {
+    cls.__name__ for cls in (RigidInertial, *(held for held, _ in KEPT_DYNAMICS.values()))} | {
+    held.__name__ for held, _ in KEPT_FIELDS.values()}
 #: ``same_as_script_a`` builds script A's reproduction arm as the reference its graph is compared with, not as an
 #: experiment of the register's.
 COMPARED_WITH = {"reproduction_arm"}
@@ -117,6 +129,17 @@ def unfrozen(document: dict) -> list[str]:
             for where, kind, version in geometries(document) if op.FROZEN_VERSIONS.get(kind) != version]
 
 
+def fields_of(document: dict) -> list[tuple[str, str, str]]:
+    """Each field provider the document names for an apparatus: where, its entry and its version."""
+    return [(f"{thing}.{field}", provider["name"], provider["version"]) for thing, held in document["things"].items()
+            for field, provider in held.get("fields", {}).items()]
+
+
+def unfrozen_fields(document: dict) -> list[str]:
+    return [f"{where}: {entry} {version}, the register froze {op.FROZEN_FIELDS.get(entry, 'none')}"
+            for where, entry, version in fields_of(document) if op.FROZEN_FIELDS.get(entry) != version]
+
+
 def unfrozen_interactions(document: dict) -> list[str]:
     return [f"{law['id']}: {law['name']} {law['version']}, the register froze "
             f"{op.FROZEN_INTERACTIONS.get(law['name'], 'none')}" for law in document["interactions"]
@@ -134,6 +157,7 @@ def test_every_experiment_the_registers_scripts_build_names_the_versions_it_froz
     assert "contact" in {law["name"] for law in document["interactions"]}
     assert unfrozen_interactions(document) == []
     assert dynamics_of(document) == [("umr", "rigid_inertial", "0.2.0")] and unfrozen_dynamics(document) == []
+    assert fields_of(document) == [("field.magnetic", "uniform_rotating", "0.1.0")] and unfrozen_fields(document) == []
 
 
 @pytest.mark.parametrize("arm", ARMS, ids=lambda arm: "/".join(arm.values()))
@@ -153,6 +177,31 @@ def test_control_the_experiment_with_the_laws_pin_bypassed_names_drag_0_4(monkey
     monkeypatch.setattr(op, "pinned_law", lambda law: law)
     found = unfrozen_interactions(op.experiment(rung="bem").document())
     assert sorted(found) == MOVED_SINCE and Drag.version != "0.3.0"
+
+
+def test_the_scripts_fields_table_is_the_version_registered_when_the_register_froze():
+    assert op.FROZEN_FIELDS == REGISTER_FROZE_FIELDS
+    for name, version in REGISTER_FROZE_FIELDS.items():
+        assert (name, version) in KEPT_FIELDS and KEPT_FIELDS[(name, version)][0].version == version
+        assert CURRENT_FIELDS[name] != version, "the field has moved on, which is why the register pins it"
+
+
+def test_control_the_experiment_with_the_fields_pin_bypassed_names_the_field_that_integrates_its_frequency(monkeypatch):
+    monkeypatch.setattr(op, "pinned_field", lambda provider: provider)
+    found = unfrozen_fields(op.experiment(rung="bem").document())
+    assert found == [f"field.magnetic: uniform_rotating {UniformRotating.version}, the register froze 0.1.0"]
+    assert UniformRotating.version == "0.2.0"
+
+
+def test_script_as_arm_the_register_compares_with_is_built_on_the_field_it_froze(monkeypatch):
+    """``same_as_script_a`` builds script A's reproduction arm on ``uniform_rotating`` 0.1.0 while it compares, and
+    leaves the script's name as it was."""
+    seen = []
+    real = op.A.reproduction_arm
+    monkeypatch.setattr(op.A, "reproduction_arm", lambda *a, **k: (seen.append(op.A.UniformRotating), real(*a, **k))[1])
+    op.same_as_script_a(op.experiment().build())
+    assert [cls.version for cls in seen] == ["0.1.0"] and op.A.UniformRotating is UniformRotating
+    assert UniformRotating.version == "0.2.0", "control: the script's own name is the current field"
 
 
 def test_the_scripts_table_is_the_versions_registered_when_the_register_froze():
@@ -212,7 +261,7 @@ def builds_unpinned(path: Path) -> list[str]:
     ``pinned_dynamics``)."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     pinned_args = {id(arg) for node in ast.walk(tree) if isinstance(node, ast.Call)
-                   and isinstance(node.func, ast.Name) and node.func.id in ("pinned", "pinned_dynamics")
+                   and isinstance(node.func, ast.Name) and node.func.id in ("pinned", "pinned_dynamics", "pinned_field")
                    for arg in node.args}
     found = []
     for node in ast.walk(tree):

@@ -72,6 +72,9 @@ class SettingKind:
 Direction = SettingKind("Direction", "a direction: a thing's direction such as tube.axis, or three numbers")
 #: A drive's quantity, in the dimension of the command it drives, which phase 1 checks it against.
 Commanded = SettingKind("Commanded", "a quantity in the dimension of the command it drives")
+#: A drive's rate of change, in the dimension of the command it drives per second (a frequency's ramp in Hz per
+#: second), which phase 1 checks it against.
+CommandedRate = SettingKind("CommandedRate", "a quantity in the dimension of the command it drives, per second")
 
 type DirectionLike = TypedPath | str | tuple[float, float, float]
 
@@ -390,7 +393,7 @@ def _vector(settings: Mapping[str, Magnitude], name: str) -> tuple[float, ...]:
 class DimensionedSetting:
     """A setting whose annotation declares its dimension, ``Annotated[Quantity, Length]``; ``optional`` when the
     annotation admits ``None`` (``Annotated[Quantity | None, Length]``). ``kind`` is set instead of a dimension for a
-    setting marked :data:`Direction` or :data:`Commanded`."""
+    setting marked :data:`Direction`, :data:`Commanded` or :data:`CommandedRate`."""
 
     dimension: Dimension | None
     optional: bool = False
@@ -895,8 +898,12 @@ class FieldProvider(Entry):
     values: ClassVar[Mapping[str, str]] = MappingProxyType({})
     outside_parts: ClassVar[bool] = False
     #: The command whose value, in turns per second, is the rate the field turns at, or ``None``: what the build reads
-    #: to estimate the rate a body that follows the field turns at, from the command's declared constant drive.
+    #: to estimate the rate a body that follows the field turns at, from the command's declared drive.
     turns_at: ClassVar[str | None] = None
+    #: The commands its field reads as constant over a run, each with why and what to write instead (the refusal's
+    #: route): the build refuses (``command.held-constant``) a drive other than the constant on each, and a controller
+    #: that writes one.
+    constant_commands: ClassVar[Mapping[str, tuple[str, str]]] = MappingProxyType({})
 
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags),
@@ -977,6 +984,11 @@ class Observation(Entry):
     reads: ClassVar[Mapping[str, Read]] = _EMPTY
     outputs: ClassVar[tuple[Output, ...]] = ()
     meters_energy: ClassVar[bool] = False
+    #: The roles ``(body, field)`` whose laws an observation is net of: the laws bound to that body and field read the
+    #: body's pose and the field a number of steps behind the observation's own read, as the build's lag accounting
+    #: declares (the build report's edges), and the build hands the difference to :meth:`net_of`. ``None`` for an
+    #: observation that is not net of any.
+    net_of_lag: ClassVar[tuple[str, str] | None] = None
     setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({
         "rate": convention(NUMERICAL, "an observation reads every base step unless the experiment chooses a slower "
                                       "rate")})
@@ -984,6 +996,12 @@ class Observation(Entry):
 
     def bindings(self) -> dict[str, Any]:
         return {role: getattr(self, role, None) for role in self.roles}
+
+    def net_of(self, node: Any, behind: int, why: str) -> Any:
+        """``node`` (the one this observation built) made net of ``behind`` steps, the lag the build declares for the
+        laws bound to its body and field, and ``why`` in words for the build report. Called once for an observation
+        with :attr:`net_of_lag`, after every edge's lag is classified and before the graph is made."""
+        raise NotImplementedError
 
     def plan(self, ctx: PlanContext) -> Plan:
         return Plan(reads=dict(self.reads))

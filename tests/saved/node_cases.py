@@ -147,6 +147,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "rigid_inertial", "0.3.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.4.0"): RIGID_BODY,
     ("field provider", "uniform_rotating", "0.1.0"): NodeCase(),
+    ("field provider", "uniform_rotating", "0.2.0"): NodeCase(),
     ("interaction", "magnetic.torque", "0.1.0"): NodeCase(),
     ("interaction", "magnetic.torque", "0.2.0"): NodeCase(),
     ("interaction", "gravity", "0.1.0"): NodeCase(),
@@ -167,7 +168,9 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("observation", "energy_ledger", "0.1.0"): NodeCase(
         no_node="a switch: it builds no node, and its account is the metered bodies' records, rigid_inertial's, "
                 "verified under its own case and by tests/energy"),
+    ("observation", "phase_lag", "0.1.0"): NodeCase(),
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
+    ("drive", "drive.ramp", "0.1.0"): NodeCase(),
     ("dynamics", "arm", "0.1.0"): ARM,
     ("dynamics", "motor", "0.2.0"): MOTOR,
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),

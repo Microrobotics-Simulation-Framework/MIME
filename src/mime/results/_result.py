@@ -82,7 +82,8 @@ class _Identified(Protocol):
 class MemberOf:
     """What makes a run a member of a study: the study's id, its index among the study's members and the point it is,
     the axes' values it ran with (path and value, in the sweep's order), the base experiment's saved folder where the
-    study is on disk, and each axis's reason. ``as_experiment`` is made from it."""
+    study is on disk, each axis's reason, and the study's protocol (``mime.study.FromRest`` or ``mime.study.Ramp``;
+    ``None`` read as from rest). ``as_experiment`` is made from it."""
 
     study: str
     member: int
@@ -90,6 +91,7 @@ class MemberOf:
     values: tuple[tuple[str, object], ...]
     base: Path | None
     reasons: Mapping[str, str]
+    protocol: object = None
 
 
 @dataclass(frozen=True)

@@ -16,7 +16,7 @@ node (whose page says its rows' units are declared, not checked, for that reason
 **When not to use it.**
 - For a command that must change during a run: this one does not. A controller replaces the drive of each command it
   writes, and is how a command follows a law.
-- For a ramp, a pulse or a schedule: this drive is a constant and has none.
+- For a ramp: `drives.Ramp`. For a pulse or a schedule: this drive is a constant and has none.
 
 **Its derivative** is `exact`, as the generated section states: the command is the parameter, so the derivative of
 anything downstream with respect to the value is the derivative of the run with respect to that command.

@@ -19,6 +19,7 @@ from mime.core import shape_named, shape_names
 from mime.gradients import GradientStatus
 from mime.registry._entries import (
     Commanded,
+    CommandedRate,
     Controller,
     DefaultKind,
     DimensionedSetting,
@@ -160,9 +161,9 @@ def dimensioned_settings(cls: type) -> tuple[dict[str, DimensionedSetting], list
             if kinds:
                 if len(kinds) > 1 or any(isinstance(m, Dimension) for m in metadata):
                     problems.append(f"setting {setting.name!r} is annotated {hint!r}: one marker, a dimension or "
-                                    f"one of {Direction!r} and {Commanded!r}")
-                elif kinds[0] is Commanded and Quantity not in _members(held):
-                    problems.append(f"setting {setting.name!r} is marked {Commanded!r} and holds no Quantity")
+                                    f"one of {Direction!r}, {Commanded!r} and {CommandedRate!r}")
+                elif kinds[0] in (Commanded, CommandedRate) and Quantity not in _members(held):
+                    problems.append(f"setting {setting.name!r} is marked {kinds[0]!r} and holds no Quantity")
                 else:
                     found[setting.name] = DimensionedSetting(None, optional=type(None) in _members(held),
                                                              kind=kinds[0])
