@@ -373,6 +373,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A bundle changed in place in the cache, its size and modification time kept, is downloaded again and the good file
+  served** (MIME-ANO-142, partially resolved). The cache's cheap check could not see a byte flipped in the middle of a
+  file with both restored, so `based_on` and `pull` of a DOI served the changed bundle and refused it with advice that
+  did not apply. Now, where the caller holds the repository's checksum of the file (a bundle's `md5:...`), the check
+  reads the cached file once and compares its digest (`locate(ref, checksum=...)`, and `assets.retrieve`'s lookup by
+  its `known_hash`), so the changed file takes the download; and a download that passed the repository's checksum is
+  installed, in one rename, over a cached file MIME wrote whose full sha256 fails (a file a person placed is refused, as
+  before), where before a cached file that passed the cheap check was never replaced. Measured on the pull tests' fake
+  repository: the review's reproduction made one more bundle request (1 to 2) and served the good file. Cost, warm page
+  cache: `locate` with no checksum 15 to 19 microseconds at any size; with the md5, 1.0 ms at 1 MB, 34 ms at 32 MB and
+  1.08 s at 900 MB (a whole-file read). The checksum-free path is unchanged: an asset's file is judged by size and
+  modification time, and a byte flipped in place there is found only by `mime assets check` or `fetch`; the asset
+  cache's documentation says so.
+  A bundle named by a bare `https://` address, which is downloaded each time, now also repairs a cached file of those
+  bytes that was changed in place (the download is installed over it when MIME wrote it), where before the cached file
+  was kept; and a cached bundle that cannot be read is refused as `asset.missing`, naming the file and the route
+  (its permissions, or delete it and fetch again), not as a bare `PermissionError`.
 - **The uniform rotating field turns by the integral of its frequency: `uniform_rotating` 0.2.0** (MIME-ANO-139). 0.1.0
   made the phase as the present frequency times the time, so a ramp turned the field at twice the commanded rate and a
   step jumped its angle. 0.2.0 holds the phase in turns as a pair of floating numbers, to which each step adds the frequency times the
@@ -410,8 +427,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checksum, so a folder that holds another experiment is refused as it was. The licence and download gates apply to the
   assets on a re-run as on the first run.
   A bare `https://` bundle address has no repository checksum and downloads again. A cached bundle changed in place with its
-  size and modification time kept is served as the verified file, here as before this change (MIME-ANO-142, open, the
-  asset cache's check).
+  size and modification time kept is served as the verified file, here as before this change (MIME-ANO-142; fixed for a
+  bundle in the entry under Fixed).
 - **In float32 every build of a screw or a cylinder in a process holds the first build's matrix, to the bit** (MIME-ANO-138).
   The first build in a process made the MRS node's held matrix from cap samples in float64; every later build made it
   from the same samples rounded to float32 (1e-7 of themselves), because the cap layout the process caches was handed
