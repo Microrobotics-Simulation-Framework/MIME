@@ -3015,7 +3015,7 @@ anomalies:
       in azimuth and eight apart, each read with its self-pairs (tube_reads), both rotations across the tube, jitted in
       forward mode (jvp) and in reverse mode (jacrev), the derivative is within 5.2e-9 (float64) and 2.9e-4 (float32) of
       the central difference, relative to the column's largest entry, against floors of 1e-6 and 3e-3; eager too (a pair
-      tied in height and a pair apart); under an added barrier on the sine too. The whole body (the tube demo's 338
+      tied in height); under an added barrier on the sine too. The whole body (the tube demo's 338
       points 0.4 of the way to its floor, 7 pairs of them tied in height, the correction's jit(jacfwd) along the two
       rotations) is within 2.3e-7 and 2.3e-8 against a floor of 1e-5. The read jitted is the program before the fix to
       the last bit, at the ties and off them, and off the ties the forward derivative is the one before the fix to 0

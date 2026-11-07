@@ -10,8 +10,9 @@ derivative see the same number. Jitted they did not always: XLA computes the off
 and a difference of products near zero is not the same number in every fusion, so a derivative came out of the
 opposite sign: 2.0 of the column's largest entry at a pair tied in height, and in reverse mode at a sample's pair with
 itself where no two samples tied (the cotangent of its offset and its sine enters the sample twice, with opposite
-signs, and did not cancel), on one of eight pairs apart (with twelve samples, three clouds, on none: the fusion's). ``pair_block`` holds the sine and the offset once (``held_once``) wherever a derivative is taken through
-them; a program that takes none is unchanged.
+signs, and did not cancel), on one of eight pairs apart (with twelve samples, three clouds, on none: the fusion's).
+``pair_block`` holds the sine and the offset once (``held_once``) wherever a derivative is taken through them; a
+program that takes none is unchanged.
 
 - **The gate**: five pairs tied in height, four in azimuth (one across the axis) and eight apart, rotated about the
   two axes across the tube, jitted, in forward mode (``jvp``) and in reverse mode (``jacrev``, a cotangent for each
@@ -96,9 +97,14 @@ def dtype_of(name: str):
     return jnp.float64 if DTYPES[name] else jnp.float32
 
 
-def parameters(name: str) -> dict:
-    return {"table": tube_table_from(str(tube_asset.path())).arrays(dtype_of(name)), "frame": tuple(FRAME.ravel()),
-            "radius": RADIUS, "centre": (0.0, 0.0, 0.0)}
+def table(name: str):
+    return tube_table_from(str(tube_asset.path())).arrays(dtype_of(name))
+
+
+def parameters(arrays) -> dict:
+    """The tube's parameters around its table's ``arrays``, which every program here takes as an argument, as the
+    drag node's step takes its wall's table (a constant of the program it would be hundreds of megabytes)."""
+    return {"table": arrays, "frame": tuple(FRAME.ravel()), "radius": RADIUS, "centre": (0.0, 0.0, 0.0)}
 
 
 def placed(local, dtype) -> jax.Array:
@@ -126,36 +132,40 @@ EAGER = ("eager forward", "eager reverse")
 
 def derivatives(name: str, pairs, modes=MODES) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """Each pair's derivative of the read (every pair of its two samples, each with itself too) along each of the two
-    rotations, in each of ``modes``, and its central difference, in float64: forward mode a ``jvp`` along each rotation,
-    reverse mode one ``jacrev`` in both. The programs are traced afresh at each call, so a rule patched in before it
-    is the one traced."""
+    rotations, in each of ``modes``, and its central difference, in float64: jitted forward mode a ``jvp`` along each
+    rotation, reverse mode one ``jacrev`` in both; eager, one ``jacfwd`` and one ``jacrev``. The programs are traced
+    afresh at each call, so a rule patched in before it is the one traced."""
     with jax.enable_x64(DTYPES[name]):
-        dtype, held = dtype_of(name), parameters(name)
+        dtype, arrays = dtype_of(name), table(name)
         zero, step = jnp.zeros(2, dtype), STEP[name]
         along = [jnp.zeros(2, dtype).at[axis].set(1.0) for axis in (0, 1)]
 
-        def read(points, angles):
-            return tube_reads(turned(points, angles), held).world
+        def read(points, angles, arrays):
+            return tube_reads(turned(points, angles), parameters(arrays)).world
 
         def forward(axis):
-            return lambda points, angles: jax.jvp(lambda at: read(points, at), (angles,), (along[axis],))[1]
+            return lambda points, angles, arrays: jax.jvp(lambda at: read(points, at, arrays), (angles,),
+                                                          (along[axis],))[1]
 
-        def reverse(points, angles):
-            return jax.jacrev(lambda at: read(points, at))(angles)
+        def both_forward(points, angles, arrays):
+            return jax.jacfwd(lambda at: read(points, at, arrays))(angles)
+
+        def reverse(points, angles, arrays):
+            return jax.jacrev(lambda at: read(points, at, arrays))(angles)
 
         value = jax.jit(read)
         arms = {"forward": [jax.jit(forward(axis)) for axis in (0, 1)], "reverse": jax.jit(reverse),
-                "eager forward": [forward(axis) for axis in (0, 1)], "eager reverse": reverse}
+                "eager forward": both_forward, "eager reverse": reverse}
         found: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         for pair, local in pairs.items():
             points = placed(local, dtype)
-            taken = {mode: (np.stack([np.asarray(arm(points, zero), np.float64) for arm in arms[mode]], axis=-1)
-                            if isinstance(arms[mode], list) else np.asarray(arms[mode](points, zero), np.float64))
+            taken = {mode: np.stack([np.asarray(arm(points, zero, arrays), np.float64) for arm in arms[mode]], axis=-1)
+                     if isinstance(arms[mode], list) else np.asarray(arms[mode](points, zero, arrays), np.float64)
                      for mode in modes}
             for axis in (0, 1):
                 shift = jnp.zeros(2, dtype).at[axis].set(step)
-                difference = (np.asarray(value(points, shift), np.float64)
-                              - np.asarray(value(points, -shift), np.float64)) / (2.0 * step)
+                difference = (np.asarray(value(points, shift, arrays), np.float64)
+                              - np.asarray(value(points, -shift, arrays), np.float64)) / (2.0 * step)
                 assert np.max(np.abs(difference)) > 0.0, f"{pair}: the rotation moves nothing, so nothing is compared"
                 for mode in modes:
                     found[f"{pair}, about axis {axis}, {mode}"] = (taken[mode][..., axis], difference)
@@ -211,10 +221,10 @@ def test_the_derivative_through_ties_is_the_central_difference_jitted_in_both_mo
     assert beyond(found, FLOOR[dtype]) == {}
 
 
+@pytest.mark.parametrize("mode", EAGER)
 @pytest.mark.parametrize("dtype", DTYPES)
-def test_the_derivative_through_ties_is_the_central_difference_eager(dtype):
-    pairs = {"height c": HEIGHT_TIES["height c"]}
-    assert beyond(misses(dtype, pairs, EAGER), FLOOR[dtype]) == {}
+def test_the_derivative_through_ties_is_the_central_difference_eager(dtype, mode):
+    assert beyond(misses(dtype, {"height c": HEIGHT_TIES["height c"]}, (mode,)), FLOOR[dtype]) == {}
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -256,9 +266,9 @@ def test_the_read_itself_is_the_program_before_the_fix_to_the_last_bit(dtype, mo
 
     def reads() -> list[np.ndarray]:
         with jax.enable_x64(DTYPES[dtype]):
-            held = parameters(dtype)
-            read = jax.jit(lambda points: tube_reads(points, held).world)
-            return [np.asarray(read(placed(local, dtype_of(dtype))))
+            arrays = table(dtype)
+            read = jax.jit(lambda points, arrays: tube_reads(points, parameters(arrays)).world)
+            return [np.asarray(read(placed(local, dtype_of(dtype)), arrays))
                     for local in [*TIES.values(), *NUDGED.values(), *APART.values()]]
 
     found = reads()
@@ -283,7 +293,7 @@ def test_off_the_ties_the_forward_derivative_is_the_one_before_the_fix_to_roundi
     assert beyond(apart, ROUNDING_ULPS) == {}
 
 
-# -- the whole body ------------------------------------------------------------------------------------------------------
+# -- the whole body ----------------------------------------------------------------------------------------------------
 
 #: The tube demo's ball 0.4 of the way from the tube's centre to its floor (it falls 47.5 um to one spacing off it),
 #: unturned; the rotation's step for the central difference, its floor there, and the miss the control must reach.
@@ -320,17 +330,18 @@ def body_misses(wall, points: np.ndarray, viscosity: float) -> dict[str, float]:
     jitted (``jacfwd``), against the central difference: each rotation's largest miss relative to the difference's
     largest entry."""
     with jax.enable_x64(True):
-        held = jnp.asarray(points)
+        held, arrays = jnp.asarray(points), wall["table"]
+        constants = {name: value for name, value in wall.items() if name != "table"}
 
-        def matrix(angles):
-            return tube_correction(turned(held, angles), wall, viscosity).matrix
+        def matrix(angles, arrays):
+            return tube_correction(turned(held, angles), {**constants, "table": arrays}, viscosity).matrix
 
         value = jax.jit(matrix)
-        derivative = np.asarray(jax.jit(jax.jacfwd(matrix))(jnp.zeros(2)))
+        derivative = np.asarray(jax.jit(jax.jacfwd(matrix))(jnp.zeros(2), arrays))
         found = {}
         for axis in (0, 1):
             step = jnp.zeros(2).at[axis].set(BODY_STEP)
-            difference = (np.asarray(value(step)) - np.asarray(value(-step))) / (2.0 * BODY_STEP)
+            difference = (np.asarray(value(step, arrays)) - np.asarray(value(-step, arrays))) / (2.0 * BODY_STEP)
             found[f"about axis {axis}"] = float(np.max(np.abs(derivative[..., axis] - difference))
                                                 / np.max(np.abs(difference)))
         return found

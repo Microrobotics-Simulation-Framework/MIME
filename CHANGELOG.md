@@ -262,8 +262,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one that does) wherever a derivative is taken through them. A run takes no derivative, so its program is unchanged:
   measured, every field of the tube demo's 40 steps (the history scan and one-step chunks) and of the screw in the
   tube's 30 steps, in float32 and float64, is the program before the fix to the last bit, so the tube wall kind keeps
-  its version 0.1.0. `tests/oracles/test_tube_tie_derivative.py` holds the derivative through ties at thirteen pairs
-  (jitted in both modes, eager, in both precisions, and under a barrier on the sine) and on the tube demo's 338 force
+  its version 0.1.0. `tests/oracles/test_tube_tie_derivative.py` holds the derivative through ties and self-pairs at
+  seventeen pairs (jitted in both modes, eager, in both precisions, and under a barrier on the sine) and on the tube demo's 338 force
   points, against central differences, with the read before the fix as the control that fails.
 
 - **A DOI run again does not download its bundle again** (`Experiment.based_on("10.5281/zenodo.N", name=...)`, a second
