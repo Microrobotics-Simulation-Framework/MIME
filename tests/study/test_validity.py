@@ -21,7 +21,9 @@ STARTS = [mm((0.0, 0.0, -1.0)), mm((0.0, 0.0, -3.0)), mm((0.0, 0.0, -3.4)), mm((
 
 
 def _sweep(experiment, *, drop=False):
-    return Study(experiment).sweep(grid({"umr.initial.position": STARTS}), duration=s(0.01), drop_refused=drop)
+    # One reason for the axis, which the research profile asks of each (``study.axis-reason``).
+    return Study(experiment).sweep(grid({"umr.initial.position": STARTS}), duration=s(0.01), drop_refused=drop,
+                                   reasons={"umr.initial.position": "starts across the tube, inside and past its wall"})
 
 
 def _profiled(profile: str, inner=None) -> Experiment:
