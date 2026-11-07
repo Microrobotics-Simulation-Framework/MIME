@@ -1,5 +1,5 @@
 ---
-describes: "0.1.0"
+describes: ["0.1.0", "0.2.0"]
 ---
 # A uniform field turning about an axis
 
@@ -10,6 +10,12 @@ two commands, `frequency` and `amplitude`. The field points along the initial di
 at the start of the run. A reader's slot takes no points, since the field does not depend on them, and the gradient it
 publishes is zero everywhere. Its time is the step count times the timestep, never a running sum of timesteps.
 
+Its phase is the integral of the commanded frequency, in turns, each step's frequency held over the step, so the
+frequency may change during a run, by a ramp (`drives.Ramp`) or a controller, and the field turns at the rate commanded
+without jumping its angle. It holds the phase as `2 pi (f t - C)`, with a correction `C` that the changes of frequency
+add to, kept as a fraction of a turn, so its rounding does not grow with the run; for a frequency that never changes the
+correction is an exact zero and the field is the one version 0.1.0 computes, to the last bit.
+
 It publishes the flux density and the gradient, so it feeds `Magnetic.Torque` (which reads the flux density) and
 `Magnetic.Force` (which reads the gradient, zero here, and so delivers nothing beside it).
 
@@ -18,12 +24,16 @@ It publishes the flux density and the gradient, so it feeds `Magnetic.Torque` (w
   near field. A source with a position, such as the point dipole, is the model for that.
 - For a source that the body reacts on: this field has no source mounted anywhere, so it takes no reaction. A body's
   moment turns in it and the field is not turned back.
-- For a frequency that changes during the run, taken as a sweep: the phase is the present frequency times the time since
-  the start, not the integral of the frequency, so a change of frequency changes the phase at once, and the field's
-  direction jumps with it. A frequency held constant, or changed where a jump of phase is acceptable, is what it is for.
+- For a frequency that changes faster than a step resolves: each step's frequency is held over the step, so a
+  frequency that changes within a step is its value for that step.
 - For a field's delivery by coils or magnets with a bandwidth, a lag, a saturation or a nonuniformity: it is the ideal
   field, and the commanded amplitude is the amplitude delivered. Nothing here bounds how far a rig's field is from that.
 
 **Its derivative** is `exact`, as the generated section states.
 
-**Versions.** `uniform_rotating` 0.1.0 is its first.
+**Versions.** `uniform_rotating` 0.2.0 integrates its frequency. 0.1.0, the first, made the phase as the present
+frequency times the time since the start, so a frequency that changed in a run turned the field at the wrong rate (a
+ramp at twice the commanded rate) and jumped its angle where it stepped (MIME-ANO-139). For a constant frequency the two
+compute the same field to the last bit. 0.1.0 stays registered (`mime.fields.KEPT`) so that a folder saved with it loads
+and reproduces, and refuses, when the experiment is built, any drive of its frequency but a constant and a controller
+that writes it, naming 0.2.0; a script that writes `UniformRotating(...)` gets 0.2.0.

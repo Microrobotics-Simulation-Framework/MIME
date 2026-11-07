@@ -64,8 +64,9 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   member ran in), `result[swim].mean_speed` (an output at the end over the members) and `result[swim].speed` (a series
   stacked over them where they share its time axis, refused otherwise with the route to `member(i)`), `member(i)` (a
   `RunResult`), `flags` (the union, a flag a member's build does not declare reading `not declared`, never "not
-  raised"), and `dropped` (the points `drop_refused=True` left out, with their refusals). Saving it, its long table and
-  `.mat` are next (S2c), on this shape.
+  raised"), `dropped` (the points `drop_refused=True` left out, with their refusals), `protocol` (how the members'
+  commands moved in time, `FromRest` or `Ramp`, which names the quantity a step-out read from it is) and `ramps` (each
+  member's ramp, where the protocol gave one). Saving it, its long table and `.mat` are next (S2c), on this shape.
 - **An overridden run** (`run(..., override=...)`) carries its `overrides` (each one's path, value with its unit, SI
   value and the leaves it wrote), in its text ("OVERRIDDEN for this run: ..."), its manifest and back from its folder.
 

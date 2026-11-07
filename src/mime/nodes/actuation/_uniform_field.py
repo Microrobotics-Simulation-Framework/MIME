@@ -122,12 +122,10 @@ class UniformRotatingNode(MimeNode):
 
 
 INTEGRATING_EQUATIONS = (
-    r"\varphi_{n} = 2 \pi \left( f_{n} t_{n} - C_{n} \right), \quad "
-    r"C_{n} = \left\{ C_{n-1} + t_{n-1} \left( f_{n} - f_{n-1} \right) \right\}, \quad "
-    r"\varphi_{n} - \varphi_{n-1} \equiv 2 \pi f_{n} h \pmod{2 \pi}, \quad "
     r"\mathbf{B} = \frac{B_{0}}{\left\| \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) \mathbf{a} \right\|} "
-    r"\left( \cos \varphi_{n} \left( \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) \mathbf{a} \right) + "
-    r"\sin \varphi_{n} \, \mathbf{a} \times \mathbf{d} \right), \quad G = 0")
+    r"\left( \cos\left( 2 \pi (f_{n} n h - C_{n}) \right) \left( \mathbf{d} - (\mathbf{d} \cdot \mathbf{a}) "
+    r"\mathbf{a} \right) + \sin\left( 2 \pi (f_{n} n h - C_{n}) \right) \, \mathbf{a} \times \mathbf{d} \right), "
+    r"\quad C_{n} = \operatorname{frac}\left( C_{n-1} + (n - 1) h \left( f_{n} - f_{n-1} \right) \right), \quad G = 0")
 
 #: Where the integrating node's symbol rows' function is.
 _INTEGRATE = "mime.nodes.actuation._uniform_field.IntegratingRotatingNode.advance"

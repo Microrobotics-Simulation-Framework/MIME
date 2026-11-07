@@ -56,8 +56,8 @@ class ConstantNode(MimeNode):
         return node_fields(Command(value=as_run_array(p["value"])))
 
 
-RAMP_EQUATIONS = (r"u_{n} = u_{0} + r \min\left( \max\left( t_{n - 1/2} - t_{h}, 0 \right), T \right), \quad "
-                  r"t_{n - 1/2} = \left( n - \tfrac{1}{2} \right) h")
+RAMP_EQUATIONS = (r"u_{n} = u_{0} + r \min\left( \max\left( \left( n - \tfrac{1}{2} \right) h - t_{h}, 0 \right), T "
+                  r"\right)")
 
 #: Where the ramp's symbol rows' function is.
 _RAMP = "mime.nodes.actuation._drive.RampNode.advance"

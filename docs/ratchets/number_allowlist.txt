@@ -71,3 +71,9 @@ src/mime/cli/README.md  1 10  #1  # the download gates' declared thresholds in m
 src/mime/cli/README.md  2 5  #1  # the download gates' declared thresholds in mime.assets._gates, the bake allowance measured on the AR4 (1.9 % of its input in all, 28 % at worst for one small mesh; the constant is 30 %), and an example line's figures (U13, design #237)
 src/mime/cli/README.md  1  #2  # the download gates' declared thresholds in mime.assets._gates, the bake allowance measured on the AR4 (1.9 % of its input in all, 28 % at worst for one small mesh; the constant is 30 %), and an example line's figures (U13, design #237)
 src/mime/cli/README.md  2 5  #2  # the download gates' declared thresholds in mime.assets._gates, the bake allowance measured on the AR4 (1.9 % of its input in all, 28 % at worst for one small mesh; the constant is 30 %), and an example line's figures (U13, design #237)
+docs/entries/drive/drive.ramp.md  100.0 5.0 0.25 1.0 3.0  #1  # a call written as code, its arguments an example's, no claim
+docs/entries/drive/drive.ramp.md  2 2 2  #1  # the closed form of a linear ramp's phase, written as code, no claim
+docs/entries/field_provider/uniform_rotating.md  2  #1  # the phase's formula, written as code (2 pi), no claim
+docs/guide/studies.md  0.99  #1  # the lock threshold's default, a declared criterion (mime.study.step_out), no claim
+docs/guide/studies.md  43.25 43.5 41.0 41.25  #1  # an acceptance test's measured brackets, named beside them (tests/study/test_step_out.py), not an accuracy claim
+src/mime/study/README.md  0.99  #1  # the lock threshold's default, a declared criterion (step_out's), no claim

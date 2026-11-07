@@ -2,8 +2,8 @@
 
 A study runs one experiment at many points. **A point is the experiment with the point's values declared in it**, so every
 check the build makes of that experiment holds at that point: its validity lines, its material reads and its refusals, in
-every profile. Batching is how the points run, never a meaning of its own. The step-out curve (sweeping the field through
-step-out, from rest and under a ramp) comes with the drives that ramp the frequency.
+every profile. Batching is how the points run, never a meaning of its own. Its protocol says how each point's commands
+move in time: held from rest, or ramped (the step-out curve, below).
 
 ## A sweep
 
@@ -55,6 +55,8 @@ jaxlib and the Python it runs on; `print(study.plan())` gives them. It printed:
 30 Hz: swim speed 8.90 mm/s over the second half, 0.297 mm per turn
 40 Hz: swim speed 12.01 mm/s over the second half, 0.300 mm per turn
 OVERRIDDEN for this run: field.commands.frequency = 20.0 Hz
+step-out from rest: last locked 43 Hz, first unlocked 43.5 Hz
+41 Hz 1.000, 41.5 Hz 1.000, 42 Hz 1.000, 42.5 Hz 1.000, 43 Hz 1.000, 43.5 Hz 0.037, 44 Hz 0.034, 44.5 Hz 0.033, 45 Hz 0.032, 45.5 Hz 0.030, 46 Hz 0.029
 ```
 
 A value the compiled step does not read (one a node consumes when it is built, without declaring it) is refused, since
@@ -82,6 +84,45 @@ compiled step, each with its own law.
   member's build does not declare reads `not declared`, never "not raised".
 
 Saving a study, its long table and `.mat` come next, on this shape.
+
+## The step-out curve
+
+A body follows a rotating field up to a frequency, its step-out, and above it slips and rocks. Where that frequency lies
+depends on how the field gets there, so a study's protocol says it, and every reading names the quantity it is:
+
+- **from rest** (`protocol=FromRest()`, the default): each point's field turns at its frequency from the start, and the
+  body, starting at rest, is captured or not;
+- **ramp up** (`protocol=Ramp(field.commands.frequency, to=..., rate=..., hold=...)`, rising): a body locked at the
+  point's frequency follows the field as it speeds up, until it steps out;
+- **ramp down** (the same, falling): a body that rocks at a high frequency is caught as the field slows.
+
+`examples/studies.py` sweeps script A's field through step-out from rest, with `observations.PhaseLag` observing the
+body's moment against the field and its spin about the field's axis:
+
+<!-- mime-include: examples/studies.py#step_out -->
+
+`step_out(result, lag, axis)` reads each member's mean spin over the window against its frequency: a member is locked
+where that ratio is at least its `threshold`, by default `0.99`. Below the bracket the body turns with the field;
+above it the body rocks, its mean spin a few hundredths of the field's. On the reproduction arm in float64 the
+bracket is `43.25` and `43.5` Hz, and at nine tenths of the amplitude `41.0` and `41.25` Hz
+(`tests/study/test_step_out.py`). A ramp is read by `ramp_crossings(result, lag)` from the spin recorded every step,
+over sliding windows against the frequency the ramp commanded:
+
+<!-- mime-fragment: a ramp down, minutes of script A, longer than a page's example; its figure is the test's -->
+```python
+result = Study(observed).sweep(
+    grid({frequency: [Hz(100.0)]}), duration=s(284.0), record=["phase_lag:umr.spin"],
+    protocol=Ramp(frequency, to=Hz(5.0), rate=Hz(0.25) / s(1.0), hold=s(3.0))).run()
+(caught,) = ramp_crossings(result, "phase_lag:umr")
+print(caught.text())   # member 0, ramp down: is caught at 31.73 Hz (276.087 s), by 0.2 s windows
+```
+
+Held at a high frequency from rest the body rocks; ramped down slowly it is caught below the from-rest step-out
+(`tests/study/test_ramp_relock.py`), and a body locked at a lower frequency and ramped up stays locked far past it,
+until a frequency beyond the drag's declared Reynolds number, which is about the model's limits, not the body's. The
+field must integrate its frequency for a ramp to mean what it says: `UniformRotating` 0.2.0 does, and 0.1.0, kept for
+saved folders, refuses a ramp. These figures are acceptance tests of the sweep and the inertial body, not claims about
+where a real body steps out.
 
 ## One run's overrides
 

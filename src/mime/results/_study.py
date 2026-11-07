@@ -18,6 +18,7 @@ from mime.units import Quantity
 
 if TYPE_CHECKING:
     from mime.drives import Ramp
+    from mime.study._protocol import Protocol
     from mime.study._study import StudyPlan
 
 #: What a member's flag reads where the member's build declares no such flag: not "not raised".
@@ -87,7 +88,7 @@ class StudyResult:
         self.compiles = tuple(compiles)
         #: How the members' commands moved in time (``mime.study.FromRest`` or ``mime.study.Ramp``), which names the
         #: quantity a step-out read from them is.
-        self.protocol = protocol if protocol is not None else FromRest()
+        self.protocol: Protocol = cast("Protocol", protocol) if protocol is not None else FromRest()
         #: The drive the protocol gave each member's ramped command (``None`` from rest), by member.
         self.ramps = tuple(ramps) if ramps else (None,) * len(self._members)
 
