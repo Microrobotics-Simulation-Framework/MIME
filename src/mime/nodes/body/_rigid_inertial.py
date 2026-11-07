@@ -292,6 +292,11 @@ class RigidInertialNode(MimeNode):
       its search did not converge and held the candidate), and ``contact_residual``, how far the sweeps left the solve
       from its complementarity (``_contact.residual``).
       Where no point is held or projected, the step is the free body's to the last bit.
+    - *The loops* (``contact_loops``): the sweeps and the search's Newton steps are unrolled, a call each, the program
+      the contact 0.4.0 builds (the default, so a node saved with 0.4.0 is built as it was); with ``contact_loops``
+      (the contact 0.5.0) they are XLA loops' iterations (``_contact.repeated``), the same updates in the same order,
+      a smaller program, whose rounding may differ from the unrolled one's by a few units in the last place.
+      It is a parameter only where it is set.
     """
 
     def __init__(self, name: str, timestep: float, *, mass: float, inertia: Sequence[float],
@@ -300,7 +305,7 @@ class RigidInertialNode(MimeNode):
                  hull_kind_version: str = "", hull_patches: Sequence[str] = (),
                  hull_counts: Sequence[Sequence[int]] = (), hull_centre: Sequence[float] = (0.0, 0.0, 0.0),
                  hull_rotation: Sequence[float] = _IDENTITY, hull_groups: np.ndarray | None = None,
-                 **constants: object) -> None:
+                 contact_loops: bool = False, **constants: object) -> None:
         surface = {key: value for key, value in constants.items() if key.startswith(SURFACE)}
         settings = {key.removeprefix(HULL): value for key, value in constants.items() if key.startswith(HULL)}
         unknown = set(constants) - set(surface) - {f"{HULL}{name}" for name in settings}
@@ -359,6 +364,11 @@ class RigidInertialNode(MimeNode):
                                                  [tuple(int(c) for c in count) for count in hull_counts])
                 self._starts = start_count(body, self._places, self._apart, self._shortfall)
             hull["hull_groups"] = np.asarray(held, dtype=np.int32)
+            if contact_loops:
+                hull["contact_loops"] = True
+        elif contact_loops:
+            raise ValueError("contact_loops runs a hull contact's sweeps and search as XLA loops, and the node "
+                             "holds no hull (hull_kind)")
         super().__init__(name, timestep, mass=mass, inertia=tuple(inertia), initial_pose=tuple(initial_pose),
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
                          margin=margin, velocity_rule=velocity_rule, **hull, **surface,
@@ -387,6 +397,12 @@ class RigidInertialNode(MimeNode):
         nearest point is chosen from, cut to the vertices of the group's own convex hull where the confining shape's
         region is convex (``convex_candidates``)."""
         return np.asarray(self.constants()["hull_groups"], dtype=np.int32)
+
+    @property
+    def loops(self) -> bool:
+        """Whether the hull contact's sweeps and search are XLA loops' iterations (the contact 0.5.0) rather than
+        unrolled (0.4.0): ``_contact.repeated``."""
+        return bool(self.constants().get("contact_loops", False))
 
     @property
     def supported(self) -> bool:
@@ -544,7 +560,7 @@ class RigidInertialNode(MimeNode):
         pair of two bodies' hulls is the layout's next)."""
         hull = Hull(body, self.groups, pose, self._hull if self.supported else None, self.hull_parameters(p),
                     self._places, self._apart, self._shortfall, self._size, self._starts)
-        return [Pair(hull, self.wall(p))]
+        return [Pair(hull, self.wall(p), self.loops)]
 
     def contacts(self, p: Mapping[str, Any], body: Array, pose: Array) -> Contacts:
         """Every pair's rows at ``pose`` (``_contact.pair_contacts``): where the hull's kind has a support query, the
@@ -571,8 +587,8 @@ class RigidInertialNode(MimeNode):
         return self.wall(p).normals(points)
 
     def sweeps(self, coupling: Array, start: Array, count: int, *, owner: str) -> Array:
-        """The solve's projected Gauss-Seidel sweeps (``_contact.sweeps``)."""
-        return _sweeps(coupling, start, count, owner=owner)
+        """The solve's projected Gauss-Seidel sweeps (``_contact.sweeps``), looped where the contact's are."""
+        return _sweeps(coupling, start, count, owner=owner, loops=self.loops)
 
     def hull_held(self, p: Mapping[str, Any], body: Array, pose: Array, system: Array, moved: Array,
                   dt: float) -> tuple[Array, Array, Array, Array, Array]:
