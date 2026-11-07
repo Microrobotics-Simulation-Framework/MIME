@@ -126,14 +126,16 @@ def rod_contact(name: str = "rod_contact") -> Experiment:
 
 def hull_node(kind, settings, spacing: float, *, groups=None, mass: float = 1e-5,
               inertia=(1e-11, 1e-11, 1e-11), pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0), dt: float = 5e-4,
-              margin: float = MARGIN, radius: float = TUBE_RADIUS):
+              margin: float = MARGIN, radius: float = TUBE_RADIUS, loops: bool = False):
     """A body's node held by ``kind``'s hull points (its quadrature at ``spacing``) in a tube along x through the
-    origin, as the contact 0.4.0 builds it (its loops unrolled); ``groups``, rows of the points' indices, in place of
-    the node's own."""
+    origin, as the contact 0.4.0 builds it (its loops unrolled), or with ``loops`` as 0.5.0 does; ``groups``, rows of
+    the points' indices, in place of the node's own."""
     from mime.nodes.body import HULL, RigidInertialNode
 
     patches = tuple(kind.patches)
     held = {} if groups is None else {"hull_groups": np.asarray(groups, dtype=np.int32)}
+    if loops:
+        held["contact_loops"] = True
     return RigidInertialNode(
         "umr", dt, mass=mass, inertia=inertia, initial_pose=pose, initial_twist=(0.0,) * 6, surface_shape="cylinder",
         margin=margin, velocity_rule="remove_outward", hull_kind=kind.name, hull_kind_version=kind.version,

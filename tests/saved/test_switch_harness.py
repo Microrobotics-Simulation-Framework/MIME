@@ -674,8 +674,9 @@ def lowest_two() -> tuple[int, int]:
     return int(order[0]), int(order[1])
 
 
-def held_ball(groups, pose):
-    return hull_node(HELD_BALL, BALL_SETTINGS, BALL_SPACING, groups=groups, mass=HULL_MASS, pose=tuple(pose))
+def held_ball(groups, pose, loops: bool = False):
+    return hull_node(HELD_BALL, BALL_SETTINGS, BALL_SPACING, groups=groups, mass=HULL_MASS, pose=tuple(pose),
+                     loops=loops)
 
 
 def ball_gap(index: int, pose) -> float:
@@ -707,12 +708,12 @@ def upright(index: int) -> tuple[float, float, float, float]:
     return (math.cos(angle / 2), float(axis[0]), float(axis[1]), float(axis[2]))
 
 
-def ball_step(groups, pose, twist=(0.0,) * 6, held_passes: int | None = None):
+def ball_step(groups, pose, twist=(0.0,) * 6, held_passes: int | None = None, loops: bool = False):
     """The held ball's pose and twist after one step from ``pose`` and ``twist``, with no load (``held_passes``: the
-    projection's passes, where a row measures one)."""
+    projection's passes, where a row measures one; ``loops``, the contact 0.5.0's node, its loops XLA loops)."""
     import mime.nodes.body._rigid_inertial as rigid
 
-    node = held_ball(groups, pose)
+    node = held_ball(groups, pose, loops)
     state = {**node.initial_state(), "pose": jnp.asarray(pose), "twist": jnp.asarray(twist)}
     passes = rigid.HULL_PASSES
     rigid.HULL_PASSES = passes if held_passes is None else held_passes
@@ -854,6 +855,32 @@ def test_each_switch_measures_within_its_declared_order(graph, owner):
     jumps = {group for group, order in declared.orders.items() if order < 0 and found.measures[group].continuous}
     if jumps:
         print(f"{owner}: declared a jump in {sorted(jumps)}, measured continuous at this point")
+
+
+def impulse_row(declared, *, loops: bool) -> SwitchRow:
+    """``contact.impulse``'s row (``hull_rows``) on the contact 0.4.0's node or, with ``loops``, 0.5.0's."""
+    first, _ = lowest_two()
+    pressed = ball_below(first, 0.0, upright(first))
+    return SwitchRow(declared["contact.impulse"], lambda o: ball_step(
+        [[first]], pressed, (0.0, 0.0, -o * DT / HULL_MASS, 0.0, 0.0, 0.0), loops=loops), 1e-6)
+
+
+def test_the_contacts_loops_unroll_while_a_collector_is_open_so_a_looped_nodes_row_measures_as_the_unrolled_ones():
+    """The contact 0.5.0 runs its sweeps as XLA loops, and unrolls them while a collector is open
+    (``_contact.repeated``): its node's impulse row measures within its declared order, as 0.4.0's does."""
+    found = classify(impulse_row(declarations(), loops=True), KINK_LIMIT)
+    assert found.problems == [], "\n".join(found.problems)
+
+
+def test_control_without_the_collectors_fallback_a_looped_nodes_row_fails(monkeypatch):
+    """The fallback removed (no collector reported open): the sweeps' updates are traced once in the loop's body, and
+    the rows the collector keeps hold the body's tracers, not each update's values, so the row fails on every run."""
+    monkeypatch.setattr(switch, "collector_open", lambda: False)
+    try:
+        found = classify(impulse_row(declarations(), loops=True), KINK_LIMIT)
+    except jax.errors.UnexpectedTracerError:
+        return
+    assert found.problems != [], "the row measured as if the collector had each update's values"
 
 
 # -- the kink limit ------------------------------------------------------------------------------------------------
