@@ -150,9 +150,11 @@ uses it for a bundle (a packed experiment is a content-addressed file too) and f
 they share the cache, the offline switch, the hash check, the refusal codes and the size report. A bundle named by its
 DOI or address has no hash to look up before it is downloaded, so `retrieve(location, name=..., known_hash=...)` stores
 such a file: the download is held to the repository's own checksum where there is one (Zenodo's md5), hashed in full,
-and stored in the cache under its sha256, where `locate` finds it. (`retrieve` still downloads through pooch's
-downloader, which `mime pull --signed-in` replaces with its own; an asset's download goes through the adapters.) In
-order:
+and stored in the cache under its sha256, where `locate` finds it. The cache also keeps a note of which sha256 the
+checksum named (`md5-<digits>.checksum`), so that the same checksum again (a notebook cell run again, a second pull of
+the same record) finds the stored bundle and downloads nothing; a cleared cache, a missing or changed file, or a new
+version of the record (another checksum) downloads as before. (`retrieve` downloads through pooch's downloader, which
+`mime pull --signed-in` replaces with its own; an asset's download goes through the adapters.) In order:
 
 1. **The cache**, keyed by the hash: a file whose full verification is recorded and unchanged. No network. (`fetch`
    skips this step and hashes the file in full.)
@@ -193,6 +195,9 @@ It names the asset and its size, never its hash or the cache's path. Where the e
 - It is **one directory**: `pooch.os_cache("mime")/assets` by default, and the directory in **`MIME_ASSETS_DIR`**
   (clusters, air-gapped labs) *instead*: when the variable is set, the platform directory is not looked at, and
   downloads go to the variable's directory. A relative value is read from the working directory.
+- A bundle fetched by its repository's checksum has a note `<algorithm>-<digits>.checksum` beside its file, naming the
+  sha256 and size that checksum was found to be (above); the note is not evidence of the bytes, which the file's own
+  record and the cheap check still judge.
 - A file is stored as `<sha256>`, with `<sha256>.verified` beside it: the size and modification time the file had when
   it was hashed in full, the result of that hash, and who wrote the file (MIME's download, or a person). A file a person
   placed in the directory is accepted by its hash, and is never deleted or overwritten; only a file MIME downloaded may

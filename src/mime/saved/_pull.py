@@ -517,7 +517,13 @@ def pulled_parent(source: str | os.PathLike[str], *, accept_licences: Collection
     it, and unpacked as pull unpacks it into ``./<its name>/``. Where that folder already holds the same experiment (its
     lock's input hash is the bundle's: a notebook's cell run again), it is used as it is, nothing unpacked or written
     in it, and the assets its lock names pass the same gates as pull's and are fetched into the cache; a folder there
-    that holds anything else is refused as pull refuses it (``pull.destination``)."""
+    that holds anything else is refused as pull refuses it (``pull.destination``).
+
+    A call run again reads the DOI's record (its metadata, which names the bundle's checksum) and downloads no bundle
+    bytes: the asset cache keeps a note of which file that checksum named (:func:`mime.assets.retrieve`), and the bundle
+    is read from the cache. The folder is still judged by the input hashes, never by the checksum: a folder that holds
+    another experiment is refused as before. With the cache cleared, or a new version of the record, the bundle is
+    downloaded."""
     bundle, doi = _bundle_from(_kept_secret(source), None, assets.RETRIEVE_LIMIT_BYTES, None, False, yes, force)
     destination = Path(bundle_name(bundle))
     if not _holds_experiment_of(destination, bundle):

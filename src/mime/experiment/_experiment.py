@@ -631,8 +631,9 @@ class Experiment:
         own. ``source`` is a saved folder, a bundle file, or what ``mime pull`` takes (a DOI, an address): a source that
         is not a folder is pulled first, as ``mime pull <source>`` pulls it, into ``./<its name>/``, and the experiment
         is based on that folder. Where that folder already holds the same experiment (the same input hash: a
-        notebook's cell run again), it is used as it is, and nothing is unpacked into it; where it holds anything else,
-        it is refused as pull refuses it. Its assets are fetched into the asset cache through the download gates
+        notebook's cell run again), it is used as it is, and nothing is unpacked into it, and a DOI's bundle is not
+        downloaded again (the record is read, and the bundle comes from the asset cache) unless the cache was cleared
+        or the record has a new version; where the folder holds anything else, it is refused as pull refuses it. Its assets are fetched into the asset cache through the download gates
         (:func:`mime.saved.pull`): a licence with conditions beyond credit is asked about where a person can answer, or
         accepted by name in ``accept_licences``; ``yes`` answers the question a large download asks, and ``force``
         overrides the stop of one that would leave the drive almost full; neither accepts a licence. The saved
