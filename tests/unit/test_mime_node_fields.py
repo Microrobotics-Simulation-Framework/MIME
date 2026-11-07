@@ -121,3 +121,12 @@ def test_every_input_of_every_mime_node_declares_its_units():
     for node, *_ in TYPED:
         for name, spec in node.boundary_input_spec().items():
             assert spec.expected_units, f"{type(node).__name__}.{name}"
+
+
+@pytest.mark.parametrize(("node", "state", "inputs", "constructed"), TYPED, ids=lambda v: type(v).__name__)
+def test_each_nodes_typed_state_is_the_one_its_fields_kinds_are_read_from(node, state, inputs, constructed):
+    """``mime verify`` reads a saved field's kind from the closed TypedDict, near its node's class, that names exactly the
+    fields it holds (``mime.core.field_kinds``): for every node here, the state listed above."""
+    from mime.core._field_kinds import _names_exactly, _states_near
+
+    assert state in _states_near(type(node)) and _names_exactly(state, frozenset(node.initial_state()))

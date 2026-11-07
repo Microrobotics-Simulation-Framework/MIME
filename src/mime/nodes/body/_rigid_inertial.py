@@ -15,14 +15,17 @@ from jaxtyping import Float
 from maddening.core.compliance.metadata import DiscretizationOrder, NodeMeta, Reference
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
-from typing_extensions import NotRequired, ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import (
     VELOCITY_RULES,
+    HeldForces,
+    HeldPoints,
     MimeNode,
     NodeFields,
     Symbol,
     SymbolKind,
+    Units,
     as_run_array,
     jnp,
     node_fields,
@@ -91,8 +94,8 @@ class StepParts(NamedTuple):
 
 
 class RigidInertialState(TypedDict, closed=True):
-    pose: ReadOnly[Float[Array, "7"]]
-    twist: ReadOnly[Float[Array, "6"]]
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
 
 
 class RigidContactState(TypedDict, closed=True):
@@ -102,12 +105,12 @@ class RigidContactState(TypedDict, closed=True):
     and the solve's residual, how far its sweeps left it from the solution, as a share of the free step's speed at the
     held points (``_contact.residual``)."""
 
-    pose: ReadOnly[Float[Array, "7"]]
-    twist: ReadOnly[Float[Array, "6"]]
-    contact_points: ReadOnly[Float[Array, "groups 3"]]
-    contact_forces: ReadOnly[Float[Array, "groups"]]
-    contact_short: ReadOnly[Float[Array, "groups"]]
-    contact_residual: ReadOnly[Float[Array, ""]]
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
+    contact_points: ReadOnly[Annotated[HeldPoints, Units("m")]]
+    contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
+    contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
+    contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
 
 
 class RigidInertialInputs(TypedDict, closed=True):

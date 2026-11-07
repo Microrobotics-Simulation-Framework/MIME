@@ -2968,6 +2968,68 @@ anomalies:
       (a difference of two dot products) separately for each consumer, with different rounding (the primal offset of a tied
       pair is exactly 0 eagerly and 1e-18 to 1e-17 in the jitted program), so that the sign test and the absolute value see
       two nearly-zero numbers that need not have the same sign. Nothing here measured the rounding inside the fusions.
+
+      Resolved in 0.3.0.dev2, by one value of the sine and of the offset wherever a derivative is taken through them
+      (measured on a laptop's CPU, an i7-12850HX, JAX 0.12.0.1, the shipped table). The mechanism, read from the
+      optimized HLO of a two-point jitted jvp in float64: XLA rewrites the division of the local coordinates by the
+      tube's radius as a multiplication by its reciprocal, and recomputes the offset, local_z(t) k - local_z(s) k,
+      inside each fusion that reads it (the sign test, the absolute value's derivative, the table's locating), from the
+      same matmul output [read]. That two fusions round that difference differently at a tie (a fused multiply-add in
+      one and not in the other) remains an inference, not measured inside the compiler. pair_block alone, given an
+      offset of exactly zero as an input, is right jitted in both modes and both precisions [measured], which places
+      the fault in the offset's recomputation, not in the table or the fold.
+
+      Two findings widen the reach recorded above [measured]. The angle's fold is exposed the same way (the sine,
+      sin_t cos_s - cos_t sin_s, is a difference of products): in jitted reverse mode (jax.jacrev) two of four pairs
+      at exactly equal azimuth were wrong in float64 and one in float32. And in reverse mode with a cotangent for each
+      entry the read was wrong away from any tie between two samples, through each sample's pair with itself, which
+      tube_reads reads and which is a tie in both height and azimuth: at one of the eight two-sample pairs apart of
+      this fix's test (pair b), the self-pair block missed by 1.13 of the column's largest entry in both precisions,
+      and in the refuting review's own harness (12 random pairs apart, jitted jax.jacrev against the central
+      difference in the same precision, run on the tree before the fix) 10 of 12 were wrong, by up to 0.75, in both
+      precisions: the self-pair is a tie wherever the samples are, and how many pairs fail is the fusion's, not the
+      pair's [measured, the review's harness]; between the same two samples
+      with no self-pair (tube_pair_reads) nothing missed; holding the sine alone put it right and holding the offset
+      alone did not. Forward mode and a gradient of a weighted sum of the entries were right there, and so was reverse
+      mode on three clouds of twelve samples tied in nothing: which programs fail is the fusion's.
+
+      Candidates (Q5), first on two-point probes (five pairs tied in height, four in azimuth, both rotations across the
+      tube, jitted jvp and the gradient of the entries weighted by the central difference's signs, float32 and
+      float64): the read as shipped was wrong in 8 of 20 height cases in float64 and 4 of 20 in float32, and in 1 of
+      16 azimuth cases in float64; |dz| taken as dz times its one sign (one JAX value for both) the same 8, 4 and 1,
+      since the fault is XLA's recomputation and not the JAX value; a barrier on the offset alone (in every program,
+      or only where a derivative is taken) 0 of 20 at the heights and 1 of 16 at the azimuths; a barrier on both the
+      sine and the offset, either way, 0 of 36 in both precisions, and 0 of 36 again under an added barrier on the
+      sine. Then the bits, every state field compared with np.array_equal against the shipped program, at 8 usable
+      CPUs and OPENBLAS_NUM_THREADS and OMP_NUM_THREADS 4, each arm a fresh process with the candidate patched in
+      before its first trace: both barriers on the sine and the offset (in every program, and only where a derivative
+      is taken) kept every bit of the tube demo's 40 steps (27 fields; the history scan in both precisions, one-step
+      chunks in both) and of the screw in the tube's 30 steps (28 fields, the history scan, both precisions).
+      The shipped program run twice was bit for bit, and the control, the offset one unit in the last place up, moved
+      10 to 13 of the fields in each of those four. FL-9's hull contact (13 fields, 20 steps, both precisions) kept
+      every bit as well, but it attaches no drag and never reads the tube's table (pair_block traced 0 times; the
+      control moved nothing): that arm cannot discriminate. The route taken is the barrier only where a derivative is
+      taken (held_once in mime/nodes/hydro/mrs/_tube.py: a jax.custom_jvp whose primal is its input and whose rule
+      returns the input through an optimization barrier, the tangent unchanged, applied to the sine and to the
+      offset), which keeps the run's program by construction (the HLO of a program that takes no derivative is the
+      shipped one) where the barrier in every program kept the bits on these rigs by the fusion XLA chose. The tube
+      wall kind keeps its version, 0.1.0.
+
+      After the fix (tests/oracles/test_tube_tie_derivative.py, on the laptop's CPU): at five pairs tied in height, four
+      in azimuth and eight apart, each read with its self-pairs (tube_reads), both rotations across the tube, jitted in
+      forward mode (jvp) and in reverse mode (jacrev), the derivative is within 5.2e-9 (float64) and 2.9e-4 (float32) of
+      the central difference, relative to the column's largest entry, against floors of 1e-6 and 3e-3; eager too (a pair
+      tied in height); under an added barrier on the sine too. The whole body (the tube demo's 338
+      points 0.4 of the way to its floor, 7 pairs of them tied in height, the correction's jit(jacfwd) along the two
+      rotations) is within 2.3e-7 and 2.3e-8 against a floor of 1e-5. The read jitted is the program before the fix to
+      the last bit, at the ties and off them, and off the ties the forward derivative is the one before the fix to 0
+      (float32) and 0.018 (float64) units in the last place. The controls, the same harness with held_once the identity
+      (the program before the fix): at the height ties 8 of 20 cases wrong in float64 (forward and reverse) and 4 of 20
+      in float32 (reverse), each by 2.0 in the two cross-pair blocks; at the pairs apart, in reverse mode, 1 of 16 (pair
+      b, through its self-pair block) in each precision; with the offset held alone, 3 of 48 (float64) and 2 of 48
+      (float32) wrong at the azimuth ties and the pairs apart; under the barrier on the sine, 8 of 36 in each precision;
+      the whole body 1.67 and 1.01. On CI, 20 of 20 stress runs of the file passed (the fix's pull request, its test code
+      as it stands here): every gate within its floor and every control failing the read before the fix, on every run.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -2976,11 +3038,45 @@ anomalies:
       orientation, a sphere's rotation about an axis across the tube) would use a wrong direction. Whether any such
       use exists in a safety-relevant path depends on the deployment. The primal values (the resistance, a run) are not
       affected, and no derivative in the repository is known to be evaluated at a tie (see the residual risk).
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev1"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1, <0.3.0.dev2"
+    resolution_version: "0.3.0.dev2"
     affected_components:
       - "entry: wall_kind tube; its table read (pair_block), under jit, in forward and in reverse mode"
+    verification:
+      - "tests/oracles/test_tube_tie_derivative.py::test_the_derivative_through_ties_is_the_central_difference_jitted_in_both_modes"
+      - "tests/oracles/test_tube_tie_derivative.py::test_the_derivative_through_ties_is_the_central_difference_eager"
+      - "tests/oracles/test_tube_tie_derivative.py::test_control_the_read_before_the_fix_takes_a_height_tie_of_the_wrong_sign"
+      - "tests/oracles/test_tube_tie_derivative.py::test_control_the_read_before_the_fix_in_reverse_mode_takes_a_sample_with_itself_of_the_wrong_sign"
+      - "tests/oracles/test_tube_tie_derivative.py::test_control_with_the_offset_held_alone_the_angles_fold_takes_the_wrong_sign"
+      - "tests/oracles/test_tube_tie_derivative.py::test_under_a_barrier_on_the_sine_the_derivative_through_ties_holds"
+      - "tests/oracles/test_tube_tie_derivative.py::test_control_under_a_barrier_on_the_sine_the_read_before_the_fix_takes_a_tie_of_the_wrong_sign"
+      - "tests/oracles/test_tube_tie_derivative.py::test_the_read_itself_is_the_program_before_the_fix_to_the_last_bit"
+      - "tests/oracles/test_tube_tie_derivative.py::test_off_the_ties_the_forward_derivative_is_the_one_before_the_fix_to_rounding"
+      - "tests/oracles/test_tube_tie_derivative.py::test_the_whole_bodys_derivative_through_its_ties_is_the_central_difference"
+      - "tests/oracles/test_tube_tie_derivative.py::test_control_the_read_before_the_fix_misses_the_whole_bodys_derivative_at_its_ties"
     residual_risk: >
+      After the fix: the hold is measured on one CPU (the laptop's) and one JAX (0.12.0.1), in float32 and float64, on
+      two-point cases and the tube demo's whole body in forward mode; CI's runners measure it again (the controls must
+      fail on each). Not measured: a GPU, other JAX or XLA versions, a whole body's reverse-mode derivative (a
+      cotangent for each of a million entries was not run; the two-point cases hold reverse mode, self-pairs
+      included), a node's pose gradient through the wall, and the time the barrier adds to a derivative's program
+      (none to a run's, whose program is unchanged). Second derivatives: measured in float64 only, where jax.hessian
+      of the read at the ties is within 1.7e-2 of the largest entry of a central second difference, against 1.3 to 4
+      before the fix [measured, the refuting review's harness]; not measured in float32, and not measurable at this
+      read: the float32 Hessian is as far from the float64 one (7.0 of the largest entry at a pair nudged 1e-2 apart,
+      0.4 to 3.4 at 1e-4) as at the ties, so that arm is noise and proves nothing either way. The primal inside a
+      program that takes a derivative is NOT the plain program's, to the last bit: the tube demo's step (the state
+      after 10 steps, a unit tangent on the ball's position across the tube, one CPU, JAX 0.12.0.1), jitted under
+      jax.jvp, gives a primal output that differs from the plain jitted step's in 4 of 27 state leaves in float64 and
+      5 of 27 in float32 for one step, and in 7 of 27 in both for a 5-step scan [measured]; the pose, twist,
+      asymmetry, least eigenvalue and resistance, by up to 5.7e-13 (float64) and 1.5e-3 (float32, the twist over
+      the scan) of the leaf's largest entry. With the barrier replaced by the identity the one step is bit for bit in both precisions
+      and the float32 scan too, so the barrier is the cause there, while the float64 scan moves the same 7 leaves
+      with or without it (the differentiated program's own fusion). Nothing here says the difference matters to a
+      gradient; a comparison of a differentiated run's primal with a plain run's bits will fail. The barrier holds every consumer to one number by construction;
+      whether that number's sign is the true one at a tie does not matter, since the fold is continuously
+      differentiable there and either branch gives the same derivative when both see the same number. Before the fix:
       Reach, by a read of every jax.jacfwd, jax.grad, jvp and vjp in src/, tests/, examples/ and scripts/: none in src/ takes a
       derivative through the wall read. The tests that differentiate the tube read (tests/oracles/test_tube_axis.py, on three
       hand-placed samples of distinct heights and azimuths; tests/oracles/test_tube_wall.py and test_tube_kind.py, in parameters
@@ -2993,8 +3089,8 @@ anomalies:
       both poses tried. Not measured: any pose gradient of a whole node (the resistance in the pose) through the wall at a
       tie, a screw's points, the platforms other than CPU, other JAX or XLA versions, and the shared effect of a larger
       force-point count on which fusion is chosen. One agent, one rig, one pose family, one JAX version.
-    workaround: "Do not differentiate the wall read at a pose where force points share a height or an azimuth exactly: move the points by a small amount first (a nudge of 1e-9 m on the 338 points gave rotation derivatives matching central differences to 2e-7, measured), or check a derivative against central differences at the pose it is used at. Evaluating eagerly matched in every case measured, but is not a guarantee."
-    planned_resolution: "A tangent at ties that does not depend on the fusion: take dz once and use the one value for both its sign and its absolute value (an odd smooth form, or a jax.custom_jvp for the folded read whose tangent is the table's slope times the tangent of dz), with the two-point case here (a pair at equal height, jitted, forward and reverse) as the control that fails on the shipped code on every run and the 338-point case as the whole-body check. A later PR; this entry changes no code."
+    workaround: "None needed from 0.3.0.dev2. Before it: do not differentiate the wall read at a pose where force points share a height or an azimuth exactly, and in reverse mode (a cotangent for each entry) not at all, through each sample's pair with itself; or check a derivative against central differences at the pose it is used at (a nudge of 1e-9 m on the 338 points gave forward-mode rotation derivatives matching central differences to 2e-7, measured)."
+    planned_resolution: "Done: held_once holds the sine and the axial offset as one value each wherever a derivative is taken through pair_block (a jax.custom_jvp whose rule returns its input through an optimization barrier), and is the identity in a program that takes no derivative, so a run's program is unchanged to the last bit (measured on the tube demo and the screw in the tube, both precisions); tests/oracles/test_tube_tie_derivative.py holds the derivative through ties and self-pairs to central differences, with the read before the fix as the control."
 
   - anomaly_id: MIME-ANO-144
     title: "The hull contact's Newton search can end at points millimetres apart under a change of one unit in the last place of the pose, for a group seeded beyond the margin of the shrunk wall; measured to reach no force, net wrench, flag or short run, but the held point it records moves"

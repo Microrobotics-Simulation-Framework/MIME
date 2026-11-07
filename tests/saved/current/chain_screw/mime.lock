@@ -276,16 +276,53 @@
  },
  "hashes": {
   "derived": "sha256:a5fe214b3dbd9851d5859c47c80c10610955ae5d6c2ac6f64c4292ad68824de2",
-  "document": "sha256:cbb23e8854c3104574bc3ca845efd651e7552ec7541b3272cb2234f5df514e22",
-  "input": "sha256:632c47a858d14f3f82c708975a1ab9d8b1b5be51def1625509e733725281d876",
+  "document": "sha256:faa0b07e17e5df628a490bc954189d96e8e634ee0bc0b1bd08a974fdfa86e8bc",
+  "input": "sha256:7ff42a057ebbabfa20eb42c52248d28d945ea40e62c6a1b2e7f6b909cdaf8267",
   "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
   "recipe": "mime.hash/1"
  },
  "records": {},
  "reference": {
-  "atol": 1e-09,
+  "atol": 0.0,
   "file": "reference.npz",
-  "rtol": 1e-06,
+  "resolution": {
+   "drive:spin.motor.angle.value": {
+    "the command's own": 5.551115123125783e-17
+   },
+   "magnetic.torque:umr.wrench": {
+    "N": 0.0,
+    "N m": 8.470329472543003e-22
+   },
+   "spin.magnetic.centre": {
+    "m": 1.3877787807814457e-17
+   },
+   "spin.magnetic.flux_density_magnetic_torque_umr": {
+    "T": 3.2526065174565133e-19
+   },
+   "spin.magnetic.gradient_magnetic_torque_umr": {
+    "T/m": 1.3877787807814457e-17
+   },
+   "spin.magnetic.orientation": {
+    "1": 4.440892098500626e-16
+   },
+   "spin.motor.angle": {
+    "1": 5.551115123125783e-17
+   },
+   "spin.motor.frame_poses": {
+    "1": 2.220446049250313e-16,
+    "m": 1.3877787807814457e-17
+   },
+   "umr.pose": {
+    "1": 0.0,
+    "m": 2.168404344971009e-19
+   },
+   "umr.twist": {
+    "m/s": 0.0,
+    "rad/s": 2.842170943040401e-14
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 2e-14,
   "sha256": "sha256:c3aad116f6576ac7ee87c954eff409de354c1fdb7f3374fd4fa1add0579fe921",
   "steps": 8
  },
@@ -687,7 +724,7 @@
    "mime": "0.3.0.dev1"
   }
  },
- "schema": "mime.lock/9",
+ "schema": "mime.lock/10",
  "seeds": {},
  "stage": {
   "file": "scene/scene.usda",

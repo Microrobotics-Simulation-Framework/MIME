@@ -769,7 +769,7 @@ def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -
     for label in (*report.compared, *(label for label in said_of if label not in report.compared)):
         said = said_of.get(label)
         if said is None:
-            table.add_row(_text(label), _text("equal, bit for bit" if report.same_environment else report.tolerance,
+            table.add_row(_text(label), _text("equal, bit for bit" if report.bit_for_bit else report.tolerance,
                                               "green"))
         elif said == SHAPE_MOVED:
             table.add_row(_text(label), _text(f"moved: {said}", "bold red"))
@@ -779,6 +779,8 @@ def show_verification(load: str | None, report: VerifyReport, stream: IO[str]) -
     verdict = report.text().splitlines()[0]
     console.print(Text(for_terminal(verdict), style="bold green" if report.reproduced else "bold red", no_wrap=False,
                        overflow="fold"), soft_wrap=True)
+    if report.warning:
+        console.print(Text(for_terminal(report.warning), style="yellow", no_wrap=False, overflow="fold"), soft_wrap=True)
 
 
 def _pins_table(title: str, rows: Sequence[DistributionRow], width: int) -> tuple[Any, Any | None]:

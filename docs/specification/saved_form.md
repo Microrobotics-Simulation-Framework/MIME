@@ -213,6 +213,78 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_form9.py::test_a_folder_holding_a_full_inertia_tensor_round_trips_in_a_fresh_process`,
   `tests/saved/test_form9.py::test_version_eights_reader_refuses_a_folder_of_version_nine_as_newer_each_file_once`,
   `tests/saved/test_form9.py::test_control_the_form_left_unstepped_is_read_by_version_eights_reader_with_no_newer_form`.
+- **[lock.blocks]** From the tenth form, where `verify` claims no bits, every saved field is split into **blocks by
+  unit**, read from the units MIME declares for it (its node's symbol table, else its node's typed state, where a
+  field's units stand beside its type as `Units`, then the edges that read it, the stage's binding, the observations'
+  outputs, a flag's): a composite's units list its parts, separated by semicolons, its leading parts vectors of three,
+  so a pose is its position and its quaternion, a twist its velocity and its angular velocity, a wrench its force and
+  its torque, and a resistance its translational, coupling and rotational blocks. A field of one unit is one block, and
+  so is one whose units are not declared; every field the saved cases' builds hold declares its units. A block is within
+  tolerance when at every reference step its largest difference is at most `max(rtol` times its largest magnitude over
+  the reference, `resolution_factor` times its `resolution``)` plus `atol`, written as zero. The **resolution** is
+  measured at save: the reference steps run once more, by the same compiled program, from a start one unit in the last
+  place off (every nonzero floating number of the initial state, and of the small parameters the compiled step reads
+  (`NUDGED_SIZE`), one ulp up), and the lock records each block's largest divergence (`reference.resolution`, `null`
+  where it is not finite) and the factor (`reference.resolution_factor`), the two keys the form adds. A resolution that
+  is zero or not finite gives no floor. The start moves the parameters as well as the state, on purpose: on the tube
+  demo a start that moved the state alone measured every block's divergence zero, in both precisions, since a body
+  released at rest at the origin starts from zeros. Where a parameter it moves is one an MRS drag holds a value made
+  from, the rerun makes that value afresh at each step, which is then most of the rerun's cost (measured in
+  `mime.saved._scales`). Held points (`HeldPoints`) are judged only on the rows whose paired force (`HeldForces`) acts
+  in the reference or the rerun, their magnitude and resolution too. A field that is not of floating point is compared
+  exactly. A folder of the ninth form or earlier is judged as its form says, element by element
+  (`|a - b| <= atol + rtol |b|` with its own numbers), in `verify`, `verify --run` and the load's comparison of the
+  derived graph, and one that holds either new key is refused. A reader of the ninth form refuses a folder of the tenth
+  as `load.newer-form`.
+  *Cases:* `tests/saved/test_form10.py::test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part_and_each_fields_resolution`,
+  `tests/saved/test_form10.py::test_a_form_nine_folder_loads_with_the_tolerance_it_was_written_with_and_verifies_element_by_element`,
+  `tests/saved/test_form10.py::test_a_form_nine_folder_is_judged_element_by_element_and_the_same_rerun_as_form_ten_block_by_block`,
+  `tests/saved/test_form10.py::test_a_form_nine_lock_holding_a_resolution_is_refused_and_the_same_lock_without_it_loads`,
+  `tests/saved/test_form10.py::test_version_nines_reader_refuses_a_folder_of_version_ten_as_newer_each_file_once`,
+  `tests/saved/test_form10.py::test_control_the_form_left_unstepped_is_read_by_version_nines_reader_with_no_newer_form`,
+  `tests/saved/test_verify_blocks.py::test_a_pose_twist_and_wrench_split_into_their_first_three_and_the_rest`,
+  `tests/saved/test_verify_blocks.py::test_a_resistance_splits_into_its_translational_coupling_and_rotational_blocks`,
+  `tests/saved/test_verify_blocks.py::test_one_unit_is_one_block_and_so_is_a_field_whose_units_are_not_declared_or_do_not_fit`,
+  `tests/saved/test_verify_blocks.py::test_every_composite_interface_of_the_vocabulary_splits_into_one_block_per_unit`,
+  `tests/saved/test_verify_blocks.py::test_the_sliding_balls_fields_take_their_units_from_its_build_and_its_lock_records_each_blocks_resolution`,
+  `tests/saved/test_verify_blocks.py::test_m1_the_balls_position_moved_8e_6_m_is_moved_at_every_step`,
+  `tests/saved/test_verify_blocks.py::test_m2_the_balls_angular_velocity_zeroed_flipped_or_doubled_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_m3_a_resistances_rotational_or_coupling_block_times_100_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_a_torque_where_the_reference_holds_none_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_a_plant_just_beyond_a_blocks_bound_is_caught_at_every_step_with_either_sign`,
+  `tests/saved/test_verify_blocks.py::test_a_resolution_that_is_zero_or_not_a_finite_positive_number_gives_no_floor`,
+  `tests/saved/test_verify_blocks.py::test_a_held_point_of_a_row_that_takes_a_force_moved_at_ten_times_its_bound_is_moved_at_every_step`,
+  `tests/saved/test_verify_blocks.py::test_a_held_point_of_a_row_that_takes_no_force_jumping_two_millimetres_is_not_reported`,
+  `tests/saved/test_save_reference.py::test_a_save_after_a_run_chunked_by_one_step_builds_and_compiles_nothing`,
+  `tests/unit/test_field_kinds.py::test_a_new_nodes_held_points_pair_with_its_one_field_of_held_forces`,
+  `tests/unit/test_field_kinds.py::test_control_a_typed_state_that_does_not_name_exactly_the_fields_types_none_of_them`,
+  `tests/unit/test_field_kinds.py::test_a_new_nodes_typed_state_declares_the_units_of_its_fields_beside_their_types`,
+  `tests/unit/test_field_kinds.py::test_control_units_two_typed_states_declare_otherwise_or_none_names_the_fields_leave_them_undeclared`,
+  `tests/saved/test_declared_units.py::test_every_field_a_save_writes_has_declared_units`,
+  `tests/saved/test_declared_units.py::test_control_without_the_typed_states_declarations_the_kept_bodys_twist_and_the_drags_diagnostics_are_reported`,
+  `tests/saved/test_declared_units.py::test_control_a_typed_state_that_disagrees_with_a_symbol_row_is_reported`.
+- **[lock.tolerance]** A save of the tenth form writes its precision's `rtol` (`FLOAT32_RTOL` or `FLOAT64_RTOL` of
+  `mime.saved._scales`) and the floor's factor (`RESOLUTION_FACTOR`), and a folder keeps the ones it was written with.
+  Each is pinned in a table of the measurements it was set from, with where each was made and its margin
+  (`tests/saved/test_tolerance_ratchet.py`): in float32 the spreads between runs on one T4 GPU and against its CPU,
+  and across three counts of usable CPUs of one laptop, on one demo over eight steps; in float64 across CPU counts
+  only, no GPU measured; the factor against the demo's one-ulp resolution, and below the angular velocity's ceiling. The
+  measurements the repository holds are computed again from it. A constant is raised only by a new measurement and a
+  design decision entered in that table; lowering one needs neither. The tolerance governs how another environment's
+  rounding, or a non-deterministic GPU's, is judged on runs like the one measured; it states nothing of accuracy, and is
+  no promise that no other machine or experiment reads moved.
+  *Cases:* `tests/saved/test_tolerance_ratchet.py::test_each_constant_is_at_most_its_pin`,
+  `tests/saved/test_tolerance_ratchet.py::test_control_each_constant_raised_fails_and_lowered_passes`,
+  `tests/saved/test_tolerance_ratchet.py::test_each_pin_stands_its_margin_above_its_largest_measurement`,
+  `tests/saved/test_tolerance_ratchet.py::test_the_measurements_the_repository_holds_are_what_its_artefacts_give`,
+  `tests/saved/test_tolerance_ratchet.py::test_k_stands_below_the_ceiling_the_angular_velocity_needs_by_its_margin`,
+  `tests/saved/test_tolerance_ratchet.py::test_a_save_writes_the_pinned_constants_into_its_lock`,
+  `tests/saved/test_form10.py::test_a_folder_keeps_the_tolerance_it_was_written_with`,
+  `tests/saved/test_verify_blocks.py::test_across_cpu_counts_every_block_is_within_its_bound`,
+  `tests/saved/test_verify_blocks.py::test_control_without_its_resolution_the_angular_velocity_across_counts_is_moved`,
+  `tests/saved/test_verify_blocks.py::test_no_false_moved_the_t4_spread_planted_per_block_verifies_within_tolerance_with_the_warning`,
+  `tests/saved/test_verify_blocks.py::test_no_false_moved_is_not_on_the_edge_the_t4_spread_sits_well_inside_each_floor`,
+  `tests/saved/test_verify_blocks.py::test_today_the_same_plant_is_moved`.
 - **[lock.pins]** The lock's records are the experiment's pins: a load reads each asset under the hash its lock names,
   whatever a shared source holds under that name now, and the build report names each source that holds another
   version; one not stored is refused as `asset.missing`. A saved stage's meshes keep the manifest and sha256 it names
@@ -322,12 +394,46 @@ refusal table's (`mime/build/refusal_table.txt`).
 - **[rebuild.derived]** In the environment the lock was written in, the rebuilt graph must be the saved one, hash
   for hash, or the load is refused as `load.derived-hash`. In another environment its physics is compared within the
   lock's tolerance, and each number beyond it, and each static array that differs, is reported (the observations are
-  not compared); there a difference in the derived graph or in the rebuilt stage is reported, never refused.
+  not compared); there a difference in the derived graph or in the rebuilt stage is reported, never refused. From the
+  tenth form each list of numbers and each static array is judged against its own largest magnitude, and a single
+  number against its own; before it, element by element.
   *Cases:* `tests/saved/test_load.py::test_a_factory_that_builds_another_graph_under_the_same_version_is_refused`,
-  `tests/saved/test_load.py::test_in_another_environment_differences_are_reported_and_outputs_compared_within_tolerance`.
+  `tests/saved/test_load.py::test_in_another_environment_differences_are_reported_and_outputs_compared_within_tolerance`,
+  `tests/saved/test_form10.py::test_from_form_ten_the_derived_graphs_numbers_are_judged_on_their_own_largest_magnitude`.
 - **[rebuild.same]** A folder saved and loaded in one environment rebuilds the same experiment, and `mime verify`
-  reruns it to the reference outputs bit for bit.
-  *Cases:* `tests/saved/test_load.py::test_a_saved_experiment_loads_and_verifies_bit_for_bit`.
+  reruns it to the reference outputs bit for bit, unless its reference was made on a GPU with XLA's deterministic mode
+  off: two such runs of one program differ in their last bits, so it is judged within the lock's tolerance everywhere,
+  the GPU it was made on included (block by block from the tenth form; a folder of an earlier form keeps its
+  element-by-element rule, under which such a folder can still read moved where it was made). Made in deterministic mode, it verifies bit for bit in the same environment again. In another environment every folder is judged within its
+  tolerance. `mime verify --run` claims the same of a run folder, and the card's tolerance line states the same levels.
+  *Cases:* `tests/saved/test_load.py::test_a_saved_experiment_loads_and_verifies_bit_for_bit`,
+  `tests/saved/test_verify_blocks.py::test_a_deterministic_folder_verified_in_the_same_environment_is_bit_for_bit`,
+  `tests/saved/test_verify_blocks.py::test_the_sliding_ball_verifies_bit_for_bit_where_its_lock_was_written`,
+  `tests/saved/test_verify_blocks.py::test_a_gpu_reference_made_with_deterministic_mode_off_reruns_within_tolerance_with_the_warning`,
+  `tests/saved/test_deterministic_warning.py::test_verify_of_a_cpu_or_a_deterministic_reference_never_warns`,
+  `tests/saved/test_deterministic_warning.py::test_the_cards_tolerance_line_states_each_level_and_the_rule_of_the_folders_form`.
+- **[rebuild.deterministic]** A reference written on a GPU with deterministic mode off carries one warning where the
+  save writes it, and the same line ends `verify`'s report of its folder: deterministic mode is off, so the reference
+  verifies within tolerance, not bit for bit; for bit-for-bit reproducibility, rerun with `--deterministic`. Neither
+  is said on the CPU, nor of a reference made in deterministic mode. `--deterministic` on `mime run` and `mime verify`
+  turns the mode on before JAX's backend starts, since XLA reads its flags only then (`mime modal --deterministic`
+  sets it in the script it writes); from Python,
+  `mime.env.deterministic_mode()` does the same before anything computes, and is refused as `env.deterministic-late`
+  once the backend has started, unless the flags already turn the mode on or an earlier call set them itself, which a
+  second call answers as it did. On the CPU it changes nothing, says so in one line, and the lock records the flags as
+  they were.
+  *Cases:* `tests/saved/test_deterministic_warning.py::test_a_save_on_a_gpu_with_deterministic_mode_off_warns_once`,
+  `tests/saved/test_deterministic_warning.py::test_a_save_on_the_cpu_never_warns`,
+  `tests/saved/test_deterministic_warning.py::test_a_save_on_a_gpu_in_deterministic_mode_never_warns`,
+  `tests/saved/test_deterministic_warning.py::test_verify_of_a_gpu_reference_made_with_deterministic_mode_off_ends_with_the_warning`,
+  `tests/saved/test_deterministic_warning.py::test_verify_of_a_cpu_or_a_deterministic_reference_never_warns`,
+  `tests/env/test_deterministic_mode.py::test_xla_reads_its_flags_once_when_the_backend_starts_and_importing_mime_starts_none`,
+  `tests/env/test_deterministic_mode.py::test_after_the_backend_started_the_python_route_is_refused_naming_the_routes_that_work`,
+  `tests/env/test_deterministic_mode.py::test_with_the_mode_already_in_the_flags_it_is_not_refused_and_on_the_cpu_it_is_not_on`,
+  `tests/env/test_deterministic_mode.py::test_in_a_fresh_cpu_process_it_changes_nothing_and_the_flags_are_as_they_were`,
+  `tests/env/test_deterministic_mode.py::test_in_a_fresh_cpu_process_a_second_call_answers_as_the_first_and_is_not_refused`,
+  `tests/env/test_deterministic_mode.py::test_mime_verify_deterministic_on_the_cpu_says_it_changes_nothing_and_verifies_as_without_it`,
+  `tests/env/test_deterministic_mode.py::test_mime_run_deterministic_on_the_cpu_records_the_flags_as_they_were`.
 
 ## The schemas
 

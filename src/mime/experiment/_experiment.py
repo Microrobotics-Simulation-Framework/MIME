@@ -106,7 +106,9 @@ from mime.saved import (
     verify_history,
     write_folder,
 )
-from mime.saved._folder import LoadRefused, stage_writers
+from mime.saved._folder import SAVED_DETERMINISTIC_OFF, LoadRefused, NondeterministicReference, nondeterministic_gpu, \
+    stage_writers
+from mime.saved._scales import FieldUnits, one_ulp_up, resolution, symbol_units
 from mime.saved._schema import ReferenceProgram
 from mime.scene import STAGE_WRITER, STAGE_WRITERS, Scene, stage_text
 from mime.things import (
@@ -1667,21 +1669,42 @@ class BuiltExperiment:
         assert stacked is not None
         return {node: {name: value[:steps] for name, value in fields.items()} for node, fields in stacked.items()}
 
-    def _reference(self, steps: int) -> tuple[History, ReferenceProgram | None]:
-        """The reference outputs a save writes, the first ``steps`` steps from the initial state, and the program that
-        ran them. Taken on this build's own graph, reset to its initial state and put back where it stood after
-        (:func:`~mime.build._maddening.state_put_back`), so nothing is built: with the history scan of one step where
-        the graph holds it (a run chunked by one step that kept its steps' state compiled it, so nothing is compiled
-        either), else with the history scan of whole control periods. Where the compiled step reads anything the build
-        did not give it (:func:`~mime.build._maddening.step_reads`: ``graph``, edited, bypasses every check the build
-        made), on a graph built afresh, as before. ``verify`` reruns the lock's program on a fresh graph either way."""
+    def _reference(self, steps: int) -> tuple[History, History, ReferenceProgram | None]:
+        """The reference outputs a save writes, the first ``steps`` steps from the initial state, the same steps run
+        again from a start one unit in the last place off (``mime.saved._scales.one_ulp_up``), from which the save
+        measures each field's resolution, and the program that ran both. Taken on this build's own graph, reset to its
+        initial state and put back where it stood after (:func:`~mime.build._maddening.state_put_back`), so nothing is
+        built: with the history scan of one step where the graph holds it (a run chunked by one step that kept its
+        steps' state compiled it, so nothing is compiled either), else with the history scan of whole control periods.
+        Where the compiled step reads anything the build did not give it (:func:`~mime.build._maddening.step_reads`:
+        ``graph``, edited, bypasses every check the build made), on a graph built afresh, as before. ``verify`` reruns
+        the lock's program on a fresh graph either way."""
         graph = self._graph
         if not step_reads(graph).unchanged_since(self._built_reads):
-            return self._history_on(construct(self._plans, self._law)[0], steps, None), None
+            fresh = construct(self._plans, self._law)[0]
+            return (*self._twice_on(fresh, steps, None), None)
         program: ReferenceProgram | None = "one-step" if holds_one_step_history(graph) else None
         with state_put_back(graph):
             graph.reset_state()
-            return self._history_on(graph, steps, program), program
+            return (*self._twice_on(graph, steps, program), program)
+
+    def _twice_on(self, graph: GraphManager, steps: int, program: ReferenceProgram | None) -> tuple[History, History]:
+        """The first ``steps`` steps of ``graph`` from its initial state, where it stands, and again by ``program`` from
+        a start one ulp off: every nonzero floating number of the initial state and of the small parameters the
+        compiled step reads (``mime.build._maddening.params_one_ulp_up``) one ulp up. The parameters are moved too
+        because a body released at rest at the origin starts from zeros, which a change of the state alone cannot move
+        (measured on the tube demo: every block's divergence zero). The second run compiles nothing the first did not,
+        and the parameters are put back after."""
+        from mime.build._maddening import device_array, node_state, params_one_ulp_up
+
+        start = {name: {field: np.asarray(value) for field, value in node_state(graph, name).items()}
+                 for name in graph.node_names}
+        history = self._history_on(graph, steps, program)
+        graph.reset_state()
+        for name, fields in one_ulp_up(start).items():
+            set_node_state(graph, name, {field: device_array(value) for field, value in fields.items()})
+        with params_one_ulp_up(graph):
+            return history, self._history_on(graph, steps, program)
 
     @public
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS, progress: bool | None = None) -> Lock:
@@ -1710,18 +1733,82 @@ class BuiltExperiment:
     def _save(self, folder: str | PathLike[str], steps: int) -> Lock:
         path = Path(folder)
         try:
-            history, program = self._reference(steps)
-            lock = write_folder(path, self.record, history, steps, program)
+            history, nudged, program = self._reference(steps)
+            lock = write_folder(path, self.record, history, steps, program, self._resolution(history, nudged))
         except OSError as error:
             raise _not_writable(path, error) from error
         self._saved = read_folder(path)
+        if nondeterministic_gpu(cast(Mapping[str, object], lock["environment"])):
+            warn_at_script(SAVED_DETERMINISTIC_OFF, NondeterministicReference)
         return lock
+
+    def declared_units(self) -> dict[tuple[str, str], str]:
+        """The units MIME declares for each state field it declares them for, by ``(node, field)``: its node's symbol
+        table, else its node's typed state (``mime.core.typed_units``), the edges that read it, the stage's binding,
+        the observations' outputs, and a flag's one."""
+        from mime.build._maddening import node_fields_of
+        from mime.build._report import graph_config
+        from mime.core import typed_units
+
+        found: dict[tuple[str, str], str] = {}
+        for name in self._graph.node_names:
+            node, fields = self._graph.get_node(name), node_fields_of(self._graph, name)
+            for field, units in symbol_units(node, fields).items():
+                found[(name, field)] = units
+            for field, units in typed_units(node, fields).items():
+                found.setdefault((name, field), units)
+        for edge in graph_config(self._graph)["edges"]:
+            if edge.get("source_units"):
+                found.setdefault((str(edge["source_node"]), str(edge["source_field"])), str(edge["source_units"]))
+        for entry in self.binding().entries:
+            found.setdefault((entry.node, entry.field), entry.unit)
+        for observation in self.layout.observations:
+            for output in observation.outputs:
+                found.setdefault((output.node, output.field), output.unit)
+        for flag in self.layout.flags:
+            found.setdefault((flag.node, flag.field), "1")
+        return found
+
+    def field_units(self, history: Mapping[str, Mapping[str, np.ndarray]]) -> dict[str, FieldUnits]:
+        """Each field of ``history`` by its label (``node.field``): the units MIME declares for it
+        (:meth:`declared_units`), which split it into blocks, and, for held points, the forces they pair with (read
+        from the node's typed state, ``mime.core.field_kinds``): what ``verify`` judges a field by where it claims no
+        bits (``mime.saved._scales``)."""
+        from mime.core import FieldKind, field_kinds, paired_forces
+
+        units = self.declared_units()
+        found: dict[str, FieldUnits] = {}
+        for name, fields in sorted(history.items()):
+            node = self._graph.get_node(name) if name in self._graph.node_names else None
+            kinds = field_kinds(node, tuple(fields)) if node is not None else {}
+            forces = paired_forces(kinds)
+            for field in fields:
+                paired = f"{name}.{forces}" if forces is not None and kinds.get(field) is FieldKind.HELD_POINTS else None
+                found[f"{name}.{field}"] = FieldUnits(units.get((name, field)), paired)
+        return found
+
+    def _resolution(self, history: History, nudged: History) -> dict[str, dict[str, float | None]]:
+        """Each field's resolution by block: its largest divergence over the reference steps run from a start one ulp
+        off, held points' on the rows whose force acts (``mime.saved._scales.resolution``)."""
+        fields = self.field_units(history)
+        found: dict[str, dict[str, float | None]] = {}
+        for name, held in history.items():
+            for field, value in held.items():
+                units = fields[f"{name}.{field}"]
+                forces = None
+                if units.forces is not None:
+                    node, _, paired = units.forces.partition(".")
+                    forces = (np.asarray(history[node][paired]), np.asarray(nudged[node][paired]))
+                found[f"{name}.{field}"] = resolution(np.asarray(value), np.asarray(nudged[name][field]), units,
+                                                      forces=forces)
+        return found
 
     @public
     def verify(self) -> VerifyReport:
         """Rerun the reference outputs' steps from the initial state, on a graph built afresh, by the program the lock
-        names, and compare: bit for bit in the environment the lock was written in, within the lock's tolerance in
-        another."""
+        names, and compare: bit for bit in the environment the lock was written in, unless its reference was made on a
+        GPU with XLA's deterministic mode off, and otherwise within the lock's tolerance, from the tenth form each field
+        block by block, on each block's largest magnitude or its measured resolution (:meth:`field_units`)."""
         if self._saved is None:
             raise ArgumentRefused([Refusal(
                 "verify.nothing-saved", RefusalClass.USER,
@@ -1730,4 +1817,5 @@ class BuiltExperiment:
                 "built.save(folder)")])
         reference = self._saved.lock["reference"]
         graph, _, _ = construct(self._plans, self._law)
-        return verify_history(self._saved, self._history_on(graph, reference["steps"], reference.get("program")))
+        history = self._history_on(graph, reference["steps"], reference.get("program"))
+        return verify_history(self._saved, history, self.field_units(history))

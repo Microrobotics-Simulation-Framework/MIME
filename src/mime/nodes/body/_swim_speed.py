@@ -10,13 +10,14 @@ from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
-from typing_extensions import NotRequired, ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import (
     MimeNode,
     NodeFields,
     Symbol,
     SymbolKind,
+    Units,
     as_run_array,
     jnp,
     node_fields,
@@ -37,7 +38,7 @@ class SwimSpeedState(TypedDict, closed=True):
     mean_speed: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     distance: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
     observed: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    steps: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    steps: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
 class SwimSpeedInputs(TypedDict, closed=True):

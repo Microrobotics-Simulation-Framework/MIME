@@ -27,6 +27,7 @@ from mime.env._check import (
 )
 from mime.env._gpus import EXACT_GPUS, LOOSE_GPUS, gpu_type, is_kind_of
 from mime.env._host import (
+    CPU_DETERMINISTIC,
     DETERMINISTIC_FLAG,
     RUNNER_INFO_VARIABLE,
     RUNNER_VARIABLE,
@@ -34,6 +35,7 @@ from mime.env._host import (
     GpuRecord,
     cpu_record,
     deterministic,
+    deterministic_mode,
     gpu_record,
     matmul_precision,
     runner_info,
@@ -71,6 +73,7 @@ from mime.env._xla_cache import (
 )
 
 __all__ = [
+    "CPU_DETERMINISTIC",
     "DETERMINISTIC_FLAG",
     "EXACT_GPUS",
     "EXPORT_ARGUMENTS",
@@ -99,6 +102,7 @@ __all__ = [
     "clear_user_xla_cache",
     "cpu_record",
     "deterministic",
+    "deterministic_mode",
     "environment_modules",
     "fingerprint",
     "gpu_precision_refusals",

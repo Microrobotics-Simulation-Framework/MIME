@@ -55,6 +55,7 @@ from mime.testing import round_trip_failures
 
 SAVED = Path(__file__).parent
 FORM8_CHAIN = SAVED / "form8" / "chain_screw"
+FORM9_CHAIN = SAVED / "form9" / "chain_screw"
 CURRENT_FOLDER = SAVED / "current" / "chain_screw"
 RIGID8 = SAVED / "form8" / "rigid_parts"
 DROPPED8 = SAVED / "form8" / "dropped_products"
@@ -85,16 +86,17 @@ def document_of(folder: Path) -> dict:
 def test_version_nine_holds_the_parts_tensor_and_this_mime_writes_it(tmp_path: Path):
     from profile_cases import parts_screw
 
-    assert CURRENT == INERTIA_TENSOR_ADDED == 9
-    assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/9" and LOCK_SCHEMAS[CURRENT] == "mime.lock/9"
+    assert INERTIA_TENSOR_ADDED == 9 < CURRENT
+    assert DOCUMENT_SCHEMAS[INERTIA_TENSOR_ADDED] == "mime.document/9" and LOCK_SCHEMAS[INERTIA_TENSOR_ADDED] == "mime.lock/9"
     parts_screw("exploratory").build().save(tmp_path / "screw")
     lock = lock_of(tmp_path / "screw")
     held = lock["resolved"]["values"]["umr.inertia"]
-    assert lock["schema"] == "mime.lock/9" and held["source"] == "derived from its parts" and len(held["value"]) == 9
+    assert lock["schema"] == LOCK_SCHEMAS[CURRENT] and held["source"] == "derived from its parts" and \
+        len(held["value"]) == 9
     assert held["value"][5] == held["value"][7] != 0.0, "the product of inertia, in both places"
 
 
-@pytest.mark.parametrize("folder", [FORM8_CHAIN, CURRENT_FOLDER], ids=["form8", "current"])
+@pytest.mark.parametrize("folder", [FORM8_CHAIN, FORM9_CHAIN, CURRENT_FOLDER], ids=["form8", "form9", "current"])
 def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Path):
     document = document_of(folder)
     lock = lock_of(folder)
@@ -103,7 +105,7 @@ def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Pa
 
 
 def test_saving_again_under_form_nine_moves_the_document_and_input_hashes_and_never_the_others():
-    eight, nine = lock_of(FORM8_CHAIN)["hashes"], lock_of(CURRENT_FOLDER)["hashes"]
+    eight, nine = lock_of(FORM8_CHAIN)["hashes"], lock_of(FORM9_CHAIN)["hashes"]
     assert [key for key in ("document", "input", "derived", "observations") if eight[key] != nine[key]] == \
         ["document", "input"]
 
