@@ -36,7 +36,9 @@ name: CI
 # and never saves, a push starts empty and saves (scripts/compilation_cache_mode.py). setup-uv's own cache is saved the
 # same way, by pushes only: pull requests and branches each saved a copy of about 0.5 GB, which filled GitHub's 10 GB
 # per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`; a shard's is
-# 20. The longest of the 45 shard jobs of run 41724784021 (a push at nine shards, so every shard cold) took 18.7 min, a
+# 30, raised from 20 on 2026-11-07: shard jobs had ranged from 7 to 20 min across runs, and a slow runner cancelled
+# openmaterica-main's shard 8 of a push at its 20 min, at 55 %, the same shard passing in 11 to 14 min in the runs
+# before and after. A slow test is still caught by the per-test duration gate, not by the job's limit. The longest of the 45 shard jobs of run 41724784021 (a push at nine shards, so every shard cold) took 18.7 min, a
 # margin of 1.07 (the limit was set at about 3.5 times the 5.7 min measured then); the tenth shard was added to move
 # that margin, and tests/shard_weights.json is rebuilt from a full run's reports (scripts/shard_weights.py) when the
 # suite has grown. A pull request's newer push cancels its older run
@@ -168,7 +170,7 @@ jobs:
     needs: shards
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -410,7 +412,7 @@ jobs:
     if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -555,7 +557,7 @@ jobs:
     if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
