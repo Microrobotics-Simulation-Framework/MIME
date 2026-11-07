@@ -126,6 +126,10 @@ def resolve(path: object, declarations: Sequence[Declaration]) -> Axis:
             "`\"umr.mass\"`")])
     if path in ("dt", "precision"):
         return Axis(path, AxisKind.DT if path == "dt" else AxisKind.PRECISION)
+    # A law's id may hold dots of its own (``toy.spring:probe``): the longest id the path starts with is its owner.
+    owner = max((law_id for law_id in _laws(declarations) if path.startswith(law_id + ".")), key=len, default=None)
+    if owner is not None:
+        return _setting(path, owner, path[len(owner) + 1:], declarations)
     head, _, rest = path.partition(".")
     if not rest:
         raise _unknown(path, declarations, "an axis is a thing, a law or the run, and a name in it")
@@ -201,9 +205,10 @@ class Declared:
 
 
 def declared(settings: RunSettings, declarations: Sequence[Declaration], values: Mapping[Axis, object],
-             reason: str) -> Declared:
+             reason: str, reasons: Mapping[str, str] | None = None) -> Declared:
     """The base experiment with ``values`` declared in it: each axis's declaration replaced by one holding its value,
-    nothing else changed."""
+    nothing else changed. A thing's value carries its axis's own reason (``reasons``, by path) where one is given, else
+    ``reason``."""
     held = list(declarations)
     x64: bool | None = None
     for axis, value in values.items():
@@ -217,7 +222,8 @@ def declared(settings: RunSettings, declarations: Sequence[Declaration], values:
             x64 = value == "float64"
         elif axis.kind is AxisKind.VALUE:
             given = cast(object, getattr(value, "reason", None))
-            declaration = ValueDeclaration(axis.path, value, None if given is not None else reason)
+            declaration = ValueDeclaration(axis.path, value,
+                                           None if given is not None else (reasons or {}).get(axis.path, reason))
             at = next((i for i, d in enumerate(held) if isinstance(d, ValueDeclaration) and str(d.path) == axis.path),
                       None)
             if at is None:

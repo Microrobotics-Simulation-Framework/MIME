@@ -219,23 +219,39 @@ def _units() -> dict[str, Any]:
 _NUMBER = r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?"
 
 
-def parse_override(text: str) -> tuple[str, object]:
-    """An override as ``mime run --override`` takes it, ``path=value``: the path as a study's axis is written
-    (``field.commands.frequency``), and the value a number or numbers split by commas, with a unit of ``mime.units``
-    (``20Hz``, ``1.2 mT``, ``0,0,-1 mm``), or a bare number for a dimensionless value."""
+def parse_value(text: str) -> Quantity | None:
+    """A value as ``--override`` and a spec file write it: a number or numbers split by commas, with a unit of
+    ``mime.units`` (``20Hz``, ``1.2 mT``, ``0,0,-1 mm``) or a unit symbol of the saved form (``m^2 kg s^-1``), or a bare
+    number for a dimensionless value; ``None`` for text that is not one."""
     import re
 
+    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9/^ -]*)?\s*", text)
+    if found is None:
+        return None
+    numbers = [float(n) for n in found[1].split(",")]
+    magnitude = numbers[0] if len(numbers) == 1 else tuple(numbers)
+    symbol = (found[2] or "1").strip()
+    unit = _units().get(symbol.replace(" ", ""))
+    if unit is not None:
+        return cast(Quantity, unit(magnitude))
+    try:
+        return Quantity(magnitude, parse_unit(symbol))
+    except ValueError:
+        return None
+
+
+def parse_override(text: str) -> tuple[str, object]:
+    """An override as ``mime run --override`` takes it, ``path=value``: the path as a study's axis is written
+    (``field.commands.frequency``), and the value as :func:`parse_value` reads it."""
     path, equals, value = text.partition("=")
-    found = re.fullmatch(rf"\s*\(?\s*((?:{_NUMBER})(?:\s*,\s*{_NUMBER})*)\s*\)?\s*([A-Za-z][A-Za-z0-9/^ ]*)?\s*", value)
-    unit = _units().get((found[2] or "1").replace(" ", "")) if found is not None else None
-    if not equals or not path.strip() or found is None or unit is None:
+    quantity = parse_value(value)
+    if not equals or not path.strip() or quantity is None:
         raise BuildRefused([Refusal(
             "override.written", RefusalClass.USER,
             f"--override {text!r} is not path=value with a value of numbers and a unit of mime.units",
             "write it as --override field.commands.frequency=20Hz, --override umr.initial.position=0,0,-1mm or "
             "--override umr.mass=8.5e-5kg")])
-    numbers = [float(n) for n in found[1].split(",")]
-    return path.strip(), unit(numbers[0] if len(numbers) == 1 else tuple(numbers))
+    return path.strip(), quantity
 
 
 def verify_run(folder: Any) -> Any:
@@ -293,4 +309,4 @@ def verify_run(folder: Any) -> Any:
                         tuple(moved), tuple(sorted(pairs)))
 
 
-__all__ += ["parse_override", "verify_run"]
+__all__ += ["parse_override", "parse_value", "verify_run"]

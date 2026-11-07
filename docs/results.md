@@ -159,6 +159,120 @@ a result its author may want to read, so the watch says where, and the run is no
 - `run_to` and `mime run` write `outputs.json` beside `outputs.npz`: what every array is, each output's unit, window
   and flags, and each output at the end written out, so a run folder is readable without MIME.
 
+## A study's result, and its folder
+
+`Study(exp).sweep(...).run()` returns a `StudyResult`: one member axis, in the order of the points, with
+`result.coordinates[path]` (each axis's values and units), `result[swim].mean_speed` (an output at the end over the
+members), `result.member(i)` (a `RunResult`) and the union of the members' flags. Its exports put the member axis first:
+
+- `result.table()` is long, one row per member and sample. The coordinate columns come first, each with its unit in the
+  header (`field.commands.frequency [Hz]`), then `member` and `group`, then the member's own columns (`time [s]`, each
+  series with its unit) and `flags`. Members sampled at other times (another `dt`, another `every=`) are in one table,
+  each at its own samples, with NaN where a member lacks a column. `to_csv(path)` writes it.
+- `result.to_npz(path)` holds the coordinates, `groups`, `points`, every member's arrays under `m<point>/` as a run's
+  NPZ holds them, and the manifest.
+- `result.to_mat(path)` is a MATLAB v5 file through `scipy.io.savemat`: `coordinates` (each axis's values with its
+  `unit`), `groups`, `points`, a struct per observation holding a struct per output with its `unit` and `dimension` and
+  its `value` over the members (an output at the end) or its `time` and `values` (members first where the members
+  share a time axis, a cell array of the members' own where they do not), `flags` by member (`true`, `false`,
+  `unknown` or `not declared`), `study`, `manifest` and `name_map`. The tests read it back with `scipy.io.loadmat`;
+  MATLAB itself has not been run on one.
+- `result.grid()` reshapes a study that is every combination of its axes' values (`grid.reshape(result[swim].mean_speed)`
+  is an array with one dimension per axis), and refuses a study that is not, naming the combinations that are not
+  there. `result.manifest()` is the folder's `study.json`.
+- `result.order(output, along=DT)` is the observed order of convergence of an output at the end over three levels of
+  a step, and the value it extrapolates to. A study of exactly the three levels, its other axes constant. It is refused
+  (`study.order`) where the levels are not in the asymptotic range: the two refinement ratios differ by more than a tenth
+  of the smaller, the values cross their limit or do not move, the order found lies outside the tenth to ten, or is not
+  within a quarter of the formal order when `expected=` gives one. Three levels fit three unknowns, so the range is
+  judged on the levels themselves.
+
+`study.run_to(folder)` runs the study into a **study folder**, group by group and batch by batch, and returns what the
+folder holds:
+
+<!-- mime-fragment: a layout of files, shown and never run -->
+```text
+study.json                 the manifest, format mime-study-outputs/1
+study.mime.yaml            the study's spec file
+experiment/                the base experiment: a saved folder, byte for byte what save() wrote
+groups/<k>/outputs.npz     every member of group k: its arrays under m<point>/, its manifest and report as JSON text
+groups/<k>/report.json     the build report's summary of the group's first member
+groups/<k>/experiment/     the group's own build, for a group whose compiled program differs from group 0's
+```
+
+The folder is readable without MIME (JSON, YAML and NPZ). `study.json` holds the base experiment's name and input hash,
+the axes with their units and reasons, every point, the run, the groups with their structure keys and compile counts,
+each member's status, overrides and content key, the points a `drop_refused` sweep dropped, the seed policy (every
+member runs the experiment's own seed; no entry of this release draws noise) and the lineage. Its schema is closed: a
+key it does not know is refused (`study.manifest`), and so is a newer format (`study.format`), a file or folder it does
+not hold (`study.stray-file`) and a folder that is no study's (`study.not-a-study-folder`). The folder takes no saved-form
+step: `experiment/` and each `groups/<k>/experiment/` are ordinary saved folders at the current form.
+
+`StudyResult.read(folder)` reads it, and reads a study that was stopped: `result.missing` lists the points not there and
+`result.text()` says how many. Members are read from their group's NPZ when first asked for.
+
+**Resume.** A run into a folder that holds the same study (the same `id`: the base's input hash, the axes with their
+reasons, every point, the run and the seed policy) writes each batch's arrays and marks its members `done` in `study.json`
+as it goes, so a stopped run leaves a folder that says what is done. Run again, it reuses a member only if it is `done`
+under the same **content key** and its arrays are in the group's NPZ: the key holds the member's point, its group's
+structure key, the base's input hash, the run, and the source hashes of what computes it (the module of every class its
+nodes and entries are made of, its controller's law, and the versions of MIME, MADDENING and JAX and the precision). A
+member whose key changed is run again, never reused. The batches are the plan's; a planned batch cut by a member that is
+reused runs the rest of it as a smaller batch, whose last bits are not those of the larger one. A folder that holds another
+study, or anything else, is refused (`study.other-study`, `study.folder-not-empty`). Bits are compared at one usable CPU
+count and one BLAS thread count, as everywhere.
+
+**The spec file**, `study.mime.yaml`, is the study as data, written into the folder in its normal form and read by
+`mime study` and `Study.from_spec`:
+
+<!-- mime-fragment: a spec file, shown for its keys and never run -->
+```yaml
+format: mime-study/1
+base: {folder: experiment, input_hash: 'sha256:...'}   # the saved experiment; a base with another hash is refused
+combine: grid                                          # grid, or along (the i-th value of each axis together)
+axes:
+  field.commands.frequency:
+    values: [10 Hz, 20 Hz, 30 Hz]                      # a number and a unit of mime.units, or a name
+    reason: the frequencies below the from-rest step-out bracket   # one string per axis
+  dt:
+    values: [0.5 ms, 0.25 ms]
+duration: 1 s
+record: [swim_speed:umr.speed]
+every: 1 ms
+batch: 16
+drop_refused: false
+seed: {policy: experiment}
+```
+
+It is read with YAML's safe loader and holds no code; a key given twice, a key it does not name, another format and a
+base of another input hash are refused (`study.spec`).
+
+<!-- mime-fragment: commands on a spec file of the reader's own, shown for their flags -->
+```sh
+mime study plan study.mime.yaml
+mime study run study.mime.yaml --out my_study --pilot
+mime study run study.mime.yaml --out my_study_shard --shard 0/2
+```
+
+`mime study plan` prints `study.plan()` (and exits one where a point is refused). `mime study run` writes the folder and
+resumes it; `--pilot` runs the first chunk of the first group twice and prints what a member costs, once compiled;
+`--shard i/k` runs only the groups whose number is `i` modulo `k`, the others left `pending` in that folder.
+
+**One reason per swept axis in the research profile.** A swept value is a declared value, and the research profile asks
+each declared value for its basis, so a research study needs a reason for each of its axes, one string per axis and not
+one per point: `sweep(..., reasons={field.commands.frequency: "..."})`, or `reason:` under the axis in a spec file. Without
+one it is refused (`study.axis-reason`), naming the axis. The reason is in `study.json` (the axis, and each member's
+overrides) and is the reason of the value each member declares. The exploratory profile declares each value with the
+generic study reason where an axis has none.
+
+**From a member to an experiment.** `result.member(i).as_experiment(name)` is `Experiment.based_on(<the study's base>,
+name=name)` with the member's values declared in it, each value with the reason `from study <id>, member <i>` (and its
+axis's own); the new experiment, not saved until you save it, is that member's run when run alone, and its saved folder
+names the base it was made from. It needs a study folder (or `base=` naming the saved base). A precision the study
+varied is a setting of the process and cannot be declared (`study.bridge-precision`). The comparison the tests hold it to is
+the sweep's acceptance (a member against the same point run alone, within tens of eps of each field's scale while the
+body is locked), not an accuracy claim about the model.
+
 ## A run that was stopped
 
 A run is compiled chunks, between which Python gets control back, so Ctrl+C reaches it. On `mime run` the first press
