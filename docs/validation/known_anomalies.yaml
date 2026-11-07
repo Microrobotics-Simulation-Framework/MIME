@@ -2928,3 +2928,70 @@ anomalies:
       directory, where '<sha256>.verified' can already be written to the same effect [inference].
     workaround: "Delete the cached file '<cache>/<sha256>' and its '<sha256>.verified' record, then pull again; the cache is the directory in MIME_ASSETS_DIR, else the platform's cache directory for mime (assets)"
     planned_resolution: "A cache PR in two steps: compare the cached file's digest with the checksum the caller holds on the cheap-check shortcut (a local read, not a download), and install the freshly downloaded file over one whose full check disagrees; then re-measure the asset path"
+
+  - anomaly_id: MIME-ANO-143
+    title: "Under jit, the tube wall read's derivative along a rigid motion has the wrong sign for some pairs of force points at exactly equal height, and the pairs it fails on depend on how XLA fuses the program"
+    description: >
+      The tube wall kind's read takes the pair's axial offset dz (and the sine of its angle) from the points' positions,
+      reads the table at |dz| and the folded angle, and signs the odd components from dz >= 0 (pair_block in
+      mime/nodes/hydro/mrs/_tube.py: switch.absolute for |dz|, switch.where(dz >= 0, 1, -1) for the sign) [read]. For two force
+      points at exactly equal height the true odd components are smooth through dz = 0 with the slope f'(0) times the tangent of
+      dz, and in JAX 0.12.0.1 both factors agree at dz = 0 when dz is the same number in both places (the tangent of abs at 0
+      is +1 times the input tangent, and the sign test takes dz >= 0): measured eager, jvp and jacfwd of the correction along
+      the six rigid motions of the tube demo's 338 force points match central differences to 2e-7 of the column's largest entry,
+      ties and all. Inside a jitted program they do not always agree, and the derivative of an odd component of such a pair comes
+      out with the opposite sign (error exactly 2.0 of the entry, measured on a two-point case).
+
+      Measured (float64, CPU, JAX 0.12.0.1, the shipped unit_tube_R0.997 table; the tube demo of examples/sphere_settling_tube.py,
+      its 338 force points, a frame whose rows are an axis permutation):
+      - Whole body, jit(jacfwd) of the correction along the six rigid motions of the points, against central differences,
+        relative to the column's largest entry: at the demo's pose 0.4 of the way to the floor (14 off-diagonal pairs at exactly
+        equal height, 8 at exactly equal azimuth) translations across the axis 1e-6, 2e-6 and the two rotations about the axes
+        across the tube 1.7 and 1.0; at a second pose (centre 0.2 radius off the axis, 14 height ties) rotations 1.2 and 1.5. The
+        same points nudged by 1e-9 m (no tie left): rotations 7e-8 to 2e-7. A third pose nudged by 1e-7 m: 6e-8 to 2e-7. The same
+        function evaluated eagerly (not jitted) at the first pose: 2e-7 and 2e-8 for the two rotations. The translation along
+        the tube's axis moves no pair and has a derivative of zero on both sides (a comparison that cannot discriminate).
+      - Two points only (each of the 7 height-tied pairs taken alone, 9 pair-and-rotation cases that move the pair): jitted, 3
+        are wrong by exactly 2.0 (pairs 121-149 about both rotations, pair 218-251 about the second); eager, none. A third
+        pair (60-65) is right in forward mode and wrong in reverse mode (jax.grad of a weighted sum of the matrix: the sign of
+        one rotation's gradient flips), and pair 121-149 is right in reverse mode and wrong in forward mode, so the set of
+        failing pairs depends on the program being differentiated.
+      - Controls: an optimization barrier on the offset passed to pair_block (a probe patched in the process, caches cleared) makes
+        all 9 cases right (largest error 1.25e-8) and a barrier on the sine alone does not (still 3 wrong), which places the
+        fault in the offset's computation; the optimized program of a two-point case holds several separate fusions, each with its own
+        >= comparison on a value it computes inside itself (4 of them) and one with the absolute value too [measured, the HLO; that
+        these are the offset is an inference]. The tangent mechanism first proposed for this (that the computed tangent of |dz| at 0 is 0) is refuted: it is +1 times the input tangent in this JAX, eager.
+      - Float32 (11 height-tied pairs, 13 cases): none wrong as shipped (largest error 1.2e-3, the central difference's own
+        float32 floor), but with a barrier on the sine alone 8 of 13 are wrong: float32 is exposed to the same fault, and
+        is clear here only by the fusion XLA happened to choose.
+      The remaining step is an inference and is labelled so: the signs are inconsistent because XLA computes the offset
+      (a difference of two dot products) separately for each consumer, with different rounding (the primal offset of a tied
+      pair is exactly 0 eagerly and 1e-18 to 1e-17 in the jitted program), so that the sign test and the absolute value see
+      two nearly-zero numbers that need not have the same sign. Nothing here measured the rounding inside the fusions.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A derivative through the tube wall read at a pose with tied force points can have the wrong sign with nothing flagging it,
+      so a gradient-based fit, a sensitivity or a controller that differentiates through a body in a tube (a screw's
+      orientation, a sphere's rotation about an axis across the tube) would use a wrong direction. Whether any such
+      use exists in a safety-relevant path depends on the deployment. The primal values (the resistance, a run) are not
+      affected, and no derivative in the repository is known to be evaluated at a tie (see the residual risk).
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: wall_kind tube; its table read (pair_block), under jit, in forward and in reverse mode"
+    residual_risk: >
+      Reach, by a read of every jax.jacfwd, jax.grad, jvp and vjp in src/, tests/, examples/ and scripts/: none in src/ takes a
+      derivative through the wall read. The tests that differentiate the tube read (tests/oracles/test_tube_axis.py, on three
+      hand-placed samples of distinct heights and azimuths; tests/oracles/test_tube_wall.py and test_tube_kind.py, in parameters
+      that scale the tube, which keep a tie a tie and give dz a tangent of zero on both sides) do not evaluate at a tie where
+      dz has a tangent [read, with the arithmetic for the scaling]. tests/saved/test_switch_harness.py takes jacfwd of the read
+      on the axis, at two heights that differ, to check for non-finite values, not the sign. scripts/sim2real/bem.py and
+      capfix.py differentiate a screw in a tube in the body's shape parameters (radius, length, wavenumber, modulation) and the
+      tube's radius, compared with finite differences by design; whether the points of that body tie there was not examined, and
+      those scripts are not collected by CI. A sphere or a screw ties often: the demo's sphere ties at 14 pairs at
+      both poses tried. Not measured: any pose gradient of a whole node (the resistance in the pose) through the wall at a
+      tie, a screw's points, the platforms other than CPU, other JAX or XLA versions, and the shared effect of a larger
+      force-point count on which fusion is chosen. One agent, one rig, one pose family, one JAX version.
+    workaround: "Do not differentiate the wall read at a pose where force points share a height or an azimuth exactly: move the points by a small amount first (a nudge of 1e-9 m on the 338 points gave rotation derivatives matching central differences to 2e-7, measured), or check a derivative against central differences at the pose it is used at. Evaluating eagerly matched in every case measured, but is not a guarantee."
+    planned_resolution: "A tangent at ties that does not depend on the fusion: take dz once and use the one value for both its sign and its absolute value (an odd smooth form, or a jax.custom_jvp for the folded read whose tangent is the table's slope times the tangent of dz), with the two-point case here (a pair at equal height, jitted, forward and reverse) as the control that fails on the shipped code on every run and the 338-point case as the whole-body check. A later PR; this entry changes no code."
