@@ -240,7 +240,11 @@ def held_or_made(make: Callable[[Mapping[str, Any]], Array], built: Mapping[str,
     ``theta`` is ``make``'s at ``theta`` in either case (forward mode through ``make``, checkpointed, so that the
     reverse mode makes the value again from ``theta`` rather than keeping what ``make`` holds inside). ``held`` itself
     has no derivative: it is ``make``'s value, not a quantity of its own. Under ``vmap`` over a moved leaf both
-    branches are evaluated, since a batched condition selects."""
+    branches are evaluated, since a batched condition selects.
+
+    A ``given`` is a key by value: a step given every leaf of one of them, and the held value as built (not the one
+    made again), keeps that value, stale at those leaves. Only the rerun moves every leaf (the part's rotation is held
+    as built), so none else reaches it; ``tests/saved/test_held_once.py`` pins the limit."""
 
     def kept(theta: Mapping[str, Any], held: Array) -> Array:
         return held
