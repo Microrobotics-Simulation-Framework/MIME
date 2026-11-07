@@ -14,7 +14,7 @@ from maddening import GraphManager
 from maddening.core.node import SimulationNode
 from maddening.warnings import UnitMismatchWarning
 
-from mime.build import _testing
+from mime.build import _ledger, _testing
 from mime.build._builders import (
     DriveBuilder,
     DynamicsBuilder,
@@ -70,7 +70,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               external_inputs: tuple[str, ...] = (), reported: Sequence[ReportedWarning] = (),
               derived_hash: str | None = None, lags: Sequence[EdgeLag] = (),
               models: tuple[str, ...] | None = None,
-              computed: Mapping[str, tuple[str, ...]] | None = None) -> BuildReport:
+              computed: Mapping[str, tuple[str, ...]] | None = None, energy: tuple[str, ...] = ()) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name))
@@ -88,7 +88,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         if plans.controller is not None else (),
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
         checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
-                                                 for owner, lines in (computed or {}).items()}}.items())))
+                                                 for owner, lines in (computed or {}).items()}}.items())),
+        energy=energy)
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -291,6 +292,8 @@ class Assembled:
     lags: tuple[EdgeLag, ...]
     physics_lags: tuple[EdgeLag, ...]
     owners: Mapping[str, str]
+    #: With the energy ledger attached, what its wiring found (``mime.build._ledger``); ``None`` otherwise.
+    energy: _ledger.EnergyBoundary | None = None
 
 
 def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
@@ -338,6 +341,12 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
+    energy: _ledger.EnergyBoundary | None = None
+    if _ledger.ledger_attached(plans):
+        built, edges, energy, refusals = _ledger.attach(plans, built, edges)
+        if refusals:
+            raise BuildRefused(refusals, report_of(plans, order, refusals))
+        nodes = [built[name] for name in order]
     groups = [sorted(group.nodes, key=position.__getitem__) for group in plans.groups]
     physics_lags: tuple[EdgeLag, ...] = ()
     if in_graph:
@@ -366,7 +375,8 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
         add_coupling_group(graph, group, max_iterations=held.max_iterations, tolerance=held.tolerance)
     for node, field in derived_inputs(plans):
         add_external_input(graph, node, field)
-    return Assembled(graph, tuple(order), tuple(tuple(group) for group in groups), tuple(lags), physics_lags, owners)
+    return Assembled(graph, tuple(order), tuple(tuple(group) for group in groups), tuple(lags), physics_lags, owners,
+                     energy)
 
 
 def construct(plans: PlanSet, law: ControlLaw | None = None,
@@ -377,6 +387,7 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
     names."""
     held = assemble(plans, law)
     graph, order, owners = held.graph, list(held.order), held.owners
+    energy = held.energy.lines if held.energy is not None else ()
     groups, lags, physics_lags = [list(group) for group in held.groups], list(held.lags), held.physics_lags
     _testing.run_hook(graph, plans)
     external = tuple(f"{e['target_node']}.{e['target_field']}"
@@ -403,4 +414,4 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
         raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
     return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
-                            node_lines(graph, plans)), derived
+                            node_lines(graph, plans), energy), derived

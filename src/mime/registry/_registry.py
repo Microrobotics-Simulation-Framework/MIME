@@ -49,7 +49,7 @@ from mime.registry._entries import (
 )
 from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
-from mime.vocabulary import MIME_NAMESPACE, Capability, namespace_of
+from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, namespace_of
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 #: A controller's read or write label.
@@ -343,6 +343,27 @@ def _reynolds_problems(cls: type[Entry]) -> list[str]:
     return found
 
 
+def _energy_problems(kind: EntryKind, held: Any) -> list[str]:
+    """What is wrong with what an interaction or a dynamics says of itself for the energy ledger: an interaction's
+    class an ``EnergyClass`` or none, a dynamics' port kind a name, and either's reason for being unmetered a string,
+    stated only where it declares no class or port kind."""
+    if kind not in (EntryKind.INTERACTION, EntryKind.DYNAMICS):
+        return []
+    found: list[str] = []
+    reason: object = getattr(held, "unmetered", "")
+    if not isinstance(reason, str):
+        found.append("unmetered: the reason the energy ledger cannot meter it, a string")
+    declared: object = getattr(held, "energy_class" if kind is EntryKind.INTERACTION else "port", None)
+    if kind is EntryKind.INTERACTION and declared is not None and not isinstance(declared, EnergyClass):
+        found.append("energy_class: a mime.vocabulary.EnergyClass, or None for a law the energy ledger cannot meter")
+    if kind is EntryKind.DYNAMICS and not isinstance(declared, str):
+        found.append("port: the name of a registered port kind (mime.vocabulary.port_kinds), or empty")
+    if declared and reason:
+        found.append("unmetered states a reason for being unmetered, and it declares "
+                     + ("its class" if kind is EntryKind.INTERACTION else "a port kind"))
+    return found
+
+
 def _problems(kind: EntryKind, candidate: object) -> list[str]:
     """Everything that keeps ``candidate`` from being registered as a ``kind``; read from a class the registry has
     not checked yet, so every attribute is asked for rather than assumed."""
@@ -371,7 +392,11 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
         found += rung_gradient_problems(cls)
     roles: object = getattr(held, "roles", None)
     role_names: set[str] = set(cast(Mapping[str, object], roles)) if isinstance(roles, Mapping) else set()
-    if kind in (EntryKind.INTERACTION, EntryKind.OBSERVATION):
+    switch_only = kind is EntryKind.OBSERVATION and getattr(held, "meters_energy", False) is True
+    if switch_only and (role_names or getattr(held, "outputs", ()) or getattr(held, "reads", {})):
+        found.append("an observation that meters energy is a switch: it binds no role, reads nothing and declares no "
+                     "output (its account is the metered receivers' records)")
+    elif kind in (EntryKind.INTERACTION, EntryKind.OBSERVATION) and not switch_only:
         kinds = list(cast(Mapping[str, object], roles).values()) if isinstance(roles, Mapping) else []
         if not (kinds and all(isinstance(k, RoleKind) for k in kinds)):
             found.append("roles: a non-empty mapping of role names to RoleKind")
@@ -385,7 +410,8 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
                 found.append(f"id_roles {id_roles} name roles it does not have")
     found += _flag_problems(cls)
     found += _reynolds_problems(cls)
-    if kind is EntryKind.OBSERVATION:
+    found += _energy_problems(kind, held)
+    if kind is EntryKind.OBSERVATION and not switch_only:
         found += _output_problems(cls)
     if kind is EntryKind.INTERACTION:
         rungs = tuple(cast(tuple[str, ...], getattr(held, "rungs", ())))

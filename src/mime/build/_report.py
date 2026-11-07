@@ -172,6 +172,16 @@ class BuildReport:
     #: The validity lines the build computed, by entry id (a spinner's kick on its host's joints): never a refusal,
     #: and the same in every profile.
     checked: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    #: With the energy ledger attached (``EnergyLedger``): each metered receiver, each law's class or its reason for
+    #: being unmetered and what it is supplied by, each receiver the ledger cannot meter, and what is outside, worked
+    #: out from the graph (``mime.build._ledger``). Empty without the ledger.
+    energy: tuple[str, ...] = ()
+
+    def energy_lines(self) -> list[str]:
+        if not self.energy:
+            return []
+        return ["energy ledger (each law's class, what is outside, from the graph):", *(f"  {line}" for line in
+                                                                                       self.energy)]
 
     def checked_lines(self) -> list[str]:
         return [f"validity of {owner} (computed at build): {line}" for owner, lines in sorted(self.checked.items())
@@ -256,6 +266,7 @@ class BuildReport:
         for owner, limits in sorted(self.limits.items()):
             lines += [f"limits of {owner} (stated by its record): {line}" for line in limits]
         lines += self.watch_lines()
+        lines += self.energy_lines()
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")
         lines += [f"  [{w.source}] {w.message}" for w in self.warnings]
         lines.append(f"refusals: {len(self.refusals) or 'none'}")
@@ -333,6 +344,7 @@ class BuildReport:
             for line in limits:
                 lines.append(f"limits of {owner} (stated by its record): {line}")
         lines += self.watch_lines()
+        lines += self.energy_lines()
         lines.append("vocabulary: " + ", ".join(f"{k} {v}" for k, v in self.vocabulary.items()))
         lines.append(f"run: {self.run.text()}")
         lines.append(f"MADDENING's warnings: {len(self.warnings) or 'none'}")

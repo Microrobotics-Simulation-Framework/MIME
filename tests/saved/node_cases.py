@@ -164,6 +164,9 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                 "rigid_inertial's, verified under its own case and, holding a hull with its loops looped, against "
                 "0.4.0's by tests/oracles/test_contact_loops.py"),
     ("observation", "swim_speed", "0.1.0"): NodeCase(),
+    ("observation", "energy_ledger", "0.1.0"): NodeCase(
+        no_node="a switch: it builds no node, and its account is the metered bodies' records, rigid_inertial's, "
+                "verified under its own case and by tests/energy"),
     ("drive", "drive.constant", "0.1.0"): NodeCase(),
     ("dynamics", "arm", "0.1.0"): ARM,
     ("dynamics", "motor", "0.2.0"): MOTOR,

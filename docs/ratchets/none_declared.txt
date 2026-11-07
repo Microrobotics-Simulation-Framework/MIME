@@ -9,6 +9,7 @@
 drive drive.constant 0.1.0 references  # present at D1b
 field_provider uniform_rotating 0.1.0 references  # present at D1b
 geometry tube 0.1.0 references  # present at D1b
+observation energy_ledger 0.1.0 references  # a switch: it builds no node and computes nothing of its own, and its account is the metered bodies' step identities, whose nodes carry their references (phase P1a); route: none to close while it stays a switch
 observation swim_speed 0.1.0 references  # present at D1b
 wall_kind free_space 0.1.0 references  # a definition, no wall: it adds nothing to the kernel and rests on no work (phase 7h)
 node ConstantNode references  # a definition: the value it was built with, resting on no work (docs phase D3); route: none to close unless the node grows past a stored value, when a `Reference` on the class closes it; until then the line records that one was looked for

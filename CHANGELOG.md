@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
+  second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
+  entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery
+  into its own input on each metered body, in the order its summed input took them, each paired as the body's port kind
+  says, and constructs the body again with its ledger; the build report's `energy` lines name each law's class or its
+  reason for being unmetered, what supplies it and what is outside. `result.energy` is the run's account in plain words:
+  what each body stores, what each dissipative law lost, what was supplied, named by what supplies it and taken from
+  the dissipation side (what was lost plus the change in what is stored), and each potential's change from the run's
+  two ends with the law's own parameters; with `details=True`, each law's paired work, the scheme's own terms apart,
+  the paired supply and the checks; `efficiency(useful)`. A post-build check refuses a law's delivery in another's
+  own input, or in the summed one, as built (`post-build.ledger-inputs`): **a swap of two laws' loads between their
+  inputs**, which the books cannot see, is refused on every build; with that check taken out, it shows in gravity's
+  residual. An entry that declares nothing and states no reason is logged under exploratory and refused under research
+  (`ledger.unmetered`). `mime.testing`: the **energy case** (`CaseKind.ENERGY`) in the magnetic, gravity, contact and
+  hydrodynamic families (a potential's wrench against its energy's negative gradient; a dissipative law's operators
+  definite and its loads doing no positive work; a contact giving no energy through the solve nor by its rule at
+  arrival; a law with no class states its reason), each with a planted law that fails it; **a dynamics' step
+  identity** on drawn states (`step_identity`); the registry walk requires every dynamics and interaction of MIME's to
+  declare how it is metered or why not (the arm, the motor and the toys state why). A dissipative law held in its
+  body's step now also counts as giving energy where its rule at arrival adds energy. **Without the ledger nothing
+  moves**: every history array of the five programs is identical to the bit to the release before it, in both dtypes,
+  and a save with the ledger off is byte-identical; with it, the bodies' programs are new, judged by their identity.
+  What energy cannot see stays the families' oracles': a drag scaled by 0.9, or its coupling's sign flipped, passes
+  every ledger check, and the hydrodynamic family's oracle case fails each.
 - **The energy ledger's machinery on the body, off unless attached** (`mime.core.ledger`; the first half of the
   ledger, whose build wiring, observation and account come next). The vocabulary's port kinds (`PortKind`,
   `register_port_kind`; MIME's `rigid_body`, `joint`, `delivered_inertia`, `flow_in`), each delivery's units paired
@@ -40,9 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (1.1 times its least scaled eigenvalue taken off) caught on every draw (-0.17 to -0.10); the definiteness check
   fails a zero diagonal entry that has a coupled row, whatever the coupling's size. **Not in this part, by design:**
   attribution sees a load delivered where no law owns it, not a swap of two laws' loads between their own inputs
-  (the family cases of the second part check each law's delivery against its own row, with a plant); and no
-  declaration of a port, a class or a definiteness is read by anything yet, so a kind or a class cannot silence a
-  failing check by a declaration vacuously, until the second part's registry walk reads them.
+  (refused by the second part's post-build check); and no declaration of a port, a class or a definiteness was read by
+  anything in this part (the second part's wiring and registry walk read them).
 - **A containment watch: a body the centre-held contact holds whose hull leaves its region is flagged after the run**
   (in every profile that can be built, exploratory and research; never a refusal, no node or edge, so the graph and its
   derived hash are what they were). The contact 0.1.0 holds a body's centre by its extent and never reads its

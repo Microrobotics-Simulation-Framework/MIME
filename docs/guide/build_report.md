@@ -170,3 +170,13 @@ summary for a client or of a run folder ([reading errors](../reading_errors.md#a
 
 Validity lines the build computed, by entry, such as a spinner's kick on its host's joints. Unlike `validity` they were checked.
 They never refuse, and are the same in every profile.
+
+## `energy`
+
+With `exp.observe(EnergyLedger())`, how the build metered the experiment for the energy ledger, worked out from the
+graph: each body it meters, with each law acting on it and that law's class (`dissipative`, `potential`, or `unmetered`
+with the law's reason), what each law that reads something outside is supplied by, each thing that receives loads and
+cannot be metered with its reason, and what is outside (a thing that receives no load from the components: a field
+turning on its own, a drive, a prescribed motion). Empty without the ledger. A law or a dynamics that declares nothing
+and states no reason is listed here under the exploratory profile and refused under research (`ledger.unmetered`).
+A run's result gives the account itself, `result.energy` ([the results note](../results.md)).

@@ -4,7 +4,7 @@
 
 ## What goes here
 
-- `SwimSpeed`, and `PhaseLag`.
+- `SwimSpeed`, `EnergyLedger`, and `PhaseLag`.
 - Later: cameras, signals, and harm observations such as contact force and wall shear.
 
 ## The contract
@@ -22,6 +22,10 @@
 **`SwimSpeed(body, along=tube.axis, after=...)`** (`swim_speed` 0.1.0): the body's velocity along a
 direction each step, and its mean over the steps that end after `after`, kept in its own node's state. `PhaseLag`
 lands in dev2.
+
+**`EnergyLedger()`** (`energy_ledger` 0.1.0): the energy ledger in one line, `exp.observe(EnergyLedger())`. A switch
+the build reads (`Observation.meters_energy`): it binds no role, builds no node and declares no output; attached, the
+build meters each body, and a run's result reads the bodies' records as its account (`result.energy`).
 
 `SwimSpeed` declares its outputs: `speed` each step, and at the end `mean_speed` (the mean of `speed`
 over its window), `distance` (its integral) and `observed` (the window's length), each window the steps that end

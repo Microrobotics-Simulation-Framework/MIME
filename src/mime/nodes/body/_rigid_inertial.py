@@ -72,6 +72,11 @@ def gyroscopic_jacobian(rotation: Array, moments: Array, omega: Array) -> Array:
     return rotation @ (gap[:, None] * cross) @ rotation.T
 
 
+#: How the body pairs each input it takes (``mime.vocabulary.RIGID_BODY``'s delivery kinds, which the build reads its
+#: deliveries' kinds from): a load read at the step's start, and the resistance solved for in its step.
+_PAIRED_AS = {"applied_wrench": books.LOAD, "background_load": books.LOAD, "resistance": books.SOLVED}
+
+
 class StepParts(NamedTuple):
     """What the energy ledger's books read of a step, besides the state it takes and returns: the mass matrix ``M`` at
     the step's start (in the world), the matrix of its solve ``M'/dt + R``, the twist the solve gives with no
@@ -345,9 +350,12 @@ class RigidInertialNode(MimeNode):
                              f"{'one confinement' if surface_shape else 'no confinement'}, and the ledger hosts "
                              f"{hosted or 'none'}")
         checked = [d.law for d in metering if d.check == books.CHECK_DEFINITE and d.field != "resistance"]
-        if checked:
-            raise ValueError(f"a body checks the definiteness of an operator it takes, its resistance, and {checked} "
-                             f"deliver none")
+        unpaired = [f"{d.law} into {d.field} as {d.kind}" for d in metering
+                    if d.kind != books.HOSTED and _PAIRED_AS.get(d.field) != d.kind]
+        if checked or unpaired:
+            raise ValueError(f"a body checks the definiteness of the one operator it takes, its resistance, and pairs "
+                             f"its loads with its configuration's change and its resistance with its step's solution "
+                             f"({_PAIRED_AS}): {checked} deliver no operator, and {unpaired} are paired otherwise")
         hull: dict[str, object] = {}
         if hull_kind:
             record = registered_kind(hull_kind, hull_kind_version)
@@ -721,6 +729,11 @@ class RigidInertialNode(MimeNode):
     #: dt V')``: the rounding of the position's update, where no law is hosted in the step (a hosted contact's
     #: projection books it under its own name).
     LEDGER_TERMS = ("backward_euler", "gyroscopic", "configuration")
+
+    @override
+    def configuration(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
+        """The body's pose, what a potential law's energy reads."""
+        return jnp.asarray(state["pose"])
 
     @override
     def storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:

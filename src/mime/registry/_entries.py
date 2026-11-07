@@ -966,12 +966,17 @@ class Observation(Entry):
     """What an experiment measures. It reads and never delivers: its nodes have no edge into the physics. Its
     bindings are its fields named after its roles (``Recorder(body=probe)``). ``outputs`` declares what it gives a
     run's result (:class:`Output`), each with its dimension, per step or at the end: the pages and a run's manifest
-    are generated from them, and a run's result reads each by its name."""
+    are generated from them, and a run's result reads each by its name.
+
+    An observation that ``meters_energy`` (``EnergyLedger``) is a switch the build reads: attached, it has the build
+    meter every receiver for the energy ledger. It binds no role, builds no node and declares no output of its own:
+    its account is the metered receivers' records, which a run's result reads."""
 
     roles: ClassVar[Mapping[str, RoleKind]]
     id_roles: ClassVar[tuple[str, ...] | None] = None
     reads: ClassVar[Mapping[str, Read]] = _EMPTY
     outputs: ClassVar[tuple[Output, ...]] = ()
+    meters_energy: ClassVar[bool] = False
     setting_roles: ClassVar[Mapping[str, SettingRole]] = MappingProxyType({
         "rate": convention(NUMERICAL, "an observation reads every base step unless the experiment chooses a slower "
                                       "rate")})

@@ -332,6 +332,17 @@ def _weight_follows_the_excess_density(response: Response) -> bool:
             and float(np.linalg.norm(across)) <= resolution * float(np.linalg.norm(force)))
 
 
+def _gravity_scale(response: Response) -> tuple[float, float]:
+    """The magnitude of the arithmetic gravity's wrench is formed by: ``|m g| + |F_b|`` for its force, ``|c_b| |F_b|``
+    for its couple (zero without a centre of buoyancy), the buoyancy ``F_b = -rho_f V g``."""
+    s, constants = response.settings, response.constants
+    g = float(np.linalg.norm(np.asarray(constants["gravity"], dtype=np.float64)))
+    buoyancy = float(cast(float, s["fluid_density"])) * float(cast(float, s["buoyant_volume"])) * g
+    centre = constants.get("centre_of_buoyancy")
+    lever = float(np.linalg.norm(np.asarray(centre, dtype=np.float64))) if centre is not None else 0.0
+    return float(cast(float, s["mass"])) * g + buoyancy, lever * buoyancy
+
+
 def _nothing_leaves_where_projected(response: Response) -> bool:
     """Where the step would have taken the body past its surface (less its extent and margin), the body it delivers
     moves no further out: its velocity has no outward part along the surface's normal there, beyond the rounding of
@@ -385,7 +396,7 @@ _POSE_AND_RESISTANCE = {POSE.name: unit_quaternion, RESISTANCE.name: positive_se
 MAGNETIC = register_family(Family(
     name="magnetic", rig=magnetic_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
-           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.CLOSED_LOOP),
+           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.CLOSED_LOOP, CaseKind.ENERGY),
     sign=SignRule("the field turns the body's moment toward it (tau . (m x B) is not negative), and its gradient pulls "
                   "the moment up the gradient of its alignment (F . (G^T m) is not negative): an aligned moment is "
                   "pulled toward the stronger field", _magnetic_sign, reads=(("body", POSE.name),),
@@ -399,18 +410,20 @@ MAGNETIC = register_family(Family(
 GRAVITY = register_family(Family(
     name="gravity", rig=gravity_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
-           CaseKind.GRADIENTS, CaseKind.NODES),
+           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.ENERGY),
     sign=SignRule("weight minus buoyancy lies along gravity, pointing with it when the body is heavier than the fluid "
                   "it displaces", _weight_follows_the_excess_density, delivers=(("body", APPLIED_WRENCH.name),)),
     material=("mass", "buoyant_volume", "fluid_density", "centre_of_buoyancy"),
     reading_bounds={POSE.name: (-1.0, 1.0)},
     constrain=_POSE_AND_RESISTANCE,
     frame_constants=("gravity",),
+    potential_scale=_gravity_scale,
 ))
 
 CONTACT = register_family(Family(
     name="contact", rig=contact_rig,
-    cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE, CaseKind.NODES),
+    cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE, CaseKind.NODES,
+           CaseKind.ENERGY),
     sign=SignRule("where the body is projected back, it moves no further out", _nothing_leaves_where_projected,
                   reads=(("body", POSE.name), ("body", TWIST.name)),
                   delivers=(("body", POSE.name), ("body", TWIST.name))),
@@ -425,7 +438,7 @@ CONTACT = register_family(Family(
 HYDRODYNAMIC = register_family(Family(
     name="hydrodynamic", rig=hydrodynamic_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
-           CaseKind.GRADIENTS, CaseKind.SWAP, CaseKind.NODES),
+           CaseKind.GRADIENTS, CaseKind.SWAP, CaseKind.NODES, CaseKind.ENERGY),
     sign=SignRule("the resistance dissipates: V^T R V > 0 for every nonzero twist, R symmetric positive definite",
                   _resistance_dissipates, delivers=(("body", RESISTANCE.name),)),
     material=("viscosity",),

@@ -4,7 +4,8 @@
 A family states what its laws must satisfy, over the vocabulary's interfaces rather than any one law's labels: its
 sign rule, the settings that stand for a material's properties, the pairs a two-way law delivers equal and opposite,
 a reference member a swap replaces, and a rig, the smallest experiment that holds one of its laws. Each case is
-checked on the law as the rig builds it. The sampled cases (sign, frame, oracle, gradients, equal and opposite) are
+checked on the law as the rig builds it. The sampled cases (sign, frame, oracle, gradients, equal and opposite,
+energy) are
 invariants of MADDENING's ``verify_node`` on the law's own node, each drawn and shrunk by Hypothesis; units,
 material reach and swap build the rig again; nodes runs MADDENING's whole battery on every node the law builds.
 
@@ -35,12 +36,13 @@ from mime import vocabulary
 from mime.build import BuildRefused, EntryPlan, ValueDeclaration
 from mime.build._maddening import node_dict, node_update
 from mime.build._report import graph_config
-from mime.core import shape_named
+from mime.core import ledger, quaternion, shape_named
 from mime.experiment import BuiltExperiment, Experiment
 from mime.nodes.body._rigid_inertial import CONTACT_ULPS
 from mime.registry import Interaction, registration_of, setting_value
 from mime.testing._nodes import NodeCase, computing_dtype, node_failures, run_verify_node
 from mime.units import TIME, Magnitude, Quantity
+from mime.vocabulary import EnergyClass
 
 #: ``jax.numpy``'s hints name a device type from jaxlib's compiled core, which ships no stubs.
 jnp: Any = jax.numpy
@@ -85,6 +87,7 @@ class CaseKind(Enum):
     EQUAL_AND_OPPOSITE = "equal and opposite"
     NODES = "nodes"
     CLOSED_LOOP = "closed loop"
+    ENERGY = "energy"
 
 
 @dataclass(frozen=True)
@@ -191,7 +194,9 @@ class Family:
     delivers, which move with it. ``linear_in`` names the members of ``material`` that what a law delivers is
     proportional to (a resistance to the medium's viscosity): changed by half, the response changes by half. ``loop``
     sets the closed-loop case: the laws that together derive from an energy do no net work round a closed loop of the
-    body's pose in a static field."""
+    body's pose in a static field. ``potential_scale(response)`` is, for a potential member's energy case, the
+    magnitude of the arithmetic its force and its couple are formed by (``|m g| + |F_b|`` and ``|c_b| |F_b|`` for
+    gravity), on which the wrench is judged against its energy's negative gradient."""
 
     name: str
     rig: Callable[[Interaction], Experiment]
@@ -207,6 +212,7 @@ class Family:
     uniform_along: tuple[tuple[float, float, float], ...] = ()
     linear_in: tuple[str, ...] = ()
     loop: WorkLoop | None = None
+    potential_scale: Callable[[Response], tuple[float, float]] | None = None
 
 
 _families: dict[str, Family] = {}
@@ -1097,6 +1103,185 @@ def check_nodes(probe: Probe, law: Interaction, node_case: NodeCase | None) -> V
     return VerificationResult("nodes", "PASS")
 
 
+#: The rounding floor the energy case judges against, in units of eps on its scale: the ledger's.
+ENERGY_ULPS = ledger.IDENTITY_ULPS
+#: How fast a body placed on its confining surface is drawn moving outward, at the least (m/s): enough that a step
+#: carries it past the surface by more than the contact's band of rounding, so the law acts on every draw.
+OUTWARD_SPEED = 1e-3
+
+
+def _eps(dtype: Any) -> float:
+    return float(np.finfo(np.dtype(dtype)).eps)
+
+
+def check_energy(probe: Probe, law: Interaction, family: Family, max_examples: int) -> VerificationResult:
+    """``law``'s energy class, settled by an exact identity on the law alone (F0-1 M6.4), judged against rounding on its
+    own scale. A law that declares no class states why (``Interaction.unmetered``). A **potential** law's delivered
+    wrench is the negative gradient of its family's energy on its node (``MimeNode.energy``), the force by the
+    position's gradient and the couple by the gradient on the rotation group (the pose turned by ``exp(theta)`` in the
+    world, at ``theta = 0``), within 16 eps of the arithmetic the family says it is formed by
+    (``Family.potential_scale``). A **dissipative** law's delivered operators are positive semidefinite at the ledger's
+    floor (``mime.core.ledger.definite_at_floor``, the rule its run-time check applies), and a load it delivers does no
+    positive work on the flow it reads, or is zero where it reads none (a force read at a state, which does work on some
+    motion, is no dissipation). A dissipative law **held in its receiver's step** (a contact) gives no energy through
+    the step's solve nor by its rule at arrival, on the receiver's step metered for it alone, from states placed on its
+    surface moving outward (:func:`onto_the_surface`), so that it acts on every draw. A workless law's identity comes
+    with its family."""
+    cls = type(law)
+    if law.energy_class is None:
+        if cls.unmetered:
+            return VerificationResult("energy", "PASS", detail=f"unmetered: {cls.unmetered}")
+        return _fail("energy", f"{cls.label()} declares no energy class (Interaction.energy_class) and states no reason "
+                               f"for being unmetered (Interaction.unmetered)")
+    if law.energy_class is EnergyClass.POTENTIAL:
+        return _check_potential(probe, family, max_examples)
+    if law.energy_class is EnergyClass.DISSIPATIVE:
+        if probe.free is not None:
+            return _check_held(probe, family, max_examples)
+        return _check_dissipative(probe, law, family, max_examples)
+    return _fail("energy", f"{cls.label()} is {law.energy_class.value}, and the {family.name} family states no exact "
+                           f"identity for that class yet")
+
+
+def _check_potential(probe: Probe, family: Family, max_examples: int) -> VerificationResult:
+    node = probe.node
+    scale = family.potential_scale
+    if scale is None:
+        return _fail("energy", f"the {family.name} family states no potential_scale to judge a potential law on")
+    if not _states_energy(node):
+        return _fail("energy", f"{probe.plan.owner}'s node states no energy (MimeNode.energy), and a potential law's "
+                               f"class is its wrench against that energy's negative gradient")
+    poses = [label for (_, interface), label in probe.reads_at.items() if interface == vocabulary.POSE.name]
+    wrenches = [label for (_, interface), label in probe.delivers_at.items()
+                if interface == vocabulary.APPLIED_WRENCH.name]
+    if len(poses) != 1 or len(wrenches) != 1:
+        return _fail("energy", f"{probe.plan.owner} reads {len(poses)} poses and delivers {len(wrenches)} wrenches, and "
+                               f"the potential case judges one wrench against its energy at one pose")
+    gradient = _energy_gradient(node)
+
+    def holds(response: Response, *_: Any) -> bool:
+        pose = jnp.asarray(response.read[poses[0]])
+        constants = {key: jnp.asarray(value, dtype=pose.dtype) for key, value in
+                     cast(Any, node)._step_constants(None).items()}
+        expected = -np.asarray(gradient(constants, pose), dtype=np.float64)
+        found = np.asarray(response.delivered[wrenches[0]], dtype=np.float64)
+        force_scale, couple_scale = scale(response)
+        floor = ENERGY_ULPS * _eps(pose.dtype)
+        apart = (float(np.linalg.norm(found[:3] - expected[:3])), float(np.linalg.norm(found[3:] - expected[3:])))
+        return apart[0] <= floor * force_scale and apart[1] <= floor * couple_scale
+
+    return _sampled(probe, family, "energy", holds, max_examples)
+
+
+def _states_energy(node: SimulationNode) -> bool:
+    from mime.core import MimeNode
+
+    return isinstance(node, MimeNode) and type(node).energy is not MimeNode.energy
+
+
+def _energy_gradient(node: SimulationNode) -> Callable[[Mapping[str, Any], Any], Any]:
+    """The gradient of ``node``'s energy at a pose, the position's and the rotation group's (the pose turned by
+    ``exp(theta)`` in the world at ``theta = 0``), compiled once."""
+    held = cast(Any, node)
+
+    def gradient(p: Mapping[str, Any], pose: Any) -> Any:
+        def energy(offset: Any) -> Any:
+            moved = jnp.concatenate([pose[:3] + offset[:3],
+                                     quaternion.multiply(quaternion.exponential(offset[3:]), pose[3:])])
+            return held.energy(p, moved)
+
+        return cast(Any, jax).grad(energy)(jnp.zeros(6, dtype=pose.dtype))
+
+    return cast(Callable[[Mapping[str, Any], Any], Any], cast(Any, jax).jit(gradient))
+
+
+def _check_dissipative(probe: Probe, law: Interaction, family: Family, max_examples: int) -> VerificationResult:
+    operators = {label: interface for (_, interface), label in probe.delivers_at.items()
+                 if _shape(interface) == (6, 6)}
+    loads = {label: interface for (_, interface), label in probe.delivers_at.items() if _shape(interface) == (6,)}
+    flows = {role: label for (role, interface), label in probe.reads_at.items() if interface == vocabulary.TWIST.name}
+    roles = {label: role for (role, _), label in probe.delivers_at.items()}
+    if not operators and not loads:
+        return _fail("energy", f"{probe.plan.owner} delivers no operator and no load, and the dissipative case judges "
+                               f"what a law delivers")
+
+    def holds(response: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
+        for label in operators:
+            if not bool(ledger.definite_at_floor(jnp.asarray(response.delivered[label]))):
+                return False
+        floors = _rounding(probe, state, boundary, dt) if loads else {}
+        for label in loads:
+            load = np.asarray(response.delivered[label], dtype=np.float64)
+            flow_label = flows.get(roles[label])
+            if flow_label is None:
+                if not bool(np.all(np.abs(load) <= floors[probe.outputs[label]])):
+                    return False
+                continue
+            flow = np.asarray(response.read[flow_label], dtype=np.float64)
+            power = float(load @ flow)
+            if power > ENERGY_ULPS * _eps(np.asarray(response.delivered[label]).dtype) * float(np.abs(load) @ np.abs(flow)):
+                return False
+        return True
+
+    del law
+    return _sampled(probe, family, "energy", holds, max_examples)
+
+
+def _shape(interface: str) -> tuple[int, ...] | None:
+    found = vocabulary.lookup(interface)
+    return tuple(found.shape) if found is not None and found.shape is not None else None
+
+
+def onto_the_surface(probe: Probe) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+    """For a law that confines a body on a cylinder (its node's ``surface_shape``), a map of drawn states onto the
+    shrunk surface (its radius less the body's extent and the margin), in the drawn direction about the axis, with
+    the drawn speed along it and at least :data:`OUTWARD_SPEED` outward across it: where the law acts on every draw.
+    ``None`` for another surface."""
+    own = cast(Mapping[str, Any], cast(Any, probe.node).params)
+    if own.get("surface_shape") != "cylinder":
+        return None
+    centre = np.asarray(own["surface_centre"], dtype=np.float64)
+    axis = np.asarray(own["surface_axis"], dtype=np.float64)
+    axis = axis / np.linalg.norm(axis)
+    room = float(own["surface_radius"]) - float(own["extent"]) - float(own["margin"])
+
+    def onto(drawn: dict[str, Any]) -> dict[str, Any]:
+        pose, twist = np.asarray(drawn["pose"]), np.asarray(drawn["twist"])
+        position = pose[:3].astype(np.float64) - centre
+        radial = position - (position @ axis) * axis
+        if float(np.linalg.norm(radial)) == 0.0:
+            radial = np.cross(axis, [1.0, 0.0, 0.0] if abs(axis[0]) < 0.9 else [0.0, 1.0, 0.0])
+        normal = radial / np.linalg.norm(radial)
+        placed = centre + (position @ axis) * axis + room * normal
+        velocity = twist[:3].astype(np.float64)
+        along = velocity - (velocity @ normal) * normal
+        outward = OUTWARD_SPEED + abs(float(velocity @ normal))
+        return {**drawn, "pose": np.concatenate([placed, pose[3:]]).astype(pose.dtype),
+                "twist": np.concatenate([along + outward * normal, twist[3:]]).astype(twist.dtype)}
+
+    return onto
+
+
+def _check_held(probe: Probe, family: Family, max_examples: int) -> VerificationResult:
+    """A dissipative law held in its receiver's step: the receiver's node metered for it alone, stepped once from
+    each drawn state placed on the surface moving outward, counts no step in which the law gave energy
+    (``ledger_gift_steps``)."""
+    onto = onto_the_surface(probe)
+    if onto is None:
+        return _fail("energy", f"{probe.plan.owner} confines a body on a surface other than a cylinder, and the case "
+                               f"places the body on its surface by the cylinder's closed form")
+    node = probe.node
+    delivery = ledger.LedgerDelivery("confinement", probe.plan.owner, ledger.DISSIPATIVE, ledger.HOSTED)
+    held = cast(Any, node)
+    metered = type(node)(node.name, float(held.delta_t), **dict(held.params), ledger=(delivery.encoded(),))
+
+    def holds(_: Response, state: Mapping[str, Any], boundary: Mapping[str, Any], dt: float) -> bool:
+        stepped = _update(metered, ledger.with_records(cast(Any, metered), dict(state)), boundary, dt)
+        return float(np.asarray(stepped[f"{ledger.RECORDS}gift_steps"])[0]) == 0.0
+
+    return _sampled(probe, family, "energy", holds, max_examples, also_constrain_state=onto)
+
+
 def conformance(law: Interaction, family: str | Family, *, oracle: Oracle | None = None,
                 swap_with: Interaction | None = None, node_case: NodeCase | None = None,
                 cases: Sequence[CaseKind] | None = None, max_examples: int = 200,
@@ -1124,8 +1309,10 @@ def conformance(law: Interaction, family: str | Family, *, oracle: Oracle | None
         CaseKind.EQUAL_AND_OPPOSITE: lambda: check_equal_and_opposite(probed, held, max_examples),
         CaseKind.NODES: lambda: check_nodes(probed, law, node_case),
         CaseKind.CLOSED_LOOP: lambda: check_closed_loop(law, held, together, max_examples),
+        CaseKind.ENERGY: lambda: check_energy(probed, law, held, max_examples),
     }
     return {case: run[case]() for case in wanted}
+
 
 
 def assert_conforms(law: Interaction, family: str | Family, *, oracle: Oracle | None = None,
