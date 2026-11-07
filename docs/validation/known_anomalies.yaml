@@ -3024,8 +3024,8 @@ anomalies:
       in float32 (reverse), each by 2.0 in the two cross-pair blocks; at the pairs apart, in reverse mode, 1 of 16 (pair
       b, through its self-pair block) in each precision; with the offset held alone, 3 of 48 (float64) and 2 of 48
       (float32) wrong at the azimuth ties and the pairs apart; under the barrier on the sine, 8 of 36 in each precision;
-      the whole body 1.67 and 1.01. Whether each control fails on every run of CI's runners is what the pull request's
-      stress runs measure.
+      the whole body 1.67 and 1.01. On CI, 20 of 20 stress runs of the file passed (the fix's pull request, its test code
+      as it stands here): every gate within its floor and every control failing the read before the fix, on every run.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
