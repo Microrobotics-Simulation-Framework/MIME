@@ -94,7 +94,7 @@ def test_the_script_parses_and_only_it_imports_modal(saved, tmp_path, released, 
     assert "modal" in imports and not any(name.split(".")[0] == "mime" for name in imports)
     held = load(written.script, tmp_path)
     assert "modal" in held["imported"] and "mime" not in held["imported"]
-    assert held["app"] == f"mime-{name}" and held["entrypoints"] == ["main", "verify", "fetch"]
+    assert held["app"] == f"mime-{name}" and held["entrypoints"] == ["main", "study", "verify", "fetch"]
 
 
 def test_the_layers_are_in_order_and_the_experiment_is_mounted_not_copied(saved, tmp_path, released):
@@ -223,7 +223,8 @@ def test_a_function_runs_in_one_container_unless_asked_and_is_never_retried(save
     held = load(write(saved / "full_toy", tmp_path / "one").script, tmp_path)
     assert {name: (settings["max_containers"], settings["retries"], settings["timeout"])
             for name, settings in held["functions"].items()} == {
-        "run_experiment": (1, 0, 7200), "verify_experiment": (1, 0, 7200), "fetch_assets": (1, 0, 7200)}
+        "run_experiment": (1, 0, 7200), "run_study": (1, 0, 7200), "verify_experiment": (1, 0, 7200),
+        "fetch_assets": (1, 0, 7200)}
     more = load(write(saved / "full_toy", tmp_path / "more", max_containers=4, timeout=900).script, tmp_path)
     assert {settings["max_containers"] for settings in more["functions"].values()} == {4}
     assert {settings["timeout"] for settings in more["functions"].values()} == {900}
@@ -232,8 +233,10 @@ def test_a_function_runs_in_one_container_unless_asked_and_is_never_retried(save
 def test_the_printed_fetch_goes_into_the_current_directory_which_exists(saved, tmp_path, released):
     """Client 1.6.3 fails on a destination folder that does not exist ([Errno 17], observed on Modal, 2026-10-31)."""
     script = write(saved / "full_toy", tmp_path / "out").script.read_text(encoding="utf-8")
-    (line,) = [line for line in script.splitlines() if "modal volume get" in line]
+    (line,) = [line for line in script.splitlines() if "modal volume get" in line and "{run_id}" in line]
     assert "modal volume get mime-runs {NAME}/{run_id} . " in line
+    (study,) = [line for line in script.splitlines() if "modal volume get" in line and "{run_id}" not in line]
+    assert "modal volume get mime-runs {out.removeprefix(RUNS_DIR + '/')} . " in study
 
 
 def test_the_builder_version_is_pinned_and_recorded(saved, tmp_path, released):
@@ -341,3 +344,64 @@ def test_mime_modal_writes_beside_the_experiment_and_exits_two_when_refused(save
     assert (tmp_path / "toy-modal" / "modal_app.py").is_file() and "::main --duration" in capsys.readouterr().out
     assert mime_main(["modal", str(folder), "--gpu", "H100"]) == 2
     assert "--gpu H100!" in capsys.readouterr().err
+
+
+def spec_for(folder, path, **options):
+    """A study spec file for the experiment saved in ``folder``, in its normal form."""
+    from mime.study import along
+    from mime.study._spec import spec_text
+    from mime.units import N, m, s
+
+    hash_ = json.loads((folder / LOCK_FILE).read_text(encoding="utf-8"))["hashes"]["input"]
+    points = along({"toy.spring:probe.k": [N(1.1) / m(1.0), N(1.7) / m(1.0)]})
+    path.write_text(spec_text(points, duration=s(0.2), record=[], every=None, batch=None, drop_refused=False,
+                              reasons={}, base="experiment", input_hash=options.get("input_hash", hash_)),
+                    encoding="utf-8")
+    return path
+
+
+def test_a_study_adds_an_entrypoint_that_runs_mime_study_run_in_one_container_and_resumes_by_name(saved, tmp_path,
+                                                                                                   released):
+    spec = spec_for(saved / "full_toy", tmp_path / "study.mime.yaml")
+    written = write(saved / "full_toy", tmp_path / "out", study=spec)
+    held = load(written.script, tmp_path)
+    assert (tmp_path / "out" / "study.mime.yaml").read_bytes() == spec.read_bytes()
+    assert held["constants"] == {"STUDY": "study.mime.yaml", "SHARDS": 1}
+    assert held["image"][-2:] == [{"step": "add_local_dir", "local": str(saved / "full_toy"), "remote": "/experiment",
+                                   "copy": False},
+                                  add(tmp_path / "out" / "study.mime.yaml", "/study/study.mime.yaml", False)]
+    check, run = held["study_calls"]
+    assert check[:3] == ["env", "check", "/experiment"]
+    assert run == ["study", "run", "/study/study.mime.yaml", "--base", "/experiment", "--out",
+                   "/runs/full_toy/study-mine", "--pilot"], run
+    assert held["entry_calls"] == [["remote", ["mine", 0, 1]]]
+    assert "::study --name <name>" in written.text() and "one container runs every group" in written.text()
+    assert {name: s["max_containers"] for name, s in held["functions"].items()}["run_study"] == 1
+
+
+def test_shards_split_the_groups_over_explicit_containers_and_each_writes_its_own_folder(saved, tmp_path, released):
+    spec = spec_for(saved / "full_toy", tmp_path / "study.mime.yaml")
+    written = write(saved / "full_toy", tmp_path / "out", study=spec, shards=4, max_containers=4)
+    held = load(written.script, tmp_path)
+    assert held["constants"]["SHARDS"] == 4 and held["functions"]["run_study"]["max_containers"] == 4
+    assert held["functions"]["run_study"]["retries"] == 0
+    run = held["study_calls"][1]
+    assert run[run.index("--out") + 1] == "/runs/full_toy/study-mine/shard-1-of-4" and run[-2:] == ["--shard", "1/4"]
+    (call,) = held["entry_calls"]
+    assert call[0] == "map" and call[1][1] == [0, 1, 2, 3] and call[1][2] == [4, 4, 4, 4]
+    assert "4 containers, one shard of its groups each" in written.text()
+
+
+def test_the_study_is_refused_before_anything_is_written_for_shards_without_their_containers_or_another_base(
+        saved, tmp_path, released):
+    spec = spec_for(saved / "full_toy", tmp_path / "study.mime.yaml")
+    other = spec_for(saved / "full_toy", tmp_path / "other.yaml", input_hash="sha256:" + "0" * 64)
+    for name, options, code in (("few", {"study": spec, "shards": 4, "max_containers": 1}, "modal.study-shards"),
+                                ("many", {"study": spec, "shards": 2, "max_containers": 4}, "modal.study-shards"),
+                                ("none", {"shards": 4, "max_containers": 4}, "modal.study-shards"),
+                                ("base", {"study": other}, "modal.study-base")):
+        with pytest.raises(BuildRefused) as refused:
+            write(saved / "full_toy", tmp_path / name, **options)
+        assert refused.value.codes() == [code], name
+        assert not (tmp_path / name).exists(), "nothing is written for a refused script"
+    assert (write(saved / "full_toy", tmp_path / "fine", study=spec, shards=2, max_containers=2).study is not None)
