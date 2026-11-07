@@ -23,7 +23,11 @@ numerical terms (``MimeNode.LEDGER_TERMS``) and its storage at the step's start 
 returns. :func:`recorded` keeps running sums of them in the receiver's state, with the identity's residual, ``dH - W +
 N``, judged each step against :data:`IDENTITY_ULPS` units of rounding on the step's scale. A potential law's energy
 is not judged per step: its class is settled on the law alone, and its energy's change over a run is taken from the
-run's ends."""
+run's ends.
+
+**The books are read, never stepped on.** No state a step reads depends on a record: the magnitudes the scale is
+formed from and the worst steps kept are diagnostics, so their non-smooth operations select no branch of the physics,
+and a derivative through the run (of a law's paired work, say) passes through the paired work's own sums."""
 
 from __future__ import annotations
 
