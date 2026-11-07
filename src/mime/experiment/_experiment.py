@@ -52,7 +52,7 @@ from mime.build._refusals import (
 )
 from mime.build import StageBinding, stage_binding
 from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
-from mime.build._maddening import FlagTally, FlagTest, holds_one_step_history, state_put_back, step_reads
+from mime.build._maddening import FlagTally, FlagTest, holds_one_step_history, set_node_state, state_put_back, step_reads
 from mime.errors import public
 from mime.errors._frames import warn_at_script
 from mime.experiment._mermaid import Mermaid, mermaid_of
@@ -106,6 +106,7 @@ from mime.things import (
     Body,
     BodyHandle,
     Handle,
+    LawHandle,
     Medium,
     MediumHandle,
     Structure,
@@ -120,6 +121,7 @@ from mime.vocabulary import JOINT_VELOCITIES
 if TYPE_CHECKING:
     from mime.cli._display import RunDisplay, Watch
     from mime.live import LiveSession
+    from mime.study._override import Overridden
     from mime.viz import RecordingSettings, StageSamples, WebPage
 
 type History = dict[str, dict[str, np.ndarray]]
@@ -315,10 +317,20 @@ class Experiment:
         self._load_checked = False
         self.load_report: LoadReport | None = None
 
+    def declared_as(self) -> tuple[RunSettings, tuple[Declaration, ...], SavedForm | None]:
+        """What this experiment declares as data: its run settings, its declarations, and the saved form it was loaded
+        from (``None`` for a script's), whose pins a build keeps: what a study declares its points in."""
+        return self._settings, tuple(self._declarations), self._saved
+
     def _declared_now(self) -> list[Declaration]:
         """The declarations held now: what an origin compares its own with (through a weak reference to this method, so
         that a result never keeps the experiment alive)."""
         return self._declarations
+
+    @classmethod
+    def declared_from(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
+        """An experiment of ``settings`` and ``declarations``, as data: what a study builds a group's point as."""
+        return cls._declared(settings, declarations)
 
     @classmethod
     def _declared(cls, settings: RunSettings, declarations: Sequence[Declaration]) -> Experiment:
@@ -392,31 +404,28 @@ class Experiment:
     @public
     def add_structure(self, structure: Structure) -> StructureHandle:
         self._add(structure, Structure)
-        geometry = type(structure.geometry) if structure.geometry is not None else None
-        if geometry is None:
-            return StructureHandle(structure.name)
-        return StructureHandle(structure.name, getattr(geometry, "regions", ()), getattr(geometry, "surfaces", {}),
-                               getattr(geometry, "directions", ()))
+        return _handle_of(structure)
 
     @public
     def add_medium(self, medium: Medium) -> MediumHandle:
         self._add(medium, Medium)
-        return MediumHandle(medium.name)
+        return _handle_of(medium)
 
     @public
     def add_body(self, body: Body) -> BodyHandle:
         self._add(body, Body)
-        return BodyHandle(body.name)
+        return _handle_of(body)
 
     @public
     def add_apparatus(self, apparatus: Apparatus) -> ApparatusHandle:
         self._add(apparatus, Apparatus)
-        return ApparatusHandle(apparatus.name, apparatus.fields)
+        return _handle_of(apparatus)
 
     @public
-    def attach(self, law: Interaction, /, **bindings: Handle | TypedPath | str) -> str:
+    def attach(self, law: Interaction, /, **bindings: Handle | TypedPath | str) -> LawHandle:
         """Bind an interaction to things by its roles; returns its id (its registered name and the things bound to
-        it). Every role is bound explicitly: there is no default binding."""
+        it), a ``str`` that also names its settings as typed paths (``drag.lubrication.epsilon``), as a study and an
+        override take them. Every role is bound explicitly: there is no default binding."""
         if not isinstance(cast(object, law), Interaction):  # a script is not type-checked
             raise ArgumentTypeRefused([Refusal(
                 "call.wrong-type", RefusalClass.USER,
@@ -429,7 +438,31 @@ class Experiment:
                     f"{role}= takes a handle, a typed path or a name, not {type(value).__name__}",
                     f"bind it to a thing: {role}= the handle add_body or add_medium returned, or its name")])
         self._declare(Attachment(law, dict(bindings)))
-        return entry_id(type(law), bindings)
+        return LawHandle(entry_id(type(law), bindings), law)
+
+    @public
+    def handle(self, name: str) -> Handle | LawHandle | ObservationHandle:
+        """The handle of what this experiment declares under ``name``: a thing (``exp.handle("field")``, as
+        ``add_apparatus`` returned it), a law by its id (``exp.handle("drag:umr")``, as ``attach`` returned it) or an
+        observation by its id. For an experiment that arrives with no handles: one loaded, or made by
+        :meth:`based_on`. An unknown name is refused, with the names it holds."""
+        things = {d.thing.name: d.thing for d in self._declarations if isinstance(d, ThingDeclaration)}
+        if name in things:
+            return _handle_of(things[name])
+        for declaration in self._declarations:
+            if isinstance(declaration, Attachment) and entry_id(type(declaration.law), declaration.bindings) == name:
+                return LawHandle(name, declaration.law)
+            if isinstance(declaration, ObservationDeclaration):
+                observation = declaration.observation
+                if entry_id(type(observation), observation.bindings()) == name:
+                    return ObservationHandle(name, tuple(output.field for output in type(observation).outputs))
+        known = [*things, *(entry_id(type(d.law), d.bindings) for d in self._declarations if isinstance(d, Attachment)),
+                 *(entry_id(type(d.observation), d.observation.bindings()) for d in self._declarations
+                   if isinstance(d, ObservationDeclaration))]
+        raise ArgumentRefused([Refusal(
+            "call.unknown-name", RefusalClass.USER, f"this experiment declares nothing named {name!r}",
+            f"name a thing, a law's id or an observation's id it declares, as `exp.handle(\"field\")` or "
+            f"`exp.handle(\"drag:umr\")`. {did_you_mean(name, known)}")])
 
     @public
     def declare(self, path: TypedPath | str, value: Quantity, *, reason: Basis | None = None) -> None:
@@ -576,7 +609,7 @@ class Experiment:
             load_report = check_load(self._saved, record, stages, edited_after_load=self._load_checked)
         origin = Origin(self._changes, len(self._changes), tuple(self._declarations), weakref.WeakMethod(self._declared_now))
         return BuiltExperiment(graph, report, plans, record, saved=self._saved, load_report=load_report, law=law,
-                               origin=origin)
+                               origin=origin, declared=(tuple(self._declarations), self._settings))
 
     @public
     def save(self, folder: str | PathLike[str], *, steps: int = DEFAULT_STEPS) -> Lock:
@@ -673,6 +706,22 @@ class Experiment:
         experiment = cls._declared(settings, parent._declarations)
         experiment._inherited, experiment._parent = tuple(experiment._declarations), parent.name
         return experiment
+
+
+def _handle_of(thing: Any) -> Any:
+    """A thing's handle, as ``add_*`` returns it: a structure's with its geometry's regions, surfaces and directions, an
+    apparatus's with its fields and commands, a body's with its dynamics' initial state."""
+    if isinstance(thing, Structure):
+        geometry = type(thing.geometry) if thing.geometry is not None else None
+        if geometry is None:
+            return StructureHandle(thing.name)
+        return StructureHandle(thing.name, getattr(geometry, "regions", ()), getattr(geometry, "surfaces", {}),
+                               getattr(geometry, "directions", ()))
+    if isinstance(thing, Apparatus):
+        return ApparatusHandle(thing.name, thing.fields, thing.commands)
+    if isinstance(thing, Body):
+        return BodyHandle(thing.name, getattr(type(thing.dynamics), "initial_state", {}))
+    return MediumHandle(thing.name)
 
 
 def _pulled(source: str | PathLike[str], accept_licences: Collection[str], yes: bool,
@@ -933,8 +982,13 @@ class BuiltExperiment:
 
     def __init__(self, graph: GraphManager, report: BuildReport, plans: PlanSet, record: SavedRecord, *,
                  saved: SavedForm | None = None, load_report: LoadReport | None = None,
-                 law: ControlLaw | None = None, origin: Origin | None = None) -> None:
+                 law: ControlLaw | None = None, origin: Origin | None = None,
+                 declared: tuple[tuple[Declaration, ...], RunSettings] | None = None) -> None:
         self._graph = graph
+        #: The declarations and run settings it was built from, which an overridden run declares its values in.
+        self._declared: tuple[tuple[Declaration, ...] | None, RunSettings | None] = declared or (None, None)
+        #: Its own point, assembled as an overridden run's is (``mime.study._override.base_point``), once asked for.
+        self.own_point: Any = None
         self._report = report
         self._origin = origin
         self._plans = plans
@@ -1109,7 +1163,7 @@ class BuiltExperiment:
     def run(self, duration: Quantity, *, history: bool = False,
             record: Sequence[OutputRef | ObservationHandle | str] = (), every: Quantity | None = None,
             hook: ChunkHook | None = None, chunk: Quantity | None = None, stop: StopRequest | None = None,
-            progress: bool | None = None) -> RunResult:
+            progress: bool | None = None, override: Mapping[Any, object] | None = None) -> RunResult:
         """Run for ``duration``, a whole number of base steps, in compiled chunks, between which Python regains control
         (a ``KeyboardInterrupt`` arrives there, and a ``stop`` is asked). With a controller they are its control
         periods, with the controller called between them. ``hook`` is called after every chunk with a
@@ -1138,16 +1192,26 @@ class BuiltExperiment:
         reads where each chunk ended and the flags raised there, and changes neither the chunks nor anything the run
         computes.
 
+        ``override`` declares values for this run alone (``{field.commands.frequency: Hz(20.0)}``, by the paths a
+        study's axes take): the run's point is this experiment with them declared, planned in full, so its validity
+        lines, material reads and refusals are judged again, and it runs on this build's compiled step with its own
+        parameter leaves (and initial state, on a run from the start), every output stamped "overridden" with the
+        values. What another compiled step would need is refused with its route: a value baked into a static or the
+        structure (a rebuild: a Study, or ``Experiment.based_on``), a numerical setting, ``dt``, the precision or a
+        rung (a variant). The next run without one runs the build's own values.
+
         A build whose experiment has had a replacement or a removal since is refused in a notebook or IPython, and warned
         about in a script (:attr:`stale`)."""
         self._fresh()
+        point = self._overridden(override)
         display = _python_display(progress)
         if display is None:
-            return self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk, stop=stop)
+            return self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk, stop=stop,
+                             point=point)
         try:
             watch = self._watch(display, duration, stop, finishing="finishing the last chunk")
             result = self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk,
-                               stop=watch.stop)
+                               stop=watch.stop, point=point)
             watch.ended(result.steps)
             return result
         finally:
@@ -1159,9 +1223,16 @@ class BuiltExperiment:
 
         return Watch(display, self.steps_in(duration), self._plans.dt, self.raised_flags, stop, finishing=finishing)
 
+    def _overridden(self, override: Mapping[Any, object] | None) -> Overridden | None:
+        if not override:
+            return None
+        from mime.study._override import overridden
+
+        return overridden(self, override)
+
     def _run(self, duration: Quantity, *, history: bool, record: Sequence[OutputRef | ObservationHandle | str],
              every: Quantity | None, hook: ChunkHook | None, chunk: Quantity | None,
-             stop: StopRequest | None) -> RunResult:
+             stop: StopRequest | None, point: Overridden | None = None) -> RunResult:
         steps = self.steps_in(duration)
         recorded = self._recording(record)
         if every is not None and not (recorded or history):
@@ -1192,14 +1263,18 @@ class BuiltExperiment:
             {(output.node, output.field) for output in recorded}
             | {(flag.node, flag.field) for flag in self.layout.flags}
             | {(plan.node, plan.field) for plan in self._plans.watches if isinstance(plan, ContainmentPlan)})
+        if point is not None and start == 0:
+            for name in point.starting:
+                set_node_state(self._graph, name, point.point.state[name])
         final, stacked = self._runs.run(steps, history=kept, hook=hook, chunk=size, keep=keep,
                                         automatic=hook is None and self._runs.chunk is None, stop=stop,
-                                        tests=self._flag_tests())
+                                        tests=self._flag_tests(), params=point.params if point is not None else None)
         taken = self._runs.steps - start
         why = self._runs.stopped
         result = self.result_of(start, taken, final, stacked, recorded if not history else self.layout.per_step(),
                                 spacing, history=history,
-                                stopped=Stopped(why, steps) if why is not None else None, tally=self._runs.tally)
+                                stopped=Stopped(why, steps) if why is not None else None, tally=self._runs.tally,
+                                point=point)
         refusal = non_finite(final, stacked, self._report.nodes, start, self._plans.dt, kept_all=history,
                              already=self._non_finite)
         if refusal is not None:
@@ -1207,6 +1282,38 @@ class BuiltExperiment:
                 self._non_finite = NonFinite(first_non_finite(refusal), start + taken)
             raise RunFailed(stopped_refusals(self._graph, final) or [refusal], result)
         return result
+
+    @property
+    def declared(self) -> tuple[tuple[Declaration, ...] | None, RunSettings | None]:
+        """The declarations and run settings it was built from (``None`` for a build made without an experiment)."""
+        return self._declared
+
+    @property
+    def saved_form(self) -> SavedForm | None:
+        """The saved form it was loaded from or saved to, whose pins a build of its points keeps; ``None`` for neither."""
+        return self._saved
+
+    @property
+    def law(self) -> ControlLaw | None:
+        """The controller's law the build made from its settings, or ``None``."""
+        return self._law
+
+    @property
+    def steps_taken(self) -> int:
+        """The base steps its runs have taken since the graph's start."""
+        return self._runs.steps
+
+    def recording(self, record: Sequence[OutputRef | ObservationHandle | str]) -> list[OutputLayout]:
+        """The per-step outputs ``record`` names, as :meth:`run` resolves them."""
+        return self._recording(record)
+
+    def spacing(self, every: Quantity | None) -> int:
+        """``every`` in base steps, as :meth:`run` takes it."""
+        return self._spacing(every)
+
+    def flag_tests(self) -> tuple[FlagTest, ...]:
+        """Each flag of the layout as a scan tests it (:meth:`_flag_tests`)."""
+        return self._flag_tests()
 
     def _flag_tests(self) -> tuple[FlagTest, ...]:
         """Each flag of the layout as a scan tests it, for a run that keeps no step's state to reduce them over."""
@@ -1222,11 +1329,20 @@ class BuiltExperiment:
 
     def result_of(self, start: int, steps: int, final: History, stacked: History | None = None,
                   recorded: Sequence[OutputLayout] = (), spacing: int = 1, *, history: bool = False,
-                  stopped: Stopped | None = None, tally: FlagTally | None = None) -> RunResult:
+                  stopped: Stopped | None = None, tally: FlagTally | None = None, point: Overridden | None = None,
+                  plans: PlanSet | None = None, report: Mapping[str, Any] | None = None) -> RunResult:
         """The result of ``steps`` steps from step ``start`` that ended at ``final``: the series ``recorded`` names from
         ``stacked`` (every step's kept state, where the run kept it), one every ``spacing``, and each flag over the
         steps kept; or, where none were, over all of them as the run reduced it (``tally``, in the order of the layout's
-        flags), or at the last step alone."""
+        flags), or at the last step alone. An overridden run's (``point``) carries its point's layout, watches and
+        report, and its overrides; a study's member's, its own ``plans`` and ``report``."""
+        if point is not None:
+            from mime.study._study import member_report
+
+            plans = point.point.plans
+            report = member_report(self, point.point)
+        layout = run_layout(plans) if plans is not None else self.layout
+        watched = plans.watches if plans is not None else self._plans.watches
         tracks: dict[str, FlagTrack] = {}
         series: dict[str, Samples] = {}
         if stacked is not None:
@@ -1234,20 +1350,21 @@ class BuiltExperiment:
             chosen = counts % spacing == 0
             for output in recorded:
                 series[output.path] = Samples(counts[chosen], np.asarray(stacked[output.node][output.field])[chosen])
-            for flag in self.layout.flags:
+            for flag in layout.flags:
                 raised = flag.raised(stacked[flag.node][flag.field])
                 tracks[flag.path] = FlagTrack(raised, bool(raised[-1]))
         else:
             tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]),
                                            _whole_run(tally, index))
-                      for index, flag in enumerate(self.layout.flags)}
-        return RunResult(steps, final, stacked if history else None, layout=self.layout, start_step=start,
+                      for index, flag in enumerate(layout.flags)}
+        return RunResult(steps, final, stacked if history else None, layout=layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
-                         watches=read_watches(self._plans.watches, final, stacked if history else None),
-                         containment=functools.partial(read_containments, self._plans.watches, final,
+                         watches=read_watches(watched, final, stacked if history else None),
+                         containment=functools.partial(read_containments, watched, final,
                                                        self._poses_kept(stacked), last_step=start + steps,
                                                        dt=self._plans.dt),
-                         report=self.report_summary(), stopped=stopped, origin=self._origin)
+                         report=report if report is not None else self.report_summary(), stopped=stopped,
+                         origin=self._origin, overrides=point.records if point is not None else ())
 
     @public
     def binding(self) -> StageBinding:
@@ -1338,7 +1455,7 @@ class BuiltExperiment:
                source: str | PathLike[str] | None = None, load_seconds: float | None = None,
                hook: ChunkHook | None = None, chunk: Quantity | None = None,
                stage_every: Quantity | None = None, stop: StopRequest | None = None,
-               progress: bool | None = None) -> RunWritten:
+               progress: bool | None = None, override: Mapping[Any, object] | None = None) -> RunWritten:
         """Run for ``duration`` and write into ``out`` what ``mime run`` does: ``outputs.npz`` (every field after the
         last step, with ``history`` at every step, the series ``record`` names, one every ``every``, and the flags at
         every step when anything is recorded), ``outputs.json`` beside it (its manifest: every output with its unit,
@@ -1368,18 +1485,23 @@ class BuiltExperiment:
         (``record`` or ``history``, with ``stage_every``, ``chunk`` or a controller of one step) has compiled their
         program already; any other run compiles it once more.
 
+        ``override`` runs the point :meth:`run` describes: ``run.json`` records each override (its path, its value with
+        its unit, its SI value and the leaves it writes), ``report.json`` is the point's, every output is stamped
+        "overridden", and ``experiment/`` is this build's own saved form, unchanged; ``mime verify --run`` replays them.
+
         As :meth:`run`, a stale build is refused in a notebook or IPython and warned about in a script."""
         self._fresh()
+        point = self._overridden(override)
         display = _python_display(progress)
         if display is None:
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=stop, watch=None)
+                                stop=stop, watch=None, point=point)
         try:
             watch = self._watch(display, duration, stop)
             return self._run_to(out, duration, history=history, record=record, every=every, source=source,
                                 load_seconds=load_seconds, hook=hook, chunk=chunk, stage_every=stage_every,
-                                stop=watch.stop, watch=watch)
+                                stop=watch.stop, watch=watch, point=point)
         finally:
             display.close()
 
@@ -1387,7 +1509,7 @@ class BuiltExperiment:
                 record: Sequence[OutputRef | ObservationHandle | str], every: Quantity | None,
                 source: str | PathLike[str] | None, load_seconds: float | None, hook: ChunkHook | None,
                 chunk: Quantity | None, stage_every: Quantity | None, stop: StopRequest | None,
-                watch: Watch | None) -> RunWritten:
+                watch: Watch | None, point: Overridden | None = None) -> RunWritten:
         import time
 
         started = time.perf_counter()
@@ -1397,7 +1519,7 @@ class BuiltExperiment:
         samples, hook, chunk = self._stage_samples(stage_every, hook, chunk)
         try:
             result = self._run(duration, history=history, record=record, every=every, hook=hook, chunk=chunk,
-                               stop=stop)
+                               stop=stop, point=point)
         except RunFailed as error:
             if not isinstance(error.result, RunResult):
                 raise
@@ -1417,7 +1539,8 @@ class BuiltExperiment:
             manifest["non_finite"] = refused
         (target / RUN_TOPOLOGY).write_text(json.dumps(self.topology(), indent=2, sort_keys=True) + "\n",
                                            encoding="utf-8", newline="\n")
-        (target / RUN_REPORT).write_text(json.dumps(self.report_summary(), indent=2, sort_keys=True) + "\n",
+        summary = result.report if point is not None and result.report is not None else self.report_summary()
+        (target / RUN_REPORT).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n",
                                          encoding="utf-8", newline="\n")
         recording = None
         if samples is not None:
@@ -1437,6 +1560,8 @@ class BuiltExperiment:
             "recording": recording.name if recording is not None else None}
         if result.stopped is not None:
             written["stopped"] = manifest["stopped"]
+        if point is not None:
+            written["overrides"] = [dict(record) for record in point.records]
         (target / RUN_RECORD).write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         (target / RUN_MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                                            encoding="utf-8", newline="\n")
