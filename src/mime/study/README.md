@@ -38,6 +38,20 @@
   override changes nothing the run computes from (`override.no-effect`); recorded in `run.json` and replayed by
   `mime verify --run`.
 
+- **A study in a folder** (`_folder_run.py`, `_record.py`, `_content.py`, `_spec.py`): `study.run_to(folder)` writes a
+  study folder (see `mime.results`) group by group and batch by batch, into a new or empty folder or one that holds the
+  same study (anything else is refused and left untouched; `study.json` is written first and marks the folder as the
+  study's), and a run into a folder that holds the same study resumes: a member is reused only if it is `done` under the
+  same content key (its point, its group's structure key, the base's input hash, the run, and the code: every file of
+  the installed `mime` package and of a package its classes come from, with the versions of MADDENING, OpenMaterica,
+  JAX, jaxlib, NumPy and SciPy), so any change to MIME's files runs every member again. The spec file `study.mime.yaml`
+  is the study as data (safe-loaded, closed, versioned, no code; `Study.from_spec`), `mime study plan` and `mime study
+  run` (`--out`, `--pilot`, `--shard i/k`, by structure group) work on it, and `mime modal --study` adds a `study`
+  entrypoint.
+  In the research profile each axis needs its own reason (`sweep(..., reasons={...})`, `study.axis-reason`).
+- **From a member to an experiment** (`_bridge.py`): `result.member(i).as_experiment(name)`, `Experiment.based_on(<the
+  base>, name=name)` with the member's values declared, each with the reason `from study <id>, member <i>`.
+
 ## Boundaries
 
 - It builds and runs experiments through `experiment` and `build`; it holds no code of the user's, so a study is data.
@@ -45,7 +59,8 @@
 
 ## Status
 
-Sweeps and overrides are built (dev2, the study layer's first phase). The drives that ramp a command, the step-out study, saving a study and its
-table, checkpoints and forks, variants, fits and sensitivities come later.
+Sweeps, overrides, the study folder, the spec file and `mime study`, resume and the bridge to an experiment are built
+(dev2, the study layer's first two phases). The drives that ramp a command, the step-out study, plots and comparisons,
+checkpoints and forks, variants, fits and sensitivities come later.
 
 Releases are explained in the [package manifest](../README.md#status).

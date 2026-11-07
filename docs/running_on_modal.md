@@ -71,6 +71,30 @@ lock records the device kind actually served. A claim of bits compares that kind
 environment. The upgrade cost nothing in the one bill read: it listed an `A100-40GB` line only, none for the 80 GB
 (observed on one bill, 2026-10-29).
 
+## Running a study
+
+`mime modal <folder> --study study.mime.yaml` copies a study's spec file beside the script and adds a `study` entrypoint.
+The spec must be of this experiment (its `base.input_hash` is the folder's), checked before anything is written:
+
+<!-- mime-fragment: commands that start a Modal job, shown and never run by a check -->
+```sh
+mime modal fl9_water/ --study study.mime.yaml          # writes fl9_water-modal/ with study.mime.yaml beside the script
+modal run fl9_water-modal/modal_app.py::study --name step_out
+modal volume get mime-runs fl9_water/study-step_out .
+```
+
+One container runs every group, by default: it checks the environment, then runs `mime study run` on the spec against the
+mounted experiment, with `--pilot` (the first chunk of the first group, run twice, prints what a member costs before the
+rest runs), into `study-<name>` on the `mime-runs` Volume. The same `--name` again resumes the study from what the
+Volume holds: a member that is `done` under the same content key is not run again, and a change to any of MIME's files
+runs every member again. The only fan-out is explicit and recorded in the script: `--shards K --max-containers K` runs
+`K` containers, each `mime study run --shard i/K`, each writing a study folder of its own
+(`study-<name>/shard-<i>-of-<K>`) that holds its groups' members and reads, with `StudyResult.read`, as a study with the
+other shards' members missing. Sharding is by structure group: `K` is at most the study's groups (`mime study plan`
+lists them; a sweep whose points all compile alike is one group), and with more, each container refuses (`study.shard`)
+before it writes anything. Merging the shard folders into one is not built. Nothing is retried, and the timeout is the
+function's, as for a run.
+
 ## The image
 
 Its layers, in the order that changes least often first:
