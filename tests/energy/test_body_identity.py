@@ -107,7 +107,7 @@ def test_a_centre_held_body_s_step_books_close_with_the_contact_s_terms_under_it
 @settings(deadline=None)
 @given(drawn=hull_held_states())
 def test_a_hull_held_body_s_step_books_close_with_the_projection_s_turn(name, loops, drawn):
-    """Both of the contact's programs: 0.4.0's unrolled sweeps and search, and 0.5.0's XLA loops (the build's default)."""
+    """Both of the contact's programs: 0.4.0's unrolled sweeps, 0.5.0's XLA loops (the build's default)."""
     with in_dtype(name) as dtype:
         found = one_step(node("hull", loops=loops), drawn, dtype)
     assert identity_over_floor(found) <= 1.0, identity_over_floor(found)

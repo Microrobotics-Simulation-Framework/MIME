@@ -180,15 +180,29 @@ def hull_held_states(draw: Callable[..., Any]) -> dict[str, np.ndarray]:
 #: (either sign) to a booked term, a misbooking in the step's account: the hosted contact's loss and its projection's
 #: shift, and the three terms of the scheme.
 ANGULAR_GIFT, LINEAR_GIFT, CONTACT_GIFT, HOSTED_LOSS, HOSTED_SHIFT, EULER, GYROSCOPIC, CONFIGURATION = range(8)
+#: Two more that are not a number of floors: ``REVERSED_HOLD`` takes the contact's correction the wrong way that many
+#: times over (the physical form of a contact that gives energy), ``HALVED_TERMS`` books the scheme's terms at half
+#: (a flag, 1 for halved).
+REVERSED_HOLD, HALVED_TERMS = 8, 9
 PLANTS = ("angular_gift", "linear_gift", "contact_gift", "hosted_loss", "hosted_shift", "backward_euler", "gyroscopic",
-          "configuration")
+          "configuration", "reversed_hold", "halved_terms")
 
 
 class PlantedBody(RigidInertialTensorNode):
     """A plant, one node for every defect so that each arm compiles once per dtype: ``rigid_inertial`` 0.4.0's node
     whose step is the unplanted step, then the defects of ``p["plant"]`` (floors each, zero for none, in the order of
-    :data:`PLANTS`), the account formed from the planted end of the step. With every size zero it is the unplanted
-    node, bit for bit."""
+    :data:`PLANTS`; the last two not floors), the account formed from the planted end of the step. With every size
+    zero it is the unplanted node, bit for bit."""
+
+    def held(self, p, position, system, moved, dt):
+        corrected = super().held(p, position, system, moved, dt)
+        return jnp.where(p["plant"][REVERSED_HOLD] != 0.0, moved - p["plant"][REVERSED_HOLD] * (corrected - moved),
+                         corrected)
+
+    def hull_held(self, p, body, pose, system, moved, dt):
+        found = super().hull_held(p, body, pose, system, moved, dt)
+        reversed_hold = moved - p["plant"][REVERSED_HOLD] * (found[0] - moved)
+        return (jnp.where(p["plant"][REVERSED_HOLD] != 0.0, reversed_hold, found[0]), *found[1:])
 
     def advance(self, p, state, boundary_inputs, dt):
         held = books.deliveries(self.constants())
@@ -217,8 +231,9 @@ class PlantedBody(RigidInertialTensorNode):
         for row, gift in zip(contacts, gifts, strict=True):
             work = work.at[row].add(gift)
             hosted = hosted.at[row].add(floor * jnp.stack([plant[HOSTED_LOSS], plant[HOSTED_SHIFT]]))
+        halved = jnp.where(plant[HALVED_TERMS] != 0.0, 0.5, 1.0)
         account = dataclasses.replace(account, work=work, hosted=hosted,
-                                      terms=account.terms + floor * plant[EULER:CONFIGURATION + 1])
+                                      terms=halved * account.terms + floor * plant[EULER:CONFIGURATION + 1])
         return {**planted, **books.recorded(state, account, held)}
 
 
@@ -309,6 +324,7 @@ def identity_over_floor(found: Mapping[str, jax.Array]) -> float:
 
 
 __all__ = ["ANGULAR_GIFT", "CHECKED_DRAG", "CONFIGURATION", "CONTACT_GIFT", "CONTACT_LAW", "DRAG_LAW", "EULER",
-           "GYROSCOPIC", "HOSTED_LOSS", "HOSTED_SHIFT", "LINEAR_GIFT", "LOAD_LAW", "MASS", "PLANTS", "PlantedBody",
+           "GYROSCOPIC", "HALVED_TERMS", "HOSTED_LOSS", "HOSTED_SHIFT", "LINEAR_GIFT", "LOAD_LAW", "MASS", "PLANTS",
+           "PlantedBody", "REVERSED_HOLD",
            "centre_held_states", "free_states", "hull_held_states", "identity_over_floor", "in_dtype", "law_inputs",
            "metered_body", "one_step", "unit", "vector"]

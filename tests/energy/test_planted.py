@@ -1,8 +1,10 @@
 """The ledger's controls, sized in the floor's own units (the fix round of the first review, M1 and M2): every planted
 defect is a number of the step's floors, 16 eps of the step's scale taken from the unplanted step, so that a plant
 clears its floor on every draw by construction, in float32 as in float64, on every arm: the free body, its centre held
-on script A's tube wall, and the rod held by its hull (the contact 0.4.0's unrolled program, and the 0.5.0's loops,
-the build's default).
+on script A's tube wall, and the rod held by its hull (the contact 0.5.0's loops, the build's default; the plants act
+on the books, which the contact 0.4.0's unrolled program shares, and compiling that program as well costs more than the
+test's budget: ``test_body_identity`` runs both programs' identity, and the counts taken for this round on the unrolled
+program, 200 draws a cell, are in ``predictions.json``).
 
 **What each plant is.** A gift of 64 floors (the end of the step's storage raised by 64 floors by scaling the ended
 angular twist, unbooked) must read as 64 floors on the identity, on every draw. The same for a term of the books
@@ -10,7 +12,8 @@ misbooked by 64 floors, either sign, on the contact's loss and its projection's 
 scheme's three terms. And **a contact that gives energy**: its net work over the step made 64 floors, positive, the
 identity closed (the gift booked under the contact's name, as an honest account of a dishonest law), caught by the
 law's class alone: the dissipative law's sign, ``ledger_gift_steps``. Its physical form, the hold reversed (the
-correction taken the wrong way, 100 times over), is caught by the same sign. An unplanted step counts no gift.
+correction taken the wrong way, 100 times over), is caught by the same sign. An unplanted step counts no gift
+(``test_body_identity``, every arm).
 
 **What the books cannot see, stated.** A gift in the end's *translational* twist of a held body is absorbed by the
 velocity rule's loss, which is the difference between the solve's speed and the step's end speed, so it reads as a
@@ -24,8 +27,6 @@ weight, to 64 floors) they are checked in float32 and float64 above."""
 
 from __future__ import annotations
 
-import dataclasses
-
 import jax
 import jax.numpy as jnp
 import pytest
@@ -36,11 +37,13 @@ from ledger_cases import (
     CONTACT_GIFT,
     EULER,
     GYROSCOPIC,
+    HALVED_TERMS,
     HOSTED_LOSS,
     HOSTED_SHIFT,
     LINEAR_GIFT,
     PLANTS,
     PlantedBody,
+    REVERSED_HOLD,
     centre_held_states,
     free_states,
     hull_held_states,
@@ -63,33 +66,12 @@ REVERSAL = 100.0
 ARMS = {
     "free": ("", False, free_states(stiff=True)),
     "centre": ("centre", False, centre_held_states()),
-    "hull": ("hull", False, hull_held_states()),
     "hull_looped": ("hull", True, hull_held_states()),
 }
-HELD = ["centre", "hull", "hull_looped"]
+HELD = ["centre", "hull_looped"]
 EVERY_ARM = pytest.mark.parametrize("arm", list(ARMS))
 HELD_ARM = pytest.mark.parametrize("arm", HELD)
 DTYPES = pytest.mark.parametrize("name", ["float32", "float64"])
-
-
-class ReversedHold(RigidInertialTensorNode):
-    """A plant: the contact's hold taken the wrong way ``REVERSAL`` times over (the centre-held rule's, the hull's
-    solve's), so that the contact pushes the body outward instead of holding it."""
-
-    def held(self, p, position, system, moved, dt):
-        return moved - REVERSAL * (super().held(p, position, system, moved, dt) - moved)
-
-    def hull_held(self, p, body, pose, system, moved, dt):
-        found = super().hull_held(p, body, pose, system, moved, dt)
-        return (moved - REVERSAL * (found[0] - moved), *found[1:])
-
-
-class HalvedTerms(RigidInertialTensorNode):
-    """A plant: the scheme's three terms booked at half their value."""
-
-    def identity_terms(self, *arguments, **keywords):
-        account = super().identity_terms(*arguments, **keywords)
-        return dataclasses.replace(account, terms=0.5 * account.terms)
 
 
 BODIES: dict[tuple[type, str, bool], RigidInertialTensorNode] = {}
@@ -185,11 +167,11 @@ def test_a_hold_reversed_is_caught_by_the_contact_s_sign_wherever_the_hold_acts(
     @settings(deadline=None)
     @given(drawn=ARMS[arm][2])
     def check(drawn):
-        node = body(arm, ReversedHold)
+        node = body(arm)
         row = contact_row(node)
         with in_dtype(name) as dtype:
-            found = one_step(node, drawn, dtype)
-            clean = one_step(body(arm, RigidInertialTensorNode), drawn, dtype)
+            found = one_step(node, drawn, dtype, plant={REVERSED_HOLD: REVERSAL})
+            clean = one_step(node, drawn, dtype)
         holds = not bool(jnp.array_equal(found["twist"], clean["twist"]))
         acting.append(holds)
         if holds:
@@ -229,23 +211,7 @@ def test_the_scheme_s_terms_halved_are_caught_by_value_in_float64(arm, name):
     @given(drawn=ARMS[arm][2])
     def check(drawn):
         with in_dtype(name) as dtype:
-            found = one_step(body(arm, HalvedTerms), drawn, dtype)
+            found = one_step(body(arm), drawn, dtype, plant={HALVED_TERMS: 1.0})
         assert identity_over_floor(found) > 1e3, identity_over_floor(found)
-
-    check()
-
-
-@DTYPES
-@EVERY_ARM
-def test_an_unplanted_step_counts_no_gift_and_closes(arm, name):
-    @settings(deadline=None)
-    @given(drawn=ARMS[arm][2])
-    def check(drawn):
-        node = body(arm, RigidInertialTensorNode)
-        with in_dtype(name) as dtype:
-            found = one_step(node, drawn, dtype)
-            gifts = float(jnp.sum(found["ledger_gift_steps"]))
-        assert identity_over_floor(found) <= 1.0
-        assert gifts == 0.0
 
     check()
