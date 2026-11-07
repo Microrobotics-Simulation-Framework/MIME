@@ -1,8 +1,8 @@
 """W7 as a list. An empty equations, assumptions or references field prints ``none declared`` and is counted
 (``test_pages.py``); ``mime docs check`` also holds the fields of MIME's own to ``docs/ratchets/none_declared.txt``, as
-it holds the README start list: today's cases are listed with the shared reason ``present at D1b``, a new empty field
-fails until it has its own line and reason, a listed field that is now filled fails until its line is deleted, and,
-against a base revision, a line giving the shared reason that the base's list does not hold fails.
+it holds the README start list: the cases that stood at the start each ended filled or with a reason of its own, a
+new empty field fails until it has its own line and reason, a listed field that is now filled fails until its line is
+deleted, and, against a base revision, a line giving the shared start reason that the base's list does not hold fails.
 
 The toys' and a lab's entries are outside the list, by item 5's namespace rules: their fields are counted in the build's
 summary and never listed. The controls run the real command over a copy of the checkout; each plant is fixed, so each
@@ -28,22 +28,12 @@ def listing(root, line):
     return path
 
 
-#: The lines added after the start, each a cut with its own reason, logged with the maintainer: the free-space wall
-#: kind's references (phase 7h), a definition that rests on no work, and the references of three nodes given their
-#: tables at docs phase D3, each a definition that rests on no work; and dev2's drives (the ramp, the phase lag and
-#: the integrating field 0.2.0, whose 0.1.0 held a start line, and their three nodes), each a definition that rests on
-#: no work, as those are.
-ADDED = {"wall_kind free_space 0.1.0 references", "node ConstantNode references", "node SwimSpeedNode references",
-         "node UniformRotatingNode references", "drive drive.ramp 0.1.0 references",
-         "observation phase_lag 0.1.0 references", "field_provider uniform_rotating 0.2.0 references",
-         "node IntegratingRotatingNode references", "node RampNode references", "node PhaseLagNode references"}
-
-
-def test_the_start_list_holds_exactly_the_empty_fields_of_mimes_own_entries():
+def test_every_line_of_the_list_has_its_own_reason_the_shared_start_reason_having_been_closed():
+    """Each case that stood when the list landed was either filled (its line deleted) or given the reason it rests on
+    no work, with its route; the start reason is on no line, and the rule that a new line may not give it is held by
+    the planted controls below."""
     held = read_lists(ROOT)["none_declared"]
-    start = [line for line in held.lines if line.item not in ADDED]
-    assert len(start) >= 3 and {line.reason for line in start} == {NONE_DECLARED_START}
-    assert all(line.reason != NONE_DECLARED_START for line in held.lines if line.item in ADDED)
+    assert held.lines and all(line.reason != NONE_DECLARED_START for line in held.lines)
     assert all(item.endswith(" references") for item in held.items())
 
 
@@ -55,7 +45,7 @@ def test_a_new_empty_field_of_mimes_fails_naming_it_until_it_has_its_own_line(tm
     listing(root, f"{EMPTY_ITEM}  # a plant, with its own reason")
     done = docs_check(root, plant="mime_empty")
     assert done.returncode == 0, done.stdout
-    assert re.search(r"none declared in MIME's pages: 14 fields, 3 of the list's 14 lines at the start reason",
+    assert re.search(r"none declared in MIME's pages: 11 fields, 0 of the list's 11 lines at the start reason",
                      done.stdout)
 
 
@@ -72,9 +62,9 @@ def test_a_listed_field_that_is_now_filled_fails_until_its_line_is_deleted(tmp_p
 def test_a_field_of_a_lab_or_a_toy_is_outside_the_list_and_counted(tmp_path):
     done = docs_check(copy_checkout(tmp_path), plant="lab_numbered")
     assert done.returncode == 0, done.stdout
-    assert "none declared in MIME's pages: 13 fields" in done.stdout
+    assert "none declared in MIME's pages: 10 fields" in done.stdout
     assert re.search(r"none declared (\d+)", done.stdout) and int(re.search(r"none declared (\d+)",
-                                                                           done.stdout).group(1)) > 13
+                                                                           done.stdout).group(1)) > 10
 
 
 def test_a_new_line_with_the_shared_start_reason_fails_against_a_base_that_does_not_hold_it(tmp_path):
@@ -88,7 +78,7 @@ def test_a_new_line_with_the_shared_start_reason_fails_against_a_base_that_does_
     edit(path, f"{EMPTY_ITEM}  # {NONE_DECLARED_START}", f"{EMPTY_ITEM}  # its own reason")
     done = docs_check(root, plant="mime_empty", base="HEAD")
     assert done.returncode == 0, done.stdout
-    assert re.search(r"compared with HEAD's, 13 lines there and 14 here", done.stdout)
+    assert re.search(r"compared with HEAD's, 10 lines there and 11 here", done.stdout)
 
 
 def test_a_malformed_item_and_a_missing_list_fail(tmp_path):
