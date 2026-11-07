@@ -31,7 +31,7 @@ of a rigid body is the same at every pose, and the node makes it once per build 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -231,15 +231,16 @@ def unchanged(theta: Mapping[str, Any], built: Mapping[str, Any]) -> Array:
     return jnp.all(jnp.stack(same))
 
 
-def held_or_made(make: Callable[[Mapping[str, Any]], Array], built: Mapping[str, Any]) -> Callable[
-        [Mapping[str, Any], Array], Array]:
+def held_or_made(make: Callable[[Mapping[str, Any]], Array], built: Mapping[str, Any],
+                 given: Sequence[Mapping[str, Any]] = ()) -> Callable[[Mapping[str, Any], Array], Array]:
     """``make`` held: a function of ``(theta, held)`` whose value is ``held`` (``make(built)``, made once at build)
-    where every leaf of ``theta`` is still ``built``'s, and ``make(theta)`` where one has moved (a study's step, a
-    difference by a perturbed leaf), so that a held value is never stale; and whose derivative in ``theta`` is
-    ``make``'s at ``theta`` in either case (forward mode through ``make``, checkpointed, so that the reverse mode makes
-    the value again from ``theta`` rather than keeping what ``make`` holds inside). ``held`` itself has no derivative:
-    it is ``make``'s value, not a quantity of its own. Under ``vmap`` over a moved leaf both branches are evaluated,
-    since a batched condition selects."""
+    where every leaf of ``theta`` is still ``built``'s, or still one of ``given``'s (leaves the caller gives ``held``
+    made at, ``make`` at them: the save's resolution rerun one ulp off), and ``make(theta)`` where one has moved (a
+    study's step, a difference by a perturbed leaf), so that a held value is never stale; and whose derivative in
+    ``theta`` is ``make``'s at ``theta`` in either case (forward mode through ``make``, checkpointed, so that the
+    reverse mode makes the value again from ``theta`` rather than keeping what ``make`` holds inside). ``held`` itself
+    has no derivative: it is ``make``'s value, not a quantity of its own. Under ``vmap`` over a moved leaf both
+    branches are evaluated, since a batched condition selects."""
 
     def kept(theta: Mapping[str, Any], held: Array) -> Array:
         return held
@@ -249,7 +250,10 @@ def held_or_made(make: Callable[[Mapping[str, Any]], Array], built: Mapping[str,
 
     @_custom_jvp
     def value(theta: Mapping[str, Any], held: Array) -> Array:
-        return _lax.cond(unchanged(theta, built), kept, made, theta, held)
+        held_at = unchanged(theta, built)
+        for leaves in given:
+            held_at = held_at | unchanged(theta, leaves)
+        return _lax.cond(held_at, kept, made, theta, held)
 
     def tangent(primals: tuple[Mapping[str, Any], Array], tangents: tuple[Mapping[str, Any], Array]) -> tuple[
             Array, Array]:
