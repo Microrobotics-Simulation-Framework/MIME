@@ -113,6 +113,23 @@ def _cache_clear() -> int:
     return 0
 
 
+#: ``--deterministic`` on ``mime run`` and ``mime verify``.
+_DETERMINISTIC_HELP = ("turn XLA's deterministic GPU mode on (--xla_gpu_deterministic_ops), before JAX starts, and "
+                       "record it in the lock: a reference made so verifies bit for bit on the same GPU, where one made "
+                       "without it verifies within tolerance; on the CPU it changes nothing")
+
+
+def _deterministic(on: bool) -> None:
+    """``--deterministic``: XLA's deterministic GPU mode turned on before JAX's backend starts
+    (``mime.env.deterministic_mode``); on the CPU, a line saying it changes nothing there."""
+    if not on:
+        return
+    from mime.env import CPU_DETERMINISTIC, deterministic_mode
+
+    if not deterministic_mode():
+        _warn(CPU_DETERMINISTIC)
+
+
 def _verify(folder: Path, run: bool = False) -> int:
     with Interrupt():
         try:
@@ -1218,6 +1235,7 @@ def build_parser() -> _guide.MimeParser:
                         help="the folder is a run folder (mime run's --out, or run_to's): make its run again from its "
                              "experiment/ with the overrides, duration and series its run.json records, and compare it "
                              "with its outputs, bit for bit in the environment it was made in")
+    verify.add_argument("--deterministic", action="store_true", help=_DETERMINISTIC_HELP)
     pending = commands.add_parser("pending", help="what a saved experiment leaves pending, with the lines to paste "
                                                   "to seal it")
     pending.add_argument("folder", type=Path, help="a folder written by Experiment.save, or its document "
@@ -1421,6 +1439,7 @@ def build_parser() -> _guide.MimeParser:
     run.add_argument("--commands", type=Path, default=None, metavar="LOG",
                      help="replay a live session from the command log it wrote (commands.jsonl): its run folder again, "
                           "in place of --duration")
+    run.add_argument("--deterministic", action="store_true", help=_DETERMINISTIC_HELP)
     held_visuals = commands.add_parser("visuals", help="descriptions' meshes MIME does not ship, baked into the asset "
                                                        "cache, and the overlay that draws them on a stage")
     visual_commands = held_visuals.add_subparsers(dest="visuals_command", required=True)
@@ -1674,6 +1693,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
     from mime import assets
 
     if arguments.command == "verify":
+        _deterministic(arguments.deterministic)
         return _verify(arguments.folder, arguments.run)
     if arguments.command == "pending":
         return _pending(arguments.folder)
@@ -1687,6 +1707,7 @@ def _command(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> 
         duration = option_seconds("--duration", arguments.duration)
         every = option_seconds("--every", arguments.every)
         stage_every = option_seconds("--stage-every", arguments.stage_every)
+        _deterministic(arguments.deterministic)
         with _xla_cache(arguments):
             return _run(arguments.folder, duration, arguments.out, arguments.history, arguments.record,
                         every, stage_every, arguments.commands, arguments.full, arguments.override)

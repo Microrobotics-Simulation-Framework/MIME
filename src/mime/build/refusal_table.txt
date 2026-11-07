@@ -122,6 +122,7 @@ drag.wall-range               user
 dynamics.wrong-thing          user
 entry.defect                  internal
 entry.unregistered            user
+env.deterministic-late        user
 env.device                    environment
 env.gpu-type                  user
 env.lab                       user
