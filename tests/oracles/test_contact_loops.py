@@ -9,13 +9,14 @@ last place of the scale each result came from (CLAUDE.md: no absolute part), com
   scale, the largest of the forces and of each row's speed over its own coupling.
 - **The Newton steps** (``_contact.climbed``), on every kind with a support (the sphere, the capsule, the cylinder,
   the ellipsoid and FL-9's screw; the box has none and is held by its samples, no search), at drawn poses within the
-  wall's reach, from each group's kept start, judged against 0.4.0's own resolution there: each group's end (the
-  steps' point and the support there, where the search converged, and the converged flag outside a band of
-  ``NEWTON_ULPS``) within ``NEWTON_ULPS`` of the hull's size of an end 0.4.0's search reaches from the pose or from a
-  pose one ulp away. A group seeded far off the wall may end anywhere on the body (``_contact.shallower``), and there
-  0.4.0's own end moves by millimetres under a change of one ulp; where it does not, this is the first head's
-  comparison with 0.4.0 at the pose. Two draws on which the versions ended 1.7 mm apart on CI's runners are checked on
-  every run, with a control: the looped search from each group's neighbour's start ends where 0.4.0's does not.
+  wall's reach, from each group's kept start, judged against 0.4.0's own resolution there: on each group whose end
+  0.4.0 resolves (its own ends from the pose's entries one ulp up and down stay within ``NEWTON_ULPS`` of the hull's
+  size of its end at the pose, and its converged flag outside a band of that width), the steps' point and the support
+  there within ``NEWTON_ULPS`` of 0.4.0's where the search converged, and the converged flag the same off the band.
+  A group seeded far off the wall may end anywhere on the body (``_contact.shallower``), and there 0.4.0's own end
+  moves by millimetres under a change of one ulp: neither its point nor its value is resolved, and it is reported, not
+  judged. Two draws on which the versions ended 1.7 mm apart on CI's runners are checked on every run, with a
+  control: the looped search from each group's neighbour's start.
 - **The whole step**, the contact active: script A's FL-9 held from its first step (``hull_cases.hull_contact``, 20
   steps) and the tube demo (``examples/sphere_settling_tube.py``, 40), each built fresh on each version and run, in
   float32 and float64, by the history scan and by one-step chunks (the tube demo's own run): the pose's position and
@@ -331,11 +332,12 @@ def one_ulp_away(values: np.ndarray) -> list[np.ndarray]:
 
 class Searched(NamedTuple):
     """The looped search at a pose judged against 0.4.0's own resolution there, per group, in units of the hull's
-    size: ``missed``, how far its point and its support stand from the nearest of the points 0.4.0's search ends at
-    from the pose or from a pose one ulp away (``one_ulp_away``) whose converged flag it shares off the flag's band
-    (zero where neither converged; infinite where no flag agrees); ``alone``, how far it stands from 0.4.0's at the pose
-    alone (the first head's measure); ``spread``, how far 0.4.0's own ends one ulp away stand from its end at the pose;
-    and ``value``, how far the wall's gap at its support stands from the gap at 0.4.0's (the support's value there)."""
+    size: ``alone``, how far its point and its support stand from 0.4.0's at the pose (zero where neither converged;
+    infinite where their converged flags differ off the flag's band); ``spread``, how far 0.4.0's own ends from the
+    poses one ulp away (``one_ulp_away``) stand from its end at the pose, on the same measure; ``missed``, ``alone`` on
+    the groups 0.4.0 resolves (``spread`` within ``NEWTON_ULPS``), zero on the rest, where 0.4.0 alone ends elsewhere
+    under a change of one ulp; and ``value``, how far the wall's gap at its support stands from the gap at 0.4.0's
+    (the support's value there)."""
 
     missed: np.ndarray
     alone: np.ndarray
@@ -353,13 +355,11 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
         ends = [[np.asarray(v, dtype=np.float64) for v in unrolled(q, jnp.asarray(moved), kept)]
                 for moved in (at, *one_ulp_away(at))]
         x_l, s_l, w_l = (np.asarray(v, dtype=np.float64) for v in (planted or looped)(q, jnp.asarray(at), kept))
-    xs, ss, ws = (np.stack(parts) for parts in zip(*ends, strict=True))
+    (x_u, *x_moved), (s_u, *s_moved), (w_u, *w_moved) = zip(*ends, strict=True)
     unit = float(np.finfo(dtype).eps) * size
     band = NEWTON_ULPS * unit
 
     def apart(x, s, w, x_k, s_k, w_k):
-        """Per end ``k`` and group: the points' distance in units where both converged, else zero; infinite where
-        the flags differ off the band."""
         both = (w >= 0) & (w_k >= 0)
         distance = np.maximum(np.max(np.abs(x - x_k), axis=-1), np.max(np.abs(s - s_k), axis=-1)) / unit
         agrees = ((w >= 0) == (w_k >= 0)) | (np.abs(w_k) <= band)
@@ -369,31 +369,32 @@ def searched_against_0_4_0(name: str, dtype: str, pose: np.ndarray, *, planted: 
         world = at[:3].astype(np.float64) + local @ rotation(at[3:].astype(np.float64)).T
         return TUBE_RADIUS - MARGIN - np.hypot(world[..., 1], world[..., 2])
 
-    around = apart(x_l, s_l, w_l, xs, ss, ws)
-    return Searched(np.min(around, axis=0), around[0], np.max(apart(xs[0], ss[0], ws[0], xs, ss, ws), axis=0),
-                    np.abs(gaps(s_l) - gaps(ss[0])) / unit)
+    alone = apart(x_l, s_l, w_l, x_u, s_u, w_u)
+    spread = np.max([apart(x_k, s_k, w_k, x_u, s_u, w_u) for x_k, s_k, w_k in zip(x_moved, s_moved, w_moved)], axis=0)
+    return Searched(np.where(spread <= NEWTON_ULPS, alone, 0.0), alone, spread, np.abs(gaps(s_l) - gaps(s_u)) / unit)
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
 @settings(deadline=None)
 @given(name=st.sampled_from(sorted(SUPPORTED)), spin=st.floats(0.0, 2 * math.pi), tilt=st.floats(0.0, 1.5),
        about=st.floats(0.0, 2 * math.pi), towards=st.floats(0.0, 2 * math.pi), share=st.floats(-0.5, 1.0))
-def test_the_looped_newton_steps_end_where_the_unrolled_ones_do_from_a_pose_one_ulp_away(dtype, name, spin, tilt, about,
-                                                                                         towards, share):
+def test_the_looped_newton_steps_are_the_unrolled_ones_to_rounding_where_0_4_0_resolves_them(dtype, name, spin, tilt,
+                                                                                            about, towards, share):
     found = searched_against_0_4_0(name, dtype, placed(name, spin, tilt, about, towards, share * MARGIN))
     missed = float(np.max(found.missed))
     event("bit for bit" if not np.any(found.alone) else "rounding apart")
     event("0.4.0 ends elsewhere one ulp away" if np.any(found.spread > NEWTON_ULPS) else "0.4.0 settled one ulp away")
-    target(min(missed, 1e30), label="units of the hull's size from 0.4.0's nearest end")
-    assert missed <= NEWTON_ULPS, (f"{name}: groups {np.flatnonzero(found.missed > NEWTON_ULPS)} end {missed:.3g} units "
-                                   f"of the hull's size from every end of 0.4.0's within one ulp of the pose")
+    target(min(missed, 1e30), label="units of the hull's size apart where 0.4.0 resolves them")
+    assert missed <= NEWTON_ULPS, (f"{name}: groups {np.flatnonzero(found.missed > NEWTON_ULPS)}, where 0.4.0's end "
+                                   f"stays within one ulp of the pose, end {missed:.3g} units of the hull's size apart")
 
 
 #: The two draws on which the looped and unrolled searches ended about 1.7 mm apart on CI's runners in the pull request's
 #: first round (stress run 14, and the default 3.14 lane on an AMD EPYC 7763), FL-9 in float32, the spin, tilt, about,
 #: towards and share of the property above. At both one group's kept start stands about 0.9 mm (nine margins) off the
 #: shrunk wall, where the search may end anywhere on the body (``_contact.shallower``), and 0.4.0's alone ends on two to
-#: four points one ulp of the pose away (measured on a laptop's CPU): a property of the search both versions share.
+#: four points one ulp of the pose away, or does not converge (measured on a laptop's CPU and on an AMD EPYC 9V74): a
+#: property of the search both versions share, and no point 0.4.0 resolves.
 ENDED_ELSEWHERE = {"stress run 14": (1.0, 1.0, 2.0, 1.03, 0.0),
                    "default 3.14": (5.796875, 1.0, 0.3984375, 5.78125, 0.0)}
 
@@ -405,8 +406,8 @@ def ended_elsewhere_pose(draw: str) -> np.ndarray:
 
 @pytest.mark.parametrize("draw", ENDED_ELSEWHERE)
 @pytest.mark.parametrize("dtype", DTYPES)
-def test_the_looped_newton_steps_at_the_draws_that_ended_elsewhere_end_where_0_4_0_does_one_ulp_away(dtype, draw,
-                                                                                                    record_property):
+def test_the_looped_newton_steps_at_the_draws_that_ended_elsewhere_are_the_unrolled_ones_where_0_4_0_resolves_them(
+        dtype, draw, record_property):
     found = searched_against_0_4_0("screw", dtype, ended_elsewhere_pose(draw))
     measured = {"cpu": cpu_model(), "missed": found.missed.tolist(), "alone": found.alone.tolist(),
                 "spread": found.spread.tolist(), "value": found.value.tolist()}
@@ -418,9 +419,9 @@ def test_the_looped_newton_steps_at_the_draws_that_ended_elsewhere_end_where_0_4
 @pytest.mark.parametrize("draw", ENDED_ELSEWHERE)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_control_the_looped_search_from_the_next_groups_start_ends_where_0_4_0_does_not(dtype, draw):
-    """The looped search started from each group's neighbour's kept start, at the draws above: it ends where 0.4.0's
-    does not within one ulp of the pose, so the comparison with 0.4.0's ends one ulp away still discriminates where
-    0.4.0's own end moves."""
+    """The looped search started from each group's neighbour's kept start, at the draws above: on the groups 0.4.0
+    resolves it ends far from 0.4.0's, so leaving out the groups 0.4.0 does not resolve leaves the comparison able to
+    fail at a draw that holds one."""
     *_, looped = searches("screw", dtype)
 
     def from_the_next(q, at, kept):
