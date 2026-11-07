@@ -310,7 +310,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   force points at exactly equal height or azimuth (2.0 of the column's largest entry), in forward and in reverse mode,
   which pairs depending on how XLA fused the program; and in reverse mode with a cotangent for each entry
   (`jax.jacrev`) also where no two samples tied, through a sample's pair with itself, which is a tie in both (one of
-  eight two-sample pairs apart, in both precisions). XLA computes
+  the test's eight pairs apart, and 10 of 12 random pairs apart in a reviewer's own harness, in both precisions). XLA computes
   the axial offset and the angle's sine inside each fusion that reads them, and near zero a difference of products is
   not the same number in every fusion, so the sign of an odd component and the derivative of the absolute value it is
   read at could see numbers of opposite sign. `pair_block` now holds the sine and the offset once (`held_once`, a
@@ -318,7 +318,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one that does) wherever a derivative is taken through them. A run takes no derivative, so its program is unchanged:
   measured, every field of the tube demo's 40 steps (the history scan and one-step chunks) and of the screw in the
   tube's 30 steps, in float32 and float64, is the program before the fix to the last bit, so the tube wall kind keeps
-  its version 0.1.0. `tests/oracles/test_tube_tie_derivative.py` holds the derivative through ties and self-pairs at
+  its version 0.1.0; the primal of a program that does take a derivative is not bit for bit the plain program's (measured
+  on the tube demo's step under `jax.jvp`: 4 to 7 of 27 state leaves differ in the last bits, see the entry's residual risk).
+  `tests/oracles/test_tube_tie_derivative.py` holds the derivative through ties and self-pairs at
   seventeen pairs (jitted in both modes, eager, in both precisions, and under a barrier on the sine) and on the tube demo's 338 force
   points, against central differences, with the read before the fix as the control that fails.
 

@@ -10,7 +10,8 @@ derivative see the same number. Jitted they did not always: XLA computes the off
 and a difference of products near zero is not the same number in every fusion, so a derivative came out of the
 opposite sign: 2.0 of the column's largest entry at a pair tied in height, and in reverse mode at a sample's pair with
 itself where no two samples tied (the cotangent of its offset and its sine enters the sample twice, with opposite
-signs, and did not cancel), on one of eight pairs apart (with twelve samples, three clouds, on none: the fusion's).
+signs, and did not cancel), on one of this file's eight pairs apart (on 10 of 12 random pairs apart in a reviewer's
+own harness; with twelve samples, three clouds, on none: the fusion's).
 ``pair_block`` holds the sine and the offset once (``held_once``) wherever a derivative is taken through them; a
 program that takes none is unchanged.
 
@@ -30,7 +31,7 @@ program that takes none is unchanged.
   ties (the pairs nudged 1 nm off, and the pairs apart) the forward derivative is the one before the fix to rounding.
 
 The floors are the central difference's at its step, measured on a laptop's CPU with the fix: at most 5.2e-9
-(float64) and 2.6e-4 (float32) of the column's largest entry on the pairs, 2.3e-7 on the whole body.
+(float64) and 2.9e-4 (float32) of the column's largest entry on the pairs, 2.3e-7 on the whole body.
 """
 
 import importlib.util
