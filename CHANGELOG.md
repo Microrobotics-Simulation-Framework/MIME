@@ -386,6 +386,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1.08 s at 900 MB (a whole-file read). The checksum-free path is unchanged: an asset's file is judged by size and
   modification time, and a byte flipped in place there is found only by `mime assets check` or `fetch`; the asset
   cache's documentation says so.
+  A bundle named by a bare `https://` address, which is downloaded each time, now also repairs a cached file of those
+  bytes that was changed in place (the download is installed over it when MIME wrote it), where before the cached file
+  was kept; and a cached bundle that cannot be read is refused as `asset.missing`, naming the file and the route
+  (its permissions, or delete it and fetch again), not as a bare `PermissionError`.
 - **The uniform rotating field turns by the integral of its frequency: `uniform_rotating` 0.2.0** (MIME-ANO-139). 0.1.0
   made the phase as the present frequency times the time, so a ramp turned the field at twice the commanded rate and a
   step jumped its angle. 0.2.0 holds the phase in turns as a pair of floating numbers, to which each step adds the frequency times the

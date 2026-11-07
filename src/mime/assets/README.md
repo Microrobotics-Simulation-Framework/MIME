@@ -228,7 +228,8 @@ unchanged; `mime assets check` re-hashes in full, and a test writes that limit d
 checksum of the file (`mime pull` and `Experiment.based_on` of a DOI hold a bundle's) passes it, and the check then also
 reads the file once and compares its digest: that finds the flipped byte, at the cost of a local read of the whole
 file (no download), and the download that follows a mismatch replaces the cached file when MIME wrote it. A file with
-no such checksum (an asset, which `locate` is asked for with its sha256 alone) is judged as above. When `check` finds a file corrupt it
+no such checksum (an asset, which `locate` is asked for with its sha256 alone) is judged as above. A cached file the
+check cannot read (its permissions) is refused as `asset.missing`, naming the file. When `check` finds a file corrupt it
 marks the record, and `locate` refuses the file (`asset.missing`, with the command) until `mime assets fetch` has
 repaired it: `fetch` hashes in full and downloads again a file MIME wrote whose bytes are wrong.
 

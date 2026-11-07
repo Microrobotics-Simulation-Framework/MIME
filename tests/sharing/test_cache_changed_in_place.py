@@ -12,7 +12,7 @@ entry says; and with the digest comparison, or the replacement, planted out, the
 
 import hashlib
 import os
-import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -45,14 +45,25 @@ def bundle_downloads(rig: Rig) -> int:
     return sum(1 for request in rig.server.requests if request.endswith(BUNDLE_ADDRESS))
 
 
-def flip_in_place(path: Path) -> None:
-    """One byte in the middle of the file inverted, its size and ``st_mtime_ns`` as they were."""
+#: Where the bytes inverted by :func:`flip_in_place` are, as offsets in a file of the given size.
+FLIPS: dict[str, Callable[[int], list[int]]] = {
+    "middle": lambda size: [size // 2],
+    "start": lambda size: [0],
+    "end": lambda size: [size - 1],
+    "two bytes": lambda size: [size // 3, 2 * size // 3],
+    "first and last": lambda size: [0, size - 1],
+}
+
+
+def flip_in_place(path: Path, where: str = "middle") -> None:
+    """The bytes at ``FLIPS[where]`` inverted, the file's size and ``st_mtime_ns`` as they were."""
     seen = path.stat()
     with path.open("r+b") as stream:
-        stream.seek(seen.st_size // 2)
-        byte = stream.read(1)
-        stream.seek(seen.st_size // 2)
-        stream.write(bytes([byte[0] ^ 0xFF]))
+        for offset in FLIPS[where](seen.st_size):
+            stream.seek(offset)
+            byte = stream.read(1)
+            stream.seek(offset)
+            stream.write(bytes([byte[0] ^ 0xFF]))
     os.utime(path, ns=(seen.st_atime_ns, seen.st_mtime_ns))
     after = path.stat()
     assert (after.st_size, after.st_mtime_ns) == (seen.st_size, seen.st_mtime_ns), "the flip left a trace the check sees"
@@ -72,14 +83,15 @@ def work_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str) -> P
 # --- the gate: the review's reproduction ---------------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("where", FLIPS)
 def test_a_bundle_flipped_in_place_is_downloaded_once_more_and_the_good_file_is_served(
-        rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bundle_bytes: bytes):
+        rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bundle_bytes: bytes, where: str):
     work_folder(tmp_path, monkeypatch, "work")
     held = cached_bundle(rig, bundle_bytes)
     with zenodo(rig, {"full_toy.mimebundle": bundle_bytes}):
         first = Experiment.based_on(DOI, name="child").document()
         assert bundle_downloads(rig) == 1 and held.read_bytes() == bundle_bytes
-        flip_in_place(held)
+        flip_in_place(held, where)
         assert held.read_bytes() != bundle_bytes
         again = Experiment.based_on(DOI, name="child").document()
         assert bundle_downloads(rig) == 2, "one download repaired it"
@@ -92,11 +104,13 @@ def test_a_bundle_flipped_in_place_is_downloaded_once_more_and_the_good_file_is_
     assert not [each for each in rig.cache.iterdir() if ".incoming-" in each.name or each.name.endswith(".partial")]
 
 
-def test_pull_of_the_doi_after_a_flip_downloads_once_and_unpacks(rig: Rig, tmp_path: Path, bundle_bytes: bytes):
+@pytest.mark.parametrize("where", FLIPS)
+def test_pull_of_the_doi_after_a_flip_downloads_once_and_unpacks(rig: Rig, tmp_path: Path, bundle_bytes: bytes,
+                                                                 where: str):
     held = cached_bundle(rig, bundle_bytes)
     with zenodo(rig, {"full_toy.mimebundle": bundle_bytes}):
         pull(DOI, into=tmp_path / "first")
-        flip_in_place(held)
+        flip_in_place(held, where)
         folder = pull(DOI, into=tmp_path / "second")
     assert bundle_downloads(rig) == 2 and held.read_bytes() == bundle_bytes and (folder / "mime.lock").is_file()
 
@@ -131,6 +145,48 @@ def test_a_flipped_file_a_person_placed_is_refused_and_left_alone(rig: Rig, tmp_
         with pytest.raises(BuildRefused) as refused:
             pull(DOI, into=tmp_path / "second")
     assert refused.value.codes() == ["asset.placed-file"] and held.read_bytes() == flipped
+
+
+def test_a_bare_url_bundle_flipped_in_place_is_repaired_by_the_download_that_runs_each_time(rig: Rig):
+    """Step 2's side effect: a bundle named by a bare ``https://`` address (no checksum, so downloaded every time) now
+    also repairs a cached file of those bytes that was changed in place, where before the cached file was kept."""
+    payload = os.urandom(4000)
+    rig.server.files["/bundle"] = payload
+    address = rig.server.url("/bundle")
+    held = rig.cache / assets.retrieve(address, name="bundle").sha256
+    flip_in_place(held)
+    assert held.read_bytes() != payload
+    assets.retrieve(address, name="bundle")
+    assert rig.requests == 2 and held.read_bytes() == payload
+
+
+def test_an_unreadable_cached_bundle_is_refused_with_its_file_and_the_route_never_a_bare_error(
+        rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bundle_bytes: bytes):
+    """Permissions that forbid the read (the error the operating system gives, planted for that one file so that the
+    test means the same as a user without read permission, whoever runs it)."""
+    work_folder(tmp_path, monkeypatch, "work")
+    held = cached_bundle(rig, bundle_bytes)
+    real = Path.open
+
+    def forbidden(self: Path, *arguments, **keywords):  # type: ignore[no-untyped-def]
+        if self == held:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real(self, *arguments, **keywords)
+
+    with zenodo(rig, {"full_toy.mimebundle": bundle_bytes}):
+        Experiment.based_on(DOI, name="child")
+        monkeypatch.setattr(Path, "open", forbidden)
+        with pytest.raises(BuildRefused) as refused:
+            Experiment.based_on(DOI, name="child")
+        assert bundle_downloads(rig) == 1, "an unreadable file is not worked around by a download"
+    assert refused.value.codes() == ["asset.missing"]
+    text = str(refused.value)
+    assert held.name in text and "Permission denied" in text and "permission" in text and "delete" in text
+
+
+def test_a_cached_bundle_that_is_gone_when_opened_is_a_problem_not_an_error(tmp_path: Path):
+    """The file vanishing between the size check and the read: a problem, which the caller answers by downloading."""
+    assert _cache.digest_problem(tmp_path / "nothing", "md5:" + "0" * 32) == "isn't downloaded"
 
 
 # --- controls ------------------------------------------------------------------------------------------------------------
@@ -200,6 +256,8 @@ def test_control_a_checksum_of_an_algorithm_not_here_is_a_problem_never_a_pass(r
         assets.locate(ref, checksum="nosuchalgorithm:00")
     with pytest.raises(BuildRefused):
         assets.locate(ref, checksum="md5:" + "0" * 32)
+    with pytest.raises(BuildRefused):
+        assets.locate(ref, checksum="shake_128:" + "0" * 32)
 
 
 def test_control_with_the_digest_comparison_planted_out_the_flipped_bundle_is_served(

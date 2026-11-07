@@ -190,14 +190,25 @@ def size_text(size: int) -> str:
 def digest_problem(path: Path, checksum: str) -> str | None:
     """Why the file at ``path`` is not the one a repository's ``checksum`` (``<algorithm>:<digits>``) names, or ``None``
     when its digest is that. Reads the whole file, once. A checksum of an algorithm this machine does not have, or of
-    no checksum's shape, cannot be compared and is a problem too, never a pass."""
+    no checksum's shape, cannot be compared and is a problem too, never a pass. A file that is gone by the time it is
+    opened is a problem (a download replaces it); one that cannot be read is refused, as ``asset.missing``, with its
+    permissions as the route, since neither the comparison nor a download could go on."""
     algorithm, _, digits = checksum.partition(":")
     try:
         with path.open("rb") as stream:
-            digest = hashlib.file_digest(stream, lambda: hashlib.new(algorithm.lower(), usedforsecurity=False))
-    except ValueError:
+            computed = hashlib.file_digest(stream, lambda: hashlib.new(algorithm.lower(), usedforsecurity=False))
+            found = computed.hexdigest()
+    except (ValueError, TypeError):
         return f"the checksum {algorithm!r} is not one this machine computes"
-    return None if digest.hexdigest() == digits.lower() else "its bytes are not the ones the checksum names"
+    except FileNotFoundError:
+        return "isn't downloaded"
+    except OSError as error:
+        raise BuildRefused([Refusal(
+            "asset.missing", RefusalClass.ENVIRONMENT,
+            f"the file {path.name} in {where_text()} cannot be read ({error.strerror or type(error).__name__})",
+            f"give your user read permission on {path}, or delete it and its {RECORD_SUFFIX!r} record and download it "
+            f"again (`mime assets fetch`, or the pull you ran)")]) from error
+    return None if found == digits.lower() else "its bytes are not the ones the checksum names"
 
 
 def cheap_problem(ref: AssetRef, checksum: str | None = None) -> str | None:
@@ -237,9 +248,9 @@ def is_cached(ref: AssetRef) -> bool:
 
 def locate(ref: AssetRef, *, folder: str | os.PathLike[str] | None = None, checksum: str | None = None) -> Path:
     """The cached file of ``ref``, checked cheaply (size, and the record of the full verification made when it was
-    stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that is not there, or that fails the check, is refused as ``asset.missing``. The
-    action is the exact command that stores it: for everything the experiment ``folder`` needs when the folder is
-    known, else for this asset by name."""
+    stored; with the caller's ``checksum``, also the file's digest, :func:`cheap_problem`). Never downloads: a file that
+    is not there, or that fails the check, is refused as ``asset.missing``. The action is the exact command that stores
+    it: for everything the experiment ``folder`` needs when the folder is known, else for this asset by name."""
     problem = cheap_problem(ref, checksum)
     if problem is not None:
         raise BuildRefused([Refusal(
