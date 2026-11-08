@@ -61,6 +61,9 @@ _DRIVE = "mime.nodes.flow.fvm._node.ImplicitFlowNode.drive"
 #: The stall detector's line: ``|N_Krylov| / D_visc`` above it is a stall (the stall spike's transient values sat about
 #: three orders below a stall's reading) [inference from the measured separation].
 STALL_LINE = 1e-3
+#: Half of each dtype's digits, sqrt(eps): the share of its scale a report's denominator must exceed (:meth:`ratio`).
+HALF_DIGITS = {np.dtype(np.float32): math.sqrt(float(np.finfo(np.float32).eps)),
+               np.dtype(np.float64): math.sqrt(float(np.finfo(np.float64).eps))}
 #: The hosted laws a metered node books, by the field their delivery names.
 HOSTED_FIELDS = ("body_force", "viscous", "penalty")
 
@@ -419,7 +422,7 @@ class ImplicitFlowNode(MimeNode):
         for the derivative, ``-a / b^2``, to be a finite number of the dtype, so that the report and its derivative are
         finite and reproducible at every state."""
         finfo = jnp.finfo(denominator.dtype)
-        held = (jnp.abs(denominator) > float(finfo.eps) ** 0.5 * scale) & \
+        held = (jnp.abs(denominator) > HALF_DIGITS[np.dtype(denominator.dtype)] * scale) & \
             (denominator * denominator > 4.0 * finfo.tiny * jnp.maximum(jnp.abs(numerator), 1.0))
         return jnp.where(held, numerator / jnp.where(held, denominator, 1.0), 0.0)
 
