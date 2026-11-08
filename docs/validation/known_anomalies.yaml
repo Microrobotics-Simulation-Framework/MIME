@@ -611,7 +611,7 @@ anomalies:
     verification: []
     affected_components:
       - "MIME-NODE-020"
-      - "mime.nodes.environment.fvm.piso"
+      - "entry: dynamics fvm; the 0.2 line's mime.nodes.environment.fvm.piso, which 0.3's FVM replaces"
     affected_verification_ids:
       - "MIME-VER-030"
     workaround: >
@@ -634,8 +634,11 @@ anomalies:
       settle whether the cell-Pe trigger exists and where; (b) correct the two
       script docstrings.
 
-      0.3.0a1: the rewritten flow solver must pass MIME-VER-030's two arms again (the empty box
-      preserved in both fully-periodic and inhomogeneous-Dirichlet modes).
+      0.3.0 (dev2): the rewritten flow solver (the dynamics fvm) has no Dirichlet velocity face: its periodic box
+      has none, and its openings (F2b) are evolved half-cell faces whose pressure pins the flux, so the defect's
+      mechanism cannot recur in it. MIME-VER-030's fully periodic arm (an empty box keeps a uniform translation)
+      returns with it; its inhomogeneous-Dirichlet arm has no counterpart until a face takes a prescribed velocity,
+      which the design does not build.
 
   - anomaly_id: MIME-ANO-109
     title: "IBM analytical-wall bounds were calibrated against the diffuse band's UNDER-RESOLVED discretisation, not derived — the 3D pipe's 10% bound was unattainable and was met only by a three-way cancellation (test rewritten as MIME-VER-033; 2D channel bound still open)"
@@ -745,8 +748,7 @@ anomalies:
     affected_versions: ">=0.1.0"
     affected_components:
       - "MIME-NODE-020"
-      - "mime.nodes.environment.fvm.piso"
-      - "mime.nodes.environment.fvm.ibm"
+      - "entry: dynamics fvm; the 0.2 line's mime.nodes.environment.fvm.piso and .ibm, which 0.3's FVM replaces"
     affected_verification_ids:
       - "MIME-VER-033"
       - "MIME-VER-032"
@@ -772,7 +774,10 @@ anomalies:
       bound) or compare against the penalised problem's own solution. Do not
       calibrate a bound at eps = 1*dx and read it as physics.
     planned_resolution: >
-      0.3.0a1: the rewritten flow solver carries the IBM oracles as shape and position (MIME-VER-033's
+      0.3.0 (dev2): the rewritten flow solver (the dynamics fvm) judges its wall by oracles that remove the wall's
+      offset (Poiseuille's core curvature; the low-Womersley fit with a free radius) and the wall's own position
+      against the band's planar calibration, never a nominal-radius flux bound. Before: 0.3.0a1: the rewritten flow
+      solver carries the IBM oracles as shape and position (MIME-VER-033's
       form), never the 0.2 nominal-radius bounds.
 
       Earlier plan, from the 0.2 line:

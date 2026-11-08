@@ -140,6 +140,14 @@ env.variant                   user
 error.uncoded                 internal
 error.unrecognised            unrecognised
 experiment.name               user
+flow.band                     user
+flow.box-axis                 user
+flow.cfl-exceeded             user
+flow.interior                 user
+flow.preconditioner           user
+flow.region                   user
+flow.resolution               user
+flow.steady-convection        user
 frame.gravity-invalid         user
 frame.gravity-missing         user
 frame.gravity-units           user
@@ -238,6 +246,8 @@ material.nominal              user
 material.nominal-pending      user
 material.not-a-record         user
 material.require              user
+medium.field-role             user
+medium.flow-twice             user
 modal.study-base              user
 modal.study-shards            user
 modal.wheel                   environment

@@ -736,6 +736,12 @@ class Dynamics(Entry):
         their dimensions do not show (a moment of inertia of zero, which the step divides by), as refusals."""
         return []
 
+    def region_problems(self, region: Region | None) -> list[Problem]:
+        """What is wrong with the region a medium's dynamics fills (``None``: it fills none with a shape), as
+        refusals: a solved field's domain holds only the regions its kind supports. The region reaches the build as
+        ``ctx.region("medium")``."""
+        return []
+
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         raise NotImplementedError
 

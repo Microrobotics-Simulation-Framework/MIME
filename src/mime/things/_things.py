@@ -63,18 +63,46 @@ class Structure:
     kind = ThingKind.STRUCTURE
 
 
+#: The roles of the fields a medium carries: its flow, the first. A role is a field's name in the experiment
+#: (``water.flow``), so a later field kind (an acoustic field, a concentration) adds its own.
+MEDIUM_FIELD_ROLES = ("flow",)
+
+
 @dataclass(frozen=True, eq=False)
 class Medium:
     """What fills a region and carries fields: ``fills`` names the region (``fills=tube.lumen``), so its geometry is
-    written once, by the structure. ``flow`` is the dynamics of its flow field; ``None`` is quiescent and builds
-    nothing. ``material`` is the record its values are read from (``mime.materials.Record``), at the experiment's
-    conditions; a value declared in the experiment takes the place of the record's, with its reason."""
+    written once, by the structure. ``fields`` maps each field the medium carries and solves to its kind, by its role
+    (``fields={"flow": FVM(...)}``), as an apparatus maps the fields it generates; none is quiescent and builds
+    nothing. ``flow`` is the flow field's kind alone, as dev1 wrote it (``flow=`` and ``fields={"flow": ...}`` are one
+    setting; give one). ``material`` is the record its values are read from (``mime.materials.Record``), at the
+    experiment's conditions; a value declared in the experiment takes the place of the record's, with its reason."""
 
     name: str
     fills: TypedPath | str | None = None
     flow: Dynamics | None = None
     material: Record | None = None
+    fields: Mapping[str, Dynamics] = field(default_factory=dict[str, "Dynamics"], kw_only=True)
     kind = ThingKind.MEDIUM
+
+    def __post_init__(self) -> None:
+        from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass  # the build sits above the things
+
+        given = dict(self.fields or {})
+        unknown = sorted(set(given) - set(MEDIUM_FIELD_ROLES))
+        if unknown:
+            raise ArgumentRefused([Refusal(
+                "medium.field-role", RefusalClass.USER,
+                f"medium {self.name!r} is given fields under {unknown}: a medium carries its fields under the roles "
+                f"{list(MEDIUM_FIELD_ROLES)}", "name the medium's flow field fields={'flow': ...}")])
+        if self.flow is not None and "flow" in given and given["flow"] is not self.flow:
+            raise ArgumentRefused([Refusal(
+                "medium.flow-twice", RefusalClass.USER,
+                f"medium {self.name!r} is given its flow twice, as flow= and as fields={{'flow': ...}}",
+                "give it once: Medium(..., fields={'flow': ...})")])
+        if self.flow is not None:
+            given["flow"] = self.flow
+        object.__setattr__(self, "flow", given.get("flow"))
+        object.__setattr__(self, "fields", _frozen(given))
 
     @property
     def dynamics(self) -> Dynamics | None:

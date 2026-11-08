@@ -49,3 +49,5 @@ UniformRotatingNode h  # the step's own timestep, which MADDENING hands the step
 IntegratingRotatingNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 PhaseLagNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 RampNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+BodyForceNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+ImplicitFlowNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt

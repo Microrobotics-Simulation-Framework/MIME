@@ -1307,6 +1307,11 @@ class BuiltExperiment:
             if self._non_finite is None:
                 self._non_finite = NonFinite(first_non_finite(refusal), start + taken)
             raise RunFailed(stopped_refusals(self._graph, final) or [refusal], result)
+        # A node that stops a run with its state finite (the flow's CFL check, which selects nothing in its step)
+        # names the step it stopped at in its state, and the run is refused all the same.
+        stopped = stopped_refusals(self._graph, final)
+        if stopped:
+            raise RunFailed(stopped, result)
         return result
 
     @property
