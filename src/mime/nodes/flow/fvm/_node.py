@@ -276,7 +276,9 @@ class ImplicitFlowNode(MimeNode):
     def fluxes(self, grid: MACGrid, fields: WallFields, axis: Array, velocity: Velocity) -> tuple[Array, Array, Array]:
         """The lumen's and the solid's axial flux (m^3/s): each the volume integral of the axial velocity over its
         region (the lumen and band, ``phi < W/2``; the solid beyond) divided by the tube's axial length per box, exact
-        for a periodic divergence-free field; and the lumen's flux in magnitude, the scale its rounding is judged on."""
+        for a periodic divergence-free field; and the scale their rounding is judged on, the whole velocity's magnitude
+        over the same integral: the projection couples the components, so an axial flux among much larger transverse
+        velocities is their rounding."""
         width = band_named(self.constants()["band"]).width * grid.spacing
         lumen = jnp.zeros((), dtype=velocity[0].dtype)
         solid = jnp.zeros((), dtype=velocity[0].dtype)
@@ -285,7 +287,7 @@ class ImplicitFlowNode(MimeNode):
             inside = fields.signed_distance[component] < 0.5 * width
             lumen = lumen + axis[component] * jnp.sum(jnp.where(inside, velocity[component], 0.0))
             solid = solid + axis[component] * jnp.sum(jnp.where(inside, 0.0, velocity[component]))
-            scale = scale + jnp.abs(axis[component]) * jnp.sum(jnp.abs(jnp.where(inside, velocity[component], 0.0)))
+            scale = scale + jnp.sum(jnp.abs(velocity[component]))
         length = grid.cells[2] * grid.spacing / axis[2]
         weight = grid.cell_volume / length
         return lumen * weight, solid * weight, scale * weight
@@ -411,12 +413,13 @@ class ImplicitFlowNode(MimeNode):
 
     @staticmethod
     def ratio(numerator: Array, denominator: Array, scale: Array) -> Array:
-        """A report's ratio ``a / b``, read as zero where ``b`` is within its own rounding on ``scale`` (the magnitude
-        of the arithmetic forming it: a flux that cancels to rounding has no ratio, and two compilations round it
-        differently) or too small for the derivative, ``-a / b^2``, to be a finite number of the dtype, so that the
-        report and its derivative are finite and reproducible at every state."""
+        """A report's ratio ``a / b``, read as zero where ``b`` holds fewer than half the dtype's digits of ``scale``
+        (the magnitude of the arithmetic forming it, whose rounding is some eps of it: under ``sqrt(eps) scale`` the
+        ratio carries more than ``sqrt(eps)`` of rounding, and two compilations round it differently) or is too small
+        for the derivative, ``-a / b^2``, to be a finite number of the dtype, so that the report and its derivative are
+        finite and reproducible at every state."""
         finfo = jnp.finfo(denominator.dtype)
-        held = (jnp.abs(denominator) > 64.0 * finfo.eps * scale) & \
+        held = (jnp.abs(denominator) > float(finfo.eps) ** 0.5 * scale) & \
             (denominator * denominator > 4.0 * finfo.tiny * jnp.maximum(jnp.abs(numerator), 1.0))
         return jnp.where(held, numerator / jnp.where(held, denominator, 1.0), 0.0)
 

@@ -84,9 +84,13 @@ DRAG = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
 #: Its battery's jit consistency compares every field but the solve report's residual entries, which a CG that stops
 #: at float32's reachable floor reads to that floor's rounding: two compilations of the same solve stop at the same
 #: iteration with residuals that differ in their last digits (5.3e-6 against 4.1e-6, both under the 1e-5 tolerance).
-#: There it holds both residuals within the tolerance instead. A residual above the tolerance (a solve that stagnated,
-#: as on a drawn velocity of 1e-306, whose solution falls among the subnormal numbers) is compared as every field is.
+#: There it holds both residuals within the tolerance instead. A solve that stops other than converging is read the same
+#: way: on drawn velocities under some 1e-295 m/s (1e-300, 9.5e-306), where the solve stagnates and reports it (it
+#: converges from 1e-290 up), the residual is the stall's rounding, 5.7e-5 in one compilation and 2.6e-7 in the other.
+#: There it holds both solves stopped the same way (the report's flags and count compared as every field is).
 _REPORT_RESIDUAL = 1
+#: The report's flags of a solve stopped other than converging: at its cap, stagnated, not finite.
+_REPORT_FAILED = slice(2, 5)
 
 
 def _jit_consistent_but_the_floor(node):
@@ -95,12 +99,12 @@ def _jit_consistent_but_the_floor(node):
 
     def holds(state_in, state_out, given, dt):
         compiled = jitted(state_in, given, dt)
-        eager_residual = float(np.asarray(state_out["solve_report"])[_REPORT_RESIDUAL])
-        compiled_residual = float(np.asarray(compiled["solve_report"])[_REPORT_RESIDUAL])
-        at_the_floor = eager_residual <= tolerance and compiled_residual <= tolerance
+        eager_report, compiled_report = np.asarray(state_out["solve_report"]), np.asarray(compiled["solve_report"])
+        at_the_floor = eager_report[_REPORT_RESIDUAL] <= tolerance and compiled_report[_REPORT_RESIDUAL] <= tolerance
+        stalled = eager_report[_REPORT_FAILED].any() and compiled_report[_REPORT_FAILED].any()
         for name, eager in state_out.items():
             a, b = np.asarray(eager, np.float64), np.asarray(compiled[name], np.float64)
-            if name in ("solve_report", "solve_report_sum") and at_the_floor:
+            if name in ("solve_report", "solve_report_sum") and (at_the_floor or stalled):
                 a, b = np.delete(a, _REPORT_RESIDUAL), np.delete(b, _REPORT_RESIDUAL)
             if not np.allclose(a, b, rtol=1e-5, atol=1e-6, equal_nan=True):
                 return False
