@@ -1,0 +1,45 @@
+{
+ "written": "2026-11-08T01:40+01:00, in the commit that holds it, before any gate case of P1b ran (gate 1's bits, gate 2's runs on A0's dynamic loop, gate 3's loop test, gate 4's flags, the field's case and the costs)",
+ "seen_before": [
+  "FU3's pair control rerun against release/v0.3.0 at daa82eb (the spike's light swing above a body spun at 400 rad/s, both magnetic laws and their reactions on the swing, 0.2 s at dt 0.5, 0.25 and 0.125 ms, float64; the body's paired works from P1a's ledger, the swing's from the spike's recording arm): R = sum (W_body + W_swing) + dU, U = -m . B at the magnet's centroid. Laws 0.1.0, 12.4 turns: +4.852e-7, -1.202e-7, -4.224e-7 J, a dt-independent limit of -7.25e-7 J (0.99 of m l pi G_xx a turn), FU3's to every printed digit; 0.2.0: +1.030e-6, +5.503e-7, +2.832e-7 J (ratios 1.87, 1.94, limit 1.6e-8 J); at the side point (0.3 turns) both read first order (0.1.0's loop work hidden): the two-dt judgement sees 0.1.0 only where the run closes turns",
+  "CG's controls rerun against daa82eb (two of dev1's bodies, a spring and a damper between them, mild regime, 30 draws, two dt, float64): the group capped at one pass reported not converged by MADDENING on 30 of 30 draws, the converged group on 0 of 30; a rate divider of 2 and 4 drifts the pair's momentum by at most 0.127 and 0.582 of the relative momentum's peak (groups at most 1e-15); a hidden edge at 1e-6 and 1e-3 of the spring's force caught on 30 of 30 draws at both dt",
+  "a development probe of A0's dynamic loop with the ledger (as declared, 0.05 s, float64, no plant): the arm's, the motor's and the body's step identities at 0.108, 0.0225 and 0.0753 of their floors, nothing unattributed on any of the three (exactly zero), the books balancing at 1.1e-17 J against a rounding of 2.1e-15 J, the controller the one thing outside"
+ ],
+ "counts_at": "every bit-for-bit claim at 6 usable CPUs (taskset 0-5), OpenBLAS 1 thread, XLA 6 intra-op threads, processes started the same way (MIME-ANO-140, -141); timings at the same counts, warm, five repeats or more, with the machine's load at the time; the tests at whatever CI's lanes hold",
+ "gate_1_default_programs_unchanged": {
+  "case": "four programs without the ledger, every history array of the head against release/v0.3.0 at daa82eb by its bytes, float64 and float32: A0 (tests/script_a0.py a0, the kinematic arm, the controller in the graph, 4000 steps), A0 on its dynamic rungs as declared (tests/script_a0_dynamic.py, 4000), the same with the magnet's mass (density 7500 kg/m^3, its inertia across the axis carried by the arm, 4000), script A's reproduction arm (10 000)",
+  "predicted": "every array identical in all eight: the arm's and the motor's steps are moved into one method each with their operations unchanged and in their order, the impulses' split, the system's sum and the ledger's parts are computed only beside them (and left unused without the ledger), and no node's parameters, inputs or state change without the ledger",
+  "controls": {
+   "repeat": "the head recorded twice: every array identical",
+   "one_ulp": "A0 on its dynamic rungs with the rotor's inertia one ulp up: arrays differ in both dtypes (the comparison can fail)"
+  }
+ },
+ "gate_2_a0_dynamic_with_the_ledger": {
+  "case": "A0 on its dynamic rungs with EnergyLedger, as declared and with the magnet's mass, 2 s (4000 steps), both dtypes",
+  "identities": "the arm's, the motor's and the body's step identities within their floors (16 eps of each step's scale) on every step: worst at most 0.5 of the floor in float64 and 1 in float32",
+  "attribution": "nothing unattributed on any receiver, exactly zero, both dtypes",
+  "plants": "an edge carrying 1e-6 of the motor's reaction into the arm's summed loads, 1e-6 of the force's reaction into the motor's summed loads, and 1e-6 of the controller's joint torques into the arm's summed command, each added to the built graph: unattributed work above zero on every drawn start (five draws of the body's start: height, roll about the tube's axis, spin), both dtypes; none of them moves any identity past its floor",
+  "outside": "A0 with its kinematic arm: outside are the controller, rpm.arm, rpm.motor and rpm.magnetic, the magnetic laws supplied by rpm.magnetic; on its dynamic rungs only the controller (the arm, the motor and the dipole receive deliveries or have their reactions delivered), the controller supplying the arm's joint torques and the motor's torque, and the magnetic laws supplied by nothing outside",
+  "between": "the arm's storage jumps between steps only where its frames carry an inertia (with the magnet's mass): above rounding, first order in dt (ratio 1.6 to 2.4 between 1 and 0.5 ms), booked under rpm.motor.inertia; zero to rounding without it (as declared) and on the body and the motor",
+  "inertia_exchange": "rpm.motor.inertia's paired work on its two receivers plus the arm's jump, over the run: first order in dt (ratio 1.6 to 2.4 between 1 and 0.5 ms)"
+ },
+ "gate_3_magnetic_family": {
+  "case": "the magnetic family's closed-loop case, extended so that a source on a dynamic one-joint segment is driven round closed loops of its frame's pose with the body held, the laws' reactions paired with the frame's twist, beside the body's loops as before; and its energy case, the pair's wrench on the body against the negative gradient of U = -m . B at the magnet's centroid, the field from the provider's own function, judged within 16 eps of |m||B| + |l||G||m| and |G||m|",
+  "predicted": "0.2.0's pair passes both on every draw (200), both dtypes it computes in; 0.1.0's pair (kept, unmetered by its anomaly) fails the extended loop case on every run, the source's loops among the failing ones wherever its lever is drawn above zero: its reaction carries the lever's couple l x F on the source where the field was read at the centre of mass",
+  "classes": "magnetic.torque and magnetic.force 0.2.0 declare the potential class; 0.1.0 stays unmetered, its reason MIME-ANO-137; on a run whose source is outside (A0's kinematic arm, script A's uniform field) the pair's paired work is supplied by its source and no potential change is taken; inside (the dynamic rungs), the pair's energy's change is taken from the run's ends and its residual reported, not judged"
+ },
+ "gate_4_structural_flags": {
+  "rate_divider": "a planted rate divider (rate twice dt) on one of two bodies a pair spring joins: refused at build by name, in every profile, with or without the ledger; the control at one rate builds",
+  "capped_group": "a coupling group capped at one pass (the toys' coupled body and medium, max_iterations 1): its verdict reported not converged in the ledger's account on every run; the converged control (max_iterations 50) reported converged on every run",
+  "damper": "a pair damper between two bodies, neither hosted nor in a group: flagged at build by a computed line on the law; inside a group it is not flagged"
+ },
+ "the_field": {
+  "case": "script A's reproduction arm with UniformRotating 0.1.0 and 0.2.0, and with drives.Ramp on the field's frequency, with the ledger, 0.25 s, both dtypes",
+  "predicted": "the field outside in all three, the torque's paired work supplied by it, the identity within its floor and nothing unattributed; 0.1.0 and 0.2.0 at a constant rate give the same paired supply to rounding; the ramp's supplied work differs from the constant rate's by more than 10 percent over a ramp from rest"
+ },
+ "costs": {
+  "a0": "A0 on its dynamic rungs, ledger off and on, warm, per step: on 1.3 to 3 times off in float64 and float32 (the arm's identity adds a mass matrix at the end positions and five inverse-dynamics passes; the body's adds 8 to 43 percent of its own step, P1a's)",
+  "mrs": "the tube demo and an MRS sphere in free space, ledger off and on, warm, per step: on within 1.1 times off in both dtypes (the MRS solve dominates the step; the body's books are a few dot products), the spread over five repeats under 10 percent on a quiet slot"
+ },
+ "a0_numbers_remeasured": "the spike's A0 figures were measured before P0 (the magnetic laws read at the centre of mass): on today's tree, with the controller's rate held at 1 ms, the body's backward-Euler term on A0's kinematic loop over 5 s stays first order in dt (ratio 1.8 to 2.2 between 0.5 and 0.25 ms) and between 15 and 35 percent of the paired supply; its supplied work from the dissipation side within 3 percent of 0.25 ms's"
+}
