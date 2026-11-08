@@ -23,7 +23,7 @@ draw:
   turned and moved.
 
 Blake's image as the oracle writes it is held by the identity it serves: with the singular Stokeslet it vanishes on the
-wall. The phase's measurement (1,000 draws each, the residual in units of the inputs' rounding): no slip at most 4.4,
+wall. The measurement when the wall kind was built (1,000 draws each, the residual in units of the inputs' rounding): no slip at most 4.4,
 the divergence 3.3, the reciprocity 92, Blake's image with no blob 1.1, the turned frame 2.5, the rate 99.97 to
 100.00; each line holds a factor of ten or more over the largest. The plants' least, in the same units: the flipped
 terms 2.1e10 (the rotlet) and above, the blob dropped 2.6e9, the divergence 1.5e6, the reciprocity 3.5e8, the

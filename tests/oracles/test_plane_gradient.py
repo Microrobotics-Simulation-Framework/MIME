@@ -1,7 +1,7 @@
 """The derivative through the MRS drag's node above a plane wall (the plane wall kind, ``mime.walls.PlaneWall``,
 declared ``exact``): forward and reverse mode against a central difference, in float64, in the plane's offset (a leaf a
-study may move, which W2's opening moves), the blob, the viscosity and the sphere's radius, at poses away from the
-node's value-keyed choices (the image at the force points, which makes none; and integrated over the cells near the
+study may move, which lubrication's opening of a contact moves), the blob, the viscosity and the sphere's radius, at
+poses away from the node's value-keyed choices (the image at the force points, which makes none; and integrated over the cells near the
 wall at a gap where every cell within the reach is in the budget, so that the budget's choice moves no column).
 
 The poses are the sphere unturned, whose samples tie in height pairwise across its tensor grid's symmetry (the ties
@@ -29,7 +29,7 @@ from mime.nodes.hydro.mrs import _plane
 #: The leaves differentiated, each a scalar.
 LEAVES = ("wall_offset", "blob", "viscosity", "shape_radius")
 #: How far autodiff may lie from the difference, of the derivative's scale: the difference's truncation and rounding
-#: measured at most 1.4e-8 of it (the phase's report), autodiff within the difference's own resolution.
+#: measured at most 1.4e-8 of it (measured when the wall kind was built, in its pull request), autodiff within the difference's own resolution.
 TOLERANCE = 1e-6
 TURNED = (math.cos(0.4), 0.3 * math.sin(0.4), -0.5 * math.sin(0.4), math.sqrt(1 - 0.34) * math.sin(0.4))
 #: The cases: the sphere's force spacing (in its radius), its gap (in its radius), wall_refinement and orientation.
@@ -39,7 +39,7 @@ CASES = {
 }
 #: The drag's blob in the cases: its default, half the force spacing, whose quadrature is the coarsest the rule gives
 #: (the derivative's agreement does not rest on the blob: at a blob of 0.1 and a spacing of 0.3 radii it was within
-#: 1.4e-8 of the scale in every leaf, the phase's report).
+#: 1.4e-8 of the scale in every leaf, measured when the wall kind was built).
 BLOB = 0.5
 
 

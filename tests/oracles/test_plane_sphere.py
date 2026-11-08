@@ -8,7 +8,7 @@ the force points (the default) a radius and half a radius from the wall, and int
 (``wall_refinement=2``) a force spacing from it; each gap with the sphere unturned (a pole of its sampling grid facing
 the wall) and turned by 1.2 rad, the same body sampled otherwise against the wall.
 
-**Where the line holds, and where it does not** (the phase's map, the node's own path, float64): at a force spacing or
+**Where the line holds, and where it does not** (the map made when the wall kind was built, the node's own path, float64): at a force spacing or
 more from the wall every entry lies within 3.7% of its oracle, at spacings of 0.3 and 0.2 radii, in both orientations.
 At half a spacing the normal entry, the squeeze, is the first to go: integrated over the cells, 2.6% and 4.6% off at a
 spacing of 0.3 radii, 5.0% and 14.8% at 0.2 (the sphere's grid pole facing the wall the worse), and at the force points
@@ -20,7 +20,7 @@ raises ``near_wall`` within a spacing), not this image's, and lubrication's hand
   own error near the wall (``measured`` below) with room, and lies far under the planted errors' shifts.
 - **Definiteness** (both dtypes): the resistance positive definite (its least eigenvalue, each row and column scaled by
   its diagonal, above zero) at every gap at or above the drag's clear line, ``CONFINED_GAP`` force spacings at the
-  force points and ``INTEGRATED_GAP`` integrated (dev1's lines, measured in the tube; the phase's map of the sphere near
+  force points and ``INTEGRATED_GAP`` integrated (dev1's lines, measured in the tube; the map of the sphere near
   the plane found them on the safe side).
 - **Both dtypes:** the float32 resistance within ``FLOAT32_LINE`` of the float64 one, entry by entry on its diagonal
   scale.
