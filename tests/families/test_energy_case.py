@@ -231,8 +231,18 @@ def test_a_law_that_declares_no_class_and_states_no_reason_fails_the_energy_case
 
 @pytest.mark.parametrize("family", ["magnetic"])
 def test_an_unmetered_law_passes_by_its_declaration_alone_and_says_so(family):
-    from mime.interactions import Magnetic
+    """The kept magnetic torque 0.1.0, unmetered by its anomaly (MIME-ANO-137)."""
+    from mime.interactions import KEPT
 
-    result = energy_of(Magnetic.Torque(), family)
+    result = energy_of(KEPT["magnetic.torque", "0.1.0"][0](), family)
     assert result.passed and result.detail.startswith("unmetered: ")
     assert "a pass by that declaration alone" in result.detail
+
+
+def test_the_magnetic_pair_s_energy_case_needs_the_member_that_completes_it():
+    """The family states its energy once for the pair: the torque alone is not the derivative of an energy, so the
+    case asks for its force (together=) rather than judge half of it."""
+    from mime.interactions import Magnetic
+
+    result = energy_of(Magnetic.Torque(), "magnetic")
+    assert result.failed and "together=" in result.detail
