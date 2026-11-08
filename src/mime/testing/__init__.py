@@ -35,7 +35,8 @@ except ImportError as error:
     raise ImportError(VERIFY_EXTRA_MISSING) from error
 
 from mime.testing._adapters import HARNESS_TOKEN, AdapterReport, verify_adapter
-from mime.testing._energy import PORT_DRAWS, dynamics_rig, metered_twin, rigid_body_states, step_identity
+from mime.testing._energy import PORT_CASES, PORT_DRAWS, PortCase, dynamics_rig, joint_rig, joint_states, \
+    metered_twin, rigid_body_states, spinner_rig, spinner_states, step_identity
 from mime.testing._loopback import Certificates, ConnectProxy, LoopbackStore, Seen, certificates
 from mime.testing._families import (
     OUTWARD_SPEED,
@@ -190,12 +191,18 @@ from mime.testing._switches import (
 
 __all__ = [
     "OUTWARD_SPEED",
+    "PORT_CASES",
     "PORT_DRAWS",
+    "PortCase",
     "check_energy",
     "dynamics_rig",
+    "joint_rig",
+    "joint_states",
     "metered_twin",
     "onto_the_surface",
     "rigid_body_states",
+    "spinner_rig",
+    "spinner_states",
     "step_identity",
     "BODY_REACH_SPACING",
     "CONDITION_BOUNDS",

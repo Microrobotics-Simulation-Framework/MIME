@@ -27,6 +27,19 @@ run's ends. A dissipative law's class is read from its own row of the paired wor
 beyond the same floor is counted (``gift_steps``), which the identity cannot see, since it books the gift under the
 law's name.
 
+**Between steps.** The identity's change in storage is each step's own, from the storage at its start to the storage at
+its end. Where a receiver's storage reads something the step does not return (a delivered inertia, predicted a step
+ahead, which the next step reads afresh; a coupling group's accepted iterate, which its records are one pass after),
+the storage at a step's start differs from the one the step before ended at: that jump is recorded apart
+(``between``), and the account names whose it is. **A jump is added back to the books only where a producer is
+declared for it**: the delivered inertia's exchange (the part of the storage that reads a delivery, ``StepAccount.
+own_start`` being the storage without it) and a coupling group (its members' jumps, which the account knows by the
+group). **Whatever no declared producer explains is judged exactly as unattributed work is**: the storage of what the
+receiver's own state holds at a step's start less the one the step before ended at is rounding where nothing touched
+the state between steps, kept as its worst over the step's scale (``between_worst``, over :data:`IDENTITY_ULPS` units
+of eps a failure of the step identity) and summed (``between_own``), which the balance leaves in. A state edited
+between steps, a restart that resets a field, a node that writes another's state, is seen there.
+
 **The books are read, never stepped on.** No state a step reads depends on a record: the magnitudes the scale is
 formed from and the worst steps kept are diagnostics, so their non-smooth operations select no branch of the physics,
 and a derivative through the run (of a law's paired work, say) passes through the paired work's own sums."""
@@ -38,7 +51,10 @@ from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any
 
 from jax import Array
+from jaxtyping import Float
+from typing_extensions import Annotated, ReadOnly, TypedDict
 
+from mime.core._field_kinds import Units
 from mime.core._node import as_run_array, jnp
 
 if TYPE_CHECKING:
@@ -66,6 +82,36 @@ IDENTITY_ULPS, DEFINITE_ULPS = 16.0, 16.0
 _SEPARATOR = "|"
 #: What joins a law's own input to the input it stands beside and its delivery's index.
 _OWN = "__ledger"
+
+
+class LedgerRecords(TypedDict):
+    """The energy ledger's records in a metered receiver's state (:func:`initial_records`), with their units: each
+    law's paired work over the run and over the step, each hosted law's two terms and the scheme's own terms, the
+    unattributed work, the storage at the run's start and now, what the storage jumped between steps and the part of
+    that jump no declared producer explains (``between_own``, of the storage of the receiver's own state,
+    ``storage_own`` at the last step's end), the run's summed step scale (J); the step identity's residual over the step's scale and
+    its worst, that unexplained jump over the step's scale at its worst (``between_worst``), and the counts of
+    indefinite and gift steps per law (1). A receiver whose state a potential law's energy reads adds the configuration at the
+    run's start (``ledger_configuration_start``) in its own units, beside its own fields, in its typed state."""
+
+    ledger_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_step_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_hosted: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    ledger_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_step_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_unattributed: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_unattributed_worst: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_between: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_between_own: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_between_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_storage_own: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage_start: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_step_identity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_identity_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_scale: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_indefinite_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+    ledger_gift_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
 
 
 @dataclass(frozen=True)
@@ -141,10 +187,13 @@ def with_law_inputs(spec: Mapping[str, BoundaryInputSpec],
 
 def summed(spec: Mapping[str, BoundaryInputSpec], held: Sequence[LedgerDelivery],
            boundary_inputs: Mapping[str, Array]) -> dict[str, Array]:
-    """What a metered receiver's step reads: each of its own inputs (``spec``, its inputs without the ledger), the
-    unattributed value or its default, with every law's own input into it added in the order the deliveries are held."""
+    """What a metered receiver's step reads: each of its own inputs (``spec``, its inputs without the ledger) that an
+    edge feeds or a law delivers into, the unattributed value or its default, with every law's own input into it added
+    in the order the deliveries are held. An input nothing feeds is left out, as the graph leaves it out of a
+    receiver without the ledger, so that a step that reads whether an input is fed reads it alike."""
+    delivered = {d.field for d in held if d.kind != HOSTED}
     given = {name: boundary_inputs[name] if name in boundary_inputs else jnp.asarray(entry.default)
-             for name, entry in spec.items()}
+             for name, entry in spec.items() if name in boundary_inputs or name in delivered}
     for index, delivery in enumerate(held):
         if delivery.kind != HOSTED:
             given[delivery.field] = given[delivery.field] + boundary_inputs[law_input(delivery.field, index)]
@@ -169,6 +218,13 @@ def paired_work(kind: str, effort: Array, *, change: Array | None = None, soluti
     if kind == INERTIA and velocity is not None:
         return -0.5 * velocity @ effort @ velocity
     raise ValueError(f"no pairing for a delivery of kind {kind!r} with what was given")
+
+
+def magnitude(value: Array) -> Array:
+    """``|value|`` elementwise, for a step's scale: the magnitude of the arithmetic its identity's terms are formed by.
+    The scale is a record no edge reads and no state the step takes depends on, so no derivative of the physics passes
+    through it."""
+    return jnp.abs(value)
 
 
 def definite_at_floor(matrix: Array, ulps: float = DEFINITE_ULPS) -> Array:
@@ -200,7 +256,9 @@ class StepAccount:
     (the step's scale, what its rounding is judged on: the magnitude of the arithmetic that forms its terms, each
     product's factors taken in magnitude, the step's solve included, so that terms that cancel, and a stiff solve,
     are judged on the size of what was rounded) and, by row, each operator whose definiteness is checked at run
-    time."""
+    time. ``own_start`` and ``own_end`` are the storage without what a delivery adds (a delivered inertia's part),
+    where the storage has such a part: the jump between steps they leave is the receiver's own state's, which no
+    producer declares, and is judged (:func:`recorded`); where it has none they are the storage itself."""
 
     work: Array
     hosted: Array
@@ -210,6 +268,8 @@ class StepAccount:
     storage_end: Array
     scale: Array
     operators: Mapping[int, Array]
+    own_start: Array | None = None
+    own_end: Array | None = None
 
     def residual(self) -> Array:
         """``dH - W + N``: the change in storage less every paired work, the scheme's terms added back."""
@@ -231,6 +291,8 @@ def initial_records(held: Sequence[LedgerDelivery], terms: int, storage: Any,
     start = {} if configuration is None else {f"{RECORDS}configuration_start": as_run_array(configuration)}
     return {**start,
         f"{RECORDS}work": zero(rows), f"{RECORDS}step_work": zero(rows), f"{RECORDS}hosted": zero(rows, 2),
+        f"{RECORDS}between": zero(), f"{RECORDS}between_own": zero(), f"{RECORDS}between_worst": zero(),
+        f"{RECORDS}storage_own": as_run_array(storage),
         f"{RECORDS}terms": zero(terms), f"{RECORDS}step_terms": zero(terms),
         f"{RECORDS}unattributed": zero(), f"{RECORDS}unattributed_worst": zero(),
         f"{RECORDS}storage_start": as_run_array(storage), f"{RECORDS}storage": as_run_array(storage),
@@ -246,7 +308,12 @@ def unrecorded(state: Mapping[str, Array]) -> dict[str, Array]:
 
 def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[LedgerDelivery] = ()) -> dict[str, Array]:
     """The ledger's fields after ``step``: running sums, each check's worst over the run, and the step's own values
-    beside them (what a recorded history shows per step). The identity's residual is kept relative to the step's scale
+    beside them (what a recorded history shows per step). The storage at the step's start less the storage the step
+    before ended at is kept apart and summed (``between``); its part no declared producer explains, the storage of
+    the receiver's own state at the step's start (``StepAccount.own_start``) less the one the step before ended at,
+    is kept summed (``between_own``) and as its largest magnitude over the step's scale (``between_worst``; over
+    :data:`IDENTITY_ULPS` times eps it has failed, as an unattributed work above zero has). The
+    identity's residual is kept relative to the step's scale
     (``step_identity``; over :data:`IDENTITY_ULPS` times eps it has failed), the unattributed work as its largest
     magnitude (above zero it has failed), and per law the count of steps whose operator failed its definiteness
     (``indefinite_steps``) and, per **dissipative** law of ``held``, the count of steps in which its paired work was
@@ -255,7 +322,8 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     delivered, neither through the step's solve nor by its rule at arrival; this is its class's sign, read from the
     law's own row, and it is silent on the identity, which books the gift under the law's name)."""
     dtype = step.work.dtype
-    relative = jnp.abs(step.residual()) / jnp.maximum(step.scale, jnp.finfo(dtype).tiny)
+    scale_at_least = jnp.maximum(step.scale, jnp.finfo(dtype).tiny)
+    relative = jnp.abs(step.residual()) / scale_at_least
     indefinite = jnp.zeros_like(state[f"{RECORDS}indefinite_steps"])
     for row, operator in step.operators.items():
         indefinite = indefinite.at[row].set((~definite_at_floor(operator)).astype(dtype))
@@ -267,10 +335,18 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
         gifts = gifts.at[row].set(gave.astype(dtype))
     r = RECORDS
     start = {key: state[key] for key in (f"{r}configuration_start",) if key in state}
+    jump = step.storage_start - state[f"{r}storage"]
+    own_start = step.storage_start if step.own_start is None else step.own_start
+    own_end = step.storage_end if step.own_end is None else step.own_end
+    unexplained = own_start - state[f"{r}storage_own"]
+    unexplained_relative = jnp.abs(unexplained) / scale_at_least
     return {
         **start,
         f"{r}work": state[f"{r}work"] + step.work, f"{r}step_work": step.work,
         f"{r}hosted": state[f"{r}hosted"] + step.hosted,
+        f"{r}between": state[f"{r}between"] + jump, f"{r}between_own": state[f"{r}between_own"] + unexplained,
+        f"{r}between_worst": jnp.maximum(state[f"{r}between_worst"], unexplained_relative),
+        f"{r}storage_own": own_end,
         f"{r}terms": state[f"{r}terms"] + step.terms, f"{r}step_terms": step.terms,
         f"{r}unattributed": state[f"{r}unattributed"] + step.unattributed,
         f"{r}unattributed_worst": jnp.maximum(state[f"{r}unattributed_worst"], jnp.abs(step.unattributed)),
@@ -282,11 +358,15 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     }
 
 
-def balance(records: Mapping[str, Any]) -> Any:
-    """A metered receiver's books over its run, from its records: the change in its storage less every paired work,
-    its scheme's and its hosted laws' terms added back. The sum of its steps' residuals."""
+def balance(records: Mapping[str, Any], *, grouped: bool = False) -> Any:
+    """A metered receiver's books over its run, from its records: the change in its storage less every paired work and
+    what its storage jumped between steps where a producer is declared for the jump, its scheme's and its hosted laws'
+    terms added back. The sum of its steps' residuals and of the jumps no declared producer explains
+    (``between_own``): a state edited between steps is in the balance. ``grouped``, a member of a coupling group,
+    whose jump the group owns whole: all of it is added back."""
     r = RECORDS
-    supplied = jnp.sum(records[f"{r}work"]) + records[f"{r}unattributed"]
+    declared = records[f"{r}between"] if grouped else records[f"{r}between"] - records[f"{r}between_own"]
+    supplied = jnp.sum(records[f"{r}work"]) + records[f"{r}unattributed"] + declared
     numerical = jnp.sum(records[f"{r}terms"]) + jnp.sum(records[f"{r}hosted"])
     return (records[f"{r}storage"] - records[f"{r}storage_start"]) - supplied + numerical
 
@@ -300,6 +380,13 @@ def losses(records: Mapping[str, Any], held: Sequence[LedgerDelivery]) -> Any:
     dissipative = jnp.asarray([any(d.law == law and d.energy_class == DISSIPATIVE for d in held) for law in rows])
     taken = -records[f"{RECORDS}work"] + records[f"{RECORDS}hosted"][:, 0]
     return jnp.where(dissipative, taken, jnp.zeros_like(taken))
+
+
+def between_floors(records: Mapping[str, Any]) -> Any:
+    """The worst jump between steps no declared producer explains, in units of the step identity's rounding floor
+    (above one it has failed, as the step identity has)."""
+    return records[f"{RECORDS}between_worst"] / (IDENTITY_ULPS * jnp.finfo(jnp.asarray(
+        records[f"{RECORDS}between_worst"]).dtype).eps)
 
 
 def stored(records: Mapping[str, Any]) -> Any:
@@ -341,6 +428,7 @@ def metered_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mappi
 
 __all__ = ["CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES", "FLOW_IN", "HOSTED",
            "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "POTENTIAL", "RECORDS", "SOLVED", "UNMETERED", "WORKLESS",
-           "LedgerDelivery", "StepAccount", "balance", "balance_floor", "definite_at_floor", "deliveries",
-           "initial_records", "law_input", "laws", "losses", "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "unrecorded",
+           "LedgerDelivery", "LedgerRecords", "StepAccount", "balance", "balance_floor", "between_floors", "definite_at_floor",
+           "deliveries",
+           "initial_records", "law_input", "laws", "losses", "magnitude", "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "unrecorded",
            "with_law_inputs", "with_records"]

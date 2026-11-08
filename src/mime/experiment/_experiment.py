@@ -86,6 +86,7 @@ from mime.results import (
     Samples,
     Stopped,
     energy_account,
+    group_verdicts,
     read_containments,
     read_watches,
 )
@@ -1403,7 +1404,8 @@ class BuiltExperiment:
                          energy=functools.partial(energy_account, self._graph, final,
                                                   (point.params if point is not None else graph_params(self._graph))
                                                   .get("nodes", {}), steps=start + steps)
-                         if self._report.energy else None)
+                         if self._report.energy else None,
+                         groups=functools.partial(group_verdicts, self._graph) if self._report.groups else None)
         result.drives = (plans if plans is not None else self._plans).turning
         return result
 

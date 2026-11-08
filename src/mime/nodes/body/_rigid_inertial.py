@@ -115,28 +115,11 @@ class RigidContactState(TypedDict, closed=True):
     contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
 
 
-class _BodyRecords(TypedDict):
-    """The energy ledger's records in a metered body's state (``mime.core.ledger.initial_records``), with their units:
-    each law's paired work over the run and over the step, each hosted law's two terms and the scheme's own terms, the
-    unattributed work, the storage at the run's start and now, the run's summed step scale (J); the step identity's
-    residual over the step's scale and its worst, and the counts of indefinite and gift steps per law (1); and the
-    pose at the run's start, which a potential law's energy is evaluated at."""
+class _BodyRecords(books.LedgerRecords):
+    """The energy ledger's records in a metered body's state (``mime.core.ledger.LedgerRecords``), and the pose at the
+    run's start, which a potential law's energy is evaluated at."""
 
     ledger_configuration_start: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]]
-    ledger_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
-    ledger_step_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
-    ledger_hosted: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
-    ledger_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
-    ledger_step_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
-    ledger_unattributed: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_unattributed_worst: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_storage_start: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_storage: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_step_identity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
-    ledger_identity_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
-    ledger_scale: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_indefinite_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
-    ledger_gift_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
 
 
 class MeteredRigidInertialState(_BodyRecords, closed=True):
@@ -855,7 +838,8 @@ class RigidInertialNode(MimeNode):
         change = jnp.concatenate([position - pose[:3], turned])
         moved = solved - twist
         own = self.own_inputs()
-        given = books.summed(own, held, boundary_inputs)
+        given = {**{name: jnp.asarray(entry.default, dtype=dtype) for name, entry in own.items()},
+                 **books.summed(own, held, boundary_inputs)}
         loads = given["applied_wrench"] + given["background_load"]
         beyond = change - dt * solved
         shift = jnp.dot(loads, beyond)

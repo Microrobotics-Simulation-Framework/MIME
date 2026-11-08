@@ -26,9 +26,23 @@ useful work as a share of what was supplied.
 - To find a wrong delivery between laws: the build compares its graph with the deliveries it made and refuses a
   swap, a duplicate or a missing delivery by name (`post-build.ledger-inputs`). The books cannot see them, and a law's
   residual shows only a swap that involves gravity and a moving load.
-- On a body whose dynamics is not metered yet (a chain segment's): the build report lists it, with the reason, and the
-  account leaves it out.
+- On a dynamics that is not metered (a toy's, a lab's that names no port kind): the build report lists it, with the
+  reason, and the account leaves it out. A dynamic arm and a dynamic motor are metered: each books its commands under
+  their writer, the loads on its frames under each law, and the laws it holds itself (an arm's weight, damping, stops
+  and friction; a motor's bearing) under their names; a kinematic segment is outside, a prescribed motion.
 - On a run read back from a folder: the account needs each law's parameters, which only the built experiment holds.
+- To attribute a controller's work when it is called on the host. A controller in its callback mode is no node of the
+  graph, so what it writes into a metered receiver arrives unattributed: the books close (the identity books it), the
+  work is not named by its writer, and the run says so (`result.energy.findings`, `result.energy.text()`,
+  `result.text()`, `mime run`'s attention lines) with the amount, and the build report's `energy` lines name the
+  controller outside. Run it in graph mode for its commands to be booked under it.
+- To see a gift smaller than a step's floor. The step identity and the storage's jump between steps are judged against
+  a fixed multiple of rounding on the step's scale, the magnitude of the arithmetic that forms them: on A0's dynamic
+  loop well above the loop's own rounding. "Closes at a tenth of its floor" bounds a residual from above by about one
+  floor; a gift of half a floor passes and one of two fails. Attribution is not limited so: work arriving where no law owns it is seen at any
+  size above underflow.
+- To see an error inside a coupling group between steps: a member's jump between steps is the group's, reported with the
+  group's residual, not judged.
 
 **Its derivative** passes through the account's sums. Called inside a function being differentiated,
 `mime.results.energy_account` forms `supplied_total`, `efficiency(useful)` and each potential's change from the final

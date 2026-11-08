@@ -175,6 +175,7 @@ group.settings                user
 id.duplicate                  user
 lag.cross-check               internal
 lag.unplanned                 internal
+law.rate-divided              user
 ledger.unmetered              user
 live.address-in-use           environment
 live.chunk                    user
