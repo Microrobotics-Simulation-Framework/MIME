@@ -146,5 +146,6 @@ def test_every_symbol_units_line_and_every_node_reference_line_names_a_route_to_
     indices = read_list(list_path(ROOT, "symbol_indices"), LISTS["symbol_indices"])
     added = {"GravityNode R", "GravityNode q", "MagneticTorqueNode R", "SwimSpeedNode h", "UniformRotatingNode h",
              "IntegratingRotatingNode h", "PhaseLagNode h", "RampNode h", "ImplicitFlowNode h", "BodyForceNode h",
-             "ExplicitFlowNode h", "PrescribedFlowNode e", "PrescribedFlowNode i"}
+             "ExplicitFlowNode h", "ExplicitFlowNode k", "PrescribedFlowNode e", "PrescribedFlowNode i",
+             "PrescribedFlowNode r", "PrescribedFlowNode t"}
     assert {line.item for line in indices.lines if "route:" in line.reason} == added

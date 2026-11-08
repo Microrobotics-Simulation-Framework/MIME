@@ -17,7 +17,6 @@ from mime.fields._solved import NOT_DECLARED, SolvedField
 from mime.gradients import GradientStatus
 from mime.nodes.flow._womersley import PrescribedFlowNode
 from mime.registry import Dynamics, Port, Problem, Region, register_dynamics
-from mime.scene import PeriodicBox
 from mime.things import ThingKind
 from mime.units import Magnitude
 from mime.vocabulary import FLOW_VELOCITY, FLOW_WAVEFORM
@@ -52,13 +51,11 @@ class Womersley(Dynamics):
     field: ClassVar[SolvedField] = SolvedField(
         hosting="prescribed", role="flow", provides=(FLOW_VELOCITY.name,), time_level=NOT_DECLARED,
         own_contribution="none", accepts=(FLOW_WAVEFORM.name,), exchange="none", outside=True,
-        domain_kinds=("tube_lumen", PeriodicBox.group), ports="none", properties=("viscosity", "density"),
-        settings=("domain",), ledger_route=None,
+        domain_kinds=("tube_lumen",), ports="none", properties=("viscosity", "density"),
+        settings=(), ledger_route=None,
         ledger_reason="outside, it takes nothing back from what reads it, and it stores nothing (R4-C, C-8)",
         steady_solve=False, affine_response=False, stores="nothing", batches=True, dtypes=("float32", "float64"),
         rates=NOT_DECLARED)
-
-    domain: PeriodicBox | None = None
 
     @override
     def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:

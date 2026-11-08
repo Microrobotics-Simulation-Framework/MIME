@@ -39,10 +39,11 @@ from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import StageKind, scheme_named
 from mime.registry import Problem
 
-EQUATIONS = (r"\mathbf{u}^{(k)} = \mathcal{P}\left[\frac{\mathbf{u}^{(k-1)} + \gamma_k h\, \mathbf{F}^{(k-1)} + "
-             r"\zeta_k h\, \mathbf{F}^{(k-2)} - \alpha_k h\, G p^{(k-1)}}{1 + \alpha_k h\, \frac{\mu}{\rho} \kappa}"
-             r"\right], \quad \mathbf{F} = \mathcal{C}(\mathbf{u}) + \frac{\mu}{\rho} L \mathbf{u} + (1 - \chi) "
-             r"\mathbf{g}")
+EQUATIONS = (r"\mathbf{u}^{(k)} = \operatorname{proj}\left[\frac{\mathbf{u}^{(k-1)} + \gamma_{k} h\, "
+             r"\operatorname{F}^{(k-1)} + \zeta_{k} h\, \operatorname{F}^{(k-2)} - \alpha_{k} h\, \nabla p^{(k-1)}}{1 + "
+             r"\alpha_{k} h\, \frac{\mu}{\rho} \operatorname{K}^{-1}}\right], \quad \operatorname{F} = -\nabla \cdot "
+             r"\left( \mathbf{u} \mathbf{u} \right) + \frac{\mu}{\rho} \nabla^{2} \mathbf{u} + \left( 1 - "
+             r"\operatorname{band} \right) \mathbf{g}")
 
 _STEP = "mime.nodes.flow.fvm._explicit.ExplicitFlowNode.explicit_stepped"
 #: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
@@ -132,20 +133,13 @@ class ExplicitFlowNode(ImplicitFlowNode):
     )
     symbols = (
         Symbol(r"\mathbf{u}", SymbolKind.STATE, "velocity_x", "m/s", _STEP),
-        Symbol("p", SymbolKind.STATE, "pressure", "m^2/s^2", _STEP),
-        Symbol(r"\mathcal{C}", SymbolKind.CONSTANT, "convection", "m/s^2", _STEP),
+        Symbol("p", SymbolKind.STATE, "pressure", "m^2/s^2", _START),
         Symbol(r"\mu", SymbolKind.PARAMETER, "viscosity", "Pa s", _STEP),
         Symbol(r"\rho", SymbolKind.PARAMETER, "density", "kg/m^3", _STEP),
-        Symbol("L", SymbolKind.CONSTANT, "laplacian", "1/m^2", _STEP),
-        Symbol(r"\kappa", SymbolKind.CONSTANT, "inverse_permeability", "1/m^2", _STEP),
-        Symbol(r"\chi", SymbolKind.CONSTANT, "indicator", "1", _STEP),
         Symbol(r"\mathbf{g}", SymbolKind.INPUT, "body_force", "m/s^2", _STEP),
-        Symbol(r"\mathcal{P}", SymbolKind.CONSTANT, "projector", "1", _STEP),
-        Symbol("G", SymbolKind.CONSTANT, "gradient", "1/m", _START),
-        Symbol(r"\gamma_k", SymbolKind.CONSTANT, "gamma", "1", _STEP),
-        Symbol(r"\zeta_k", SymbolKind.CONSTANT, "zeta", "1", _STEP),
-        Symbol(r"\alpha_k", SymbolKind.CONSTANT, "alpha", "1", _STEP),
-        Symbol(r"\mathbf{F}", SymbolKind.CONSTANT, "explicit_rhs", "m/s^2", _STEP),
+        Symbol(r"\gamma_{k}", SymbolKind.CONSTANT, "mime.nodes.flow.fvm._rk3.GAMMA", "1", _STEP),
+        Symbol(r"\zeta_{k}", SymbolKind.CONSTANT, "mime.nodes.flow.fvm._rk3.ZETA", "1", _STEP),
+        Symbol(r"\alpha_{k}", SymbolKind.CONSTANT, "mime.nodes.flow.fvm._rk3.ALPHA", "1", _STEP),
     )
 
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
