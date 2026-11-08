@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The plane wall kind** (`plane` 0.1.0, `mime.walls.PlaneWall`): an unbounded no-slip plane for the drag's MRS rung,
+  its image system in closed form, regularised by the drag's own blob, so that with the free Stokeslet of that blob it
+  vanishes on the wall and has no divergence to rounding, and as the blob vanishes it is Blake's singular image. The
+  plane is a structure, `mime.scene.Plane(normal=+Z, offset=...)`, whose `half_space` a medium fills
+  (`Medium("water", fills=floor.half_space)`); its shape is `mime.core.HalfSpace` (`half_space`), convex, taking many
+  points, with no switch. The offset is a leaf a study may move; the normal is held as built and normalised in the
+  program, so declaring it a leaf later changes no program. The gradient is exact. The plane has no surface yet, so no
+  contact can be held against it; the build refuses a body that starts through it, and the drag's near-wall flags
+  speak in a run. **The wall protocol passes the drag's regularisation to every wall kind**: a correction and its
+  image between point sets take `eps_squared`, the blob's square, and `WallCorrection.regularised` declares whether a
+  kind uses it (the tube's table image is singular and declares it does not); the build report says per wall which
+  image it adds. A correction registered with the earlier signature takes the new argument (a default of `None`
+  serves). Every released program on the tube and in free space runs to the same bits.
+
 - **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
   second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
   entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery

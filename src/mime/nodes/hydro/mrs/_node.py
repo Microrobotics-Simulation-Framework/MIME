@@ -947,6 +947,12 @@ class MRSDragNode(MimeNode):
                 "drag.mrs-resistance", f"the wall's reads at the body's starting pose were refused ({settings}): a force "
                                        f"point lies outside the wall's data, past the wall or past the table's reach",
                 "start the body inside the medium's region, clear of the wall: Body(..., initial=State(position=...))"))
+        elif judged.gap is not None and judged.gap < 0.0:
+            found.append(Problem(
+                "drag.mrs-resistance", f"the body's hull reaches through the wall at its starting pose ({settings}): "
+                                       f"its least distance from the wall is {judged.gap * 1e3:.4g} mm, and a sample "
+                                       f"through the wall is outside the wall's image",
+                "start the body inside the medium's region, clear of the wall: Body(..., initial=State(position=...))"))
         elif not (math.isfinite(judged.least) and judged.least > 0.0):
             found.append(Problem(
                 "drag.mrs-resistance", f"the resistance at the body's starting pose, the wall's image in it "

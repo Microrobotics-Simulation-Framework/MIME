@@ -2,7 +2,7 @@
 still. Here now: ``Drag`` with its surrogate rung, the learned resistance of a de Jongh screw body in a straight tube,
 with the near-wall lubrication correction as a setting of that rung; and its MRS rung, the resistance of
 any rigid body whose hull kind gives surface samples, in a medium whose region a wall kind matches (``mime.walls``):
-in MIME 0.3, an unbounded one."""
+an unbounded one, a straight tube's lumen or the half-space a plane bounds."""
 
 from __future__ import annotations
 
@@ -307,7 +307,8 @@ class PointForceDrag(Interaction):
         "mrs: quasi-steady Stokes flow, the limit of vanishing Reynolds number; the Reynolds number, by the body's "
         "translation and by its turning, is computed after each run (the post-run watch) and flagged past the bound "
         "the entry declares",
-        "mrs: a medium at rest that its wall kind matches, unbounded (free_space, the one wall kind built in MIME 0.3); "
+        "mrs: a medium at rest that its wall kind matches: unbounded (free_space), a straight tube's lumen (tube) or "
+        "the half-space a plane bounds (plane); "
         "its error is the regularised method's, "
         "of the order of the blob over the body's size, falling as the spacing falls, and is measured against the "
         "sphere's and the prolate spheroid's closed forms by its oracle tests, not bounded here",
@@ -327,7 +328,7 @@ class PointForceDrag(Interaction):
             "body": requires(Capability.RIGID, accepts=[RESISTANCE.name, BACKGROUND_LOAD.name],
                              publishes=[POSE.name]),
         }, note="a rigid body whose dynamics takes a resistance and whose hull kind gives surface samples, in a "
-                "medium at rest that a wall kind matches: in MIME 0.3, an unbounded one"))
+                "medium at rest that a wall kind matches: an unbounded one, a straight tube or a plane"))
     reads = {"pose": Read("body", POSE.name)}
     delivers = {"resistance": Delivery("body", RESISTANCE.name), "background_load": Delivery("body", BACKGROUND_LOAD.name)}
     values = {"viscosity": Value("medium", "viscosity")}
@@ -682,7 +683,8 @@ class Drag(PointForceDrag):
     and it must match the region the medium fills exactly: ``free_space`` a medium that fills none, ``tube`` a tube's
     lumen (it reads the asset ``unit_tube_R0.997``, refused by name when planned if it is not in the cache), ``plane``
     the half-space a plane bounds (its regularised image, of the drag's own blob, in closed form); a wall kind that
-    matches another region is refused with the wall kinds that match, and a reserved one with its reason. **A wall's correction is evaluated at the force points**, each cell's force placed at its force point and
+    matches another region is refused with the wall kinds that match, and a reserved one with its reason. **A wall's
+    correction is evaluated at the force points**, each cell's force placed at its force point and
     weighted by the cell's area: a wall's image system is smooth inside the fluid, varying over the distance to the
     wall, which the force points resolve where the body is further from the wall than about a force spacing, while the
     free part's near field varies over the blob, which needs the fine quadrature; and the image is then read at

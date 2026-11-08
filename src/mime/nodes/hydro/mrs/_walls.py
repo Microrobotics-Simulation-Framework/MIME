@@ -7,9 +7,10 @@ node's ``wall_<name>``), the viscosity and the drag's regularisation ``eps_squar
 the free part is made with, passed to every wall kind, whether it uses it or not: ``WallCorrection.regularised``), and
 returns the ``3N x 3N`` block matrix added to the free-space matrix, the velocity at each sample per unit force at each
 that the wall's image system adds, in m/(N s), the matrix's own units; and whether every read it made of its data was
-accepted (a table read inside its readable range), which the node publishes. ``prepare`` turns the parameters the wall kind reads from the geometry kind, in SI, into those node
-constants at build: a frame across the tube's axis, a table loaded and compiled for the run's dtype. The node knows
-Stokes kernels and quadrature, and nothing about tubes or planes.
+accepted (a table read inside its readable range), which the node publishes. ``prepare`` turns the parameters the
+wall kind reads from the geometry kind, in SI, into those node constants at build: a frame across the tube's axis, a
+table loaded and compiled for the run's dtype. The node knows Stokes kernels and quadrature, and nothing about tubes or
+planes.
 
 Free space is the trivial wall, with no correction. The straight circular tube's (``_tube``) is its image system read
 from a table, singular (no blob in it); the plane's (``_plane``) is the regularised image of the drag's own blob, in

@@ -2,7 +2,8 @@
 resistance (``resistance``), the same on a separated quadrature (``_quadrature``: force points apart from a finer
 quadrature, the free part assembled once per build and held), the wall corrections a confining wall adds to it, by
 its wall kind's name and version (free space adds none; the straight circular tube's is read from a table of its image
-system; the plane's is its regularised image in closed form), and the node that evaluates them at a body's pose (``MRSDragNode``)."""
+system; the plane's is its regularised image in closed form), and the node that evaluates them at a body's pose
+(``MRSDragNode``)."""
 
 from mime.nodes.hydro.mrs._node import (
     ASYMMETRY_LIMIT,

@@ -177,7 +177,7 @@ class Plane(Geometry):
     """An unbounded plane wall: the plane ``x . n = offset``, ``normal`` its direction (towards the medium) and
     ``offset`` its signed distance from the world's origin along that direction. Its regions are the ``half_space`` its
     normal points into, which a medium fills (``Medium(..., fills=floor.half_space)``), evaluated as the half-space
-    (``mime.core.HalfSpace``), and the ``wall``, the other side. In 0.3 it has no surface (a contact against it comes
+    (``mime.core.HalfSpace``), and the ``wall``, the other side. It has no surface yet (a contact against it comes
     later), no drawing and no region primitive: its ``offset`` is a length a study may move as a leaf, and its normal a
     direction, held as built. Its derivative is the half-space's: its distance is linear in the point and the offset, so
     it has no switch."""

@@ -51,13 +51,15 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from mrs_cases import BALL, HALF, KINDS, TURN, drag_node, free_space, mrs, mrs_free_space, prolate, resistance_at
+from plane_cases import sphere_above_plane
 from script_a import fl9
 
 import mime.interactions.hydrodynamic as hydrodynamic
 import mime.nodes.hydro.mrs._node as mrs_node
+import mime.nodes.hydro.mrs._plane as plane_wall
 import mime.nodes.hydro.mrs._walls as walls
 from mime.build import BuildRefused
-from mime.build._maddening import parameter_leaves
+from mime.build._maddening import node_state, parameter_leaves
 from mime.core import quaternion
 from mime.data import asset
 from mime.dynamics import RigidInertial
@@ -365,6 +367,33 @@ def test_control_a_node_placing_its_samples_at_the_default_precision_is_caught(m
     assert None in step_products()
 
 
+def plane_step_products() -> list:
+    """The products of the node's step above a plane wall, its image integrated over the cells near the wall: both
+    branches of the near-wall ``cond`` are in the program, the image at the force points and over the cells."""
+    built = sphere_above_plane(0.3, 0.3, wall_refinement=2).build()
+    node = drag_node(built, "ball")
+    pose = jnp.asarray(node_state(built.graph, "ball")["pose"])
+    step = jax.make_jaxpr(lambda p: node.advance(p, node.initial_state(), {"pose": pose}, 1e-3))
+    return products(step(parameter_leaves(built.graph)["drag:ball"]).jaxpr)
+
+
+def test_every_matrix_product_of_the_nodes_step_above_a_plane_is_taken_at_the_highest_precision():
+    """The plane's image is written without a matrix product; the step's placements and solve keep theirs."""
+    found = plane_step_products()
+    assert len(found) >= 4 and all(held == (jax.lax.Precision.HIGHEST,) * 2 for held in found), found
+
+
+def test_control_a_product_at_the_default_precision_in_the_planes_image_is_caught(monkeypatch):
+    held = plane_wall.image_terms
+
+    def planted(targets, sources, parameters, eps_squared):
+        found = held(targets, sources, parameters, eps_squared)
+        return found._replace(rotlet=found.rotlet + 0.0 * jnp.matmul(found.rotlet, jnp.eye(3)))
+
+    monkeypatch.setattr(plane_wall, "image_terms", planted)
+    assert None in plane_step_products()
+
+
 def codes(experiment) -> set[str]:
     with pytest.raises(BuildRefused) as refused:
         experiment.plan()
@@ -406,8 +435,6 @@ def test_a_medium_filling_a_tube_with_the_free_space_wall_is_refused():
     (lambda: Drag.MRS(spacing=mm(0.0), blob=0.5, wall_kind="free_space"), "spacing is 0.0 m"),
     (lambda: Drag.MRS(spacing=mm(0.5), blob=0.0, wall_kind="free_space"), "blob is 0.0"),
     (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="duct"), "wall_kind='duct': it is no registered wall kind"),
-    (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="plane"), "wall_kind='plane': a plane wall has no "
-                                                                     "correction in 0.3"),
     (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="free_space 9.9.9"), "wall_kind='free_space 9.9.9': it "
                                                                                 "is no registered wall kind"),
     (lambda: Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="free_space", weights=asset("dejongh_mlp_v2")),
@@ -418,6 +445,14 @@ def test_a_rungs_settings_are_its_own_and_the_mrs_rungs_are_written(law, said):
     with pytest.raises(BuildRefused) as refused:
         free_space("settings", {"ball": BALL}, law()).plan()
     assert "setting.value" in refused.value.codes() and said in str(refused.value)
+
+
+def test_the_plane_wall_kind_in_a_medium_filling_no_region_is_refused_naming_the_region_it_matches():
+    with pytest.raises(BuildRefused) as refused:
+        free_space("plane_unfilled", {"ball": BALL}, Drag.MRS(spacing=mm(0.5), blob=0.5, wall_kind="plane")).plan()
+    message = str(refused.value)
+    assert refused.value.codes() == ["drag.wall-kind"]
+    assert "matches a half_space region" in message and "plane 0.1.0 (matches a half_space region)" in message
 
 
 def test_the_screws_kind_numbers_are_leaves_and_its_starts_held_as_built(free_bodies):

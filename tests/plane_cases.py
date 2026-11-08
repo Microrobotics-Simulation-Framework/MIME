@@ -20,7 +20,7 @@ from mime.units import kg, kg_m2, m, m_per_s, m_per_s2, mPa_s, ms, rad_per_s
 
 #: The sphere's radius (m) and the medium's viscosity (Pa s): a millimetre sphere in water.
 RADIUS, VISCOSITY = 1e-3, 1e-3
-#: The sphere's MRS settings as S4 ran them: blob 0.1 of the force spacing, its quadrature by the blob's rule.
+#: The sphere's MRS settings: a blob of 0.1 of the force spacing, its quadrature by the blob's rule.
 BLOB = 0.1
 
 

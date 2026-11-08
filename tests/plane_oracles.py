@@ -63,3 +63,60 @@ def frame(normal: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     u = np.cross(n, helper)
     u /= np.linalg.norm(u)
     return n, u, np.cross(n, u)
+
+
+def _rings(gap: float, beta: float, most: float, least_around: int = 8) -> list[tuple[float, float, int]]:
+    """Polar rings from the sphere's pole nearest the wall: (polar angle, its step, points round it), the step
+    ``beta sqrt(gap + 1 - cos theta)`` and at most ``most``: the lubrication's scale near the contact, even away from
+    it."""
+    out = [(0.0, beta * math.sqrt(gap), 1)]
+    theta = 0.0
+    while True:
+        step = min(most, beta * math.sqrt(gap + 1.0 - math.cos(theta)))
+        theta += step
+        if theta >= math.pi - 0.5 * step:
+            break
+        around = max(least_around, int(math.ceil(2.0 * math.pi * math.sin(theta) / step / 4.0)) * 4)
+        out.append((theta, step, around))
+    out.append((math.pi, min(most, beta * math.sqrt(gap + 2.0)), 1))
+    return out
+
+
+def _ring_points(rings, centre: np.ndarray, radius_of, stagger: bool = False) -> np.ndarray:
+    points = []
+    for k, (theta, step, around) in enumerate(rings):
+        offset = (0.5 if (stagger and k % 2) else 0.0) * 2.0 * math.pi / around
+        phi = offset + 2.0 * math.pi * np.arange(around) / around
+        n = np.stack([math.sin(theta) * np.cos(phi), math.sin(theta) * np.sin(phi), -math.cos(theta) * np.ones(around)],
+                     1)
+        points.append(centre + radius_of(step) * n)
+    return np.concatenate(points)
+
+
+def _motions(x: np.ndarray, centre: np.ndarray) -> np.ndarray:
+    arm = x - centre
+    eye = np.eye(3)
+    columns = [np.broadcast_to(eye[i], arm.shape) for i in range(3)] + [np.cross(eye[i], arm) for i in range(3)]
+    return np.stack(columns, -1).reshape(-1, 6)
+
+
+#: The MFS's settings: ``beta`` and ``most`` set its rings' steps (``_rings``), ``depth`` the sources' depth in local
+#: steps; the collocation rings 1.5 times denser.
+MFS_SETTINGS = {"coarse": {"beta": 0.35, "most": 0.12, "depth": 1.5}, "fine": {"beta": 0.25, "most": 0.085, "depth": 1.5}}
+
+
+def mfs(gap: float, *, beta: float, most: float, depth: float, oversample: float = 1.5) -> tuple[np.ndarray, float, int]:
+    """The method of fundamental solutions for the unit sphere ``gap`` radii above the wall ``z = 0`` at unit viscosity:
+    singular Stokeslets with Blake's image (``free_stokeslet`` and ``blake``), ``depth`` local steps inside the
+    surface on rings graded towards the contact, collocated in least squares on staggered rings ``oversample`` times
+    denser. Its 6 x 6 resistance about the centre (the force and torque on the fluid per unit motion), its collocation
+    residual's largest entry, and its count of sources. It shares no code with MIME."""
+    centre = np.array([0.0, 0.0, 1.0 + gap])
+    sources = _ring_points(_rings(gap, beta, most), centre, lambda step: 1.0 - depth * step)
+    collocation = _ring_points(_rings(gap, beta / oversample, most / oversample), centre, lambda step: 1.0, stagger=True)
+    kernel = (free_stokeslet(collocation, sources, 0.0) + blake(collocation, sources)).transpose(0, 2, 1, 3).reshape(
+        3 * len(collocation), 3 * len(sources))
+    rhs = _motions(collocation, centre)
+    forces, *_ = np.linalg.lstsq(kernel, rhs, rcond=None)
+    residual = float(np.abs(kernel @ forces - rhs).max())
+    return _motions(sources, centre).T @ forces, residual, len(sources)
