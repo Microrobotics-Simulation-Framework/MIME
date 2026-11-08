@@ -102,6 +102,7 @@ class CentreMagneticTorque(MagneticTorque):
     ``m x (G l)`` and with ``magnetic.force`` 0.1.0 does net work round a closed loop of the pose (MIME-ANO-137)."""
 
     version = "0.1.0"
+    energy_class = None
     unmetered = _NO_CLASS
     validity = (f"a permanent moment in a field that varies in space, read at the body's centre of mass: "
                 f"{_AT_THE_CENTRE}",)
@@ -133,6 +134,7 @@ class CentreMagneticForce(MagneticForce):
     magnet's centroid, ``[F; l x F]`` (MIME-ANO-137)."""
 
     version = "0.1.0"
+    energy_class = None
     unmetered = _NO_CLASS
     validity = (f"a point dipole in a field read at the body's centre of mass: {_AT_THE_CENTRE}; a validity line "
                 f"that checks the distance is a1's",)

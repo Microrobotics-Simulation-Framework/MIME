@@ -169,12 +169,23 @@ class WorkLoop:
     """The closed-loop case's setting, for a family whose laws together are the derivative of an energy in a static
     field. ``rig(laws, drawn)`` is the smallest experiment holding ``laws`` (the law under test with the members that
     complete it) on the body named ``body`` in a static field, built from one draw of ``draws()``, a Hypothesis
-    strategy; ``loops(drawn)`` are the closed loops of the body's pose that draw drives it round."""
+    strategy; ``loops(drawn)`` are the closed loops of the body's pose that draw drives it round.
+
+    ``pair_loops(drawn, source)``, where the family's laws react on their field's source, are closed loops of the body
+    and the source together, ``(body's loop, source's loop)`` (a loop of zero size holds one where it is), given the
+    source's pose: the laws and their reactions, as one potential law, do no net work round them. ``energy(built,
+    pose)``, where the family states its energy once per pair of things, is that energy at the body's pose in the
+    rig (``energy(built, drawn, pose)``: ``-m . B`` at its magnet's centroid, the field from the provider's own
+    function), which its energy case judges the pair's wrench against, with ``energy_scale(built, drawn, pose)`` the
+    magnitude of the arithmetic its force and its couple are formed by."""
 
     rig: Callable[[Sequence[Interaction], Any], Experiment]
     draws: Callable[[], Any]
     loops: Callable[[Any], Sequence[Loop]]
     body: str
+    pair_loops: Callable[[Any, Any], Sequence[tuple[Loop, Loop]]] | None = None
+    energy: Callable[[BuiltExperiment, Any, Any], Any] | None = None
+    energy_scale: Callable[[BuiltExperiment, Any, Any], tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -929,12 +940,106 @@ def loop_works(built: BuiltExperiment, laws: Sequence[Interaction], body: str, l
     return works
 
 
+def _source_of(built: BuiltExperiment, laws: Sequence[Interaction]) -> str:
+    """The node of the field's source the laws read: the one provider they read through, or a refusal to judge."""
+    plans = [_planned(built, law) for law in laws]
+    sources = {read.node for plan in plans if plan is not None for read in plan.reads.values()
+               if read.slot is not None}
+    if len(sources) != 1:
+        raise ValueError(f"the laws read {len(sources)} field sources, and the pair's loops move one")
+    return next(iter(sources))
+
+
+def pair_loop_works(built: BuiltExperiment, laws: Sequence[Interaction], body: str,
+                    pairs: Sequence[tuple[Loop, Loop]], *, points: int = LOOP_POINTS) -> list[LoopWork]:
+    """The work ``laws`` and their reactions on the field's source do round each of ``pairs``, closed loops of the body's
+    pose and the source's together: the body's pose prescribed, the source's provider placed at the source's pose (its
+    ``placement``, a magnet fixed in the world), every node the laws read through and the laws' own nodes evaluated
+    from them as the graph's step does; each law's wrench on the body paired with the body's rate, and its reaction
+    on the source (the law's reaction node, ``SourceReactionNode``, about the source's centre, as the law delivers it
+    where the source is on a segment that takes loads) with the source's rate. The floor and the quadrature's error
+    estimate are :func:`loop_works`'."""
+    from mime.nodes.actuation import SourceReactionNode
+
+    plans = [cast(EntryPlan, _planned(built, law)) for law in laws]
+    own = [name for plan in plans for name in plan.node_names()]
+    source = _source_of(built, laws)
+    poses = {read.node for plan in plans for read in plan.reads.values()
+             if read.interface == vocabulary.POSE.name and read.slot is None}
+    targets = {(target.node, target.field) for plan in plans for target in plan.delivers.values()
+               if target.interface == vocabulary.APPLIED_WRENCH.name and target.thing == body}
+    if len(poses) != 1 or not targets:
+        raise ValueError(f"the laws read no one pose of {body!r} or deliver into no applied wrench of it")
+    (body_node,) = poses
+    graph = built.graph
+    order = [name for name in graph.schedule if name in own or name == source]
+    edges = cast(list[dict[str, Any]], graph_config(graph)["edges"])
+    incoming = {name: [(e["source_node"], e["source_field"], e["target_field"]) for e in edges
+                       if e["target_node"] == name] for name in order}
+    delivered = [(e["source_node"], e["source_field"]) for e in edges
+                 if (e["target_node"], e["target_field"]) in targets and e["source_node"] in own]
+    interfaces = {(plan_read.node, plan_read.field): plan_read.interface for plan in plans
+                  for plan_read in plan.reads.values()}
+    initial = {name: _initial(graph.get_node(name)) for name in {*order, body_node,
+                                                                *(e[0] for name in order for e in incoming[name])}}
+    dtype = computing_dtype(graph.get_node(own[0]))
+    eps = float(np.finfo(dtype).eps)
+    reaction = SourceReactionNode("pair_reaction", float(graph.get_node(own[0]).delta_t), mount_index=0,
+                                  mount_count=1)
+
+    def evaluated(name: str, held: Mapping[str, Mapping[str, Any]], nudge: bool, placed: Any) -> Mapping[str, Any]:
+        node = graph.get_node(name)
+        inputs = {port: (held[s] if s in held else initial[s])[f] for s, f, port in incoming[name]}
+        if nudge:
+            sources = {port: (s, f) for s, f, port in incoming[name]}
+            inputs = {port: _nudged_jnp(value, interfaces.get(sources[port]), eps, index)
+                      for index, (port, value) in enumerate(inputs.items())}
+        dt = float(node.delta_t)
+        if name == source:
+            return cast(Any, node).fresh_update(dict(initial[name]), inputs, dt, params={"placement": placed})
+        step = getattr(node, "fresh_update", None)
+        return step(dict(initial[name]), inputs, dt) if step is not None else _update(node, initial[name], inputs, dt)
+
+    def works(pose: Any, placed: Any, nudge: bool) -> tuple[Any, Any]:
+        held: dict[str, Mapping[str, Any]] = {body_node: {**initial[body_node], "pose": pose}}
+        for name in order:
+            held[name] = evaluated(name, held, nudge and name in own, placed)
+        on_body = sum(jnp.asarray(held[s][f]) for s, f in delivered)
+        on_source = sum(jnp.asarray(reaction.fresh_update(reaction.initial_state(), {
+            "pose": pose, "wrench": jnp.asarray(held[s][f]), "mount_poses": placed[None]}, reaction.delta_t)[
+            "link_wrench"][0]) for s, f in delivered)
+        return on_body, on_source
+
+    def both(pose: Any, placed: Any) -> tuple[Any, Any, Any, Any]:
+        plain, nudged = works(pose, placed, False), works(pose, placed, True)
+        return (*plain, *nudged)
+
+    t = 2.0 * np.pi * np.arange(points) / points
+    step = 2.0 * np.pi / points
+    found: list[LoopWork] = []
+    for body_loop, source_loop in pairs:
+        body_poses, body_rates = body_loop.poses_and_rates(t)
+        source_poses, source_rates = source_loop.poses_and_rates(t)
+        values = jax.vmap(both)(jnp.asarray(body_poses, dtype=dtype), jnp.asarray(source_poses, dtype=dtype))
+        on_body, on_source, nudged_body, nudged_source = (np.asarray(v, dtype=np.float64) for v in values)
+        terms = np.sum(on_body * body_rates, axis=1) + np.sum(on_source * source_rates, axis=1)
+        moved = np.sum(np.abs(nudged_body - on_body) * np.abs(body_rates), axis=1) \
+            + np.sum(np.abs(nudged_source - on_source) * np.abs(source_rates), axis=1)
+        summed = np.sum(np.abs(on_body * body_rates), axis=1) + np.sum(np.abs(on_source * source_rates), axis=1)
+        found.append(LoopWork(float(np.sum(terms) * step), float(np.sum(terms[::2]) * 2 * step),
+                              float(np.sum(summed) * step), LOOP_ROUNDINGS * float(np.sum(moved) * step)))
+    return found
+
+
 def check_closed_loop(law: Interaction, family: Family, together: Sequence[Interaction],
                       max_examples: int) -> VerificationResult:
     """The law with the members that complete it (``together``) does no net work round a closed loop of the body's
     pose in a static field, on every draw of the family's loop rig and each of its loops: within the loop's quadrature
-    error plus its rounding floor (:class:`LoopWork`). A failing draw is reported as drawn, not shrunk: each example
-    builds the rig again (about 0.1 s), and Hypothesis shrinking one stopped after five minutes, unfinished."""
+    error plus its rounding floor (:class:`LoopWork`). Where the family's laws react on their source
+    (``WorkLoop.pair_loops``), the laws and their reactions together, as one potential law, do no net work round
+    closed loops of the source's pose with the body held, and of the two together, either. A failing draw is
+    reported as drawn, not shrunk: each example builds the rig again (about 0.1 s), and Hypothesis shrinking one
+    stopped after five minutes, unfinished."""
     from hypothesis import HealthCheck, Phase, given, settings
 
     loop = family.loop
@@ -958,6 +1063,11 @@ def check_closed_loop(law: Interaction, family: Family, together: Sequence[Inter
             raise AssertionError(f"the {family.name} family's loop rig does not build: {refused}") from None
         found = loop_works(built, laws, loop.body, loop.loops(drawn))
         failed = [f"loop {index}: {work.describe()}" for index, work in enumerate(found) if not work.holds]
+        if loop.pair_loops is not None:
+            placement = cast(Any, built.graph.get_node(_source_of(built, laws))).constants()["placement"]
+            paired = pair_loop_works(built, laws, loop.body, loop.pair_loops(drawn, placement))
+            failed += [f"the pair's loop {index} (with the source's reactions): {work.describe()}"
+                       for index, work in enumerate(paired) if not work.holds]
         assert not failed, "; ".join(failed)
 
     try:
@@ -1115,13 +1225,120 @@ def _eps(dtype: Any) -> float:
     return float(np.finfo(np.dtype(dtype)).eps)
 
 
-def check_energy(probe: Probe, law: Interaction, family: Family, max_examples: int) -> VerificationResult:
+#: How many points of each loop the pair's energy case judges the pair's wrench at.
+ENERGY_POINTS = 8
+
+
+def pair_wrench(built: BuiltExperiment, laws: Sequence[Interaction], body: str) -> Callable[[Any], Any]:
+    """The wrench ``laws``, as ``built`` holds them, deliver on the body ``body`` at a pose, summed: every node they read
+    through and their own nodes evaluated from the pose as the graph's step does. Traceable in the pose."""
+    plans = [cast(EntryPlan, _planned(built, law)) for law in laws]
+    own = [name for plan in plans for name in plan.node_names()]
+    read_from = {read.node for plan in plans for read in plan.reads.values() if read.slot is not None}
+    poses = {read.node for plan in plans for read in plan.reads.values()
+             if read.interface == vocabulary.POSE.name and read.slot is None}
+    targets = {(target.node, target.field) for plan in plans for target in plan.delivers.values()
+               if target.interface == vocabulary.APPLIED_WRENCH.name and target.thing == body}
+    (body_node,) = poses
+    graph = built.graph
+    order = [name for name in graph.schedule if name in own or name in read_from]
+    edges = cast(list[dict[str, Any]], graph_config(graph)["edges"])
+    incoming = {name: [(e["source_node"], e["source_field"], e["target_field"]) for e in edges
+                       if e["target_node"] == name] for name in order}
+    delivered = [(e["source_node"], e["source_field"]) for e in edges
+                 if (e["target_node"], e["target_field"]) in targets and e["source_node"] in own]
+    initial = {name: _initial(graph.get_node(name)) for name in {*order, body_node,
+                                                                *(e[0] for name in order for e in incoming[name])}}
+
+    def wrench(pose: Any) -> Any:
+        held: dict[str, Mapping[str, Any]] = {body_node: {**initial[body_node], "pose": pose}}
+        for name in order:
+            node = graph.get_node(name)
+            inputs = {port: (held[s] if s in held else initial[s])[f] for s, f, port in incoming[name]}
+            step = getattr(node, "fresh_update", None)
+            dt = float(node.delta_t)
+            held[name] = step(dict(initial[name]), inputs, dt) if step is not None else \
+                _update(node, initial[name], inputs, dt)
+        return sum(jnp.asarray(held[s][f]) for s, f in delivered)
+
+    return wrench
+
+
+def _check_pair_potential(law: Interaction, family: Family, together: Sequence[Interaction],
+                          max_examples: int) -> VerificationResult:
+    """A potential law whose family states its energy once per pair of things (``WorkLoop.energy``): the wrench the law
+    and the members that complete it (``together``) deliver on the body is the negative gradient of that energy, the
+    force by the position's gradient and the couple by the gradient on the rotation group, at :data:`ENERGY_POINTS`
+    poses of each loop of every draw of the family's loop rig, within 16 eps of the arithmetic they are formed by
+    (``WorkLoop.energy_scale``)."""
+    from hypothesis import HealthCheck, Phase, given, settings
+
+    loop = family.loop
+    if loop is None or loop.energy is None or loop.energy_scale is None:
+        return _fail("energy", f"the {family.name} family states no energy for its pairs, and {law.label()}'s node "
+                               f"states none")
+    if not together:
+        return _fail("energy", f"the {family.name} family states its energy once per pair: {law.label()} is judged "
+                               f"with the members that complete it (together=), and none is given")
+    laws = (law, *together)
+    last: dict[str, Any] = {}
+    count = 0
+    energy, scale_of = loop.energy, loop.energy_scale
+
+    @settings(max_examples=max_examples, deadline=None, database=None, phases=(Phase.explicit, Phase.generate),
+              suppress_health_check=[HealthCheck.too_slow])
+    @given(loop.draws())
+    def prop(drawn: Any) -> None:
+        nonlocal count
+        count += 1
+        last.clear()
+        last["drawn"] = drawn
+        built = loop.rig(laws, drawn).build()
+        wrench = pair_wrench(built, laws, loop.body)
+        dtype = computing_dtype(built.graph.get_node(cast(EntryPlan, _planned(built, law)).node_names()[0]))
+
+        def gradient(pose: Any) -> Any:
+            def at(offset: Any) -> Any:
+                moved = jnp.concatenate([pose[:3] + offset[:3],
+                                         quaternion.multiply(quaternion.exponential(offset[3:]), pose[3:])])
+                return energy(built, drawn, moved)
+
+            return cast(Any, jax).grad(at)(jnp.zeros(6, dtype=pose.dtype))
+
+        t = 2.0 * np.pi * np.arange(ENERGY_POINTS) / ENERGY_POINTS
+        poses = np.concatenate([held.poses_and_rates(t)[0] for held in loop.loops(drawn)])
+        held_poses = jnp.asarray(poses, dtype=dtype)
+        found = np.asarray(jax.vmap(wrench)(held_poses), dtype=np.float64)
+        expected = -np.asarray(jax.vmap(gradient)(held_poses), dtype=np.float64)
+        floor = ENERGY_ULPS * _eps(dtype)
+        failed: list[str] = []
+        for index, pose in enumerate(poses):
+            force_scale, couple_scale = scale_of(built, drawn, pose)
+            apart = (float(np.linalg.norm(found[index, :3] - expected[index, :3])),
+                     float(np.linalg.norm(found[index, 3:] - expected[index, 3:])))
+            if apart[0] > floor * force_scale or apart[1] > floor * couple_scale:
+                failed.append(f"pose {index}: the force {apart[0] / force_scale:.3g} and the couple "
+                              f"{apart[1] / couple_scale:.3g} of their scales from the energy's negative gradient "
+                              f"(the floor {floor:.3g})")
+        assert not failed, "; ".join(failed[:3])
+
+    try:
+        prop()
+    except AssertionError as error:
+        return VerificationResult("energy", "FAIL", detail=str(error), counterexample=dict(last), n_examples=count)
+    return VerificationResult("energy", "PASS", n_examples=count)
+
+
+def check_energy(probe: Probe, law: Interaction, family: Family, max_examples: int,
+                 together: Sequence[Interaction] = ()) -> VerificationResult:
     """``law``'s energy class, settled by an exact identity on the law alone (F0-1 M6.4), judged against rounding on its
     own scale. A law that declares no class states why (``Interaction.unmetered``). A **potential** law's delivered
     wrench is the negative gradient of its family's energy on its node (``MimeNode.energy``), the force by the
     position's gradient and the couple by the gradient on the rotation group (the pose turned by ``exp(theta)`` in the
     world, at ``theta = 0``), within 16 eps of the arithmetic the family says it is formed by
-    (``Family.potential_scale``). A **dissipative** law's delivered operators are positive semidefinite at the ledger's
+    (``Family.potential_scale``); where the family states its energy once per pair of things and the law's node states
+    none (a field's law, whose energy reads the field's source), the wrench of the law with the members that complete it
+    (``together``) against that pair's energy (:func:`_check_pair_potential`). A **dissipative** law's delivered operators are positive semidefinite at the ledger's
     floor (``mime.core.ledger.definite_at_floor``, the rule its run-time check applies), and a load it delivers does no
     positive work on the flow it reads, or is zero where it reads none (a force read at a state, which does work on some
     motion, is no dissipation). A dissipative law **held in its receiver's step** (a contact) gives no energy through
@@ -1137,6 +1354,8 @@ def check_energy(probe: Probe, law: Interaction, family: Family, max_examples: i
         return _fail("energy", f"{cls.label()} declares no energy class (Interaction.energy_class) and states no reason "
                                f"for being unmetered (Interaction.unmetered)")
     if law.energy_class is EnergyClass.POTENTIAL:
+        if family.loop is not None and family.loop.energy is not None and not _states_energy(probe.node):
+            return _check_pair_potential(law, family, together, max_examples)
         return _check_potential(probe, family, max_examples)
     if law.energy_class is EnergyClass.DISSIPATIVE:
         if probe.free is not None:
@@ -1312,7 +1531,7 @@ def conformance(law: Interaction, family: str | Family, *, oracle: Oracle | None
         CaseKind.EQUAL_AND_OPPOSITE: lambda: check_equal_and_opposite(probed, held, max_examples),
         CaseKind.NODES: lambda: check_nodes(probed, law, node_case),
         CaseKind.CLOSED_LOOP: lambda: check_closed_loop(law, held, together, max_examples),
-        CaseKind.ENERGY: lambda: check_energy(probed, law, held, max_examples),
+        CaseKind.ENERGY: lambda: check_energy(probed, law, held, max_examples, together),
     }
     return {case: run[case]() for case in wanted}
 
