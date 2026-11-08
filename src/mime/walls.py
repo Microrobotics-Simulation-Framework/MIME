@@ -3,14 +3,14 @@ every solver family: the geometry it matches exactly, the parameters it reads fr
 its gradient status. A solver registers its own use of a kind under the kind's name and version (the
 MRS's correction, ``mime.nodes.hydro.mrs``).
 
-In 0.3 the method of regularised Stokeslets is the one solver. Its wall kinds are ``free_space``, a medium that fills no region,
-and ``tube``, the straight circular tube's, read from the corrected table of its image system (MIME-ANO-117), a file
-fetched into the assets cache (``mime assets fetch unit_tube_R0.997``). The plane's is reserved (``RESERVED``), with
-its reason.
+In 0.3 the method of regularised Stokeslets is the one solver. Its wall kinds are ``free_space``, a medium that fills no region;
+``tube``, the straight circular tube's, read from the corrected table of its image system (MIME-ANO-117), a file
+fetched into the assets cache (``mime assets fetch unit_tube_R0.997``); and ``plane``, an unbounded plane's, the image
+system in closed form, regularised by the drag's own blob. No name is reserved now (``RESERVED``).
 
 Each answers where its wall is (``WallKind.distance``): its signed distance from a point of the medium and its normal
-into it, minus the matched region's shape's, so the tube's is ``R`` less the point's distance from its axis; free
-space has no wall, and gives ``None``."""
+into it, minus the matched region's shape's, so the tube's is ``R`` less the point's distance from its axis and the
+plane's the point's height above it; free space has no wall, and gives ``None``."""
 
 from __future__ import annotations
 
@@ -24,10 +24,7 @@ from mime.registry import GradientRecord, WallForm, WallKind, register_wall_kind
 
 #: Wall kinds whose names and meanings are fixed but which are not built, with why: a script naming one is refused
 #: with the reason.
-RESERVED: Mapping[str, str] = MappingProxyType({
-    "plane": "a plane wall has no correction in 0.3: its analytic kind (Blake's image system) and the meshed form, "
-             "which samples any wall a geometry kind can, are reserved for later",
-})
+RESERVED: Mapping[str, str] = MappingProxyType({})
 
 
 @register_wall_kind
@@ -112,4 +109,32 @@ class TubeWall(WallKind):
     )
 
 
-__all__ = ["RESERVED", "TUBE_SWITCHES", "FreeSpaceWall", "TubeWall"]
+@register_wall_kind
+@dataclass(frozen=True, kw_only=True)
+class PlaneWall(WallKind):
+    """An unbounded plane with a no-slip wall, the medium filling the half-space its normal points into: the image
+    system of a Stokeslet above it (Blake 1971), regularised by the drag's own blob (Ainley et al. 2008), in closed form,
+    so no table and no switch. It matches a half_space region and reads its normal and offset; the offset is a leaf a
+    study may move, and the normal is held as built."""
+
+    name = "plane"
+    version = "0.1.0"
+    form = WallForm.ANALYTIC
+    matches = "half_space"
+    reads = ("normal", "offset")
+    differentiability = GradientStatus.EXACT
+    gradient = GradientRecord()
+    references = ("Blake1971", "Ainley2008")
+    builds = {"": ()}
+    validity = (
+        "an unbounded plane of no-slip wall, the medium on the side its normal points into; one plane alone: two walls' "
+        "images do not sum to a two-wall image (each reflects the other's flow)",
+        "every sample of the body in the medium, above the plane: a sample through it is outside the image's domain, "
+        "which nothing refuses while the run goes on (no contact against a plane in 0.3), so the node reports the "
+        "body's height above it (wall_gap, below zero through it) and raises near_wall within a force spacing",
+        "the regularised image of the drag's blob, exact for it (no slip and no divergence to rounding); the coarse "
+        "MRS near the plane is as accurate as its force points resolve the gap: the drag's near-wall validity line",
+    )
+
+
+__all__ = ["RESERVED", "TUBE_SWITCHES", "FreeSpaceWall", "PlaneWall", "TubeWall"]

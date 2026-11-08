@@ -1010,6 +1010,7 @@ class MRSDragNode(MimeNode):
                  f"body within {NEAR_WALL:g} force spacing of the wall raises near_wall, and a step whose resistance "
                  f"is indefinite stops the run (drag.mrs-indefinite); every indefinite resistance mapped lay within "
                  f"half a force spacing of the wall (MIME-ANO-130)"]
+        lines.append(self._image_text())
         integrated: str | None = None
         if closest_approach is None:
             lines.append("nothing in the experiment holds the body off the wall, so its closest approach is the wall "
@@ -1043,6 +1044,20 @@ class MRSDragNode(MimeNode):
         if integrated is not None:
             lines.append(integrated)
         return lines
+
+    def _image_text(self) -> str:
+        """Which image the wall adds (``WallCorrection.regularised``): the regularised image of the drag's own blob, with
+        its ``eps``, or the wall's own singular one."""
+        wall = self._wall()
+        if not wall.regularised:
+            return (f"the wall's image ({wall.name}): singular, its own, with no blob in it (the drag's blob is not "
+                    f"passed into it), its near-wall behaviour and validity line its own")
+        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+            theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
+            eps = math.sqrt(float(self.body(theta).eps_squared))
+        return (f"the wall's image ({wall.name}): regularised, the drag's blob, eps = {eps:.4g} m (the free part's: "
+                f"blob {self.constants()['blob']!r} times the cells' mean spacing), so that it is the exact no-slip "
+                f"partner of the free part")
 
     @property
     def wall_reads(self) -> int:

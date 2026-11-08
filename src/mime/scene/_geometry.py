@@ -169,3 +169,51 @@ class Tube(Geometry):
                                "priority above the wall's, and priorities are the helper's to choose, so a region "
                                "of the outer cylinder alone would be handed over as a wall it is not")
         raise KeyError(region)
+
+
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Plane(Geometry):
+    """An unbounded plane wall: the plane ``x . n = offset``, ``normal`` its direction (towards the medium) and
+    ``offset`` its signed distance from the world's origin along that direction. Its regions are the ``half_space`` its
+    normal points into, which a medium fills (``Medium(..., fills=floor.half_space)``), evaluated as the half-space
+    (``mime.core.HalfSpace``), and the ``wall``, the other side. In 0.3 it has no surface (a contact against it comes
+    later), no drawing and no region primitive: its ``offset`` is a length a study may move as a leaf, and its normal a
+    direction, held as built. Its derivative is the half-space's: its distance is linear in the point and the offset, so
+    it has no switch."""
+
+    name = "plane"
+    version = "0.1.0"
+    setting_roles = {
+        "normal": PHYSICAL,
+        "offset": convention(PHYSICAL, "a plane passes through the world's origin unless placed"),
+    }
+    differentiability = GradientStatus.EXACT
+    gradient = GradientRecord()
+    references = ()
+    builds = {"": ()}
+    regions = ("half_space", "wall")
+    region_shapes = {"half_space": "half_space"}
+    directions = ("normal",)
+    placement = {"normal": "z_axis"}
+    normal: Annotated[DirectionLike, Direction]
+    offset: Annotated[Quantity, Length] = m(0.0)
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        offset = settings["offset"]
+        if not (isinstance(offset, float) and math.isfinite(offset)):
+            return [f"offset is {offset!r} m, not a length (one number)"]
+        return []
+
+    @override
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        if region != "half_space":
+            raise KeyError(region)
+        return {"normal": _vector(settings, "normal"), "offset": settings["offset"]}
+
+    @override
+    def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:
+        if name != "normal":
+            raise KeyError(name)
+        return _vector(settings, "normal")

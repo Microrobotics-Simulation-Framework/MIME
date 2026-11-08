@@ -680,9 +680,9 @@ class Drag(PointForceDrag):
     a kind without it is refused by name when the experiment is planned. ``wall_kind`` names the wall kind whose
     correction the solve adds (``mime.walls``; ``"<name>"`` for its one registered version, or ``"<name> <version>"``),
     and it must match the region the medium fills exactly: ``free_space`` a medium that fills none, ``tube`` a tube's
-    lumen (it reads the asset ``unit_tube_R0.997``, refused by name when planned if it is not in the cache); a wall kind
-    that matches another region is refused with the wall kinds that match, and a reserved one (the plane's) with its
-    reason. **A wall's correction is evaluated at the force points**, each cell's force placed at its force point and
+    lumen (it reads the asset ``unit_tube_R0.997``, refused by name when planned if it is not in the cache), ``plane``
+    the half-space a plane bounds (its regularised image, of the drag's own blob, in closed form); a wall kind that
+    matches another region is refused with the wall kinds that match, and a reserved one with its reason. **A wall's correction is evaluated at the force points**, each cell's force placed at its force point and
     weighted by the cell's area: a wall's image system is smooth inside the fluid, varying over the distance to the
     wall, which the force points resolve where the body is further from the wall than about a force spacing, while the
     free part's near field varies over the blob, which needs the fine quadrature; and the image is then read at
@@ -970,8 +970,7 @@ def _wall_problems(written: object, region: Region | None, medium: str, hull: Hu
         fills = f"fills {region.path}, a {shape} region" if region is not None else "fills no region"
         matching = [f"{record.name} {record.version}" for record in wall_kinds_matching(shape)]
         offered = f"the wall kinds that match it: {matching}" if matching else \
-            (f"no wall kind matches {_matched(shape)} yet, and a plane wall has none in 0.3"
-             if shape is not None else "none")
+            (f"no wall kind matches {_matched(shape)} yet" if shape is not None else "none")
         return [Problem("drag.wall-kind",
                         f"medium {medium!r} {fills}, and wall_kind {wall.label()} matches {_matched(wall.matches)}: "
                         f"a wall left out, or one the region does not have, changes the resistance; {offered}",

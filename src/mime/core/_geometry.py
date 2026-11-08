@@ -173,6 +173,42 @@ CYLINDER_SWITCHES = (
 )
 CYLINDER = register_shape("cylinder", Cylinder(), switches=CYLINDER_SWITCHES)
 
+
+class HalfSpace:
+    """The side of a plane its normal points into, ``x . n >= offset``: ``normal`` (its direction, normalised here; the
+    plan refuses a zero one) and ``offset`` (the plane's signed distance from the origin along its normal). Its signed
+    distance is ``offset - x . n``, linear in the point, so it has no medial set and no switch: its outward normal is
+    ``-n`` everywhere and its curvature zero. It takes an array of points as well as one (``takes_many``), and its
+    region is convex."""
+
+    parameter_names: tuple[str, ...] = ("normal", "offset")
+    takes_many = True
+    convex = True
+
+    @staticmethod
+    def _normal(parameters: Parameters, dtype: Any) -> Array:
+        normal = jnp.asarray(parameters["normal"], dtype=dtype)
+        return normal / switch.nonzero_norm(normal)
+
+    def signed_distance(self, parameters: Parameters, point: Point) -> Float[Array, ""]:  # noqa: F722 - a jaxtyping shape
+        return parameters["offset"] - jnp.sum(point * self._normal(parameters, point.dtype), axis=-1)
+
+    def outward_normal(self, parameters: Parameters, point: Point) -> Point:
+        return jnp.broadcast_to(-self._normal(parameters, point.dtype), point.shape)
+
+    def curvature(self, parameters: Parameters, point: Point) -> Array:
+        """The outward normal's derivative in the point: zero, the plane being flat."""
+        return jnp.zeros((*point.shape, 3), dtype=point.dtype)
+
+    def axis(self, parameters: Parameters) -> Point | None:
+        return None
+
+    def axis_point(self, parameters: Parameters) -> Point | None:
+        return None
+
+
+HALF_SPACE = register_shape("half_space", HalfSpace())
+
 class VelocityRule(Protocol):
     """How a confinement's velocity rule changes the velocity of a body it has just projected back inside, given that
     velocity and the outward normal where it was projected to; a switch it evaluates is the caller's ``owner``."""
