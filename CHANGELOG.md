@@ -236,8 +236,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and 1e-9), in `verify`, `verify --run` and the load's comparison of the derived graph, which from the tenth form
   holds each list of numbers and each static array to its own largest magnitude. The cost is one more run of the
   reference steps at save: where the start moves a parameter an MRS drag holds a value made from, that run makes the
-  value afresh at each step (on the MRS sphere in float64 on a laptop, 12 steps took 12 s against 0.01 s for the
-  state moved alone, which measured no divergence there).
+  value once from the moved parameters (`MimeNode.made_again`) and the step keeps it, rather than making it at each
+  step, the resolution the same bit for bit (on the MRS sphere in float64 on a laptop, 8 steps took 1.1 to 2.3 s
+  against 11 to 18 s made at each step and 0.01 s for the state moved alone, which measured no divergence there).
 - **A node's typed state declares the units of the fields nothing else declares** (`mime.core.Units`, beside the
   field's type: `Annotated[HeldPoints, Units("m")]`; read by `mime.core.typed_units`, after the symbol table and before
   the edges, the binding, the observations and the flags). Every field a save writes now has declared units, and a

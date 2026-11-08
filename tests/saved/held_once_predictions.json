@@ -1,0 +1,28 @@
+{
+  "written": "2026-11-07T21:05+01:00, before any gate case ran: the MRS drag's held matrix made once per nudged pass of the save's resolution rerun (mime.core.MimeNode.made_again, given to the step by mime.build._maddening.params_one_ulp_up), in place of once per reference step",
+  "seen_before": [
+    "measured on the laptop's CPU (i7-12850HX, 24 usable CPUs, 24 BLAS threads), each case in a fresh process, on release/v0.3.0 at adaaaa3, a heavy slot held, the machine shared (load average 4.5 rising to 21 during the tube runs, 10 to 15 during the cases)",
+    "the tube demo saved after run_to(80 ms, record swim_speed:ball.speed, stage_every 2 ms), as its resolution artefact was: plain pass 11.96 s, nudged pass 14.73 s (float32); 5.71 s and 14.09 s (float64); in both, the reference arrays equal tube_demo_counts.npz's 24-CPU arm and the resolution equals tests/saved/artefacts/tube_demo_resolution.json, bit for bit",
+    "the drag's made branch counted by a callback in a probe's own build (not the run's program): 0 times in a run of 4 steps chunked by one, 0 in the plain pass, 8 in the nudged pass (one per reference step), on the tube demo in both precisions (plain 6.68 and 5.01 s, nudged 11.54 and 13.30 s) and on the float64 MRS sphere (plain 0.016 s, nudged 11.42 s); mrs_free_space in float32: 0, 0 and 24 (three drags, 8 steps)",
+    "so the plain pass makes nothing: its time is its eight steps of the tube's table reads, which a loaded machine stretches (5 to 12 s here, 23.8 s in the round that measured it, 2.4 s on Colab)",
+    "the cases saved after 4 steps chunked by one (plain pass, nudged pass): sphere_settling 0.02 s and 7.85 s (float32), 0.013 s and 17.86 s (float64); mrs_free_space, mrs_solids, mrs_tube, lab_bead and rigid_explicit each under 0.2 s in both passes; full_toy, which has no MRS drag, 0.006 s"
+  ],
+  "bits": {
+    "case": "the tube demo as above, both precisions; and the locks of sphere_settling, mrs_free_space, mrs_solids, mrs_tube, lab_bead, rigid_explicit and full_toy, both precisions, a fresh process each, at 24 usable CPUs and 24 BLAS threads",
+    "predicted": "every resolution the save records bit for bit as before (the tube demo's equal to its artefact), the reference arrays and their sha256 unchanged, and each lock equal to before as a whole",
+    "risk": "the matrix is made by its own compiled program rather than inside the step's: XLA could round it differently there, which would move the rerun's last bits and every resolution read from them; the gate would show it"
+  },
+  "made_once": {
+    "predicted": "the nudged pass makes each MRS drag's matrix once (three on mrs_free_space, one on the tube demo and the sphere) and the step makes none; the plain pass and a run make none",
+    "control": "the step given no second key (made at every step, as before the change): 8 per drag in the nudged pass, which shows the count sees the step's making"
+  },
+  "stale_control": {
+    "predicted": "the nudged pass given a matrix made from the un-nudged leaves records a different resolution on every case it is run on"
+  },
+  "times": {
+    "predicted": "the nudged pass costs about the plain pass plus one matrix made and its compile: the tube demo's within about 3 s of its plain pass in both precisions, the MRS sphere's nudged pass about 1 to 3 s in float64 (from 11 to 18 s); timings on a shared laptop, noisy"
+  },
+  "allowlist": {
+    "predicted": "the float64 sphere row of tests/saved/test_reference_table.py (29 to 37 s on CI, its time the nudged pass) drops by about two thirds, likely under 20 s on CI's lanes but not surely; test_save_reference.py's MRS case saves drag 0.3.0's point forces, which hold no matrix, so it does not move and holds no row"
+  }
+}

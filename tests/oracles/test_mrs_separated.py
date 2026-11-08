@@ -398,7 +398,7 @@ def test_a_moved_radius_makes_the_held_value_again_from_the_moved_positions(ball
 
 
 def test_control_the_held_value_read_with_stale_positions_is_caught(ball, monkeypatch):
-    monkeypatch.setattr(mrs_node, "held_or_made", lambda make, built: lambda theta, held: held)
+    monkeypatch.setattr(mrs_node, "held_or_made", lambda make, built, given=(): lambda theta, held: held)
     moved = moved_radius(ball, 1.01)
     made = moved_radius(ball, 1.01, with_held=False)
     assert abs(moved[0, 0] / made[0, 0] - 1) > 5e-3

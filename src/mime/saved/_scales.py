@@ -21,10 +21,13 @@ floor: the ``rtol`` term alone.
 
 **The parameters move too, on purpose** (kept beside design #266): on the tube demo, a start that moved the state alone
 measured every block's divergence zero, in both precisions, since a body released at rest at the origin starts from
-zeros; the resolution is the program's to the rounding of all its inputs. Moving a parameter an MRS drag holds a value
-made from (its part's placement, its blob) makes that value afresh at each step of the rerun
-(``held_or_made``), which is the rerun's cost on such a run: on the MRS sphere in float64 on a laptop, 12 steps took
-12 s, against 0.01 s with the state alone moved, which measured no divergence there.
+zeros; the resolution is the program's to the rounding of all its inputs. A parameter an MRS drag holds a value made
+from (its part's placement, its blob), moved, would have the step make that value afresh at each step of the rerun
+(``held_or_made``); the rerun makes it once from the moved parameters and gives it to the step, which keeps it there
+(``mime.core.MimeNode.made_again``), and the resolution is the one the step making it at each step records, bit for
+bit (``tests/saved/test_held_once.py``). On the MRS sphere in float64 on a laptop, the eight steps took 1.1 to 2.3 s
+(the matrix's compile included), against 11 to 18 s made at each step and 0.01 s with the state alone moved, which
+measured no divergence there.
 
 **One mask.** Held points (``mime.core.HeldPoints``) are judged only on the rows whose paired force (``HeldForces``)
 acts, in the reference or the rerun, and so are their largest magnitude and their resolution: a row that takes no force
