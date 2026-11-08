@@ -1,12 +1,11 @@
-"""The build's structural flags (F0-1 M6.5), each with its control, in every profile and with or without the energy
+"""The build's structural flags, each with its control, in every profile and with or without the energy
 ledger: a law joining two bodies that step at different rates is refused (``law.rate-divided``), and builds at one
 rate; a damper between two bodies, neither held in one step nor solved with them in a coupling group, is flagged by a
 line the build computes on it, and is not flagged in a group; a coupling group stopped at its cap is reported on the
 run's result from MADDENING's own verdict on every run (``RunResult.groups``), and a converged one as converged.
 
 The laws are this file's own, between two of MIME's rigid bodies: a spring between their centres, ``f = -k (x_a - x_b
-- rest)``, and a damper, ``f = -c (v_a - v_b)``, each delivering ``f`` to the first and ``-f`` to the second (CG's pair,
-F0's spike, at its mild regime)."""
+- rest)``, and a damper, ``f = -c (v_a - v_b)``, each delivering ``f`` to the first and ``-f`` to the second (a mild regime)."""
 
 from __future__ import annotations
 
@@ -40,7 +39,7 @@ from mime.vocabulary import APPLIED_WRENCH, POSE, TWIST, EnergyClass, register_n
 register_namespace("flagged", "0.0.1")
 
 MASS, INERTIA = 8.491116020725203e-05, 1.0331989974018431e-10
-#: CG's mild regime at dt 0.5 ms for the reduced mass: omega0 dt 0.05, damping ratio 0.05.
+#: The mild regime at dt 0.5 ms for the reduced mass: omega0 dt 0.05, damping ratio 0.05.
 OMEGA0 = 0.05 / 5e-4
 STIFFNESS, DAMPING = (MASS / 2) * OMEGA0**2, 2 * 0.05 * (MASS / 2) * OMEGA0
 REST = (2e-3, 0.0, 0.0)

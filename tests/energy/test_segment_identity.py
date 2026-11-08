@@ -1,4 +1,4 @@
-"""The chain segments' step identities and the exchange between a rotor and its host (F0-1 M6.2, M6.4), on drawn
+"""The chain segments' step identities and the exchange between a rotor and its host, on drawn
 states and on the laws alone, each with a control that fails every run.
 
 - **The joint and spinner port kinds' step identities** (``mime.testing.step_identity``, ``PORT_CASES``): a dynamic
@@ -20,34 +20,23 @@ states and on the laws alone, each with a control that fails every run.
 from __future__ import annotations
 
 import dataclasses
+import functools
 from typing import Any
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from chain_cases import BODY_INERTIA, BODY_MASS, BODY_MOMENT, MAGNET_LENGTH, MAGNET_MOMENT, MAGNET_RADIUS, \
-    ROTOR_INERTIA, SWING
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
-from ledger_cases import in_dtype
+from ledger_cases import in_dtype, swinging_rotor
 
 from mime.core import ledger, quaternion
-from mime.drives import Constant
-from mime.dynamics import Arm, Motor, RigidInertial
-from mime.experiment import Experiment
-from mime.fields import PointDipole
-from mime.interactions import Magnetic
+from mime.dynamics import Arm, Motor
 from mime.nodes.actuation import DynamicArmNode, DynamicMotorNode
 from mime.nodes.actuation._spinner import cayley, deviator_torque, gyroscopic_matrix, turned
-from mime.observations import EnergyLedger
-from mime.scene import Cylinder, Scene, Z, asset
 from mime.testing import PORT_CASES, step_identity
-from mime.things import Apparatus, Body, Part, PermanentMagnet, State
-from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, ms, rad, rad_per_s, s, standard_gravity
-
-#: Sintered NdFeB's typical density (an inference), A0's magnet's.
-MAGNET_DENSITY = 7500.0
+from mime.units import s
 
 DTYPES = pytest.mark.parametrize("name", ["float32", "float64"])
 SEGMENTS = {"joint": Arm, "spinner": Motor}
@@ -210,39 +199,15 @@ def test_a_gyroscopic_matrix_with_a_symmetric_part_fails_on_every_draw():
     assert failed and all(failed), f"{sum(failed)} of {len(failed)}"
 
 
-def swinging_rotor(dt: float) -> Experiment:
-    """dev1's swing under gravity, started 0.3 rad out, carrying a dynamic motor whose rotor carries A0's magnet across
-    its axis (its half difference across it non-zero), spun from 10 Hz by 1 mN m; the magnet's field read by a body
-    30 cm below, both magnetic laws attached, so that their reactions reach the rotor and the motor is metered too."""
-    exp = Experiment("swinging_rotor", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(dt * 1e3))
-    exp.add_apparatus(Apparatus("swing", chain={
-        "arm": Arm.Dynamic(description=asset(SWING), initial_positions=rad((0.3,)),
-                           initial_velocities=rad_per_s((0.0,))),
-        "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(0.0), initial_angle=rad(0.0),
-                               mount="arm", initial_velocity=rad_per_s(2 * np.pi * 10.0),
-                               top_speed=rad_per_s(2 * np.pi * 20.0))},
-        parts={"magnet": Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=(1.0, 0.0, 0.0)),
-                              mount="motor.rotor")},
-        magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))}, fields={"magnetic": PointDipole(part="magnet")},
-        commands={"arm.joint_torques": Constant(N_m((0.0,))), "motor.torque": Constant(N_m(1e-3))}))
-    exp.declare("swing.parts.magnet.density", kg_per_m3(MAGNET_DENSITY), reason="sintered NdFeB, its typical value")
-    exp.declare("swing.magnetic_moment", A_m2(MAGNET_MOMENT), reason="A0's rotor magnet")
-    exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
-        position=m((0.0, 0.0, -0.3)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
-        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
-    for path, value in (("umr.mass", kg(BODY_MASS)), ("umr.inertia", kg_m2(BODY_INERTIA)),
-                        ("umr.magnetic_moment", A_m2(BODY_MOMENT)), ("umr.magnet_centre", m((0.0, 0.0, 0.0)))):
-        exp.declare(path, value, reason="a millimetre body, round numbers of its order")
-    for law in (Magnetic.Torque(), Magnetic.Force()):
-        exp.attach(law, body="umr", field="swing.magnetic")
-    exp.observe(EnergyLedger())
-    return exp
-
-
 def test_the_rotor_s_exchange_over_a_run_falls_at_first_order_in_the_step():
     """The rotor's inequality and the inertia its host carries, one workless law on two receivers: its paired work on
     both, with the jump of the host's storage between steps, over 0.5 s of a swinging rotor, at dt 1 and 0.5 ms
-    (float64): first order, a ratio within 1.6 to 2.4 (FU3, the spike, measured 2.00 for the jump alone)."""
+    (float64): first order, a ratio within 1.6 to 2.4 (measured 2.00 for the jump alone).
+
+    **Its reach**: one rig, no draws. A zeroth-order error in the rotor's inequality torque moves the ratio away from 2
+    (a torque 0.9 times as large reads 12.9, a flipped one 1.16: both fail), but the window is wide for a first-order
+    claim, and a torque 0.99 times as large reads 2.07 and **passes**. It is a catch of gross errors only; the
+    law-alone identity above (the torque scaled by 0.9 or flipped fails on every draw) is the sensitive half."""
     found = {}
     with in_dtype("float64"):
         for dt in (1e-3, 5e-4):
@@ -255,6 +220,68 @@ def test_the_rotor_s_exchange_over_a_run_falls_at_first_order_in_the_step():
     ratio = found[1e-3] / found[5e-4]
     print(f"\nthe rotor's exchange over 0.5 s: {found}, ratio {ratio:.3f}")
     assert 1.6 <= ratio <= 2.4, found
+
+
+@st.composite
+def arm_configurations(draw: Any) -> np.ndarray:
+    """The three joints' positions, each 0.1 to 1 (a radian, a metre on the slide) with its own sign."""
+    magnitudes = np.asarray(draw(st.lists(st.floats(0.1, 1.0), min_size=3, max_size=3)))
+    return magnitudes * np.asarray(draw(st.lists(st.sampled_from((-1.0, 1.0)), min_size=3, max_size=3)))
+
+
+@functools.cache
+def _weight_functions(factor: float) -> Any:
+    """The arm's holding forces and the gradient of its weight's energy scaled by ``factor``, each compiled once."""
+    from mime.core.multibody import inverse_dynamics
+    from mime.testing import joint_rig
+
+    arm: Any = joint_rig()
+    held = arm.constants()
+
+    def hold(q: Any) -> Any:
+        base = jnp.asarray(held["placement"], dtype=q.dtype)
+        return inverse_dynamics(arm.articulation(held, q.dtype), q, jnp.zeros_like(q), None, arm.weight(held, base),
+                                None)
+
+    return jax.jit(hold), jax.jit(jax.grad(lambda q: factor * arm.energy(held, q)))
+
+
+def _hold_and_gradient(factor: float, drawn: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The joint forces that hold the arm still at ``drawn`` under gravity (the recursive Newton-Euler algorithm), and
+    the gradient of its weight's energy scaled by ``factor``."""
+    with jax.enable_x64(True):
+        hold, gradient = _weight_functions(factor)
+        q = jnp.asarray(drawn, dtype=jnp.float64)
+        return np.asarray(hold(q)), np.asarray(gradient(q))
+
+
+def _weight_misfit(factor: float, drawn: np.ndarray) -> float:
+    """How far the gradient of the weight's energy is from the holding forces, over 16 eps of their arithmetic's scale
+    (the arm's weight times its reach, 1.2 kg and 0.6 m)."""
+    hold, gradient = _hold_and_gradient(factor, drawn)
+    return float(np.max(np.abs(gradient - hold))) / (ledger.IDENTITY_ULPS * float(np.finfo(np.float64).eps) * 1.2
+                                                     * 9.80665 * 0.6)
+
+
+@PROPERTY
+@given(arm_configurations())
+def test_the_arm_s_weight_is_the_negative_gradient_of_its_energy(drawn):
+    """The class of ``<arm>.weight`` (a potential) settled on the law alone: the joint forces that hold the arm still
+    are the gradient of ``-sum m_i g . c_i(q)``, within 16 eps of their scale, at drawn configurations."""
+    assert _weight_misfit(1.0, drawn) <= 1.0, _weight_misfit(1.0, drawn)
+
+
+@pytest.mark.parametrize("factor", [0.9, -1.0])
+def test_a_weight_scaled_or_flipped_in_its_energy_fails_the_gradient_check_on_every_draw(factor):
+    failed: list[bool] = []
+
+    @PROPERTY
+    @given(arm_configurations())
+    def check(drawn: np.ndarray) -> None:
+        failed.append(_weight_misfit(factor, drawn) > 1.0)
+
+    check()
+    assert failed and all(failed), f"{sum(failed)} of {len(failed)}"
 
 
 def test_the_segments_take_the_ledger_and_refuse_a_delivery_they_pair_nothing_for():

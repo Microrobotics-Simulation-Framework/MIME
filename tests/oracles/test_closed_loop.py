@@ -38,8 +38,10 @@ control, in float64, where its resolution is finest.
   potential law, do no net work round closed loops of the source's pose with the body held (turns about its centre,
   a translation, both) and of the two together (each translated a quarter turn apart). At the anomaly's operating
   point, 0.2.0's pair does none round a turn of the source about its axis's normal; 0.1.0's, whose reaction carries
-  the lever's couple ``l x F`` where the field was read at the centre of mass, does, and fails every drawn source loop
-  with a lever (the control).
+  the lever's couple ``l x F`` where the field was read at the centre of mass, does, and fails **some** loop of every
+  drawn set with a lever, not every loop: the control asserts that some loop fails (measured: on 789 unfiltered draws, 0.1.0
+  failed at least one loop on all of them; individually its pure turns passed on 2 and 3 of 789 draws, and its pure
+  translations never fail it).
 - **Closed loops only.** Every loop the case drives returns the pose to its start (whole turns, a closed translation):
   over an open arc a conservative pair's work is the energy's change, not zero, so zero work cannot judge it. The
   case's dynamic counterpart through the build, over whole turns, is ``test_closed_loop_dynamic.py``.
@@ -294,7 +296,8 @@ def test_the_pair_with_its_reactions_does_no_work_round_the_source_s_loops_at_th
 @PROPERTY
 @given(magnetic_loop_draws(with_zero_lever=False))
 def test_control_the_pair_0_1_0_fails_a_loop_of_its_source_on_every_draw_with_a_lever(drawn):
-    """Filtered only of the draws whose source turns leave it exactly no work (``source_degenerate``)."""
+    """Filtered only of the draws whose source turns leave it exactly no work (``source_degenerate``, about 1.4 % of the
+    draws, all at the minimum lever). The assertion is that **some** loop of the draw fails, not every one."""
     assume(not source_degenerate(drawn))
     found = pair_works("0.1.0", drawn)
     assert not all(work.holds for work in found), "; ".join(work.describe() for work in found)

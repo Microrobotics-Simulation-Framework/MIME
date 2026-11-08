@@ -232,7 +232,7 @@ def magnetic_pair_scale(built: Any, drawn: MagneticLoopDraw, pose: Any) -> tuple
 
     source = built.graph.get_node("stand.magnetic").constants()
     placement = np.asarray(source["placement"], dtype=np.float64)
-    held = np.asarray(quaternion.rotate(jnp.asarray(placement[3:]), jnp.asarray(source["moment"], dtype=jnp.float64)))
+    held = np.asarray(quaternion.rotate(jnp.asarray(placement[3:]), jnp.asarray(source["moment"])))
     pose = np.asarray(pose, dtype=np.float64)
     point = pose[:3] + np.asarray(quaternion.rotate(jnp.asarray(pose[3:]), jnp.asarray(drawn.lever)))
     field, gradient = (np.asarray(v) for v in point_dipole(jnp.asarray(held), jnp.asarray(placement[:3]),

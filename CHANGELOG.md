@@ -22,8 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the inertia its host carries, `<motor>.inertia` on both, workless) and its stator's torques on its host's turn. What
   one segment hands another is booked under the output that carries it (`rpm.motor.reaction`). **A receiver's storage
   between steps** is recorded apart (`ledger_between`): where a delivered inertia moves it, it is that exchange's own,
-  reported with the exchange (`EnergyAccount.exchanges`); in a coupling group, the group's residual; rounding
-  elsewhere; the books are the sum of the steps' residuals. **Outside, by the mount tree**: on an apparatus with a
+  reported with the exchange (`EnergyAccount.exchanges`); in a coupling group, the group's residual; **whatever no
+  declared producer explains is judged as unattributed work is**: the storage of the receiver's own state at a step's
+  start less the one the step before ended at, kept as its worst over the step's scale (`ledger_between_worst`), over
+  16 eps a failure of the step identity (`EnergyAccount.identity_worst`, `between_worst`), and left in the balance, so
+  that a state edited between steps (a 50 rad/s gift to A0's motor, 1.25e-2 J) fails every run; its resolution is the
+  identity's, one floor (a gift of half a floor passes, one of two fails). **A run says when a check failed**
+  (`EnergyAccount.findings`, `RunResult.energy_findings`, the first lines of `result.energy.text()`, `result.text()`
+  and `mime run`'s attention lines, with the amount): in particular work that arrived where no law or writer owns it,
+  which is what a controller called on the host (mode `callback`) writes into a metered receiver, its books closing
+  and its work named by no writer; the build report names such a controller outside. `<motor>.reaction`, the
+  stator's reaction on its host, declares no class: its paired work is on both receivers' books, and the pair's sum,
+  the coupling's first-order error (+5.8e-5 J, 1.8 % of A0's supply over 50 ms), is reported and not bounded by a test. **Outside, by the mount tree**: on an apparatus with a
   chain each segment and each field it carries is judged apart, a field outside unless its laws deliver their
   reactions into a segment of it, so a magnet on a dynamic arm is inside and one on a kinematic arm outside, and in an
   apparatus with a dynamic and a kinematic part only the kinematic part is outside; the controller and every drive are

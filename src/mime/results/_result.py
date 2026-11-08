@@ -357,6 +357,14 @@ class RunResult:
         return dict(self._groups()) if self._groups is not None else {}
 
     @property
+    def energy_findings(self) -> tuple[str, ...]:
+        """The energy ledger's failed checks, in words, with their amounts (:attr:`EnergyAccount.findings`): work
+        that arrived where no law or writer owns it, a step identity over its floor. Empty for a run whose books
+        close and for a run with no ledger."""
+        account = self.energy
+        return () if account is None else account.findings
+
+    @property
     def energy(self) -> EnergyAccount | None:
         """The energy ledger's account of the run (:class:`~mime.results.EnergyAccount`), from the build's start to its
         end: what is stored, lost and supplied, named by what supplies it, and each potential's change, in plain words
@@ -657,6 +665,7 @@ class RunResult:
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
                  *(f"post-run {read.text()}" for read in self.containment),
+                 *(f"energy ledger: {finding}" for finding in self.energy_findings),
                  *(f"coupling group {members}: {verdict}" for members, verdict in self.groups.items()),
                  self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
                                                                                  "written before profiles)"]

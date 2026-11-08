@@ -91,8 +91,12 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   (supplied taken from the dissipation side, lost plus the change in what is stored, shared among the things outside in
   proportion to what each one's laws paired), each potential's change from the run's two ends with the law's own
   parameters as the run had them, and in its detailed text each law's paired work, the scheme's own terms apart, the
-  paired supply and the checks, each receiver's storage's jumps between steps (`between`), each workless exchange's
+  paired supply and the checks, each receiver's storage's jumps between steps (`between`; the worst one no declared
+  producer owns, over the identity's floor, in `between_worst` and judged in `identity_worst`), each workless exchange's
   work over its receivers (`exchanges`) and each coupling group's verdict and residual (`groups`); `efficiency(useful)`.
+  **`findings`** are the checks that failed, in words, with their amounts, and `text()`, `RunResult.text()` and the
+  command line's attention lines say them before anything else: work that arrived where no law or writer owns it (a
+  controller called on the host, an edge the build did not declare) and a step identity over its floor.
   `None` without the ledger and for a run read from a folder.
 - **A coupling group's verdict** (`group_verdicts`, `RunResult.groups`): each group's at the run's last step, from
   MADDENING's own, in every profile, with or without the ledger.

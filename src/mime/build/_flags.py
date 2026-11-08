@@ -1,4 +1,4 @@
-"""The build's structural flags (F0-1 M6.5): basic mistakes in how laws couple their receivers, found from the graph
+"""The build's structural flags: basic mistakes in how laws couple their receivers, found from the graph
 in every profile, with or without the energy ledger, since energy cannot see them.
 
 - **A rate divider across a law's two sides is refused** (``law.rate-divided``): a law whose deliveries reach two

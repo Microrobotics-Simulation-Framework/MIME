@@ -74,6 +74,9 @@ def attention_lines(built: BuiltExperiment, written: RunWritten, load: LoadRepor
         elif not contained.peak:
             lines.append(f"containment read at the last step only ({contained.body} against {contained.surface}): "
                          f"--history or --record keeps the poses of every step for it")
+    account = result.energy
+    if account is not None:
+        lines += [f"energy ledger: {finding}" for finding in account.findings]
     checked = [(owner, line) for owner, held in sorted(report.checked.items()) for line in held]
     lines += [f"validity of {owner}, computed at build: {line}" for owner, line in checked]
     lines += [f"build refused: {line}" for refusal in report.refusals for line in str(refusal).splitlines()]

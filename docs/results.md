@@ -154,7 +154,13 @@ the checks: each body's step identity at its worst step against its rounding, th
 (exactly zero where every delivery is a law's), each potential's paired work against its energy's change from the run's
 two ends, and the books' balance against its rounding, each receiver's storage's jumps between steps, each workless
 exchange's work summed over its receivers (a rotor and the arm carrying it: the exchange's own discretisation error,
-reported, not judged), and each coupling group's verdict with its residual. `result.energy.efficiency(useful)` is a
+reported, not judged), and each coupling group's verdict with its residual. A jump of a receiver's own storage between
+steps that no declared producer explains (a state edited between steps) is judged with the step identity. **When a
+check failed, the run says so before anything else**: `result.energy.findings`, the first lines of
+`result.energy.text()`, a line of `result.text()` and of `mime run`'s attention lines, with the amount. In particular,
+work that arrived where no law or writer owns it is reported by name: a controller run in its callback mode is no node
+of the graph, so what it writes into a metered receiver arrives unattributed (its books close, but its work is not
+named by its writer); run it in graph mode to have its commands booked under it. `result.energy.efficiency(useful)` is a
 useful work as a share of what was supplied. The build report's `energy` lines say how the build metered the
 experiment ([reading a build report](guide/build_report.md)).
 

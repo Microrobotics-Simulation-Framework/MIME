@@ -323,8 +323,51 @@ def identity_over_floor(found: Mapping[str, jax.Array]) -> float:
     return float(found["ledger_step_identity"]) / (books.IDENTITY_ULPS * eps)
 
 
+def swinging_rotor(dt: float) -> Any:
+    """dev1's swing under gravity, started 0.3 rad out, carrying a dynamic motor whose rotor carries A0's magnet across
+    its axis (its half difference across it non-zero), spun from 10 Hz by 1 mN m; the magnet's field read by a body
+    30 cm below, both magnetic laws attached, so that their reactions reach the rotor and the motor is metered too."""
+    from chain_cases import BODY_INERTIA, BODY_MASS, BODY_MOMENT, MAGNET_LENGTH, MAGNET_MOMENT, MAGNET_RADIUS, \
+        ROTOR_INERTIA, SWING
+    from mime.drives import Constant
+    from mime.dynamics import Arm, Motor, RigidInertial
+    from mime.experiment import Experiment
+    from mime.fields import PointDipole
+    from mime.interactions import Magnetic
+    from mime.observations import EnergyLedger
+    from mime.scene import Cylinder, Scene, Z, asset
+    from mime.things import Apparatus, Body, Part, PermanentMagnet, State
+    from mime.units import A_m2, N_m, N_m_s, kg, kg_m2, kg_per_m3, m, m_per_s, ms, rad, rad_per_s, standard_gravity
+
+    #: Sintered NdFeB's typical density (an inference), A0's magnet's.
+    magnet_density = 7500.0
+
+    exp = Experiment("swinging_rotor", scene=Scene.new(up=Z, units="m"), gravity=standard_gravity(), dt=ms(dt * 1e3))
+    exp.add_apparatus(Apparatus("swing", chain={
+        "arm": Arm.Dynamic(description=asset(SWING), initial_positions=rad((0.3,)),
+                           initial_velocities=rad_per_s((0.0,))),
+        "motor": Motor.Dynamic(axis=Z, inertia=kg_m2(ROTOR_INERTIA), damping=N_m_s(0.0), initial_angle=rad(0.0),
+                               mount="arm", initial_velocity=rad_per_s(2 * np.pi * 10.0),
+                               top_speed=rad_per_s(2 * np.pi * 20.0))},
+        parts={"magnet": Part(Cylinder(radius=m(MAGNET_RADIUS), length=m(MAGNET_LENGTH), axis=(1.0, 0.0, 0.0)),
+                              mount="motor.rotor")},
+        magnets={"magnet": PermanentMagnet(direction=(1.0, 0.0, 0.0))}, fields={"magnetic": PointDipole(part="magnet")},
+        commands={"arm.joint_torques": Constant(N_m((0.0,))), "motor.torque": Constant(N_m(1e-3))}))
+    exp.declare("swing.parts.magnet.density", kg_per_m3(magnet_density), reason="sintered NdFeB, its typical value")
+    exp.declare("swing.magnetic_moment", A_m2(MAGNET_MOMENT), reason="A0's rotor magnet")
+    exp.add_body(Body("umr", dynamics=RigidInertial(), initial=State(
+        position=m((0.0, 0.0, -0.3)), orientation=(1.0, 0.0, 0.0, 0.0), velocity=m_per_s((0.0, 0.0, 0.0)),
+        angular_velocity=rad_per_s((0.0, 0.0, 0.0)))))
+    for path, value in (("umr.mass", kg(BODY_MASS)), ("umr.inertia", kg_m2(BODY_INERTIA)),
+                        ("umr.magnetic_moment", A_m2(BODY_MOMENT)), ("umr.magnet_centre", m((0.0, 0.0, 0.0)))):
+        exp.declare(path, value, reason="a millimetre body, round numbers of its order")
+    for law in (Magnetic.Torque(), Magnetic.Force()):
+        exp.attach(law, body="umr", field="swing.magnetic")
+    exp.observe(EnergyLedger())
+    return exp
+
 __all__ = ["ANGULAR_GIFT", "CHECKED_DRAG", "CONFIGURATION", "CONTACT_GIFT", "CONTACT_LAW", "DRAG_LAW", "EULER",
            "GYROSCOPIC", "HALVED_TERMS", "HOSTED_LOSS", "HOSTED_SHIFT", "LINEAR_GIFT", "LOAD_LAW", "MASS", "PLANTS",
            "PlantedBody", "REVERSED_HOLD",
            "centre_held_states", "free_states", "hull_held_states", "identity_over_floor", "in_dtype", "law_inputs",
-           "metered_body", "one_step", "unit", "vector"]
+           "metered_body", "one_step", "swinging_rotor", "unit", "vector"]

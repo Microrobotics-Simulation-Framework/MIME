@@ -3,7 +3,7 @@
 
 With the ledger attached:
 
-- **outside is worked out per thing** (F0-1 M3): a thing (a body, a medium's flow, a field), taken from each entry's
+- **outside is worked out per thing**: a thing (a body, a medium's flow, a field), taken from each entry's
   plan, none of whose nodes receives a delivery or a reaction from the components is outside, and the work a law
   reading it does on the components is supplied, named by that thing. **An apparatus is taken by its mount tree**: each
   chain segment is outside unless it receives a delivery or a reaction, and each field it carries unless the laws
@@ -40,6 +40,7 @@ from typing import Any, cast
 
 from maddening.core.node import SimulationNode
 
+from mime.build._control import Mode
 from mime.build._builders import COMMAND, DELIVERY, FIELD, REACTION, STATE, EdgeDecl
 from mime.build._plan import EntryPlan, PlanSet, Section
 from mime.build._refusals import Refusal, RefusalClass, entry_defect
@@ -233,7 +234,13 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
         if refuses_unmetered(profile, reason):
             refusals.append(_unmetered_refusal(by, f"{by} ({type(law).label()})",
                                                "an energy class (Interaction.energy_class)"))
-    lines.append(f"outside: {', '.join(outside) or 'nothing'} (receives no delivery from the components)")
+    called = plans.controller is not None and plans.controller.mode not in (None, Mode.GRAPH)
+    named = [*outside, *(["controller (called on the host)"] if called else [])]
+    lines.append(f"outside: {', '.join(named) or 'nothing'} (receives no delivery from the components)")
+    if called:
+        lines.append("a controller called on the host is no node of the graph: what it writes into a metered receiver "
+                     "arrives in an unattributed input, under no writer's name, and the run reports the work as "
+                     "unattributed (mode 'graph' books it under the controller)")
     rewired = [dataclasses.replace(e, target=moved[position]) if position in moved else e
                for position, e in enumerate(edges)]
     wiring = tuple((edges[position].source[0], edges[position].source[1], *moved[position])

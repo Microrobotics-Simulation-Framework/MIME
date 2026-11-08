@@ -56,6 +56,11 @@ rotor under each law, its bearing's loss (`<motor>.bearing`), its inequality's t
 one workless exchange with the inertia its host carries) and its stator's torques on its host's turn
 (`<motor>.reaction`). The kinematic rung is outside: a prescribed motion.
 
+The stator's reaction on its host declares no energy class: its paired work is booked under `<motor>.reaction` on the
+motor and, with the opposite sign, on the arm, neither a loss nor a supply. Each half is in its receiver's stored change;
+the two halves should cancel, and what they leave is the coupling's first-order error (small against A0's supply in the one run that measured it),
+reported in every metered run's notes and not bounded by a test.
+
 **Chains, mounts and armature.** How a segment is placed, what mounts on a frame and where a joint's armature comes from: [the multibody note](../../multibody.md).
 
 **Versions.** `motor` 0.1.0 was its first: the kinematic rung, and then the dynamic rung. `motor`

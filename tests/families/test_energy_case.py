@@ -246,3 +246,21 @@ def test_the_magnetic_pair_s_energy_case_needs_the_member_that_completes_it():
 
     result = energy_of(Magnetic.Torque(), "magnetic")
     assert result.failed and "together=" in result.detail
+
+
+def test_the_kept_0_1_0_pair_taken_for_a_potential_fails_the_pair_s_energy_case_on_every_run(monkeypatch):
+    """The magnetic pair's energy case has a control that fails: dev1's pair (MIME-ANO-137: both laws read at the
+    magnet's centre of mass) declared a potential, which it is not, is not the negative gradient of ``-m . B`` at the
+    magnet: the force differs from it by 2 to 4 % of its scale and the couple by 1 to 4 %, against a floor of 16 eps.
+    Three runs of the case, each fails (the 0.2.0 pair passes it in the family walk). Declaring the class is what the
+    case exists to catch; the real 0.1.0 declares none, and is unmetered by its anomaly."""
+    from mime.interactions import KEPT
+    from mime.vocabulary import EnergyClass
+
+    torque, force = (KEPT[f"magnetic.{name}", "0.1.0"][0] for name in ("torque", "force"))
+    for law in (torque, force):
+        monkeypatch.setattr(law, "energy_class", EnergyClass.POTENTIAL)
+        monkeypatch.setattr(law, "unmetered", "")
+    for _ in range(3):
+        result = energy_of(torque(), "magnetic", together=(force(),))
+        assert result.failed and "together=" not in result.detail, result

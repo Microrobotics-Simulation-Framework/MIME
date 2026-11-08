@@ -122,8 +122,15 @@ parameters, inputs, state and step included, every bit of the program unchanged.
   `MimeNode.PAIRED_COMMANDS`.
 - **Between steps.** The storage at a step's start less the storage the step before ended at is kept apart
   (`ledger_between`): where the storage reads what the step does not return (an inertia a frame carries, predicted a
-  step ahead; a coupling group's accepted iterate) that jump is the exchange's or the group's, and the books are the
-  sum of the steps' residuals; elsewhere it is zero, or rounding.
+  step ahead; a coupling group's accepted iterate) that jump is the exchange's or the group's, declared, and added
+  back to the books. **Whatever no declared producer explains is judged as unattributed work is**: the storage of the
+  receiver's own state (`StepAccount.own_start`, the storage without the part a delivery adds) at a step's start less
+  the one the step before ended at is rounding, kept as its worst over the step's scale (`ledger_between_worst`; over
+  `IDENTITY_ULPS` units of rounding a failure of the step identity, counted in the account's `identity_worst`) and
+  summed (`ledger_between_own`), which `balance` leaves in. A state edited between steps is seen there. The
+  resolution is the identity's: a jump under one floor (`IDENTITY_ULPS` units of rounding on the step's scale, far above
+  the loop's own rounding on A0) passes. A member of a coupling group is not judged: its jump is the group's, reported with the
+  group's residual.
 - **Definiteness at run time**, for a law whose operator's definiteness depends on the state:
   `definite_at_floor`, one Cholesky factorisation of its scaled symmetric part shifted by `DEFINITE_ULPS` units of
   rounding, so that a semidefinite operator passes where a plain factorisation fails on it (a zero diagonal entry

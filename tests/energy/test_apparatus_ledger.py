@@ -1,4 +1,4 @@
-"""The energy ledger on an apparatus (F0-1 M3, M6.2, M6.3), end to end on A0's closed loops.
+"""The energy ledger on an apparatus, end to end on A0's closed loops.
 
 **A0 on its dynamic rungs** (``tests/script_a0_dynamic.py``, the controller in the graph every step), with
 ``EnergyLedger``: the arm, the motor and the body are each metered (the joint, spinner and rigid body port kinds), each

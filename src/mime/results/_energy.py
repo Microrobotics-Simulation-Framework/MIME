@@ -104,8 +104,10 @@ class LawEnergy:
         if self.host_term is not None:
             parts.append(f"its host's projection's term {self.host_term:+.4g} J (the scheme's, apart)")
         if self.potential_change is not None and self.residual is not None:
+            unjudged = ("; beyond it: the step's own first-order pairing, reported, not judged"
+                        if abs(self.residual) > abs(self.residual_floor or 0.0) else "")
             parts.append(f"its energy's change {self.potential_change:+.4g} J, residual {self.residual:+.3g} J "
-                         f"(rounding {self.residual_floor:.3g} J)")
+                         f"(rounding {self.residual_floor:.3g} J{unjudged})")
         if self.supplied_by:
             parts.append(f"supplied by {', '.join(self.supplied_by)}")
         if self.gift_steps:
@@ -125,7 +127,10 @@ class EnergyAccount:
     terms, never a loss), ``paired_supply`` (the work each thing outside's laws paired in the receivers' steps),
     ``unattributed`` (the work each receiver's unattributed inputs paired: zero, exactly, where every delivery is a
     law's), ``identity_worst`` (each receiver's step identity's worst step over its rounding floor: above one is a
-    finding), and ``balance``, the receivers' books summed over the run, with ``balance_floor``, its rounding."""
+    finding; the jump of a receiver's storage between steps that no declared producer explains is judged in it, apart
+    in ``between_worst``), and ``balance``, the receivers' books summed over the run, with ``balance_floor``, its
+    rounding. ``findings`` are the checks that failed, in words, by receiver and with the amount: work that arrived
+    unattributed, a step identity over its floor. They are what a run's text says before anything else."""
 
     stored: Mapping[str, Scalar]
     lost: Mapping[str, Scalar]
@@ -142,8 +147,14 @@ class EnergyAccount:
     notes: tuple[str, ...] = field(default_factory=tuple[str, ...])
     #: What each receiver's storage jumped between steps, summed (J): where its frames carry a delivered inertia, the
     #: exchange's own (under ``exchanges``); inside a coupling group, the group's residual (under ``groups``); rounding
-    #: elsewhere.
+    #: elsewhere, and nothing else: a jump no declared producer explains is judged (``between_worst``).
     between: Mapping[str, Scalar] = field(default_factory=dict[str, Scalar])
+    #: The worst jump of each receiver's own state's storage between steps, over the step identity's rounding floor
+    #: (above one is a failure of the step identity, counted in ``identity_worst``). A member of a coupling group is
+    #: not judged here: its jump is the group's.
+    between_worst: Mapping[str, Scalar] = field(default_factory=dict[str, Scalar])
+    #: The checks that failed, in words (see above); empty on a run whose books close.
+    findings: tuple[str, ...] = field(default_factory=tuple[str, ...])
     #: Each workless law's paired work summed over its receivers, with the jump between steps of a storage its
     #: delivered inertia moves (J): the exchange's own discretisation error, reported, not judged.
     exchanges: Mapping[str, Scalar] = field(default_factory=dict[str, Scalar])
@@ -180,6 +191,7 @@ class EnergyAccount:
                  f"(what was lost plus the change in what is stored)"]
         if self.potentials:
             lines.append(f"  potentials, each one's change: {joules(self.potentials)}")
+        lines += [f"  FINDING: {finding}" for finding in self.findings]
         lines += [f"  {note}" for note in self.notes]
         if not details:
             return "\n".join([*lines, "  each law, the scheme's own terms and the checks: text(details=True)"])
@@ -189,7 +201,9 @@ class EnergyAccount:
         worst = ", ".join(f"{name} {value:.3g}" for name, value in self.identity_worst.items())
         lines += [f"  unattributed: {joules(self.unattributed)}",
                   f"  the step identity's worst step over its rounding floor: {worst}",
-                  f"  the storage's jumps between steps: {joules(self.between)}"]
+                  f"  the storage's jumps between steps: {joules(self.between)}; the worst one no declared producer "
+                  f"owns, over the rounding floor: "
+                  f"{', '.join(f'{name} {value:.3g}' for name, value in self.between_worst.items())}"]
         lines += [f"  {law}: workless, summed over its receivers {value:+.3g} J (its own discretisation error)"
                   for law, value in self.exchanges.items()]
         lines += [f"  coupling group {members}: {verdict}" for members, verdict in self.groups.items()]
@@ -298,9 +312,13 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
     balance: Scalar = 0.0
     floor: Scalar = 0.0
     between: dict[str, Scalar] = {}
+    between_worst: dict[str, Scalar] = {}
     exchanges: dict[str, Scalar] = {}
+    findings: list[str] = []
     paired_fields: set[str] = set()
     field_laws: set[str] = set()
+    verdicts = group_verdicts(graph)
+    grouped = {member for members in verdicts for member in members.split("+")}
     for name in cast(list[str], graph.node_names):
         receiver = graph.get_node(name)
         held = ledger.deliveries(dict(getattr(receiver, "params", {}) or {}))
@@ -313,12 +331,21 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
         numerical[name] = _sum(records[f"{ledger.RECORDS}terms"])
         unattributed[name] = _scalar(records[f"{ledger.RECORDS}unattributed"])
         worst[name] = _scalar(records[f"{ledger.RECORDS}identity_worst"]) / (ledger.IDENTITY_ULPS * eps)
-        balance += _scalar(ledger.balance(records))
+        between_worst[name] = _scalar(ledger.between_floors(records))
+        if name not in grouped:
+            worst[name] = jnp.maximum(worst[name], between_worst[name]) if _traced(worst[name]) or _traced(
+                between_worst[name]) else max(worst[name], between_worst[name])
+        balance += _scalar(ledger.balance(records, grouped=name in grouped))
         floor += _scalar(ledger.balance_floor(records))
         between[name] = _scalar(records[f"{ledger.RECORDS}between"])
         carrying = next((d.law for d in held if d.kind == ledger.INERTIA), None)
         if carrying is not None:
-            exchanges[carrying] = exchanges.get(carrying, 0.0) + between[name]
+            # The jump the delivered inertia's exchange owns: the part of the storage that reads the delivery.
+            exchanges[carrying] = exchanges.get(carrying, 0.0) + between[name] \
+                - _scalar(records[f"{ledger.RECORDS}between_own"])
+        if not _traced(worst[name]) and not _traced(unattributed[name]):
+            findings += _findings(name, records, worst[name], between_worst[name], unattributed[name],
+                                  grouped=name in grouped)
         scale = _scalar(records[f"{ledger.RECORDS}scale"])
         taken = _taken(ledger.losses(records, held))
         for row, law in enumerate(ledger.laws(held)):
@@ -361,7 +388,9 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
                 paired[producer] = paired.get(producer, 0.0) + work / len(line.supplied_by)
             if first.energy_class == ledger.UNMETERED and not line.supplied_by:
                 notes.append(f"{law} on {name} declares no class and is supplied by nothing outside: its paired work, "
-                             f"{work:+.4g} J, is in neither what was lost nor what was supplied")
+                             f"{work:+.4g} J, is booked under its name and is neither a loss nor a supply: it is in "
+                             f"{name}'s stored change, and where the law has another half on another receiver, the "
+                             f"two halves' sum is the coupling's first-order error, reported, not judged")
             lines.append(line)
     if not stored:
         return None
@@ -372,14 +401,38 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
         else:
             notes.append(f"{law} states no energy on its node, so its change is not in the account")
     groups: dict[str, str] = {}
-    for members, state in group_verdicts(graph).items():
+    for members, state in verdicts.items():
         residual = sum(between.get(member, 0.0) for member in members.split("+"))
         groups[members] = f"MADDENING's verdict at the run's last step: {state}; its residual, its members' " \
                           f"storage jumps between steps summed, {residual:+.3g} J"
     total = sum(lost.values()) + sum(stored.values()) + sum(potentials.values())
     supplied = _shared(total, paired)
     return EnergyAccount(stored, lost, potentials, supplied, tuple(lines), numerical, paired, unattributed, worst,
-                         balance, floor, steps, tuple(notes), between, exchanges, groups)
+                         balance, floor, steps, tuple(notes), between, between_worst, tuple(findings), exchanges,
+                         groups)
+
+
+def _findings(name: str, records: Mapping[str, Any], identity: Scalar, between_floors: Scalar, summed: Scalar,
+              *, grouped: bool) -> list[str]:
+    """The checks a metered receiver failed over the run, in words, with the amount. Work that arrived in an
+    unattributed input (above zero: exactly zero where every delivery is a law's, whatever the rounding floor) is
+    named first, the step identity over its floor after it, with the jump between steps no declared producer owns
+    where that is what failed it."""
+    found: list[str] = []
+    worst = abs(float(np.asarray(records[f"{ledger.RECORDS}unattributed_worst"], dtype=np.float64)))
+    if worst > 0.0:
+        found.append(f"work arrived on {name} that no law or writer owns: {float(cast(float, summed)):+.4g} J summed "
+                     f"over the run, {worst:.3g} J at the largest step (the books' rounding is "
+                     f"{float(cast(float, _scalar(ledger.balance_floor(records)))):.3g} J, and this is exactly zero "
+                     f"where every delivery is a law's). The identity and the books close with it, under no name: an "
+                     f"edge the build did not declare, or a controller called on the host (mode 'callback'), whose "
+                     f"writes it cannot attribute")
+    if float(cast(float, identity)) > 1.0:
+        owned = " by the jump of its storage between steps, which no declared producer owns" \
+            if not grouped and float(cast(float, between_floors)) > 1.0 else ""
+        found.append(f"the step identity of {name} failed{owned}: its worst step is "
+                     f"{float(cast(float, identity)):.3g} times its rounding floor")
+    return found
 
 
 def group_verdicts(graph: Any) -> dict[str, str]:

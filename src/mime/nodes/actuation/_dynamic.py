@@ -584,8 +584,9 @@ class DynamicArmNode(SegmentNode):
 
     @override
     def storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
-        """``(1/2) v^T M(q) v``, its joints' kinetic energy with its own inertia (what its frames carry beyond it is
-        read at each step, and the jump between steps is recorded apart)."""
+        """``(1/2) v^T M(q) v``, its joints' kinetic energy with its own inertia. What its frames carry beyond it is read
+        at each step, and the jump between steps that moves it is that inertia's exchange's, booked under its
+        law; this storage is the arm's own state's, whose jump between steps is judged (``StepAccount.own_start``)."""
         q, v = jnp.asarray(state["joint_positions"]), jnp.asarray(state["joint_velocities"])
         return 0.5 * v @ mass_matrix(self.articulation(p, q.dtype), q) @ v
 
@@ -758,7 +759,8 @@ class DynamicArmNode(SegmentNode):
         return books.StepAccount(
             work=work, hosted=hosted, unattributed=unattributed,
             terms=jnp.stack([backward_euler, cayley, velocity_products, configuration]),
-            storage_start=start_storage, storage_end=end_storage, scale=size, operators={})
+            storage_start=start_storage, storage_end=end_storage, scale=size, operators={},
+            own_start=self.storage(p, state), own_end=self.storage(p, ended))
 
 
 #: The inputs a dynamic arm pairs, by what each holds: the loads on its frames, its spinners' momenta, the inertia its
