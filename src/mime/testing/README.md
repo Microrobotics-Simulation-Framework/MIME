@@ -100,6 +100,23 @@ Also:
   (about one run in a thousand, from the band's area against the draws' range: estimated, not measured);
 - MIME's own **family walk** (`tests/families/test_family_walk.py`) requires a family case for every registered
   interaction, and every one in a family passes its whole suite.
+- **the energy case** (`CaseKind.ENERGY`, `check_energy`; in the magnetic, gravity, contact and hydrodynamic families):
+  a law's energy class settled by an exact identity on the law alone. A potential law's wrench against its energy's
+  negative gradient on its node (the couple's on the rotation group), within the ledger's rounding floor on the
+  arithmetic the family says it is formed by (`Family.potential_scale`); a dissipative law's operators positive semidefinite at the ledger's floor
+  and its loads doing no positive work on the flow it reads (zero where it reads none); a dissipative law held in its
+  body's step (a contact) giving no energy through the solve nor by its rule at arrival, on the body's node metered for
+  it alone, from states placed on its surface moving outward (`onto_the_surface`, `OUTWARD_SPEED`); a law with no class
+  states its reason (`unmetered`), or fails; **a law that states its reason passes by that declaration alone** (the two
+  magnetic laws, until their family's energy and loop test are built), and the result says so. Its controls (`tests/families/test_energy_case.py`): a weight a hundredth
+  heavier, an indefinite part in the surrogate's resistance, a contact whose rule speeds up the velocity it projects
+  and a law that says nothing each fail it.
+- **a dynamics' step identity** (`step_identity`, `_energy.py`): its node, as a build makes it for one body
+  (`dynamics_rig`), metered for one synthetic law on each input its port kind pairs (`metered_twin`), books its step
+  identity within the ledger's rounding floor on the step's scale, on drawn states (`PORT_DRAWS`: a rigid body's, `rigid_body_states`, at a
+  millimetre swimmer's scales) and work fed into its unattributed input booked as unattributed (a node that books it
+  under a law fails on every draw); a dynamics with no port kind states its reason, or fails.
+  `tests/energy/test_metered_entries.py` walks every registered dynamics and interaction of MIME's through both.
 
 Also:
 - **the closed-loop case** (`CaseKind.CLOSED_LOOP`), for a family whose laws together are the derivative of an energy in

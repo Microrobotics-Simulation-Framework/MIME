@@ -178,6 +178,15 @@ def script_a_with_drag() -> Experiment:
     return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
 
 
+def script_a_metered() -> Experiment:
+    """Script A with the energy ledger attached: its body metered, each law in its own input on it."""
+    from mime.observations import EnergyLedger
+
+    experiment = script_a("script_a_metered", velocity=m_per_s((1e-3, 0.0, 0.0)))
+    experiment.observe(EnergyLedger())
+    return experiment
+
+
 def script_a_kept_drag() -> Experiment:
     """Script A with the drag kept registered, 0.3.0 (its surrogate rung is 0.4.0's): what a folder saved before the
     separated quadrature names."""
@@ -291,6 +300,8 @@ CASES = (
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),
+    # Script A metered by the energy ledger: last, so that every other entry's golden output stays its earlier case's.
+    Case("script_a_metered", script_a_metered),
 )
 
 if os.environ.get("MIME_CI_PLANT_FAILURE") == "1":

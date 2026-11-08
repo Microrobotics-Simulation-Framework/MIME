@@ -64,6 +64,8 @@ LEDGER, RECORDS = "ledger", "ledger_"
 IDENTITY_ULPS, DEFINITE_ULPS = 16.0, 16.0
 #: What separates an encoded delivery's fields: no law id, input name or producer holds it.
 _SEPARATOR = "|"
+#: What joins a law's own input to the input it stands beside and its delivery's index.
+_OWN = "__ledger"
 
 
 @dataclass(frozen=True)
@@ -113,7 +115,14 @@ def laws(held: Sequence[LedgerDelivery]) -> tuple[str, ...]:
 def law_input(field: str, index: int) -> str:
     """The input of the ``index``-th delivery's own on its receiver, beside ``field``, which takes anything
     unattributed."""
-    return f"{field}__ledger{index}"
+    return f"{field}{_OWN}{index}"
+
+
+def own_input(name: str) -> tuple[str, int] | None:
+    """The input a law's own input ``name`` stands beside and the index of its delivery (:func:`law_input`'s
+    inverse); ``None`` for any other input."""
+    field, found, index = name.rpartition(_OWN)
+    return (field, int(index)) if found and field and index.isdigit() else None
 
 
 def with_law_inputs(spec: Mapping[str, BoundaryInputSpec],
@@ -209,15 +218,18 @@ class StepAccount:
         return (self.storage_end - self.storage_start) - supplied + numerical
 
 
-def initial_records(held: Sequence[LedgerDelivery], terms: int, storage: Any) -> dict[str, Array]:
+def initial_records(held: Sequence[LedgerDelivery], terms: int, storage: Any,
+                    configuration: Any = None) -> dict[str, Array]:
     """The ledger's fields in a metered receiver's state at the run's start: every running sum at zero, the storage at
-    the initial state."""
+    the initial state, and the configuration there where the receiver states one (``MimeNode.configuration``): what
+    a potential law's energy is evaluated at, at the run's two ends."""
     rows = len(laws(held))
 
     def zero(*shape: int) -> Array:
         return as_run_array(jnp.zeros(shape))
 
-    return {
+    start = {} if configuration is None else {f"{RECORDS}configuration_start": as_run_array(configuration)}
+    return {**start,
         f"{RECORDS}work": zero(rows), f"{RECORDS}step_work": zero(rows), f"{RECORDS}hosted": zero(rows, 2),
         f"{RECORDS}terms": zero(terms), f"{RECORDS}step_terms": zero(terms),
         f"{RECORDS}unattributed": zero(), f"{RECORDS}unattributed_worst": zero(),
@@ -238,9 +250,10 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     (``step_identity``; over :data:`IDENTITY_ULPS` times eps it has failed), the unattributed work as its largest
     magnitude (above zero it has failed), and per law the count of steps whose operator failed its definiteness
     (``indefinite_steps``) and, per **dissipative** law of ``held``, the count of steps in which its paired work was
-    positive beyond :data:`IDENTITY_ULPS` units of eps on the step's scale (``gift_steps``: a dissipative law gives
-    no energy, whatever it is delivered; this is its class's sign, read from the law's own row, and it is silent on
-    the identity, which books the gift under the law's name)."""
+    positive beyond :data:`IDENTITY_ULPS` units of eps on the step's scale, or, for a law held in the step, its rule's
+    removal at arrival negative beyond it (``gift_steps``: a dissipative law gives no energy, whatever it is
+    delivered, neither through the step's solve nor by its rule at arrival; this is its class's sign, read from the
+    law's own row, and it is silent on the identity, which books the gift under the law's name)."""
     dtype = step.work.dtype
     relative = jnp.abs(step.residual()) / jnp.maximum(step.scale, jnp.finfo(dtype).tiny)
     indefinite = jnp.zeros_like(state[f"{RECORDS}indefinite_steps"])
@@ -250,9 +263,12 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     rows = laws(held)
     floor = IDENTITY_ULPS * jnp.finfo(dtype).eps * step.scale
     for row in sorted({rows.index(d.law) for d in held if d.energy_class == DISSIPATIVE}):
-        gifts = gifts.at[row].set((step.work[row] > floor).astype(dtype))
+        gave = (step.work[row] > floor) | (step.hosted[row, 0] < -floor)
+        gifts = gifts.at[row].set(gave.astype(dtype))
     r = RECORDS
+    start = {key: state[key] for key in (f"{r}configuration_start",) if key in state}
     return {
+        **start,
         f"{r}work": state[f"{r}work"] + step.work, f"{r}step_work": step.work,
         f"{r}hosted": state[f"{r}hosted"] + step.hosted,
         f"{r}terms": state[f"{r}terms"] + step.terms, f"{r}step_terms": step.terms,
@@ -275,6 +291,22 @@ def balance(records: Mapping[str, Any]) -> Any:
     return (records[f"{r}storage"] - records[f"{r}storage_start"]) - supplied + numerical
 
 
+def losses(records: Mapping[str, Any], held: Sequence[LedgerDelivery]) -> Any:
+    """What each law of ``held`` took from its receiver's motion over the run (J, a row per law, as its records keep
+    them): a dissipative law's paired work turned to a loss, and, for one held in the step, the velocity rule's
+    removal at arrival added (its projection's term is its host's scheme's, shown apart). Zero for any other class.
+    Traced, as the records are."""
+    rows = laws(held)
+    dissipative = jnp.asarray([any(d.law == law and d.energy_class == DISSIPATIVE for d in held) for law in rows])
+    taken = -records[f"{RECORDS}work"] + records[f"{RECORDS}hosted"][:, 0]
+    return jnp.where(dissipative, taken, jnp.zeros_like(taken))
+
+
+def stored(records: Mapping[str, Any]) -> Any:
+    """The change in what a metered receiver stores over the run (J). Traced, as the records are."""
+    return records[f"{RECORDS}storage"] - records[f"{RECORDS}storage_start"]
+
+
 def balance_floor(records: Mapping[str, Any]) -> Any:
     """The rounding the balance is judged against: :data:`IDENTITY_ULPS` units of eps on the run's summed step scale."""
     scale = records[f"{RECORDS}scale"]
@@ -287,7 +319,8 @@ def with_records(node: MimeNode, state: Mapping[str, Array]) -> dict[str, Array]
     if not held:
         return dict(state)
     terms = node.LEDGER_TERMS or ()
-    return {**state, **initial_records(held, len(terms), node.storage(node.constants(), state))}
+    p = node.constants()
+    return {**state, **initial_records(held, len(terms), node.storage(p, state), node.configuration(p, state))}
 
 
 Step = Callable[[Mapping[str, Any], Mapping[str, Array], Mapping[str, Array], float], tuple[dict[str, Array], Any]]
@@ -309,5 +342,5 @@ def metered_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mappi
 __all__ = ["CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES", "FLOW_IN", "HOSTED",
            "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "POTENTIAL", "RECORDS", "SOLVED", "UNMETERED", "WORKLESS",
            "LedgerDelivery", "StepAccount", "balance", "balance_floor", "definite_at_floor", "deliveries",
-           "initial_records", "law_input", "laws", "metered_step", "paired_work", "recorded", "summed", "unrecorded",
+           "initial_records", "law_input", "laws", "losses", "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "unrecorded",
            "with_law_inputs", "with_records"]

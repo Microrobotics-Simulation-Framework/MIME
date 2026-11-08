@@ -22,6 +22,7 @@ from mime.build._refusals import ArgumentRefused, ArgumentTypeRefused, MimeError
 from mime.errors import public
 from mime.registry import OutputKind, Reduction
 from mime.results._containment import ContainmentRead
+from mime.results._energy import EnergyAccount
 from mime.results._layout import FlagLayout, Layout, ObservationLayout, OutputLayout
 from mime.results._watch import WatchRead, watches_text
 from mime.results._series import (
@@ -297,7 +298,8 @@ class RunResult:
                  clock: str | None = None, watches: Sequence[WatchRead] = (),
                  containment: Sequence[ContainmentRead] | Callable[[], Sequence[ContainmentRead]] = (),
                  report: Mapping[str, Any] | None = None, stopped: Stopped | None = None,
-                 origin: Origin | None = None, overrides: Sequence[Mapping[str, Any]] = ()) -> None:
+                 origin: Origin | None = None, overrides: Sequence[Mapping[str, Any]] = (),
+                 energy: Callable[[], EnergyAccount | None] | None = None) -> None:
         self.steps = steps
         #: Set when the run is a member of a study (:class:`MemberOf`).
         self.member_of: MemberOf | None = None
@@ -332,6 +334,8 @@ class RunResult:
         #: ``mime.report/N``), or ``"not JSON"``. The run reads regardless; ``report`` is ``None`` then.
         self.report_unreadable: str | None = None
         self._clock = np.dtype(clock) if clock is not None else None
+        self._energy = energy
+        self._account: EnergyAccount | None = None
 
     @property
     def containment(self) -> tuple[ContainmentRead, ...]:
@@ -342,6 +346,16 @@ class RunResult:
         if callable(self._containment):
             self._containment = tuple(self._containment())
         return self._containment
+
+    @property
+    def energy(self) -> EnergyAccount | None:
+        """The energy ledger's account of the run (:class:`~mime.results.EnergyAccount`), from the build's start to its
+        end: what is stored, lost and supplied, named by what supplies it, and each potential's change, in plain words
+        (``result.energy.text()``). ``None`` for a run built without ``EnergyLedger``, and for one read back from a
+        folder, which keeps no law's parameters to take a potential's change from."""
+        if self._account is None and self._energy is not None:
+            self._account = self._energy()
+        return self._account
 
     @property
     def stale(self) -> str | None:

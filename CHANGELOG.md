@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
+  second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
+  entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery
+  into its own input on each metered body, in the order its summed input took them, each paired as the body's port kind
+  says, and constructs the body again with its ledger; the build report's `energy` lines name each law's class or its
+  reason for being unmetered, what supplies it and what is outside. `result.energy` is the run's account in plain words:
+  what each body stores, what each dissipative law lost, what was supplied, named by what supplies it and taken from
+  the dissipation side (what was lost plus the change in what is stored), and each potential's change from the run's
+  two ends with the law's own parameters; with `details=True`, each law's paired work, the scheme's own terms apart,
+  the paired supply and the checks; `efficiency(useful)`. **The account's sums are differentiable**: formed by
+  `mime.results.energy_account` inside a function being differentiated (the final state and the parameters traced),
+  `supplied_total`, `efficiency` and the potentials' change are traced arithmetic with no conversion to NumPy, and the
+  derivative through them agrees with central differences as the step squared (a `result.energy` read from a finished
+  run holds numbers). A post-build check compares the graph as built, edge for edge, with the deliveries the wiring
+  made (`post-build.ledger-inputs`): a delivery in another law's own input (the same field's or another's, whatever
+  the shapes), in a summed input, dropped, or made twice is refused on every build, by name. **That check is what
+  catches a swap of two laws' loads between their inputs**, which the books cannot see; the swap shows in a residual
+  only where gravity is involved: gravity's, with a moving load (gravity against the torque: thousands of floors in
+  float32), and not reliably otherwise (gravity against drag's load: 0.008 of its floor in float32, as the body rests
+  on the wall), so the residual is a witness for those swaps alone. An entry that declares nothing and states no reason is logged under exploratory and refused under research
+  (`ledger.unmetered`). `mime.testing`: the **energy case** (`CaseKind.ENERGY`) in the magnetic, gravity, contact and
+  hydrodynamic families (a potential's wrench against its energy's negative gradient; a dissipative law's operators
+  definite and its loads doing no positive work; a contact giving no energy through the solve nor by its rule at
+  arrival; a law with no class states its reason), each with a planted law that fails it; **a dynamics' step
+  identity** on drawn states (`step_identity`); the registry walk requires every dynamics and interaction of MIME's to
+  declare how it is metered or why not (the arm, the motor and the toys state why); **the magnetic family's energy case
+  passes the two magnetic laws by their declaration alone** (their reason for being unmetered), which checks nothing about
+  them, until their family's energy and loop test are built. The step identity feeds work into the unattributed
+  input and requires it booked as unattributed (a plant that books it under a law fails it on every draw). A dissipative law held in its
+  body's step now also counts as giving energy where its rule at arrival adds energy. **Without the ledger nothing
+  moves**: every history array of the five programs is identical to the bit to the release before it, in both dtypes,
+  and a save with the ledger off is byte-identical; with it, the bodies' programs are new, judged by their identity.
+  What energy cannot see stays the families' oracles': a drag scaled by 0.9, or its coupling's sign flipped, passes
+  every ledger check, and the hydrodynamic family's oracle case fails each.
 - **A command ramped, a body's phase lag, and a study's step-out by the quantity it is** (`docs/guide/studies.md`).
   `drives.Ramp(start, to=..., rate=..., hold=...)` holds a command, moves it at a rate (the command's units per
   second) and holds it where it ends, writing each step its value at the step's middle (`drive.ramp` 0.1.0).
@@ -67,9 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (1.1 times its least scaled eigenvalue taken off) caught on every draw (-0.17 to -0.10); the definiteness check
   fails a zero diagonal entry that has a coupled row, whatever the coupling's size. **Not in this part, by design:**
   attribution sees a load delivered where no law owns it, not a swap of two laws' loads between their own inputs
-  (the family cases of the second part check each law's delivery against its own row, with a plant); and no
-  declaration of a port, a class or a definiteness is read by anything yet, so a kind or a class cannot silence a
-  failing check by a declaration vacuously, until the second part's registry walk reads them.
+  (refused by the second part's post-build check); and no declaration of a port, a class or a definiteness was read by
+  anything in this part (the second part's wiring and registry walk read them).
 - **A study written to a folder, resumed, read back and made an experiment of** (`mime.results`, `mime.study`).
   `StudyResult` is complete: a long `table()`, `to_csv`, `to_npz`, `to_mat` (the member axis first, units in the file),
   `grid()`, `manifest()`, `order(output, along=...)` (the observed order of convergence over three levels and the
