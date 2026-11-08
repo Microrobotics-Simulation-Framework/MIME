@@ -42,7 +42,18 @@ RTOL = 1e-10
 #: over a body's slow start, some 1e-13, which moves by its own size across machines (CI's lanes against a laptop);
 #: and how far a held point stands shallower than its seed, a length on the scale of the case's margin (0.1 mm), zero
 #: where the support's steps reach at least their seed and rounding where they tie with it.
-FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_short": 1e-4}
+#: The energy ledger's records: its step identity's residual, a share of the step's scale, on the scale of that share
+#: (one), as the contact's residual; and its energies, rounding-level terms among them (the gyroscopic term of an
+#: isotropic body, 1e-20 J), on the scale of a nanojoule, above the kinetic energy of script A's body over its first
+#: steps (some 4e-11 J): a rounding residue across machines is under the tolerance, 1e-19 J, and a law's work moved by a
+#: ten-millionth of itself is not.
+FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_short": 1e-4,
+          "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0}
+LEDGER_FLOOR = 1e-9
+
+
+def floor_of(field: str) -> float:
+    return FLOORS.get(field, LEDGER_FLOOR if field.startswith("ledger_") else 0.0)
 
 
 def path_of(key: tuple[str, str, str], rung: str = "") -> Path:
@@ -131,7 +142,7 @@ def differences(found: dict, golden: dict) -> list[str]:
                 if want.shape != got.shape or not np.array_equal(want, got):
                     moved.append(f"{node}.{field} moved from its golden output")
                 continue
-            scale = max(float(np.max(np.abs(want), initial=0.0)), FLOORS.get(field, 0.0))
+            scale = max(float(np.max(np.abs(want), initial=0.0)), floor_of(field))
             if want.shape != got.shape or float(np.max(np.abs(got - want), initial=0.0)) > RTOL * scale:
                 moved.append(f"{node}.{field} moved from its golden output")
     return moved

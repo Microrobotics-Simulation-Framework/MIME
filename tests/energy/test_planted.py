@@ -17,8 +17,13 @@ correction taken the wrong way, 100 times over), is caught by the same sign. An 
 
 **What the books cannot see, stated.** A gift in the end's *translational* twist of a held body is absorbed by the
 velocity rule's loss, which is the difference between the solve's speed and the step's end speed, so it reads as a
-smaller loss (the identity does not move; the loss changes by the gift). The projection's shift is likewise defined by
-the step's end position. Those are the contact family's oracles' to check; here the plant is the free body's.
+smaller loss (the identity does not move; the loss changes by the gift). Where the gift makes that removal negative
+beyond the floor, the books also count a gift step (``gift_steps``: a velocity rule that adds energy, since the
+second part of the ledger), but a gift that leaves the removal positive stays unseen by the books, and the test of
+this plant (``test_a_gift_in_a_held_body_s_translational_twist...``) asserts the loss's change, not the count, either
+way. The projection's shift is likewise defined by the step's end position. A rule that gives energy is the contact
+family's energy case's to catch (``tests/families/test_energy_case.py``), and the rest the family's oracles'; here the
+plant is the free body's.
 
 **The formulae by value, in float64.** The scheme's terms halved: a plant of half a term is a number of floors that
 depends on the draw, and in float32 the floor sits above half a term on a share of draws, so by value the formulae are

@@ -78,6 +78,8 @@ PUSH = define(Interface("toy.field.push", ReadKind.FIELD, "1", "world", (3,), ma
                         description="a toy field, evaluated at points"))
 
 COUPLED_BODY = "toy.coupled_body"
+#: Why no toy is metered by the energy ledger: a toy has no physics to keep an account of.
+TOY_UNMETERED = "a toy with no physics, which exercises the build: there is no energy to keep an account of"
 
 
 @register_dynamics
@@ -86,6 +88,7 @@ class ToyBody(Dynamics):
     """A point mass that sums loads and takes an exclusive velocity along z."""
 
     name = "toy.body"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": (ToyBodyNode,)}
@@ -108,6 +111,7 @@ class ToyAnchoredBody(Dynamics):
     """A body that does not move: it claims no flags, so an entry that needs one refuses it."""
 
     name = "toy.anchored_body"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": (ToyAnchoredBodyNode,)}
@@ -128,6 +132,7 @@ class ToyRelaxation(Dynamics):
     load into it, under the registering interaction's id."""
 
     name = "toy.relaxation"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": (ToyMediumNode,)}
@@ -188,6 +193,7 @@ class ToySpring(Interaction):
     """A load pulling the body towards ``x0``."""
 
     name = "toy.spring"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": (ToySpringNode,)}
@@ -214,6 +220,7 @@ class ToyDrag(Interaction):
     velocity's norm, so turning the world turns the load; 0.1.0 took each component's magnitude."""
 
     name = "toy.drag"
+    unmetered = TOY_UNMETERED
     version = "0.2.0"
     differentiability = GradientStatus.EXACT
     family = "toy"
@@ -247,6 +254,7 @@ class ToyLift(Interaction):
     """A load on the body from the medium's value. With ``solve_together`` it asks to be solved with both."""
 
     name = "toy.lift"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": (ToyLiftNode,)}
@@ -276,6 +284,7 @@ class ToyCouple(Interaction):
     loads it, so this entry builds no node. With ``solve_together`` it asks for the pair to be solved together."""
 
     name = "toy.couple"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": ()}
@@ -304,6 +313,7 @@ class ToyHold(Interaction):
     a provider's reader slot."""
 
     name = "toy.hold"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": (ToyHoldNode,)}
@@ -323,6 +333,7 @@ class ToyTwist(Interaction):
     """Delivers into a reserved name, so that its use is refused."""
 
     name = "toy.twist"
+    unmetered = TOY_UNMETERED
     version = VERSION
     differentiability = GradientStatus.EXACT
     builds = {"": ()}

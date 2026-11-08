@@ -4,7 +4,7 @@
 
 ## What goes here
 
-- `SwimSpeed` and `PhaseLag`.
+- `SwimSpeed`, `EnergyLedger`, and `PhaseLag`.
 - Later: cameras, signals, and harm observations such as contact force and wall shear.
 
 ## The contract
@@ -30,6 +30,10 @@ after `after`. An observation reads a uniform field where a law already reads th
 density where the torque reads it, never where the force reads the gradient), adding no slot to its provider (so the
 provider's node is what it is without the observation); the build report names the law, among the lines the build
 computed. A field no law reads so, or one that varies in space, waits for observations' own provider instances.
+
+**`EnergyLedger()`** (`energy_ledger` 0.1.0): the energy ledger in one line, `exp.observe(EnergyLedger())`. A switch
+the build reads (`Observation.meters_energy`): it binds no role, builds no node and declares no output; attached, the
+build meters each body, and a run's result reads the bodies' records as its account (`result.energy`).
 
 `SwimSpeed` declares its outputs: `speed` each step, and at the end `mean_speed` (the mean of `speed`
 over its window), `distance` (its integral) and `observed` (the window's length), each window the steps that end

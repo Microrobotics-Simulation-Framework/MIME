@@ -123,6 +123,12 @@ class MimeNode(SimulationNode):
         what the step left for its books in ``parts``, and its own scheme's terms."""
         raise NotImplementedError(f"{type(self).__name__} writes no step identity")
 
+    def configuration(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array | None:
+        """What a potential law's energy is evaluated at on this receiver (a body's pose), from its ``state``: what the
+        ledger's records keep at the run's start, so that a potential's change over a run is taken from the run's two
+        ends with the law's own parameters. ``None`` for a node no potential law acts on."""
+        return None
+
     def energy(self, p: Mapping[str, Any], configuration: Array) -> Array:
         """A potential law's energy (J) at its receiver's ``configuration`` (a body's pose), from its constants ``p``:
         its family's energy, of which its delivery is the negative gradient."""

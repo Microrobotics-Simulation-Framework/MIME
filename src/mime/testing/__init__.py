@@ -11,7 +11,8 @@ Users add their own tests at three levels:
    each as a harness call.
 
 Here now: the family suites' harness (``assert_conforms(law, family=...)`` and the case kinds the families use:
-sign, frame, units, material reach, oracle, gradients, swap, equal and opposite, and nodes); MADDENING's node
+sign, frame, units, material reach, oracle, gradients, swap, equal and opposite, nodes, closed loop and energy); a
+dynamics' step identity with the energy ledger attached, on drawn states (``step_identity``); MADDENING's node
 verification for every node an entry builds (``assert_nodes_verified``: ``verify_node``, and ``verify_node_order``
 where a node declares an order), and the comparison of what an entry builds with its ``builds``
 (``builds_failures``); the graph-invariant helpers (a built graph's canonical text, and order invariance); the saved
@@ -32,8 +33,12 @@ except ImportError as error:
     raise ImportError(VERIFY_EXTRA_MISSING) from error
 
 from mime.testing._adapters import HARNESS_TOKEN, AdapterReport, verify_adapter
+from mime.testing._energy import PORT_DRAWS, dynamics_rig, metered_twin, rigid_body_states, step_identity
 from mime.testing._loopback import Certificates, ConnectProxy, LoopbackStore, Seen, certificates
 from mime.testing._families import (
+    OUTWARD_SPEED,
+    check_energy,
+    onto_the_surface,
     LOOP_POINTS,
     LOOP_ROUNDINGS,
     At,
@@ -171,6 +176,14 @@ from mime.testing._switches import (
 )
 
 __all__ = [
+    "OUTWARD_SPEED",
+    "PORT_DRAWS",
+    "check_energy",
+    "dynamics_rig",
+    "metered_twin",
+    "onto_the_surface",
+    "rigid_body_states",
+    "step_identity",
     "BODY_REACH_SPACING",
     "CONDITION_BOUNDS",
     "CONTACT",
