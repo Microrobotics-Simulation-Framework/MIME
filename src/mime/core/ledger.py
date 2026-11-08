@@ -358,8 +358,8 @@ def route_one_recorded(state: Mapping[str, Array], step: StepAccount,
     (``dH - W + N`` summed, as for any receiver) and the identity's fields read zero. **Route 1's check is that every
     step dissipated**: the work every law that is not dissipative supplied, the unattributed included, less the change
     in storage, ``D = W - dH``, is at least ``-IDENTITY_ULPS`` units of eps on the step's scale. A step that gave energy
-    (an energy gift larger than the step's own dissipation, by the identity ``D = D_true - G``) is counted
-    (``route_one_negative_steps``); ``route_one_step`` is the step's ``D`` over its scale, ``route_one_worst`` its
+    (an energy gift larger than the step's own dissipation, by the identity ``D = D_true - G``), or whose books went
+    non-finite, is counted (``route_one_negative_steps``); ``route_one_step`` is the step's ``D`` over its scale, ``route_one_worst`` its
     smallest over the run."""
     out = recorded(state, step, held)
     dtype = step.work.dtype
@@ -376,7 +376,8 @@ def route_one_recorded(state: Mapping[str, Array], step: StepAccount,
     worst = jnp.where(first, relative, jnp.minimum(state[f"{r}route_one_worst"], relative))
     return {**out, f"{r}step_identity": zero, f"{r}identity_worst": zero,
             f"{r}route_one_step": relative, f"{r}route_one_worst": worst,
-            f"{r}route_one_negative_steps": state[f"{r}route_one_negative_steps"] + (relative < -floor).astype(dtype)}
+            f"{r}route_one_negative_steps": state[f"{r}route_one_negative_steps"]
+            + (~(relative >= -floor)).astype(dtype)}
 
 
 def metered_route_one_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mapping[str, Any],
