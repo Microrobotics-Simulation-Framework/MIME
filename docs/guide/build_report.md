@@ -177,6 +177,12 @@ With `exp.observe(EnergyLedger())`, how the build metered the experiment for the
 graph: each body it meters, with each law acting on it and that law's class (`dissipative`, `potential`, or `unmetered`
 with the law's reason), what each law that reads something outside is supplied by, each thing that receives loads and
 cannot be metered with its reason, and what is outside (a thing that receives no load from the components: a field
-turning on its own, a drive, a prescribed motion). Empty without the ledger. A law or a dynamics that declares nothing
+turning on its own, a drive, the controller, a prescribed motion; on an apparatus with a chain, each segment and each
+field it carries apart, so a kinematic arm carrying a dynamic motor is outside and the motor inside). Empty without
+the ledger.
+
+A law that couples two receivers is checked in every profile: one whose receivers step at different rates is refused
+(`law.rate-divided`), and a damper between two receivers that no one step holds and no coupling group solves together
+is flagged by a line under the law's validity ("computed at build"). A law or a dynamics that declares nothing
 and states no reason is listed here under the exploratory profile and refused under research (`ledger.unmetered`).
 A run's result gives the account itself, `result.energy` ([the results note](../results.md)).

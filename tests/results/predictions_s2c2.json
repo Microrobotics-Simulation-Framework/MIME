@@ -1,0 +1,34 @@
+{
+  "written": "2026-11-07, committed before any gate case of S2c-2 ran (the commit that adds this file is the timestamp). Nothing of this phase had been run when it was written.",
+  "recipes": {
+    "case": "script A's reproduction arm swept over field.commands.frequency {10, 20, 30} Hz, recorded every 5 ms for 50 ms, written by Study.run_to; a figure (an output against the coordinate, and the members overlaid) saved as a recipe under figures/ and redrawn from the folder",
+    "prediction": "the plotly JSON of the redrawn figure is the same bytes as the JSON saved beside the recipe (a fixed div id in the HTML embedding; the JSON itself is deterministic), exact, not a tolerance. A matplotlib figure is compared by its description (the plot description's JSON), never by pixels, and the two are equal.",
+    "control": "one byte of a data file the recipe reads changed (its sha256 no longer the recipe's): the redraw is refused, naming the file, on every run. Predicted detection 1.0 of every file tried (the run's outputs.npz or the study's group files, one byte flipped at the first, a middle and the last position)."
+  },
+  "flags_and_bands": {
+    "prediction": "the intervals of each flag in the description are, as step ranges, exactly the maximal runs of True in the result's flag track (computed in the test from the track alone, with no use of the description's code); the bands are exactly the flag limits the report states (a flag with limits on the plotted output's own field), and the bounds-versus-estimates statement is present on every comparison panel",
+    "control": "the description's intervals shifted by one sample must differ from the track's runs. Predicted detection 1.0 over every flag with a non-empty run, every run; a flag with no raised step has nothing to shift and is not counted."
+  },
+  "comparison": {
+    "case": "three members of a study with known series (a rig whose speed grows linearly, so each series is an affine function of the step and every miss is a closed form), the reference named",
+    "prediction": "the miss at the end, the largest miss over the window and the signed end miss equal the hand-computed values to the last bit of float64 (they are differences of the stored numbers), and the verdict is the one the stated tolerance gives; between members of one study with no tolerance named, the rule is the study's: 150 (float32) or 300 (float64) eps of the output's largest magnitude over the reference's run, from S2c-1's committed predictions",
+    "control": "the reference and the member exchanged: the signed end miss changes sign, so it must differ from the hand-computed value on every pair tried. Predicted detection 1.0 of every ordered pair of distinct members (the absolute miss alone is symmetric and would not detect it, so the signed one is what is compared).",
+    "amendment_1": {
+      "when": "2026-11-08, the fix round for the refuting review of the PR; committed with the tests, before the fixes",
+      "what_failed": "the comparison's default tolerance. The brief's item 4 prescribed the sweep's per-regime rule between members of one study, and the prediction above repeats it (150/300 eps of the reference's largest magnitude). That rule is the numerical-equivalence bound of a point computed twice (batching noise, measured 1 to 66 eps); applied to members at different sweep points it called every pair that is not the same computation 'exceeds' (script A at 40 and 50 Hz: a speed tolerance of 8.0e-8 m/s against a miss of 3.2e-3).",
+      "amended_prediction": "between members at different coordinates the misses are reported with no verdict unless a tolerance is stated; the rule gives a verdict only where the member and the reference share every coordinate, both runs are in the locked regime read from a recorded PhaseLag lag (under 90 degrees), and a reading is judged on the largest magnitude over the run of the quantity it reduces (the scale S2b-1's amendment 1 set), not its final value; where the regime cannot be read there is no verdict and the result says why",
+      "controls": "script A (10, 20 and 30 Hz) gives misses and no verdict; a same-point pair gets the rule's verdict, with a planted miss of 0.25 exceeding and a 1e-12 miss within, and the same pair with a lag past 90 degrees or with no lag recorded gets none; a stated tolerance gives its verdict at any coordinates"
+    }
+  },
+  "overlay": {
+    "case": "script A's reproduction arm, three members over field.commands.frequency, stage_every a whole number of dt, written as compare.usda and read back with usd-core",
+    "prediction": "compare.usda composes; at each time code the translate and orient samples at /Compare/<member>/<thing> equal the member's recorded pose (double precision, a float32 state's values exactly) and the reference member's equal its own at /World/<thing>; timeCodesPerSecond is samples per simulated second (1 / stage_every); everything it references lies inside the study folder",
+    "controls": "one member's samples shifted by one time code must differ from the recorded poses (predicted detection 1.0 of every member and field compared, every run); a stage_every that is not a whole number of a member's dt is refused with the nearest valid value, on every run"
+  },
+  "aliasing": {
+    "prediction": "a warning for a run recorded every 10 ms against a 50 Hz drive (the recorded spacing equals half the drive's period, which the warning treats as too long: sampling at exactly twice the frequency is not enough to show the waveform), and none for every 1 ms; both cases in one test",
+    "control": "the same two cases in one test, so that a warning that fired for both, or for neither, fails"
+  },
+  "size": "at most about 5 thousand lines with tests; if the plan passes it, stop and report the split (the overlay to a PR 2b)",
+  "fix_round": "the review's other majors (the folder's drives, the coarser of two time bases, the recipe's hashes, the figure's caption, the drives' unit) are checked by tests written to fail before the fixes (the commit before the fixes)"
+}

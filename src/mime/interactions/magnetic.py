@@ -26,7 +26,7 @@ from mime.registry import (
     register_interaction,
     requires,
 )
-from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, GRADIENT, LINK_WRENCH, POSE, Capability
+from mime.vocabulary import APPLIED_WRENCH, FLUX_DENSITY, GRADIENT, LINK_WRENCH, POSE, Capability, EnergyClass
 
 #: What a rigid body must offer a magnetic law: it publishes its pose and takes an applied wrench.
 _RIGID_BODY = requires(Capability.RIGID, accepts=[APPLIED_WRENCH.name], publishes=[POSE.name])
@@ -64,12 +64,12 @@ def build_reaction(ctx: BuildContext, b: InteractionBuilder, law: NodeRef) -> No
     b.connect(node["link_wrench"], into=b.target(REACTION))
 
 
-#: Why the magnetic laws declare no class for the energy ledger yet: their work on the body is recorded and attributed
-#: to them all the same. **The magnetic family's energy case passes them by this declaration alone** (it checks nothing
-#: about them); the route is P1b, which builds the magnetic family's energy (-m . B at the magnet's centroid) and its
-#: loop test, and gives the laws their class.
-_UNMETERED = ("its class waits on the magnetic family's energy, -m . B at the magnet's centroid, of which the pair is "
-              "the derivative, stated with the family")
+#: The magnetic laws' class for the energy ledger: the pair, with their reactions on a dynamic source, is the derivative
+#: of one energy, ``U = -m . B`` at the body's magnet's centroid, which the magnetic family states once for the pair and
+#: settles on the laws alone (the energy case: the pair's wrench against the negative gradient of ``U``; the closed-loop
+#: case: no net work round closed loops of the body's pose, of the source's, and of the two together). Where the field's
+#: source is outside the components (a uniform field, a magnet on a kinematic arm), the pair's work is supplied by it.
+_CLASS = EnergyClass.POTENTIAL
 
 
 @register_interaction
@@ -96,7 +96,7 @@ class MagneticTorque(Interaction):
 
     name = "magnetic.torque"
     version = "0.2.0"
-    unmetered = _UNMETERED
+    energy_class = _CLASS
     differentiability = GradientStatus.EXACT
     references = ("Ling2016UniversityPhysics2",)
     family = "magnetic"
@@ -164,7 +164,7 @@ class MagneticForce(Interaction):
 
     name = "magnetic.force"
     version = "0.2.0"
-    unmetered = _UNMETERED
+    energy_class = _CLASS
     differentiability = GradientStatus.EXACT
     references = ("Jackson1998",)
     family = "magnetic"

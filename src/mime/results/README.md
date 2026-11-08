@@ -84,6 +84,18 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   saved-form step. A study run on a ramp is not written to a folder yet: the folder records no protocol, so it would
   read back as run from rest (`study.protocol-folder`). See
   [docs/results.md](../../../docs/results.md).
+- **Plots, recipes, comparisons** (`_plot.py`, `_draw.py`, `_figure.py`, `_compare.py`, over the result protocol of `_data.py`): the
+  one backend-neutral description (traces, flags as intervals, validity limits and uncertainty as bands, a bounds-against-
+  estimates note) that `plot()` (matplotlib) and `plot_interactive()` (plotly) draw, both behind the `plot` extra; a figure
+  as a recipe in `figures/` (what it shows, the options, the data files by sha256, plotly's own JSON beside it), redrawn
+  from the folder and refused by name where a data file changed; pages that follow the other views' names (`display`,
+  `web`, `offline=`, `cdn=`); `StudyResult.compare` (misses on the reference's time base; a verdict only from a stated tolerance, or from the sweep's
+  re-run rule where the pair shares every coordinate and is locked; refused where either base cannot resolve a declared
+  drive, and where a folder's result is given no `drives=`); and a result
+  built by hand (`Measured`) that does all of it as a simulated one does. A study run with `stage_every=` keeps each
+  member's bound poses under `m<point>/stage/` (`_stage.py`), and `write_compare` writes `compare.usda` from them
+  (`mime.viz._compare`: one prim `/Compare/<member>` each, with visibility and metadata). See
+  [docs/results.md](../../../docs/results.md).
 - **`RunResult.as_experiment(name)`** on a member of a study (`MemberOf` says which): the bridge to an experiment of its
   own, in `mime.study._bridge`.
 - **The energy ledger's account** (`_energy.py`): with `EnergyLedger` attached, `result.energy` is an `EnergyAccount`
@@ -91,7 +103,15 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   (supplied taken from the dissipation side, lost plus the change in what is stored, shared among the things outside in
   proportion to what each one's laws paired), each potential's change from the run's two ends with the law's own
   parameters as the run had them, and in its detailed text each law's paired work, the scheme's own terms apart, the
-  paired supply and the checks; `efficiency(useful)`. `None` without the ledger and for a run read from a folder.
+  paired supply and the checks, each receiver's storage's jumps between steps (`between`; the worst one no declared
+  producer owns, over the identity's floor, in `between_worst` and judged in `identity_worst`), each workless exchange's
+  work over its receivers (`exchanges`) and each coupling group's verdict and residual (`groups`); `efficiency(useful)`.
+  **`findings`** are the checks that failed, in words, with their amounts, and `text()`, `RunResult.text()` and the
+  command line's attention lines say them before anything else: work that arrived where no law or writer owns it (a
+  controller called on the host, an edge the build did not declare) and a step identity over its floor.
+  `None` without the ledger and for a run read from a folder.
+- **A coupling group's verdict** (`group_verdicts`, `RunResult.groups`): each group's at the run's last step, from
+  MADDENING's own, in every profile, with or without the ledger.
 - **An overridden run** (`run(..., override=...)`) carries its `overrides` (each one's path, value with its unit, SI
   value and the leaves it wrote), in its text ("OVERRIDDEN for this run: ..."), its manifest and back from its folder.
 

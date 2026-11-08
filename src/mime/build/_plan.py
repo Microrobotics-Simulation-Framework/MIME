@@ -503,6 +503,9 @@ class PlanSet:
     #: spinner's kick on its host's joints, as numbers (``mime.build._kicks``).
     checked: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     kicks: tuple[SpinnerKicks, ...] = ()
+    #: Every rate (rad/s) at which a declared drive turns a field that acts on a body, with what it was computed from:
+    #: what the aliasing warning (``mime.experiment._aliasing``) reads. Not a planned thing, and no part of the graph.
+    turning: tuple[tuple[float, str], ...] = ()
     #: The note of each declaration that replaced an earlier one in this session (a notebook's cell run again), set by
     #: the experiment: not a planned thing, and no part of the saved form.
     replaced: tuple[str, ...] = ()
@@ -718,7 +721,7 @@ class _Planner:
                        {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
                        controller, self.masses, dict(sorted(self.models.items())), self.outcome,
                        self.watch_plans(), checked=dict(sorted(self.checked.items())),
-                       kicks=self.kicks)
+                       kicks=self.kicks, turning=tuple(self.turning_rates()))
 
     def approaches(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, float]:
         """The closest approach of each body an entry binds to the wall of the region its medium fills, by role
@@ -923,12 +926,17 @@ class _Planner:
         binds the body to a field that turns at a command (``FieldProvider.turns_at``) and a constant drive declares
         that command, and what it was computed from; ``None`` where the experiment declares none. The largest where
         several fields do, and for a ramp the largest it reaches."""
+        return max(self.turning_rates(body), default=None)
+
+    def turning_rates(self, body: str | None = None) -> list[tuple[float, str]]:
+        """Every rate (rad/s) at which a field turns at a declared drive, with what it was computed from: those acting
+        on ``body``, or on any body where none is named (:meth:`turning_rate_of` takes the largest)."""
         from mime.drives import Constant, Ramp
 
         found: list[tuple[float, str]] = []
         for plan in self.readers:
             cls = plan.reader_cls()
-            if plan.section is not Section.INTERACTION or plan.bindings.get("body") != body:
+            if plan.section is not Section.INTERACTION or (body is not None and plan.bindings.get("body") != body):
                 continue
             for role, kind in cast(type[Interaction], cls).roles.items():
                 provider = self.providers.get(plan.bindings.get(role, "")) if kind is RoleKind.FIELD else None
@@ -950,7 +958,7 @@ class _Planner:
                         f"is ramped to {turns:g} Hz at the most"
                     found.append((2.0 * math.pi * turns, f"{apparatus}.{command} {how}, a rate of 2 pi x {turns:g} "
                                                          f"rad/s"))
-        return max(found, default=None)
+        return found
 
     # -- run settings -----------------------------------------------------------------------------------------
 

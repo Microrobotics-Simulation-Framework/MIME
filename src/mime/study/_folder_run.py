@@ -176,7 +176,8 @@ def run_study_to(study: Study, experiment: Experiment, points: Points, out: Path
     write_json(out / STUDY_FILE, document)
     write_text(out / SPEC_FILE, spec_text(
         points, duration=cast(Any, plan.duration), record=plan.record, every=plan.every, batch=plan.batch,
-        drop_refused=plan.drop_refused, reasons=plan.reasons, base=BASE_DIR, input_hash=input_hash))
+        drop_refused=plan.drop_refused, reasons=plan.reasons, base=BASE_DIR, input_hash=input_hash,
+        stage_every=plan.stage_every))
     if not (out / BASE_DIR).is_dir():
         _write_folder(out / BASE_DIR, write_base)
     owned = [number for number in range(len(plan.groups)) if shard is None or number % shard[1] == shard[0]]

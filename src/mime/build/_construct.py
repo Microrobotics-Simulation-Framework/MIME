@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from maddening import GraphManager
@@ -15,6 +15,7 @@ from maddening.core.node import SimulationNode
 from maddening.warnings import UnitMismatchWarning
 
 from mime.build import _ledger, _testing
+from mime.build._flags import merged, structural_flags
 from mime.build._builders import (
     DriveBuilder,
     DynamicsBuilder,
@@ -302,6 +303,8 @@ class Assembled:
     owners: Mapping[str, str]
     #: With the energy ledger attached, what its wiring found (``mime.build._ledger``); ``None`` otherwise.
     energy: _ledger.EnergyBoundary | None = None
+    #: The lines the build's structural flags computed on each law they flag (``mime.build._flags``).
+    flags: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
 
 
 def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
@@ -350,11 +353,19 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
         raise BuildRefused(refusals, report_of(plans, order, refusals))
     position = {name: i for i, name in enumerate(order)}
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
+    refusals, flags = structural_flags(plans, edges)
+    if refusals:
+        raise BuildRefused(refusals, report_of(plans, order, refusals))
     energy: _ledger.EnergyBoundary | None = None
     if _ledger.ledger_attached(plans):
-        built, edges, energy, refusals = _ledger.attach(plans, built, edges)
+        # The controller's writes inside the compiled step are commands too: a metered receiver books each one it
+        # pairs under the controller, so they are moved with the rest and kept apart again after, by their entry.
+        writer = plans.controller.owner if plans.controller is not None else None
+        built, rewired, energy, refusals = _ledger.attach(plans, built, [*edges, *controller_edges])
         if refusals:
             raise BuildRefused(refusals, report_of(plans, order, refusals))
+        edges = [e for e in rewired if not controller_edges or e.by != writer]
+        controller_edges = [e for e in rewired if controller_edges and e.by == writer]
         nodes = [built[name] for name in order]
     groups = [sorted(group.nodes, key=position.__getitem__) for group in plans.groups]
     physics_lags: tuple[EdgeLag, ...] = ()
@@ -388,7 +399,7 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     for node, field in derived_inputs(plans):
         add_external_input(graph, node, field)
     return Assembled(graph, tuple(order), tuple(tuple(group) for group in groups), tuple(lags), physics_lags, owners,
-                     energy)
+                     energy, flags)
 
 
 def construct(plans: PlanSet, law: ControlLaw | None = None,
@@ -426,4 +437,4 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
         raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
     return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
-                            node_lines(graph, plans), energy), derived
+                            merged(node_lines(graph, plans), held.flags), energy), derived

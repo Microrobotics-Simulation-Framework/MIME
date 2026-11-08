@@ -30,6 +30,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delivers, its own block, its cross-kernel) takes the MRS as its first body model; its joint system is a pure function
   of the bodies' poses, their leaves and the wall's parameters.
 
+- **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
+  `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the
+  spinners' momenta and the inertia its frames carry, and the new `spinner` kind): each records its step identity
+  inside its own step, closing within the ledger's floor on A0's dynamic loop in both dtypes, nothing arriving
+  unattributed. The arm books its commands (under their writer, the controller or a drive, outside), each law's loads
+  on its frames by the joint forces they make, its spinners' gyroscopic exchange (workless, by the Cayley step), the
+  inertia its frames carry by its change as the step used it, and the laws it holds itself under their names: its
+  weight (a potential, its energy taken from the run's ends), its damping and its stops' and Coulomb friction's
+  impulses (dissipative). The motor books its drive by its angle's change, the axial loads on its rotor, its bearing's
+  loss on the rotor's turn on its stator, its rotor's inequality (the rotor's half of the exchange whose other half is
+  the inertia its host carries, `<motor>.inertia` on both, workless) and its stator's torques on its host's turn. What
+  one segment hands another is booked under the output that carries it (`rpm.motor.reaction`). **A receiver's storage
+  between steps** is recorded apart (`ledger_between`): where a delivered inertia moves it, it is that exchange's own,
+  reported with the exchange (`EnergyAccount.exchanges`); in a coupling group, the group's residual; **whatever no
+  declared producer explains is judged as unattributed work is**: the storage of the receiver's own state at a step's
+  start less the one the step before ended at, kept as its worst over the step's scale (`ledger_between_worst`), over
+  16 eps a failure of the step identity (`EnergyAccount.identity_worst`, `between_worst`), and left in the balance, so
+  that a state edited between steps (a 50 rad/s gift to A0's motor, 1.25e-2 J) fails every run; its resolution is the
+  identity's, one floor (a gift of half a floor passes, one of two fails). **A run says when a check failed**
+  (`EnergyAccount.findings`, `RunResult.energy_findings`, the first lines of `result.energy.text()`, `result.text()`
+  and `mime run`'s attention lines, with the amount): in particular work that arrived where no law or writer owns it,
+  which is what a controller called on the host (mode `callback`) writes into a metered receiver, its books closing
+  and its work named by no writer; the build report names such a controller outside. `<motor>.reaction`, the
+  stator's reaction on its host, declares no class: its paired work is on both receivers' books, and the pair's sum,
+  the coupling's first-order error (+5.8e-5 J, 1.8 % of A0's supply over 50 ms), is reported and not bounded by a test. **Outside, by the mount tree**: on an apparatus with a
+  chain each segment and each field it carries is judged apart, a field outside unless its laws deliver their
+  reactions into a segment of it, so a magnet on a dynamic arm is inside and one on a kinematic arm outside, and in an
+  apparatus with a dynamic and a kinematic part only the kinematic part is outside; the controller and every drive are
+  outside, and a command into a metered receiver is supplied work named by its writer. **The magnetic laws 0.2.0 are
+  potential laws**: the family states their energy once for the pair, `U = -m . B` at the magnet's centroid; the
+  energy case judges the pair's wrench against its negative gradient (the field from the provider's own function), and
+  the closed-loop case now drives the source round closed loops too, the laws' reactions on it included, with the body
+  held and with the two moving together (`pair_loop_works`); 0.1.0 stays unmetered by MIME-ANO-137, and fails the
+  extended case where it did, and round its source's turns (its reaction carries the lever's couple). Where the field's
+  source is outside, the pair's work is supplied by it; where it is inside, the account takes the pair's energy's
+  change from the run's ends (`PointDipoleNode.energy_at`). **Structural flags**, in every profile and with or without
+  the ledger: a law delivering to receivers that step at different rates is refused (`law.rate-divided`), a damper
+  between two receivers that neither one step holds nor one coupling group solves is flagged by a line the build
+  computes on it, and every run reports each coupling group's verdict from MADDENING's own (`RunResult.groups`), a
+  group stopped at its cap said so. `mime.testing`: the joint and spinner port kinds' step identities on drawn states
+  (`PORT_CASES`), with a planted gift that fails them. **Without the ledger nothing moves**: A0 on both rungs, A0 with
+  its magnet's mass and script A keep every history array to the bit in both dtypes. Counted: one refusal code, one port
+  kind.
+- **Plots, figures kept as recipes, comparisons, the ghosted overlay and the aliasing warning** (`docs/results.md`). A new
+  `plot` extra (matplotlib and plotly; the `verify` extra holds it). `result.plot()` (matplotlib) and
+  `result.plot_interactive()` (plotly) on a run and a study draw one backend-neutral description: flags as intervals where the
+  result's track raised them, numeric validity limits and uncertainties as bands, and a note on what the figure estimates and
+  what it bounds. They read a small result protocol, so a result built by hand (`mime.results.Measured`) plots and compares
+  as a simulated one. `result.figure(...).write_recipe()` saves `figures/<name>.json` (the data files by sha256) and plotly's
+  JSON; `FigureRecipe.read(folder, name)` redraws it, refused by name where a data file changed. `StudyResult.compare` puts
+  members against a named reference on the reference's time base, with a tolerance that is the study's rule or a stated
+  quantity and never a fixed absolute, refused where the reference cannot resolve a declared drive frequency.
+  `sweep(..., stage_every=...)` keeps each member's bound poses, and `result.write_compare()` writes `compare.usda` (one prim
+  `/Compare/<member>` each, with visibility and metadata). A recording as sparse as half the period of a declared drive warns.
+  New refusal codes `plot.*`, `compare.*` and `study.stage-every`.
 - **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
   second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
   entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery
@@ -317,6 +372,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   20 ms run beyond what a row that does not move shows: the rows it ends on are out of the step's reach, or tied with rows that
   carry the force; the state's `contact_points` for that row does move. Filed with its reach, what was not measured and the
   routes; no code changes here.
+- **Eight known anomalies from F0's design work, all open, none changing code** (the bake-check spike, the open-ports spike
+  and the frozen register's decisions on M2, M4 and N4). `MIME-ANO-145` (major): the rigid body keeps three values derived
+  from its trainable hull settings as Python floats, so an override, a sweep or a gradient over those settings reads the
+  build's values. `MIME-ANO-146` (minor): `arm_tracking`'s home pose reaches the run through the controller's held write
+  and not through `params`. `MIME-ANO-147` (minor): in reverse mode the MRS rung's held-or-made resistance is made again
+  at every step of the backward loop (about 0.5 s a step on 222 force points, forward runs unaffected). `MIME-ANO-148`
+  (minor): the screw's held resistance differed between a float32 process's first build and later ones by 2.4e-10 on a
+  worktree before `MIME-ANO-138`'s fix; whether the branch still does is not measured. `MIME-ANO-149` (minor, resolved in this release: see Fixed): the
+  energy ledger's float32 running sums of a mixed-sign series reach about 15 eps by 1e5 steps. `MIME-ANO-150`,
+  `MIME-ANO-151`, `MIME-ANO-152`: the register's M2 (the near-contact margin), M4 (the lubrication counted twice) and N4's
+  near-contact part (soft-wall lubrication), the first two placed in phase W2 of the dev2 plan and the third in 0.4.0;
+  `MIME-ANO-114` and `MIME-ANO-130` now name that phase.
 - **The contact 0.5.0: the hold's sweeps and its search's Newton steps are XLA loops** (`Contact.Projection` builds it).
   The same updates in the same order, with bounds fixed when the step is traced, so both modes of derivative pass
   through; the step's program is smaller and compiles faster. Its rounding is not 0.4.0's: a body held from its first
@@ -428,6 +495,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The energy ledger's running sums are pairs, and no longer drift with the steps** (MIME-ANO-149; the ledger is
+  unreleased, so no version step). A plain float32 sum of a series of 1e5 terms drifted by tens of units of eps on the
+  terms' summed magnitudes (45 on a mixed-sign series, 107 on a positive one, measured through the ledger's own update;
+  the same in float64: 52 and 83). Each running sum of a signed series (`ledger_work`, `ledger_hosted`, `ledger_terms`,
+  `ledger_unattributed`, `ledger_between`, `ledger_between_own`) is now a total and the part below its last place beside it
+  (`<name>_low`), renormalised by an error-free sum every step: the drift at 1e5 steps is under 3e-7 units in float32
+  and exact in float64, against a line of 0.012 units set by the pair's own rounding. `balance` and `losses` read the low
+  parts; a reader of a field alone gets the sum rounded to the run's dtype. The error-free sum is shared with the
+  rotating field's phase (`mime.core._error_free`). The step scale, a sum of magnitudes, stays plain. A program without
+  the ledger is unchanged to the bit; a metered one gains the `_low` fields and its sums move by their rounding (the
+  `energy_ledger` golden is regenerated; its pose and twist are unchanged).
 - **A bundle changed in place in the cache, its size and modification time kept, is downloaded again and the good file
   served** (MIME-ANO-142, partially resolved). The cache's cheap check could not see a byte flipped in the middle of a
   file with both restored, so `based_on` and `pull` of a DOI served the changed bundle and refused it with advice that

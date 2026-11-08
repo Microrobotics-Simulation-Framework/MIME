@@ -128,11 +128,20 @@ LOOP_SOURCE_DISTANCE, LOOP_SOURCE_MOMENT = (0.03, 0.2), (1.0, 50.0)
 LOOP_BODY_MOMENT, LOOP_LEVER, LOOP_REACH = (1e-4, 1e-2), (2e-4, 2e-3), (5e-4, 5e-3)
 
 
+#: One closed loop of the body and the source together, relative to where each stands: the body's translation
+#: (``across``, ``along``), and the source's translation and turn (``across``, ``along``, ``axis``), each zero for none.
+PairShape = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float],
+                  tuple[float, float, float], tuple[float, float, float]]
+
+
 @dataclass(frozen=True)
 class MagneticLoopDraw:
     """One draw of the magnetic closed-loop rig: the source's place, direction and moment, the body's moment and its
     magnet's centroid (body frame), and the loops: a turn about each of two axes, a translation loop, and the first
-    turn with the translation at once, each from one orientation."""
+    turn with the translation at once, each from one orientation. ``pairs`` are the loops of the body and the source
+    together (:data:`PairShape`): the source turned about each of two axes and carried round a translation loop with
+    the body held, and the body and the source each translated a quarter turn apart, which closes a loop of their
+    separation."""
 
     source_at: tuple[float, float, float]
     source_direction: tuple[float, float, float]
@@ -140,6 +149,16 @@ class MagneticLoopDraw:
     moment: tuple[float, float, float]
     lever: tuple[float, float, float]
     loops: tuple[Loop, ...]
+    pairs: tuple[PairShape, ...] = ()
+
+    def pair_loops(self, placement: Sequence[float]) -> tuple[tuple[Loop, Loop], ...]:
+        """The pairs' loops, the body from its loops' start and the source from ``placement``, its pose."""
+        zero = (0.0, 0.0, 0.0)
+        source = tuple(float(c) for c in placement)
+        start = self.loops[0].start if self.loops else (1.0, 0.0, 0.0, 0.0)
+        return tuple((Loop(zero, body_across, body_along, zero, start),
+                      Loop(cast(Any, source[:3]), across, along, axis, cast(Any, source[3:])))
+                     for body_across, body_along, across, along, axis in self.pairs)
 
 
 def _unit(values: Sequence[float]) -> tuple[float, ...]:
@@ -177,14 +196,49 @@ def magnetic_loop_draws(*, with_zero_lever: bool = True) -> Any:
         loops = (Loop(zero, zero, zero, cast(Any, first), q), Loop(zero, zero, zero, cast(Any, second), q),
                  Loop(zero, cast(Any, a), cast(Any, b), zero, q), Loop(zero, cast(Any, a), cast(Any, b),
                                                                        cast(Any, first), q))
+        held: Any = (zero, zero)
+        pairs = cast(tuple[PairShape, ...], ((*held, zero, zero, first), (*held, zero, zero, second),
+                                             (*held, a, b, zero), (*held, a, b, second), (a, zero, zero, b, zero)))
         return MagneticLoopDraw(cast(Any, tuple(distance * c for c in source)), cast(Any, direction), strength,
                                 cast(Any, tuple(magnitude * c for c in moment)),
-                                cast(Any, tuple(length * c for c in lever_direction)), loops)
+                                cast(Any, tuple(length * c for c in lever_direction)), loops, pairs)
 
     return st.builds(draw, directions(), st.floats(*LOOP_SOURCE_DISTANCE), directions(),
                      st.floats(*LOOP_SOURCE_MOMENT), directions(), st.floats(*LOOP_BODY_MOMENT), directions(), lever,
                      directions(), directions(), directions(), st.floats(*LOOP_REACH), directions(),
                      st.floats(*LOOP_REACH), quaternions)
+
+
+def magnetic_pair_energy(built: Any, drawn: MagneticLoopDraw, pose: Any) -> Any:
+    """The magnetic family's energy, stated once for the pair of things a law couples: ``U = -m . B`` at the body's
+    magnet's centroid, ``m`` the body's moment turned by its orientation and ``B`` the rig's source's field there, from
+    the provider's own function (a point dipole of the part's moment, placed and turned as the provider places it).
+    Traceable in ``pose``."""
+    from mime.nodes.actuation._point_dipole import point_dipole
+
+    source = built.graph.get_node("stand.magnetic").constants()
+    placement = jnp.asarray(source["placement"], dtype=pose.dtype)
+    held = quaternion.rotate(placement[3:], jnp.asarray(source["moment"], dtype=pose.dtype))
+    moment = quaternion.rotate(pose[3:], jnp.asarray(drawn.moment, dtype=pose.dtype))
+    point = pose[:3] + quaternion.rotate(pose[3:], jnp.asarray(drawn.lever, dtype=pose.dtype))
+    field, _ = point_dipole(held, placement[:3], point)
+    return -jnp.dot(moment, field)
+
+
+def magnetic_pair_scale(built: Any, drawn: MagneticLoopDraw, pose: Any) -> tuple[float, float]:
+    """The magnitude of the arithmetic the pair's force and couple are formed by at ``pose``: ``|G| |m|`` for the
+    force, ``|m| |B| + |l| |G| |m|`` for its couple, ``|G|`` the gradient's norm."""
+    from mime.nodes.actuation._point_dipole import point_dipole
+
+    source = built.graph.get_node("stand.magnetic").constants()
+    placement = np.asarray(source["placement"], dtype=np.float64)
+    held = np.asarray(quaternion.rotate(jnp.asarray(placement[3:]), jnp.asarray(source["moment"])))
+    pose = np.asarray(pose, dtype=np.float64)
+    point = pose[:3] + np.asarray(quaternion.rotate(jnp.asarray(pose[3:]), jnp.asarray(drawn.lever)))
+    field, gradient = (np.asarray(v) for v in point_dipole(jnp.asarray(held), jnp.asarray(placement[:3]),
+                                                           jnp.asarray(point)))
+    m, b, g, lever = (float(np.linalg.norm(v)) for v in (drawn.moment, field, gradient, drawn.lever))
+    return g * m, m * b + lever * g * m
 
 
 def magnetic_loop_rig(laws: Sequence[Interaction], drawn: MagneticLoopDraw) -> Experiment:
@@ -396,10 +450,7 @@ _POSE_AND_RESISTANCE = {POSE.name: unit_quaternion, RESISTANCE.name: positive_se
 MAGNETIC = register_family(Family(
     name="magnetic", rig=magnetic_rig,
     cases=(CaseKind.SIGN, CaseKind.FRAME, CaseKind.UNITS, CaseKind.MATERIAL_REACH, CaseKind.ORACLE,
-           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.CLOSED_LOOP,
-           # Passes both magnetic laws by their declared reason alone, checking nothing; P1b builds the family's energy
-           # and its loop test, and gives the laws their class.
-           CaseKind.ENERGY),
+           CaseKind.GRADIENTS, CaseKind.NODES, CaseKind.CLOSED_LOOP, CaseKind.ENERGY),
     sign=SignRule("the field turns the body's moment toward it (tau . (m x B) is not negative), and its gradient pulls "
                   "the moment up the gradient of its alignment (F . (G^T m) is not negative): an aligned moment is "
                   "pulled toward the stronger field", _magnetic_sign, reads=(("body", POSE.name),),
@@ -407,7 +458,9 @@ MAGNETIC = register_family(Family(
     material=("moment",),
     reading_bounds={FLUX_DENSITY.name: (-1e-2, 1e-2), GRADIENT.name: (-1.0, 1.0), POSE.name: (-1.0, 1.0)},
     constrain=_POSE_AND_RESISTANCE,
-    loop=WorkLoop(rig=magnetic_loop_rig, draws=magnetic_loop_draws, loops=lambda drawn: drawn.loops, body=PROBE),
+    loop=WorkLoop(rig=magnetic_loop_rig, draws=magnetic_loop_draws, loops=lambda drawn: drawn.loops, body=PROBE,
+                  pair_loops=lambda drawn, placement: drawn.pair_loops(placement), energy=magnetic_pair_energy,
+                  energy_scale=magnetic_pair_scale),
 ))
 
 GRAVITY = register_family(Family(
@@ -459,6 +512,7 @@ the resistance block by block, and moving the body along a straight tube's axis 
 __all__ = ["CONTACT", "EXTENT", "FURTHEST_FROM_THE_AXIS", "GRAVITY", "HYDRODYNAMIC", "INERTIA", "LOOP_BODY_MOMENT",
            "LOOP_LEVER", "LOOP_REACH", "LOOP_SOURCE_DISTANCE", "LOOP_SOURCE_LENGTH", "LOOP_SOURCE_MOMENT",
            "LOOP_SOURCE_RADIUS", "MAGNETIC", "MAGNET_HEIGHT", "MAGNET_MOMENT", "MASS", "NEAREST_THE_AXIS", "PROBE",
-           "SCREW", "TUBE_AXIS", "TUBE_RADIUS", "WATER_VISCOSITY", "MagneticLoopDraw", "contact_rig", "gravity_rig",
-           "hydrodynamic_rig", "in_the_lumen", "magnetic_loop_draws", "magnetic_loop_rig", "magnetic_rig",
+           "SCREW", "TUBE_AXIS", "TUBE_RADIUS", "WATER_VISCOSITY", "MagneticLoopDraw", "PairShape", "contact_rig",
+           "gravity_rig", "hydrodynamic_rig", "in_the_lumen", "magnetic_loop_draws", "magnetic_loop_rig",
+           "magnetic_pair_energy", "magnetic_pair_scale", "magnetic_rig",
            "millimetre_lever", "positive_semidefinite", "unit_quaternion"]

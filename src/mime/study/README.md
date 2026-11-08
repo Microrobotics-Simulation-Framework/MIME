@@ -4,7 +4,7 @@
 
 ## What exists
 
-- **A sweep.** `Study(exp).sweep(points, duration=..., record=..., every=..., batch=..., drop_refused=False)`, its
+- **A sweep.** `Study(exp).sweep(points, duration=..., record=..., every=..., stage_every=None, batch=..., drop_refused=False)`, its
   points from `grid({...})` (every combination), `along({...})` (taken together) or a list of rows. `study.plan()`
   says what will run; `study.run()` returns a `mime.results.StudyResult`.
 - **Axes through handles** (`_axes.py`): an apparatus's commands (`field.commands.frequency`), a thing's value as
