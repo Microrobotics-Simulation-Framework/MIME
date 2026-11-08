@@ -400,6 +400,13 @@ class EntryPlan:
     spin_inertia: float | None = None
     spin_asymmetry: tuple[float, ...] = ()
     rates_read: bool = True
+    #: Whether a plan reads this body's mass matrix (``body.mass_matrix``), which its dynamics publishes only then.
+    mass_read: bool = False
+    #: For a member of a joint group (a medium's near field), the id of the group's plan, which builds for it: a
+    #: member builds no node, and its reads and deliveries are the group's.
+    joined: str = ""
+    #: For a joint group's plan, its members' plans, in the order of their ids.
+    members: tuple[EntryPlan, ...] = ()
 
     def node_name(self, local: str = "") -> str:
         return self.owner if not local else f"{self.owner}.{local}"
@@ -612,6 +619,8 @@ class _Planner:
         self.rated: dict[str, bool] = {}
         #: The segments whose frames' angular velocities a controller or an observation reads, by id.
         self.rates_reads: set[str] = set()
+        #: The bodies whose mass matrix a plan reads (a medium's near field), by id.
+        self.mass_reads: set[str] = set()
         self.apparatus_materials: dict[str, dict[str, materials.Record]] = {}
         self.masses: tuple[str, ...] = ()
         #: The validity lines the build computes, by entry id (a spinner's kick on its host's joints), and each
@@ -677,6 +686,7 @@ class _Planner:
                 self.plan_commands(thing, index)
         controller = self.plan_controller()
         self.settle_rates()
+        self.join_near_fields()
         targets = self.collect_targets()
         self.check_exclusive()
         groups = self.union_groups()
@@ -747,10 +757,65 @@ class _Planner:
                 found.append(margin)
         return min(found) if found else None
 
+    def join_near_fields(self) -> None:
+        """Each medium's interacting near field as one group: the interactions whose entry joins it
+        (``joins_near_field()``: drag 0.5.0's mrs rung), two or more bound to one medium, built as one joint node by a
+        plan of their own (``near_field:<medium>``), which takes each member's reads and deliveries keyed
+        ``<id>/<label>``, and each member's body's twist and mass matrix besides (its lagged cross load, its gain
+        check); each member then builds nothing. One such body in a medium keeps its own node. A medium where a
+        joining body shares the medium with an mrs drag that does not join (a kept version) is refused: the one would
+        see the others and not be seen."""
+        by_medium: dict[str, list[EntryPlan]] = {}
+        for plan in self.readers:
+            joins = getattr(plan.entry, "joins_near_field", None)
+            medium = plan.bindings.get("medium")
+            if plan.section is Section.INTERACTION and callable(joins) and joins() and medium is not None:
+                by_medium.setdefault(medium, []).append(plan)
+        for medium, members in sorted(by_medium.items()):
+            if len(members) < 2:
+                continue
+            members.sort(key=lambda plan: plan.owner)
+            others = sorted(plan.owner for plan in self.readers if plan.section is Section.INTERACTION
+                            and plan.bindings.get("medium") == medium and plan not in members
+                            and getattr(plan.entry, "rung", None) == "mrs")
+            if others:
+                self.refuse("drag.near-field-mixed", RefusalClass.USER,
+                            f"medium {medium!r} holds the mrs drag of {', '.join(m.owner for m in members)}, whose "
+                            f"bodies interact through one joint near field, beside {', '.join(others)}, a version "
+                            f"whose body neither sees them nor is seen",
+                            "attach one version of the drag to every body in the medium, the current Drag.MRS(...), "
+                            "or put the other body in a medium of its own")
+                continue
+            owner = f"near_field:{medium}"
+            where = f"interaction {owner}"
+            reads: dict[str, ResolvedRead] = {}
+            delivers: dict[str, ResolvedTarget] = {}
+            for member in members:
+                reads.update({f"{member.owner}/{label}": read for label, read in member.reads.items()})
+                for label, interface in (("twist", vocabulary.TWIST.name), ("mass_matrix",
+                                                                              vocabulary.MASS_MATRIX.name)):
+                    resolved = self.state_read(member, where, Read("body", interface))
+                    if resolved is not None:
+                        reads[f"{member.owner}/{label}"] = resolved
+                # Each body's own resistance stays its own drag's; the cross loads are the near field's own law.
+                delivers.update({f"{member.owner}/{label}": dataclasses.replace(target, by=owner)
+                                 if target.interface == vocabulary.BACKGROUND_LOAD.name else target
+                                 for label, target in member.delivers.items()})
+            first = members[0]
+            group = EntryPlan(Section.INTERACTION, owner, first.entry, first.registered, ("",), first.divider,
+                              min(member.declared for member in members), bindings={"medium": medium},
+                              plan=Plan(), reads=reads, delivers=delivers, settings=dict(first.settings),
+                              values=dict(first.values), regions=dict(first.regions), members=tuple(members))
+            for member in members:
+                member.joined, member.nodes = owner, ()
+                member.reads, member.delivers = {}, {}
+            self.readers.append(group)
+            self.declared.append(group)
+
     def note_shared_media(self) -> None:
         """A validity line the build computes for each entry of the hydrodynamic family whose medium another body's
-        such entry shares: each body's drag is computed alone, so a second body in the same medium changes neither's
-        (no hydrodynamic interaction between bodies in MIME 0.3.0)."""
+        such entry shares: a body in the medium's near field is solved jointly with the others there; any other body's
+        drag is computed alone, so a second body in the same medium changes neither's."""
         bodies: dict[str, list[EntryPlan]] = {}
         for plan in self.readers:
             if plan.section is Section.INTERACTION and getattr(plan.reader_cls(), "family", None) == WATCHED_FAMILY \
@@ -760,11 +825,22 @@ class _Planner:
             names = sorted({plan.bindings["body"] for plan in plans})
             if len(names) < 2:
                 continue
+            joined = sorted(plan.bindings["body"] for plan in plans if plan.joined)
             for plan in plans:
-                others = ", ".join(repr(name) for name in names if name != plan.bindings["body"])
-                line = (f"the bodies {', '.join(repr(name) for name in names)} share the medium {medium!r}: "
-                        f"{plan.bindings['body']!r}'s drag is computed alone, as if {others} were absent, and no body "
-                        f"in it changes another's (no hydrodynamic interaction between bodies in MIME 0.3.0)")
+                others = ", ".join(repr(name) for name in names if name != plan.bindings["body"]
+                                   and not (plan.joined and name in joined))
+                if plan.joined:
+                    coupled = ", ".join(repr(name) for name in joined if name != plan.bindings["body"])
+                    line = (f"{plan.bindings['body']!r}'s drag is solved jointly with {coupled}'s in the medium "
+                            f"{medium!r}'s near field ({plan.joined}): each body's resistance takes the others into "
+                            f"account, and their steps are lagged")
+                    if others:
+                        line += f"; {others} in the medium is computed alone and changes nothing of it"
+                else:
+                    line = (f"the bodies {', '.join(repr(name) for name in names)} share the medium {medium!r}: "
+                            f"{plan.bindings['body']!r}'s drag is computed alone, as if {others} were absent, and no "
+                            f"body outside a near field in it changes another's (bodies interact hydrodynamically "
+                            f"only through a medium's near field, drag 0.5.0's mrs rung)")
                 self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), line)
 
     def watch_plans(self) -> tuple[Watched, ...]:
@@ -2681,6 +2757,9 @@ class _Planner:
             return None
         if read.interface == FRAME_ANGULAR_VELOCITIES.name:
             self.rates_reads.add(dynamics.owner)
+        if read.interface == vocabulary.MASS_MATRIX.name:
+            self.mass_reads.add(dynamics.owner)
+            dynamics.mass_read = True
         return ResolvedRead(dynamics.node_name(port.node), port.field, read.interface, entry.units)
 
     def plan_reads(self, plan: EntryPlan, where: str) -> None:

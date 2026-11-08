@@ -1,5 +1,5 @@
 ---
-describes: ["0.3.0", "0.4.0"]
+describes: ["0.3.0", "0.4.0", "0.5.0"]
 ---
 
 # `drag`
@@ -79,9 +79,24 @@ image's. So:
   resistance is symmetric only to more than a twentieth of itself raises `asymmetric` (its error is at least half that
   share). The check is on the resistance the node delivers, so it holds for any solve that delivers one.
 
-**Several bodies.** Each body's drag is computed alone, from its own pose and the medium's wall: a second body in the
-same medium changes neither's, on either rung, since no hydrodynamic interaction between bodies is built in MIME 0.3.0.
-The build report says which bodies share a medium.
+**Several bodies: the medium's near field.** Where two bodies or more in one medium take the mrs rung, the build
+solves them together, as one joint node for the medium (`near_field:<medium>`): each step it assembles their joint
+system (each body's own block as above; each pair coupled by the source's regularised Stokeslet, integrated over its
+cells within a reach of the other body, in each cell's own size, and taken at its force points beyond; the wall's image
+between them) and solves it once, densely, for the cluster's grand resistance. Each body is delivered its own coupled
+resistance and, as its background load, the others' load on it at their velocities at the step's start: their steps
+are **lagged**, each body's own resistance implicit, the others' loads a step behind. That costs a first-order error in
+the step, and a step's delay after a sudden change, relaxing at the lagged step's **gain**, which the node checks every
+step from each body's mass matrix: at one or above (three overdamped bodies in a triangle near contact) the lagged error
+would grow, and the run stops there (`drag.near-field-gain`); the build refuses a configuration that starts there.
+Each body's coupled resistance and the cluster's are judged as one body's is near a wall (`drag.near-field-indefinite`),
+their margins reported. A body alone in its medium keeps its own node, step for step. The dense solve's memory grows
+as the square of the cluster's force points, so the build refuses a cluster past `DENSE_UNKNOWNS` unknowns
+(`drag.near-field-size`). With the energy ledger attached, each body's own resistance is its drag's law, and the
+cross loads are the near field's own law, `near_field:<medium>`, booked on each body by the one pairing rule and judged
+in the cluster's sum by the node (its quadratic form at the step's starting twists), never on one body's row: one
+body drags another. A
+body on the surrogate rung in the same medium is computed alone, and the build report says so.
 
 `wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
 no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.
@@ -111,10 +126,11 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
 
 ## Versions
 
-Version 0.4.0 separates the mrs rung's quadrature from its force points and chooses the rung's defaults
+Version 0.5.0 solves a medium's mrs bodies together, its near field; 0.4.0 (`UncoupledDrag`) stays registered so that a
+folder saved with it loads and reproduces, each body's drag computed alone. Version 0.4.0 separates the mrs rung's quadrature from its force points and chooses the rung's defaults
 again by measurement; its surrogate rung computes what 0.3.0's did. 0.3.0 stays registered so that a folder saved with
 it loads and reproduces (the frozen sim2real register's experiments build it): its mrs rung puts a point force at each
 sample, the samples its quadrature, with the blob half their mean spacing, which a quadrature refinement of one on
-0.4.0 also gives; a script that writes `Drag.MRS(...)` gets 0.4.0. Version 0.3.0 reads the body's shape from its hull's kind, not
+0.4.0 also gives; a script that writes `Drag.MRS(...)` gets 0.5.0. Version 0.3.0 reads the body's shape from its hull's kind, not
 from declared values; 0.2.0 moved the resistance from the end of the body's axis to its centre; 0.1.0 delivered it
 about the end (MIME-ANO-112). The mrs rung was added to 0.3.0, changing nothing the surrogate computes.

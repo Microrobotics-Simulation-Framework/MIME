@@ -158,7 +158,7 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     cls = plan.registered.cls
     rung = getattr(plan.entry, "rung", None)
     held: list[tuple[str, str, str, tuple[int, ...] | None]] = [
-        ("flag", flag.node, flag.field, None) for flag in cls.raises if flag.rung is None or flag.rung == rung]
+        ("flag", flag.node, flag.field, None) for flag in cls.raises if flag.raised_by(rung, bool(plan.members))]
     if issubclass(cls, Observation):
         held += [("output", output.node, output.field, output.shape) for output in cls.outputs]
     found: list[str] = []
@@ -174,15 +174,22 @@ def declared_field_problems(plan: EntryPlan, built: dict[str, SimulationNode]) -
     return found
 
 
+def _context(plan: EntryPlan, plans: PlanSet) -> BuildContext:
+    timestep = plans.dt * plan.divider
+    return BuildContext(plan.owner, plans.dt, timestep, plan.owner, dict(plan.bindings), dict(plan.seeds),
+                        dict(plan.initial), dict(plan.settings),
+                        {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
+                        plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls), plan.mount,
+                        dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
+                        rates_read=plan.rates_read, mass_read=plan.mass_read,
+                        members={member.owner: _context(member, plans) for member in plan.members},
+                        entry=plan.entry)
+
+
 def _construct_entry(plan: EntryPlan, plans: PlanSet) -> tuple[RestrictedBuilder, list[str]]:
     timestep = plans.dt * plan.divider
     builder = _BUILDERS[plan.section](plan, timestep)
-    context = BuildContext(plan.owner, plans.dt, timestep, plan.owner, dict(plan.bindings), dict(plan.seeds),
-                           dict(plan.initial), dict(plan.settings),
-                           {label: value.value for label, value in plan.values.items()}, tuple(plan.confinements),
-                           plans.frame.up, plans.frame.gravity, dict(plan.regions), dict(plan.hulls), plan.mount,
-                           dict(plan.parts), plan.mounted, plan.spin_inertia, spin_asymmetry=plan.spin_asymmetry,
-                           rates_read=plan.rates_read)
+    context = _context(plan, plans)
     entry = plan.entry
     try:
         if isinstance(entry, Drive) and isinstance(builder, DriveBuilder):
@@ -304,9 +311,10 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     itself: an entry's build that raised or failed, an output or flag its node does not hold, a controller's step that
     cannot run inside the compiled step, and a graph with no node."""
     canonical = not _testing.skipping_canonical_order()
-    building = [plan for plan in plans.entries if plan.section is not Section.CONTROLLER]
-    entry_order = building if canonical else sorted((p for p in plans.declared if p.section is not Section.CONTROLLER),
-                                                    key=lambda p: p.declared)
+    # A member of a joint group (a medium's near field) builds nothing of its own: its group's plan builds for it.
+    building = [plan for plan in plans.entries if plan.section is not Section.CONTROLLER and not plan.joined]
+    entry_order = building if canonical else sorted((p for p in plans.declared if p.section is not Section.CONTROLLER
+                                                     and not p.joined), key=lambda p: p.declared)
     order = list(plans.order) if canonical else [name for plan in sorted(plans.declared, key=lambda p: p.declared)
                                                  for name in plan.node_names()]
     builders: dict[str, RestrictedBuilder] = {}

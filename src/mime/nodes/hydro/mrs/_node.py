@@ -413,6 +413,10 @@ def _floating_leaves(name: str, value: object) -> dict[str, Any]:
             if jnp.issubdtype(leaf.dtype, jnp.floating)}
 
 
+#: The pytree helpers a node holding a wall's table reads its leaves with, for a node that holds one too.
+array_tree, path_name, floating_leaves = _array_tree, _path_name, _floating_leaves
+
+
 def rerun_leaves(theta: Mapping[str, Any], built: Mapping[str, Any]) -> dict[str, np.ndarray]:
     """``built``'s leaves in ``theta``'s dtypes as the save's resolution rerun moves them (``one_ulp_up_leaf``): where
     the step is given the held value made at them (:meth:`MRSDragNode.made_again`). Only that rerun reaches them: they
@@ -803,6 +807,27 @@ class MRSDragNode(MimeNode):
     def body_leaf_names(self) -> tuple[str, ...]:
         """The leaves the body-frame quantity is made from: the kind's numbers, the part's placement and the blob."""
         return (*(f"{SHAPE}{name}" for name in self._traced), "part_rotation", "part_centre", "blob")
+
+    # -- what a body model composed from this node reads (the near field's MRS: mime.nodes.hydro.near_field) ----------
+
+    @property
+    def owners(self) -> np.ndarray | None:
+        """The separated quadrature's owner map (``quadrature_owners``), ``None`` on the point forces."""
+        return self._owners
+
+    @property
+    def wall_quadrature(self) -> tuple[tuple[tuple[int, ...], ...], np.ndarray] | None:
+        """The wall quadrature's counts and owner map, ``None`` where the wall's image is taken at the force points."""
+        return self._wall_quadrature
+
+    def built_theta(self) -> dict[str, Any]:
+        """The body-frame quantity's leaves as built (:meth:`body_leaf_names`, from the node's constants)."""
+        return self._built_theta()
+
+    def quadrature_samples(self, p: Mapping[str, Any], counts: tuple[tuple[int, ...], ...] | None = None) -> Samples:
+        """The separated quadrature's points and weights in the body's frame, or the kind's quadrature at
+        ``counts``."""
+        return self._quadrature_samples(p, counts)
 
     def _quadrature_samples(self, p: Mapping[str, Any],
                             counts: tuple[tuple[int, ...], ...] | None = None) -> Samples:
@@ -1213,6 +1238,7 @@ class MRSDragNode(MimeNode):
 __all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "INTEGRATED_GAP", "NEAR_WALL",
            "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
            "WALL_CELL_SHARE", "WALL_REACH",
-           "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged",
+           "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",
+           "floating_leaves", "judged", "path_name",
            "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",
            "reach_weight", "rerun_leaves", "run_gib", "stops_where"]

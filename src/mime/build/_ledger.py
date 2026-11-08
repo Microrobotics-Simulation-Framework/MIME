@@ -184,6 +184,8 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
         interaction = law if isinstance(law, Interaction) else None
         check = ledger.CHECK_DEFINITE if interaction is not None and \
             interaction.definiteness() is Definiteness.STATE else ""
+        if by in laws and laws[by].members:
+            check = ledger.CHECK_CLUSTER  # a near field's cross loads, judged in its cluster's sum by its node
         held.append(ledger.LedgerDelivery(field, by, _class_line(interaction), paired.value, check,
                                           ",".join(supplied_by.get(by, ()))))
     for confinement in plan.confinements:
@@ -207,6 +209,9 @@ def _receiver_lines(name: str, dynamics: Dynamics, held: Sequence[ledger.LedgerD
         notes = [f"supplied by {first.supplied_by.replace(',', ', ')}"] if first.supplied_by else []
         if first.check == ledger.CHECK_DEFINITE:
             notes.append("its resistance checked definite at each step")
+        if first.check == ledger.CHECK_CLUSTER:
+            notes.append("its cross loads judged in its cluster's sum by its node, the grand resistance's quadratic "
+                         "form at the step's starting twists, not on this row (one body drags another)")
         entry = laws[law].entry if law in laws else None
         if first.energy_class == ledger.UNMETERED and _unmetered_reason(entry):
             notes.append(f"unmetered: {_unmetered_reason(entry)}")

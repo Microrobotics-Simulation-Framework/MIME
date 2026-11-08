@@ -1,0 +1,11 @@
+{
+  "phase": "W3a, the MRS operator seam and the joint near-field node, the dense route",
+  "written": "2026-11-08, before any of the runs they are about",
+  "labels": "each prediction is the builder's, from the measurements of spike S3 (the MRS seam spike) and the patch spike, never re-measured before it was written",
+  "first_step_b": {
+    "what": "the grand resistance (6K right-hand sides) by the dense LU of the joint matrix against GMRES with each body's held LU as its block preconditioner, vmapped over the right-hand sides, tolerance 1e-10; MIME's sphere (1 mm, its default 338 force points) and FL-9's shell at its default; copies 1 mm apart, cross-blocks at the force points, assembled; float64, a shared laptop CPU",
+    "P-b1": "dense ahead of GMRES in time at 2, 3 and 8 spheres at 338 force points and at 2 and 3 FL-9 shells, by 1.2 to 3 times; dense's peak resident memory no more than GMRES's plus 30 %",
+    "P-b2": "at 6 and 8 spheres at 882 force points (15,876 and 21,168 unknowns) dense still ahead in time or within 1.5 times of GMRES: no crossover in time below about 25,000 unknowns on this CPU, so the line past which W3b's GMRES takes over is the dense matrix's memory, 8 (3 sum N)^2 bytes (3.0 GiB at 20,000 unknowns), not its time",
+    "P-b3": "GMRES's true relative residual at most 1e-9 on every right-hand side at tolerance 1e-10 (block preconditioning: JAX's stop tests the preconditioned residual), the dense LU's at most 1e-13"
+  }
+}

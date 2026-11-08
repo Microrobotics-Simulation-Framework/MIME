@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-122;
+  `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
+  `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the
+  cluster's grand resistance (each body's own block dev1's; each pair coupled by the source's regularised Stokeslet,
+  integrated over its cells within a reach of the other body in each cell's own size and taken at its force points
+  beyond; the wall's image between them) and delivers each body its own coupled resistance and, as its background load,
+  the others' load on it a step behind. The lagged step's gain, the spectral radius of `(M/dt + R_d)^-1 R_off`, is
+  checked every step from each body's mass matrix, which the rigid body now publishes (`body.mass_matrix`) only where
+  the near field reads it: at one or above the run stops (`drag.near-field-gain`), and the build refuses a
+  configuration that starts there. Each body's coupled resistance and the cluster's are judged definite as dev1's is
+  near a wall (`drag.near-field-indefinite`), their margins reported. A body alone in its medium keeps its own node,
+  so no program with one mrs body a medium moves; a folder saved with `drag` 0.4.0, kept as `UncoupledDrag`, rebuilds
+  its bodies' own nodes. The build refuses a cluster past the dense route's size, a memory line
+  (`drag.near-field-size`), and a medium mixing the two versions (`drag.near-field-mixed`). With the energy ledger
+  attached, each body's own resistance is its drag's law and the cross loads are the near field's own,
+  `near_field:<medium>`, booked on each body by the one pairing rule and judged in the cluster's sum
+  (`mime.core.ledger.CHECK_CLUSTER`: the node's quadratic form at the step's starting twists), never on one body's
+  row, where they have no sign (one body drags another). The near field's contract (`BodyOperator`: the points where a body reads and
+  delivers, its own block, its cross-kernel) takes the MRS as its first body model; its joint system is a pure function
+  of the bodies' poses, their leaves and the wall's parameters.
+
 - **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
   second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
   entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery

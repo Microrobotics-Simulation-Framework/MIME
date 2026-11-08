@@ -113,6 +113,10 @@ drag.mrs-indefinite           user
 drag.mrs-on-wall              user
 drag.mrs-quadrature           user
 drag.mrs-resistance           user
+drag.near-field-gain          user
+drag.near-field-indefinite    user
+drag.near-field-mixed         user
+drag.near-field-size          user
 drag.no-axis                  user
 drag.no-region                user
 drag.no-samples               user

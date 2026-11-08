@@ -868,8 +868,10 @@ def run_layout(plans: PlanSet) -> Layout:
     for plan in plans.entries:
         cls = plan.registered.cls
         rung = getattr(plan.entry, "rung", None)
+        if plan.joined:
+            continue  # its group's plan builds its node, and lays out the flags its node raises
         flags += [FlagLayout(plan.owner, cls.label(), plan.node_name(flag.node), flag.field, flag.meaning)
-                  for flag in cls.raises if flag.rung is None or flag.rung == rung]
+                  for flag in cls.raises if flag.raised_by(rung, bool(plan.members))]
         speed = speed_limit_flag(plans, plan)
         if speed is not None:
             flags.append(speed)

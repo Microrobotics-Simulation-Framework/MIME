@@ -366,7 +366,8 @@ class RigidInertialNode(MimeNode):
                  hull_kind_version: str = "", hull_patches: Sequence[str] = (),
                  hull_counts: Sequence[Sequence[int]] = (), hull_centre: Sequence[float] = (0.0, 0.0, 0.0),
                  hull_rotation: Sequence[float] = _IDENTITY, hull_groups: np.ndarray | None = None,
-                 contact_loops: bool = False, ledger: Sequence[str] = (), **constants: object) -> None:
+                 contact_loops: bool = False, publishes_mass_matrix: bool = False, ledger: Sequence[str] = (),
+                 **constants: object) -> None:
         surface = {key: value for key, value in constants.items() if key.startswith(SURFACE)}
         settings = {key.removeprefix(HULL): value for key, value in constants.items() if key.startswith(HULL)}
         unknown = set(constants) - set(surface) - {f"{HULL}{name}" for name in settings}
@@ -446,7 +447,8 @@ class RigidInertialNode(MimeNode):
         super().__init__(name, timestep, mass=mass, inertia=tuple(inertia), initial_pose=tuple(initial_pose),
                          initial_twist=tuple(initial_twist), surface_shape=surface_shape, extent=extent,
                          margin=margin, velocity_rule=velocity_rule, **hull, **surface,
-                         **{f"{HULL}{name}": value for name, value in settings.items()}, ledger=ledger)
+                         **{f"{HULL}{name}": value for name, value in settings.items()},
+                         **({"publishes_mass_matrix": True} if publishes_mass_matrix else {}), ledger=ledger)
 
     def _body_points(self, hull: Mapping[str, Any], settings: Mapping[str, object]) -> np.ndarray:
         """The hull's points in the body's frame at its settings as built, in float64: what its groups are made of."""
@@ -529,19 +531,43 @@ class RigidInertialNode(MimeNode):
                                                                     "extent")
         return held
 
+    @property
+    def publishes_mass_matrix(self) -> bool:
+        """Whether the body publishes its mass matrix in its state (``mass_matrix``): only where a plan reads it (a
+        medium's near field, whose gain check needs every body's), so that every other program is the one it was."""
+        return bool(self.constants().get("publishes_mass_matrix", False))
+
+    def world_mass_matrix(self, p: Mapping[str, Any], pose: Array) -> Array:
+        """``M = diag(m I, R J R^T)`` in the world at ``pose``, from the body's own ``mass`` and ``inertia``: what the
+        step at that pose solves with (:meth:`stepped`'s arithmetic), published for a reader where it is read."""
+        dtype = pose.dtype
+        rotation = quaternion.rotation_matrix(pose[3:])
+        inertia = rotation @ self.body_inertia(p, dtype) @ rotation.T
+        mass = jnp.asarray(p["mass"], dtype=dtype)
+        return jnp.zeros((6, 6), dtype=dtype).at[:3, :3].set(mass * jnp.eye(3, dtype=dtype)).at[3:, 3:].set(inertia)
+
+    def _published(self, p: Mapping[str, Any], fields: NodeFields) -> NodeFields:
+        """``fields`` with the mass matrix at its pose, where the body publishes it; ``fields`` itself otherwise."""
+        if not self.publishes_mass_matrix:
+            return fields
+        return {**fields, "mass_matrix": self.world_mass_matrix(p, fields["pose"])}
+
     @override
     def initial_state(self) -> NodeFields:
         """The initial pose and twist (and, held by its hull, the contact's fields at zero); with the ledger attached,
-        its records too (``mime.core.ledger.initial_records``)."""
+        its records too (``mime.core.ledger.initial_records``); where it publishes it, its mass matrix at the initial
+        pose."""
         p = self.constants()
         pose, twist = as_run_array(p["initial_pose"]), as_run_array(p["initial_twist"])
+        constants = {key: as_run_array(p[key]) for key in ("mass", "inertia")}
         if self.holds_hull:
             groups = len(self.groups)
-            return books.with_records(self, node_fields(RigidContactState(
+            return self._published(constants, books.with_records(self, node_fields(RigidContactState(
                 pose=pose, twist=twist, contact_points=as_run_array(np.zeros((groups, 3))),
                 contact_forces=as_run_array(np.zeros(groups)), contact_short=as_run_array(np.zeros(groups)),
-                contact_residual=as_run_array(np.zeros(())))))
-        return books.with_records(self, node_fields(RigidInertialState(pose=pose, twist=twist)))
+                contact_residual=as_run_array(np.zeros(()))))))
+        return self._published(constants, books.with_records(self, node_fields(RigidInertialState(pose=pose,
+                                                                                                    twist=twist))))
 
     def own_inputs(self) -> dict[str, BoundaryInputSpec]:
         """The body's inputs without the ledger: the applied wrench, the resistance and the background load, each the
@@ -738,8 +764,9 @@ class RigidInertialNode(MimeNode):
         """The step (:meth:`stepped_with_parts`); with the ledger attached, its books recorded beside it
         (``mime.core.ledger.metered_step``), decided while the step is traced."""
         if not self.metered:
-            return self.stepped_with_parts(p, state, boundary_inputs, dt)[0]
-        return books.metered_step(self, self.own_inputs(), p, state, boundary_inputs, dt, self.stepped_with_parts)
+            return self._published(p, self.stepped_with_parts(p, state, boundary_inputs, dt)[0])
+        return self._published(p, books.metered_step(self, self.own_inputs(), p, state, boundary_inputs, dt,
+                                                     self.stepped_with_parts))
 
     def stepped_with_parts(self, p: Mapping[str, Any], state: Mapping[str, Array],
                            boundary_inputs: Mapping[str, Array], dt: float) -> tuple[NodeFields, StepParts]:
