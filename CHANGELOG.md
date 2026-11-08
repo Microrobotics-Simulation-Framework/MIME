@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each, the incremental fast projection, the pressure carried, a consistent pressure made in the program at the run's
   start and after a state handed over), reading the drive's waveform at its stage times. With no `scheme=` the build
   picks RK3 where its explicit viscosity holds at `dt` and IMEX Euler otherwise; it predicts the flow's CFL number from
-  the drive (Poiseuille's centreline and Womersley's peak in the empty tube) and refuses a `dt` past the chosen
+  the drive (Poiseuille's centreline and twice Womersley's peak, the bound on a run from rest, in the empty tube) and
+  refuses a `dt` past the chosen
   scheme's line before any step (`flow.cfl-predicted`, `flow.viscous-limit`), with the step that keeps it;
   `Experiment(..., dt="auto")` takes the largest stable step (stability only, its steps a period reported beside it),
   saved as the step it chose. The lines are one value each, along a grid axis, scaled along a tilted vessel's axis by
