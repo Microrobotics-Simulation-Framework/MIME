@@ -140,6 +140,16 @@ class EnergyAccount:
     balance_floor: Scalar
     steps: int = 0
     notes: tuple[str, ...] = field(default_factory=tuple[str, ...])
+    #: What each receiver's storage jumped between steps, summed (J): where its frames carry a delivered inertia, the
+    #: exchange's own (under ``exchanges``); inside a coupling group, the group's residual (under ``groups``); rounding
+    #: elsewhere.
+    between: Mapping[str, Scalar] = field(default_factory=dict[str, Scalar])
+    #: Each workless law's paired work summed over its receivers, with the jump between steps of a storage its
+    #: delivered inertia moves (J): the exchange's own discretisation error, reported, not judged.
+    exchanges: Mapping[str, Scalar] = field(default_factory=dict[str, Scalar])
+    #: Each coupling group by its members (``a+b``): MADDENING's verdict at the run's last step, and the group's
+    #: residual, its members' jumps between steps summed.
+    groups: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
     def supplied_total(self) -> Scalar:
@@ -179,7 +189,11 @@ class EnergyAccount:
         worst = ", ".join(f"{name} {value:.3g}" for name, value in self.identity_worst.items())
         lines += [f"  unattributed: {joules(self.unattributed)}",
                   f"  the step identity's worst step over its rounding floor: {worst}",
-                  f"  balance {self.balance:+.3g} J, rounding {self.balance_floor:.3g} J"]
+                  f"  the storage's jumps between steps: {joules(self.between)}"]
+        lines += [f"  {law}: workless, summed over its receivers {value:+.3g} J (its own discretisation error)"
+                  for law, value in self.exchanges.items()]
+        lines += [f"  coupling group {members}: {verdict}" for members, verdict in self.groups.items()]
+        lines.append(f"  balance {self.balance:+.3g} J, rounding {self.balance_floor:.3g} J")
         return "\n".join(lines)
 
 
@@ -198,10 +212,11 @@ def _laws_nodes(graph: Any, law: str) -> list[MimeNode]:
 
 
 def _potential_change(graph: Any, law: str, receiver: Any, final: Mapping[str, Any], params: Mapping[str, Any],
-                      dtype: Any) -> tuple[Scalar, Scalar] | None:
+                      dtype: Any, hosted: bool = False) -> tuple[Scalar, Scalar] | None:
     """A potential law's energy's change over the run, from its own parameters as the run had them, at its receiver's
     configuration at the run's start (kept in its records) and at its end; and the energies' magnitude at the two ends,
-    which their difference's rounding is judged on. ``None`` where the law states no energy."""
+    which their difference's rounding is judged on. A law the receiver hosts (a dynamic arm's weight) states its energy
+    on the receiver's node. ``None`` where the law states no energy."""
     from mime.core import jnp
 
     start = final.get(f"{ledger.RECORDS}configuration_start")
@@ -210,7 +225,7 @@ def _potential_change(graph: Any, law: str, receiver: Any, final: Mapping[str, A
         return None
     changes: list[Scalar] = []
     sizes: list[Scalar] = []
-    for node in _laws_nodes(graph, law):
+    for node in [receiver] if hosted else _laws_nodes(graph, law):
         p = node.constants(params.get(node.name))
         try:
             ends = [node.energy(p, jnp.asarray(at, dtype=dtype)) for at in (start, end)]
@@ -219,6 +234,50 @@ def _potential_change(graph: Any, law: str, receiver: Any, final: Mapping[str, A
         changes.append(_scalar(ends[1]) - _scalar(ends[0]))
         sizes.append(abs(_scalar(ends[0])) + abs(_scalar(ends[1])))
     return (_scalar(sum(changes)), _scalar(sum(sizes))) if changes else None
+
+
+#: The input of a field's law that reads the field itself, whose provider states the pair's energy (``energy_at``).
+_FIELD_INPUT = "flux_density"
+
+
+def _field_change(graph: Any, law: str, receiver: Any, final: Mapping[str, Mapping[str, Any]],
+                  params: Mapping[str, Any], dtype: Any) -> tuple[Scalar, Scalar] | str | None:
+    """The change over the run of the energy a field's law and its pair derive from, stated once for the pair by the
+    field's provider (``energy_at``: ``-m . B`` at the body's magnet's centroid), between the run's two ends: the body's
+    configuration at its start (its records) and its end, and the frames the field's source is mounted on at the start
+    (the records of the segment that carries it) and at the end. Taken for the law that reads the field itself (the
+    torque); ``None`` for a law that reads none, and the reason where the source's start is not recorded."""
+    from mime.core import jnp
+
+    edges = [e for e in graph.edges if e.target_node == law and e.target_field == _FIELD_INPUT]
+    if len(edges) != 1:
+        return None
+    (edge,) = edges
+    provider = graph.get_node(edge.source_node)
+    if not hasattr(provider, "energy_at") or not edge.source_field.startswith(f"{_FIELD_INPUT}_"):
+        return None
+    slot = edge.source_field.removeprefix(f"{_FIELD_INPUT}_")
+    pp = provider.constants(params.get(provider.name))
+    mounts = [e for e in graph.edges if e.target_node == provider.name and e.target_field == "mount_poses"]
+    frames: list[Any] = [None, None]
+    if mounts:
+        segment = graph.get_node(mounts[0].source_node)
+        start = final.get(segment.name, {}).get(f"{ledger.RECORDS}configuration_start")
+        if start is None or not hasattr(segment, "frame_poses_at"):
+            return (f"its source's start is not recorded ({segment.name} is not metered), so its pair's energy's "
+                    f"change is not in the account")
+        sp = segment.constants(params.get(segment.name))
+        frames = [segment.frame_poses_at(sp, jnp.asarray(start, dtype=dtype)),
+                  jnp.asarray(final[segment.name]["frame_poses"], dtype=dtype)]
+    own = graph.get_node(law)
+    moment = own.constants(params.get(own.name))["moment"]
+    body_start = final[receiver.name].get(f"{ledger.RECORDS}configuration_start")
+    body_end = receiver.configuration(receiver.constants(params.get(receiver.name)), final[receiver.name])
+    if body_start is None or body_end is None:
+        return None
+    ends = [provider.energy_at(pp, at_frames, slot, jnp.asarray(pose, dtype=dtype), moment)
+            for at_frames, pose in zip(frames, (body_start, body_end), strict=True)]
+    return _scalar(ends[1]) - _scalar(ends[0]), abs(_scalar(ends[0])) + abs(_scalar(ends[1]))
 
 
 def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: Mapping[str, Any] | None = None,
@@ -238,6 +297,10 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
     notes: list[str] = []
     balance: Scalar = 0.0
     floor: Scalar = 0.0
+    between: dict[str, Scalar] = {}
+    exchanges: dict[str, Scalar] = {}
+    paired_fields: set[str] = set()
+    field_laws: set[str] = set()
     for name in cast(list[str], graph.node_names):
         receiver = graph.get_node(name)
         held = ledger.deliveries(dict(getattr(receiver, "params", {}) or {}))
@@ -252,6 +315,10 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
         worst[name] = _scalar(records[f"{ledger.RECORDS}identity_worst"]) / (ledger.IDENTITY_ULPS * eps)
         balance += _scalar(ledger.balance(records))
         floor += _scalar(ledger.balance_floor(records))
+        between[name] = _scalar(records[f"{ledger.RECORDS}between"])
+        carrying = next((d.law for d in held if d.kind == ledger.INERTIA), None)
+        if carrying is not None:
+            exchanges[carrying] = exchanges.get(carrying, 0.0) + between[name]
         scale = _scalar(records[f"{ledger.RECORDS}scale"])
         taken = _taken(ledger.losses(records, held))
         for row, law in enumerate(ledger.laws(held)):
@@ -267,11 +334,25 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
                 numerical[f"{law} (its host's projection)"] = host
             if first.energy_class == ledger.DISSIPATIVE:
                 lost[law] = lost.get(law, 0.0) + line.lost
-            if first.energy_class == ledger.POTENTIAL:
-                found = _potential_change(graph, law, receiver, records, nodes, dtype)
-                if found is None:
-                    notes.append(f"{law} states no energy on its node, so its change is not in the account")
-                else:
+            if first.energy_class == ledger.WORKLESS:
+                exchanges[law] = exchanges.get(law, 0.0) + work
+            if first.energy_class == ledger.POTENTIAL and first.supplied_by:
+                notes.append(f"{law} on {name} reads {', '.join(line.supplied_by)}, outside the components: its "
+                             f"paired work is supplied by it, and its energy's change is not the components'")
+            elif first.energy_class == ledger.POTENTIAL and law not in potentials and (
+                    first.kind == ledger.HOSTED or any(e.source_node == law and e.target_node == name
+                                                       for e in graph.edges)):
+                found: tuple[Scalar, Scalar] | str | None = _potential_change(
+                    graph, law, receiver, records, nodes, dtype, hosted=first.kind == ledger.HOSTED)
+                if found is None and first.kind != ledger.HOSTED:
+                    found = _field_change(graph, law, receiver, final, nodes, dtype)
+                    if found is None:
+                        paired_fields.add(law)
+                    elif not isinstance(found, str):
+                        field_laws.add(law)
+                if isinstance(found, str):
+                    notes.append(f"{law}: {found}")
+                elif found is not None:
                     change, size = found
                     potentials[law] = potentials.get(law, 0.0) + change
                     line = _replaced(line, potential_change=change, residual=work + change,
@@ -284,10 +365,34 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
             lines.append(line)
     if not stored:
         return None
+    for law in sorted(paired_fields - set(potentials)):
+        if field_laws:
+            notes.append(f"{law}'s energy is its pair's, stated once by its field and taken under "
+                         f"{', '.join(sorted(field_laws))}")
+        else:
+            notes.append(f"{law} states no energy on its node, so its change is not in the account")
+    groups: dict[str, str] = {}
+    for members, verdict in _diagnostics(graph).items():
+        residual = sum(between.get(member, 0.0) for member in members.split("+"))
+        state = "converged" if verdict.get("converged", True) else (
+            f"not converged at its last step after {int(verdict.get('iterations', 0))} passes (stopped at its cap)")
+        groups[members] = f"MADDENING's verdict at the run's last step: {state}; its residual, its members' " \
+                          f"storage jumps between steps summed, {residual:+.3g} J"
     total = sum(lost.values()) + sum(stored.values()) + sum(potentials.values())
     supplied = _shared(total, paired)
     return EnergyAccount(stored, lost, potentials, supplied, tuple(lines), numerical, paired, unattributed, worst,
-                         balance, floor, steps, tuple(notes))
+                         balance, floor, steps, tuple(notes), between, exchanges, groups)
+
+
+def _diagnostics(graph: Any) -> dict[str, dict[str, Any]]:
+    """MADDENING's coupling verdicts at the last step a run took, by group (``a+b``); none for a graph without groups
+    or one that has not run."""
+    try:
+        found = graph.coupling_diagnostics()
+    except Exception:  # noqa: BLE001  (a graph with no group, or none run, has no verdict to read)
+        return {}
+    return {str(key): {k: v for k, v in dict(value).items() if k in ("converged", "iterations", "residual")}
+            for key, value in dict(found or {}).items()}
 
 
 def _shared(total: Scalar, paired: Mapping[str, Scalar]) -> dict[str, Scalar]:

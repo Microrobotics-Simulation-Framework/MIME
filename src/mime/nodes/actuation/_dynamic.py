@@ -65,8 +65,9 @@ class ArmParts(NamedTuple):
     articulation with what its frames carry at the step's start (``start``) and at its end (``ending``), its base's
     pose, the world's gravity in the base's frame, the joint rates after the Cayley step (``turned``), the mass matrix
     the step starts from (``start_mass``) and the one it solves with (``end_mass``), the system ``A = M_e + dt D``, the
-    unconstrained solution ``free``, and the share of the impulses through ``A`` that friction took (``friction``,
-    zero on every joint without it)."""
+    unconstrained solution ``free``, the share of the impulses through ``A`` that friction took (``friction``, zero on
+    every joint without it), and the bias the step solved with (``bias``: the velocity products, the weight and the
+    loads on its frames together, as one inverse-dynamics pass gave them)."""
 
     start: Articulation
     ending: Articulation
@@ -78,6 +79,7 @@ class ArmParts(NamedTuple):
     system: Array
     free: Array
     friction: Array
+    bias: Array
 
 
 class DynamicArmInputs(MountInputs, closed=True):
@@ -99,7 +101,8 @@ class DynamicMotorState(TypedDict, closed=True):
 
 
 class MeteredDynamicMotorState(books.LedgerRecords, closed=True):
-    """A metered motor's state: its own fields and its records."""
+    """A metered motor's state: its own fields, its records, and its frames' poses at the run's start, which the energy
+    of a field it carries is evaluated at."""
 
     frame_poses: ReadOnly[Float[Array, "frames 7"]]
     frame_angular_velocities: ReadOnly[Float[Array, "frames 3"]]
@@ -108,6 +111,7 @@ class MeteredDynamicMotorState(books.LedgerRecords, closed=True):
     reaction: ReadOnly[Float[Array, "mounted 6"]]
     momentum: ReadOnly[Float[Array, "mounted 3"]]
     inertia: ReadOnly[Float[Array, "mounted 2 3 3"]]
+    ledger_configuration_start: ReadOnly[Annotated[Float[Array, "frames 7"], Units("m; 1")]]
 
 
 class MotorParts(NamedTuple):
@@ -534,7 +538,7 @@ class DynamicArmNode(SegmentNode):
         return (node_fields(DynamicArmState(frame_poses=poses, frame_angular_velocities=rates, joint_positions=q_next,
                                             joint_velocities=velocity)),
                 ArmParts(articulation, ending, base, self.weight(p, base), turned_qd, inertia, system, stepped, free,
-                         rubbed))
+                         rubbed, bias))
 
     # ------------------------------------------------------------------------------------------- the energy ledger
 
@@ -565,6 +569,12 @@ class DynamicArmNode(SegmentNode):
     def configuration(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
         """The arm's joint positions, what its weight's energy reads."""
         return jnp.asarray(state["joint_positions"])
+
+    def frame_poses_at(self, p: Mapping[str, Any], configuration: Array) -> Array:
+        """Its frames' world poses at the joint positions ``configuration``: what a field it carries is placed by."""
+        q = jnp.asarray(configuration)
+        base = jnp.asarray(p["placement"], dtype=q.dtype)
+        return self.in_world(base, forward_kinematics(self.articulation(p, q.dtype), q))
 
     @override
     def storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
@@ -643,10 +653,14 @@ class DynamicArmNode(SegmentNode):
         def quadratic(matrix: Array, x: Array) -> tuple[Array, Array]:
             return 0.5 * x @ matrix @ x, 0.5 * jnp.abs(x) @ jnp.abs(matrix) @ jnp.abs(x)
 
+        loads_total = jnp.zeros_like(q)
+
         def paired(field: str, value: Array) -> tuple[Array, Array]:
             """A delivery into ``field`` paired by the one rule, and the magnitude of that arithmetic."""
+            nonlocal loads_total
             if field == "link_wrench":
                 force, size = self._generalised(start, q, base, value)
+                loads_total = loads_total + force
                 return jnp.dot(force, dq), size @ jnp.abs(dq)
             if field == "link_momentum":
                 momenta = quaternion.rotate_back(base[3:], value.T).T
@@ -664,14 +678,16 @@ class DynamicArmNode(SegmentNode):
         hosted = jnp.zeros((len(rows), 2), dtype=dtype)
         size = jnp.zeros((), dtype=dtype)
         momentum_work = jnp.zeros((), dtype=dtype)
-        weight = -inverse_dynamics(start, q, None, None, parts.gravity, None)
+        carried_work = jnp.zeros((), dtype=dtype)
         impulse = parts.system @ (vn - parts.free)
+        weight_row: int | None = None
         for index, delivery in enumerate(held):
             row = rows.index(delivery.law)
             if delivery.kind == books.HOSTED:
                 if delivery.field == "weight":
-                    found, magnitude = jnp.dot(weight, dq), jnp.abs(weight) @ jnp.abs(dq)
-                elif delivery.field == "damping":
+                    weight_row = row
+                    continue
+                if delivery.field == "damping":
                     found, magnitude = quadratic(damping, vn)
                     found, magnitude = -2.0 * dt * found, 2.0 * dt * magnitude
                 elif delivery.field == "friction":
@@ -684,6 +700,8 @@ class DynamicArmNode(SegmentNode):
             found, magnitude = paired(delivery.field, boundary_inputs[books.law_input(delivery.field, index)])
             if delivery.field == "link_momentum":
                 momentum_work = momentum_work + found
+            if delivery.field == "link_inertia":
+                carried_work = carried_work + found
             work, size = work.at[row].add(found), size + magnitude
         unattributed = jnp.zeros((), dtype=dtype)
         for field in _ARM_PAIRED:
@@ -692,11 +710,26 @@ class DynamicArmNode(SegmentNode):
             found, magnitude = paired(field, boundary_inputs.get(field, jnp.asarray(own[field].default, dtype=dtype)))
             if field == "link_momentum":
                 momentum_work = momentum_work + found
+            if field == "link_inertia":
+                carried_work = carried_work + found
             unattributed, size = unattributed + found, size + magnitude
+        # The carried inertia's change as the step itself used it, ``M_e - M_s``: each delivery's own change is the
+        # mass matrix of its change alone (the mass matrix is linear in a body's inertia), and what that leaves of the
+        # step's (the rounding of two mass matrices' difference) is booked under the first law that delivers one.
+        carrying = next((rows.index(d.law) for d in held if d.kind == books.INERTIA), None)
+        if carrying is not None:
+            step_change, _ = quadratic(mass_end - mass_start, vn)
+            work = work.at[carrying].add(-step_change - carried_work)
         commands = self.driving(cast(DynamicArmInputs, given), dtype)
-        loads, load_size = self._generalised(start, q, base, given["link_wrench"])
         products = inverse_dynamics(start, q, turned, None, zero, None)
-        applied = commands + loads + weight
+        # The weight's joint forces as the step itself used them: its bias, less the velocity products and every
+        # load's own joint forces (the inverse dynamics is linear in each), so that what one pass of it rounds and
+        # the passes taken apart do not is the weight's, a potential's, and nothing else's.
+        weight = -(parts.bias - products) - loads_total
+        if weight_row is not None:
+            work, size = work.at[weight_row].add(jnp.dot(weight, dq)), size + jnp.abs(weight) @ jnp.abs(dq)
+        applied = commands - parts.bias + products
+        load_size = jnp.abs(loads_total)
         next_end = mass_matrix(ending, qn)
         start_storage, start_size = quadratic(mass_start, v)
         turned_storage, turned_size = quadratic(mass_start, turned)
@@ -976,6 +1009,15 @@ class DynamicMotorNode(SegmentNode):
         return (("bearing", f"{self.name}.bearing", books.DISSIPATIVE),
                 ("inertia", f"{self.name}.inertia", books.WORKLESS),
                 ("reaction", f"{self.name}.reaction", books.UNMETERED))
+
+    @override
+    def configuration(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
+        """Its frames' world poses: where a field it carries is placed, which the field's energy reads."""
+        return jnp.asarray(state["frame_poses"])
+
+    def frame_poses_at(self, p: Mapping[str, Any], configuration: Array) -> Array:
+        """Its frames' world poses at ``configuration``, which is them."""
+        return jnp.asarray(configuration)
 
     @override
     def storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
