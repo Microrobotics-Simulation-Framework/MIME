@@ -30,6 +30,7 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp
+from mime.core._error_free import fast_two_sum, two_sum
 
 _lax: Any = cast(Any, jax).lax
 _custom_jvp: Any = cast(Any, jax).custom_jvp
@@ -60,19 +61,6 @@ def pieces(h: float, dtype: Any) -> tuple[float, float]:
     return first, float(np.asarray(h - first, dtype=dtype))
 
 
-def _two_sum(a: Array, b: Array) -> tuple[Array, Array]:
-    """``a + b`` as ``s + r`` exactly (Knuth), for any ``a`` and ``b``."""
-    s = a + b
-    b_part = s - a
-    return s, (a - (s - b_part)) + (b - b_part)
-
-
-def _fast_two_sum(a: Array, b: Array) -> tuple[Array, Array]:
-    """``a + b`` as ``s + r`` exactly (Dekker), for ``|a| >= |b|``."""
-    s = a + b
-    return s, b - (s - a)
-
-
 def turns_of_step(frequency: Array, timestep: float) -> tuple[Array, Array]:
     """The turns ``frequency * timestep`` as ``(p, e)`` with ``p + e`` equal to it to within ``eps^2`` of it: ``p`` the
     product with the timestep rounded to the run's precision, ``e`` Dekker's residual of that product (built of exact
@@ -92,8 +80,8 @@ def accumulate(hi: Array, lo: Array, frequency: Array, timestep: float) -> tuple
     ``frequency``. Its derivative with respect to the frequency is the timestep, the phase's, and to ``hi`` and ``lo``
     one (the fraction's reduction is a whole turn, which moves neither the field nor a tangent)."""
     p, e = turns_of_step(frequency, timestep)
-    s, r = _two_sum(hi, p)
-    carried, rest = _fast_two_sum(s, (lo + r) + e)
+    s, r = two_sum(hi, p)
+    carried, rest = fast_two_sum(s, (lo + r) + e)
     whole = jnp.floor(carried)
     return carried - whole, rest
 

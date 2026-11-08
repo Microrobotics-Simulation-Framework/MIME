@@ -370,7 +370,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and not through `params`. `MIME-ANO-147` (minor): in reverse mode the MRS rung's held-or-made resistance is made again
   at every step of the backward loop (about 0.5 s a step on 222 force points, forward runs unaffected). `MIME-ANO-148`
   (minor): the screw's held resistance differed between a float32 process's first build and later ones by 2.4e-10 on a
-  worktree before `MIME-ANO-138`'s fix; whether the branch still does is not measured. `MIME-ANO-149` (minor): the
+  worktree before `MIME-ANO-138`'s fix; whether the branch still does is not measured. `MIME-ANO-149` (minor, resolved in this release: see Fixed): the
   energy ledger's float32 running sums of a mixed-sign series reach about 15 eps by 1e5 steps. `MIME-ANO-150`,
   `MIME-ANO-151`, `MIME-ANO-152`: the register's M2 (the near-contact margin), M4 (the lubrication counted twice) and N4's
   near-contact part (soft-wall lubrication), the first two placed in phase W2 of the dev2 plan and the third in 0.4.0;
@@ -486,6 +486,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The energy ledger's running sums are pairs, and no longer drift with the steps** (MIME-ANO-149; the ledger is
+  unreleased, so no version step). A plain float32 sum of a series of 1e5 terms drifted by tens of units of eps on the
+  terms' summed magnitudes (45 on a mixed-sign series, 107 on a positive one, measured through the ledger's own update;
+  the same in float64: 52 and 83). Each running sum of a signed series (`ledger_work`, `ledger_hosted`, `ledger_terms`,
+  `ledger_unattributed`, `ledger_between`, `ledger_between_own`) is now a total and the part below its last place beside it
+  (`<name>_low`), renormalised by an error-free sum every step: the drift at 1e5 steps is under 3e-7 units in float32
+  and exact in float64, against a line of 0.012 units set by the pair's own rounding. `balance` and `losses` read the low
+  parts; a reader of a field alone gets the sum rounded to the run's dtype. The error-free sum is shared with the
+  rotating field's phase (`mime.core._error_free`). The step scale, a sum of magnitudes, stays plain. A program without
+  the ledger is unchanged to the bit; a metered one gains the `_low` fields and its sums move by their rounding (the
+  `energy_ledger` golden is regenerated; its pose and twist are unchanged).
 - **A bundle changed in place in the cache, its size and modification time kept, is downloaded again and the good file
   served** (MIME-ANO-142, partially resolved). The cache's cheap check could not see a byte flipped in the middle of a
   file with both restored, so `based_on` and `pull` of a DOI served the changed bundle and refused it with advice that

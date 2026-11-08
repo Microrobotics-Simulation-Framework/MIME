@@ -3449,22 +3449,52 @@ anomalies:
       reaches the floor of the run's balance (16 eps) from the accumulation alone. The same spike's float32 arm kept the
       per-step identity within 0.23 eps of the step's scale over 1,375 steps, with float32 reductions, so the per-step check
       is not affected; this entry is about the totals and the balance over them.
+
+      Resolved in 0.3.0.dev2, before the ledger's release, by keeping each running sum of a signed series as a pair (the
+      work, the hosted and scheme terms, the unattributed work and the two jumps between steps: ``<name>`` and
+      ``<name>_low``), renormalised by an error-free sum every step; the step scale, a sum of magnitudes, stays plain.
+      Measured here [measured, 1e5 steps, the ledger's own update under a scan, 8 seeds each, units of eps on the summed
+      magnitudes S of a sum's terms, CPU, JAX 0.12.0.1]: terms uniform in (-1, 1) about a bias of 0.25 (mixed signs, the
+      sum grows) the worst sum drifted 45 in float32 (median 38) as it was kept before and 8e-8 as a pair; about a bias of
+      1.0 (every term positive) 107 and 3e-7; about no bias (the sum stays small) 0.32 and 2e-10. In float64 the plain
+      sum drifted 52, 83 and 0.42 on the same three series, and the pair 0 (exact): so float64 runs keep the pair too,
+      since it changes what they read. **Two corrections to the measurement above**: a positive series does not stay
+      under 1 eps here (107 eps on a series of 1e5 terms uniform in (0, 2)), so the step scale, a positive sum, may
+      drift likewise (not measured on the ledger's scale, and the floor it sets is 16 eps of it); the original figure
+      may have been of a series with a different dynamic range. The line the pair is held to is derived from its
+      rounding: one addition into the low part a step, at most eps squared over 2 of S, so N eps^2 S over N steps, 0.012
+      eps S in float32 at 1e5 steps; the plain sum fails it on every seed of the growing series by a factor of 150 or
+      more in float32.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
       A float32 run long enough to reach the floor could read as failing its balance for rounding of the accumulation, or
       hide a real gift of about that size under it. The drift is measured on a synthetic series, not on the ledger's records,
       and the ledger's own run was not taken to 1e5 steps in float32.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev2"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev2 (development builds of the branch only; fixed before the release)"
+    resolution_version: "0.3.0.dev2"
     affected_components:
       - "node: RigidInertialNode; the ledger's running sums (mime.core.ledger.recorded)"
       - "entry: observation energy_ledger 0.1.0; the run's account"
+    verification:
+      - "tests/energy/test_compensated_sums.py::test_each_paired_sum_is_the_exact_sum_of_its_terms_to_the_pairs_rounding"
+      - "tests/energy/test_compensated_sums.py::test_control_the_plain_sum_of_the_same_terms_fails_the_same_line_on_every_seed"
+      - "tests/energy/test_compensated_sums.py::test_a_sum_of_the_ledger_is_a_pair_beside_every_record_and_the_step_returns_the_same_fields"
+      - "tests/energy/test_compensated_sums.py::test_the_balance_of_a_series_that_cancels_exactly_is_zero_to_the_rounding_of_the_sums_it_subtracts"
+      - "tests/energy/test_compensated_sums.py::test_the_derivative_of_a_paired_sum_with_respect_to_its_terms_is_the_plain_sums"
     residual_risk: >
-      Not measured: the ledger's own sums at 1e5 steps in float32 (the series is synthetic); the sums' size on script A's
-      run lengths; the effect on result.energy's account, which uses the totals.
-    workaround: "Run in float64 where a run is long (1e4 steps or more) and the balance matters, or sum the per-step records (step_work, step_terms) on the host in float64."
-    planned_resolution: "Open. A small fix after PR 205 (the ledger on an apparatus) merges: the run's totals summed on the host in float64 from the per-step records, or compensated in the loop; this is the guard the design record's gates list for float32 (the energy terms accumulated in float64). This entry changes no code."
+      After the fix: the sums are held at 1e5 steps on synthetic series driven through the ledger's own update (recorded)
+      under a scan, not on a metered body's run of that length (none was taken; the per-step terms of a body are not
+      drawn like these). The balance is a difference of the sums judged in the run's dtype, so its own arithmetic rounds
+      at a few eps of the sums it subtracts, however they were accumulated (the test of an exactly cancelling series holds
+      it to that line; it does not separate the pair from a plain sum on every seed, and says so). The step scale is a
+      sum of magnitudes and is kept plain (a positive series, measured below). A reader of the field alone gets the sum
+      rounded to the run's dtype; the balance and the loss lines read the low part too. The derivative of a paired sum
+      with respect to a term is the plain sum's, itself a plain sum of the tangents. Not measured: a GPU (the pair relies
+      on no compiler contraction of an addition, which none performs on CPU), a longer run than 1e5 steps.
+    workaround: "None needed after the fix. Before it: run in float64 where a run is long (1e4 steps or more) and the balance matters, or sum the per-step records (step_work, step_terms) on the host in float64."
+    planned_resolution: "Resolved in 0.3.0.dev2: the ledger's running sums of a signed series are pairs (a total and the part below its last place), by the same error-free sum the rotating field's phase uses, now in mime.core._error_free."
 
   - anomaly_id: MIME-ANO-150
     title: "The near-contact margin: below the MRS rung's resolution the near-wall film is neither resolved nor handed to the lubrication, and the effect at script A's margin is unbounded"
