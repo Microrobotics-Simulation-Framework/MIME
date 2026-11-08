@@ -5,7 +5,15 @@ solutions with Blake's singular image (``plane_oracles.mfs``, sharing no code wi
 are committed (``tests/differential/references/plane_mfs.json``, written by ``generate_plane_mfs.py``, pinned by its
 sha256). The sphere at a force spacing of 0.3 radii with a blob of 0.1, its quadrature by the blob's rule; the image at
 the force points (the default) a radius and half a radius from the wall, and integrated over the cells near the wall
-(``wall_refinement=2``) at 0.3 and 0.15 radii, a spacing and half a spacing.
+(``wall_refinement=2``) a force spacing from it; each gap with the sphere unturned (a pole of its sampling grid facing
+the wall) and turned by 1.2 rad, the same body sampled otherwise against the wall.
+
+**Where the line holds, and where it does not** (the phase's map, the node's own path, float64): at a force spacing or
+more from the wall every entry lies within 3.7% of its oracle, at spacings of 0.3 and 0.2 radii, in both orientations.
+At half a spacing the normal entry, the squeeze, is the first to go: integrated over the cells, 2.6% and 4.6% off at a
+spacing of 0.3 radii, 5.0% and 14.8% at 0.2 (the sphere's grid pole facing the wall the worse), and at the force points
+it overshoots and then collapses below about half a spacing; that is the drag's near-wall validity line (the drag
+raises ``near_wall`` within a spacing), not this image's, and lubrication's hand-over is what closes it.
 
 - **The entries** (float64): each within ``ENTRY_LINE`` of its oracle, the coupling judged on ``sqrt(R_tt R_rr)``, the
   scale it couples (far from the wall it is near zero, and its relative error noise). The line holds the coarse MRS's
@@ -39,12 +47,19 @@ from mime.nodes.hydro.mrs import _plane
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 
 REFERENCE = Path(__file__).parents[1] / "differential" / "references" / "plane_mfs.json"
-REFERENCE_SHA256 = "TO BE PINNED"
+REFERENCE_SHA256 = "9f457cbec8526288b75fb213c1d838d70f90725136b0cd1d03bf6e4bd60968d9"
 SPACING = 0.3
 #: The gaps judged, in the sphere's radius, by the image's form: at the force points, and integrated over the cells.
-GAPS = {None: (1.0, 0.5), 2: (0.3, 0.15)}
-ENTRY_LINE = float("nan")
-FLOAT32_LINE = float("nan")
+GAPS = {None: (1.0, 0.5), 2: (0.3,)}
+#: The orientations: unturned (a pole of the sphere's sampling grid faces the wall) and turned by 1.2 rad about x.
+TURNS = ((1.0, 0.0, 0.0, 0.0), (math.cos(0.6), math.sin(0.6), 0.0, 0.0))
+#: Each entry's line against its oracle: the coarse MRS's own error at these gaps measured at most 2.8% (the normal,
+#: integrated, the sphere turned; the rotation 1.8% to 2.3%, along the wall 0.8% to 1.2%, the coupling under 0.2% of its
+#: scale); the flipped terms' least shift, 57% (the doublet's, on the normal a radius out), eleven times over it.
+ENTRY_LINE = 0.05
+#: Float32 against float64 on each entry's diagonal scale: measured at most 5.0e-6 at these gaps and half a spacing
+#: (integrated, 0.15 radii), twenty times under it.
+FLOAT32_LINE = 1e-4
 TERMS = ("stokeslet", "doublet", "dipole")
 
 
@@ -62,8 +77,8 @@ def oracle(gap: float) -> dict[str, float]:
             "coupling_scale": float(math.sqrt(held[0, 0] * held[4, 4]) / (6 * math.pi))}
 
 
-def resistances(refinement, gaps, x64: bool = True) -> dict[float, dict]:
-    """The node's resistance and least scaled eigenvalue at each gap, the sphere unturned, built once."""
+def resistances(refinement, gaps, x64: bool = True, orientation=TURNS[0]) -> dict[float, dict]:
+    """The node's resistance and least scaled eigenvalue at each gap, the sphere at ``orientation``, built once."""
     held = jax.config.jax_enable_x64
     jax.config.update("jax_enable_x64", x64)
     try:
@@ -74,7 +89,7 @@ def resistances(refinement, gaps, x64: bool = True) -> dict[float, dict]:
         step = jax.jit(lambda pose: node.update(state, {"pose": pose}, 1e-3, params=leaves))
         found = {}
         for gap in gaps:
-            pose = jnp.asarray((0.0, 0.0, RADIUS * (1.0 + gap), 1.0, 0.0, 0.0, 0.0), dtype=state["resistance"].dtype)
+            pose = jnp.asarray((0.0, 0.0, RADIUS * (1.0 + gap), *orientation), dtype=state["resistance"].dtype)
             out = step(pose)
             found[gap] = {"resistance": np.asarray(out["resistance"], dtype=np.float64),
                           "least": float(out["least_eigenvalue"])}
@@ -100,12 +115,13 @@ def test_the_reference_is_the_pinned_file_and_its_mfs_agrees_with_brenner_and_it
             assert row["asymmetry"] <= 1e-5, (setting, gap)
         coarse, fine = (np.asarray(held["rows"][f"{s} {gap}"]["resistance"]) for s in ("coarse", "fine"))
         scale = np.sqrt(np.abs(np.outer(np.diag(fine), np.diag(fine))))
-        assert float(np.max(np.abs(coarse - fine) / scale)) <= 1e-3 * ENTRY_LINE / 1e-2, gap
+        assert float(np.max(np.abs(coarse - fine) / scale)) <= ENTRY_LINE / 50.0, gap
 
 
+@pytest.mark.parametrize("orientation", TURNS, ids=["unturned", "turned"])
 @pytest.mark.parametrize("refinement", sorted(GAPS, key=str), ids=["at the force points", "integrated"])
-def test_each_entry_lies_within_the_line_of_its_exact_answer(refinement):
-    for gap, held in resistances(refinement, GAPS[refinement]).items():
+def test_each_entry_lies_within_the_line_of_its_exact_answer(refinement, orientation):
+    for gap, held in resistances(refinement, GAPS[refinement], orientation=orientation).items():
         found = misses(held["resistance"], gap)
         print(f"\nwall_refinement {refinement}, gap {gap} a ({gap / SPACING:.3g} s): {found}")
         assert all(abs(value) <= ENTRY_LINE for value in found.values()), (gap, found)
