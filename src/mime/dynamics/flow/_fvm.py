@@ -261,8 +261,8 @@ class FVM(Dynamics):
             if line is not None and peak * dt / h > line * (1.0 + 1e-9):
                 found.append(Problem(
                     "flow.cfl-predicted",
-                    f"the drive gives the empty tube a peak speed of {peak:.4g} m/s (Poiseuille's centreline and the "
-                    f"harmonic's Womersley peak), so max|u| dt / h = {peak * dt / h:.3g} at dt = {dt:.4g} s, past the "
+                    f"the drive gives the empty tube a peak speed of {peak:.4g} m/s from rest (Poiseuille's centreline "
+                    f"and twice the harmonic's Womersley peak), so max|u| dt / h = {peak * dt / h:.3g} at dt = {dt:.4g} s, past the "
                     f"{name} scheme's CFL line of {line:.3g} along the vessel's axis: its convection would not be stable",
                     f"use dt <= {line * h / peak:.4g} s, or dt='auto'"))
             return found

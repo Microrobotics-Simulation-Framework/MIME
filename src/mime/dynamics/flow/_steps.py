@@ -31,6 +31,11 @@ BODY_FORCE = "body_force"
 #: against its planar calibration; dt="auto" at the line, on a tube whose wall sat 0.03 cells out, read its CFL 0.7 %
 #: over the line and stopped, before this was added).
 WALL_REACH_CELLS = 0.25
+#: The harmonic's peak from rest over its periodic state's: a run starts from rest, and an inviscid core driven by
+#: ``A cos(omega t + phi)`` from rest moves as ``(A / omega)(sin(omega t + phi) - sin phi)``, up to twice its periodic
+#: peak (measured: at alpha 6 the start overshot the periodic peak by 8 %, and dt="auto" on the periodic peak alone
+#: predicted 0.92 of the measured largest CFL).
+START_FROM_REST = 2.0
 #: The peak of ``|D(rho)|`` over the cross-section is taken on this many radii (the profile is smooth; at alpha 50 its
 #: Stokes layer holds about 30 of them).
 _RADII = 1001
@@ -75,13 +80,14 @@ def harmonic_peak(alpha: float) -> float:
 
 
 def predicted_peak(drive: Drive, radius: float, nu: float) -> float:
-    """The largest axial speed the drive gives an empty straight tube of ``radius`` (m/s): the steady centreline plus
-    the harmonic's peak, in magnitude. The step rule passes the radius widened by :data:`WALL_REACH_CELLS`."""
+    """The largest axial speed the drive gives an empty straight tube of ``radius`` (m/s) over a run from rest: the
+    steady centreline (approached from below) plus the harmonic's periodic peak times :data:`START_FROM_REST`, in
+    magnitude. The step rule passes the radius widened by :data:`WALL_REACH_CELLS`."""
     steady = abs(drive.steady) * radius ** 2 / (4.0 * nu)
     if not drive.amplitude:
         return steady
     alpha = radius * math.sqrt(2.0 * math.pi * drive.frequency / nu)
-    return steady + drive.amplitude * radius ** 2 / nu * harmonic_peak(alpha)
+    return steady + START_FROM_REST * drive.amplitude * radius ** 2 / nu * harmonic_peak(alpha)
 
 
 def steps_a_period(dt: float, period: float | None) -> float | None:
@@ -109,4 +115,4 @@ def report_lines(scheme: str, viscous_number: float, viscous_line: float | None,
     return tuple(lines)
 
 
-__all__ = ["BODY_FORCE", "WALL_REACH_CELLS", "Drive", "axial_drive", "harmonic_peak", "predicted_peak", "report_lines", "steps_a_period"]
+__all__ = ["BODY_FORCE", "START_FROM_REST", "WALL_REACH_CELLS", "Drive", "axial_drive", "harmonic_peak", "predicted_peak", "report_lines", "steps_a_period"]

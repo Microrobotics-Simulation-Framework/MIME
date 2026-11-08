@@ -19,8 +19,8 @@ a state handed over from another run).
 
 **Choosing the scheme and the timestep.** With no `scheme=` the build picks one from the viscous limit: RK3 where its
 explicit viscosity is stable at the run's `dt` (its viscous number, nu dt over the spacing squared, within its line), IMEX Euler otherwise. Before any step, the build
-predicts the flow's CFL number from what it knows (the drive's steady part as Poiseuille's centreline, its harmonic's peak
-from Womersley's profile, in the empty tube) and refuses a `dt` past the chosen scheme's line, with the timestep that
+predicts the flow's CFL number from what it knows (the drive's steady part as Poiseuille's centreline and its harmonic's
+peak from Womersley's profile, doubled for a start from rest, in the empty tube) and refuses a `dt` past the chosen scheme's line, with the timestep that
 keeps it: "use dt <= X, or dt='auto'". `Experiment(..., dt="auto")` takes the largest stable step instead, dividing a
 pulsatile drive's period into a whole number of steps, and the build report says which scheme it chose, its margins,
 how many steps a period that is, and what the other scheme's step would have been. A saved experiment keeps the step
