@@ -200,9 +200,18 @@ RIGID_BODY = register_port_kind(PortKind(
     "a rigid body's twist about its centre of mass in the world, against the wrenches on it: the loads read at the "
     "step's start, the resistance and a confinement solved for in its step"))
 JOINT = register_port_kind(PortKind(
-    "joint", JOINT_VELOCITIES.name, MappingProxyType({LINK_WRENCH.name: DeliveryKind.LOAD}),
+    "joint", JOINT_VELOCITIES.name, MappingProxyType({
+        LINK_WRENCH.name: DeliveryKind.LOAD, LINK_MOMENTUM.name: DeliveryKind.FLOW_IN,
+        LINK_INERTIA.name: DeliveryKind.INERTIA}),
     "a chain segment's joint rates against the generalised forces of the loads on its frames, read at the step's "
-    "start and paired with its frames' change", mapped=frozenset({LINK_WRENCH.name})))
+    "start and paired with its joints' change; the momenta of the spinners its frames carry, whose gyroscopic torque "
+    "it returns at the rates it applies it at; and the inertia they carry, paired by its change",
+    mapped=frozenset({LINK_WRENCH.name})))
+SPINNER = register_port_kind(PortKind(
+    "spinner", FRAME_ANGULAR_VELOCITIES.name, MappingProxyType({LINK_WRENCH.name: DeliveryKind.LOAD}),
+    "a rotor carried by its absolute spin about an axis fixed in its host: the loads on its frames, read at the step's "
+    "start, of which the torque on the rotor about its axis is paired with the rotor's turn, and the rest passes to "
+    "its host, which pairs it", mapped=frozenset({LINK_WRENCH.name})))
 DELIVERED_INERTIA = register_port_kind(PortKind(
     "delivered_inertia", FRAME_ANGULAR_VELOCITIES.name, MappingProxyType({LINK_INERTIA.name: DeliveryKind.INERTIA}),
     "an inertia a frame carries beyond its own, paired by its change"))
@@ -211,5 +220,6 @@ FLOW_IN = register_port_kind(PortKind(
     "a spinner's momentum on its host frame, whose angular velocity it receives: paired with the gyroscopic torque "
     "it returns"))
 
-__all__ = ["DELIVERED_INERTIA", "ENERGY", "FLOW_IN", "JOINT", "POWER", "RIGID_BODY", "Definiteness", "DeliveryKind",
+__all__ = ["DELIVERED_INERTIA", "ENERGY", "FLOW_IN", "JOINT", "POWER", "RIGID_BODY", "SPINNER", "Definiteness",
+           "DeliveryKind",
            "EnergyClass", "PortKind", "port_kind", "port_kinds", "register_port_kind"]

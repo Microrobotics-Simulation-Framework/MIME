@@ -106,6 +106,16 @@ the saved form carries it.
 - When the commanded motion is faster than the real arm can follow: the kinematic rung follows its command whatever
   its speed; the watch on joint speeds and accelerations against the description's limits comes with validity lines.
 
+**The energy ledger.** With `EnergyLedger` attached, the dynamic rung is metered (the `joint` port kind): its step
+identity is recorded in its own step, with its commands' work under their writer, each law's loads on its frames, its
+spinners' gyroscopic exchange and the inertia its frames carry, and the laws it holds itself under their names: its
+weight (`<arm>.weight`, a potential), its damping, and its stops' and friction's impulses (dissipative). The kinematic
+rung takes no load, and is outside the components: a prescribed motion. What a mounted motor hands the arm
+(`<motor>.reaction`) declares no energy class: it is booked under its name, neither a loss nor a supply, and its two
+halves' sum (the arm's and the motor's) is the coupling's first-order error, reported and not judged. The arm's weight
+is a potential: its joint forces are the negative gradient of `-sum m_i g . c_i(q)` (a test holds it), and its run
+residual beyond rounding is the step's own first-order pairing, said "not judged" on its line.
+
 **Chains, mounts and armature.** How a segment is placed, what mounts on a frame and where a joint's armature comes from: [the multibody note](../../multibody.md).
 
 **Versions.** `arm` 0.1.0 is its first: the kinematic rung, and then the dynamic rung, added before

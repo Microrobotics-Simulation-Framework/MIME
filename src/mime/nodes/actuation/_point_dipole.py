@@ -158,6 +158,17 @@ class PointDipoleNode(MountedNode):
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {**{f"points_{slot}": node_input(POSE_UNITS, (7,)) for slot in self._slots()}, **self.mounted_inputs()}
 
+    def energy_at(self, p: Mapping[str, Any], mount_poses: Array | None, slot: str, pose: Array,
+                  moment: Array) -> Array:
+        """The energy ``-m . B`` of a body's moment ``moment`` (in its own frame, turned by ``pose``'s orientation) at
+        the point ``slot`` reads from ``pose``, in this dipole's field with the frames it is mounted on at
+        ``mount_poses`` (``None`` for a magnet placed in the world): the magnetic family's energy for the pair, which the
+        energy ledger's account takes at a run's two ends."""
+        part = self.base(p, cast(PointDipoleInputs, {} if mount_poses is None else {"mount_poses": mount_poses}))
+        held = quaternion.rotate(part[3:], jnp.asarray(p["moment"], dtype=part.dtype))
+        field, _ = point_dipole(held, part[:3], self.reader_point(p, slot, pose))
+        return -jnp.dot(quaternion.rotate(pose[3:], jnp.asarray(moment, dtype=pose.dtype)), field)
+
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:

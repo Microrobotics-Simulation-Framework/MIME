@@ -71,8 +71,8 @@ live/_zmtp.py::Client._fill ConnectionError 1  # the server closed a client's co
 live/_zmtp.py::parse_endpoint ValueError 1  # an endpoint that is not tcp://: mime serve refuses it first, coded (live.remote-bind); a client's own call raises it raw
 materials/_records.py::RecordFile.read OSError 1  # invariant: a record file constructed with neither a path nor a packaged record, which its constructor refuses
 nodes/actuation/_chain.py::KinematicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
-nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_dynamic.py::DynamicArmNode.__init__ ValueError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/actuation/_dynamic.py::DynamicMotorNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_reaction.py::SourceReactionNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::IntegratingRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -158,9 +158,11 @@ terms.py::licence_verdict ValueError 1  # invariant: a licence MIME judges was h
 testing/__init__.py::<module> ImportError 1  # the verify extra's import message, at import
 testing/_adapters.py::_checks.at ValueError 1  # a test harness's argument: a location_for that turns the store's address into another scheme, raised in the adapter author's own test
 testing/_families.py::check_closed_loop.prop AssertionError 1  # the closed-loop case's own failure signal inside its Hypothesis property, caught there and returned as the case's FAIL with its draw
+testing/_families.py::_source_of ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_families.py::conformance ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_families.py::family_named KeyError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_families.py::loop_works ValueError 2  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
+testing/_families.py::pair_loop_works ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_families.py::register_family ValueError 1  # tooling: MIME's documentation, its test harness or the command's own entry point, not a script's public call
 testing/_fresh_load.py::<module> SystemExit 1  # the fresh-load helper's exit code
 testing/_loopback.py::certificates RuntimeError 1  # a test harness's environment: openssl missing, raised in a test so that it errors rather than passes

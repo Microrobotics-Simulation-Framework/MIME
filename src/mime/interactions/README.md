@@ -139,7 +139,10 @@ resistance definite by construction on the surrogate rung (its network's `L L^T`
 lubrication's semidefinite part added; measured over script A's tube, to its declared tilt, which is the domain the
 check covers) and at the state on the MRS rung, checked at run time; the contact is
 dissipative, held in its body's step, which books its loss and its projection's term under its name. The magnetic
-laws declare no class yet, each with its reason (`unmetered`): 0.2.0's waits on the magnetic family's energy at the
-magnet's centroid; the kept 0.1.0 pair does net work round a closed loop (MIME-ANO-137).
+laws 0.2.0 are potential laws: with their reactions on a dynamic source, the pair is the derivative of one energy,
+`U = -m . B` at the magnet's centroid, which the magnetic family states once for the pair (its energy case and its
+closed-loop case, the source's loops included); where the source is outside (a uniform field, a magnet on a kinematic
+arm), their work is supplied by it. The kept 0.1.0 pair declares no class, by its reason: it does net work round a
+closed loop (MIME-ANO-137).
 
 Releases are explained in the [package manifest](../README.md#status).
