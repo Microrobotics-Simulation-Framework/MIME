@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Resistive force theory, `Drag.RFT`, on kinds with a centreline** (phase R1). A slender body's resistance from local
+  drag coefficients along its centreline, its segments feeling no interaction through the free fluid, with a wall's
+  image between its points (the tube's table, through the wall kind, never by name). The coefficients are a setting,
+  `coefficients=`: Lighthill's on a segment with a wavelength (a helix), a slender prolate spheroid's on a straight one
+  (the default per segment), each computed in the step from the viscosity and the kind's numbers, so its derivatives
+  in the geometry and the viscosity are exact (checked against a central difference that rebuilds, both modes, both
+  loss scales, with a `stop_gradient` and a baked coefficient as controls). Its resistance is judged each step as
+  **semidefinite at a floor** (`floored_least_eigenvalue`, 64 units in the last place of the run's dtype): a straight
+  centreline's spin about itself meets no drag. With a wall, a body whose local drag outweighs its true resistance
+  (a helix the size of its vessel) is refused at build, `drag.rft-indefinite`, and a step that reaches one
+  stops the run, naming the MRS as the route. A kind without a centreline is refused, `drag.no-centreline`, the
+  message naming the new guide page on adding one (a custom geometry, an STL or CAD mesh). The rung was added to drag
+  0.4.0, changing nothing the other rungs compute. Its validity lines, measured against the MRS rung on the same
+  bodies, are recorded in `docs/data/slender_validity/`.
+- **The centreline capability** (`mime.registry.Centreline`): a tree of segments joined at named junctions, each a
+  JAX function of its kind's parameters giving the point, the unit tangent and the rotation-minimising frame's normal
+  at arc length, with an optional local radius, a filament radius and a wavelength. Declared by the new **`Helix`**
+  (registry `helix` 0.1.0: a helical filament with hemispherical caps, its origin its centroid, its samples
+  quasi-uniform), by `Capsule` (tip to tip), by a prolate `Ellipsoid` (its long axis) and by `Tube` (its axis, the
+  radius from the lumen's signed distance). `mime.scene.polyline` declares one through points; `mime.testing.
+  centreline_problems` holds a kind's to the contract.
+
 - **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
   `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the
   spinners' momenta and the inertia its frames carry, and the new `spinner` kind): each records its step identity

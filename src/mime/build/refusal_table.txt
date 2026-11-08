@@ -127,10 +127,14 @@ drag.mrs-on-wall              user
 drag.mrs-quadrature           user
 drag.mrs-resistance           user
 drag.no-axis                  user
+drag.no-centreline            user
 drag.no-region                user
 drag.no-samples               user
 drag.outside-training         user
 drag.patches                  user
+drag.rft-coefficients         user
+drag.rft-indefinite           user
+drag.rft-wall-range           user
 drag.wall-kind                user
 drag.wall-range               user
 dynamics.wrong-thing          user

@@ -53,6 +53,8 @@ from mime.scene._sampling import (
     sampled_points,
     sampled_reach,
 )
+from mime.scene._centreline import polyline, straight
+from mime.scene._helix import Helix
 from mime.scene._screw import Screw
 from mime.scene._kinds import kind_frame, placed, shape_settings
 from mime.scene._read import KindOnStage, geometry_schema_problems, read_kind
@@ -101,6 +103,7 @@ __all__ = [
     "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
     "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
+    "Helix", "polyline", "straight",
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
     "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
     "VectorPrim", "VisualPins", "VisualPrim", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",

@@ -9,10 +9,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated, Any, cast, override
 
-from mime.core import jnp, switch
+import numpy as np
+
+from mime.core import CYLINDER, jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL, convention
 from mime.registry import (
+    Centreline,
     Direction,
     DirectionLike,
     Drawing,
@@ -22,6 +25,7 @@ from mime.registry import (
     RegionPrimitive,
     register_geometry,
 )
+from mime.scene._centreline import straight
 from mime.scene._sampling import length_of, magnitude_of
 from mime.units import Length, Magnitude, Quantity, m
 
@@ -122,6 +126,26 @@ class Tube(Geometry):
         if name != "axis":
             raise KeyError(name)
         return _vector(settings, "axis")
+
+    @override
+    def centreline(self, settings: Mapping[str, Magnitude]) -> Centreline:
+        """Its axis from end to end, one segment of its length through its centre; its radius along it the lumen's,
+        derived from the lumen's signed distance at the axis's points, so that it needs no stored data."""
+        axis = np.asarray(_vector(settings, "axis"), dtype=np.float64)
+        axis = axis / np.linalg.norm(axis)
+
+        def start(parameters: Mapping[str, Any]) -> Any:
+            return jnp.asarray(parameters["centre"]) - parameters["length"] / 2.0 * jnp.asarray(axis)
+
+        def radius(parameters: Mapping[str, Any], s: Any) -> Any:
+            at = jnp.asarray(s)
+            points = jnp.asarray(start(parameters), dtype=at.dtype)[None, :] + at[:, None] * jnp.asarray(axis,
+                                                                                                     dtype=at.dtype)
+            lumen = {"centre": jnp.asarray(parameters["centre"], dtype=at.dtype), "axis": jnp.asarray(axis, dtype=at.dtype),
+                     "radius": parameters["inner_radius"]}
+            return -CYLINDER.signed_distance(lumen, points)
+
+        return Centreline((straight(start, axis, lambda parameters: parameters["length"], radius=radius),))
 
     @override
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
