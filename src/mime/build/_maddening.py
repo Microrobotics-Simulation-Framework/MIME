@@ -23,6 +23,8 @@ from maddening.core.schedule import topological_sort
 from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
+from mime.core import MimeNode, one_ulp_up_leaf
+
 type NodeFields = dict[str, dict[str, Array]]
 
 
@@ -562,18 +564,15 @@ def initial_fields(node: SimulationNode) -> dict[str, Array]:
     return cast(dict[str, Array], _held(node).initial_state())
 
 
-#: The most numbers a parameter :func:`params_one_ulp_up` moves holds: a body's or a medium's constants, a frame, an
-#: inertia tensor. A table or a precomputed array is kept: moving it would copy it to every call, and the constants
-#: already move the rounding of every step that reads the body.
-NUDGED_SIZE = 64
-
-
 @contextmanager
 def params_one_ulp_up(graph: GraphManager) -> Generator[None]:
     """For the block, every parameter of a node that ``graph``'s compiled step reads (MADDENING's own record of it), of
-    at most :data:`NUDGED_SIZE` numbers, with each nonzero floating entry one unit in the last place up, in its dtype;
-    the tree put back after, the same object. Zeros, integers and flags are kept, and so is every parameter where the
-    step's reads cannot be told. The step reads its parameters on every call, so nothing is traced or compiled again."""
+    at most :data:`~mime.core.NUDGED_SIZE` numbers, with each nonzero floating entry one unit in the last place up, in
+    its dtype (:func:`~mime.core.one_ulp_up_leaf`), and each parameter a node makes from those and holds among them
+    made again from the moved ones, once (:meth:`~mime.core.MimeNode.made_again`: an MRS drag's held matrix), so that
+    the step reads it rather than making it at each step; the tree put back after, the same object. Zeros, integers and
+    flags are kept, and so is every parameter where the step's reads cannot be told. The step reads its parameters on
+    every call, so it is neither traced nor compiled again."""
     held = _held(graph)
     tree = cast(dict[str, Any], held.params)
     reads = cast(set[tuple[str, str]] | None, held._params_read_by_step())  # noqa: SLF001
@@ -581,12 +580,13 @@ def params_one_ulp_up(graph: GraphManager) -> Generator[None]:
     moved = {owner: dict(leaves) for owner, leaves in nodes.items()}
     for owner, key in sorted(reads or ()):
         leaf = moved.get(owner, {}).get(key)
-        if leaf is None or not hasattr(leaf, "dtype") or int(np.size(leaf)) > NUDGED_SIZE:
-            continue
-        value = np.asarray(leaf)
-        if value.dtype.kind == "f":
-            up = np.nextafter(value, np.asarray(np.inf, dtype=value.dtype))
-            moved[owner][key] = device_array(np.where((value != 0) & np.isfinite(value), up, value).astype(value.dtype))
+        up = one_ulp_up_leaf(leaf) if leaf is not None and hasattr(leaf, "dtype") else None
+        if up is not None:
+            moved[owner][key] = device_array(up)
+    for owner in sorted({owner for owner, _ in reads or ()} & set(moved)):
+        node = graph.get_node(owner)
+        if isinstance(node, MimeNode):
+            moved[owner].update(node.made_again(moved[owner]))
     held.params = {**tree, "nodes": moved}
     try:
         yield
