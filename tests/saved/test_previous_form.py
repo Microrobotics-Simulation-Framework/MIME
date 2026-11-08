@@ -133,7 +133,7 @@ def test_the_upgrade_and_the_previous_form_are_inverse():
     upgraded_held, version = upgraded_lock(lock)
     assert version == 1 and resolved_in_form(upgraded_held["resolved"], 1) == lock["resolved"]
     current = {**document, "schema": "mime.document/11"}
-    assert upgraded_document(current) == (current, 10, ())
+    assert upgraded_document(current) == (current, 11, ())
 
 
 def test_a_previous_folder_saved_again_is_of_the_current_form(tmp_path: Path):

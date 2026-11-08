@@ -390,7 +390,7 @@ def test_the_fixture_is_a_folder_of_version_three_with_a_layer():
 def test_a_version_three_folder_loads_declaring_no_licence(tmp_path: Path):
     report = Experiment.load(copied(tmp_path)).load_report
     assert report is not None
-    assert report.text().splitlines()[1] == ("saved form: mime.document/3, read as version 10; it declares no "
+    assert report.text().splitlines()[1] == ("saved form: mime.document/3, read as version 11; it declares no "
                                              "licence, terms or permission, being of a form before them")
     assert report.text().splitlines()[2] == "input hash: reproduced exactly"
 
