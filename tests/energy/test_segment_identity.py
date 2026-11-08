@@ -9,7 +9,8 @@ states and on the laws alone, each with a control that fails every run.
 - **The rotor's inequality across its axis and its host's carried inertia, one workless law**, settled on the law
   alone: the inequality's torque on the spin is the derivative of the host's kinetic energy ``(1/2) omega^T D(phi)
   omega`` in the rotor's angle, ``(omega x e) . D omega = d/d phi``, within 16 eps of its scale, on drawn axes,
-  inequalities, angles and host rates. The controls: the torque scaled by 0.9 and its sign flipped fail on every draw.
+  inequalities, angles and host rates, the scale being the torque's own terms before they cancel. The controls: the
+  torque scaled by 0.99 and by 0.9, and its sign flipped, fail on every draw.
 - **The spinners' gyroscopic exchange**, workless: the Cayley step keeps ``v^T M v`` within 16 eps of
   ``|v|^T |M| |v|`` for a skew ``G`` from drawn momenta and Jacobians; the control, a symmetric part added to ``G``,
   fails on every draw.
@@ -34,7 +35,7 @@ from ledger_cases import in_dtype, swinging_rotor
 from mime.core import ledger, quaternion
 from mime.dynamics import Arm, Motor
 from mime.nodes.actuation import DynamicArmNode, DynamicMotorNode
-from mime.nodes.actuation._spinner import cayley, deviator_torque, gyroscopic_matrix, turned
+from mime.nodes.actuation._spinner import cayley, deviator_torque, gyroscopic_matrix, skew, turned
 from mime.testing import PORT_CASES, step_identity
 from mime.units import s
 
@@ -106,23 +107,38 @@ def exchanges(draw: Any) -> dict[str, np.ndarray]:
             "rate": signed(10.0, 3)}
 
 
+def _rotor(drawn: dict[str, np.ndarray], angle: Any) -> Any:
+    """The rotor's pose at ``angle`` on its stator: the host's turn composed with the turn about the rotor's axis."""
+    return quaternion.multiply(jnp.asarray(drawn["host"]), quaternion.exponential(angle * jnp.asarray(drawn["axis"])))
+
+
 def _deviator(drawn: dict[str, np.ndarray], angle: Any) -> Any:
     """The rotor's half difference in the world at ``angle`` on its stator, as the motor turns it: its base frame's
-    ``unequal`` turned by the rotor's pose, the host's turn composed with the turn about its axis."""
-    rotor = quaternion.multiply(jnp.asarray(drawn["host"]), quaternion.exponential(angle * jnp.asarray(drawn["axis"])))
-    return turned(jnp.asarray(drawn["unequal"]), quaternion.rotation_matrix(rotor))
+    ``unequal`` turned by the rotor's pose."""
+    return turned(jnp.asarray(drawn["unequal"]), quaternion.rotation_matrix(_rotor(drawn, angle)))
 
 
 def _exchange_residual(drawn: dict[str, np.ndarray], factor: float) -> tuple[float, float, float]:
     """The inequality's torque on the spin (scaled by ``factor``) less the derivative of the host's kinetic energy in
-    the rotor's angle, the scale of the arithmetic they are formed by, and the derivative."""
+    the rotor's angle, the scale of the arithmetic they are formed by, and the derivative.
+
+    The scale is the torque's own terms, taken before they cancel. The torque is ``(w x e) . (D w)`` with ``D = R D0
+    R^T`` the half difference in the world: ``D``'s entries are sums of products of size ``|R| |D0| |R|^T``, and the
+    sums cancel, so each product's rounding is on the uncancelled size, not on the result's. Taking the absolute
+    value of every factor, the terms' size is ``(|w| x |e|) . (|R| |D0| |R|^T |w|)``, the cross product with the signs
+    of its two products dropped. A scale on the result's entries (``|w|^T |D| |w|``) was 5.6 times too small on the
+    draw that flaked: the identity's residual was 18.3 units of eps on that scale on CI and 10.6 here (the rounding
+    differs by platform, so the scale must not), and 3.3 and 1.9 units of eps on this one. Over 20,000 draws the
+    residual reaches 5.5 units of eps on this scale (its 99.9th percentile 2.4), against the 16 allowed."""
     with jax.enable_x64(True):
         rate = jnp.asarray(drawn["rate"])
         world_axis = quaternion.rotate(jnp.asarray(drawn["host"]), jnp.asarray(drawn["axis"]))
         angle = jnp.asarray(drawn["angle"])
         torque = factor * deviator_torque(_deviator(drawn, angle), world_axis, rate)
         derivative = jax.grad(lambda phi: 0.5 * rate @ _deviator(drawn, phi) @ rate)(angle)
-        scale = float(jnp.abs(rate) @ jnp.abs(_deviator(drawn, angle)) @ jnp.abs(rate))
+        rotation = jnp.abs(quaternion.rotation_matrix(_rotor(drawn, angle)))
+        products = rotation @ jnp.abs(jnp.asarray(drawn["unequal"])) @ rotation.T
+        scale = float((jnp.abs(skew(rate)) @ jnp.abs(world_axis)) @ (products @ jnp.abs(rate)))
         return float(torque - derivative), scale, float(derivative)
 
 
@@ -133,10 +149,13 @@ def test_the_rotor_s_inequality_torque_is_the_derivative_of_its_host_s_energy_in
     assert abs(residual) <= ledger.IDENTITY_ULPS * float(np.finfo(np.float64).eps) * scale, (residual, scale)
 
 
-@pytest.mark.parametrize("factor", [0.9, -1.0])
+@pytest.mark.parametrize("factor", [0.99, 0.9, -1.0])
 def test_a_scaled_or_flipped_inequality_torque_fails_the_exchange_s_identity_on_every_draw(factor):
     """On every draw with an exchange to see: one whose torque is not zero to rounding (a host turning along the
-    rotor's axis, or across it where the inequality's two moments lie, exchanges nothing, which no scale can fail)."""
+    rotor's axis, or across it where the inequality's two moments lie, exchanges nothing, which no scale can fail).
+    The planted error is 1 %, 10 % and 200 % (the sign) of the torque; a draw is kept when its torque is over 1000
+    floors, so the 1 % error is over 10 floors on every kept draw, where the identity's own rounding (5.5 units of eps
+    over 20,000 draws, a third of one floor) cannot hide it."""
     failed: list[bool] = []
 
     @PROPERTY
