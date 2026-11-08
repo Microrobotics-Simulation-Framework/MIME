@@ -344,9 +344,13 @@ def assemble(plans: PlanSet, law: ControlLaw | None = None) -> Assembled:
     edges: list[EdgeDecl] = [edge for plan in entry_order for edge in builders[plan.owner].edges]
     energy: _ledger.EnergyBoundary | None = None
     if _ledger.ledger_attached(plans):
-        built, edges, energy, refusals = _ledger.attach(plans, built, edges)
+        # The controller's writes inside the compiled step are commands too: a metered receiver books each one it
+        # pairs under the controller, so they are moved with the rest and kept apart again after.
+        count = len(edges)
+        built, rewired, energy, refusals = _ledger.attach(plans, built, [*edges, *controller_edges])
         if refusals:
             raise BuildRefused(refusals, report_of(plans, order, refusals))
+        edges, controller_edges = rewired[:count], rewired[count:]
         nodes = [built[name] for name in order]
     groups = [sorted(group.nodes, key=position.__getitem__) for group in plans.groups]
     physics_lags: tuple[EdgeLag, ...] = ()
