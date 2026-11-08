@@ -1,8 +1,11 @@
 """The solve: the preconditioner contract, Jacobi, the guarded conjugate gradient and its report block.
 
 **Stopping is never silent** (F0's B4 and the stall decision). The CG stops on the **true** residual, recomputed as
-``b - A x`` from its iterate, relative to the right-hand side; or at a stagnation (a check of the true residual that did
-not fall below ``stagnation`` times the last check's); or at its cap; or at a residual that is not finite. It takes at
+``b - A x`` from its iterate, relative to the right-hand side (its last iterate returned); or at a stagnation (over the last ``window`` checks of the
+true residual, none fell below ``stagnation`` times the best before them: CG's residual is not monotone, least of all
+against Jacobi's contrast between the fluid and a stiff interior, so a stagnation is judged against the best over a
+window, never against the last check); or at its cap; or at a residual that is not finite: these three return the
+iterate of the least true residual checked. It takes at
 least one iteration, so a warm start whose residual is already below the tolerance is never accepted unsolved; only an
 exactly zero residual is (a zero right-hand side from a zero start among them).
 
@@ -22,6 +25,7 @@ primal's scale. On the primal it is the best multiple of the plain warm start in
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, override
@@ -46,20 +50,46 @@ _RUNNING, _CONVERGED, _STAGNATED, _AT_CAP, _NOT_FINITE, _AT_ZERO = 0, 1, 2, 3, 4
 type Operator = Callable[[Velocity], Velocity]
 
 
+#: The stagnation stop, set from measurement (``STAGNATION_MEASURED``): over a window of checks of the true residual,
+#: none fell below ``STAGNATION_FACTOR`` times the best before them. Jacobi's CG takes iterations in proportion to the
+#: cells across (and so do its plateaus), so the flow's window spans ``STAGNATION_SPAN`` iterations per cell along the
+#: box's longest side, and at least ``STAGNATION_LEAST_WINDOW`` checks (:func:`stagnation_window`); ``Stopping``'s own
+#: default is ``STAGNATION_WINDOW`` checks.
+STAGNATION_FACTOR = 0.5
+STAGNATION_SPAN = 12
+STAGNATION_LEAST_WINDOW = 5
+STAGNATION_WINDOW = 10
+STAGNATION_MEASURED = (
+    "measured: every solve of the empty tube's 0.1h and 0.01h interiors at D/h 8 to 64, IMEX Euler under Stokes at dt "
+    "10 ms and 0.1 ms and the steady limit, in both dtypes, replayed check by check with no stagnation stop: the window "
+    "clears every converging solve, by 2.6 times the least window that does at the tightest (float32, 0.01h, D/h 32; "
+    "3.8 in float64 at D/h 64); a tolerance below rounding stops stagnated before the cap, at 240 to 940 iterations at "
+    "D/h 8 to 32; float32 at D/h 64 with 0.01h stalls above its 1e-5 (least true residuals 1.1e-5 to 1.3e-4 over 5000 "
+    "iterations), flagged")
+
+
 @dataclass(frozen=True)
 class Stopping:
     """When the CG stops: the relative tolerance on the true residual (a ``params`` leaf: the accuracy-bearing
-    setting, 1e-8 in float64 and 1e-5 in float32 by default), the cap, how often the true residual is checked for a
-    stagnation, the factor a check must beat, and the least iterations taken from a nonzero residual."""
+    setting, 1e-8 in float64 and 1e-5 in float32 by default), the cap, how often the true residual is checked, the
+    stagnation's window (in checks) and the factor a check in it must beat the best before it by, and the least
+    iterations taken from a nonzero residual."""
 
     tolerance: Any
     cap: int = 5000
     check_every: int = 20
-    stagnation: float = 0.9
+    window: int = STAGNATION_WINDOW
+    stagnation: float = STAGNATION_FACTOR
     least_iterations: int = 1
 
 
 DEFAULT_TOLERANCE = {"float64": 1e-8, "float32": 1e-5}
+
+
+def stagnation_window(cells: tuple[int, ...], check_every: int) -> int:
+    """The stagnation's window, in checks, for a box of ``cells``: :data:`STAGNATION_SPAN` iterations per cell along
+    its longest side, and at least :data:`STAGNATION_LEAST_WINDOW` checks."""
+    return max(STAGNATION_LEAST_WINDOW, math.ceil(STAGNATION_SPAN * max(cells) / check_every))
 
 
 def default_tolerance(dtype: Any) -> float:
@@ -72,6 +102,10 @@ def _add(a: Velocity, b: Velocity, scale: Any = 1.0) -> Velocity:
 
 def _scaled(a: Velocity, scale: Any) -> Velocity:
     return (scale * a[0], scale * a[1], scale * a[2])
+
+
+def _finite_or_zero(value: Array) -> Array:
+    return jnp.where(jnp.isfinite(value), value, 0.0)
 
 
 def _select(choose: Array, a: Velocity, b: Velocity) -> Velocity:
@@ -145,17 +179,19 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
                        jnp.where(true0 == 0.0, _AT_ZERO, jnp.where(accepted, _CONVERGED, _RUNNING)))
 
     def going(carry: tuple[Any, ...]) -> Array:
-        return carry[7] == _RUNNING
+        return carry[-1] == _RUNNING
 
     def iterate(carry: tuple[Any, ...]) -> tuple[Any, ...]:
-        x, r, z, d, rz, count, last_check, _ = carry
+        x, r, z, d, rz, count, recent, best, checks, kept, lowest, _ = carry
         ad = operator(d)
-        step = rz / inner(d, ad)
+        # A breakdown (a curvature or an rz that underflowed to zero, past the dtype's rounding floor) takes no step,
+        # so the iterate stays finite and the window sees the residual stop falling: a stagnation, not a NaN.
+        step = _finite_or_zero(rz / inner(d, ad))
         x = _add(x, d, step)
         r = _add(r, ad, -step)
         z = precondition(r)
         rz_next = inner(r, z)
-        d = _add(z, d, rz_next / rz)
+        d = _add(z, d, _finite_or_zero(rz_next / rz))
         count = count + 1
         recursive_small = jnp.sqrt(inner(r, r)) <= threshold
         at_check = (count % stopping.check_every) == 0
@@ -164,26 +200,44 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
             true_r = _add(b, operator(x), -1.0)
             true_norm = jnp.sqrt(inner(true_r, true_r))
             converged = (true_norm <= threshold) & (count >= stopping.least_iterations)
-            stagnated = (~converged) & at_check & (true_norm > stopping.stagnation * last_check)
+            # A regular check enters the window; the one it pushes out joins the best before it.
+            held = jnp.concatenate([recent[1:], true_norm[None]])
+            before = jnp.minimum(best, recent[0])
+            full = checks + 1 >= stopping.window
+            stagnated = (~converged) & at_check & full & (jnp.min(held) > stopping.stagnation * before)
             restart = recursive_small & (~converged)
             true_z = precondition(true_r)
             ended = jnp.where(~jnp.isfinite(true_norm), _NOT_FINITE,
                               jnp.where(converged, _CONVERGED, jnp.where(stagnated, _STAGNATED, _RUNNING)))
+            # The iterate of the least true residual checked, which a solve stopped short returns.
+            lower = true_norm < lowest
             return (_select(restart, true_r, r), _select(restart, true_z, z), _select(restart, true_z, d),
-                    jnp.where(restart, inner(true_r, true_z), rz_next), jnp.where(at_check, true_norm, last_check),
-                    ended.astype(jnp.int32))
+                    jnp.where(restart, inner(true_r, true_z), rz_next), jnp.where(at_check, held, recent),
+                    jnp.where(at_check, before, best), jnp.where(at_check, checks + 1, checks),
+                    _select(lower, x, kept), jnp.where(lower, true_norm, lowest), ended.astype(jnp.int32))
 
         def unchecked(_: Any) -> tuple[Any, ...]:
             ended = jnp.where(jnp.isfinite(rz_next), _RUNNING, _NOT_FINITE).astype(jnp.int32)
-            return r, z, d, rz_next, last_check, ended
+            return r, z, d, rz_next, recent, best, checks, kept, lowest, ended
 
-        r, z, d, rz_next, last_check, ended = lax.cond(recursive_small | at_check, checked, unchecked, None)
+        r, z, d, rz_next, recent, best, checks, kept, lowest, ended = lax.cond(
+            recursive_small | at_check, checked, unchecked, None)
         ended = jnp.where((ended == _RUNNING) & (count >= stopping.cap), _AT_CAP, ended).astype(jnp.int32)
-        return x, r, z, d, rz_next, count, last_check, ended
+        return x, r, z, d, rz_next, count, recent, best, checks, kept, lowest, ended
 
-    initial = (start, r0, z0, z0, inner(r0, z0), jnp.asarray(0, jnp.int32), true0, ended0.astype(jnp.int32))
-    x, _, _, _, _, count, _, ended = lax.while_loop(going, iterate, initial)
-    final = _add(b, operator(x), -1.0)
+    window = jnp.full((stopping.window,), jnp.inf, dtype=dtype)
+    initial = (start, r0, z0, z0, inner(r0, z0), jnp.asarray(0, jnp.int32), window, true0,
+               jnp.asarray(0, jnp.int32), start, true0, ended0.astype(jnp.int32))
+    x, _, _, _, _, count, _, _, _, kept, _, ended = lax.while_loop(going, iterate, initial)
+    # A solve that converged (or was accepted) returns its last iterate; one stopped short, the better of its last and
+    # its best checked one: past the rounding floor the iterate wanders (a planted stall's grew to a true residual of
+    # 7e-2 in float64 at D/h 16), and a cap short of the first check has only its last.
+    last = _add(b, operator(x), -1.0)
+    held = _add(b, operator(kept), -1.0)
+    last_norm, held_norm = inner(last, last), inner(held, held)
+    better = (ended != _CONVERGED) & (ended != _AT_ZERO) & (~jnp.isfinite(last_norm) | (held_norm < last_norm))
+    x = _select(better, kept, x)
+    final = _select(better, held, last)
     relative = jnp.sqrt(inner(final, final)) / jnp.maximum(norm_b, jnp.finfo(dtype).tiny)
     relative = jnp.where(norm_b == 0.0, jnp.sqrt(inner(final, final)), relative)
     report = jnp.stack([count.astype(dtype), jnp.where(jnp.isfinite(relative), relative, -1.0).astype(dtype),
@@ -244,6 +298,7 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
     return solved, report
 
 
-__all__ = ["DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "Jacobi",
+__all__ = ["DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "STAGNATION_FACTOR", "STAGNATION_LEAST_WINDOW",
+           "STAGNATION_MEASURED", "STAGNATION_SPAN", "STAGNATION_WINDOW", "stagnation_window", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "Jacobi",
            "Preconditioner", "Stopping", "default_tolerance", "guarded_cg", "preconditioner_named", "projected_solve",
            "scaling_start"]

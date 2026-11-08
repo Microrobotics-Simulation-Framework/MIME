@@ -15,11 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered band, its stiff interior beyond), stepped by IMEX Euler on the projected monolithic conjugate gradient
   (`Scheme.IMEXEuler()`, convection explicit) or by its steady limit (`Scheme.Steady()`, with `stokes=True`), driven
   by `exp.attach(BodyForce(along=..., steady=...), medium=water)` on the fluid. Each step reports its solve (its
-  iterations, its true residual against the tolerance and how it stopped, never silently at a cap), the lumen's and
-  the solid's fluxes, and with the energy ledger on the node its step identity; the derivative solves report through a
-  zero parameter's gradient. With convection on, a run past the scheme's CFL line is refused, naming the step and the
-  timestep that keeps it; a CFL number that is not finite counts as past the line. `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is unchanged
-  (a medium's flow is written where dev1 wrote it).
+  iterations, its true residual against the tolerance and how it stopped); a step whose solve stopped other than
+  converging raises `solve_flagged`, read in `result.flags` with its count and warned of after the run (a flag may now
+  declare that it warns, `Flag.warns`). It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
+  with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
+  with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
+  gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
+  the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
+  refused, naming the step and a timestep to try. The wall's settings are its group, `wall=Band(delta_in=...)`. Its
+  derivative is checked exact in the viscosity, the density and the drive, and declared unverified in the tube's
+  geometry (the entry's status). `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is
+  unchanged (a medium's flow is written where dev1 wrote it). The drive is delivered once a step and as its
+  waveform's coefficients (`flow.waveform`), for a scheme whose stages read it at their own instants.
 
 - **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
   `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the

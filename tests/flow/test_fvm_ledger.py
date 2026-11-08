@@ -53,9 +53,9 @@ def test_control_an_energy_gift_is_caught_by_the_identity(dtype, seed, monkeypat
     gamma = 1e-12 if dtype == "float64" else 2e-5
     original = IMEXEuler.step
 
-    def gifted(self, context, velocity, time, dt):
-        solved, parts = original(self, context, velocity, time, dt)
-        return tuple((1.0 + gamma) * c for c in solved), parts
+    def gifted(self, context, state, time, dt):
+        solved, parts = original(self, context, state, time, dt)
+        return {"velocity": tuple((1.0 + gamma) * c for c in solved["velocity"])}, parts
 
     monkeypatch.setattr(IMEXEuler, "step", gifted)
     _, state = _metered(dtype, seed)
@@ -107,19 +107,24 @@ def _poiseuille_start(node: ImplicitFlowNode, peak: float):
 def test_a_run_past_the_cfl_line_stops_at_its_first_step_past_it(dtype, peak):
     """Peak speed ``peak`` at dt 0.005 and h 1/8: a CFL of ``peak dt / h`` (0.36 and 1.0), held at or past the line from
     the start; the check names step 1 when it is past (the first step past, kept however the run goes on) and never
-    when it is not."""
+    when it is not. Past it the state is held from that step: five steps leave it as it started. The control is the
+    run inside the line, whose state moves."""
     with in_dtype(dtype):
         probe = tube_node(8, length_cells=2, dt=0.005, g=0.0)
         node = tube_node(8, length_cells=2, dt=0.005, g=0.0, **_poiseuille_start(probe, peak))
+        start = node.initial_state()
         state = run(node, 5)
         cfl = peak * 0.005 * 8
+        unchanged = all(np.array_equal(np.asarray(state[f"velocity_{c}"]), np.asarray(start[f"velocity_{c}"]))
+                        for c in "xyz")
         if cfl > 0.4 + 1e-6:
-            assert int(state["stopped_at"]) == 1
+            assert int(state["stopped_at"]) == 1 and unchanged and int(state["steps"]) == 0
             problem = node.stop_problem(state)
             assert problem is not None and problem.code == "flow.cfl-exceeded"
             assert "step 1" in problem.message and "dt <=" in problem.action
         else:
             assert int(state["stopped_at"]) == -1 and node.stop_problem(state) is None
+            assert not unchanged and int(state["steps"]) == 5
 
 
 def test_a_stokes_run_at_the_same_step_is_not_stopped(dtype):
@@ -133,7 +138,9 @@ def test_a_stokes_run_at_the_same_step_is_not_stopped(dtype):
 
 def test_a_cfl_that_is_not_finite_is_past_the_line(dtype):
     """A NaN in the velocity the convection uses: the check reads it as past the line (``cfl <= line`` is false for a
-    NaN, where ``cfl > line`` would be false too) and stops the run at that step, naming it."""
+    NaN, where ``cfl > line`` would be false too) and stops the run at that step. The state is not finite, so the
+    flow names no CFL problem: the run's own refusal names the first node and field that went so (a NaN from
+    elsewhere is not read as a timestep's)."""
     with in_dtype(dtype):
         probe = tube_node(8, length_cells=2, dt=0.005, g=0.0)
         start = _poiseuille_start(probe, 2.0)
@@ -142,8 +149,7 @@ def test_a_cfl_that_is_not_finite_is_past_the_line(dtype):
         node = tube_node(8, length_cells=2, dt=0.005, g=0.0, **start)
         state = run(node, 3)
     assert int(state["stopped_at"]) == 1
-    problem = node.stop_problem(state)
-    assert problem is not None and problem.code == "flow.cfl-exceeded" and "not finite" in problem.message
+    assert node.stop_problem(state) is None
 
 
 def test_control_a_cfl_check_written_as_greater_than_misses_the_nan(dtype):

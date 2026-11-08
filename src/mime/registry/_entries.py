@@ -584,12 +584,14 @@ class Flag:
     """A flag an entry's node raises: its state field ``field`` (of node ``node``, ``""`` for the entry's only node),
     nonzero at a step where what ``meaning`` says happened, and zero otherwise. ``rung`` is the rung whose node raises
     it, for an entry with rungs. A run reports the flags raised over each window it reads, and a flag never blocks a
-    read."""
+    read. A flag that ``warns`` is also warned of after a run that raised it, with its count: one whose steps hold
+    values that are not what the step computes to its stated accuracy (a solve that stopped short)."""
 
     field: str
     meaning: str
     node: str = ""
     rung: str | None = None
+    warns: bool = False
 
 
 @dataclass(frozen=True)

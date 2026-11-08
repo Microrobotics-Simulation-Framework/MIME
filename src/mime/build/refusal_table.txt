@@ -153,12 +153,13 @@ env.variant                   user
 error.uncoded                 internal
 error.unrecognised            unrecognised
 experiment.name               user
-flow.band                     user
 flow.box-axis                 user
+flow.box-margin               user
 flow.cfl-exceeded             user
 flow.interior                 user
 flow.preconditioner           user
 flow.region                   user
+flow.report-rows              user
 flow.resolution               user
 flow.steady-convection        user
 frame.gravity-invalid         user

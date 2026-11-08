@@ -23,7 +23,7 @@ from mime.registry import (
     requires,
 )
 from mime.units import Acceleration, Frequency, Quantity
-from mime.vocabulary import FLOW_BODY_FORCE
+from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM
 
 if TYPE_CHECKING:
     from mime.build import InteractionBuilder
@@ -45,8 +45,12 @@ class BodyForce(Interaction):
     builds = {"": (BodyForceNode,)}
     roles = {"medium": RoleKind.MEDIUM}
     support = (SupportRow(None, {"medium": requires(accepts=[FLOW_BODY_FORCE.name])},
-                          note="a medium whose flow field takes a body force"),)
-    delivers = {"force": Delivery("medium", FLOW_BODY_FORCE.name)}
+                          note="a medium whose flow field takes a body force"),
+               SupportRow(None, {"medium": requires(accepts=[FLOW_WAVEFORM.name])},
+                          note="a medium whose flow field takes the drive's waveform (RK3's stages, the prescribed "
+                               "flow)"))
+    delivers = {"force": Delivery("medium", FLOW_BODY_FORCE.name),
+                "waveform": Delivery("medium", FLOW_WAVEFORM.name)}
     unmetered = ("a drive's supplied work, paired by the flow field it drives, which the ledger does not yet meter "
                  "through the build")
     setting_roles = {
@@ -74,7 +78,11 @@ class BodyForce(Interaction):
 
     @override
     def plan(self, ctx: PlanContext) -> Plan:
-        return Plan(delivers=dict(self.delivers))
+        """The force a step and the waveform, each where the medium's field takes it."""
+        record = ctx.capabilities.get("medium")
+        accepted: set[str] = set(record.accepts) if record is not None else set()
+        return Plan(delivers={label: delivery for label, delivery in self.delivers.items()
+                              if delivery.target in accepted})
 
     @override
     def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
@@ -83,7 +91,9 @@ class BodyForce(Interaction):
             amplitude=ctx.scalar("amplitude") if self.amplitude is not None else 0.0,
             frequency=ctx.scalar("frequency") if self.frequency is not None else 0.0,
             phase=self.phase))
-        b.connect(node["force"], into=b.target("force"))
+        for label in ("force", "waveform"):
+            if b.delivers(label):
+                b.connect(node[label], into=b.target(label))
 
 
 __all__ = ["BodyForce"]

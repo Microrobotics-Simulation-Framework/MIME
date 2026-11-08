@@ -5,7 +5,8 @@ describes: "0.1.0"
 
 **What it models.** The flow of the fluid filling a medium's region, the incompressible Navier-Stokes equations (or the
 Stokes equations, with `stokes=True`) on a Cartesian grid of cubic cells with the velocity on the faces (the MAC grid):
-`Medium("water", fills=tube.lumen, fields={"flow": FVM(domain=PeriodicBox(length=...))})`. The wall is lifted onto
+`Medium("water", fills=tube.lumen, fields={"flow": FVM(domain=PeriodicBox(length=...))})`; every other setting has
+its default (the wall's band and its stiff interior, `wall=Band(...)`, grouped as the wall's). The wall is lifted onto
 the grid as a smooth band: a solid outside the lumen whose penalty rises from nothing in the fluid to a stiff interior
 beyond the band, so the wall is a first-order immersed wall, its effective position shifted from the geometry's surface by
 the band's own calibration, the same in cells at every resolution. Each step solves the viscosity, the wall's penalty
@@ -18,11 +19,28 @@ pressure drop a period of the vessel would carry. The fluid's viscosity and dens
 material record or `exp.declare`, never settings of the field.
 
 Each step reports its solve: the iterations, the true residual against the tolerance, and how the solve stopped (at its
-cap, stagnated, at a residual that is not finite); a run whose solve stops other than converging is flagged, never
-silently accepted. With convection on, each step checks the flow's CFL number against the scheme's line along the
-vessel's axis, and a run past it is refused, naming the step and the timestep that keeps it. A CFL number that is not
-finite counts as past the line. The fluxes of the lumen and of the solid beyond the band
-are reported each step: the second is the bypass the porous solid lets through, the wall's own validity line.
+cap, stagnated, at a residual that is not finite). A step whose solve stopped other than converging raises the flag
+`solve_flagged`, which the run's result reads (`result.flags`, with the count of steps that raised it), and the run warns
+of it with that count after it ends; the step's report, `solve_report`, says which way it stopped, and a run that records
+every step (`history=True`) keeps each step's. A solve stagnates when, over its last checks of the true residual, none
+fell below a share of the best before them (the entry's validity lists the window and the share).
+
+With convection on, each step checks the flow's CFL number against the scheme's line along the vessel's axis. At the
+first step past it the flow's state is held (that step and the later ones leave it unchanged), the run ends at the end of
+the chunk the step lies in, and it is refused, naming the step and a timestep to try. A CFL number that is not finite
+counts as past the line; the run is then refused for its state's not being finite, naming where that began.
+
+The lumen's flux and the solid's beyond the band are reported each step: the second, as a share of the first, is the
+bypass the porous solid lets through, flagged (`bypass_flagged`) above a declared share. With `stokes=True` each step
+reports the lumen's Reynolds number and flags it (`reynolds_flagged`) above the declared Stokes line. The build reports a
+lumen resolved by fewer cells than the band's calibration, and a float32 run whose rounding floor near a steady state is
+above its tolerance. Every such line is listed in the entry's validity.
+
+**Its derivative.** Through the viscosity, the density and the drive it is checked exact against a central difference
+that rebuilds the experiment. Through the tube's radius, centre and axis it is unverified: they are not in that check
+yet, and through the band a derivative in them carries a ripple within a cell of about ±20 % at 8 to 16 cells across
+and ±10 % at 32 (measured on a static tube). They stay trainable. The entry declares one status, so it is
+`unverified`.
 
 **When not to use it.**
 - Anywhere but a periodic box around a straight circular tube, aligned with z or tilted in the x-z plane along a lattice

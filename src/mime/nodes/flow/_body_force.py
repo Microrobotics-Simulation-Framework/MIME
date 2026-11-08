@@ -1,6 +1,7 @@
 """The body force a law bound to a medium drives its fluid with: a uniform force per unit mass along a direction,
 steady or harmonic, written into the flow field's body-force input each step at the instant its field's scheme reads
-its drive (``instant``, a fraction of the step: IMEX Euler's, the step's end, by default). The node keeps its own
+its drive (``instant``, a fraction of the step: IMEX Euler's, the step's end, by default), and the waveform's
+coefficients beside it, which RK3 reads at its stage times and the prescribed flow responds to. The node keeps its own
 integer step count, so the time is exact."""
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from maddening.core.compliance.metadata import NodeMeta
 from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, ReadOnly, TypedDict
 
+from mime.nodes.flow._waveform import waveform
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, typed_view
 
 EQUATIONS = (r"\mathbf{g}_{n} = \hat{\mathbf{e}} \left( g_{0} + g_{1} \cos\left( 2 \pi f \left( n - 1 + \theta \right) h + \varphi "
@@ -29,6 +31,9 @@ _ADVANCE = "mime.nodes.flow._body_force.BodyForceNode.advance"
 
 class BodyForceState(TypedDict, closed=True):
     force: ReadOnly[Annotated[Float[Array, "3"], Units("m/s^2")]]  # noqa: F722 - a jaxtyping shape
+    #: The waveform's coefficients (``mime.nodes.flow._waveform``): what a field kind that evaluates its drive at its
+    #: own instants, or responds to it analytically, reads.
+    waveform: ReadOnly[Annotated[Float[Array, "7"], Units("1")]]  # noqa: F722 - a jaxtyping shape
     steps: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
@@ -74,10 +79,15 @@ class BodyForceNode(MimeNode):
                                                       + as_run_array(p["phase"]))
         return as_run_array(p["along"]) * (as_run_array(p["steady"]) + wave)
 
+    @staticmethod
+    def coefficients(p: Mapping[str, Any]) -> Array:
+        return waveform(as_run_array(p["along"]), as_run_array(p["steady"]), as_run_array(p["amplitude"]),
+                        as_run_array(p["frequency"]), as_run_array(p["phase"]))
+
     @override
     def initial_state(self) -> NodeFields:
         p = self.constants()
-        return node_fields(BodyForceState(force=self.force_at(p, as_run_array(0.0)),
+        return node_fields(BodyForceState(force=self.force_at(p, as_run_array(0.0)), waveform=self.coefficients(p),
                                           steps=jnp.asarray(0, dtype=jnp.int32)))
 
     @override
@@ -86,7 +96,7 @@ class BodyForceNode(MimeNode):
         held = typed_view(BodyForceState, state)
         steps = held["steps"] + 1
         time = (steps.astype(as_run_array(0.0).dtype) - 1.0 + as_run_array(p["instant"])) * dt
-        return node_fields(BodyForceState(force=self.force_at(p, time), steps=steps))
+        return node_fields(BodyForceState(force=self.force_at(p, time), waveform=self.coefficients(p), steps=steps))
 
 
 __all__ = ["STEP_END", "BodyForceNode", "BodyForceState"]

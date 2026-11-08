@@ -19,6 +19,8 @@ from fvm_cases import DRIVES, Waveform, driven, in_dtype, run, tube_node
 
 from mime.nodes.flow.fvm import ImplicitFlowNode, Jacobi, MACGrid, Stopping, band_named, periodic_tube_layout, \
     projected_solve, wall_fields
+from mime.nodes.flow.fvm._box import same_discretisation
+from mime.scene._sampling import counted
 
 G, NU = 8.0, 1.0
 #: The gate's line on the core curvature's viscosity (S1's, B10).
@@ -200,3 +202,50 @@ def test_control_a_quarter_cell_outward_wall_plant_fails_the_shift(dtype, offset
     judged): never judged by the core curvature, which is blind to it by construction."""
     node, state = _plant_state(dtype, offset, 0.25)
     assert abs(tube_shift(node, state, 0.5) - planar_calibration(16, dtype)) >= SHIFT_LINE
+
+
+# -- the layout's count slack (M2) ----------------------------------------------------------------------------------
+
+#: The round inputs of the build's cases: (radius, period, cells across, lattice); the walk's and the build's.
+ROUND_INPUTS = [(0.5e-3, 0.25e-3, 8, (0, 1)), (0.5e-3, 0.125e-3, 32, (0, 1)), (0.5e-3, 0.25e-3, 16, (1, 3)),
+                (0.5, 2.0 / 8, 8, (0, 1))]
+
+
+@pytest.mark.parametrize(("radius", "length", "across", "lattice"), ROUND_INPUTS)
+@pytest.mark.parametrize("moved", ["radius", "length"])
+@pytest.mark.parametrize("by", [1e-6, -1e-6, 5e-5, -5e-5])
+def test_a_round_input_moved_within_the_count_slack_keeps_its_discretisation(radius, length, across, lattice, moved,
+                                                                          by):
+    """At round inputs every count is a whole ratio, so a ceiling would sit on its own boundary: the two-builds walk's
+    relative 1e-6 and a central difference's step under the slack (5e-5), up or down, in the radius or the period, keep
+    the cells (a move of the slack itself lands on the next count's boundary). The radius
+    of an aligned tube keeps the spacing too (one discretisation, as the dQ/dR gate's two sides need); the period's
+    spacing is the period over its cells, and a tilted tube's the radius's, so there the cells alone, the spacing a
+    leaf of the step."""
+    base = periodic_tube_layout(radius, length, cells_across=across, lattice=lattice)
+    scale = 1.0 + by
+    other = periodic_tube_layout(radius * scale if moved == "radius" else radius,
+                                 length * scale if moved == "length" else length, cells_across=across, lattice=lattice)
+    if lattice == (0, 1) and moved == "radius":
+        assert same_discretisation(base, other), (base.cells, other.cells, base.spacing, other.spacing)
+    else:
+        assert base.cells == other.cells
+
+
+def test_control_a_bare_ceiling_moves_the_cells_at_a_round_input(monkeypatch):
+    """The control: with no slack (a bare ceiling), the walk's 1e-6 up in the radius adds cells across, and in the
+    period a cell along it, as the review measured (15x15x2 to 17x17x2; 19x19x3)."""
+    import mime.nodes.flow.fvm._box as box
+    import mime.scene._sampling as sampling
+
+    monkeypatch.setattr(sampling, "COUNT_SLACK", 0.0)
+    base = box.periodic_tube_layout(0.5e-3, 0.25e-3, cells_across=8)
+    assert base.cells != box.periodic_tube_layout(0.5e-3 * (1 + 1e-6), 0.25e-3, cells_across=8).cells
+    assert base.cells != box.periodic_tube_layout(0.5e-3, 0.25e-3 * (1 + 1e-6), cells_across=8).cells
+
+
+def test_the_count_slack_is_a_relative_share_of_the_ratio():
+    """The MRS's rule (``counted``, one helper for both): a whole ratio keeps its count; the next starts a relative
+    COUNT_SLACK above it."""
+    assert counted(19.0 * (1 + 0.9e-4)) == 19 and counted(19.0 * (1 + 1.1e-4)) == 20
+    assert counted(18.5) == 19 and counted(19.0) == 19

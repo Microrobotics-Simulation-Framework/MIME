@@ -23,6 +23,7 @@ import scipy.special
 from fvm_cases import DRIVES, driven, in_dtype, run, tube_node
 
 import mime.nodes.flow.fvm._node as flow_node
+import mime.nodes.flow.fvm._solve as solve_module
 from mime.nodes.flow.fvm import ImplicitFlowNode, Stopping
 
 NU, R, G0 = 1.0, 0.5, 8.0
@@ -118,18 +119,23 @@ def _reference():
     return tuple(np.asarray(state[f"velocity_{c}"], np.float64) for c in "xyz"), node
 
 
-def _stall_deficit(dtype: str, ratio: float, least: int) -> float:
+def _plain_warm_start(guess, b, operator, inner):
+    """The spike's start (the plant of the gate's second control): the previous velocity as it is, not its Galerkin
+    multiple."""
+    del operator, inner
+    return guess if guess is not None else tuple(0.0 * c for c in b)
+
+
+def _stall_deficit(dtype: str, ratio: float, least: int, plain: bool = False) -> float:
     reference, reference_node = _reference()
     c = reference_node.constants()
-    with in_dtype(dtype):
+    with in_dtype(dtype), pytest.MonkeyPatch.context() as patch:
         node = tube_node(16, nu=NU, g=G_STALL, dt=TAU / ratio, convection=False,
                          **{f"initial_velocity_{k}": 0.9 * reference[i] for i, k in enumerate("xyz")})
-        held = flow_node.Stopping
-        flow_node.Stopping = functools.partial(Stopping, least_iterations=least)  # type: ignore[misc]
-        try:
-            state = run(node, int(round(14 * ratio)))
-        finally:
-            flow_node.Stopping = held  # type: ignore[misc]
+        patch.setattr(flow_node, "Stopping", functools.partial(Stopping, least_iterations=least))
+        if plain:
+            patch.setattr(solve_module, "scaling_start", _plain_warm_start)
+        state = run(node, int(round(14 * ratio)))
     grid = node.grid(node._step_constants(None))  # noqa: SLF001
     numerator = denominator = 0.0
     for k, name in enumerate("xyz"):
@@ -150,6 +156,18 @@ def test_a_near_steady_run_reaches_the_fixed_point(dtype):
 
 
 def test_control_accepting_the_warm_start_unsolved_stalls_above_the_line(dtype):
+    """With no minimum iteration, the shipped (Galerkin) start's stall sits above the line, thinly: measured 2.38e-4
+    against 1e-4 in float32, 2.10e-6 against 1e-6 in float64 (the Galerkin multiple itself lowers the stall)."""
     ratio, line = STALL[dtype]
     assert _stall_deficit(dtype, ratio, 0) >= line
+
+
+def test_control_the_spikes_plain_warm_start_unsolved_stalls_near_tenfold_over_the_line(dtype):
+    """The draft's control at its margin: the stall the record's decision removes, the stall spike's plain warm start
+    accepted unsolved, measured 8.39e-4 against 1e-4 in float32 and 1.01e-5 against 1e-6 in float64. No control at the
+    decided set-up can sit much further over the line: a stall is bounded by tol x tau/dt, and each line is a tenth of
+    that bound (1e-5 x 1e2 and 1e-8 x 1e3); the plain start reaches 0.84 and 1.01 of it, the shipped Galerkin start 0.23
+    and 0.21. So the line asserted is five times the gate's, under each measured margin."""
+    ratio, line = STALL[dtype]
+    assert _stall_deficit(dtype, ratio, 0, plain=True) >= 5.0 * line
 
