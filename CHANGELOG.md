@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timestep that keeps it. `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is unchanged
   (a medium's flow is written where dev1 wrote it).
 
+- **Plots, figures kept as recipes, comparisons, the ghosted overlay and the aliasing warning** (`docs/results.md`). A new
+  `plot` extra (matplotlib and plotly; the `verify` extra holds it). `result.plot()` (matplotlib) and
+  `result.plot_interactive()` (plotly) on a run and a study draw one backend-neutral description: flags as intervals where the
+  result's track raised them, numeric validity limits and uncertainties as bands, and a note on what the figure estimates and
+  what it bounds. They read a small result protocol, so a result built by hand (`mime.results.Measured`) plots and compares
+  as a simulated one. `result.figure(...).write_recipe()` saves `figures/<name>.json` (the data files by sha256) and plotly's
+  JSON; `FigureRecipe.read(folder, name)` redraws it, refused by name where a data file changed. `StudyResult.compare` puts
+  members against a named reference on the reference's time base, with a tolerance that is the study's rule or a stated
+  quantity and never a fixed absolute, refused where the reference cannot resolve a declared drive frequency.
+  `sweep(..., stage_every=...)` keeps each member's bound poses, and `result.write_compare()` writes `compare.usda` (one prim
+  `/Compare/<member>` each, with visibility and metadata). A recording as sparse as half the period of a declared drive warns.
+  New refusal codes `plot.*`, `compare.*` and `study.stage-every`.
 - **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
   second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
   entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery

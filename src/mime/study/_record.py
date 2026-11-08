@@ -31,7 +31,8 @@ def run_record(plan: StudyPlan) -> dict[str, Any]:
     """The run every member takes: its length, the steps in it, what it records, how often, and the batch."""
     assert plan.duration is not None
     return {"duration": encode_value(plan.duration, "duration"), "steps": plan.steps, "record": list(plan.record),
-            "every": None if plan.every is None else encode_value(plan.every, "every"), "batch": plan.batch}
+            "every": None if plan.every is None else encode_value(plan.every, "every"), "batch": plan.batch,
+            "stage_every": None if plan.stage_every is None else encode_value(plan.stage_every, "stage_every")}
 
 
 def axis_record(axis: Axis, plan: StudyPlan) -> dict[str, Any]:

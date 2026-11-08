@@ -100,3 +100,7 @@ src/mime/cli/README.md  12  #1  # the size in kB of the page with Mermaid from j
 src/mime/experiment/README.md  3  #1  # a name, the 3-D view
 src/mime/experiment/_mermaid_lib/README.md  3 2.0 2.0 2.0 2.0  #1  # licence names (BSD-3-Clause, Apache-2.0, MPL-2.0), not quantities
 generated/entries/dynamics/fvm.md  0.1h  #1  # the stiff interior's default as the code names the setting's value, a depth in cells, not a claim
+docs/results.md  0  #1  # an argument in a code example: reference=0, the first member
+docs/results.md  50.0  #1  # an argument in a code example: a 50 Hz drive named for the time-base rule
+docs/results.md  10  #1  # an argument in a code example: stage_every=ms(10)
+docs/results.md  0  #2  # an argument in a code example: reference=0, the first member
