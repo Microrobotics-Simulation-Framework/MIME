@@ -262,7 +262,7 @@ def reach_weight(gap: Array) -> Array:
 
 def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
                     table: np.ndarray | None, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
-                    viscosity: Any) -> tuple[Corrected, Array]:
+                    viscosity: Any, eps_squared: Any) -> tuple[Corrected, Array]:
     """The wall's image with the cells nearest the wall integrated (:func:`cell_image`): the image at the force points
     (``point``, each column times its cell's area) for every cell, and for the ``budget`` cells whose force points lie
     nearest the wall (``gap``, in force spacings) their column blended towards the integrated one by
@@ -275,17 +275,17 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     the force points (a ``cond``, whose two branches agree there, every weight zero)."""
     return _lax.cond(jnp.any(gap < WALL_REACH),
                      lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
-                                              parameters, viscosity),
+                                              parameters, viscosity, eps_squared),
                      lambda: (point, jnp.asarray(False)))
 
 
 def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
                      table: np.ndarray | None, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
-                     viscosity: Any) -> tuple[Corrected, Array]:
+                     viscosity: Any, eps_squared: Any) -> tuple[Corrected, Array]:
     """:func:`near_wall_image` where a cell lies within the reach; where none does, the step takes the image at the
     force points alone and reads nothing more."""
     if table is None:
-        integrated = cell_image(wall, force, points, weights, chunks, parameters, viscosity)
+        integrated = cell_image(wall, force, points, weights, chunks, parameters, viscosity, eps_squared)
         blend = jnp.repeat(reach_weight(gap), 3)[None, :]
         matrix = point.matrix + blend * (integrated.matrix - point.matrix)
         return Corrected(matrix, point.accepted & integrated.accepted), jnp.asarray(False)
@@ -295,7 +295,7 @@ def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, point
     short = jnp.asarray(False) if budget >= count else gap[nearest[budget]] < WALL_REACH
     held, mass = padded(points, weights)
     rows = jnp.asarray(table)[chosen].reshape(-1)
-    integrated = cell_image(wall, force, held[rows], mass[rows], chunks, parameters, viscosity)
+    integrated = cell_image(wall, force, held[rows], mass[rows], chunks, parameters, viscosity, eps_squared)
     columns = (3 * chosen[:, None] + jnp.arange(3)[None, :]).reshape(-1)
     near = point.matrix[:, columns]
     blend = jnp.repeat(reach_weight(gap[chosen]), 3)[None, :]
@@ -1154,7 +1154,7 @@ class MRSDragNode(MimeNode):
             body = self.body(theta)
             force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
             centroid = pose[:3] + jnp.matmul(body.centroid, turn.T, precision=PRECISION)
-            corrected = wall.correction(force, parameters, viscosity)
+            corrected = wall.correction(force, parameters, viscosity, eps_squared=body.eps_squared)
             image = Corrected(corrected.matrix * jnp.repeat(body.area, 3)[None, :], corrected.accepted)
             short = jnp.asarray(False)
             if wall_quadrature is not None and wall_capped is not None and wall_chunks is not None and \
@@ -1168,7 +1168,7 @@ class MRSDragNode(MimeNode):
                                                               precision=PRECISION),
                     on_the_cells(weights, owners, body.area), distance(force, parameters) / spacing,
                     None if self.wall_every else cast(np.ndarray, self.wall_table), self.wall_budget, wall_chunks,
-                    parameters, viscosity)
+                    parameters, viscosity, body.eps_squared)
             found = separated_resistance(turned(held, turn) / viscosity + image.matrix, force, body.area, centroid,
                                          pose[:3])
             points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
@@ -1201,7 +1201,7 @@ class MRSDragNode(MimeNode):
 
         def solved(points: Array, eps_squared: Array, viscosity: Array, centre: Array,
                    parameters: Mapping[str, Any]) -> tuple[Array, Array]:
-            corrected = wall.correction(points, parameters, viscosity)
+            corrected = wall.correction(points, parameters, viscosity, eps_squared=eps_squared)
             return resistance(points, eps_squared, viscosity, centre, corrected.matrix), corrected.accepted
 
         found, accepted = checkpoint(solved)(points, blob_squared(held.weights, p["blob"]), p["viscosity"], pose[:3],

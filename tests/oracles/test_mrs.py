@@ -297,7 +297,7 @@ def test_the_kept_grid_screws_mirror_image_reverses_its_coupling_to_rounding():
     assert math.isclose(left[0, 3], -right[0, 3], rel_tol=1e-9)
 
 
-def image_of_a_plane_below(points, parameters, viscosity):
+def image_of_a_plane_below(points, parameters, viscosity, eps_squared=None):
     """A Stokeslet image of each sample through the plane five radii below the ball: a wall's correction of a few
     percent, planted in the free space's place."""
     below = points * jnp.asarray((1.0, 1.0, -1.0)) - jnp.asarray((0.0, 0.0, 10e-3))
