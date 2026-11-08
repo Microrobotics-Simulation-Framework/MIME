@@ -175,6 +175,7 @@ group.settings                user
 id.duplicate                  user
 lag.cross-check               internal
 lag.unplanned                 internal
+ledger.unmetered              user
 live.address-in-use           environment
 live.chunk                    user
 live.command                  user
@@ -303,6 +304,7 @@ post-build.exclusive          internal
 post-build.external-input     internal
 post-build.host-callback      internal
 post-build.input-units        internal
+post-build.ledger-inputs      internal
 post-build.not-by-edge        internal
 post-build.read-field         internal
 post-build.transform          internal

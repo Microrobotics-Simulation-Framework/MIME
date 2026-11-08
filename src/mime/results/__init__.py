@@ -6,6 +6,7 @@ from mime.results._compare import TOLERANCE_EPS, Comparison, Miss
 from mime.results._containment import ContainmentRead, read_containments
 from mime.results._data import FlagData, LimitData, Measured, ReadingData, ResultData, RunData, SeriesData, StudyData, Uncertainty
 from mime.results._draw import FigureOptions
+from mime.results._energy import EnergyAccount, LawEnergy, energy_account
 from mime.results._figure import FigurePage, FigureRecipe, FigureSpec, figure
 from mime.results._layout import FlagLayout, Layout, ObservationLayout, OutputLayout
 from mime.results._result import (
@@ -31,7 +32,8 @@ from mime.results._watch import WatchRead, read_watches
 
 __all__ = ["FlagData", "LimitData", "Measured", "ReadingData", "ResultData", "RunData", "SeriesData", "StudyData",
            "Uncertainty", "figure", "TOLERANCE_EPS", "Comparison", "Miss", "FigureOptions", "FigurePage", "FigureRecipe", "FigureSpec", "PlotDescription", "MANIFEST_FORMAT", "MANIFEST_VERSION", "NOT_DECLARED", "REPORT_FORMAT", "RUN_MANIFEST", "RUN_REPORT",
-           "ContainmentRead", "Dropped", "MemberOf", "Order", "StackedSeries", "StudyGrid", "StudyOutputs", "StudyResult",
+           "ContainmentRead", "Dropped", "EnergyAccount", "LawEnergy", "MemberOf", "Order", "StackedSeries", "StudyGrid", "StudyOutputs", "StudyResult",
            "FlagLayout", "FlagRead", "FlagTrack", "FlagWhole", "Layout", "NoOutput", "NotARunFolder", "NotInResult",
            "NotRecorded", "ObservationLayout", "ObservationOutputs", "OutputLayout", "OutputRef", "Reading", "RunResult",
-           "Samples", "Series", "Stopped", "Table", "WatchRead", "observed_order", "read_containments", "read_watches"]
+           "Samples", "Series", "Stopped", "Table", "WatchRead", "energy_account", "observed_order", "read_containments",
+           "read_watches"]

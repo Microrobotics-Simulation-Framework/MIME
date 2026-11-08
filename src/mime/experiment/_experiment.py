@@ -52,7 +52,15 @@ from mime.build._refusals import (
 )
 from mime.build import StageBinding, stage_binding
 from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
-from mime.build._maddening import FlagTally, FlagTest, holds_one_step_history, set_node_state, state_put_back, step_reads
+from mime.build._maddening import (
+    FlagTally,
+    FlagTest,
+    graph_params,
+    holds_one_step_history,
+    set_node_state,
+    state_put_back,
+    step_reads,
+)
 from mime.errors import public
 from mime.errors._frames import warn_at_script
 from mime.experiment._mermaid import Mermaid, mermaid_of
@@ -77,6 +85,7 @@ from mime.results import (
     RunResult,
     Samples,
     Stopped,
+    energy_account,
     read_containments,
     read_watches,
 )
@@ -1390,7 +1399,11 @@ class BuiltExperiment:
                                                        self._poses_kept(stacked), last_step=start + steps,
                                                        dt=self._plans.dt),
                          report=report if report is not None else self.report_summary(), stopped=stopped,
-                         origin=self._origin, overrides=point.records if point is not None else ())
+                         origin=self._origin, overrides=point.records if point is not None else (),
+                         energy=functools.partial(energy_account, self._graph, final,
+                                                  (point.params if point is not None else graph_params(self._graph))
+                                                  .get("nodes", {}), steps=start + steps)
+                         if self._report.energy else None)
         result.drives = (plans if plans is not None else self._plans).turning
         return result
 
@@ -1692,8 +1705,9 @@ class BuiltExperiment:
         a start one ulp off: every nonzero floating number of the initial state and of the small parameters the
         compiled step reads (``mime.build._maddening.params_one_ulp_up``) one ulp up. The parameters are moved too
         because a body released at rest at the origin starts from zeros, which a change of the state alone cannot move
-        (measured on the tube demo: every block's divergence zero). The second run compiles nothing the first did not,
-        and the parameters are put back after."""
+        (measured on the tube demo: every block's divergence zero). The second run's step compiles nothing the first's
+        did not; a value a node makes from moved parameters and holds among them (an MRS drag's matrix) is made again
+        from them once, before it (``mime.core.MimeNode.made_again``). The parameters are put back after."""
         from mime.build._maddening import device_array, node_state, params_one_ulp_up
 
         start = {name: {field: np.asarray(value) for field, value in node_state(graph, name).items()}
@@ -1711,9 +1725,10 @@ class BuiltExperiment:
         ``scene/layers/``) and the reference outputs (every field over the first ``steps`` steps, run from the
         initial state) into ``folder``. The reference steps are run on this build's graph, reset and then put back
         where its runs left it, so a run continues from there bit for bit: by the history scan of one step where a run
-        chunked by one step compiled it (the lock names it, ``one-step``, and nothing is compiled), else by the history
-        scan; on a graph built afresh where :attr:`graph` was edited since the build. Raises ``BuildRefused`` when the
-        experiment cannot be saved: a setting the document cannot hold, or an entry a load elsewhere could not find.
+        chunked by one step compiled it (the lock names it, ``one-step``, and nothing of the step is compiled), else by
+        the history scan; on a graph built afresh where :attr:`graph` was edited since the build. Raises
+        ``BuildRefused`` when the experiment cannot be saved: a setting the document cannot hold, or an entry a load
+        elsewhere could not find.
         ``progress`` shows the live display's phase while it saves, as :meth:`run` decides where (in a notebook, by
         default). A stale build is refused in a notebook or IPython and warned about in a script, as :meth:`run`'s
         is."""

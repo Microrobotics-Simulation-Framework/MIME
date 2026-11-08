@@ -168,7 +168,10 @@ reader sorting every element into read, recognised and not used, or refused, and
 ported from the 0.2 line's `control/kinematics/` with its oracles (see its [README](multibody/README.md)).
 
 **`ledger`**, the energy ledger's machinery on a receiver (above), with `MimeNode`'s hooks (`ledger`, `metered`,
-`LEDGER_TERMS`, `storage`, `identity_terms`, `energy`); the rigid body's node is its first receiver. The build's wiring
-of it, its observation and its account come next.
+`LEDGER_TERMS`, `storage`, `identity_terms`, `configuration`, `energy`); the rigid body's node is its first receiver.
+The build wires it only where `EnergyLedger` is attached (`mime.build`); a run's account reads the records
+(`mime.results`), its arithmetic here and traceable (`losses`, `stored`, `balance`), so a derivative passes through it.
+A dissipative law's sign counts a step in which its paired work was positive beyond the floor, or, held in the step, its
+rule's removal at arrival negative beyond it.
 
 Releases are explained in the [package manifest](../README.md#status).

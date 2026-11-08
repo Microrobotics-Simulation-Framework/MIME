@@ -75,6 +75,11 @@ def gyroscopic_jacobian(rotation: Array, moments: Array, omega: Array) -> Array:
     return rotation @ (gap[:, None] * cross) @ rotation.T
 
 
+#: How the body pairs each input it takes (``mime.vocabulary.RIGID_BODY``'s delivery kinds, which the build reads its
+#: deliveries' kinds from): a load read at the step's start, and the resistance solved for in its step.
+_PAIRED_AS = {"applied_wrench": books.LOAD, "background_load": books.LOAD, "resistance": books.SOLVED}
+
+
 class StepParts(NamedTuple):
     """What the energy ledger's books read of a step, besides the state it takes and returns: the mass matrix ``M`` at
     the step's start (in the world), the matrix of its solve ``M'/dt + R``, the twist the solve gives with no
@@ -99,6 +104,48 @@ class RigidContactState(TypedDict, closed=True):
     than the sample its support's steps started from (m, zero where it was as deep or deeper, ``_contact.shallower``);
     and the solve's residual, how far its sweeps left it from the solution, as a share of the free step's speed at the
     held points (``_contact.residual``)."""
+
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
+    contact_points: ReadOnly[Annotated[HeldPoints, Units("m")]]
+    contact_forces: ReadOnly[Annotated[HeldForces, Units("N")]]
+    contact_short: ReadOnly[Annotated[Float[Array, "groups"], Units("m")]]
+    contact_residual: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+
+
+class _BodyRecords(TypedDict):
+    """The energy ledger's records in a metered body's state (``mime.core.ledger.initial_records``), with their units:
+    each law's paired work over the run and over the step, each hosted law's two terms and the scheme's own terms, the
+    unattributed work, the storage at the run's start and now, the run's summed step scale (J); the step identity's
+    residual over the step's scale and its worst, and the counts of indefinite and gift steps per law (1); and the
+    pose at the run's start, which a potential law's energy is evaluated at."""
+
+    ledger_configuration_start: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]]
+    ledger_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_step_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_hosted: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    ledger_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_step_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_unattributed: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_unattributed_worst: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage_start: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_step_identity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_identity_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_scale: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_indefinite_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+    ledger_gift_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+
+
+class MeteredRigidInertialState(_BodyRecords, closed=True):
+    """A metered body's state: its pose and twist, and its records."""
+
+    pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
+    twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
+
+
+class MeteredRigidContactState(_BodyRecords, closed=True):
+    """A metered body held by its hull: :class:`RigidContactState`'s fields, and its records."""
 
     pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
     twist: ReadOnly[Annotated[Float[Array, "6"], Units("m/s; rad/s")]]
@@ -348,9 +395,12 @@ class RigidInertialNode(MimeNode):
                              f"{'one confinement' if surface_shape else 'no confinement'}, and the ledger hosts "
                              f"{hosted or 'none'}")
         checked = [d.law for d in metering if d.check == books.CHECK_DEFINITE and d.field != "resistance"]
-        if checked:
-            raise ValueError(f"a body checks the definiteness of an operator it takes, its resistance, and {checked} "
-                             f"deliver none")
+        unpaired = [f"{d.law} into {d.field} as {d.kind}" for d in metering
+                    if d.kind != books.HOSTED and _PAIRED_AS.get(d.field) != d.kind]
+        if checked or unpaired:
+            raise ValueError(f"a body checks the definiteness of the one operator it takes, its resistance, and pairs "
+                             f"its loads with its configuration's change and its resistance with its step's solution "
+                             f"({_PAIRED_AS}): {checked} deliver no operator, and {unpaired} are paired otherwise")
         hull: dict[str, object] = {}
         if hull_kind:
             record = registered_kind(hull_kind, hull_kind_version)
@@ -724,6 +774,11 @@ class RigidInertialNode(MimeNode):
     #: dt V')``: the rounding of the position's update, where no law is hosted in the step (a hosted contact's
     #: projection books it under its own name).
     LEDGER_TERMS = ("backward_euler", "gyroscopic", "configuration")
+
+    @override
+    def configuration(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:
+        """The body's pose, what a potential law's energy reads."""
+        return jnp.asarray(state["pose"])
 
     @override
     def storage(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array:

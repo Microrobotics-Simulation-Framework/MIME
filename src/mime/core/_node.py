@@ -29,6 +29,23 @@ def as_run_array(value: Any) -> Any:
     return jnp.asarray(value, dtype=run_dtype())
 
 
+#: The most numbers a parameter the save's resolution rerun moves holds (:func:`one_ulp_up_leaf`): a body's or a
+#: medium's constants, a frame, an inertia tensor. A table or a precomputed array is kept: moving it would copy it to
+#: every call, and the constants already move the rounding of every step that reads the body.
+NUDGED_SIZE = 64
+
+
+def one_ulp_up_leaf(value: Any) -> np.ndarray | None:
+    """A parameter leaf as the save's resolution rerun moves it (``mime.build._maddening.params_one_ulp_up``): each
+    nonzero, finite element one unit in the last place up, in its own dtype; ``None`` where the rerun keeps it (not
+    floating, or more than :data:`NUDGED_SIZE` numbers)."""
+    held = np.asarray(value)
+    if held.dtype.kind != "f" or held.size > NUDGED_SIZE:
+        return None
+    up = np.nextafter(held, np.asarray(np.inf, dtype=held.dtype))
+    return np.where((held != 0) & np.isfinite(held), up, held).astype(held.dtype)
+
+
 def node_input(units: str, shape: tuple[int, ...], *, additive: bool = False,
                description: str = "") -> BoundaryInputSpec:
     """An input declared the way every MIME node declares one: its shape, the run's dtype, a zero default, and its
@@ -106,10 +123,23 @@ class MimeNode(SimulationNode):
         what the step left for its books in ``parts``, and its own scheme's terms."""
         raise NotImplementedError(f"{type(self).__name__} writes no step identity")
 
+    def configuration(self, p: Mapping[str, Any], state: Mapping[str, Array]) -> Array | None:
+        """What a potential law's energy is evaluated at on this receiver (a body's pose), from its ``state``: what the
+        ledger's records keep at the run's start, so that a potential's change over a run is taken from the run's two
+        ends with the law's own parameters. ``None`` for a node no potential law acts on."""
+        return None
+
     def energy(self, p: Mapping[str, Any], configuration: Array) -> Array:
         """A potential law's energy (J) at its receiver's ``configuration`` (a body's pose), from its constants ``p``:
         its family's energy, of which its delivery is the negative gradient."""
         raise NotImplementedError(f"{type(self).__name__} states no energy")
+
+    def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """The parameters the node makes from its others and holds among them, made again from ``params`` (its leaves
+        as the graph would hold them) where those are not the build's: what the save's resolution rerun gives the
+        step (``mime.build._maddening.params_one_ulp_up``), so that the step reads each rather than making it at every
+        step. None by default."""
+        return {}
 
     def constants(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """The constructor's arguments, with the graph's live ``params`` written over them when given: what the step

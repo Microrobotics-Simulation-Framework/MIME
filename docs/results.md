@@ -142,6 +142,20 @@ a result its author may want to read, so the watch says where, and the run is no
   coarser spacing than the hull contact's, a share of the hull's size) at every step it reads, in blocks of bounded size
   and one compiled function. The hull's points are made once per process for the same hull, not at the build.
 
+## The energy ledger's account
+
+With `exp.observe(EnergyLedger())`, `result.energy` is the run's account of energy from the build's start to the
+run's end (`None` without the ledger, and for a run read back from a folder, which keeps no law's parameters):
+`result.energy.text()` says, in plain words, what each body stores, what each dissipative law lost, what was supplied,
+named by what supplies it, and each potential's change. What was supplied is taken from the dissipation side, what was
+lost plus the change in what is stored; the work the supplied laws paired in the steps differs from it by the scheme's
+own numerical terms, which `text(details=True)` shows apart, never as a loss, with each law's work on each body and
+the checks: each body's step identity at its worst step against its rounding, the work that arrived unattributed
+(exactly zero where every delivery is a law's), each potential's paired work against its energy's change from the run's
+two ends, and the books' balance against its rounding. `result.energy.efficiency(useful)` is a useful work as a share
+of what was supplied. The build report's `energy` lines say how the build metered the experiment
+([reading a build report](guide/build_report.md)).
+
 ## Exports
 
 - `result.table()` is a mapping of columns, each name carrying its unit (`time [s]`, `swim_speed:umr.speed [m/s]`),

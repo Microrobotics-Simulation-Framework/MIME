@@ -98,6 +98,12 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   [docs/results.md](../../../docs/results.md).
 - **`RunResult.as_experiment(name)`** on a member of a study (`MemberOf` says which): the bridge to an experiment of its
   own, in `mime.study._bridge`.
+- **The energy ledger's account** (`_energy.py`): with `EnergyLedger` attached, `result.energy` is an `EnergyAccount`
+  read from the metered bodies' records at the run's end, from the build's start: stored, lost and supplied per role
+  (supplied taken from the dissipation side, lost plus the change in what is stored, shared among the things outside in
+  proportion to what each one's laws paired), each potential's change from the run's two ends with the law's own
+  parameters as the run had them, and in its detailed text each law's paired work, the scheme's own terms apart, the
+  paired supply and the checks; `efficiency(useful)`. `None` without the ledger and for a run read from a folder.
 - **An overridden run** (`run(..., override=...)`) carries its `overrides` (each one's path, value with its unit, SI
   value and the leaves it wrote), in its text ("OVERRIDDEN for this run: ..."), its manifest and back from its folder.
 
