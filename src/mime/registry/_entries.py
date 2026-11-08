@@ -232,6 +232,40 @@ class Region:
 
 
 @dataclass(frozen=True)
+class DriveQuery:
+    """A law that drives a thing, as a dynamics' step rule reads it: the law's registered name and its settings in SI."""
+
+    law: str
+    settings: Mapping[str, Magnitude]
+
+
+@dataclass(frozen=True)
+class StepQuery:
+    """What a dynamics' step rule (:meth:`Dynamics.time_step`) may read: the region its medium fills, the values it
+    reads (resolved, SI, by label), its own settings in SI, and the laws that drive its thing. The bodies' speeds a
+    rule will read once bodies couple to a field join here."""
+
+    region: Region | None
+    values: Mapping[str, float]
+    settings: Mapping[str, Magnitude]
+    drives: tuple[DriveQuery, ...] = ()
+
+
+@dataclass(frozen=True)
+class StepRule:
+    """A dynamics' own bound on the base step: ``largest``, the largest step it is stable at (s; ``None`` where nothing
+    bounds it, which ``dt="auto"`` refuses), and, for a given step, ``problems(dt)`` (its refusals before any step is
+    taken, each with the route) and ``report(dt)`` (the lines the build report shows: the scheme it chose, its margins,
+    the price of the alternatives)."""
+
+    largest: float | None
+    problems: Callable[[float], list[Problem]]
+    report: Callable[[float], tuple[str, ...]]
+    #: The period the step must divide into a whole number of steps (s), where the dynamics' drive is periodic.
+    period: float | None = None
+
+
+@dataclass(frozen=True)
 class Hull:
     """A body's hull as a law reads it: the kind of the one part of the body that lies inside no other (``part``), its
     settings in SI, and where the part sits in the body's frame (its centroid, and the rotation from its frame to the
@@ -735,6 +769,12 @@ class Dynamics(Entry):
         """What is wrong with the values this dynamics reads (``values``, by label, once every one is resolved) that
         their dimensions do not show (a moment of inertia of zero, which the step divides by), as refusals."""
         return []
+
+    def time_step(self, query: StepQuery) -> StepRule | None:
+        """The dynamics' own bound on the base step, from what it knows at planning (``query``): what ``dt="auto"``
+        takes the largest stable step from, and what a given step is checked against before any step is taken.
+        ``None`` (the default) for a dynamics whose step the base step does not bound."""
+        return None
 
     def region_problems(self, region: Region | None) -> list[Problem]:
         """What is wrong with the region a medium's dynamics fills (``None``: it fills none with a shape), as

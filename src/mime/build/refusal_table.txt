@@ -156,11 +156,15 @@ experiment.name               user
 flow.band                     user
 flow.box-axis                 user
 flow.cfl-exceeded             user
+flow.cfl-predicted            user
 flow.interior                 user
 flow.preconditioner           user
+flow.prescribed-alpha         user
+flow.prescribed-region        user
 flow.region                   user
 flow.resolution               user
 flow.steady-convection        user
+flow.viscous-limit            user
 frame.gravity-invalid         user
 frame.gravity-missing         user
 frame.gravity-units           user
@@ -393,6 +397,7 @@ result.not-recorded           user
 result.table                  user
 result.window                 user
 run.chunks                    user
+run.dt-auto-unset             user
 run.dt-invalid                user
 run.dt-missing                user
 run.dt-units                  user

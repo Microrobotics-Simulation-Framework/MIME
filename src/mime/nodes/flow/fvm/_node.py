@@ -117,6 +117,7 @@ class MeteredFlowState(_FlowFields, _FlowRecords, closed=True):
 
 class FlowInputs(TypedDict, closed=True):
     body_force: NotRequired[ReadOnly[Annotated[Float[Array, "3"], Units("m/s^2")]]]  # noqa: F722 - a jaxtyping shape
+    waveform: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("1")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class StepParts(NamedTuple):
@@ -222,9 +223,12 @@ class ImplicitFlowNode(MimeNode):
 
     @override
     def boundary_input_spec(self) -> dict[str, Any]:
-        """The body force per unit mass the laws bound to the medium drive its fluid with (summed), this step's."""
+        """The body force per unit mass the laws bound to the medium drive its fluid with (summed), this step's; and the
+        drive's waveform, which the FVM's entry accepts for RK3's stages, read by no implicit scheme (they read the
+        value at their own instant, the step's end)."""
         return {"body_force": node_input("m/s^2", (3,), additive=True,
-                                         description="a uniform body force per unit mass on the fluid")}
+                                         description="a uniform body force per unit mass on the fluid"),
+                "waveform": node_input("1", (7,), description="the drive's waveform (RK3's: unread here)")}
 
     # -- the pieces of a step ------------------------------------------------------------------------------------
     @property

@@ -1,5 +1,7 @@
-"""The dynamics of a medium's flow field: the finite-volume solver (``FVM``) and its time schemes."""
+"""The dynamics of a medium's flow field: the finite-volume solver (``FVM``) and its time schemes, and the prescribed
+flow (``Womersley``), the FVM's own analytic oracles as a flow field kind."""
 
-from mime.dynamics.flow._fvm import FVM, IMEXEulerScheme, Scheme, SteadyScheme
+from mime.dynamics.flow._fvm import FVM, IMEXEulerScheme, RK3Scheme, Scheme, SteadyScheme, chosen_scheme
+from mime.dynamics.flow._womersley import Womersley
 
-__all__ = ["FVM", "IMEXEulerScheme", "Scheme", "SteadyScheme"]
+__all__ = ["FVM", "IMEXEulerScheme", "RK3Scheme", "Scheme", "SteadyScheme", "Womersley", "chosen_scheme"]

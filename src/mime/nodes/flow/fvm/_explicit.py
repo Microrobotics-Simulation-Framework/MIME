@@ -25,9 +25,10 @@ from jax import Array, lax
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
-from typing_extensions import ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, run_dtype
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
+    run_dtype
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, negative_resistivity
@@ -46,19 +47,30 @@ _STEP = "mime.nodes.flow.fvm._explicit.ExplicitFlowNode.stepped"
 _START = "mime.nodes.flow.fvm._rk3.consistent_pressure"
 
 
-class ExplicitFlowState(TypedDict, closed=True):
-    velocity_x: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
-    velocity_y: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
-    velocity_z: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
-    pressure: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
-    pressure_ready: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    steps: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    cfl: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    stopped_at: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    stopped_cfl: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    lumen_flux: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    bypass_ratio: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    negative_resistivity: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+class _ExplicitFields(TypedDict):
+    velocity_x: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
+    velocity_y: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
+    velocity_z: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
+    #: The kinematic pressure (p / rho), the scheme's state, and whether it is consistent with the velocity yet (zero
+    #: at the run's start and in a state given from outside: the next step makes it, one fast solve).
+    pressure: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m^2/s^2")]]  # noqa: F722 - a jaxtyping shape
+    pressure_ready: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    steps: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    cfl: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stopped_at: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stopped_cfl: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    lumen_flux: ReadOnly[Annotated[Float[Array, ""], Units("m^3/s")]]  # noqa: F722 - a jaxtyping shape
+    bypass_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    negative_resistivity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+
+
+class ExplicitFlowState(_ExplicitFields, closed=True):
+    """The explicit flow's state without the energy ledger."""
+
+
+class ExplicitFlowInputs(TypedDict, closed=True):
+    body_force: NotRequired[ReadOnly[Annotated[Float[Array, "3"], Units("m/s^2")]]]  # noqa: F722 - a jaxtyping shape
+    waveform: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("1")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class ExplicitParts(NamedTuple):
@@ -249,8 +261,8 @@ class ExplicitFlowNode(ImplicitFlowNode):
                                                           time, dt)
         axis = as_run_array(p["tube_axis"])
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
-        lumen, solid = self.fluxes(grid, fields, axis, ended_velocity)
-        ratio = jnp.where(lumen != 0.0, solid / jnp.where(lumen != 0.0, lumen, 1.0), 0.0)
+        lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, ended_velocity)
+        ratio = self.ratio(solid, lumen, lumen_scale)
         ended: dict[str, Array] = dict(
             velocity_x=ended_velocity[0], velocity_y=ended_velocity[1], velocity_z=ended_velocity[2],
             pressure=ended_pressure, pressure_ready=jnp.ones((), dtype=dtype), steps=steps + 1, cfl=cfl,
@@ -304,4 +316,4 @@ class ExplicitFlowNode(ImplicitFlowNode):
             "the velocity went non-finite: use a smaller timestep, or dt='auto'")
 
 
-__all__ = ["ExplicitFlowNode", "ExplicitFlowState", "ExplicitParts", "cfl_check"]
+__all__ = ["ExplicitFlowInputs", "ExplicitFlowNode", "ExplicitFlowState", "ExplicitParts", "cfl_check"]

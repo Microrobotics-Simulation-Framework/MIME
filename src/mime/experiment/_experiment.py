@@ -9,7 +9,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, Any, Literal, cast, override
 
 import numpy as np
 from maddening import GraphManager
@@ -299,7 +299,7 @@ class Experiment:
     """
 
     def __init__(self, name: str, *, scene: Scene | None = None, gravity: Quantity = CONVENTIONAL_GRAVITY,
-                 dt: Quantity | None = None, seed: int = 0, up: Any = None,
+                 dt: Quantity | Literal["auto"] | None = None, seed: int = 0, up: Any = None,
                  conditions: Mapping[str, Condition] | None = None,
                  profile: str | Profile = DEFAULT_PROFILE.value, duration: Quantity | None = None) -> None:
         self.name = name

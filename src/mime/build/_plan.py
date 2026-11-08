@@ -69,6 +69,7 @@ from mime.registry import (
     Delivery,
     Direction,
     Drive,
+    DriveQuery,
     Dynamics,
     Entry,
     EntryKind,
@@ -88,6 +89,8 @@ from mime.registry import (
     RoleKind,
     Segment,
     Solid,
+    StepQuery,
+    StepRule,
     Tensor,
     Value,
     implements,
@@ -364,6 +367,19 @@ class ResolvedRegistration:
     returns: Mapping[str, ResolvedTarget]
 
 
+def _plain_settings(entry: Entry, si_settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+    """An entry's settings as a step rule reads them: each dimensioned one in SI, each plain number or tuple of numbers
+    as written (a unit direction, a phase in radians)."""
+    held: dict[str, Magnitude] = {}
+    for item in dataclasses.fields(cast(Any, entry)):
+        value = getattr(entry, item.name)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            held[item.name] = float(value)
+        elif isinstance(value, tuple) and all(isinstance(v, (int, float)) for v in cast(tuple[object, ...], value)):
+            held[item.name] = tuple(float(cast(float, v)) for v in cast(tuple[object, ...], value))
+    return {**held, **si_settings}
+
+
 @dataclass
 class EntryPlan:
     """One declared entry, resolved: who it is, what it was bound to, which nodes it will add and at what rate."""
@@ -592,6 +608,9 @@ class _Planner:
         self.fills: dict[str, str] = {}
         self.values: dict[str, materials.Declared] = {}
         self.dt = 0.0
+        #: Whether the experiment asked for ``dt="auto"``: the base step is then chosen once every dynamics is planned
+        #: (:meth:`plan_steps`), the largest its step rules take.
+        self.dt_auto = False
         self.frame: WorldFrame | None = None
         self.units = ""
         self.meters_per_unit = 1.0
@@ -669,6 +688,7 @@ class _Planner:
         self.check_ids()
         self.check_bodies_start_inside()
         self.resolve_values()
+        self.plan_steps()
         self.plan_confinements()
         self.plan_lubrication()
         self.share_uniform_reads()
@@ -909,10 +929,14 @@ class _Planner:
             self.refuse(code, RefusalClass.USER, message, action)
         self.frame = frame
         dt = self.settings.dt
+        if isinstance(dt, str) and dt == "auto":
+            self.dt_auto = True
+            return
         if dt is None:
             self.refuse("run.dt-missing", RefusalClass.USER,
                         "dt, the base step, has no default: every node's timestep is a whole multiple of it",
-                        "pass dt as a time to Experiment, such as dt=ms(1)")
+                        "pass dt as a time to Experiment, such as dt=ms(1), or dt='auto' where a field chooses its own "
+                        "step")
             return
         try:
             value = si(dt, TIME, what="dt")
@@ -928,6 +952,55 @@ class _Planner:
         if not isinstance(self.settings.seed, int) or isinstance(self.settings.seed, bool):
             self.refuse("run.seed", RefusalClass.USER, f"seed={self.settings.seed!r} is not an integer",
                         "pass an integer seed: Experiment(..., seed=0)")
+
+    def plan_steps(self) -> None:
+        """Each dynamics' own bound on the base step (``Dynamics.time_step``), from its region, its values and the laws
+        that drive its thing: with ``dt="auto"`` the base step is the largest every rule takes (dividing a periodic
+        drive's period into a whole number of steps), and a given or chosen step is checked against each rule before
+        any step is taken, its lines shown in the build report."""
+        rules: list[tuple[EntryPlan, StepRule]] = []
+        for plan in self.dynamics.values():
+            dynamics = cast(Dynamics, plan.entry)
+            drives = tuple(DriveQuery(reader.registered.cls.name, _plain_settings(reader.entry, reader.settings))
+                           for reader in self.readers
+                           if reader.section is Section.INTERACTION and plan.thing is not None
+                           and plan.thing in reader.bindings.values())
+            values = {label: float(value.value) for label, value in plan.values.items()
+                      if isinstance(value.value, (int, float))}
+            try:
+                rule = dynamics.time_step(StepQuery(plan.regions.get("medium"), values, dict(plan.settings), drives))
+            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                self.defect(type(dynamics), f"time_step() raised {error!r}", error)
+                continue
+            if rule is not None:
+                rules.append((plan, rule))
+        if self.dt_auto:
+            bounded = [(plan, rule) for plan, rule in rules if rule.largest is not None]
+            if not bounded:
+                self.refuse("run.dt-auto-unset", RefusalClass.USER,
+                            "dt='auto' takes the base step from a field that bounds its own (a flow field with "
+                            "convection, or an explicit scheme), and nothing in this experiment does",
+                            "pass dt as a time to Experiment, such as dt=ms(1)")
+                return
+            largest = min(cast(float, rule.largest) for _, rule in bounded)
+            periods = {rule.period for _, rule in bounded if rule.period}
+            if len(periods) == 1:
+                period = periods.pop()
+                largest = period / math.ceil(period / largest - 1e-12)
+            self.dt = largest
+            self.plan_duration(largest)
+            for plan, _ in bounded:
+                self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), f"dt='auto': the base step {largest:.6g} s, "
+                                            f"the largest every field's step rule takes")
+        if not self.dt:
+            return
+        for plan, rule in rules:
+            for problem in rule.problems(self.dt):
+                self.refuse(problem.code, RefusalClass.USER, f"{plan.thing!r}'s {plan.registered.cls.label()}: "
+                                                             f"{problem.message}", problem.action)
+            lines = rule.report(self.dt)
+            if lines:
+                self.checked[plan.owner] = (*self.checked.get(plan.owner, ()), *lines)
 
     def plan_duration(self, dt: float) -> None:
         """The run length the experiment declares, if it does: a finite time above zero, a whole number of base steps
