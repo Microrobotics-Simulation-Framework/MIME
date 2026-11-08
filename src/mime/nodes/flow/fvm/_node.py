@@ -86,29 +86,12 @@ class FlowState(_FlowFields, closed=True):
     """The flow's state without the energy ledger."""
 
 
-class _FlowRecords(TypedDict):
-    """With the energy ledger attached: the stall detector, ``|N_Krylov| / D_visc``, and its flag; and the ledger's
-    records (``mime.core.ledger.initial_records``), with their units: each law's paired work over the run and over the
-    step, each hosted law's two terms and the scheme's own terms, the unattributed work, the storage at the run's start
-    and now, the run's summed step scale (J); the step identity's residual over the step's scale and its worst, and the
-    counts of indefinite and gift steps per law (1)."""
+class _FlowRecords(books.LedgerRecords):
+    """With the energy ledger attached: the stall detector, ``|N_Krylov| / D_visc``, and its flag, beside the ledger's
+    records (``mime.core.ledger.LedgerRecords``)."""
 
     stall_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stall_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
-    ledger_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
-    ledger_step_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
-    ledger_hosted: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
-    ledger_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
-    ledger_step_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
-    ledger_unattributed: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_unattributed_worst: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_storage_start: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_storage: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_step_identity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
-    ledger_identity_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
-    ledger_scale: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
-    ledger_indefinite_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
-    ledger_gift_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
 
 
 class MeteredFlowState(_FlowFields, _FlowRecords, closed=True):

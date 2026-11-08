@@ -47,8 +47,13 @@ RTOL = 1e-10
 #: isotropic body, 1e-20 J), on the scale of a nanojoule, above the kinetic energy of script A's body over its first
 #: steps (some 4e-11 J): a rounding residue across machines is under the tolerance, 1e-19 J, and a law's work moved by a
 #: ten-millionth of itself is not.
+#: The flow's face velocities, each component on the scale of the flow's speed (m/s; the tube case's axial velocity
+#: reaches some 1e-2 over its first steps): the components across a tube driven along it are the solve's rounding,
+#: some 1e-19, which moves by its own size across machines, and a velocity moved by a ten-billionth of the flow's
+#: speed is not rounding.
 FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_short": 1e-4,
-          "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0}
+          "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0,
+          "velocity_x": 1e-2, "velocity_y": 1e-2, "velocity_z": 1e-2}
 LEDGER_FLOOR = 1e-9
 
 
