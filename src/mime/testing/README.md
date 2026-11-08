@@ -72,7 +72,7 @@ Also:
   Its detection is measured on planted bakes (a Python float, a NumPy or JAX array, a term of a millionth of the load,
   an S7-style coefficient, a value-keyed count; and a NumPy or JAX array in a real node's step, in its `jit` alone, in
   a `scan` and in a `cond`) and on the registry walk's cases, nothing planted (`tests/two_builds/`). **"The walk is
-  quiet" bounds what it walked**: the floats of the registry's cases' documents moved by a relative 1e-6, nonzero ones,
+  quiet" bounds what it walked**: the floats of the registry's cases' documents moved by a small relative step, nonzero ones,
   by the trace form; a node no case builds, a setting that is a direction, a count or a choice, a zero, and a value
   that reaches the run only through a host callback or a derivative rule's lazily traced function are outside it.
 

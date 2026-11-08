@@ -27,8 +27,8 @@
   rung's force points from its spacing, a hull's counts and groups from the contact's spacing or margin), the node set,
   `dt` and the precision. The MRS rung's settings and wall tables are leaves, and so is its held body-frame matrix, made
   at build with the leaves it was made at beside it: a sweep of its blob is one group while the number of quadrature points the blob gives stays the same, and splits where it
-  changes (`reference_quadrature_counts`, a static; measured on the settling sphere: blob 0.1, 0.1001 and 0.101 one group, 0.08, 0.1
-  and 0.14 two). Geometry is no axis yet (a
+  changes (`reference_quadrature_counts`, a static; measured on the settling sphere: a small spread of blob values is one group, a
+  spread wide enough to change the count is two). Geometry is no axis yet (a
   kind's settings are given where they are written); inside a declared range it will be a declared parameter, its
   counts and box sizes fixed by the range. A value held in a node's program as a constant of its own, not as a leaf, is
   a silent bake: every member would run the first point's. The two-builds check (`mime.testing.two_builds`) is how an
