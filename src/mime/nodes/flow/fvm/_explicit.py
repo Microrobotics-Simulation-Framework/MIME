@@ -136,10 +136,12 @@ class ExplicitFlowNode(ImplicitFlowNode):
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
                  viscosity: float, density: float, tube_centre: Sequence[float], tube_axis: Sequence[float],
                  tube_radius: float, scheme: str = "rk3", convection: bool = True, band: str = "smooth_2h_0.3h",
-                 interior: str = "0.1h", periodic_images: str = "own",
+                 interior: str = "0.1h", periodic_images: str = "own", drive: str = "waveform",
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
                  ledger: Sequence[str] = ()) -> None:
         chosen = scheme_named(scheme)
+        if drive not in ("waveform", "held"):
+            raise ValueError(f"drive is 'waveform' (read at each stage's time) or 'held' (a value a step), not {drive!r}")
         if chosen.stage_kind is not StageKind.EXPLICIT_PROJECTED:
             raise ValueError(f"the {scheme} scheme is of the {chosen.stage_kind} stage kind: the implicit node steps it")
         band_named(band)
@@ -156,7 +158,8 @@ class ExplicitFlowNode(ImplicitFlowNode):
                           tube_centre=tuple(float(c) for c in tube_centre),
                           tube_axis=tuple(float(c) for c in tube_axis), tube_radius=float(tube_radius),
                           scheme=str(scheme), convection=bool(convection), band=str(band), interior=str(interior),
-                          periodic_images=str(periodic_images), **initial, **({"ledger": tuple(ledger)} if ledger else {}))
+                          periodic_images=str(periodic_images), drive=str(drive), **initial,
+                          **({"ledger": tuple(ledger)} if ledger else {}))
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -171,9 +174,9 @@ class ExplicitFlowNode(ImplicitFlowNode):
 
     @override
     def boundary_input_spec(self) -> dict[str, Any]:
-        """The drive: the waveform the law bound to the medium delivers, read at each stage's time; or, where only a
-        value a step is fed (``body_force``), that value held over the step (second order in a time-varying drive
-        only if it is the step's middle)."""
+        """The drive: with ``drive="waveform"`` (the build's), the waveform the law bound to the medium delivers, read
+        at each stage's time; with ``drive="held"``, a value a step (``body_force``) held over the step (first order in
+        a time-varying drive at the step's end: the alpha-6 gate's fit moved +5.4 %)."""
         return {**super().boundary_input_spec(),
                 "waveform": node_input("1", (WAVEFORM_SIZE,),
                                        description="the drive's waveform: along (3), steady and amplitude (m/s^2), "
@@ -221,8 +224,9 @@ class ExplicitFlowNode(ImplicitFlowNode):
         sigma = self.resistivity(p, fields)
         nu = self.kinematic(p)
         convection = bool(c["convection"])
-        if "waveform" in boundary_inputs:
-            coefficients = jnp.asarray(boundary_inputs["waveform"], dtype=dtype)
+        if c["drive"] == "waveform":
+            coefficients = jnp.asarray(boundary_inputs.get("waveform", jnp.zeros(WAVEFORM_SIZE, dtype=dtype)),
+                                       dtype=dtype)
 
             def force(stage: int, time: Any) -> Velocity:
                 del stage

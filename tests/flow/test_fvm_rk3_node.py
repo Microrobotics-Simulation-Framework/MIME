@@ -27,7 +27,8 @@ def rk3_node(dh: int = 8, *, nu: float = 1.0, dt: float | None = None, length_ce
     return ExplicitFlowNode("flow", step, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
                             spacing=layout.spacing, viscosity=nu, density=1.0, tube_centre=layout.centre,
                             tube_axis=layout.axis, tube_radius=layout.radius,
-                            periodic_images="own" if lattice == (0, 1) else "transverse", **settings)
+                            periodic_images="own" if lattice == (0, 1) else "transverse",
+                            **{"drive": "held", **settings})
 
 
 def run(node, steps, waveform=Waveform(steady=8.0), state=None, p=None):
