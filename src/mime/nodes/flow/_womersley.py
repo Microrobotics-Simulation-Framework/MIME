@@ -23,7 +23,7 @@ time is the node's own step count times dt."""
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, override
 
 import numpy as np
@@ -54,7 +54,17 @@ def series_terms(dtype: Any) -> int:
     return int(math.ceil(line)) + 20
 
 
-def _nested(x_im: Array, terms: int, ratio: Any) -> tuple[Array, Array]:
+def _square_ratio(k: int) -> int:
+    """``J0``'s term ratio past its first term, ``(k + 1)^2``."""
+    return (k + 1) ** 2
+
+
+def _flux_ratio(k: int) -> int:
+    """The mean profile's term ratio, ``k (k + 2)``."""
+    return k * (k + 2)
+
+
+def _nested(x_im: Array, terms: int, ratio: Callable[[int], int]) -> tuple[Array, Array]:
     """``1 + (i x / d_1)(1 + (i x / d_2)(1 + ...))`` to ``terms`` levels, ``d_k = ratio(k)``, as (re, im)."""
     re = jnp.ones_like(x_im)
     im = jnp.zeros_like(x_im)
@@ -78,8 +88,8 @@ def profile(rho: Array, alpha: Any, terms: int) -> tuple[Array, Array]:
     ``alpha^2``, so the axial velocity is ``(A R^2 / nu) Re[-i D e^{i theta}]``; ``i (1 - rho^2) / 4`` at ``alpha = 0``."""
     q_wall = alpha * alpha / 4.0 + 0.0 * rho
     q = q_wall * rho * rho
-    n_wall = _nested(q_wall, terms, lambda k: (k + 1) ** 2)
-    n_r = _nested(q, terms, lambda k: (k + 1) ** 2)
+    n_wall = _nested(q_wall, terms, _square_ratio)
+    n_r = _nested(q, terms, _square_ratio)
     # S(q) = J0 - 1 = i q N(q); so (S(q_R) - S(q_r)) / alpha^2 = (i / 4) (N(q_R) - rho^2 N(q_r)).
     difference = _times_i((0.25 * (n_wall[0] - rho * rho * n_r[0]), 0.25 * (n_wall[1] - rho * rho * n_r[1])))
     s_wall = _times_i((q_wall * n_wall[0], q_wall * n_wall[1]))
@@ -91,8 +101,8 @@ def mean_profile(alpha: Any, terms: int) -> tuple[Array, Array]:
     at ``alpha = 0``. ``J0 - 2 J1 / z = sum_{k >= 1} (i q)^k k / ((k + 1) (k!)^2)``, nested with the ratios ``1 / (k (k
     + 2))``."""
     q_wall = jnp.asarray(alpha) * jnp.asarray(alpha) / 4.0
-    n_flux = _nested(q_wall, terms, lambda k: k * (k + 2))
-    n_wall = _nested(q_wall, terms, lambda k: (k + 1) ** 2)
+    n_flux = _nested(q_wall, terms, _flux_ratio)
+    n_wall = _nested(q_wall, terms, _square_ratio)
     top = _times_i((n_flux[0] / 8.0, n_flux[1] / 8.0))
     s_wall = _times_i((q_wall * n_wall[0], q_wall * n_wall[1]))
     return _divide(top, (1.0 + s_wall[0], s_wall[1]))
@@ -156,7 +166,7 @@ class PrescribedFlowNode(MimeNode):
             "The time of a step is its count times the timestep, never a sum of timesteps"),
         limitations=(
             "Straight circular tubes only; one harmonic",
-            "The Womersley number within its dtype's validity line (float64 50, float32 25), the run refused past it",
+            "The Womersley number within its dtype's validity line (VALIDITY), the run refused past it",
         ),
         references=(Reference("Womersley1955"),),
     )

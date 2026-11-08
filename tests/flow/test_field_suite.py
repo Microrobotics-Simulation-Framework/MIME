@@ -210,3 +210,21 @@ def test_control_a_route_one_kind_whose_steps_give_energy_fails(dtype, monkeypat
     kind, rig = fvm_rig("rk3", dtype)
     report = field_conformance(kind, fvm_field("rk3"), rig, cases=[FieldCase.LEDGER])
     assert not report.passed
+
+
+def test_a_prescribed_flow_in_a_medium_that_fills_no_tube_is_refused(float64):
+    from mime.build import BuildRefused
+    from mime.experiment import Experiment
+    from mime.interactions import BodyForce
+    from mime.scene import Scene, Z
+    from mime.things import Medium
+    from mime.units import kg_per_m3, m_per_s2, mPa_s, ms
+
+    exp = Experiment("free", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
+    exp.add_medium(Medium("water", fields={"flow": Womersley()}))
+    exp.declare("water.viscosity", mPa_s(1.0), reason="water near 20 C")
+    exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0)), medium="water")
+    with pytest.raises(BuildRefused) as raised:
+        exp.build()
+    assert "flow.prescribed-region" in [r.code for r in raised.value.refusals]

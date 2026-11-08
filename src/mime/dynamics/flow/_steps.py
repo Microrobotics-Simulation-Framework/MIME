@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from mime.core import jnp
 from mime.nodes.flow._womersley import profile, series_terms
 from mime.registry import DriveQuery
 
@@ -50,7 +51,7 @@ def axial_drive(drives: Sequence[DriveQuery], axis: Sequence[float]) -> Drive:
         if drive.law != BODY_FORCE:
             continue
         s = drive.settings
-        along = np.asarray(s["along"], float)  # type: ignore[arg-type]
+        along = np.asarray(s["along"], float)
         component = float(np.dot(along / np.linalg.norm(along), np.asarray(axis, float)))
         steady += component * float(s["steady"])  # type: ignore[arg-type]
         harmonic = float(s.get("amplitude") or 0.0)  # type: ignore[arg-type]
@@ -64,7 +65,7 @@ def harmonic_peak(alpha: float) -> float:
     """``max_rho |D(rho)|``, the harmonic's peak speed over ``A R^2 / nu``: 1/4 at alpha 0 (quasi-steady Poiseuille),
     falling as the Stokes layer thins."""
     rho = np.linspace(0.0, 1.0, _RADII)
-    re, im = profile(np.asarray(rho), np.asarray(alpha), series_terms(np.float64))
+    re, im = profile(jnp.asarray(rho), jnp.asarray(alpha), series_terms(np.float64))
     return float(np.max(np.hypot(np.asarray(re, float), np.asarray(im, float))))
 
 

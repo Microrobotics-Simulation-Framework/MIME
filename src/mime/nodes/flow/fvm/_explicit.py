@@ -18,10 +18,11 @@ route_one_recorded``)."""
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, NamedTuple, override
+from typing import Any, NamedTuple, cast, override
 
 import numpy as np
-from jax import Array, lax
+import jax
+from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
@@ -43,7 +44,9 @@ EQUATIONS = (r"\mathbf{u}^{(k)} = \mathcal{P}\left[\frac{\mathbf{u}^{(k-1)} + \g
              r"\right], \quad \mathbf{F} = \mathcal{C}(\mathbf{u}) + \frac{\mu}{\rho} L \mathbf{u} + (1 - \chi) "
              r"\mathbf{g}")
 
-_STEP = "mime.nodes.flow.fvm._explicit.ExplicitFlowNode.stepped"
+_STEP = "mime.nodes.flow.fvm._explicit.ExplicitFlowNode.explicit_stepped"
+#: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
+_LAX: Any = jax.lax
 _START = "mime.nodes.flow.fvm._rk3.consistent_pressure"
 
 
@@ -119,11 +122,11 @@ class ExplicitFlowNode(ImplicitFlowNode):
             "The time of a step is its count times the timestep, never a sum of timesteps"),
         limitations=(
             "A periodic box only: no openings, the flow driven by a body force on the fluid",
-            "Third order in time without a wall; with a wall its flux is first order in time (0.8 to 0.95, the split "
-            "penalty) and its pressure first order (1.1); second order in space in the fluid, first order at the wall",
-            "Stable only within its CFL line along the vessel's axis and its viscous number (0.15), which the build "
-            "checks and the node checks each step, the run refused past",
-            "No step identity is claimed (route 1): each step is judged to have dissipated",
+            "Third order in time without a wall; with a wall its flux is first order in time (the split penalty) and "
+            "its pressure first order; second order in space in the fluid, first order at the wall",
+            "Stable only within its CFL line along the vessel's axis and its viscous number, which the build checks "
+            "and the node checks each step, the run refused past",
+            "No step identity is claimed: each step is judged to have dissipated (the ledger's first route)",
         ),
         references=(Reference("HarlowWelch1965"), Reference("Angot1999"), Reference("SpalartMoserRogers1991")),
     )
@@ -142,7 +145,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
         Symbol(r"\gamma_k", SymbolKind.CONSTANT, "gamma", "1", _STEP),
         Symbol(r"\zeta_k", SymbolKind.CONSTANT, "zeta", "1", _STEP),
         Symbol(r"\alpha_k", SymbolKind.CONSTANT, "alpha", "1", _STEP),
-        Symbol("h", SymbolKind.CONSTANT, "timestep", "s", _STEP),
+        Symbol(r"\mathbf{F}", SymbolKind.CONSTANT, "explicit_rhs", "m/s^2", _STEP),
     )
 
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
@@ -221,12 +224,11 @@ class ExplicitFlowNode(ImplicitFlowNode):
                 dt: float) -> NodeFields:
         if self.metered:
             return books.metered_route_one_step(self, self.boundary_input_spec(), p, state, boundary_inputs, dt,
-                                                self.stepped)
-        return self.stepped(p, state, boundary_inputs, dt)[0]
+                                                self.explicit_stepped)
+        return self.explicit_stepped(p, state, boundary_inputs, dt)[0]
 
-    @override
-    def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
-                dt: float) -> tuple[dict[str, Array], ExplicitParts]:  # type: ignore[override]
+    def explicit_stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
+                         dt: float) -> tuple[dict[str, Array], ExplicitParts]:
         c = self.constants()
         grid = self.grid(p)
         dtype = run_dtype()
@@ -252,8 +254,9 @@ class ExplicitFlowNode(ImplicitFlowNode):
         time = steps.astype(dtype) * dt
         velocity = _velocity(state)
         held_pressure = jnp.asarray(state["pressure"])
-        pressure = lax.cond(jnp.asarray(state["pressure_ready"]) > 0.5, lambda: held_pressure,
-                            lambda: _rk3.consistent_pressure(grid, velocity, nu, sigma, force(0, time), convection))
+        pressure = cast(Array, _LAX.cond(
+            jnp.asarray(state["pressure_ready"]) > 0.5, lambda: held_pressure,
+            lambda: _rk3.consistent_pressure(grid, velocity, nu, sigma, force(0, time), convection)))
         cfl, stopped_at, stopped_cfl = cfl_check(velocity, dt, grid.spacing, self.line(p), convection,
                                                  jnp.asarray(state["stopped_at"]), jnp.asarray(state["stopped_cfl"]),
                                                  steps)
@@ -291,8 +294,8 @@ class ExplicitFlowNode(ImplicitFlowNode):
                 raise ValueError(f"the flow node hosts {list(work_of)}: it takes no delivery {delivery}")
             work = work.at[rows.index(delivery.law)].add(work_of[delivery.field])
             named.add(delivery.field)
-        unattributed = sum((value for field, value in work_of.items() if field not in named),
-                           start=jnp.zeros((), dtype=dtype))
+        unattributed = cast(Array, sum((value for field, value in work_of.items() if field not in named),
+                                       start=jnp.zeros((), dtype=dtype)))
         terms = jnp.stack([-rho * stage.convection])
         return books.StepAccount(work=work, hosted=hosted, unattributed=unattributed, terms=terms,
                                  storage_start=self.storage(p, state), storage_end=self.storage(p, ended),

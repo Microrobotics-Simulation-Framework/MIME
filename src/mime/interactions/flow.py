@@ -80,7 +80,7 @@ class BodyForce(Interaction):
     def plan(self, ctx: PlanContext) -> Plan:
         """The force a step and the waveform, each where the medium's field takes it."""
         record = ctx.capabilities.get("medium")
-        accepted = set(record.accepts) if record is not None else set()
+        accepted: set[str] = set(record.accepts) if record is not None else set()
         return Plan(delivers={label: delivery for label, delivery in self.delivers.items()
                               if delivery.target in accepted})
 

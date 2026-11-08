@@ -220,7 +220,7 @@ class FVM(Dynamics):
         given = query.settings.get("spacing")
         layout = periodic_tube_layout(radius, float(query.settings["domain.length"]),  # type: ignore[arg-type]
                                       cells_across=self.cells_across,
-                                      spacing=float(given) if isinstance(given, (int, float)) else None,  # type: ignore[arg-type]
+                                      spacing=float(given) if isinstance(given, (int, float)) else None,
                                       margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
         h = layout.spacing
         drive = axial_drive(query.drives, axis)

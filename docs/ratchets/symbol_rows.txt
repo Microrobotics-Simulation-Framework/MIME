@@ -167,3 +167,16 @@ ImplicitFlowNode \mu  # pinned at landing
 ImplicitFlowNode \rho  # pinned at landing
 ImplicitFlowNode \mathbf{g}  # pinned at landing
 BodyForceNode \theta  # pinned at landing
+ExplicitFlowNode \mathbf{u}  # pinned at landing
+ExplicitFlowNode p  # pinned at landing
+ExplicitFlowNode \mu  # pinned at landing
+ExplicitFlowNode \rho  # pinned at landing
+ExplicitFlowNode \mathbf{g}  # pinned at landing
+ExplicitFlowNode \mathbf{F}  # pinned at landing
+PrescribedFlowNode u  # pinned at landing
+PrescribedFlowNode g_0  # pinned at landing
+PrescribedFlowNode A  # pinned at landing
+PrescribedFlowNode \omega  # pinned at landing
+PrescribedFlowNode \varphi  # pinned at landing
+PrescribedFlowNode R  # pinned at landing
+PrescribedFlowNode \nu  # pinned at landing

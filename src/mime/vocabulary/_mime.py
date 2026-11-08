@@ -86,7 +86,7 @@ FLOW_BODY_FORCE = define(Interface(
 FLOW_WAVEFORM = define(Interface(
     "flow.waveform", TargetKind.EQUALITY_CONSTRAINT, "1", "world", (7,),
     sign="on the fluid of a medium, per unit mass", magnitude=1.0,
-    description="a medium's drive as its waveform, along (3, a unit direction), steady and amplitude (m/s^2), frequency "
-                "(Hz) and phase (rad): the force per unit mass along (steady + amplitude cos(2 pi frequency t + phase)) "
-                "on its fluid, which the field kind evaluates at its own instants or responds to analytically. At most "
-                "one law delivers it: a waveform is not summed"))
+    description="a medium's drive as its waveform: a unit direction, the steady part and one harmonic's amplitude "
+                "(accelerations), frequency and phase, the force per unit mass on its fluid, which the field kind "
+                "evaluates at its own instants or responds to analytically. At most one law delivers it: a waveform is "
+                "not summed"))

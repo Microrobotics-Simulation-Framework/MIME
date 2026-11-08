@@ -83,7 +83,7 @@ def _declarations(kind: Any, declared: SolvedField, dtype: str) -> CaseResult:
     for name in declared.provides:
         if lookup(name) is None:
             found.append(f"it provides {name!r}, which the vocabulary does not name")
-    accepts = set(getattr(type(kind), "accepts", {}) or {})
+    accepts: set[str] = set(getattr(kind, "accepts", {}) or {})
     missing = [name for name in declared.accepts if name not in accepts]
     if missing:
         found.append(f"it declares it accepts {missing}, which the kind does not (accepts = {sorted(accepts)})")
@@ -121,7 +121,8 @@ def _reading(declared: SolvedField, rig: FieldRig) -> CaseResult:
 
 
 def _outside(kind: Any, rig: FieldRig) -> CaseResult:
-    ports = {port.field for port in (getattr(type(kind), "accepts", {}) or {}).values()}
+    held: Mapping[str, Any] = getattr(kind, "accepts", {}) or {}
+    ports = {port.field for port in held.values()}
     inputs = set(rig.node.boundary_input_spec())
     extra = sorted(inputs - ports)
     return CaseResult(FieldCase.OUTSIDE, not extra,
