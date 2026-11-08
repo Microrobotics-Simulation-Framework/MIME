@@ -31,9 +31,10 @@ from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
-from typing_extensions import ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, run_dtype
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
+    run_dtype
 from mime.nodes.flow._waveform import WAVEFORM_SIZE
 from mime.registry import Problem
 
@@ -139,12 +140,17 @@ def mean_velocity(time: Any, waveform: Array, axis: Array, radius: Any, nu: Any,
 
 
 class PrescribedFlowState(TypedDict, closed=True):
-    steps: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    waveform: ReadOnly[Float[Array, "7"]]  # noqa: F722 - a jaxtyping shape
-    centreline: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    lumen_flux: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    womersley_number: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    outside_validity: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    steps: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: The waveform it last read, which a reading at points after the step responds to.
+    waveform: ReadOnly[Annotated[Float[Array, "7"], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    centreline: ReadOnly[Annotated[Float[Array, ""], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
+    lumen_flux: ReadOnly[Annotated[Float[Array, ""], Units("m^3/s")]]  # noqa: F722 - a jaxtyping shape
+    womersley_number: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    outside_validity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+
+
+class PrescribedFlowInputs(TypedDict, closed=True):
+    waveform: NotRequired[ReadOnly[Annotated[Float[Array, "7"], Units("1")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class PrescribedFlowNode(MimeNode):
@@ -270,5 +276,5 @@ class PrescribedFlowNode(MimeNode):
             "run in float64 (its line is 50), or lower the drive's frequency or the tube's radius; past 50, use FVM()")
 
 
-__all__ = ["VALIDITY", "PrescribedFlowNode", "PrescribedFlowState", "axial_velocity", "mean_profile",
+__all__ = ["VALIDITY", "PrescribedFlowInputs", "PrescribedFlowNode", "PrescribedFlowState", "axial_velocity", "mean_profile",
            "mean_velocity", "profile", "series_terms"]
