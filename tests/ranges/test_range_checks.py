@@ -1,5 +1,5 @@
 """The rules a choice over a declared range keeps, and the checks a study makes of a ranged experiment before its first
-sweep, on the planted entry (``planted.RangedShares``, no solver of its own: a build of it is cheap).
+sweep, on the planted entry (``ranged_planted.RangedShares``, no solver of its own: a build of it is cheap).
 
 - **A choice declares its rule.** Monotone (judged at the corners) or sampled (and inside, at a stated count); one that
   declares neither is refused as the entry's defect. A choice that peaks inside the range, declared monotone, gives
@@ -18,7 +18,7 @@ code."""
 from __future__ import annotations
 
 import pytest
-from cases import RADIUS, planted
+from ranged_rigs import RADIUS, planted
 
 from mime.build import BuildRefused
 from mime.registry import Monotone, Sampled
@@ -144,3 +144,13 @@ def test_an_unchanged_experiments_next_plan_reuses_the_checks_verdicts():
     assert again.reused and again.seconds == 0.0 and again.refusals == first.refusals
     other = planted("clean", ranged=(1.0, 1.2))
     assert not range_check(other).reused, "another range is another content"
+
+
+def test_a_difference_or_a_bake_no_entry_owns_is_refused_as_mimes_defect(monkeypatch: pytest.MonkeyPatch):
+    """Where the difference lies in no node an entry built (the graph's edges, the traced step as a whole), the refusal
+    is MIME's: the same plants with their nodes' owner unknown."""
+    import mime.study._ranges as ranges
+
+    monkeypatch.setattr(ranges, "_owner_class", lambda plans, node: None)
+    assert [r.code for r in range_check(planted("unreported")).refusals] == ["study.range-dependent"]
+    assert [r.code for r in range_check(planted("bake")).refusals] == ["study.range-bake"]

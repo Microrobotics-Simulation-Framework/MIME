@@ -1,12 +1,12 @@
 """The rigs of the declared ranges' tests: the pulled sphere of the MRS gradient oracle (``Drag.MRS`` at a written
 spacing of 0.6 mm in free space, its mass and inertia declared, pulled by a constant wrench), whose force points are 66,
 72 and 91 at radii of 1.0, 1.1 and 1.15 mm; and a ball of the same kind carrying a planted ranged entry
-(``planted.RangedShares``) and nothing else, for the controls."""
+(``ranged_planted.RangedShares``) and nothing else, for the controls."""
 
 from __future__ import annotations
 
 from mrs_cases import free_space, mrs
-from planted import RangedShares
+from ranged_planted import RangedShares
 from rigid_oracles import ConstantWrench
 
 from mime.experiment import Experiment

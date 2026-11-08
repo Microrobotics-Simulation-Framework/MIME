@@ -67,14 +67,43 @@ declared static**: one kept in a Python attribute alone is invisible to the stud
 the value the group was built with. What splits a group is what a node makes from a value when it is built: a static it
 declares, a count or a layout (the MRS rung's force points from its spacing, a hull's counts from the contact's spacing
 or margin). The MRS rung's settings and wall tables are leaves, and so is the matrix it holds, made at build with the
-leaves it was made at beside it, so a sweep of its blob is one group. Geometry is no axis yet: a part's settings are
-given where the part is written, and a sweep or an override of one is refused, so a new shape is a new build. The
-two-builds check (`mime.testing.two_builds`) is how an entry shows that no value of it is held as a constant of the
+leaves it was made at beside it, so a sweep of its blob is one group. A geometry's number is an axis, named as
+`exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`); a kind's setting that is not one number (an
+ellipsoid's semi-axes) is refused as one. Without a declared range, a sweep of a radius splits where the MRS rung's force
+points change; with one, it does not (below). The two-builds check (`mime.testing.two_builds`) is how an entry shows that no value of it is held as a constant of the
 program. Such an entry is a defect to report; its values run as experiments of their own, `Experiment.based_on(...)`,
 each built. A point outside a validity limit is refused in every profile, and `study.run()` refuses
 the study with every refused point at once; `sweep(..., drop_refused=True)` runs the rest and records the dropped points
 on the result. With a controller called on the host between chunks, a group's members run one after another on its one
 compiled step, each with its own law.
+
+## Declared ranges
+
+A value a study will move, and whose choices would otherwise split it, is given a range in the experiment:
+
+<!-- mime-fragment: one declaration of an experiment, shown for its form -->
+```python
+exp.declare_range("ball.parts.shell.radius", mm(1.0), mm(1.15), reason="the design range of the ball's radius")
+```
+
+Every choice an entry makes from that value is then made over the range instead (the MRS rung's force points at the
+range's corner with the most, the samples moved with each member's own radius), so a sweep across it is one group and
+one compile, and an override inside it runs as data on the built step. The price is that every member, and a run of the
+experiment alone, takes the range's discretisation: the build report says what the range moved and what it costs (the
+force points the range chose, at which of its corners, against the count at the experiment's own value, and the dense
+solve's size against the other's). The range is saved with the
+experiment, so a member made an experiment of its own (`member(i).as_experiment(...)`), `mime verify --run` and the spec
+file reproduce it with the range.
+
+A point outside the range is built for its own value, a group of its own, and the plan says why; a run's override
+outside it is refused (`override.outside-range`). A range is refused on `dt`, the precision, a rung or a numerical
+setting (each is a variant), on a value that is not one quantity, where the experiment's own value lies outside it, and
+where the experiment is refused at one of its corners: the build plans each corner, so each validity line is judged
+over the range. At most six ranges are declared, since the corners double with each. Before its first sweep, a ranged study checks, once for
+the experiment's content, that the range reaches the build only through the choices its entries report, and that a
+value moved inside the range moves no constant of the compiled step; a ranged study's plan reports the checks and their
+cost. Members inside a range that still split are an entry's defect: reported in the exploratory and research profiles,
+refused in strict.
 
 ## The result
 
@@ -159,8 +188,8 @@ The run folder's `run.json` records each override (its path, its value with its 
 `report.json` is the point's, and `experiment/` stays the base's saved form; `mime verify --run <run>` makes the run again
 from them and compares. The point is judged as a study's is, the nodes' own checks of their start included, so a start
 the build refuses is refused when the run is asked for. What would need another compiled step is refused with its route:
-a value baked into a static or the structure is a rebuild (a study, or `Experiment.based_on`), and a numerical setting,
-`dt`, the precision or a rung is a variant.
+a value baked into a static or the structure is a rebuild (a study, or `Experiment.based_on`), a value outside a declared
+range is a study's point of its own, and a numerical setting, `dt`, the precision or a rung is a variant.
 
 ## What is bit for bit, and what is not
 

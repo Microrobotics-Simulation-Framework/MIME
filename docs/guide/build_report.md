@@ -159,6 +159,14 @@ Each declaration removed in this session (`exp.remove(...)`), as a note: what wa
 the experiment keeps the note (`plan().removed` holds the same lines). It is empty for an experiment nothing
 was removed from. The saved experiment holds what was left ([reading errors](../reading_errors.md#taking-a-declaration-out)).
 
+## `ranges`
+
+Each range the experiment declares (`exp.declare_range(...)`), with each choice the build made over it that differs from
+the one the experiment's own value would make, and what that costs: the MRS rung's force points chosen at the range's
+corner with the most, against the count at the experiment's own radius, and its dense solve's size against the other.
+A run of the experiment uses the range's choices, so this is what declaring the range costs every run; to pay less,
+narrow the range. It is empty for an experiment that declares no range ([studies](studies.md#declared-ranges)).
+
 ## `stale`
 
 Set on a built experiment's `report` once the experiment has had a replacement or a removal since the build: what changed

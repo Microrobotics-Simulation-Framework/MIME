@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Declared ranges** (`exp.declare_range(path, low, high, reason=...)`, saved form 11): the range of a value the
+  experiment writes, on any axis a study names (a thing's value, a kind's number, a command's constant value, a law's
+  setting, a body's initial value); refused on `dt`, the precision, a rung or a numerical setting, on a value that is not
+  one quantity, where the experiment's own value lies outside it, and past six ranges. Every choice an entry makes from
+  the value is made over the range (`mime.registry.choose_over`, with the rule the entry declares: `Monotone`, judged at
+  the range's corners, or `Sampled`, inside as well; neither is the entry's defect), so a sweep across it is one group
+  and one compile, and a run's override inside it runs as data. The build prices what the range moved in its report
+  and plans the experiment at every corner, so each validity line is judged over the range (`range.corner`). A study's
+  point outside a range is built for its own value, a group of its own; a run's override outside one is refused
+  (`override.outside-range`); members inside a range that still split are an entry's defect, reported (refused in
+  strict, `study.range-split`). Before its first sweep a ranged study checks, in float64 and once for the experiment's
+  content, that the range reaches the build only through the choices entries report (the independence check, at the
+  base and both corners) and that a move of 1e-6 inside each range moves no constant of the step (the two-builds trace
+  form). New refusals: `range.corner`, `range.duplicate`, `range.kind`, `range.order`, `range.outside`, `range.path`,
+  `range.reason`, `range.too-many`, `range.units`, `override.outside-range`, `study.held-geometry`, `study.range-split`,
+  and `study.range-bake` and `study.range-dependent` (MIME's defect).
+- **Geometry axes**: a number of a body's part's kind (`"ball.parts.shell.radius"`) or a structure's
+  (`"tube.inner_radius"`) is an axis of a study, an override and a range; a kind's setting that is not one number is
+  refused as one (`study.held-geometry`).
+- **`Drag.MRS` over a range** (its first consumer, no version change): over a declared range of its body's numbers the
+  rung samples at the range's point with the most force points, its default spacing the family's at the range's
+  finest, and keeps the body's own numbers as its leaves, so the chosen samples move with each member's shape. Monotone
+  in the sphere's radius, the capsule's radius and height and the screw's length, wavenumber and modulation (measured),
+  and sampled at nine points elsewhere: the screw's radius is not monotone (106 force points at 2.153 mm, 91 at 2.184 mm,
+  at 1.5 mm). On the pulled sphere over [1.0, 1.15] mm at 0.6 mm: 91 force points at every member, against 66 at 1.0 mm
+  alone. An experiment with no range builds as before, bit for bit.
+
 - **The two-builds check** (`mime.testing.two_builds`, `two_builds_of`, `step_program`, `graph_program`, `run_form`;
   float64 only): whether a compiled program holds a value made from a declared one as a constant of its own, which a
   study's batched members would all run at the group's first value and a derivative would not see. Its trace form

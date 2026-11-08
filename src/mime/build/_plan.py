@@ -2971,7 +2971,8 @@ class _Planner:
                                                          self.directed(), parts)
                 if unknown:
                     self.refuse("range.path", RefusalClass.USER, f"the range of {path}: {unknown[0][1]}",
-                                unknown[0][2])
+                                f"range a value the thing has, exp.declare_range('<thing>.<value>', low, high, "
+                                f"reason=...): {unknown[0][2]}")
                     continue
                 owner = path.partition(".")[0]
                 value = self.declared_of(owner).get(path) if owner in self.things else None
@@ -2979,7 +2980,8 @@ class _Planner:
                     self.refuse("range.outside", RefusalClass.USER,
                                 f"{path} is {value!r} {held.unit}, outside its declared range "
                                 f"[{held.low}, {held.high}]",
-                                "declare a range that holds the experiment's own value, or declare a value inside it")
+                                f"declare a range that holds the experiment's own value, exp.declare_range({path!r}, low, "
+                                f"high, reason=...), or a value inside it, exp.declare({path!r}, ...)")
         owners = {plan.owner: plan.registered.cls for plan in self.declared}
         self.refusals += choice_refusals(self.range_choices, owners)
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from cases import RADIUS, moving, pulled
+from ranged_rigs import RADIUS, moving, pulled
 
 from mime.build import BuildRefused
 from mime.experiment import Experiment

@@ -105,12 +105,14 @@ def planned_ranges(settings: RunSettings, declarations: Sequence[Declaration]
         if isinstance(own, Quantity) and own.dimension != low.dimension:
             refuse("range.units", f"the range of {axis.path} is in {unit_symbol(low.dimension)}, and its value "
                                   f"{own} is in {unit_symbol(own.dimension)}",
-                   f"write the range's ends in the value's dimension, {unit_symbol(own.dimension)}")
+                   f"write the range's ends in the value's dimension, {unit_symbol(own.dimension)}: "
+                   f"exp.declare_range({axis.path!r}, low, high, reason=...)")
             continue
         low_si, high_si = _to_si(low), _to_si(high)
         if low_si is None or high_si is None:
             refuse("range.units", f"the range of {axis.path} is [{low}, {high}], and a range is of one number",
-                   "declare a range of a value that is one number; a vector's components are not ranged")
+                   "declare a range of a value that is one number, exp.declare_range(path, mm(1.0), mm(1.2), "
+                   "reason=...); a vector's components are not ranged")
             continue
         if not low_si < high_si:
             refuse("range.order", f"the range of {axis.path} is [{low}, {high}], whose low end is not below its high "
@@ -119,17 +121,18 @@ def planned_ranges(settings: RunSettings, declarations: Sequence[Declaration]
             continue
         if own is not None and not isinstance(own, Quantity):
             refuse("range.kind", f"{axis.path} is {own!r}, not a quantity, so it has no range",
-                   "declare ranges of values written as quantities (a command's constant value, a law's dimensioned "
-                   "setting, a kind's number, a thing's declared value)")
+                   "declare ranges of values written as quantities, exp.declare_range(path, low, high, reason=...): a "
+                   "command's constant value, a law's dimensioned setting, a kind's number, a thing's declared value")
             continue
         own_si = _to_si(own) if isinstance(own, Quantity) else None
         if isinstance(own, Quantity) and own_si is None:
             refuse("range.units", f"{axis.path} is {own}, not one number, so it has no range",
-                   "declare a range of a value that is one number")
+                   "declare a range of a value that is one number, exp.declare_range(path, low, high, reason=...)")
             continue
         if own_si is not None and not low_si <= own_si <= high_si:
             refuse("range.outside", f"{axis.path} is {own}, outside its declared range [{low}, {high}]",
-                   f"declare a range that holds the experiment's own value, or write a value inside it",
+                   f"declare a range that holds the experiment's own value, exp.declare_range({axis.path!r}, low, high, "
+                   f"reason=...), or write a value inside it",
                    why="the experiment's run uses the range's choices, so its own value is one of the range's")
             continue
         found[axis.path] = PlannedRange(axis.path, axis.kind.value, low, high, low_si, high_si,

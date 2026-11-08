@@ -88,7 +88,7 @@ def test_a_document_of_version_four_holds_the_licence_the_terms_and_the_permissi
                          permissions=[a_permission(pin)])
     experiment.build().save(tmp_path / "termed")
     document = yaml.safe_load((tmp_path / "termed" / DOCUMENT_FILE).read_text())
-    assert document["schema"] == "mime.document/10" and document["licence"] == "CC-BY-4.0"
+    assert document["schema"] == "mime.document/11" and document["licence"] == "CC-BY-4.0"
     assert document["licences"] == {NO_REDISTRIBUTION.id: {"title": NO_REDISTRIBUTION.title,
                                                            "url": NO_REDISTRIBUTION.url,
                                                            "redistribution": "not_permitted"}}
@@ -104,7 +104,7 @@ def test_a_document_of_version_four_holds_the_licence_the_terms_and_the_permissi
 def test_a_document_that_declares_nothing_holds_none_of_the_new_keys(tmp_path: Path):
     layered("plain", []).build().save(tmp_path / "plain")
     document = yaml.safe_load((tmp_path / "plain" / DOCUMENT_FILE).read_text())
-    assert document["schema"] == "mime.document/10"
+    assert document["schema"] == "mime.document/11"
     assert not set(_versions.TERMS_KEYS) & set(document)
     assert "referenced_files" not in json.loads((tmp_path / "plain" / LOCK_FILE).read_text())
 
@@ -417,10 +417,10 @@ def test_a_version_three_folder_packs_its_layer_as_its_authors_own(tmp_path: Pat
 def test_the_write_back_of_version_three_is_the_inverse_of_its_upgrade():
     document = yaml.safe_load((V3 / DOCUMENT_FILE).read_text())
     upgraded, version, renamed = upgraded_document(document)
-    assert (version, renamed, upgraded["schema"]) == (3, (), "mime.document/10")
+    assert (version, renamed, upgraded["schema"]) == (3, (), "mime.document/11")
     assert document_in_form(upgraded, 3) == document
     held, lock_version = upgraded_lock(json.loads((V3 / LOCK_FILE).read_text()))
-    assert lock_version == 3 and held["schema"] == "mime.lock/10"
+    assert lock_version == 3 and held["schema"] == "mime.lock/11"
 
 
 def a_version_three_folder_given_a_licence_is_refused(root: Path) -> None:

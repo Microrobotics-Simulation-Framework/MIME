@@ -7,7 +7,7 @@ built, but the corner's, which the build judges."""
 from __future__ import annotations
 
 import pytest
-from cases import HIGH, LOW, RADIUS, REASON, planted
+from ranged_rigs import HIGH, LOW, RADIUS, REASON, planted
 
 from mime.build import BuildRefused, RangeDeclaration
 from mime.build._refusals import ArgumentRefused

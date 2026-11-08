@@ -66,7 +66,8 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_duration_saved.py::test_the_control_an_earlier_form_holding_the_key_of_version_five_is_refused`,
   `tests/saved/test_form7.py::test_an_earlier_document_holding_based_on_is_refused`,
   `tests/saved/test_form7.py::test_control_an_upgrade_that_accepts_based_on_in_an_earlier_document_is_caught_every_run`,
-  `tests/saved/test_form7.py::test_a_version_six_document_that_declares_a_run_length_reads`.
+  `tests/saved/test_form7.py::test_a_version_six_document_that_declares_a_run_length_reads`,
+  `tests/saved/test_form11.py::test_a_form_ten_document_holding_ranges_is_refused_and_the_same_document_without_it_is_read`.
 - **[document.duration]** The run's length, where the experiment declares one (`Experiment(..., duration=...)`), is
   saved as `run.duration` and is part of the hashed input: a duration edited after its lock was written is refused as
   `load.input-hash`. `mime run` on the folder runs that long when it is given no `--duration`, and the option still
@@ -96,6 +97,15 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_based_on.py::test_a_doi_that_is_not_a_dois_shape_is_not_recorded_and_the_warning_says_why`,
   `tests/sharing/test_based_on_shared.py::test_a_bundle_whose_lock_names_another_record_records_the_one_it_was_pulled_from_and_warns_naming_both`,
   `tests/saved/test_form7.py::test_dev1s_reader_refuses_a_folder_of_the_current_form_as_newer_each_file_once`.
+- **[document.ranges]** A range declared in the experiment (`exp.declare_range(path, low, high, reason=...)`) is saved
+  as `ranges`, by its axis's path: its ends in SI, their unit and its reason, written only where one is declared. It is
+  part of the hashed input, since the build makes every choice keyed on the value over the range, and a load builds
+  over it as the save did. A document of an earlier form declares none and loads as it did; one of an earlier form that
+  holds the key is refused. A reader of the tenth form refuses a folder of the eleventh as `load.newer-form`.
+  *Cases:* `tests/saved/test_form11.py::test_version_eleven_writes_a_declared_range_into_the_document_and_reads_it_back`,
+  `tests/saved/test_form11.py::test_a_form_ten_document_holding_ranges_is_refused_and_the_same_document_without_it_is_read`,
+  `tests/saved/test_form11.py::test_version_tens_reader_refuses_a_folder_of_version_eleven_as_newer_each_file_once`,
+  `tests/ranges/test_declare_range.py::test_a_range_is_saved_in_the_document_and_read_back`.
 - **[document.terms]** The document's licence, custom licences, terms and permissions are read in the form `save`
   writes them; terms in any other form are refused by their own codes.
   *Cases:* `tests/saved/test_terms_saved.py::test_terms_edited_by_hand_are_refused_at_load_by_their_code`.

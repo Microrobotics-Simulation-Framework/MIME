@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from cases import RADIUS, REASON, pulled
+from ranged_rigs import RADIUS, REASON, pulled
 
 from mime.interactions import Drag
 from mime.units import mm

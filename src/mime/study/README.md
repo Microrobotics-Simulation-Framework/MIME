@@ -26,11 +26,29 @@
   value when it is built and keeps in its program: a static it derives and declares, a count or a layout (the MRS
   rung's force points from its spacing, a hull's counts and groups from the contact's spacing or margin), the node set,
   `dt` and the precision. The MRS rung's settings and wall tables are leaves, and so is its held body-frame matrix, made
-  at build with the leaves it was made at beside it: a sweep of its blob is one group. Geometry is no axis yet (a
-  kind's settings are given where they are written); inside a declared range it will be a declared parameter, its
-  counts and box sizes fixed by the range. A value held in a node's program as a constant of its own, not as a leaf, is
-  a silent bake: every member would run the first point's. The two-builds check (`mime.testing.two_builds`) is how an
-  entry shows it holds none.
+  at build with the leaves it was made at beside it: a sweep of its blob is one group. A geometry's number is an axis,
+  named as `exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`); a kind's setting that is not one
+  number (an ellipsoid's semi-axes, a box's size, a direction, a count) is refused as one (`study.held-geometry`). Without
+  a declared range a geometry sweep splits as its key says (the MRS rung re-picks its force points from each radius);
+  inside one it is a declared parameter, its counts fixed by the range. A value held in a node's program as a constant
+  of its own, not as a leaf, is a silent bake: every member would run the first point's. The two-builds check
+  (`mime.testing.two_builds`) is how an entry shows it holds none.
+- **Declared ranges** (`exp.declare_range(path, low, high, reason=...)`, saved with the experiment): on any axis but `dt`,
+  the precision, a rung and a numerical setting. Every choice an entry makes from the value (a count, a spacing) is made
+  over the range through `mime.registry.choose_over`, with a rule it declares (`Monotone`, judged at the corners, or
+  `Sampled`, inside as well; neither is refused as the entry's defect), so that every value inside builds one program: a
+  sweep across it is one group and one compile, and an override inside it runs as data. A run of the experiment alone
+  uses the range's discretisation; the build report prices what the range moved against the experiment's own value's
+  choice, and the build plans the experiment at every corner (at most `MAX_RANGES` ranges, six, the corners doubling
+  with each). A point outside a
+  range is built for its own value, that range taken out, a group of its own whose split reason names it; members inside
+  a range that still split are an entry's defect, reported in the plan (exploratory, research) or refused (`strict`,
+  `study.range-split`). Before its first sweep a ranged study checks, in float64 and cached by the experiment's content,
+  that the range reaches the build only through the choices entries report (the independence check: the build over the
+  range against the build without it, every reported choice pinned, at the base and at both corners) and the two-builds
+  trace form at a small move inside each range (`mime.study._ranges.MOVE`); either refuses as the entry's defect. The first consumer is
+  `Drag.MRS`: its force points (and its default spacing) chosen at the range's corner with the most, monotone in the
+  kinds' numbers measured so, sampled at nine points a number elsewhere (the screw's radius).
 - **The plan's memory estimate** (`Memory`): on the device, XLA's buffer assignment of one chunk of the batched step
   compiled at the batch's own size and not run, and `fixed + each` a member from the line through two batch sizes
   (four and eight, or a smaller batch and half of it), checked at a third; no figure a member where the third lies more
@@ -70,7 +88,8 @@
   In the research profile each axis needs its own reason (`sweep(..., reasons={...})`, `study.axis-reason`).
 - **From a member to an experiment** (`_bridge.py`): `result.member(i).as_experiment(name)`, `Experiment.based_on(<the
   base>, name=name)` with the member's values declared, each with the reason `from study <id>, member <i>`, and a ramp's
-  member with its ramp declared as the study declared it. A study run on a ramp runs in memory: `run_to` refuses it
+  member with its ramp declared as the study declared it; a member outside a declared range is made without that range,
+  as it was built. A study run on a ramp runs in memory: `run_to` refuses it
   (`study.protocol-folder`), since the folder and the spec file record no protocol yet.
 
 ## Boundaries
@@ -81,8 +100,9 @@
 ## Status
 
 Sweeps, overrides, the drives that ramp a command with the step-out readings, the study folder, the spec file and
-`mime study`, resume and the bridge to an experiment are built (dev2, the study layer's first three phases); a study
-folder does not yet record a protocol. Plots and comparisons, checkpoints and forks, variants, fits and sensitivities
+`mime study`, resume and the bridge to an experiment are built (dev2, the study layer's first three phases), and
+declared ranges with their first consumer (lane S's alignment with F0, its second PR); a study folder does not yet
+record a protocol. Plots and comparisons, checkpoints and forks, variants, fits and sensitivities
 come later.
 
 Releases are explained in the [package manifest](../README.md#status).
