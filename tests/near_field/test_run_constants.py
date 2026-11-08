@@ -1,11 +1,11 @@
 """Gate 9, no per-step remake in reverse mode: the joint node's held free parts are its run-constants (S-F0-1's seam,
 ``MimeNode.run_constants``), made once per chunk. Spheres of 1 and 0.7 mm at 0.6 mm spacing, 0.4 mm apart, float64,
-the larger one's radius moved 1 % (so its free part is made from the moved leaf): the value and gradient of a loss of
+the smaller one's radius moved 1 % (so its free part is made from the moved leaf): the value and gradient of a loss of
 the final poses through MIME's chunked run (``chunk_function``: each free part made before the loop) equal those
 through MADDENING's scan of the step (``held_or_made`` making it again in every step, forward and backward) to 1e-12
 of their size at 10 steps; in the chunk's compiled program, value and gradient, no instruction of the free part's own
-kernel (its force points against its own quadrature, a shape no other block has, the two bodies' counts differing)
-sits inside the step loop, and some sit outside it. The control: in the per-step form's compiled program they sit
+kernel (its force points against its own quadrature in one chunk, a shape no other block has: the larger body's
+kernel at its force points is chunked otherwise) sits inside the step loop, and some sit outside it. The control: in the per-step form's compiled program they sit
 inside the step loop, every run. The two-builds check on the joint node's step is the registry walk's case ``mrs_near_field`` in
 ``tests/two_builds/test_two_builds_walk.py`` (every declared float of the case moved in turn, the programs compared)."""
 
@@ -24,10 +24,11 @@ from mime.scene import Sphere
 from mime.units import m
 
 from mime.build._maddening import chunk_function, fed_inputs, full_state, graph_params, step_function
+from mime.nodes.hydro.mrs._quadrature import CHUNK_BYTES
 
 STEPS = 10
 SPACING = 0.6e-3
-LEAF = "m0_shape_radius"
+LEAF = "m1_shape_radius"
 WEIGHTS = jnp.asarray([0.3, -0.5, 0.7])
 
 
@@ -123,9 +124,12 @@ def gradients() -> dict[str, Any]:
         placed = {"s0": (Sphere(radius=m(1e-3)), (0.0, 0.0, 0.0)), "s1": (Sphere(radius=m(0.7e-3)), (2.1e-3, 0.0, 0.0))}
         built = bodies("seam", placed, mrs(SPACING), velocity=(1e-3, 0.0, 0.0)).build()
         node = joint_node(built)
-        own = node.member_nodes[0]
+        own = node.member_nodes[1]
         cells, points = own.sample_count, int(own.chunks.points.shape[1])
-        assert cells != node.member_nodes[1].sample_count, "the two bodies' counts differ"
+        assert own.chunks.points.shape[0] == 1, "the free part's kernel in one chunk, its whole quadrature"
+        other = node._operators[0]  # noqa: SLF001 - the larger body's cross-kernel's chunk at these targets
+        cross = max(1, min(other.budget, CHUNK_BYTES // (cells * 16 * 8)))
+        assert cross != points, "the larger body's cross-kernel at these force points has a shape of its own"
         shape = re.compile(rf"\[(?:{cells},{points}|{points},{cells})[,\]]")
         radius = float(np.asarray(graph_params(built.graph)["nodes"][NODE][LEAF])) * 1.01
         found: dict[str, Any] = {"shape": shape, "cells": cells, "points": points}
@@ -139,7 +143,7 @@ def gradients() -> dict[str, Any]:
 def test_reverse_mode_through_the_chunk_equals_the_per_step_form(gradients: dict[str, Any]):
     (value, gradient), _ = gradients["seam"]
     (reference, slope), _ = gradients["per step"]
-    print(f"\nthe loss {float(value):.12g} against {float(reference):.12g}; its gradient in s0's radius "
+    print(f"\nthe loss {float(value):.12g} against {float(reference):.12g}; its gradient in s1's radius "
           f"{float(gradient):.12g} against {float(slope):.12g}")
     assert abs(float(value) - float(reference)) <= 1e-12 * abs(float(reference))
     assert abs(float(gradient) - float(slope)) <= 1e-12 * abs(float(slope))
