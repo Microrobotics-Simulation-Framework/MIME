@@ -1,0 +1,64 @@
+name: Nightly
+
+# Dispatches the full matrix of ci.yml on each active release branch every night: a `release/...` branch whose newest
+# commit is under 45 days old, read in the job (the closed 0.2 line's branch is left alone). ci.yml runs three lanes on a
+# pull request only when it touches the pins, CI or an adapter to an upstream (scripts/ci_boundary.py), and otherwise
+# on pushes; this run catches an upstream's `main`, or Python 3.13, breaking MIME with no pull request of ours to show it
+# (CONTRIBUTING.md, "CI: which lanes a pull request runs"; a decision of 2026-11-08 the maintainer can reverse).
+#
+# GitHub runs a schedule from the default branch's workflow file only, so this fires only once it is on `main`: at the
+# next fast-forward of `main` from the release branch, or by a pull request of this file alone into `main`. The runs it
+# starts are workflow_dispatch events of ci.yml at the branch's own copy of that file; a workflow_dispatch started with
+# GITHUB_TOKEN does start a run, which an event of no other kind started this way does. They ask for a warm compilation
+# cache (restore, save nothing: the pushes build it, and a nightly run saving would evict theirs), and a manual run
+# runs usd-core-newest too. A branch whose dispatch is refused fails this job after the others have been tried.
+# tests/test_ci_nightly.py reads this.
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+# The token starts workflow runs and reads nothing else: the repository is public, so listing its branches needs no scope.
+permissions:
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: dispatch CI on the release branches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Dispatch ci.yml on each active release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ACTIVE_DAYS: "45"
+        run: |
+          cutoff=$(date -u -d "$ACTIVE_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+          names=$(gh api --paginate "repos/$REPOSITORY/branches?per_page=100" --jq '.[].name | select(startswith("release/"))')
+          dispatched=0
+          failed=0
+          for branch in $names; do
+            tip=$(gh api "repos/$REPOSITORY/branches/${branch//\//%2F}" --jq '.commit.commit.committer.date')
+            if [[ ! "$tip" > "$cutoff" ]]; then
+              echo "$branch: its newest commit ($tip) is older than $ACTIVE_DAYS days; left alone" | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if gh workflow run ci.yml --repo "$REPOSITORY" --ref "$branch" -f compilation_cache=warm; then
+              echo "$branch: ci.yml dispatched" | tee -a "$GITHUB_STEP_SUMMARY"
+              dispatched=$((dispatched + 1))
+            else
+              echo "::error::ci.yml could not be dispatched on $branch"
+              failed=1
+            fi
+          done
+          if [ "$dispatched" -eq 0 ] && [ "$failed" -eq 0 ]; then
+            echo "::error::no active release branch to dispatch CI on"
+            failed=1
+          fi
+          exit "$failed"

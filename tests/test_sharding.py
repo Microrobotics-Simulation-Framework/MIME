@@ -339,7 +339,7 @@ def test_a_file_the_table_gives_a_shard_of_its_own_has_it_to_itself_and_would_no
     alone = list(table["alone"])
     assert alone and all(table["alone"][path] for path in alone), "each file that holds a shard says why"
     weights = _sharding.load_weights()
-    for of in range(2, 13):
+    for of in (*range(2, 13), 16, 20, 24, 32):  # the cap of scripts/shard_matrix.py is 32
         dealt = _sharding.deal(weights, of)
         for path in alone:
             assert [other for other, shard in dealt.items() if shard == dealt[path]] == [path]
@@ -386,6 +386,18 @@ def test_a_bad_table_is_an_error_never_an_unweighted_split(tmp_path):
 def test_only_a_pull_request_that_moves_no_compile_restores_a_cache_and_none_saves(event, choice, message, changed,
                                                                                    expected):
     assert cache_mode.decide(event, choice, message, changed)[:2] == expected
+
+
+@pytest.mark.parametrize("event, choice", [("push", ""), ("workflow_dispatch", "cold"), ("workflow_dispatch", "warm"),
+                                           ("pull_request", "")])
+def test_a_lane_that_keeps_no_compilation_cache_runs_cold_and_saves_nothing_in_every_event(event, choice):
+    """Python 3.13's shards (a decision of 2026-11-08): the control is the same event with the lane keeping a cache."""
+    assert cache_mode.decide(event, choice, "feat: a change", [], keeps_cache=False)[:2] == ("cold", False)
+
+
+def test_the_same_push_saves_a_cache_where_its_lane_keeps_one():
+    assert cache_mode.decide("push", "", None, [])[:2] == ("cold", True)
+    assert cache_mode.decide("push", "", None, [], keeps_cache=False)[:2] == ("cold", False)
 
 
 #: Two runner CPUs of one flag set and two models, as /proc/cpuinfo prints them (the flags are shortened).

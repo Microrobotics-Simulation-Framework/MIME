@@ -102,6 +102,17 @@ def test_an_unlisted_test_over_the_hard_line_fails_the_job(gate, tmp_path, capsy
     assert "tests/a/test_x.py::test_slow took 25.0 s" in out
 
 
+def test_warn_only_reports_an_unlisted_test_over_the_hard_line_as_a_warning_and_passes(gate, tmp_path, capsys):
+    report = _report(tmp_path, _case("tests/a/test_x.py", "test_slow", 25.0), _case("tests/a/test_x.py", "test_fast", 0.2))
+    code, out = _run(gate, capsys, report, "--warn-only")
+    assert code == 0
+    assert "::warning file=tests/a/test_x.py,line=11,title=Test over 20 s::" in out and "::error" not in out
+    assert "this warns, and the job passes (--warn-only)" in Path(str(report) + ".md").read_text()
+    # The control: the same report without the flag fails, and a report that cannot be read still does with it.
+    assert _run(gate, capsys, report)[0] == 1
+    assert _run(gate, capsys, tmp_path / "missing.xml", "--warn-only")[0] == 2
+
+
 def test_the_same_test_on_the_allowlist_passes(gate, tmp_path, capsys):
     report = _report(tmp_path, _case("tests/a/test_x.py", "test_slow", 25.0))
     allow = tmp_path / "allow.txt"
@@ -871,6 +882,8 @@ GATE = ["uv", "run", "--no-sync", "python", "scripts/report_test_durations.py"]
 #: Where every pytest step writes its JUnit XML: a shard's in its report directory, which it uploads.
 JUNIT = re.compile(r"--junitxml=(\$RUNNER_TEMP/report/test-results(?:-shard\$\{\{ matrix\.shard \}\})?\.xml)")
 AFTER_THE_TESTS = "${{ !cancelled() && steps.tests.outcome != 'skipped' }}"
+#: The shard jobs whose duration gate warns where the others' fails the job (a decision of 2026-11-08).
+WARNING_LANES = ("openmaterica-main-tests", "maddening-main-tests")
 #: The lane summary over a sharded lane's reports, in the job that waits on its shards.
 SUMMARY = ["python3", "scripts/report_test_durations.py", '$RUNNER_TEMP/shards/*/test-results-shard*.xml']
 
@@ -923,6 +936,16 @@ def budget_problems(ci):
                 problems.append(f"{name}: the gate reads no tests/duration_allowlist.txt")
             if "--retry-outliers" not in last:
                 problems.append(f"{name}: the gate fails on one runner's outlier without re-running it")
+            # The lanes whose budget warns (CONTRIBUTING.md, "CI: which lanes a pull request runs"): the two upstream
+            # lanes always, Python 3.13 of the default lane through an environment variable its matrix sets.
+            if name in WARNING_LANES and "--warn-only" not in last:
+                problems.append(f"{name}: the gate fails the job, and this lane's budget warns")
+            if name not in WARNING_LANES and "--warn-only" in last:
+                problems.append(f"{name}: the gate warns, and this lane's budget fails the job")
+            if name == "default-tests":
+                held = (budget.get("env") or {}).get("WARN_ONLY")
+                if held != "${{ matrix.python-version == '3.13' && '--warn-only' || '' }}" or "$WARN_ONLY" not in last:
+                    problems.append(f"{name}: the gate warns for Python 3.13 alone, through $WARN_ONLY set from the matrix")
         if _sharded(job):
             summaries = [w for other in ci["jobs"].values() if name in (other.get("needs") or [])
                          or other.get("needs") == name for step in other.get("steps", [])
@@ -952,7 +975,7 @@ def _lane_step(ci, job, name):
 @pytest.mark.parametrize("mutation", [
     "no junit", "gate swallowed", "hard line off", "no retry", "no allowlist", "no budget step",
     "step continues on error", "only after green tests", "default lane continues on error", "no lane summary",
-    "a shard's summary written",
+    "a shard's summary written", "warn-only dropped", "the blocking lane warns", "python 3.13 does not warn",
 ])
 def test_the_lane_check_fails_on_each_way_a_lane_can_stop_feeding_or_obeying_the_budget(mutation):
     ci = _ci()
@@ -978,11 +1001,19 @@ def test_the_lane_check_fails_on_each_way_a_lane_can_stop_feeding_or_obeying_the
         ci["jobs"]["maddening-main"]["steps"].remove(_lane_step(ci, "maddening-main", "Test durations"))
     elif mutation == "a shard's summary written":
         budget["run"] = budget["run"].replace(" --markdown /dev/null", " --markdown summary.md")
+    elif mutation == "warn-only dropped":
+        budget["run"] = budget["run"].replace(" --warn-only", "")
+    elif mutation == "the blocking lane warns":
+        gate = _lane_step(ci, "default-tests", "Test durations")
+        gate["env"]["WARN_ONLY"] = "--warn-only"
+    elif mutation == "python 3.13 does not warn":
+        gate = _lane_step(ci, "default-tests", "Test durations")
+        gate["run"] = gate["run"].replace(" $WARN_ONLY", "")
     else:
         ci["jobs"]["default"]["continue-on-error"] = True
     problems = budget_problems(ci)
     assert problems, mutation
-    assert all(p.startswith(("maddening-main-tests:", "default:")) for p in problems), problems
+    assert all(p.startswith(("maddening-main-tests:", "default:", "default-tests:")) for p in problems), problems
 
 
 def test_pytest_writes_the_junit_family_that_records_file_and_line():

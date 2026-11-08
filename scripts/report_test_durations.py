@@ -19,6 +19,10 @@
 #    many tests recorded none), and the bands table, the slowest tests and the
 #    slowest files gain a CPU and a children's CPU column; a report without them
 #    reads exactly as MADDENING's does.
+# 3. `--warn-only`: an unlisted test over `--fail-over` (after `--retry-outliers`)
+#    is reported as a warning annotation and the exit status stays 0, for the lanes
+#    whose budget warns instead of failing (CONTRIBUTING.md, "CI: which lanes a
+#    pull request runs"). A report that cannot be read still exits 2.
 """Report per-test wall-clock from CI, and stop new slow tests landing.
 
 The default CI lane (everything not marked ``@pytest.mark.slow``) grew to
@@ -164,7 +168,7 @@ Writes Markdown to ``--markdown`` (default ``$GITHUB_STEP_SUMMARY`` when
 set), GitHub annotations to stdout, and exits
 
 * 0 -- within budget,
-* 1 -- an unlisted test over ``--fail-over``,
+* 1 -- an unlisted test over ``--fail-over`` (not with ``--warn-only``, which warns and exits 0),
 * 2 -- nothing to judge: a report missing, unreadable, with no test
   cases, or holding only collection errors (a test file that fails to
   import stops pytest before any test runs).  A gate with nothing to read
@@ -551,7 +555,7 @@ def judge(tests, allow, *, watch_over, slow_over, fail_over):
 
 
 def markdown(verdict, allow, *, title, watch_over, slow_over, fail_over, top, cache_mode,
-             shards=()):
+             shards=(), warn_only=False):
     ranked = verdict["ranked"]
     total = sum(t.seconds for t in ranked)
     timed = [t for t in ranked if t.jax]
@@ -639,7 +643,8 @@ def markdown(verdict, allow, *, title, watch_over, slow_over, fail_over, top, ca
               f"| over {slow_over:g} s: mark slow, speed up, or keep with a reason | {band(verdict['slow'])} |",
               ""]
     if verdict["failing"]:
-        lines += [f"### Over {fail_over:g} s and not on the allowlist -- this fails the job", ""]
+        consequence = "this warns, and the job passes (--warn-only)" if warn_only else "this fails the job"
+        lines += [f"### Over {fail_over:g} s and not on the allowlist -- {consequence}", ""]
         lines += [f"- `{t.nodeid}` -- {_fmt(t.seconds)} {diagnose(t)}" for t in verdict["failing"]] + [""]
     if verdict["kept_over_hard_line"]:
         lines += [f"### Allowlisted and over {fail_over:g} s -- passes, but check the cost", "",
@@ -757,12 +762,13 @@ def retry_outliers(failing: list[TestTime], *, fail_over: float, run=None,
     return still, forgiven
 
 
-def annotations(verdict, *, slow_over, fail_over):
+def annotations(verdict, *, slow_over, fail_over, warn_only=False):
     out = []
     for t in verdict["failing"]:
         loc = f"file={t.file},line={t.line}," if t.line else f"file={t.file},"
         why = f" ({diagnose(t)})" if t.jax else ""
-        out.append(f"::error {loc}title=Test over {fail_over:g} s::" + _escape(
+        level = "warning" if warn_only else "error"
+        out.append(f"::{level} {loc}title=Test over {fail_over:g} s::" + _escape(
             f"{t.nodeid} took {_fmt(t.seconds)}{why}. Mark it @pytest.mark.slow, make it "
             f"faster, or add it to tests/duration_allowlist.txt with the reason it "
             f"must run on every push."))
@@ -806,6 +812,9 @@ def main(argv=None) -> int:
                         "cache; it fails the job only if it is over again (see 'One slow runner')")
     p.add_argument("--retry-max", type=int, default=5,
                    help="more unlisted tests than this over --fail-over are not outliers: none is re-run (default 5)")
+    p.add_argument("--warn-only", action="store_true",
+                   help="an unlisted test over --fail-over (after any re-run) is a warning and the exit status "
+                        "stays 0")
     p.add_argument("--title", default="Test durations")
     p.add_argument("--top", type=int, default=30)
     args = p.parse_args(argv)
@@ -871,13 +880,13 @@ def main(argv=None) -> int:
         verdict["allow_absent"], verdict["allow_fast"] = [], []
     md = markdown(verdict, allow, title=args.title, watch_over=args.watch_over,
                   slow_over=args.slow_over, fail_over=fail_over, top=args.top,
-                  cache_mode=cache_mode, shards=shards)
+                  cache_mode=cache_mode, shards=shards, warn_only=args.warn_only)
     if args.markdown:
         with open(args.markdown, "a", encoding="utf-8") as fh:
             fh.write(md)
     else:
         print(md)
-    for a in annotations(verdict, slow_over=args.slow_over, fail_over=fail_over):
+    for a in annotations(verdict, slow_over=args.slow_over, fail_over=fail_over, warn_only=args.warn_only):
         print(a)
 
     ranked = verdict["ranked"]
@@ -894,7 +903,7 @@ def main(argv=None) -> int:
              + (f", {len(verdict['kept_over_hard_line'])} allowlisted over it."
                 if verdict["kept_over_hard_line"] else ".")
              if args.fail_over else "hard line off (--fail-over 0)."))
-    return 1 if verdict["failing"] else 0
+    return 1 if verdict["failing"] and not args.warn_only else 0
 
 
 if __name__ == "__main__":
