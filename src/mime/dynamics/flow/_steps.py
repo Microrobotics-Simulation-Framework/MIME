@@ -26,6 +26,11 @@ from mime.registry import DriveQuery
 
 #: The law whose waveform the prediction reads.
 BODY_FORCE = "body_force"
+#: How far past the signed distance's zero the band's effective wall may sit, in cells: the prediction takes the tube
+#: this much wider, so a lumen the band widens does not outrun it (F1a's gate 3 holds the band's shift to 0.15 cells
+#: against its planar calibration; dt="auto" at the line, on a tube whose wall sat 0.03 cells out, read its CFL 0.7 %
+#: over the line and stopped, before this was added).
+WALL_REACH_CELLS = 0.25
 #: The peak of ``|D(rho)|`` over the cross-section is taken on this many radii (the profile is smooth; at alpha 50 its
 #: Stokes layer holds about 30 of them).
 _RADII = 1001
@@ -65,13 +70,13 @@ def harmonic_peak(alpha: float) -> float:
     """``max_rho |D(rho)|``, the harmonic's peak speed over ``A R^2 / nu``: 1/4 at alpha 0 (quasi-steady Poiseuille),
     falling as the Stokes layer thins."""
     rho = np.linspace(0.0, 1.0, _RADII)
-    re, im = profile(jnp.asarray(rho), jnp.asarray(alpha), series_terms(np.float64))
+    re, im = profile(jnp.asarray(rho * rho), jnp.asarray(alpha * alpha), series_terms(np.float64))
     return float(np.max(np.hypot(np.asarray(re, float), np.asarray(im, float))))
 
 
 def predicted_peak(drive: Drive, radius: float, nu: float) -> float:
-    """The largest axial speed the drive gives an empty straight tube (m/s): the steady centreline plus the
-    harmonic's peak, in magnitude."""
+    """The largest axial speed the drive gives an empty straight tube of ``radius`` (m/s): the steady centreline plus
+    the harmonic's peak, in magnitude. The step rule passes the radius widened by :data:`WALL_REACH_CELLS`."""
     steady = abs(drive.steady) * radius ** 2 / (4.0 * nu)
     if not drive.amplitude:
         return steady
@@ -104,4 +109,4 @@ def report_lines(scheme: str, viscous_number: float, viscous_line: float | None,
     return tuple(lines)
 
 
-__all__ = ["BODY_FORCE", "Drive", "axial_drive", "harmonic_peak", "predicted_peak", "report_lines", "steps_a_period"]
+__all__ = ["BODY_FORCE", "WALL_REACH_CELLS", "Drive", "axial_drive", "harmonic_peak", "predicted_peak", "report_lines", "steps_a_period"]

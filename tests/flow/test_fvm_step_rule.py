@@ -25,6 +25,8 @@ from mime.units import Hz, kg_per_m3, m_per_s2, mm, mPa_s, ms, s
 
 RADIUS, NU, CELLS = 0.5e-3, 1e-6, 16
 H = 0.25e-3 / math.ceil(0.25e-3 / (2 * RADIUS / CELLS))
+#: The tube the prediction takes: widened by the band's reach (``WALL_REACH_CELLS``).
+WIDE = RADIUS + steps.WALL_REACH_CELLS * H
 
 
 def experiment(*, dt=ms(0.1), g=2.0, amplitude=None, frequency=None, field=None, viscosity=1.0, **settings):
@@ -64,11 +66,9 @@ def test_the_build_steps_rk3_on_the_explicit_node_and_imex_euler_on_the_implicit
 def test_a_dt_past_the_predicted_line_is_refused_before_any_step_with_its_route(float64):
     """Poiseuille's centreline at g 2 m/s^2 is 0.125 m/s; RK3's line 1.7 along z: dt above 1.7 h / 0.125 is refused,
     and the route's step builds."""
-    peak = 2.0 * RADIUS ** 2 / (4 * NU)
-    limit = RK3_LINE * H / peak
     viscous = 0.15 * H * H / NU
     g = 2.0 * 4.0  # a drive four times stronger, so that RK3's viscous limit is the larger bound
-    peak4 = g * RADIUS ** 2 / (4 * NU)
+    peak4 = g * WIDE ** 2 / (4 * NU)
     over = 1.05 * RK3_LINE * H / peak4
     assert over < viscous
     with pytest.raises(BuildRefused) as raised:
@@ -77,7 +77,6 @@ def test_a_dt_past_the_predicted_line_is_refused_before_any_step_with_its_route(
     refusal = next(r for r in raised.value.refusals if r.code == "flow.cfl-predicted")
     assert "use dt <=" in refusal.action and "dt='auto'" in refusal.action
     experiment(dt=s(0.95 * RK3_LINE * H / peak4), g=g).build()
-    del limit
 
 
 RK3_LINE = 1.7
@@ -88,9 +87,9 @@ def test_a_harmonic_drives_peak_enters_the_prediction(float64):
     omega = (6.0 / RADIUS) ** 2 * NU
     f = omega / (2 * math.pi)
     g, amplitude = 1.0, 40.0
-    peak = steps.predicted_peak(steps.Drive(g, amplitude, f), RADIUS, NU)
+    peak = steps.predicted_peak(steps.Drive(g, amplitude, f), WIDE, NU)
     dt = 1.1 * RK3_LINE * H / peak
-    assert g * RADIUS ** 2 / (4 * NU) * dt / H < RK3_LINE  # the mean alone would pass
+    assert g * WIDE ** 2 / (4 * NU) * dt / H < RK3_LINE  # the mean alone would pass
     with pytest.raises(BuildRefused) as raised:
         experiment(dt=s(dt), g=g, amplitude=amplitude, frequency=f, scheme=Scheme.RK3()).build()
     assert "flow.cfl-predicted" in _codes(raised)
@@ -99,7 +98,7 @@ def test_a_harmonic_drives_peak_enters_the_prediction(float64):
 def test_control_a_prediction_from_the_drives_mean_misses_the_refusal(float64, monkeypatch):
     omega = (6.0 / RADIUS) ** 2 * NU
     f = omega / (2 * math.pi)
-    peak = steps.predicted_peak(steps.Drive(1.0, 40.0, f), RADIUS, NU)
+    peak = steps.predicted_peak(steps.Drive(1.0, 40.0, f), WIDE, NU)
     dt = 1.1 * RK3_LINE * H / peak
     import mime.dynamics.flow._fvm as fvm
 
@@ -111,7 +110,7 @@ def test_control_a_prediction_on_twice_the_spacing_misses_the_refusal(float64, m
     import mime.dynamics.flow._fvm as fvm
 
     g = 8.0
-    over = 1.5 * RK3_LINE * H / (g * RADIUS ** 2 / (4 * NU))
+    over = 1.5 * RK3_LINE * H / (g * WIDE ** 2 / (4 * NU))
     original = fvm.periodic_tube_layout
 
     def coarse(*args, **kwargs):

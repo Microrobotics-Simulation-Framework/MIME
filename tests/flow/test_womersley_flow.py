@@ -41,7 +41,7 @@ def scipy_mean(alpha):
 
 
 def _series(rho, alpha, terms, dtype):
-    re, im = wom.profile(jnp.asarray(rho, dtype=dtype), jnp.asarray(alpha, dtype=dtype), terms)
+    re, im = wom.profile(jnp.asarray(rho, dtype=dtype) ** 2, jnp.asarray(alpha, dtype=dtype) ** 2, terms)
     return np.asarray(re, np.float64) + 1j * np.asarray(im, np.float64)
 
 
@@ -71,7 +71,7 @@ def test_the_series_matches_scipy_within_its_dtypes_validity_line(dtype):
 
 def test_the_mean_profile_matches_scipy(dtype):
     for alpha in (0.5, 6.0, 20.0):
-        re, im = wom.mean_profile(jnp.asarray(alpha), wom.series_terms(dtype))
+        re, im = wom.mean_profile(jnp.asarray(alpha) ** 2, wom.series_terms(dtype))
         found = float(re) + 1j * float(im)
         exact = scipy_mean(alpha)
         assert abs(found - exact) / abs(exact) < (1e-11 if dtype == "float64" else 1e-5)
@@ -222,3 +222,21 @@ def test_the_readings_derivatives_in_viscosity_and_radius_equal_central_differen
         args[k] = x0 - h
         down = float(loss(*args))
         assert float(grads[k]) == pytest.approx((up - down) / (2 * h), rel=1e-6)
+
+
+def test_the_readings_derivative_is_finite_at_a_steady_drive(float64):
+    """The series takes alpha squared, never its root, so a steady drive (frequency zero) has finite derivatives in
+    the viscosity and the radius, Poiseuille's own."""
+    node = _node()
+    w = waveform((0.0, 0.0, 1.0), 2.0, 0.0, 0.0, 0.0)
+    points = jnp.stack([jnp.zeros(3), jnp.linspace(0.0, 0.4e-3, 3), jnp.zeros(3)], axis=-1)
+
+    def loss(mu, r):
+        p = {**node._step_constants(None), "viscosity": mu, "tube_radius": r}  # noqa: SLF001
+        s = node.advance(p, dict(node.initial_state()), {"waveform": w}, node.delta_t)
+        return jnp.sum(node.velocity_at(p, s, points)[:, 2])
+
+    grads = jax.grad(loss, argnums=(0, 1))(1e-3, 0.5e-3)
+    assert all(np.isfinite(float(g)) for g in grads)
+    exact = -float(loss(1e-3, 0.5e-3)) / 1e-3  # u is proportional to 1 / mu
+    assert float(grads[0]) == pytest.approx(exact, rel=1e-9)

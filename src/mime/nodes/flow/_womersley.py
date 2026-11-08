@@ -84,24 +84,26 @@ def _divide(a: tuple[Array, Array], b: tuple[Array, Array]) -> tuple[Array, Arra
     return (a[0] * b[0] + a[1] * b[1]) / den, (a[1] * b[0] - a[0] * b[1]) / den
 
 
-def profile(rho: Array, alpha: Any, terms: int) -> tuple[Array, Array]:
-    """``D(rho) = (1 - J0(b r) / J0(b R)) / alpha^2`` as (re, im), ``rho = r / R``: the harmonic's profile over
-    ``alpha^2``, so the axial velocity is ``(A R^2 / nu) Re[-i D e^{i theta}]``; ``i (1 - rho^2) / 4`` at ``alpha = 0``."""
-    q_wall = alpha * alpha / 4.0 + 0.0 * rho
-    q = q_wall * rho * rho
+def profile(rho_squared: Array, alpha_squared: Any, terms: int) -> tuple[Array, Array]:
+    """``D(rho) = (1 - J0(b r) / J0(b R)) / alpha^2`` as (re, im), at ``rho^2 = (r / R)^2``: the harmonic's profile
+    over ``alpha^2``, so the axial velocity is ``(A R^2 / nu) Re[-i D e^{i theta}]``; ``i (1 - rho^2) / 4`` at ``alpha =
+    0``. It takes ``alpha^2 = R^2 omega / nu`` and ``rho^2``, never a square root, so its derivatives are finite at a
+    steady drive and on the axis."""
+    q_wall = alpha_squared / 4.0 + 0.0 * rho_squared
+    q = q_wall * rho_squared
     n_wall = _nested(q_wall, terms, _square_ratio)
     n_r = _nested(q, terms, _square_ratio)
     # S(q) = J0 - 1 = i q N(q); so (S(q_R) - S(q_r)) / alpha^2 = (i / 4) (N(q_R) - rho^2 N(q_r)).
-    difference = _times_i((0.25 * (n_wall[0] - rho * rho * n_r[0]), 0.25 * (n_wall[1] - rho * rho * n_r[1])))
+    difference = _times_i((0.25 * (n_wall[0] - rho_squared * n_r[0]), 0.25 * (n_wall[1] - rho_squared * n_r[1])))
     s_wall = _times_i((q_wall * n_wall[0], q_wall * n_wall[1]))
     return _divide(difference, (1.0 + s_wall[0], s_wall[1]))
 
 
-def mean_profile(alpha: Any, terms: int) -> tuple[Array, Array]:
+def mean_profile(alpha_squared: Any, terms: int) -> tuple[Array, Array]:
     """The profile's mean over the cross-section, ``(1 - 2 J1(b R) / (b R J0(b R))) / alpha^2`` as (re, im): ``i / 8``
     at ``alpha = 0``. ``J0 - 2 J1 / z = sum_{k >= 1} (i q)^k k / ((k + 1) (k!)^2)``, nested with the ratios ``1 / (k (k
     + 2))``."""
-    q_wall = jnp.asarray(alpha) * jnp.asarray(alpha) / 4.0
+    q_wall = jnp.asarray(alpha_squared) / 4.0
     n_flux = _nested(q_wall, terms, _flux_ratio)
     n_wall = _nested(q_wall, terms, _square_ratio)
     top = _times_i((n_flux[0] / 8.0, n_flux[1] / 8.0))
@@ -114,18 +116,18 @@ def _harmonic(shape: tuple[Array, Array], amplitude: Any, theta: Any, scale: Any
     return scale * amplitude * (shape[1] * jnp.cos(theta) + shape[0] * jnp.sin(theta))
 
 
-def axial_velocity(rho: Array, time: Any, waveform: Array, axis: Array, radius: Any, nu: Any, terms: int) -> Array:
-    """The axial velocity (m/s) at ``rho = r / R`` (inside the lumen; zero at and beyond the wall) at ``time``."""
+def axial_velocity(rho_squared: Array, time: Any, waveform: Array, axis: Array, radius: Any, nu: Any,
+                   terms: int) -> Array:
+    """The axial velocity (m/s) at ``rho^2 = (r / R)^2`` (inside the lumen; zero at and beyond the wall) at ``time``."""
     w = jnp.asarray(waveform)
     driven = jnp.sum(w[:3] * axis)
     steady, amplitude, frequency, phase = driven * w[3], driven * w[4], w[5], w[6]
     omega = 2.0 * jnp.pi * frequency
-    alpha = radius * jnp.sqrt(omega / nu)
     scale = radius * radius / nu
-    inside = jnp.clip(1.0 - rho * rho, 0.0, None)
-    shape = profile(jnp.clip(rho, 0.0, 1.0), alpha, terms)
+    inside = jnp.clip(1.0 - rho_squared, 0.0, None)
+    shape = profile(jnp.clip(rho_squared, 0.0, 1.0), scale * omega, terms)
     harmonic = _harmonic(shape, amplitude, omega * time + phase, scale)
-    return jnp.where(rho < 1.0, 0.25 * scale * steady * inside + harmonic, 0.0)
+    return jnp.where(rho_squared < 1.0, 0.25 * scale * steady * inside + harmonic, 0.0)
 
 
 def mean_velocity(time: Any, waveform: Array, axis: Array, radius: Any, nu: Any, terms: int) -> Array:
@@ -133,10 +135,9 @@ def mean_velocity(time: Any, waveform: Array, axis: Array, radius: Any, nu: Any,
     w = jnp.asarray(waveform)
     driven = jnp.sum(w[:3] * axis)
     omega = 2.0 * jnp.pi * w[5]
-    alpha = radius * jnp.sqrt(omega / nu)
     scale = radius * radius / nu
-    return scale * driven * w[3] / 8.0 + _harmonic(mean_profile(alpha, terms), driven * w[4], omega * time + w[6],
-                                                   scale)
+    return scale * driven * w[3] / 8.0 + _harmonic(mean_profile(scale * omega, terms), driven * w[4],
+                                                   omega * time + w[6], scale)
 
 
 class PrescribedFlowState(TypedDict, closed=True):
@@ -228,9 +229,10 @@ class PrescribedFlowNode(MimeNode):
         axis = self.unit_axis(p)
         offset = jnp.asarray(points) - as_run_array(p["tube_centre"])
         across = offset - jnp.sum(offset * axis, axis=-1, keepdims=True) * axis
-        rho = jnp.sqrt(jnp.sum(across * across, axis=-1)) / as_run_array(p["tube_radius"])
+        radius = as_run_array(p["tube_radius"])
+        rho_squared = jnp.sum(across * across, axis=-1) / (radius * radius)
         time = jnp.asarray(state["steps"]).astype(axis.dtype) * self.delta_t
-        u = axial_velocity(rho, time, jnp.asarray(state["waveform"]), axis, as_run_array(p["tube_radius"]),
+        u = axial_velocity(rho_squared, time, jnp.asarray(state["waveform"]), axis, as_run_array(p["tube_radius"]),
                            self.kinematic(p), terms)
         return u[:, None] * axis[None, :]
 

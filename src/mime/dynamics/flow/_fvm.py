@@ -28,7 +28,7 @@ from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, PRECONDITIONERS
 from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Port, Problem, Region, SettingGroup, \
     StepQuery, StepRule, convention, register_dynamics, register_setting_group
 from mime.dynamics.flow._fields import fvm_field
-from mime.dynamics.flow._steps import axial_drive, predicted_peak, report_lines
+from mime.dynamics.flow._steps import WALL_REACH_CELLS, axial_drive, predicted_peak, report_lines
 from mime.fields._solved import SolvedField
 from mime.units import Magnitude
 from mime.scene import PeriodicBox
@@ -224,7 +224,7 @@ class FVM(Dynamics):
                                       margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
         h = layout.spacing
         drive = axial_drive(query.drives, axis)
-        peak = predicted_peak(drive, radius, nu)
+        peak = predicted_peak(drive, radius + WALL_REACH_CELLS * h, nu)
         convection = not self.stokes
 
         def line_of(name: str) -> float | None:
