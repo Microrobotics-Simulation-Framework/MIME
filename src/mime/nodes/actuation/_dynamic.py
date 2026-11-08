@@ -530,7 +530,12 @@ class DynamicArmNode(SegmentNode):
         factor = jnp.linalg.cholesky(system + dt * jnp.diag(jnp.asarray(p["damping"], dtype=q.dtype)))
         free = cholesky_solve(factor, inertia @ turned_qd + dt * (torques - bias))
         inverse = cholesky_solve(factor, jnp.eye(dofs, dtype=q.dtype))
-        q_next, velocity, rubbed = self.constrained_parts(p, q, free, inverse, dt, split=self.metered)
+        if self.metered:
+            q_next, velocity, rubbed = self.constrained_parts(p, q, free, inverse, dt, split=True)
+        else:
+            # Through ``constrained``, which a test may replace on one node to plant a rule.
+            q_next, velocity = self.constrained(p, q, free, inverse, dt)
+            rubbed = jnp.zeros_like(free)
         stepped = system + dt * jnp.diag(jnp.asarray(p["damping"], dtype=q.dtype))
         frames, local = frame_motions(own, q_next, velocity)
         poses = self.in_world(base, frames)
