@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The two-builds check** (`mime.testing.two_builds`, `two_builds_of`, `step_program`, `graph_program`, `run_form`;
+  float64 only): whether a compiled program holds a value made from a declared one as a constant of its own, which a
+  study's batched members would all run at the group's first value and a derivative would not see. Its trace form
+  compares two builds' steps, traced as MIME's chunked run executes them with the state, the inputs and the whole
+  parameter tree as arguments; its run form writes one build's leaves into the other's compiled chunk and judges each
+  field against `RUN_FACTOR` times the program's own resolution there (a start one ulp off, as a saved folder's
+  resolution is measured), and sees a value that reaches the run outside the step. On the registry walk's cases
+  nothing fires; every planted bake of the bake-check spike's set is caught by the trace form at every move from 1e-1
+  to one ulp (`tests/two_builds/`).
+- **Run-constants** (`MimeNode.run_constants`): a quantity a node makes from its leaves and holds over a run, made once
+  per chunk inside the compiled program, before the step loop, by MIME's chunked runs (the flagged run, a study's
+  batched run, and `mime.build._maddening.chunk_function`, a pure function of the state and the parameters to
+  differentiate through), and read as given by the loop's steps (`run_constants_given`). Reverse mode then derives it
+  once per chunk: on FL-9 in free space at 222 force points the gradient through a chunk equals the per-step form's to
+  1e-12, and the 666-wide LU leaves the backward loop (MIME-ANO-147). Forward runs keep their arrays bit for bit.
 - **Plots, figures kept as recipes, comparisons, the ghosted overlay and the aliasing warning** (`docs/results.md`). A new
   `plot` extra (matplotlib and plotly; the `verify` extra holds it). `result.plot()` (matplotlib) and
   `result.plot_interactive()` (plotly) on a run and a study draw one backend-neutral description: flags as intervals where the
@@ -224,6 +239,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **The MRS drag's held matrix is compared with leaves, not constants, and its second key is gone.** Beside
+  `held_in_body_frame` each separated-quadrature drag holds `held_from.<leaf>`, the leaves the matrix was made at;
+  `held_or_made` compares the step's leaves with them, so the step's program is the same at every value (the trace form
+  is quiet on the rung), a study's member keeps its own float64-made matrix, and the save's resolution rerun gives the
+  step the matrix with the leaves it was made at, which keeps it (`made_again`). The value-keyed second key (#201) is
+  removed, and the stale read it allowed (a step given every body leaf as the rerun moves it kept the build's matrix)
+  cannot be reached. **The derived hash of every separated-quadrature MRS experiment moves**; no array moves.
+- **A hull contact's search values are leaves** (`search_apart_squared`, `search_tolerance`, `search_shortfall`,
+  `trainable=False`): made when the body is built from its hull's shape, they were Python numbers in the step's program
+  (MIME-ANO-145), so a study whose members' hulls differed under one program would have run the first member's. The
+  step reads the same numbers in the run's dtype, so every array is bit for bit what it was; **the derived hash of every
+  hull contact moves**. They stay outside every derivative: where a search starts and when it stops, which the point it
+  converges to does not depend on.
 
 - **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,
   `mime.lock/10`). Where `verify` claims no bits, in another environment or of a reference no run repeats bit for bit,

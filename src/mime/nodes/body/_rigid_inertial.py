@@ -31,6 +31,7 @@ from mime.core import (
     node_fields,
     node_input,
     quaternion,
+    run_dtype,
     shape_named,
     switch,
     typed_view,
@@ -48,6 +49,7 @@ from mime.nodes.body._contact import (
     no_work,
     pair_contacts,
     residual,
+    search_tolerance,
     spacing_of,
     start_count,
 )
@@ -190,6 +192,15 @@ HULL_PASSES = 2
 CUT_AS_BUILT = ("the hull's points move with it in the step; each group's candidates, the vertices of its own convex "
                 "hull against a convex region, are those of the setting as built, so a study that moves it far keeps "
                 "them")
+#: The leaves of a body held by its hull's points that its contact's search reads (``_contact.Hull``), each made when
+#: the node is built from the hull's shape as built, with its units: the square of the least separation of two starts,
+#: how near its point a search must stand to count as converged (in the run's dtype) and how far the body reaches past
+#: its samples. Held as leaves so that the step's program is the same whatever their values (MIME-ANO-145), each
+#: point of a study holding its own; outside every derivative: they set where a search starts and when it stops, and
+#: the converged point does not depend on them.
+SEARCH_LEAVES = {"search_apart_squared": "m^2", "search_tolerance": "m", "search_shortfall": "m"}
+SEARCH_HELD = ("made when the node is built, from the hull's shape as built: where the contact's search starts and when "
+               "it stops, which the point it converges to does not depend on; outside every derivative")
 #: Squared distances within this share of the hull's squared size are one tie when its points are grouped, broken by
 #: the lower index, as the sampling's choice of samples breaks them (``mime.scene``'s ``TIE``).
 GROUP_TIE = 1e-12
@@ -465,6 +476,21 @@ class RigidInertialNode(MimeNode):
         own = self.constants()
         return bool(own["surface_shape"]) and bool(own.get("hull_kind"))
 
+    def _search_values(self) -> dict[str, float]:
+        """The values of :data:`SEARCH_LEAVES` as the node was built, as Python numbers, the tolerance for the run's
+        dtype: what the step's leaves hold, and what a call given no ``params`` reads."""
+        return {"search_apart_squared": self._apart ** 2,
+                "search_tolerance": search_tolerance(run_dtype(), self._size),
+                "search_shortfall": self._shortfall}
+
+    @override
+    def params_pytree(self) -> dict[str, Any]:
+        inherited: Any = super()
+        leaves = cast(dict[str, Any], inherited.params_pytree())
+        if not self.holds_hull:
+            return leaves
+        return {**leaves, **{key: as_run_array(value) for key, value in self._search_values().items()}}
+
     @property
     def groups(self) -> np.ndarray:
         """The hull's points by group (``point_groups``), each row padded with ``-1``: the candidates each group's
@@ -527,6 +553,8 @@ class RigidInertialNode(MimeNode):
         if self.holds_hull:
             held["extent"] = ParamSpec(trainable=False, description="held by its hull's points, so the step reads no "
                                                                     "extent")
+            held.update({key: ParamSpec(units=units, trainable=False, description=SEARCH_HELD)
+                         for key, units in SEARCH_LEAVES.items()})
         return held
 
     @override
@@ -640,8 +668,10 @@ class RigidInertialNode(MimeNode):
     def contact_pairs(self, p: Mapping[str, Any], body: Array, pose: Array) -> list[Pair]:
         """The pairs the contact's solve is laid out over: the body's hull against its confining surface (one pair; a
         pair of two bodies' hulls is the layout's next)."""
+        search = {key: p.get(key, value) for key, value in self._search_values().items()}
         hull = Hull(body, self.groups, pose, self._hull if self.supported else None, self.hull_parameters(p),
-                    self._places, self._apart, self._shortfall, self._size, self._starts)
+                    self._places, search["search_apart_squared"], search["search_shortfall"],
+                    search["search_tolerance"], self._starts)
         return [Pair(hull, self.wall(p), self.loops)]
 
     def contacts(self, p: Mapping[str, Any], body: Array, pose: Array) -> Contacts:

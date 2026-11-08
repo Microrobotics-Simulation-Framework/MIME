@@ -31,7 +31,7 @@ of a rigid body is the same at every pose, and the node makes it once per build 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -224,27 +224,26 @@ def separated_resistance(matrix: Array, force: Array, area: Array, centroid: Arr
 
 
 def unchanged(theta: Mapping[str, Any], built: Mapping[str, Any]) -> Array:
-    """Whether every leaf of ``theta`` equals its value in ``built``, read in the leaf's own dtype: a leaf the graph
-    holds as built compares equal, and one a study has moved does not."""
+    """Whether every leaf of ``theta`` equals its value in ``built``, read in the leaf's own dtype: a leaf held at the
+    value its held quantity was made at compares equal, and one a study has moved does not."""
     same = [jnp.all(jnp.asarray(theta[key]) == jnp.asarray(built[key], dtype=jnp.asarray(theta[key]).dtype))
             for key in sorted(theta)]
     return jnp.all(jnp.stack(same))
 
 
-def held_or_made(make: Callable[[Mapping[str, Any]], Array], built: Mapping[str, Any],
-                 given: Sequence[Mapping[str, Any]] = ()) -> Callable[[Mapping[str, Any], Array], Array]:
-    """``make`` held: a function of ``(theta, held)`` whose value is ``held`` (``make(built)``, made once at build)
-    where every leaf of ``theta`` is still ``built``'s, or still one of ``given``'s (leaves the caller gives ``held``
-    made at, ``make`` at them: the save's resolution rerun one ulp off), and ``make(theta)`` where one has moved (a
+def held_or_made(make: Callable[[Mapping[str, Any]], Array],
+                 built: Mapping[str, Any]) -> Callable[[Mapping[str, Any], Array], Array]:
+    """``make`` held: a function of ``(theta, held)`` whose value is ``held`` where every leaf of ``theta`` equals its
+    value in ``built``, the leaves ``held`` was made at (``make(built)``), and ``make(theta)`` where one has moved (a
     study's step, a difference by a perturbed leaf), so that a held value is never stale; and whose derivative in
     ``theta`` is ``make``'s at ``theta`` in either case (forward mode through ``make``, checkpointed, so that the
     reverse mode makes the value again from ``theta`` rather than keeping what ``make`` holds inside). ``held`` itself
     has no derivative: it is ``make``'s value, not a quantity of its own. Under ``vmap`` over a moved leaf both
     branches are evaluated, since a batched condition selects.
 
-    A ``given`` is a key by value: a step given every leaf of one of them, and the held value as built (not the one
-    made again), keeps that value, stale at those leaves. Only the rerun moves every leaf (the part's rotation is held
-    as built), so none else reaches it; ``tests/saved/test_held_once.py`` pins the limit."""
+    ``built`` is given as the step's own values (leaves beside ``held``, ``mime.nodes.hydro.mrs``'s ``held_from``),
+    never as constants of the program, so the step's program is the same at every value, and whatever moves ``held``
+    with the leaves it was made at (a study's member, an override, the save's resolution rerun) keeps it."""
 
     def kept(theta: Mapping[str, Any], held: Array) -> Array:
         return held
@@ -253,21 +252,24 @@ def held_or_made(make: Callable[[Mapping[str, Any]], Array], built: Mapping[str,
         return make(theta).astype(held.dtype)
 
     @_custom_jvp
-    def value(theta: Mapping[str, Any], held: Array) -> Array:
-        held_at = unchanged(theta, built)
-        for leaves in given:
-            held_at = held_at | unchanged(theta, leaves)
-        return _lax.cond(held_at, kept, made, theta, held)
+    def value(theta: Mapping[str, Any], held: Array, at: Mapping[str, Any]) -> Array:
+        return _lax.cond(unchanged(theta, at), kept, made, theta, held)
 
-    def tangent(primals: tuple[Mapping[str, Any], Array], tangents: tuple[Mapping[str, Any], Array]) -> tuple[
-            Array, Array]:
-        theta, held = primals
-        found = value(theta, held)
+    def tangent(primals: tuple[Mapping[str, Any], Array, Mapping[str, Any]],
+                tangents: tuple[Mapping[str, Any], Array, Mapping[str, Any]]) -> tuple[Array, Array]:
+        theta, held, at = primals
+        found = value(theta, held, at)
         _, moved = _jvp(checkpoint(make), (theta,), (tangents[0],))
         return found, moved.astype(found.dtype)
 
     value.defjvp(tangent)
-    return cast(Callable[[Mapping[str, Any], Array], Array], value)
+
+    def given(theta: Mapping[str, Any], held: Array) -> Array:
+        # ``built`` an operand of the call, not a value it closes over, so that whatever reads the step's operands
+        # (MADDENING's probe of the leaves a step reads) sees the step read it.
+        return cast(Array, value(theta, held, built))
+
+    return given
 
 
 def scaled_least_eigenvalue(found: Array) -> Array:

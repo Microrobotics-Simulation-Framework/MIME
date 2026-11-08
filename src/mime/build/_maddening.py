@@ -23,7 +23,7 @@ from maddening.core.schedule import topological_sort
 from maddening.core.static_data import StaticArray
 from numpy.typing import NDArray
 
-from mime.core import MimeNode, one_ulp_up_leaf
+from mime.core import MimeNode, one_ulp_up_leaf, run_constants_made
 
 type NodeFields = dict[str, dict[str, Array]]
 
@@ -179,6 +179,83 @@ def scan_chunk(graph: GraphManager, steps: int, fed: Fed, params: Mapping[str, A
     return cast(NodeFields, _held(graph).run_scan(steps, fed, params=params))
 
 
+def run_constant_nodes(graph: GraphManager) -> tuple[str, ...]:
+    """The nodes of ``graph`` that make run-constants (``mime.core.MimeNode.run_constants``), in the graph's order."""
+    return tuple(name for name in graph.node_names
+                 if isinstance(node := graph.get_node(name), MimeNode)
+                 and type(node).run_constants is not MimeNode.run_constants)
+
+
+def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[str, Any]:
+    """``params`` with each node's run-constants made from its own entry (``MimeNode.run_constants``), each in place of
+    the leaf of its key: called inside a compiled chunk, before its step loop, so that the chunk makes each once and
+    reverse mode derives each once. A run-constant must replace a leaf of the node's own with its shape and dtype; any
+    other is a defect of the node, refused (an ``InternalError``)."""
+    nodes = dict(cast(Mapping[str, Mapping[str, Any]], params["nodes"]))
+    for name in run_constant_nodes(graph):
+        own = nodes[name]
+        made = cast(MimeNode, graph.get_node(name)).run_constants(own)
+        wrong = sorted(key for key, value in made.items()
+                       if key not in own or tuple(_held(value).shape) != tuple(_held(own[key]).shape)
+                       or _held(value).dtype != _held(own[key]).dtype)
+        if wrong:
+            from mime.build._refusals import MIME_DEFECT, InternalError, Refusal, RefusalClass
+
+            raise InternalError([Refusal(
+                "run.run-constant", RefusalClass.INTERNAL,
+                f"node {name}'s run-constants {wrong} are not leaves of its own, of their shapes and dtypes", MIME_DEFECT,
+                why="a run-constant takes the place of a leaf the step reads, so that the compiled step is the same "
+                    "program with or without it")])
+        nodes[name] = {**own, **made}
+    return {**params, "nodes": nodes}
+
+
+def chunk_function(graph: GraphManager, steps: int, fed: Fed | None = None) -> Callable[[Any, Any], Any]:
+    """``steps`` steps of the compiled graph as one scan, a pure function of the state (every node's fields and
+    ``_meta``, as the graph holds it) and the parameter tree, with ``fed`` held through them: each node's run-constants
+    made once, before the loop (:func:`with_run_constants`), and the loop's steps reading them as given. What a
+    derivative of a chunk is taken through (``jax.grad``, ``jax.jvp``, ``jax.vmap`` and ``jax.jit`` of it); nothing is
+    stored on the graph."""
+    held = _held(graph)
+    held._recover_from_escaped_tracers()  # noqa: SLF001
+    held._check_static_data_dirty()  # noqa: SLF001
+    if held._dirty or held._compiled_step is None:  # noqa: SLF001
+        held.compile()
+    held._refuse_xla_loop_hazards("run_scan", scan=True)  # noqa: SLF001
+    external = held._resolve_external_inputs(dict(fed or {}))  # noqa: SLF001
+    step_fn = held._build_step_fn()  # noqa: SLF001
+    names = run_constant_nodes(graph)
+
+    def run(state: Any, params: Any) -> Any:
+        made = with_run_constants(graph, params)
+        with run_constants_made(names):
+            def body(carry: Any, _: Any) -> tuple[Any, None]:
+                return step_fn(carry, external, made), None
+
+            final, _ = _held(jax).lax.scan(body, state, None, length=int(steps))
+        return final
+
+    return run
+
+
+def chunk_step(graph: GraphManager) -> Callable[..., NodeFields]:
+    """The compiled graph's step as a chunk runs it, ``(state, external_inputs, params) -> state``: each node's
+    run-constants made from ``params`` (:func:`with_run_constants`), then one step reading them as given. The program
+    the two-builds check traces (``mime.testing.step_program``)."""
+    held = _held(graph)
+    if held._dirty or held._compiled_step is None:  # noqa: SLF001
+        held.compile()
+    step_fn = held._build_step_fn()  # noqa: SLF001
+    names = run_constant_nodes(graph)
+
+    def step(state: Any, external: Any, params: Any) -> NodeFields:
+        made = with_run_constants(graph, params)
+        with run_constants_made(names):
+            return cast(NodeFields, step_fn(state, external, made))
+
+    return step
+
+
 @dataclass(frozen=True)
 class FlagTest:
     """What makes a flag raised at a step, as a scan evaluates it: the node and state field that hold it and, for a flag
@@ -240,6 +317,7 @@ def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed, tests: Sequenc
     external = held._resolve_external_inputs(dict(fed))  # noqa: SLF001
     params = held._params_or_default(params)  # noqa: SLF001
     count = len(tests)
+    names = run_constant_nodes(graph)
 
     def build() -> Callable[..., Any]:
         step_fn = held._build_step_fn()  # noqa: SLF001
@@ -254,10 +332,11 @@ def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed, tests: Sequenc
 
         def scan(state: Any, ext: Any, parameters: Any) -> tuple[Any, Any]:
             held._count_scan_trace()  # noqa: SLF001
+            made = with_run_constants(graph, parameters)
 
             def body(carry: Any, _: Any) -> tuple[Any, None]:
                 state, counted, first, last, at = carry
-                state = step_fn(state, ext, parameters)
+                state = step_fn(state, ext, made)
                 at = at + 1
                 raised = jnp.stack([raised_by(state, test) for test in tests])
                 return (state, counted + raised.astype(counted.dtype), jnp.where(raised & (first < 0), at, first),
@@ -266,7 +345,8 @@ def scan_chunk_tallied(graph: GraphManager, steps: int, fed: Fed, tests: Sequenc
             none = FlagTally.none(count)
             init = (state, jnp.asarray(none.count, jnp.int32), jnp.asarray(none.first, jnp.int32),
                     jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
-            (final, counted, first, last, _), _ = _held(jax).lax.scan(body, init, None, length=int(steps))
+            with run_constants_made(names):
+                (final, counted, first, last, _), _ = _held(jax).lax.scan(body, init, None, length=int(steps))
             return final, (counted, first, last)
 
         return _held(jax).jit(scan)
@@ -338,6 +418,7 @@ def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes:
     held._refuse_xla_loop_hazards("run_scan", scan=True)  # noqa: SLF001
     external = held._resolve_external_inputs(dict(fed or {}))  # noqa: SLF001
     count = len(tests)
+    names = run_constant_nodes(graph)
 
     def build() -> Callable[..., Any]:
         step_fn = held._build_step_fn()  # noqa: SLF001
@@ -352,10 +433,11 @@ def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes:
 
         def scan(state: Any, ext: Any, parameters: Any) -> tuple[Any, Any, Any]:
             held._count_scan_trace()  # noqa: SLF001
+            made = with_run_constants(graph, parameters)
 
             def body(carry: Any, _: Any) -> tuple[Any, Any]:
                 state, counted, first, last, at = carry
-                state = step_fn(state, ext, parameters)
+                state = step_fn(state, ext, made)
                 at = at + 1
                 raised = jnp.stack([raised_by(state, test) for test in tests]) if tests else \
                     jnp.zeros((0,), dtype=bool)
@@ -367,7 +449,8 @@ def batched_scan(graph: GraphManager, steps: int, state: Any, params: Any, axes:
             none = FlagTally.none(count)
             init = (state, jnp.asarray(none.count, jnp.int32), jnp.asarray(none.first, jnp.int32),
                     jnp.asarray(none.last, jnp.int32), jnp.asarray(0, jnp.int32))
-            (final, counted, first, last, _), out = _held(jax).lax.scan(body, init, None, length=int(steps))
+            with run_constants_made(names):
+                (final, counted, first, last, _), out = _held(jax).lax.scan(body, init, None, length=int(steps))
             return final, (counted, first, last), out
 
         if not batched:

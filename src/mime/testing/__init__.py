@@ -17,7 +17,9 @@ verification for every node an entry builds (``assert_nodes_verified``: ``verify
 where a node declares an order), and the comparison of what an entry builds with its ``builds``
 (``builds_failures``); the graph-invariant helpers (a built graph's canonical text, and order invariance); the saved
 form's round trip through a fresh process and the list of installed entries a registry walk covers; the check that
-every parameter leaf reaches the compiled step; the conformance harness for an asset adapter (``verify_adapter``,
+every parameter leaf reaches the compiled step; the two-builds check, whether a compiled program holds a value made from
+a declared one as a constant of its own (``two_builds``, ``two_builds_of``: its trace form and its run form); the
+conformance harness for an asset adapter (``verify_adapter``,
 on loopback stores); and, in ``mime.testing.toys``, toy entries with no physics for tests of the build itself, with
 the toy family as the family suites' control. MIME's own families arrive with their
 entries. Importing this module needs the ``verify`` extra.
@@ -112,6 +114,17 @@ from mime.testing._saved import (
     param_reach_failures,
     refused_round_trip_failures,
     round_trip_failures,
+)
+from mime.testing._two_builds import (
+    RUN_FACTOR,
+    RUN_STEPS,
+    FieldGap,
+    RunForm,
+    TwoBuilds,
+    run_form,
+    step_program,
+    two_builds,
+    two_builds_of,
 )
 from mime.testing._sampling_conformance import (
     BODY_REACH_SPACING,
@@ -288,6 +301,15 @@ __all__ = [
     "order_invariance_failures",
     "order_reference",
     "param_reach_failures",
+    "RUN_FACTOR",
+    "RUN_STEPS",
+    "FieldGap",
+    "RunForm",
+    "TwoBuilds",
+    "run_form",
+    "step_program",
+    "two_builds",
+    "two_builds_of",
     "positive_semidefinite",
     "probe_law",
     "reach_problems",

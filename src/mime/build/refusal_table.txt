@@ -396,6 +396,7 @@ run.out-over-source           user
 run.rate-not-multiple         user
 run.rate-units                user
 run.record                    user
+run.run-constant              internal
 run.seed                      user
 run.stage-every               user
 run.stale                     user

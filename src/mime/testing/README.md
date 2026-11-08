@@ -48,7 +48,20 @@ Also:
 - `param_reach_failures(built)`: every trainable `params` leaf of a built graph reaches its compiled step, without a
   recompilation. Each leaf is written to a new value and the run must change, while JAX's compilation events and
   MADDENING's scan counter must not move. An initial condition (`initial_*`) reaches the run through the state
-  instead, and is not asked.
+  instead, and is not asked;
+- **the two-builds check** (`two_builds(base, other)`, `two_builds_of(experiment, path)`; float64 only): whether a
+  compiled program holds a value made from a declared one as a constant of its own, a silent bake that a study's
+  batched members and a derivative would not see. Its **trace form** (`step_program`, `graph_program` for an assembled
+  graph) traces each build's step as MIME's chunked run executes it, the state, the external inputs and the whole
+  parameter tree as arguments, and compares the programs (text and constants); a value derived from a leaf at build
+  prints as another literal or constant, a leaf does not. Its **run form** (`run_form`) writes the leaves that differ
+  into the base's compiled chunk and runs it against the other build's own, five steps, each field judged against
+  `RUN_FACTOR` times the program's own resolution there (the same run from a start one ulp off, as a saved folder's
+  resolution is measured): it sees a value that reaches the run outside the step, through the state or the external
+  inputs. `TwoBuilds.verdict` is `quiet`, `bake`, `shape` (a value-keyed shape, legitimate only where the move crosses
+  its threshold) or `outside-step`. Its detection is measured on planted bakes (a Python float, a NumPy or JAX array,
+  a term of a millionth of the load, an S7-style coefficient, a value-keyed count) and on the registry walk's cases,
+  nothing planted (`tests/two_builds/`).
 
 Also:
 - **the family suites' harness.** A `Family` states, over the vocabulary's interfaces rather than one law's labels,

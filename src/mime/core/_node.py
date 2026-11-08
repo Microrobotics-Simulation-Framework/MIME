@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import cached_property
 from typing import Any, ClassVar, cast, override
 
@@ -44,6 +46,33 @@ def one_ulp_up_leaf(value: Any) -> np.ndarray | None:
         return None
     up = np.nextafter(held, np.asarray(np.inf, dtype=held.dtype))
     return np.where((held != 0) & np.isfinite(held), up, held).astype(held.dtype)
+
+
+#: The key a run adds to a node's step constants where it made that node's run-constants (:meth:`MimeNode.run_constants`)
+#: for the chunk: an empty tuple, which holds no array and changes the constants' structure, so that the node's compiled
+#: step (``MimeNode._compiled``, traced once per structure) keeps the step that reads them as given apart from the one
+#: that makes them.
+RUN_CONSTANTS_GIVEN = "run_constants_given"
+
+#: The nodes whose run-constants the enclosing chunk made, while its step loop is traced (:func:`run_constants_made`).
+_MADE: ContextVar[frozenset[str]] = ContextVar("mime_run_constants_made", default=frozenset())
+
+
+@contextmanager
+def run_constants_made(names: Iterable[str]) -> Generator[None]:
+    """For the block, the steps of the nodes ``names`` traced as a chunk's loop traces them, their run-constants made
+    once before it and given in their ``params``: each such node's step constants then hold
+    :data:`RUN_CONSTANTS_GIVEN`. Read where a node's step is called, never inside its compiled step."""
+    token = _MADE.set(frozenset(names))
+    try:
+        yield
+    finally:
+        _MADE.reset(token)
+
+
+def run_constants_given(p: Mapping[str, Any]) -> bool:
+    """Whether the step constants ``p`` hold the node's run-constants as its chunk made them, to be read as given."""
+    return RUN_CONSTANTS_GIVEN in p
 
 
 def node_input(units: str, shape: tuple[int, ...], *, additive: bool = False,
@@ -134,6 +163,15 @@ class MimeNode(SimulationNode):
         its family's energy, of which its delivery is the negative gradient."""
         raise NotImplementedError(f"{type(self).__name__} states no energy")
 
+    def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
+        """The node's run-constants: quantities made from its leaves (``params``, the node's entry of the tree the run
+        is given) that are constant over a run, each by the ``params`` key it replaces, with that leaf's shape and
+        dtype. MIME's chunked runs make them once per chunk inside the compiled program, before its step loop, and give
+        them to the loop's steps in place of those leaves (:func:`run_constants_given` is then true of the step's
+        constants), so that reverse mode derives each once per chunk rather than at every step. A step called
+        otherwise (MADDENING's own scan, ``graph.step``) makes them itself. None by default."""
+        return {}
+
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
         """The parameters the node makes from its others and holds among them, made again from ``params`` (its leaves
         as the graph would hold them) where those are not the build's: what the save's resolution rerun gives the
@@ -154,17 +192,24 @@ class MimeNode(SimulationNode):
     def _step_constants(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
         return {key: value for key, value in self.constants(params).items() if _numeric(value)}
 
+    def _given(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
+        """The step's constants, marked where the enclosing chunk made this node's run-constants."""
+        held = self._step_constants(params)
+        if params is not None and self.name in _MADE.get():
+            held[RUN_CONSTANTS_GIVEN] = ()
+        return held
+
     @override
     def update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
                params: Mapping[str, Any] | None = None) -> dict[str, Array]:
-        return self._compiled(self._step_constants(params), dict(state), dict(boundary_inputs), dt)
+        return self._compiled(self._given(params), dict(state), dict(boundary_inputs), dt)
 
     def fresh_update(self, state: dict[str, Array], boundary_inputs: Mapping[str, Array], dt: float, *,
                      params: Mapping[str, Any] | None = None) -> dict[str, Array]:
         """``update`` with its step traced afresh at every call, never taken from the compiled step's cache: what
         reads a switch context (``mime.core.switch``) traces through it, since a context is read while the step is
         traced, and the compiled step was traced once."""
-        return self.advance(self._step_constants(params), dict(state), dict(boundary_inputs), dt)
+        return self.advance(self._given(params), dict(state), dict(boundary_inputs), dt)
 
     def advance(self, p: Mapping[str, Any], state: dict[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> dict[str, Array]:

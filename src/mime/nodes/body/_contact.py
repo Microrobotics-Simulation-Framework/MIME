@@ -87,9 +87,12 @@ class Hull(NamedTuple):
     points each group chooses its nearest from (``candidates``, padded with ``-1``), the body's pose, and, for a kind
     with a support query, the kind and its parameters (``kind`` is ``None`` for a kind held by its samples), the rows
     of the points each group's further starts are chosen from (``places``: its own convex hull's vertices against a
-    convex region, whatever its candidates), the least separation of two starts (``apart``, m), how far the body
-    reaches past its samples (``shortfall``, m: ``mime.scene._sampling.hull_shortfall``), the farthest of its points
-    from the body's origin (``size``, m) and the starts each group's search takes (``starts``: ``start_count``)."""
+    convex region, whatever its candidates), the square of the least separation of two starts (``apart_squared``, m^2),
+    how far the body reaches past its samples (``shortfall``, m: ``mime.scene._sampling.hull_shortfall``), how near
+    its point a search must stand to count as converged (``tolerance``, m: :func:`search_tolerance` of the farthest of
+    its points from the body's origin) and the starts each group's search takes (``starts``: ``start_count``). The
+    three numbers are made with the body, from its hull as built; the step takes them as values (the body node's
+    leaves), never as constants of its program."""
 
     points: Array
     candidates: NDArray[np.int32]
@@ -97,9 +100,9 @@ class Hull(NamedTuple):
     kind: Geometry | None
     parameters: Mapping[str, Any]
     places: NDArray[np.int32]
-    apart: float
-    shortfall: float
-    size: float
+    apart_squared: Any
+    shortfall: Any
+    tolerance: Any
     starts: int
 
     def rotation(self) -> Array:
@@ -213,7 +216,7 @@ def _step(pair: Pair, x: Array, pose: Array, parameters: Mapping[str, Any], surf
 def starts(pair: Pair) -> tuple[Array, Array]:
     """Each group's places to start its search from, ``G x starts x 3`` in the body's frame (``Hull.starts``), and which
     of them are taken: its candidate nearest the wall, then each the nearest of its ``places`` farther than the hull's
-    ``apart`` from every place taken, a group with none left leaving the rest untaken (each untaken place repeats the
+    least separation (the square root of its ``apart_squared``) from every place taken, a group with none left leaving the rest untaken (each untaken place repeats the
     last taken). Chosen on stopped values: where the search starts, which no derivative passes through; the step jumps
     where the group's kept point changes (``kept``, ``contact.point``)."""
     hull, wall = pair.body, pair.other
@@ -231,7 +234,7 @@ def starts(pair: Pair) -> tuple[Array, Array]:
     found, taken = [place], [jnp.ones(place.shape[:1], dtype=bool)]
     local, gaps = candidates if np.array_equal(hull.places, hull.candidates) else gaps_at(hull.places)
     while True:
-        gaps = jnp.where(jnp.sum((local - place[:, None, :]) ** 2, axis=-1) > hull.apart ** 2, gaps, jnp.inf)
+        gaps = jnp.where(jnp.sum((local - place[:, None, :]) ** 2, axis=-1) > hull.apart_squared, gaps, jnp.inf)
         if len(found) == hull.starts:
             return jnp.stack(found, axis=1), jnp.stack(taken, axis=1)
         open_ = jnp.isfinite(jnp.min(gaps, axis=-1))
@@ -243,8 +246,8 @@ def starts(pair: Pair) -> tuple[Array, Array]:
 def kept(pair: Pair, places: Array, taken: Array, margin: Any) -> Array:
     """Each group's start (of ``places``, ``starts``'s) whose body point after ``SCREEN_STEPS`` of the search's
     stopped steps (``climbed``: the support at the steps' direction, a point of the body) is deepest: the switch
-    ``contact.point``, its indicator the gap of the deepest point reached apart from that one (farther than the hull's
-    ``apart`` from it) less its own, so that two starts that reach one point are one."""
+    ``contact.point``, its indicator the gap of the deepest point reached apart from that one (farther than the square
+    root of the hull's ``apart_squared`` from it) less its own, so that two starts that reach one point are one."""
     hull, wall = pair.body, pair.other
     _, reached = climbed(pair, places, SCREEN_STEPS)
     gaps = jnp.where(taken, lax.stop_gradient(wall.gaps(hull.pose[:3] + jnp.matmul(reached, hull.rotation().T))),
@@ -252,7 +255,7 @@ def kept(pair: Pair, places: Array, taken: Array, margin: Any) -> Array:
 
     def runner_up() -> Array:
         best = jnp.take_along_axis(reached, jnp.argmin(gaps, axis=-1)[:, None, None], axis=1)
-        apart = jnp.sum((reached - best) ** 2, axis=-1) > pair.body.apart ** 2
+        apart = jnp.sum((reached - best) ** 2, axis=-1) > pair.body.apart_squared
         return jnp.min(jnp.where(apart, gaps, jnp.inf), axis=-1) - jnp.min(gaps, axis=-1)
 
     index = switch.argmin(gaps, owner="contact.point", resolution=lambda: switch.rounding(margin),
@@ -272,7 +275,7 @@ def searched(pair: Pair, seeds: Array) -> tuple[Array, Array]:
     (``climbed``), and how far within ``search_tolerance`` that point stands of the support at its direction (m,
     negative where the search has not converged): ``contact.search``'s indicator. On stopped values."""
     x, reached = climbed(pair, seeds, CONTACT_NEWTON)
-    return x, search_tolerance(x.dtype, pair.body.size) - jnp.sqrt(jnp.sum((x - reached) ** 2, axis=-1))
+    return x, pair.body.tolerance - jnp.sqrt(jnp.sum((x - reached) ** 2, axis=-1))
 
 
 def _solved(matrix: Array, vector: Array) -> Array:
@@ -333,7 +336,7 @@ def pair_contacts(pair: Pair, margin: Any) -> Contacts:
     x, within = searched(pair, kept(pair, places, taken, margin))
     found = held_at(pair, switch.where(
         (within >= 0.0)[:, None], deepest(pair, x), places[:, 0], owner="contact.search",
-        resolution=lambda: switch.rounding(search_tolerance(x.dtype, hull.size)), indicator=within))
+        resolution=lambda: switch.rounding(hull.tolerance), indicator=within))
     return found._replace(short=shallower(pair, places[:, 0], found.gaps, within < 0.0))
 
 
