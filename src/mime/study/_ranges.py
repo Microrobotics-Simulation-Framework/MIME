@@ -200,24 +200,32 @@ def independence(settings: RunSettings, declarations: Sequence[Declaration]) -> 
     points: list[dict[Axis, object]] = [{}]
     points += [{axes[path]: cast(object, value) for path, value in every[i].items()} for i in sorted({0, len(every) - 1})]
     found: list[str] = []
-    refusals: list[Refusal] = []
+    by_node: dict[str, list[str]] = {}
+    classes: dict[str, type | None] = {}
     for values in points:
         at = declared(settings, declarations, values, CHECK_REASON)
         ranged = _built(at.settings, at.declarations)
         bare_declarations = [d for d in at.declarations if not isinstance(d, RangeDeclaration)]
         with pinned(pins_of(ranged.plans.range_choices)):
             bare = _built(at.settings, bare_declarations)
+        differing: dict[str, list[str]] = {}
         for node, what in _differences(ranged, bare):
-            text = (f"at {_point_text(values)}, {f'node {node}' if node else 'the build'}'s {what} differs between "
-                    f"the build over the declared ranges and the build without them with every reported choice "
-                    f"pinned")
-            found.append(text)
-            cls = _owner_class(ranged.plans, node) if node else None
-            problem = (f"{text}: it reads the range other than through a choice it reports (mime.registry."
-                       f"choose_over), a dependence a declared range forbids")
-            refusals.append(entry_defect(cls, problem) if cls is not None else Refusal(
-                "study.range-dependent", RefusalClass.INTERNAL, problem,
-                "report it: a declared range reaches the build only through the choices entries report"))
+            differing.setdefault(node, []).append(what)
+        for node, whats in differing.items():
+            text = f"at {_point_text(values)}, {', '.join(whats)}"
+            found.append(f"{f'node {node}' if node else 'the build'}: {text}")
+            by_node.setdefault(node, []).append(text)
+            classes[node] = _owner_class(ranged.plans, node) if node else None
+    refusals: list[Refusal] = []
+    for node, texts in by_node.items():
+        problem = (f"{f'node {node}' if node else 'the build'} differs between the build over the declared ranges and "
+                   f"the build without them with every reported choice pinned ({'; '.join(texts)}): it reads the range "
+                   f"other than through a choice it reports (mime.registry.choose_over), a dependence a declared range "
+                   f"forbids")
+        cls = classes[node]
+        refusals.append(entry_defect(cls, problem) if cls is not None else Refusal(
+            "study.range-dependent", RefusalClass.INTERNAL, problem,
+            "report it: a declared range reaches the build only through the choices entries report"))
     return found, refusals
 
 

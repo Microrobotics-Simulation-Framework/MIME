@@ -2964,6 +2964,15 @@ class _Planner:
                             f"and {held.text()} has no reason", f"give it one: exp.declare_range({path!r}, ..., "
                                                                  f"reason='<why this range>')")
             if held.kind == "value":
+                kinds = {name: thing.kind for name, thing in self.things.items()}
+                parts = {name: frozenset(thing.parts) for name, thing in self.things.items()
+                         if isinstance(thing, (Body, Apparatus))}
+                unknown = materials.declaration_problems(materials.Declared(path, held.low, PENDING), kinds,
+                                                         self.directed(), parts)
+                if unknown:
+                    self.refuse("range.path", RefusalClass.USER, f"the range of {path}: {unknown[0][1]}",
+                                unknown[0][2])
+                    continue
                 owner = path.partition(".")[0]
                 value = self.declared_of(owner).get(path) if owner in self.things else None
                 if isinstance(value, float) and not held.low_si <= value <= held.high_si:

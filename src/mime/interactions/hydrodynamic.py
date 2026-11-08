@@ -7,6 +7,7 @@ in MIME 0.3, an unbounded one."""
 from __future__ import annotations
 
 import dataclasses
+import functools
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ from mime.registry import (
     ReynoldsRange,
     RoleKind,
     RungGradient,
+    Sampled,
     Sampling,
     SettingGroup,
     SupportRow,
@@ -225,25 +227,56 @@ SPACING_MEASURED = ("on a 100 um steel sphere settling in still water (338 sampl
                     "it in free space (6784), 6000 steps in the tube 11 minutes: write spacing= for a number to use")
 
 
-#: The mrs rung's choices over a declared range of its hull's numbers (``mime.registry.choose_over``), each judged at the
-#: range's corners: monotone in each of the kind's numbers, which ``tests/ranges/test_mrs_monotone.py`` measures for each
-#: kind the rung samples.
-FORCE_POINTS_RULE = Monotone(
-    "at one spacing a larger body has at least as many force points: the kind's quadrature counts grow with each of "
-    "its lengths and its quasi-uniform choice with them (measured over each sampled kind's numbers in "
-    "tests/ranges/test_mrs_monotone.py)")
-SPACING_RULE = Monotone(
-    "the family's default spacing is the largest at which the kind gives the family's count of samples, which falls "
-    "as the body grows, since the count at one spacing grows with it (measured with the force points)")
+#: The mrs rung's choices over a declared range of its hull's numbers (``mime.registry.choose_over``). The force points
+#: at one spacing are measured monotone in these numbers of each kind (``tests/ranges/test_mrs_monotone.py``, and FL-9's
+#: over 0.8 to 1.4 times its own at 1.0 and 1.5 mm): there the range's corners hold the most, and each is judged at
+#: them. Any other number (the screw's radius, whose count is not monotone; a kind not measured) is judged at
+#: :data:`SAMPLED_COUNT` points along it as well.
+MONOTONE_NUMBERS: Mapping[str, frozenset[str]] = MappingProxyType({
+    "sphere": frozenset({"radius"}), "capsule": frozenset({"radius", "height"}),
+    "screw": frozenset({"length", "wavenumber", "modulation"})})
+SAMPLED_COUNT = 9
+FORCE_POINTS_MONOTONE = Monotone(
+    "at one spacing a larger body has at least as many force points, measured in each of the kind's ranged numbers "
+    "(tests/ranges/test_mrs_monotone.py)")
+FORCE_POINTS_SAMPLED = Sampled(
+    SAMPLED_COUNT, "the force points are not measured monotone in this number of the kind (the screw's radius is "
+                   "not: tests/ranges/test_mrs_monotone.py)")
+SPACING_MONOTONE = Monotone(
+    "the family's default spacing is the largest at which the kind gives the family's count of samples, which grows as "
+    "the body grows where the count at one spacing grows with it (the numbers measured monotone)")
+SPACING_SAMPLED = Sampled(
+    SAMPLED_COUNT, "the family's default spacing follows the force points, which are not measured monotone in this "
+                   "number of the kind")
+
+
+def _measured_monotone(hull: Hull) -> bool:
+    return set(hull.ranges) <= MONOTONE_NUMBERS.get(hull.kind.name, frozenset())
+
+
+def force_points_rule(hull: Hull) -> Monotone | Sampled:
+    """The rule the hull's force points are chosen over its ranged numbers by: monotone where each ranged number is one
+    measured monotone for its kind (:data:`MONOTONE_NUMBERS`), sampled otherwise."""
+    return FORCE_POINTS_MONOTONE if _measured_monotone(hull) else FORCE_POINTS_SAMPLED
+
+
+def spacing_rule(hull: Hull) -> Monotone | Sampled:
+    """The rule the family's default spacing is chosen over the hull's ranged numbers by, as its force points'."""
+    return SPACING_MONOTONE if _measured_monotone(hull) else SPACING_SAMPLED
+
+
+@functools.lru_cache(maxsize=256)
+def _force_points(kind: Any, settings: tuple[tuple[str, Any], ...], spacing: float, patches: tuple[str, ...]) -> float:
+    sampling = kind.sampling(dict(settings), spacing, patches)
+    if sampling.chosen is not None:
+        return float(len(sampling.chosen))
+    return float(sum(math.prod(count) for count in sampling.counts))
 
 
 def force_points(hull: Hull, spacing: float, patches: tuple[str, ...]) -> float:
     """How many force points the hull's kind gives at ``spacing`` on ``patches``: its sampling's choice, or its
     quadrature where the kind's sampling is the quadrature itself."""
-    sampling = hull.kind.sampling(hull.settings, spacing, patches)
-    if sampling.chosen is not None:
-        return float(len(sampling.chosen))
-    return float(sum(math.prod(count) for count in sampling.counts))
+    return _force_points(hull.kind, tuple(sorted(hull.settings.items())), spacing, patches)
 
 
 def _solve_cost(chosen: float, own: float) -> str:
@@ -385,13 +418,13 @@ class PointForceDrag(Interaction):
     def default_spacing(self, ctx: PlanContext) -> Quantity | None:
         """The mrs rung's spacing when none is written: the largest, to three significant figures, at which the hull's
         kind gives at least its family's sample count (``DEFAULT_SAMPLES``) over the patches sampled. Over a declared
-        range of the hull's numbers, the finest of those across the range (:data:`SPACING_RULE`), so that every body
+        range of the hull's numbers, the finest of those across the range (:func:`spacing_rule`), so that every body
         inside it has at least its family's count."""
         hull = ctx.geometry(of="body")
         if self.rung != "mrs" or hull is None or not implements(hull.kind, "sampling"):
             return None
-        chosen = choose_over(owner_of(self, ctx.bindings), hull, "default spacing", SPACING_RULE, self._family_spacing,
-                             largest=False, unit="mm")
+        chosen = choose_over(owner_of(self, ctx.bindings), hull, "default spacing", spacing_rule(hull),
+                             self._family_spacing, largest=False, unit="mm")
         return m(self._family_spacing(chosen))
 
     def _family_spacing(self, hull: Hull) -> float:
@@ -567,10 +600,10 @@ class PointForceDrag(Interaction):
 
     def _sampled_hull(self, owner: str, hull: Hull, spacing: float) -> Hull:
         """The hull the rung samples at ``spacing``: ``hull`` itself, or over a declared range of its numbers the
-        point of the range with the most force points (:data:`FORCE_POINTS_RULE`), whose sampling every body inside
+        point of the range with the most force points (:func:`force_points_rule`), whose sampling every body inside
         the range takes, moved with its own shape."""
         patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
-        return choose_over(owner, hull, "force points", FORCE_POINTS_RULE,
+        return choose_over(owner, hull, "force points", force_points_rule(hull),
                            lambda held: force_points(held, spacing, patches), cost=_solve_cost)
 
     def _build_mrs(self, ctx: BuildContext, b: InteractionBuilder) -> None:

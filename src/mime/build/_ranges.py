@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from mime.build._declarations import Declaration, RangeDeclaration, RunSettings
-from mime.build._refusals import BuildRefused, Refusal, RefusalClass
+from mime.build._refusals import ArgumentRefused, BuildRefused, Refusal, RefusalClass
 from mime.units import Quantity, unit_symbol
 
 if TYPE_CHECKING:
@@ -82,7 +82,7 @@ def planned_ranges(settings: RunSettings, declarations: Sequence[Declaration]
         path = str(written)
         try:
             axis = resolve(written, declarations)
-        except BuildRefused as refused:
+        except (ArgumentRefused, BuildRefused) as refused:
             refusals += [replace(r, code="range.path") if r.code == "study.unknown-path" else r
                          for r in refused.refusals]
             continue
