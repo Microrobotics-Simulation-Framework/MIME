@@ -1,6 +1,6 @@
 """The derivative through the MRS drag's node above a plane wall (the plane wall kind, ``mime.walls.PlaneWall``,
-declared ``exact``): forward and reverse mode against a central difference, in float64, in the plane's offset (a leaf a
-study may move, which lubrication's opening of a contact moves), the blob, the viscosity and the sphere's radius, at
+declared ``exact``): forward and reverse mode against a central difference, in float64, in the plane's offset (the node's leaf
+``wall_offset``, which lubrication's opening of a contact moves), the blob, the viscosity and the sphere's radius, at
 poses away from the node's value-keyed choices (the image at the force points, which makes none; and integrated over the cells near the
 wall at a gap where every cell within the reach is in the budget, so that the budget's choice moves no column).
 

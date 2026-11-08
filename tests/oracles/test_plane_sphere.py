@@ -21,7 +21,10 @@ raises ``near_wall`` within a spacing), not this image's, and lubrication's hand
 - **Definiteness** (both dtypes): the resistance positive definite (its least eigenvalue, each row and column scaled by
   its diagonal, above zero) at every gap at or above the drag's clear line, ``CONFINED_GAP`` force spacings at the
   force points and ``INTEGRATED_GAP`` integrated (dev1's lines, measured in the tube; the map of the sphere near
-  the plane found them on the safe side).
+  the plane found them on the safe side, not contradicted). **The point image's line is judged at a blob of 0.5, where
+  the resistance goes indefinite at 0.3 spacings and a control reads it so in the same build; at the blob 0.1 of the
+  other gates it is definite down to 0.1 spacings but for one pose, so no line there is tested. The integrated line is
+  a regression check only:** no integrated pose was mapped indefinite at any setting, so nothing here discriminates it.
 - **Both dtypes:** the float32 resistance within ``FLOAT32_LINE`` of the float64 one, entry by entry on its diagonal
   scale.
 
@@ -39,12 +42,13 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from plane_cases import RADIUS, VISCOSITY, drag_node, scaled, sphere_above_plane
+from plane_cases import BLOB, RADIUS, VISCOSITY, drag_node, scaled, sphere_above_plane
 from plane_oracles import brenner
 
 from mime.build._maddening import node_state, parameter_leaves
 from mime.nodes.hydro.mrs import _plane
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
+from mime.units import m
 
 REFERENCE = Path(__file__).parents[1] / "differential" / "references" / "plane_mfs.json"
 REFERENCE_SHA256 = "9f457cbec8526288b75fb213c1d838d70f90725136b0cd1d03bf6e4bd60968d9"
@@ -77,12 +81,13 @@ def oracle(gap: float) -> dict[str, float]:
             "coupling_scale": float(math.sqrt(held[0, 0] * held[4, 4]) / (6 * math.pi))}
 
 
-def resistances(refinement, gaps, x64: bool = True, orientation=TURNS[0]) -> dict[float, dict]:
-    """The node's resistance and least scaled eigenvalue at each gap, the sphere at ``orientation``, built once."""
+def resistances(refinement, gaps, x64: bool = True, orientation=TURNS[0], blob: float = BLOB) -> dict[float, dict]:
+    """The node's resistance and least scaled eigenvalue at each gap, the sphere at ``orientation`` and the drag's
+    ``blob``, built once."""
     held = jax.config.jax_enable_x64
     jax.config.update("jax_enable_x64", x64)
     try:
-        built = sphere_above_plane(SPACING, 2.0, wall_refinement=refinement).build()
+        built = sphere_above_plane(SPACING, 2.0, blob=blob, wall_refinement=refinement).build()
         node = drag_node(built)
         state = node_state(built.graph, "drag:ball")
         leaves = parameter_leaves(built.graph)["drag:ball"]
@@ -137,6 +142,24 @@ def test_the_build_reports_the_planes_regularised_image_and_the_tubes_singular_o
     assert any("the wall's image (tube): singular" in line for line in tube), tube
 
 
+def test_the_report_prices_the_plane_with_its_own_figures_and_not_the_tubes():
+    """The plane has no table: its cost line says so and quotes the plane's step and memory, and its near-wall line the
+    plane's own errors; the tube's line (reads of the wall's table, a step of 45 s at 4,816 points, a fit to six runs
+    in a tube) is the tube's, and is still the tube's."""
+    from mime.nodes.hydro.mrs import _node
+    from mrs_cases import mrs_tube
+
+    plane = [line for held in sphere_above_plane(SPACING, 1.0).build().report.checked.values() for line in held]
+    cost = next(line for line in plane if line.startswith("what a step costs"))
+    assert "closed form, with no table to read" in cost and _plane.PLANE_COST in cost, cost
+    assert "reads of the wall's table" not in cost and _node.STEP_MEASURED not in cost and "a fit of" not in cost, cost
+    assert _plane.PLANE_NEAR_WALL in plane[0] and _node.NEAR_WALL_MAPPED not in plane[0], plane[0]
+    tube = [line for held in mrs_tube().build().report.checked.values() for line in held]
+    cost = next(line for line in tube if line.startswith("what a step costs"))
+    assert "reads of the wall's table" in cost and _node.STEP_MEASURED in cost, cost
+    assert _node.NEAR_WALL_MAPPED in tube[0], tube[0]
+
+
 def test_a_body_starting_through_the_plane_is_refused_and_one_above_it_is_not():
     from mime.build import BuildRefused
 
@@ -163,15 +186,71 @@ def test_the_planes_offset_is_one_trainable_leaf_and_moving_it_is_a_build_at_the
     assert np.array_equal(moved, again)
 
 
+def test_the_offset_is_reached_as_the_node_leaf_and_no_override_or_study_axis_names_it():
+    """The shipped text says so: the offset is the drag node's leaf ``wall_offset`` (the test above), and a structure's
+    setting is not yet an override or a study axis. The refusals, by code and route: ``floor.offset`` as an override is
+    ``value.unknown`` (a structure has no value), ``drag:ball.wall_offset`` and ``drag:ball.offset`` as an override are
+    ``study.unknown-path``, and as a study axis likewise; ``floor.offset`` as a study axis plans and its run refuses
+    every point (``study.refused-points``, each ``value.unknown``). Control: a node setting the same
+    route does reach (``drag:ball.blob``) is accepted, so the refusal is the offset's own."""
+    from mime import Study
+    from mime.build import ArgumentRefused, BuildRefused
+    from mime.study import grid
+    from mime.units import s
+
+    experiment = sphere_above_plane(SPACING, 2.0)
+    built = experiment.build()
+    with pytest.raises(BuildRefused) as structure:
+        built.run(s(0.001), override={"floor.offset": m(1e-4)})
+    assert structure.value.codes() == ["value.unknown"]
+    for path in ("drag:ball.wall_offset", "drag:ball.offset"):
+        with pytest.raises(ArgumentRefused) as override:
+            built.run(s(0.001), override={path: m(1e-4)})
+        assert override.value.codes() == ["study.unknown-path"], path
+        with pytest.raises(ArgumentRefused) as axis:
+            Study(experiment).sweep(grid({path: [m(1e-4), m(2e-4)]}), duration=s(0.001)).plan()
+        assert axis.value.codes() == ["study.unknown-path"], path
+    with pytest.raises(BuildRefused) as study_structure:
+        Study(experiment).sweep(grid({"floor.offset": [m(1e-4), m(2e-4)]}), duration=s(0.001)).run()
+    assert study_structure.value.codes() == ["study.refused-points"]
+    assert "[value.unknown] a structure has no value 'offset'" in str(study_structure.value)
+    Study(experiment).sweep(grid({"drag:ball.blob": [0.1, 0.2]}), duration=s(0.001)).plan()
+
+
 #: The gaps the definiteness is judged at, in force spacings, by the image's form: from the drag's clear line out.
 CLEAR = {None: (CONFINED_GAP, 1.0, 2.0), 2: (INTEGRATED_GAP, 0.5, 1.0)}
 
 
+#: The blob at which the image at the force points goes indefinite near the plane (a map of the sphere at 0.3 radii,
+#: float64: indefinite at 0.33 spacings and every mapped gap below it but 0.1, definite from 0.36 up, so the drag's clear
+#: line, 0.55, lies in a band where the resistance is definite and 0.22 spacings above where it is not), and the gap
+#: in spacings, with that blob, at which the control reads it indefinite (least -3.3 in float64).
+INDEFINITE_BLOB, INDEFINITE_GAP = 0.5, 0.3
+
+
 @pytest.mark.parametrize("x64", [True, False], ids=["float64", "float32"])
-@pytest.mark.parametrize("refinement", sorted(CLEAR, key=str), ids=["at the force points", "integrated"])
-def test_the_resistance_is_definite_at_and_beyond_the_drags_clear_line(refinement, x64):
-    gaps = tuple(s * SPACING for s in CLEAR[refinement])
-    for gap, held in resistances(refinement, gaps, x64=x64).items():
+def test_the_image_at_the_force_points_is_definite_at_and_beyond_the_clear_line_where_it_goes_indefinite_below(x64):
+    """The clear line is judged where it can fail: at a blob of 0.5 the resistance is indefinite at 0.3 spacings (the
+    control, read in the same build, so a test that cannot see an indefinite resistance fails here) and definite from the
+    drag's clear line, ``CONFINED_GAP``, out. At the other blob of this file, 0.1, the resistance is definite down to
+    0.1 spacings but for one pose (0.36 spacings, the point image), so a line at or above 0.4 passes: not evidence
+    for the line."""
+    gaps = tuple(s * SPACING for s in (*CLEAR[None], INDEFINITE_GAP))
+    found = resistances(None, gaps, x64=x64, blob=INDEFINITE_BLOB)
+    control = INDEFINITE_GAP * SPACING
+    assert found[control]["least"] <= 0.0, ("the control: indefinite", found[control]["least"])
+    for gap, held in found.items():
+        if gap != control:
+            assert held["least"] > 0.0, (gap / SPACING, held["least"])
+
+
+@pytest.mark.parametrize("x64", [True, False], ids=["float64", "float32"])
+def test_the_integrated_image_is_definite_at_and_beyond_the_integrated_line_a_regression_check_only(x64):
+    """A regression check on three poses, not evidence for ``INTEGRATED_GAP``: no integrated pose of the sphere
+    near the plane was mapped indefinite at either force spacing or blob (0.3 and 0.2 radii, blobs 0.1 and 0.5, down to
+    0.1 spacings), so no setting here discriminates the line, which rests on the tube's measurement (dev1)."""
+    gaps = tuple(s * SPACING for s in CLEAR[2])
+    for gap, held in resistances(2, gaps, x64=x64).items():
         assert held["least"] > 0.0, (gap / SPACING, held["least"])
 
 

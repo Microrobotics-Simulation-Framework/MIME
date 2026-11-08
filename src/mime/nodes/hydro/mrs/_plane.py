@@ -43,8 +43,8 @@ from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, register_wall
 
 #: The plane wall kind's name and version (``mime.walls.PlaneWall``).
 PLANE, PLANE_VERSION = "plane", "0.1.0"
-#: The plane's constants: its normal (held as built: the wall's frame, a direction) and its offset along it (a
-#: study's leaf, which lubrication's opening of a contact moves).
+#: The plane's constants: its normal (held as built: the wall's frame, a direction) and its offset along it (the
+#: node's leaf ``wall_offset``, trainable, which lubrication's opening of a contact moves; not yet a study axis).
 PLANE_PARAMETERS = ("normal", "offset")
 PLANE_UNITS = {"normal": "1", "offset": "m"}
 #: The floating values one pair of the image holds while a chunk of a cell's quadrature is read: its offset and its
@@ -148,13 +148,22 @@ def plane_preparation(parameters: Mapping[str, Any], dtype: Any) -> dict[str, ob
     return {"normal": tuple(float(c) for c in parameters["normal"]), "offset": float(parameters["offset"])}
 
 
+#: What the build report says of a step near the plane: its own measurements, a sphere against Brenner's series (estimates;
+#: the wall kind's validity lines carry the rest), and not the tube's.
+PLANE_NEAR_WALL = ("on a sphere above the plane (blob 0.1) the normal entry was measured +3.6% at one force spacing, "
+                   "+10.3% at 0.55 and +14% at 0.5 with the image at the force points, and the worst entry 2.6% to 14.8% "
+                   "off at 0.5 with it integrated; one pose was indefinite, at 0.36 spacings")
+PLANE_COST = ("measured on a 4-core laptop CPU in float64, a jitted step took about 9 ms at 231 force points with the "
+              "image at the force points and 23 ms integrated (wall_refinement=2), 30 and 48 ms at 338, and a run's "
+              "peak was 0.60 and 0.64 GiB at 231 and 0.68 and 0.73 GiB at 338 (estimates for one machine and two sizes; "
+              "the dense solve's matrices grow as the square of the count)")
 #: The MRS's correction for the plane wall kind: regularised by the drag's blob, its normal held as built (normalised
-#: in the program, so that declaring it a leaf later changes no program) and its offset a leaf.
+#: in the program, so that declaring it a leaf later changes no program) and its offset the node's leaf.
 PLANE_CORRECTION = register_wall_correction(WallCorrection(
     PLANE, PLANE_VERSION, PLANE_PARAMETERS, plane_correction, prepare=plane_preparation, units=PLANE_UNITS,
     held=frozenset({"normal"}), distance=plane_distance, image=plane_image, pair_values=PLANE_PAIR_VALUES,
-    regularised=True))
+    regularised=True, cost_text=PLANE_COST, near_wall_text=PLANE_NEAR_WALL))
 
 
-__all__ = ["PLANE", "PLANE_CORRECTION", "PLANE_PAIR_VALUES", "PLANE_PARAMETERS", "PLANE_UNITS", "PLANE_VERSION",
+__all__ = ["PLANE", "PLANE_CORRECTION", "PLANE_COST", "PLANE_NEAR_WALL", "PLANE_PAIR_VALUES", "PLANE_PARAMETERS", "PLANE_UNITS", "PLANE_VERSION",
            "ImageTerms", "heights", "image_terms", "plane_correction", "plane_distance", "plane_image", "plane_preparation", "unit_normal"]

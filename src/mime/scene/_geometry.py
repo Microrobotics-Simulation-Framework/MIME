@@ -171,6 +171,11 @@ class Tube(Geometry):
         raise KeyError(region)
 
 
+#: The half-width of the cone about a plane's normal in which :meth:`Plane.reach` reads a direction as the normal, in
+#: machine epsilons of the direction's length: a few rounding errors of the direction's own unit-normal arithmetic.
+REACH_CONE = 64.0
+
+
 @register_geometry
 @dataclass(frozen=True, kw_only=True)
 class Plane(Geometry):
@@ -178,8 +183,8 @@ class Plane(Geometry):
     ``offset`` its signed distance from the world's origin along that direction. Its regions are the ``half_space`` its
     normal points into, which a medium fills (``Medium(..., fills=floor.half_space)``), evaluated as the half-space
     (``mime.core.HalfSpace``), and the ``wall``, the other side. It has no surface yet (a contact against it comes
-    later), no drawing and no region primitive: its ``offset`` is a length a study may move as a leaf, and its normal a
-    direction, held as built. Its derivative is the half-space's: its distance is linear in the point and the offset, so
+    later), no drawing and no region primitive: its ``offset`` is a length that reaches a law as the node leaf ``wall_offset`` (a
+    structure's settings are not yet study or override axes), and its normal a direction, held as built. Its derivative is the half-space's: its distance is linear in the point and the offset, so
     it has no switch."""
 
     name = "plane"
@@ -221,11 +226,16 @@ class Plane(Geometry):
     @override
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
         """The wall's body is the half-space behind the plane, unbounded: along the normal (towards the medium) it
-        reaches the plane, ``|d| offset``, and along any other direction without bound (infinity)."""
+        reaches the plane, ``|d| offset``, and along any other direction without bound (infinity). That reach is
+        discontinuous at the normal by nature (a half-space's support function is), so "along the normal" is a cone
+        whose half-width is ``REACH_CONE`` machine epsilons of ``|d|`` across: a direction that is the normal to
+        rounding (a unit normal tilted off the axes, say) is on it, and no switch in the answer is judged finer than
+        the rounding of the direction itself."""
         d = jnp.asarray(direction)
         normal = jnp.asarray(parameters["normal"], dtype=d.dtype)
         normal = normal / switch.nonzero_norm(normal)
         along = jnp.dot(d, normal)
         across = d - along * normal
-        bounded = (jnp.sum(across * across) == 0) & (along > 0)
+        cone = REACH_CONE * jnp.finfo(d.dtype).eps
+        bounded = (jnp.sum(across * across) <= cone * cone * jnp.sum(d * d)) & (along > 0)
         return jnp.where(bounded, along * parameters["offset"], jnp.inf)

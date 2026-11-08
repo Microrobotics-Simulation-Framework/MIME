@@ -114,8 +114,9 @@ class TubeWall(WallKind):
 class PlaneWall(WallKind):
     """An unbounded plane with a no-slip wall, the medium filling the half-space its normal points into: the image
     system of a Stokeslet above it (Blake 1971), regularised by the drag's own blob (Ainley et al. 2008), in closed form,
-    so no table and no switch. It matches a half_space region and reads its normal and offset; the offset is a leaf a
-    study may move, and the normal is held as built."""
+    so no table and no switch. It matches a half_space region and reads its normal and offset; the offset is the drag
+    node's leaf ``wall_offset`` (a gradient and a caller of the node reach it; a structure's settings are not yet study
+    or override axes), and the normal is held as built."""
 
     name = "plane"
     version = "0.1.0"
@@ -132,8 +133,27 @@ class PlaneWall(WallKind):
         "every sample of the body in the medium, above the plane: a sample through it is outside the image's domain, "
         "which nothing refuses while the run goes on (no contact holds a body off a plane yet), so the node reports the "
         "body's height above it (wall_gap, below zero through it) and raises near_wall within a force spacing",
-        "the regularised image of the drag's blob, exact for it (no slip and no divergence to rounding); the coarse "
-        "MRS near the plane is as accurate as its force points resolve the gap: the drag's near-wall validity line",
+        "the regularised image of the drag's blob, exact for it (no slip and no divergence to rounding); the drag near "
+        "the plane is as accurate as its force points resolve the gap, so the error is a function of the gap in force "
+        "spacings, not radii. Estimates, not bounds: one sphere against Brenner's exact series for the normal entry "
+        "(and the method of fundamental solutions with Blake's image for the others), force spacings of 0.3 and 0.2 "
+        "radii, blob 0.1, float64. With the image at the force points the normal entry reads +3.6% at one spacing from "
+        "the plane, +5.4% at 0.75, +10.3% at 0.55 (the drag's clear line), +14% at 0.5, +23% at 0.45 and +70% at 0.4 "
+        "(0.2 radii: +11.8% at 0.55, +16.5% at 0.5); at 0.36 spacings one pose was indefinite (the run stops there, "
+        "drag.mrs-indefinite) and at 0.33 a definite resistance read the normal entry 34% low, so definiteness does not "
+        "mean accuracy here; at the default blob 0.5 the same image reads +30% at 0.75 spacings and +60% at 0.55 and is "
+        "indefinite from 0.33",
+        "with the image integrated over the cells (wall_refinement=2) the worst entry at 0.5 spacings is 2.6% to 14.8% "
+        "off, depending on the force spacing and on which way the sphere's sampling grid faces the wall (0.3 radii: "
+        "2.6% unturned, 4.6% turned; 0.2 radii: 14.8% with a grid pole facing the wall, 5.0% turned); the drag raises "
+        "near_wall within one spacing, where the point image's normal entry is already +3.6%, and lubrication's "
+        "hand-over, not this image, is what closes the last spacing",
+        "float32 against float64 holds to 5e-6 of an entry's diagonal scale for a plane through the origin (measured "
+        "at the gate gaps); the plane's height is a difference, y . n less the offset, in the working dtype, so with the "
+        "plane displaced the error grows with the offset over the body's size (a 1 mm sphere half a radius from the "
+        "plane, entries on their diagonal scale: 8e-7 at offset 0, 2e-5 at 0.5 m, 1.7e-4 at 5 m, 5,000 sizes, past "
+        "1e-4): nothing flags or refuses it, so where the offset passes about a thousand body sizes "
+        "in float32, run in float64 or place the world's origin on the plane",
     )
 
 

@@ -18,12 +18,14 @@ closed form."""
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, Protocol
+from typing import Any, NamedTuple, Protocol, cast
 
 from jax import Array
 
+from mime.build._refusals import ArgumentRefused, Refusal, entry_defect
 from mime.core import jnp
 from mime.nodes.hydro.mrs._quadrature import Chunks, cell_integrated
 
@@ -86,7 +88,10 @@ class WallCorrection:
     only. ``regularised`` declares whether the correction and the image use the drag's regularisation they are passed
     (``eps_squared``, the blob's): the plane's image is regularised by it, so that it is the exact no-slip partner of
     the free part's regularised Stokeslet; the tube's table image is singular and free space adds nothing, so both
-    take it and ignore it. The build report says which each wall uses."""
+    take it and ignore it. The build report says which each wall uses. ``cost_text`` and ``near_wall_text`` are a wall
+    kind's own figures for the build report where it has them: what a step costs (a wall with no table to read has no
+    reads to count, and the tube's step and memory measurements are not its), and what was measured of the resistance
+    near it; left empty, the report quotes the tube's, which are the table walls'."""
 
     name: str
     version: str
@@ -104,6 +109,8 @@ class WallCorrection:
     #: hold :data:`mime.nodes.hydro.mrs._quadrature.CHUNK_BYTES` of them against every target.
     pair_values: int = 16
     regularised: bool = False
+    cost_text: str = ""
+    near_wall_text: str = ""
 
 
 def cell_image(wall: WallCorrection, targets: Array, points: Array, weights: Array, chunks: Chunks,
@@ -128,7 +135,35 @@ def cell_image(wall: WallCorrection, targets: Array, points: Array, weights: Arr
 _corrections: dict[tuple[str, str], WallCorrection] = {}
 
 
+#: The calls the node makes of a wall's functions, by name: the positional arguments, then ``eps_squared=`` (the drag
+#: passes its regularisation to every wall kind).
+_CALLS = {"correction": ("points", "parameters", "viscosity"), "image": ("targets", "sources", "parameters", "viscosity")}
+
+
 def register_wall_correction(wall: WallCorrection) -> WallCorrection:
+    """Register ``wall`` for the wall kind it names. Refused (``entry.defect``, naming the function's package) where its
+    ``correction`` or ``image`` does not take the call the node makes, ``correction(points, parameters, viscosity,
+    eps_squared=...)`` and ``image(targets, sources, parameters, viscosity, eps_squared=...)``: found here, not at the
+    first trace as a bare ``TypeError``."""
+    refusals: list[Refusal] = []
+    for label, arguments in _CALLS.items():
+        function = cast("Callable[..., Any] | None", getattr(wall, label))
+        if function is None:
+            continue
+        try:
+            signature = inspect.signature(function)
+        except ValueError:  # no signature to read (a builtin): the first trace judges it
+            continue
+        try:
+            signature.bind(*arguments, eps_squared=None)
+        except TypeError as error:
+            refusals.append(entry_defect(
+                cast(type, function), f"its {label}, {function.__qualname__}{signature}, does not take the call the node makes, {label}("
+                f"{', '.join(arguments)}, eps_squared=...): {error}. The drag passes its regularisation to every wall "
+                f"kind, so the function takes it (a default of None serves one that ignores it)",
+                label=f"wall correction {wall.name} {wall.version}"))
+    if refusals:
+        raise ArgumentRefused(refusals)
     held = _corrections.get((wall.name, wall.version))
     if held is not None and held is not wall:
         raise ValueError(f"a wall correction {wall.name} {wall.version} is already registered")

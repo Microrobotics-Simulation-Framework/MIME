@@ -78,6 +78,9 @@ HELD = "held_in_body_frame"
 #: spacing to one. The bound keeps a factor of two over the largest indefinite gap. A flag, never a stop: the stop is
 #: the resistance's own eigenvalue.
 NEAR_WALL = 1.0
+#: What the build report says was mapped near a wall, for a wall kind without figures of its own
+#: (``WallCorrection.near_wall_text``).
+NEAR_WALL_MAPPED = "every indefinite resistance mapped lay within half a force spacing of the wall (MIME-ANO-130)"
 #: The gap to a wall, in force spacings, a body keeps with the wall's image at the force points (the default): a confined
 #: body's default force spacing keeps its closest approach here (``Drag``'s rule), and a refusal or a stop near the wall
 #: names the spacing that does. Design #210's rule, fixed before its measurement: the review's map found one indefinite
@@ -1014,8 +1017,8 @@ class MRSDragNode(MimeNode):
         lines = [f"the body's least distance from the wall at its start is {(judged.gap or 0.0) * 1e3:.4g} mm, "
                  f"{(judged.gap or 0.0) / spacing:.3g} of the force spacing ({spacing * 1e3:.4g} mm): a step with the "
                  f"body within {NEAR_WALL:g} force spacing of the wall raises near_wall, and a step whose resistance "
-                 f"is indefinite stops the run (drag.mrs-indefinite); every indefinite resistance mapped lay within "
-                 f"half a force spacing of the wall (MIME-ANO-130)"]
+                 f"is indefinite stops the run (drag.mrs-indefinite); "
+                 f"{self._wall().near_wall_text or NEAR_WALL_MAPPED}"]
         integrated: str | None = None
         if closest_approach is None:
             lines.append("nothing in the experiment holds the body off the wall, so its closest approach is the wall "
@@ -1030,8 +1033,8 @@ class MRSDragNode(MimeNode):
                          f"holds the body's hull off the wall by: a force spacing of at most {needed * 1e3:.4g} mm "
                          f"keeps it {clear:g} force spacings or more from the wall, outside the band where the "
                          f"resistance was measured indefinite (a spacing not written takes it, or the family's where "
-                         f"that is finer), at about {run_gib(self.sample_count * (spacing / needed) ** 2):.2g} GiB a run "
-                         f"in float64 ({RUN_GIB_BASIS}); this experiment's is {spacing * 1e3:.4g} mm")
+                         f"that is finer){self._memory_at(self.sample_count * (spacing / needed) ** 2)}; this "
+                         f"experiment's is {spacing * 1e3:.4g} mm")
             if self._wall_quadrature is None:
                 integrated = (f"with the wall's image integrated over each cell (wall_refinement=2 written) the "
                               f"resistance was measured definite closer in, from {INTEGRATED_GAP:g} force spacings, so "
@@ -1040,16 +1043,27 @@ class MRSDragNode(MimeNode):
                               f"a machine with 16 GB of memory or less, since the default was chosen on a step's time "
                               f"alone, not its memory")
         count, reads = self.sample_count, self.wall_reads
-        lines.append(f"what a step costs at this force spacing: {count} force points, a dense solve of {3 * count} "
-                     f"unknowns (the free part's matrix held, {(3 * count) ** 2 * 8 / 2 ** 20:.4g} MiB in float64), "
-                     f"and {reads} reads of the wall's table ({self._wall_text()}); about {reads * READ_SECONDS:.2g} s "
-                     f"for the reads on the 24-thread laptop CPU it was measured on "
-                     f"({READ_SECONDS * 1e6:.2g} us a read; {STEP_MEASURED}); and about {run_gib(count):.2g} GiB for "
-                     f"the run in float64 ({RUN_GIB_BASIS})")
+        solve = (f"{count} force points, a dense solve of {3 * count} unknowns (the free part's matrix held, "
+                 f"{(3 * count) ** 2 * 8 / 2 ** 20:.4g} MiB in float64)")
+        if self._wall().cost_text:
+            lines.append(f"what a step costs at this force spacing: {solve}, and the wall's image in closed form, "
+                         f"with no table to read: {self._wall().cost_text}")
+        else:
+            lines.append(f"what a step costs at this force spacing: {solve}, and {reads} reads of the wall's table "
+                         f"({self._wall_text()}); about {reads * READ_SECONDS:.2g} s for the reads on the 24-thread "
+                         f"laptop CPU it was measured on ({READ_SECONDS * 1e6:.2g} us a read; {STEP_MEASURED}); and "
+                         f"about {run_gib(count):.2g} GiB for the run in float64 ({RUN_GIB_BASIS})")
         if integrated is not None:
             lines.append(integrated)
         lines.append(self._image_text())
         return lines
+
+    def _memory_at(self, force_points: float) -> str:
+        """The run's memory at ``force_points`` for the report's closest-approach line, as the tube's fit states it; a
+        wall with its own cost figures (``WallCorrection.cost_text``) states them in the cost line instead."""
+        if self._wall().cost_text:
+            return ""
+        return f", at about {run_gib(force_points):.2g} GiB a run in float64 ({RUN_GIB_BASIS})"
 
     def _image_text(self) -> str:
         """Which image the wall adds (``WallCorrection.regularised``): the regularised image of the drag's own blob, with
@@ -1231,7 +1245,7 @@ class MRSDragNode(MimeNode):
                                         background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
 
 
-__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "INTEGRATED_GAP", "NEAR_WALL",
+__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
            "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
            "WALL_CELL_SHARE", "WALL_REACH",
            "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged",

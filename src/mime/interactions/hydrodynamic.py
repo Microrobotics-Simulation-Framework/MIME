@@ -760,7 +760,11 @@ class Drag(PointForceDrag):
                            "it by NaN before the body took it, so the run stopped there (drag.mrs-indefinite, "
                            "MIME-ANO-130)", rung="mrs"),
         Flag("near_wall", "the body lay within one force spacing of the wall (NEAR_WALL), where the resistance has been "
-                          "measured indefinite closer in (MIME-ANO-130) and a definite one is not shown accurate", rung="mrs"),
+                          "measured indefinite closer in (MIME-ANO-130) and a definite one is not shown accurate; above the plane wall the "
+                          "error there is estimated (a sphere, blob 0.1, against exact answers): the normal entry "
+                          "+3.6% at one spacing, +10.3% at 0.55 and +14% at 0.5 with the image at the force points, "
+                          "the worst entry 2.6% to 14.8% at 0.5 with it integrated (the plane wall kind's page); the "
+                          "tube's measurements are MIME-ANO-130's", rung="mrs"),
         Flag("asymmetric", "the step's resistance, before its symmetric part was taken, was symmetric only to more than "
                            "a twentieth of itself (CONFINED_ASYMMETRY_LIMIT), so its error is at least half that share "
                            "(the share bounds it from below; a small share bounds nothing)", rung="mrs"),
