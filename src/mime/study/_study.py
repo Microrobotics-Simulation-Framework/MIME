@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, cast, override
 import numpy as np
 from jax import monitoring
 
-from mime.build import BuildRefused, Refusal, RefusalClass, RunSettings
+from mime.build import BuildRefused, RangeDeclaration, Refusal, RefusalClass, RunSettings
 from mime.build._construct import report_of
 from mime.build._checks import node_lines
 from mime.build._key import split_reasons, structure_key
@@ -37,6 +37,7 @@ from mime.errors import public
 from mime.study._axes import STUDY_REASON, Axis, differ, resolve, value_text
 from mime.study._point import Point, build_point, precision, same_run
 from mime.study._protocol import FromRest, Protocol, protocol_of
+from mime.study._ranges import RangeCheck, range_check
 from mime.units import Quantity
 from mime.validity import Profile
 
@@ -253,6 +254,9 @@ class StudyPlan:
     protocol: Protocol = field(default_factory=FromRest)
     #: How often each member keeps the stage's bound fields for the ghosted comparison (``None``: not kept).
     stage_every: Quantity | None = None
+    #: The checks of the base's declared ranges made before the first sweep (``mime.study._ranges``; ``None``: it
+    #: declares none).
+    range_check: RangeCheck | None = None
 
     @property
     def refused(self) -> tuple[Point, ...]:
@@ -283,6 +287,11 @@ class StudyPlan:
                 lines.append(f"    split from group 0 by: {'; '.join(group.reasons)}")
         if not isinstance(self.protocol, FromRest):
             lines.append(f"  protocol: {self.protocol.text()}")
+        if self.range_check is not None:
+            how = "reused, made for this experiment's content already" if self.range_check.reused else \
+                f"{self.range_check.seconds:.1f} s"
+            lines.append(f"  the declared ranges checked before the sweep (the independence check and the trace form "
+                         f"at a move inside each range, float64): nothing found ({how})")
         for point in refused:
             lines.append(f"  refused point {point.index} ({_coordinates(self.axes, point)}):")
             lines += [f"    [{refusal.code}] {refusal.message}" for refusal in point.refusals]
@@ -562,6 +571,15 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
                 groups.append(Group(key, [p.index for p in candidates], built=built))
     for group in groups[1:]:
         group.reasons = tuple(dict.fromkeys(split_reasons(records[groups[0].key], records[group.key])))
+    ranged = {str(d.path) for d in declarations if isinstance(d, RangeDeclaration)}
+    checked: RangeCheck | None = None
+    if ranged:
+        split = range_splits(settings, axes, points, groups, ranged)
+        if split:
+            raise BuildRefused(split)
+        checked = range_check(experiment)
+        if checked.refusals:
+            raise BuildRefused(list(checked.refusals))
     steps = groups[0].built.steps_in(duration) if groups and groups[0].built is not None else 0
     from mime.study._stage import check_stage_every
 
@@ -571,7 +589,50 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
             _settle(group, points, axes, duration, record, every, batch)
     return StudyPlan(axes, tuple(points), tuple(groups), steps, drop, dict(reasons), duration,
                      tuple(str(getattr(each, "path", each)) for each in record), every, batch, settings.experiment,
-                     settings.profile, settings.seed, protocol or FromRest(), stage_every)
+                     settings.profile, settings.seed, protocol or FromRest(), stage_every, checked)
+
+
+#: What a split of a group inside a declared range is, by profile: reported (exploratory, research), refused (strict,
+#: which holds a higher evidence standard). An entry that chooses from a member's own value inside a range breaks the
+#: range's promise of one program; the members still run right, each group its own program.
+RANGE_SPLIT: Mapping[str, str] = {Profile.EXPLORATORY.value: "reported", Profile.RESEARCH.value: "reported",
+                                  Profile.STRICT.value: "refused"}
+
+
+def range_splits(settings: RunSettings, axes: Sequence[Axis], points: Sequence[Point], groups: Sequence[Group],
+                 ranged: set[str]) -> list[Refusal]:
+    """Each group's reasons told against the declared ranges: one built for its own value outside a range says so; one
+    split from the first inside every range its axes move is an entry's defect, reported, or refused in a profile whose
+    rule refuses it (:data:`RANGE_SPLIT`)."""
+    found: list[Refusal] = []
+    if not groups:
+        return found
+    first = points[groups[0].members[0]]
+    for group in groups[1:]:
+        builder = points[group.members[0]]
+        outside = builder.declared.outside or first.declared.outside
+        if outside:
+            whose = "its points" if builder.declared.outside else "group 0's points"
+            group.reasons = (f"{whose} lie outside the declared range of {', '.join(outside)}, and are built for their "
+                             f"own value", *group.reasons)
+            continue
+        moved = [axis.path for axis in axes if differ(builder.values[axis], first.values[axis])]
+        if not moved or not all(path in ranged for path in moved):
+            continue
+        text = (f"inside the declared range of {', '.join(moved)}, an entry chose from the member's own value and not "
+                f"over the range ({'; '.join(group.reasons)}): the entry's defect, since a range holds one program")
+        group.reasons = (text,)
+        if RANGE_SPLIT.get(str(settings.profile)) == "refused":
+            found.append(Refusal(
+                "study.range-split", RefusalClass.USER,
+                f"{text}; the {settings.profile} profile refuses a split inside a declared range (exploratory and "
+                f"research report it in the plan)",
+                "run the study in the research profile, Experiment(..., profile='research'), where the split is "
+                "reported and each group runs its own program; or take the range out, exp.remove('<path>', "
+                "kind='range'), and report the entry",
+                why="the strict profile holds a higher evidence standard: a range whose members do not share one "
+                    "program does not hold its declared promise"))
+    return found
 
 
 def inert_axes(axes: Sequence[Axis], points: Sequence[Point],

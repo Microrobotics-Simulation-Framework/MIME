@@ -48,6 +48,7 @@ from mime.build._refusals import (
     catalogue_problem,
     entry_defect,
 )
+from mime.build._ranges import PlannedRange, choice_refusals, planned_ranges, variant_refusal
 from mime.build._report import BuildReport, OrientationLine, RunStructure
 from mime.build._steps import whole_runs_either_side, whole_steps
 from mime.build._watch import WATCHED_FAMILY, ContainmentPlan, UnwatchedContainment, Watched, WatchPlan
@@ -85,6 +86,7 @@ from mime.registry import (
     Region,
     Registered,
     Registration,
+    Role,
     RoleKind,
     Segment,
     Solid,
@@ -134,7 +136,8 @@ from mime.things import (
 )
 from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnitude, Quantity, UnitError, \
     rate_symbol, says_its_angle, si, unit_symbol
-from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
+from mime.registry._ranges import RangeChoice, recording
+from mime.validity import DEFAULT_PROFILE, PENDING, Basis, Profile, is_pending, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
     Capability, ReadKind, TargetKind
 
@@ -504,6 +507,10 @@ class PlanSet:
     replaced: tuple[str, ...] = ()
     #: The note of each declaration removed in this session (``exp.remove``), set by the experiment likewise.
     removed: tuple[str, ...] = ()
+    #: The experiment's declared ranges by path (``exp.declare_range``), and each choice an entry made over them, with
+    #: its price against the experiment's own value's (``mime.registry.choose_over``): the plan's price report.
+    ranges: Mapping[str, PlannedRange] = field(default_factory=dict[str, PlannedRange])
+    range_choices: tuple[RangeChoice, ...] = ()
 
     def scene_text(self) -> str:
         """The world frame and the stage's settings, one line, for the build report."""
@@ -634,6 +641,8 @@ class _Planner:
         self.write_units: dict[str, str] = {}
         self.work = ProfileWork(DEFAULT_PROFILE)
         self.outcome = ProfileOutcome(DEFAULT_PROFILE)
+        self.ranges: dict[str, PlannedRange] = {}
+        self.range_choices: list[RangeChoice] = []
 
     def refuse(self, code: str, category: RefusalClass, message: str, action: str) -> None:
         self.refusals.append(Refusal(code, category, message, action))
@@ -645,6 +654,11 @@ class _Planner:
         self.refusals.append(entry_defect(cls, message, where=raised_at(error) if error is not None else None))
 
     def run(self) -> PlanSet:
+        with recording() as held:
+            self.range_choices = held
+            return self._run()
+
+    def _run(self) -> PlanSet:
         self.plan_settings()
         things = [(index, d.thing) for index, d in enumerate(self.declarations) if isinstance(d, ThingDeclaration)]
         for _, thing in things:
@@ -655,6 +669,7 @@ class _Planner:
         self.plan_magnets()
         self.plan_parts()
         self.plan_values()
+        self.plan_ranges()
         self.plan_materials()
         for index, thing in things:
             if self.things.get(thing.name) is thing:
@@ -686,6 +701,7 @@ class _Planner:
         self.check_rates()
         self.derive_seeds()
         self.finish_profile()
+        self.judge_ranges()
         self.note_shared_media()
         if self.refusals or self.frame is None:
             raise BuildRefused(self.refusals, BuildReport(self.settings.experiment, self.dt or None,
@@ -711,7 +727,8 @@ class _Planner:
                        {name: dict(sorted(parts.items())) for name, parts in sorted(self.apparatus_parts.items())},
                        controller, self.masses, dict(sorted(self.models.items())), self.outcome,
                        self.watch_plans(), checked=dict(sorted(self.checked.items())),
-                       kicks=self.kicks, turning=tuple(self.turning_rates()))
+                       kicks=self.kicks, turning=tuple(self.turning_rates()), ranges=dict(sorted(self.ranges.items())),
+                       range_choices=tuple(self.range_choices))
 
     def approaches(self, roles: Mapping[str, RoleKind], bindings: Mapping[str, str]) -> dict[str, float]:
         """The closest approach of each body an entry binds to the wall of the region its medium fills, by role
@@ -2925,6 +2942,38 @@ class _Planner:
             if below is not None:
                 self.refuse_problems([below])
 
+    def plan_ranges(self) -> None:
+        """Each declared range checked (``mime.build._ranges``): what a hull's choices are made over."""
+        found, refusals = planned_ranges(self.settings, self.declarations)
+        self.ranges = found
+        self.refusals += refusals
+
+    def judge_ranges(self) -> None:
+        """What a range is judged on once the plan is made: a setting whose role is numerical has none (a variant); a
+        value a record gives lies inside its range; in the research profile a range gives its reason; and each choice
+        made over a range covers the experiment's own value (its rule found the extreme)."""
+        roles = self.outcome.roles
+        for path, held in list(self.ranges.items()):
+            role = roles.get(path)
+            if held.kind == "setting" and role is not None and role.role is Role.NUMERICAL:
+                self.refusals.append(variant_refusal(path, "a numerical setting"))
+                continue
+            if self.settings.profile != Profile.EXPLORATORY.value and (held.reason is None or is_pending(held.reason)):
+                self.refuse("range.reason", RefusalClass.USER,
+                            f"the {self.settings.profile} profile needs each declared range to say why it is declared, "
+                            f"and {held.text()} has no reason", f"give it one: exp.declare_range({path!r}, ..., "
+                                                                 f"reason='<why this range>')")
+            if held.kind == "value":
+                owner = path.partition(".")[0]
+                value = self.declared_of(owner).get(path) if owner in self.things else None
+                if isinstance(value, float) and not held.low_si <= value <= held.high_si:
+                    self.refuse("range.outside", RefusalClass.USER,
+                                f"{path} is {value!r} {held.unit}, outside its declared range "
+                                f"[{held.low}, {held.high}]",
+                                "declare a range that holds the experiment's own value, or declare a value inside it")
+        owners = {plan.owner: plan.registered.cls for plan in self.declared}
+        self.refusals += choice_refusals(self.range_choices, owners)
+
     def hull_of(self, body: str) -> Hull | None:
         """The hull of ``body``: its one part outside every other, when that part's kind gives its radial reach or
         samples its surface (a box, an ellipsoid, which have no axis to give a reach about); a union of several parts
@@ -2933,7 +2982,10 @@ class _Planner:
         if len(bulk) != 1 or (bulk[0].reach is None and not implements(bulk[0].solid, "sampling")):
             return None
         line = bulk[0]
-        return Hull(body, line.name, line.solid, line.settings, line.centre, line.rotation)
+        prefix = f"{body}.parts.{line.name}."
+        ranges = {path.removeprefix(prefix): (held.low_si, held.high_si) for path, held in self.ranges.items()
+                  if path.startswith(prefix) and held.kind == "geometry"}
+        return Hull(body, line.name, line.solid, line.settings, line.centre, line.rotation, ranges)
 
     def given_by_kind(self, path: str) -> bool:
         """Whether the declared value at ``path`` is one its body's hull kind gives (its extent, the radial reach,

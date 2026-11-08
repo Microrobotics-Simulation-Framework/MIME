@@ -263,6 +263,7 @@ override.initial-after-start  user
 override.leaf-unread          user
 override.no-declarations      user
 override.no-effect            user
+override.outside-range        user
 override.structural           user
 override.unreplayable         user
 override.variant              user
@@ -357,6 +358,15 @@ push.token-scope              environment
 push.too-large                user
 push.too-many-files           user
 push.unconfirmed              user
+range.corner                  user
+range.duplicate               user
+range.kind                    user
+range.order                   user
+range.outside                 user
+range.path                    user
+range.reason                  user
+range.too-many                user
+range.units                   user
 read.not-published            user
 record.changed                user
 record.extrapolation          user
@@ -447,6 +457,7 @@ study.bridge-precision        user
 study.folder-not-empty        user
 study.format                  user
 study.group-file              user
+study.held-geometry           user
 study.leaf-unread             user
 study.manifest                user
 study.no-base                 user
@@ -462,6 +473,9 @@ study.precision               user
 study.protocol-command        user
 study.protocol-folder         user
 study.protocol-quantity       user
+study.range-bake              internal
+study.range-dependent         internal
+study.range-split             user
 study.reason-no-axis          user
 study.refused-points          user
 study.series-every-step       user

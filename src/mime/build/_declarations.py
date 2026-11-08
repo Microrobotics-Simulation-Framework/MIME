@@ -62,6 +62,19 @@ class ValueDeclaration:
 
 
 @dataclass(frozen=True)
+class RangeDeclaration:
+    """A range of a value the experiment writes (``exp.declare_range(path, low, high, reason=...)``): ``path`` an
+    axis as ``mime.study`` names it, ``low`` and ``high`` quantities of the value's dimension, with its reason. The build
+    makes every choice keyed on that value (a count, a spacing) over the range, not from the value, so that every value
+    inside it builds one program."""
+
+    path: Any
+    low: Any
+    high: Any
+    reason: Any = None
+
+
+@dataclass(frozen=True)
 class SourceDeclaration:
     """A setting's source, stated apart from its value (``exp.source("tube.inner_radius", reason=...)``): for a value
     that is not a quantity, or a source added when an experiment is sealed."""
@@ -111,4 +124,4 @@ class TermsDeclaration:
 
 
 Declaration = (ThingDeclaration | Attachment | ObservationDeclaration | ValueDeclaration | ControllerDeclaration
-               | SourceDeclaration | LicenceDeclaration | PermissionDeclaration | TermsDeclaration)
+               | SourceDeclaration | LicenceDeclaration | PermissionDeclaration | TermsDeclaration | RangeDeclaration)

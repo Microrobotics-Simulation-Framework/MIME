@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -244,9 +244,16 @@ class Hull:
     settings: Mapping[str, Magnitude]
     centre: tuple[float, float, float]
     rotation: tuple[tuple[float, ...], ...]
+    #: Each of its kind's settings the experiment declares a range of (``<body>.parts.<part>.<setting>``), its low and
+    #: high ends in SI: a choice an entry makes from the hull's settings is made over these (``choose_over``).
+    ranges: Mapping[str, tuple[float, float]] = field(default_factory=dict[str, tuple[float, float]])
 
     def label(self) -> str:
         return f"{self.body}'s hull, part {self.part!r} ({self.kind.label()})"
+
+    def at(self, settings: Mapping[str, float]) -> Hull:
+        """The same hull with ``settings`` in place of its own, its ranges kept."""
+        return replace(self, settings={**self.settings, **settings})
 
 
 @dataclass(frozen=True)

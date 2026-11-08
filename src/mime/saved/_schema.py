@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/10"
-LOCK_SCHEMA = "mime.lock/10"
+DOCUMENT_SCHEMA = "mime.document/11"
+LOCK_SCHEMA = "mime.lock/11"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -162,6 +162,16 @@ class DeclaredDoc(TypedDict, closed=True):
     """A value declared in the experiment (``umr.mass``): in SI, with its unit and its reason."""
 
     value: ReadOnly[float | list[float]]
+    unit: ReadOnly[str]
+    reason: ReadOnly[ReasonDoc]
+
+
+class RangeDoc(TypedDict, closed=True):
+    """A range declared in the experiment (``exp.declare_range``, version 11), by its axis's path: its low and high
+    ends in SI, with their unit, and its reason."""
+
+    low: ReadOnly[float]
+    high: ReadOnly[float]
     unit: ReadOnly[str]
     reason: ReadOnly[ReasonDoc]
 
@@ -341,9 +351,10 @@ class ExperimentDocument(TypedDict, closed=True):
     manifests of the meshes its stage draws. Version 7 adds ``based_on``, the saved experiment this one was made from
     (``Experiment.based_on``), absent where it was made from none. Version 8 adds nothing to the document; its schema
     moves with the lock's, which records the program the reference outputs were run by, the CPUs the build could use
-    and the threads of its BLAS."""
+    and the threads of its BLAS. Version 11 adds ``ranges``, each range declared in the experiment
+    (``exp.declare_range``) by its path, absent where none is."""
 
-    schema: ReadOnly[Literal["mime.document/10"]]
+    schema: ReadOnly[Literal["mime.document/11"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -357,6 +368,7 @@ class ExperimentDocument(TypedDict, closed=True):
     interactions: list[BoundEntryDoc]
     observations: list[BoundEntryDoc]
     declared: dict[str, DeclaredDoc]
+    ranges: NotRequired[dict[str, RangeDoc]]
     materials: dict[str, MaterialDoc]
     controller: ControllerDoc | None
     licence: NotRequired[str]
@@ -804,7 +816,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/10"]]
+    schema: ReadOnly[Literal["mime.lock/11"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]
@@ -947,7 +959,7 @@ def conforms[T](value: object, schema: type[T]) -> tuple[T | None, Sequence[str]
 
 
 __all__ = [
-    "BasedOnDoc", "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
+    "BasedOnDoc", "RangeDoc", "ChosenDoc", "CustomLicenceDoc", "DefaultRecord", "EvidenceDoc", "ItemRecord", "PendingDoc", "PermissionDoc",
     "ScopeDoc", "TermsDoc",
     "ReasonDoc", "ResolvedProfile", "WaiverRecord",
     "DOCUMENT_SCHEMA", "LOCK_SCHEMA", "AcceptanceDoc", "AssetDoc", "AssetRecord", "BoundEntryDoc", "ConditionDoc",

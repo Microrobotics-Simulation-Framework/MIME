@@ -34,6 +34,7 @@ from mime.registry import (
     GradientRecord,
     Hull,
     Interaction,
+    Monotone,
     Plan,
     PlanContext,
     Problem,
@@ -47,11 +48,13 @@ from mime.registry import (
     SupportRow,
     Value,
     WallKind,
+    choose_over,
     convention,
     determined,
     implements,
     lookup,
     numerical_default,
+    owner_of,
     register_interaction,
     register_setting_group,
     registered,
@@ -222,6 +225,32 @@ SPACING_MEASURED = ("on a 100 um steel sphere settling in still water (338 sampl
                     "it in free space (6784), 6000 steps in the tube 11 minutes: write spacing= for a number to use")
 
 
+#: The mrs rung's choices over a declared range of its hull's numbers (``mime.registry.choose_over``), each judged at the
+#: range's corners: monotone in each of the kind's numbers, which ``tests/ranges/test_mrs_monotone.py`` measures for each
+#: kind the rung samples.
+FORCE_POINTS_RULE = Monotone(
+    "at one spacing a larger body has at least as many force points: the kind's quadrature counts grow with each of "
+    "its lengths and its quasi-uniform choice with them (measured over each sampled kind's numbers in "
+    "tests/ranges/test_mrs_monotone.py)")
+SPACING_RULE = Monotone(
+    "the family's default spacing is the largest at which the kind gives the family's count of samples, which falls "
+    "as the body grows, since the count at one spacing grows with it (measured with the force points)")
+
+
+def force_points(hull: Hull, spacing: float, patches: tuple[str, ...]) -> float:
+    """How many force points the hull's kind gives at ``spacing`` on ``patches``: its sampling's choice, or its
+    quadrature where the kind's sampling is the quadrature itself."""
+    sampling = hull.kind.sampling(hull.settings, spacing, patches)
+    if sampling.chosen is not None:
+        return float(len(sampling.chosen))
+    return float(sum(math.prod(count) for count in sampling.counts))
+
+
+def _solve_cost(chosen: float, own: float) -> str:
+    return (f"its dense solve of {3 * chosen:g} unknowns against {3 * own:g}, about {(chosen / own) ** 3:.2g} times "
+            f"the factorisation") if own > 0 else ""
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class PointForceDrag(Interaction):
@@ -355,10 +384,19 @@ class PointForceDrag(Interaction):
 
     def default_spacing(self, ctx: PlanContext) -> Quantity | None:
         """The mrs rung's spacing when none is written: the largest, to three significant figures, at which the hull's
-        kind gives at least its family's sample count (``DEFAULT_SAMPLES``) over the patches sampled."""
+        kind gives at least its family's sample count (``DEFAULT_SAMPLES``) over the patches sampled. Over a declared
+        range of the hull's numbers, the finest of those across the range (:data:`SPACING_RULE`), so that every body
+        inside it has at least its family's count."""
         hull = ctx.geometry(of="body")
         if self.rung != "mrs" or hull is None or not implements(hull.kind, "sampling"):
             return None
+        chosen = choose_over(owner_of(self, ctx.bindings), hull, "default spacing", SPACING_RULE, self._family_spacing,
+                             largest=False, unit="mm")
+        return m(self._family_spacing(chosen))
+
+    def _family_spacing(self, hull: Hull) -> float:
+        """The largest spacing, to three significant figures, at which ``hull``'s kind gives at least its family's
+        sample count over the patches sampled."""
         coarse = float(hull.kind.radial_reach(hull.settings) if implements(hull.kind, "radial_reach") else
                        hull.kind.enclosing_radius(hull.settings))
         target = self.samples_by_family.get(hull.kind.name, self.compact_samples)
@@ -376,7 +414,7 @@ class PointForceDrag(Interaction):
         spacing = float(f"{fine:.3g}")
         if count(spacing) < target:  # rounded past the boundary: one unit of the third figure below it
             spacing = float(f"{spacing - 10.0 ** (math.floor(math.log10(spacing)) - 2):.3g}")
-        return m(spacing)
+        return spacing
 
     def default_blob(self, ctx: PlanContext) -> float | None:
         """The mrs rung's blob when none is written: half the samples' mean spacing."""
@@ -464,8 +502,12 @@ class PointForceDrag(Interaction):
     @override
     def plan(self, ctx: PlanContext) -> Plan:
         if self.rung == "mrs":
+            problems = self._mrs_problems(ctx)
+            hull = ctx.geometry(of="body")
+            if not problems and hull is not None and "spacing" in ctx.settings:
+                self._sampled_hull(owner_of(self, ctx.bindings), hull, ctx.scalar("spacing"))
             return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
-                        problems=tuple(self._mrs_problems(ctx)), assets=self._wall_assets())
+                        problems=tuple(problems), assets=self._wall_assets())
         problems: list[Problem] = []
         tube = uniform_tube(ctx.region("medium"), ctx.bindings["medium"])
         surrogate = self.surrogates.get(self.weights.name) if self.weights is not None else None
@@ -523,6 +565,14 @@ class PointForceDrag(Interaction):
         found += _wall_problems(self.wall_kind, ctx.region("medium"), medium, hull)
         return found
 
+    def _sampled_hull(self, owner: str, hull: Hull, spacing: float) -> Hull:
+        """The hull the rung samples at ``spacing``: ``hull`` itself, or over a declared range of its numbers the
+        point of the range with the most force points (:data:`FORCE_POINTS_RULE`), whose sampling every body inside
+        the range takes, moved with its own shape."""
+        patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
+        return choose_over(owner, hull, "force points", FORCE_POINTS_RULE,
+                           lambda held: force_points(held, spacing, patches), cost=_solve_cost)
+
     def _build_mrs(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         hull, wall = ctx.geometry(of="body"), _wall_kind(cast(object, self.wall_kind))
         if hull is None or isinstance(wall, str) or self.blob is None:
@@ -534,10 +584,13 @@ class PointForceDrag(Interaction):
         patches = self.patches if self.patches is not None else tuple(hull.kind.patches)
         settings = {setting.name: hull.settings.get(setting.name, getattr(hull.kind, setting.name))
                     for setting in dataclasses.fields(hull.kind)}
-        sampling = hull.kind.sampling(hull.settings, spacing, patches)
-        counts, owners = self._quadrature_arguments(hull, sampling, spacing)
-        reference_counts, reference_owners = self._reference_quadrature(hull, sampling, spacing)
-        wall_counts, wall_owners, refinement = self._wall_quadrature(hull, sampling, spacing)
+        # The discretisation is the sampled hull's (over a declared range, the range's), and the node's settings its
+        # own body's, so that its samples move with its shape.
+        sampled = self._sampled_hull(ctx.id, hull, spacing)
+        sampling = sampled.kind.sampling(sampled.settings, spacing, patches)
+        counts, owners = self._quadrature_arguments(sampled, sampling, spacing)
+        reference_counts, reference_owners = self._reference_quadrature(sampled, sampling, spacing)
+        wall_counts, wall_owners, refinement = self._wall_quadrature(sampled, sampling, spacing)
         node = b.add_response_node(MRSDragNode(
             ctx.node_name(), ctx.timestep, viscosity=ctx.scalar_value("viscosity"), blob=float(self.blob),
             kind=hull.kind.name, kind_version=hull.kind.version, patches=patches, counts=sampling.counts,
