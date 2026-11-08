@@ -81,7 +81,7 @@ class JointDragState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
     least_eigenvalue: ReadOnly[Annotated[Float[Array, "n"], Units("1")]]  # noqa: F722 - a jaxtyping shape
     cluster_least: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     asymmetry: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
-    gain: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    gain: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     relaxation_steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     dissipation: ReadOnly[Annotated[Float[Array, ""], Units("W")]]  # noqa: F722 - a jaxtyping shape
     wall_accepted: ReadOnly[Annotated[Bool[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
@@ -141,7 +141,7 @@ class JointDragNode(MimeNode):
         assumptions=("Stokes flow: quasi-steady, the limit of vanishing Reynolds number",
                      "Each body's surface by the separated quadrature of the MRS rung (MRSDragNode)",
                      "Bodies coupled through the fluid by each source's regularised Stokeslet, integrated over its "
-                     "cells near the target and taken at its force points beyond the reach, and the wall's image "
+                     "cells where the pair is near and taken at its force points beyond the reach, and the wall's image "
                      "between them at the force points",
                      "The bodies' steps lagged: each takes its own coupled resistance implicitly and the others' "
                      "loads from the step before",
@@ -480,10 +480,11 @@ class JointDragNode(MimeNode):
                  f"{counts}; {self.unknowns} unknowns), solved each step by one dense LU for the cluster's grand "
                  f"resistance, each body's step lagged: its own coupled 6 x 6 implicit, the others' loads from the "
                  f"step before",
-                 f"the cross-kernel between bodies: the source's regularised Stokeslet at its force points beyond "
-                 f"{self.constants()['reach']:g} of each source cell's own size, integrated over the cell within half "
-                 f"that, blended between; integrated over at most {budgets} quadrature points a source "
-                 f"(cross_cells_short where a cell within the reach was left out)",
+                 f"the cross-kernel between bodies: the source's regularised Stokeslet at its force points where the "
+                 f"pair is farther apart than {self.constants()['reach']:g} of the source's cells' own size, "
+                 f"integrated over every cell within half that, blended between; integrated over at most {budgets} "
+                 f"quadrature points a source, the nearest cells first (cross_cells_short where a pair within the "
+                 f"reach left a cell out)",
                  f"its matrix in the run's dtype {8 * self.unknowns ** 2 / 2 ** 20:.4g} MiB in float64, the LU's "
                  f"peak about three times that; past {DENSE_UNKNOWNS} unknowns the build refuses the dense route"]
         if start is not None and all(f"pose_{i}" in start for i in range(len(self.members))):

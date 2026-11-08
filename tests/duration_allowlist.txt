@@ -708,7 +708,7 @@ tests/near_field/test_gain.py::test_the_gain_is_the_spikes_and_a_gain_of_one_or_
 tests/near_field/test_gain.py::test_the_gain_is_the_spikes_and_a_gain_of_one_or_more_stops_the_step[triangle-0.1-1.0-0.878] # kept: gate 6, the inertial triangle, as above
 tests/near_field/test_gain.py::test_the_gain_is_the_spikes_and_a_gain_of_one_or_more_stops_the_step[triangle-0.1-0.001-1.015] # kept: gate 6, the overdamped triangle the check refuses, as above
 tests/near_field/test_gain.py::test_the_build_refuses_the_overdamped_triangle_at_its_start_and_lets_the_inertial_one_through # kept: gate 6 at the build, two builds of three default spheres
-tests/near_field/test_gain.py::test_control_without_the_check_the_triangle_it_refuses_diverges_and_the_line_it_lets_through_decays # kept: gate 6's control, two configurations of three default spheres stepped lagged a thousand times
+tests/near_field/test_gain.py::test_control_without_the_check_the_triangle_it_refuses_grows_and_the_line_it_lets_through_decays # kept: gate 6's control, two configurations of three default spheres, every cross-block integrated, stepped lagged two thousand times
 tests/near_field/test_gain.py::test_in_float32_the_gain_is_the_float64_ones_and_decides_the_same[pair-0.05-0.001-0.9] # kept: gate 11's float32 arm of gate 6, a float64 and a float32 step of the configuration
 tests/near_field/test_gain.py::test_in_float32_the_gain_is_the_float64_ones_and_decides_the_same[line-0.1-0.001-0.9] # kept: as above
 tests/near_field/test_gain.py::test_in_float32_the_gain_is_the_float64_ones_and_decides_the_same[triangle-0.25-0.001-0.927] # kept: as above

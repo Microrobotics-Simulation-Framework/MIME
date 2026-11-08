@@ -7,5 +7,14 @@
     "P-b1": "dense ahead of GMRES in time at 2, 3 and 8 spheres at 338 force points and at 2 and 3 FL-9 shells, by 1.2 to 3 times; dense's peak resident memory no more than GMRES's plus 30 %",
     "P-b2": "at 6 and 8 spheres at 882 force points (15,876 and 21,168 unknowns) dense still ahead in time or within 1.5 times of GMRES: no crossover in time below about 25,000 unknowns on this CPU, so the line past which W3b's GMRES takes over is the dense matrix's memory, 8 (3 sum N)^2 bytes (3.0 GiB at 20,000 unknowns), not its time",
     "P-b3": "GMRES's true relative residual at most 1e-9 on every right-hand side at tolerance 1e-10 (block preconditioning: JAX's stop tests the preconditioned residual), the dense LU's at most 1e-13"
+  },
+  "defaults_near_contact": {
+    "written": "2026-11-08, after the measurement below and before the gates ran on the changed defaults",
+    "measured": "at the first defaults (each cell switched by its own distance from the targets, reach 3, a budget of a quarter of the source's quadrature points), MIME's 338-point sphere, float64: no pair ran short of its budget (share 0.25, 0.5 and 1 gave the same numbers), so the budget was not the cause; the per-cell switch was: the squeeze at h/a 0.1 +5.80 % (reach 4: +5.57 %, 6: +4.84 %, every cell integrated: +3.18 %), at 0.25 +3.08 % (+2.36 % integrated); the triangle at 0.1 a, tau/dt 1, gain 1.574 (reach 4: 0.826, 6: 0.881, integrated: 0.8775), tau/dt 0.001 1.661 (integrated 1.0147). The point kernel at each cell's centroid instead of its force point moved the squeeze by under 0.4 % at 0.25 a and worsened it at 0.1 a: not the cause.",
+    "change": "the switch is the pair's: a pair within half the reach (its least target-to-cell distance in the cell's own size) integrates every cell, nearest first within the budget, a pair beyond the reach takes the point kernel, a smoothstep between on the whole block; the budget's default all of the source's quadrature points (a lower share a cost setting, flagged)",
+    "P-d1": "gate 3 on the defaults: the squeeze at h/a 0.25 and 0.1 equals the fully integrated one to 1e-6 relative (+2.36 %, +3.18 %; both gaps under 1.5 cell sizes), at h/a 1 unchanged (+0.65 %, the point kernel: no cell was within the reach there); the far-field checks unchanged",
+    "P-d2": "gate 6 at the build on the defaults: the inertial triangle at 0.1 a let through with the integrated gain 0.8775, the overdamped one refused at 1.0147",
+    "P-d3": "gate 4, the sphere: point against integrated at a gap of three mean cell sizes within 0.5 % (S3: 0.3 % on the squeeze beyond 2.6 spacings); the other kinds not predicted",
+    "P-d4": "gates 2, 5, 7, 8 and 12 and the ledger's still pass; gate 5's gap of one radius at 0.4 mm spacing lies in the blend (about 2.5 cell sizes), where the pair's least distance carries the blend's derivative: forward, reverse and central differences still agree to its line"
   }
 }

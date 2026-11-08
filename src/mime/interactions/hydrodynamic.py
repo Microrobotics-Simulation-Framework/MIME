@@ -942,8 +942,8 @@ class Drag(UncoupledDrag):
     **A medium's near field.** Where two bodies or more in one medium take the mrs rung, the build groups them into one
     joint node, ``near_field:<medium>`` (``JointDragNode``), and no body has a node of its own: each step it solves
     their joint system (each body's free part as 0.4.0 holds it, each pair coupled by the source's regularised
-    Stokeslet, integrated over its cells within the reach of the target and taken at its force points beyond, and the
-    wall's image between them), and delivers each body its own coupled resistance and, as its background load, the
+    Stokeslet, integrated over every cell where the pair is within the reach of each other and taken at its force
+    points beyond, and the wall's image between them), and delivers each body its own coupled resistance and, as its background load, the
     others' lagged load on it, ``-sum_b R_ab V_b`` at their twists at the step's start. The bodies' steps are lagged: a
     body takes its own resistance implicitly and the others' loads from the step before. **The lagged step's gain**,
     the spectral radius of ``(M/dt + R_d)^-1 R_off`` from each body's mass matrix (its dynamics publishes it where the
@@ -970,8 +970,9 @@ class Drag(UncoupledDrag):
         Flag("cluster_gift", "the near field's dissipation rate at the step's starting twists, V^T R V over the "
                              "cluster, was negative past its rounding: its grand resistance gave energy at that "
                              "velocity", rung="mrs", group=True),
-        Flag("cross_cells_short", "a source cell within the cross-kernel's reach of another body was left out of its "
-                                  "budget and kept the kernel at its force point", rung="mrs", group=True),
+        Flag("cross_cells_short", "a pair of bodies within the cross-kernel's reach left a source cell out of its "
+                                  "budget (a share set below one), which kept the kernel at its force point",
+             rung="mrs", group=True),
     )
     validity = (
         *(line for line in UncoupledDrag.validity),

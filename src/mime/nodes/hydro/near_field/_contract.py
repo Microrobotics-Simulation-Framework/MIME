@@ -84,7 +84,7 @@ class BodyOperator(Protocol):
 
     def cross(self, placed: Placed, targets: Array, reach: Any) -> tuple[Array, Array]:
         """The velocity its traction makes at ``targets`` ``(T, 3)`` (another body's force points), ``3T x 3N`` at unit
-        viscosity in free space, from its own placement; and whether a cell within ``reach`` of the targets was left
+        viscosity in free space, from its own placement; and whether a pair within ``reach`` of the targets left a cell
         out of its budget."""
         ...
 

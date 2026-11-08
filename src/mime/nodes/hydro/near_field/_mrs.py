@@ -6,15 +6,17 @@ piece of the MRS is written twice.
 (``held``), turned to the pose and divided by the viscosity, with the wall's self-image added exactly as dev1's step
 adds it (at the force points, and integrated over the cells nearest the wall on a wall quadrature).
 
-**Its cross-kernel** is its regularised Stokeslet between its cells and another body's force points, with the
-near/far split of dev1's wall image: each source cell's entry at a target is the kernel at its force point (times its
-area) where the target is farther than the reach from the cell, integrated over the cell's own quadrature within half
-the reach, and blended smoothly between (:func:`cross_weight`). The reach is in the cell's own size, ``sqrt(area)``,
-not in a global spacing, since feature-graded sampling varies the spacing over a body. **The budget** is a fixed count
-of the source's quadrature points (a share of them, fixed at build, so the step's shapes are static): the cells
-nearest the targets are integrated, nearest first, while their points fit; a cell within the reach that does not fit
-keeps its point column, and the step reports that it ran short. A pair with no cell within the reach integrates
-nothing."""
+**Its cross-kernel** is its regularised Stokeslet between its cells and another body's force points, switched by the
+pair's distance as dev1's wall image is by the wall's: a pair farther apart than the reach takes each cell's kernel
+at its force point (times its area); a pair within half the reach takes every cell's kernel integrated over the cell's
+own quadrature; between, the two blocks blended smoothly by the pair's least distance (:func:`cross_weight`). The
+distance is each target's from each cell's force point in that cell's own size, ``sqrt(area)``, not in a global
+spacing, since feature-graded sampling varies the spacing over a body. The switch is the pair's, not each cell's:
+near contact the joint system amplifies a small error in any entry of a cross-block, so a cross-block within the reach
+is integrated whole (``CROSS_SHARE``'s measurement). **The budget** is a fixed count of the source's quadrature
+points (a share of them, fixed at build, so the step's shapes are static; by default all of them): the cells nearest
+the targets are integrated, nearest first, while their points fit; a cell that does not fit keeps its point column,
+and the step reports that the pair ran short."""
 
 from __future__ import annotations
 
@@ -38,21 +40,27 @@ _lax: Any = cast(Any, jax).lax
 _ops: Any = cast(Any, jax).ops
 checkpoint: Any = cast(Any, jax).checkpoint
 
-#: The cross-kernel's reach, in each source cell's own size ``sqrt(area)``: beyond it a column is the kernel at the
-#: cell's force point, within half of it the kernel integrated over the cell, a smoothstep between. A labelled default
-#: from spike S3's sphere data (MIME's 338-point sphere, float64): on two spheres squeezing, the point kernel
-#: was within 0.3 % of the integrated one beyond 2.6 force spacings, +4 % at 1.3, -17.5 % at 0.5; the default keeps a
-#: margin over 2.6. A tolerance-backed numerical setting: each registered hull kind's conformance case (point against
-#: integrated at the reach's edge) fails a kind that needs a longer one.
+#: The cross-kernel's reach, in each source cell's own size ``sqrt(area)``: a pair of bodies farther apart than it takes
+#: the kernel at the source's force points, a pair within half of it the kernel integrated over every cell, a smoothstep
+#: between. A labelled default from spike S3's sphere data (MIME's 338-point sphere, float64): on two spheres squeezing,
+#: the point kernel was within 0.3 % of the integrated one beyond a gap of 2.6 force spacings, +4 % at 1.3, -17.5 % at
+#: 0.5; the default keeps a margin over 2.6. A tolerance-backed numerical setting: each registered hull kind's
+#: conformance case (point against integrated at the reach's edge) fails a kind that needs a longer one.
 REACH = 3.0
-#: The share of a source's quadrature points one cross-kernel integrates at most, fixed at build (its budget).
-CROSS_SHARE = 0.25
+#: The share of a source's quadrature points one cross-kernel integrates at most, fixed at build (its budget), the
+#: nearest cells first. All of them by default, from a measurement at MIME's 338-point sphere in float64 (W3's pull
+#: request): with each cell switched by its own distance from the targets (integrated within half the reach, at its
+#: force point beyond), two spheres a tenth of a radius apart squeezed 5.8 % over Brenner and Maude's series against
+#: 3.2 % with every cell integrated (4.8 % at twice the reach), and three in a triangle there had a lagged gain of 1.57
+#: against 0.88: near contact the joint system amplifies the point kernel's error in every cell. A lower share is a cost
+#: setting, reported where a pair runs short (``cross_cells_short``).
+CROSS_SHARE = 1.0
 
 
 def cross_weight(distance: Array, reach: Any) -> Array:
-    """A target's weight on a source cell's integrated entry from its distance to the cell's force point in the cell's
-    own size: 1 within half the reach, 0 beyond it, a smoothstep between (continuous with its first derivative), as
-    dev1's ``reach_weight`` for the wall's image."""
+    """A pair's weight on its integrated cross-block from its least distance, in its cells' own sizes: 1 within half
+    the reach, 0 beyond it, a smoothstep between (continuous with its first derivative), as dev1's ``reach_weight`` for
+    the wall's image."""
     t = jnp.clip((reach - distance) / (0.5 * reach), 0.0, 1.0)
     return t * t * (3.0 - 2.0 * t)
 
@@ -145,10 +153,10 @@ class MRSOperator:
 
     def _near(self, point: Array, placed: Placed, quadrature: Quadrature, targets: Array, pairs: Array,
               held: Array, reach: Any) -> tuple[Array, Array]:
-        """The cross-kernel where a cell lies within the reach: the nearest cells integrated while their points fit
-        the budget, each target's entry of a cell's column blended by its own distance from the cell (``pairs``, in
-        the cell's size), so that the blend is smooth in every position; ``held`` (each cell's least distance, held
-        out of every derivative) chooses the cells."""
+        """The cross-kernel of a pair within the reach: the nearest cells integrated while their points fit the
+        budget, the whole block blended by the pair's least distance (the least of ``pairs``, each target's from each
+        cell in the cell's size, its derivative kept), so that the blend is continuous in every position; ``held``
+        (each cell's least distance, held out of every derivative) chooses the cells. Short where a cell was left out."""
         cells = self.count
         nearest = jnp.argsort(held)
         sizes = jnp.asarray(self.sizes)
@@ -164,10 +172,9 @@ class MRSOperator:
         weights = jnp.where(valid, quadrature.weights[index], 0.0)
         integrated = integrated_cells(targets, quadrature.points[index], weights, jnp.where(valid, cell, 0), cells,
                                       placed.eps_squared)
-        weights_of_pairs = cross_weight(pairs, reach) * chosen.astype(pairs.dtype)[None, :]
-        blend = jnp.repeat(jnp.repeat(weights_of_pairs, 3, axis=0), 3, axis=1)
-        short = jnp.any((held < reach) & ~chosen)
-        return point + blend * (integrated - point), short
+        weights = cross_weight(jnp.min(pairs), reach) * chosen.astype(pairs.dtype)
+        blend = jnp.repeat(weights, 3)[None, :]
+        return point + blend * (integrated - point), ~jnp.all(chosen)
 
 
 def point_block(targets: Array, source: Placed) -> Array:

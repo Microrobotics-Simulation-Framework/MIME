@@ -81,9 +81,10 @@ image's. So:
 
 **Several bodies: the medium's near field.** Where two bodies or more in one medium take the mrs rung, the build
 solves them together, as one joint node for the medium (`near_field:<medium>`): each step it assembles their joint
-system (each body's own block as above; each pair coupled by the source's regularised Stokeslet, integrated over its
-cells within a reach of the other body, in each cell's own size, and taken at its force points beyond; the wall's image
-between them) and solves it once, densely, for the cluster's grand resistance. Each body is delivered its own coupled
+system (each body's own block as above; each pair coupled by the source's regularised Stokeslet, integrated over every
+cell where the pair is within a reach of each other, in the source's cells' own size, and taken at its force points
+beyond, since near contact the joint system amplifies the point kernel's error in any cell; the wall's image between
+them) and solves it once, densely, for the cluster's grand resistance. Each body is delivered its own coupled
 resistance and, as its background load, the others' load on it at their velocities at the step's start: their steps
 are **lagged**, each body's own resistance implicit, the others' loads a step behind. That costs a first-order error in
 the step, and a step's delay after a sudden change, relaxing at the lagged step's **gain**, which the node checks every

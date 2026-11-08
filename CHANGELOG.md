@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
   `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the
   cluster's grand resistance (each body's own block dev1's; each pair coupled by the source's regularised Stokeslet,
-  integrated over its cells within a reach of the other body in each cell's own size and taken at its force points
-  beyond; the wall's image between them) and delivers each body its own coupled resistance and, as its background load,
+  integrated over every cell where the pair is within a reach of each other, in the source's cells' own size, and taken
+  at its force points beyond; the wall's image between them) and delivers each body its own coupled resistance and, as its background load,
   the others' load on it a step behind. The lagged step's gain, the spectral radius of `(M/dt + R_d)^-1 R_off`, is
   checked every step from each body's mass matrix, which the rigid body now publishes (`body.mass_matrix`) only where
   the near field reads it: at one or above the run stops (`drag.near-field-gain`), and the build refuses a
