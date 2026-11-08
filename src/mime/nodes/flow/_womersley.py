@@ -26,6 +26,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, override
 
+import jax
 import numpy as np
 from jax import Array
 from jaxtyping import Float, Int
@@ -36,6 +37,9 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
     run_dtype
 from mime.nodes.flow._waveform import WAVEFORM_SIZE
+
+#: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
+_LAX: Any = jax.lax
 from mime.registry import Problem
 
 EQUATIONS = (r"\operatorname{u}(r, t) = \frac{\rho g_0 (R^2 - r^2)}{4 \mu} + \mathrm{Re}\left[\frac{A}{2 \pi i f} "
@@ -67,12 +71,15 @@ def _flux_ratio(k: int) -> int:
 
 
 def _nested(x_im: Array, terms: int, ratio: Callable[[int], int]) -> tuple[Array, Array]:
-    """``1 + (i x / d_1)(1 + (i x / d_2)(1 + ...))`` to ``terms`` levels, ``d_k = ratio(k)``, as (re, im)."""
-    re = jnp.ones_like(x_im)
-    im = jnp.zeros_like(x_im)
-    for k in range(terms - 1, 0, -1):
-        d = float(ratio(k))
-        re, im = 1.0 - im * x_im / d, re * x_im / d
+    """``1 + (i x / d_1)(1 + (i x / d_2)(1 + ...))`` to ``terms`` levels, ``d_k = ratio(k)``, as (re, im): one scan
+    from the innermost level out (the levels' operations in the order a loop over them takes, in one small program)."""
+    divisors = jnp.asarray([float(ratio(k)) for k in range(terms - 1, 0, -1)], dtype=jnp.asarray(x_im).dtype)
+
+    def level(carry: tuple[Array, Array], d: Array) -> tuple[tuple[Array, Array], None]:
+        re, im = carry
+        return (1.0 - im * x_im / d, re * x_im / d), None
+
+    (re, im), _ = _LAX.scan(level, (jnp.ones_like(x_im), jnp.zeros_like(x_im)), divisors)
     return re, im
 
 
