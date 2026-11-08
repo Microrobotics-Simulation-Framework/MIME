@@ -35,6 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   differentiate through), and read as given by the loop's steps (`run_constants_given`). Reverse mode then derives it
   once per chunk: on FL-9 in free space at 222 force points the gradient through a chunk equals the per-step form's to
   1e-12, and the 666-wide LU leaves the backward loop (MIME-ANO-147). Forward runs keep their arrays bit for bit.
+- **The plane wall kind** (`plane` 0.1.0, `mime.walls.PlaneWall`): an unbounded no-slip plane for the drag's MRS rung,
+  its image system in closed form, regularised by the drag's own blob, so that with the free Stokeslet of that blob it
+  vanishes on the wall and has no divergence to rounding, and as the blob vanishes it is Blake's singular image. The
+  plane is a structure, `mime.scene.Plane(normal=+Z, offset=...)`, whose `half_space` a medium fills
+  (`Medium("water", fills=floor.half_space)`); its shape is `mime.core.HalfSpace` (`half_space`), convex, taking many
+  points, with no switch. The offset is the drag node's leaf `wall_offset`, which a gradient and a caller of the node
+  reach; **a structure's settings are not yet study or override axes** (`override={"floor.offset": ...}` is refused,
+  `value.unknown`, and so are `drag:<body>.wall_offset` and `drag:<body>.offset`, `study.unknown-path`), and they come
+  with the study layer's declared ranges. The normal is held as built and normalised in the
+  program, so declaring it a leaf later changes no program. The gradient is exact. The plane has no surface yet, so no
+  contact can be held against it; the build refuses a body that starts through it, and the drag's near-wall flags
+  speak in a run. **The wall protocol passes the drag's regularisation to every wall kind**: a correction and its
+  image between point sets take `eps_squared`, the blob's square, and `WallCorrection.regularised` declares whether a
+  kind uses it (the tube's table image is singular and declares it does not); the build report says per wall which
+  image it adds. A correction a lab registers must take the new argument (a default of `None`
+  serves), and registration refuses one that does not (`entry.defect`, naming the function and the argument) instead
+  of failing with a bare `TypeError` at the first trace. Every released program on the tube and in free space runs to the same bits.
+
 - **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
   `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the
   spinners' momenta and the inertia its frames carry, and the new `spinner` kind): each records its step identity
