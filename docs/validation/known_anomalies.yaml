@@ -3502,9 +3502,9 @@ anomalies:
     title: "The lubrication is counted twice where the MRS rung already resolves part of the gap: the overlap is positive on the sphere and unmeasured on FL-9, and Drag.MRS cannot take the hand-over"
     description: >
       The frozen register's entry M4. The Lubrication node adds a near-contact resistance on top of a drag that already
-      resolves part of the gap, so the two overlap. dev1's bound: switching the lubrication on moves the closed BEM's speed
+      resolves part of the gap, so the two overlap. dev1's bound: switching the lubrication on moves the closed MRS rung's speed
       by -3.8 % and the script A surrogate's by -5.7 %, and the overlap lies between 0 and that term; its sign relative to
-      the near-wall flow the drag resolves was unknown in dev1. Drag.BEM refuses lubrication=, and the drag 0.4.0 rung has no
+      the near-wall flow the drag resolves was unknown in dev1. Drag.MRS refuses lubrication=, and the drag 0.4.0 rung has no
       hand-over, so the register's control for M4 (a lubrication term scaled by 2 must move the speed by the predicted
       amount) cannot run: M4 has no runnable control [read, the register].
 
@@ -3519,7 +3519,7 @@ anomalies:
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
-      The overlap is bounded in dev1 only by the lubrication term itself (0 to -3.8 % on the BEM, -5.7 % on the surrogate),
+      The overlap is bounded in dev1 only by the lubrication term itself (0 to -3.8 % on the MRS rung, -5.7 % on the surrogate),
       and its sign on FL-9 is not measured; a result that switches the lubrication on near a wall rests on a sum whose
       overlap is not removed.
     resolution_status: open
