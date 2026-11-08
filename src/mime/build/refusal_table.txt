@@ -495,6 +495,7 @@ thing.prim-taken              user
 two-builds.float32            user
 two-builds.leaf-shapes        user
 two-builds.not-movable        user
+two-builds.undetected         internal
 value.duplicate               user
 value.from-kind               user
 value.not-positive            user

@@ -18,6 +18,8 @@ plant at every move (145 of 145), no twin (0 of 116) and no same-value rebuild; 
 - the MRS drag with 30 % of its viscosity taken from the build's value at the trace (a plant in a real node) is caught
   by the trace form at every move from 1e-1 to 1e-15, and by the run form from 1e-1 to 1e-12 with the same margin
   (the smaller moves reported); its twin (the viscosity read live) quiet by both forms;
+- an array held as built inside a real node's step, which runs in a nested ``jit`` (a program text and top-level
+  constants that do not carry it), is in ``test_nested_bakes.py``;
 - conditions: the leaves closed over (the step's default parameters) make every twin fire; in float32 the check is
   refused, and so are a pair whose leaves differ in shape and a value with no relative move.
 """
@@ -25,6 +27,7 @@ plant at every move (145 of 145), no twin (0 of 116) and no same-value rebuild; 
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Iterator
 from typing import Any
 
@@ -35,11 +38,10 @@ from mrs_cases import BALL, free_space, mrs
 from plants import BAKED, NODES, TWINS, planted
 
 from mime.build import ArgumentRefused
-from mime.build._in_graph import program_of
 from mime.build._maddening import chunk_step, fed_inputs, full_state, graph_params
 from mime.nodes.hydro.mrs import _node as mrs_node
 from mime.testing import TwoBuilds, run_form, two_builds_of
-from mime.testing._two_builds import programs_differ, step_program
+from mime.testing._two_builds import nested_program, programs_differ, step_program
 from mime.testing.toys._experiments import ADD_BATH, ADD_PROBE, toy_experiment
 from mime.units import N, kg, kg_m2, m, m_per_s, mm, mPa_s, rad_per_s
 
@@ -54,8 +56,13 @@ BAND = 1e-6
 MARGIN = 4.0
 
 
+#: The draws' seed: new on every run, printed with a failure so that its draws can be repeated (``MIME_PLANTS_SEED``
+#: writes it back); a reproduction aid, never a fixed seed in CI.
+SEED = int(os.environ.get("MIME_PLANTS_SEED") or np.random.SeedSequence().entropy or 0)
+
+
 def draws(count: int, smallest: float) -> list[tuple[float, float]]:
-    rng = np.random.default_rng()
+    rng = np.random.default_rng([SEED, count, int(-np.log10(smallest))])
     return [(float(np.exp(rng.uniform(np.log(0.5), np.log(3.0)))),
              float(np.exp(rng.uniform(np.log(smallest), np.log(1e-1)))) * float(rng.choice([-1.0, 1.0])))
             for _ in range(count)]
@@ -95,7 +102,7 @@ def test_the_trace_form_catches_every_plant_at_every_move(pairs: Pairs):
     for kind in BAKED:
         moved = [(k, move, found) for k, move, found in pairs[kind] if move != 0.0]
         assert len(moved) == len(LADDER) + 26
-        assert not [(k, move) for k, move, found in moved if found.verdict != "bake"], kind
+        assert not [(k, move) for k, move, found in moved if found.verdict != "bake"], (kind, f"seed {SEED}")
 
 
 def gated(move: float) -> bool:
@@ -108,7 +115,8 @@ def test_the_run_form_catches_every_plant_in_its_band_four_lines_up(pairs: Pairs
         assert len(band) >= 3 + 6
         short = [(k, move, found.run.ratio if found.run else None) for k, move, found in band
                  if found.run is None or found.run.ratio < MARGIN]
-        assert not short, f"{kind}: a gating plant stands less than four times k resolutions above the line: {short}"
+        assert not short, (f"{kind}: a gating plant stands less than four times k resolutions above the line: {short}; "
+                           f"seed {SEED}")
 
 
 def test_probe_the_plants_just_above_the_old_line(pairs: Pairs, record_property: Any):
@@ -127,14 +135,16 @@ def test_probe_the_plants_just_above_the_old_line(pairs: Pairs, record_property:
 
 def test_no_twin_fires_either_form(pairs: Pairs):
     for kind in TWINS:
-        assert not [(k, move, found.verdict) for k, move, found in pairs[kind] if found.verdict != "quiet"], kind
+        assert not [(k, move, found.verdict) for k, move, found in pairs[kind]
+                    if found.verdict != ("not-discriminating" if move == 0.0 else "quiet")], kind
         assert all(found.run is not None and found.run.ratio == 0.0 for _, _, found in pairs[kind]), kind
 
 
-def test_a_same_value_rebuild_is_quiet(pairs: Pairs):
+def test_a_same_value_rebuild_fires_neither_form_and_says_it_moved_nothing(pairs: Pairs):
     for kind in NODES:
         same = [found for _, move, found in pairs[kind] if move == 0.0]
-        assert len(same) == 1 and same[0].verdict == "quiet" and not same[0].moved, kind
+        assert len(same) == 1 and not same[0].fired and not same[0].moved, kind
+        assert same[0].verdict == "not-discriminating", kind
 
 
 def test_a_value_keyed_count_fires_as_a_shape_exactly_where_the_move_crosses(pairs: Pairs):
@@ -172,7 +182,7 @@ def closed(built: Any) -> tuple[str, list[np.ndarray]]:
     graph.reset_state()
     state = jax.tree_util.tree_map(lambda leaf: leaf, full_state(graph))
     fed, params = fed_inputs(graph, built.held_inputs()), graph_params(graph)
-    return program_of(jax.make_jaxpr(lambda s, e: step(s, e, params))(state, fed))
+    return nested_program(jax.make_jaxpr(lambda s, e: step(s, e, params))(state, fed))
 
 
 def test_condition_the_check_refuses_float32():

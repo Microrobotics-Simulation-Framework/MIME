@@ -4,10 +4,15 @@ not see it), from two builds of one experiment that differ only in that value. F
 
 **The trace form** (:func:`step_program`): each build's step, as MIME's chunked run executes it (each node's
 run-constants made from the parameters, then the step reading them), traced with the state, the external inputs and the
-whole parameter tree as arguments, compared by ``mime.build._in_graph.program_of`` (the text with addresses removed,
-the constants it closes over bit for bit). A value derived from a leaf at build, a Python float, a NumPy or JAX array,
-whatever its share of the result, prints as another literal or constant; a leaf, an argument, does not. It sees the
-step only: a value that reaches the run through the state or the external inputs (a callback controller's writes)
+whole parameter tree as arguments, compared as ``mime.build._in_graph.program_of`` gives it (the text with addresses removed, the constants it closes
+over bit for bit) with the constants of every nested sub-program besides (:func:`nested_program`): a node's step runs
+inside a ``jit``, and an array that closed-over function holds is a constant of that sub-program, not of the
+top-level one, and not in the text. A value derived from a leaf at build, a Python float, a NumPy or JAX array,
+whatever its share of the result, prints as another literal or is another constant of the program or of a
+sub-program (a ``jit``'s or ``cond``'s or ``scan``'s or ``while``'s body, a ``custom_jvp``'s or ``custom_vjp``'s
+function, a ``custom_linear_solve``'s); a leaf, an argument, does not. The derivative rules JAX traces lazily (a
+``custom_jvp``'s ``jvp``, a ``custom_vjp``'s forward and backward) are callables, not sub-programs of the traced
+step, and a bake only there is not seen. It sees the step only: a value that reaches the run through the state or the external inputs (a callback controller's writes)
 leaves the step's program as it was. In float32 a literal prints in float32 and the form stops at about 3e-8 of the
 value, so the check refuses to run there.
 
@@ -26,7 +31,7 @@ build's chunk.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -45,7 +50,7 @@ from mime.build._maddening import (
     parameter_leaves,
     unreadable_leaves,
 )
-from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+from mime.build._refusals import MIME_DEFECT, ArgumentRefused, InternalError, Refusal, RefusalClass
 from mime.core import NUDGED_SIZE
 from mime.experiment import BuiltExperiment, Experiment
 
@@ -75,6 +80,36 @@ def _x64_only() -> None:
                 "3e-8 of itself")])
 
 
+def nested_program(closed: Any) -> Program:
+    """:func:`~mime.build._in_graph.program_of` of a traced step with the constants of every nested sub-program
+    appended, in the order the walk meets them: the closed jaxprs in the parameters of its equations (``jit``, ``cond``
+    branches, ``scan`` and ``while`` bodies, the functions of ``custom_jvp`` and ``custom_vjp``, the ``jaxprs`` of
+    ``custom_linear_solve``), and so on down. An array a nested ``jit`` closes over is the constant of that
+    sub-program: it is in neither the printed text nor the top-level constants."""
+    text, consts = program_of(closed)
+
+    def walk(program: Any) -> None:
+        for equation in getattr(program, "jaxpr", program).eqns:
+            for parameter in equation.params.values():
+                visit(parameter)
+
+    def visit(value: Any) -> None:
+        if hasattr(value, "consts") and (hasattr(value, "eqns") or hasattr(value, "jaxpr")):
+            consts.extend(np.asarray(held) for held in value.consts)
+            walk(value)
+        elif isinstance(value, tuple | list):
+            for each in cast(Sequence[Any], value):
+                visit(each)
+        elif isinstance(value, dict):
+            for each in cast(dict[Any, Any], value).values():
+                visit(each)
+        elif hasattr(value, "eqns"):
+            walk(value)
+
+    walk(closed)
+    return text, consts
+
+
 def step_program(built: BuiltExperiment) -> Program:
     """The trace form's program of ``built``: its step as MIME's chunked run executes it (``chunk_step``), traced with
     the state (``_meta`` included), the external inputs it is fed and the whole parameter tree as arguments, as
@@ -98,7 +133,7 @@ def graph_program(graph: Any, fed: Mapping[str, Mapping[str, Any]] | None = None
     graph.reset_state()
     state = {node: dict(fields) for node, fields in full_state(graph).items()}
     traced = cast(Any, jax).make_jaxpr(traced_step)(state, fed_inputs(graph, fed), graph_params(graph))
-    return program_of(traced)
+    return nested_program(traced)
 
 
 def programs_differ(a: Program, b: Program) -> str:
@@ -161,7 +196,9 @@ def _up(value: np.ndarray) -> np.ndarray:
 class FieldGap:
     """One field of the run form: its largest difference between the written run and the rebuilt one, its resolution
     (its largest divergence from the written run started one ulp off), and its scale (its largest magnitude over both
-    runs)."""
+    runs). The resolution is quantised: a field's measured resolution is 0 or about one unit in the last place of its
+    scale, so the line is "any difference" where it measured 0 and about :data:`RUN_FACTOR` units there where it
+    measured one, and neighbouring ratios jump between ``inf`` and large finite numbers."""
 
     field: str
     difference: float
@@ -207,8 +244,13 @@ class TwoBuilds:
     (it fired where a moved leaf is one the step cannot read, ``unread``: a value its node consumes when it is built
     and declares so, which MADDENING refuses to write into a built graph and a study refuses to vary, so that the move
     takes a rebuild; the trace form cannot tell a bake beside it in the same pair, so a caller names each pair it
-    accepts so); or ``"outside-step"`` (the trace form quiet and the run form fired: the value reaches the run outside
-    the step, through the state or the external inputs, ``inputs_moved``)."""
+    accepts so); ``"outside-step"`` (the step's program the same and the run form fired where the state or the
+    external inputs moved, ``state_moved`` or ``inputs_moved``: the value reaches the run outside the step); or
+    ``"not-discriminating"`` (the two builds are the same in every leaf, the state, the inputs and the step's program,
+    as for a setting at zero or a value below a threshold: neither form had anything to see, so that nothing is
+    shown, which is not ``"quiet"``). A run form that fires with the program the same and nothing outside the step
+    moved is the check's own defect, and :func:`two_builds` refuses it (``two-builds.undetected``) rather than name
+    it ``outside-step``."""
 
     trace_fired: bool
     how: str
@@ -228,7 +270,14 @@ class TwoBuilds:
             return "held" if self.unread else "bake"
         if self.run is not None and self.run.fired:
             return "outside-step"
+        if not (self.moved or self.reshaped or self.state_moved or self.inputs_moved):
+            return "not-discriminating"
         return "quiet"
+
+    @property
+    def fired(self) -> bool:
+        """Whether either form found a difference: any verdict but ``quiet`` and ``not-discriminating``."""
+        return self.verdict not in ("quiet", "not-discriminating")
 
 
 def _run(graph: Any, steps: int, fed: Mapping[str, Mapping[str, Any]], state: Any, params: Any) -> Arrays:
@@ -296,6 +345,16 @@ def two_builds(base: BuiltExperiment, other: BuiltExperiment, *, run: bool = Tru
     inputs_moved = bool(_differ(_arrays(base.held_inputs()), _arrays(other.held_inputs()))[0])
     form = run_form(base, other, steps=steps) if run and not reshaped else None
     unread = tuple(each for each in moved if each in unreadable_leaves(base.graph))
+    if form is not None and form.fired and not how and not (state_moved or inputs_moved):
+        worst = form.worst
+        raise InternalError([Refusal(
+            "two-builds.undetected", RefusalClass.INTERNAL,
+            f"the run form fired (field {worst.field if worst else '?'}, {form.ratio:.3g} times its line) though the "
+            "step's program is the same, no state moved and no external input moved",
+            MIME_DEFECT,
+            why="a value reached the run by a path the trace form does not compare (a bake in a part of the program "
+                "it does not walk, a host callback) and that neither the state nor the inputs account for; naming it "
+                "outside-step would say it left the step, which nothing shows")])
     return TwoBuilds(bool(how), how, differing_lines(a, b) if how == "text" else (), tuple(moved), tuple(reshaped),
                      state_moved, inputs_moved, form, unread)
 
@@ -317,7 +376,9 @@ def two_builds_of(experiment: Experiment, path: object, *, relative: float = 1e-
                   run: bool = True, steps: int = RUN_STEPS, built: BuiltExperiment | None = None) -> TwoBuilds:
     """The two-builds check on ``experiment`` (or its ``built`` build, where given) and the same experiment with the
     value at ``path`` moved by ``relative`` (or set ``to`` a value), declared the way a study declares a point's
-    (``mime.study``'s resolver), both built in full. Float64 only."""
+    (``mime.study``'s resolver), both built in full. Float64 only. A numerical setting that is a structural variant of
+    the experiment, ``dt`` among them, changes the compiled program by design and reports ``bake`` (or ``shape``): it is
+    no declared value a study varies in one group, so a caller looping over a study's candidates passes it by."""
     from mime.saved._pins import keeping_pins
     from mime.study._axes import STUDY_REASON, base_value, declared, resolve
 
@@ -338,5 +399,5 @@ def two_builds_of(experiment: Experiment, path: object, *, relative: float = 1e-
     return two_builds(base, other, run=run, steps=steps)
 
 
-__all__ = ["RUN_FACTOR", "RUN_STEPS", "FieldGap", "RunForm", "TwoBuilds", "differing_lines", "graph_program", "moved_value", "programs_differ",
-           "run_form", "step_program", "two_builds", "two_builds_of"]
+__all__ = ["RUN_FACTOR", "RUN_STEPS", "FieldGap", "RunForm", "TwoBuilds", "differing_lines", "graph_program", "moved_value",
+           "nested_program", "programs_differ", "run_form", "step_program", "two_builds", "two_builds_of"]

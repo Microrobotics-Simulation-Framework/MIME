@@ -17,10 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field against `RUN_FACTOR` times the program's own resolution there (a start one ulp off, as a saved folder's
   resolution is measured), and sees a value that reaches the run outside the step. `RUN_FACTOR` is declared, 16,
   provisional: measured in a window whose margins are 1.1 and 1.2, so the run form's gating plants stand four times
-  its line up. On the registry walk's cases one pair fires, and it is `held`: the ellipsoid's semi-axes, which the body
-  consumes when it is built and which an override and a sweep refuse. Every planted bake of the bake-check spike's set
-  is caught by the trace form at every move from 1e-1 to one ulp (`tests/two_builds/`). New refusals:
-  `two-builds.float32`, `two-builds.leaf-shapes`, `two-builds.not-movable`, and `run.run-constant` (MIME's defect).
+  its line up. The trace form compares the constants of every nested sub-program as well as the top level's (a node's
+  step runs inside a `jit`, where an array it holds as built is a constant that neither the printed program nor the
+  top-level constants carry): a NumPy or JAX array of half the magnetic torque's moment taken from the build is a `bake`
+  at every move from 1e-1 to 1e-15, in the step's `jit`, a `scan` and a `cond`, its twin quiet. A pair that moves nothing
+  is `not-discriminating`, never `quiet`; a run form that fires with the program the same and no state or input moved
+  is the check's own gap and is refused (`two-builds.undetected`). On the registry walk's cases three pairs fire, each
+  `held` and each pinned: the ellipsoid's semi-axes of `bound_robot_with_parts` and the brick's size and the egg's
+  semi-axes of `mrs_solids`, which their nodes consume when they are built and which an override and a sweep refuse; the
+  walk bounds what it walked (the trace form over the nonzero floats of those cases' documents), not nodes no case
+  builds. Every planted bake of the bake-check spike's set is caught by the trace form at every move from 1e-1 to one
+  ulp (`tests/two_builds/`). New refusals: `two-builds.float32`, `two-builds.leaf-shapes`, `two-builds.not-movable`,
+  `two-builds.undetected` and `run.run-constant` (MIME's defects).
 - **Run-constants** (`MimeNode.run_constants`): a quantity a node makes from its leaves and holds over a run, made once
   per chunk inside the compiled program, before the step loop, by MIME's chunked runs (the flagged run, a study's
   batched run, and `mime.build._maddening.chunk_function`, a pure function of the state and the parameters to
@@ -292,12 +300,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is quiet on the rung), a study's member keeps its own float64-made matrix, and the save's resolution rerun gives the
   step the matrix with the leaves it was made at, which keeps it (`made_again`). The value-keyed second key (#201) is
   removed, and the stale read it allowed (a step given every body leaf as the rerun moves it kept the build's matrix)
-  cannot be reached. **The derived hash of every separated-quadrature MRS experiment moves**; no array moves.
+  cannot be reached. No array moves. Folders of four experiments (the MRS sphere in free space, `mrs_tube`, `hull_contact`, `script_a`) saved by the tree before this change load with it, in the same environment and in float64, as "the same graph, hash for hash" [measured]; no golden hash is in the diff, and whether the derived hash moves for any other experiment was not measured.
 - **A hull contact's search values are leaves** (`search_apart_squared`, `search_tolerance`, `search_shortfall`,
   `trainable=False`): made when the body is built from its hull's shape, they were Python numbers in the step's program
   (MIME-ANO-145), so a study whose members' hulls differed under one program would have run the first member's. The
-  step reads the same numbers in the run's dtype, so every array is bit for bit what it was; **the derived hash of every
-  hull contact moves**. They stay outside every derivative: where a search starts and when it stops, which the point it
+  step reads the same numbers in the run's dtype, so every array is bit for bit what it was (the `hull_contact` folder saved before loads as "the same graph, hash for hash"
+  [measured, as above]). They stay outside every derivative: where a search starts and when it stops, which the point it
   converges to does not depend on.
 
 - **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,

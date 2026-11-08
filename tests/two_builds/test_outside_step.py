@@ -2,8 +2,8 @@
 reaches the run through the controller's held writes, the graph's external inputs, and not through the step's
 parameters. The trace form sees the step only, so it is quiet; the run form, which writes the leaves that differ into
 the base's program but feeds it the base's own inputs, fires; and the check says where the value went
-(``inputs_moved``) and gives the verdict ``outside-step``. Its control: the same experiment built twice is quiet by
-both forms. The anomaly stays open: its resolution is controller settings as leaves (lane S's gradient phase); this is
+(``inputs_moved``) and gives the verdict ``outside-step``. Its control: the same experiment built twice fires neither
+form (and says it moved nothing). The anomaly stays open: its resolution is controller settings as leaves (lane S's gradient phase); this is
 how the check reports it meanwhile, on every run.
 
 The ladder: ``home`` moved by a relative 1e-6 (the spike's), 1e-5 and 1e-4, every joint at once. The controller holds
@@ -42,6 +42,7 @@ def test_a_callback_controllers_setting_is_reported_outside_the_step(base, move:
     assert found.run is not None and found.run.ratio >= 4.0, "four times k resolutions above the run form's line"
 
 
-def test_control_the_same_controller_built_twice_is_quiet(base):
+def test_control_the_same_controller_built_twice_fires_neither_form(base):
     found = two_builds(base, tracked_rpm().build())
-    assert found.verdict == "quiet" and not found.inputs_moved
+    assert not found.fired and not found.inputs_moved and found.verdict == "not-discriminating"
+    assert found.run is not None and found.run.ratio == 0.0
