@@ -16,10 +16,12 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_input
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_input, \
+    run_constants_given
 from mime.nodes.hydro.mrs._node import (
     CONFINED_ASYMMETRY_LIMIT,
     HELD,
+    HELD_FROM,
     NEAR_WALL,
     WALL,
     MRSDragNode,
@@ -27,7 +29,6 @@ from mime.nodes.hydro.mrs._node import (
     floating_leaves,
     path_name,
     least_distance,
-    rerun_leaves,
 )
 from mime.nodes.hydro.mrs._quadrature import asymmetry, held_or_made, scaled_least_eigenvalue, unchanged
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
@@ -216,11 +217,16 @@ class JointDragNode(MimeNode):
                 "at unit viscosity: no quantity of its own")
         for i, member in enumerate(self._members):
             prefix = member_prefix(i)
-            for key, spec in member.param_specs().items():
-                if key in ("viscosity", HELD) or key in self._wall_keys():
+            specs = member.param_specs()
+            for key, spec in specs.items():
+                if key in ("viscosity", HELD) or key.startswith(HELD_FROM) or key in self._wall_keys():
                     continue
                 found[f"{prefix}{key}"] = spec
             found[f"{prefix}{HELD_MATRIX}"] = ParamSpec(units="1", trainable=False, description=made)
+            found.update({f"{prefix}{HELD_FROM}{key}": ParamSpec(
+                units=specs[key].units, trainable=False,
+                description=f"the value of {prefix}{key} that {prefix}{HELD_MATRIX} was made at, which the step "
+                            f"compares {prefix}{key} with: no quantity of its own") for key in member.body_leaf_names()})
         first = self._members[0].param_specs()
         found.update({key: spec for key, spec in first.items() if key in self._wall_keys()})
         return found
@@ -244,7 +250,9 @@ class JointDragNode(MimeNode):
         inherited: Any = super()
         own = cast(dict[str, Any], inherited.params_pytree())
         held = {f"{member_prefix(i)}{HELD_MATRIX}": as_run_array(matrix) for i, matrix in enumerate(self._held)}
-        return {**own, **self._wall_arguments(), **held}
+        made_at = {f"{member_prefix(i)}{HELD_FROM}{key}": own[f"{member_prefix(i)}{key}"]
+                   for i, member in enumerate(self._members) for key in member.body_leaf_names()}
+        return {**own, **self._wall_arguments(), **held, **made_at}
 
     @override
     def _step_constants(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -273,28 +281,53 @@ class JointDragNode(MimeNode):
     def _made_compiled(self) -> tuple[Any, ...]:
         return tuple(jit(member.self_interaction) for member in self._members)
 
-    def _held_value(self, index: int, p: Mapping[str, Any]) -> Array:
-        """A member's free part at the step's leaves: the held one where they are as built (or as the save's
-        resolution rerun moves them), made afresh where one has moved (``held_or_made``)."""
+    def _theta(self, index: int, p: Mapping[str, Any]) -> dict[str, Any]:
+        """A member's leaves its free part is made from, by the member's own names."""
+        return {key: p[f"{member_prefix(index)}{key}"] for key in self._members[index].body_leaf_names()}
+
+    def _made_at(self, index: int, p: Mapping[str, Any]) -> dict[str, Any]:
+        """The leaves a member's held free part in ``p`` was made at (``m<i>_held_from.<leaf>``), by the member's own
+        names: values of the step, never constants of its program (``held_or_made``)."""
+        prefix = member_prefix(index)
+        return {key: p[f"{prefix}{HELD_FROM}{key}"] for key in self._members[index].body_leaf_names()}
+
+    def _held_or_made(self, index: int, p: Mapping[str, Any]) -> Array:
         member = self._members[index]
-        theta = {key: p[f"{member_prefix(index)}{key}"] for key in member.body_leaf_names()}
+        return held_or_made(member.self_interaction, self._made_at(index, p))(
+            self._theta(index, p), p[f"{member_prefix(index)}{HELD_MATRIX}"])
+
+    def _held_value(self, index: int, p: Mapping[str, Any]) -> Array:
+        """A member's free part at the step's leaves: as its chunk made it, where it did (its run-constant,
+        :meth:`run_constants`); else the held one where its leaves are those it was made at, made afresh where one has
+        moved (``held_or_made``), or where the step was given no held value."""
         key = f"{member_prefix(index)}{HELD_MATRIX}"
         if key not in p:
-            return member.self_interaction(theta)
-        built = member.built_theta()
-        return held_or_made(member.self_interaction, built, (rerun_leaves(theta, built),))(theta, p[key])
+            return self._members[index].self_interaction(self._theta(index, p))
+        if run_constants_given(p):
+            return p[key]
+        return self._held_or_made(index, p)
+
+    @override
+    def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
+        """Each member's held free part at the run's leaves (:meth:`_held_value`'s choice), made once per chunk."""
+        return {f"{member_prefix(i)}{HELD_MATRIX}": self._held_or_made(i, params)
+                for i in range(len(self._members)) if f"{member_prefix(i)}{HELD_MATRIX}" in params}
 
     @override
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """Each member's held free part made from ``params``' leaves, once, where they are not those it was made at,
+        with the leaves it was made at: what the save's resolution rerun gives the step, which keeps it there."""
         found: dict[str, Any] = {}
         for i, member in enumerate(self._members):
-            key = f"{member_prefix(i)}{HELD_MATRIX}"
+            prefix = member_prefix(i)
+            key = f"{prefix}{HELD_MATRIX}"
             if key not in params:
                 continue
-            theta = {name: params[f"{member_prefix(i)}{name}"] for name in member.body_leaf_names()}
+            theta = self._theta(i, params)
             if bool(unchanged(theta, member.built_theta())):
                 continue
             found[key] = self._made_compiled[i](theta).astype(jnp.asarray(params[key]).dtype)
+            found.update({f"{prefix}{HELD_FROM}{name}": value for name, value in theta.items()})
         return found
 
     # -- state and inputs ---------------------------------------------------------------------------------------------

@@ -35,7 +35,19 @@ from mime.core._shapes import (
     nearest_point,
 )
 from mime.core._field_kinds import FieldKind, HeldForces, HeldPoints, Units, field_kinds, paired_forces, typed_units
-from mime.core._node import NUDGED_SIZE, MimeNode, as_run_array, jit, jnp, node_input, one_ulp_up_leaf, run_dtype
+from mime.core._node import (
+    NUDGED_SIZE,
+    RUN_CONSTANTS_GIVEN,
+    MimeNode,
+    as_run_array,
+    jit,
+    jnp,
+    node_input,
+    one_ulp_up_leaf,
+    run_constants_given,
+    run_constants_made,
+    run_dtype,
+)
 from mime.core._node_fields import NodeFields, node_fields, typed_view
 from mime.core._symbols import Symbol, SymbolKind
 
@@ -58,6 +70,7 @@ __all__ = [
     "HeldForces",
     "HeldPoints",
     "MimeNode",
+    "RUN_CONSTANTS_GIVEN",
     "NUDGED_SIZE",
     "NodeFields",
     "Screw",
@@ -76,6 +89,8 @@ __all__ = [
     "node_fields",
     "node_input",
     "one_ulp_up_leaf",
+    "run_constants_given",
+    "run_constants_made",
     "paired_forces",
     "quaternion",
     "register_shape",

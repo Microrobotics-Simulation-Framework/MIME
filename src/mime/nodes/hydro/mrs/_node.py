@@ -19,7 +19,7 @@ from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, \
-    node_input, one_ulp_up_leaf, quaternion, typed_view
+    node_input, quaternion, run_constants_given, typed_view
 from mime.nodes.hydro.mrs._quadrature import (
     Chunks,
     padded,
@@ -37,7 +37,7 @@ from mime.nodes.hydro.mrs._quadrature import (
 )
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, wall_correction_named
-from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
+from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.registry import Problem, Samples, Sampling
 
 EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \mathbf{M}, \quad "
@@ -68,6 +68,11 @@ ASYMMETRY_LIMIT = 1e-2
 #: The ``params`` leaf holding, on a separated quadrature, the body-frame quantity made once per build: in free space
 #: the resistance about the body's origin (6 x 6), with a wall the free part's matrix (3N x 3N), at unit viscosity.
 HELD = "held_in_body_frame"
+#: The prefix of the ``params`` leaves beside :data:`HELD` that hold the leaves it was made at, one each
+#: (``held_from.blob``, ``held_from.shape_radius``): what the step compares the leaves it is given with, as values of its
+#: own rather than constants of its program, so that the program is the same at every value and what writes the held
+#: value with its leaves (a study's member, an override, the save's resolution rerun) keeps it.
+HELD_FROM = "held_from."
 #: The body's least distance from a wall, in force spacings, below which a step on a separated quadrature flags it
 #: (``near_wall``; MIME-ANO-130). A labelled decision of phase 7m-b's fix round. In the review's map (FL-9 in the 1/4 in
 #: tube, 297 poses: spacings 0.3 to 0.829 mm, five discretisations and 0.3.0's point forces, gaps 0.05 to 0.8 mm) every
@@ -417,18 +422,6 @@ def _floating_leaves(name: str, value: object) -> dict[str, Any]:
 array_tree, path_name, floating_leaves = _array_tree, _path_name, _floating_leaves
 
 
-def rerun_leaves(theta: Mapping[str, Any], built: Mapping[str, Any]) -> dict[str, np.ndarray]:
-    """``built``'s leaves in ``theta``'s dtypes as the save's resolution rerun moves them (``one_ulp_up_leaf``): where
-    the step is given the held value made at them (:meth:`MRSDragNode.made_again`). Only that rerun reaches them: they
-    move the part's rotation, which a run holds as built."""
-    found: dict[str, np.ndarray] = {}
-    for key, value in built.items():
-        held = np.asarray(value, dtype=np.dtype(jnp.asarray(theta[key]).dtype))
-        up = one_ulp_up_leaf(held)
-        found[key] = held if up is None else up
-    return found
-
-
 @dataclasses.dataclass(frozen=True)
 class Body:
     """A body's discretisation in its own frame, on a separated quadrature: its force points, its quadrature's points
@@ -613,7 +606,7 @@ class MRSDragNode(MimeNode):
     def param_specs(self) -> dict[str, ParamSpec]:
         held = registered_kind(self.constants()["kind"], self.constants()["kind_version"])
         shapes = {f"{SHAPE}{name}": ParamSpec(units=setting_units(held, name)) if name in self._traced else
-                  ParamSpec(trainable=False, description="held as built: a direction of the kind is its part's frame")
+                  ParamSpec(trainable=False, description=held_as_built(held, name))
                   for name in (key.removeprefix(SHAPE) for key in self.constants() if key.startswith(SHAPE))}
         placed = "held as built: where the part sits in the body, its frame, as a direction of the kind is"
         wall = self._wall()
@@ -631,10 +624,16 @@ class MRSDragNode(MimeNode):
             held["force_spacing"] = ParamSpec(units="m", trainable=False,
                                               description="held as built: the force spacing the step judges the body's "
                                                           "distance from the wall against (near_wall), a report")
-        return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
-                "part_centre": ParamSpec(units="m", trainable=False, description=placed),
-                "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data,
-                **held}
+        found = {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "blob": ParamSpec(units="1"),
+                 "part_centre": ParamSpec(units="m", trainable=False, description=placed),
+                 "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data,
+                 **held}
+        if self._owners is not None:
+            found.update({f"{HELD_FROM}{key}": ParamSpec(
+                units=found[key].units, trainable=False,
+                description=f"the value of {key} that {HELD} was made at, which the step compares {key} with: no "
+                            f"quantity of its own") for key in self.body_leaf_names()})
+        return found
 
     def _wall_trees(self) -> list[str]:
         """The node constants of the wall's held parameters that are pytrees of arrays (a compiled table)."""
@@ -651,8 +650,11 @@ class MRSDragNode(MimeNode):
     @override
     def params_pytree(self) -> dict[str, Any]:
         inherited: Any = super()
-        held = {HELD: as_run_array(self.held_in_body_frame)} if self._owners is not None else {}
-        return {**cast(dict[str, Any], inherited.params_pytree()), **self._wall_arguments(), **held}
+        leaves = cast(dict[str, Any], inherited.params_pytree())
+        held = {HELD: as_run_array(self.held_in_body_frame),
+                **{f"{HELD_FROM}{key}": leaves[key] for key in self.body_leaf_names()}} \
+            if self._owners is not None else {}
+        return {**leaves, **self._wall_arguments(), **held}
 
     @override
     def _step_constants(self, params: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -1123,28 +1125,40 @@ class MRSDragNode(MimeNode):
             f"{self._gap_text(gap)}; the force points do not resolve the wall's image there (MIME-ANO-130)",
             indefinite_advice(gap, self._force_spacing() or 0.0, self._clear_gap()))
 
+    def _held_from(self, p: Mapping[str, Any]) -> dict[str, Any]:
+        """The leaves the held value in ``p`` was made at (:data:`HELD_FROM`), by the leaf's own name."""
+        return {key: p[f"{HELD_FROM}{key}"] for key in self.body_leaf_names()}
+
     def _held_value(self, p: Mapping[str, Any]) -> Array:
-        """The body-frame quantity at the step's leaves: the held one where they are as built, or as the save's
-        resolution rerun moves them, which gives the held value made there (``held_or_made``, :meth:`made_again`);
-        made from them where one has moved otherwise or where the step was given no held value (a call with no
-        ``params``)."""
+        """The body-frame quantity at the step's leaves: as its chunk made it, where it did (its run-constant,
+        :meth:`run_constants`); else the held one where the leaves are those it was made at, made from them where one
+        has moved (``held_or_made``) or where the step was given no held value (a call with no ``params``)."""
+        if run_constants_given(p):
+            return p[HELD]
         theta = {key: p[key] for key in self.body_leaf_names()}
         if HELD not in p:
             return self._make()(theta)
-        built = self._built_theta()
-        return held_or_made(self._make(), built, (rerun_leaves(theta, built),))(theta, p[HELD])
+        return held_or_made(self._make(), self._held_from(p))(theta, p[HELD])
+
+    @override
+    def run_constants(self, params: Mapping[str, Any]) -> dict[str, Array]:
+        """The held body-frame quantity at the run's leaves (:meth:`_held_value`'s choice), made once per chunk."""
+        if HELD not in params:
+            return {}
+        theta = {key: params[key] for key in self.body_leaf_names()}
+        return {HELD: held_or_made(self._make(), self._held_from(params))(theta, params[HELD])}
 
     @override
     def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
-        """The held value (``HELD``) made from ``params``' leaves, once, where they are not the build's: what the save's
-        resolution rerun gives the step, which keeps it at those leaves one ulp up (:func:`rerun_leaves`) and makes it
-        afresh at any other."""
+        """The held value (``HELD``) made from ``params``' leaves, once, where they are not the build's, with the leaves
+        it was made at (:data:`HELD_FROM`): what the save's resolution rerun gives the step, which keeps it there."""
         if HELD not in params:
             return {}
         theta = {key: params[key] for key in self.body_leaf_names()}
         if bool(unchanged(theta, self._built_theta())):
             return {}
-        return {HELD: self._made_compiled(theta).astype(jnp.asarray(params[HELD]).dtype)}
+        return {HELD: self._made_compiled(theta).astype(jnp.asarray(params[HELD]).dtype),
+                **{f"{HELD_FROM}{key}": value for key, value in theta.items()}}
 
     def _separated_step(self, p: Mapping[str, Any], state: NodeFields, pose: Array) -> NodeFields:
         """The step on a separated quadrature. In free space the held resistance turned to the pose (its asymmetry judged at
@@ -1235,10 +1249,10 @@ class MRSDragNode(MimeNode):
                                         background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
 
 
-__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "INTEGRATED_GAP", "NEAR_WALL",
+__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL",
            "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
            "WALL_CELL_SHARE", "WALL_REACH",
            "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",
            "floating_leaves", "judged", "path_name",
            "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",
-           "reach_weight", "rerun_leaves", "run_gib", "stops_where"]
+           "reach_weight", "run_gib", "stops_where"]
