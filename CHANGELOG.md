@@ -337,6 +337,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   20 ms run beyond what a row that does not move shows: the rows it ends on are out of the step's reach, or tied with rows that
   carry the force; the state's `contact_points` for that row does move. Filed with its reach, what was not measured and the
   routes; no code changes here.
+- **Eight known anomalies from F0's design work, all open, none changing code** (the bake-check spike, the open-ports spike
+  and the frozen register's decisions on M2, M4 and N4). `MIME-ANO-145` (major): the rigid body keeps three values derived
+  from its trainable hull settings as Python floats, so an override, a sweep or a gradient over those settings reads the
+  build's values. `MIME-ANO-146` (minor): `arm_tracking`'s home pose reaches the run through the controller's held write
+  and not through `params`. `MIME-ANO-147` (minor): in reverse mode the MRS rung's held-or-made resistance is made again
+  at every step of the backward loop (about 0.5 s a step on 222 force points, forward runs unaffected). `MIME-ANO-148`
+  (minor): the screw's held resistance differed between a float32 process's first build and later ones by 2.4e-10 on a
+  worktree before `MIME-ANO-138`'s fix; whether the branch still does is not measured. `MIME-ANO-149` (minor): the
+  energy ledger's float32 running sums of a mixed-sign series reach about 15 eps by 1e5 steps. `MIME-ANO-150`,
+  `MIME-ANO-151`, `MIME-ANO-152`: the register's M2 (the near-contact margin), M4 (the lubrication counted twice) and N4's
+  near-contact part (soft-wall lubrication), the first two placed in phase W2 of the dev2 plan and the third in 0.4.0;
+  `MIME-ANO-114` and `MIME-ANO-130` now name that phase.
 - **The contact 0.5.0: the hold's sweeps and its search's Newton steps are XLA loops** (`Contact.Projection` builds it).
   The same updates in the same order, with bounds fixed when the step is traced, so both modes of derivative pass
   through; the step's program is smaller and compiles faster. Its rounding is not 0.4.0's: a body held from its first
