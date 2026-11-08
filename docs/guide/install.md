@@ -73,14 +73,20 @@ travels with a shared experiment, and an internal server signed by the instituti
 The tutorials in this guide need no fetched asset: the drag surrogate's weights and the material records they use ship with
 MIME. [Tutorial A](tutorial_a.md#before-you-run-it) says which part of a tube experiment needs the table.
 
-## Precision is per rig
+## Precision follows the dtype of the run
 
-**Precision is a property of the rig, not a global setting.** JAX computes in float32 by default.
+**A run computes in the dtype JAX gives it, float32 by default or float64 under `JAX_ENABLE_X64=1`, and a float32 run holds
+only behind declared guards.** MIME's coupled rigs (script A, A0, the hull contact) run and are gated in both dtypes. An
+earlier note said that some coupled rigs need float64; it came from one NaN in the earlier line whose cause was never
+recorded, and it is withdrawn.
 
-- Some coupled rigs need float64, `JAX_ENABLE_X64=1`, and on a GPU `JAX_DEFAULT_MATMUL_PRECISION=highest`. In the earlier line, a
-  coupled rig went to NaN in float32, and another was measurably off on a GPU under reduced-precision (TF32) matmuls.
-- A standalone rig runs fine in float32, where float64 everywhere only costs time.
-- If you are unsure for a rig, run both and compare. MIME does not yet say, rig by rig, which it needs.
+- **The guards of a float32 run:** an integer clock; on a GPU, `JAX_DEFAULT_MATMUL_PRECISION=highest` (in the earlier line a
+  run was measurably off on a GPU under reduced-precision (TF32) matmuls); iterative-solve and fixed-point tolerances at or
+  above float32's reachable floor, with a stagnation stop; energy terms accumulated in float64; definiteness checked at a
+  floor.
+- **A rig that needs float64 says so by a declared guard**, not by float64 everywhere, which costs time for nothing where
+  the guards hold.
+- If you are unsure for a rig, run both dtypes and compare.
 
 A saved experiment's lock records whether it was built in float64 and its matmul precision, and `mime env check <folder>`
 applies them. A GPU run whose lock records a matmul precision other than the highest is refused (`env.precision`), because
