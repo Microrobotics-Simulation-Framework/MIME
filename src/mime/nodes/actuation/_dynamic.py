@@ -609,7 +609,7 @@ class DynamicArmNode(SegmentNode):
         of that arithmetic."""
         zero = jnp.zeros(3, dtype=q.dtype)
         found = -inverse_dynamics(start, q, None, None, zero, self.loads(start, q, base, wrenches))
-        return found, jnp.abs(found)
+        return found, books.magnitude(found)
 
     def _carried_change(self, start: Articulation, q: Array, poses: Array, carried: Array) -> Array:
         """The change in the mass matrix of an inertia its frames carry, ``carried`` (``(frames, 2, 3, 3)``, at the
@@ -656,7 +656,7 @@ class DynamicArmNode(SegmentNode):
         damping = jnp.diag(jnp.asarray(p["damping"], dtype=dtype))
 
         def quadratic(matrix: Array, x: Array) -> tuple[Array, Array]:
-            return 0.5 * x @ matrix @ x, 0.5 * jnp.abs(x) @ jnp.abs(matrix) @ jnp.abs(x)
+            return 0.5 * x @ matrix @ x, 0.5 * books.magnitude(x) @ books.magnitude(matrix) @ books.magnitude(x)
 
         loads_total = jnp.zeros_like(q)
 
@@ -666,17 +666,18 @@ class DynamicArmNode(SegmentNode):
             if field == "link_wrench":
                 force, size = self._generalised(start, q, base, value)
                 loads_total = loads_total + force
-                return jnp.dot(force, dq), size @ jnp.abs(dq)
+                return jnp.dot(force, dq), size @ books.magnitude(dq)
             if field == "link_momentum":
                 momenta = quaternion.rotate_back(base[3:], value.T).T
                 gyroscopic = gyroscopic_matrix(jacobians, momenta)
-                return dt * middle @ gyroscopic @ middle, dt * jnp.abs(middle) @ jnp.abs(gyroscopic) @ jnp.abs(middle)
+                return dt * middle @ gyroscopic @ middle, \
+                    dt * books.magnitude(middle) @ books.magnitude(gyroscopic) @ books.magnitude(middle)
             if field == "link_inertia":
                 change = self._carried_change(start, q, poses, value)
                 work, size = quadratic(change, vn)
                 return -work, size
             command = self.driving(cast(DynamicArmInputs, {field: value}), dtype)
-            return jnp.dot(command, dq), jnp.abs(command) @ jnp.abs(dq)
+            return jnp.dot(command, dq), books.magnitude(command) @ books.magnitude(dq)
 
         rows = books.laws(held)
         work = jnp.zeros(len(rows), dtype=dtype)
@@ -696,10 +697,11 @@ class DynamicArmNode(SegmentNode):
                     found, magnitude = quadratic(damping, vn)
                     found, magnitude = -2.0 * dt * found, 2.0 * dt * magnitude
                 elif delivery.field == "friction":
-                    found, magnitude = jnp.dot(parts.friction, vn), jnp.abs(parts.friction) @ jnp.abs(vn)
+                    found = jnp.dot(parts.friction, vn)
+                    magnitude = books.magnitude(parts.friction) @ books.magnitude(vn)
                 else:
                     stops = impulse - parts.friction
-                    found, magnitude = jnp.dot(stops, vn), jnp.abs(stops) @ jnp.abs(vn)
+                    found, magnitude = jnp.dot(stops, vn), books.magnitude(stops) @ books.magnitude(vn)
                 work, size = work.at[row].add(found), size + magnitude
                 continue
             found, magnitude = paired(delivery.field, boundary_inputs[books.law_input(delivery.field, index)])
@@ -732,9 +734,10 @@ class DynamicArmNode(SegmentNode):
         # the passes taken apart do not is the weight's, a potential's, and nothing else's.
         weight = -(parts.bias - products) - loads_total
         if weight_row is not None:
-            work, size = work.at[weight_row].add(jnp.dot(weight, dq)), size + jnp.abs(weight) @ jnp.abs(dq)
+            work = work.at[weight_row].add(jnp.dot(weight, dq))
+            size = size + books.magnitude(weight) @ books.magnitude(dq)
         applied = commands - parts.bias + products
-        load_size = jnp.abs(loads_total)
+        load_size = books.magnitude(loads_total)
         next_end = mass_matrix(ending, qn)
         start_storage, start_size = quadratic(mass_start, v)
         turned_storage, turned_size = quadratic(mass_start, turned)
@@ -745,11 +748,13 @@ class DynamicArmNode(SegmentNode):
         cayley = momentum_work - (turned_storage - start_storage)
         velocity_products = dt * jnp.dot(vn, products) - (end_storage - end_here)
         configuration = jnp.dot(applied, beyond)
+        speed, products_size = books.magnitude(vn), books.magnitude(products)
+        commands_size, weight_size = books.magnitude(commands), books.magnitude(weight)
         size = size + start_size + turned_size + euler_size + end_here_size + end_size \
-            + dt * jnp.abs(vn) @ jnp.abs(products) + (jnp.abs(commands) + load_size + jnp.abs(weight)) @ jnp.abs(beyond) \
-            + jnp.abs(vn) @ jnp.abs(parts.system) @ (jnp.abs(vn) + jnp.abs(parts.free)) \
-            + jnp.abs(vn) @ (jnp.abs(mass_start) @ jnp.abs(turned) + dt * (jnp.abs(commands) + load_size
-                                                                            + jnp.abs(weight) + jnp.abs(products)))
+            + dt * speed @ products_size + (commands_size + load_size + weight_size) @ books.magnitude(beyond) \
+            + speed @ books.magnitude(parts.system) @ (speed + books.magnitude(parts.free)) \
+            + speed @ (books.magnitude(mass_start) @ books.magnitude(turned) + dt * (commands_size + load_size
+                                                                                      + weight_size + products_size))
         return books.StepAccount(
             work=work, hosted=hosted, unattributed=unattributed,
             terms=jnp.stack([backward_euler, cayley, velocity_products, configuration]),
@@ -1067,14 +1072,16 @@ class DynamicMotorNode(SegmentNode):
             carries away, booked against it under ``<motor>.reaction``)."""
             nonlocal passed
             if field == "torque":
-                return value * turn, jnp.abs(value) * jnp.abs(turn)
+                return value * turn, books.magnitude(value) * books.magnitude(turn)
             axial = jnp.dot(axis, value[1, 3:])
             force = value[0, :3] + value[1, :3]
             torque = value[0, 3:] + value[1, 3:] - axial * axis
             handed = jnp.dot(force, moved_by) + jnp.dot(torque, turned_by)
             passed = passed + handed
-            return axial * (turn + host) + handed, jnp.abs(axial) * (jnp.abs(turn) + jnp.abs(host)) \
-                + jnp.abs(force) @ jnp.abs(moved_by) + jnp.abs(torque) @ jnp.abs(turned_by)
+            return axial * (turn + host) + handed, (
+                books.magnitude(axial) * (books.magnitude(turn) + books.magnitude(host))
+                + books.magnitude(force) @ books.magnitude(moved_by)
+                + books.magnitude(torque) @ books.magnitude(turned_by))
 
         rows = books.laws(held)
         work = jnp.zeros(len(rows), dtype=dtype)
@@ -1090,8 +1097,8 @@ class DynamicMotorNode(SegmentNode):
                     reaction_row = row
                     continue
                 found = {"bearing": bearing * turn, "inertia": unequal * turn}[delivery.field]
-                magnitude = {"bearing": jnp.abs(bearing) * jnp.abs(turn),
-                             "inertia": jnp.abs(unequal) * jnp.abs(turn)}[delivery.field]
+                magnitude = {"bearing": books.magnitude(bearing) * books.magnitude(turn),
+                             "inertia": books.magnitude(unequal) * books.magnitude(turn)}[delivery.field]
             else:
                 found, magnitude = paired(delivery.field, boundary_inputs[books.law_input(delivery.field, index)])
             work, size = work.at[row].add(found), size + magnitude
@@ -1103,17 +1110,20 @@ class DynamicMotorNode(SegmentNode):
             # The stator's torques on the host's share of the rotor's turn, less what the loads it passes on did on its
             # motion: its half of the reaction its host takes.
             work = work.at[reaction_row].add(held_torque * host - passed)
-            size = size + (jnp.abs(torque) + jnp.abs(unequal) + jnp.abs(bearing)) * jnp.abs(host) + jnp.abs(passed)
+            size = size + (books.magnitude(torque) + books.magnitude(unequal) + books.magnitude(bearing)) \
+                * books.magnitude(host) + books.magnitude(passed)
         axial = jnp.dot(axis, given["link_wrench"][1, 3:])
         total = torque + axial + unequal + bearing
         moved = spun - spin
         backward_euler = 0.5 * inertia * moved * moved
         configuration = total * (turn - dt * relative)
+        torque_size, axial_size, spun_size = books.magnitude(torque), books.magnitude(axial), books.magnitude(spun)
+        unequal_size, bearing_size = books.magnitude(unequal), books.magnitude(bearing)
         size = size + 0.5 * inertia * (spin * spin + spun * spun + moved * moved) \
-            + (jnp.abs(torque) + jnp.abs(axial) + jnp.abs(unequal) + jnp.abs(bearing)) * (jnp.abs(turn)
-                                                                                        + dt * jnp.abs(relative)) \
-            + jnp.abs(spun) * (inertia * (jnp.abs(spin) + jnp.abs(spun)) + dt * (
-                jnp.abs(torque) + jnp.abs(axial) + jnp.abs(unequal) + damping * (jnp.abs(spun) + jnp.abs(host) / dt)))
+            + (torque_size + axial_size + unequal_size + bearing_size) * (books.magnitude(turn)
+                                                                          + dt * books.magnitude(relative)) \
+            + spun_size * (inertia * (books.magnitude(spin) + spun_size) + dt * (
+                torque_size + axial_size + unequal_size + damping * (spun_size + books.magnitude(host) / dt)))
         return books.StepAccount(
             work=work, hosted=hosted, unattributed=unattributed, terms=jnp.stack([backward_euler, configuration]),
             storage_start=self.storage(p, state), storage_end=self.storage(p, ended), scale=size, operators={})

@@ -210,6 +210,13 @@ def paired_work(kind: str, effort: Array, *, change: Array | None = None, soluti
     raise ValueError(f"no pairing for a delivery of kind {kind!r} with what was given")
 
 
+def magnitude(value: Array) -> Array:
+    """``|value|`` elementwise, for a step's scale: the magnitude of the arithmetic its identity's terms are formed by.
+    The scale is a record no edge reads and no state the step takes depends on, so no derivative of the physics passes
+    through it."""
+    return jnp.abs(value)
+
+
 def definite_at_floor(matrix: Array, ulps: float = DEFINITE_ULPS) -> Array:
     """Whether ``matrix``'s symmetric part is positive semidefinite to ``ulps`` units of rounding: one Cholesky
     factorisation of that part, scaled by its diagonal (a congruence, which keeps the signs of its eigenvalues, so a
@@ -388,5 +395,5 @@ def metered_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mappi
 __all__ = ["CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES", "FLOW_IN", "HOSTED",
            "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "POTENTIAL", "RECORDS", "SOLVED", "UNMETERED", "WORKLESS",
            "LedgerDelivery", "LedgerRecords", "StepAccount", "balance", "balance_floor", "definite_at_floor", "deliveries",
-           "initial_records", "law_input", "laws", "losses", "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "unrecorded",
+           "initial_records", "law_input", "laws", "losses", "magnitude", "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "unrecorded",
            "with_law_inputs", "with_records"]
