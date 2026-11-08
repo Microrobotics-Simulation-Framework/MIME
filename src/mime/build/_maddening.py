@@ -203,7 +203,8 @@ def with_run_constants(graph: GraphManager, params: Mapping[str, Any]) -> dict[s
 
             raise InternalError([Refusal(
                 "run.run-constant", RefusalClass.INTERNAL,
-                f"node {name}'s run-constants {wrong} are not leaves of its own, of their shapes and dtypes", MIME_DEFECT,
+                f"node {name}'s run-constants {wrong} are not leaves of its own, of their shapes and dtypes",
+                MIME_DEFECT,
                 why="a run-constant takes the place of a leaf the step reads, so that the compiled step is the same "
                     "program with or without it")])
         nodes[name] = {**own, **made}

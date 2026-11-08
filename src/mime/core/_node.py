@@ -48,10 +48,10 @@ def one_ulp_up_leaf(value: Any) -> np.ndarray | None:
     return np.where((held != 0) & np.isfinite(held), up, held).astype(held.dtype)
 
 
-#: The key a run adds to a node's step constants where it made that node's run-constants (:meth:`MimeNode.run_constants`)
-#: for the chunk: an empty tuple, which holds no array and changes the constants' structure, so that the node's compiled
-#: step (``MimeNode._compiled``, traced once per structure) keeps the step that reads them as given apart from the one
-#: that makes them.
+#: The key a run adds to a node's step constants where it made that node's run-constants
+#: (:meth:`MimeNode.run_constants`) for the chunk: an empty tuple, which holds no array and changes the constants'
+#: structure, so that the node's compiled step (``MimeNode._compiled``, traced once per structure) keeps the step that
+#: reads them as given apart from the one that makes them.
 RUN_CONSTANTS_GIVEN = "run_constants_given"
 
 #: The nodes whose run-constants the enclosing chunk made, while its step loop is traced (:func:`run_constants_made`).

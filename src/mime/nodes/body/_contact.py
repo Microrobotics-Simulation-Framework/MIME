@@ -216,9 +216,10 @@ def _step(pair: Pair, x: Array, pose: Array, parameters: Mapping[str, Any], surf
 def starts(pair: Pair) -> tuple[Array, Array]:
     """Each group's places to start its search from, ``G x starts x 3`` in the body's frame (``Hull.starts``), and which
     of them are taken: its candidate nearest the wall, then each the nearest of its ``places`` farther than the hull's
-    least separation (the square root of its ``apart_squared``) from every place taken, a group with none left leaving the rest untaken (each untaken place repeats the
-    last taken). Chosen on stopped values: where the search starts, which no derivative passes through; the step jumps
-    where the group's kept point changes (``kept``, ``contact.point``)."""
+    least separation (the square root of its ``apart_squared``) from every place taken, a group with none left leaving
+    the rest untaken (each untaken place repeats the last taken). Chosen on stopped values: where the search starts,
+    which no derivative passes through; the step jumps where the group's kept point changes (``kept``,
+    ``contact.point``)."""
     hull, wall = pair.body, pair.other
 
     def gaps_at(rows: NDArray[np.int32]) -> tuple[Array, Array]:
