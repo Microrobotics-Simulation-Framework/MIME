@@ -54,6 +54,7 @@ from jax import Array
 from jaxtyping import Float
 from typing_extensions import Annotated, ReadOnly, TypedDict
 
+from mime.core._error_free import add_to_pair
 from mime.core._field_kinds import Units
 from mime.core._node import as_run_array, jnp
 
@@ -78,6 +79,11 @@ LEDGER, RECORDS = "ledger", "ledger_"
 #: of the terms' own sum on script A's body; and a dissipative operator's, on its symmetric part scaled by its
 #: diagonal, the floor it is shifted by before its factorisation (semidefinite at that floor passes).
 IDENTITY_ULPS, DEFINITE_ULPS = 16.0, 16.0
+#: The running sums kept as a pair (``MIME-ANO-149``): the sums of a signed series, each field with the part below its
+#: last place beside it (``<name>_low``). The step scale is a sum of magnitudes and is kept plain.
+PAIRED = ("work", "hosted", "terms", "unattributed", "between", "between_own")
+#: The suffix of a pair's second field.
+LOW = "_low"
 #: What separates an encoded delivery's fields: no law id, input name or producer holds it.
 _SEPARATOR = "|"
 #: What joins a law's own input to the input it stands beside and its delivery's index.
@@ -89,20 +95,29 @@ class LedgerRecords(TypedDict):
     law's paired work over the run and over the step, each hosted law's two terms and the scheme's own terms, the
     unattributed work, the storage at the run's start and now, what the storage jumped between steps and the part of
     that jump no declared producer explains (``between_own``, of the storage of the receiver's own state,
-    ``storage_own`` at the last step's end), the run's summed step scale (J); the step identity's residual over the step's scale and
-    its worst, that unexplained jump over the step's scale at its worst (``between_worst``), and the counts of
-    indefinite and gift steps per law (1). A receiver whose state a potential law's energy reads adds the configuration at the
-    run's start (``ledger_configuration_start``) in its own units, beside its own fields, in its typed state."""
+    ``storage_own`` at the last step's end), the run's summed step scale (J); **each running sum of a signed series is a
+    pair** (:data:`PAIRED`: its field, and the part of the sum below that field's last place beside it as
+    ``<name>_low``, in the same units; the field alone is the sum rounded to the run's dtype); the step identity's
+    residual over the step's scale and its worst, that unexplained jump over the step's scale at its worst
+    (``between_worst``), and the counts of indefinite and gift steps per law (1). A receiver whose state a potential
+    law's energy reads adds the configuration at the run's start (``ledger_configuration_start``) in its own units,
+    beside its own fields, in its typed state."""
 
     ledger_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_work_low: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
     ledger_step_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
     ledger_hosted: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    ledger_hosted_low: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
     ledger_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_terms_low: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
     ledger_step_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
     ledger_unattributed: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_unattributed_low: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
     ledger_unattributed_worst: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
     ledger_between: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_between_low: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
     ledger_between_own: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_between_own_low: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
     ledger_between_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
     ledger_storage_own: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
     ledger_storage_start: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
@@ -290,6 +305,9 @@ def initial_records(held: Sequence[LedgerDelivery], terms: int, storage: Any,
 
     start = {} if configuration is None else {f"{RECORDS}configuration_start": as_run_array(configuration)}
     return {**start,
+        **{f"{RECORDS}{name}{LOW}": zero(*shape) for name, shape in (
+            ("work", (rows,)), ("hosted", (rows, 2)), ("terms", (terms,)), ("unattributed", ()), ("between", ()),
+            ("between_own", ()))},
         f"{RECORDS}work": zero(rows), f"{RECORDS}step_work": zero(rows), f"{RECORDS}hosted": zero(rows, 2),
         f"{RECORDS}between": zero(), f"{RECORDS}between_own": zero(), f"{RECORDS}between_worst": zero(),
         f"{RECORDS}storage_own": as_run_array(storage),
@@ -304,6 +322,14 @@ def initial_records(held: Sequence[LedgerDelivery], terms: int, storage: Any,
 def unrecorded(state: Mapping[str, Array]) -> dict[str, Array]:
     """A metered receiver's state without the ledger's fields: what its step takes."""
     return {key: value for key, value in state.items() if not key.startswith(RECORDS)}
+
+
+def summed_pair(state: Mapping[str, Array], name: str, term: Array) -> dict[str, Array]:
+    """The record ``name``'s two fields after ``term`` is added to its running sum: the pair
+    (:func:`~mime.core._error_free.add_to_pair`) the run keeps it as, so that the sum of a mixed-sign series does not
+    drift with the steps (``MIME-ANO-149``)."""
+    total, low = add_to_pair(state[f"{RECORDS}{name}"], state[f"{RECORDS}{name}{LOW}"], term)
+    return {f"{RECORDS}{name}": total, f"{RECORDS}{name}{LOW}": low}
 
 
 def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[LedgerDelivery] = ()) -> dict[str, Array]:
@@ -342,13 +368,13 @@ def recorded(state: Mapping[str, Array], step: StepAccount, held: Sequence[Ledge
     unexplained_relative = jnp.abs(unexplained) / scale_at_least
     return {
         **start,
-        f"{r}work": state[f"{r}work"] + step.work, f"{r}step_work": step.work,
-        f"{r}hosted": state[f"{r}hosted"] + step.hosted,
-        f"{r}between": state[f"{r}between"] + jump, f"{r}between_own": state[f"{r}between_own"] + unexplained,
+        **summed_pair(state, "work", step.work), f"{r}step_work": step.work,
+        **summed_pair(state, "hosted", step.hosted),
+        **summed_pair(state, "between", jump), **summed_pair(state, "between_own", unexplained),
         f"{r}between_worst": jnp.maximum(state[f"{r}between_worst"], unexplained_relative),
         f"{r}storage_own": own_end,
-        f"{r}terms": state[f"{r}terms"] + step.terms, f"{r}step_terms": step.terms,
-        f"{r}unattributed": state[f"{r}unattributed"] + step.unattributed,
+        **summed_pair(state, "terms", step.terms), f"{r}step_terms": step.terms,
+        **summed_pair(state, "unattributed", step.unattributed),
         f"{r}unattributed_worst": jnp.maximum(state[f"{r}unattributed_worst"], jnp.abs(step.unattributed)),
         f"{r}storage_start": state[f"{r}storage_start"], f"{r}storage": step.storage_end,
         f"{r}step_identity": relative, f"{r}identity_worst": jnp.maximum(state[f"{r}identity_worst"], relative),
@@ -368,7 +394,18 @@ def balance(records: Mapping[str, Any], *, grouped: bool = False) -> Any:
     declared = records[f"{r}between"] if grouped else records[f"{r}between"] - records[f"{r}between_own"]
     supplied = jnp.sum(records[f"{r}work"]) + records[f"{r}unattributed"] + declared
     numerical = jnp.sum(records[f"{r}terms"]) + jnp.sum(records[f"{r}hosted"])
-    return (records[f"{r}storage"] - records[f"{r}storage_start"]) - supplied + numerical
+    return (records[f"{r}storage"] - records[f"{r}storage_start"]) - supplied + numerical \
+        + _below_last_place(records, grouped)
+
+
+def _below_last_place(records: Mapping[str, Any], grouped: bool) -> Any:
+    """The balance's terms that the running sums' pairs hold below their fields' last places, added apart from the
+    fields' (their sum would round to the fields, in the run's dtype)."""
+    r = RECORDS
+    low = {name: records[f"{r}{name}{LOW}"] for name in PAIRED}
+    declared = low["between"] if grouped else low["between"] - low["between_own"]
+    supplied = jnp.sum(low["work"]) + low["unattributed"] + declared
+    return jnp.sum(low["terms"]) + jnp.sum(low["hosted"]) - supplied
 
 
 def losses(records: Mapping[str, Any], held: Sequence[LedgerDelivery]) -> Any:
@@ -378,7 +415,8 @@ def losses(records: Mapping[str, Any], held: Sequence[LedgerDelivery]) -> Any:
     Traced, as the records are."""
     rows = laws(held)
     dissipative = jnp.asarray([any(d.law == law and d.energy_class == DISSIPATIVE for d in held) for law in rows])
-    taken = -records[f"{RECORDS}work"] + records[f"{RECORDS}hosted"][:, 0]
+    taken = (-records[f"{RECORDS}work"] + records[f"{RECORDS}hosted"][:, 0]
+             + (-records[f"{RECORDS}work{LOW}"] + records[f"{RECORDS}hosted{LOW}"][:, 0]))
     return jnp.where(dissipative, taken, jnp.zeros_like(taken))
 
 
@@ -427,8 +465,8 @@ def metered_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mappi
 
 
 __all__ = ["CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES", "FLOW_IN", "HOSTED",
-           "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "POTENTIAL", "RECORDS", "SOLVED", "UNMETERED", "WORKLESS",
-           "LedgerDelivery", "LedgerRecords", "StepAccount", "balance", "balance_floor", "between_floors", "definite_at_floor",
-           "deliveries",
-           "initial_records", "law_input", "laws", "losses", "magnitude", "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "unrecorded",
+           "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS", "SOLVED", "UNMETERED",
+           "WORKLESS", "LedgerDelivery", "LedgerRecords", "StepAccount", "balance", "balance_floor", "between_floors",
+           "definite_at_floor", "deliveries", "initial_records", "law_input", "laws", "losses", "magnitude",
+           "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "summed_pair", "unrecorded",
            "with_law_inputs", "with_records"]
