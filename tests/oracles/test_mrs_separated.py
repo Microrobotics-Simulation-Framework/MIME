@@ -274,8 +274,8 @@ def test_control_free_spaces_correction_in_the_tubes_place_fails_the_confined_sp
     from mime.nodes.hydro.mrs import UNBOUNDED, _walls
     from mime.nodes.hydro.mrs._tube import TUBE_CORRECTION
 
-    planted = dataclasses.replace(TUBE_CORRECTION, correction=lambda points, parameters, viscosity:
-                                  UNBOUNDED.correction(points, {}, viscosity))
+    planted = dataclasses.replace(TUBE_CORRECTION, correction=lambda points, parameters, viscosity, eps_squared=None:
+                                  UNBOUNDED.correction(points, {}, viscosity, eps_squared))
     monkeypatch.setitem(_walls._corrections, (TUBE_CORRECTION.name, TUBE_CORRECTION.version), planted)
     r = resistance_at(tube_ball(Drag.MRS(wall_kind="tube"), 0.2).build(), "body", IDENTITY)
     miss = r[2, 2] / (6 * math.pi * MU * 0.2e-3) / haberman_sayre(0.2) - 1

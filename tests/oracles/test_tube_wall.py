@@ -433,8 +433,8 @@ def test_control_the_tubes_correction_replaced_by_free_spaces_fails_the_confined
     for free space's, which adds nothing."""
     held = wall_correction_named("oracle.tube_series", "0.0.1")
     monkeypatch.setitem(walls._corrections, ("oracle.tube_series", "0.0.1"),
-                        dataclasses.replace(held, correction=lambda points, parameters, viscosity:
-                                            UNBOUNDED.correction(points, parameters, viscosity)))
+                        dataclasses.replace(held, correction=lambda points, parameters, viscosity, eps_squared=None:
+                                            UNBOUNDED.correction(points, parameters, viscosity, eps_squared)))
     each, extrapolated, _ = sphere_misses()
     print(f"\nthe free space's correction in the tube's place: misses {np.round(each, 5)}, extrapolated "
           f"{extrapolated:.5f}")
