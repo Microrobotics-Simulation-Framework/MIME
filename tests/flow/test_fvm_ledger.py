@@ -129,3 +129,32 @@ def test_a_stokes_run_at_the_same_step_is_not_stopped(dtype):
         state = run(node, 5)
     assert int(state["stopped_at"]) == -1
     assert node.stop_problem(state) is None
+
+
+def test_a_cfl_that_is_not_finite_is_past_the_line(dtype):
+    """A NaN in the velocity the convection uses: the check reads it as past the line (``cfl <= line`` is false for a
+    NaN, where ``cfl > line`` would be false too) and stops the run at that step, naming it."""
+    with in_dtype(dtype):
+        probe = tube_node(8, length_cells=2, dt=0.005, g=0.0)
+        start = _poiseuille_start(probe, 2.0)
+        start["initial_velocity_x"] = start["initial_velocity_x"].copy()
+        start["initial_velocity_x"][3, 4, 0] = np.nan
+        node = tube_node(8, length_cells=2, dt=0.005, g=0.0, **start)
+        state = run(node, 3)
+    assert int(state["stopped_at"]) == 1
+    problem = node.stop_problem(state)
+    assert problem is not None and problem.code == "flow.cfl-exceeded" and "not finite" in problem.message
+
+
+def test_control_a_cfl_check_written_as_greater_than_misses_the_nan(dtype):
+    """The control: ``cfl > line`` never fires on a NaN."""
+    nan = np.float64("nan") if dtype == "float64" else np.float32("nan")
+    assert not (nan > 0.4) and not (nan <= 0.4)
+
+
+def test_the_cfl_line_along_a_tilted_axis_carries_its_factor():
+    """The line along a vessel's axis ``n`` is ``0.4 max|n_d| / sum|n_d|``: 0.4 aligned with z, 0.3 along (1, 0, 3)."""
+    scheme = IMEXEuler()
+    assert float(scheme.cfl_limit((0.0, 0.0, 1.0))) == pytest.approx(0.4)
+    assert float(scheme.cfl_limit((1.0, 0.0, 3.0))) == pytest.approx(0.3)
+    assert float(scheme.cfl_limit((1.0, 1.0, 1.0))) == pytest.approx(0.4 / 3.0)

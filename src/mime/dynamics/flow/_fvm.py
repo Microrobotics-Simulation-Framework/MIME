@@ -22,7 +22,8 @@ from typing import TYPE_CHECKING, Annotated, override
 from mime.gradients import GradientStatus
 from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, DEFAULT_INTERIOR, INTERIORS, \
     ImplicitFlowNode, periodic_tube_layout
-from mime.nodes.flow.fvm._schemes import IMEXEuler, Steady
+from mime.nodes.flow._body_force import STEP_END
+from mime.nodes.flow.fvm._schemes import IMEXEuler, Steady, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, PRECONDITIONERS
 from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Port, Problem, Region, SettingGroup, \
     convention, register_dynamics, register_setting_group
@@ -180,6 +181,9 @@ class FVM(Dynamics):
         layout = periodic_tube_layout(radius, ctx.scalar("domain.length"), cells_across=self.cells_across,
                                       spacing=spacing, margin_cells=self.domain.margin, lattice=lattice)
         scheme = SteadyScheme.group if isinstance(self.scheme, SteadyScheme) else IMEXEulerScheme.group
+        # The medium's body force is delivered once a step at STEP_END (BodyForceNode's default instant): a scheme that
+        # reads its drive at other instants (RK3's stage times) needs the delivery made at them first.
+        assert scheme_named(scheme).drive_instants == (STEP_END,), scheme
         b.add_node(ImplicitFlowNode(
             ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
             spacing=layout.spacing, viscosity=ctx.scalar_value("viscosity"), density=ctx.scalar_value("density"),

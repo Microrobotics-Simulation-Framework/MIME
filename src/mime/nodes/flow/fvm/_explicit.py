@@ -7,7 +7,7 @@ the run's first step (or the first after a state given from outside, whose ``pre
 pressure, one fast solve; then the three stages.
 
 **The CFL check.** As the implicit node's, at the scheme's line along the vessel's axis, ``line x g(n)``
-(``mime.nodes.flow.fvm._schemes.direction_factor``): a NaN reads as past the line. The check selects nothing in the
+(``TimeScheme.cfl_limit``): a NaN reads as past the line. The check selects nothing in the
 step; the run is refused after it from the first step past.
 
 **The ledger: route 1.** The step books the drive's work, the viscosity's and the wall's dissipations under their laws'
@@ -34,7 +34,7 @@ from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, ne
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import ImplicitFlowNode
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
-from mime.nodes.flow.fvm._schemes import StageKind, direction_factor, scheme_named
+from mime.nodes.flow.fvm._schemes import StageKind, scheme_named
 from mime.registry import Problem
 
 EQUATIONS = (r"\mathbf{u}^{(k)} = \mathcal{P}\left[\frac{\mathbf{u}^{(k-1)} + \gamma_k h\, \mathbf{F}^{(k-1)} + "
@@ -184,9 +184,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
 
     def line(self, p: Mapping[str, Any]) -> Array:
         """The scheme's CFL line along the vessel's axis, ``line x g(n)``, made in the step from the axis."""
-        line = self.scheme.cfl_line
-        assert line is not None
-        return line * direction_factor(as_run_array(p["tube_axis"]))
+        return self.scheme.cfl_limit(as_run_array(p["tube_axis"]))
 
     @override
     def initial_state(self) -> NodeFields:

@@ -11,7 +11,7 @@ import pytest
 from fvm_cases import Waveform, eps, in_dtype, step_of
 
 from mime.core import ledger as books
-from mime.nodes.flow.fvm import RK3, ExplicitFlowNode, _rk3, cfl_check, direction_factor, periodic_tube_layout
+from mime.nodes.flow.fvm import RK3, ExplicitFlowNode, _rk3, cfl_check, periodic_tube_layout
 
 HOSTED = (
     books.LedgerDelivery("body_force", "drive:water.body_force", books.UNMETERED, books.HOSTED).encoded(),
@@ -122,7 +122,7 @@ def test_the_check_stops_at_the_first_step_past_rk3s_line_along_the_axis(dtype, 
         speed = ratio * line * h / dt / top
         node = rk3_node(dt=dt, lattice=lattice, convection=True, **_plug(rk3_node(dt=dt, lattice=lattice), speed))
         state = run(node, 1, Waveform())
-    assert float(direction_factor(node.constants()["tube_axis"])) == pytest.approx(factor, rel=1e-12)
+    assert float(RK3().cfl_limit(node.constants()["tube_axis"])) == pytest.approx(RK3.cfl_line * factor, rel=1e-6)
     assert int(state["stopped_at"]) == (1 if ratio > 1.0 else -1)
     if ratio > 1.0:
         problem = node.stop_problem(state)

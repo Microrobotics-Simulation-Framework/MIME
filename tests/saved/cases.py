@@ -71,7 +71,7 @@ def periodic_tube_flow(steady: bool = False) -> Experiment:
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
     experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
                                                              length=mm(10.0))))
-    flow = FVM(domain=PeriodicBox(length=mm(0.25)), cells_across=8, stokes=steady,
+    flow = FVM(domain=PeriodicBox(length=mm(0.25), margin=4), cells_across=8, stokes=steady,
                scheme=Scheme.Steady() if steady else Scheme.IMEXEuler())
     experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")

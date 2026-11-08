@@ -47,7 +47,7 @@ reads things a real rig could not: it reads the physics state directly, the grou
 `mode="graph"` puts the controller inside the compiled step. MIME has other places to put a controller, with different costs;
 the build report says which it chose and what that means for when it reads and when its writes act. The controller computes in
 single precision whatever the run's precision, so a run in double precision with it is mixed ([the precision
-rule](install.md#precision-is-per-rig)).
+rule](install.md#precision-follows-the-dtype-of-the-run)).
 
 ## Run it
 

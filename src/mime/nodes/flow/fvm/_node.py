@@ -28,6 +28,7 @@ D_visc`` per step (the stall detector, flagged above :data:`STALL_LINE`)."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple, override
 
@@ -36,9 +37,9 @@ from jax import Array
 from jaxtyping import Float, Int
 from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
-from typing_extensions import NotRequired, ReadOnly, TypedDict
+from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, run_dtype
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, run_dtype
 from mime.core import ledger as books
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, interior_depth, negative_resistivity, \
     wall_fields
@@ -47,16 +48,15 @@ from mime.nodes.flow.fvm._schemes import StageParts, StepContext, TimeScheme, sc
 from mime.nodes.flow.fvm._solve import REPORT_SIZE, Stopping, preconditioner_named, projected_solve
 from mime.registry import Problem
 
-EQUATIONS = (r"\frac{\mathbf{u}_{n+1} - \mathbf{u}_{n}}{h} = \mathcal{C}(\mathbf{u}_{n}) + \frac{\mu}{\rho} \left( L "
-             r"\mathbf{u}_{n+1} - \kappa \mathbf{u}_{n+1} \right) + (1 - \chi) \mathbf{g} - G p_{n+1}, \quad D "
+EQUATIONS = (r"\frac{\mathbf{u}_{n+1} - \mathbf{u}_{n}}{h} = -\nabla \cdot \left( \mathbf{u}_{n} \mathbf{u}_{n} \right) + "
+             r"\frac{\mu}{\rho} \left( \nabla^{2} \mathbf{u}_{n+1} - \operatorname{K}^{-1} \mathbf{u}_{n+1} \right) + "
+             r"\left( 1 - \operatorname{band} \right) \mathbf{g} - \nabla \operatorname{p}_{n+1}, \quad \nabla \cdot "
              r"\mathbf{u}_{n+1} = 0")
 
 #: Where the symbol rows' functions are.
 _STEP = "mime.nodes.flow.fvm._node.ImplicitFlowNode.stepped"
 _OPERATOR = "mime.nodes.flow.fvm._node.ImplicitFlowNode.operator_of"
 _DRIVE = "mime.nodes.flow.fvm._node.ImplicitFlowNode.drive"
-_FIELDS = "mime.nodes.flow.fvm._node.ImplicitFlowNode.fields"
-_ENERGY = "mime.nodes.flow.fvm._node.ImplicitFlowNode.energy_terms"
 
 #: The stall detector's line: ``|N_Krylov| / D_visc`` above it is a stall (the stall spike's transient values sat about
 #: three orders below a stall's reading) [inference from the measured separation].
@@ -65,22 +65,58 @@ STALL_LINE = 1e-3
 HOSTED_FIELDS = ("body_force", "viscous", "penalty")
 
 
-class FlowState(TypedDict, closed=True):
-    velocity_x: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
-    velocity_y: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
-    velocity_z: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
-    steps: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    solve_report: ReadOnly[Float[Array, "6"]]  # noqa: F722 - a jaxtyping shape
-    solve_report_sum: ReadOnly[Float[Array, "6"]]  # noqa: F722 - a jaxtyping shape
-    solve_flagged: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    cfl: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    stopped_at: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    stopped_cfl: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    lumen_flux: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    bypass_ratio: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    negative_resistivity: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
-    stall_ratio: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
-    stall_flagged: NotRequired[ReadOnly[Float[Array, ""]]]  # noqa: F722 - a jaxtyping shape
+class _FlowFields(TypedDict):
+    velocity_x: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
+    velocity_y: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
+    velocity_z: ReadOnly[Annotated[Float[Array, "nx ny nz"], Units("m/s")]]  # noqa: F722 - a jaxtyping shape
+    steps: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: The step's primal solve report (``mime.nodes.flow.fvm.REPORT_FIELDS``), and its running sum.
+    solve_report: ReadOnly[Annotated[Float[Array, "6"], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    solve_report_sum: ReadOnly[Annotated[Float[Array, "6"], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    solve_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    cfl: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stopped_at: ReadOnly[Annotated[Int[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stopped_cfl: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    lumen_flux: ReadOnly[Annotated[Float[Array, ""], Units("m^3/s")]]  # noqa: F722 - a jaxtyping shape
+    bypass_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    negative_resistivity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+
+
+class FlowState(_FlowFields, closed=True):
+    """The flow's state without the energy ledger."""
+
+
+class _FlowRecords(TypedDict):
+    """With the energy ledger attached: the stall detector, ``|N_Krylov| / D_visc``, and its flag; and the ledger's
+    records (``mime.core.ledger.initial_records``), with their units: each law's paired work over the run and over the
+    step, each hosted law's two terms and the scheme's own terms, the unattributed work, the storage at the run's start
+    and now, the run's summed step scale (J); the step identity's residual over the step's scale and its worst, and the
+    counts of indefinite and gift steps per law (1)."""
+
+    stall_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stall_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    ledger_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_step_work: ReadOnly[Annotated[Float[Array, "laws"], Units("J")]]
+    ledger_hosted: ReadOnly[Annotated[Float[Array, "laws 2"], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    ledger_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_step_terms: ReadOnly[Annotated[Float[Array, "terms"], Units("J")]]
+    ledger_unattributed: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_unattributed_worst: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage_start: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_storage: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_step_identity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_identity_worst: ReadOnly[Annotated[Float[Array, ""], Units("1")]]
+    ledger_scale: ReadOnly[Annotated[Float[Array, ""], Units("J")]]
+    ledger_indefinite_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+    ledger_gift_steps: ReadOnly[Annotated[Float[Array, "laws"], Units("1")]]
+
+
+class MeteredFlowState(_FlowFields, _FlowRecords, closed=True):
+    """A metered flow's state: the flow's fields, the stall detector and the ledger's records."""
+
+
+class FlowInputs(TypedDict, closed=True):
+    body_force: NotRequired[ReadOnly[Annotated[Float[Array, "3"], Units("m/s^2")]]]  # noqa: F722 - a jaxtyping shape
 
 
 class StepParts(NamedTuple):
@@ -109,6 +145,9 @@ class ImplicitFlowNode(MimeNode):
         governing_equations=EQUATIONS,
         assumptions=(
             "Incompressible Newtonian fluid, its viscosity and density uniform",
+            "The operators are the MAC grid's: the cells' seven-point Laplacian on each face set, the faces' divergence "
+            "and gradient, convection in divergence form; band is the wall's indicator and K its permeability field, "
+            "made in the step from the tube's centre, axis and radius; the pressure p is recovered on request, not held",
             "The wall is a first-order immersed wall: a smooth band of registered width and depth, its effective "
             "position shifted from the signed distance's zero by the band's planar calibration, constant in cells",
             "The solid outside the lumen is porous with a resistivity, a Darcy flow through it the bypass the node "
@@ -126,16 +165,9 @@ class ImplicitFlowNode(MimeNode):
     )
     symbols = (
         Symbol(r"\mathbf{u}", SymbolKind.STATE, "velocity_x", "m/s", _STEP),
-        Symbol(r"\mathcal{C}", SymbolKind.CONSTANT, "convection", "m/s^2", _STEP),
         Symbol(r"\mu", SymbolKind.PARAMETER, "viscosity", "Pa s", _OPERATOR),
         Symbol(r"\rho", SymbolKind.PARAMETER, "density", "kg/m^3", _OPERATOR),
-        Symbol("L", SymbolKind.CONSTANT, "laplacian", "1/m^2", _OPERATOR),
-        Symbol(r"\kappa", SymbolKind.CONSTANT, "inverse_permeability", "1/m^2", _FIELDS),
-        Symbol(r"\chi", SymbolKind.CONSTANT, "indicator", "1", _FIELDS),
         Symbol(r"\mathbf{g}", SymbolKind.INPUT, "body_force", "m/s^2", _DRIVE),
-        Symbol("G", SymbolKind.CONSTANT, "gradient", "1/m", _ENERGY),
-        Symbol("p", SymbolKind.CONSTANT, "pressure", "m^2/s^2", _ENERGY),
-        Symbol("D", SymbolKind.CONSTANT, "divergence", "1/m", _STEP),
     )
 
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
@@ -258,19 +290,22 @@ class ImplicitFlowNode(MimeNode):
             return jnp.asarray(p["solve_report"])[0]
         return jnp.asarray(p["solve_report"])[jnp.clip(steps, 0, rows - 1)]
 
-    def fluxes(self, grid: MACGrid, fields: WallFields, axis: Array, velocity: Velocity) -> tuple[Array, Array]:
+    def fluxes(self, grid: MACGrid, fields: WallFields, axis: Array, velocity: Velocity) -> tuple[Array, Array, Array]:
         """The lumen's and the solid's axial flux (m^3/s): each the volume integral of the axial velocity over its
         region (the lumen and band, ``phi < W/2``; the solid beyond) divided by the tube's axial length per box, exact
-        for a periodic divergence-free field."""
+        for a periodic divergence-free field; and the lumen's flux in magnitude, the scale its rounding is judged on."""
         width = band_named(self.constants()["band"]).width * grid.spacing
         lumen = jnp.zeros((), dtype=velocity[0].dtype)
         solid = jnp.zeros((), dtype=velocity[0].dtype)
+        scale = jnp.zeros((), dtype=velocity[0].dtype)
         for component in range(3):
             inside = fields.signed_distance[component] < 0.5 * width
             lumen = lumen + axis[component] * jnp.sum(jnp.where(inside, velocity[component], 0.0))
             solid = solid + axis[component] * jnp.sum(jnp.where(inside, 0.0, velocity[component]))
+            scale = scale + jnp.abs(axis[component]) * jnp.sum(jnp.abs(jnp.where(inside, velocity[component], 0.0)))
         length = grid.cells[2] * grid.spacing / axis[2]
-        return lumen * grid.cell_volume / length, solid * grid.cell_volume / length
+        weight = grid.cell_volume / length
+        return lumen * weight, solid * weight, scale * weight
 
     # -- the node's interface -------------------------------------------------------------------------------------
     @override
@@ -290,7 +325,7 @@ class ImplicitFlowNode(MimeNode):
             bypass_ratio=z, negative_resistivity=z)
         if not self.metered:
             return node_fields(FlowState(**common))
-        return books.with_records(self, node_fields(FlowState(**common, stall_ratio=z, stall_flagged=z)))
+        return books.with_records(self, {**node_fields(FlowState(**common)), "stall_ratio": z, "stall_flagged": z})
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -325,17 +360,18 @@ class ImplicitFlowNode(MimeNode):
         time = steps.astype(dtype) * dt
         speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in velocity]))
         cfl = speed * dt / grid.spacing
-        line = scheme.cfl_line
-        checked = bool(c["convection"]) and line is not None
+        checked = bool(c["convection"]) and scheme.cfl_line is not None
         stopped_before = jnp.asarray(state["stopped_at"]) >= 0
-        past = (cfl > line) if checked else jnp.asarray(False)
+        # Past the line unless provably at or under it: a NaN or an infinite CFL is past it too.
+        past = ~(cfl <= scheme.cfl_limit(p["tube_axis"])) if checked else jnp.asarray(False)
         ended_velocity, stage = scheme.step(context, velocity, time, dt)
         report = stage.report
         flagged = (report[2] + report[3] + report[4] > 0).astype(dtype)
         axis = as_run_array(p["tube_axis"])
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
-        lumen, solid = self.fluxes(grid, fields, axis, (ended_velocity[0], ended_velocity[1], ended_velocity[2]))
-        ratio = jnp.where(lumen != 0.0, solid / jnp.where(lumen != 0.0, lumen, 1.0), 0.0)
+        lumen, solid, lumen_scale = self.fluxes(grid, fields, axis,
+                                                (ended_velocity[0], ended_velocity[1], ended_velocity[2]))
+        ratio = self.ratio(solid, lumen, lumen_scale)
         energy = self.energy_terms(p, grid, velocity, stage, sigma, dt) if self.metered else {}
         ended: dict[str, Array] = dict(
             velocity_x=ended_velocity[0], velocity_y=ended_velocity[1], velocity_z=ended_velocity[2],
@@ -347,10 +383,11 @@ class ImplicitFlowNode(MimeNode):
                                   jnp.where(past, cfl, 0.0)).astype(dtype),
             lumen_flux=lumen, bypass_ratio=ratio,
             negative_resistivity=negative_resistivity(fields).astype(dtype))
+        held = node_fields(FlowState(**ended))
         if self.metered:
             stall = self.stall_ratio(energy)
-            ended.update(stall_ratio=stall, stall_flagged=(stall > STALL_LINE).astype(dtype))
-        return node_fields(FlowState(**ended)), StepParts(stage, fields, energy)
+            held = {**held, "stall_ratio": stall, "stall_flagged": (stall > STALL_LINE).astype(dtype)}
+        return held, StepParts(stage, fields, energy)
 
     # -- the step identity ------------------------------------------------------------------------------------------
     @override
@@ -390,11 +427,21 @@ class ImplicitFlowNode(MimeNode):
         return {**terms, "scale": scale}
 
     @staticmethod
-    def stall_ratio(energy: Mapping[str, Array]) -> Array:
+    def ratio(numerator: Array, denominator: Array, scale: Array) -> Array:
+        """A report's ratio ``a / b``, read as zero where ``b`` is within its own rounding on ``scale`` (the magnitude
+        of the arithmetic forming it: a flux that cancels to rounding has no ratio, and two compilations round it
+        differently) or too small for the derivative, ``-a / b^2``, to be a finite number of the dtype, so that the
+        report and its derivative are finite and reproducible at every state."""
+        finfo = jnp.finfo(denominator.dtype)
+        held = (jnp.abs(denominator) > 64.0 * finfo.eps * scale) & \
+            (denominator * denominator > 4.0 * finfo.tiny * jnp.maximum(jnp.abs(numerator), 1.0))
+        return jnp.where(held, numerator / jnp.where(held, denominator, 1.0), 0.0)
+
+    @classmethod
+    def stall_ratio(cls, energy: Mapping[str, Array]) -> Array:
         """``|N_Krylov| / D_visc``: zero where both are zero (rest, no drive), infinite where only the dissipation is."""
         krylov, viscous = jnp.abs(energy["krylov"]), energy["viscous"]
-        positive = viscous > 0.0
-        return jnp.where(positive, krylov / jnp.where(positive, viscous, 1.0), jnp.where(krylov > 0.0, jnp.inf, 0.0))
+        return jnp.where((viscous == 0.0) & (krylov > 0.0), jnp.inf, cls.ratio(krylov, viscous, viscous))
 
     @override
     def identity_terms(self, p: Mapping[str, Any], held: Sequence[books.LedgerDelivery], state: Mapping[str, Array],
@@ -429,16 +476,20 @@ class ImplicitFlowNode(MimeNode):
         if step < 0:
             return None
         cfl = float(np.asarray(state["stopped_cfl"]))
-        line = self.scheme.cfl_line
-        assert line is not None
-        safe = self.delta_t * line / cfl
+        line = float(self.scheme.cfl_limit(self.constants()["tube_axis"]))
+        finite = math.isfinite(cfl) and cfl > 0.0
+        safe = self.delta_t * line / cfl if finite else float("nan")
         return Problem(
             "flow.cfl-exceeded",
             f"at its step {step} (t = {step * self.delta_t:.6g} s) the flow's CFL number max|u| dt / h read {cfl:.4g}, "
-            f"past the {self.scheme.name} scheme's line of {line}: past it the scheme's explicit convection is not stable, "
-            f"so the run is refused from that step on",
-            f"use a timestep dt <= {safe:.4g} s (the line at the speed it reached), or the Stokes approximation "
-            f"FVM(stokes=True) where convection is negligible")
+            f"past the {self.scheme.name} scheme's line of {line:.4g} along the vessel's axis: past it the scheme's "
+            f"explicit convection is not stable (a CFL that is not finite is past it too), so the run is refused from "
+            f"that step on",
+            (f"use a timestep dt <= {safe:.4g} s (the line at the speed it reached), or the Stokes approximation "
+             f"FVM(stokes=True) where convection is negligible") if finite else
+            "the flow went non-finite before the step: use a smaller timestep, dt=..., or the Stokes approximation "
+            "FVM(stokes=True)")
 
 
-__all__ = ["HOSTED_FIELDS", "STALL_LINE", "FlowState", "ImplicitFlowNode", "StepParts"]
+__all__ = ["HOSTED_FIELDS", "STALL_LINE", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
+           "StepParts"]

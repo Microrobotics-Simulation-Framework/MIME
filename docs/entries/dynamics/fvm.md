@@ -19,8 +19,9 @@ material record or `exp.declare`, never settings of the field.
 
 Each step reports its solve: the iterations, the true residual against the tolerance, and how the solve stopped (at its
 cap, stagnated, at a residual that is not finite); a run whose solve stops other than converging is flagged, never
-silently accepted. With convection on, each step checks the flow's CFL number against the scheme's line, and a run past
-it is refused, naming the step and the timestep that keeps it. The fluxes of the lumen and of the solid beyond the band
+silently accepted. With convection on, each step checks the flow's CFL number against the scheme's line along the
+vessel's axis, and a run past it is refused, naming the step and the timestep that keeps it. A CFL number that is not
+finite counts as past the line. The fluxes of the lumen and of the solid beyond the band
 are reported each step: the second is the bypass the porous solid lets through, the wall's own validity line.
 
 **When not to use it.**

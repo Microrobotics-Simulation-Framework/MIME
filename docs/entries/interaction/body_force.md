@@ -8,7 +8,8 @@ part: `exp.attach(BodyForce(along=..., steady=m_per_s2(...)), medium=water)`, an
 `amplitude=` and `frequency=` (and `phase=`, in radians). The medium's flow field applies it to its fluid alone, never to
 its solid, so the flux it drives does not depend on how much solid the field's domain holds. On a periodic box it is the
 drive: the stand-in for the pressure drop a period of the vessel would carry. The waveform is the drive's; the field kind
-is what responds to it, so a different field kind takes the same drive.
+is what responds to it, so a different field kind takes the same drive. It is delivered once a step, at the instant the
+field's time scheme reads its drive: for IMEX Euler, the step's end.
 
 **When not to use it.**
 - As gravity on the fluid: a uniform gravity on an incompressible fluid in a closed box is balanced by its hydrostatic
