@@ -217,3 +217,15 @@ class Plane(Geometry):
         if name != "normal":
             raise KeyError(name)
         return _vector(settings, "normal")
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """The wall's body is the half-space behind the plane, unbounded: along the normal (towards the medium) it
+        reaches the plane, ``|d| offset``, and along any other direction without bound (infinity)."""
+        d = jnp.asarray(direction)
+        normal = jnp.asarray(parameters["normal"], dtype=d.dtype)
+        normal = normal / switch.nonzero_norm(normal)
+        along = jnp.dot(d, normal)
+        across = d - along * normal
+        bounded = (jnp.sum(across * across) == 0) & (along > 0)
+        return jnp.where(bounded, along * parameters["offset"], jnp.inf)

@@ -1016,7 +1016,6 @@ class MRSDragNode(MimeNode):
                  f"body within {NEAR_WALL:g} force spacing of the wall raises near_wall, and a step whose resistance "
                  f"is indefinite stops the run (drag.mrs-indefinite); every indefinite resistance mapped lay within "
                  f"half a force spacing of the wall (MIME-ANO-130)"]
-        lines.append(self._image_text())
         integrated: str | None = None
         if closest_approach is None:
             lines.append("nothing in the experiment holds the body off the wall, so its closest approach is the wall "
@@ -1049,6 +1048,7 @@ class MRSDragNode(MimeNode):
                      f"the run in float64 ({RUN_GIB_BASIS})")
         if integrated is not None:
             lines.append(integrated)
+        lines.append(self._image_text())
         return lines
 
     def _image_text(self) -> str:
