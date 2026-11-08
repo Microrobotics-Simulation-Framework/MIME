@@ -17,7 +17,8 @@ operator with the time term dropped (``c = 0``), a setting of the same tableau, 
 Stokes approximation, and a stepped graph solves it at each step's drive (exact for a constant drive from the first
 step).
 
-The public names, ``Scheme.IMEXEuler()`` and ``Scheme.Steady()``, are held in :class:`Scheme` alone."""
+A script names them ``Scheme.IMEXEuler()`` and ``Scheme.Steady()`` (``mime.dynamics.flow``, the one place those public
+names are written)."""
 
 from __future__ import annotations
 
@@ -150,25 +151,5 @@ def scheme_named(name: str) -> TimeScheme:
     return SCHEMES[name]
 
 
-@dataclass(frozen=True)
-class SchemeChoice:
-    """A scheme as a script names it: the registered scheme's name, recorded in the saved form."""
-
-    scheme: str
-
-
-class Scheme:
-    """The time schemes a script names: ``FVM(scheme=Scheme.IMEXEuler())``, ``FVM(stokes=True,
-    scheme=Scheme.Steady())``. The one place their public names are written."""
-
-    @staticmethod
-    def IMEXEuler() -> SchemeChoice:  # noqa: N802 - a kind's name
-        return SchemeChoice(IMEXEuler.name)
-
-    @staticmethod
-    def Steady() -> SchemeChoice:  # noqa: N802 - a kind's name
-        return SchemeChoice(Steady.name)
-
-
-__all__ = ["SCHEMES", "IMEXEuler", "Scheme", "SchemeChoice", "StageKind", "StageParts", "Steady", "StepContext",
+__all__ = ["SCHEMES", "IMEXEuler", "StageKind", "StageParts", "Steady", "StepContext",
            "TimeScheme", "scheme_named"]
