@@ -117,10 +117,11 @@ def centreline_counts(centreline: Centreline, parameters: Parameters, spacing: f
     return tuple(found)
 
 
-def centreline_points(centreline: Centreline, parameters: Parameters, counts: Sequence[int], dtype: Any) -> \
-        CentrelinePoints:
+def centreline_points(centreline: Centreline, parameters: Parameters, counts: Sequence[int], dtype: Any, *,
+                      with_radii: bool = False) -> CentrelinePoints:
     """``centreline`` read at ``counts`` points a segment, each at the middle of its share of the segment's length
-    (``(i + 1/2) L / N``), from the traced length: a JAX function of the parameters at fixed counts."""
+    (``(i + 1/2) L / N``), from the traced length: a JAX function of the parameters at fixed counts; with ``with_radii``,
+    each point's local radius where every segment gives one (a consumer that reads none leaves them unevaluated)."""
     if len(counts) != len(centreline.segments):
         raise ValueError(f"one count a segment: {len(centreline.segments)} segments, counts {tuple(counts)}")
     points: list[Any] = []
@@ -138,7 +139,7 @@ def centreline_points(centreline: Centreline, parameters: Parameters, counts: Se
         tangents.append(jnp.asarray(frame.tangent, dtype=dtype))
         normals.append(jnp.asarray(frame.normal, dtype=dtype))
         arcs.append(jnp.broadcast_to(length / count, (count,)))
-        if segment.radius is None:
+        if not with_radii or segment.radius is None:
             every = False
         else:
             radii.append(jnp.asarray(segment.radius(parameters, s), dtype=dtype) * jnp.ones((count,), dtype=dtype))

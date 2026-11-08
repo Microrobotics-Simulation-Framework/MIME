@@ -130,3 +130,30 @@ def test_control_a_coefficient_held_out_of_the_derivative_is_caught(plant, measu
     planted = _patched(plant)
     caught = [name for name in NAMES if abs(planted[name] - measured[name][0]) > measured[name][1]]
     assert caught == list(NAMES), caught
+
+
+@pytest.mark.parametrize("tube", [False, True], ids=["free_space", "tube"])
+def test_the_steps_derivative_is_the_resistances_and_the_differences(tube):
+    """The step (``update``: the judgement held out of every derivative, the gap's report, the stop's selection)
+    delivers the resistance whose derivative in the filament radius is ``resistance_at``'s, and a central difference
+    that rebuilds the node agrees, in free space and with the tube's table (the small helix, definite there)."""
+    from rft_cases import SMALL_SETTINGS, centroid
+
+    settings = R6_SETTINGS if not tube else SMALL_SETTINGS
+    count = (94,)
+
+    def delivered(radius: Any, node: Any) -> Any:
+        params = {**node.params_pytree(), "shape_filament_radius": radius}
+        pose = jnp.asarray([*centroid(settings), 1.0, 0.0, 0.0, 0.0])
+        out = node.update(node.initial_state(), {"pose": pose}, 1e-3, params=params)
+        return out["resistance"][0, 0]
+
+    node = r6_node(tube=tube, settings=settings, counts=count)
+    radius = jnp.asarray(settings["filament_radius"])
+    through_step = float(jax.grad(lambda r: delivered(r, node))(radius))
+    h = STEP * settings["filament_radius"]
+    up, down = ({**settings, "filament_radius": settings["filament_radius"] + d} for d in (h, -h))
+    difference = float((delivered(jnp.asarray(up["filament_radius"]), r6_node(tube=tube, settings=up, counts=count))
+                        - delivered(jnp.asarray(down["filament_radius"]),
+                                    r6_node(tube=tube, settings=down, counts=count))) / (2.0 * h))
+    assert through_step == pytest.approx(difference, rel=1e-6)

@@ -254,7 +254,11 @@ class RFTDragNode(MimeNode):
         data = {key: ParamSpec(units="1", trainable=False, description="held as built: the wall's data, an argument "
                                                                       "of the compiled step")
                 for key in self._wall_arguments()}
-        return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"),
+        gap = ParamSpec(units="1", trainable=False, description="held as built: the least gap between the filament and "
+                                                                "the wall the rung's validity lines were measured at, in "
+                                                                "filament radii, below which a step raises unmeasured "
+                                                                "(a report's threshold)")
+        return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "gap_least": gap,
                 "part_centre": ParamSpec(units="m", trainable=False, description=placed),
                 "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data}
 
@@ -389,7 +393,7 @@ class RFTDragNode(MimeNode):
         stop = indefinite if self.constants()["on_indefinite"] == "stop" else jnp.asarray(False)
         held = self.constants()
         unmeasured = jnp.asarray(not held["measured"]) | (
-            self.wall_gap(p, pose) < held["gap_least"] * (1.0 - SHAPE_TOLERANCE))
+            self.wall_gap(p, pose) < p["gap_least"] * (1.0 - SHAPE_TOLERANCE))
         steps = state["steps"] + 1.0
         first = indefinite & (state["stopped_at"] == 0.0)
         record = jnp.where(first, jnp.concatenate([steps[None], least[None], pose]),

@@ -827,21 +827,18 @@ class Drag(PointForceDrag):
         "Sayre's confined sphere and a de Jongh screw's shipped free-space reference by its oracle tests, not bounded "
         "here",
         "rft: quasi-steady Stokes flow, the limit of vanishing Reynolds number (declared, STOKES_REYNOLDS, not "
-        "measured); a medium at rest; a slender body whose segments do not interact through the free fluid, measured "
-        "against the mrs rung on the same bodies (a prolate spheroid's against its closed form) over the points "
-        "docs/data/slender_validity names, each line the largest miss there, an estimate against the MRS at its "
-        "resolution (about 0.5% on the speed, 2% on the resistance's entries), never a bound, and holding only over "
-        "those points (a body outside them raises unmeasured at every step and the build report says so): the helix "
-        "family of pitch four radii and 2.5 turns in free space, centreline length over filament radius 47 to 372, its "
-        "swimming speed within 11% and its resistance's largest scaled entry within 210%; pitch eight radii and 1.5 "
-        "turns at 76, 6.5% and 70%; pitch two radii and two turns at 132, 28% and 140%; the capsule at 35 to 69 and "
-        "the prolate spheroid at 20 to 200, their spin about their own axes unresisted (a miss of 100%), their "
-        "translation within 13% and 0.92%",
-        "rft: with the tube's table, that family at slenderness 93 on the tube's axis was definite only at a gap "
-        "of 44 filament radii to the wall, where its speed was within 12% and its resistance's largest scaled entry "
-        "within 1500% (its local drag fed back by the wall); at gaps of 19, 10.7 and 7.3 its resistance was "
-        "indefinite, which the build refuses (drag.rft-indefinite) and a step stops; below the measured gap a step "
-        "raises unmeasured",
+        "measured); a medium at rest; a slender body whose segments do not interact through the free fluid; its "
+        "validity lines measured against the mrs rung on the same bodies (a prolate spheroid's against its closed "
+        "form), each the largest miss over the points it names, an estimate against the MRS at the MRS's own "
+        "resolution, never a bound, held only over those points (the families, their slenderness and the misses are "
+        "the record's, docs/data/slender_validity, and MEASURED in mime.nodes.hydro._rft_drag); a body outside them "
+        "raises unmeasured at every step and the build report says so. In the helix families measured it is a model "
+        "of the swimming speed, not of the forces: its translational resistance is several times the MRS's, since its "
+        "segments do not interact; a straight body's spin about its own axis meets no drag",
+        "rft: with the tube's table, the helix family measured on the tube's axis was definite only at the largest gap "
+        "to the wall measured, where the wall's feedback of its local drag made its resistance many times the MRS's; "
+        "closer, its resistance was indefinite, which the build refuses (drag.rft-indefinite) and a step stops; below "
+        "the measured gap a step raises unmeasured",
         "mrs: a wall's correction is taken at the force points unless wall_refinement is written, and they do not "
         "resolve the image near the wall: within half a force spacing of it the resistance was measured indefinite, and "
         "within a quarter of one with the image integrated over each cell (a step whose resistance is indefinite "
