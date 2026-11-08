@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 import scipy.optimize
 import scipy.special
-from fvm_cases import in_dtype, run, tube_node
+from fvm_cases import DRIVES, driven, in_dtype, run, tube_node
 
 import mime.nodes.flow.fvm._node as flow_node
 from mime.nodes.flow.fvm import ImplicitFlowNode, Stopping
@@ -43,15 +43,14 @@ def _harmonic(dtype: str, alpha: float, offset: tuple[float, float], plant: floa
     period = 2.0 * math.pi / omega
     dt = period / STEPS_A_PERIOD
     with in_dtype(dtype):
-        node = tube_node(16, nu=NU, g=0.0, dt=dt, offset=offset, convection=False,
-                         drive_amplitude=(0.0, 0.0, G0), drive_angular_frequency=omega)
+        node = tube_node(16, nu=NU, g=0.0, dt=dt, offset=offset, convection=False, amplitude=G0, omega=omega)
         c = node.constants()
         points = np.asarray(node.grid(node._step_constants(None)).face_points(2, "float64"))  # noqa: SLF001
         r = np.hypot(points[..., 0] - c["tube_centre"][0], points[..., 1] - c["tube_centre"][1])
         quasi = np.where(r < R, (G0 / (4 * NU)) * (R ** 2 - r ** 2), 0.0)
         zero = np.zeros_like(quasi)
-        node = ImplicitFlowNode(**{**_arguments(node), "initial_velocity_x": zero, "initial_velocity_y": zero,
-                                   "initial_velocity_z": quasi})
+        node = driven(ImplicitFlowNode(**{**_arguments(node), "initial_velocity_x": zero, "initial_velocity_y": zero,
+                                          "initial_velocity_z": quasi}), DRIVES[node])
         if plant != 1.0:
             original = ImplicitFlowNode.operator_of
             ImplicitFlowNode.operator_of = lambda self, p, grid, sigma: original(  # type: ignore[method-assign]
@@ -82,7 +81,11 @@ def fitted_viscosity(dtype: str, alpha: float, offset: tuple[float, float], plan
         model = womersley(r[clean], x[0], x[1], omega)
         return np.concatenate([(model - measured).real, (model - measured).imag])
 
-    found = scipy.optimize.least_squares(residual, [NU, R], x_scale=[NU, R], xtol=1e-14, ftol=1e-14)
+    # Levenberg-Marquardt with a relative difference step of 1e-6: the trust-region default stopped at its start on
+    # float32 data (its steps all rejected, the difference step at rounding's scale), an oracle's failure, not the
+    # solver's.
+    found = scipy.optimize.least_squares(residual, [NU, R], method="lm", diff_step=1e-6, xtol=1e-15, ftol=1e-15,
+                                         gtol=1e-15)
     return float(found.x[0])
 
 

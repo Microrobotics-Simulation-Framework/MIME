@@ -58,8 +58,8 @@ class BodyForce(Interaction):
 
     along: tuple[float, float, float]
     steady: Annotated[Quantity, Acceleration]
-    amplitude: Annotated[Quantity, Acceleration] | None = None
-    frequency: Annotated[Quantity, Frequency] | None = None
+    amplitude: Annotated[Quantity | None, Acceleration] = None
+    frequency: Annotated[Quantity | None, Frequency] = None
     phase: float = 0.0
 
     @override

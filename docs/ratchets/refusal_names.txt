@@ -41,6 +41,4 @@ water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
 mermaid.min.js  # the file name of Mermaid's single-file build, shipped in mime/experiment/_mermaid_lib/
 domain.length  # a setting of a group, read in SI by an entry's build (ctx.scalar): the periodic box's period
-fvm.band  # a switch's owner: the flow's band, the clip of the signed distance to the band's half-width
-fvm.image  # a switch's owner: the nearest of a periodic box's images of the flow's solid
 smooth_2h_0.3h  # the name of the flow's one registered band, (W 2h, delta 0.3h)

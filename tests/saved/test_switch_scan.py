@@ -288,6 +288,18 @@ def test_a_planted_custom_rule_fails(tmp_path, family, decorator):
     assert family in families_found(scanned(tmp_path, source))
 
 
+def test_a_planted_custom_linear_solve_fails(tmp_path):
+    """An iterative solve's derivative holds only to its tolerance, its stops its own: a call of
+    ``custom_linear_solve`` in a step is a capping family, listed with the test that clears it."""
+    source = PRELUDE + """
+
+
+def step(x):
+    return jax.lax.custom_linear_solve(lambda v: 2.0 * v, x, lambda matvec, b: b / 2.0, symmetric=True)
+"""
+    assert "custom_linear_solve" in families_found(scanned(tmp_path, source))
+
+
 CUSTOM_FORMS = {
     "custom_jvp through partial, as a decorator": ("custom_jvp", """
 from functools import partial

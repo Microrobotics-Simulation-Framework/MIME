@@ -26,14 +26,10 @@ from typing import Any
 import jax
 from jax import Array
 
-from mime.core import jnp, switch
+from mime.core import jnp
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.walls import TubeWall
 
-#: The indicator's switch: the band's clip of the signed distance to its half-width.
-BAND_OWNER = "fvm.band"
-#: The solid's images in a periodic box: the nearest one's distance is the solid's.
-IMAGE_OWNER = "fvm.image"
 
 
 @dataclass(frozen=True)
@@ -75,10 +71,9 @@ def interior_depth(name: str) -> float:
 
 
 def ramp(phi: Array, width: Any) -> Array:
-    """The band's indicator: 0 at ``phi <= -width/2``, 1 at ``phi >= width/2``, a sine ramp between."""
-    s = phi / width
-    clipped = switch.clip(s, -0.5, 0.5, owner=BAND_OWNER, resolution=lambda: switch.rounding(s), indicator=s)
-    return 0.5 * (1.0 + jnp.sin(jnp.pi * clipped))
+    """The band's indicator: 0 at ``phi <= -width/2``, 1 at ``phi >= width/2``, a sine ramp between. The ramp meets the
+    flats with zero slope, so it is continuously differentiable across its clip: no derivative jumps there."""
+    return 0.5 * (1.0 + jnp.sin(jnp.pi * jnp.clip(phi / width, -0.5, 0.5)))
 
 
 @dataclass(frozen=True)
@@ -104,9 +99,9 @@ class TubeSolid:
                 found = wall.distance(parameters, points - jnp.asarray(shift, dtype=points.dtype))
                 assert found is not None
                 phi = -found.distance
-                nearest = phi if nearest is None else switch.minimum(
-                    nearest, phi, owner=IMAGE_OWNER, resolution=lambda: switch.rounding(phi),
-                    indicator=lambda: phi - nearest)
+                # Two images are equidistant only deep in the solid, beyond the band and the interior's ramp, where
+                # every field the step reads of the solid is flat: the minimum's kink reaches nothing.
+                nearest = phi if nearest is None else jnp.minimum(nearest, phi)
         assert nearest is not None
         return nearest
 
@@ -139,8 +134,7 @@ def wall_fields(grid: MACGrid, solids: Sequence[TubeSolid], band: Band, interior
         phis = [solid.signed_distance(points) for solid in solids]
         phi = phis[0]
         for other in phis[1:]:
-            phi = switch.minimum(phi, other, owner=IMAGE_OWNER, resolution=lambda: switch.rounding(other),
-                                 indicator=lambda: other - phi)
+            phi = jnp.minimum(phi, other)
         chi = ramp(phi, width)
         resistivity = jnp.zeros_like(phi)
         for p in phis:

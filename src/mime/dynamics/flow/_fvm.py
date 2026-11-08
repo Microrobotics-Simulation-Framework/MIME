@@ -119,7 +119,7 @@ class FVM(Dynamics):
     }
 
     domain: PeriodicBox
-    spacing: Annotated[Quantity, Length] | None = None
+    spacing: Annotated[Quantity | None, Length] = None
     cells_across: int = DEFAULT_CELLS_ACROSS
     scheme: IMEXEulerScheme | SteadyScheme = IMEXEulerScheme()
     stokes: bool = False

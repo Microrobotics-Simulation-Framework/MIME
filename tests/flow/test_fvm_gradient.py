@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from fvm_cases import tube_node
+from fvm_cases import Waveform, step_of, tube_node
 
 import mime.nodes.flow.fvm._solve as solve_module
 from mime.nodes.flow.fvm import ImplicitFlowNode
@@ -32,11 +32,12 @@ def _node(nu: float = 1.0, g: float = G) -> ImplicitFlowNode:
     return tube_node(8, nu=nu, g=g, dt=DT, length_cells=2, convection=False, tolerance=1e-12)
 
 
-def _flux(node: ImplicitFlowNode, p) -> jax.Array:
+def _flux(node: ImplicitFlowNode, p, g) -> jax.Array:
     state = node.initial_state()
+    step = step_of(node, p, Waveform(steady=g))
 
     def body(s, _):
-        return node.advance(p, s, {}, DT), None
+        return step(s), None
 
     ended, _ = jax.lax.scan(body, dict(state), None, length=STEPS)
     return ended["lumen_flux"], ended["solve_report_sum"]
@@ -44,7 +45,7 @@ def _flux(node: ImplicitFlowNode, p) -> jax.Array:
 
 def _rebuilt_flux(nu: float, g: float) -> float:
     node = _node(nu, g)
-    return float(jax.jit(lambda p: _flux(node, p)[0])(node._step_constants(None)))  # noqa: SLF001
+    return float(jax.jit(lambda p: _flux(node, p, g)[0])(node._step_constants(None)))  # noqa: SLF001
 
 
 def central(name: str, step: float = 1e-4) -> float:
@@ -55,13 +56,14 @@ def central(name: str, step: float = 1e-4) -> float:
 
 
 def _leaf(p, name: str):
-    return p["viscosity"] if name == "viscosity" else p["drive_mean"][2]
+    return p["viscosity"] if name == "viscosity" else G
 
 
 def _with(p, name: str, value):
+    """The step's constants and the drive, with ``name``'s value replaced."""
     if name == "viscosity":
-        return {**p, "viscosity": value}
-    return {**p, "drive_mean": (p["drive_mean"][0], p["drive_mean"][1], value)}
+        return {**p, "viscosity": value}, G
+    return p, value
 
 
 def reverse(name: str, scale: float):
@@ -69,7 +71,8 @@ def reverse(name: str, scale: float):
     p = node._step_constants(None)  # noqa: SLF001
 
     def loss(value, tap):
-        flux, _ = _flux(node, {**_with(p, name, value), "solve_report": tap})
+        constants, g = _with(p, name, value)
+        flux, _ = _flux(node, {**constants, "solve_report": tap}, g)
         return scale * flux
 
     value, tap = jnp.asarray(_leaf(p, name), dtype=jnp.float64), jnp.asarray(p["solve_report"])
@@ -82,7 +85,7 @@ def forward(name: str, scale: float):
     p = node._step_constants(None)  # noqa: SLF001
     value = jnp.asarray(_leaf(p, name), dtype=jnp.float64)
     (_, _), (tangent, reports) = jax.jit(lambda v, dv: jax.jvp(
-        lambda x: _flux(node, _with(p, name, x)), (v,), (dv,)))(value, jnp.asarray(scale))
+        lambda x: _flux(node, *_with(p, name, x)), (v,), (dv,)))(value, jnp.asarray(scale))
     return float(tangent) / scale, np.asarray(reports)
 
 

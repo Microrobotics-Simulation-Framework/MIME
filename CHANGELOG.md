@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A medium's flow, solved: the FVM on a periodic box** (`fvm` 0.1.0, with `body_force` 0.1.0 and
+  `mime.scene.PeriodicBox`). `Medium(..., fields={"flow": FVM(domain=PeriodicBox(length=...))})` solves the flow of the
+  fluid filling a straight tube's lumen on a Cartesian MAC grid of cubic cells, the wall a smooth Brinkman band (one
+  registered band, its stiff interior beyond), stepped by IMEX Euler on the projected monolithic conjugate gradient
+  (`Scheme.IMEXEuler()`, convection explicit) or by its steady limit (`Scheme.Steady()`, with `stokes=True`), driven
+  by `exp.attach(BodyForce(along=..., steady=...), medium=water)` on the fluid. Each step reports its solve (its
+  iterations, its true residual against the tolerance and how it stopped, never silently at a cap), the lumen's and
+  the solid's fluxes, and with the energy ledger on the node its step identity; the derivative solves report through a
+  zero parameter's gradient. With convection on, a run past the scheme's CFL line is refused, naming the step and the
+  timestep that keeps it. `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is unchanged
+  (a medium's flow is written where dev1 wrote it).
+
 - **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
   second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
   entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery

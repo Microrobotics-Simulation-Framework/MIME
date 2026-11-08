@@ -5,8 +5,8 @@ its step identity.
 **What a step computes, all in the program from the step's parameters** (no value derived from a parameter is made at
 build: round 3, item 2): the tube's signed distance from its centre, axis and radius (data, item 3), the band's
 indicator and the regions' inverse permeability on each face set; the resistivity ``nu x sum(1/K)`` and Jacobi's
-diagonal from the viscosity; the drive's body force on the fluid, ``g(t) (1 - chi)``, at the scheme's stage time; then
-the scheme's step.
+diagonal from the viscosity; the body force on the fluid, ``g (1 - chi)``, ``g`` what the laws bound to the medium
+deliver for the step (the waveform is theirs); then the scheme's step.
 
 **The CFL check** (item 1, F1a's half). With convection on, each step reads ``max|u| dt / h`` of the velocity the
 explicit convection uses; past the scheme's line the node records the first such step in ``stopped_at`` with the CFL it
@@ -143,8 +143,7 @@ class ImplicitFlowNode(MimeNode):
                  tube_radius: float, scheme: str = "imex_euler", convection: bool = True, tolerance: float | None = None,
                  cap: int = 5000, check_every: int = 20, band: str = "smooth_2h_0.3h", interior: str = "0.1h",
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
-                 drive_mean: Sequence[float] = (0.0, 0.0, 0.0), drive_amplitude: Sequence[float] = (0.0, 0.0, 0.0),
-                 drive_angular_frequency: float = 0.0, drive_phase: float = 0.0, report_rows: int = 0,
+                 report_rows: int = 0,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
                  ledger: Sequence[str] = ()) -> None:
         chosen = scheme_named(scheme)
@@ -169,10 +168,7 @@ class ImplicitFlowNode(MimeNode):
                          scheme=str(scheme), convection=bool(convection), tolerance=float(tolerance), cap=int(cap),
                          check_every=int(check_every), band=str(band), interior=str(interior),
                          preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
-                         periodic_images=str(periodic_images), drive_mean=tuple(float(c) for c in drive_mean),
-                         drive_amplitude=tuple(float(c) for c in drive_amplitude),
-                         drive_angular_frequency=float(drive_angular_frequency), drive_phase=float(drive_phase),
-                         report_rows=int(report_rows),
+                         periodic_images=str(periodic_images), report_rows=int(report_rows),
                          solve_report=np.zeros((max(int(report_rows), 1), REPORT_SIZE)), **initial,
                          **({"ledger": tuple(ledger)} if ledger else {}))
 
@@ -188,8 +184,6 @@ class ImplicitFlowNode(MimeNode):
                 "tube_radius": ParamSpec(units="m", bounds=(0.0, None)),
                 "tolerance": ParamSpec(trainable=False, units="1",
                                        description="the solve's relative tolerance on its true residual"),
-                "drive_mean": ParamSpec(units="m/s^2"), "drive_amplitude": ParamSpec(units="m/s^2"),
-                "drive_angular_frequency": ParamSpec(units="rad/s"), "drive_phase": ParamSpec(units="rad"),
                 "solve_report": ParamSpec(trainable=False, units="1",
                                           description="zeros, never moved: the derivative solves' reports come out "
                                                       "as its gradient")}
@@ -233,15 +227,12 @@ class ImplicitFlowNode(MimeNode):
         nu = self.kinematic(p)
         return (nu * k[0], nu * k[1], nu * k[2])
 
-    def drive(self, p: Mapping[str, Any], fields: WallFields, time: Any, delivered: Array) -> Velocity:
-        """The body force per unit mass (m/s^2) on each face set at ``time``: the node's own waveform ``mean +
-        amplitude cos(omega t + phase)`` and what the laws bound to the medium delivered for the step, on the fluid
-        only (``1 - chi``)."""
-        mean, amplitude = as_run_array(p["drive_mean"]), as_run_array(p["drive_amplitude"])
-        g = mean + amplitude * jnp.cos(as_run_array(p["drive_angular_frequency"]) * time
-                                       + as_run_array(p["drive_phase"])) + delivered
+    def drive(self, fields: WallFields, delivered: Array) -> Velocity:
+        """The body force per unit mass (m/s^2) on each face set: what the laws bound to the medium delivered for the
+        step (at its end, IMEX Euler's stage time), on the fluid only (``1 - chi``). The waveform is the drive's, never
+        the field's."""
         chi = fields.chi
-        return (g[0] * (1.0 - chi[0]), g[1] * (1.0 - chi[1]), g[2] * (1.0 - chi[2]))
+        return (delivered[0] * (1.0 - chi[0]), delivered[1] * (1.0 - chi[1]), delivered[2] * (1.0 - chi[2]))
 
     def operator_of(self, p: Mapping[str, Any], grid: MACGrid, sigma: Velocity) -> Any:
         nu = self.kinematic(p)
@@ -305,7 +296,7 @@ class ImplicitFlowNode(MimeNode):
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
         if self.metered:
-            return books.metered_step(self, {}, p, state, boundary_inputs, dt, self.stepped)
+            return books.metered_step(self, self.boundary_input_spec(), p, state, boundary_inputs, dt, self.stepped)
         return self.stepped(p, state, boundary_inputs, dt)[0]
 
     def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
@@ -328,8 +319,8 @@ class ImplicitFlowNode(MimeNode):
                                    guess if c["scaling_start"] else None, stopping, tap, preconditioner)
 
         delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
-        context = StepContext(grid, operator, lambda time: self.drive(p, fields, time, delivered),
-                              bool(c["convection"]), solve)
+        context = StepContext(grid, operator, lambda time: self.drive(fields, delivered), bool(c["convection"]),
+                              solve)
         velocity = _velocity(state)
         time = steps.astype(dtype) * dt
         speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in velocity]))

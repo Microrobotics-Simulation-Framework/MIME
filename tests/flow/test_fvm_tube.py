@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from fvm_cases import in_dtype, run, tube_node
+from fvm_cases import DRIVES, Waveform, driven, in_dtype, run, tube_node
 
 from mime.nodes.flow.fvm import ImplicitFlowNode, Jacobi, MACGrid, Stopping, band_named, periodic_tube_layout, \
     projected_solve, wall_fields
@@ -68,11 +68,11 @@ def _steady_state(dtype: str, offset: tuple[float, float], lattice: tuple[int, i
             node = tube_node(dh, offset=offset, dt=0.5, convection=False, scheme=scheme)
         else:
             layout = periodic_tube_layout(0.5, 1.0, cells_across=dh, lattice=lattice, offset_cells=offset)
-            node = ImplicitFlowNode("flow", 0.5, cells_x=layout.cells[0], cells_y=layout.cells[1],
-                                    cells_z=layout.cells[2], spacing=layout.spacing, viscosity=NU, density=1.0,
-                                    tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius,
-                                    drive_mean=tuple(G * a for a in layout.axis), convection=False, scheme=scheme,
-                                    periodic_images="transverse")
+            node = driven(ImplicitFlowNode("flow", 0.5, cells_x=layout.cells[0], cells_y=layout.cells[1],
+                                           cells_z=layout.cells[2], spacing=layout.spacing, viscosity=NU, density=1.0,
+                                           tube_centre=layout.centre, tube_axis=layout.axis,
+                                           tube_radius=layout.radius, convection=False, scheme=scheme,
+                                           periodic_images="transverse"), Waveform(steady=G, along=layout.axis))
         if plant != 1.0:
             original = ImplicitFlowNode.operator_of
             ImplicitFlowNode.operator_of = lambda self, p, grid, sigma: original(  # type: ignore[method-assign]
@@ -177,7 +177,7 @@ def tube_shift(node: ImplicitFlowNode, state, radius: float) -> float:
 def _plant_state(dtype: str, offset: tuple[float, float], quarter: float, dh: int = 16):
     with in_dtype(dtype):
         node = tube_node(dh, offset=offset, dt=0.5, convection=False, scheme="steady")
-        planted = ImplicitFlowNode(**{**_arguments(node), "tube_radius": 0.5 + quarter / dh})
+        planted = driven(ImplicitFlowNode(**{**_arguments(node), "tube_radius": 0.5 + quarter / dh}), DRIVES[node])
         return node, run(planted, 2)
 
 

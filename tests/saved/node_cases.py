@@ -78,6 +78,13 @@ DIPOLE = NodeCase(options={"boundary_bounds": {"mount_poses": (-1.0, 1.0)},
 DRAG = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
                          "constrain_boundary": lambda given: {**given, "pose": unit_quaternion(given["pose"])}})
 
+#: The flow's drawn velocity is a flow's in its tube (a millimetre a second at most, a CFL far inside the line at the
+#: battery's timesteps on the case's grid), and its drawn body force a drive's: in the default box of 1e4 the drawn
+#: velocity crosses the CFL line at every timestep and the explicit convection is not stable, a draw no run makes.
+FLOW = NodeCase(options={"bounds": {"velocity_x": (-1e-3, 1e-3), "velocity_y": (-1e-3, 1e-3),
+                                    "velocity_z": (-1e-3, 1e-3)},
+                         "boundary_bounds": {"body_force": (-10.0, 10.0)}})
+
 _EVALUATIONS: dict[tuple[str, str], tuple] = {}
 
 
@@ -143,6 +150,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                           lambda node: shape_switches(node.constants()["shape"]), on_the_boundary_at_the_distance)),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
     ("observation", "labx.height", "0.1.0"): NodeCase(),
+    ("dynamics", "fvm", "0.1.0"): FLOW,
+    ("interaction", "body_force", "0.1.0"): NodeCase(),
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.3.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.4.0"): RIGID_BODY,

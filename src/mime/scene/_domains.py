@@ -23,7 +23,7 @@ class PeriodicBox(SettingGroup):
 
     group = "periodic_box"
     setting_roles = {"length": PHYSICAL,
-                     "margin": convention(NUMERICAL, "eight cells of solid across the box, S7's tube box")}
+                     "margin": convention(NUMERICAL, "eight cells of solid across the box between the vessel's images")}
     length: Annotated[Quantity, Length]
     margin: int = 8
 
