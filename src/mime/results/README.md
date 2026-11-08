@@ -91,7 +91,11 @@ unknown" (`stale_unknown`), rather than being stale or fresh by accident.
   (supplied taken from the dissipation side, lost plus the change in what is stored, shared among the things outside in
   proportion to what each one's laws paired), each potential's change from the run's two ends with the law's own
   parameters as the run had them, and in its detailed text each law's paired work, the scheme's own terms apart, the
-  paired supply and the checks; `efficiency(useful)`. `None` without the ledger and for a run read from a folder.
+  paired supply and the checks, each receiver's storage's jumps between steps (`between`), each workless exchange's
+  work over its receivers (`exchanges`) and each coupling group's verdict and residual (`groups`); `efficiency(useful)`.
+  `None` without the ledger and for a run read from a folder.
+- **A coupling group's verdict** (`group_verdicts`, `RunResult.groups`): each group's at the run's last step, from
+  MADDENING's own, in every profile, with or without the ledger.
 - **An overridden run** (`run(..., override=...)`) carries its `overrides` (each one's path, value with its unit, SI
   value and the leaves it wrote), in its text ("OVERRIDDEN for this run: ..."), its manifest and back from its folder.
 

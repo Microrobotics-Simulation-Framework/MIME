@@ -99,7 +99,7 @@ switch log that the collector feeds comes later.
 
 ## The energy ledger
 
-A **receiver** (a dynamics' node: the rigid body's) is metered when it is built with `ledger`, the deliveries it
+A **receiver** (a dynamics' node: the rigid body's, a dynamic arm's, a dynamic motor's) is metered when it is built with `ledger`, the deliveries it
 takes, each a law's id, its class, its delivery kind and its run-time check (`LedgerDelivery`). Only the build gives
 a node its ledger, and only where the experiment attaches it; without it the node is the node it always was, its
 parameters, inputs, state and step included, every bit of the program unchanged.
@@ -116,8 +116,14 @@ parameters, inputs, state and step included, every bit of the program unchanged.
   is judged against `IDENTITY_ULPS` units of rounding on the step's scale, the magnitude of the arithmetic that forms
   its terms (each product's factors in magnitude, the solve's included), so that terms that cancel, and a stiff
   solve, are judged on the size of what was rounded. `recorded` keeps running sums over the run's steps and
-  sub-steps in the receiver's state (the fields prefixed `ledger_`); `balance` and `balance_floor` read the run's
-  books from them.
+  sub-steps in the receiver's state (the fields prefixed `ledger_`, `LedgerRecords` their units); `balance` and
+  `balance_floor` read the run's books from them. A receiver's laws it holds in its own step beyond what is delivered
+  (a dynamic arm's weight, damping, stops and friction) are its `MimeNode.hosted_laws`, and the commands it pairs its
+  `MimeNode.PAIRED_COMMANDS`.
+- **Between steps.** The storage at a step's start less the storage the step before ended at is kept apart
+  (`ledger_between`): where the storage reads what the step does not return (an inertia a frame carries, predicted a
+  step ahead; a coupling group's accepted iterate) that jump is the exchange's or the group's, and the books are the
+  sum of the steps' residuals; elsewhere it is zero, or rounding.
 - **Definiteness at run time**, for a law whose operator's definiteness depends on the state:
   `definite_at_floor`, one Cholesky factorisation of its scaled symmetric part shifted by `DEFINITE_ULPS` units of
   rounding, so that a semidefinite operator passes where a plain factorisation fails on it (a zero diagonal entry

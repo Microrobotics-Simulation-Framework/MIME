@@ -984,7 +984,7 @@ def pair_loop_works(built: BuiltExperiment, laws: Sequence[Interaction], body: s
                                                                 *(e[0] for name in order for e in incoming[name])}}
     dtype = computing_dtype(graph.get_node(own[0]))
     eps = float(np.finfo(dtype).eps)
-    reaction = SourceReactionNode("pair.reaction", float(graph.get_node(own[0]).delta_t), mount_index=0,
+    reaction = SourceReactionNode("pair_reaction", float(graph.get_node(own[0]).delta_t), mount_index=0,
                                   mount_count=1)
 
     def evaluated(name: str, held: Mapping[str, Mapping[str, Any]], nudge: bool, placed: Any) -> Mapping[str, Any]:

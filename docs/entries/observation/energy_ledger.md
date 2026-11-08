@@ -26,8 +26,10 @@ useful work as a share of what was supplied.
 - To find a wrong delivery between laws: the build compares its graph with the deliveries it made and refuses a
   swap, a duplicate or a missing delivery by name (`post-build.ledger-inputs`). The books cannot see them, and a law's
   residual shows only a swap that involves gravity and a moving load.
-- On a body whose dynamics is not metered yet (a chain segment's): the build report lists it, with the reason, and the
-  account leaves it out.
+- On a dynamics that is not metered (a toy's, a lab's that names no port kind): the build report lists it, with the
+  reason, and the account leaves it out. A dynamic arm and a dynamic motor are metered: each books its commands under
+  their writer, the loads on its frames under each law, and the laws it holds itself (an arm's weight, damping, stops
+  and friction; a motor's bearing) under their names; a kinematic segment is outside, a prescribed motion.
 - On a run read back from a folder: the account needs each law's parameters, which only the built experiment holds.
 
 **Its derivative** passes through the account's sums. Called inside a function being differentiated,

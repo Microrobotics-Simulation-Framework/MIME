@@ -17,8 +17,11 @@ point dipole source. A source fixed in the world, or carried by a kinematic segm
 
 It is a member of the magnetic family: its sign, frame, units, closed form and gradients are checked by the family's
 suite, with `Magnetic.Torque` its closed-loop case (no net work round a closed loop of the pose in a point dipole's
-field), the equal and opposite force between two point dipoles by a test of its own, and its reaction on the source,
-with the torque's, against the force and torque of the body's dipole on the source's.
+field, nor, with their reactions, round closed loops of the source's pose and of the two together), the equal and
+opposite force between two point dipoles by a test of its own, and its reaction on the source, with the torque's,
+against the force and torque of the body's dipole on the source's. For the energy ledger the pair is a potential law,
+the derivative of `-m . B` at the magnet's centroid, stated once for the pair by its family, whose energy case checks
+the pair's wrench against it; where the field's source is outside, their work is supplied by it.
 
 **When not to use it.**
 - Where the gradient varies across the magnet: it is read at one point, the magnet's centroid.

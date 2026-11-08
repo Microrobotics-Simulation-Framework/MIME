@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
+import jax
 import numpy as np
 from hypothesis import strategies as st
 from maddening.core.node import SimulationNode
@@ -116,7 +117,7 @@ def joint_rig(dt: float = 5e-4) -> SimulationNode:
         return tuple(float(v) for v in np.ravel(np.asarray(rows, dtype=np.float64)))
 
     return DynamicArmNode(
-        "case.arm", dt, dof_names=[name for name, *_ in _JOINTS], parents=[parent - 1 for _, parent, *_ in _JOINTS],
+        "case_arm", dt, dof_names=[name for name, *_ in _JOINTS], parents=[parent - 1 for _, parent, *_ in _JOINTS],
         revolute=[revolute for _, _, revolute, *_ in _JOINTS], frame_names=[name for name, *_ in _JOINTS],
         frame_bodies=list(range(dofs)), axes=flat([axis for *_, axis, _ in _JOINTS]),
         origin_translations=flat([origin for *_, origin in _JOINTS]), origin_rotations=flat([identity] * dofs),
@@ -171,7 +172,7 @@ def spinner_rig(dt: float = 5e-4) -> SimulationNode:
     across = np.cross(axis, [1.0, 0.0, 0.0])
     across /= np.linalg.norm(across)
     asymmetry = 3e-6 * (np.outer(across, across) - np.outer(np.cross(axis, across), np.cross(axis, across)))
-    return DynamicMotorNode("case.motor", dt, axis=tuple(axis), inertia=2e-5, damping=1e-6,
+    return DynamicMotorNode("case_motor", dt, axis=tuple(axis), inertia=2e-5, damping=1e-6,
                             placement=(0.01, -0.02, 0.03, 1.0, 0.0, 0.0, 0.0), asymmetry=tuple(asymmetry.ravel()),
                             mount_index=0, mount_count=_MOUNT_COUNT, initial_angle=0.0)
 
@@ -215,7 +216,18 @@ def _arm_step(twin: Any, deliveries: Sequence[ledger.LedgerDelivery], drawn: Map
     for index, delivery in enumerate(deliveries):
         if delivery.kind != ledger.HOSTED:
             inputs[ledger.law_input(delivery.field, index)] = jnp.asarray(values[delivery.field], dtype=dtype)
-    return cast(Mapping[str, Any], twin.advance(p, state, inputs, float(twin.delta_t)))
+    return _compiled(twin)(p, state, inputs)
+
+
+def _compiled(twin: Any) -> Callable[..., Mapping[str, Any]]:
+    """``twin``'s step compiled once for every draw (their shapes are one): eager, a dynamic arm's projected
+    Gauss-Seidel sweeps dispatch each operation alone."""
+    held = getattr(twin, "_case_step", None)
+    if held is None:
+        dt = float(twin.delta_t)
+        held = cast(Any, jax).jit(lambda p, state, inputs: twin.advance(p, state, inputs, dt))
+        object.__setattr__(twin, "_case_step", held)
+    return cast(Callable[..., Mapping[str, Any]], held)
 
 
 def _spinner_step(twin: Any, deliveries: Sequence[ledger.LedgerDelivery], drawn: Mapping[str, Any],
@@ -232,7 +244,7 @@ def _spinner_step(twin: Any, deliveries: Sequence[ledger.LedgerDelivery], drawn:
     for index, delivery in enumerate(deliveries):
         if delivery.kind != ledger.HOSTED:
             inputs[ledger.law_input(delivery.field, index)] = jnp.asarray(values[delivery.field], dtype=dtype)
-    return cast(Mapping[str, Any], twin.advance(p, state, inputs, float(twin.delta_t)))
+    return _compiled(twin)(p, state, inputs)
 
 
 @dataclass(frozen=True)

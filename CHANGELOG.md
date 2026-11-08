@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
+  `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the
+  spinners' momenta and the inertia its frames carry, and the new `spinner` kind): each records its step identity
+  inside its own step, closing within the ledger's floor on A0's dynamic loop in both dtypes, nothing arriving
+  unattributed. The arm books its commands (under their writer, the controller or a drive, outside), each law's loads
+  on its frames by the joint forces they make, its spinners' gyroscopic exchange (workless, by the Cayley step), the
+  inertia its frames carry by its change as the step used it, and the laws it holds itself under their names: its
+  weight (a potential, its energy taken from the run's ends), its damping and its stops' and Coulomb friction's
+  impulses (dissipative). The motor books its drive by its angle's change, the axial loads on its rotor, its bearing's
+  loss on the rotor's turn on its stator, its rotor's inequality (the rotor's half of the exchange whose other half is
+  the inertia its host carries, `<motor>.inertia` on both, workless) and its stator's torques on its host's turn. What
+  one segment hands another is booked under the output that carries it (`rpm.motor.reaction`). **A receiver's storage
+  between steps** is recorded apart (`ledger_between`): where a delivered inertia moves it, it is that exchange's own,
+  reported with the exchange (`EnergyAccount.exchanges`); in a coupling group, the group's residual; rounding
+  elsewhere; the books are the sum of the steps' residuals. **Outside, by the mount tree**: on an apparatus with a
+  chain each segment and each field it carries is judged apart, a field outside unless its laws deliver their
+  reactions into a segment of it, so a magnet on a dynamic arm is inside and one on a kinematic arm outside, and in an
+  apparatus with a dynamic and a kinematic part only the kinematic part is outside; the controller and every drive are
+  outside, and a command into a metered receiver is supplied work named by its writer. **The magnetic laws 0.2.0 are
+  potential laws**: the family states their energy once for the pair, `U = -m . B` at the magnet's centroid; the
+  energy case judges the pair's wrench against its negative gradient (the field from the provider's own function), and
+  the closed-loop case now drives the source round closed loops too, the laws' reactions on it included, with the body
+  held and with the two moving together (`pair_loop_works`); 0.1.0 stays unmetered by MIME-ANO-137, and fails the
+  extended case where it did, and round its source's turns (its reaction carries the lever's couple). Where the field's
+  source is outside, the pair's work is supplied by it; where it is inside, the account takes the pair's energy's
+  change from the run's ends (`PointDipoleNode.energy_at`). **Structural flags**, in every profile and with or without
+  the ledger: a law delivering to receivers that step at different rates is refused (`law.rate-divided`), a damper
+  between two receivers that neither one step holds nor one coupling group solves is flagged by a line the build
+  computes on it, and every run reports each coupling group's verdict from MADDENING's own (`RunResult.groups`), a
+  group stopped at its cap said so. `mime.testing`: the joint and spinner port kinds' step identities on drawn states
+  (`PORT_CASES`), with a planted gift that fails them. **Without the ledger nothing moves**: A0 on both rungs, A0 with
+  its magnet's mass and script A keep every history array to the bit in both dtypes. Counted: one refusal code, one port
+  kind.
 - **The energy ledger in one line, `exp.observe(EnergyLedger())`, its wiring, its account and its family cases** (the
   second half of the ledger; `energy_ledger` 0.1.0). Attached, the build works out what is outside per thing, from each
   entry's plan (a thing that receives no delivery from the components: script A's field), moves each law's delivery

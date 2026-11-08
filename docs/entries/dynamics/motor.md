@@ -50,6 +50,12 @@ which the build report gives.
 - When a prescribed speed must hold its phase over a long run in single precision: the angle is a sum over steps, and
   its rounding grows with it.
 
+**The energy ledger.** With `EnergyLedger` attached, the dynamic rung is metered (the `spinner` port kind): its
+rotor's kinetic energy about its axis, its drive's work on its angle's change under its writer, the axial loads on its
+rotor under each law, its bearing's loss (`<motor>.bearing`), its inequality's torque on the spin (`<motor>.inertia`,
+one workless exchange with the inertia its host carries) and its stator's torques on its host's turn
+(`<motor>.reaction`). The kinematic rung is outside: a prescribed motion.
+
 **Chains, mounts and armature.** How a segment is placed, what mounts on a frame and where a joint's armature comes from: [the multibody note](../../multibody.md).
 
 **Versions.** `motor` 0.1.0 was its first: the kinematic rung, and then the dynamic rung. `motor`

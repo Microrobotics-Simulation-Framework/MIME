@@ -152,9 +152,15 @@ lost plus the change in what is stored; the work the supplied laws paired in the
 own numerical terms, which `text(details=True)` shows apart, never as a loss, with each law's work on each body and
 the checks: each body's step identity at its worst step against its rounding, the work that arrived unattributed
 (exactly zero where every delivery is a law's), each potential's paired work against its energy's change from the run's
-two ends, and the books' balance against its rounding. `result.energy.efficiency(useful)` is a useful work as a share
-of what was supplied. The build report's `energy` lines say how the build metered the experiment
-([reading a build report](guide/build_report.md)).
+two ends, and the books' balance against its rounding, each receiver's storage's jumps between steps, each workless
+exchange's work summed over its receivers (a rotor and the arm carrying it: the exchange's own discretisation error,
+reported, not judged), and each coupling group's verdict with its residual. `result.energy.efficiency(useful)` is a
+useful work as a share of what was supplied. The build report's `energy` lines say how the build metered the
+experiment ([reading a build report](guide/build_report.md)).
+
+**A coupling group's verdict.** `result.groups` gives each coupling group's verdict at the run's last step, by its
+members, from MADDENING's own (`converged`, or the passes after which it stopped at its cap), in every profile, with or
+without the ledger: energy cannot tell a capped group from a converged one.
 
 ## Exports
 

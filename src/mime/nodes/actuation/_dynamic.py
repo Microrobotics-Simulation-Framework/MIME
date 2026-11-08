@@ -1004,9 +1004,9 @@ class DynamicMotorNode(SegmentNode):
         """The laws the motor holds in its step, each ``(role, law, class)``: its bearing's damping on the rotor's turn
         relative to its stator (dissipative); its rotor's inequality across its axis, whose torque on the spin is the
         rotor's half of the exchange whose other half is the inertia its host carries (``<motor>.inertia``, the same
-        law on both receivers, workless); and the torques its stator holds (the drive's, the bearing's, the
-        inequality's) on the rotor's share of its host's turn, whose other half is the reaction its host takes
-        (``<motor>.reaction``)."""
+        law on both receivers, workless); and its stator's half of the reaction its host takes (``<motor>.reaction``):
+        the torques it holds (the drive's, the bearing's, the inequality's) on the rotor's share of the host's turn,
+        less what the loads it passes on did on its motion, which each law's row books as that law's."""
         return (("bearing", f"{self.name}.bearing", books.DISSIPATIVE),
                 ("inertia", f"{self.name}.inertia", books.WORKLESS),
                 ("reaction", f"{self.name}.reaction", books.UNMETERED))
@@ -1048,12 +1048,28 @@ class DynamicMotorNode(SegmentNode):
         turn = turned_to - angle
         host = dt * jnp.dot(axis, mount)
         bearing = -damping * relative
+        # The stator's motion over the step, its base from where the step before left it to where it is now: what the
+        # loads it passes on do work on, the host's (its turn in its small-angle form, a step's turn being small).
+        before, after = state["frame_poses"][0], ended["frame_poses"][0]
+        moved_by = after[:3] - before[:3]
+        turned_by = 2.0 * quaternion.multiply(after[3:], quaternion.conjugate(before[3:]))[1:]
+        passed = jnp.zeros((), dtype=dtype)
 
         def paired(field: str, value: Array) -> tuple[Array, Array]:
+            """A delivery into ``field`` paired by the one rule, and the magnitude of that arithmetic: the torque with
+            the angle's change; a load on its frames by its torque on the rotor about the axis with the rotor's turn,
+            and by what it passes on to the host with the stator's motion (the same work the stator's reaction then
+            carries away, booked against it under ``<motor>.reaction``)."""
+            nonlocal passed
             if field == "torque":
                 return value * turn, jnp.abs(value) * jnp.abs(turn)
             axial = jnp.dot(axis, value[1, 3:])
-            return axial * (turn + host), jnp.abs(axial) * (jnp.abs(turn) + jnp.abs(host))
+            force = value[0, :3] + value[1, :3]
+            torque = value[0, 3:] + value[1, 3:] - axial * axis
+            handed = jnp.dot(force, moved_by) + jnp.dot(torque, turned_by)
+            passed = passed + handed
+            return axial * (turn + host) + handed, jnp.abs(axial) * (jnp.abs(turn) + jnp.abs(host)) \
+                + jnp.abs(force) @ jnp.abs(moved_by) + jnp.abs(torque) @ jnp.abs(turned_by)
 
         rows = books.laws(held)
         work = jnp.zeros(len(rows), dtype=dtype)
@@ -1061,14 +1077,16 @@ class DynamicMotorNode(SegmentNode):
         size = jnp.zeros((), dtype=dtype)
         torque = given["torque"]
         held_torque = torque + unequal + bearing
+        reaction_row: int | None = None
         for index, delivery in enumerate(held):
             row = rows.index(delivery.law)
             if delivery.kind == books.HOSTED:
-                found = {"bearing": bearing * turn, "inertia": unequal * turn, "reaction": held_torque * host}[
-                    delivery.field]
-                magnitude = {"bearing": jnp.abs(bearing) * jnp.abs(turn), "inertia": jnp.abs(unequal) * jnp.abs(turn),
-                             "reaction": (jnp.abs(torque) + jnp.abs(unequal) + jnp.abs(bearing)) * jnp.abs(host)}[
-                    delivery.field]
+                if delivery.field == "reaction":
+                    reaction_row = row
+                    continue
+                found = {"bearing": bearing * turn, "inertia": unequal * turn}[delivery.field]
+                magnitude = {"bearing": jnp.abs(bearing) * jnp.abs(turn),
+                             "inertia": jnp.abs(unequal) * jnp.abs(turn)}[delivery.field]
             else:
                 found, magnitude = paired(delivery.field, boundary_inputs[books.law_input(delivery.field, index)])
             work, size = work.at[row].add(found), size + magnitude
@@ -1076,6 +1094,11 @@ class DynamicMotorNode(SegmentNode):
         for field in _MOTOR_PAIRED:
             found, magnitude = paired(field, boundary_inputs.get(field, jnp.asarray(own[field].default, dtype=dtype)))
             unattributed, size = unattributed + found, size + magnitude
+        if reaction_row is not None:
+            # The stator's torques on the host's share of the rotor's turn, less what the loads it passes on did on its
+            # motion: its half of the reaction its host takes.
+            work = work.at[reaction_row].add(held_torque * host - passed)
+            size = size + (jnp.abs(torque) + jnp.abs(unequal) + jnp.abs(bearing)) * jnp.abs(host) + jnp.abs(passed)
         axial = jnp.dot(axis, given["link_wrench"][1, 3:])
         total = torque + axial + unequal + bearing
         moved = spun - spin
