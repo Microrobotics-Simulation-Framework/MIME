@@ -270,7 +270,9 @@ def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[t
             continue
         law = laws[by].entry if by in laws else None
         interaction = law if isinstance(law, Interaction) else None
-        check = ledger.CHECK_DEFINITE if interaction is not None and \
+        # A law whose operator's definiteness depends on the state has it checked where it delivers that operator,
+        # the one its receiver solves with, and not on the loads it delivers beside it (the MRS rung's background load).
+        check = ledger.CHECK_DEFINITE if interaction is not None and paired.value == ledger.SOLVED and \
             interaction.definiteness() is Definiteness.STATE else ""
         energy_class, supplier = _class_line(interaction), ",".join(supplied_by.get(by, ()))
         if interaction is None:

@@ -19,14 +19,20 @@ the commands. **The mount tree**, measured on the two mixed apparatus: a dynamic
 outside and the motor and its magnet inside, the motor's exchange with its host supplied by the arm; a kinematic motor
 on a dynamic arm takes no reaction, so its magnet and the arm, which then receives nothing, are outside.
 
+**An MRS body** (the steel sphere settling in free space, the MRS rung's resistance checked definite at the state at
+each step): metered, its definiteness checked where the rung delivers its resistance and not on the load it delivers
+beside it (which the body refused to build before), its identity closing and nothing unattributed.
+
 **The field**: script A's uniform field is outside on UniformRotating 0.1.0 and 0.2.0 and on drives.Ramp's frequency,
 the torque's paired work supplied by it, the identity closing; a ramp's supplied work is not a constant rate's."""
 
 from __future__ import annotations
 
+import importlib.util
 import math
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import jax.numpy as jnp
@@ -47,6 +53,12 @@ from mime.observations import EnergyLedger
 from mime.units import Hz, s
 
 DTYPES = pytest.mark.parametrize("name", ["float32", "float64"])
+_EXAMPLE = importlib.util.spec_from_file_location(
+    "example_sphere_settling", Path(__file__).resolve().parents[2] / "examples" / "sphere_settling.py")
+assert _EXAMPLE is not None and _EXAMPLE.loader is not None
+_SPHERE = importlib.util.module_from_spec(_EXAMPLE)
+_EXAMPLE.loader.exec_module(_SPHERE)
+sphere_settling = _SPHERE.sphere_settling
 #: A0's dynamic loop's run for the books: 100 steps of 0.5 ms, through the rotor's spin-up and the body's start.
 STEPS = 100
 RECEIVERS = ("umr", "rpm.arm", "rpm.motor")
@@ -203,3 +215,16 @@ def test_the_uniform_field_is_outside_on_either_version_and_on_a_ramp(name):
     print(f"\n{name}: the field's paired supply over 0.25 s: {supplied}")
     assert all(value > 0.0 for value in supplied.values()), supplied
     assert abs(supplied["ramp"] - supplied["0.2.0"]) > 0.1 * abs(supplied["0.2.0"]), supplied
+
+
+@DTYPES
+def test_an_mrs_body_is_metered_its_resistance_checked_at_each_step(name):
+    with in_dtype(name):
+        built = metered(sphere_settling(10.0))
+        held = ledger.deliveries(built.graph.get_node("ball").constants())
+        assert [(d.field, d.check) for d in held if d.law == "drag:ball"] == [("background_load", ""),
+                                                                              ("resistance", ledger.CHECK_DEFINITE)]
+        final = run_scan(built.graph, 30)["ball"]
+        assert floors(final) <= 1.0 and float(final["ledger_unattributed_worst"]) == 0.0
+        assert not np.any(np.asarray(final["ledger_indefinite_steps"])) and not np.any(
+            np.asarray(final["ledger_gift_steps"]))

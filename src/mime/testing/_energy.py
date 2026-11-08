@@ -225,7 +225,11 @@ def _compiled(twin: Any) -> Callable[..., Mapping[str, Any]]:
     held = getattr(twin, "_case_step", None)
     if held is None:
         dt = float(twin.delta_t)
-        held = cast(Any, jax).jit(lambda p, state, inputs: twin.advance(p, state, inputs, dt))
+
+        def step(p: Mapping[str, Any], state: Mapping[str, Any], inputs: Mapping[str, Any]) -> Mapping[str, Any]:
+            return cast(Mapping[str, Any], twin.advance(p, state, inputs, dt))
+
+        held = cast(Any, jax).jit(step)
         object.__setattr__(twin, "_case_step", held)
     return cast(Callable[..., Mapping[str, Any]], held)
 
