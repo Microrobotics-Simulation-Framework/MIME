@@ -176,8 +176,7 @@ class Arm(ChainSegment):
     that takes its own description and publishes the same frame poses, so that mounts work unchanged."""
 
     name = "arm"
-    unmetered = ("a chain segment's step identity (its joints' port kind, the loads its frames take and the inertia "
-                 "its rotors deliver) comes with the energy ledger on an apparatus, in a later release")
+    port = "joint"
     version = "0.1.0"
     setting_roles = {
         "rung": DESIGN, "description": PHYSICAL, "initial_positions": DESIGN,

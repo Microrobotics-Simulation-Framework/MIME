@@ -93,6 +93,10 @@ class MimeNode(SimulationNode):
     #: The names of the node's own scheme's numerical terms in its step identity, in the order its records keep them;
     #: ``None`` for a node that writes no step identity, which the ledger cannot meter.
     LEDGER_TERMS: ClassVar[tuple[str, ...] | None] = None
+    #: The commands a metered node pairs as loads read at the step's start (a dynamic arm's joint torques): the
+    #: ledger moves a command into one of these into the input of its own beside it, and books its work under its
+    #: writer, which is outside.
+    PAIRED_COMMANDS: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, name: str, timestep: float, **params: object) -> None:
         ledger = params.pop("ledger", ())
@@ -114,6 +118,12 @@ class MimeNode(SimulationNode):
         """The energy the node stores at ``state`` (J), from its constants ``p``: what its step identity's change in
         storage is taken between, the states its step takes and returns."""
         raise NotImplementedError(f"{type(self).__name__} states no storage")
+
+    def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
+        """The laws a metered node holds in its own step beside what is delivered to it (a dynamic arm's weight,
+        damping, stops and friction), each ``(role, law, class)``: the ledger books each one's work under its own name
+        (``law``) and class. None by default: a body's contact is held in its step by the law that confines it."""
+        return ()
 
     def identity_terms(self, p: Mapping[str, Any], held: Sequence[Any], state: Mapping[str, Array],
                        boundary_inputs: Mapping[str, Array], ended: Mapping[str, Array], parts: Any,

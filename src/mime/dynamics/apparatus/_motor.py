@@ -76,8 +76,7 @@ class Motor(ChainSegment):
     the axis. A part on ``<segment>.base`` rides on that frame."""
 
     name = "motor"
-    unmetered = ("a chain segment's step identity (its joints' port kind, the loads its frames take and the inertia "
-                 "its rotors deliver) comes with the energy ledger on an apparatus, in a later release")
+    port = "spinner"
     version = "0.2.0"
     setting_roles = {
         "rung": DESIGN, "axis": PHYSICAL, "prescribed": DESIGN, "initial_angle": DESIGN,

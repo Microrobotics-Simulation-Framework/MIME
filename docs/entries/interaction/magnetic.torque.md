@@ -21,7 +21,11 @@ takes none.
 
 It is a member of the magnetic family: its sign, frame, units, closed form and gradients are checked by the family's
 suite, with `Magnetic.Force` its closed-loop case (no net work round a closed loop of the pose in a point dipole's
-field), and its reaction against the force and torque of the body's dipole on the source's. It is a complementary
+field, nor, with their reactions, round closed loops of the source's pose and of the two together), and its reaction
+against the force and torque of the body's dipole on the source's. For the energy ledger the pair is a potential law,
+the derivative of `-m . B` at the magnet's centroid, which the family states once for the pair and its energy case
+checks the pair's wrench against; where the field's source is outside (a uniform field, a magnet on a kinematic arm)
+their work is supplied by it. It is a complementary
 delivery to `Magnetic.Force`, not an alternative to it.
 
 **When not to use it.**

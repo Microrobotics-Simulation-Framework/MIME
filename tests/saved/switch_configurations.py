@@ -4,9 +4,10 @@ every round-trip case whose build is not refused, which together build every reg
 controller inside the compiled step, with its orientation feedback on and a latency, whose step is a node's only
 there (one inverse-kinematics iteration: each runs the same functions, so more trace more and scan nothing more); a
 dynamic arm with Coulomb friction (``chain_cases.friction_arm``), whose friction and sweeps' start A0's AR4 never
-reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's support no case reaches; and
-those
-steps traced and scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
+reaches; a rod held by its hull (``hull_cases.rod_contact``), whose cylinder's support no case reaches; A0's
+apparatus with its masses mounted and that friction arm, each with the energy ledger, whose metered steps (the arm's
+and the motor's step identities, and the impulses split by the friction's share) no other configuration takes; and
+those steps traced and scanned, once per process, for the tests that read the scan. ``step_jaxprs.py`` also runs these
 configurations on a merge base, whose package has no switch scan, so the scan is imported only where it is used."""
 
 from collections.abc import Callable
@@ -16,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import jax
 from cases import CASES
-from chain_cases import friction_arm, tracked_rpm, tracking
+from chain_cases import friction_arm, massive_rpm, tracked_rpm, tracking
 from hull_cases import rod_contact
 from script_a import script_a
 
@@ -47,7 +48,18 @@ def configurations() -> dict[str, Callable[[], Experiment]]:
                                                        controller=tracking(orientation_feedback=True, iterations=1))
     found["chain/friction_arm"] = friction_arm
     found["contact/rod_hull"] = rod_contact
+    found["ledger/massive_rpm"] = partial(metered, partial(massive_rpm, "massive_rpm_metered"))
+    found["ledger/friction_arm"] = partial(metered, partial(friction_arm, "friction_arm_metered"))
     return found
+
+
+def metered(make: Callable[[], Experiment]) -> Experiment:
+    """``make``'s experiment with the energy ledger attached."""
+    from mime.observations import EnergyLedger
+
+    experiment = make()
+    experiment.observe(EnergyLedger())
+    return experiment
 
 
 @cache

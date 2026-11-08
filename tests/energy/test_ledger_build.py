@@ -49,7 +49,7 @@ from mime.units import s
 
 DTYPES = pytest.mark.parametrize("name", ["float32", "float64"])
 #: Script A's laws on its body, and the run the books are judged over: 0.25 s, 500 steps.
-LAWS = {"gravity:umr": "potential", "magnetic.torque:umr": "unmetered", "drag:umr": "dissipative",
+LAWS = {"gravity:umr": "potential", "magnetic.torque:umr": "potential", "drag:umr": "dissipative",
         "contact:umr": "dissipative"}
 RUN = s(0.25)
 

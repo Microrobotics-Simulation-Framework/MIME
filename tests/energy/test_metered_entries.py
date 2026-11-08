@@ -29,8 +29,8 @@ from mime.interactions import Gravity
 from mime.nodes.body import RigidInertialNode
 from mime.nodes.body._rigid_inertial import _PAIRED_AS
 from mime.observations import EnergyLedger
-from mime.registry import Dynamics, EntryKind, Interaction, lookup, register_interaction
-from mime.testing import installed_entries, step_identity
+from mime.registry import ChainSegment, Dynamics, EntryKind, Interaction, lookup, register_interaction
+from mime.testing import PORT_DRAWS, installed_entries, step_identity
 from mime.testing._energy import dynamics_rig
 from mime.vocabulary import RIGID_BODY, register_namespace
 
@@ -91,8 +91,10 @@ METERED = sorted(key for key in installed_entries() if key[0] == "dynamics" and 
 
 @pytest.mark.parametrize("key", METERED, ids=" ".join)
 def test_every_metered_dynamics_passes_its_step_identity(key):
-    assert key[1] == "rigid_inertial", "a new port kind brings its draws with it (mime.testing.PORT_DRAWS)"
-    result = step_identity(classes(key)())
+    cls = classes(key)
+    assert cls.port in PORT_DRAWS, "a new port kind brings its draws with it (mime.testing.PORT_DRAWS)"
+    # A chain segment's case steps its port kind's own rig, so it needs no settings of the entry's.
+    result = step_identity(cls.__new__(cls) if issubclass(cls, ChainSegment) else cls())
     print(f"\n{result}")
     assert result.passed, result
 
@@ -149,10 +151,11 @@ def test_work_booked_under_a_law_that_was_fed_to_the_unattributed_input_fails_it
 
 
 def test_a_dynamics_with_no_port_kind_passes_by_its_reason_and_fails_without_one(monkeypatch):
-    arm = classes(("dynamics", "arm", "0.1.0"))
-    assert step_identity(arm.__new__(arm)).passed
-    monkeypatch.setattr(arm, "unmetered", "")
-    assert step_identity(arm.__new__(arm)).failed
+    toy = classes(("dynamics", "toy.body", "0.1.0"))
+    assert not toy.port and toy.unmetered
+    assert step_identity(toy.__new__(toy)).passed
+    monkeypatch.setattr(toy, "unmetered", "")
+    assert step_identity(toy.__new__(toy)).failed
 
 
 def test_the_body_pairs_each_input_as_the_rigid_body_s_port_kind_says_and_refuses_another_pairing():

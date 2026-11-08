@@ -159,7 +159,10 @@ def _writer_refusals(graph: GraphManager, plans: PlanSet) -> list[Refusal]:
     graph declares no external input that a write does not derive: MADDENING fills an input nobody feeds with
     zeros, so an underived one would run on zeros."""
     refusals: list[Refusal] = []
-    edges = Counter((edge.target_node, edge.target_field) for edge in graph.edges)
+    # With the energy ledger attached, a command a metered receiver pairs arrives in an input of its writer's own
+    # beside the command's (``mime.core.ledger.law_input``): it is an edge into the command all the same.
+    edges = Counter((edge.target_node, beside[0] if (beside := ledger.own_input(edge.target_field)) else
+                     edge.target_field) for edge in graph.edges)
     declared = set(external_inputs(graph))
     for plan in plans.entries:
         command = plan.command
