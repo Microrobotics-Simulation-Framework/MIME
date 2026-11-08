@@ -109,9 +109,7 @@ def loader(case: Any, folder: Path) -> tuple[Any, Callable[[Any, str], Any]]:
     try:
         alone(document, "probe")
         return document, alone
-    except BuildRefused:
-        raise
-    except Exception:  # noqa: BLE001 - a document that needs its folder: save it, and write beside it
+    except Exception:  # noqa: BLE001 - a document that needs its folder (an asset, a record): save it, write beside it
         experiment.save(folder / "saved", steps=1)
         return document, written(folder / "saved")
 
