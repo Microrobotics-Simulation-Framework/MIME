@@ -24,6 +24,7 @@ from mime.registry import OutputKind, Reduction
 from mime.results._containment import ContainmentRead
 from mime.results._energy import EnergyAccount
 from mime.results._layout import FlagLayout, Layout, ObservationLayout, OutputLayout
+from mime.results._stage import StageRecord
 from mime.results._watch import WatchRead, watches_text
 from mime.results._series import (
     FlagRead,
@@ -45,6 +46,10 @@ from mime.things._handles import did_you_mean
 from mime.units import TIME, Quantity, parse_unit
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure as MatplotlibFigure
+    from plotly.graph_objects import Figure as PlotlyFigure
+
+    from mime.results._figure import FigureRecipe
     from mime.experiment import Experiment
 from mime.validity import Stamp
 
@@ -304,6 +309,15 @@ class RunResult:
         self.steps = steps
         #: Set when the run is a member of a study (:class:`MemberOf`).
         self.member_of: MemberOf | None = None
+        #: The bound fields of the stage at the samples a study asked for (``sweep(stage_every=...)``), kept for the
+        #: ghosted comparison of its members (:class:`~mime.results._stage.StageRecord`); ``None`` for any other run.
+        self.stage: StageRecord | None = None
+        #: The run folder this result was read from (``None`` for one in memory): where a figure's recipe is saved.
+        self.folder: Path | None = None
+        #: The rates (rad/s) at which the build declares a drive turning a field, with what each is from: what a
+        #: comparison's time-base rule reads. ``None`` for a result read from a folder, which does not keep them (so a
+        #: comparison asks for ``drives=``); empty for a run of a build that declares none.
+        self.drives: tuple[tuple[float, str], ...] | None = ()
         #: The values the run declared for itself (``run(..., override=...)``), each as ``run.json`` records it (its
         #: path, its value with its unit, its SI value and the leaves it wrote): every output of such a run is
         #: stamped "overridden" with them. Empty for a run of the experiment as built.
@@ -614,6 +628,31 @@ class RunResult:
                            "and not after end; values are in SI, in each output's unit"}
 
     @public
+    def figure(self, *outputs: OutputRef | str, kind: str | None = None, against: str | None = None,
+               members: Sequence[int] | None = None, name: str | None = None, **options: Any) -> FigureRecipe:
+        """A figure of the run's recorded series against time (flags as shaded intervals, a validity limit on a plotted field as a band) as a recipe (:class:`~mime.results.FigureRecipe`): one backend-neutral description that
+        ``plot()`` (matplotlib) and ``plot_interactive()`` (plotly) draw, ``display()`` and ``web()`` show as a page, and
+        ``write_recipe()`` saves beside the result's folder, to be redrawn from its data.  ``options`` are
+        ``title``, ``x_label``, ``y_label``, ``legend``, ``size`` (inches) and ``style``. Needs the ``plot`` extra."""
+        from mime.results._figure import figure_of
+
+        return figure_of(self, outputs, kind=kind, against=against, members=members, name=name, options=options)
+
+    @public
+    def plot(self, *outputs: OutputRef | str, kind: str | None = None, against: str | None = None,
+             members: Sequence[int] | None = None, **options: Any) -> MatplotlibFigure:
+        """The run's recorded series against time as a matplotlib figure (static, for a paper; the ``plot`` extra): the :meth:`figure` of the same
+        arguments, drawn. The figure is matplotlib's own, to edit with matplotlib."""
+        return self.figure(*outputs, kind=kind, against=against, members=members, **options).plot()
+
+    @public
+    def plot_interactive(self, *outputs: OutputRef | str, kind: str | None = None, against: str | None = None,
+                         members: Sequence[int] | None = None, **options: Any) -> PlotlyFigure:
+        """The run's recorded series against time as a plotly figure (interactive, for a card or a quick look; the ``plot`` extra): the
+        :meth:`figure` of the same arguments, drawn. The figure is plotly's own, to edit with plotly."""
+        return self.figure(*outputs, kind=kind, against=against, members=members, **options).plot_interactive()
+
+    @public
     def to_npz(self, path: str | PathLike[str]) -> Path:
         """Every array :meth:`arrays` lists and the manifest (under ``manifest``, a JSON string), in one NPZ that
         :meth:`read` reads back and NumPy reads alone."""
@@ -706,6 +745,7 @@ class RunResult:
             npz = _Npz(npz_path)
             result = cls.from_manifest(manifest, npz)
             result.report, result.report_unreadable = read_report(source / RUN_REPORT)
+            result.folder = source
             return result
         else:
             npz = _Npz(source)
@@ -742,7 +782,7 @@ class RunResult:
         held = manifest.get("stopped")
         stopped = Stopped(str(cast(Mapping[str, Any], held)["reason"]), int(cast(Mapping[str, Any], held)["steps_asked"])) \
             if isinstance(held, Mapping) else None
-        return cls(int(manifest["steps"]), final, history, layout=layout, start_step=int(manifest["start_step"]),
+        result = cls(int(manifest["steps"]), final, history, layout=layout, start_step=int(manifest["start_step"]),
                    stopped=stopped,
                    tracks=tracks, every=cast(int | None, manifest.get("every")), loader=loader, npz=npz,
                    clock=cast(str | None, manifest.get("clock")),
@@ -750,6 +790,8 @@ class RunResult:
                    containment=[ContainmentRead.from_manifest(w)
                                 for w in cast(list[dict[str, Any]], manifest.get("containment", []))],
                    overrides=cast(list[Mapping[str, Any]], manifest.get("overrides", [])))
+        result.drives = None     # a result read back does not keep the drives its build declared
+        return result
 
 
 def _nothing_observed(value: object) -> NDArray[Any]:

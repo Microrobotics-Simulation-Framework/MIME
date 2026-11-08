@@ -12,6 +12,10 @@
     groups/<k>/report.json      the build report's summary of the group's first member
     groups/<k>/experiment/      the group's own build as a saved folder, for a group whose compiled program differs
                                 from group 0's
+    figures/<name>.json         a figure's recipe, with plotly's own JSON of it beside (<name>.plotly.json); redrawn from
+                                the data files it names by sha256, never by running the study again
+    compare.usda                the ghosted comparison of the members' stage samples (``m<point>/stage/``), over the
+                                reference member's stage; everything it references lies inside this folder
 
 The folder is readable without MIME: JSON, YAML and NPZ. Its manifest is closed (a key it does not know is refused), its
 layout is checked (a file it does not know is refused), and a newer format is refused as ``result.format`` refuses one.
@@ -43,6 +47,10 @@ STUDY_VERSION = 1
 STUDY_FILE = "study.json"
 SPEC_FILE = "study.mime.yaml"
 BASE_DIR = "experiment"
+#: Presentation a study folder may hold beside its data: figures' recipes (and plotly's JSON of each), and the ghosted
+#: comparison layer. Neither is a result, and both are redrawn or rewritten from the data.
+FIGURES_DIR = "figures"
+COMPARE_FILE = "compare.usda"
 GROUPS_DIR = "groups"
 GROUP_OUTPUTS = "outputs.npz"
 GROUP_REPORT = "report.json"
@@ -61,7 +69,7 @@ TOP = frozenset({"format", "version", "id", "experiment", "axes", "points", "run
 EXPERIMENT_KEYS = frozenset({"name", "input_hash", "profile"})
 AXIS_KEYS = frozenset({"path", "kind", "unit", "reason"})
 POINT_KEYS = frozenset({"index", "values"})
-RUN_KEYS = frozenset({"duration", "steps", "record", "every", "batch"})
+RUN_KEYS = frozenset({"duration", "steps", "record", "every", "batch", "stage_every"})
 DROPPED_KEYS = frozenset({"index", "coordinates", "refusals"})
 SEED_KEYS = frozenset({"policy", "seed", "note"})
 GROUP_KEYS = frozenset({"index", "key", "reasons", "members", "batches", "batched", "compiles", "seconds",
@@ -246,10 +254,14 @@ class MemberArchive:
 def _closed(where: str, held: Mapping[str, Any], keys: frozenset[str]) -> None:
     extra, missing = sorted(set(held) - keys), sorted(keys - set(held))
     if extra or missing:
-        raise refused("study.manifest", RefusalClass.USER,
-                  f"{STUDY_FILE}'s {where} " + (f"holds {', '.join(map(repr, extra))}, which this format does not"
-                                                     if extra else "") + (" and " if extra and missing else "")
-                      + (f"lacks {', '.join(map(repr, missing))}" if missing else ""),
+        what = (f"{STUDY_FILE}'s {where} " + (f"holds {', '.join(map(repr, extra))}, which this format does not"
+                                              if extra else "") + (" and " if extra and missing else "")
+                + (f"lacks {', '.join(map(repr, missing))}" if missing else ""))
+        if missing and not extra:
+            raise refused("study.manifest", RefusalClass.USER, what,
+                          f"{', '.join(map(repr, missing))} is kept by a folder this MIME writes, and a folder written before it "
+                          f"was is not read: run the study again, `Study.run_to(folder)`, into a new folder")
+        raise refused("study.manifest", RefusalClass.USER, what,
                       f"a study folder's manifest is closed: write it with `Study.run_to(folder)`, and read it with the MIME "
                       f"that wrote it if it came from another")
 
@@ -295,7 +307,7 @@ def check_document(document: object) -> dict[str, Any]:
 
 
 #: What a study folder holds at its top, and in each group's folder (``experiment/`` only past the first group).
-TOP_NAMES = (STUDY_FILE, SPEC_FILE, BASE_DIR, GROUPS_DIR)
+TOP_NAMES = (STUDY_FILE, SPEC_FILE, BASE_DIR, GROUPS_DIR, FIGURES_DIR, COMPARE_FILE)
 GROUP_NAMES = (GROUP_OUTPUTS, GROUP_REPORT, BASE_DIR)
 
 
@@ -321,6 +333,10 @@ def layout_problems(root: Path, groups: int | None = None) -> list[str]:
     for child in sorted(root.iterdir()):
         if child.name not in TOP_NAMES and child.name not in _own(TOP_NAMES):
             found.append(child.name + ("/" if child.is_dir() else ""))
+    figures = root / FIGURES_DIR
+    if figures.is_dir():
+        found += [f"{FIGURES_DIR}/{child.name}" for child in sorted(figures.iterdir())
+                  if not (child.is_file() and child.name.endswith(".json"))]
     folder = root / GROUPS_DIR
     if folder.is_dir():
         for child in sorted(folder.iterdir()):
@@ -340,7 +356,8 @@ def check_layout(root: Path, groups: int | None = None) -> None:
     if stray:
         raise refused("study.stray-file", RefusalClass.USER,
                   f"{root} holds {', '.join(stray)}, which a study folder does not: it holds {STUDY_FILE}, {SPEC_FILE}, "
-                      f"{BASE_DIR}/ and {GROUPS_DIR}/<k>/ ({GROUP_OUTPUTS}, {GROUP_REPORT}, {BASE_DIR}/)",
+                      f"{BASE_DIR}/ and {GROUPS_DIR}/<k>/ ({GROUP_OUTPUTS}, {GROUP_REPORT}, {BASE_DIR}/), and, beside them, "
+                      f"{FIGURES_DIR}/ (recipes, .json) and {COMPARE_FILE}",
                       "move it out of the study folder, beside it and not in it, and read the folder again with "
                       "`StudyResult.read(folder)`")
 
@@ -353,7 +370,7 @@ def iter_groups(root: Path) -> Iterator[tuple[int, Path]]:
                 yield int(child.name), child
 
 
-__all__ = ["BASE_DIR", "CONTENT_KEY", "DONE", "GROUPS_DIR", "GROUP_OUTPUTS", "GROUP_REPORT", "PENDING", "READING",
+__all__ = ["BASE_DIR", "COMPARE_FILE", "CONTENT_KEY", "DONE", "FIGURES_DIR", "GROUPS_DIR", "GROUP_OUTPUTS", "GROUP_REPORT", "PENDING", "READING",
            "SPEC_FILE", "STUDY_FILE", "STUDY_FORMAT", "STUDY_VERSION", "TEMPORARY", "GroupArchive", "MemberArchive",
            "check_document", "check_layout", "decode_value", "encode_value", "file_sha256", "iter_groups",
            "layout_problems", "refused", "stage_entries", "temporaries", "temporary_of", "write_json", "write_text"]

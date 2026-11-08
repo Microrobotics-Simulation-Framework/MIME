@@ -14,6 +14,7 @@
     duration: 1 s
     record: [swim_speed:umr.speed]
     every: 1 ms
+    stage_every: 10 ms              # optional: keep each member's bound poses for the ghosted comparison
     batch: 16
     drop_refused: false
     seed: {policy: experiment}
@@ -38,7 +39,8 @@ if TYPE_CHECKING:
     from mime.study._study import Points, Study
 
 SPEC_FORMAT = "mime-study/1"
-SPEC_KEYS = frozenset({"format", "base", "combine", "axes", "duration", "record", "every", "batch", "drop_refused", "seed"})
+SPEC_KEYS = frozenset({"format", "base", "combine", "axes", "duration", "record", "every", "stage_every", "batch",
+                       "drop_refused", "seed"})
 BASE_KEYS = frozenset({"folder", "input_hash"})
 AXIS_KEYS = frozenset({"values", "reason"})
 SEED_POLICIES = ("experiment",)
@@ -96,7 +98,8 @@ def value_of(item: object, path: str) -> object:
 
 
 def spec_text(points: Points, *, duration: Quantity, record: Sequence[str], every: Quantity | None, batch: int | None,
-              drop_refused: bool, reasons: Mapping[str, str], base: str, input_hash: str | None) -> str:
+              drop_refused: bool, reasons: Mapping[str, str], base: str, input_hash: str | None,
+              stage_every: Quantity | None = None) -> str:
     """The spec file of a study, in its normal form."""
     paths = [str(axis) for axis in points.axes]
     lists = points.lists if points.lists else tuple(tuple(row[i] for row in points.rows) for i in range(len(paths)))
@@ -112,6 +115,8 @@ def spec_text(points: Points, *, duration: Quantity, record: Sequence[str], ever
         "duration": value_text(duration, "duration"), "record": list(record)}
     if every is not None:
         document["every"] = value_text(every, "every")
+    if stage_every is not None:
+        document["stage_every"] = value_text(stage_every, "stage_every")
     if batch is not None:
         document["batch"] = batch
     document.update(drop_refused=drop_refused, seed={"policy": "experiment"})
@@ -191,12 +196,13 @@ def study_from_spec(path: Path, base: Path | None = None) -> tuple[Study, dict[s
     axes = cast(dict[str, dict[str, Any]], spec["axes"])
     lists = {name: [value_of(v, name) for v in cast(list[object], held["values"])] for name, held in axes.items()}
     points = (along if spec.get("combine") == "along" else grid)(cast(Mapping[object, Sequence[object]], lists))
-    duration, every = value_of(spec["duration"], "duration"), spec.get("every")
+    duration, every, staged = value_of(spec["duration"], "duration"), spec.get("every"), spec.get("stage_every")
     if not isinstance(duration, Quantity):
         raise _refuse("study.spec", RefusalClass.USER, f"`duration` is {spec['duration']!r}, not a time", "write `duration: 1 s`")
     study = Study(experiment).sweep(
         points, duration=duration, record=[str(r) for r in spec.get("record", [])],
         every=cast(Quantity, value_of(every, "every")) if every is not None else None,
+        stage_every=cast(Quantity, value_of(staged, "stage_every")) if staged is not None else None,
         batch=spec.get("batch"), drop_refused=spec.get("drop_refused", False),
         reasons={name: str(held["reason"]) for name, held in axes.items() if held.get("reason")})
     return study, spec

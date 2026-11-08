@@ -4,6 +4,11 @@
 
 ## What goes here
 
+- **The ghosted comparison** (`_compare.py`): `compare.usda` in a study folder, from the stage samples its members kept
+  (`sweep(..., stage_every=...)`): one sublayer over the reference's stage, each member under its own prim
+  `/Compare/<member>` with a `visibility` attribute and `mime_compare` metadata (the member, its coordinates, whether it is
+  the reference), its things references to the reference's with time samples from its recording, on a time base of
+  samples per simulated second. The pose-writing loop is the recording layer's (`write_entries`).
 - **The recording layer** (`_recording.py`): a run's bound poses and field vectors as time samples over its run
   folder's own stage, `recording.usdc`, its sublayer the folder's `experiment/scene/scene.usda` by a path inside the
   folder; written by `run_to(..., stage_every=)` and by a live session's `record`. Its time code is the sample's
