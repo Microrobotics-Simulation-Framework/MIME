@@ -154,3 +154,21 @@ def test_a_difference_or_a_bake_no_entry_owns_is_refused_as_mimes_defect(monkeyp
     monkeypatch.setattr(ranges, "_owner_class", lambda plans, node: None)
     assert [r.code for r in range_check(planted("unreported")).refusals] == ["study.range-dependent"]
     assert [r.code for r in range_check(planted("bake")).refusals] == ["study.range-bake"]
+
+
+def test_gate_three_with_the_range_in_the_base_each_members_tree_is_its_own_full_builds():
+    """S2b's gate 3 keeps its form under a range: each member's parameter tree equals, leaf by leaf, the tree of its own
+    experiment built in full, the range part of that experiment (the point's declarations hold it)."""
+    import numpy as np
+
+    from mime.build import RangeDeclaration
+    from mime.experiment import Experiment
+
+    plan = sweep("clean").plan()
+    for point in plan.points:
+        assert any(isinstance(d, RangeDeclaration) for d in point.declared.declarations)
+        built = Experiment.declared_from(point.declared.settings, point.declared.declarations).build()
+        own = built.graph.params["nodes"]
+        for node, leaves in point.tree.items():
+            for leaf, value in leaves.items():
+                assert np.array_equal(value, np.asarray(own[node][leaf])), (point.index, node, leaf)

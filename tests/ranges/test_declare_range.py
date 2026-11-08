@@ -79,7 +79,7 @@ def test_a_range_that_cannot_hold_is_refused_with_its_code(path, low, high, code
 
 
 def test_a_numerical_setting_has_no_range():
-    from cases import pulled
+    from ranged_rigs import pulled
 
     experiment = pulled(ranged=None)
     experiment.declare_range("drag:ball.spacing", mm(0.5), mm(0.7), reason=REASON)
