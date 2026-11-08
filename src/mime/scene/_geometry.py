@@ -193,3 +193,73 @@ class Tube(Geometry):
                                "priority above the wall's, and priorities are the helper's to choose, so a region "
                                "of the outer cylinder alone would be handed over as a wall it is not")
         raise KeyError(region)
+
+
+#: The half-width of the cone about a plane's normal in which :meth:`Plane.reach` reads a direction as the normal, in
+#: machine epsilons of the direction's length: a few rounding errors of the direction's own unit-normal arithmetic.
+REACH_CONE = 64.0
+
+
+@register_geometry
+@dataclass(frozen=True, kw_only=True)
+class Plane(Geometry):
+    """An unbounded plane wall: the plane ``x . n = offset``, ``normal`` its direction (towards the medium) and
+    ``offset`` its signed distance from the world's origin along that direction. Its regions are the ``half_space`` its
+    normal points into, which a medium fills (``Medium(..., fills=floor.half_space)``), evaluated as the half-space
+    (``mime.core.HalfSpace``), and the ``wall``, the other side. It has no surface yet (a contact against it comes
+    later), no drawing and no region primitive: its ``offset`` is a length that reaches a law as the node leaf ``wall_offset`` (a
+    structure's settings are not yet study or override axes), and its normal a direction, held as built. Its derivative is the half-space's: its distance is linear in the point and the offset, so
+    it has no switch."""
+
+    name = "plane"
+    version = "0.1.0"
+    setting_roles = {
+        "normal": PHYSICAL,
+        "offset": convention(PHYSICAL, "a plane passes through the world's origin unless placed"),
+    }
+    differentiability = GradientStatus.EXACT
+    gradient = GradientRecord()
+    references = ()
+    builds = {"": ()}
+    regions = ("half_space", "wall")
+    region_shapes = {"half_space": "half_space"}
+    directions = ("normal",)
+    placement = {"normal": "z_axis"}
+    normal: Annotated[DirectionLike, Direction]
+    offset: Annotated[Quantity, Length] = m(0.0)
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        offset = settings["offset"]
+        if not (isinstance(offset, float) and math.isfinite(offset)):
+            return [f"offset is {offset!r} m, not a length (one number)"]
+        return []
+
+    @override
+    def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
+        if region != "half_space":
+            raise KeyError(region)
+        return {"normal": _vector(settings, "normal"), "offset": settings["offset"]}
+
+    @override
+    def direction(self, name: str, settings: Mapping[str, Magnitude]) -> tuple[float, float, float]:
+        if name != "normal":
+            raise KeyError(name)
+        return _vector(settings, "normal")
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """The wall's body is the half-space behind the plane, unbounded: along the normal (towards the medium) it
+        reaches the plane, ``|d| offset``, and along any other direction without bound (infinity). That reach is
+        discontinuous at the normal by nature (a half-space's support function is), so "along the normal" is a cone
+        whose half-width is ``REACH_CONE`` machine epsilons of ``|d|`` across: a direction that is the normal to
+        rounding (a unit normal tilted off the axes, say) is on it, and no switch in the answer is judged finer than
+        the rounding of the direction itself."""
+        d = jnp.asarray(direction)
+        normal = jnp.asarray(parameters["normal"], dtype=d.dtype)
+        normal = normal / switch.nonzero_norm(normal)
+        along = jnp.dot(d, normal)
+        across = d - along * normal
+        cone = REACH_CONE * jnp.finfo(d.dtype).eps
+        bounded = (jnp.sum(across * across) <= cone * cone * jnp.sum(d * d)) & (along > 0)
+        return jnp.where(bounded, along * parameters["offset"], jnp.inf)
