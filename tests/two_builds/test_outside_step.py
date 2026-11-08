@@ -39,6 +39,7 @@ def test_a_callback_controllers_setting_is_reported_outside_the_step(base, move:
     assert not found.moved, "no leaf moved"
     assert found.inputs_moved, "the controller's held writes moved"
     assert found.verdict == "outside-step"
+    assert found.run is not None and found.run.ratio >= 4.0, "four times k resolutions above the run form's line"
 
 
 def test_control_the_same_controller_built_twice_is_quiet(base):

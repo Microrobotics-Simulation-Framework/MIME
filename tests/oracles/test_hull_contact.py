@@ -906,7 +906,7 @@ def test_control_its_search_left_at_five_steps_and_held_where_they_end_turns_the
     """The first fix's search: two starts a group, five stopped steps, every search counted converged, so the group
     holds where they end."""
     monkeypatch.setattr(contact_module, "CONTACT_NEWTON", 5)
-    monkeypatch.setattr(contact_module, "search_tolerance", lambda dtype, size: math.inf)
+    monkeypatch.setattr(rigid, "search_tolerance", lambda dtype, size: math.inf)  # the body holds it as a leaf
     assert frame_problems(started(monkeypatch, 2), UNCONVERGED_DRAW, UNCONVERGED_WORLD)
 
 

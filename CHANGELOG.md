@@ -15,9 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compares two builds' steps, traced as MIME's chunked run executes them with the state, the inputs and the whole
   parameter tree as arguments; its run form writes one build's leaves into the other's compiled chunk and judges each
   field against `RUN_FACTOR` times the program's own resolution there (a start one ulp off, as a saved folder's
-  resolution is measured), and sees a value that reaches the run outside the step. On the registry walk's cases
-  nothing fires; every planted bake of the bake-check spike's set is caught by the trace form at every move from 1e-1
-  to one ulp (`tests/two_builds/`).
+  resolution is measured), and sees a value that reaches the run outside the step. `RUN_FACTOR` is declared, 16,
+  provisional: measured in a window whose margins are 1.1 and 1.2, so the run form's gating plants stand four times
+  its line up. On the registry walk's cases one pair fires, and it is `held`: the ellipsoid's semi-axes, which the body
+  consumes when it is built and which an override and a sweep refuse. Every planted bake of the bake-check spike's set
+  is caught by the trace form at every move from 1e-1 to one ulp (`tests/two_builds/`). New refusals:
+  `two-builds.float32`, `two-builds.leaf-shapes`, `two-builds.not-movable`, and `run.run-constant` (MIME's defect).
 - **Run-constants** (`MimeNode.run_constants`): a quantity a node makes from its leaves and holds over a run, made once
   per chunk inside the compiled program, before the step loop, by MIME's chunked runs (the flagged run, a study's
   batched run, and `mime.build._maddening.chunk_function`, a pure function of the state and the parameters to

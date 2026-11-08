@@ -27,6 +27,8 @@ import jax
 import numpy as np
 import pytest
 from cases import CASES
+from mrs_cases import mrs_solids
+from robot_asset import bound_robot_with_parts
 
 from mime.build import BuildRefused, plan_experiment
 from mime.build._construct import assemble
@@ -36,14 +38,20 @@ from mime.control import law_and_models
 from mime.experiment import Experiment
 from mime.saved import dump_document
 from mime.saved._pins import keeping_pins
+from mime.study import Study, grid
 from mime.testing._two_builds import graph_program, programs_differ
+from mime.units import mm, mPa_s, ms, mT
 
 RELATIVE = 1e-6
-#: The pairs that fire, each held: the ellipsoid's semi-axes, a vector setting of the hull's kind, which the rigid body
-#: holds as built (its leaf ``hull_shape_semi_axes`` declared so, and unread by the step): a declared geometry's
-#: vectors become leaves its step reads with declared ranges (lane S's next phase).
+#: The pairs that fire, each held: a vector setting of a part's kind (an ellipsoid's semi-axes, a box's size), which
+#: the node made from the part holds as built (the rigid body's hull, ``hull_shape_semi_axes``; the MRS drag's samples,
+#: ``shape_size`` and ``shape_semi_axes``; each declared so and unread by the step), and which no run varies: an
+#: override and a sweep refuse it (below), so a new value is a rebuild. A declared geometry's vectors become leaves its
+#: step reads with declared ranges (lane S's next phase).
 HELD: dict[str, set[str]] = {
     "bound_robot_with_parts": {"things/UMR/parts/Shell/solid/settings/semi_axes/value"},
+    "mrs_solids": {"things/brick/parts/shell/solid/settings/size/value",
+                   "things/egg/parts/shell/solid/settings/semi_axes/value"},
 }
 #: The keys whose numbers are not moved: a direction, a version, the seed.
 SKIPPED = {"orientation", "up", "schema", "mime", "seed"}
@@ -163,6 +171,45 @@ def test_no_pair_of_the_registry_walks_cases_fires_the_trace_form(case: Any, tmp
     assert fired == HELD.get(case.name, set())
     assert all(row["unread"] for row in rows if row.get("how")), "every pair that fires is held as built"
     assert any(row.get("moved") for row in rows) or not rows, "the walk moved a leaf, so a quiet arm is evidence"
+
+
+#: Each held pair as a study or an override names it: its case, the value's path, its base and a moved value, the leaf
+#: the step cannot read, and a control's value the step reads (an axis, its base and a moved value).
+REBUILDS = {
+    "bound_robot_with_parts": (bound_robot_with_parts, "UMR.parts.Shell.semi_axes", mm((1.56, 1.56, 1.56)),
+                               mm((1.5601, 1.56, 1.56)), ("UMR", "hull_shape_semi_axes"), "coils.commands.amplitude",
+                               mT(1.2), mT(1.3)),
+    "mrs_solids/brick": (mrs_solids, "brick.parts.shell.size", mm((0.6, 0.9, 1.3)), mm((0.6001, 0.9, 1.3)),
+                         ("drag:brick", "shape_size"), "water.viscosity", mPa_s(1.0), mPa_s(1.1)),
+    "mrs_solids/egg": (mrs_solids, "egg.parts.shell.semi_axes", mm((0.5, 0.7, 1.1)), mm((0.5001, 0.7, 1.1)),
+                       ("drag:egg", "shape_semi_axes"), "water.viscosity", mPa_s(1.0), mPa_s(1.1)),
+}
+
+
+@pytest.mark.parametrize("name", list(REBUILDS))
+def test_a_held_setting_takes_a_rebuild_an_override_and_a_sweep_are_refused(name: str):
+    """What makes the walk's held fires acceptable: no run varies a leaf the step cannot read. An override of the
+    setting is refused, and a sweep over it refuses every point and its run, so a new value takes a new experiment, a
+    rebuild; neither runs at the built value. The control: a value the step reads is overridden and planned as one
+    group of two members, nothing refused."""
+    make, path, base, moved, leaf, axis, own, other = REBUILDS[name]
+    exp = make()
+    built = exp.build()
+    assert leaf in unreadable_leaves(built.graph)
+    with pytest.raises(BuildRefused) as raised:
+        built.run(ms(2.0), override={path: moved})
+    assert raised.value.codes() == ["value.unknown"]
+    swept = Study(exp).sweep(grid({path: [base, moved]}), duration=ms(2.0))
+    plan = swept.plan()
+    assert not plan.groups and len(plan.refused) == 2
+    assert all([r.code for r in point.refusals] == ["value.unknown"] for point in plan.refused), plan.text()
+    with pytest.raises(BuildRefused) as run:
+        swept.run()
+    assert run.value.codes() == ["study.refused-points"]
+
+    built.run(ms(2.0), override={axis: other})
+    control = Study(exp).sweep(grid({axis: [own, other]}), duration=ms(2.0)).plan()
+    assert len(control.groups) == 1 and len(control.points) == 2 and not control.refused, control.text()
 
 
 CONTROLS = ("mrs_free_space", "hull_contact_looped")

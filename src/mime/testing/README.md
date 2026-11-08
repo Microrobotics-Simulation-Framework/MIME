@@ -59,9 +59,10 @@ Also:
   `RUN_FACTOR` times the program's own resolution there (the same run from a start one ulp off, as a saved folder's
   resolution is measured): it sees a value that reaches the run outside the step, through the state or the external
   inputs. `TwoBuilds.verdict` is `quiet`, `bake`, `shape` (a value-keyed shape, legitimate only where the move crosses
-  its threshold) or `outside-step`. Its detection is measured on planted bakes (a Python float, a NumPy or JAX array,
-  a term of a millionth of the load, an S7-style coefficient, a value-keyed count) and on the registry walk's cases,
-  nothing planted (`tests/two_builds/`).
+  its threshold), `held` (the fire is on a leaf the step cannot read: a value its node consumes when built, which takes
+  a rebuild) or `outside-step`. `RUN_FACTOR` (k) is declared and provisional, its value and its reasoning beside it.
+  Its detection is measured on planted bakes (a Python float, a NumPy or JAX array, a term of a millionth of the load,
+  an S7-style coefficient, a value-keyed count) and on the registry walk's cases, nothing planted (`tests/two_builds/`).
 
 Also:
 - **the family suites' harness.** A `Family` states, over the vocabulary's interfaces rather than one law's labels,

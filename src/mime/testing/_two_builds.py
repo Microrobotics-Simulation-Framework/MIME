@@ -45,16 +45,21 @@ from mime.build._maddening import (
     parameter_leaves,
     unreadable_leaves,
 )
+from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.core import NUDGED_SIZE
 from mime.experiment import BuiltExperiment, Experiment
 
 #: The steps the run form runs: the spike's.
 RUN_STEPS = 5
-#: k, the run form's line over a field's measured resolution. A field of two builds holding no bake differs by the
-#: rounding of the program to its inputs: the written run and the rebuilt one run the same program on the same inputs
-#: but for what was held at build, so k is the most the step's arithmetic magnifies that rounding beyond one ulp of the
-#: moved value, measured over the registry walk's cases; see ``tests/testing/test_two_builds.py``.
-RUN_FACTOR = 30.0
+#: k, the run form's line over a field's measured resolution: declared, provisional. Two builds holding no bake differ
+#: by the program's rounding of what each held at build, so k bounds how far the step magnifies that rounding past its
+#: one-ulp resolution. Measured before the MRS drag's compared values were leaves: the largest such ratio, 14.6 (a ball's
+#: blob in a tube, its matrix made in the program against the one made at build, through the wall's solve); and k times
+#: a resolution (0.72 to 3.36 ulps of a field's scale in the plants) stays under the spike's 64-ulp line for k up to 19.
+#: Margins of 1.1 and 1.2, so the gating plants sit at least four times k resolutions above the line
+#: (``tests/two_builds/test_plants.py``). No pair of the registry walk now needs the run form to arbitrate a trace fire:
+#: it is the trace form's backstop, and the one form that sees a value reaching the run outside the step.
+RUN_FACTOR = 16.0
 
 type Program = tuple[str, list[np.ndarray]]
 type Arrays = dict[str, dict[str, np.ndarray]]
@@ -62,9 +67,12 @@ type Arrays = dict[str, dict[str, np.ndarray]]
 
 def _x64_only() -> None:
     if not bool(cast(Any, jax.config).jax_enable_x64):
-        raise ValueError("the two-builds check runs in float64: in float32 a literal prints in float32 and the trace "
-                         "form cannot see a value moved by less than about 3e-8 of itself; build both in float64 "
-                         "(JAX_ENABLE_X64=1)")
+        raise ArgumentRefused([Refusal(
+            "two-builds.float32", RefusalClass.USER, "the two-builds check is called in a float32 process",
+            "build both in float64 and call it there: `JAX_ENABLE_X64=1`, or `jax.config.update(\"jax_enable_x64\", "
+            "True)` before the first build",
+            why="in float32 a literal prints in float32, so the trace form cannot see a value moved by less than about "
+                "3e-8 of itself")])
 
 
 def step_program(built: BuiltExperiment) -> Program:
@@ -235,8 +243,13 @@ def run_form(base: BuiltExperiment, other: BuiltExperiment, *, steps: int = RUN_
     leaves_a, leaves_b = _arrays(parameter_leaves(base.graph)), _arrays(parameter_leaves(other.graph))
     moved, reshaped = _differ(leaves_a, leaves_b)
     if reshaped:
-        raise ValueError(f"the run form writes one build's leaves into the other's program, and these differ in shape: "
-                         f"{reshaped}")
+        raise ArgumentRefused([Refusal(
+            "two-builds.leaf-shapes", RefusalClass.USER,
+            f"the two builds' leaves differ in shape or dtype, or one holds a leaf the other lacks: {reshaped}",
+            "compare them with `two_builds(base, other)`, whose trace form names the difference as a `shape` verdict "
+            "and runs no run form",
+            why="the run form writes one build's leaves into the other's compiled program, which takes leaves of its "
+                "own shapes only")])
     state_b = _initial(other)
     tree = graph_params(base.graph)
     written_nodes = {node: {key: (leaves_b[node][key] if (node, key) in moved else value)
@@ -313,7 +326,11 @@ def two_builds_of(experiment: Experiment, path: object, *, relative: float = 1e-
     axis = resolve(path, declarations)
     value = to if to is not None else moved_value(base_value(axis, settings, declarations), relative)
     if value is None:
-        raise ValueError(f"the value at {path} is not a quantity or a float, so a two-builds pair cannot move it")
+        raise ArgumentRefused([Refusal(
+            "two-builds.not-movable", RefusalClass.USER,
+            f"the value at {path} is not a quantity or a float, so a relative move of it means nothing",
+            f"give the other build's value: `two_builds_of(experiment, {str(path)!r}, to=...)`",
+            why="a two-builds pair moves a number by a relative step; a direction, a count or a choice has none")])
     with keeping_pins(saved):
         held = declared(settings, declarations, {axis: value}, STUDY_REASON)
         other = Experiment.declared_from(held.settings, held.declarations).build()

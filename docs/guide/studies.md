@@ -67,9 +67,11 @@ declared static**: one kept in a Python attribute alone is invisible to the stud
 the value the group was built with. What splits a group is what a node makes from a value when it is built: a static it
 declares, a count or a layout (the MRS rung's force points from its spacing, a hull's counts from the contact's spacing
 or margin). The MRS rung's settings and wall tables are leaves, and so is the matrix it holds, made at build with the
-leaves it was made at beside it, so a sweep of its blob is one group. The two-builds check
-(`mime.testing.two_builds`) is how an entry shows that no value of it is held as a constant of the program. Such an entry is a defect to report; its values run as experiments of their own,
-`Experiment.based_on(...)`, each built. A point outside a validity limit is refused in every profile, and `study.run()` refuses
+leaves it was made at beside it, so a sweep of its blob is one group. Geometry is no axis yet: a part's settings are
+given where the part is written, and a sweep or an override of one is refused, so a new shape is a new build. The
+two-builds check (`mime.testing.two_builds`) is how an entry shows that no value of it is held as a constant of the
+program. Such an entry is a defect to report; its values run as experiments of their own, `Experiment.based_on(...)`,
+each built. A point outside a validity limit is refused in every profile, and `study.run()` refuses
 the study with every refused point at once; `sweep(..., drop_refused=True)` runs the rest and records the dropped points
 on the result. With a controller called on the host between chunks, a group's members run one after another on its one
 compiled step, each with its own law.

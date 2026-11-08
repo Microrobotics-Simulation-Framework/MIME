@@ -806,6 +806,7 @@ def unsearched(offset: float) -> dict:
     that distance: ``contact.search``'s indicator ``offset`` at the step's start and, the rod moving into the wall at
     0.1 um/s, within a part in 1e3 of it at the projection's (its branches: the rim's lowest point, or the start)."""
     import mime.nodes.body._contact as contact
+    import mime.nodes.body._rigid_inertial as rigid
 
     start = rod_ends()[0]
     pose = rims_apart(0.0)
@@ -815,13 +816,14 @@ def unsearched(offset: float) -> dict:
     local = jnp.asarray(rod_points()[[start]])
     _, reached = contact.climbed(pair, local, 0)
     distance = float(jnp.sqrt(jnp.sum((reached - local) ** 2)))
-    steps, tolerance = contact.CONTACT_NEWTON, contact.search_tolerance
+    # the tolerance is made when the body is built, as its leaf search_tolerance, so it is set where the body reads it
+    steps, tolerance = contact.CONTACT_NEWTON, rigid.search_tolerance
     contact.CONTACT_NEWTON = 0
-    contact.search_tolerance = lambda dtype, size: distance + offset
+    rigid.search_tolerance = lambda dtype, size: distance + offset
     try:
         return rod_step([[start]], pose, (0.0, 0.0, -1e-7, 0.0, 0.0, 0.0))
     finally:
-        contact.CONTACT_NEWTON, contact.search_tolerance = steps, tolerance
+        contact.CONTACT_NEWTON, rigid.search_tolerance = steps, tolerance
 
 
 def hull_rows(declared) -> list[SwitchRow]:
