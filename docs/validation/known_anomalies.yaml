@@ -2953,6 +2953,24 @@ anomalies:
       no result changed, and the workaround is to delete the cached file (and its '.verified' record). The cache's check is
       the same for an asset's file (a mesh, a table); a changed asset served as verified would change a result, and that was
       not measured here.
+
+      Resolved for what was measured (the bundle fetched by its repository's checksum), in two steps [read, and measured by
+      the tests named below, on the pull tests' fake repository]: (1) where the caller holds the repository's checksum of
+      the file, the cheap check also reads the cached file once and compares its digest with it (cheap_problem(ref,
+      checksum), locate(ref, checksum=...), and the lookup in assets.retrieve), so the flipped file no longer passes the
+      shortcut and is downloaded; (2) the download, which passed the repository's checksum, is installed over a cached
+      file whose full sha256 fails when MIME wrote it (a rename in one step; a file a person placed is refused, as ever),
+      where before a cached file that passed the cheap check was never replaced. The review's reproduction now downloads
+      the bundle once more (request count 1 to 2) and serves the good file, for based_on and for pull. Cost, warm page
+      cache, one thread: locate with no checksum 15 to 19 us at 1, 32 and 900 MB (nothing read); with the caller's md5
+      1.0 ms at 1 MB, 34 ms at 32 MB and 1.08 s at 900 MB (one local read of the whole file, about 0.8 GB/s; a cold read is
+      bounded by the disk).
+
+      Not resolved: a file whose caller holds no checksum. An asset's reference holds its sha256 and a locate for it is
+      the cheap check alone, by design (hashing a file of about nine hundred megabytes on every build is the cost the
+      shortcut exists to avoid); a byte flipped in place there, with the size and modification time kept, is served until
+      'mime assets check' or 'mime assets fetch' hashes the file. The documentation says what the shortcut guards (size
+      and modification time) and what it does not (the bytes).
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -2960,18 +2978,39 @@ anomalies:
       run; the harm measured is two refusals whose advice (rename the folder, fetch it again) does not apply and cannot
       succeed. Whether an asset file changed the same way is served and used in a run was not tried; if it is, the result
       would be wrong without a refusal, which is why this is not stated as having no bearing on a result.
-    resolution_status: open
+    resolution_status: partially_resolved
     affected_versions: ">=0.3.0.dev1"
+    resolution_version: "0.3.0.dev2"
     affected_components:
       - "mime.assets: the cache's cheap check (cheap_problem), which a bundle fetched by its repository's checksum and an asset share"
+    verification:
+      - "tests/sharing/test_cache_changed_in_place.py::test_a_bundle_flipped_in_place_is_downloaded_once_more_and_the_good_file_is_served"
+      - "tests/sharing/test_cache_changed_in_place.py::test_pull_of_the_doi_after_a_flip_downloads_once_and_unpacks"
+      - "tests/sharing/test_cache_changed_in_place.py::test_the_download_is_installed_atomically_over_the_failing_file"
+      - "tests/sharing/test_cache_changed_in_place.py::test_a_flipped_file_a_person_placed_is_refused_and_left_alone"
+      - "tests/sharing/test_cache_changed_in_place.py::test_a_bare_url_bundle_flipped_in_place_is_repaired_by_the_download_that_runs_each_time"
+      - "tests/sharing/test_cache_changed_in_place.py::test_an_unreadable_cached_bundle_is_refused_with_its_file_and_the_route_never_a_bare_error"
+      - "tests/sharing/test_cache_changed_in_place.py::test_control_an_unchanged_bundle_is_served_with_no_request_and_one_read_for_the_checksum"
+      - "tests/sharing/test_cache_changed_in_place.py::test_control_an_unchanged_file_with_no_caller_checksum_is_served_with_no_hash_and_no_request"
+      - "tests/sharing/test_cache_changed_in_place.py::test_control_a_flipped_file_with_no_caller_checksum_is_served_as_the_entry_states"
+      - "tests/sharing/test_cache_changed_in_place.py::test_control_a_checksum_of_an_algorithm_not_here_is_a_problem_never_a_pass"
+      - "tests/sharing/test_cache_changed_in_place.py::test_control_with_the_digest_comparison_planted_out_the_flipped_bundle_is_served"
+      - "tests/sharing/test_cache_changed_in_place.py::test_control_with_the_replacement_planted_out_the_download_does_not_repair_the_cache"
     residual_risk: >
-      Measured on one bundle, one byte flip in the middle of the file, on the fake repository. A flip elsewhere, several flips,
-      and the same change to a cached asset's file (the cheap check is the same code) were not measured. Whether a changed
+      Measured on one bundle on the fake repository, for a byte flipped at the start, in the middle and at the end of the
+      file, for two bytes, and for the first and last together (the tests named above run each through based_on and pull);
+      the digest comparison reads the whole file. A cached asset's file, which the caller holds no checksum for, is still
+      served by the cheap check alone (see above): the same change to it was not measured. Whether a changed
       asset is then used by a run, and what it would change, is unknown. A hand-edited '<algorithm>-<digits>.checksum' note
-      naming another cached bundle serves that bundle [measured by the same review]; it needs write access to the cache
-      directory, where '<sha256>.verified' can already be written to the same effect [inference].
-    workaround: "Delete the cached file '<cache>/<sha256>' and its '<sha256>.verified' record, then pull again; the cache is the directory in MIME_ASSETS_DIR, else the platform's cache directory for mime (assets)"
-    planned_resolution: "A cache PR in two steps: compare the cached file's digest with the checksum the caller holds on the cheap-check shortcut (a local read, not a download), and install the freshly downloaded file over one whose full check disagrees; then re-measure the asset path"
+      naming another cached bundle no longer serves that bundle where the caller holds the checksum: the comparison finds
+      its bytes are not the ones the checksum names and the right bundle is downloaded [measured by the review of this fix,
+      one request more]; it needs write access to the cache directory, where '<sha256>.verified' can already be written
+      for an asset's file, which no checksum is compared with [inference]. A cached bundle that cannot be read (its
+      permissions) is refused as 'asset.missing' naming the file and the route, never downloaded around [tests above].
+      A bundle named by a bare address, downloaded each time, now also repairs a cached file of those bytes that was
+      changed in place.
+    workaround: "For an asset's file, or a bundle on a version before the fix: run 'mime assets check' (it finds a flipped byte and marks the record) and then 'mime assets fetch'; or delete the cached file '<cache>/<sha256>' and its '<sha256>.verified' record, then pull again; the cache is the directory in MIME_ASSETS_DIR, else the platform's cache directory for mime (assets)"
+    planned_resolution: "Done for a bundle fetched by its repository's checksum. What remains is an asset's file, for which the caller holds no checksum but the sha256 the hash costs a full read to compare: whether a warm locate should hash a file under a size, or an asset's use should check it once per process, is a decision on the cost above, not made here"
 
   - anomaly_id: MIME-ANO-143
     title: "Under jit, the tube wall read's derivative along a rigid motion has the wrong sign for some pairs of force points at exactly equal height, and the pairs it fails on depend on how XLA fuses the program"

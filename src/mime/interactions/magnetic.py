@@ -65,7 +65,9 @@ def build_reaction(ctx: BuildContext, b: InteractionBuilder, law: NodeRef) -> No
 
 
 #: Why the magnetic laws declare no class for the energy ledger yet: their work on the body is recorded and attributed
-#: to them all the same.
+#: to them all the same. **The magnetic family's energy case passes them by this declaration alone** (it checks nothing
+#: about them); the route is P1b, which builds the magnetic family's energy (-m . B at the magnet's centroid) and its
+#: loop test, and gives the laws their class.
 _UNMETERED = ("its class waits on the magnetic family's energy, -m . B at the magnet's centroid, of which the pair is "
               "the derivative, stated with the family")
 

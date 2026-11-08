@@ -174,4 +174,18 @@ its reason (`RefusedRegion`). Each primitive is checked by MIME's own check of w
 OpenMaterica states no tolerance), and a kind giving a malformed one is refused, never handed over. The
 helper itself is OpenMaterica's, and does not exist yet.
 
+**the energy ledger's wiring** (`_ledger.py`), only where an observation that meters energy is attached
+(`EnergyLedger`): otherwise the build takes none of it, and every program is the program it was. It works out what is
+outside per thing, from each entry's plan (a thing none of whose nodes receives a delivery or a reaction from the
+components; a law reading one is supplied by it); moves each delivery into a metered receiver (a dynamics naming a port
+kind, whose node writes its step identity) into the law's own input on it, the laws within each input in the order of
+their ids, the order the summed edges were added in, its confinement held in its step under the confining law's id,
+each paired as the port kind says; and constructs the receiver again from its own arguments with its `ledger`. The
+report's `energy` lines name each metered receiver and law's class or reason, each receiver it cannot meter, and what is
+outside. An entry that declares nothing and states no reason is logged under exploratory and refused under research
+(`ledger.unmetered`; strict's refusal of every unmetered entry is a1's, in `refuses_unmetered`). A post-build check
+reads the graph as built: each law's own input takes edges from that law's nodes alone, and no law the receiver holds
+delivers into another input of its kind (`post-build.ledger-inputs`), so a swap of two laws' loads between their inputs,
+which the books cannot see, is refused.
+
 Releases are explained in the [package manifest](../README.md#status).

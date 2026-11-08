@@ -938,8 +938,10 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
     download to; it guards the transfer, and nothing else vouches for the bytes until someone pins their sha256 in a
     later :func:`resolve`. Once such a download is stored, the cache keeps a note of which sha256 that checksum named
     (``<algorithm>-<digits>.checksum``, beside the file); a later call with the same checksum finds the file by it and
-    downloads nothing, as long as the file is there and passes the cache's cheap check (:func:`locate`'s). With the note
-    gone, the file gone or changed, or another checksum (a new version of the record), it downloads as it did.
+    downloads nothing, as long as the file is there, passes the cache's cheap check (:func:`locate`'s) and its digest is
+    the ``known_hash`` (one local read of the file). With the note gone, the file gone or changed (a byte changed in
+    place, with its size and modification time kept, included), or another checksum (a new version of the record), it
+    downloads as it did, and the download replaces a cached file whose full hash fails when MIME wrote it.
 
     The location must be an allowed form, and ``MIME_OFFLINE`` refuses it. The download stops
     once it has passed ``max_bytes`` (the size a record states, or :data:`RETRIEVE_LIMIT_BYTES`), refused as
@@ -963,7 +965,7 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
             f"unset {OFFLINE_VARIABLE} (`unset {OFFLINE_VARIABLE}`), or pass the file you copied here")])
     if known_hash is not None:
         remembered = remembered_checksum(known_hash, name, location)
-        if remembered is not None and cheap_problem(remembered) is None:
+        if remembered is not None and cheap_problem(remembered, known_hash) is None:
             if report is not None:
                 report(f"{name}: already in the cache, not downloaded again")
             return remembered
@@ -992,10 +994,12 @@ def retrieve(location: str, *, name: str, known_hash: str | None = None, max_byt
         assert arrived is not None
         ref = AssetRef(name, sha256_of_file(arrived), arrived.stat().st_size, NO_ASSERTION, (location,))
         with exclusive(lock_path(ref)):
-            if cheap_problem(ref) is not None:
-                stored, replace = _look_at_what_is_there(ref)
-                if not stored:
-                    _install(ref, arrived, replace=replace)
+            # The download passed the repository's checksum and is hashed here; the file the cache holds under that
+            # sha256 passed the cheap check at most, which does not see a byte changed in place. So it is hashed in
+            # full, and a file MIME wrote that fails is replaced by the download (a person's is refused, as ever).
+            stored, replace = _look_at_what_is_there(ref)
+            if not stored:
+                _install(ref, arrived, replace=replace)
         if known_hash is not None:
             remember_checksum(known_hash, ref)
         return ref

@@ -74,10 +74,14 @@ resistance and confinement solved for in its step), `joint` (a chain segment's j
 frames, which reach them through its Jacobian), `delivered_inertia` and `flow_in`; `DeliveryKind`, `EnergyClass`,
 `Definiteness`, and `POWER` and `ENERGY`, what a delivery and its flow pair to.
 
-**What a kind checks, and what nothing reads yet.** A kind fixes the flow and the delivery kind of each interface it
-accepts, and pairs their units to watts; shape and sign live on the interface entries and are not compared, and an
-interface listed in `mapped` skips the unit pairing (its map is the receiver's own). No law's declaration (a port, a
-class, a definiteness, `unmetered`) is consumed by the build yet: until the registry walk of the ledger's second
-part reads them, "a declaration cannot silence a failing check" holds because nothing is checked by declaration.
+**What a kind checks, and who reads it.** A kind fixes the flow and the delivery kind of each interface it accepts,
+and pairs their units to watts; shape and sign live on the interface entries and are not compared, and an interface
+listed in `mapped` skips the unit pairing (its map is the receiver's own; no receiver of a mapped kind is metered yet,
+so the map is stated with the first, the chain segment's). With the energy ledger attached the build reads a metered
+dynamics' kind (`Dynamics.port`) for how each delivery into it is paired, and the receiver's node refuses a delivery
+paired otherwise than it pairs that input; it reads each law's class and definiteness for its records and its run-time
+check. A declaration settles nothing by itself: each class is checked by an exact identity on the law alone (the energy
+case of its family's suite, `mime.testing`), and the registry walk requires every entry of MIME's to declare or state
+why it is unmetered.
 
 Releases are explained in the [package manifest](../README.md#status).

@@ -52,7 +52,15 @@ from mime.build._refusals import (
 )
 from mime.build import StageBinding, stage_binding
 from mime.control import Chunk, ChunkedRun, ChunkHook, StopRequest, law_and_models
-from mime.build._maddening import FlagTally, FlagTest, holds_one_step_history, set_node_state, state_put_back, step_reads
+from mime.build._maddening import (
+    FlagTally,
+    FlagTest,
+    graph_params,
+    holds_one_step_history,
+    set_node_state,
+    state_put_back,
+    step_reads,
+)
 from mime.errors import public
 from mime.errors._frames import warn_at_script
 from mime.experiment._mermaid import Mermaid, mermaid_of
@@ -77,6 +85,7 @@ from mime.results import (
     RunResult,
     Samples,
     Stopped,
+    energy_account,
     read_containments,
     read_watches,
 )
@@ -1381,7 +1390,11 @@ class BuiltExperiment:
                                                        self._poses_kept(stacked), last_step=start + steps,
                                                        dt=self._plans.dt),
                          report=report if report is not None else self.report_summary(), stopped=stopped,
-                         origin=self._origin, overrides=point.records if point is not None else ())
+                         origin=self._origin, overrides=point.records if point is not None else (),
+                         energy=functools.partial(energy_account, self._graph, final,
+                                                  (point.params if point is not None else graph_params(self._graph))
+                                                  .get("nodes", {}), steps=start + steps)
+                         if self._report.energy else None)
 
     @public
     def binding(self) -> StageBinding:
