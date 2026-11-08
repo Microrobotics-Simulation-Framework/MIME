@@ -6,12 +6,13 @@ from mime.nodes.flow.fvm._band import BANDS, DEFAULT_BAND, DEFAULT_INTERIOR, INT
 from mime.nodes.flow.fvm._box import DEFAULT_CELLS_ACROSS, TubeLayout, periodic_tube_layout
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import STALL_LINE, FlowState, ImplicitFlowNode, StepParts
-from mime.nodes.flow.fvm._schemes import SCHEMES, IMEXEuler, Scheme, SchemeChoice, StageKind, Steady, TimeScheme, \
+from mime.nodes.flow.fvm._explicit import ExplicitFlowNode, ExplicitFlowState, cfl_check
+from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, Scheme, SchemeChoice, StageKind, Steady, TimeScheme, direction_factor, \
     scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE, PRECONDITIONERS, REPORT_FIELDS, REPORT_SIZE, Jacobi, \
     Preconditioner, Stopping, guarded_cg, projected_solve, scaling_start
 
-__all__ = ["BANDS", "DEFAULT_BAND", "DEFAULT_CELLS_ACROSS", "DEFAULT_INTERIOR", "DEFAULT_TOLERANCE",
+__all__ = ["BANDS", "RK3", "ExplicitFlowNode", "ExplicitFlowState", "cfl_check", "direction_factor", "DEFAULT_BAND", "DEFAULT_CELLS_ACROSS", "DEFAULT_INTERIOR", "DEFAULT_TOLERANCE",
            "INTERIORS", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "SCHEMES", "STALL_LINE", "Band",
            "FlowState", "IMEXEuler", "ImplicitFlowNode", "Jacobi", "MACGrid", "Preconditioner", "Scheme",
            "SchemeChoice", "StageKind", "Steady", "StepParts", "Stopping", "TimeScheme", "TubeLayout", "TubeSolid",

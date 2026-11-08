@@ -30,6 +30,7 @@ from typing import Any, ClassVar, NamedTuple, override
 from jax import Array
 
 from mime.core import jnp
+from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 
 
@@ -141,7 +142,48 @@ class Steady(TimeScheme):
         return solved, StageParts(force, grid.zeros(velocity[0].dtype), force, solved, zero, report)
 
 
-SCHEMES: MappingProxyType[str, TimeScheme] = MappingProxyType({IMEXEuler.name: IMEXEuler(), Steady.name: Steady()})
+class RK3(TimeScheme):
+    """S1's explicit RK3 (``mime.nodes.flow.fvm._rk3``), the scheme where convection limits the step: Wray's low-storage
+    three stages, convection and viscosity explicit, the wall's penalty implicit and pointwise in each stage, the
+    incremental fast projection each stage, the pressure carried as state.
+
+    **Its lines** (one value each, the maintainer's to confirm): ``max|u| dt / h <= 1.7 g(n)`` and ``nu dt / h^2 <=
+    0.15``, ``g(n) = max_d |n_d| / sum_d |n_d|`` along the vessel's axis ``n``. Below the linear limit of a plug flow
+    along ``n`` at every viscous number up to 0.15 (the limit on the component sum is at least 1.73 there, the axis the
+    worst direction; derived, and the step's Jacobian about a uniform flow matches it to 1e-14); a plug at the
+    decided 2.0 and ``r = 0.15`` grows 1.06 a step, a sphere in the tube at D/h 32 was stable to 2.34 there (F1b's
+    first step, measured)."""
+
+    name = "rk3"
+    version = "0.1.0"
+    stage_kind = StageKind.EXPLICIT_PROJECTED
+    state_fields = ("velocity", "pressure")
+    stage_times = _rk3.STAGE_TIMES
+    ledger_route = 1
+    ledger_terms = ("convection",)
+    cfl_line = 1.7
+    steady = False
+    stores_inertia = True
+    takes_convection = True
+    #: The largest viscous number ``nu dt / h^2`` its explicit viscosity takes (the pure-diffusion edge is 0.209).
+    viscous_number = 0.15
+
+    @override
+    def viscous_limit(self, viscosity: float, spacing: float) -> float | None:
+        return self.viscous_number * spacing ** 2 / viscosity
+
+
+def direction_factor(axis: Any) -> Any:
+    """``g(n) = max_d |n_d| / sum_d |n_d|``, the factor a scheme's CFL line is scaled by along the vessel's axis ``n``:
+    1 for an axis along a grid axis, 3/4 for the lattice direction (1, 0, 3), 1/2 for (1, 0, 1), 1/3 on the body
+    diagonal. On the face measure ``max|u| dt / h`` a plug flow along ``n`` is unstable at a lower line than along a
+    grid axis by about this factor (its limit on the component sum ``sum_d |u_d| dt / h`` is direction-independent)."""
+    n = jnp.abs(jnp.asarray(axis))
+    return jnp.max(n) / jnp.sum(n)
+
+
+SCHEMES: MappingProxyType[str, TimeScheme] = MappingProxyType({IMEXEuler.name: IMEXEuler(), Steady.name: Steady(),
+                                                             RK3.name: RK3()})
 
 
 def scheme_named(name: str) -> TimeScheme:
@@ -170,5 +212,5 @@ class Scheme:
         return SchemeChoice(Steady.name)
 
 
-__all__ = ["SCHEMES", "IMEXEuler", "Scheme", "SchemeChoice", "StageKind", "StageParts", "Steady", "StepContext",
-           "TimeScheme", "scheme_named"]
+__all__ = ["RK3", "SCHEMES", "IMEXEuler", "Scheme", "SchemeChoice", "StageKind", "StageParts", "Steady", "StepContext",
+           "TimeScheme", "direction_factor", "scheme_named"]

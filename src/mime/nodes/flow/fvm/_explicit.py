@@ -1,0 +1,287 @@
+"""The explicit flow node: the FVM's field on a periodic box stepped by a scheme of the explicit stage kind (S1's RK3,
+``mime.nodes.flow.fvm._rk3``), sharing the implicit node's grid, wall, drive, fluxes and reports.
+
+**What a step computes, in the program from the step's parameters**: the tube's signed distance, the band's indicator
+and the regions' inverse permeability; the resistivity ``nu x sum(1/K)`` from the viscosity; the drive on the fluid; on
+the run's first step (or the first after a state given from outside, whose ``pressure_ready`` is zero) the consistent
+pressure, one fast solve; then the three stages.
+
+**The CFL check.** As the implicit node's, at the scheme's line along the vessel's axis, ``line x g(n)``
+(``mime.nodes.flow.fvm._schemes.direction_factor``): a NaN reads as past the line. The check selects nothing in the
+step; the run is refused after it from the first step past.
+
+**The ledger: route 1.** The step books the drive's work, the viscosity's and the wall's dissipations under their laws'
+names and the convective power as the scheme's one term, each by RK3's own quadrature; the split penalty has no formula
+term, so the identity is not claimed and each step is judged to have dissipated (``mime.core.ledger.
+route_one_recorded``)."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from typing import Any, NamedTuple, override
+
+import numpy as np
+from jax import Array, lax
+from jaxtyping import Float, Int
+from maddening.core.compliance.metadata import NodeMeta, Reference
+from maddening.core.params import ParamSpec
+from typing_extensions import ReadOnly, TypedDict
+
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, run_dtype
+from mime.core import ledger as books
+from mime.nodes.flow.fvm import _rk3
+from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, negative_resistivity
+from mime.nodes.flow.fvm._grid import MACGrid, Velocity
+from mime.nodes.flow.fvm._node import ImplicitFlowNode
+from mime.nodes.flow.fvm._schemes import StageKind, direction_factor, scheme_named
+from mime.registry import Problem
+
+EQUATIONS = (r"\mathbf{u}^{(k)} = \mathcal{P}\left[\frac{\mathbf{u}^{(k-1)} + \gamma_k h\, \mathbf{F}^{(k-1)} + "
+             r"\zeta_k h\, \mathbf{F}^{(k-2)} - \alpha_k h\, G p^{(k-1)}}{1 + \alpha_k h\, \frac{\mu}{\rho} \kappa}"
+             r"\right], \quad \mathbf{F} = \mathcal{C}(\mathbf{u}) + \frac{\mu}{\rho} L \mathbf{u} + (1 - \chi) "
+             r"\mathbf{g}")
+
+_STEP = "mime.nodes.flow.fvm._explicit.ExplicitFlowNode.stepped"
+_START = "mime.nodes.flow.fvm._rk3.consistent_pressure"
+
+
+class ExplicitFlowState(TypedDict, closed=True):
+    velocity_x: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
+    velocity_y: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
+    velocity_z: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
+    pressure: ReadOnly[Float[Array, "nx ny nz"]]  # noqa: F722 - a jaxtyping shape
+    pressure_ready: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    steps: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    cfl: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    stopped_at: ReadOnly[Int[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    stopped_cfl: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    lumen_flux: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    bypass_ratio: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+    negative_resistivity: ReadOnly[Float[Array, ""]]  # noqa: F722 - a jaxtyping shape
+
+
+class ExplicitParts(NamedTuple):
+    """What the route-1 account reads of a step: the stage's recorded terms and the fields."""
+
+    stage: _rk3.ExplicitStage
+    fields: WallFields
+
+
+def _velocity(state: Mapping[str, Array]) -> Velocity:
+    return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
+
+
+def cfl_check(velocity: Velocity, dt: Any, spacing: Any, line: Any, checked: bool,
+              stopped_at: Array, stopped_cfl: Array, steps: Array) -> tuple[Array, Array, Array]:
+    """``max|u| dt / h`` of the velocity the step's convection reads, and the stop's record: the first step past
+    ``line`` (a NaN reads as past it) and the CFL it read, kept once set."""
+    speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in velocity]))
+    cfl = speed * dt / spacing
+    past = ~(cfl <= line) if checked else jnp.asarray(False)
+    before = stopped_at >= 0
+    at = jnp.where(before, stopped_at, jnp.where(past, steps + 1, -1)).astype(jnp.int32)
+    held = jnp.where(before, stopped_cfl, jnp.where(past, cfl, 0.0)).astype(velocity[0].dtype)
+    return cfl.astype(velocity[0].dtype), at, held
+
+
+class ExplicitFlowNode(ImplicitFlowNode):
+    """The flow field of a medium on a periodic box holding a straight tube, stepped by S1's RK3 (the module states
+    the step)."""
+
+    LEDGER_TERMS = ("convection",)
+
+    meta = NodeMeta(
+        algorithm_id="MIME-NODE-124",
+        description="A medium's flow on a periodic box holding a straight tube: the Cartesian MAC grid, the wall a smooth "
+                    "Brinkman band, stepped by S1's explicit RK3 with the incremental fast projection.",
+        governing_equations=EQUATIONS,
+        assumptions=(
+            "Incompressible Newtonian fluid, its viscosity and density uniform",
+            "The wall is a first-order immersed wall: a smooth band of registered width and depth, its effective "
+            "position shifted from the signed distance's zero by the band's planar calibration, constant in cells",
+            "Convection and viscosity explicit (Wray's three stages), the wall's penalty implicit and pointwise in "
+            "each stage, the incremental projection each stage, the pressure carried as state",
+            "The run starts from a pressure consistent with its velocity, computed in the program",
+            "The drive is read at each stage's time as its law delivers it",
+            "The time of a step is its count times the timestep, never a sum of timesteps"),
+        limitations=(
+            "A periodic box only: no openings, the flow driven by a body force on the fluid",
+            "Third order in time without a wall; with a wall its flux is first order in time (0.8 to 0.95, the split "
+            "penalty) and its pressure first order (1.1); second order in space in the fluid, first order at the wall",
+            "Stable only within its CFL line along the vessel's axis and its viscous number (0.15), which the build "
+            "checks and the node checks each step, the run refused past",
+            "No step identity is claimed (route 1): each step is judged to have dissipated",
+        ),
+        references=(Reference("HarlowWelch1965"), Reference("Angot1999"), Reference("SpalartMoserRogers1991")),
+    )
+    symbols = (
+        Symbol(r"\mathbf{u}", SymbolKind.STATE, "velocity_x", "m/s", _STEP),
+        Symbol("p", SymbolKind.STATE, "pressure", "m^2/s^2", _STEP),
+        Symbol(r"\mathcal{C}", SymbolKind.CONSTANT, "convection", "m/s^2", _STEP),
+        Symbol(r"\mu", SymbolKind.PARAMETER, "viscosity", "Pa s", _STEP),
+        Symbol(r"\rho", SymbolKind.PARAMETER, "density", "kg/m^3", _STEP),
+        Symbol("L", SymbolKind.CONSTANT, "laplacian", "1/m^2", _STEP),
+        Symbol(r"\kappa", SymbolKind.CONSTANT, "inverse_permeability", "1/m^2", _STEP),
+        Symbol(r"\chi", SymbolKind.CONSTANT, "indicator", "1", _STEP),
+        Symbol(r"\mathbf{g}", SymbolKind.INPUT, "body_force", "m/s^2", _STEP),
+        Symbol(r"\mathcal{P}", SymbolKind.CONSTANT, "projector", "1", _STEP),
+        Symbol("G", SymbolKind.CONSTANT, "gradient", "1/m", _START),
+        Symbol(r"\gamma_k", SymbolKind.CONSTANT, "gamma", "1", _STEP),
+        Symbol(r"\zeta_k", SymbolKind.CONSTANT, "zeta", "1", _STEP),
+        Symbol(r"\alpha_k", SymbolKind.CONSTANT, "alpha", "1", _STEP),
+        Symbol("h", SymbolKind.CONSTANT, "timestep", "s", _STEP),
+    )
+
+    def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
+                 viscosity: float, density: float, tube_centre: Sequence[float], tube_axis: Sequence[float],
+                 tube_radius: float, scheme: str = "rk3", convection: bool = True, band: str = "smooth_2h_0.3h",
+                 interior: str = "0.1h", periodic_images: str = "own",
+                 initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
+                 ledger: Sequence[str] = ()) -> None:
+        chosen = scheme_named(scheme)
+        if chosen.stage_kind is not StageKind.EXPLICIT_PROJECTED:
+            raise ValueError(f"the {scheme} scheme is of the {chosen.stage_kind} stage kind: the implicit node steps it")
+        band_named(band)
+        interior_depth(interior)
+        if periodic_images not in ("own", "transverse"):
+            raise ValueError(f"periodic_images is 'own' (an aligned tube) or 'transverse', not {periodic_images!r}")
+        initial: dict[str, Any] = {}
+        for key, value in (("initial_velocity_x", initial_velocity_x), ("initial_velocity_y", initial_velocity_y),
+                           ("initial_velocity_z", initial_velocity_z)):
+            if value is not None:
+                initial[key] = np.asarray(value)
+        MimeNode.__init__(self, name, timestep, cells_x=int(cells_x), cells_y=int(cells_y), cells_z=int(cells_z),
+                          spacing=float(spacing), viscosity=float(viscosity), density=float(density),
+                          tube_centre=tuple(float(c) for c in tube_centre),
+                          tube_axis=tuple(float(c) for c in tube_axis), tube_radius=float(tube_radius),
+                          scheme=str(scheme), convection=bool(convection), band=str(band), interior=str(interior),
+                          periodic_images=str(periodic_images), **initial, **({"ledger": tuple(ledger)} if ledger else {}))
+
+    @override
+    def param_specs(self) -> dict[str, ParamSpec]:
+        fixed = "a structural setting: the box's cells were chosen with it"
+        return {**MimeNode.param_specs(self),
+                "spacing": ParamSpec(trainable=False, units="m", description=fixed),
+                "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None),
+                                       description="the fluid's dynamic viscosity, mu; the step uses mu / rho"),
+                "density": ParamSpec(units="kg/m^3", bounds=(0.0, None)),
+                "tube_centre": ParamSpec(units="m"), "tube_axis": ParamSpec(units="1"),
+                "tube_radius": ParamSpec(units="m", bounds=(0.0, None))}
+
+    def line(self, p: Mapping[str, Any]) -> Array:
+        """The scheme's CFL line along the vessel's axis, ``line x g(n)``, made in the step from the axis."""
+        line = self.scheme.cfl_line
+        assert line is not None
+        return line * direction_factor(as_run_array(p["tube_axis"]))
+
+    @override
+    def initial_state(self) -> NodeFields:
+        c = self.constants()
+        grid = MACGrid((c["cells_x"], c["cells_y"], c["cells_z"]), c["spacing"])
+        dtype = run_dtype()
+        zero = jnp.zeros(grid.cells, dtype=dtype)
+        given = tuple(jnp.asarray(c[key], dtype=dtype) if key in c else zero
+                      for key in ("initial_velocity_x", "initial_velocity_y", "initial_velocity_z"))
+        start = self.scheme.start(grid, (given[0], given[1], given[2]))
+        z = as_run_array(0.0)
+        fields = node_fields(ExplicitFlowState(
+            velocity_x=start[0], velocity_y=start[1], velocity_z=start[2], pressure=zero, pressure_ready=z,
+            steps=jnp.asarray(0, dtype=jnp.int32), cfl=z, stopped_at=jnp.asarray(-1, dtype=jnp.int32),
+            stopped_cfl=z, lumen_flux=z, bypass_ratio=z, negative_resistivity=z))
+        if not self.metered:
+            return fields
+        return books.route_one_records(books.with_records(self, fields))
+
+    @override
+    def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
+                dt: float) -> NodeFields:
+        if self.metered:
+            return books.metered_route_one_step(self, self.boundary_input_spec(), p, state, boundary_inputs, dt,
+                                                self.stepped)
+        return self.stepped(p, state, boundary_inputs, dt)[0]
+
+    @override
+    def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
+                dt: float) -> tuple[dict[str, Array], ExplicitParts]:  # type: ignore[override]
+        c = self.constants()
+        grid = self.grid(p)
+        dtype = run_dtype()
+        fields = self.fields(p, grid)
+        sigma = self.resistivity(p, fields)
+        nu = self.kinematic(p)
+        convection = bool(c["convection"])
+        delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
+
+        def force(stage: int, time: Any) -> Velocity:
+            del time  # the law delivers the drive for the step; at a stage's time once it delivers one a stage
+            return self.drive(fields, delivered if delivered.ndim == 1 else delivered[stage])
+
+        steps = jnp.asarray(state["steps"])
+        time = steps.astype(dtype) * dt
+        velocity = _velocity(state)
+        held_pressure = jnp.asarray(state["pressure"])
+        pressure = lax.cond(jnp.asarray(state["pressure_ready"]) > 0.5, lambda: held_pressure,
+                            lambda: _rk3.consistent_pressure(grid, velocity, nu, sigma, force(0, time), convection))
+        cfl, stopped_at, stopped_cfl = cfl_check(velocity, dt, grid.spacing, self.line(p), convection,
+                                                 jnp.asarray(state["stopped_at"]), jnp.asarray(state["stopped_cfl"]),
+                                                 steps)
+        ended_velocity, ended_pressure, stage = _rk3.step(grid, velocity, pressure, nu, sigma, force, convection,
+                                                          time, dt)
+        axis = as_run_array(p["tube_axis"])
+        axis = axis / jnp.sqrt(jnp.sum(axis * axis))
+        lumen, solid = self.fluxes(grid, fields, axis, ended_velocity)
+        ratio = jnp.where(lumen != 0.0, solid / jnp.where(lumen != 0.0, lumen, 1.0), 0.0)
+        ended: dict[str, Array] = dict(
+            velocity_x=ended_velocity[0], velocity_y=ended_velocity[1], velocity_z=ended_velocity[2],
+            pressure=ended_pressure, pressure_ready=jnp.ones((), dtype=dtype), steps=steps + 1, cfl=cfl,
+            stopped_at=stopped_at, stopped_cfl=stopped_cfl, lumen_flux=lumen, bypass_ratio=ratio,
+            negative_resistivity=negative_resistivity(fields).astype(dtype))
+        return node_fields(ExplicitFlowState(**ended)), ExplicitParts(stage, fields)
+
+    @override
+    def identity_terms(self, p: Mapping[str, Any], held: Sequence[books.LedgerDelivery], state: Mapping[str, Array],
+                       boundary_inputs: Mapping[str, Array], ended: Mapping[str, Array], parts: Any,
+                       dt: float) -> books.StepAccount:
+        """The step's account on route 1: the hosted laws' work under their names (the drive's ``+W``, the viscosity's
+        and the wall's ``-D``, each by RK3's quadrature), the convective power as the scheme's one term (``N_conv =
+        -C``), the storage at both ends. The residual, the split penalty's numerical dissipation, is not claimed to
+        vanish."""
+        stage = parts.stage
+        rho = as_run_array(p["density"])
+        dtype = jnp.asarray(stage.drive).dtype
+        work_of = {"body_force": rho * stage.drive, "viscous": -rho * stage.viscous, "penalty": -rho * stage.penalty}
+        rows = books.laws(held)
+        work = jnp.zeros(len(rows), dtype=dtype)
+        hosted = jnp.zeros((len(rows), 2), dtype=dtype)
+        named: set[str] = set()
+        for delivery in held:
+            if delivery.kind != books.HOSTED or delivery.field not in work_of:
+                raise ValueError(f"the flow node hosts {list(work_of)}: it takes no delivery {delivery}")
+            work = work.at[rows.index(delivery.law)].add(work_of[delivery.field])
+            named.add(delivery.field)
+        unattributed = sum((value for field, value in work_of.items() if field not in named),
+                           start=jnp.zeros((), dtype=dtype))
+        terms = jnp.stack([-rho * stage.convection])
+        return books.StepAccount(work=work, hosted=hosted, unattributed=unattributed, terms=terms,
+                                 storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
+                                 scale=rho * stage.scale, operators={})
+
+    @override
+    def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
+        """The step the CFL check stopped the run at, with the CFL it read and the timestep that keeps the line."""
+        step = int(np.asarray(state["stopped_at"])) if "stopped_at" in state else -1
+        if step < 0:
+            return None
+        cfl = float(np.asarray(state["stopped_cfl"]))
+        line = float(self.line(self.constants()))
+        safe = self.delta_t * line / cfl if np.isfinite(cfl) and cfl > 0.0 else 0.0
+        return Problem(
+            "flow.cfl-exceeded",
+            f"at its step {step} (t = {step * self.delta_t:.6g} s) the flow's CFL number max|u| dt / h read {cfl:.4g}, "
+            f"past the {self.scheme.name} scheme's line of {line:.4g} along the vessel's axis: past it the scheme's "
+            f"explicit convection is not stable, so the run is refused from that step on",
+            f"use a timestep dt <= {safe:.4g} s (the line at the speed it reached), or dt='auto'" if safe > 0.0 else
+            "the velocity went non-finite: use a smaller timestep, or dt='auto'")
+
+
+__all__ = ["ExplicitFlowNode", "ExplicitFlowState", "ExplicitParts", "cfl_check"]
