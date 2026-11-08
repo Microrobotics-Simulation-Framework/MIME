@@ -258,7 +258,7 @@ class FVM(Dynamics):
                     f"past its viscous number {nu * limit / h ** 2:.3g}: it would not be stable",
                     f"use dt <= {limit:.4g} s, or dt='auto', or Scheme.IMEXEuler() (implicit viscosity)"))
             line = line_of(name)
-            if line is not None and peak * dt / h > line:
+            if line is not None and peak * dt / h > line * (1.0 + 1e-9):
                 found.append(Problem(
                     "flow.cfl-predicted",
                     f"the drive gives the empty tube a peak speed of {peak:.4g} m/s (Poiseuille's centreline and the "

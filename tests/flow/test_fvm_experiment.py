@@ -59,19 +59,18 @@ def test_a_saved_flow_loads_and_runs_bit_for_bit(float64, tmp_path: pathlib.Path
     assert "name: fvm" in text and "group: periodic_box" in text and "group: steady" in text
 
 
-def test_a_run_past_the_cfl_line_is_refused_naming_its_step(float64):
-    """Convection on, a drive strong enough that the flow passes the CFL line within the run: refused, the step and the
-    route named; the run's result is carried with the refusal."""
+def test_a_run_past_the_cfl_line_is_refused_before_any_step(float64):
+    """Convection on, a drive strong enough that its predicted peak passes the CFL line: refused at the build, before
+    any step, with the route (F1b's step rule); the per-step stop behind it is the node's (its own tests)."""
     exp = experiment(steady=False, g=2000.0, dt=ms(1.0))
-    with pytest.raises(RunFailed) as raised:
-        exp.build().run(ms(200.0))
-    codes = [r.code for r in raised.value.refusals]
-    assert codes == ["flow.cfl-exceeded"]
-    assert "at its step" in raised.value.refusals[0].message and "dt <=" in raised.value.refusals[0].action
+    with pytest.raises(BuildRefused) as raised:
+        exp.build()
+    refusal = next(r for r in raised.value.refusals if r.code == "flow.cfl-predicted")
+    assert "dt <=" in refusal.action and "dt='auto'" in refusal.action
 
 
 def test_a_run_inside_the_cfl_line_is_not_refused(float64):
-    exp = experiment(steady=False, g=1.0, dt=ms(1.0))
+    exp = experiment(steady=False, g=1.0, dt=ms(0.2))
     result = exp.build().run(ms(20.0))
     assert int(np.asarray(result.final["water.flow"]["stopped_at"])) == -1
 
