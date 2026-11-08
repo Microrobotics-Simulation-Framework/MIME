@@ -1,6 +1,6 @@
 """Gate 4, the cross-kernel's reach per registered hull kind (C1, 3): for each kind the mrs rung serves (a sphere, a
 capsule, a screw, a cylinder, a box and an ellipsoid), two bodies of that kind side by side, the gap between them the
-default reach (3) times their cells' mean size, where the joint node takes the kernel at the force points: the grand
+default reach (4) times their cells' mean size, where the joint node takes the kernel at the force points: the grand
 resistance by the point kernel there against the integrated one within 0.5 % of each entry's diagonal scale. The
 control, a reach planted short (0.5), judged at its own edge: every kind fails it, so the case fails a kind that needs a
 longer reach than the one the node holds."""

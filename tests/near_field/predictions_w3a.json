@@ -15,6 +15,13 @@
     "P-d1": "gate 3 on the defaults: the squeeze at h/a 0.25 and 0.1 equals the fully integrated one to 1e-6 relative (+2.36 %, +3.18 %; both gaps under 1.5 cell sizes), at h/a 1 unchanged (+0.65 %, the point kernel: no cell was within the reach there); the far-field checks unchanged",
     "P-d2": "gate 6 at the build on the defaults: the inertial triangle at 0.1 a let through with the integrated gain 0.8775, the overdamped one refused at 1.0147",
     "P-d3": "gate 4, the sphere: point against integrated at a gap of three mean cell sizes within 0.5 % (S3: 0.3 % on the squeeze beyond 2.6 spacings); the other kinds not predicted",
-    "P-d4": "gates 2, 5, 7, 8 and 12 and the ledger's still pass; gate 5's gap of one radius at 0.4 mm spacing lies in the blend (about 2.5 cell sizes), where the pair's least distance carries the blend's derivative: forward, reverse and central differences still agree to its line"
+    "P-d4": "gates 2, 5, 7, 8 and 12 and the ledger's still pass; gate 5's gap of one radius at 0.4 mm spacing lies in the blend (about 2.5 cell sizes), where the pair's least distance carries the blend's derivative: forward, reverse and central differences still agree to its line",
+    "outcome": "P-d1 held (squeeze +2.359 % at h/a 0.25, +3.182 % at 0.1, +0.647 % at 1, as fully integrated); P-d2 held (0.8775 let through, 1.0147 refused at the build); P-d3 held for the sphere (0.0014) and every kind but the box: 0.00628 at the reach's edge against the 0.005 line (capsule 0.0026, cylinder 0.00152, ellipsoid 0.00185, screw 0.00185); P-d4 held (gate 5 within its resolutions at the blend's gap)"
+  },
+  "reach_from_gate_4": {
+    "written": "2026-11-08, after the box failed gate 4 at the reach 3, before the gates ran at the reach 4",
+    "measured": "the box's case at gaps of 3.5, 4, 4.5 and 5 mean cell sizes: 0.00406, 0.00278, 0.00198, 0.00146; the sphere at 4: 0.00066, the capsule 0.00119",
+    "P-r1": "at the default reach 4 every kind's case passes its 0.005 line (the box about 0.0028) and the planted reach 0.5 fails every kind as before",
+    "P-r2": "gates 2, 3, 5, 6, 7, 8 unchanged in their outcomes: the squeeze's gaps (0.25 a and 0.1 a, under 2 cell sizes) are fully integrated at 3 and at 4, h/a 1 (5.2 cell sizes) is the point kernel at both"
   }
 }

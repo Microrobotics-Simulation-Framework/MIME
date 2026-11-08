@@ -42,11 +42,13 @@ checkpoint: Any = cast(Any, jax).checkpoint
 
 #: The cross-kernel's reach, in each source cell's own size ``sqrt(area)``: a pair of bodies farther apart than it takes
 #: the kernel at the source's force points, a pair within half of it the kernel integrated over every cell, a smoothstep
-#: between. A labelled default from spike S3's sphere data (MIME's 338-point sphere, float64): on two spheres squeezing,
-#: the point kernel was within 0.3 % of the integrated one beyond a gap of 2.6 force spacings, +4 % at 1.3, -17.5 % at
-#: 0.5; the default keeps a margin over 2.6. A tolerance-backed numerical setting: each registered hull kind's
-#: conformance case (point against integrated at the reach's edge) fails a kind that needs a longer one.
-REACH = 3.0
+#: between. A tolerance-backed numerical setting: each registered hull kind's conformance case (point against
+#: integrated at the reach's edge, within 0.5 % of each grand-resistance entry's diagonal scale) fails a kind that needs
+#: a longer one. A labelled default from those cases, measured in W3's pull request (float64): the box needed more than
+#: 3 (0.63 % there, 0.41 % at 3.5, 0.28 % at 4), every other kind passed at 3 (the sphere 0.14 %, at 4 0.07 %). Spike
+#: S3's sphere data agree: on two spheres squeezing, the point kernel was within 0.3 % of the integrated one beyond a
+#: gap of 2.6 force spacings, +4 % at 1.3, -17.5 % at 0.5.
+REACH = 4.0
 #: The share of a source's quadrature points one cross-kernel integrates at most, fixed at build (its budget), the
 #: nearest cells first. All of them by default, from a measurement at MIME's 338-point sphere in float64 (W3's pull
 #: request): with each cell switched by its own distance from the targets (integrated within half the reach, at its
