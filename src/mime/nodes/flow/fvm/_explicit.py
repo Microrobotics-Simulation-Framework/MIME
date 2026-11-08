@@ -27,12 +27,13 @@ from maddening.core.compliance.metadata import NodeMeta, Reference
 from maddening.core.params import ParamSpec
 from typing_extensions import ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, run_dtype
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, as_run_array, jnp, node_fields, node_input, run_dtype
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, negative_resistivity
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import ImplicitFlowNode
+from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import StageKind, direction_factor, scheme_named
 from mime.registry import Problem
 
@@ -102,7 +103,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
             "Convection and viscosity explicit (Wray's three stages), the wall's penalty implicit and pointwise in "
             "each stage, the incremental projection each stage, the pressure carried as state",
             "The run starts from a pressure consistent with its velocity, computed in the program",
-            "The drive is read at each stage's time as its law delivers it",
+            "The drive is read at each stage's time from the waveform its law delivers",
             "The time of a step is its count times the timestep, never a sum of timesteps"),
         limitations=(
             "A periodic box only: no openings, the flow driven by a body force on the fluid",
@@ -168,6 +169,16 @@ class ExplicitFlowNode(ImplicitFlowNode):
                 "tube_centre": ParamSpec(units="m"), "tube_axis": ParamSpec(units="1"),
                 "tube_radius": ParamSpec(units="m", bounds=(0.0, None))}
 
+    @override
+    def boundary_input_spec(self) -> dict[str, Any]:
+        """The drive: the waveform the law bound to the medium delivers, read at each stage's time; or, where only a
+        value a step is fed (``body_force``), that value held over the step (second order in a time-varying drive
+        only if it is the step's middle)."""
+        return {**super().boundary_input_spec(),
+                "waveform": node_input("1", (WAVEFORM_SIZE,),
+                                       description="the drive's waveform: along (3), steady and amplitude (m/s^2), "
+                                                   "frequency (Hz), phase (rad)")}
+
     def line(self, p: Mapping[str, Any]) -> Array:
         """The scheme's CFL line along the vessel's axis, ``line x g(n)``, made in the step from the axis."""
         line = self.scheme.cfl_line
@@ -210,11 +221,18 @@ class ExplicitFlowNode(ImplicitFlowNode):
         sigma = self.resistivity(p, fields)
         nu = self.kinematic(p)
         convection = bool(c["convection"])
-        delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
+        if "waveform" in boundary_inputs:
+            coefficients = jnp.asarray(boundary_inputs["waveform"], dtype=dtype)
 
-        def force(stage: int, time: Any) -> Velocity:
-            del time  # the law delivers the drive for the step; at a stage's time once it delivers one a stage
-            return self.drive(fields, delivered if delivered.ndim == 1 else delivered[stage])
+            def force(stage: int, time: Any) -> Velocity:
+                del stage
+                return self.drive(fields, waveform_at(coefficients, time))
+        else:
+            delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
+
+            def force(stage: int, time: Any) -> Velocity:
+                del stage, time
+                return self.drive(fields, delivered)
 
         steps = jnp.asarray(state["steps"])
         time = steps.astype(dtype) * dt

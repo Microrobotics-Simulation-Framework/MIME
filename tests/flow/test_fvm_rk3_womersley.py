@@ -1,6 +1,6 @@
 """F1b's gate 2: Womersley flow at alpha 6 through RK3's node, D/h 32, the default band and interior, six sub-cell
 offsets of the axis batched (the tube's centre is a leaf), RK3 at ``nu dt / h^2 = 0.15`` (298 steps a period), the
-drive read at each stage's time; started from the exact profile, six periods, the sixth's first harmonic fitted by S1's
+drive's waveform read at each stage's time; started from the exact profile, six periods, the sixth's first harmonic fitted by S1's
 Bessel fit over the clean lumen (SciPy, independent of the prescribed flow's series) with the viscosity, the radius and
 **an amplitude** free. **Its line: S1's absolute 0.5 %** on ``|nu_fit / nu - 1|``; the 1 % viscosity plant (the viscous
 term at 1.01 nu, the penalty at nu) must fail it at every offset.
@@ -28,6 +28,7 @@ import scipy.optimize
 import scipy.special
 from fvm_cases import in_dtype
 
+from mime.nodes.flow._waveform import waveform
 from mime.nodes.flow.fvm import ExplicitFlowNode, _rk3, periodic_tube_layout
 
 NU, R, ALPHA, DH = 0.005, 0.5, 6.0, 32
@@ -70,12 +71,7 @@ def _harmonics(dtype: str, plant: float):
             starts.append(w)
         start = dict(node.initial_state())
         dtype_ = start["velocity_z"].dtype
-        stage = jnp.asarray(_rk3.STAGE_TIMES, dtype=dtype_)
-        along = jnp.asarray([0.0, 0.0, 1.0], dtype=dtype_)
-
-        def drive(steps_done):
-            times = (steps_done.astype(dtype_) + stage) * dt
-            return (G0 * jnp.cos(OMEGA * times))[:, None] * along[None, :]
+        coefficients = waveform((0.0, 0.0, 1.0), jnp.asarray(0.0, dtype=dtype_), G0, OMEGA / (2 * math.pi), 0.0)
 
         original = _rk3.step
 
@@ -87,7 +83,7 @@ def _harmonics(dtype: str, plant: float):
             s = {**start, "velocity_z": w0.astype(dtype_)}
 
             def step(state, _):
-                ended = node.advance(q, state, {"body_force": drive(state["steps"])}, dt)
+                ended = node.advance(q, state, {"waveform": coefficients}, dt)
                 return ended, jnp.mean(ended["velocity_z"], axis=2)
 
             s, _ = jax.lax.scan(step, s, None, length=(PERIODS - 1) * steps)
