@@ -139,8 +139,9 @@ class ShapeCase:
     turned by a unit quaternion and moved by a translation), the parameters a study may move (``moved``, with the
     dimensionless scalars in ``plain``: a probe's curve moves a length by up to its own distance along it, a
     dimensionless parameter by up to that over the size, a ``centre`` by up to its distance along a direction, and an
-    ``axis`` or an ``orientation`` turns by up to that over the size), its sets, and its capabilities. ``unplaced``
-    names each declared owner no point can be placed at, with why."""
+    ``axis``, a ``normal`` or an ``orientation`` turns by up to that over the size), its sets, and its capabilities.
+    ``unplaced`` names each declared owner no point can be placed at, with why. A shape with no switch (the half-space)
+    places its probes about its boundary instead, a set named for the shape that no switch owns."""
 
     shape: str
     parameters: st.SearchStrategy[Parameters]
@@ -244,12 +245,13 @@ def shape_probes(draw: Any, case: ShapeCase, kinds: Sequence[str] = PROBE_CLASSE
 def moved_rate(case: ShapeCase, parameters: Parameters, name: str, rate: float, draw: np.ndarray,
                size: float) -> Any:
     """How fast ``name`` moves along a probe's curve, per metre the point moves: a length at ``rate``, a dimensionless
-    scalar at ``rate / size``, a ``centre`` at ``rate`` along a direction drawn from two uniform numbers, an ``axis``
-    turned across itself, and an ``orientation`` turned about a drawn direction, each at ``rate / size`` radians."""
+    scalar at ``rate / size``, a ``centre`` at ``rate`` along a direction drawn from two uniform numbers, an ``axis`` or
+    a ``normal`` turned across itself, and an ``orientation`` turned about a drawn direction, each at ``rate / size``
+    radians."""
     if name == "centre":
         return rate * _direction_from(draw)
-    if name == "axis":
-        axis = np.asarray(parameters["axis"], dtype=np.float64)
+    if name in ("axis", "normal"):
+        axis = np.asarray(parameters[name], dtype=np.float64)
         axis = axis / np.linalg.norm(axis)
         first = np.cross(axis, [0.0, 0.0, 1.0] if abs(axis[2]) < 0.9 else [1.0, 0.0, 0.0])
         first /= np.linalg.norm(first)
@@ -673,6 +675,22 @@ register_shape_case(ShapeCase(
     sets=(SwitchSet("slab.mid", lambda p, offset, draw: np.array([abs(offset), 0.0, 0.0])
                     + _around_x(2.0 * draw[0] * p["half_thickness"], draw[1]), _band("half_thickness")),),
     moved=("half_thickness", "centre", "axis"),
+))
+
+register_shape_case(ShapeCase(
+    shape="half_space",
+    # Its size is its plane's distance from the origin in its own frame, its normal along x; turned and moved, the
+    # offset is the moved plane's. It has no switch, so its probes are placed about its boundary, the plane.
+    parameters=st.fixed_dictionaries({"offset": _length(1e-5, 1e-2)}).map(
+        lambda held: {"normal": (1.0, 0.0, 0.0), **held}),
+    size=lambda parameters: parameters["offset"],
+    turned=lambda parameters, turn, shift: {
+        "normal": tuple(_rotation(turn)[:, 0]),
+        "offset": float(parameters["offset"] + np.dot(_rotation(turn)[:, 0], shift))},
+    sets=(SwitchSet("half_space.boundary", lambda p, offset, draw: np.array(
+        [p["offset"] + offset, (2.0 * draw[0] - 1.0) * p["offset"], (2.0 * draw[1] - 1.0) * p["offset"]]),
+        _rounding("offset")),),
+    moved=("offset", "normal"),
 ))
 
 register_shape_case(ShapeCase(

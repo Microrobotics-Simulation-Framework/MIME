@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_solids, mrs_tube
+from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_plane, mrs_solids, mrs_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, swing_magnet, tracked_rpm
 from hull_cases import hull_contact
 from robot_asset import bound_robot, bound_robot_with_parts
@@ -292,6 +292,9 @@ CASES = (
     # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset
     # unit_tube_R0.997, which the run fetches into the cache before the tests (CI does it once per job).
     Case("mrs_tube", mrs_tube),
+    # The same rung above a plane wall along a turned normal, with the plane wall kind: its regularised image, of the
+    # drag's own blob.
+    Case("mrs_plane", mrs_plane),
     # The kept rigid_inertial 0.2.0 on a body of three different moments: what a folder saved with the explicit
     # gyroscopic term names.
     Case("rigid_explicit", rigid_explicit),

@@ -354,11 +354,13 @@ def weight_between(squared_targets: Array, squared_sources: Array) -> Array:
                         resolution=lambda: switch.rounding(1.0), indicator=lambda: jnp.sqrt(0.5 * total))
 
 
-def tube_image(targets: Array, sources: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
+def tube_image(targets: Array, sources: Array, parameters: Mapping[str, Any], viscosity: Any,
+               eps_squared: Any = None) -> Corrected:
     """The tube's image at each of ``targets`` per unit force at each of ``sources`` (world frame, m), ``(T, S, 3, 3)``
     blocks in m/(N s): the blend of each pair's read and its reciprocal's, as ``tube_correction`` blends them, which it
     is with the targets the sources. Both reads are made, so a pair costs two reads where ``tube_correction``'s costs
-    one: the wall kind's kernel between arbitrary point sets, which a node integrates over a body's cells."""
+    one: the wall kind's kernel between arbitrary point sets, which a node integrates over a body's cells. The table's
+    image is singular: the drag's regularisation ``eps_squared`` is taken and not read (``regularised`` false)."""
     forward = tube_pair_reads(targets, sources, parameters)
     backward = tube_pair_reads(sources, targets, parameters)
     radius = jnp.asarray(parameters["radius"], dtype=targets.dtype)
@@ -367,12 +369,12 @@ def tube_image(targets: Array, sources: Array, parameters: Mapping[str, Any], vi
     return Corrected(blended / (radius * viscosity), forward.accepted & backward.accepted)
 
 
-def tube_correction(points: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
+def tube_correction(points: Array, parameters: Mapping[str, Any], viscosity: Any, eps_squared: Any = None) -> Corrected:
     """The tube's image system at the samples ``points`` (world frame, m): its ``centre``, ``frame`` (rows, the last
     its axis), ``radius`` and its unit tube's compiled ``table``. Each pair is the blend of its read and its
     reciprocal's (``tube_reads``), which acts at every pair and not only near the axis, so the result is reciprocal
     to rounding whatever the table holds: reciprocity is checked on the table's knots and on ``tube_reads``, never on
-    this."""
+    this. The drag's regularisation ``eps_squared`` is taken and not read: the table's image is singular."""
     reads = tube_reads(points, parameters)
     radius = jnp.asarray(parameters["radius"], dtype=points.dtype)
     weight = target_weight(reads.squared)[..., None, None]
@@ -445,7 +447,8 @@ def tube_wall(name: str, version: str, table: Callable[[], Table], assets: tuple
     method (``register_wall_correction``)."""
     return WallCorrection(name, version, TUBE_PARAMETERS, tube_correction, prepare=tube_preparation(table),
                           units=TUBE_UNITS, held=frozenset({"frame", "table"}), beyond=axial_reach(table),
-                          assets=assets, distance=tube_distance, image=tube_image, pair_values=TABLE_PAIR_VALUES)
+                          assets=assets, distance=tube_distance, image=tube_image, pair_values=TABLE_PAIR_VALUES,
+                          regularised=False)
 
 
 #: The shipped reference of the corrected table of the unit tube (MIME-ANO-117), and the tube wall kind's name and
