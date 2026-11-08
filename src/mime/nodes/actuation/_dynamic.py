@@ -423,7 +423,7 @@ class DynamicArmNode(SegmentNode):
                         rubbed = rubbed.at[joint].set(-dt * torque)
                 if joint in bounded:
                     k = bounded.index(joint)
-                    end = q[joint] + dt * moved
+                    end: Array = q[joint] + dt * moved
                     moved = switch.maximum(moved, (lower[k] - q[joint]) / dt, owner="arm.stop.low",
                                            resolution=lambda: switch.rounding(end), indicator=lambda: end - lower[k])
                     moved = switch.minimum(moved, (upper[k] - q[joint]) / dt, owner="arm.stop.high",
@@ -552,6 +552,7 @@ class DynamicArmNode(SegmentNode):
     #: The commands an arm pairs as loads read at the step's start, with its joints' change.
     PAIRED_COMMANDS = ("joint_torques", "joint_forces")
 
+    @override
     def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
         """The laws the arm holds in its own step, each as ``(role, law, class)``, its law's id its node's name and its
         role: its weight (a potential, the experiment's gravity on its links), its joints' viscous damping, and, where
@@ -647,7 +648,6 @@ class DynamicArmNode(SegmentNode):
         middle = 0.5 * (v + turned)
         jacobians = frame_angular_jacobians(start, q)
         poses = state["frame_poses"]
-        _, frames = self._counts()
         damping = jnp.diag(jnp.asarray(p["damping"], dtype=dtype))
 
         def quadratic(matrix: Array, x: Array) -> tuple[Array, Array]:
@@ -999,6 +999,7 @@ class DynamicMotorNode(SegmentNode):
     #: outside (a kinematic one, whose motion is prescribed).
     EXCHANGED = ("inertia", "reaction")
 
+    @override
     def hosted_laws(self) -> tuple[tuple[str, str, str], ...]:
         """The laws the motor holds in its step, each ``(role, law, class)``: its bearing's damping on the rotor's turn
         relative to its stator (dissipative); its rotor's inequality across its axis, whose torque on the spin is the

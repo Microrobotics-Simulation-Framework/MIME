@@ -34,6 +34,12 @@ control, in float64, where its resolution is finest.
   in float32, 5.6 micrometres (1.21 times the tolerance), which passes at 4.5 (0.97), both pinned below.
 - **A law alone**: 0.2.0's torque without its force is not the derivative of an energy, and fails a turn; the case
   needs ``together=``.
+- **The pair with its reactions** (``pair_loop_works``): the laws and their reactions on the field's source, as one
+  potential law, do no net work round closed loops of the source's pose with the body held (turns about its centre,
+  a translation, both) and of the two together (each translated a quarter turn apart). At the anomaly's operating
+  point, 0.2.0's pair does none round a turn of the source about its axis's normal; 0.1.0's, whose reaction carries
+  the lever's couple ``l x F`` where the field was read at the centre of mass, does, and fails every drawn source loop
+  with a lever (the control).
 - **Closed loops only.** Every loop the case drives returns the pose to its start (whole turns, a closed translation):
   over an open arc a conservative pair's work is the energy's change, not zero, so zero work cannot judge it. The
   case's dynamic counterpart through the build, over whole turns, is ``test_closed_loop_dynamic.py``.
@@ -46,7 +52,7 @@ from hypothesis import assume, given, settings
 
 from mime.interactions import KEPT, Magnetic
 from mime.testing import CaseKind, conformance
-from mime.testing._families import Loop, loop_works
+from mime.testing._families import Loop, loop_works, pair_loop_works
 from mime.testing._mime_families import PROBE, MagneticLoopDraw, magnetic_loop_draws, magnetic_loop_rig
 from mime.units import VACUUM_PERMEABILITY
 
@@ -236,3 +242,66 @@ def test_control_the_torque_0_2_0_alone_is_not_conservative_and_fails_a_turn():
     alone = loop_works(magnetic_loop_rig(laws, CLOSE).build(), laws, PROBE, CLOSE.loops[:1])
     print(f"\n{alone[0].describe()}")
     assert not alone[0].holds
+
+
+def pair_works(version: str, drawn: MagneticLoopDraw):
+    laws = pair(version)
+    built = magnetic_loop_rig(laws, drawn).build()
+    placement = built.graph.get_node("stand.magnetic").constants()["placement"]
+    return pair_loop_works(built, laws, PROBE, drawn.pair_loops(placement))
+
+
+def source_turn_defect(drawn: MagneticLoopDraw, axis) -> tuple[float, float]:
+    """The work the pair 0.1.0's reactions leave round a turn of the source about its centre, the body held, in closed
+    form, and the scale it is judged on, ``2 pi |l| |m| |G|``: 0.1.0's reaction is the two point dipoles' own, the
+    body's read at its centre of mass, but for the couple ``-l x F`` of the lever, whose work round the turn is
+    ``-oint (l x F) . a dtheta``; ``F`` is linear in the source's moment, which averages over the turn to its part
+    along the axis, so the work is ``-2 pi (l x F[(m_s . a) a]) . a``. Zero where the source's moment is across the
+    axis, or the lever, the force and the axis are coplanar."""
+    a = np.asarray(axis) / np.linalg.norm(axis)
+    source = drawn.source_moment * np.asarray(drawn.source_direction)
+    start = turned(drawn.loops[0].start)
+    moment, lever = start @ np.asarray(drawn.moment), start @ np.asarray(drawn.lever)
+    gradient = dipole_gradient(float(source @ a) * a, np.asarray(drawn.source_at), np.zeros(3))
+    force = gradient.T @ moment
+    full = dipole_gradient(source, np.asarray(drawn.source_at), np.zeros(3))
+    return (-2 * np.pi * float(np.cross(lever, force) @ a),
+            2 * np.pi * float(np.linalg.norm(lever) * np.linalg.norm(moment) * np.linalg.norm(full, 2)))
+
+
+def source_degenerate(drawn: MagneticLoopDraw) -> bool:
+    """Whether the draw's pure turns of the source leave 0.1.0 exactly no work (``source_turn_defect``)."""
+    turns = [shape[4] for shape in drawn.pairs if not any(np.any(shape[k]) for k in range(4))]
+    return all(abs(work) <= NO_WORK * scale for work, scale in (source_turn_defect(drawn, axis) for axis in turns))
+
+
+#: A turn of the source about an axis with a part along its moment and a part across it, at the anomaly's point.
+SLANTED = tuple(np.array([0.6, 0.0, 0.8]))
+
+
+def test_the_pair_with_its_reactions_does_no_work_round_the_source_s_loops_at_the_anomalys_point():
+    held = anomalys_point(1e-3)
+    drawn = MagneticLoopDraw(*[getattr(held, f) for f in ("source_at", "source_direction", "source_moment",
+                                                          "moment", "lever", "loops")],
+                             pairs=((ZERO, ZERO, ZERO, ZERO, SLANTED),))
+    (new,), (old,) = pair_works("0.2.0", drawn), pair_works("0.1.0", drawn)
+    predicted, _ = source_turn_defect(drawn, SLANTED)
+    print(f"\n0.2.0: {new.describe()}\n0.1.0: {old.describe()}; its closed form {predicted:.6g} J")
+    assert new.holds and not old.holds
+    assert abs(old.work - predicted) <= 1e-9 * abs(predicted)
+
+
+@PROPERTY
+@given(magnetic_loop_draws(with_zero_lever=False))
+def test_control_the_pair_0_1_0_fails_a_loop_of_its_source_on_every_draw_with_a_lever(drawn):
+    """Filtered only of the draws whose source turns leave it exactly no work (``source_degenerate``)."""
+    assume(not source_degenerate(drawn))
+    found = pair_works("0.1.0", drawn)
+    assert not all(work.holds for work in found), "; ".join(work.describe() for work in found)
+
+
+@PROPERTY
+@given(magnetic_loop_draws())
+def test_the_pair_0_2_0_with_its_reactions_does_no_work_round_every_drawn_pair_loop(drawn):
+    found = pair_works("0.2.0", drawn)
+    assert all(work.holds for work in found), "; ".join(work.describe() for work in found if not work.holds)

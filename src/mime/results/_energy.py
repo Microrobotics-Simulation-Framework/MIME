@@ -372,16 +372,27 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
         else:
             notes.append(f"{law} states no energy on its node, so its change is not in the account")
     groups: dict[str, str] = {}
-    for members, verdict in _diagnostics(graph).items():
+    for members, state in group_verdicts(graph).items():
         residual = sum(between.get(member, 0.0) for member in members.split("+"))
-        state = "converged" if verdict.get("converged", True) else (
-            f"not converged at its last step after {int(verdict.get('iterations', 0))} passes (stopped at its cap)")
         groups[members] = f"MADDENING's verdict at the run's last step: {state}; its residual, its members' " \
                           f"storage jumps between steps summed, {residual:+.3g} J"
     total = sum(lost.values()) + sum(stored.values()) + sum(potentials.values())
     supplied = _shared(total, paired)
     return EnergyAccount(stored, lost, potentials, supplied, tuple(lines), numerical, paired, unattributed, worst,
                          balance, floor, steps, tuple(notes), between, exchanges, groups)
+
+
+def group_verdicts(graph: Any) -> dict[str, str]:
+    """Each coupling group's verdict at the last step a run of ``graph`` took, in words, by its members (``a+b``):
+    MADDENING's own (``converged``, and the passes it took); a group that stopped at its cap is said so. The run
+    reports it (``RunResult.groups``) in every profile, with or without the energy ledger: energy cannot tell a capped
+    group from a converged one."""
+    found: dict[str, str] = {}
+    for members, verdict in _diagnostics(graph).items():
+        passes = int(verdict.get("iterations", 0))
+        found[members] = ("converged" if verdict.get("converged", True) else
+                          f"not converged at its last step after {passes} passes: it stopped at its cap")
+    return found
 
 
 def _diagnostics(graph: Any) -> dict[str, dict[str, Any]]:
@@ -414,4 +425,4 @@ def _replaced(line: LawEnergy, **changed: Any) -> LawEnergy:
     return replace(line, **changed)
 
 
-__all__ = ["EnergyAccount", "LawEnergy", "energy_account"]
+__all__ = ["EnergyAccount", "LawEnergy", "energy_account", "group_verdicts"]

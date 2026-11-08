@@ -216,7 +216,7 @@ def magnetic_pair_energy(built: Any, drawn: MagneticLoopDraw, pose: Any) -> Any:
     Traceable in ``pose``."""
     from mime.nodes.actuation._point_dipole import point_dipole
 
-    source = cast(Any, built.graph.get_node("stand.magnetic")).constants()
+    source = built.graph.get_node("stand.magnetic").constants()
     placement = jnp.asarray(source["placement"], dtype=pose.dtype)
     held = quaternion.rotate(placement[3:], jnp.asarray(source["moment"], dtype=pose.dtype))
     moment = quaternion.rotate(pose[3:], jnp.asarray(drawn.moment, dtype=pose.dtype))
@@ -230,7 +230,7 @@ def magnetic_pair_scale(built: Any, drawn: MagneticLoopDraw, pose: Any) -> tuple
     force, ``|m| |B| + |l| |G| |m|`` for its couple, ``|G|`` the gradient's norm."""
     from mime.nodes.actuation._point_dipole import point_dipole
 
-    source = cast(Any, built.graph.get_node("stand.magnetic")).constants()
+    source = built.graph.get_node("stand.magnetic").constants()
     placement = np.asarray(source["placement"], dtype=np.float64)
     held = np.asarray(quaternion.rotate(jnp.asarray(placement[3:]), jnp.asarray(source["moment"], dtype=jnp.float64)))
     pose = np.asarray(pose, dtype=np.float64)

@@ -299,7 +299,8 @@ class RunResult:
                  containment: Sequence[ContainmentRead] | Callable[[], Sequence[ContainmentRead]] = (),
                  report: Mapping[str, Any] | None = None, stopped: Stopped | None = None,
                  origin: Origin | None = None, overrides: Sequence[Mapping[str, Any]] = (),
-                 energy: Callable[[], EnergyAccount | None] | None = None) -> None:
+                 energy: Callable[[], EnergyAccount | None] | None = None,
+                 groups: Callable[[], Mapping[str, str]] | None = None) -> None:
         self.steps = steps
         #: Set when the run is a member of a study (:class:`MemberOf`).
         self.member_of: MemberOf | None = None
@@ -336,6 +337,7 @@ class RunResult:
         self._clock = np.dtype(clock) if clock is not None else None
         self._energy = energy
         self._account: EnergyAccount | None = None
+        self._groups = groups
 
     @property
     def containment(self) -> tuple[ContainmentRead, ...]:
@@ -346,6 +348,13 @@ class RunResult:
         if callable(self._containment):
             self._containment = tuple(self._containment())
         return self._containment
+
+    @property
+    def groups(self) -> Mapping[str, str]:
+        """Each coupling group's verdict at the run's last step, by its members (``a+b``), in words: MADDENING's own,
+        so that a group stopped at its cap is reported on every run, in every profile (``mime.results.group_verdicts``).
+        Empty for a build with no group, and for a run read back from a folder."""
+        return dict(self._groups()) if self._groups is not None else {}
 
     @property
     def energy(self) -> EnergyAccount | None:
@@ -648,6 +657,7 @@ class RunResult:
                  f"over the run, {flags_text(self.flags, meaning=True)}",
                  watches_text(self.watches),
                  *(f"post-run {read.text()}" for read in self.containment),
+                 *(f"coupling group {members}: {verdict}" for members, verdict in self.groups.items()),
                  self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
                                                                                  "written before profiles)"]
         return "\n".join(lines)

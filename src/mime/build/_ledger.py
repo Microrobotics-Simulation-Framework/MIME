@@ -36,7 +36,7 @@ from __future__ import annotations
 import dataclasses
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from maddening.core.node import SimulationNode
 
@@ -91,18 +91,25 @@ _WRITERS = (Section.DRIVE, Section.CONTROLLER)
 
 
 def _unit(plans: PlanSet, plan: EntryPlan | None) -> str | None:
-    """The unit ``outside`` is judged on that a producer's plan belongs to: its thing (a body, a field, a medium's
-    flow), but on an apparatus each segment and each field it carries by its own id (its mount tree), and a drive or a
-    controller by its id; ``None`` for a law's or an observation's."""
+    """The unit ``outside`` is judged on that a producer's plan belongs to: its thing (a body, a field's coils, a
+    medium's flow), but on an apparatus with a chain each segment, each field it carries and each drive of it by its
+    own id (its mount tree), and the controller by its id; ``None`` for a law's or an observation's."""
     if plan is None:
         return None
-    if plan.section in _WRITERS:
+    if plan.section is Section.CONTROLLER:
         return plan.owner
     if plan.section not in _PRODUCERS:
         return None
-    if plan.thing is not None and plans.things.get(plan.thing) is ThingKind.APPARATUS:
+    if plan.thing is not None and plan.thing in _chained(plans):
         return plan.owner
     return plan.thing
+
+
+def _chained(plans: PlanSet) -> set[str]:
+    """The apparatus with a chain: those taken by their mount tree, each segment, field and drive of it by its own id.
+    An apparatus with no chain (a field's coils) is one thing, as a body is."""
+    return {plan.thing for plan in plans.entries if plan.section is Section.DYNAMICS and plan.thing is not None
+            and plans.things.get(plan.thing) is ThingKind.APPARATUS}
 
 
 def _class_line(law: Interaction | None) -> str:
@@ -121,11 +128,15 @@ def boundary(plans: PlanSet, edges: Sequence[EdgeDecl]) -> tuple[tuple[str, ...]
     no law reading it delivers into a segment of that apparatus (the reaction its field's change is paid by); a drive
     and a controller always."""
     owners = _owners(plans)
+    chained = _chained(plans)
     units = {name: unit for name, plan in owners.items() for unit in (_unit(plans, plan),) if unit is not None}
     producing = set(units.values())
     receiving = {units[e.target[0]] for e in edges if e.carries in (DELIVERY, REACTION) and e.target[0] in units}
+    # A body a law holds in its step (a confinement) takes that law's work from the components as a delivery.
+    receiving |= {unit for plan in plans.entries if plan.section is Section.DYNAMICS and plan.confinements
+                  for unit in (_unit(plans, plan),) if unit is not None}
     for plan in plans.entries:
-        if plan.section is not Section.PROVIDER or plans.things.get(plan.thing or "") is not ThingKind.APPARATUS:
+        if plan.section is not Section.PROVIDER or plan.thing not in chained:
             continue
         mine = set(plan.node_names())
         readers = {e.by for e in edges if e.source[0] in mine and e.carries in (STATE, FIELD)}
@@ -136,7 +147,8 @@ def boundary(plans: PlanSet, edges: Sequence[EdgeDecl]) -> tuple[tuple[str, ...]
             receiving.add(plan.owner)
         else:
             receiving.discard(plan.owner)
-    writers = {plan.owner for plan in plans.entries if plan.section in _WRITERS}
+    writers = {unit for plan in plans.entries if plan.section in _WRITERS
+               for unit in (_unit(plans, plan),) if unit is not None}
     outside = tuple(sorted((producing - receiving) | (writers & producing)))
     supplied_by: dict[str, tuple[str, ...]] = {}
     for plan in plans.entries:
@@ -180,7 +192,7 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
         dynamics = plan.entry
         for name in plan.node_names():
             node = built[name]
-            commands = set(getattr(type(node), "PAIRED_COMMANDS", ()))
+            commands = set(cast(tuple[str, ...], getattr(type(node), "PAIRED_COMMANDS", ())))
             into = sorted({(e.target[1], _law_of(e, laws, owners), e.carries) for e in edges
                            if e.target[0] == name and (e.carries in (DELIVERY, REACTION)
                                                        or (e.carries == COMMAND and e.target[1] in commands))})
@@ -195,9 +207,9 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
                                                        f"({type(dynamics).label()})", "a port kind (Dynamics.port)"))
                 continue
             host = next((e.source[0] for e in edges if e.target[0] == name and e.target[1] == "mount_poses"), None)
-            host_outside = host is not None and units.get(host) in outside
+            host_unit = units.get(host) if host is not None else None
             held, problems = _deliveries(plan, dynamics, name, into, laws, owners, built, supplied_by, units, outside,
-                                         units.get(host) if host_outside else None)
+                                         host_unit if host_unit in outside else None)
             refusals += [entry_defect(type(dynamics), problem, context=f", metering {name}") for problem in problems]
             if problems:
                 continue
