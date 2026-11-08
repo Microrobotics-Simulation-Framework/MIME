@@ -38,7 +38,7 @@ EXPORT_ARGUMENTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
 #: beside a variant's pins (the dev group by default, ``--extra verify`` for the harnesses). Their pins are
 #: ``OPTIONAL_FILE``, the lock's export with them: the check accepts one of them installed at its pin, never at another
 #: version, and requires none.
-OPTIONAL_EXTRAS, OPTIONAL_GROUPS = ("verify",), ("dev",)
+OPTIONAL_EXTRAS, OPTIONAL_GROUPS = ("verify", "plot"), ("dev",)
 OPTIONAL_FILE = "requirements-optional.txt"
 OPTIONAL_EXPORT_ARGUMENTS = ("export", "--frozen", "--no-emit-project", "--no-header", "--format", "requirements.txt",
                              *(word for extra in OPTIONAL_EXTRAS for word in ("--extra", extra)),

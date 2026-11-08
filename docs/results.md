@@ -322,6 +322,73 @@ varied is a setting of the process and cannot be declared (`study.bridge-precisi
 the sweep's acceptance (a member against the same point run alone, within tens of eps of each field's scale while the
 body is locked), not an accuracy claim about the model.
 
+## Plots, figures kept as recipes, and comparisons
+
+Needs the `plot` extra (`pip install 'mime-engine[plot]'`: matplotlib and plotly; a missing install is refused with the line
+that installs it).
+
+**One line.** `result.plot(...)` returns a matplotlib figure (static, for a paper) and `result.plot_interactive(...)` a
+plotly figure (interactive, for a card or a quick look), on a run and on a study. Both draw one backend-neutral
+**description** (`result.figure(...).description`): axes in the quantities' units, each flag as shaded intervals exactly
+where the result's own track raised it, a numeric validity limit on a plotted field as a band, an uncertainty as a band about
+its curve, and a note on what the figure estimates and what it bounds (a run's curves estimate; nothing in them bounds the
+model's error). A run draws its recorded series against time. A study draws `kind="curve"` (an output at the end against a
+coordinate: the step-out curve; `against=` names the axis), `kind="overlay"` (a recorded series of the members on one time
+axis) or `kind="distribution"` (an output at the end over members drawn from a distribution).
+
+**Any result that reads as the protocol.** Plots, recipes and comparisons read series (a unit, a time base, values, an
+optional uncertainty), readings, flags and validity limits, not the result classes' insides (`mime.results.ResultData`). A
+result built by hand from plain arrays, units and a time base, a stand-in for measured data such as a trajectory converted
+from a video, is `mime.results.Measured(name, time, {"x": m_per_s(values)}, uncertainty={"x": ("std", m_per_s(sigma))})`;
+`mime.results.figure(measured, "x")` plots it and `study.compare(measured, ...)` compares a study with it, exactly as with a
+simulated run. An uncertainty says which it is, `std` (the data's spread, an estimate) or `bound` (a stated limit).
+
+**A recipe.** `result.figure(output, name="step_out", title="...")` is the figure as an object: `plot()`,
+`plot_interactive()`, `with_options(title=..., x_label=..., y_label=..., legend=..., size=..., style=...)` and
+`write_recipe()`, which saves `figures/<name>.json` (what it shows, the options, and the data files it reads by path and
+sha256, every file the redraw reads: for a study `study.json` and each group's arrays and report, for a run its manifest, arrays and report) and `figures/<name>.plotly.json` (plotly's own JSON, safe to share) beside the run or study folder.
+`FigureRecipe.read(folder, name)` redraws it from the folder's data, never by running the experiment again, and gives the same
+plotly bytes each time; a data file whose sha256 is not the recipe's refuses the redraw by name (`plot.data-changed`). A
+matplotlib pickle is never written. A matplotlib figure is compared by its description, not its pixels.
+
+**As a page.** `figure.display()` (a notebook output: plotly.js from jsDelivr, held to its hash; `offline=True` inlines it)
+and `figure.web()` (a file, `<experiment>.<name>.figure.html` by default, never inside a saved or run folder; `cdn=True`
+loads plotly.js from jsDelivr instead of inlining it) take the three-dimensional view's and the graph view's names and behaviour: the
+same `offline=` and `cdn=`, the same returned page object with a stale banner and a frame height, a file name that is no
+other view's.
+
+**A comparison.** `result.compare(reference=0)` puts every other member against the named one (or against any result, another
+study's member or a measurement): per declared output the signed miss at the end and the largest absolute miss over a
+`window=`. **Members at different coordinates are meant to differ, so their misses are reported and not judged** unless you
+state a tolerance (`tolerance=`: a quantity, or one per output path). The sweep's own rule, a stated number of machine epsilons
+of the output's float type times its largest magnitude over the reference's run, is the numerical-equivalence bound of a point
+against its own re-run; it gives a verdict only where the member and the reference share every coordinate (a re-run, or the
+same point in two environments) and both runs are in the locked regime, which is read from what they declare (a `PhaseLag`
+lag recorded, under a right angle at every recorded step), a trajectory only while no flag is raised. Where the regime cannot be
+read there is no verdict, and the result says why. The comparison is made on the **reference's time base**: a member's own
+sample where it has one at the reference's time, else linear interpolation, which the result and the figure name with each
+side's spacing. It is refused (`compare.time-base`) where either base, the coarser deciding, is sampled as sparsely as half the
+period of a drive either run declares, or that `drives=[Hz(50.0)]` names (a frequency in Hz: anything else is refused,
+`compare.drives`). A result read from a folder keeps no drives, so comparing one without `drives=` is refused
+(`compare.drives-unknown`; `drives=[]` states there are none). `comparison.plot()` overlays the members on the reference with a
+panel for the miss, and every figure carries, as a caption, what it bounds and what it estimates (a measured result is captioned
+as measured). A miss against another run of the model estimates how two runs differ; it bounds the model's error from above
+only against a measurement whose own error is known, and a comparison names none.
+
+**The ghosted overlay.** `sweep(..., stage_every=ms(10))` keeps each member's bound poses and vectors at its start and every
+`stage_every` (a whole number of every member's base step, refused otherwise with the nearest one that is,
+`study.stage-every`); `result.write_compare(reference=0)` writes `compare.usda` into the study folder. It sublayers the
+reference's stage, animates `/World/<thing>` with the reference's poses, and puts each member under its own prim
+`/Compare/m<point>` with a `visibility` attribute and `customData` `mime_compare` naming the member, its coordinates (`axis<k>`:
+path, value, unit) and whether it is the reference, the member's things being references to the reference's with time samples
+from its recording. It is one sublayer, so a viewer mutes it whole, and each member's visibility switches that member alone.
+Everything it references lies inside the study folder. A member of a group whose build differs is drawn with the reference's
+geometry: its `mime_compare` says `own_build: false` and `geometry_from` names the member whose geometry it wears, and writing
+the layer warns.
+
+**The aliasing warning.** A run or study that records, or keeps its stage, at a spacing as long as half the period of a declared
+drive's frequency or longer warns (never a refusal): samples that far apart show a faster motion as a slower one.
+
 ## A run that was stopped
 
 A run is compiled chunks, between which Python gets control back, so Ctrl+C reaches it. On `mime run` the first press

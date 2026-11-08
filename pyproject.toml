@@ -85,6 +85,14 @@ Issues        = "https://github.com/Microrobotics-Simulation-Framework/MIME/issu
 verify = [
     "hypothesis>=6.165",
     "maddening[verify]>=0.4.2,<0.5",
+    # The harnesses and the tests draw plots (mime.results' figures), so the verify extra holds the plot extra.
+    "mime-engine[plot]",
+]
+# `result.plot()` (matplotlib, static: papers) and `result.plot_interactive()` (plotly, cards and quick looks), and the
+# figures redrawn from their recipes. Never a core dependency: a missing install is refused with the line that installs it.
+plot = [
+    "matplotlib>=3.10",
+    "plotly>=6.0",
 ]
 # JAX's CUDA 12 plugin, PJRT and the nvidia-* libraries, locked with hashes in uv.lock, so that a GPU environment is
 # pinned as exactly as a CPU one (`mime/data/env/requirements-cuda12.txt`).

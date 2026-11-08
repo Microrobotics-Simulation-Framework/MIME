@@ -1267,6 +1267,8 @@ class BuiltExperiment:
                 "every= spaces the samples of the series record= names, and nothing is recorded",
                 "name them: run(..., record=[swim.speed], every=...), or drop every=")])
         spacing = self._spacing(every)
+        if recorded or history:
+            self.warn_aliasing(spacing, "the recorded series")
         size: int | None = None
         if chunk is not None:
             if hook is None or self._runs.chunk is not None:
@@ -1337,6 +1339,13 @@ class BuiltExperiment:
         """``every`` in base steps, as :meth:`run` takes it."""
         return self._spacing(every)
 
+    def warn_aliasing(self, spacing: int, what: str) -> None:
+        """Warns where ``what``, sampled every ``spacing`` base steps, is as sparse as half the period of a declared
+        drive's frequency or sparser (``mime.experiment._aliasing``): never a refusal."""
+        from mime.experiment._aliasing import warn_aliasing
+
+        warn_aliasing(self._plans.turning, spacing, self._plans.dt, what)
+
     def flag_tests(self) -> tuple[FlagTest, ...]:
         """Each flag of the layout as a scan tests it (:meth:`_flag_tests`)."""
         return self._flag_tests()
@@ -1383,7 +1392,7 @@ class BuiltExperiment:
             tracks = {flag.path: FlagTrack(None, bool(flag.raised(np.asarray(final[flag.node][flag.field])[None])[0]),
                                            _whole_run(tally, index))
                       for index, flag in enumerate(layout.flags)}
-        return RunResult(steps, final, stacked if history else None, layout=layout, start_step=start,
+        result = RunResult(steps, final, stacked if history else None, layout=layout, start_step=start,
                          recorded=series, tracks=tracks, every=spacing if stacked is not None else None,
                          watches=read_watches(watched, final, stacked if history else None),
                          containment=functools.partial(read_containments, watched, final,
@@ -1395,6 +1404,8 @@ class BuiltExperiment:
                                                   (point.params if point is not None else graph_params(self._graph))
                                                   .get("nodes", {}), steps=start + steps)
                          if self._report.energy else None)
+        result.drives = (plans if plans is not None else self._plans).turning
+        return result
 
     @public
     def binding(self) -> StageBinding:
@@ -1624,6 +1635,7 @@ class BuiltExperiment:
         from mime.viz import StageSamples
 
         spacing = self._spacing(stage_every)
+        self.warn_aliasing(spacing, "the stage recording")
         size = self._runs.chunk or (self.steps_in(chunk) if chunk is not None else spacing)
         if spacing % size:
             raise ArgumentRefused([Refusal(

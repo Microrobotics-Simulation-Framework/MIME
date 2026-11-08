@@ -194,6 +194,7 @@ viz/_meshes.py::_ascii_corners ValueError 1  # an STL file's text that is not wh
 viz/_meshes.py::read_stl ValueError 1  # an STL file with no triangles: caught where a set is baked and coded there (visuals.convert)
 viz/_meshes.py::write_mesh OSError 1  # usd-core could not write a baked mesh into the asset cache: the file system's own error class, as save.not-writable keeps it
 viz/_recording.py::write_recording OSError 1  # usd-core could not write the recording into the run folder: the file system's own error class, as save.not-writable keeps it
+viz/_compare.py::write_compare OSError 1  # usd-core could not write the overlay into the study folder: the file system's own error class, as the recording's
 viz/_web.py::viewer_bytes ValueError 1  # invariant: the packaged viewer's bytes against their pinned sha256, which the packaging and viewer tests hold
 vocabulary/_ports.py::PortKind.__post_init__ ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_ports.py::_dimension ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
