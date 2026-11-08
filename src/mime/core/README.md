@@ -117,7 +117,11 @@ parameters, inputs, state and step included, every bit of the program unchanged.
   its terms (each product's factors in magnitude, the solve's included), so that terms that cancel, and a stiff
   solve, are judged on the size of what was rounded. `recorded` keeps running sums over the run's steps and
   sub-steps in the receiver's state (the fields prefixed `ledger_`, `LedgerRecords` their units); `balance` and
-  `balance_floor` read the run's books from them. A receiver's laws it holds in its own step beyond what is delivered
+  `balance_floor` read the run's books from them. **A running sum of a signed series is a pair** (`PAIRED`;
+  `ledger_work` and `ledger_work_low`, the part below its last place): a plain sum drifts with the steps
+  (`MIME-ANO-149`), the pair's rounding does not grow with them. The error-free sum is `mime.core._error_free`, which
+  the rotating field's phase (`nodes/actuation/_turns.py`) shares. A receiver's laws it holds in its own step beyond
+  what is delivered
   (a dynamic arm's weight, damping, stops and friction) are its `MimeNode.hosted_laws`, and the commands it pairs its
   `MimeNode.PAIRED_COMMANDS`.
 - **Between steps.** The storage at a step's start less the storage the step before ended at is kept apart
