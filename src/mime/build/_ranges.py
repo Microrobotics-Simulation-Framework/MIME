@@ -213,7 +213,9 @@ def choice_refusals(plans_choices: Sequence[RangeChoice], owner_class: Mapping[s
                    f"declares ({type(choice.rule).__name__}: {choice.rule.basis}) misses this value, so a run of the "
                    f"range would be coarser here than the value alone; declare the choice Sampled(count, basis) at a "
                    f"count that finds its extreme, or correct the rule")
-        found.append(entry_defect(owner_class[choice.owner], problem))
+        cls = owner_class.get(choice.owner)
+        if cls is not None:  # an entry refused before its plan was made already stands refused with its own reason
+            found.append(entry_defect(cls, problem))
     return found
 
 
