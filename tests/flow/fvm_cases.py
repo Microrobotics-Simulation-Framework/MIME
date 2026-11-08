@@ -86,12 +86,14 @@ def tube_node(dh: int = 16, *, nu: float = 1.0, rho: float = 1.0, g: float = 8.0
 
 
 def step_of(node: ImplicitFlowNode, p: Any, waveform: Waveform | None = None) -> Any:
-    """The node's step with its drive delivered at the step's end, ``(state) -> state``."""
+    """The node's step with its drive delivered at the instant its scheme reads it, ``(state) -> state``."""
     drive = waveform if waveform is not None else DRIVES.get(node, Waveform())
     dt = node.delta_t
 
+    instant = node.scheme.drive_instants[0]
+
     def step(s: Any) -> Any:
-        time = (jnp.asarray(s["steps"]) + 1).astype(s["velocity_z"].dtype) * dt
+        time = (jnp.asarray(s["steps"]).astype(s["velocity_z"].dtype) + instant) * dt
         return node.advance(p, s, {"body_force": drive.at(time).astype(s["velocity_z"].dtype)}, dt)
 
     return step

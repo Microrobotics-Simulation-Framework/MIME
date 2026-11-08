@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   iterations, its true residual against the tolerance and how it stopped, never silently at a cap), the lumen's and
   the solid's fluxes, and with the energy ledger on the node its step identity; the derivative solves report through a
   zero parameter's gradient. With convection on, a run past the scheme's CFL line is refused, naming the step and the
-  timestep that keeps it. `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is unchanged
+  timestep that keeps it; a CFL number that is not finite counts as past the line. `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is unchanged
   (a medium's flow is written where dev1 wrote it).
 
 - **Plots, figures kept as recipes, comparisons, the ghosted overlay and the aliasing warning** (`docs/results.md`). A new

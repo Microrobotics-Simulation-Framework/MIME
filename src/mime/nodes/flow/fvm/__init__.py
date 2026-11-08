@@ -5,14 +5,15 @@ from mime.nodes.flow.fvm._band import BANDS, DEFAULT_BAND, DEFAULT_INTERIOR, INT
     band_named, ramp, wall_fields
 from mime.nodes.flow.fvm._box import DEFAULT_CELLS_ACROSS, TubeLayout, periodic_tube_layout
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._node import STALL_LINE, FlowState, ImplicitFlowNode, StepParts
+from mime.nodes.flow.fvm._node import STALL_LINE, FlowInputs, FlowState, ImplicitFlowNode, MeteredFlowState, \
+    StepParts
 from mime.nodes.flow.fvm._schemes import SCHEMES, IMEXEuler, StageKind, Steady, TimeScheme, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE, PRECONDITIONERS, REPORT_FIELDS, REPORT_SIZE, Jacobi, \
     Preconditioner, Stopping, guarded_cg, projected_solve, scaling_start
 
 __all__ = ["BANDS", "Band", "DEFAULT_BAND", "DEFAULT_CELLS_ACROSS", "DEFAULT_INTERIOR", "DEFAULT_TOLERANCE",
-           "FlowState", "IMEXEuler", "INTERIORS", "ImplicitFlowNode", "Jacobi", "MACGrid", "PRECONDITIONERS",
-           "Preconditioner", "REPORT_FIELDS", "REPORT_SIZE", "SCHEMES", "STALL_LINE", "StageKind", "Steady",
-           "StepParts", "Stopping", "TimeScheme", "TubeLayout", "TubeSolid", "Velocity", "WallFields", "band_named",
-           "guarded_cg", "periodic_tube_layout", "projected_solve", "ramp", "scaling_start", "scheme_named",
-           "wall_fields"]
+           "FlowInputs", "FlowState", "IMEXEuler", "INTERIORS", "ImplicitFlowNode", "Jacobi", "MACGrid",
+           "MeteredFlowState", "PRECONDITIONERS", "Preconditioner", "REPORT_FIELDS", "REPORT_SIZE", "SCHEMES",
+           "STALL_LINE", "StageKind", "Steady", "StepParts", "Stopping", "TimeScheme", "TubeLayout", "TubeSolid",
+           "Velocity", "WallFields", "band_named", "guarded_cg", "periodic_tube_layout", "projected_solve", "ramp",
+           "scaling_start", "scheme_named", "wall_fields"]

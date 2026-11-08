@@ -17,5 +17,5 @@ node ConstantNode references  # a definition: the value it was built with, resti
 node SwimSpeedNode references  # a definition: a projection of the velocity on a direction and a running sum, resting on no work (docs phase D3); route: none to close unless the node takes a modelled quantity, when a `Reference` on the class closes it; until then the line records that one was looked for
 node RampNode references  # a definition: a held, moved and held value, resting on no work (dev2, the drives); route: as ConstantNode's line
 node PhaseLagNode references  # a definition: an angle between projections and running means, resting on no work (dev2, the drives); route: as SwimSpeedNode's line
-interaction body_force 0.1.0 references  # a uniform body force per unit mass on the fluid, Newton's second law: nothing beyond its own definition to cite
-node BodyForceNode references  # as the body_force entry's: a uniform force per unit mass, defined by itself
+interaction body_force 0.1.0 references  # a definition: a uniform force per unit mass on the fluid, steady or harmonic, resting on no work; route: none to close unless the drive takes a modelled waveform
+node BodyForceNode references  # a definition: a uniform force per unit mass, steady or harmonic, resting on no work; route: none to close unless the drive takes a modelled waveform

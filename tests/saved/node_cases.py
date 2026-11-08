@@ -81,9 +81,37 @@ DRAG = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
 #: The flow's drawn velocity is a flow's in its tube (a millimetre a second at most, a CFL far inside the line at the
 #: battery's timesteps on the case's grid), and its drawn body force a drive's: in the default box of 1e4 the drawn
 #: velocity crosses the CFL line at every timestep and the explicit convection is not stable, a draw no run makes.
+#: Its battery's jit consistency compares every field but the solve report's residual entries, which a CG that stops
+#: at float32's reachable floor reads to that floor's rounding: two compilations of the same solve stop at the same
+#: iteration with residuals that differ in their last digits (5.3e-6 against 4.1e-6, both under the 1e-5 tolerance).
+#: There it holds both residuals within the tolerance instead.
+_REPORT_RESIDUAL = 1
+
+
+def _jit_consistent_but_the_floor(node):
+    jitted = jax.jit(lambda state, given, dt: node.update(state, given, dt))
+    tolerance = float(node.constants()["tolerance"])
+
+    def holds(state_in, state_out, given, dt):
+        compiled = jitted(state_in, given, dt)
+        for name, eager in state_out.items():
+            a, b = np.asarray(eager, np.float64), np.asarray(compiled[name], np.float64)
+            if name in ("solve_report", "solve_report_sum"):
+                if name == "solve_report" and not (a[_REPORT_RESIDUAL] <= tolerance and b[_REPORT_RESIDUAL] <= tolerance
+                                                   or a[_REPORT_RESIDUAL] == b[_REPORT_RESIDUAL]):
+                    return False
+                a, b = np.delete(a, _REPORT_RESIDUAL), np.delete(b, _REPORT_RESIDUAL)
+            if not np.allclose(a, b, rtol=1e-5, atol=1e-6, equal_nan=True):
+                return False
+        return True
+
+    return holds
+
+
 FLOW = NodeCase(options={"bounds": {"velocity_x": (-1e-3, 1e-3), "velocity_y": (-1e-3, 1e-3),
                                     "velocity_z": (-1e-3, 1e-3)},
-                         "boundary_bounds": {"body_force": (-10.0, 10.0)}})
+                         "boundary_bounds": {"body_force": (-10.0, 10.0)},
+                         "jit_consistent_of": _jit_consistent_but_the_floor})
 
 _EVALUATIONS: dict[tuple[str, str], tuple] = {}
 

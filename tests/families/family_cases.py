@@ -145,6 +145,9 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
     ("interaction", "drag", "0.3.0"): FamilyCase(kept_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
     ("interaction", "drag", "0.4.0"): FamilyCase(a_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
     ("interaction", "toy.drag", "0.2.0"): FamilyCase(ToyDrag.Linear, linear),
+    ("interaction", "body_force", "0.1.0"): FamilyCase(
+        no_family="a drive on a medium's fluid, which no body's family rig holds: its delivery is the flow field's "
+                  "input, gated with the field (tests/flow/test_fvm_experiment.py)"),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.lift", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.hold", "0.1.0"): FamilyCase(no_family=TOY),

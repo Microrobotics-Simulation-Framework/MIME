@@ -120,7 +120,18 @@ def preconditioner_named(name: str) -> Preconditioner:
 def guarded_cg(operator: Operator, b: Velocity, precondition: Operator, start: Velocity, stopping: Stopping,
                inner: Callable[[Velocity, Velocity], Array]) -> tuple[Velocity, Array]:
     """The preconditioned CG on ``operator x = b`` from ``start``, stopping as the module states; its answer and its
-    report (:data:`REPORT_FIELDS`)."""
+    report (:data:`REPORT_FIELDS`). The system is solved scaled by the right-hand side's largest magnitude, which
+    changes no iterate's direction and keeps every inner product clear of float32's underflow (a drive of 1e-12 in SI
+    on micrometre cells squares below the smallest normal number, and 0/0 follows)."""
+    size = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in b]))
+    scale = jnp.where(size > 0.0, size, 1.0)
+    x, report = _scaled_cg(operator, _scaled(b, 1.0 / scale), precondition, _scaled(start, 1.0 / scale), stopping,
+                           inner)
+    return _scaled(x, scale), report
+
+
+def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: Velocity, stopping: Stopping,
+               inner: Callable[[Velocity, Velocity], Array]) -> tuple[Velocity, Array]:
     dtype = b[0].dtype
     norm_b = jnp.sqrt(inner(b, b))
     threshold = stopping.tolerance * norm_b
@@ -187,10 +198,13 @@ def scaling_start(guess: Velocity | None, b: Velocity, operator: Operator,
     linear in ``b``, so every solve that shares this closure starts in proportion to its own right-hand side."""
     if guess is None:
         return _scaled(b, 0.0)
-    curvature = inner(guess, operator(guess))
+    # The guess scaled to unit magnitude first: a guess of 1e-20 in float32 squares to a subnormal, and alpha overflows.
+    size = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in guess]))
+    unit = _scaled(guess, 1.0 / jnp.where(size > 0.0, size, 1.0))
+    curvature = inner(unit, operator(unit))
     positive = curvature > 0.0
-    alpha = jnp.where(positive, inner(guess, b) / jnp.where(positive, curvature, 1.0), 0.0)
-    return _scaled(guess, alpha)
+    alpha = jnp.where(positive, inner(unit, b) / jnp.where(positive, curvature, 1.0), 0.0)
+    return _scaled(unit, jnp.where(jnp.isfinite(alpha), alpha, 0.0))
 
 
 def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Velocity, guess: Velocity | None,
