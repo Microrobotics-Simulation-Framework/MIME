@@ -29,7 +29,8 @@ H = 0.25e-3 / math.ceil(0.25e-3 / (2 * RADIUS / CELLS))
 WIDE = RADIUS + steps.WALL_REACH_CELLS * H
 
 
-def experiment(*, dt=ms(0.1), g=2.0, amplitude=None, frequency=None, field=None, viscosity=1.0, **settings):
+def experiment(*, dt=ms(0.1), g=2.0, amplitude=None, frequency=None, phase=0.0, field=None, viscosity=1.0,
+               **settings):
     exp = Experiment("periodic_tube", scene=Scene.new(up=Z, units="m"), dt=dt)
     exp.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(RADIUS * 1e3), wall=mm(0.2),
                                                       length=mm(10.0))))
@@ -37,7 +38,8 @@ def experiment(*, dt=ms(0.1), g=2.0, amplitude=None, frequency=None, field=None,
     exp.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
     exp.declare("water.viscosity", mPa_s(viscosity), reason="water near 20 C, or a viscous test fluid")
     exp.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
-    pulsatile = {} if amplitude is None else {"amplitude": m_per_s2(amplitude), "frequency": Hz(frequency)}
+    pulsatile = {} if amplitude is None else {"amplitude": m_per_s2(amplitude), "frequency": Hz(frequency),
+                                              "phase": phase}
     exp.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(g), **pulsatile), medium="water")
     return exp
 
@@ -182,3 +184,46 @@ def test_auto_saves_the_step_it_chose_and_loads_bit_for_bit(float64, tmp_path: p
     a = built.run(ms(20.0)).final["water.flow"]["velocity_z"]
     b = again.run(ms(20.0)).final["water.flow"]["velocity_z"]
     assert np.array_equal(np.asarray(a), np.asarray(b))
+
+
+# -- the prediction against a run from rest -------------------------------------------------------------------------
+
+def _largest_speed_from_rest(alpha, *, phase, periods=1.5):
+    """dt="auto" at D/h 16, a harmonic drive at ``alpha`` from rest at ``phase``: the largest axial speed over the run
+    (m/s) and the prediction's, which takes the periodic peak doubled (``START_FROM_REST``)."""
+    import jax
+    import jax.numpy as jnp
+
+    f = (alpha / RADIUS) ** 2 * NU / (2 * math.pi)
+    built = experiment(dt="auto", g=0.0, amplitude=20.0, frequency=f, phase=phase).build()
+    node = built.graph.get_node("water.flow")
+    assert isinstance(node, ExplicitFlowNode)
+    p = node._step_constants(None)  # noqa: SLF001 - the step's own constants
+    dt = built.report.dt
+    law = next(name for name in built.graph.node_names if name.startswith("body_force"))
+    drive = jnp.asarray(built.graph.get_node(law).initial_state()["waveform"])
+
+    def body(state, _):
+        ended = node.advance(p, state, {"waveform": drive}, dt)
+        return ended, jnp.max(jnp.abs(ended["velocity_z"]))
+
+    _, speeds = jax.jit(lambda s0: jax.lax.scan(body, s0, None, length=round(periods / (f * dt))))(
+        dict(node.initial_state()))
+    return float(np.max(np.asarray(speeds))), steps.predicted_peak(steps.Drive(0.0, 20.0, f), WIDE, NU)
+
+
+@pytest.mark.parametrize("alpha", [6.0, 14.0])
+@pytest.mark.parametrize("phase", [0.0, math.pi / 2])
+def test_the_prediction_bounds_a_run_from_rest_at_any_phase(float64, alpha, phase):
+    """The speed from rest stays under the steady centreline plus twice the harmonic's periodic peak (the maximum
+    principle); the worst phase starts the drive at zero. Measured: 1.08 to 1.97 times the largest speed."""
+    largest, predicted = _largest_speed_from_rest(alpha, phase=phase)
+    assert predicted >= largest
+
+
+@pytest.mark.parametrize("alpha", [6.0, 14.0])
+def test_control_the_periodic_peak_alone_misses_a_run_from_rest(float64, alpha):
+    """Without the doubling the prediction falls under the run's speed at the worst phase (measured 0.54 to 0.56 of
+    it): the test above can fail."""
+    largest, predicted = _largest_speed_from_rest(alpha, phase=math.pi / 2)
+    assert predicted / steps.START_FROM_REST < 0.8 * largest

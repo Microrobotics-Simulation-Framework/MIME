@@ -31,10 +31,11 @@ BODY_FORCE = "body_force"
 #: against its planar calibration; dt="auto" at the line, on a tube whose wall sat 0.03 cells out, read its CFL 0.7 %
 #: over the line and stopped, before this was added).
 WALL_REACH_CELLS = 0.25
-#: The harmonic's peak from rest over its periodic state's: a run starts from rest, and an inviscid core driven by
-#: ``A cos(omega t + phi)`` from rest moves as ``(A / omega)(sin(omega t + phi) - sin phi)``, up to twice its periodic
-#: peak (measured: at alpha 6 the start overshot the periodic peak by 8 %, and dt="auto" on the periodic peak alone
-#: predicted 0.92 of the measured largest CFL).
+#: The harmonic's peak from rest over its periodic state's. The axial flow in a straight tube is a diffusion with the
+#: wall at zero, so the run from rest is the periodic flow plus a transient that starts as minus the periodic flow at
+#: the start and, by the maximum principle, never exceeds it: the speed stays under the steady centreline plus twice
+#: the harmonic's periodic peak, at any start. Measured at D/h 16 from rest at the worst phase (the drive starting at
+#: zero), the periodic peak alone predicted 0.54 to 0.56 of the largest speed (alpha 6 to 20); doubled, 1.08 to 1.13.
 START_FROM_REST = 2.0
 #: The peak of ``|D(rho)|`` over the cross-section is taken on this many radii (the profile is smooth; at alpha 50 its
 #: Stokes layer holds about 30 of them).

@@ -3,7 +3,8 @@ case set, each built with ``dt="auto"``: the scheme and step it chose, the CFL n
 and over the run the largest CFL number measured on the faces, their ratio, whether the per-step stop fired, and
 whether the flow went non-finite; the steps a period of a pulsatile drive.
 
-The cases: the straight tube steady (D/h 16 and 32); Womersley at alpha 6 (D/h 32); the tube tilted along the lattice
+The cases: the straight tube steady (D/h 16 and 32); Womersley at alpha 6 (D/h 32), from the drive's peak and from
+the worst phase (the drive starting at zero, where the start from rest overshoots most); the tube tilted along the lattice
 direction (1, 0, 3) (D/h 16); a viscous fluid where IMEX Euler is chosen (D/h 16); and, on the step alone, a plug flow
 along the body diagonal at RK3's line along that direction and at the decided 2.0. Run one dtype at a time, alone:
 
@@ -21,8 +22,8 @@ import jax
 import numpy as np
 
 
-def _experiment(*, cells: int, g: float, amplitude: float = 0.0, frequency: float = 0.0, axis=(0.0, 0.0, 1.0),
-                viscosity: float = 1.0, length: float = 0.25) -> Any:
+def _experiment(*, cells: int, g: float, amplitude: float = 0.0, frequency: float = 0.0, phase: float = 0.0,
+                axis=(0.0, 0.0, 1.0), viscosity: float = 1.0, length: float = 0.25) -> Any:
     from mime.dynamics import FVM
     from mime.experiment import Experiment
     from mime.interactions import BodyForce
@@ -36,7 +37,7 @@ def _experiment(*, cells: int, g: float, amplitude: float = 0.0, frequency: floa
                           fields={"flow": FVM(domain=PeriodicBox(length=mm(length)), cells_across=cells)}))
     exp.declare("water.viscosity", mPa_s(viscosity), reason="the case's fluid")
     exp.declare("water.density", kg_per_m3(1000.0), reason="the case's fluid")
-    pulsatile = {"amplitude": m_per_s2(amplitude), "frequency": Hz(frequency)} if amplitude else {}
+    pulsatile = {"amplitude": m_per_s2(amplitude), "frequency": Hz(frequency), "phase": phase} if amplitude else {}
     norm = math.sqrt(sum(c * c for c in axis))
     exp.attach(BodyForce(along=tuple(c / norm for c in axis), steady=m_per_s2(g), **pulsatile), medium="water")
     return exp
@@ -122,6 +123,8 @@ def main() -> None:
         run_case("straight, steady, D/h 16", 3000, cells=16, g=20.0),
         run_case("straight, steady, D/h 32", 6000, cells=32, g=20.0),
         run_case("Womersley alpha 6, D/h 32", 1500, cells=32, g=0.0, amplitude=20.0, frequency=omega6 / (2 * math.pi)),
+        run_case("Womersley alpha 6 from the worst phase, D/h 32", 1500, cells=32, g=0.0, amplitude=20.0,
+                 frequency=omega6 / (2 * math.pi), phase=math.pi / 2),
         run_case("tilted (1, 0, 3), steady, D/h 16", 3000, cells=16, g=20.0, axis=(1.0, 0.0, 3.0),
                  length=0.25 * math.sqrt(10.0)),
         run_case("viscous fluid (IMEX Euler), D/h 16", 300, cells=16, g=0.5, viscosity=100.0),
