@@ -258,3 +258,23 @@ def test_quasi_uniform_refuses_a_count_its_dense_set_cannot_hold():
     kind, settings = SPHERE
     with pytest.raises(ValueError, match="dense set"):
         quasi_uniform(kind, settings, spacing_for(kind, settings), ("surface",), lambda p: np.full(len(p), 1e6))
+
+
+def test_a_round_length_keeps_its_count_under_a_millionths_move_and_without_the_slack_it_does_not():
+    """A capsule's height of 2 mm at a 1 mm spacing, a whole number of spacings, takes two rows of samples, and keeps
+    them where its height moves by a relative 1e-6 either way (the two-builds walk's move, a study's difference) or by
+    its last digit; so does a box's side of 3 mm at 1 mm, and FL-9's length at its own length over seven. The control:
+    the bare ceiling, ``math.ceil`` of the ratio with no slack, lifts the moved round heights to the next count."""
+    capsule = Capsule(radius=mm(0.5), height=mm(2.0), axis=(0.0, 1.0, 0.0))
+    rows = {}
+    for height in (2e-3, 2e-3 * (1.0 + 1e-6), 2e-3 * (1.0 - 1e-6), math.nextafter(2e-3, 1.0)):
+        rows[height] = capsule.sample_counts({"radius": 0.5e-3, "height": height, "axis": (0.0, 1.0, 0.0)}, 1e-3,
+                                             "lateral")[1]
+        assert rows[height] == 2, (height, rows[height])
+    box = Box(size=mm((1.0, 2.0, 3.0)))
+    for side in (3e-3, 3e-3 * (1.0 + 1e-6)):
+        assert box.sample_counts({"size": (1e-3, 2e-3, side)}, 1e-3, "faces_x")[1] == 3
+    length = FL9["length"]
+    assert fl9().sample_counts({**FL9, "length": length * (1.0 + 1e-6)}, length / 7.0, "lateral")[1] == 7
+    bare = [max(1, math.ceil(height / 1e-3)) for height in rows]
+    assert bare.count(3) == 2, "without the slack the moved round heights take a row more"

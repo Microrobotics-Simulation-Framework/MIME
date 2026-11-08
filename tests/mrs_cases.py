@@ -125,10 +125,9 @@ NEAR = {"ball": (BALL, mm((0.0, 0.0, 0.0)), (HALF, TURN, 0.0, 0.0)),
         "bead": (Sphere(radius=mm(0.6)), mm((1.0, 2.2, 0.0)), (HALF, 0.0, 0.0, TURN))}
 
 
-def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(0.9)) -> Experiment:
+def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(1.0)) -> Experiment:
     """The round-trip case of drag 0.5.0's near field: three bodies in one unbounded medium on the mrs rung, one joint
-    node, each moving and turning from the start. The spacing divides none of the bodies' lengths a whole number of
-    times, so that a length moved by its last digits (the two-builds walk) keeps every count of force points."""
+    node, each moving and turning from the start."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
     experiment.add_medium(Medium("water"))
     experiment.declare("water.viscosity", WATER, reason="water")

@@ -527,6 +527,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A round length keeps its count of samples** (`mime.scene`'s solids and screw). A kind's count along a length was
+  the ceiling of the length over the spacing, so a round input (a 2 mm capsule at a 1 mm spacing, a whole number of
+  spacings) took the next count, and a recompiled program, where its last digit or a study's move of a millionth lifted
+  the ratio past the whole number: the two-builds walk saw the near field's case's program change. The ceiling now
+  takes a slack of a ten-thousandth of the ratio (`COUNT_SLACK`), so a length up to that share past a whole number of
+  spacings keeps the lower count and the count's step lies off the round values. No registered case's golden output
+  and no released program's arrays moved (each compared bit for bit); a configuration whose length lies within that
+  share above a whole number of spacings takes one row fewer than in 0.3.0.dev1.
 - **The energy ledger's running sums are pairs, and no longer drift with the steps** (MIME-ANO-149; the ledger is
   unreleased, so no version step). A plain float32 sum of a series of 1e5 terms drifted by tens of units of eps on the
   terms' summed magnitudes (45 on a mixed-sign series, 107 on a positive one, measured through the ledger's own update;
