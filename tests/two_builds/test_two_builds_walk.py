@@ -5,8 +5,11 @@ an integer or a zero) is moved by a relative 1e-6 in turn; the base and the move
 study's point is (planned, the controller's law made, assembled, compiled by MADDENING) and the trace form compares
 their steps as MIME's chunked run executes them (``mime.testing.graph_program``). A move the build refuses (a rate no
 longer a multiple of the step) is skipped. On the tip before S-F0-1 the arm fired 21 times on the MRS drag's held
-matrix (``held_or_made`` compared the leaves with the build's values as constants) and 5 times on the hull's search
-values (Python floats made from its shape): both are arguments of the step now, and **no pair fires**.
+matrix (``held_or_made`` compared the leaves with the build's values as constants) and 5 times on the hull's shape
+(Python floats made from it): the matrix's leaves and the hull's search values are arguments of the step now. What
+fires is pinned below, pair by pair (:data:`HELD`), and every such pair is ``held``: a moved leaf of it is one the step
+cannot read (MADDENING's record of the step's reads), a value its node consumes when it is built and declares so, which
+MADDENING refuses to write into a built graph and a study refuses to vary. Any other fire fails.
 
 The control, on the cases those fires came from: the same pairs traced with the parameters closed over (the step's
 default, MADDENING's compile-time snapshot), which makes every leaf a constant of the program, fire on every pair
@@ -28,7 +31,7 @@ from cases import CASES
 from mime.build import BuildRefused, plan_experiment
 from mime.build._construct import assemble
 from mime.build._in_graph import program_of
-from mime.build._maddening import chunk_step, full_state, graph_params, parameter_leaves
+from mime.build._maddening import chunk_step, full_state, graph_params, parameter_leaves, unreadable_leaves
 from mime.control import law_and_models
 from mime.experiment import Experiment
 from mime.saved import dump_document
@@ -36,6 +39,12 @@ from mime.saved._pins import keeping_pins
 from mime.testing._two_builds import graph_program, programs_differ
 
 RELATIVE = 1e-6
+#: The pairs that fire, each held: the ellipsoid's semi-axes, a vector setting of the hull's kind, which the rigid body
+#: holds as built (its leaf ``hull_shape_semi_axes`` declared so, and unread by the step): a declared geometry's
+#: vectors become leaves its step reads with declared ranges (lane S's next phase).
+HELD: dict[str, set[str]] = {
+    "bound_robot_with_parts": {"things/UMR/parts/Shell/solid/settings/semi_axes/value"},
+}
 #: The keys whose numbers are not moved: a direction, a version, the seed.
 SKIPPED = {"orientation", "up", "schema", "mime", "seed"}
 WALKED = [case for case in CASES if not case.refused]
@@ -127,6 +136,7 @@ def walk(case: Any, folder: Path, control: bool = False) -> list[dict[str, Any]]
     base = load(document, "base")
     program = closed_program(base) if control else graph_program(base)
     leaves = {o: {k: np.asarray(v) for k, v in f.items()} for o, f in parameter_leaves(base).items()}
+    unread = set(unreadable_leaves(base))
     rows: list[dict[str, Any]] = []
     for path in numbers(document):
         value = at(document, path)
@@ -141,7 +151,8 @@ def walk(case: Any, folder: Path, control: bool = False) -> list[dict[str, Any]]
                         if k in leaves.get(o, {}) and np.asarray(v).shape == leaves[o][k].shape
                         and not np.array_equal(np.asarray(v), leaves[o][k])]
         found = closed_program(other) if control else graph_program(other)
-        rows.append({"path": path, "how": programs_differ(program, found), "moved": moved_leaves})
+        rows.append({"path": path, "how": programs_differ(program, found), "moved": moved_leaves,
+                     "unread": [each for each in moved_leaves if each in unread]})
     return rows
 
 
@@ -150,8 +161,9 @@ def test_no_pair_of_the_registry_walks_cases_fires_the_trace_form(case: Any, tmp
     if case.lab and importlib.util.find_spec("mime_lab_fixture") is None:
         pytest.skip("the lab fixture is not installed (every CI lane installs it)")
     rows = walk(case, tmp_path)
-    fired = [(row["path"], row["how"]) for row in rows if row.get("how")]
-    assert not fired
+    fired = {"/".join(map(str, row["path"])) for row in rows if row.get("how")}
+    assert fired == HELD.get(case.name, set())
+    assert all(row["unread"] for row in rows if row.get("how")), "every pair that fires is held as built"
     assert any(row.get("moved") for row in rows) or not rows, "the walk moved a leaf, so a quiet arm is evidence"
 
 

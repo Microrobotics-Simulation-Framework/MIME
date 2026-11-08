@@ -37,7 +37,7 @@ from mime.core import (
     typed_view,
 )
 from mime.core import ledger as books
-from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
+from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.nodes.body._contact import (
     START_APART,
     Contacts,
@@ -545,8 +545,7 @@ class RigidInertialNode(MimeNode):
             placed = "held as built: where the hull's part sits in the body, its frame"
             held.update({f"{HULL}{name}": ParamSpec(units=setting_units(record, name), description=CUT_AS_BUILT)
                          if name in self._hull_traced
-                         else ParamSpec(trainable=False, description="held as built: a direction of the kind is its "
-                                                                     "part's frame")
+                         else ParamSpec(trainable=False, description=held_as_built(record, name))
                          for name in (key.removeprefix(HULL) for key in own if key.startswith(HULL))})
             held.update(hull_centre=ParamSpec(units="m", trainable=False, description=placed),
                         hull_rotation=ParamSpec(units="1", trainable=False, description=placed))

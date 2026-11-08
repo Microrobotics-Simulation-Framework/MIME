@@ -43,6 +43,7 @@ from mime.build._maddening import (
     graph_params,
     inputs,
     parameter_leaves,
+    unreadable_leaves,
 )
 from mime.core import NUDGED_SIZE
 from mime.experiment import BuiltExperiment, Experiment
@@ -194,9 +195,12 @@ class RunForm:
 class TwoBuilds:
     """What the two-builds check found. ``verdict``: ``"quiet"``; ``"bake"`` (the trace form fired with no leaf of
     another shape: a value made from the moved one is a constant of the program); ``"shape"`` (it fired where a leaf
-    or a constant changed shape: a value-keyed shape, legitimate only where the move crossed its threshold); or
-    ``"outside-step"`` (the trace form quiet and the run form fired: the value reaches the run outside the step, through
-    the state or the external inputs, ``inputs_moved``)."""
+    or a constant changed shape: a value-keyed shape, legitimate only where the move crossed its threshold); ``"held"``
+    (it fired where a moved leaf is one the step cannot read, ``unread``: a value its node consumes when it is built
+    and declares so, which MADDENING refuses to write into a built graph and a study refuses to vary, so that the move
+    takes a rebuild; the trace form cannot tell a bake beside it in the same pair, so a caller names each pair it
+    accepts so); or ``"outside-step"`` (the trace form quiet and the run form fired: the value reaches the run outside
+    the step, through the state or the external inputs, ``inputs_moved``)."""
 
     trace_fired: bool
     how: str
@@ -206,11 +210,14 @@ class TwoBuilds:
     state_moved: bool
     inputs_moved: bool
     run: RunForm | None
+    unread: tuple[tuple[str, str], ...] = ()
 
     @property
     def verdict(self) -> str:
         if self.trace_fired:
-            return "shape" if self.reshaped or self.how in ("consts-count", "consts-shape") else "bake"
+            if self.reshaped or self.how in ("consts-count", "consts-shape"):
+                return "shape"
+            return "held" if self.unread else "bake"
         if self.run is not None and self.run.fired:
             return "outside-step"
         return "quiet"
@@ -275,8 +282,9 @@ def two_builds(base: BuiltExperiment, other: BuiltExperiment, *, run: bool = Tru
                                {n: f for n, f in state_b.items() if n != "_meta"})[0])
     inputs_moved = bool(_differ(_arrays(base.held_inputs()), _arrays(other.held_inputs()))[0])
     form = run_form(base, other, steps=steps) if run and not reshaped else None
+    unread = tuple(each for each in moved if each in unreadable_leaves(base.graph))
     return TwoBuilds(bool(how), how, differing_lines(a, b) if how == "text" else (), tuple(moved), tuple(reshaped),
-                     state_moved, inputs_moved, form)
+                     state_moved, inputs_moved, form, unread)
 
 
 def moved_value(value: object, relative: float) -> object:

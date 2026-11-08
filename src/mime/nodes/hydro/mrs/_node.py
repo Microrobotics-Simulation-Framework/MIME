@@ -37,7 +37,7 @@ from mime.nodes.hydro.mrs._quadrature import (
 )
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, wall_correction_named
-from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
+from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.registry import Problem, Samples, Sampling
 
 EQUATIONS = (r"\mathbf{R} = \mathbf{M}^{\top} (\mathbf{A} + \mathbf{G})^{-1} \mathbf{M}, \quad "
@@ -602,7 +602,7 @@ class MRSDragNode(MimeNode):
     def param_specs(self) -> dict[str, ParamSpec]:
         held = registered_kind(self.constants()["kind"], self.constants()["kind_version"])
         shapes = {f"{SHAPE}{name}": ParamSpec(units=setting_units(held, name)) if name in self._traced else
-                  ParamSpec(trainable=False, description="held as built: a direction of the kind is its part's frame")
+                  ParamSpec(trainable=False, description=held_as_built(held, name))
                   for name in (key.removeprefix(SHAPE) for key in self.constants() if key.startswith(SHAPE))}
         placed = "held as built: where the part sits in the body, its frame, as a direction of the kind is"
         wall = self._wall()

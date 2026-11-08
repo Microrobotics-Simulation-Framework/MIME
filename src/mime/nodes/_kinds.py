@@ -40,6 +40,16 @@ def traced_settings(held: Registered, settings: Mapping[str, object]) -> tuple[s
                  if isinstance(value, float) and setting_kind(held, name) is not Direction)
 
 
+def held_as_built(held: Registered, name: str) -> str:
+    """The description of a kind's setting a node holds as built rather than as a leaf its step reads (not one of
+    :func:`traced_settings`): a direction is its part's frame; any other (a vector of sizes, an integer) the node
+    consumes when it is built, so that a new value takes a rebuild, and a study refuses to vary it."""
+    if setting_kind(held, name) is Direction:
+        return "held as built: a direction of the kind is its part's frame"
+    return ("held as built: consumed when the node is built, so that a new value takes a rebuild (a study refuses to "
+            "vary it)")
+
+
 def setting_kind(held: Registered, name: str) -> object:
     declared = held.settings.get(name)
     return None if declared is None else declared.kind
@@ -50,4 +60,5 @@ def setting_units(held: Registered, name: str) -> str:
     return "1" if declared is None or declared.dimension is None else unit_symbol(declared.dimension)
 
 
-__all__ = ["kind_from_settings", "registered_kind", "setting_kind", "setting_units", "traced_settings"]
+__all__ = ["held_as_built", "kind_from_settings", "registered_kind", "setting_kind", "setting_units",
+           "traced_settings"]
