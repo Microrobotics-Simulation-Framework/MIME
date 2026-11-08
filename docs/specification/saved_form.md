@@ -229,9 +229,10 @@ refusal table's (`mime/build/refusal_table.txt`).
   is zero or not finite gives no floor. The start moves the parameters as well as the state, on purpose: on the tube
   demo a start that moved the state alone measured every block's divergence zero, in both precisions, since a body
   released at rest at the origin starts from zeros. Where a parameter it moves is one an MRS drag holds a value made
-  from, the rerun makes that value afresh at each step, which is then most of the rerun's cost (measured in
-  `mime.saved._scales`). Held points (`HeldPoints`) are judged only on the rows whose paired force (`HeldForces`) acts
-  in the reference or the rerun, their magnitude and resolution too. A field that is not of floating point is compared
+  from, the rerun makes that value once, from the moved parameters, and the compiled step keeps it there rather than
+  making it at each step, with the resolution unchanged (measured in `mime.saved._scales`). Held points
+  (`HeldPoints`) are judged only on the rows whose paired force (`HeldForces`) acts in the reference or the rerun,
+  their magnitude and resolution too. A field that is not of floating point is compared
   exactly. A folder of the ninth form or earlier is judged as its form says, element by element
   (`|a - b| <= atol + rtol |b|` with its own numbers), in `verify`, `verify --run` and the load's comparison of the
   derived graph, and one that holds either new key is refused. A reader of the ninth form refuses a folder of the tenth
@@ -256,6 +257,9 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_verify_blocks.py::test_a_held_point_of_a_row_that_takes_a_force_moved_at_ten_times_its_bound_is_moved_at_every_step`,
   `tests/saved/test_verify_blocks.py::test_a_held_point_of_a_row_that_takes_no_force_jumping_two_millimetres_is_not_reported`,
   `tests/saved/test_save_reference.py::test_a_save_after_a_run_chunked_by_one_step_builds_and_compiles_nothing`,
+  `tests/saved/test_held_once.py::test_the_nudged_pass_makes_the_drags_matrix_once_and_the_step_none`,
+  `tests/saved/test_held_once.py::test_the_resolution_and_reference_are_the_steps_that_make_the_matrix_at_every_step_bit_for_bit`,
+  `tests/saved/test_held_once.py::test_control_a_nudged_pass_given_a_matrix_made_from_the_unnudged_leaves_records_another_resolution`,
   `tests/unit/test_field_kinds.py::test_a_new_nodes_held_points_pair_with_its_one_field_of_held_forces`,
   `tests/unit/test_field_kinds.py::test_control_a_typed_state_that_does_not_name_exactly_the_fields_types_none_of_them`,
   `tests/unit/test_field_kinds.py::test_a_new_nodes_typed_state_declares_the_units_of_its_fields_beside_their_types`,

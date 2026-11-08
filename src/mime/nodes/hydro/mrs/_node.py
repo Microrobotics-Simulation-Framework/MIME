@@ -18,8 +18,8 @@ from maddening.core.node import BoundaryInputSpec
 from maddening.core.params import ParamSpec
 from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 
-from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, \
-    node_input, quaternion, typed_view
+from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jit, jnp, node_fields, \
+    node_input, one_ulp_up_leaf, quaternion, typed_view
 from mime.nodes.hydro.mrs._quadrature import (
     Chunks,
     padded,
@@ -33,6 +33,7 @@ from mime.nodes.hydro.mrs._quadrature import (
     separated_resistance,
     turned,
     turned_resistance,
+    unchanged,
 )
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, wall_correction_named
@@ -410,6 +411,18 @@ def _floating_leaves(name: str, value: object) -> dict[str, Any]:
     """The floating arrays of the pytree ``value``, each by ``name`` and its path."""
     return {f"{name}{_path_name(path)}": leaf for path, leaf in _tree_util.tree_flatten_with_path(value)[0]
             if jnp.issubdtype(leaf.dtype, jnp.floating)}
+
+
+def rerun_leaves(theta: Mapping[str, Any], built: Mapping[str, Any]) -> dict[str, np.ndarray]:
+    """``built``'s leaves in ``theta``'s dtypes as the save's resolution rerun moves them (``one_ulp_up_leaf``): where
+    the step is given the held value made at them (:meth:`MRSDragNode.made_again`). Only that rerun reaches them: they
+    move the part's rotation, which a run holds as built."""
+    found: dict[str, np.ndarray] = {}
+    for key, value in built.items():
+        held = np.asarray(value, dtype=np.dtype(jnp.asarray(theta[key]).dtype))
+        up = one_ulp_up_leaf(held)
+        found[key] = held if up is None else up
+    return found
 
 
 @dataclasses.dataclass(frozen=True)
@@ -841,6 +854,12 @@ class MRSDragNode(MimeNode):
     def _make(self) -> Any:
         return self.free_resistance if self._free() else self.self_interaction
 
+    @cached_property
+    def _made_compiled(self) -> Any:
+        """``_make`` compiled once per node: what :meth:`made_again` makes the held value with, so that a build saved
+        again compiles it no more."""
+        return jit(self._make())
+
     def _built_theta(self) -> dict[str, Any]:
         constants = self.constants()
         return {key: constants[key] for key in self.body_leaf_names()}
@@ -1080,12 +1099,27 @@ class MRSDragNode(MimeNode):
             indefinite_advice(gap, self._force_spacing() or 0.0, self._clear_gap()))
 
     def _held_value(self, p: Mapping[str, Any]) -> Array:
-        """The body-frame quantity at the step's leaves: the held one where they are as built (``held_or_made``),
-        made from them where one has moved or where the step was given no held value (a call with no ``params``)."""
+        """The body-frame quantity at the step's leaves: the held one where they are as built, or as the save's
+        resolution rerun moves them, which gives the held value made there (``held_or_made``, :meth:`made_again`);
+        made from them where one has moved otherwise or where the step was given no held value (a call with no
+        ``params``)."""
         theta = {key: p[key] for key in self.body_leaf_names()}
         if HELD not in p:
             return self._make()(theta)
-        return held_or_made(self._make(), self._built_theta())(theta, p[HELD])
+        built = self._built_theta()
+        return held_or_made(self._make(), built, (rerun_leaves(theta, built),))(theta, p[HELD])
+
+    @override
+    def made_again(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """The held value (``HELD``) made from ``params``' leaves, once, where they are not the build's: what the save's
+        resolution rerun gives the step, which keeps it at those leaves one ulp up (:func:`rerun_leaves`) and makes it
+        afresh at any other."""
+        if HELD not in params:
+            return {}
+        theta = {key: params[key] for key in self.body_leaf_names()}
+        if bool(unchanged(theta, self._built_theta())):
+            return {}
+        return {HELD: self._made_compiled(theta).astype(jnp.asarray(params[HELD]).dtype)}
 
     def _separated_step(self, p: Mapping[str, Any], state: NodeFields, pose: Array) -> NodeFields:
         """The step on a separated quadrature. In free space the held resistance turned to the pose (its asymmetry judged at
@@ -1181,4 +1215,4 @@ __all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUAT
            "WALL_CELL_SHARE", "WALL_REACH",
            "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged",
            "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",
-           "reach_weight", "run_gib", "stops_where"]
+           "reach_weight", "rerun_leaves", "run_gib", "stops_where"]

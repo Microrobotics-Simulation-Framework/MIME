@@ -1695,8 +1695,9 @@ class BuiltExperiment:
         a start one ulp off: every nonzero floating number of the initial state and of the small parameters the
         compiled step reads (``mime.build._maddening.params_one_ulp_up``) one ulp up. The parameters are moved too
         because a body released at rest at the origin starts from zeros, which a change of the state alone cannot move
-        (measured on the tube demo: every block's divergence zero). The second run compiles nothing the first did not,
-        and the parameters are put back after."""
+        (measured on the tube demo: every block's divergence zero). The second run's step compiles nothing the first's
+        did not; a value a node makes from moved parameters and holds among them (an MRS drag's matrix) is made again
+        from them once, before it (``mime.core.MimeNode.made_again``). The parameters are put back after."""
         from mime.build._maddening import device_array, node_state, params_one_ulp_up
 
         start = {name: {field: np.asarray(value) for field, value in node_state(graph, name).items()}
@@ -1714,9 +1715,10 @@ class BuiltExperiment:
         ``scene/layers/``) and the reference outputs (every field over the first ``steps`` steps, run from the
         initial state) into ``folder``. The reference steps are run on this build's graph, reset and then put back
         where its runs left it, so a run continues from there bit for bit: by the history scan of one step where a run
-        chunked by one step compiled it (the lock names it, ``one-step``, and nothing is compiled), else by the history
-        scan; on a graph built afresh where :attr:`graph` was edited since the build. Raises ``BuildRefused`` when the
-        experiment cannot be saved: a setting the document cannot hold, or an entry a load elsewhere could not find.
+        chunked by one step compiled it (the lock names it, ``one-step``, and nothing of the step is compiled), else by
+        the history scan; on a graph built afresh where :attr:`graph` was edited since the build. Raises
+        ``BuildRefused`` when the experiment cannot be saved: a setting the document cannot hold, or an entry a load
+        elsewhere could not find.
         ``progress`` shows the live display's phase while it saves, as :meth:`run` decides where (in a notebook, by
         default). A stale build is refused in a notebook or IPython and warned about in a script, as :meth:`run`'s
         is."""
