@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
 from mime.results._result import RunResult, read_report
+from mime.results._stage import StageRecord
 from mime.results._study import Dropped, StudyResult
 from mime.results._study_folder import (
     BASE_DIR,
@@ -127,6 +128,7 @@ def read_study(root: Path) -> StudyResult:
         archive = archives[group]
         member = archive.member(point)
         run = RunResult.from_manifest(cast(dict[str, Any], json.loads(str(member["manifest"]))), member)
+        run.stage = StageRecord.read(member.files, member.__getitem__)
         if "report" in member.files:
             run.report = cast(dict[str, Any], json.loads(str(member["report"])))
         else:
@@ -138,9 +140,11 @@ def read_study(root: Path) -> StudyResult:
     dropped = [Dropped(int(d["index"]), str(d["coordinates"]), tuple(map(str, d["refusals"])))
                for d in cast(list[dict[str, Any]], document["dropped"])]
     compiles = [int(g["compiles"]) for g in cast(list[dict[str, Any]], document["groups"])]
-    return StudyResult(str(document["experiment"]["name"]), paths, coordinates, members,
-                       [int(row["group"]) for row in done], [int(row["point"]) for row in done], dropped, compiles,
-                       record=document, base=root / BASE_DIR, missing=missing)
+    result = StudyResult(str(document["experiment"]["name"]), paths, coordinates, members,
+                         [int(row["group"]) for row in done], [int(row["point"]) for row in done], dropped, compiles,
+                         record=document, base=root / BASE_DIR, missing=missing)
+    result.folder = root
+    return result
 
 
 __all__ = ["read_study"]

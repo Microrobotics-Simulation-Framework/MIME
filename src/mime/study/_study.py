@@ -251,6 +251,8 @@ class StudyPlan:
     seed: int = 0
     #: How the members' commands move in time: from rest (the default) or a ramp of one command.
     protocol: Protocol = field(default_factory=FromRest)
+    #: How often each member keeps the stage's bound fields for the ghosted comparison (``None``: not kept).
+    stage_every: Quantity | None = None
 
     @property
     def refused(self) -> tuple[Point, ...]:
@@ -384,13 +386,15 @@ class Study:
         self._batch: int | None = None
         self._drop = False
         self._protocol: Protocol = FromRest()
+        self._stage_every: Quantity | None = None
         self._reasons: dict[str, str] = {}
         self._plan: StudyPlan | None = None
 
     @public
     def sweep(self, points: object, *, duration: Quantity, record: Sequence[OutputRef | str] = (),
               every: Quantity | None = None, protocol: object = None, batch: int | None = None,
-              drop_refused: bool = False, reasons: Mapping[object, str] | None = None) -> Study:
+              drop_refused: bool = False, reasons: Mapping[object, str] | None = None,
+              stage_every: Quantity | None = None) -> Study:
         """The points (``grid({...})``, ``along({...})`` or a list of rows) and each member's run: ``duration`` from
         the start, the per-step outputs ``record`` names kept every ``every`` (as :meth:`BuiltExperiment.run` takes
         them), how its commands move in time (``protocol``: ``FromRest()``, the default, or a ``Ramp(...)`` of one
@@ -398,7 +402,10 @@ class Study:
         ``drop_refused`` the points nothing refuses run while the refused ones are recorded on the result. ``reasons``
         gives each axis its own reason (by the axis, or its path), one string per axis: the research profile refuses a
         study whose axis has none (``study.axis-reason``), and the exploratory profile declares every value with the
-        generic study reason where an axis has none. Returns the study."""
+        generic study reason where an axis has none. ``stage_every`` keeps each member's bound poses and vectors at its start
+        and every ``stage_every`` after (a time that is a whole number of every member's base step, refused otherwise
+        with the nearest one that is, ``study.stage-every``), for the ghosted comparison, ``result.write_compare(...)``;
+        a member's arrays then hold them (``m<point>/stage/``). Returns the study."""
         if batch is not None and (not isinstance(cast(object, batch), int) or batch < 1):
             raise ArgumentRefused([Refusal("study.batch", RefusalClass.USER,
                                            f"batch= is a number of members of at least one, not {batch!r}",
@@ -406,6 +413,7 @@ class Study:
         self._points, self._duration, self._record, self._every = _points(points), duration, tuple(record), every
         self._batch, self._drop, self._protocol, self._plan = batch, drop_refused, protocol_of(protocol), None
         self._reasons = {str(axis): reason for axis, reason in (reasons or {}).items()}
+        self._stage_every = stage_every
         return self
 
     @public
@@ -419,7 +427,7 @@ class Study:
             raise ArgumentRefused([Refusal("study.no-sweep", RefusalClass.USER, "the study has no points to plan",
                                            "name them first: Study(exp).sweep(grid({...}), duration=s(1.0))")])
         self._plan = _plan(self._experiment, self._points, self._duration, self._record, self._every, self._batch,
-                           self._drop, self._reasons, self._protocol)
+                           self._drop, self._reasons, self._protocol, self._stage_every)
         return self._plan
 
     @public
@@ -500,7 +508,7 @@ def _reason_refusals(settings: RunSettings, axes: Sequence[Axis], reasons: Mappi
 
 def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Sequence[OutputRef | str],
           every: Quantity | None, batch: int | None, drop: bool, reasons: Mapping[str, str],
-          protocol: Protocol | None = None) -> StudyPlan:
+          protocol: Protocol | None = None, stage_every: Quantity | None = None) -> StudyPlan:
     from mime.experiment import Experiment
     from mime.saved._pins import keeping_pins
 
@@ -555,12 +563,15 @@ def _plan(experiment: Experiment, given: Points, duration: Quantity, record: Seq
     for group in groups[1:]:
         group.reasons = tuple(dict.fromkeys(split_reasons(records[groups[0].key], records[group.key])))
     steps = groups[0].built.steps_in(duration) if groups and groups[0].built is not None else 0
+    from mime.study._stage import check_stage_every
+
+    check_stage_every(stage_every, [group.built.plans.dt for group in groups if group.built is not None])
     for group in groups:
         with precision(points[group.members[0]].declared.x64):
             _settle(group, points, axes, duration, record, every, batch)
     return StudyPlan(axes, tuple(points), tuple(groups), steps, drop, dict(reasons), duration,
                      tuple(str(getattr(each, "path", each)) for each in record), every, batch, settings.experiment,
-                     settings.profile, settings.seed, protocol or FromRest())
+                     settings.profile, settings.seed, protocol or FromRest(), stage_every)
 
 
 def inert_axes(axes: Sequence[Axis], points: Sequence[Point],

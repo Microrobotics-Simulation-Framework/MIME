@@ -40,11 +40,13 @@ Rules that follow:
 
 ## Domain gotchas
 
-- **Precision is per rig, not global.** Some coupled rigs need `JAX_ENABLE_X64=1` and, on a
-  GPU, `JAX_DEFAULT_MATMUL_PRECISION=highest`: the 0.2 line's Schwarz gate experiment went NaN
-  in float32, and its ar4 run was 15% off on the GPU under reduced-precision (TF32) matmuls in
-  the MLP drag. Standalone rigs run fine in float32, where blanket x64 costs 2× for nothing.
-  If unsure, run both and compare.
+- **Precision follows the run's dtype behind declared guards.** dev1's coupled rigs (script A, A0, the hull contact) run
+  and are gated in float32 and float64; the old line "some coupled rigs need `JAX_ENABLE_X64=1`" generalised one 0.2 NaN whose
+  cause was never recorded, and is withdrawn. A float32 run holds only behind its guards: an integer clock; on a GPU,
+  `JAX_DEFAULT_MATMUL_PRECISION=highest` (the 0.2 line's ar4 run was 15 % off under reduced-precision TF32 matmuls in the
+  MLP drag); iterative-solve and fixed-point tolerances at or above float32's reachable floor (a CG about 1e-5) with a
+  stagnation stop; energy terms accumulated in float64; definiteness checked at a floor. Gates run in both dtypes; a rig
+  that needs float64 says so by a declared guard, never by a blanket `JAX_ENABLE_X64=1`. If unsure, run both and compare.
 
 - **Feed every external input.** MADDENING 0.4 zero-fills an external input nobody feeds,
   which is how the 0.2 line's ar4 graph went NaN (a zero quaternion). In 0.3 a graph's

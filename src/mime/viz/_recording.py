@@ -15,7 +15,7 @@ it holds (0.8.0), which OpenUSD 24.08 reads, and exported fresh, with no bytes o
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -93,6 +93,42 @@ def _turn(vector: np.ndarray) -> Any:
     return Gf.Quatd(float(q[0]), Gf.Vec3d(float(q[1]), float(q[2]), float(q[3])))
 
 
+def write_entries(layer: Any, entries: Any, held: Mapping[tuple[str, str], np.ndarray], scale: float,
+                  scales: Mapping[str, float], path_of: Callable[[str], str] | None = None) -> None:
+    """Time samples of the bound ``entries`` into ``layer``, from ``held`` (each (node, field)'s values over the samples,
+    the first axis the sample's time code), on the prims ``path_of`` maps their stage paths to (themselves, for a run's
+    own recording; ``/Compare/<member>/...`` for one member's ghost)."""
+    for entry in entries:
+        values = held[(entry.node, entry.field)]
+        rows = values if entry.index is None else values[:, entry.index]
+        prim = _prim_spec(layer, entry.prim if path_of is None else path_of(entry.prim))
+        if entry.kind == "pose":
+            translate = _attribute(prim, "xformOp:translate", Sdf.ValueTypeNames.Double3)
+            orient = _attribute(prim, "xformOp:orient", Sdf.ValueTypeNames.Quatd)
+            for code, row in enumerate(np.asarray(rows, dtype=np.float64)):
+                layer.SetTimeSample(translate.path, float(code), Gf.Vec3d(*(row[:3] / scale)))
+                layer.SetTimeSample(orient.path, float(code), Gf.Quatd(float(row[3]), Gf.Vec3d(*row[4:7])))
+        else:
+            at: np.ndarray | None = np.asarray(held[entry.at], dtype=np.float64) if entry.at is not None else None
+            per_unit = float(scales.get(entry.prim, 1.0))
+            value = _attribute(prim, VECTOR_VALUE, Sdf.ValueTypeNames.Double3)
+            translate = _attribute(prim, "xformOp:translate", Sdf.ValueTypeNames.Double3)
+            orient = _attribute(prim, "xformOp:orient", Sdf.ValueTypeNames.Quatd)
+            scaled = _attribute(prim, "xformOp:scale", Sdf.ValueTypeNames.Double3)
+            visibility = _attribute(prim, "visibility", Sdf.ValueTypeNames.Token)
+            visibility.default = "inherited"
+            for code, row in enumerate(np.asarray(rows, dtype=np.float64)):
+                layer.SetTimeSample(value.path, float(code), Gf.Vec3d(*row))
+                if at is not None:
+                    position = at[code, :3] / scale
+                    layer.SetTimeSample(translate.path, float(code),
+                                        Gf.Vec3d(float(position[0]), float(position[1]), float(position[2])))
+                vector = cast(np.ndarray, row)
+                layer.SetTimeSample(orient.path, float(code), _turn(vector))
+                length = float(np.linalg.norm(vector)) * per_unit
+                layer.SetTimeSample(scaled.path, float(code), Gf.Vec3d(length, length, length))
+
+
 def recording_layer(samples: StageSamples, settings: RecordingSettings, *, stage: str = RUN_STAGE,
                     scales: Mapping[str, float] | None = None) -> Any:
     """The recording as an anonymous layer, its sublayer ``stage`` (a path relative to where it will be written)."""
@@ -110,37 +146,8 @@ def recording_layer(samples: StageSamples, settings: RecordingSettings, *, stage
         "format": RECORDING_FORMAT, "experiment": settings.experiment, "input_hash": settings.input_hash,
         "dt_s": settings.dt, "every_steps": samples.every, "samples": count,
         "steps": Vt.IntArray([int(step) for step in samples.steps]), "stage": stage}}
-    scale = settings.meters_per_unit
     held = {key: samples.stacked(key) for key in samples.values}
-    for entry in samples.binding.entries:
-        values = held[(entry.node, entry.field)]
-        rows = values if entry.index is None else values[:, entry.index]
-        prim = _prim_spec(layer, entry.prim)
-        if entry.kind == "pose":
-            translate = _attribute(prim, "xformOp:translate", Sdf.ValueTypeNames.Double3)
-            orient = _attribute(prim, "xformOp:orient", Sdf.ValueTypeNames.Quatd)
-            for code, row in enumerate(np.asarray(rows, dtype=np.float64)):
-                layer.SetTimeSample(translate.path, float(code), Gf.Vec3d(*(row[:3] / scale)))
-                layer.SetTimeSample(orient.path, float(code), Gf.Quatd(float(row[3]), Gf.Vec3d(*row[4:7])))
-        else:
-            at: np.ndarray | None = np.asarray(held[entry.at], dtype=np.float64) if entry.at is not None else None
-            per_unit = float((scales or {}).get(entry.prim, 1.0))
-            value = _attribute(prim, VECTOR_VALUE, Sdf.ValueTypeNames.Double3)
-            translate = _attribute(prim, "xformOp:translate", Sdf.ValueTypeNames.Double3)
-            orient = _attribute(prim, "xformOp:orient", Sdf.ValueTypeNames.Quatd)
-            scaled = _attribute(prim, "xformOp:scale", Sdf.ValueTypeNames.Double3)
-            visibility = _attribute(prim, "visibility", Sdf.ValueTypeNames.Token)
-            visibility.default = "inherited"
-            for code, row in enumerate(np.asarray(rows, dtype=np.float64)):
-                layer.SetTimeSample(value.path, float(code), Gf.Vec3d(*row))
-                if at is not None:
-                    position = at[code, :3] / scale
-                    layer.SetTimeSample(translate.path, float(code),
-                                        Gf.Vec3d(float(position[0]), float(position[1]), float(position[2])))
-                vector = cast(np.ndarray, row)
-                layer.SetTimeSample(orient.path, float(code), _turn(vector))
-                length = float(np.linalg.norm(vector)) * per_unit
-                layer.SetTimeSample(scaled.path, float(code), Gf.Vec3d(length, length, length))
+    write_entries(layer, samples.binding.entries, held, settings.meters_per_unit, scales or {})
     return layer
 
 
@@ -172,5 +179,5 @@ def crate_version(path: Path) -> tuple[int, int, int] | None:
     return int(head[8]), int(head[9]), int(head[10])
 
 
-__all__ = ["RECORDING_FILE", "RECORDING_FORMAT", "RUN_STAGE", "RecordingSettings", "StageSamples", "crate_version",
+__all__ = ["write_entries", "RECORDING_FILE", "RECORDING_FORMAT", "RUN_STAGE", "RecordingSettings", "StageSamples", "crate_version",
            "recording_layer", "write_recording"]

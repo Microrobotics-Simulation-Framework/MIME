@@ -41,3 +41,6 @@ water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
 mermaid.min.js  # the file name of Mermaid's single-file build, shipped in mime/experiment/_mermaid_lib/
 half_space.boundary  # the half-space's case in the shape conformance suite: the set its probes are placed about, which no switch owns
+plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
+plotly.subplots  # a module name: plotly's subplot helper, imported when a figure is drawn
+plotly.offline  # a module name: plotly's bundled plotly.js, imported when a page inlines it

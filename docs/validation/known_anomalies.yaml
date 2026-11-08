@@ -1160,7 +1160,7 @@ anomalies:
         n: 5
         says: "the largest error over five offsets, against a float32 MRS whose wall table was not checked: it estimates the surrogate's error there and bounds nothing between or beyond those offsets, nor the error against the flow"
     workaround: "Read the surrogate's swim speed as known to about 16% between 0.2 and 0.32 of the tube's radius, and to its 0.28% only at 0.30; check a result that depends on it against the MRS"
-    planned_resolution: "Done in phase 7i-a: the corrected table (MIME-ANO-117), the near-wall check through it and the generator with its held-out protocol (above), which refuses to produce data while the near-wall edge is open. Left, and blocked on the maintainer's decision of the edge: the near-wall check measured again on the screw kind 0.2.0's caps (the record is on 0.1.0's, MIME-ANO-119); a training spacing chosen by MIME-ANO-116's convergence (which a choice of spacing alone does not reach); the data on de Jongh's designs resting in his tubes; retraining under a new asset name, judged per use on the held-out sets, each over the gaps its use resolves. The order agreed (design #208): the near-wall edge is answered by a lubrication hand-over, designed at the FVM design pass (dev2); the surrogate is retrained after it, learning the far field with lubrication added analytically at run time. It is not retrained in dev1, and stays the 0.2 line's weights until then"
+    planned_resolution: "Done in phase 7i-a: the corrected table (MIME-ANO-117), the near-wall check through it and the generator with its held-out protocol (above), which refuses to produce data while the near-wall edge is open. Left, and blocked on the maintainer's decision of the edge: the near-wall check measured again on the screw kind 0.2.0's caps (the record is on 0.1.0's, MIME-ANO-119); a training spacing chosen by MIME-ANO-116's convergence (which a choice of spacing alone does not reach); the data on de Jongh's designs resting in his tubes; retraining under a new asset name, judged per use on the held-out sets, each over the gaps its use resolves. The order agreed (design #208): the near-wall edge is answered by a lubrication hand-over, designed at the FVM design pass (dev2) and placed by it in phase W2 of the dev2 plan (MIME-ANO-150, MIME-ANO-151); the surrogate is retrained after it, learning the far field with lubrication added analytically at run time. It is not retrained in dev1, and stays the 0.2 line's weights until then"
 
   - anomaly_id: MIME-ANO-115
     title: "A query on a table's one-point readable range that carries a tangent has a NaN forward derivative in every direction"
@@ -2149,7 +2149,7 @@ anomalies:
       - "tests/oracles/test_mrs_near_wall.py::test_control_the_refusal_lifted_a_body_held_on_the_wall_plans_silently_on_its_familys_spacing"
     residual_risk: "Close to a wall a run stops wherever its resistance turns indefinite, and a definite resistance there is not shown accurate; a body nothing holds off the wall, or a force spacing written coarser than the bound, can stop within a few steps (script A's floored FL-9 at 0.829 mm with the image at the force points, at its tenth). The bound and the wall refinement were measured on one screw and one sphere in one tube, and within a quarter of a spacing the resistance amplifies the image's error 90 to 350 times (measured at an eighth), so refining the image does not converge it there. Drag 0.3.0's point forces are indefinite near the wall too and have no step check"
     workaround: "Hold a body near a wall with a contact, so that its default force spacing keeps its closest approach CONFINED_GAP force spacings from the wall with the image at the force points, or write a spacing at most the gap over CONFINED_GAP (INTEGRATED_GAP with wall_refinement 2 written); the build report states the cost (script A's 0.1 mm margin asks 0.181 mm, 4,816 force points on FL-9, 13.6 GiB and 45 s a step on a laptop's CPU in float64, or 0.277 mm with wall_refinement 2, 1,966 force points, 4.0 GiB and 50 s a step: the option on a machine with 16 GB or less, since the default was chosen on a step's time alone). The point forces (quadrature_refinement=1) are no way out: they are indefinite near the wall too. In a tube, read the speed from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing; the confined sphere on the axis meets Haberman and Sayre within 1.7% at two fifths of the radius"
-    planned_resolution: "Built in part (designs #204, #210): the image integrated over each cell written through wall_refinement, and a held body's spacing kept out of the band (CONFINED_GAP, INTEGRATED_GAP), with the step's check and the near-wall flag kept, since at an eighth of a spacing the image is not the whole cause. Open: an image accurate enough for the resistance's conditioning near the wall, which amplifies its error 90 to 350 times at an eighth of a spacing (an accurate near-wall integration of the image, singular as the gap closes, or an analytic plane image near the nearest wall with a smooth tabulated remainder), measured against the tube's finest spacing, and that amplification measured at INTEGRATED_GAP's 0.36 spacings; the tube's convergence ladder at wall_refinement 2; and the near-wall cost, which lubrication's hand-over at F0 (design #208) is to take. Drag 0.3.0 stays as listed: the frozen rung gets no step check, since a new state would move the preregistered hashes"
+    planned_resolution: "Built in part (designs #204, #210): the image integrated over each cell written through wall_refinement, and a held body's spacing kept out of the band (CONFINED_GAP, INTEGRATED_GAP), with the step's check and the near-wall flag kept, since at an eighth of a spacing the image is not the whole cause. Open: an image accurate enough for the resistance's conditioning near the wall, which amplifies its error 90 to 350 times at an eighth of a spacing (an accurate near-wall integration of the image, singular as the gap closes, or an analytic plane image near the nearest wall with a smooth tabulated remainder), measured against the tube's finest spacing, and that amplification measured at INTEGRATED_GAP's 0.36 spacings; the tube's convergence ladder at wall_refinement 2; and the near-wall cost, which lubrication's hand-over at F0 (design #208) is to take, in phase W2 of the dev2 plan (MIME-ANO-150, MIME-ANO-151). Drag 0.3.0 stays as listed: the frozen rung gets no step check, since a new state would move the preregistered hashes"
   - anomaly_id: MIME-ANO-131
     title: "The contact 0.1.0 holds a body's centre by its extent and never reads its orientation, so a screw that turns across a narrow tube passes through its wall"
     description: >
@@ -3278,3 +3278,284 @@ anomalies:
       draws.
     workaround: "None needed for forces, the state or the flags as measured. Do not use the contact_points of a row that takes no force as a position, and do not compare two programs' search ends group by group without first dropping the groups whose own end moves under one unit in the last place of the pose."
     planned_resolution: "None filed. Routes, none taken: (1) hold a group whose nearest sample is beyond the margin at that sample, which the contact does already where the search has not converged, so that the recorded point is the sample and not an end set by rounding; (2) leave the point and say in the state field's description that it is unspecified for a row that takes no force; (3) test a looped or otherwise rewritten search only on the groups its reference resolves under one unit in the last place. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-145
+    title: "The rigid body keeps three values derived from its trainable hull settings as Python floats, so an override, a sweep or a gradient over those settings reads the values the build took"
+    description: >
+      A rigid body with a hull computes _apart (the search's starting separation, from the hull points' spacing), _size
+      (the largest point norm) and _shortfall (from the hull kind's support query, which reads the hull's settings) at
+      construction, as Python floats, and hands them to the contact's Hull in every step
+      (mime.nodes.body._rigid_inertial, RigidInertialNode.__init__ and contact_pairs) [read]. The hull's shape settings
+      (hull_shape_*, the radius, length, wavenumber, modulation or semi-axes of the kind) are trainable leaves of the
+      node's params, which the step reads live (hull_parameters(p)) [read]. So a value that moves one of those leaves, by
+      an override, a sweep over params or a derivative, reaches the contact through the leaf and not through these three
+      floats: the three keep the build's values, and the derivative of each with respect to the leaf is zero. Nothing
+      says so: the leaves' declared description (CUT_AS_BUILT) names the groups' candidates as held as built, not these
+      three floats [read].
+
+      Found, not planted, by F0's bake-check spike (a check that compares the traced steps of two builds that differ only
+      in one declared value, in float64; the spike ran on a worktree of dev1 with the P1a spike commits) [measured]: in
+      the registry's walk cases the check fired on 5 of 382 pairs outside the
+      MRS rung's separated quadrature, all on the hull's shape settings: hull_contact (the hull's radius, length,
+      wavenumber and modulation, 4 of 21 pairs) and bound_robot_with_parts (the semi-axes, 1 of 18 pairs), a setting
+      moved by a relative 1e-6 each time; the two programs differed in a literal (gt bch 4.6559231842711374e-07 against
+      4.6559324961221663e-07). The same pairs were then run for 5 steps in float64 [measured]: in bound_robot_with_parts
+      the run moved by 7.0e6 units in the last place of the pose's scale (about 1.6e-9 relative at a perturbation of
+      1e-6); in hull_contact all 21 pairs read 0 units. That the 1.6e-9 comes from these three floats,
+      and not from another quantity held at build, is an inference that was not checked; why hull_contact's five steps
+      did not show them was not checked either.
+    severity: major
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A sweep or a gradient over the hull's shape would silently use the starting separation, the size and the shortfall of
+      the shape the experiment was built with, with nothing flagging it. The size of the error is measured at one pair
+      over five steps (1.6e-9 relative at a perturbation of 1e-6) and not at a large change of shape, so no bound on it is
+      claimed. Whether a deployment sweeps or differentiates the hull's shape decides whether it matters.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "node: RigidInertialNode; the hull's starting separation, size and shortfall (_apart, _size, _shortfall)"
+    residual_risk: >
+      Not measured: the effect of a large change of a hull setting on the contact's rows or the run; the other hull kinds
+      (the spike's two cases were FL-9's hull and a hull given by semi-axes); whether the starting separation or the shortfall
+      moves the search's start count (a count keyed on a value is a structural quantity that a build fixes; it is not part
+      of this entry); float32, in which the check stops at about 3e-8 of a setting.
+    workaround: "Build the experiment again at each value of a hull setting instead of overriding it, and do not differentiate the hull's shape through the body; the build's values are then the right ones."
+    planned_resolution: "Open. Lane S's S-F0-1 classifies it (a leaf the step reads, a build-time quantity declared as such, or a structural value) and fixes it: either the three values are derived in the step from the leaves, or the settings that fix them are declared held as built, with the check that compares two builds that differ in one declared value passing on the hull's cases. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-146
+    title: "The arm-tracking controller's home pose reaches the run through the controller's held write and not through params, so a check of the step's parameters does not see it"
+    description: >
+      mime.control.ArmTracking (arm_tracking 0.1.0) takes its home pose as a DESIGN setting, uses it in the build to find
+      the home pose's end-effector frame, and holds the home joint positions as the controller's first write
+      (held={"joint_positions": home}) [read]. The graph's step then reads that write as an external input. The home pose
+      is not a leaf of the node's params, so a change of it leaves the step's traced program unchanged.
+
+      Found by F0's bake-check spike, on the registry's tracked_rpm case, two builds that differ in the controller's home by
+      a relative 1e-6 [measured, float64, one pair of the case's 23]: the step's program was identical (a check that traces
+      the step with the params tree as an argument stayed quiet), no leaf moved, and the run moved by 1.3e10 units in the
+      last place of the magnetic force's scale over 5 steps. So a check or an override that works on the step's params does
+      not reach this value, and a check that traces the step alone cannot see it. What a sweep over the home pose does in
+      today's code (whether an override refuses it, ignores it or applies it from the build) was not measured here.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The value is applied at build and moves the run as it should when the experiment is built again. The risk is a
+      study, a check or an override that assumes everything that moves a run is a params leaf: it would miss the home pose
+      and report that two runs agree when they do not. Whether that matters depends on how a deployment varies the
+      controller's settings.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: controller arm_tracking 0.1.0; the home setting and the controller's first write"
+    residual_risk: >
+      One setting of one controller was measured; whether the controller's other settings (the axis, the up direction, the
+      base) and the other controllers reach the run in the same way is not known. The size of the effect is the case's
+      (a 1e-6 relative change of the home pose moved the magnetic force by 1.3e10 units in the last place of its scale), not
+      a bound.
+    workaround: "Build the experiment again for each home pose, and compare two runs rather than the programs of two builds."
+    planned_resolution: "Open. Lane S's S-F0-1 classifies it together with the question of controller settings as leaves: a setting that moves the run is a leaf, or the check that compares two builds also compares the controller's held write. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-147
+    title: "In reverse mode the MRS rung's held-or-made resistance is made again at every step of the backward loop, about 0.5 s a step on 222 force points, whether or not a setting moved"
+    description: >
+      Drag 0.4.0 on the separated quadrature holds the body-frame resistance made at build and makes it again in the step
+      only where a body setting has moved (mime.nodes.hydro.mrs._quadrature.held_or_made, a conditional with a custom
+      JVP) [read]. Its custom JVP computes make's tangent by forward mode through a checkpointed make "so that the reverse
+      mode makes the value again from theta" (the docstring), whether or not a setting moved [read]; the cost of that
+      choice in a long reverse run is what this entry records.
+
+      Measured by F0's bake-check spike [one agent's evidence, one size, CPU, single-threaded, float64]: FL-9's shell in free
+      space at 0.829 mm, 222 force points (a 666-wide dense solve), one body, a jitted lax.scan of the graph's step.
+      - Forward: the conditional is hoisted out of the scan's loop by XLA's CPU compiler, unbatched and under vmap: a moved
+        setting costs one remake a call (36 to 41 ms), a step's slope 0 within 0.03 ms. Under vmap of 4 a held run pays the
+        remake once too (171 ms against 0.9 ms). A control that made the remake loop-variant (the radius plus 1e-300 times
+        the pose) put the 666-wide LU inside the loop at 35.0 ms a step.
+      - Reverse (the value and gradient of a loss of the final pose in the radius): the LU is inside the backward loop, held
+        or moved: 471 ms a step held and 525 ms moved (20 and 40 steps), against 0.50 s for the whole 20- or 40-step gradient
+        of a form that makes the resistance once before the scan (its VJP once), which gave the same value and gradient to
+        8.8e-16: 19 to 40 times less at those lengths.
+      The values are the same; the cost is not. Not measured: a GPU, other sizes, the node with a wall (where the step solves
+      the turned free matrix plus the image anyway), the dev2 study layer's batched scan.
+    severity: minor
+    safety_relevance: not_safety_relevant
+    safety_relevance_rationale: >
+      It changes the time and memory of a gradient through a run, not a value: the form that makes the resistance once gave
+      the same value and gradient to 8.8e-16 relative in float64. A run that takes too long may not be finished, which does
+      not change any output that is produced.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: interaction drag 0.4.0, rung mrs; the held or made resistance (held_or_made) in reverse mode"
+    residual_risk: >
+      The cost was measured at one size (222 force points) on one CPU; it grows with the dense solve, so a finer spacing or
+      more bodies costs more per step, unmeasured. Forward runs are not affected on the compiler measured; another
+      backend's compiler may not hoist the conditional.
+    workaround: "None measured that avoids the cost. Keep a gradient's run short (the cost is per step), or take finite differences of forward runs, which pay one remake a call [inference from the forward rows above, not run]."
+    planned_resolution: "Open. Lane S's S-F0-1 adds a run-constant seam: the held-or-made resistance is derived once per chunk from the moved settings before the scan, and the step reads it, with the held-or-made choice kept. The spike's derive-once form gave the same value and gradient and 0.50 s for the whole gradient. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-148
+    title: "Seen on a worktree before the fix of MIME-ANO-138: in float32 the screw's held resistance differs between a process's first build of a document and later builds by 2.4e-10 of its largest entry; whether the head still does it is not measured"
+    description: >
+      F0's bake-check spike built the registry's mrs_free_space case (a ball, a pill and FL-9's screw, each on drag 0.4.0)
+      three times in one float32 process and compared each body's held_in_body_frame leaf: the screw's held value
+      differed between the first build and every later one by 2.4e-10 of its largest entry; the ball's and the pill's were
+      identical; in float64 all were identical [measured, one case, one process kind]. The spike's worktree is dev1 with the
+      P1a spike commits, and its cap_rings returns the cached layout's arrays as the same objects on every call
+      (src/mime/scene/_caps.py): it does not carry the change of MIME-ANO-138, which gives every caller its own copies
+      [read, compared by hand]. MIME-ANO-138 records the same signature (the screw, float32 only, the first build against
+      the rest) with a mechanism that depends on those shared arrays, and is resolved on this branch with tests that hold
+      three builds' matrices equal in float32 for the screw and the cylinder (tests/oracles/test_mrs_builds_alike.py).
+
+      So this entry is a candidate duplicate of MIME-ANO-138 that was seen on code without its fix [inference]. It is not
+      closed as one because the sizes do not match: MIME-ANO-138 measured the held matrix's inputs differing by 2.0e-7 and
+      3.5e-7 and the resistance by 1.1e-5, where the spike measured 2.4e-10 of the held leaf's largest entry, and the
+      spike did not run MIME-ANO-138's test or its example on a branch that has the fix. Whether a build on this branch
+      still differs between the first and later builds in float32 is therefore not known.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      If it exists on the branch, the same program built twice in one float32 process would take two answers from step 0,
+      which breaks the claim that one program builds to one answer; as MIME-ANO-138 measured it, both answers are valid
+      discretisations of the same body and the difference is far below the rung's discretisation error. It bounds nothing
+      about the rung's accuracy.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "node: MRSDragNode; the held part of the resistance (held_in_body_frame), built from the screw's samples"
+      - "entry: geometry screw 0.1.0; the cap patches' layout (cap_rings)"
+    residual_risk: >
+      Not measured: the same three builds on this branch's tip, in float32; whether any of the 2.4e-10 is left once
+      MIME-ANO-138's copies are in; other bodies with a layout cached by the process.
+    workaround: "Run in float64, or build the experiment once more before the run that is compared (the second build on), as MIME-ANO-138 says."
+    planned_resolution: "Open. Lane S's S-F0-1 re-measures it first: the spike's three builds of mrs_free_space in a float32 process on this branch's tip. If every build holds the same value, the entry is set to resolved by MIME-ANO-138's fix with the measurement as evidence; if not, it is classified and fixed there. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-149
+    title: "The energy ledger's running sums are kept in the run's dtype, and a float32 sum of a mixed-sign series reaches about 15 units of rounding by 1e5 steps, the floor its balance is judged against"
+    description: >
+      The ledger (mime.core.ledger.recorded, P1a-1) keeps its running sums in the receiver's state in the run's dtype: the
+      work, the hosted and scheme terms, the unattributed work and the step scale, each as state + step [read]. The balance
+      over a run is judged against IDENTITY_ULPS (16) units of eps on the run's summed step scale [read]. In float32 a
+      running sum of a mixed-sign series loses precision as it grows.
+
+      Measured by F0's open-ports spike, with a synthetic series and one add a step, not on the ledger's own run
+      [measured, synthetic]: a float32 running sum of a mixed-sign series reaches 0.02 eps of the summed magnitudes at 1e2 to
+      1e3 steps, 3.5 eps at 1e4 and 15 eps at 1e5; a positive series stays under 1 eps. So a float32 run of about 1e5 steps
+      reaches the floor of the run's balance (16 eps) from the accumulation alone. The same spike's float32 arm kept the
+      per-step identity within 0.23 eps of the step's scale over 1,375 steps, with float32 reductions, so the per-step check
+      is not affected; this entry is about the totals and the balance over them.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      A float32 run long enough to reach the floor could read as failing its balance for rounding of the accumulation, or
+      hide a real gift of about that size under it. The drift is measured on a synthetic series, not on the ledger's records,
+      and the ledger's own run was not taken to 1e5 steps in float32.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev2"
+    affected_components:
+      - "node: RigidInertialNode; the ledger's running sums (mime.core.ledger.recorded)"
+      - "entry: observation energy_ledger 0.1.0; the run's account"
+    residual_risk: >
+      Not measured: the ledger's own sums at 1e5 steps in float32 (the series is synthetic); the sums' size on script A's
+      run lengths; the effect on result.energy's account, which uses the totals.
+    workaround: "Run in float64 where a run is long (1e4 steps or more) and the balance matters, or sum the per-step records (step_work, step_terms) on the host in float64."
+    planned_resolution: "Open. A small fix after PR 205 (the ledger on an apparatus) merges: the run's totals summed on the host in float64 from the per-step records, or compensated in the loop; this is the guard the design record's gates list for float32 (the energy terms accumulated in float64). This entry changes no code."
+
+  - anomaly_id: MIME-ANO-150
+    title: "The near-contact margin: below the MRS rung's resolution the near-wall film is neither resolved nor handed to the lubrication, and the effect at script A's margin is unbounded"
+    description: >
+      The frozen register's entry M2 (with N2, the near-wall film anisotropy, merged into it). Script A holds FL-9 off the
+      tube's wall at a contact margin of 0.1 mm, while the MRS rung's default force spacing at A is 0.178 mm: the margin is
+      about 0.56 of the spacing [arithmetic]. The rung's image is taken at the force points (MIME-ANO-130), and its
+      near-wall resistance is not a thin-film solution; the film below the margin, down to the roughness scale, belongs to
+      the lubrication, and the hand-over between the two does not exist in dev1 (Drag.MRS does not accept it; M4 below). The
+      register states no regime argument for M2, and the effect on the swim speed at A is neither measured nor bounded: it is
+      unknown.
+
+      F0's spike S4, on a sphere near a plane [measured, one geometry], found the coarse MRS's normal entry failing at gaps of
+      0.4 to 0.65 spacings and refining barely helping (a threefold finer spacing moved the 5 % edge only from h/a 0.071 to
+      0.046). A's margin of 0.56 spacings is inside that band, so a material effect cannot be excluded [inference; the band
+      is the sphere's and FL-9's crest is unmeasured]. This is a regime argument that defers; it never rules the effect out.
+
+      F0's decision (the design record's C3, "the frozen register's entries M2, M4 and N4's near-contact part", the
+      register's amendment A8): phase W2 of the dev2 plan, the route the lift form (the coarse MRS evaluated at the pose with
+      each contact's gap lifted to a hand-over gap, plus the sum over local near-contacts of the thin-film increment between
+      the contact's gap and the hand-over gap). The hand-over makes the margin reachable down to the roughness scale.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      It is an unmeasured effect, not a measured small one, and the entry is marked context-dependent for that reason: a
+      result at a small gap from a wall (script A's margin, a body filling a lumen) rests on a model that does not resolve
+      the film there. Nothing here bounds the size.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: interaction drag 0.4.0, rung mrs; at gaps below the force spacing"
+      - "entry: interaction contact 0.4.0; the margin"
+    residual_risk: >
+      The size of the effect at A is unmeasured. The sphere's band does not carry over to FL-9's crest, whose cross radius is
+      about the force spacing at A (0.178 mm), coarser than any configuration measured.
+    workaround: "Treat a result at a gap below about one force spacing from a wall as unbounded in this respect, and read it from a spacing ladder (docs/choosing_spacing.md), not from one coarse spacing."
+    planned_resolution: "Open, in phase W2 of the dev2 plan (the lift form's lubrication hand-over, F0's decision C3). The case that decides it: FL-9 against a fine MRS with the cell-integrated image at A's floored gaps in its tube (the 0.1 mm margin); the sphere near a plane against its exact solutions at every gap; and M4's replaced control (MIME-ANO-151). Existing records that name the hand-over, MIME-ANO-114 and MIME-ANO-130, now name this phase. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-151
+    title: "The lubrication is counted twice where the MRS rung already resolves part of the gap: the overlap is positive on the sphere and unmeasured on FL-9, and Drag.MRS cannot take the hand-over"
+    description: >
+      The frozen register's entry M4. The Lubrication node adds a near-contact resistance on top of a drag that already
+      resolves part of the gap, so the two overlap. dev1's bound: switching the lubrication on moves the closed MRS rung's speed
+      by -3.8 % and the script A surrogate's by -5.7 %, and the overlap lies between 0 and that term; its sign relative to
+      the near-wall flow the drag resolves was unknown in dev1. Drag.MRS refuses lubrication=, and the drag 0.4.0 rung has no
+      hand-over, so the register's control for M4 (a lubrication term scaled by 2 must move the speed by the predicted
+      amount) cannot run: M4 has no runnable control [read, the register].
+
+      F0's spike S4, on a sphere near a plane [measured, one geometry]: the blend over-counts by 30 to 43 % in every entry at
+      A-like gaps, at spacings s/a 0.07 to 0.2, so M4's overlap is positive on the sphere analog [the amendment A8]. At A the
+      force spacing (0.178 mm) is about the crest's cross radius, coarser than any configuration measured: FL-9's sign and
+      size are unmeasured.
+
+      F0's decision (C3, the register's A8): phase W2 of the dev2 plan, the route the lift form (see MIME-ANO-150), whose
+      hand-over replaces the sum of the two with the coarse MRS where it holds and the thin-film increment where it does
+      not.
+    severity: minor
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      The overlap is bounded in dev1 only by the lubrication term itself (0 to -3.8 % on the MRS rung, -5.7 % on the surrogate),
+      and its sign on FL-9 is not measured; a result that switches the lubrication on near a wall rests on a sum whose
+      overlap is not removed.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: interaction drag 0.4.0, rung mrs; its composition with the lubrication"
+    residual_risk: >
+      FL-9's sign and size of the overlap are not measured; the sphere's over-count of 30 to 43 % is for spacings s/a 0.07 to
+      0.2 on a sphere near a plane.
+    workaround: "Keep the lubrication off (the baseline does, and the register's rows for M4 are against that baseline), and read a result with it on as carrying an overlap of unknown sign on a screw."
+    planned_resolution: "Open, in phase W2 of the dev2 plan (the lift form, F0's decision C3), with MIME-ANO-150: the case measures FL-9's sign and size, and M4's replaced control runs once Drag.MRS accepts the hand-over. This entry changes no code."
+
+  - anomaly_id: MIME-ANO-152
+    title: "Soft-wall lubrication is not modelled: the wall's compliance changes the film at the contact, and the near-contact part of the register's N4 is deferred to 0.4.0"
+    description: >
+      The frozen register's entry N4, near-contact part. The tube's PVC wall indents under the body's load. For the change of
+      the gap the drag resolves, the register ranks the effect out by an analytic bound: 1 to 80 nm of Hertz indentation for a
+      soft PVC of 3 to 50 MPa [inference, rescaled from P-4's silicone numbers with assumed loaded length and modulus], about
+      1e-3 of the 0.1 mm margin, so about 0.02 % of the swim speed [arithmetic from the register]. Against the 0.1 to 0.8 um
+      lubricating film it is comparable, and soft-wall lubrication, where the film depends on the wall's compliance, is not
+      modelled at all: that part is carried by the register into the near-contact physics (MIME-ANO-150) and is not bounded.
+
+      F0's decision (C3, the register's amendment A9): the near-contact part of N4 is placed in 0.4.0, with soft bodies and
+      compliant vessels. The general thin-film model takes compliance as the same equation with a deflecting gap [recalled].
+      Nothing else in N4 changes: the part that changes the gap stays ranked out by its bound.
+    severity: enhancement
+    safety_relevance: context_dependent
+    safety_relevance_rationale: >
+      Blood vessels and other lumens are compliant; a result for a body near a soft wall at a gap of the film's scale rests on a
+      model with a rigid wall. The effect at script A's gap is bounded only for the gap the drag resolves, not for the film.
+    resolution_status: open
+    affected_versions: ">=0.3.0.dev1"
+    affected_components:
+      - "entry: interaction drag 0.4.0, rung mrs; at gaps of the lubricating film's scale, with a compliant wall"
+    residual_risk: >
+      The indentation numbers are a rescaling with assumed loaded length and modulus; a line contact would give a smaller
+      value; nothing is measured for a compliant wall at a gap of the film's scale.
+    workaround: "Treat a result for a body within the lubricating film's scale of a soft wall as unbounded in this respect; for a rigid-wall experiment (script A's tube as modelled) nothing is needed."
+    planned_resolution: "Deferred to 0.4.0 (soft bodies, compliant vessels), where the thin-film model takes a deflecting gap (F0's decision C3, the register's A9). This entry changes no code."
