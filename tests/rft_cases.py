@@ -85,7 +85,7 @@ def r6_node(*, tube: bool, coefficients: str = "lighthill", counts: tuple[int, .
                                    if tube else {}, jnp.float64)
     return RFTDragNode("drag:helix", 1e-3, viscosity=1e-3, kind="helix", kind_version="0.1.0", counts=counts,
                        part_centre=(0.0, 0.0, 0.0), part_rotation=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
-                       coefficients=coefficients, wall_kind=wall, wall_kind_version="0.1.0",
+                       coefficients=coefficients, wall_kind=wall, wall_kind_version="0.1.0", spacing=0.04 * D,
                        on_indefinite=on_indefinite, **{f"wall_{k}": v for k, v in constants.items()},
                        **{f"shape_{k}": v for k, v in settings.items()})
 

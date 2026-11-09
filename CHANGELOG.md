@@ -349,6 +349,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step reads the same numbers in the run's dtype, so every array is bit for bit what it was (the `hull_contact` folder saved before loads as "the same graph, hash for hash"
   [measured, as above]). They stay outside every derivative: where a search starts and when it stops, which the point it
   converges to does not depend on.
+- **The rft rung judges in its step whether a body lies within its measured lines**, from the step's leaves: the family
+  of its shape and its slenderness, its coefficient set, its spacing and, with a wall, the gap its family was measured
+  at. R1 decided the family and the gap at build, from leaves the step reads, so the step held them as constants: the
+  two-builds walk fired on `rft_tube`'s helix turns, whose move crossed the family's one measured slenderness, and a
+  leaf written into a compiled chunk would have kept the build's `unmeasured`. The node holds the `spacing` its counts
+  were made with (a leaf, `trainable=False`) in place of `measured` and `gap_least`; its build report evaluates the
+  same judgement at the leaves as built. A control plants R1's build-time values back and the walk fires on the same
+  pair.
 - **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
   JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;
   it weighs 28876 s now), and `scripts/shard_matrix.py`'s default is 16 (the repository variable and a manual run's input

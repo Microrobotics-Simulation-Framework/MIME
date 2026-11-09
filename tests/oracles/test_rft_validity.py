@@ -91,11 +91,11 @@ def _tube(radius_mm):
     ids=["at_the_measured_gap", "closer", "a_wider_tube", "a_much_wider_tube"])
 def test_with_the_tube_a_body_at_another_gap_than_the_one_measured_is_flagged(radius_mm, offset, gap, flagged):
     """The tube family was measured at one gap, 44 filament radii: a narrower gap and a wider one are both flagged each
-    step, and the build report says the start is not measured there. (The family's ``measured`` is the shape's, the
-    slenderness', the coefficients' and the spacing's; the gap is judged at the pose each step.)"""
+    step, and the build report says the start is not measured there. (The family is the shape's, the slenderness', the
+    coefficients' and the spacing's, judged in the step from its leaves as the gap is at the pose.)"""
     node, out, built = _step(helix_body("rft_gap", SMALL_HELIX, SMALL_SETTINGS, rft(wall_kind="tube"),
                                         tube=_tube(radius_mm), offset=(0.0, offset, 0.0)))
-    assert node.constants()["measured"]
+    assert node.measured_as_built() == (True, 44.0)
     assert float(out["unmeasured"]) == (1.0 if flagged else 0.0)
     pose = node_state(built.graph, "helix")["pose"]
     held = {**node.params_pytree(), **{k: jnp.asarray(v) if isinstance(v, float) else v

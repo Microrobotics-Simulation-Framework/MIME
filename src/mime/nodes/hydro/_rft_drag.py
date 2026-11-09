@@ -67,6 +67,10 @@ COEFFICIENT_SETS = ("lighthill", "spheroid")
 LIGHTHILL_Q = 0.09
 #: What the step does where the resistance is indefinite: stop the run (NaN), or deliver it and flag it.
 ON_INDEFINITE = ("stop", "flag")
+#: The rft rung's default spacing of its points along the centreline, in filament radii: the integrand of its
+#: resistance is smooth along the centreline (a helix's turn spans many radii), so the midpoint rule converges long
+#: before this; a convention, not a measurement of the rung's error, which its validity lines state.
+RFT_POINTS_PER_RADIUS = 1.0
 
 
 @dataclass(frozen=True)
@@ -112,25 +116,30 @@ MEASURED: tuple[Measured, ...] = (
 )
 
 
-def shape_ratios(kind: str, settings: Mapping[str, Any]) -> dict[str, float]:
+def shape_ratios(kind: str, settings: Mapping[str, Any]) -> dict[str, Any]:
     """The ratios a family of ``kind`` is held to: a helix's pitch over its radius and its turns; none for another."""
     if kind == "helix":
-        return {"pitch/radius": float(settings["pitch"]) / float(settings["radius"]), "turns": float(settings["turns"])}
+        return {"pitch/radius": settings["pitch"] / settings["radius"], "turns": settings["turns"]}
     return {}
 
 
-def measured_family(kind: str, settings: Mapping[str, Any], slenderness: float, wall: str) -> Measured | None:
-    """The family whose lines hold for this body, or ``None`` where its body lies outside every measured one."""
+def measured_family(kind: str, settings: Mapping[str, Any], slenderness: Any, wall: str) -> tuple[Array, Array]:
+    """Whether the body lies in a family the lines were measured over (the first in ``MEASURED`` that holds), and with a
+    wall the gap that family was measured at (zero in free space or in none), as JAX values of its settings and its
+    slenderness: the step judges them at the leaves it is given, so that a study's member, a leaf written into a
+    compiled chunk and a derivative's perturbed build are each judged at their own, and its program is the same at
+    every value (the two-builds check)."""
     ratios = shape_ratios(kind, settings)
-    for family in MEASURED:
+    held, gap = jnp.asarray(False), jnp.zeros_like(jnp.asarray(slenderness))
+    for family in reversed(MEASURED):
         if family.kind != kind or wall not in family.walls or set(family.shape) != set(ratios):
             continue
-        if any(abs(ratios[key] - value) > SHAPE_TOLERANCE * abs(value) for key, value in family.shape.items()):
-            continue
         low, high = family.slenderness
-        if low * (1.0 - SHAPE_TOLERANCE) <= slenderness <= high * (1.0 + SHAPE_TOLERANCE):
-            return family
-    return None
+        holds = (low * (1.0 - SHAPE_TOLERANCE) <= slenderness) & (slenderness <= high * (1.0 + SHAPE_TOLERANCE))
+        for key, value in family.shape.items():
+            holds = holds & (jnp.abs(ratios[key] - value) <= SHAPE_TOLERANCE * abs(value))
+        held, gap = held | holds, jnp.where(holds, 0.0 if wall == "free_space" else family.gap, gap)
+    return held, gap
 
 
 def drag_coefficients(name: str, viscosity: Any, filament_radius: Any, wavelength: Any, length: Any) -> tuple[Any, Any]:
@@ -192,7 +201,9 @@ class RFTDragNode(MimeNode):
     ``wall_<name>``, a held pytree's floating arrays each a ``params`` leaf, as the MRS node holds them. The
     coefficients are the set ``coefficients`` (:func:`drag_coefficients`), computed in the step from the viscosity and
     the kind's leaves. The step judges its resistance (the module's docstring): ``indefinite`` stops the run (NaN)
-    unless ``on_indefinite`` is ``"flag"``."""
+    unless ``on_indefinite`` is ``"flag"``; and whether the body lies within the points its validity lines were
+    measured over, from its leaves (:meth:`measured_here`; the ``spacing`` the counts were made with is one), so that
+    ``unmeasured`` is no value of the build's."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-126",
@@ -215,8 +226,8 @@ class RFTDragNode(MimeNode):
 
     def __init__(self, name: str, timestep: float, *, viscosity: float, kind: str, kind_version: str,
                  counts: Sequence[int], part_centre: Sequence[float], part_rotation: Sequence[float],
-                 coefficients: str, wall_kind: str, wall_kind_version: str, on_indefinite: str = "stop",
-                 measured: bool = False, gap_least: float = 0.0, **constants: object) -> None:
+                 coefficients: str, wall_kind: str, wall_kind_version: str, spacing: float,
+                 on_indefinite: str = "stop", **constants: object) -> None:
         if coefficients not in COEFFICIENT_SETS:
             raise ValueError(f"coefficients {coefficients!r} is not one of {COEFFICIENT_SETS}")
         if on_indefinite not in ON_INDEFINITE:
@@ -242,9 +253,8 @@ class RFTDragNode(MimeNode):
         super().__init__(name, timestep, viscosity=viscosity, kind=kind, kind_version=kind_version,
                          counts=held_counts, part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), coefficients=coefficients,
-                         wall_kind=wall_kind, wall_kind_version=wall_kind_version, on_indefinite=on_indefinite,
-                         measured=bool(measured), gap_least=float(gap_least),
-                         **{key: value for key, value in constants.items()})
+                         wall_kind=wall_kind, wall_kind_version=wall_kind_version, spacing=float(spacing),
+                         on_indefinite=on_indefinite, **{key: value for key, value in constants.items()})
 
     # -- the leaves ----------------------------------------------------------------------------------------------------
 
@@ -263,11 +273,11 @@ class RFTDragNode(MimeNode):
         data = {key: ParamSpec(units="1", trainable=False, description="held as built: the wall's data, an argument "
                                                                       "of the compiled step")
                 for key in self._wall_arguments()}
-        gap = ParamSpec(units="1", trainable=False, description="held as built: the least gap between the filament and "
-                                                                "the wall the rung's validity lines were measured at, in "
-                                                                "filament radii, below which a step raises unmeasured "
-                                                                "(a report's threshold)")
-        return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "gap_least": gap,
+        spacing = ParamSpec(units="m", trainable=False, description="held as built: the points' spacing along the "
+                                                                    "centreline the counts were made with, which the "
+                                                                    "step reads to judge whether the body lies within "
+                                                                    "the points its validity lines were measured at")
+        return {**super().param_specs(), "viscosity": ParamSpec(units="Pa s"), "spacing": spacing,
                 "part_centre": ParamSpec(units="m", trainable=False, description=placed),
                 "part_rotation": ParamSpec(units="1", trainable=False, description=placed), **shapes, **walls, **data}
 
@@ -396,10 +406,28 @@ class RFTDragNode(MimeNode):
             return floored_least_eigenvalue(found).astype(dtype), semidefinite_floor(dtype)
         return scaled_least_eigenvalue(found).astype(dtype), 0.0
 
-    def gap_unmeasured(self, p: Mapping[str, Any], pose: Array) -> Array:
-        """Whether the wall's gap at ``pose`` is other than the one the family was measured at (none is, in free space):
-        a narrower or a wider gap was not measured."""
-        measured = p["gap_least"]
+    def measured_here(self, p: Mapping[str, Any]) -> tuple[Array, Array]:
+        """Whether the body lies within the points the rung's validity lines were measured over, and with a wall the gap
+        its family was measured at (filament radii; zero in free space or outside them), from the step's leaves: its
+        family (:func:`measured_family`) by its shape and its slenderness (its centreline's length over its thinnest
+        filament radius), at the default coefficients and a spacing no coarser than ``RFT_POINTS_PER_RADIUS`` a filament
+        radius. Held out of every derivative: a report."""
+        parameters = self.parameters(p)
+        dtype = jnp.asarray(p["viscosity"]).dtype
+        segments = self._centreline.segments
+        lengths = [jnp.asarray(segment.length(parameters), dtype=dtype) for segment in segments]
+        thinnest = jnp.min(jnp.stack([jnp.asarray(cast(Any, segment.filament_radius)(parameters), dtype=dtype)
+                                      for segment in segments]))
+        held = self.constants()
+        family, gap = measured_family(held["kind"], parameters, sum(lengths[1:], lengths[0]) / thinnest,
+                                      held["wall_kind"])
+        fine = jnp.asarray(p["spacing"], dtype=dtype) <= thinnest / RFT_POINTS_PER_RADIUS * (1.0 + 1e-9)
+        found = family & fine & (held["coefficients"] == default_coefficients(self._centreline))
+        return _lax.stop_gradient(found), _lax.stop_gradient(gap.astype(dtype))
+
+    def gap_unmeasured(self, p: Mapping[str, Any], pose: Array, measured: Array) -> Array:
+        """Whether the wall's gap at ``pose`` is other than ``measured``, the one its family was measured at (none is,
+        in free space): a narrower or a wider gap was not measured."""
         return (measured > 0.0) & (jnp.abs(self.wall_gap(p, pose) - measured) > GAP_TOLERANCE * measured)
 
     @override
@@ -413,8 +441,8 @@ class RFTDragNode(MimeNode):
         least, floor = self.judged(_lax.stop_gradient(found), dtype)
         indefinite = accepted & jnp.logical_not(least > -floor)
         stop = indefinite if self.constants()["on_indefinite"] == "stop" else jnp.asarray(False)
-        held = self.constants()
-        unmeasured = jnp.asarray(not held["measured"]) | self.gap_unmeasured(p, pose)
+        measured, gap = self.measured_here(p)
+        unmeasured = jnp.logical_not(measured) | self.gap_unmeasured(p, pose, gap)
         steps = state["steps"] + 1.0
         first = indefinite & (state["stopped_at"] == 0.0)
         record = jnp.where(first, jnp.concatenate([steps[None], least[None], pose]),
@@ -436,10 +464,7 @@ class RFTDragNode(MimeNode):
         if pose is None:
             return []
         with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
-            leaves = {key: jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple, np.ndarray))
-                      else value for key, value in self.constants().items()}
-            found, accepted = self.resistance_at({**leaves, **self._wall_arguments()},
-                                                 jnp.asarray(pose, dtype=jnp.float64))
+            found, accepted = self.resistance_at(self._built_leaves(), jnp.asarray(pose, dtype=jnp.float64))
             least_array, floor = self.judged(found, jnp.float64)
             least = float(least_array)
         if not bool(accepted):
@@ -464,23 +489,36 @@ class RFTDragNode(MimeNode):
         where it does, the lines, estimates against the MRS at its resolution; where it does not, that its error
         against the MRS is not measured there, and that every step raises ``unmeasured``."""
         del closest_approach
-        held = self.constants()
-        if not held["measured"]:
+        measured, measured_gap = self.measured_as_built()
+        if not measured:
             return [f"the rft rung's validity lines were measured over other bodies than this one ({self._settings_text()}"
                     f"): its error against the MRS is not measured here, so each step raises unmeasured; the lines "
                     f"and the points they hold over are in docs/data/slender_validity"]
         line = (f"the rft rung's validity lines hold for this body's family (its points in "
                 f"docs/data/slender_validity, estimates against the MRS at its resolution, never bounds)")
-        if held["gap_least"] > 0.0:
+        if measured_gap > 0.0:
             gap = self._start_gap(start)
-            if gap is not None and abs(gap - held["gap_least"]) > GAP_TOLERANCE * held["gap_least"]:
-                return [f"the rft rung's validity lines were measured at a gap of {held['gap_least']:.3g} filament radii "
+            if gap is not None and abs(gap - measured_gap) > GAP_TOLERANCE * measured_gap:
+                return [f"the rft rung's validity lines were measured at a gap of {measured_gap:.3g} filament radii "
                         f"between the filament and the wall, and this body starts at {gap:.3g}: its error against the MRS "
                         f"is not measured there, so each step at another gap raises unmeasured; the lines and the "
                         f"points they hold over are in docs/data/slender_validity"]
-            line += (f"; with its wall, at the gap measured, {held['gap_least']:.3g} filament radii between the "
+            line += (f"; with its wall, at the gap measured, {measured_gap:.3g} filament radii between the "
                      f"filament and the wall (held to {GAP_TOLERANCE:.0%}), any other raising unmeasured")
         return [line]
+
+    def measured_as_built(self) -> tuple[bool, float]:
+        """:meth:`measured_here` at the leaves as built, in float64: what the build report says of the body."""
+        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+            measured, gap = self.measured_here(self._built_leaves())
+            return bool(measured), float(gap)
+
+    def _built_leaves(self) -> dict[str, Any]:
+        """The node's leaves as built, in float64 (called where float64 is enabled): what the build's checks evaluate
+        the step's functions at."""
+        leaves = {key: jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple, np.ndarray)) else value
+                  for key, value in self.constants().items()}
+        return {**leaves, **self._wall_arguments()}
 
     def _start_gap(self, start: Mapping[str, Any] | None) -> float | None:
         """The gap between the filament and the wall at the body's starting pose, in filament radii."""
@@ -488,9 +526,7 @@ class RFTDragNode(MimeNode):
         if pose is None:
             return None
         with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
-            leaves = {key: jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple, np.ndarray))
-                      else value for key, value in self.constants().items()}
-            return float(self.wall_gap({**leaves, **self._wall_arguments()}, jnp.asarray(pose, dtype=jnp.float64)))
+            return float(self.wall_gap(self._built_leaves(), jnp.asarray(pose, dtype=jnp.float64)))
 
     def _settings_text(self) -> str:
         held = self.constants()
@@ -518,6 +554,7 @@ class RFTDragNode(MimeNode):
                        "wall")
 
 
-__all__ = ["COEFFICIENT_SETS", "EQUATIONS", "GAP_TOLERANCE", "LIGHTHILL_Q", "MEASURED", "ON_INDEFINITE", "SEMIDEFINITE_KINDS", "SHAPE_TOLERANCE",
+__all__ = ["COEFFICIENT_SETS", "EQUATIONS", "GAP_TOLERANCE", "LIGHTHILL_Q", "MEASURED", "ON_INDEFINITE",
+           "RFT_POINTS_PER_RADIUS", "SEMIDEFINITE_KINDS", "SHAPE_TOLERANCE",
            "Measured", "RFTDragInputs", "RFTDragNode", "RFTDragState", "coefficient_problem", "default_coefficients",
            "drag_coefficients", "measured_family", "shape_ratios"]
