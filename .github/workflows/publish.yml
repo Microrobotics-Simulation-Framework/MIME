@@ -10,7 +10,8 @@ name: Publish to PyPI
 #   environment   : pypi
 #
 # A release's tag must be `v` and the package's version (`src/mime/__init__.py`), and the distributions built from
-# it of that version, or nothing is published (scripts/release.py check-tag). A run can also be started by hand from
+# it of that version, or nothing is published (scripts/release.py check-tag); and every lane of CI must be green on
+# the tagged commit (scripts/release.py check-ci, the release gate). A run can also be started by hand from
 # the Actions tab (workflow_dispatch), from the release's tag: a run from a branch is refused by the same check.
 # tests/test_release_workflow.py reads this file's wiring and runs its steps with their commands stubbed.
 
@@ -27,6 +28,10 @@ jobs:
   build:
     name: Build sdist + wheel
     runs-on: ubuntu-latest
+    # actions to read the tagged commit's CI run (scripts/release.py check-ci).
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.tag.outputs.version }}
     steps:
@@ -46,6 +51,15 @@ jobs:
       - name: The tag is v and the package's version, and so is every distribution
         id: tag
         run: python3 scripts/release.py check-tag --ref "$GITHUB_REF" dist/*.whl dist/*.tar.gz
+
+      # The release gate: three of CI's five lanes (`default` on Python 3.13, `maddening-main`, `openmaterica-main`) are no
+      # required check of a pull request, so nothing else says they are green. The newest push or manual run of ci.yml on
+      # the tagged commit must have all five lanes' jobs concluded success; each that did not is named, and nothing is
+      # published (the publishing job needs this one).
+      - name: Every lane of CI is green on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release.py check-ci --repository "${{ github.repository }}" --commit "${{ github.sha }}"
 
       - name: Sanity-check distributions
         run: |

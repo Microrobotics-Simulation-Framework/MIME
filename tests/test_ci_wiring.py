@@ -1,8 +1,12 @@
 """CI's wiring of the checks it must run, read from ``.github/workflows/``:
 
 - every job name the development branch's protection requires is made by one job, of a workflow that runs on a pull
-  request into the branch (``release/v0.3.0``) and on a push to it, and that job is skipped by nothing but the
-  schedule (a skipped job passes a required check); and no workflow names the branch's old name, ``v0.3``;
+  request into the branch (``release/v0.3.0``, matched by a trigger's ``release/**``) and on a push to it, and that job
+  is skipped by nothing but the schedule (a skipped job passes a required check); and no workflow names the branch's old
+  name, ``v0.3``. Four checks are required: ``default`` on Python 3.12 and 3.14, the typecheck and the confidentiality
+  scan. ``default`` on 3.13, ``maddening-main`` and ``openmaterica-main`` are not (a decision of 2026-11-08, CONTRIBUTING.md,
+  "CI: which lanes a pull request runs"): they are skipped where their lane does not run, and the same wiring is held for
+  the two lanes (``MOVED_LANES``), with the condition that starts them;
 - a required job that waits on a lane's shard jobs runs after a red shard too (``!cancelled()``), and fails unless
   ``scripts/check_shards.py`` passes, with its exit status intact, over as many shards as the jobs it waits on run (the
   matrix and their ``--mime-shard``), and those jobs are skipped by nothing but the schedule;
@@ -29,6 +33,7 @@ shows, whatever its form; and neither step may carry ``continue-on-error``, an `
 shell, an ``|| true`` or a ``set +e``. Each control plants one break in a copy of the workflows and runs the same check,
 which must fail naming it."""
 
+import fnmatch
 import itertools
 import re
 import shutil
@@ -47,18 +52,31 @@ BRANCH, OLD_BRANCH = "release/v0.3.0", "v0.3"
 #: (``v0.3.0``, ``v0.3.0.dev1``) is not the name but ``v0.3`` ending a sentence is.
 OLD_NAME = re.compile(r"\bv0\.3(?!\d|\.\w)")
 #: The development branch's required status checks, by the names its branch protection gives them.
-REQUIRED = ("default (Python 3.12)", "default (Python 3.13)", "default (Python 3.14)", "maddening-main",
-            "openmaterica-main", "typecheck (pyright, Python 3.12)", "no private name or path")
+REQUIRED = ("default (Python 3.12)", "default (Python 3.14)", "typecheck (pyright, Python 3.12)",
+            "no private name or path")
+#: The lanes that were required until 2026-11-08 and run on a pull request by its diff (``scripts/ci_boundary.py``): the
+#: output of the count job that starts each, which their shard jobs, completion jobs and lane jobs all name.
+MOVED_LANES = {"maddening-main": "maddening", "openmaterica-main": "openmaterica"}
 DOCS_CHECK, SCAN = "default (Python 3.12)", "no private name or path"
 SCHEDULE_FILTER = EVENT_FILTER = "github.event_name != 'schedule'"
 #: The ``if`` of a required job that waits on shard jobs: a red shard must not skip it, since a skipped job passes.
 AFTER_ITS_SHARDS = f"${{{{ !cancelled() && {EVENT_FILTER} }}}}"
 #: The run's mode, read by the count job from the pull request's labels when the run starts (tests/test_ci_ready_label.py).
 FULL_MODE = "needs.shards.outputs.full == 'true'"
-#: The ``if`` of the shard jobs of the lanes that run in the full matrix alone.
-FULL_LANE_TESTS = f"${{{{ {SCHEDULE_FILTER} && {FULL_MODE} }}}}"
 #: A step that runs after a red one but, in a reduced run, only for the lanes that ran.
 LANE_RAN = "${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}"
+#: The same for a lane that has no job where it does not run.
+AFTER_A_RED_STEP = "${{ !cancelled() }}"
+
+
+def lane_starts(output: str) -> str:
+    """The ``if`` of a moved lane's shard jobs and completion job: not the schedule, and the count job says it runs."""
+    return f"${{{{ {SCHEDULE_FILTER} && needs.shards.outputs.{output} == 'true' }}}}"
+
+
+def lane_job_starts(output: str) -> str:
+    """The ``if`` of a moved lane's job under its own name: it waits on shard jobs, so it runs after a red one too."""
+    return f"${{{{ !cancelled() && {EVENT_FILTER} && needs.shards.outputs.{output} == 'true' }}}}"
 GROUP_LINE = ("  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && "
               "github.event.pull_request.number || github.run_id }}\n")
 SHARD_CHECK = "scripts/check_shards.py"
@@ -66,6 +84,7 @@ SHARD_CHECK = "scripts/check_shards.py"
 #: (tests/test_completion_job.py holds their wiring).
 COMPLETION_JOBS = ("default-completion", "openmaterica-main-completion", "maddening-main-completion")
 COUNT_JOB, COUNT_SCRIPT = "shards", "scripts/shard_matrix.py"
+COUNT_OUTPUTS = {"count", "list", "full", "maddening", "openmaterica", "exclude", "lane_exclude"}
 SHARD_COUNT = "${{ needs.shards.outputs.count }}"
 SHARD_LIST = "${{ fromJSON(needs.shards.outputs.list) }}"
 #: What the count job outputs in the run the wiring is read for, and what the lanes' check must then be told.
@@ -77,7 +96,7 @@ SKIPPABLE: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
     "--skip-hash-seed-builds": ("CI runs the second build under another hash seed", ()),
     "--skip-example-runs": ("CI runs the scripts the guides' output blocks name", (("platforms.yml", "smoke"),)),
 }
-STEP_IFS = (None, "${{ !cancelled() }}", LANE_RAN)
+STEP_IFS = (None, AFTER_A_RED_STEP, LANE_RAN)
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 SECRET = "the-secret-stands-in"
 #: What a run's expressions are, for a pull request into the development branch and for a push to it.
@@ -126,10 +145,16 @@ def names_of(job_id: str, job: dict[str, object]) -> list[str]:
     return names
 
 
+def lists_the_branch(branches: list[str]) -> bool:
+    """Whether a trigger's branch filter lists the development branch: by its name, or by a pattern that matches it
+    (``release/**``; ``**`` matches across a ``/``, as ``fnmatch``'s ``*`` does)."""
+    return any(fnmatch.fnmatchcase(BRANCH, pattern) for pattern in branches)
+
+
 def runs_on_the_branch(workflow: dict[str, object]) -> bool:
     """Whether the workflow runs on a pull request into the development branch and on a push to it."""
     triggers = workflow.get("on", workflow.get(True)) or {}
-    return all(BRANCH in ((triggers.get(event) or {}).get("branches") or []) for event in ("pull_request", "push"))
+    return all(lists_the_branch((triggers.get(event) or {}).get("branches") or []) for event in ("pull_request", "push"))
 
 
 def old_name_problems(directory: Path, actions: Path = ACTIONS) -> list[str]:
@@ -152,7 +177,7 @@ def branch_filter_problems(directory: Path) -> list[str]:
         triggers = workflow.get("on", workflow.get(True))
         for event, configuration in (triggers.items() if isinstance(triggers, dict) else []):
             branches = configuration.get("branches") if isinstance(configuration, dict) else None  # schedule: a list
-            if branches is not None and BRANCH not in branches:
+            if branches is not None and not lists_the_branch(branches):
                 found.append(f"{name}: the {event} trigger filters by branch and does not list {BRANCH}")
     return found
 
@@ -242,6 +267,13 @@ def wiring_problems(directory: Path, scratch: Path, actions: Path = ACTIONS) -> 
             found += shard_problems(name, job, workflow, scratch / "shards" / re.sub(r"\W+", "-", name))
         elif job.get("if") not in (None, EVENT_FILTER):
             found.append(f"{name!r}: runs only if {job.get('if')!r}, and a skipped job passes a required check")
+    for name, output in MOVED_LANES.items():
+        jobs = made.get(name, [])
+        if len(jobs) != 1:
+            found.append(f"{name!r}: {len(jobs)} jobs make this lane's check; one does")
+            continue
+        workflow, job = jobs[0]
+        found += shard_problems(name, job, workflow, scratch / "shards" / re.sub(r"\W+", "-", name), output)
     found += [problem for name, workflow in workflows(directory) if name == "ci.yml"
               for problem in concurrency_problems(workflow)]
     if len(made.get(DOCS_CHECK, [])) == 1:
@@ -263,9 +295,9 @@ def count_job_problems(name: str, workflow: dict[str, object], scratch: Path) ->
     found = []
     if job.get("if") not in (None, EVENT_FILTER):
         found.append(f"{name!r}: the {COUNT_JOB} job runs only if {job.get('if')!r}")
-    if set((job.get("outputs") or {})) != {"count", "list", "full"}:
-        found.append(f"{name!r}: the {COUNT_JOB} job outputs {sorted(job.get('outputs') or {})}, not count, list and "
-                     f"full (the run's mode)")
+    if set((job.get("outputs") or {})) != COUNT_OUTPUTS:
+        found.append(f"{name!r}: the {COUNT_JOB} job outputs {sorted(job.get('outputs') or {})}, not "
+                     f"{sorted(COUNT_OUTPUTS)} (the count, the shards, the run's mode, the lanes it starts)")
     problems, step = one_step(f"{name}: the {COUNT_JOB} job", job, COUNT_SCRIPT)
     found += problems
     if step is not None:
@@ -277,12 +309,17 @@ def count_job_problems(name: str, workflow: dict[str, object], scratch: Path) ->
     return found
 
 
-def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object], scratch: Path) -> list[str]:
-    """What is wrong with a required job that stands for a lane's shard jobs (``needs``)."""
+def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object], scratch: Path,
+                   moved: str | None = None) -> list[str]:
+    """What is wrong with a job that stands for a lane's shard jobs (``needs``): a required one, or (``moved`` names the
+    count job's output that starts the lane) one of the lanes that run by the pull request's diff."""
     found: list[str] = []
-    if job.get("if") != AFTER_ITS_SHARDS:
+    expected = AFTER_ITS_SHARDS if moved is None else lane_job_starts(moved)
+    shard_ifs = (None, SCHEDULE_FILTER) if moved is None else (lane_starts(moved),)
+    if job.get("if") != expected:
         found.append(f"{name!r}: runs only if {job.get('if')!r}; it waits on shard jobs, so it must run after a red "
-                     f"one too ({AFTER_ITS_SHARDS}), since a skipped job passes a required check")
+                     f"one too ({expected})" + (", since a skipped job passes a required check" if moved is None else
+                                                " and only where its lane runs"))
     needed = job["needs"] if isinstance(job["needs"], list) else [job["needs"]]
     if COUNT_JOB not in needed:
         found.append(f"{name!r}: does not wait on the {COUNT_JOB} job, so its --shards is not the count the shards ran")
@@ -291,7 +328,7 @@ def shard_problems(name: str, job: dict[str, object], workflow: dict[str, object
         if needed_id == COUNT_JOB or needed_id in COMPLETION_JOBS:
             continue
         shard_job = (workflow.get("jobs") or {}).get(needed_id) or {}
-        if shard_job.get("if") not in (None, SCHEDULE_FILTER, FULL_LANE_TESTS):
+        if shard_job.get("if") not in shard_ifs:
             found.append(f"{name!r}: the shard job {needed_id} runs only if {shard_job.get('if')!r}")
         if not isinstance(shard_job.get("timeout-minutes"), int):
             found.append(f"{name!r}: the shard job {needed_id} has no timeout-minutes; a hung shard holds the lane for "
@@ -509,7 +546,8 @@ SCAN_STEP = f"{SCAN}: the step \"No private name or path in the tracked files, t
 DOCS_BASE = 'mime docs check --base "$base"'
 SMOKE_DOCS_LINE = '          uv run --no-sync mime docs check --base "$base" --skip-example-runs\n'
 SCAN_LINE = '            ${public:+--public "$public"} ${name:+--ref-name "$name"}\n'
-LANE_MATRIX = 'python-version: ["3.12", "3.13", "3.14"]\n    env:\n      MIME_CI_LANE: default\n      # Python 3.12'
+LANE_MATRIX = 'python-version: ["3.12", "3.13", "3.14"]\n        # Python 3.13 is no required check'
+LANE_MATRIX_TAIL = 'python-version: ["3.12", "3.13"]\n        # Python 3.13 is no required check'
 SHARD_LINE = ('        if: ' + LANE_RAN + '\n        run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n')
 
 BUILD_RUN = "uv run --no-sync mime docs build --out"
@@ -607,7 +645,7 @@ PLANTS = {
     "the-scan-job-renamed": ("    name: no private name or path\n", "    name: confidentiality\n",
                              "'no private name or path': 0 jobs make this required check; one does"),
     "a-python-dropped-from-the-matrix": (
-        LANE_MATRIX, LANE_MATRIX.replace('["3.12", "3.13", "3.14"]', '["3.12", "3.13"]'),
+        LANE_MATRIX, LANE_MATRIX_TAIL,
         "'default (Python 3.14)': 0 jobs make this required check; one does"),
     "the-lane-job-skipped-after-a-red-shard": (
         f"    needs: [shards, default-tests, default-completion]\n    if: {AFTER_ITS_SHARDS}\n",
@@ -625,9 +663,9 @@ PLANTS = {
         "list"),
     "a-lane-told-another-count-than-the-shards-ran": (
         'check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n      - name: Test durations\n'
-        f'        if: {LANE_RAN}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
+        f'        if: {AFTER_A_RED_STEP}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
         'check_shards.py --shards 4 --max-skipped 0 "$RUNNER_TEMP"/shards/*/\n      - name: Test durations\n'
-        f'        if: {LANE_RAN}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
+        f'        if: {AFTER_A_RED_STEP}\n        env:\n          TITLE: "Test durations: openmaterica-main,',
         "openmaterica-main: the step 'Every shard passed, and together they ran the lane': checks ['4'] shards; its "
         "shard jobs run 6"),
     "a-shard-job-not-waiting-on-the-count": (
@@ -648,9 +686,9 @@ PLANTS = {
     "the-shard-check-removed": (
         "      - name: Every shard passed, and together they ran the lane\n"
         "        run: python3 scripts/check_shards.py --shards \"${{ needs.shards.outputs.count }}\" --max-skipped 0 \"$RUNNER_TEMP\"/shards/*/\n"
-        "      - name: Test durations\n        if: " + LANE_RAN + "\n        env:\n"
+        "      - name: Test durations\n        if: " + AFTER_A_RED_STEP + "\n        env:\n"
         "          TITLE: \"Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards\"\n",
-        "      - name: Test durations\n        if: " + LANE_RAN + "\n        env:\n"
+        "      - name: Test durations\n        if: " + AFTER_A_RED_STEP + "\n        env:\n"
         "          TITLE: \"Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards\"\n",
         "maddening-main: 0 steps run scripts/check_shards.py; one does"),
     "a-skip-ceiling-above-the-suites-none": (
@@ -668,6 +706,17 @@ PLANTS = {
         "    needs: shards\n    if: github.event_name != 'schedule'\n    runs-on: ubuntu-latest\n",
         "'default (Python 3.12)': the shard job default-tests has no timeout-minutes; a hung shard holds the lane for "
         "six hours"),
+    "a-moved-lane-starts-by-the-event-alone": (
+        "    needs: [shards, maddening-main-tests, maddening-main-completion]\n    if: " + lane_job_starts("maddening") + "\n",
+        "    needs: [shards, maddening-main-tests, maddening-main-completion]\n    if: " + AFTER_ITS_SHARDS + "\n",
+        f"'maddening-main': runs only if {AFTER_ITS_SHARDS!r}; it waits on shard jobs, so it must run after a red one too "
+        f"({lane_job_starts('maddening')}) and only where its lane runs"),
+    "the-shards-of-a-moved-lane-start-by-the-event-alone": (
+        "    name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n"
+        "    needs: shards\n    if: " + lane_starts("openmaterica") + "\n",
+        "    name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})\n"
+        "    needs: shards\n    if: " + SCHEDULE_FILTER + "\n",
+        f"'openmaterica-main': the shard job openmaterica-main-tests runs only if {SCHEDULE_FILTER!r}"),
     "every-run-cancels-its-group": (
         "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n", "  cancel-in-progress: true\n",
         "ci.yml: push, run 1 cancels its group's older runs"),
@@ -683,20 +732,23 @@ PLANTS = {
         "  group: ${{ github.workflow }}-${{ github.ref }}\n",
         "ci.yml: a push, manual or scheduled run shares a group with another run, which could cancel it"),
     "no-pull-request-into-the-branch": (
-        "  pull_request:\n    branches: [main, release/v0.3.0]\n", "  pull_request:\n    branches: [main]\n",
+        '  pull_request:\n    branches: [main, "release/**"]\n', "  pull_request:\n    branches: [main]\n",
         NOT_ON_THE_BRANCH),
     "the-pull-request-trigger-on-the-old-name": (
-        "  pull_request:\n    branches: [main, release/v0.3.0]\n", "  pull_request:\n    branches: [main, v0.3]\n",
+        '  pull_request:\n    branches: [main, "release/**"]\n', "  pull_request:\n    branches: [main, v0.3]\n",
+        NOT_ON_THE_BRANCH),
+    "a-pull-request-trigger-pattern-that-misses-the-branch": (
+        '  pull_request:\n    branches: [main, "release/**"]\n', '  pull_request:\n    branches: [main, "releases/**"]\n',
         NOT_ON_THE_BRANCH),
     "no-push-to-the-branch": (
-        "  push:\n    branches: [main, release/v0.3.0]\n", "  push:\n    branches: [main]\n", NOT_ON_THE_BRANCH),
+        '  push:\n    branches: [main, "release/**"]\n', "  push:\n    branches: [main]\n", NOT_ON_THE_BRANCH),
     "the-old-name-back-in-the-pull-request-trigger": (
-        "  pull_request:\n    branches: [main, release/v0.3.0]\n",
-        "  pull_request:\n    branches: [main, release/v0.3.0, v0.3]\n",
-        "ci.yml: names the old branch name v0.3: branches: [main, release/v0.3.0, v0.3]"),
+        '  pull_request:\n    branches: [main, "release/**"]\n',
+        '  pull_request:\n    branches: [main, "release/**", v0.3]\n',
+        'ci.yml: names the old branch name v0.3: branches: [main, "release/**", v0.3]'),
     "the-old-name-back-in-the-push-trigger": (
-        "  push:\n    branches: [main, release/v0.3.0]\n", "  push:\n    branches: [main, release/v0.3.0, v0.3]\n",
-        "ci.yml: names the old branch name v0.3: branches: [main, release/v0.3.0, v0.3]"),
+        '  push:\n    branches: [main, "release/**"]\n', '  push:\n    branches: [main, "release/**", v0.3]\n',
+        'ci.yml: names the old branch name v0.3: branches: [main, "release/**", v0.3]'),
 }
 
 
@@ -711,15 +763,21 @@ def test_a_break_in_the_wiring_fails_naming_it(tmp_path, plant):
     assert problem in wiring_problems(copy, tmp_path / "scratch")
 
 
+def _items(line: str) -> list[str]:
+    """The patterns of a ``branches: [...]`` line, unquoted."""
+    return [each.strip().strip("\"'") for each in line.split("[", 1)[1].rsplit("]", 1)[0].split(",")]
+
+
 def _branch_lists() -> list[tuple[str, int, str]]:
-    """Each ``branches: [...]`` line naming the development branch in a real workflow: its file, its line, its event."""
+    """Each ``branches: [...]`` line of a real workflow that lists the development branch (by its name or by a pattern
+    that matches it): its file, its line, its event."""
     found = []
     for path in sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")]):
         event = ""
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
             if key := re.match(r"^  ([\w-]+):\s*$", line):
                 event = key.group(1)
-            if re.match(r"^\s+branches: \[.*\]$", line) and BRANCH in line:
+            if re.match(r"^\s+branches: \[.*\]$", line) and lists_the_branch(_items(line)):
                 found.append((path.name, number, event))
     return found
 
@@ -738,8 +796,9 @@ def test_every_workflow_filtering_by_branch_lists_the_development_branch_each_in
     copy = tmp_path / "workflows"
     shutil.copytree(WORKFLOWS, copy)
     lines = (copy / name).read_text(encoding="utf-8").splitlines(keepends=True)
-    dropped = re.sub(rf",\s*{re.escape(BRANCH)}|{re.escape(BRANCH)},\s*|{re.escape(BRANCH)}", "", lines[number], count=1)
-    assert dropped != lines[number]
+    kept = [each for each in _items(lines[number]) if not fnmatch.fnmatchcase(BRANCH, each)]
+    dropped = lines[number].split("[", 1)[0] + "[" + ", ".join(kept) + "]\n"
+    assert dropped != lines[number] and not lists_the_branch(_items(dropped))
     lines[number] = dropped
     (copy / name).write_text("".join(lines), encoding="utf-8")
     assert f"{name}: the {event} trigger filters by branch and does not list {BRANCH}" in branch_filter_problems(copy)

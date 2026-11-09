@@ -13,6 +13,10 @@
   requests restore.
 - A manual run is **cold** and saves, unless its ``compilation_cache`` input asks for **warm**, which restores the
   branch's last saved cache and saves nothing: two manual runs measure the cache's saving.
+- A lane that **keeps no cache** (``--keeps-cache false``: Python 3.13; ``maddening-main`` and ``openmaterica-main`` do
+  not run this script) runs **cold** and saves nothing, in every event. Its runs are pushes and the nightly run, where
+  a cold run costs minutes nobody waits for, and each push saved about 13 GB of compilation caches against GitHub's 10 GB
+  per-repository limit, evicting the last push's (a decision of 2026-11-08 the maintainer can reverse; CONTRIBUTING.md).
 
 The key holds the lane, the jaxlib release and a digest of the runner CPU's model (vendor, family, model number and
 name) and feature flags. XLA compiles for the CPU it runs on, and JAX's own cache key holds no CPU features (only the
@@ -36,9 +40,12 @@ COLD_PATHS = ("tests/duration_allowlist.txt", "tests/shard_weights.json", "tests
 COLD_REQUEST = "[cold-ci]"
 
 
-def decide(event: str, choice: str, message: str | None, changed: list[str]) -> tuple[str, bool, str]:
-    """``(mode, save, why)`` for a run's event, its manual choice, its head commit's message (``None`` when unreadable)
-    and the paths its pull request changes."""
+def decide(event: str, choice: str, message: str | None, changed: list[str],
+           keeps_cache: bool = True) -> tuple[str, bool, str]:
+    """``(mode, save, why)`` for a run's event, its manual choice, its head commit's message (``None`` when unreadable),
+    the paths its pull request changes, and whether its lane keeps a cache at all."""
+    if not keeps_cache:
+        return "cold", False, "this lane keeps no compilation cache"
     if event == "pull_request":
         if message is None:
             return "cold", False, "the head commit's message could not be read, so a [cold-ci] cannot be ruled out"
@@ -88,13 +95,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lane", required=True, help="the lane and its Python, as the key names them")
     parser.add_argument("--jaxlib", required=True)
     parser.add_argument("--shard", required=True, help="i/N")
+    parser.add_argument("--keeps-cache", choices=("true", "false"), default="true",
+                        help="false: the lane restores and saves no compilation cache")
     args = parser.parse_args(argv)
     message, changed = None, []
     if args.event == "pull_request":
         # A pull request checks out its merge commit two deep: the base's tip, then the head commit.
         message = _git("log", "-1", "--format=%B", "HEAD^2")
         changed = (_git("diff", "--name-only", "HEAD^1", "HEAD") or "").split()
-    mode, save, why = decide(args.event, args.choice, message, changed)
+    mode, save, why = decide(args.event, args.choice, message, changed, args.keeps_cache == "true")
     cpuinfo = Path("/proc/cpuinfo").read_text(encoding="utf-8")
     model = next((line.split(":", 1)[1].strip() for line in cpuinfo.splitlines() if line.startswith("model name")), "?")
     key = cache_key(args.lane, args.jaxlib, cpuinfo, args.shard)

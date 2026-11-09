@@ -6,16 +6,16 @@ name: Platforms
 # command's `run`, `verify` and `modal` on it; the saved form's round trips), then `mime docs check`. None of it needs
 # an asset. Nothing here sets PYTHONUTF8 or PYTHONIOENCODING: the job must meet what a user's machine meets, and Python
 # before 3.15 does not default to UTF-8 output on Windows (docs/platforms.md). It is no required check: release/v0.3.0's branch
-# protection names none of these jobs, and the maintainer decides later whether to require them. Every step runs even
+# protection names none of these jobs (it runs on every `release/**` branch, as ci.yml does), and the maintainer decides later whether to require them. Every step runs even
 # when an earlier one failed, so one run lists everything that breaks on a platform.
 
 on:
   pull_request:
-    branches: [release/v0.3.0]
+    branches: ["release/**"]
     # No `labeled`: a label starts no run here (ready.yml re-runs this one for `ready`, as it does ci.yml's).
     types: [opened, synchronize, reopened]
   push:
-    branches: [release/v0.3.0]
+    branches: ["release/**"]
   workflow_dispatch:
 
 permissions:

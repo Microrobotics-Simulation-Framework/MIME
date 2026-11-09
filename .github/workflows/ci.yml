@@ -1,11 +1,25 @@
 name: CI
 
 # Four test lanes and a typing gate. `default` installs the locked PyPI releases on every supported Python and
-# blocks. The other three leave the run's conclusion alone (job-level `continue-on-error`: a failure there marks its
-# own job red): `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and `usd-core-newest`
-# re-resolves usd-core to the newest release. release/v0.3.0's branch protection requires `default` on each Python,
-# `maddening-main`, `openmaterica-main`, `typecheck` and `confidential` by these jobs' names, so a red one of them blocks
-# a merge, and tests/test_ci_wiring.py holds the names and the checks' wiring. Each lane names itself in MIME_CI_LANE,
+# blocks. `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and `usd-core-newest` re-resolves
+# usd-core to the newest release. Their shard and completion jobs are `continue-on-error`, and so is `usd-core-newest`: a
+# failure there marks its own job red and leaves the run's conclusion alone. The job under a `-main` lane's own name is
+# `continue-on-error` on a pull request only, so on a push and a manual run (the nightly run's) a red `-main` lane
+# turns the run red, which the nightly run (nightly.yml) and the release gate (scripts/release.py check-ci) read.
+# After the merge that moves them, release/v0.3.0's branch protection will require four checks, by these jobs' names (the
+# maintainer edits it at the merge, CONTRIBUTING.md): `default (Python 3.12)`, `default (Python 3.14)`, `typecheck
+# (pyright, Python 3.12)` and `no private name or path`, so a red one of them blocks a merge, and tests/test_ci_wiring.py
+# holds the names and the checks' wiring.
+# Three lanes leave the required checks (a decision of 2026-11-08 the maintainer can reverse, CONTRIBUTING.md, "CI: which
+# lanes a pull request runs"): `default` on Python 3.13, `maddening-main` and `openmaterica-main`. They run on a push to
+# `main` or a `release/**` branch, on a manual run, and on the nightly run (nightly.yml, which fires once it is on
+# `main`); on a pull request only in the full matrix and only when its diff touches the dependency pins, CI, or MIME's
+# adapter to that upstream (scripts/ci_boundary.py, which holds the paths; Python 3.13 on the pins or CI alone). Where a
+# lane does not run, `default` on 3.13 has no job and the `-main` lanes' jobs are skipped (a skipped job passes a required
+# check; neither lane is required once the protection is edited). These three lanes keep no compilation cache (they
+# restore none and save none; each push saved about 13 GB across five lanes against GitHub's 10 GB limit, so each
+# evicted the last), and their per-test duration gate warns where the gate of `default` on 3.12 and 3.14 fails the job
+# (`--warn-only`, scripts/report_test_durations.py). Each lane names itself in MIME_CI_LANE,
 # and tests/test_ci_lane.py asserts from the installed metadata that it installed what it claims.
 # Every lane also builds and installs lab_fixture/, which tests/test_lab_fixture.py and the registry walk require
 # under CI. `uv sync` installs the `dev` dependency group (pytest, Hypothesis, pyright, hatchling) by default.
@@ -33,7 +47,7 @@ name: CI
 # where the time went to the run page. Each test's JAX tracing, lowering and compiling are recorded beside its times
 # (MIME_TEST_JAX_TIMING, tests/_jax_timing.py), and each shard's report is uploaded as a run artifact. Each shard keeps
 # JAX's persistent compilation cache, per lane, shard, jaxlib and runner CPU model: a pull request restores its base's
-# and never saves, a push starts empty and saves (scripts/compilation_cache_mode.py). setup-uv's own cache is saved the
+# and never saves, a push starts empty and saves (scripts/compilation_cache_mode.py; not in the three lanes above). setup-uv's own cache is saved the
 # same way, by pushes only: pull requests and branches each saved a copy of about 0.5 GB, which filled GitHub's 10 GB
 # per-repository limit and evicted the compilation cache. Every shard and lane job has a `timeout-minutes`; a shard's is
 # 30, raised from 20 on 2026-11-07: shard jobs had ranged from 7 to 20 min across runs, and a slow runner cancelled
@@ -47,28 +61,31 @@ name: CI
 # and fish (scripts/install_shells.sh) and which the lane's job under its own name waits on and checks, from the run's list
 # of jobs (never `needs.<job>.result`: a failed `continue-on-error` job reads `success` there); every shard deselects the
 # file and installs no shell (tests/test_completion_job.py).
-# Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix (every lane and Python, 58 jobs) runs on a push to
-# a branch, a manual run, and a pull request that carries the label `ready`. A pull request without the label runs a
-# reduced set: `typecheck`, `no private name or path`, the docs check and the default lane on Python 3.12 with all its
-# shards (18 jobs), and the required jobs it does not run for (`default` on 3.13 and 3.14, `maddening-main`,
-# `openmaterica-main`) still run and fail with "the full matrix has not run on this head: add the `ready` label", so
-# that no required check passes by being skipped. An agent adds `ready` when its head is final.
+# Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix runs on a push to a branch, a manual run, and a
+# pull request that carries the label `ready`: 63 jobs for a push (every lane and Python at ten shards, plus the skipped `usd-core-newest` entry), 27 for a pull
+# request that touches no pin, CI file or adapter (`default` on Python 3.12 and 3.14, with `typecheck`, `no private name
+# or path` and `shard count`). A pull request without the label runs a reduced set: `typecheck`, `no private name or
+# path`, the docs check and the default lane on Python 3.12 with all its shards (16 jobs), and the one required job it
+# does not run for (`default` on 3.14) still runs and fails with "the full matrix has not run on this head: add the
+# `ready` label", so that no required check passes by being skipped. An agent adds `ready` when its head is final.
 # The mode is read when the run starts, from the pull request's labels as they are then (the `shards` job), not from the
 # event: so a re-run reads the label too. This workflow does not listen to `labeled`: a label event would start a run
 # whose jobs are all skipped, and a wholly skipped run, the newest of this workflow on the head, left release/v0.3.0's branch
 # protection reporting the head blocked with every required check green. Adding `ready` starts ready.yml instead, which
 # re-runs the head's newest run of this workflow, now in full: one check suite per head, its newest attempt counting.
 # tests/test_ci_ready_label.py reads this.
+# The `shards` job also says which lanes the run starts (its `boundary` step, scripts/ci_boundary.py; the checkout is two
+# deep for it, the merge commit and its base's tip), and the lanes' matrices and conditions read its outputs.
 # Every test job stores the asset `unit_tube_R0.997` (209 MB, the tube wall kind's table) before its tests, by the local
 # action .github/actions/unit-tube: one actions/cache entry keyed by the asset's sha256, shared by every lane, Python and
 # shard, and `mime assets fetch` into MIME_ASSETS_DIR. The tests never download; a missing asset fails by name.
 
 on:
   push:
-    branches: [main, release/v0.3.0]
+    branches: [main, "release/**"]
   # No `labeled`: a label starts no run here (ready.yml re-runs this one for `ready`).
   pull_request:
-    branches: [main, release/v0.3.0]
+    branches: [main, "release/**"]
     types: [opened, synchronize, reopened]
   # Weekly, for usd-core-newest. GitHub runs schedules from the default branch's workflow file only.
   schedule:
@@ -92,7 +109,7 @@ on:
         type: boolean
         default: false
       shards:
-        description: "Shards per lane for this run, 1 to 12 (empty: the repository variable MIME_CI_SHARDS, else 10; scripts/shard_matrix.py)"
+        description: "Shards per lane for this run, 1 to 32 (empty: the repository variable MIME_CI_SHARDS, else 10; scripts/shard_matrix.py)"
         type: string
         default: ""
       compilation_cache:
@@ -121,8 +138,8 @@ env:
 
 jobs:
   # How many shards each lane runs as: the repository variable MIME_CI_SHARDS, a manual run's `shards` input over it, or 10
-  # (scripts/shard_matrix.py, CONTRIBUTING.md). A count outside 1 to 12 fails this job by name, and every job that needs
-  # it, the lanes' required jobs included, then fails too.
+  # (scripts/shard_matrix.py, CONTRIBUTING.md). A count outside 1 to 32 fails this job by name, and every job that needs
+  # it, the lanes' required jobs included, then do not run (a required check that never reports blocks the merge).
   # And the run's mode (`full`): the full matrix on a push or a manual run, and on a pull request whose labels, read
   # now and not from the event, hold `ready`. The step after it runs only in the full matrix, so the run's jobs say which
   # mode it took (scripts/ci_ready.py reads it). A label that cannot be read fails this job, and the lanes with it.
@@ -138,8 +155,15 @@ jobs:
       count: ${{ steps.count.outputs.count }}
       list: ${{ steps.count.outputs.list }}
       full: ${{ steps.mode.outputs.full }}
+      maddening: ${{ steps.boundary.outputs.maddening }}
+      openmaterica: ${{ steps.boundary.outputs.openmaterica }}
+      exclude: ${{ steps.boundary.outputs.exclude }}
+      lane_exclude: ${{ steps.boundary.outputs.lane_exclude }}
     steps:
+      # Two deep: a pull request's merge commit and its base's tip, which the boundary step diffs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - name: The shard count
         id: count
         env:
@@ -164,6 +188,12 @@ jobs:
       - name: The full matrix runs
         if: steps.mode.outputs.full == 'true'
         run: echo "the full matrix runs on this head"
+      - name: Which lanes this run starts
+        id: boundary
+        env:
+          EVENT: ${{ github.event_name }}
+          FULL: ${{ steps.mode.outputs.full }}
+        run: python3 scripts/ci_boundary.py --event "$EVENT" --full "$FULL"
 
   default-tests:
     name: default tests (Python ${{ matrix.python-version }}, shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
@@ -176,8 +206,9 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
         shard: ${{ fromJSON(needs.shards.outputs.list) }}
-        # A reduced run (a pull request without `ready`) runs Python 3.12 alone.
-        exclude: ${{ fromJSON(needs.shards.outputs.full == 'true' && '[]' || '[{"python-version":"3.13"},{"python-version":"3.14"}]') }}
+        # Python 3.13 runs on a push, a manual or nightly run, and a full pull request that touches the pins or CI;
+        # a reduced run (a pull request without `ready`) runs Python 3.12 alone (scripts/ci_boundary.py).
+        exclude: ${{ fromJSON(needs.shards.outputs.exclude) }}
     env:
       MIME_CI_LANE: default
     steps:
@@ -206,6 +237,7 @@ jobs:
           CHOICE: ${{ inputs.compilation_cache }}
         run: >-
           python3 scripts/compilation_cache_mode.py --event "$EVENT" --choice "$CHOICE" --lane "default-py${{ matrix.python-version }}"
+          --keeps-cache "${{ matrix.python-version != '3.13' }}"
           --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
           --shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}"
       - name: Restore the compilation cache
@@ -230,10 +262,13 @@ jobs:
             --junitxml="$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml"
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        env:
+          # Python 3.13 keeps no compilation cache and its duration gate warns (a decision of 2026-11-08; CONTRIBUTING.md).
+          WARN_ONLY: ${{ matrix.python-version == '3.13' && '--warn-only' || '' }}
         run: |
           echo "${{ (steps.cc.outputs.mode == 'warm' && steps.cc-restore.outputs.cache-matched-key != '') && 'warm' || 'cold' }}" \
             > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
-          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode mixed --markdown /dev/null
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers $WARN_ONLY --cache-mode mixed --markdown /dev/null
       - name: Plant a failing shard (a manual run's first attempt only)
         if: ${{ !cancelled() && env.MIME_CI_PLANT_SHARD_FAILURE == format('{0}', matrix.shard) && matrix.python-version == '3.12' && github.run_attempt == 1 }}
         run: |
@@ -281,10 +316,13 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
+        # Python 3.13 is no required check: it has no job where its lane does not run (scripts/ci_boundary.py). Python
+        # 3.14 is one, and stays in a reduced run, where its first step fails it.
+        exclude: ${{ fromJSON(needs.shards.outputs.lane_exclude) }}
     env:
       MIME_CI_LANE: default
-      # Python 3.12's job runs in every mode; the others run the lane only when the full matrix runs, and otherwise
-      # their first step fails the job (a required check never passes by being skipped).
+      # Python 3.12's job runs in every mode; Python 3.14 runs the lane only when the full matrix runs, and otherwise
+      # its first step fails the job (a required check never passes by being skipped).
       MIME_CI_RUNS: ${{ needs.shards.outputs.full == 'true' || matrix.python-version == '3.12' }}
     steps:
       - name: Refuse a head the full matrix has not run on
@@ -409,7 +447,7 @@ jobs:
   openmaterica-main-tests:
     name: openmaterica-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
     needs: shards
-    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.openmaterica == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -441,23 +479,6 @@ jobs:
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Compilation cache mode
-        id: cc
-        env:
-          EVENT: ${{ github.event_name }}
-          CHOICE: ${{ inputs.compilation_cache }}
-        run: >-
-          python3 scripts/compilation_cache_mode.py --event "$EVENT" --choice "$CHOICE" --lane "openmaterica-main"
-          --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
-          --shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}"
-      - name: Restore the compilation cache
-        id: cc-restore
-        if: steps.cc.outputs.mode == 'warm'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ runner.temp }}/jax-cache
-          key: ${{ steps.cc.outputs.key }}-${{ github.sha }}
-          restore-keys: ${{ steps.cc.outputs.key }}-
       - name: Tests
         id: tests
         env:
@@ -473,26 +494,13 @@ jobs:
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
-          echo "${{ (steps.cc.outputs.mode == 'warm' && steps.cc-restore.outputs.cache-matched-key != '') && 'warm' || 'cold' }}" \
-            > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
-          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode mixed --markdown /dev/null
+          echo cold > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --warn-only --cache-mode mixed --markdown /dev/null
       - name: Record the shard's outcome
         if: ${{ !cancelled() }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           echo "${{ job.status }}" > "$RUNNER_TEMP/report/outcome.txt"
-      - name: Drop unreadable compilation-cache entries
-        id: prune-cache
-        if: ${{ !cancelled() && steps.cc.outputs.save == 'true' && steps.tests.outcome == 'success' }}
-        run: |
-          uv run --no-sync python scripts/prune_jax_cache.py "$RUNNER_TEMP/jax-cache"
-          du -sh "$RUNNER_TEMP/jax-cache"
-      - name: Save the compilation cache
-        if: ${{ !cancelled() && steps.cc.outputs.save == 'true' && steps.tests.outcome == 'success' && steps.prune-cache.outcome == 'success' }}
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ runner.temp }}/jax-cache
-          key: ${{ steps.cc.outputs.key }}-${{ github.sha }}
       - name: Upload the shard's report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -504,22 +512,17 @@ jobs:
   openmaterica-main:
     name: openmaterica-main
     needs: [shards, openmaterica-main-tests, openmaterica-main-completion]
-    if: ${{ !cancelled() && github.event_name != 'schedule' }}
-    continue-on-error: true
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.shards.outputs.openmaterica == 'true' }}
+    # Red on a push and a manual run (the run is then red: GitHub's mail, the release gate's read), though its shards
+    # and completion job are `continue-on-error`; a pull request's run is left alone, where the lane is no required check.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     # contents for the checkout, actions to read the run's own jobs (scripts/check_shard_jobs.py).
     permissions:
       contents: read
       actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      MIME_CI_RUNS: ${{ needs.shards.outputs.full == 'true' }}
     steps:
-      - name: Refuse a head the full matrix has not run on
-        if: ${{ env.MIME_CI_RUNS != 'true' }}
-        run: |
-          echo '::error::the full matrix has not run on this head: add the `ready` label'
-          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download the shards' reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -531,7 +534,7 @@ jobs:
       - name: Every shard passed, and together they ran the lane
         run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/
       - name: Test durations
-        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        if: ${{ !cancelled() }}
         env:
           TITLE: "Test durations: openmaterica-main, ${{ needs.shards.outputs.count }} shards"
         run: >-
@@ -542,7 +545,7 @@ jobs:
       # `success` there (measured, the manual run's plant_completion_failure, run 42120077511: this lane's step saw
       # COMPLETION=success for a completion job that concluded failure). The run's list of jobs says what it ended as.
       - name: The completion tests job, at its latest attempt, passed
-        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
@@ -551,10 +554,20 @@ jobs:
           python3 scripts/run_jobs.py "$JOBS_URL" \
             | python3 scripts/check_shard_jobs.py --prefix "completion tests (openmaterica-main)" --shards 1
 
+      - name: Every shard job, at its latest attempt, passed
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+        run: |
+          set -o pipefail
+          python3 scripts/run_jobs.py "$JOBS_URL" \
+            | python3 scripts/check_shard_jobs.py --prefix "openmaterica-main tests (shard " --shards "${{ needs.shards.outputs.count }}"
+
   maddening-main-tests:
     name: maddening-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
     needs: shards
-    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.maddening == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -593,23 +606,6 @@ jobs:
         uses: ./.github/actions/unit-tube
       - name: Report what this lane installed
         run: uv run --no-sync python tests/test_ci_lane.py | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Compilation cache mode
-        id: cc
-        env:
-          EVENT: ${{ github.event_name }}
-          CHOICE: ${{ inputs.compilation_cache }}
-        run: >-
-          python3 scripts/compilation_cache_mode.py --event "$EVENT" --choice "$CHOICE" --lane "maddening-main"
-          --jaxlib "$(uv run --no-sync python -c 'import jaxlib; print(jaxlib.__version__)')"
-          --shard "${{ matrix.shard }}/${{ needs.shards.outputs.count }}"
-      - name: Restore the compilation cache
-        id: cc-restore
-        if: steps.cc.outputs.mode == 'warm'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ runner.temp }}/jax-cache
-          key: ${{ steps.cc.outputs.key }}-${{ github.sha }}
-          restore-keys: ${{ steps.cc.outputs.key }}-
       - name: Tests
         id: tests
         env:
@@ -625,26 +621,13 @@ jobs:
       - name: Test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
-          echo "${{ (steps.cc.outputs.mode == 'warm' && steps.cc-restore.outputs.cache-matched-key != '') && 'warm' || 'cold' }}" \
-            > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
-          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode mixed --markdown /dev/null
+          echo cold > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --warn-only --cache-mode mixed --markdown /dev/null
       - name: Record the shard's outcome
         if: ${{ !cancelled() }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           echo "${{ job.status }}" > "$RUNNER_TEMP/report/outcome.txt"
-      - name: Drop unreadable compilation-cache entries
-        id: prune-cache
-        if: ${{ !cancelled() && steps.cc.outputs.save == 'true' && steps.tests.outcome == 'success' }}
-        run: |
-          uv run --no-sync python scripts/prune_jax_cache.py "$RUNNER_TEMP/jax-cache"
-          du -sh "$RUNNER_TEMP/jax-cache"
-      - name: Save the compilation cache
-        if: ${{ !cancelled() && steps.cc.outputs.save == 'true' && steps.tests.outcome == 'success' && steps.prune-cache.outcome == 'success' }}
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: ${{ runner.temp }}/jax-cache
-          key: ${{ steps.cc.outputs.key }}-${{ github.sha }}
       - name: Upload the shard's report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -656,22 +639,17 @@ jobs:
   maddening-main:
     name: maddening-main
     needs: [shards, maddening-main-tests, maddening-main-completion]
-    if: ${{ !cancelled() && github.event_name != 'schedule' }}
-    continue-on-error: true
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.shards.outputs.maddening == 'true' }}
+    # Red on a push and a manual run (the run is then red: GitHub's mail, the release gate's read), though its shards
+    # and completion job are `continue-on-error`; a pull request's run is left alone, where the lane is no required check.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     # contents for the checkout, actions to read the run's own jobs (scripts/check_shard_jobs.py).
     permissions:
       contents: read
       actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      MIME_CI_RUNS: ${{ needs.shards.outputs.full == 'true' }}
     steps:
-      - name: Refuse a head the full matrix has not run on
-        if: ${{ env.MIME_CI_RUNS != 'true' }}
-        run: |
-          echo '::error::the full matrix has not run on this head: add the `ready` label'
-          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download the shards' reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -683,7 +661,7 @@ jobs:
       - name: Every shard passed, and together they ran the lane
         run: python3 scripts/check_shards.py --shards "${{ needs.shards.outputs.count }}" --max-skipped 0 "$RUNNER_TEMP"/shards/*/
       - name: Test durations
-        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        if: ${{ !cancelled() }}
         env:
           TITLE: "Test durations: maddening-main, ${{ needs.shards.outputs.count }} shards"
         run: >-
@@ -694,7 +672,7 @@ jobs:
       # `success` there (measured, the manual run's plant_completion_failure, run 42120077511: this lane's step saw
       # COMPLETION=success for a completion job that concluded failure). The run's list of jobs says what it ended as.
       - name: The completion tests job, at its latest attempt, passed
-        if: ${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
@@ -702,6 +680,16 @@ jobs:
           set -eo pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
             | python3 scripts/check_shard_jobs.py --prefix "completion tests (maddening-main)" --shards 1
+
+      - name: Every shard job, at its latest attempt, passed
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+        run: |
+          set -o pipefail
+          python3 scripts/run_jobs.py "$JOBS_URL" \
+            | python3 scripts/check_shard_jobs.py --prefix "maddening-main tests (shard " --shards "${{ needs.shards.outputs.count }}"
 
   # tests/cli/test_completion.py, alone: the shells it runs under (zsh and fish) are installed here and on no shard, since
   # `apt-get install` took 8 to 10 minutes on a slow mirror and a shard that held it beside its tests was cut at its 20
@@ -719,8 +707,9 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
-        # A reduced run (a pull request without `ready`) runs Python 3.12 alone.
-        exclude: ${{ fromJSON(needs.shards.outputs.full == 'true' && '[]' || '[{"python-version":"3.13"},{"python-version":"3.14"}]') }}
+        # Python 3.13 runs on a push, a manual or nightly run, and a full pull request that touches the pins or CI;
+        # a reduced run (a pull request without `ready`) runs Python 3.12 alone (scripts/ci_boundary.py).
+        exclude: ${{ fromJSON(needs.shards.outputs.exclude) }}
     env:
       MIME_CI_LANE: default
     steps:
@@ -759,7 +748,7 @@ jobs:
   openmaterica-main-completion:
     name: completion tests (openmaterica-main)
     needs: shards
-    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.openmaterica == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -804,7 +793,7 @@ jobs:
   maddening-main-completion:
     name: completion tests (maddening-main)
     needs: shards
-    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}
+    if: ${{ github.event_name != 'schedule' && needs.shards.outputs.maddening == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
