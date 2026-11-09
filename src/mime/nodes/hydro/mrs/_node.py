@@ -83,6 +83,9 @@ HELD_FROM = "held_from."
 #: spacing to one. The bound keeps a factor of two over the largest indefinite gap. A flag, never a stop: the stop is
 #: the resistance's own eigenvalue.
 NEAR_WALL = 1.0
+#: What the build report says was mapped near a wall, for a wall kind without figures of its own
+#: (``WallCorrection.near_wall_text``).
+NEAR_WALL_MAPPED = "every indefinite resistance mapped lay within half a force spacing of the wall (MIME-ANO-130)"
 #: The gap to a wall, in force spacings, a body keeps with the wall's image at the force points (the default): a confined
 #: body's default force spacing keeps its closest approach here (``Drag``'s rule), and a refusal or a stop near the wall
 #: names the spacing that does. Design #210's rule, fixed before its measurement: the review's map found one indefinite
@@ -267,7 +270,7 @@ def reach_weight(gap: Array) -> Array:
 
 def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
                     table: np.ndarray | None, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
-                    viscosity: Any) -> tuple[Corrected, Array]:
+                    viscosity: Any, eps_squared: Any) -> tuple[Corrected, Array]:
     """The wall's image with the cells nearest the wall integrated (:func:`cell_image`): the image at the force points
     (``point``, each column times its cell's area) for every cell, and for the ``budget`` cells whose force points lie
     nearest the wall (``gap``, in force spacings) their column blended towards the integrated one by
@@ -280,17 +283,17 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     the force points (a ``cond``, whose two branches agree there, every weight zero)."""
     return _lax.cond(jnp.any(gap < WALL_REACH),
                      lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
-                                              parameters, viscosity),
+                                              parameters, viscosity, eps_squared),
                      lambda: (point, jnp.asarray(False)))
 
 
 def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
                      table: np.ndarray | None, budget: int, chunks: Chunks, parameters: Mapping[str, Any],
-                     viscosity: Any) -> tuple[Corrected, Array]:
+                     viscosity: Any, eps_squared: Any) -> tuple[Corrected, Array]:
     """:func:`near_wall_image` where a cell lies within the reach; where none does, the step takes the image at the
     force points alone and reads nothing more."""
     if table is None:
-        integrated = cell_image(wall, force, points, weights, chunks, parameters, viscosity)
+        integrated = cell_image(wall, force, points, weights, chunks, parameters, viscosity, eps_squared)
         blend = jnp.repeat(reach_weight(gap), 3)[None, :]
         matrix = point.matrix + blend * (integrated.matrix - point.matrix)
         return Corrected(matrix, point.accepted & integrated.accepted), jnp.asarray(False)
@@ -300,7 +303,7 @@ def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, point
     short = jnp.asarray(False) if budget >= count else gap[nearest[budget]] < WALL_REACH
     held, mass = padded(points, weights)
     rows = jnp.asarray(table)[chosen].reshape(-1)
-    integrated = cell_image(wall, force, held[rows], mass[rows], chunks, parameters, viscosity)
+    integrated = cell_image(wall, force, held[rows], mass[rows], chunks, parameters, viscosity, eps_squared)
     columns = (3 * chosen[:, None] + jnp.arange(3)[None, :]).reshape(-1)
     near = point.matrix[:, columns]
     blend = jnp.repeat(reach_weight(gap[chosen]), 3)[None, :]
@@ -974,6 +977,12 @@ class MRSDragNode(MimeNode):
                 "drag.mrs-resistance", f"the wall's reads at the body's starting pose were refused ({settings}): a force "
                                        f"point lies outside the wall's data, past the wall or past the table's reach",
                 "start the body inside the medium's region, clear of the wall: Body(..., initial=State(position=...))"))
+        elif judged.gap is not None and judged.gap < 0.0:
+            found.append(Problem(
+                "drag.mrs-resistance", f"the body's hull reaches through the wall at its starting pose ({settings}): "
+                                       f"its least distance from the wall is {judged.gap * 1e3:.4g} mm, and a sample "
+                                       f"through the wall is outside the wall's image",
+                "start the body inside the medium's region, clear of the wall: Body(..., initial=State(position=...))"))
         elif not (math.isfinite(judged.least) and judged.least > 0.0):
             found.append(Problem(
                 "drag.mrs-resistance", f"the resistance at the body's starting pose, the wall's image in it "
@@ -1035,8 +1044,8 @@ class MRSDragNode(MimeNode):
         lines = [f"the body's least distance from the wall at its start is {(judged.gap or 0.0) * 1e3:.4g} mm, "
                  f"{(judged.gap or 0.0) / spacing:.3g} of the force spacing ({spacing * 1e3:.4g} mm): a step with the "
                  f"body within {NEAR_WALL:g} force spacing of the wall raises near_wall, and a step whose resistance "
-                 f"is indefinite stops the run (drag.mrs-indefinite); every indefinite resistance mapped lay within "
-                 f"half a force spacing of the wall (MIME-ANO-130)"]
+                 f"is indefinite stops the run (drag.mrs-indefinite); "
+                 f"{self._wall().near_wall_text or NEAR_WALL_MAPPED}"]
         integrated: str | None = None
         if closest_approach is None:
             lines.append("nothing in the experiment holds the body off the wall, so its closest approach is the wall "
@@ -1051,8 +1060,8 @@ class MRSDragNode(MimeNode):
                          f"holds the body's hull off the wall by: a force spacing of at most {needed * 1e3:.4g} mm "
                          f"keeps it {clear:g} force spacings or more from the wall, outside the band where the "
                          f"resistance was measured indefinite (a spacing not written takes it, or the family's where "
-                         f"that is finer), at about {run_gib(self.sample_count * (spacing / needed) ** 2):.2g} GiB a run "
-                         f"in float64 ({RUN_GIB_BASIS}); this experiment's is {spacing * 1e3:.4g} mm")
+                         f"that is finer){self._memory_at(self.sample_count * (spacing / needed) ** 2)}; this "
+                         f"experiment's is {spacing * 1e3:.4g} mm")
             if self._wall_quadrature is None:
                 integrated = (f"with the wall's image integrated over each cell (wall_refinement=2 written) the "
                               f"resistance was measured definite closer in, from {INTEGRATED_GAP:g} force spacings, so "
@@ -1061,15 +1070,41 @@ class MRSDragNode(MimeNode):
                               f"a machine with 16 GB of memory or less, since the default was chosen on a step's time "
                               f"alone, not its memory")
         count, reads = self.sample_count, self.wall_reads
-        lines.append(f"what a step costs at this force spacing: {count} force points, a dense solve of {3 * count} "
-                     f"unknowns (the free part's matrix held, {(3 * count) ** 2 * 8 / 2 ** 20:.4g} MiB in float64), "
-                     f"and {reads} reads of the wall's table ({self._wall_text()}); about {reads * READ_SECONDS:.2g} s "
-                     f"for the reads on the 24-thread laptop CPU it was measured on "
-                     f"({READ_SECONDS * 1e6:.2g} us a read; {STEP_MEASURED}); and about {run_gib(count):.2g} GiB for "
-                     f"the run in float64 ({RUN_GIB_BASIS})")
+        solve = (f"{count} force points, a dense solve of {3 * count} unknowns (the free part's matrix held, "
+                 f"{(3 * count) ** 2 * 8 / 2 ** 20:.4g} MiB in float64)")
+        if self._wall().cost_text:
+            lines.append(f"what a step costs at this force spacing: {solve}, and the wall's image in closed form, "
+                         f"with no table to read: {self._wall().cost_text}")
+        else:
+            lines.append(f"what a step costs at this force spacing: {solve}, and {reads} reads of the wall's table "
+                         f"({self._wall_text()}); about {reads * READ_SECONDS:.2g} s for the reads on the 24-thread "
+                         f"laptop CPU it was measured on ({READ_SECONDS * 1e6:.2g} us a read; {STEP_MEASURED}); and "
+                         f"about {run_gib(count):.2g} GiB for the run in float64 ({RUN_GIB_BASIS})")
         if integrated is not None:
             lines.append(integrated)
+        lines.append(self._image_text())
         return lines
+
+    def _memory_at(self, force_points: float) -> str:
+        """The run's memory at ``force_points`` for the report's closest-approach line, as the tube's fit states it; a
+        wall with its own cost figures (``WallCorrection.cost_text``) states them in the cost line instead."""
+        if self._wall().cost_text:
+            return ""
+        return f", at about {run_gib(force_points):.2g} GiB a run in float64 ({RUN_GIB_BASIS})"
+
+    def _image_text(self) -> str:
+        """Which image the wall adds (``WallCorrection.regularised``): the regularised image of the drag's own blob, with
+        its ``eps``, or the wall's own singular one."""
+        wall = self._wall()
+        if not wall.regularised:
+            return (f"the wall's image ({wall.name}): singular, its own, with no blob in it (the drag's blob is not "
+                    f"passed into it), its near-wall behaviour and validity line its own")
+        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+            theta = {key: jnp.asarray(value, dtype=jnp.float64) for key, value in self._built_theta().items()}
+            eps = math.sqrt(float(self.body(theta).eps_squared))
+        return (f"the wall's image ({wall.name}): regularised, the drag's blob, eps = {eps:.4g} m (the free part's: "
+                f"blob {self.constants()['blob']!r} times the cells' mean spacing), so that it is the exact no-slip "
+                f"partner of the free part")
 
     @property
     def wall_reads(self) -> int:
@@ -1193,7 +1228,7 @@ class MRSDragNode(MimeNode):
             body = self.body(theta)
             force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
             centroid = pose[:3] + jnp.matmul(body.centroid, turn.T, precision=PRECISION)
-            corrected = wall.correction(force, parameters, viscosity)
+            corrected = wall.correction(force, parameters, viscosity, eps_squared=body.eps_squared)
             image = Corrected(corrected.matrix * jnp.repeat(body.area, 3)[None, :], corrected.accepted)
             short = jnp.asarray(False)
             if wall_quadrature is not None and wall_capped is not None and wall_chunks is not None and \
@@ -1207,7 +1242,7 @@ class MRSDragNode(MimeNode):
                                                               precision=PRECISION),
                     on_the_cells(weights, owners, body.area), distance(force, parameters) / spacing,
                     None if self.wall_every else cast(np.ndarray, self.wall_table), self.wall_budget, wall_chunks,
-                    parameters, viscosity)
+                    parameters, viscosity, body.eps_squared)
             found = separated_resistance(turned(held, turn) / viscosity + image.matrix, force, body.area, centroid,
                                          pose[:3])
             points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
@@ -1240,7 +1275,7 @@ class MRSDragNode(MimeNode):
 
         def solved(points: Array, eps_squared: Array, viscosity: Array, centre: Array,
                    parameters: Mapping[str, Any]) -> tuple[Array, Array]:
-            corrected = wall.correction(points, parameters, viscosity)
+            corrected = wall.correction(points, parameters, viscosity, eps_squared=eps_squared)
             return resistance(points, eps_squared, viscosity, centre, corrected.matrix), corrected.accepted
 
         found, accepted = checkpoint(solved)(points, blob_squared(held.weights, p["blob"]), p["viscosity"], pose[:3],
@@ -1249,7 +1284,7 @@ class MRSDragNode(MimeNode):
                                         background_load=jnp.zeros(6, dtype=pose.dtype), wall_accepted=accepted))
 
 
-__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL",
+__all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "HELD_FROM", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
            "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
            "WALL_CELL_SHARE", "WALL_REACH",
            "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",

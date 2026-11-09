@@ -120,7 +120,7 @@ def cross_image(wall: WallCorrection, target: Placed, source: Placed, parameters
     if image is None:
         raise ValueError(f"the wall correction {wall.name} {wall.version} gives no image between point sets, which "
                          f"bodies in one medium are coupled by")
-    found = image(target.force, source.force, parameters, viscosity)
+    found = image(target.force, source.force, parameters, viscosity, eps_squared=source.eps_squared)
     blocks = found.matrix * source.area[None, :, None, None]
     return Corrected(blocks.transpose(0, 2, 1, 3).reshape(3 * target.count, 3 * source.count), found.accepted)
 

@@ -124,7 +124,7 @@ class MRSOperator:
         if wall.adds_nothing:
             return free, jnp.asarray(True), jnp.asarray(False)
         member = self.member
-        corrected = wall.correction(placed.force, parameters, viscosity)
+        corrected = wall.correction(placed.force, parameters, viscosity, eps_squared=placed.eps_squared)
         image = Corrected(corrected.matrix * jnp.repeat(placed.area, 3)[None, :], corrected.accepted)
         short = jnp.asarray(False)
         spacing = leaves.get("force_spacing")
@@ -140,7 +140,7 @@ class MRSOperator:
                 pose[:3] + jnp.matmul(cells.points[jnp.asarray(kept)], turn.T, precision=PRECISION),
                 on_the_cells(weights, owners, placed.area), wall.distance(placed.force, parameters) / spacing,
                 None if member.wall_every else cast(np.ndarray, member.wall_table), member.wall_budget, chunks,
-                parameters, viscosity)
+                parameters, viscosity, placed.eps_squared)
         return free + image.matrix, image.accepted, short
 
     def cross(self, placed: Placed, targets: Array, reach: Any) -> tuple[Array, Array]:

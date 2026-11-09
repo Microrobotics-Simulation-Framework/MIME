@@ -104,6 +104,8 @@ results/_study.py::StudyOutputs.__getattr__ AttributeError 1  # protocol: the cl
 saved/_record.py::SavedRecord.hashes ValueError 1  # invariant: save refuses an unsavable record (save.unsavable) before it hashes one
 saved/_schema.py::shape_problems TypeError 2  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_caps.py::_rings ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_geometry.py::Plane.direction KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_geometry.py::Plane.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_geometry.py::Tube.direction KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_geometry.py::Tube.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_geometry.py::Tube.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller

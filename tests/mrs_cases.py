@@ -18,9 +18,9 @@ from mime.interactions import Drag
 from mime.interactions.hydrodynamic import PointForceDrag, UncoupledDrag
 from mime.nodes.hydro.mrs import MRSDragNode
 from mime.registry import Dynamics, Geometry, Interaction
-from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Scene, Sphere, Tube, Z
+from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Plane, Scene, Sphere, Tube, Z
 from mime.things import Body, Medium, Part, State, Structure
-from mime.units import Quantity, kg, kg_m2, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
+from mime.units import Quantity, kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
 WATER = mPa_s(1.0)
 #: The kinds the rung serves, as the cases declare them: a ball, a pill along its part's y, FL-9's screw.
@@ -157,6 +157,25 @@ def mrs_tube() -> Experiment:
     experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
     experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
     experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="tube"), body="ball", medium="water")
+    return experiment
+
+
+def mrs_plane() -> Experiment:
+    """The round-trip case of the plane wall kind: a ball of 0.5 mm radius a radius above a plane wall along a turned
+    normal, off the world's origin, moving along the plane and turning, with the rung in the plane wall kind at a coarse
+    spacing."""
+    normal = (0.0, 0.6, 0.8)
+    experiment = Experiment("mrs_plane", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=normal, offset=mm(-1.0))))
+    experiment.add_medium(Medium("water", fills=floor.half_space))
+    experiment.declare("water.viscosity", WATER, reason="water")
+    experiment.add_body(Body("ball", dynamics=RigidInertial(), parts={"shell": Part(Sphere(radius=mm(0.5)))},
+                             initial=State(position=m((0.0, 0.0, 0.0)), orientation=(1.0, 0.0, 0.0, 0.0),
+                                           velocity=m_per_s((1e-3, 0.0, 0.0)),
+                                           angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
+    experiment.declare("ball.mass", kg(1e-7), reason="a millimetre body's order")
+    experiment.declare("ball.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
+    experiment.attach(Drag.MRS(spacing=mm(0.3), blob=0.5, wall_kind="plane"), body="ball", medium="water")
     return experiment
 
 
