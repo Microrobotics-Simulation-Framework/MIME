@@ -275,3 +275,21 @@ def test_control_below_the_floor_the_semidefinite_kind_passes_and_the_definite_o
         poses = _random_poses(50)
         assert all(not l > -f for l, f in (_planted(helix, p, np.float64, 1e-13) for p in poses))
         assert all(l > -f for l, f in (_planted(capsule, p, np.float64, 1e-16) for p in poses))
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_the_split_between_the_kinds_is_pinned_by_a_plant_between_zero_and_each_dtypes_floor(dtype):
+    """A planted least scaled eigenvalue of minus a quarter of the dtype's floor, in the node's own judgement: the
+    helix (definite, judged against zero) refuses it at every one of 100 poses, the capsule (semidefinite, judged at the
+    floor) passes it at every one. A helix declared semidefinite would pass it, and a capsule judged strictly would
+    refuse it, so either mutation fails this on every run. A plant of four floors is refused on both, so that the
+    capsule's pass is the floor's and not a check that cannot refuse."""
+    quarter, four = 0.25 * semidefinite_floor(dtype), 4.0 * semidefinite_floor(dtype)
+    with jax.enable_x64(True):
+        capsule, helix = _node_of(*PLANT_KINDS["capsule"]), _node_of(*PLANT_KINDS["helix"])
+        poses = _random_poses(100)
+        for node, refused_at_a_quarter in ((helix, True), (capsule, False)):
+            reads = [_planted(node, pose, dtype, quarter) for pose in poses]
+            assert all((not least > -floor) == refused_at_a_quarter for least, floor in reads), (
+                node.constants()["kind"], dtype, [least for least, floor in reads if (not least > -floor) != refused_at_a_quarter][:3])
+            assert all(not least > -floor for least, floor in (_planted(node, pose, dtype, four) for pose in poses))
