@@ -174,7 +174,7 @@ class JointDragNode(MimeNode):
     two-sphere series and Rotne and Prager's mobility). The run's last step is judged by no step after it."""
 
     meta = NodeMeta(
-        algorithm_id="MIME-NODE-122",
+        algorithm_id="MIME-NODE-127",
         description="The joint resistance of a medium's interacting rigid bodies in Stokes flow by the method of "
                     "regularised Stokeslets, each body's coupled resistance and lagged cross load delivered.",
         governing_equations=EQUATIONS,

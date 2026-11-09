@@ -1357,7 +1357,8 @@ class BuiltExperiment:
         """A warning for each flag that warns (``Flag.warns``) and the run raised, with its count and where."""
         warns = {f"{plan.node_name(flag.node)}.{flag.field}" for plan in self._plans.entries
                  for flag in plan.registered.cls.raises
-                 if flag.warns and (flag.rung is None or flag.rung == getattr(plan.entry, "rung", None))}
+                 if flag.warns and not plan.joined
+                 and flag.raised_by(getattr(plan.entry, "rung", None), bool(plan.members))}
         for read in result.flags:
             if read.path in warns and read.was_raised:
                 warn_at_script(f"{read.flag.owner} ({read.flag.entry}): {read.text(meaning=True)}", UserWarning)
