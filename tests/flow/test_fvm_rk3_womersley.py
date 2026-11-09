@@ -5,15 +5,21 @@ Bessel fit over the clean lumen (SciPy, independent of the prescribed flow's ser
 **an amplitude** free. **Its line: S1's absolute 0.5 %** on ``|nu_fit / nu - 1|``; the 1 % viscosity plant (the viscous
 term at 1.01 nu, the penalty at nu) must fail it at every offset.
 
-**Why the amplitude is free (measured, F1b's build).** The built path drives the fluid alone (``(1 - chi) g``, round 4
+**Why the amplitude is free (measured, F1b's build).** The node drives the fluid alone (``(1 - chi) g``, round 4
 item 6), which the spike did not: with S1's two-parameter fit the unplanted runs read -0.479 % to -0.113 % (S1's code,
 the drive everywhere: -0.155 % to +0.207 %; the node with the drive everywhere reproduces that to the digit), so the
 0.5 % line held with 0.02 % to spare at the offset (0, 0) on both sides. The band's share of the drive scales the
 profile; a free amplitude takes it, and leaves the viscosity's own signature (the Stokes layer's thickness and phase):
-unplanted -0.093 % to +0.308 %, the plant still +0.999 % to +1.003 % (planted from +0.910 %). The wall's position has
-its own gate (F1a's gate 3), the flux its own report. Earlier (F1b's first step): float32 with the integer clock within
-3.8e-7 of float64; with the drive held at the step's end instead of read at the stages, +5.4 %. At D/h 16 the fit cannot
-separate a 1 % error (the tableau's band: -0.78 % to +0.49 % unplanted), hence D/h 32."""
+unplanted -0.093 % to +0.308 %, the plant still +0.999 % to +1.003 % (planted from +0.910 %). The free amplitude is
+blind to the drive's own size (the delivered waveform x1.05 moved the fit by under 5e-6), so **the drive's amplitude
+has its own gate in the same runs**: the lumen flux's first harmonic (the node's ``lumen_flux``) against Womersley's
+exact flux, ``|Q / Q_exact| - 1`` within ``FLUX_LINE`` at every offset. Its resolution, measured: unplanted -0.069 % to
++0.350 % over the six offsets (the band's sub-cell spread), both dtypes alike to 1e-6; the delivered waveform x1.02
+(RK3's drive in the node's ``forcing``) +1.93 % to +2.36 %, x1.05 +4.93 % to +5.37 %, so the line, 1 %, sits about three
+times over the unplanted worst and under the smaller plant's least. The wall's position has its own gate (F1a's gate
+3). Earlier (F1b's first step): float32 with the integer clock within 3.8e-7 of float64; with the drive held at the
+step's end instead of read at the stages, +5.4 %. At D/h 16 the fit cannot separate a 1 % error (the tableau's band:
+-0.78 % to +0.49 % unplanted), hence D/h 32."""
 
 from __future__ import annotations
 
@@ -29,19 +35,27 @@ import scipy.special
 from fvm_cases import in_dtype
 
 from mime.nodes.flow._waveform import waveform
-from mime.nodes.flow.fvm import ExplicitFlowNode, _rk3, periodic_tube_layout
+from mime.nodes.flow.fvm import ExplicitFlowNode, ImplicitFlowNode, _rk3, periodic_tube_layout
 
 NU, R, ALPHA, DH = 0.005, 0.5, 6.0, 32
 OMEGA = ALPHA ** 2 * NU / R ** 2
 G0 = OMEGA
 OFFSETS = ((0.0, 0.0), (0.25, 0.0), (0.5, 0.0), (0.3, 0.1), (0.5, 0.5), (0.1, 0.4))
 LINE, PERIODS = 5e-3, 6
+#: The drive amplitude's line on the lumen flux's harmonic against the exact flux (the module gives its resolution).
+FLUX_LINE = 1e-2
 
 
 def womersley(r, nu, radius):
     beta = np.exp(-1j * np.pi / 4) * np.sqrt(OMEGA / nu)
     return np.where(r < radius, (G0 / (1j * OMEGA)) * (1 - scipy.special.jv(0, beta * r) / scipy.special.jv(0, beta * radius)),
                     0.0)
+
+
+def exact_flux():
+    """Womersley's flux amplitude through the tube, ``pi R^2`` times the profile's mean (SciPy)."""
+    z = np.exp(-1j * np.pi / 4) * np.sqrt(OMEGA / NU) * R
+    return math.pi * R ** 2 * (G0 / (1j * OMEGA)) * (1 - 2 * scipy.special.jv(1, z) / (z * scipy.special.jv(0, z)))
 
 
 def _nodes():
@@ -57,8 +71,10 @@ def _nodes():
 
 
 @functools.cache
-def _harmonics(dtype: str, plant: float):
-    """Each offset's last-period first harmonic of the axial velocity (averaged along the tube), and its radii."""
+def _harmonics(dtype: str, plant: float, drive: float = 1.0):
+    """Each offset's last-period first harmonic of the axial velocity (averaged along the tube), its radii, the spacing
+    and the lumen flux's harmonic. ``plant`` scales the viscous term; ``drive`` the delivered waveform where the node's
+    ``forcing`` reads it (the drive's amplitude plant)."""
     with in_dtype(dtype):
         node, layouts, steps, dt = _nodes()
         p = node._step_constants(None)  # noqa: SLF001
@@ -74,9 +90,14 @@ def _harmonics(dtype: str, plant: float):
         coefficients = waveform((0.0, 0.0, 1.0), jnp.asarray(0.0, dtype=dtype_), G0, OMEGA / (2 * math.pi), 0.0)
 
         original = _rk3.step
+        forcing = ImplicitFlowNode.forcing
 
         def planted(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt_):
             return original(grid, velocity, pressure, plant * viscosity, resistivity, force, convection, time, dt_)
+
+        def scaled(self, fields, boundary_inputs, scheme, dtype__):
+            force = forcing(self, fields, boundary_inputs, scheme, dtype__)
+            return lambda stage, time: tuple(drive * f for f in force(stage, time))
 
         def one(centre, w0):
             q = {**p, "tube_centre": centre}
@@ -84,26 +105,31 @@ def _harmonics(dtype: str, plant: float):
 
             def step(state, _):
                 ended = node.advance(q, state, {"waveform": coefficients}, dt)
-                return ended, jnp.mean(ended["velocity_z"], axis=2)
+                return ended, (jnp.mean(ended["velocity_z"], axis=2), ended["lumen_flux"])
 
             s, _ = jax.lax.scan(step, s, None, length=(PERIODS - 1) * steps)
             _, history = jax.lax.scan(step, s, None, length=steps)
             return history
 
-        _rk3.step = planted
+        _rk3.step, ImplicitFlowNode.forcing = planted, scaled
         try:
             centres = jnp.asarray([lay.centre for lay in layouts], dtype=dtype_)
-            histories = jax.jit(jax.vmap(one))(centres, jnp.asarray(np.stack(starts), dtype=dtype_))
+            histories, fluxes = jax.jit(jax.vmap(one))(centres, jnp.asarray(np.stack(starts), dtype=dtype_))
         finally:
-            _rk3.step = original
+            _rk3.step, ImplicitFlowNode.forcing = original, forcing
     times = ((PERIODS - 1) * steps + 1 + np.arange(steps)) * dt
     weights = (2.0 / steps) * np.exp(-1j * OMEGA * times)
     amplitudes = np.tensordot(np.asarray(histories, np.float64), weights, axes=([1], [0]))
-    return amplitudes, radii, grid.spacing
+    return amplitudes, radii, grid.spacing, np.asarray(fluxes, np.float64) @ weights
 
 
-def fitted(dtype: str, plant: float = 1.0) -> list[float]:
-    amplitudes, radii, h = _harmonics(dtype, plant)
+def flux_errors(dtype: str, drive: float = 1.0) -> list[float]:
+    """``|Q / Q_exact| - 1`` at each offset: the lumen flux's harmonic against Womersley's exact flux."""
+    return [float(abs(q) / abs(exact_flux()) - 1.0) for q in _harmonics(dtype, 1.0, drive)[3]]
+
+
+def fitted(dtype: str, plant: float = 1.0, drive: float = 1.0) -> list[float]:
+    amplitudes, radii, h, _ = _harmonics(dtype, plant, drive)
     found = []
     for amplitude, r in zip(amplitudes, radii, strict=True):
         clean = r < R - 2.0 * h  # the band's half-width (h) and a cell
@@ -133,9 +159,23 @@ def test_the_plant_moves_the_fit_by_one_percent_the_fits_resolution(dtype):
     assert all(0.009 < s < 0.011 for s in shifts)
 
 
+def test_the_drives_amplitude_gives_the_exact_flux_within_one_percent_at_every_offset(dtype):
+    """The gate the free amplitude cannot be: the lumen flux's harmonic against Womersley's exact flux."""
+    assert max(abs(e) for e in flux_errors(dtype)) < FLUX_LINE
+
+
+@pytest.mark.parametrize("drive", [1.02, 1.05])
+def test_control_the_delivered_waveform_scaled_fails_the_flux_line_at_every_offset(dtype, drive):
+    """RK3's drive scaled where the node's ``forcing`` reads the waveform: x1.02 and x1.05 each fail at every offset
+    (measured +1.93 % and +4.93 % at their least), while the viscosity fit's free amplitude takes them: the fit's gate
+    passes the same runs, which is why this one is separate."""
+    assert min(abs(e) for e in flux_errors(dtype, drive)) >= FLUX_LINE
+    assert max(abs(e) for e in fitted(dtype, drive=drive)) < LINE
+
+
 def test_float32_with_the_integer_clock_agrees_with_float64():
-    a64, _, _ = _harmonics("float64", 1.0)
-    a32, _, _ = _harmonics("float32", 1.0)
+    a64, _, _, _ = _harmonics("float64", 1.0, 1.0)
+    a32, _, _, _ = _harmonics("float32", 1.0, 1.0)
     assert np.max(np.abs(a64 - a32)) / np.max(np.abs(a64)) < 1e-5
 
 

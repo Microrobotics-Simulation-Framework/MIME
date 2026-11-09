@@ -1,6 +1,7 @@
-"""RK3's node (``ExplicitFlowNode``): route 1 per step with its one-step gift control (F1b's gate 7), the per-step CFL
-check at RK3's line along the vessel's axis (gate 3 (c)), a state given from outside restarted from its consistent
-pressure (gate 4's transplant half), and a batch over the viscosity equal to its separate runs (open item 8)."""
+"""RK3's node (``ExplicitFlowNode``): route 1 per step with its one-step and every-step gift controls (F1b's gate 7)
+and a planted cumulative judgement that only the one-step gift catches, the per-step CFL check at RK3's line along the
+vessel's axis (gate 3 (c)), a state given from outside restarted from its consistent pressure (gate 4's transplant
+half), and a batch over the viscosity equal to its separate runs (open item 8)."""
 
 from __future__ import annotations
 
@@ -61,19 +62,45 @@ def test_every_rk3_step_dissipates_and_no_identity_is_claimed(dtype, seed):
     assert float(state[f"{books.RECORDS}unattributed_worst"]) == 0.0
 
 
-def _gifted(share):
-    """RK3's step with an unbooked gift each step: the velocity scaled after the stages so the kinetic energy rises by
-    ``share`` times the step's own dissipation (its viscous and penalty terms, the scheme's own pairing)."""
-    original = _rk3.step
+_STEP, _RECORDED = _rk3.step, books.route_one_recorded
+#: The step the one-step gift is given on (of the 20 the account runs).
+GIFT_STEP = 10
+
+
+def _gifted(share, only_step=None):
+    """RK3's step with an unbooked gift: the velocity scaled after the stages so the kinetic energy rises by ``share``
+    times the step's own dissipation (its viscous and penalty terms, the scheme's own pairing), on every step or on
+    ``only_step`` alone."""
 
     def step(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt):
-        u, p, parts = original(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt)
+        u, p, parts = _STEP(grid, velocity, pressure, viscosity, resistivity, force, convection, time, dt)
         kinetic = 0.5 * grid.inner(u, u)
         lost = parts.viscous + parts.penalty
         factor = jnp.sqrt(1.0 + share * lost / kinetic)
+        if only_step is not None:
+            factor = jnp.where(jnp.abs(time / dt - only_step) < 0.5, factor, 1.0)
         return (factor * u[0], factor * u[1], factor * u[2]), p, parts
 
     return step
+
+
+def _cumulative(state, step, held=()):
+    """A planted regression of route 1: the run's cumulative ``W - dH`` judged over its summed scale, not each step's."""
+    out = _RECORDED(state, step, held)
+    r, dtype = books.RECORDS, step.work.dtype
+    rows = books.laws(held)
+    dissipative = jnp.asarray([any(d.law == law and d.energy_class == books.DISSIPATIVE for d in held) for law in rows],
+                              dtype=bool)
+    supplied = jnp.sum(jnp.where(dissipative, 0.0, out[f"{r}work"])) + out[f"{r}unattributed"]
+    relative = (supplied - (out[f"{r}storage"] - out[f"{r}storage_start"])) / jnp.maximum(out[f"{r}scale"],
+                                                                                          jnp.finfo(dtype).tiny)
+    floor = books.IDENTITY_ULPS * jnp.finfo(dtype).eps
+    out.update(books.summed_pair(state, "route_one_negative_steps", (~(relative >= -floor)).astype(dtype)))
+    return out
+
+
+def _negative_steps(state):
+    return float(state[f"{books.RECORDS}route_one_negative_steps"])
 
 
 @pytest.mark.parametrize("seed", range(3))
@@ -84,6 +111,26 @@ def test_control_a_gift_twice_a_steps_dissipation_fails_route_one_on_every_step(
     monkeypatch.setattr(_rk3, "step", _gifted(2.0))
     state = _metered(dtype, seed)
     assert float(state[f"{books.RECORDS}route_one_negative_steps"]) == 20.0
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_control_a_gift_on_one_step_is_counted_on_that_step(dtype, seed, monkeypatch):
+    """The record's control, a one-step gift (twice that step's dissipation, on step 10 alone): the per-step judgement
+    counts it once."""
+    monkeypatch.setattr(_rk3, "step", _gifted(2.0, only_step=GIFT_STEP))
+    assert _negative_steps(_metered(dtype, seed)) == 1.0
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_control_a_cumulative_judgement_misses_the_one_step_gift(dtype, seed, monkeypatch):
+    """What the one-step gift tells apart: a judgement of the run's cumulative ``W - dH`` (planted) never counts it,
+    the earlier steps' dissipation covering it, while it still counts every step of the every-step gift, which so
+    cannot tell a per-step judgement from a cumulative one."""
+    monkeypatch.setattr(books, "route_one_recorded", _cumulative)
+    monkeypatch.setattr(_rk3, "step", _gifted(2.0, only_step=GIFT_STEP))
+    assert _negative_steps(_metered(dtype, seed)) == 0.0
+    monkeypatch.setattr(_rk3, "step", _gifted(2.0))
+    assert _negative_steps(_metered(dtype, seed)) == 20.0
 
 
 @pytest.mark.parametrize("seed", range(3))

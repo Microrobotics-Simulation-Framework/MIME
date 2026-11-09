@@ -107,6 +107,22 @@ def profile(rho_squared: Array, alpha_squared: Any, terms: int) -> tuple[Array, 
     return _divide(difference, (1.0 + s_wall[0], s_wall[1]))
 
 
+def host_profile(rho_squared: Any, alpha_squared: float, terms: int) -> Any:
+    """:func:`profile` as one complex array, summed on the host in float64 whatever the run's dtype (the same nested
+    series, level for level): what the build's step rule reads before any step."""
+
+    def nested(x: Any) -> Any:
+        n = np.ones_like(x, dtype=np.complex128)
+        for k in range(terms - 1, 0, -1):
+            n = 1.0 + 1j * x / float(_square_ratio(k)) * n
+        return n
+
+    rho2 = np.asarray(rho_squared, dtype=np.float64)
+    q_wall = float(alpha_squared) / 4.0
+    n_wall = nested(np.float64(q_wall))
+    return 0.25j * (n_wall - rho2 * nested(q_wall * rho2)) / (1.0 + 1j * q_wall * n_wall)
+
+
 def mean_profile(alpha_squared: Any, terms: int) -> tuple[Array, Array]:
     """The profile's mean over the cross-section, ``(1 - 2 J1(b R) / (b R J0(b R))) / alpha^2`` as (re, im): ``i / 8``
     at ``alpha = 0``. ``J0 - 2 J1 / z = sum_{k >= 1} (i q)^k k / ((k + 1) (k!)^2)``, nested with the ratios ``1 / (k (k
@@ -300,5 +316,5 @@ class PrescribedFlowNode(MimeNode):
             "run in float64 (its line is 50), or lower the drive's frequency or the tube's radius; past 50, use FVM()")
 
 
-__all__ = ["VALIDITY", "PrescribedFlowInputs", "held_waveform", "PrescribedFlowNode", "PrescribedFlowState", "axial_velocity", "mean_profile",
-           "mean_velocity", "profile", "series_terms"]
+__all__ = ["VALIDITY", "PrescribedFlowInputs", "held_waveform", "PrescribedFlowNode", "PrescribedFlowState", "axial_velocity",
+           "host_profile", "mean_profile", "mean_velocity", "profile", "series_terms"]

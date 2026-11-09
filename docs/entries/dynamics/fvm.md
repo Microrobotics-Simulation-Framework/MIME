@@ -22,10 +22,15 @@ a state handed over from another run).
 explicit viscosity is stable at the run's `dt` (its viscous number, nu dt over the spacing squared, within its line), IMEX Euler otherwise. Before any step, the build
 predicts the flow's CFL number from what it knows (the drive's steady part as Poiseuille's centreline and its harmonic's
 peak from Womersley's profile, doubled for a start from rest, in the empty tube) and refuses a `dt` past the chosen scheme's line, with the timestep that
-keeps it: "use dt <= X, or dt='auto'". `Experiment(..., dt="auto")` takes the largest stable step instead, dividing a
-pulsatile drive's period into a whole number of steps, and the build report says which scheme it chose, its margins,
-how many steps a period that is, and what the other scheme's step would have been. A saved experiment keeps the step
-`dt="auto"` chose. **"Stable" is all `dt="auto"` promises**: accuracy is the timestep's own question (a scheme at its
+keeps it: "use dt <= X, or dt='auto'". All of this is judged at the step the flow itself takes: with `FVM(rate=...)`
+that is the rate, a whole number of base steps, and the report states it. The prediction is arithmetic at build, in
+float64 whatever the run's dtype; past the Womersley number its series is held to, it takes a bound that stays above
+the flow's peak (a prediction that is not finite refuses the build). `Experiment(..., dt="auto")` takes
+the largest stable step instead, dividing a pulsatile drive's period and a declared `duration` into whole numbers of
+steps, and the build report says which scheme it chose, its margins, how many steps a period that is, and what the
+other scheme's step would have been. Under `dt="auto"` the flow's own `rate=` is refused (the two would set one step),
+and any other entry's rate must be a whole multiple of the step chosen. A saved experiment keeps the step `dt="auto"`
+chose. **"Stable" is all `dt="auto"` promises**: accuracy is the timestep's own question (a scheme at its
 stability line can miss a body's drag history by several per cent where many more steps a period would not), so the
 report states the steps a period beside it.
 

@@ -3,6 +3,14 @@ off and on: the time per cell per step, the device bytes per cell (the compiled 
 backend gives one) and the compile time; the prescribed flow's cost per reading at points; and ``dt="auto"``'s cost at
 build (the step rule's prediction, its Womersley peak included).
 
+**The bytes include the CFL stop's hold.** The node's state is held from the first step past the line by a select
+over every field (``ImplicitFlowNode.held_past_the_line``, the implicit core's stop), which keeps the step's starting
+state alive to the end of the compiled body. In float64 with the ledger, XLA's memory analysis reads 893, 890 and 773
+bytes a cell at D/h 8, 16 and 32 with it and 811, 808 and 671 with the select removed (before the stop was merged:
+811, 808 and 679), so +82 to +102 bytes a cell; without the ledger it moves 8, and in float32 the select lowers the
+temporaries instead (a buffer-assignment effect, not a held field). A ``lax.cond`` that skips the step once stopped
+would avoid the select [not built: the stop is the implicit core's].
+
 Run it alone, on a quiet machine (its numbers are relative: a laptop's CPU is not a GPU), one dtype at a time:
 
     JAX_PLATFORMS=cpu python scripts/fvm_rk3_budget.py --dtype float64 > rk3_budget_float64.json

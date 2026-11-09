@@ -8,20 +8,28 @@ summed, along the tube's axis (only that component drives a straight tube's flow
 bodies couple to the flow. It is the empty tube's: a body in the lumen slows the flow it blocks (the tableau's sphere:
 the face peak 2.85 against the empty tube's prediction of about 4) and can speed it locally where it does not.
 
-**"Safe" is stability only** (the maintainer's question 1 is open): the step is the largest the scheme's lines allow;
+**The harmonic's peak** is summed on the host in float64 whatever the run's dtype (build-time arithmetic, before any
+step), from the series to its float64 line (``SERIES_LINE``, the prescribed flow's); past the line, or where the series
+is not finite, the line's peak scaled by ``(line / alpha)^2``. That stays a bound: from rest the harmonic's speed is at
+most ``2 A / omega`` at any alpha [derived: with ``c = (A / omega) sin(omega t + phi)`` the core's swing, ``u - c`` is
+a diffusion whose wall value is ``-c``, so the maximum principle holds it to ``A / omega``], and twice the line's
+peak scaled is ``2.14 A / omega``; the periodic peak's ``alpha^2 max|D|`` falls from 1.0719 at alpha 50 to 1.0704 at
+120 [measured: SciPy], so the scaled value is above it too. A prediction that is not finite is refused at any step.
+
+**"Safe" is stability only** (the maintainer's decision): the step is the largest the scheme's lines allow;
 the accuracy it buys is reported beside it, never acted on. Where two schemes are possible the larger safe step wins,
 RK3 on a tie (B1's order); the alternative's step is shown as the choice's price (round 3, item 5)."""
 
 from __future__ import annotations
 
+import functools
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
 
-from mime.core import jnp
-from mime.nodes.flow._womersley import profile, series_terms
+from mime.nodes.flow._womersley import VALIDITY, host_profile, series_terms
 from mime.registry import DriveQuery
 
 #: The law whose waveform the prediction reads.
@@ -40,6 +48,9 @@ START_FROM_REST = 2.0
 #: The peak of ``|D(rho)|`` over the cross-section is taken on this many radii (the profile is smooth; at alpha 50 its
 #: Stokes layer holds about 30 of them).
 _RADII = 1001
+#: The largest Womersley number the prediction reads the series at: float64's line (the series summed on the host in
+#: float64 whatever the run's dtype; in float32 it read -1.8 % at alpha 60, +166 % at 65, zero at 70 and NaN from 75).
+SERIES_LINE = VALIDITY["float64"][0]
 
 
 @dataclass(frozen=True)
@@ -72,12 +83,31 @@ def axial_drive(drives: Sequence[DriveQuery], axis: Sequence[float]) -> Drive:
     return Drive(steady, amplitude, frequency)
 
 
-def harmonic_peak(alpha: float) -> float:
-    """``max_rho |D(rho)|``, the harmonic's peak speed over ``A R^2 / nu``: 1/4 at alpha 0 (quasi-steady Poiseuille),
-    falling as the Stokes layer thins."""
+def series_peak(alpha: float) -> float:
+    """``max_rho |D(rho)|`` from the series, summed on the host in float64."""
     rho = np.linspace(0.0, 1.0, _RADII)
-    re, im = profile(jnp.asarray(rho * rho), jnp.asarray(alpha * alpha), series_terms(np.float64))
-    return float(np.max(np.hypot(np.asarray(re, float), np.asarray(im, float))))
+    return float(np.max(np.abs(host_profile(rho * rho, alpha * alpha, series_terms(np.float64)))))
+
+
+@functools.cache
+def _line_peak() -> float:
+    return series_peak(SERIES_LINE)
+
+
+def series_holds(alpha: float) -> bool:
+    """Whether the harmonic's peak at ``alpha`` is the series' own: within its line and finite (a NaN is past it)."""
+    return bool(alpha <= SERIES_LINE) and math.isfinite(series_peak(alpha))
+
+
+def harmonic_peak(alpha: float) -> float:
+    """``max_rho |D(rho)|``, the harmonic's periodic peak speed over ``A R^2 / nu``: 1/4 at alpha 0 (quasi-steady
+    Poiseuille), falling as the Stokes layer thins; past the series' line (or where it is not finite) the line's peak
+    times ``(line / alpha)^2``, which the module shows stays a bound."""
+    return series_peak(alpha) if series_holds(alpha) else _line_peak() * (SERIES_LINE / alpha) ** 2
+
+
+def womersley_number(drive: Drive, radius: float, nu: float) -> float:
+    return radius * math.sqrt(2.0 * math.pi * abs(drive.frequency) / nu)
 
 
 def predicted_peak(drive: Drive, radius: float, nu: float) -> float:
@@ -87,33 +117,41 @@ def predicted_peak(drive: Drive, radius: float, nu: float) -> float:
     steady = abs(drive.steady) * radius ** 2 / (4.0 * nu)
     if not drive.amplitude:
         return steady
-    alpha = radius * math.sqrt(2.0 * math.pi * drive.frequency / nu)
-    return steady + START_FROM_REST * drive.amplitude * radius ** 2 / nu * harmonic_peak(alpha)
+    return steady + START_FROM_REST * abs(drive.amplitude) * radius ** 2 / nu * harmonic_peak(
+        womersley_number(drive, radius, nu))
 
 
 def steps_a_period(dt: float, period: float | None) -> float | None:
     return None if period is None else period / dt
 
 
-def report_lines(scheme: str, viscous_number: float, viscous_line: float | None, cfl: float | None,
-                 line: float | None, period: float | None, dt: float, price: Mapping[str, float]) -> tuple[str, ...]:
-    """The build report's lines for the flow's step: the scheme and why, the predicted CFL and its margin, the steps a
-    period against the measured 1 % lines, and what the other scheme's step would be."""
-    lines = [f"the flow's scheme: {scheme}, at nu dt / h^2 = {viscous_number:.3g}"
+def report_lines(scheme: str, step: float, every: int, viscous_number: float, viscous_line: float | None,
+                 cfl: float | None, line: float | None, period: float | None, price: Mapping[str, float],
+                 alpha: float | None = None) -> tuple[str, ...]:
+    """The build report's lines for the flow's step (``every`` base steps, ``rate=``, where it is more than one): the
+    scheme and why, the predicted CFL and its margin, the series' line where the drive is past it, the steps a period,
+    and what the other scheme's step would be."""
+    lines = [f"the flow's step: {step:.6g} s" + (f", every {every} base steps (its rate=)" if every > 1 else ""),
+             f"the flow's scheme: {scheme}, at nu dt / h^2 = {viscous_number:.3g} at the flow's step"
              + (f" (RK3's viscous number {viscous_line:g})" if viscous_line is not None else "")]
     if cfl is not None and line is not None:
-        lines.append(f"the predicted CFL max|u| dt / h = {cfl:.3g} against the {scheme} line of {line:.3g} along the "
-                     f"vessel's axis (margin {100.0 * (1.0 - cfl / line):.0f} %); the empty tube's peak, a body's "
-                     f"own speed not included")
-    held = steps_a_period(dt, period)
+        lines.append(f"the predicted CFL max|u| dt / h = {cfl:.3g} at the flow's step against the {scheme} line of "
+                     f"{line:.3g} along the vessel's axis (margin {100.0 * (1.0 - cfl / line):.0f} %); the empty "
+                     f"tube's peak, a body's own speed not included")
+    if alpha is not None and not series_holds(alpha):
+        lines.append(f"the drive's Womersley number {alpha:.4g} is past the series' line of {SERIES_LINE:g}: the "
+                     f"harmonic's peak is the line's scaled by (line / alpha)^2, above the maximum principle's bound "
+                     f"from rest (2 A / omega)")
+    held = steps_a_period(step, period)
     if held is not None:
-        lines.append(f"{held:.0f} steps a period of the drive (stability only: RK3's drag history at M1's point was "
-                     f"within 1 % from about 400 steps a period and 3.5 % at its line; IMEX Euler's phase error is "
-                     f"about pi / steps)")
-    for name, step in sorted(price.items()):
+        lines.append(f"{held:.0f} steps a period of the drive (the step is chosen for stability only, its accuracy "
+                     f"not bounded: a penalty sphere's drag history in a pulsatile tube flow, measured with RK3, was "
+                     f"within 1 % from about 400 steps a period; IMEX Euler's phase error is about pi / steps)")
+    for name, other in sorted(price.items()):
         if name != scheme:
-            lines.append(f"the largest stable step with {name} would be {step:.4g} s")
+            lines.append(f"the largest stable step with {name} would be {other:.4g} s")
     return tuple(lines)
 
 
-__all__ = ["BODY_FORCE", "START_FROM_REST", "WALL_REACH_CELLS", "Drive", "axial_drive", "harmonic_peak", "predicted_peak", "report_lines", "steps_a_period"]
+__all__ = ["BODY_FORCE", "SERIES_LINE", "START_FROM_REST", "WALL_REACH_CELLS", "Drive", "axial_drive", "harmonic_peak",
+           "predicted_peak", "report_lines", "series_holds", "series_peak", "steps_a_period", "womersley_number"]

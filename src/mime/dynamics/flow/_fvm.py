@@ -14,6 +14,7 @@ lattice direction of the box)."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -30,7 +31,7 @@ from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE
 from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Flag, GradientRecord, Port, Problem, Region, \
     SettingGroup, StepQuery, StepRule, convention, register_dynamics, register_setting_group
 from mime.dynamics.flow._fields import fvm_field
-from mime.dynamics.flow._steps import WALL_REACH_CELLS, axial_drive, predicted_peak, report_lines
+from mime.dynamics.flow._steps import WALL_REACH_CELLS, axial_drive, predicted_peak, report_lines, womersley_number
 from mime.fields._solved import SolvedField
 from mime.units import Magnitude
 from mime.scene import PeriodicBox
@@ -290,7 +291,8 @@ class FVM(Dynamics):
     @override
     def time_step(self, query: StepQuery) -> StepRule | None:
         """The flow's step rule (``mime.dynamics.flow._steps``): the scheme from the viscous limit, the CFL predicted
-        from the drive's peak in the empty tube, the refusal past the line, and ``dt="auto"``'s largest stable step."""
+        from the drive's peak in the empty tube, the refusal past the line, and ``dt="auto"``'s largest stable step,
+        each judged at the step the flow's node takes (its ``rate=`` included)."""
         region = query.region
         if region is None or region.shape != "cylinder" or "viscosity" not in query.values \
                 or "density" not in query.values or lattice_of(_unit(region.parameters["axis"])) is None:
@@ -305,12 +307,21 @@ class FVM(Dynamics):
                                       margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
         h = layout.spacing
         drive = axial_drive(query.drives, axis)
-        peak = predicted_peak(drive, radius + WALL_REACH_CELLS * h, nu)
+        wide = radius + WALL_REACH_CELLS * h
+        peak = predicted_peak(drive, wide, nu)
+        alpha = womersley_number(drive, wide, nu) if drive.amplitude else None
         convection = not self.stokes
+        if convection and not math.isfinite(peak):
+            return StepRule(None, lambda step, every: [], lambda step, every: (), refusals=(Problem(
+                "flow.cfl-predicted",
+                f"the drive's predicted peak speed is {peak!r} m/s (from its steady part {drive.steady!r}, its "
+                f"harmonic's amplitude {drive.amplitude!r} and frequency {drive.frequency!r} Hz, nu {nu!r} m^2/s): no "
+                f"CFL number can be predicted, so no step is known to be stable",
+                "write the fluid's viscosity and density, exp.declare(...), and the drive's BodyForce(steady=..., "
+                "amplitude=..., frequency=...) as finite numbers"),))
 
         def line_of(name: str) -> float | None:
-            scheme = scheme_named(name)
-            return float(scheme.cfl_limit(axis)) if convection and scheme.cfl_line is not None else None
+            return host_line(name, axis) if convection else None
 
         def safe(name: str) -> float | None:
             scheme = scheme_named(name)
@@ -328,31 +339,39 @@ class FVM(Dynamics):
         else:
             largest = max(bounded.values()) if bounded else None
 
-        def problems(dt: float) -> list[Problem]:
-            name = chosen_scheme(self.scheme, nu, h, dt)
+        def problems(step: float, every: int) -> list[Problem]:
+            name = chosen_scheme(self.scheme, nu, h, step)
             found: list[Problem] = []
             limit = scheme_named(name).viscous_limit(nu, h)
-            if limit is not None and dt > limit * (1.0 + 1e-12):
+            if limit is not None and step > limit * (1.0 + 1e-12):
                 found.append(Problem(
                     "flow.viscous-limit",
-                    f"dt = {dt:.4g} s gives the {name} scheme's explicit viscosity nu dt / h^2 = {nu * dt / h ** 2:.3g}, "
-                    f"past its viscous number {nu * limit / h ** 2:.3g}: it would not be stable",
-                    f"use dt <= {limit:.4g} s, or dt='auto', or Scheme.IMEXEuler() (implicit viscosity)"))
+                    f"the flow's step {step:.4g} s gives the {name} scheme's explicit viscosity nu dt / h^2 = "
+                    f"{nu * step / h ** 2:.3g}, past its viscous number {nu * limit / h ** 2:.3g}: it would not be "
+                    f"stable",
+                    f"use dt <= {limit:.4g} s, or dt='auto', or Scheme.IMEXEuler() (implicit viscosity)" if every == 1
+                    else f"use dt <= {limit / every:.4g} s (the flow steps every {every} base steps, its rate=, so a "
+                         f"step of {limit:.4g} s), a shorter rate=, or Scheme.IMEXEuler() (implicit viscosity)"))
             line = line_of(name)
-            if line is not None and peak * dt / h > line * (1.0 + 1e-9):
+            if line is not None and not peak * step / h <= line * (1.0 + 1e-9):
+                bound = line * h / peak
                 found.append(Problem(
                     "flow.cfl-predicted",
                     f"the drive gives the empty tube a peak speed of {peak:.4g} m/s from rest (Poiseuille's centreline "
-                    f"and twice the harmonic's Womersley peak), so max|u| dt / h = {peak * dt / h:.3g} at dt = {dt:.4g} s, past the "
-                    f"{name} scheme's CFL line of {line:.3g} along the vessel's axis: its convection would not be stable",
-                    f"use dt <= {line * h / peak:.4g} s, or dt='auto'"))
+                    f"and twice the harmonic's Womersley peak), so max|u| dt / h = {peak * step / h:.3g} at the flow's "
+                    f"step {step:.4g} s, past the {name} scheme's CFL line of {line:.3g} along the vessel's axis: its "
+                    f"convection would not be stable",
+                    f"use dt <= {bound:.4g} s, or dt='auto'" if every == 1
+                    else f"use dt <= {bound / every:.4g} s (the flow steps every {every} base steps, its rate=, so a "
+                         f"step of {bound:.4g} s), or a shorter rate="))
             return found
 
-        def report(dt: float) -> tuple[str, ...]:
-            name = chosen_scheme(self.scheme, nu, h, dt)
+        def report(step: float, every: int) -> tuple[str, ...]:
+            name = chosen_scheme(self.scheme, nu, h, step)
             line = line_of(name)
-            return report_lines(name, nu * dt / h ** 2, RK3.viscous_number if name == RK3.name else None,
-                                peak * dt / h if line is not None else None, line, drive.period, dt, bounded)
+            return report_lines(name, step, every, nu * step / h ** 2,
+                                RK3.viscous_number if name == RK3.name else None,
+                                peak * step / h if line is not None else None, line, drive.period, bounded, alpha)
 
         return StepRule(largest, problems, report, period=drive.period)
 
@@ -386,10 +405,21 @@ class FVM(Dynamics):
             interior=interior, periodic_images=images, report_rows=self.report_rows))
 
 
+def host_line(scheme: str, axis: Sequence[float]) -> float | None:
+    """The scheme's CFL line along ``axis``, ``TimeScheme.cfl_limit``'s ``line g(n)``, on the host in float64 whatever
+    the run's dtype (the node's per-step check computes it in the run's); ``None`` for a scheme with no line."""
+    line = scheme_named(scheme).cfl_line
+    if line is None:
+        return None
+    magnitude = [abs(float(c)) for c in axis]
+    return line * max(magnitude) / sum(magnitude)
+
+
 def _unit(vector: object) -> tuple[float, float, float]:
     held = [float(c) for c in vector]  # type: ignore[attr-defined]
     length = (held[0] ** 2 + held[1] ** 2 + held[2] ** 2) ** 0.5
     return (held[0] / length, held[1] / length, held[2] / length)
 
 
-__all__ = ["FVM", "Band", "IMEXEulerScheme", "RK3Scheme", "Scheme", "SteadyScheme", "chosen_scheme", "lattice_of"]
+__all__ = ["FVM", "Band", "IMEXEulerScheme", "RK3Scheme", "Scheme", "SteadyScheme", "chosen_scheme", "host_line",
+           "lattice_of"]

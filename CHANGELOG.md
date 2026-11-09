@@ -56,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refuses a `dt` past the chosen
   scheme's line before any step (`flow.cfl-predicted`, `flow.viscous-limit`), with the step that keeps it;
   `Experiment(..., dt="auto")` takes the largest stable step (stability only, its steps a period reported beside it),
-  saved as the step it chose. The lines are one value each, along a grid axis, scaled along a tilted vessel's axis by
+  saved as the step it chose. The rule is judged at the flow's own step (`FVM(rate=...)` included), its prediction in
+  float64 whatever the run's dtype, with a bound past the series' Womersley number of 50. The lines are one value each, along a grid axis, scaled along a tilted vessel's axis by
   `max|n_d| / sum|n_d|`: RK3's is 1.7, not the 2.0 first decided, at which a plug flow grows (the maintainer's
   decision). RK3 is a scheme of the registry's interface: its state the velocity, the pressure and whether the pressure
   is made, its stages reading the drive at their own instants, its terms its own; its node holds its state past the CFL

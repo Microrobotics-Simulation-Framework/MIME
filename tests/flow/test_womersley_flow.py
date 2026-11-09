@@ -110,6 +110,24 @@ def test_control_a_halved_term_count_fails_the_comparison(float64, alpha):
     assert profile_error(alpha, "float64", terms=wom.series_terms("float64") // 2) > 1e-3
 
 
+def host_error(alpha, terms=None):
+    terms = wom.series_terms("float64") if terms is None else terms
+    exact = scipy_profile(RHO, alpha)
+    return float(np.max(np.abs(wom.host_profile(RHO ** 2, alpha ** 2, terms) - exact)) / np.max(np.abs(exact)))
+
+
+def test_the_host_series_holds_float64s_line_in_either_run_dtype(dtype):
+    """The build's step rule sums the series on the host in float64, whatever the run's dtype."""
+    low, line, high, high_line = LINES["float64"]
+    assert all(host_error(alpha) < line for alpha in low)
+    assert all(host_error(alpha) < high_line for alpha in high)
+
+
+@pytest.mark.parametrize("alpha", [40.0, 50.0])
+def test_control_the_host_series_with_half_its_terms_fails(alpha):
+    assert host_error(alpha, wom.series_terms("float64") // 2) > 1e-3
+
+
 # -- the node --------------------------------------------------------------------------------------------------------
 
 def _node(dt=1e-3, **kw):

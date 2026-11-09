@@ -399,6 +399,7 @@ result.not-recorded           user
 result.table                  user
 result.window                 user
 run.chunks                    user
+run.dt-auto-rate              user
 run.dt-auto-unset             user
 run.dt-invalid                user
 run.dt-missing                user

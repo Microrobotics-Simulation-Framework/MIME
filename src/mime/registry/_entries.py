@@ -253,16 +253,19 @@ class StepQuery:
 
 @dataclass(frozen=True)
 class StepRule:
-    """A dynamics' own bound on the base step: ``largest``, the largest step it is stable at (s; ``None`` where nothing
-    bounds it, which ``dt="auto"`` refuses), and, for a given step, ``problems(dt)`` (its refusals before any step is
-    taken, each with the route) and ``report(dt)`` (the lines the build report shows: the scheme it chose, its margins,
-    the price of the alternatives)."""
+    """A dynamics' own bound on its step: ``largest``, the largest step its node is stable at (s; ``None`` where nothing
+    bounds it, which ``dt="auto"`` refuses), and, at the step its node takes (``step``, s, which is ``every`` base steps:
+    its ``rate=``), ``problems(step, every)`` (its refusals before any step is taken, each with the route) and
+    ``report(step, every)`` (the lines the build report shows: the step, the scheme it chose, its margins, the price of
+    the alternatives). ``refusals`` are refused whatever the step (a prediction that cannot be made); a rule with any
+    takes no part in choosing ``dt="auto"``'s step."""
 
     largest: float | None
-    problems: Callable[[float], list[Problem]]
-    report: Callable[[float], tuple[str, ...]]
+    problems: Callable[[float, int], list[Problem]]
+    report: Callable[[float, int], tuple[str, ...]]
     #: The period the step must divide into a whole number of steps (s), where the dynamics' drive is periodic.
     period: float | None = None
+    refusals: tuple[Problem, ...] = ()
 
 
 @dataclass(frozen=True)
