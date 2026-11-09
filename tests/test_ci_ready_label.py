@@ -52,7 +52,8 @@ from test_ci_wiring import REQUIRED
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 MESSAGE = "the full matrix has not run on this head: add the `ready` label"
-#: Where the full matrix and the reduced set stand, counted at the default ten shards.
+#: Where the full matrix and the reduced set stand, counted at ten shards: the count is an input to the simulation, whatever
+#: the default is.
 SHARDS = 10
 REFUSING = {"default (Python 3.14)"}
 #: The lanes no longer required: they start on a push and a manual run, and on a full pull request by its diff.

@@ -26,9 +26,9 @@ name: CI
 # `typecheck` blocks: pyright, pinned, strict over src/mime at zero errors, on a run that must be trustworthy.
 # `confidential` blocks: the confidentiality scan over the tracked tree and its paths, the commits' diffs and messages
 # and the branch's name.
-# `default`, `openmaterica-main` and `maddening-main` each run their tests as shard jobs (`<lane>-tests`), ten unless
+# `default`, `openmaterica-main` and `maddening-main` each run their tests as shard jobs (`<lane>-tests`), sixteen unless
 # the repository variable MIME_CI_SHARDS or a manual run's `shards` input says otherwise (the `shards` job,
-# scripts/shard_matrix.py, CONTRIBUTING.md). The split is in tests/_sharding.py, by file and stable. The job under the
+# scripts/shard_matrix.py, CONTRIBUTING.md). The split is in tests/_sharding.py, by file (by test for a file heavier than a shard's mean) and stable. The job under the
 # lane's own name, which branch protection requires, passes only when every shard passed, their selections partition
 # one collection and the shards' JUnit
 # reports agree (every test has an outcome in one report, none failed, none skipped; scripts/check_shards.py); it runs
@@ -43,7 +43,13 @@ name: CI
 # (tests/_child_cache.py).
 # `usd-core-newest`, weekly, runs as one job. Each shard runs its tests on pytest-xdist workers and writes JUnit XML,
 # and its `Test durations` step holds MADDENING's budget (scripts/report_test_durations.py, tests/README.md): an
-# unlisted test over 5 s gets a warning, and one over 20 s, once re-run alone, fails the job; the lane's job writes
+# unlisted test over 5 s gets a warning, and one over 30 s, once re-run alone, fails the job on a push or a manual run, and
+# on a pull request when it is the change's own (its file is in the diff or its node id is new on the base,
+# `--own-against HEAD^1`: a pull request's merge commit has its base's tip there); any other unlisted test fails a pull
+# request only over 90 s. A listed test over its ceiling (the larger of 3 times its median and 1.2 times its 95th
+# percentile, at least 60 s, tests/duration_ceilings.json) fails a push and warns a pull request (the rule of
+# 2026-11-09, CONTRIBUTING.md, "CI: the duration gate"; the weekly triage that writes the ceilings is a person's run,
+# scripts/duration_triage.py, and no workflow runs it); the lane's job writes
 # where the time went to the run page. Each test's JAX tracing, lowering and compiling are recorded beside its times
 # (MIME_TEST_JAX_TIMING, tests/_jax_timing.py), and each shard's report is uploaded as a run artifact. Each shard keeps
 # JAX's persistent compilation cache, per lane, shard, jaxlib and runner CPU model: a pull request restores its base's
@@ -62,10 +68,10 @@ name: CI
 # of jobs (never `needs.<job>.result`: a failed `continue-on-error` job reads `success` there); every shard deselects the
 # file and installs no shell (tests/test_completion_job.py).
 # Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix runs on a push to a branch, a manual run, and a
-# pull request that carries the label `ready`: 63 jobs for a push (every lane and Python at ten shards, plus the skipped `usd-core-newest` entry), 27 for a pull
+# pull request that carries the label `ready`: 93 jobs for a push (every lane and Python at sixteen shards, plus the skipped `usd-core-newest` entry), 39 for a pull
 # request that touches no pin, CI file or adapter (`default` on Python 3.12 and 3.14, with `typecheck`, `no private name
 # or path` and `shard count`). A pull request without the label runs a reduced set: `typecheck`, `no private name or
-# path`, the docs check and the default lane on Python 3.12 with all its shards (16 jobs), and the one required job it
+# path`, the docs check and the default lane on Python 3.12 with all its shards (22 jobs), and the one required job it
 # does not run for (`default` on 3.14) still runs and fails with "the full matrix has not run on this head: add the
 # `ready` label", so that no required check passes by being skipped. An agent adds `ready` when its head is final.
 # The mode is read when the run starts, from the pull request's labels as they are then (the `shards` job), not from the
@@ -97,7 +103,7 @@ on:
         type: boolean
         default: false
       plant_slow_tests:
-        description: "Plant an unlisted 21 s test and an unlisted 6 s test in every lane: the control that the time budget fails the job and warns"
+        description: "Plant an unlisted 95 s test and an unlisted 6 s test in every lane: the control that the time budget fails the job and warns"
         type: boolean
         default: false
       plant_shard_failure:
@@ -268,7 +274,7 @@ jobs:
         run: |
           echo "${{ (steps.cc.outputs.mode == 'warm' && steps.cc-restore.outputs.cache-matched-key != '') && 'warm' || 'cold' }}" \
             > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
-          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers $WARN_ONLY --cache-mode mixed --markdown /dev/null
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --own-against HEAD^1 --ceilings tests/duration_ceilings.json $WARN_ONLY --cache-mode mixed --markdown /dev/null
       - name: Plant a failing shard (a manual run's first attempt only)
         if: ${{ !cancelled() && env.MIME_CI_PLANT_SHARD_FAILURE == format('{0}', matrix.shard) && matrix.python-version == '3.12' && github.run_attempt == 1 }}
         run: |
@@ -495,7 +501,7 @@ jobs:
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
           echo cold > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
-          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --warn-only --cache-mode mixed --markdown /dev/null
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --own-against HEAD^1 --ceilings tests/duration_ceilings.json --warn-only --cache-mode mixed --markdown /dev/null
       - name: Record the shard's outcome
         if: ${{ !cancelled() }}
         run: |
@@ -622,7 +628,7 @@ jobs:
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: |
           echo cold > "$RUNNER_TEMP/report/cache-mode-shard${{ matrix.shard }}.txt"
-          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --warn-only --cache-mode mixed --markdown /dev/null
+          uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results-shard${{ matrix.shard }}.xml" --allowlist tests/duration_allowlist.txt --retry-outliers --own-against HEAD^1 --ceilings tests/duration_ceilings.json --warn-only --cache-mode mixed --markdown /dev/null
       - name: Record the shard's outcome
         if: ${{ !cancelled() }}
         run: |
@@ -714,6 +720,8 @@ jobs:
       MIME_CI_LANE: default
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: ${{ env.UV_VERSION }}
@@ -740,7 +748,7 @@ jobs:
           TITLE: "Test durations: completion, default, Python ${{ matrix.python-version }}"
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
-          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --own-against HEAD^1 --ceilings tests/duration_ceilings.json --cache-mode off --title "$TITLE"
       - name: None of the completion tests skipped
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
@@ -756,6 +764,8 @@ jobs:
       MIME_CI_LANE: openmaterica-main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: ${{ env.UV_VERSION }}
@@ -785,7 +795,7 @@ jobs:
           TITLE: "Test durations: completion, openmaterica-main"
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
-          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --own-against HEAD^1 --ceilings tests/duration_ceilings.json --cache-mode off --title "$TITLE"
       - name: None of the completion tests skipped
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
@@ -801,6 +811,8 @@ jobs:
       MIME_CI_LANE: maddening-main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: ${{ env.UV_VERSION }}
@@ -837,7 +849,7 @@ jobs:
           TITLE: "Test durations: completion, maddening-main"
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
-          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --own-against HEAD^1 --ceilings tests/duration_ceilings.json --cache-mode off --title "$TITLE"
       - name: None of the completion tests skipped
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: python3 scripts/check_no_skips.py "$RUNNER_TEMP/report/test-results.xml"
@@ -850,6 +862,8 @@ jobs:
       MIME_CI_LANE: usd-core-newest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: ${{ env.UV_VERSION }}
@@ -880,7 +894,7 @@ jobs:
           TITLE: "Test durations: ${{ github.job }}${{ matrix.python-version && format(', Python {0}', matrix.python-version) || '' }}"
         run: >-
           uv run --no-sync python scripts/report_test_durations.py "$RUNNER_TEMP/report/test-results.xml"
-          --allowlist tests/duration_allowlist.txt --retry-outliers --cache-mode off --title "$TITLE"
+          --allowlist tests/duration_allowlist.txt --retry-outliers --own-against HEAD^1 --ceilings tests/duration_ceilings.json --cache-mode off --title "$TITLE"
       - name: Upload the test durations
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

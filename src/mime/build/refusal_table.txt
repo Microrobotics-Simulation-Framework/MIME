@@ -47,6 +47,7 @@ bundle.unreadable             user
 bundle.unsafe                 user
 bundle.unscannable            user
 call.missing-setting          user
+call.polyline                 user
 call.renamed                  user
 call.units                    user
 call.unknown-name             user
@@ -133,10 +134,14 @@ drag.near-field-overlap       user
 drag.near-field-rates         user
 drag.near-field-size          user
 drag.no-axis                  user
+drag.no-centreline            user
 drag.no-region                user
 drag.no-samples               user
 drag.outside-training         user
 drag.patches                  user
+drag.rft-coefficients         user
+drag.rft-indefinite           user
+drag.rft-wall-range           user
 drag.wall-kind                user
 drag.wall-range               user
 dynamics.wrong-thing          user

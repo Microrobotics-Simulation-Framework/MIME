@@ -37,6 +37,10 @@ geometry capsule 0.1.0 axis                              # physical: a fact abou
 geometry capsule 0.2.0 radius                            # physical: a fact about the setup, which MIME does not assume
 geometry capsule 0.2.0 height                            # physical: a fact about the setup, which MIME does not assume
 geometry capsule 0.2.0 axis                              # physical: a fact about the setup, which MIME does not assume
+geometry helix 0.1.0 radius                              # physical: a fact about the setup, which MIME does not assume
+geometry helix 0.1.0 pitch                               # physical: a fact about the setup, which MIME does not assume
+geometry helix 0.1.0 turns                               # physical: a fact about the setup, which MIME does not assume
+geometry helix 0.1.0 filament_radius                     # physical: a fact about the setup, which MIME does not assume
 geometry cylinder 0.1.0 radius                           # physical: a fact about the setup, which MIME does not assume
 geometry cylinder 0.1.0 length                           # physical: a fact about the setup, which MIME does not assume
 geometry cylinder 0.1.0 axis                             # physical: a fact about the setup, which MIME does not assume

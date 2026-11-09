@@ -8,6 +8,7 @@ from pathlib import Path
 
 import jax.numpy as jnp
 import pytest
+from rft_cases import r6_node
 from maddening.core.node import SimulationNode
 from typing_extensions import NoExtraItems
 
@@ -91,6 +92,7 @@ TYPED = [
                      wall_kind="free_space", wall_kind_version="0.1.0", shape_radius=1e-3), mrs.MRSDragState, mrs.MRSDragInputs, set()),
     (_joint_node(), near_field.JointDragState, near_field.JointDragInputs,
      {f"{field}_{i}" for i in range(2) for field in ("resistance", "background_load", "pose", "twist", "mass_matrix")}),
+    (r6_node(tube=False), hydro.RFTDragState, hydro.RFTDragInputs, set()),
     (control.ControllerNode("k", DT, step=lambda state, reads: (state, {"angle": reads["pose"][4]}),
                             controller="toy 0.0.0", reads={"pose": ("m; 1", (7,))},
                             initial_state={"filtered": jnp.zeros(())}, initial_writes={"angle": jnp.zeros(())}),

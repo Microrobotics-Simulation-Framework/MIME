@@ -88,6 +88,8 @@ def plain_possessive(text: str) -> str:
 DOCS = "https://microrobotica.org/mime"
 #: Where a code's page is under a version's documentation: the page ``mime docs build`` writes for it.
 ERROR_PAGES = "pages/errors"
+#: Where a hand-written guide page is: ``docs/guide/<name>.md`` is built to ``pages/guide/<name>``.
+GUIDE_PAGES = "pages/guide"
 #: Where a MIME defect is reported.
 ISSUES = "https://github.com/Microrobotics-Simulation-Framework/MIME/issues"
 _RELEASE = re.compile(r"\d+\.\d+\.\d+")
@@ -103,6 +105,11 @@ def docs_version() -> str:
 def page_of(code: str) -> str:
     """The address of ``code``'s generated page, in this MIME version's documentation."""
     return f"{DOCS}/{docs_version()}/{ERROR_PAGES}/{code}"
+
+
+def guide_page_of(name: str) -> str:
+    """The address of the guide page ``docs/guide/<name>.md``, in this MIME version's documentation."""
+    return f"{DOCS}/{docs_version()}/{GUIDE_PAGES}/{name}"
 
 
 class Explained(str):

@@ -1,6 +1,15 @@
 """Registration of interactions, observations, dynamics, field providers, controllers and the other entry kinds (drives,
 geometry kinds, wall kinds), keyed by name and version."""
 
+from mime.registry._centreline import (
+    Centreline,
+    CentrelineFrame,
+    CentrelinePoints,
+    CentrelineSegment,
+    Junction,
+    centreline_counts,
+    centreline_points,
+)
 from mime.registry._entries import (
     CAPABILITIES,
     NOT_ESTABLISHED,
@@ -113,6 +122,13 @@ from mime.registry._registry import (
 )
 
 __all__ = [
+    "Centreline",
+    "CentrelineFrame",
+    "CentrelinePoints",
+    "CentrelineSegment",
+    "Junction",
+    "centreline_counts",
+    "centreline_points",
     "WHY_REQUIRED",
     "CAPABILITIES",
     "DESIGN",

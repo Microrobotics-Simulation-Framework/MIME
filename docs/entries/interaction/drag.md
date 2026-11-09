@@ -7,7 +7,7 @@ describes: ["0.3.0", "0.4.0", "0.5.0"]
 The medium's resistance to a body's motion: the 6 x 6 operator a rigid body's dynamics solves with implicitly, about
 its centre of mass, in the world frame, with the load a flowing medium puts on the body held still beside it (zero in
 a medium at rest, the only medium built). The rung is written in the script, and there is no default:
-`Drag.Surrogate(...)` or `Drag.MRS(...)`.
+`Drag.Surrogate(...)`, `Drag.MRS(...)` or `Drag.RFT(...)`.
 
 ## Rung `surrogate`
 
@@ -169,6 +169,33 @@ no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-sli
   mesh differ there, by how much its validity lines say, and neither has converged; the converged diagonal lies
   between the two (MIME-ANO-116). A surrogate trained on either inherits that error.
 
+## Rung `rft`
+
+Resistive force theory [@GrayHancock1955; @Lighthill1976]: local drag coefficients along the body's centreline, its
+segments feeling no interaction through the free fluid, for a body whose hull kind declares a centreline (a helix, a
+capsule, a prolate ellipsoid; [adding one to a kind](../../guide/centrelines.md)). Each point of the centreline, about
+`spacing` apart along it, pushes the fluid with its coefficients along and across its tangent times its share of the
+arc. The coefficients are `coefficients`: `lighthill` on a segment with a wavelength (a helix), `spheroid` (a slender
+prolate spheroid's leading order) on a straight one, each computed in the step from the viscosity and the kind's
+numbers, so a study's derivative in them flows through. With a wall the points' forces reach one another through the
+wall kind's image, as the MRS's do. It is fast: microseconds a step on a CPU in free space.
+
+**Its resistance, judged.** A straight centreline's spin about itself meets no drag, so the resistance of a capsule or a
+prolate spheroid is semidefinite; each step judges its least eigenvalue, each row and column scaled by its diagonal,
+against minus a floor of the run's rounding, not against zero. A helix's is definite, and is
+judged as the MRS rung's is, against zero. With a wall, a body whose local drag is large against its true resistance (a helix the
+size of its vessel) can turn the resistance indefinite: the build refuses one at its starting pose
+(`drag.rft-indefinite`) and a step that reaches one stops the run, naming the MRS as the route.
+
+**When not to use it.**
+- For a body that is not slender, or whose segments lie close beside one another (a coiled helix of several turns):
+  its segments do not interact, and its validity lines, measured against the MRS over the points they name, say how
+  far it misses there; outside those points nothing is measured.
+- Near a wall with a body large against the vessel: refused or stopped, as above.
+- For a body whose kind declares no centreline: refused when planned (`drag.no-centreline`), naming the guide's page.
+  A screw-shaped body declares none: its straight axis carries no chirality, so a slender law along it would give the
+  screw no propulsion at all.
+
 ## Versions
 
 Version 0.5.0 solves a medium's mrs bodies together, its near field; 0.4.0 (`UncoupledDrag`) stays registered so that a
@@ -178,4 +205,10 @@ it loads and reproduces (the frozen sim2real register's experiments build it): i
 sample, the samples its quadrature, with the blob half their mean spacing, which a quadrature refinement of one on
 0.4.0 also gives; a script that writes `Drag.MRS(...)` gets 0.5.0. Version 0.3.0 reads the body's shape from its hull's kind, not
 from declared values; 0.2.0 moved the resistance from the end of the body's axis to its centre; 0.1.0 delivered it
-about the end (MIME-ANO-112). The mrs rung was added to 0.3.0, changing nothing the surrogate computes.
+about the end (MIME-ANO-112). The mrs rung was added to 0.3.0, changing nothing the surrogate computes; the rft rung
+was added to 0.4.0, changing nothing the other rungs compute: its one setting, `coefficients`, is left out of 0.4.0's
+resolved record of every program on another rung, so a folder saved before the rung loads and reproduces. Version 0.5.0
+carries the rung as 0.4.0 does, and records every setting on every rung, `coefficients` among them (null off the rft
+rung): it has no earlier release whose input hash to keep. The rung's
+validity lines are set from `docs/data/slender_validity` by the rule its spec states; the spec, and the rule, were written
+after the runs the record holds, not before them, and the record stores the hash of the spec as it stands.

@@ -11,6 +11,7 @@ import numpy as np
 from maddening.core.node import SimulationNode
 
 from mime.core import jnp, shape_named, shape_switches, switch
+from mime.registry._centreline import Centreline
 from mime.gradients import RANK, GradientStatus
 from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Length, Magnitude, Quantity
@@ -674,6 +675,12 @@ class Entry:
         an axis it must not lie on), given in SI, one line each: each is refused in phase 1."""
         return []
 
+    def unrecorded_settings(self) -> frozenset[str]:
+        """The settings the resolved record leaves out for this entry as written: a setting added to a registered version
+        after its release, which the entry's rung does not read. The record then holds what the released version's did,
+        and a program that never touches the setting keeps its input hash."""
+        return frozenset()
+
 
 @dataclass(frozen=True, kw_only=True)
 class SettingGroup:
@@ -1173,7 +1180,7 @@ class Geometry(Entry):
     surface is sampled by, each with the region whose boundary it lies on (a closed kind's patches are its whole
     surface, and a solid's body is the intersection of its regions): :meth:`samples` by patch at a count of samples a consumer chooses (:meth:`sample_counts` for a spacing),
     :meth:`area` by patch, :meth:`family_parameters`, :meth:`radial_reach` (the hull's), :meth:`tangent`,
-    :meth:`drawing` and :meth:`region_primitive`. Its run-time capabilities (signed distance, outward normal, nearest
+    :meth:`drawing`, :meth:`region_primitive` and :meth:`centreline`. Its run-time capabilities (signed distance, outward normal, nearest
     point) are its regions' shapes.
 
     **Its own frame** is its prim's: the settings ``placement`` names place the kind rather than shape it (``"origin"``
@@ -1276,6 +1283,13 @@ class Geometry(Entry):
         implements none, and a contact holds it by its samples."""
         raise NotImplementedError
 
+    def centreline(self, settings: Mapping[str, Magnitude]) -> Centreline:
+        """The kind's centreline (``mime.registry.Centreline``): its segments' structure from its settings in SI,
+        their values JAX functions of its parameters, in the frame its samples are in. A consumer that needs one of a kind that
+        declares none (a slender drag law) refuses the kind by name, pointing to how a lab adds one
+        (``mime.scene.polyline`` for a curve given by points)."""
+        raise NotImplementedError
+
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
         """The hull query: how far the kind reaches along ``direction`` (three numbers in the frame its samples are
         in, of any length above zero), the largest ``x . direction`` over its body, in m times the direction's length:
@@ -1289,7 +1303,7 @@ class Geometry(Entry):
 #: The build-side capabilities a kind may implement, by method name; ``native`` is the class variable, and
 #: ``mass_properties`` a solid's ``volume`` and ``inertia_per_mass``.
 CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent", "mass_properties", "drawing",
-                "native", "region_primitive", "sampling", "reach", "support")
+                "native", "region_primitive", "sampling", "reach", "support", "centreline")
 
 
 def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:

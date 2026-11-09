@@ -65,6 +65,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   differentiate through), and read as given by the loop's steps (`run_constants_given`). Reverse mode then derives it
   once per chunk: on FL-9 in free space at 222 force points the gradient through a chunk equals the per-step form's to
   1e-12, and the 666-wide LU leaves the backward loop (MIME-ANO-147). Forward runs keep their arrays bit for bit.
+- **Resistive force theory, `Drag.RFT`, on kinds with a centreline** (phase R1). A slender body's resistance from local
+  drag coefficients along its centreline, its segments feeling no interaction through the free fluid, with a wall's
+  image between its points (the tube's table, through the wall kind, never by name). The coefficients are a setting,
+  `coefficients=`: Lighthill's on a segment with a wavelength (a helix), a slender prolate spheroid's on a straight one
+  (the default per segment), each computed in the step from the viscosity and the kind's numbers, so its derivatives
+  in the geometry and the viscosity are exact (checked against a central difference that rebuilds, both modes, both
+  loss scales, with a `stop_gradient` and a baked coefficient as controls). Its resistance is judged each step: a straight body's (a capsule's, a prolate spheroid's) as
+  **semidefinite at a floor** (`floored_least_eigenvalue`, 64 units in the last place of the run's dtype), since its spin
+  about itself meets no drag; a helix's, which is definite, as the MRS rung's is, against zero. With a wall, a body whose local drag outweighs its true resistance
+  (a helix the size of its vessel) is refused at build, `drag.rft-indefinite`, and a step that reaches one
+  stops the run, naming the MRS as the route. A kind without a centreline is refused, `drag.no-centreline`, the
+  message naming the new guide page on adding one (a custom geometry, an STL or CAD mesh). The rung was added to drag
+  0.4.0, changing nothing the other rungs compute: its setting `coefficients` is left out of 0.4.0's resolved record of
+  a program on another rung (`Entry.unrecorded_settings`), so every such program keeps its input hash and a folder saved
+  before the rung loads. Drag 0.5.0 (the near field) carries the rung too, and records `coefficients` on every rung, null
+  off the rft rung, since 0.5.0 has no earlier release whose hash to keep (pinned in `tests/saved/test_drag_record.py`). Its tube family was measured at one gap to the wall, and a step at another gap, wider or
+  narrower, raises `unmeasured`. Its validity lines, measured against the MRS rung on the same
+  bodies, are recorded in `docs/data/slender_validity/`.
+- **The centreline capability** (`mime.registry.Centreline`): a tree of segments joined at named junctions, each a
+  JAX function of its kind's parameters giving the point, the unit tangent and the rotation-minimising frame's normal
+  at arc length, with an optional local radius, a filament radius and a wavelength. Declared by the new **`Helix`**
+  (registry `helix` 0.1.0: a helical filament with hemispherical caps, its origin its centroid, its samples
+  quasi-uniform), by `Capsule` (tip to tip), by a prolate `Ellipsoid` (its long axis) and by `Tube` (its axis, the
+  radius from the lumen's signed distance). `mime.scene.polyline` declares one through points; `mime.testing.
+  centreline_problems` holds a kind's to the contract.
 - **The plane wall kind** (`plane` 0.1.0, `mime.walls.PlaneWall`): an unbounded no-slip plane for the drag's MRS rung,
   its image system in closed form, regularised by the drag's own blob, so that with the free Stokeslet of that blob it
   vanishes on the wall and has no divergence to rounding, and as the blob vanishes it is Blake's singular image. The
@@ -367,6 +392,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step reads the same numbers in the run's dtype, so every array is bit for bit what it was; **the derived hash of every
   hull contact moves**. They stay outside every derivative: where a search starts and when it stops, which the point it
   converges to does not depend on.
+- **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
+  JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;
+  it weighs 28876 s now), and `scripts/shard_matrix.py`'s default is 16 (the repository variable and a manual run's input
+  still win). A file heavier than a shard's mean can now be dealt by test (the table's `split`, `scripts/shard_weights.py
+  --split FILE`); at sixteen none is, so none is split. Every lane runs cold once: the compilation cache's keys name the
+  shard count.
 
 - **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,
   `mime.lock/10`). Where `verify` claims no bits, in another environment or of a reference no run repeats bit for bit,

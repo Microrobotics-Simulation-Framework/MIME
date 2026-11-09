@@ -106,7 +106,7 @@ def labeller_of(kind, settings):
 
 #: The kinds the suite runs on, by name: every installed kind that samples its surface, less the kept versions (held to
 #: their failure below). A kind registered without a line here fails the first test.
-WALKED = ("sphere", "capsule", "screw", "cylinder", "box", "ellipsoid", "labx.bead")
+WALKED = ("sphere", "capsule", "screw", "cylinder", "box", "ellipsoid", "helix", "labx.bead")
 
 
 def test_the_suite_walks_every_installed_kind_that_samples_and_each_has_a_declaration(declared, sampling_classes):

@@ -54,6 +54,15 @@ def write(root, source: str, text: str) -> None:
     path = root / "docs" / source
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+    drop_rows(root, source)
+
+
+def drop_rows(root, source: str) -> None:
+    """The number allowlist's rows for ``source`` dropped with its replaced text: they name lines the copy no longer
+    has (the drag page's measured per-step cost)."""
+    allowlist = root / "docs" / "ratchets" / "number_allowlist.txt"
+    rows = allowlist.read_text(encoding="utf-8").splitlines(keepends=True)
+    allowlist.write_text("".join(row for row in rows if not row.startswith(f"docs/{source} ")), encoding="utf-8")
 
 
 def paid(root, item: str, source: str, text: str):
@@ -70,6 +79,7 @@ def unpaid(root, item: str, source: str):
     (what the checkout is left with when the item has been paid since, so that a control of the walk's does not wait on
     a particular item being unpaid)."""
     (root / "docs" / source).unlink(missing_ok=True)
+    drop_rows(root, source)
     if not any(line.split("  #")[0].strip() == item for line in ledger(root).read_text(encoding="utf-8").splitlines()):
         ledger(root).write_text(ledger(root).read_text(encoding="utf-8") + f"{item}  # planted, unpaid\n",
                                 encoding="utf-8")

@@ -16,6 +16,7 @@ from mime.core import AXIS_ULPS, jnp, switch
 from mime.gradients import GradientStatus
 from mime.registry import PHYSICAL
 from mime.registry import (
+    Centreline,
     Density,
     Direction,
     DirectionLike,
@@ -33,9 +34,15 @@ from mime.registry import (
     uniform,
 )
 from mime.scene._caps import cap_rings, ring_floor
+from mime.scene._centreline import straight
 from mime.scene._kinds import NO_PRIMITIVE_ADVICE, banded_faces, closed_drawing
 from mime.scene._sampling import counted, length_of, magnitude_of, quasi_uniform
 from mime.units import Length, Magnitude, Quantity
+
+
+#: How close an ellipsoid's two shorter semi-axes must be, as a share of them, for it to be the prolate spheroid whose
+#: long axis is its centreline: equal to rounding a declaration carries.
+PROLATE_TOLERANCE = 1e-12
 
 
 def _positive(settings: Mapping[str, Magnitude], name: str, components: int = 0) -> list[str]:
@@ -314,6 +321,31 @@ class Ellipsoid(Solid):
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
         """Its longest semi-axis."""
         return max(_lengths(settings, "semi_axes"))
+
+    @override
+    def centreline(self, settings: Mapping[str, Magnitude]) -> Centreline:
+        """Its long axis from tip to tip, for a prolate spheroid (its two shorter semi-axes equal, the third longer):
+        one segment of ``2 a``, its local radius ``b sqrt(1 - (s - a)^2 / a^2)``, the filament's radius ``b``. Another
+        ellipsoid has no one axis about which it is round, and is refused."""
+        held = np.asarray(_lengths(settings, "semi_axes"), dtype=np.float64)
+        order = np.argsort(held, kind="stable")
+        long, short, other = int(order[2]), int(order[0]), int(order[1])
+        if not (held[other] < held[long] and abs(held[other] - held[short]) <= PROLATE_TOLERANCE * held[other]):
+            raise ValueError(f"an ellipsoid's centreline is the long axis of a prolate spheroid, two semi-axes equal and "
+                             f"the third longer; its semi-axes are {tuple(held.tolist())} m")
+        axis = np.eye(3)[long]
+
+        def half(parameters: Mapping[str, Any]) -> Any:
+            return jnp.asarray(parameters["semi_axes"])[long]
+
+        def radius(parameters: Mapping[str, Any], s: Any) -> Any:
+            a, b = half(parameters), jnp.asarray(parameters["semi_axes"])[short]
+            z = (jnp.asarray(s) - a) / a
+            return b * jnp.sqrt(1.0 - z * z)
+
+        return Centreline((straight(lambda parameters: -half(parameters) * jnp.asarray(axis), axis,
+                                    lambda parameters: 2.0 * half(parameters), radius=radius,
+                                    filament_radius=lambda parameters: jnp.asarray(parameters["semi_axes"])[short]),))
 
     @override
     def region_parameters(self, region: str, settings: Mapping[str, Magnitude]) -> dict[str, Magnitude]:
@@ -806,6 +838,17 @@ class Capsule(Solid):
     @override
     def radial_reach(self, settings: Mapping[str, Magnitude]) -> float:
         return _length(settings, "radius")
+
+    @override
+    def centreline(self, settings: Mapping[str, Magnitude]) -> Centreline:
+        """Its axis from tip to tip, one segment of ``height + 2 radius``, the filament's radius its radius (no local
+        profile is declared)."""
+        axis = np.asarray(_lengths(settings, "axis"), dtype=np.float64)
+        axis = axis / np.linalg.norm(axis)
+        return Centreline((straight(
+            lambda parameters: -(parameters["height"] / 2.0 + parameters["radius"]) * jnp.asarray(axis), axis,
+            lambda parameters: parameters["height"] + 2.0 * parameters["radius"],
+            filament_radius=lambda parameters: jnp.asarray(parameters["radius"])),))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:
