@@ -18,7 +18,8 @@ per module), from ``references/mpem_mag_manip.npz`` (its generator and provenanc
   mag_manip's ``forceOnDipole`` and ``torqueOnDipole`` on the same moment, each system; with the energy ledger, the coil
   apparatus is outside and the pair supplied by it.
 - **The background** moves the field by itself and the gradient by nothing; **the flags**: ``outside_region`` is
-  mag_manip's ``pointInWorkspace`` negated at 48 probes, ``near_source`` rises within the guard.
+  mag_manip's ``pointInWorkspace`` negated at 48 probes, ``near_source`` rises within the guard. MADDENING's battery
+  runs on the node in the node walk (``tests/saved/test_node_walk.py``, its case in ``tests/saved/node_cases.py``).
 - **Allocation**: currents within the limits that make a field (and gradient) are recovered; out of reach, the limits
   hold and the miss is reported; a 3-coil array asked for both reports its rank."""
 
@@ -46,7 +47,6 @@ from mime.nodes.actuation import CalibratedMultipoleNode, placed_unit_fields, po
 from mime.nodes.actuation._multipole import Calibration
 from mime.observations import EnergyLedger
 from mime.scene import Scene, Sphere, Z
-from mime.testing import node_results
 from mime.things import Part
 from mime.units import VACUUM_PERMEABILITY, A, A_m2, T, kg, kg_m2, m, m_per_s, m_per_s2, mT, mT_per_m, ms, rad_per_s
 
@@ -416,26 +416,6 @@ def test_near_source_rises_within_the_guard_and_not_in_the_region():
 def test_zero_current_gives_zero_field(system):
     out = step(built_node(system), oracle(system, "points")[0], np.zeros(calibration(system).coils))
     assert not np.any(out["flux_density"]) and not np.any(out["gradient"])
-
-
-def test_the_node_passes_maddenings_battery():
-    node = built_node("cardiomag")
-    held = calibration("cardiomag")
-    low, high = held.region[:, 0], held.region[:, 1]
-
-    def in_the_region(inputs: dict[str, Any]) -> dict[str, Any]:
-        out = dict(inputs)
-        for key, value in inputs.items():
-            if key.startswith("points_"):
-                pose = np.asarray(value, dtype=np.float64).copy()
-                pose[..., :3] = low + (pose[..., :3] + 1.0) / 2.0 * (high - low)
-                out[key] = pose.astype(np.asarray(value).dtype)
-        return out
-
-    results = node_results(node, {"boundary_bounds": {name: (-1.0, 1.0) for name in node.boundary_input_spec()},
-                                  "constrain_boundary": in_the_region})
-    print("\n" + "\n".join(str(r) for r in results.values()))
-    assert all(r.passed for r in results.values())
 
 
 # -- allocation -----------------------------------------------------------------------------------------------------
