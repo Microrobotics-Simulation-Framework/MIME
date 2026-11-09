@@ -8,14 +8,19 @@
   raises no ``unmeasured``, and the build report says its lines hold; one of another family, or the same body with a
   coefficient set or a coarser spacing it was not measured at, raises it at every step and the report says its error
   is not measured; with the tube's table, a step with the filament closer to the wall than the least measured gap
-  raises it."""
+  raises it. Each in float64 and in float32: the step judges the family from its leaves in the run's dtype (R1 decided
+  it at build, and in float32 compared the spacing with a filament radius rounded to float32, so every body of
+  ``rft_free_space`` and ``rft_tube`` was flagged unmeasured there and none in float64)."""
 
 import hashlib
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from rft_cases import R6_TUBE, SMALL_HELIX, SMALL_SETTINGS, helix_body, rft
 
@@ -28,6 +33,21 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "docs" / "data" / "slender_validity"
 sys.path.insert(0, str(ROOT / "scripts"))
 import slender_validity  # noqa: E402
+
+
+PRECISIONS = ("float64", "float32")
+
+
+@pytest.fixture(autouse=True)
+def x64(request: pytest.FixtureRequest) -> Iterator[None]:
+    """The run's precision: a test parametrised by ``precision`` runs in it, any other in float64 (the folder's
+    default, put back after)."""
+    spec = getattr(request.node, "callspec", None)
+    precision = spec.params.get("precision", "float64") if spec is not None else "float64"
+    held = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", precision == "float64")
+    yield
+    jax.config.update("jax_enable_x64", held)
 
 
 def _record():
@@ -74,8 +94,10 @@ OTHER_SETTINGS = {"radius": 0.15e-3, "pitch": 0.75e-3, "turns": 2.5, "filament_r
     (OTHER, OTHER_SETTINGS, rft(wall_kind="free_space"), False),
     (R6, R6_SETTINGS, rft(wall_kind="free_space", spacing=mm(0.06)), False),
 ], ids=["measured", "another_family", "coarser_spacing"])
-def test_a_body_outside_the_measured_points_is_flagged(kind, settings, law, measured):
+@pytest.mark.parametrize("precision", PRECISIONS)
+def test_a_body_outside_the_measured_points_is_flagged(kind, settings, law, measured, precision):
     node, out, _ = _step(helix_body("rft_lines", kind, settings, law))
+    assert out["unmeasured"].dtype == np.dtype(precision)
     assert float(out["unmeasured"]) == (0.0 if measured else 1.0)
     (line,) = node.built_lines({"pose": out["stopped_pose"]}, None)
     assert ("hold for this body's family" in line) == measured
@@ -89,13 +111,16 @@ def _tube(radius_mm):
 @pytest.mark.parametrize("radius_mm, offset, gap, flagged", [
     (0.5, 0.0, 44.0, False), (0.5, 0.2e-3, 24.0, True), (0.8, 0.0, 74.0, True), (1.5, 0.0, 144.0, True)],
     ids=["at_the_measured_gap", "closer", "a_wider_tube", "a_much_wider_tube"])
-def test_with_the_tube_a_body_at_another_gap_than_the_one_measured_is_flagged(radius_mm, offset, gap, flagged):
+@pytest.mark.parametrize("precision", PRECISIONS)
+def test_with_the_tube_a_body_at_another_gap_than_the_one_measured_is_flagged(radius_mm, offset, gap, flagged,
+                                                                              precision):
     """The tube family was measured at one gap, 44 filament radii: a narrower gap and a wider one are both flagged each
     step, and the build report says the start is not measured there. (The family is the shape's, the slenderness', the
     coefficients' and the spacing's, judged in the step from its leaves as the gap is at the pose.)"""
     node, out, built = _step(helix_body("rft_gap", SMALL_HELIX, SMALL_SETTINGS, rft(wall_kind="tube"),
                                         tube=_tube(radius_mm), offset=(0.0, offset, 0.0)))
     assert node.measured_as_built() == (True, 44.0)
+    assert out["unmeasured"].dtype == np.dtype(precision)
     assert float(out["unmeasured"]) == (1.0 if flagged else 0.0)
     pose = node_state(built.graph, "helix")["pose"]
     held = {**node.params_pytree(), **{k: jnp.asarray(v) if isinstance(v, float) else v

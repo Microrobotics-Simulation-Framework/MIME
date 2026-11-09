@@ -397,7 +397,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaf written into a compiled chunk would have kept the build's `unmeasured`. The node holds the `spacing` its counts
   were made with (a leaf, `trainable=False`) in place of `measured` and `gap_least`; its build report evaluates the
   same judgement at the leaves as built. A control plants R1's build-time values back and the walk fires on the same
-  pair.
+  pair. In float32 R1 flagged every body of `rft_free_space` and `rft_tube` unmeasured (its build compared the spacing
+  with a filament radius rounded to float32); the step's judgement agrees with float64's, tested in both.
 - **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
   JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;
   it weighs 28876 s now), and `scripts/shard_matrix.py`'s default is 16 (the repository variable and a manual run's input
