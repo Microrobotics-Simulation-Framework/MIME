@@ -628,8 +628,9 @@ class ImplicitFlowNode(MimeNode):
             f"end of its chunk",
             (f"use a timestep under dt <= {safe:.4g} s, the line at the speed the flow had reached by then: a flow "
              f"still speeding up needs a smaller one (for a steady drive g, the Poiseuille centreline speed g R^2 / "
-             f"(4 nu) bounds it); or the Stokes approximation FVM(stokes=True) where convection is negligible")
-            if finite else "use a smaller timestep, dt=..., or the Stokes approximation FVM(stokes=True)")
+             f"(4 nu) bounds it); or dt='auto', the step from the drive's predicted peak; or the Stokes approximation "
+             f"FVM(stokes=True) where convection is negligible")
+            if finite else "use a smaller timestep, dt=..., or dt='auto', or the Stokes approximation FVM(stokes=True)")
 
 
 __all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "GEOMETRY", "HOSTED_FIELDS", "STALL_LINE", "STALL_SECTION", "STOKES_REYNOLDS",

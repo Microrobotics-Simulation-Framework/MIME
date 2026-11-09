@@ -14,21 +14,25 @@ lattice direction of the box)."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Annotated, override
 
 from mime.gradients import GradientStatus
-from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, ImplicitFlowNode, \
-    periodic_tube_layout
+from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, ExplicitFlowNode, \
+    ImplicitFlowNode, periodic_tube_layout
 from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, STALL_LINE, \
     STOKES_REYNOLDS
-from mime.nodes.flow.fvm._schemes import IMEXEuler, Steady
+from mime.nodes.flow.fvm._schemes import RK3, IMEXEuler, StageKind, Steady, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, PRECONDITIONERS, \
     STAGNATION_FACTOR, STAGNATION_LEAST_WINDOW, STAGNATION_MEASURED, STAGNATION_SPAN
 from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Flag, GradientRecord, Port, Problem, Region, \
-    SettingGroup, convention, register_dynamics, register_setting_group
+    SettingGroup, StepQuery, StepRule, convention, register_dynamics, register_setting_group
+from mime.dynamics.flow._fields import fvm_field
+from mime.dynamics.flow._steps import WALL_REACH_CELLS, axial_drive, predicted_peak, report_lines, womersley_number
+from mime.fields._solved import SolvedField
 from mime.units import Magnitude
 from mime.scene import PeriodicBox
 from mime.things import ThingKind
@@ -59,6 +63,17 @@ class SteadyScheme(SettingGroup):
 
 @register_setting_group
 @dataclass(frozen=True, kw_only=True)
+class RK3Scheme(SettingGroup):
+    """S1's explicit RK3: Wray's three stages, convection and viscosity explicit, the wall's penalty implicit and
+    pointwise in each stage, the incremental fast projection each stage, the drive read at each stage's time. Its
+    explicit viscosity bounds the step (``nu dt / h^2 <= 0.15``) and its convection the CFL number along the vessel's
+    axis (``1.7 g(n)``)."""
+
+    group = RK3.name
+
+
+@register_setting_group
+@dataclass(frozen=True, kw_only=True)
 class Band(SettingGroup):
     """The wall's lift onto the grid (B3, B8.1): the one registered band, smooth, ``W`` 2h wide with its penalty depth
     ``delta`` 0.3h (the sweet spot whose wall shift is smooth in the wall's sub-cell position), and beyond it the
@@ -82,8 +97,13 @@ _INTERIOR_NAMES = {depth: name for name, depth in INTERIORS.items()}
 
 
 class Scheme:
-    """The time schemes a script names: ``FVM(scheme=Scheme.IMEXEuler())`` (the default), ``FVM(stokes=True,
-    scheme=Scheme.Steady())``. The one place their public names are written."""
+    """The time schemes a script names: ``FVM(scheme=Scheme.RK3())``, ``FVM(scheme=Scheme.IMEXEuler())``,
+    ``FVM(stokes=True, scheme=Scheme.Steady())``; none named, the build picks RK3 where its viscous number holds at the
+    run's dt and IMEX Euler otherwise (:func:`chosen_scheme`). The one place their public names are written."""
+
+    @staticmethod
+    def RK3() -> RK3Scheme:  # noqa: N802 - a kind's name, as the script writes it
+        return RK3Scheme()
 
     @staticmethod
     def IMEXEuler() -> IMEXEulerScheme:  # noqa: N802 - a kind's name, as the script writes it
@@ -92,6 +112,18 @@ class Scheme:
     @staticmethod
     def Steady() -> SteadyScheme:  # noqa: N802 - a kind's name, as the script writes it
         return SteadyScheme()
+
+
+def chosen_scheme(given: IMEXEulerScheme | SteadyScheme | RK3Scheme | None, viscosity: float, spacing: float,
+                  dt: float) -> str:
+    """The scheme a run steps with: the one named, or, none named, **RK3 where its explicit viscosity holds at dt**
+    (``nu dt / h^2 <= 0.15``) and IMEX Euler otherwise (F0's B1 and item 1: the scheme from the viscous limit, RK3
+    first). The one function this value-keyed choice is made in, so a declared range reaches it unchanged."""
+    if given is not None:
+        return given.group
+    rk3 = scheme_named(RK3.name)
+    limit = rk3.viscous_limit(viscosity, spacing)
+    return RK3.name if limit is not None and dt <= limit * (1.0 + 1e-12) else IMEXEuler.name
 
 
 def lattice_of(axis: Sequence[float], largest: int = 12) -> tuple[int, int] | None:
@@ -117,7 +149,8 @@ def lattice_of(axis: Sequence[float], largest: int = 12) -> tuple[int, int] | No
 class FVM(Dynamics):
     """A medium's flow on the Cartesian MAC grid with its wall lifted onto the grid by a smooth band: the
     incompressible Navier-Stokes equations (or Stokes, with ``stokes=True``) for the fluid filling the medium's region,
-    the solid outside it a Brinkman penalty, stepped by an implicit scheme on the projected monolithic CG."""
+    the solid outside it a Brinkman penalty, stepped by S1's explicit RK3 or by an implicit scheme on the projected
+    monolithic CG."""
 
     name = "fvm"
     version = "0.1.0"
@@ -129,7 +162,7 @@ class FVM(Dynamics):
         route="the dQ/dR gate: the radius in the gradient gate, its loss the box's whole axial flux, its central "
               "difference taken inside one discretisation (the layout's dead band; or from a declared range)")
     references = ("HarlowWelch1965", "Angot1999", "Womersley1955")
-    builds = {"": (ImplicitFlowNode,)}
+    builds = {"": (ImplicitFlowNode, ExplicitFlowNode)}
     applies_to = frozenset({ThingKind.MEDIUM})
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform")}
     raises = (
@@ -148,9 +181,12 @@ class FVM(Dynamics):
     )
     validity = (
         "the CFL number max|u| dt / h, with convection on, at most the scheme's line along the vessel's axis n, "
-        "0.4 g(n) for IMEX Euler, g(n) = max|n_d| / sum|n_d| (declared): checked each step; at the first step past it "
-        "the flow's state is held, the run ends at its chunk's end and is refused (flow.cfl-exceeded). With "
+        "1.7 g(n) for RK3 and 0.4 g(n) for IMEX Euler, g(n) = max|n_d| / sum|n_d| (declared): predicted from the "
+        "drive before the run and refused past it (flow.cfl-predicted), and checked each step; at the first step past "
+        "it the flow's state is held, the run ends at its chunk's end and is refused (flow.cfl-exceeded). With "
         "stokes=True no line applies (they bound convection only)",
+        f"RK3's explicit viscosity: nu dt / h^2 at most {RK3.viscous_number:g} (declared; the pure-diffusion edge is "
+        f"0.209), refused at build past it (flow.viscous-limit); with no scheme named the build takes IMEX Euler there",
         "the stop: each step's solve stops at a true relative residual of its tolerance (by default "
         f"{DEFAULT_TOLERANCE['float64']:g} in float64; in float32 {DEFAULT_TOLERANCE['float32']:g}, or the solve's "
         "rounding floor eps || |A| |x| + |b| || / ||b|| where that is higher, made at each check from the iterate; a "
@@ -159,7 +195,8 @@ class FVM(Dynamics):
         "check of the true residual (one every 20 iterations) over a window of "
         f"{STAGNATION_SPAN} iterations per cell along the box's longest side (at least "
         f"{STAGNATION_LEAST_WINDOW} checks) below {STAGNATION_FACTOR:g} of the best before them ({STAGNATION_MEASURED}); "
-        "a step stopped otherwise raises solve_flagged, with a warning after the run",
+        "a step stopped otherwise raises solve_flagged, with a warning after the run. RK3's projections are direct "
+        "solves (the fast transform), so an RK3 step never raises it",
         f"the wall: {BANDS[DEFAULT_BAND].validity}. Its resolution: the lumen's diameter in cells, the band calibrated "
         f"at {CALIBRATED_CELLS:g} and finer (0.3 to 0.4 % of the flux at 32); provisional until a stenosis case "
         f"measures it, +2.1 % at 16 and +10.8 % at 8 [measured on straight tubes]; under about 5 cells refused "
@@ -186,7 +223,8 @@ class FVM(Dynamics):
         "spacing": convention(NUMERICAL, "none given: the lumen's diameter over cells_across, the band's sweet-spot "
                                          "resolution on straight tubes"),
         "cells_across": convention(NUMERICAL, "the band's calibrated resolution across the narrowest lumen"),
-        "scheme": convention(NUMERICAL, "IMEX Euler, the one scheme of the low-Reynolds regimes"),
+        "scheme": convention(NUMERICAL, "none named: RK3 where its viscous number holds at the run's dt, IMEX Euler "
+                                        "otherwise (the scheme from the viscous limit, RK3 first)"),
         "stokes": convention(PHYSICAL, "convection is on unless the Stokes approximation is declared"),
         "tolerance": convention(NUMERICAL, "none given: each dtype's own, float32's raised to the solve's rounding "
                                            "floor at each check where that is higher"),
@@ -198,7 +236,7 @@ class FVM(Dynamics):
     domain: PeriodicBox
     spacing: Annotated[Quantity | None, Length] = None
     cells_across: int = DEFAULT_CELLS_ACROSS
-    scheme: IMEXEulerScheme | SteadyScheme = IMEXEulerScheme()
+    scheme: IMEXEulerScheme | SteadyScheme | RK3Scheme | None = None
     stokes: bool = False
     tolerance: float | None = None
     preconditioner: str = DEFAULT_PRECONDITIONER
@@ -248,6 +286,98 @@ class FVM(Dynamics):
                             "small integers, Tube(axis=(a, 0, b), ...)")]
         return []
 
+    def field_for(self, scheme: str) -> SolvedField:
+        """The solved-field contract's declarations of this FVM stepped by ``scheme`` (its ledger route and its steady
+        solve are the scheme's), which SF-12's suite holds it to."""
+        return fvm_field(scheme)
+
+    @override
+    def time_step(self, query: StepQuery) -> StepRule | None:
+        """The flow's step rule (``mime.dynamics.flow._steps``): the scheme from the viscous limit, the CFL predicted
+        from the drive's peak in the empty tube, the refusal past the line, and ``dt="auto"``'s largest stable step,
+        each judged at the step the flow's node takes (its ``rate=`` included)."""
+        region = query.region
+        if region is None or region.shape != "cylinder" or "viscosity" not in query.values \
+                or "density" not in query.values or lattice_of(_unit(region.parameters["axis"])) is None:
+            return None
+        axis = _unit(region.parameters["axis"])
+        radius = float(region.parameters["radius"])  # type: ignore[arg-type]
+        nu = query.values["viscosity"] / query.values["density"]
+        given = query.settings.get("spacing")
+        layout = periodic_tube_layout(radius, float(query.settings["domain.length"]),  # type: ignore[arg-type]
+                                      cells_across=self.cells_across,
+                                      spacing=float(given) if isinstance(given, (int, float)) else None,
+                                      margin_cells=self.domain.margin, lattice=lattice_of(axis) or (0, 1))
+        h = layout.spacing
+        drive = axial_drive(query.drives, axis)
+        wide = radius + WALL_REACH_CELLS * h
+        peak = predicted_peak(drive, wide, nu)
+        alpha = womersley_number(drive, wide, nu) if drive.amplitude else None
+        convection = not self.stokes
+        if convection and not math.isfinite(peak):
+            return StepRule(None, lambda step, every: [], lambda step, every: (), refusals=(Problem(
+                "flow.cfl-predicted",
+                f"the drive's predicted peak speed is {peak!r} m/s (from its steady part {drive.steady!r}, its "
+                f"harmonic's amplitude {drive.amplitude!r} and frequency {drive.frequency!r} Hz, nu {nu!r} m^2/s): no "
+                f"CFL number can be predicted, so no step is known to be stable",
+                "write the fluid's viscosity and density, exp.declare(...), and the drive's BodyForce(steady=..., "
+                "amplitude=..., frequency=...) as finite numbers"),))
+
+        def line_of(name: str) -> float | None:
+            return host_line(name, axis) if convection else None
+
+        def safe(name: str) -> float | None:
+            scheme = scheme_named(name)
+            bounds = [b for b in (scheme.viscous_limit(nu, h),) if b is not None]
+            line = line_of(name)
+            if line is not None and peak > 0.0:
+                bounds.append(line * h / peak)
+            return min(bounds) if bounds else None
+
+        candidates = [self.scheme.group] if self.scheme is not None else [RK3.name, IMEXEuler.name]
+        steps = {name: safe(name) for name in candidates}
+        bounded = {name: step for name, step in steps.items() if step is not None}
+        if self.scheme is None and IMEXEuler.name in steps and steps[IMEXEuler.name] is None:
+            largest = None  # IMEX Euler is stable at any step here (Stokes, or no flow predicted): nothing bounds it
+        else:
+            largest = max(bounded.values()) if bounded else None
+
+        def problems(step: float, every: int) -> list[Problem]:
+            name = chosen_scheme(self.scheme, nu, h, step)
+            found: list[Problem] = []
+            limit = scheme_named(name).viscous_limit(nu, h)
+            if limit is not None and step > limit * (1.0 + 1e-12):
+                found.append(Problem(
+                    "flow.viscous-limit",
+                    f"the flow's step {step:.4g} s gives the {name} scheme's explicit viscosity nu dt / h^2 = "
+                    f"{nu * step / h ** 2:.3g}, past its viscous number {nu * limit / h ** 2:.3g}: it would not be "
+                    f"stable",
+                    f"use dt <= {limit:.4g} s, or dt='auto', or Scheme.IMEXEuler() (implicit viscosity)" if every == 1
+                    else f"use dt <= {limit / every:.4g} s (the flow steps every {every} base steps, its rate=, so a "
+                         f"step of {limit:.4g} s), a shorter rate=, or Scheme.IMEXEuler() (implicit viscosity)"))
+            line = line_of(name)
+            if line is not None and not peak * step / h <= line * (1.0 + 1e-9):
+                bound = line * h / peak
+                found.append(Problem(
+                    "flow.cfl-predicted",
+                    f"the drive gives the empty tube a peak speed of {peak:.4g} m/s from rest (Poiseuille's centreline "
+                    f"and twice the harmonic's Womersley peak), so max|u| dt / h = {peak * step / h:.3g} at the flow's "
+                    f"step {step:.4g} s, past the {name} scheme's CFL line of {line:.3g} along the vessel's axis: its "
+                    f"convection would not be stable",
+                    f"use dt <= {bound:.4g} s, or dt='auto'" if every == 1
+                    else f"use dt <= {bound / every:.4g} s (the flow steps every {every} base steps, its rate=, so a "
+                         f"step of {bound:.4g} s), or a shorter rate="))
+            return found
+
+        def report(step: float, every: int) -> tuple[str, ...]:
+            name = chosen_scheme(self.scheme, nu, h, step)
+            line = line_of(name)
+            return report_lines(name, step, every, nu * step / h ** 2,
+                                RK3.viscous_number if name == RK3.name else None,
+                                peak * step / h if line is not None else None, line, drive.period, bounded, alpha)
+
+        return StepRule(largest, problems, report, period=drive.period)
+
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
         region = ctx.region("medium")
@@ -259,14 +389,33 @@ class FVM(Dynamics):
         spacing = ctx.scalar("spacing") if self.spacing is not None else None
         layout = periodic_tube_layout(radius, ctx.scalar("domain.length"), cells_across=self.cells_across,
                                       spacing=spacing, margin_cells=self.domain.margin, lattice=lattice)
-        scheme = SteadyScheme.group if isinstance(self.scheme, SteadyScheme) else IMEXEulerScheme.group
+        viscosity, density = ctx.scalar_value("viscosity"), ctx.scalar_value("density")
+        scheme = chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
+        band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.delta_in]
+        images = "own" if lattice == (0, 1) else "transverse"
+        if scheme_named(scheme).stage_kind is StageKind.EXPLICIT_PROJECTED:
+            b.add_node(ExplicitFlowNode(
+                ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1],
+                cells_z=layout.cells[2], spacing=layout.spacing, viscosity=viscosity, density=density,
+                tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
+                convection=not self.stokes, band=band, interior=interior, periodic_images=images))
+            return
         b.add_node(ImplicitFlowNode(
             ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
-            spacing=layout.spacing, viscosity=ctx.scalar_value("viscosity"), density=ctx.scalar_value("density"),
+            spacing=layout.spacing, viscosity=viscosity, density=density,
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
-            convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=DEFAULT_BAND,
-            interior=_INTERIOR_NAMES[self.wall.delta_in], periodic_images="own" if lattice == (0, 1) else "transverse",
-            report_rows=self.report_rows))
+            convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
+            interior=interior, periodic_images=images, report_rows=self.report_rows))
+
+
+def host_line(scheme: str, axis: Sequence[float]) -> float | None:
+    """The scheme's CFL line along ``axis``, ``TimeScheme.cfl_limit``'s ``line g(n)``, on the host in float64 whatever
+    the run's dtype (the node's per-step check computes it in the run's); ``None`` for a scheme with no line."""
+    line = scheme_named(scheme).cfl_line
+    if line is None:
+        return None
+    magnitude = [abs(float(c)) for c in axis]
+    return line * max(magnitude) / sum(magnitude)
 
 
 def _unit(vector: object) -> tuple[float, float, float]:
@@ -275,4 +424,5 @@ def _unit(vector: object) -> tuple[float, float, float]:
     return (held[0] / length, held[1] / length, held[2] / length)
 
 
-__all__ = ["FVM", "Band", "IMEXEulerScheme", "Scheme", "SteadyScheme", "lattice_of"]
+__all__ = ["FVM", "Band", "IMEXEulerScheme", "RK3Scheme", "Scheme", "SteadyScheme", "chosen_scheme", "host_line",
+           "lattice_of"]
