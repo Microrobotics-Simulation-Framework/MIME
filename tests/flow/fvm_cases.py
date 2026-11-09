@@ -91,6 +91,28 @@ def tube_node(dh: int = 16, *, nu: float = 1.0, rho: float = 1.0, g: float = 8.0
     return driven(node, Waveform(steady=g, amplitude=amplitude, omega=omega))
 
 
+@dataclasses.dataclass(frozen=True)
+class Stenosis:
+    """A solid narrowing a straight tube along z over one period: the radius ``R (1 - s (1 + cos(2 pi (z - L/2) /
+    L)) / 2)``, its throat at ``z = L/2`` (``s = 0.5``: a 75 % stenosis of the area), with the first-order signed
+    distance ``(r - R(z)) / sqrt(1 + R'(z)^2)``, positive in the solid: the interior spike's case, a flow with a
+    pressure gradient through the solid."""
+
+    centre_x: float
+    centre_y: float
+    radius: float
+    period: float
+    narrowing: float = 0.5
+    region: str = "wall"
+
+    def signed_distance(self, points: Any) -> Any:
+        r = jnp.hypot(points[..., 0] - self.centre_x, points[..., 1] - self.centre_y)
+        angle = 2.0 * jnp.pi * (points[..., 2] - 0.5 * self.period) / self.period
+        local = self.radius * (1.0 - self.narrowing * (1.0 + jnp.cos(angle)) / 2.0)
+        slope = self.radius * self.narrowing * jnp.pi / self.period * jnp.sin(angle)
+        return (r - local) / jnp.sqrt(1.0 + slope ** 2)
+
+
 def step_of(node: ImplicitFlowNode, p: Any, waveform: Waveform | None = None) -> Any:
     """The node's step with its drive delivered as the law delivers it, ``(state) -> state``: the value at the
     instant a scheme reads it once a step at, and the waveform, which a scheme whose stages read their own instants

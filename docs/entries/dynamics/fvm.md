@@ -46,13 +46,18 @@ material record or `exp.declare`, never settings of the field.
 
 Each step of the implicit schemes reports its solve: the iterations, the true residual against the tolerance, and how
 the solve stopped (at its cap, stagnated, at a residual that is not finite); RK3's projections are exact fast solves,
-which do not stop short, so an RK3 step never raises the flag that follows. A step whose solve stopped other than converging raises the flag
-`solve_flagged`, which the run's result reads (`result.flags`, with the count of steps that raised it), and the run warns
-of it with that count after it ends; the step's report, `solve_report`, says which way it stopped, and a run that records
-every step (`history=True`) keeps each step's. A solve stagnates when, over its last checks of the true residual, none
-fell below a share of the best before them (the entry's validity lists the window and the share). A solve whose
-residual is not finite (a NaN in the step's drive or operator) returns NaN, never a velocity it did not solve for, so the
-run is refused for its state's not being finite, naming the flow (and, in a run that records every step, the step
+which do not stop short, so an RK3 step never raises the flag that follows. A step whose solve stopped other than
+converging raises the flag `solve_flagged`, which the run's result reads (`result.flags`, with the count of steps that
+raised it), and the run warns of it with that count after it ends; the step's report, `solve_report`, says which way it
+stopped, and a run that records every step (`history=True`) keeps each step's. A solve stagnates when, over its last
+checks of the true residual, none fell below a share of the best before them (the entry's validity lists the window and
+the share). With no tolerance given, a float32 run's solve stops at its tolerance, or at its own rounding floor where
+that is higher (on a fine grid with a stiff interior): the residual an answer reaches when each of the operator's
+coefficients and the right-hand side is off by one rounding unit. A tolerance given is held as given. A float32 solve
+that stalls above that floor is still flagged: with the stiffer interior (`Band`'s smaller `delta_in`) in a flow with a
+pressure gradient its conjugate gradient can stall well above it, though the solve could still converge. A solve whose
+residual is not finite (a NaN in the step's drive or operator) returns NaN, never a velocity it did not solve for, so
+the run is refused for its state's not being finite, naming the flow (and, in a run that records every step, the step
 where it began).
 
 With convection on, each step checks the flow's CFL number against the scheme's line along the vessel's axis, behind
