@@ -395,7 +395,7 @@ def test_the_lock_names_each_reference_and_its_asset_as_the_save_writes_them(tmp
         folder, (path,) = saved(tmp_path, [Spec("not permitted", NO_REDISTRIBUTION, 4000, True, False)])
     lock = json.loads((folder / "mime.lock").read_text())
     data = path.read_bytes()
-    assert lock["schema"] == "mime.lock/10"
+    assert lock["schema"] == "mime.lock/11"
     assert lock["referenced_files"] == {f"scene/layers/{path.name}": path.name}
     assert lock["assets"] == [{"name": path.name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
                                "licence": NO_REDISTRIBUTION.id, "locations": [ORIGIN.format(path.name)]}]

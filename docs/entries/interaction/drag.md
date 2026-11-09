@@ -6,8 +6,13 @@ describes: ["0.3.0", "0.4.0", "0.5.0"]
 
 The medium's resistance to a body's motion: the 6 x 6 operator a rigid body's dynamics solves with implicitly, about
 its centre of mass, in the world frame, with the load a flowing medium puts on the body held still beside it (zero in
-a medium at rest, the only medium built). The rung is written in the script, and there is no default:
-`Drag.Surrogate(...)`, `Drag.MRS(...)` or `Drag.RFT(...)`.
+a medium at rest). The rung is written in the script, and there is no default: `Drag.Surrogate(...)`, `Drag.MRS(...)`
+or `Drag.RFT(...)`.
+
+Every rung assumes the medium at rest. Wherever the region its medium fills carries a field (`fields={"flow":
+FVM(...)}` or `fields={"flow": Womersley()}`, on the drag's medium or on another filling the same region), each rung is
+refused when the experiment is planned (`drag.medium-flows`, naming the field), whatever quantities the field's kind
+declares it provides: a rung that reads the medium's flow, its load on the body held still, is a later release's.
 
 ## Rung `surrogate`
 

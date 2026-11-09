@@ -68,6 +68,9 @@ class EnergyBoundary:
     #: edges the builders declared, before they were moved, so that the post-build check compares the graph as built
     #: with the delivery each law made, not with the rule that places it.
     wiring: tuple[tuple[str, str, str, str], ...] = ()
+    #: Each node that receives deliveries and is not metered, with its dynamics' reason (or that it states none): what
+    #: the run's account names as left out of it.
+    unmetered: Mapping[str, str] = dataclasses.field(default_factory=dict[str, str])
 
 
 def ledger_attached(plans: PlanSet) -> bool:
@@ -186,6 +189,7 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
     refusals: list[Refusal] = []
     lines: list[str] = []
     receivers: dict[str, tuple[ledger.LedgerDelivery, ...]] = {}
+    unmetered: dict[str, str] = {}
     moved: dict[int, tuple[str, str]] = {}
     for plan in plans.entries:
         if plan.section is not Section.DYNAMICS or not isinstance(plan.entry, Dynamics):
@@ -201,8 +205,9 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
                 continue
             if not dynamics.port or getattr(type(node), "LEDGER_TERMS", None) is None:
                 reason = _unmetered_reason(dynamics)
-                lines.append(f"{name}: receives deliveries ({', '.join(law for _, law, _ in into)}) and is not "
-                             f"metered: " + (reason or "its dynamics declares no port kind and states no reason"))
+                unmetered[name] = reason or "its dynamics declares no port kind and states no reason"
+                lines.append(f"{name}: receives deliveries ({', '.join(dict.fromkeys(law for _, law, _ in into))}) "
+                             f"and is not metered: {unmetered[name]}")
                 if refuses_unmetered(profile, reason):
                     refusals.append(_unmetered_refusal(plan.owner, f"the dynamics of {plan.owner} "
                                                        f"({type(dynamics).label()})", "a port kind (Dynamics.port)"))
@@ -229,8 +234,8 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
         if not isinstance(law, Interaction) or law.energy_class is not None or by in supplied_by:
             continue
         reason = _unmetered_reason(law)
-        if not reason:
-            lines.append(f"{by}: declares no energy class, reads nothing from outside and states no reason")
+        lines.append(f"{by}: declares no energy class and reads nothing from outside: not metered: {reason}" if reason
+                     else f"{by}: declares no energy class, reads nothing from outside and states no reason")
         if refuses_unmetered(profile, reason):
             refusals.append(_unmetered_refusal(by, f"{by} ({type(law).label()})",
                                                "an energy class (Interaction.energy_class)"))
@@ -245,7 +250,7 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
                for position, e in enumerate(edges)]
     wiring = tuple((edges[position].source[0], edges[position].source[1], *moved[position])
                    for position in sorted(moved))
-    return built, rewired, EnergyBoundary(receivers, outside, supplied_by, tuple(lines), wiring), refusals
+    return built, rewired, EnergyBoundary(receivers, outside, supplied_by, tuple(lines), wiring, unmetered), refusals
 
 
 def _deliveries(plan: EntryPlan, dynamics: Dynamics, name: str, into: Sequence[tuple[str, str, str]],

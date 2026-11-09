@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/10"
-LOCK_SCHEMA = "mime.lock/10"
+DOCUMENT_SCHEMA = "mime.document/11"
+LOCK_SCHEMA = "mime.lock/11"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -102,10 +102,10 @@ class BoundEntryDoc(TypedDict, closed=True):
 
 
 class DynamicsDoc(TypedDict, closed=True):
-    """A thing's dynamics, one entry per aspect: a body's or a structure's motion, a medium's flow."""
+    """A thing's dynamics, one entry per aspect: a body's or a structure's motion. A medium's fields are its own key
+    (``ThingDoc.fields``, by role)."""
 
     motion: NotRequired[EntryDoc]
-    flow: NotRequired[EntryDoc]
 
 
 class MagnetDoc(TypedDict, closed=True):
@@ -141,8 +141,8 @@ class SegmentDoc(TypedDict, closed=True):
 class ThingDoc(TypedDict, closed=True):
     """A thing: its kind, its prim (a scene path, an experiment name like the thing's own) and dynamics; a body's
     initial state, its parts and their roles; a structure's geometry kind; the region a medium fills
-    (``tube.lumen``) and its material, by name; an apparatus's chain, parts and magnets, its fields and the drive of
-    each command."""
+    (``tube.lumen``), its material, by name, and the fields it carries, by role; an apparatus's chain, parts and
+    magnets, its fields and the drive of each command."""
 
     kind: ReadOnly[Literal["structure", "medium", "body", "apparatus"]]
     prim: ReadOnly[str]
@@ -341,9 +341,10 @@ class ExperimentDocument(TypedDict, closed=True):
     manifests of the meshes its stage draws. Version 7 adds ``based_on``, the saved experiment this one was made from
     (``Experiment.based_on``), absent where it was made from none. Version 8 adds nothing to the document; its schema
     moves with the lock's, which records the program the reference outputs were run by, the CPUs the build could use
-    and the threads of its BLAS."""
+    and the threads of its BLAS. Version 11 writes a medium's fields under ``fields``, by role (``fields: {flow:
+    ...}``), as an apparatus's are, where earlier versions wrote its flow under ``dynamics``."""
 
-    schema: ReadOnly[Literal["mime.document/10"]]
+    schema: ReadOnly[Literal["mime.document/11"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -804,7 +805,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/10"]]
+    schema: ReadOnly[Literal["mime.lock/11"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]

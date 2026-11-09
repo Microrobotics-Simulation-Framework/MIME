@@ -40,6 +40,19 @@ is unstable at a lower face CFL than one along an axis. RK3's line sits under a 
 its rule allows, where the line first decided for it did not: a plug flow grew there. With `stokes=True` no CFL line
 applies.
 
+The build report shows the box: its cells, their spacing and the lumen's diameter in them, and the run's memory
+estimate (the cells times the bytes a cell a run on a CPU was measured to hold at its peak), against the memory a run
+can have: a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the control group the
+process runs in (a container's, a batch job's). A box whose run will not fit is refused when the experiment is planned
+(`flow.memory`), with a coarser grid or a shorter period as its route. The estimate is measured, not a bound: the peak
+grows with the threads a run uses, and a GPU's bytes a cell are not measured. The flow provides the velocity at points
+(`field.flow.velocity`, its solved-field declarations' `provides`); a drag, which assumes its medium at rest, is refused
+wherever the region its medium fills carries a field.
+
+The build does not yet meter the flow for the energy ledger (its step identity is written and gated on its node, but
+its hosted laws are not named for the ledger). With `EnergyLedger()` attached the run's account names the flow as not
+metered, with that reason (`result.energy.unmetered`, `result.energy.text()`, `result.text()`).
+
 The flow is driven by laws bound to the medium: on a periodic box, a `BodyForce` on the fluid, which stands in for the
 pressure drop a period of the vessel would carry. The fluid's viscosity and density are the medium's values, from its
 material record or `exp.declare`, never settings of the field.

@@ -87,7 +87,14 @@ environment holds each list of numbers and each static array to its own largest 
 and the factor it was written with. A lock of an earlier form is judged as it was, element by element, ``|a - b| <=
 atol + rtol |b|`` with its own numbers (1e-6 and 1e-9): in ``verify``, in ``verify --run`` and in the load's comparison
 of the derived graph; one that holds either key is left for the schema check to refuse. Nothing it holds is written
-back; its schema moves with the form."""
+back; its schema moves with the form.
+
+**Version 11** (``mime.document/11``, ``mime.lock/11``) writes a medium's fields under its own key ``fields``, by
+role (``fields: {flow: ...}``), as an apparatus's are, where version 10 and earlier wrote a medium's flow as a dynamics
+aspect (``dynamics: {flow: ...}``); a medium's ``dynamics`` is no longer written. Nothing else changed. A document of an
+earlier version is read with its medium's ``dynamics.flow`` as ``fields.flow``, and written back so for its lock's
+hashes; one of an earlier version whose medium holds ``fields`` is left for the schema check to refuse. The lock holds
+no new key; its schema moves with the document's."""
 
 from __future__ import annotations
 
@@ -100,14 +107,14 @@ from mime.build import BuildRefused, Refusal, RefusalClass
 from mime.saved._schema import DOCUMENT_SCHEMA, LOCK_SCHEMA
 
 #: The saved form this MIME writes.
-CURRENT = 10
+CURRENT = 11
 DOCUMENT_SCHEMAS: Mapping[int, str] = {1: "mime.document/1", 2: "mime.document/2", 3: "mime.document/3",
                                        4: "mime.document/4", 5: "mime.document/5", 6: "mime.document/6",
                                        7: "mime.document/7", 8: "mime.document/8", 9: "mime.document/9",
-                                       CURRENT: DOCUMENT_SCHEMA}
+                                       10: "mime.document/10", CURRENT: DOCUMENT_SCHEMA}
 LOCK_SCHEMAS: Mapping[int, str] = {1: "mime.lock/1", 2: "mime.lock/2", 3: "mime.lock/3", 4: "mime.lock/4",
                                    5: "mime.lock/5", 6: "mime.lock/6", 7: "mime.lock/7", 8: "mime.lock/8",
-                                   9: "mime.lock/9", CURRENT: LOCK_SCHEMA}
+                                   9: "mime.lock/9", 10: "mime.lock/10", CURRENT: LOCK_SCHEMA}
 #: The version that added licences and terms, the version that added the run's duration, the version whose lock
 #: holds an asset's full record and the manifests of the meshes its stage draws, the version that added the
 #: experiment an experiment was made from, the version whose lock names the program the reference outputs were
@@ -121,6 +128,10 @@ BASED_ON_ADDED = 7
 PROGRAM_ADDED = 8
 INERTIA_TENSOR_ADDED = 9
 SOURCE_SCALE_ADDED = 10
+#: The version that writes a medium's fields under its own key, by role.
+MEDIUM_FIELDS_ADDED = 11
+#: A medium's key version 11 added, and the aspect of its ``dynamics`` an earlier version wrote its flow as.
+FIELDS_KEY, FLOW_ASPECT = "fields", "flow"
 #: The version that renamed the drag's rung: a form before it names the rung ``bem``.
 RUNG_RENAMED = 3
 #: The keys version 4 added, to the document and to the lock: an earlier form holds none of them, and declares no
@@ -299,20 +310,71 @@ def resolution_held(data: object) -> list[str]:
     return [f"reference.{key}" for key in RESOLUTION_KEYS if key in cast("dict[str, object]", below)]
 
 
+def _media(document: Mapping[str, object]) -> list[tuple[str, dict[str, object]]]:
+    """The document's media, by name."""
+    things = document.get("things")
+    if not isinstance(things, dict):
+        return []
+    return [(str(name), cast("dict[str, object]", doc)) for name, doc in cast("dict[str, object]", things).items()
+            if isinstance(doc, dict) and cast("dict[str, object]", doc).get("kind") == "medium"]
+
+
+def medium_fields_held(data: object) -> list[str]:
+    """The keys version 11 added that a document holds: each medium's ``fields`` (``things.<name>.fields``)."""
+    if not isinstance(data, dict):
+        return []
+    return [f"things.{name}.{FIELDS_KEY}" for name, doc in _media(cast("dict[str, object]", data))
+            if FIELDS_KEY in doc]
+
+
+def _with_media(document: dict[str, object], change: Any) -> dict[str, object]:
+    """``document`` with each medium's document replaced by ``change(it)``."""
+    things = document.get("things")
+    if not isinstance(things, dict):
+        return document
+    held = dict(cast("dict[str, object]", things))
+    for name, doc in _media(document):
+        held[name] = change(doc)
+    return {**document, "things": held}
+
+
+def _fields_of_flow(medium: dict[str, object]) -> dict[str, object]:
+    """A medium's document as version 11 writes it: an earlier version's ``dynamics.flow`` as ``fields.flow``."""
+    dynamics = medium.get("dynamics")
+    if not isinstance(dynamics, dict) or FLOW_ASPECT not in dynamics:
+        return medium
+    rest = {key: value for key, value in cast("dict[str, object]", dynamics).items() if key != FLOW_ASPECT}
+    held = {key: value for key, value in medium.items() if key != "dynamics"}
+    return {**held, **({"dynamics": rest} if rest else {}),
+            FIELDS_KEY: {FLOW_ASPECT: cast("dict[str, object]", dynamics)[FLOW_ASPECT]}}
+
+
+def _flow_of_fields(medium: dict[str, object]) -> dict[str, object]:
+    """A medium's document as an earlier version wrote it: its ``fields.flow`` as ``dynamics.flow``."""
+    fields = medium.get(FIELDS_KEY)
+    if not isinstance(fields, dict):
+        return medium
+    held = {key: value for key, value in medium.items() if key != FIELDS_KEY}
+    return {**held, "dynamics": {**cast("dict[str, object]", held.get("dynamics", {})),
+                                 **cast("dict[str, object]", fields)}}
+
+
 def added_after(data: object, version: int) -> list[str]:
     """The keys of a document (or, for the lock, of a lock) of ``version`` that a later version added: version 4's
-    terms keys in one of an earlier version, version 5's duration and version 7's ``based_on`` in one earlier than
-    each."""
+    terms keys in one of an earlier version, version 5's duration, version 7's ``based_on`` and version 11's media's
+    ``fields`` in one earlier than each."""
     found = terms_keys_held(data) if version < TERMS_ADDED else []
     found += duration_held(data) if version < DURATION_ADDED else []
+    found += medium_fields_held(data) if version < MEDIUM_FIELDS_ADDED else []
     return found + (based_on_held(data) if version < BASED_ON_ADDED else [])
 
 
 def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
     """``data`` as the current schema reads it, the version it was written in (the current one for a document that is
     not of an earlier version, which the schema check judges), and the ids of the drags that named the old rung. A
-    document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's, 5's or
-    7's in any earlier) is left as it is, for the schema check to refuse."""
+    document of an earlier version that holds a key a later one added (version 2's in version 1, version 4's, 5's, 7's
+    or 11's in any earlier) is left as it is, for the schema check to refuse. A medium's flow an earlier version wrote
+    as ``dynamics.flow`` is read as ``fields.flow``."""
     if not isinstance(data, dict):
         return data, CURRENT, ()
     held = dict(cast("dict[str, object]", data))
@@ -328,6 +390,8 @@ def upgraded_document(data: object) -> tuple[object, int, tuple[str, ...]]:
     renamed: tuple[str, ...] = ()
     if version < RUNG_RENAMED:
         held, renamed = _renamed_rungs(held)
+    if version < MEDIUM_FIELDS_ADDED:
+        held = _with_media(held, _fields_of_flow)
     return {**held, "schema": DOCUMENT_SCHEMA}, version, renamed
 
 
@@ -363,6 +427,8 @@ def document_in_form(document: Mapping[str, Any], version: int) -> dict[str, Any
     held = dict(document)
     if version == CURRENT:
         return held
+    if version < MEDIUM_FIELDS_ADDED:
+        held = _with_media(held, _flow_of_fields)
     if version < BASED_ON_ADDED:
         held = {key: value for key, value in held.items() if key != BASED_ON_KEY}
     if version < TERMS_ADDED:
@@ -475,7 +541,8 @@ def physics_in_form(physics: Mapping[str, Any], version: int) -> dict[str, Any]:
 
 
 __all__ = ["BASED_ON_ADDED", "BASED_ON_KEY", "BLAS_THREADS_KEY", "COUNT_KEYS", "CURRENT", "DOCUMENT_SCHEMAS",
-           "DURATION_ADDED", "DURATION_KEY", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY", "RECORDS_ADDED",
+           "DURATION_ADDED", "DURATION_KEY", "FIELDS_KEY", "FLOW_ASPECT", "INERTIA_TENSOR_ADDED", "LOCK_VISUALS_KEY",
+           "MEDIUM_FIELDS_ADDED", "RECORDS_ADDED", "medium_fields_held",
            "PRODUCTS_REFUSAL", "RECORD_KEYS_ADDED", "records_held", "LOCK_SCHEMAS", "LOCK_TERMS_KEY", "NEW_RUNG",
            "OLD_RUNG", "PREVIOUS_PROFILE", "PROGRAM_ADDED", "PROGRAM_KEY", "RESOLUTION_KEYS", "RUNG_RENAMED",
            "SOURCE_SCALE_ADDED", "TERMS_ADDED", "TERMS_KEYS", "USABLE_CPUS_KEY", "added_after", "based_on_held",
