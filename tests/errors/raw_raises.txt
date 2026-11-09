@@ -222,3 +222,10 @@ vocabulary/_vocabulary.py::Interface.__post_init__ TypeError 1  # registration: 
 vocabulary/_vocabulary.py::Interface.__post_init__ ValueError 5  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::define ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 vocabulary/_vocabulary.py::register_namespace ValueError 3  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
+nodes/flow/fvm/_band.py::band_named ValueError 1  # internal: the fvm entry refuses an unregistered band when planned (flow.band), so a script reaches this only by constructing the node itself
+nodes/flow/fvm/_band.py::interior_depth ValueError 1  # internal: the fvm entry refuses an unoffered interior depth when planned (flow.interior), so a script reaches this only by constructing the node itself
+nodes/flow/fvm/_box.py::periodic_tube_layout ValueError 2  # internal: the layout of a tube the plan has already checked (flow.region, flow.box-axis): a radius or period not positive, or an axis off the box's lattice, reaches it only from a direct call
+nodes/flow/fvm/_node.py::ImplicitFlowNode.__init__ ValueError 3  # internal: a scheme of another stage kind, state or ledger terms, the steady scheme with convection, or an unknown images mode, which the fvm entry refuses or never builds (flow.steady-convection), so a script reaches this only by constructing the node itself
+nodes/flow/fvm/_node.py::ImplicitFlowNode.identity_terms ValueError 1  # internal: a ledger delivery the flow node does not host, which only the build constructs (and the build does not meter the flow yet)
+nodes/flow/fvm/_schemes.py::scheme_named ValueError 1  # internal: an unregistered scheme, which the fvm entry's setting groups cannot name, so a script reaches this only by constructing the node itself
+nodes/flow/fvm/_solve.py::preconditioner_named ValueError 1  # internal: an unregistered preconditioner, which the fvm entry refuses when planned (flow.preconditioner), so a script reaches this only by constructing the node itself

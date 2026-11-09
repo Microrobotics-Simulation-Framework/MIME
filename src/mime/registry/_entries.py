@@ -585,12 +585,14 @@ class Flag:
     """A flag an entry's node raises: its state field ``field`` (of node ``node``, ``""`` for the entry's only node),
     nonzero at a step where what ``meaning`` says happened, and zero otherwise. ``rung`` is the rung whose node raises
     it, for an entry with rungs. A run reports the flags raised over each window it reads, and a flag never blocks a
-    read."""
+    read. A flag that ``warns`` is also warned of after a run that raised it, with its count: one whose steps hold
+    values that are not what the step computes to its stated accuracy (a solve that stopped short)."""
 
     field: str
     meaning: str
     node: str = ""
     rung: str | None = None
+    warns: bool = False
 
 
 @dataclass(frozen=True)
@@ -741,6 +743,12 @@ class Dynamics(Entry):
     def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:
         """What is wrong with the values this dynamics reads (``values``, by label, once every one is resolved) that
         their dimensions do not show (a moment of inertia of zero, which the step divides by), as refusals."""
+        return []
+
+    def region_problems(self, region: Region | None) -> list[Problem]:
+        """What is wrong with the region a medium's dynamics fills (``None``: it fills none with a shape), as
+        refusals: a solved field's domain holds only the regions its kind supports. The region reaches the build as
+        ``ctx.region("medium")``."""
         return []
 
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:

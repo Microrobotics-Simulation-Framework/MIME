@@ -78,6 +78,46 @@ DIPOLE = NodeCase(options={"boundary_bounds": {"mount_poses": (-1.0, 1.0)},
 DRAG = NodeCase(options={"boundary_bounds": {"pose": (-4e-3, 4e-3)},
                          "constrain_boundary": lambda given: {**given, "pose": unit_quaternion(given["pose"])}})
 
+#: The flow's drawn velocity is a flow's in its tube (a millimetre a second at most, a CFL far inside the line at the
+#: battery's timesteps on the case's grid), and its drawn body force a drive's: in the default box of 1e4 the drawn
+#: velocity crosses the CFL line at every timestep and the explicit convection is not stable, a draw no run makes.
+#: Its battery's jit consistency compares every field but the solve report's residual entries, which a CG that stops
+#: at float32's reachable floor reads to that floor's rounding: two compilations of the same solve stop at the same
+#: iteration with residuals that differ in their last digits (5.3e-6 against 4.1e-6, both under the 1e-5 tolerance).
+#: There it holds both residuals within the tolerance instead. A solve that stops other than converging is read the same
+#: way: on drawn velocities under some 1e-295 m/s (1e-300, 9.5e-306), where the solve stagnates and reports it (it
+#: converges from 1e-290 up), the residual is the stall's rounding, 5.7e-5 in one compilation and 2.6e-7 in the other.
+#: There it holds both solves stopped the same way (the report's flags and count compared as every field is).
+_REPORT_RESIDUAL = 1
+#: The report's flags of a solve stopped other than converging: at its cap, stagnated, not finite.
+_REPORT_FAILED = slice(2, 5)
+
+
+def _jit_consistent_but_the_floor(node):
+    jitted = jax.jit(lambda state, given, dt: node.update(state, given, dt))
+    tolerance = float(node.constants()["tolerance"])
+
+    def holds(state_in, state_out, given, dt):
+        compiled = jitted(state_in, given, dt)
+        eager_report, compiled_report = np.asarray(state_out["solve_report"]), np.asarray(compiled["solve_report"])
+        at_the_floor = eager_report[_REPORT_RESIDUAL] <= tolerance and compiled_report[_REPORT_RESIDUAL] <= tolerance
+        stalled = eager_report[_REPORT_FAILED].any() and compiled_report[_REPORT_FAILED].any()
+        for name, eager in state_out.items():
+            a, b = np.asarray(eager, np.float64), np.asarray(compiled[name], np.float64)
+            if name in ("solve_report", "solve_report_sum") and (at_the_floor or stalled):
+                a, b = np.delete(a, _REPORT_RESIDUAL), np.delete(b, _REPORT_RESIDUAL)
+            if not np.allclose(a, b, rtol=1e-5, atol=1e-6, equal_nan=True):
+                return False
+        return True
+
+    return holds
+
+
+FLOW = NodeCase(options={"bounds": {"velocity_x": (-1e-3, 1e-3), "velocity_y": (-1e-3, 1e-3),
+                                    "velocity_z": (-1e-3, 1e-3)},
+                         "boundary_bounds": {"body_force": (-10.0, 10.0)},
+                         "jit_consistent_of": _jit_consistent_but_the_floor})
+
 _EVALUATIONS: dict[tuple[str, str], tuple] = {}
 
 
@@ -143,6 +183,8 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
                           lambda node: shape_switches(node.constants()["shape"]), on_the_boundary_at_the_distance)),
     ("interaction", "labx.nudge", "0.1.0"): NodeCase(),
     ("observation", "labx.height", "0.1.0"): NodeCase(),
+    ("dynamics", "fvm", "0.1.0"): FLOW,
+    ("interaction", "body_force", "0.1.0"): NodeCase(),
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.3.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.4.0"): RIGID_BODY,

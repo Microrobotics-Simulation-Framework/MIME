@@ -1404,6 +1404,11 @@ class _Planner:
                                            self.records, store, self.work.judge, self.apparatus_materials)
 
     def plan_thing(self, thing: Thing, index: int) -> None:
+        if isinstance(thing, Medium) and thing.fills is not None:
+            # Before its dynamics: a medium's flow reads the region it fills when planned.
+            region = self.geometry_part(thing.fills, RegionPath, "regions", f"medium {thing.name!r}: fills=")
+            if region is not None:
+                self.fills[thing.name] = region
         if thing.dynamics is not None:
             self.plan_dynamics(thing, thing.dynamics, index)
         if isinstance(thing, Apparatus):
@@ -1416,10 +1421,6 @@ class _Planner:
                             "name the field otherwise: Apparatus(..., fields={'magnetic': ...})")
             for field_name, provider in thing.fields.items():
                 self.plan_provider(thing.name, field_name, provider, index)
-        if isinstance(thing, Medium) and thing.fills is not None:
-            region = self.geometry_part(thing.fills, RegionPath, "regions", f"medium {thing.name!r}: fills=")
-            if region is not None:
-                self.fills[thing.name] = region
 
     def plan_geometry(self, structure: Structure) -> None:
         geometry = structure.geometry
@@ -1623,6 +1624,18 @@ class _Planner:
         if not self.check_locals(cls, plan.nodes):
             return
         self.setting_problems(dynamics, plan.settings, f"{where}'s dynamics")
+        if thing.kind is ThingKind.MEDIUM:
+            region = self.region_of(thing.name)
+            if region is not None:
+                plan.regions = {"medium": region}
+            try:
+                region_problems = dynamics.region_problems(region)
+            except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
+                self.defect(cls, f"region_problems() raised {error!r}", error)
+                region_problems = []
+            for problem in region_problems:
+                self.refuse(problem.code, RefusalClass.USER, f"{where}'s {cls.label()}: {problem.message}",
+                            problem.action)
         if isinstance(thing, Body):
             plan.initial = self.initial_state(thing, cls)
             if set(plan.initial) == set(cls.initial_state):
@@ -3041,7 +3054,8 @@ class _Planner:
             self.defect(cls, f"value_problems() raised {error!r}", error)
             return
         for problem in problems:
-            self.refuse(problem.code, RefusalClass.USER, f"body {plan.thing!r}: {problem.message}", problem.action)
+            kind = plan.thing_kind.value if plan.thing_kind is not None else "body"
+            self.refuse(problem.code, RefusalClass.USER, f"{kind} {plan.thing!r}: {problem.message}", problem.action)
 
     def check_bodies_start_inside(self) -> None:
         """Each body an interaction binds to a medium that fills a region, refused once where its centre starts

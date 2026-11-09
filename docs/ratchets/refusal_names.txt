@@ -40,6 +40,8 @@ tube.lumen               # a typed path in a family's rig: the tube's lumen
 water.viscosity          # a typed path in a family's rig: the water's viscosity
 www.doi.org  # a host doi.org answers to, compared with an address's
 mermaid.min.js  # the file name of Mermaid's single-file build, shipped in mime/experiment/_mermaid_lib/
+domain.length  # a setting of a group, read in SI by an entry's build (ctx.scalar): the periodic box's period
+smooth_2h_0.3h  # the name of the flow's one registered band, (W 2h, delta 0.3h)
 half_space.boundary  # the half-space's case in the shape conformance suite: the set its probes are placed about, which no switch owns
 plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
 plotly.subplots  # a module name: plotly's subplot helper, imported when a figure is drawn

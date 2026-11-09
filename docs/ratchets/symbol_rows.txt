@@ -155,4 +155,16 @@ PhaseLagNode \mathbf{m}  # pinned at landing
 PhaseLagNode \mathbf{a}  # pinned at landing
 PhaseLagNode k  # pinned at landing
 PhaseLagNode t_{a}  # pinned at landing
+BodyForceNode \mathbf{g}  # pinned at landing
+BodyForceNode \hat{\mathbf{e}}  # pinned at landing
+BodyForceNode g_{0}  # pinned at landing
+BodyForceNode g_{1}  # pinned at landing
+BodyForceNode f  # pinned at landing
+BodyForceNode \varphi  # pinned at landing
+BodyForceNode n  # pinned at landing
+ImplicitFlowNode \mathbf{u}  # pinned at landing
+ImplicitFlowNode \mu  # pinned at landing
+ImplicitFlowNode \rho  # pinned at landing
+ImplicitFlowNode \mathbf{g}  # pinned at landing
+BodyForceNode \theta  # pinned at landing
 RFTDragNode \mathbf{R}  # pinned at landing
