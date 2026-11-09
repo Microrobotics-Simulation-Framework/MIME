@@ -13,6 +13,7 @@ import functools
 import hashlib
 import math
 from pathlib import Path
+from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -277,16 +278,22 @@ def test_control_convection_at_the_wrong_time_level_misses_the_golden_step(float
 def test_a_scheme_whose_state_carries_a_pressure_and_whose_stages_read_their_own_instants_steps(float64):
     """Round 4, item 7: a scheme's step and start carry a scheme state keyed by its ``state_fields``, and its stages
     read the drive at their own instants through the context, which also gives an explicit stage the viscosity and the
-    resistivity. A toy two-stage scheme carrying a pressure steps through the interface unchanged; the flow node gives
-    a scheme whose stages read off the step's end the delivered waveform at each stage's time. The control: the
-    registered monolithic schemes read at the step's end alone, where the held delivery is made."""
+    resistivity. A toy two-stage scheme carrying a pressure steps through the interface unchanged, and returns its own
+    record of the step (``TimeScheme`` is generic in it): route 1's terms, a quadrature over its stages, as RK3's are,
+    not the monolithic stage's parts; the flow node gives a scheme whose stages read off the step's end the delivered
+    waveform at each stage's time. The control: the registered monolithic schemes read at the step's end alone, where
+    the held delivery is made."""
     from mime.nodes.flow._waveform import waveform, waveform_at
     from mime.nodes.flow.fvm._schemes import StageKind, TimeScheme
     from fvm_cases import tube_node
 
     asked: list[tuple[int, float]] = []
 
-    class TwoStage(TimeScheme):
+    class StageTerms(NamedTuple):
+        drive: Any
+        scale: Any
+
+    class TwoStage(TimeScheme[StageTerms]):
         name, version = "two_stage", "0.0.0"
         stage_kind = StageKind.EXPLICIT_PROJECTED
         state_fields = ("velocity", "pressure")
@@ -299,11 +306,15 @@ def test_a_scheme_whose_state_carries_a_pressure_and_whose_stages_read_their_own
 
         def step(self, context, state, time, dt):
             u = state["velocity"]
+            drive = scale = 0.0
             for k, instant in enumerate(self.drive_instants):
                 asked.append((k, float(time + instant * dt)))
                 f = context.force(k, time + instant * dt)
+                drive = drive + 0.5 * dt * context.grid.inner(f, u)
+                scale = scale + 0.5 * dt * context.grid.inner_magnitude(f, u)
                 u = tuple(a + 0.5 * dt * (b - context.resistivity[i] * a) for i, (a, b) in enumerate(zip(u, f)))
-            return {"velocity": context.grid.project(u), "pressure": state["pressure"] + context.viscosity}, None
+            ended = {"velocity": context.grid.project(u), "pressure": state["pressure"] + context.viscosity}
+            return ended, StageTerms(drive, scale)
 
     node = tube_node(8, length_cells=2)
     p = node._step_constants(None)  # noqa: SLF001
@@ -314,8 +325,9 @@ def test_a_scheme_whose_state_carries_a_pressure_and_whose_stages_read_their_own
     force = node.forcing(fields, {"body_force": jnp.zeros(3), "waveform": coefficients}, scheme, jnp.float64)
     context = StepContext(grid, node.operator_of(p, grid, node.resistivity(p, fields)), force, False,
                           lambda *a: None, node.kinematic(p), node.resistivity(p, fields))
-    state, _ = scheme.step(context, scheme.start(grid, grid.zeros(jnp.float64)), 0.2, 0.1)
+    state, record = scheme.step(context, scheme.start(grid, grid.zeros(jnp.float64)), 0.2, 0.1)
     assert set(state) == {"velocity", "pressure"} and asked == [(0, 0.2), (1, pytest.approx(0.25))]
+    assert isinstance(record, StageTerms) and float(record.scale) >= abs(float(record.drive)) > 0.0
     assert float(state["pressure"][0, 0, 0]) == pytest.approx(float(node.kinematic(p)))
     for t in (0.2, 0.25):
         expected = node.drive(fields, waveform_at(coefficients, t))

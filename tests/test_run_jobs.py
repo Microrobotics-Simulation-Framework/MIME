@@ -306,7 +306,7 @@ def wiring_problems(text: str) -> list[str]:
 def test_every_read_of_the_jobs_in_ci_goes_through_the_retrying_script():
     text = CI.read_text(encoding="utf-8")
     assert wiring_problems(text) == []
-    assert text.count("python3 scripts/run_jobs.py") == 4, "the default lane's shards and completion job, and the other two lanes' completion job"
+    assert text.count("python3 scripts/run_jobs.py") == 6, ("the default lane's shards and completion job, and the other two lanes' shards and completion job")
 
 
 @pytest.mark.parametrize("old, new", [

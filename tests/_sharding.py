@@ -8,13 +8,18 @@ file's shard is a function of its path and of the committed table ``shard_weight
   least time so far, ties broken on the path and the lower shard;
 - a file the table lists under ``alone`` (one whose slowest tests would leave the shard's other workers idle, with
   the reason written beside it) is dealt first, to a shard that then holds no other listed file;
+- a file the table lists under ``split`` (one so heavy that, whole, it would be the slowest shard however many shards
+  there are) is dealt by test: its tests the table lists, with their seconds, enter the same longest-first deal under
+  their node ids, and a test of it the table does not list goes by a hash of its node id;
 - every other file goes by a hash of its path.
 
 Adding or deleting a test moves no file, and shard ``i`` of a pull request holds the files of shard ``i`` of its base
-unless the table changed, so the compilation cache the base saved for a shard is the one its programs are in. A file's
-tests stay together, as MADDENING's split keeps them: a test that reuses the programs another test of its file
-compiled (a control beside the property it controls) stays in the shard that compiles them, and module fixtures are
-built in one shard. ``scripts/shard_weights.py`` rewrites the table from a run's JUnit reports.
+unless the table changed, so the compilation cache the base saved for a shard is the one its programs are in (adding a
+test to a split file moves no listed test either). A file's tests stay together, as MADDENING's split keeps them: a
+test that reuses the programs another test of its file compiled (a control beside the property it controls) stays in the
+shard that compiles them, and module fixtures are built in one shard. The exception is the ``split`` files, the few
+whose weight exceeds a shard's mean: each shard that gets some of their tests compiles the programs those tests
+share once more (``scripts/shard_weights.py`` prints the files it splits and the table's reason for each). ``scripts/shard_weights.py`` rewrites the table from a run's JUnit reports.
 
 The split is a command-line option, not a variable, so a pytest that a test starts in a subprocess inherits no shard.
 ``--mime-shard-record FILE`` writes what the job collected and what it kept, as JSON, which the lane's own job reads
@@ -28,6 +33,7 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Collection
 from pathlib import Path
 
 import pytest
@@ -68,10 +74,20 @@ def load_weights(path: Path = WEIGHTS_FILE) -> dict[str, int]:
     missing = sorted(set(alone) - set(seconds))
     if missing:
         raise pytest.UsageError(f"{path}: 'alone' names files that 'seconds' does not list: {missing}")
+    split = load_split(path)
+    unlisted = sorted(set(split) - set(seconds))
+    if unlisted:
+        raise pytest.UsageError(f"{path}: 'split' names files that 'seconds' does not list: {unlisted}")
+    both = sorted(set(split) & set(alone))
+    if both:
+        raise pytest.UsageError(f"{path}: a file cannot be both 'alone' and 'split': {both}")
     # A file that holds a shard of its own weighs more than every other file together, so the deal, longest first,
-    # puts it on a shard by itself and never deals another file there.
+    # puts it on a shard by itself and never deals another file there. A split file is dealt by its tests instead.
     heavier = sum(seconds.values()) + 1
-    return {path_: heavier if path_ in alone else weight for path_, weight in seconds.items()}
+    weights = {path_: heavier if path_ in alone else weight for path_, weight in seconds.items() if path_ not in split}
+    for file, tests in split.items():
+        weights.update({f"{file}::{part}": weight for part, weight in tests.items()})
+    return weights
 
 
 def load_alone(path: Path = WEIGHTS_FILE) -> dict[str, str]:
@@ -85,6 +101,22 @@ def load_alone(path: Path = WEIGHTS_FILE) -> dict[str, str]:
     return alone
 
 
+def load_split(path: Path = WEIGHTS_FILE) -> dict[str, dict[str, int]]:
+    """``{test file: {test: seconds}}`` for the files the table deals by test (its optional ``split``): each test is
+    named by its node id without the file, and the file keeps its total under ``seconds``."""
+    try:
+        split = json.loads(path.read_text(encoding="utf-8")).get("split", {})
+    except (OSError, ValueError, AttributeError) as error:
+        raise pytest.UsageError(f"{path}: cannot read the shards' table ({error!r})") from None
+    ok = isinstance(split, dict) and all(
+        isinstance(file, str) and isinstance(tests, dict) and tests
+        and all(isinstance(part, str) and type(sec) is int and sec > 0 for part, sec in tests.items())
+        for file, tests in split.items())
+    if not ok:
+        raise pytest.UsageError(f"{path}: 'split' must be a {{test file: {{test: whole seconds}}}} table, no file empty")
+    return split
+
+
 def deal(weights: dict[str, int], of: int) -> dict[str, int]:
     """``{test file: shard}`` for the listed files: longest first, each onto the lightest shard."""
     load = [0] * of
@@ -96,22 +128,27 @@ def deal(weights: dict[str, int], of: int) -> dict[str, int]:
     return shards
 
 
-def shard_of(nodeid: str, of: int, dealt: dict[str, int]) -> int:
-    """The shard of a test, by its file: the node id's path, relative to the root with ``/`` on every platform."""
+def shard_of(nodeid: str, of: int, dealt: dict[str, int], split: Collection[str] = ()) -> int:
+    """The shard of a test: by its node id when its file is one of ``split`` (its listed tests by the deal), otherwise by
+    its file, the node id's path relative to the root with ``/`` on every platform."""
     path = nodeid.split("::", 1)[0]
+    if path in split:
+        return dealt[nodeid] if nodeid in dealt else by_hash(nodeid, of)
     return dealt[path] if path in dealt else by_hash(path, of)
 
 
 class Plugin:
-    def __init__(self, shard: int, of: int, weights: dict[str, int], record: str | None):
+    def __init__(self, shard: int, of: int, weights: dict[str, int], record: str | None,
+                 split: Collection[str] = ()):
         self.shard, self.of, self.record = shard, of, record
         self.dealt = deal(weights, of)
+        self.split = frozenset(split)
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, config: pytest.Config, items: list[pytest.Item]) -> None:
         collected = [item.nodeid for item in items]
-        keep = [item for item in items if shard_of(item.nodeid, self.of, self.dealt) == self.shard]
-        drop = [item for item in items if shard_of(item.nodeid, self.of, self.dealt) != self.shard]
+        keep = [item for item in items if shard_of(item.nodeid, self.of, self.dealt, self.split) == self.shard]
+        drop = [item for item in items if shard_of(item.nodeid, self.of, self.dealt, self.split) != self.shard]
         if drop:
             config.hook.pytest_deselected(items=drop)
             items[:] = keep
@@ -122,10 +159,10 @@ class Plugin:
                 "selected": sorted(item.nodeid for item in keep)}), encoding="utf-8")
 
     def pytest_report_header(self, config: pytest.Config) -> str:
-        return f"test shard: {self.shard}/{self.of} (by file; tests/_sharding.py)"
+        return f"test shard: {self.shard}/{self.of} (by file, the heaviest by test; tests/_sharding.py)"
 
 
 def register(config: pytest.Config, spec: str) -> None:
     shard, of = parse(spec)
-    config.pluginmanager.register(Plugin(shard, of, load_weights(), config.getoption(RECORD_OPTION)),
+    config.pluginmanager.register(Plugin(shard, of, load_weights(), config.getoption(RECORD_OPTION), load_split()),
                                   "mime-test-shard")

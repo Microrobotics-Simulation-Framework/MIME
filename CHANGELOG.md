@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by `exp.attach(BodyForce(along=..., steady=...), medium=water)` on the fluid. Each step reports its solve (its
   iterations, its true residual against the tolerance and how it stopped); a step whose solve stopped other than
   converging raises `solve_flagged`, read in `result.flags` with its count and warned of after the run (a flag may now
-  declare that it warns, `Flag.warns`). It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
+  declare that it warns, `Flag.warns`); a solve whose residual is not finite returns NaN, so the run is refused as not
+  finite, naming the flow. It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
   with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
   with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
   gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
@@ -324,6 +325,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
+  JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;
+  it weighs 28876 s now), and `scripts/shard_matrix.py`'s default is 16 (the repository variable and a manual run's input
+  still win). A file heavier than a shard's mean can now be dealt by test (the table's `split`, `scripts/shard_weights.py
+  --split FILE`); at sixteen none is, so none is split. Every lane runs cold once: the compilation cache's keys name the
+  shard count.
 
 - **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,
   `mime.lock/10`). Where `verify` claims no bits, in another environment or of a reference no run repeats bit for bit,

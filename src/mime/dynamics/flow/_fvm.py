@@ -166,8 +166,9 @@ class FVM(Dynamics):
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform")}
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
-                              "true residual no longer falling), or at a residual that is not finite, so the step's "
-                              "values hold only to the residual it reached. Its report, solve_report (iterations, "
+                              "true residual no longer falling), so the step's values hold only to the residual it "
+                              "reached; or at a residual that is not finite, whose values are then NaN, so the run is "
+                              "refused as not finite. Its report, solve_report (iterations, "
                               "the true relative residual against the tolerance, and one count for each way it "
                               "stopped), says which; a run recording it per step (history=True) keeps every step's",
              warns=True),

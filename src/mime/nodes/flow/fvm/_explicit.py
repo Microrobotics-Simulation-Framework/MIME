@@ -40,7 +40,7 @@ from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, negative_resistivity
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode
-from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StepContext, scheme_named
+from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StepContext, TimeScheme, scheme_named
 from mime.registry import Problem
 
 EQUATIONS = (r"\mathbf{u}^{(k)} = \operatorname{proj}\left[\frac{\mathbf{u}^{(k-1)} + \gamma_{k} h\, "
@@ -232,7 +232,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
     def explicit_stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
                          dt: float) -> tuple[dict[str, Array], ExplicitParts]:
         c = self.constants()
-        scheme = self.scheme
+        scheme: TimeScheme[_rk3.ExplicitStage] = self.scheme
         grid = self.grid(p)
         dtype = run_dtype()
         fields = self.fields(p, grid)
@@ -245,9 +245,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
         cfl, stopped_at, stopped_cfl = cfl_check(_velocity(state), dt, grid.spacing, self.line(p), convection,
                                                  jnp.asarray(state["stopped_at"]), jnp.asarray(state["stopped_cfl"]),
                                                  steps)
-        ended_state, parts = scheme.step(context, self.scheme_state(state), time, dt)
-        # The explicit stage's record (``RK3.step``), which the interface's StageParts does not carry yet.
-        stage = cast(_rk3.ExplicitStage, parts)
+        ended_state, stage = scheme.step(context, self.scheme_state(state), time, dt)
         axis = as_run_array(p["tube_axis"])
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
         lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, ended_state["velocity"])

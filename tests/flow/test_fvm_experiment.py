@@ -1,7 +1,8 @@
 """The FVM through the experiment: ``Medium(fields={"flow": FVM(...)})`` built with ``exp.build``, driven by a
 ``BodyForce`` law bound to the medium; the gates' physics read through the build (Poiseuille's core curvature on the
 built node), the saved form's round trip, the CFL check's stop and refusal of a run, a solve's stop flagged and warned
-of through the run, the validity lines' flags, and the plan's refusals."""
+of through the run, a NaN that arises inside the step refused as not finite, the validity lines' flags, and the plan's
+refusals."""
 
 from __future__ import annotations
 
@@ -129,6 +130,81 @@ def test_a_solve_that_stagnates_is_flagged_and_warned_of_with_its_count(dtype):
             assert report[3] == 1.0 and report[2] == 0.0  # stagnated, before its cap
         else:
             assert "water.flow.solve_flagged" not in raised and not said and report[2:5].sum() == 0.0
+
+
+def _nan_plant_refused(dtype: str, steady: bool, owner: object, name: str, plant: object, *, in_step: bool) -> None:
+    """The plant through ``exp.run`` (D/h 8, IMEX Euler under Stokes or the steady limit): refused ``run.non-finite``
+    from step 3, the flow's velocity NaN at the end; and the control, the solve before the fix, which returned a
+    finite answer for a non-finite residual (its zero start, as non-finite answers made zero): the same run ends
+    finite and unrefused (an in-step plant's velocity zero from its step on)."""
+    import jax.numpy as jnp
+
+    import mime.nodes.flow.fvm._solve as solve
+
+    solved = solve.guarded_cg
+
+    def zero_start_returned(*args, **kwargs):
+        x, report = solved(*args, **kwargs)
+        return tuple(jnp.where(jnp.isfinite(c), c, 0.0) for c in x), report
+
+    dt, span = (ms(20.0), ms(100.0)) if steady else (ms(10.0), ms(60.0))
+    for arm in ("fixed", "control"):
+        with in_dtype(dtype), pytest.MonkeyPatch.context() as patch, warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            patch.setattr(owner, name, plant)
+            if arm == "control":
+                patch.setattr(solve, "guarded_cg", zero_start_returned)
+            built = experiment(steady=steady, stokes=True, dt=dt, cells_across=8).build()
+            if arm == "fixed":
+                with pytest.raises(RunFailed) as raised:
+                    built.run(span, history=True)
+                assert [r.code for r in raised.value.refusals] == ["run.non-finite"], raised.value.refusals
+                message = raised.value.refusals[0].message
+                assert "stopped being finite numbers at step 3" in message, message
+                assert not in_step or "velocity_z" in message, message
+                result = raised.value.result
+                assert result is not None
+                assert not np.isfinite(np.asarray(result.final["water.flow"]["velocity_z"])).any()
+            else:
+                w = np.asarray(built.run(span, history=True).history["water.flow"]["velocity_z"])
+                assert np.isfinite(w).all()
+                assert not in_step or (w[1].any() and not w[2:].any())  # zeros from the plant's step on
+
+
+@pytest.mark.parametrize("steady", [True, False], ids=["steady", "imex_euler"])
+def test_a_nan_that_arises_inside_the_flows_step_is_refused_as_not_finite(dtype, steady):
+    """A NaN that arises inside the flow's step (the drive the step reads, made NaN in the step from its third step
+    on) is refused as not finite, never replaced by a velocity: the solve whose residual is not finite returns NaN, so
+    the run's own non-finite refusal names the flow's velocity from the step it began, on both monolithic schemes.
+    The control is the solve before the fix (:func:`_nan_plant_refused`)."""
+    import jax.numpy as jnp
+
+    import mime.nodes.flow.fvm._node as flow_node
+
+    made = flow_node.ImplicitFlowNode.forcing
+
+    def forcing(self, fields, boundary_inputs, scheme, dtype_):
+        force = made(self, fields, boundary_inputs, scheme, dtype_)
+        return lambda stage, time: tuple(jnp.where(time > 2.5 * self.delta_t, jnp.nan, c) for c in force(stage, time))
+
+    _nan_plant_refused(dtype, steady, flow_node.ImplicitFlowNode, "forcing", forcing, in_step=True)
+
+
+@pytest.mark.parametrize("steady", [True, False], ids=["steady", "imex_euler"])
+def test_a_nan_the_drive_delivers_at_one_step_is_refused_as_not_finite(dtype, steady):
+    """The drive's own node NaN at its third step only: the flow's solve returns NaN there and its next step carries
+    it on (IMEX Euler's right-hand side holds the velocity, the steady solve starts from it), so the run is refused as
+    not finite where, before the fix, the flow restarted from rest and the run ended finite (the control)."""
+    import jax.numpy as jnp
+
+    import mime.nodes.flow._body_force as body_force
+
+    delivered = body_force.BodyForceNode.force_at
+
+    def force_at(self, p, time):
+        return jnp.where((time > 2.5 * self.delta_t) & (time < 3.5 * self.delta_t), jnp.nan, delivered(self, p, time))
+
+    _nan_plant_refused(dtype, steady, body_force.BodyForceNode, "force_at", force_at, in_step=False)
 
 
 def test_a_stiff_interior_at_d_h_32_converges_on_every_step(dtype):

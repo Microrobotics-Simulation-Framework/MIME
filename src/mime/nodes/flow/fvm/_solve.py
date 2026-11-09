@@ -4,8 +4,10 @@
 ``b - A x`` from its iterate, relative to the right-hand side (its last iterate returned); or at a stagnation (over the last ``window`` checks of the
 true residual, none fell below ``stagnation`` times the best before them: CG's residual is not monotone, least of all
 against Jacobi's contrast between the fluid and a stiff interior, so a stagnation is judged against the best over a
-window, never against the last check); or at its cap; or at a residual that is not finite: these three return the
-iterate of the least true residual checked. It takes at
+window, never against the last check); or at its cap: these two return the better of its last iterate and the one of
+the least true residual checked; or at a residual that is not finite, which **returns NaN**, never its start or a
+checked iterate: a NaN that arises in a step (its drive, its operator) is not a number in the step's answer either, so
+the run's own non-finite refusal names the flow. It takes at
 least one iteration, so a warm start whose residual is already below the tolerance is never accepted unsolved; only an
 exactly zero residual is (a zero right-hand side from a zero start among them).
 
@@ -60,12 +62,15 @@ STAGNATION_SPAN = 12
 STAGNATION_LEAST_WINDOW = 5
 STAGNATION_WINDOW = 10
 STAGNATION_MEASURED = (
-    "measured: every solve of the empty tube's 0.1h and 0.01h interiors at D/h 8 to 64, IMEX Euler under Stokes at dt "
-    "10 ms and 0.1 ms and the steady limit, in both dtypes, replayed check by check with no stagnation stop: the window "
-    "clears every converging solve, by 2.6 times the least window that does at the tightest (float32, 0.01h, D/h 32; "
-    "3.8 in float64 at D/h 64); a tolerance below rounding stops stagnated before the cap, at 240 to 940 iterations at "
-    "D/h 8 to 32; float32 at D/h 64 with 0.01h stalls above its 1e-5 (least true residuals 1.1e-5 to 1.3e-4 over 5000 "
-    "iterations), flagged")
+    "measured: every solve of the empty tube's 0.1h and 0.01h interiors at D/h 8, 16, 32 and 64, IMEX Euler under "
+    "Stokes at dt 10 ms and 0.1 ms and the steady limit, in both dtypes, replayed check by check with no stagnation "
+    "stop: the window clears every converging solve, by 2.6 times the least window that does at the tightest (float32, "
+    "0.01h, D/h 32; 3.8 in float64 at D/h 64), and float32 at D/h 64 with 0.01h stalls above its 1e-5 (least true "
+    "residuals 1.1e-5 to 1.3e-4 over 5000 iterations), flagged; replayed again at D/h 16 to 48 (131 solves a dtype, a "
+    "tilted box among them), it stops no converging solve in float64, and float32 with 0.01h stalls from D/h 48: "
+    "there 3 of 6 solves stopped stagnated at 1.03 to 1.21 times its 1e-5, each converging later (at 1814 to 4306 "
+    "iterations), flagged; a tolerance below rounding stops stagnated before the cap, at 240 to 940 iterations at D/h "
+    "8 to 32")
 
 
 @dataclass(frozen=True)
@@ -231,12 +236,15 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
     x, _, _, _, _, count, _, _, _, kept, _, ended = lax.while_loop(going, iterate, initial)
     # A solve that converged (or was accepted) returns its last iterate; one stopped short, the better of its last and
     # its best checked one: past the rounding floor the iterate wanders (a planted stall's grew to a true residual of
-    # 7e-2 in float64 at D/h 16), and a cap short of the first check has only its last.
+    # 7e-2 in float64 at D/h 16), and a cap short of the first check has only its last. One whose residual went
+    # non-finite returns NaN: its start (zero, for a NaN right-hand side) would be a velocity the step never solved for.
     last = _add(b, operator(x), -1.0)
     held = _add(b, operator(kept), -1.0)
     last_norm, held_norm = inner(last, last), inner(held, held)
     better = (ended != _CONVERGED) & (ended != _AT_ZERO) & (~jnp.isfinite(last_norm) | (held_norm < last_norm))
     x = _select(better, kept, x)
+    nan = jnp.full_like(x[0], jnp.nan)
+    x = _select(ended == _NOT_FINITE, (nan, nan, nan), x)
     final = _select(better, held, last)
     relative = jnp.sqrt(inner(final, final)) / jnp.maximum(norm_b, jnp.finfo(dtype).tiny)
     relative = jnp.where(norm_b == 0.0, jnp.sqrt(inner(final, final)), relative)

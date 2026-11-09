@@ -69,6 +69,13 @@ class Problem:
         r = tuple(bb - aa for bb, aa in zip(b, self.projected(x), strict=True))
         return float(jnp.sqrt(self.grid.inner(r, r)) / jnp.sqrt(self.grid.inner(b, b)))
 
+    def rounding(self, x, b):
+        """What a recomputed relative residual rounds by, ``eps (|b| + |PAPx|) / |b|``: each recompute of ``b - PAPx``
+        (the solver's own after its loop, the test's unscaled) rounds by about eps of its inputs' magnitude, so a
+        residual the stop accepted at the tolerance reads up to that over it (the 3.14 run's 1.0000244e-5)."""
+        size = lambda v: float(jnp.sqrt(self.grid.inner(v, v)))  # noqa: E731
+        return eps(self.dtype) * (size(b) + size(self.projected(x))) / size(b)
+
     def cg(self, b, start=None, precondition=None, **stopping):
         start = tuple(jnp.zeros_like(c) for c in b) if start is None else start
         key = (tuple(sorted(stopping.items())), precondition)
@@ -103,8 +110,8 @@ def test_the_converged_answer_holds_its_tolerance_by_the_true_residual(dtype):
     b = problem.rhs(7)
     x, report = problem.cg(b)
     tolerance = 1e-8 if dtype == "float64" else 1e-5
-    assert problem.true_residual(x, b) <= tolerance
-    assert float(report[1]) <= tolerance
+    assert problem.true_residual(x, b) <= tolerance + problem.rounding(x, b)
+    assert float(report[1]) <= tolerance + problem.rounding(x, b)
     assert float(report[AT_CAP] + report[STAGNATED] + report[NOT_FINITE] + report[AT_ZERO]) == 0.0
 
 
@@ -120,7 +127,7 @@ def test_a_wrong_preconditioner_moves_only_the_cost(seed):
             right, report = problem.cg(b)
             other, other_report = problem.cg(b, precondition="wrong")
             tolerance = 1e-8 if dtype == "float64" else 1e-5
-            assert problem.true_residual(other, b) <= tolerance
+            assert problem.true_residual(other, b) <= tolerance + problem.rounding(other, b)
             assert float(other_report[0]) != float(report[0])
             difference = tuple(a - c for a, c in zip(other, right, strict=True))
             size = float(jnp.sqrt(problem.grid.inner(right, right)))
@@ -171,14 +178,17 @@ def test_an_exactly_zero_residual_is_accepted_unsolved(dtype):
     assert all(bool(jnp.all(c == 0.0)) for c in x)
 
 
-def test_a_residual_that_is_not_finite_has_its_own_flag(dtype):
+def test_a_residual_that_is_not_finite_has_its_own_flag_and_returns_nan(dtype):
+    """A NaN right-hand side: the report is finite and says so, and the answer is NaN, never the zero start it began
+    from (whose finite zeros a run would carry on as a velocity)."""
     problem = Problem(dtype)
     b = problem.rhs(13)
     b = (b[0].at[0, 0, 0].set(jnp.nan), b[1], b[2])
-    _, report = problem.cg(b)
+    x, report = problem.cg(b)
     assert float(report[NOT_FINITE]) == 1.0
     assert float(report[1]) == -1.0
     assert bool(jnp.all(jnp.isfinite(report)))
+    assert all(bool(jnp.all(jnp.isnan(c))) for c in x)
 
 
 @pytest.mark.parametrize("scale", [1e-12, 1e6])

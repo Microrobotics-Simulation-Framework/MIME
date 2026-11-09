@@ -285,7 +285,7 @@ class ImplicitFlowNode(MimeNode):
 
     # -- the pieces of a step ------------------------------------------------------------------------------------
     @property
-    def scheme(self) -> TimeScheme:
+    def scheme(self) -> TimeScheme[Any]:
         return scheme_named(self.constants()["scheme"])
 
     def grid(self, p: Mapping[str, Any]) -> MACGrid:
@@ -316,7 +316,7 @@ class ImplicitFlowNode(MimeNode):
         nu = self.kinematic(p)
         return (nu * k[0], nu * k[1], nu * k[2])
 
-    def forcing(self, fields: WallFields, boundary_inputs: Mapping[str, Array], scheme: TimeScheme,
+    def forcing(self, fields: WallFields, boundary_inputs: Mapping[str, Array], scheme: TimeScheme[Any],
                 dtype: Any) -> Callable[[int, Any], Velocity]:
         """``force(stage, time)``, the drive each stage reads at its instant (:class:`StepContext`): the body force the
         laws bound to the medium delivered, summed, where the scheme's stages read at the step's end, the instant it is
@@ -416,7 +416,7 @@ class ImplicitFlowNode(MimeNode):
     def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> tuple[dict[str, Array], StepParts]:
         c = self.constants()
-        scheme = scheme_named(c["scheme"])
+        scheme: TimeScheme[StageParts] = self.scheme
         grid = self.grid(p)
         dtype = run_dtype()
         fields = self.fields(p, grid)
