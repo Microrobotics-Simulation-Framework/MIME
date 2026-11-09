@@ -10,11 +10,15 @@
   the OpenMaterica-`main` lane must have OpenMaterica from git, not PyPI. A lane that doesn't name itself fails, so no
   lane can skip the check. The test also runs its own control: claims meant for other lanes must fail in this one.
 - `test_ci_wiring.py`: CI runs the checks it must, read from `.github/workflows/`. Each job name the development
-  branch's protection requires is made by one job, of a workflow run on a pull request into `release/v0.3.0` and a push
-  to it, and skipped by nothing but the schedule; no workflow names the branch's old name, `v0.3`; the default lane's
+  branch's protection requires (four) is made by one job, of a workflow run on a pull request into `release/v0.3.0` and a push
+  to it (by `release/**`), and skipped by nothing but the schedule; the three lanes that are not required keep the same
+  wiring and start where the count job says; no workflow names the branch's old name, `v0.3`; the default lane's
   `mime docs check --base origin/release/v0.3.0` (which fails where that branch cannot be read) and the `confidential` job's
   scan, with the key's secret, `--messages`, `--diffs` and `--ref-name`, keep their exit status, read by running each
   step's script in bash with its commands stubbed. Each control plants one break in a copy of the workflows.
+- `test_ci_boundary.py`: which lanes a pull request runs. The paths of `scripts/ci_boundary.py` (pins, CI, the adapters to MADDENING
+  and OpenMaterica) against the repository, the scripts the workflows call against the scripts the filter names, and the three
+  lanes' lack of a compilation cache. `test_ci_nightly.py`: the nightly dispatch, its job's script run with `gh` stubbed.
 - `test_ci_docs_artifact.py` (N6): the workflow builds the documentation pages, scans the built directory and uploads
   it, in that order, in one job, over one directory; the scan's failure fails the job; the upload runs only after
   every earlier step succeeded; and the scan step's own script, run in bash on a directory, exits non-zero on a planted

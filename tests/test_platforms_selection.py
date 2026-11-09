@@ -14,6 +14,9 @@ import pytest
 import yaml
 from test_ci_wiring import BRANCH, OLD_BRANCH, OLD_NAME, PULL_REQUEST, REQUIRED, run_step
 
+#: The branches the workflow runs on: every release branch, which includes the development branch.
+PATTERN = "release/**"
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "platforms.yml"
 spec = importlib.util.spec_from_file_location("_platforms_smoke", ROOT / "scripts" / "platforms_smoke.py")
@@ -69,8 +72,8 @@ def branch_problems(text: str, scratch: Path) -> list[str]:
     found: list[str] = []
     triggers = yaml.safe_load(text)[True]  # YAML 1.1 reads the key `on` as a boolean
     for event in ("pull_request", "push"):
-        if triggers[event]["branches"] != [BRANCH]:
-            found.append(f"{event} runs on {triggers[event]['branches']}, not [{BRANCH!r}] alone")
+        if triggers[event]["branches"] != [PATTERN]:
+            found.append(f"{event} runs on {triggers[event]['branches']}, not [{PATTERN!r}] alone")
     found += [f"names the old branch name {OLD_BRANCH}: {line.strip()}" for line in text.splitlines()
               if OLD_NAME.search(line)]
     step = next(step for step in yaml.safe_load(text)["jobs"]["smoke"]["steps"] if step.get("name") == "Docs check")
@@ -85,7 +88,7 @@ def branch_problems(text: str, scratch: Path) -> list[str]:
 
 
 def test_the_workflow_runs_on_pull_requests_and_pushes_to_the_development_branch_and_is_no_required_check(tmp_path):
-    """On ``release/v0.3.0`` alone, never the old name ``v0.3``; and the docs check compares with ``origin/release/v0.3.0``
+    """On every release branch (``release/**``, which matches ``release/v0.3.0``), never the old name ``v0.3``; and the docs check compares with ``origin/release/v0.3.0``
     where the step is run as GitHub runs it (``bash -e``, git and uv stubbed), and fails without running the check where
     that branch cannot be read (the stub reads every other name, so a fallback to the old one shows)."""
     assert branch_problems(WORKFLOW.read_text(encoding="utf-8"), tmp_path) == []
@@ -95,14 +98,14 @@ def test_the_workflow_runs_on_pull_requests_and_pushes_to_the_development_branch
 
 BRANCH_PLANTS = {
     "the-pull-request-trigger-drops-the-branch": (
-        "  pull_request:\n    branches: [release/v0.3.0]\n", "  pull_request:\n    branches: []\n",
-        f"pull_request runs on [], not [{BRANCH!r}] alone"),
+        '  pull_request:\n    branches: ["release/**"]\n', "  pull_request:\n    branches: []\n",
+        f"pull_request runs on [], not [{PATTERN!r}] alone"),
     "the-push-trigger-on-the-old-name": (
-        "  push:\n    branches: [release/v0.3.0]\n", "  push:\n    branches: [v0.3]\n",
-        f"push runs on ['v0.3'], not [{BRANCH!r}] alone"),
+        '  push:\n    branches: ["release/**"]\n', "  push:\n    branches: [v0.3]\n",
+        f"push runs on ['v0.3'], not [{PATTERN!r}] alone"),
     "the-old-name-back-in-the-pull-request-trigger": (
-        "  pull_request:\n    branches: [release/v0.3.0]\n", "  pull_request:\n    branches: [release/v0.3.0, v0.3]\n",
-        f"pull_request runs on ['release/v0.3.0', 'v0.3'], not [{BRANCH!r}] alone"),
+        '  pull_request:\n    branches: ["release/**"]\n', '  pull_request:\n    branches: ["release/**", v0.3]\n',
+        f"pull_request runs on ['release/**', 'v0.3'], not [{PATTERN!r}] alone"),
     "the-old-name-in-a-comment": (
         "      - name: Docs check\n", "      # held against origin/v0.3\n      - name: Docs check\n",
         "names the old branch name v0.3: # held against origin/v0.3"),
