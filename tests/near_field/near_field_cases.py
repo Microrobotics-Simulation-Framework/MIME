@@ -22,7 +22,7 @@ from mime.nodes.hydro.mrs import MRSDragNode
 from mime.nodes.hydro.mrs._quadrature import cell_integrated, regularised_stokeslet, turned
 from mime.nodes.hydro.near_field import JointDragNode, member_prefix
 from mime.registry import Geometry, Interaction
-from mime.scene import Scene, Sphere, Tube, Z
+from mime.scene import Plane, Scene, Sphere, Tube, Z
 from mime.things import Part
 from mime.units import kg, kg_m2, m, m_per_s, mPa_s, ms, rad_per_s
 
@@ -47,12 +47,17 @@ def precision(dtype: str) -> Iterator[None]:
 def bodies(name: str, placed: Mapping[str, tuple[Geometry, Sequence[float]]], law: Interaction | Mapping[str, Interaction],
            *, velocity: Sequence[float] = (0.0, 0.0, 0.0), spin: Sequence[float] = (0.0, 0.0, 0.0),
            mass: float = 4.19e-6, inertia: float = 1.7e-12, dt_ms: float = 1.0, tube: float | None = None,
-           orientations: Mapping[str, Sequence[float]] | None = None) -> Experiment:
+           plane: float | None = None, orientations: Mapping[str, Sequence[float]] | None = None,
+           rate: Any = None) -> Experiment:
     """Each of ``placed`` (a body's hull kind and its centre, m) a rigid body in water (in a tube of radius ``tube`` along
-    x where given, else unbounded), with ``law`` (one for all, or one per body), each starting at ``velocity`` and
-    ``spin``."""
+    x, or above a plane wall whose normal is +z at the offset ``plane``, where given, else unbounded), with ``law`` (one
+    for all, or one per body), each starting at ``velocity`` and ``spin``, its dynamics stepping at ``rate`` where given
+    (else at the base step)."""
     experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2_zero(), dt=ms(dt_ms))
-    if tube is not None:
+    if plane is not None:
+        floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=m(plane))))
+        experiment.add_medium(Medium("water", fills=floor.half_space))
+    elif tube is not None:
         experiment.add_structure(Structure("tube", geometry=Tube(axis=(1.0, 0.0, 0.0), inner_radius=m(tube),
                                                                  wall=m(0.1 * tube), length=m(80.0 * tube))))
         experiment.add_medium(Medium("water", fills="tube.lumen"))
@@ -61,7 +66,8 @@ def bodies(name: str, placed: Mapping[str, tuple[Geometry, Sequence[float]]], la
     experiment.declare("water.viscosity", mPa_s(VISCOSITY * 1e3), reason="water")
     for body, (kind, centre) in placed.items():
         orientation = tuple((orientations or {}).get(body, IDENTITY))
-        experiment.add_body(Body(body, dynamics=RigidInertial(), parts={"shell": Part(kind)}, initial=State(
+        dynamics = RigidInertial() if rate is None else RigidInertial(rate=rate)
+        experiment.add_body(Body(body, dynamics=dynamics, parts={"shell": Part(kind)}, initial=State(
             position=m(tuple(centre)), orientation=orientation, velocity=m_per_s(tuple(velocity)),
             angular_velocity=rad_per_s(tuple(spin)))))
         experiment.declare(f"{body}.mass", kg(mass), reason="a millimetre body's order")

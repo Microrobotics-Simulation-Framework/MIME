@@ -966,19 +966,39 @@ class Drag(UncoupledDrag):
 
     version = "0.5.0"
     builds = {"surrogate": (SurrogateDragNode,), "mrs": (MRSDragNode, JointDragNode)}
+    setting_roles = {
+        **UncoupledDrag.setting_roles,
+        "near_field_share": convention(
+            NUMERICAL, "on the mrs rung, every quadrature point of a source, the whole share: the share that holds each "
+                       "registered hull kind's conformance case within the cross-kernel's reach (measured: at a "
+                       "quarter of a source's points, five kinds of six at their cases' spacings fell past the case's "
+                       "line near contact, the box furthest, while MIME's sphere at its default count was unmoved to "
+                       "within a few hundredths of a per cent)"),
+    }
+    mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share")
     raises = (
         *UncoupledDrag.raises,
         Flag("gain_exceeded", "the lagged coupling of the medium's near field reached a gain of one or more (the "
-                              "spectral radius of its step's amplification of a lagged error): the node replaced every "
-                              "delivery by NaN before the bodies took it, so the run stopped there "
-                              "(drag.near-field-gain)",
+                              "per-step fixed point's contraction, a check sufficient for the lagged step's stability "
+                              "and not necessary): the node replaced every delivery by NaN before the bodies took it, "
+                              "so the run stopped there (drag.near-field-gain)",
              rung="mrs", group=True),
-        Flag("cluster_gift", "the near field's dissipation rate at the step's starting twists, V^T R V over the "
-                             "cluster, was negative past its rounding: its grand resistance gave energy at that "
-                             "velocity", rung="mrs", group=True),
-        Flag("cross_cells_short", "a pair of bodies within the cross-kernel's reach left a source cell out of its "
-                                  "budget (a share set below one), which kept the kernel at its force point",
+        Flag("cluster_gift", "the near field's own work on its bodies over the step before, as the energy ledger "
+                             "books it from what the node delivered and the twists the bodies reached, was positive "
+                             "past the ledger's floor: the fluid gave the cluster energy (an energy check sees an "
+                             "error that makes the fluid a source, not one that leaves it dissipating)",
              rung="mrs", group=True),
+        Flag("cross_cells_short", "a source cell within the cross-kernel's reach of the other body did not fit the "
+                                  "cross-kernel's budget (near_field_share set below one), which kept that cell's "
+                                  "kernel at its force point, where the reach's conformance cases do not hold it",
+             rung="mrs", group=True),
+        Flag("overlap", "two bodies of the medium's near field overlapped: a point of one lay behind the other's "
+                        "surface by more than a quarter of a cell, as their discretisations estimate it; the node "
+                        "replaced every delivery by NaN before the bodies took it, so the run stopped there "
+                        "(drag.near-field-overlap)", rung="mrs", group=True),
+        Flag("near_contact", "two bodies of the medium's near field lay closer than a twentieth of the smaller one's "
+                             "equivalent radius (CONTACT_GAP), the validity line's lower edge, where the MRS's own "
+                             "error is not monotone in the spacing", rung="mrs", group=True),
     )
     validity = (
         *(line for line in UncoupledDrag.validity),
@@ -987,8 +1007,20 @@ class Drag(UncoupledDrag):
         "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
         "size, its default from the sphere's data, and each registered hull kind's conformance case is its check; "
         "below a gap of about a twentieth of a radius the MRS's own error is not monotone in the spacing, lubrication's "
-        "territory, not this rung's",
+        "territory, not this rung's (a step there raises near_contact; two bodies that overlap stop the run, "
+        "drag.near-field-overlap, and the build refuses a start where they do)",
+        "mrs: the near field's lagged step is checked by its gain, the per-step fixed point's contraction, which is "
+        "sufficient for the step's stability, not necessary: with inertia the step's amplification lies below the "
+        "gain, so the check refuses some stable clusters (measured: three spheres a tenth of a radius apart, each "
+        "body's relaxation time between about a twentieth and a tenth of the step), and the amplification and its "
+        "relaxation are reported",
+        "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
+        "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
+        "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
+        "the force oracles' (the two-sphere series, Rotne and Prager's mobility, the dense assembly)",
     )
+
+    near_field_share: float | None = None
 
     def joins_near_field(self) -> bool:
         """Whether this drag, with others of its version in its medium, is built as their joint near field: the mrs
@@ -1002,11 +1034,26 @@ class Drag(UncoupledDrag):
             return
         super().build(ctx, b)
 
+    @override
+    def _mrs_setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        found = super()._mrs_setting_problems(settings)
+        share = cast(object, self.near_field_share)
+        if share is not None and (isinstance(share, bool) or not isinstance(share, int | float)
+                                  or not 0.0 < float(share) <= 1.0):
+            found.append(f"near_field_share is {share!r}, not a share above 0 and at most 1: the most of a source's "
+                         f"quadrature points the near field's cross-kernel integrates, so write near_field_share=0.25 "
+                         f"(or leave it out for every point, 1)")
+        return found
+
     def _build_near_field(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the
         wall's constants once; each body's pose, twist and mass matrix read, its resistance and background load
-        delivered."""
+        delivered. The cross-kernel's budget is the largest ``near_field_share`` its members write (every point where
+        none writes one)."""
         ids = sorted(ctx.members)
+        written = [cast(UncoupledDrag, ctx.members[owner].entry) for owner in ids]
+        shares = [float(cast(float, getattr(entry, "near_field_share"))) for entry in written
+                  if getattr(entry, "near_field_share", None) is not None]
         bodies: list[str] = []
         held: dict[str, Any] = {}
         walls: dict[str, Any] = {}
@@ -1028,7 +1075,8 @@ class Drag(UncoupledDrag):
             bodies.append(member.bindings["body"])
         assert common is not None
         node = b.add_response_node(JointDragNode(ctx.node_name(), ctx.timestep, members=tuple(bodies), **common,
-                                                 **walls, **held))
+                                                 **walls, **({"cross_share": max(shares)} if shares else {}),
+                                                 **held))
         for i, owner in enumerate(ids):
             b.connect(b.read(f"{owner}/pose"), into=node[f"pose_{i}"])
             b.connect(b.read(f"{owner}/twist"), into=node[f"twist_{i}"])

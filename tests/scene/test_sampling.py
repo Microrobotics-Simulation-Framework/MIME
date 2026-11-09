@@ -278,3 +278,34 @@ def test_a_round_length_keeps_its_count_under_a_millionths_move_and_without_the_
     assert fl9().sample_counts({**FL9, "length": length * (1.0 + 1e-6)}, length / 7.0, "lateral")[1] == 7
     bare = [max(1, math.ceil(height / 1e-3)) for height in rows]
     assert bare.count(3) == 2, "without the slack the moved round heights take a row more"
+
+
+#: The round inputs on a 0.1 mm grid (lengths 0.1 to 4.0 mm, spacings 0.1 to 1.0 mm) whose count moved from
+#: 0.3.0.dev1's under the kinds' own versions: each ratio lies an ulp or so above a whole number, where dev1's bare
+#: ceiling took a row more. (length in tenths of a mm, spacing in tenths of a mm): (dev1's count, this release's).
+MOVED_FROM_DEV1 = {(13, 1): (14, 13), (21, 1): (22, 21), (21, 7): (4, 3), (26, 1): (27, 26), (26, 2): (14, 13)}
+
+
+def test_the_five_round_inputs_whose_count_moved_from_dev1_take_the_whole_number_and_dev1s_ceiling_one_more():
+    """The count fix moved released kinds' counts under their own versions at these five inputs of 400 (a float
+    artefact of dev1's, fixed in place: a folder saved by another release is refused by this one): a capsule's lateral
+    rows and a box's faces across their length take the whole number of spacings, where the bare ceiling of the same
+    float ratio, dev1's rule, takes one more. Every other input of the grid keeps its count."""
+    capsule_rows, box_rows, moved = {}, {}, set()
+    for tenths in range(1, 41):
+        for spacing_tenths in range(1, 11):
+            length, spacing = tenths * 1e-4, spacing_tenths * 1e-4
+            capsule = Capsule(radius=mm(0.5), height=mm(length * 1e3), axis=(0.0, 1.0, 0.0))
+            rows = capsule.sample_counts({"radius": 0.5e-3, "height": length, "axis": (0.0, 1.0, 0.0)}, spacing,
+                                         "lateral")[1]
+            faces = Box(size=mm((1.0, 2.0, length * 1e3))).sample_counts({"size": (1e-3, 2e-3, length)}, spacing,
+                                                                          "faces_x")[1]
+            bare = max(1, math.ceil(length / spacing))
+            capsule_rows[(tenths, spacing_tenths)], box_rows[(tenths, spacing_tenths)] = rows, faces
+            if rows != bare or faces != bare:
+                moved.add((tenths, spacing_tenths))
+    assert moved == set(MOVED_FROM_DEV1)
+    for key, (dev1, now) in MOVED_FROM_DEV1.items():
+        length, spacing = key[0] * 1e-4, key[1] * 1e-4
+        assert max(1, math.ceil(length / spacing)) == dev1, key
+        assert capsule_rows[key] == box_rows[key] == now == dev1 - 1, (key, capsule_rows[key], box_rows[key])

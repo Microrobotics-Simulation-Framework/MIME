@@ -767,7 +767,9 @@ class _Planner:
         ``<id>/<label>``, and each member's body's twist and mass matrix besides (its lagged cross load, its gain
         check); each member then builds nothing. One such body in a medium keeps its own node. A medium where a
         joining body shares the medium with an mrs drag that does not join (a kept version) is refused: the one would
-        see the others and not be seen."""
+        see the others and not be seen; and so is one whose bodies step at another rate than the joint node, which
+        steps at the base step: the gain it checks is the lagged step's at its own step, and a body stepping slower takes
+        each cross load over its own longer step, whose amplification the check does not see."""
         by_medium: dict[str, list[EntryPlan]] = {}
         for plan in self.readers:
             joins = getattr(plan.entry, "joins_near_field", None)
@@ -790,6 +792,8 @@ class _Planner:
                             "or put the other body in a medium of its own")
                 continue
             owner = f"near_field:{medium}"
+            if self.near_field_rates_differ(medium, members):
+                continue
             where = f"interaction {owner}"
             reads: dict[str, ResolvedRead] = {}
             delivers: dict[str, ResolvedTarget] = {}
@@ -814,6 +818,29 @@ class _Planner:
                 member.reads, member.delivers = {}, {}
             self.readers.append(group)
             self.declared.append(group)
+
+    def near_field_rates_differ(self, medium: str, members: Sequence[EntryPlan]) -> bool:
+        """Whether a body of the medium's near field steps at another rate than the joint node, refused if so
+        (``drag.near-field-rates``, naming each body and its rate): the node steps at the members' interactions' rate
+        and checks the lagged gain at that step."""
+        steps = {plan.thing: plan.divider for plan in self.declared
+                 if plan.section is Section.DYNAMICS and plan.thing is not None}
+        node = members[0].divider
+        bodies = sorted(plan.bindings["body"] for plan in members if "body" in plan.bindings)
+        differ = [body for body in bodies if steps.get(body, node) != node]
+        if not differ:
+            return False
+        rates = ", ".join(f"{body!r} every {steps.get(body, node)} steps" for body in bodies)
+        self.refuse("drag.near-field-rates", RefusalClass.USER,
+                    f"medium {medium!r}'s near field couples {', '.join(repr(body) for body in bodies)}, whose dynamics "
+                    f"step at different rates ({rates}, the base step dt = {_seconds(self.dt)}), while its joint node "
+                    f"steps every {node}: the lagged gain it checks is a step's at the node's rate, and a body that "
+                    f"steps slower takes the others' loads over its own longer step, whose amplification the check "
+                    f"does not see (bodies at 1 s against a node at 1 ms let through a lagged step amplifying 1.0146 a "
+                    f"step)",
+                    "give every body in the medium's near field the base step, RigidInertial() with no rate=..., or "
+                    "raise dt to the bodies' rate: Experiment(..., dt=...)")
+        return True
 
     def note_shared_media(self) -> None:
         """A validity line the build computes for each entry of the hydrodynamic family whose medium another body's

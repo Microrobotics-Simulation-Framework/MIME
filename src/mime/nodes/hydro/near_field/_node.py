@@ -30,14 +30,21 @@ from mime.nodes.hydro.mrs._node import (
     path_name,
     least_distance,
 )
+from mime.core.ledger import IDENTITY_ULPS
 from mime.nodes.hydro.mrs._quadrature import asymmetry, held_or_made, scaled_least_eigenvalue, unchanged
+from mime.nodes.hydro.mrs._solve import PRECISION
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
 from mime.nodes.hydro.near_field._contract import (
+    OVERLAP_RESOLUTION,
+    Placed,
     blocks_of,
+    booked_work,
     cross_loads,
     grand_resistance,
     joint_matrix,
+    lagged_amplification,
     lagged_gain,
+    pair_gaps,
     quadratic_form,
 )
 from mime.nodes.hydro.near_field._mrs import CROSS_SHARE, REACH, MRSOperator, Quadrature
@@ -63,9 +70,12 @@ HELD_MATRIX = "held_matrix"
 #: in about half the memory. Past it, a cluster needs W3b's GMRES route.
 DENSE_UNKNOWNS = 16_000
 #: The stop's causes, as the state's ``stopped_why`` holds them.
-WHY_MEMBER, WHY_CLUSTER, WHY_GAIN = 1.0, 2.0, 3.0
-#: The ledger's floor on a quadratic form's rounding, in units of eps on its scale (``mime.core.ledger``'s).
-FORM_ULPS = 16.0
+WHY_MEMBER, WHY_CLUSTER, WHY_GAIN, WHY_OVERLAP = 1.0, 2.0, 3.0, 4.0
+#: The validity line's lower edge, a gap between two bodies' surfaces over the smaller body's equivalent radius (its
+#: surface's area over 4 pi, rooted: a sphere's radius): below about a twentieth of a radius the MRS's own error is not
+#: monotone in the spacing (S3's two spheres), lubrication's territory. A step with a pair closer raises
+#: ``near_contact``.
+CONTACT_GAP = 0.05
 
 
 def member_prefix(index: int) -> str:
@@ -74,17 +84,27 @@ def member_prefix(index: int) -> str:
 
 class JointDragState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
     """``resistance_<i>`` and ``background_load_<i>`` for each member (its delivery); the cluster's symmetrised grand
-    resistance; the step's judgement (each member's scaled least eigenvalue and the cluster's, the asymmetry, the gain
-    and its relaxation in steps, the dissipation rate at the starting twists) with the flags it raises; with a wall,
-    each body's least distance from it; and the stop's record (the step, why, which member, the value, the poses)."""
+    resistance and the step's starting twists, which the next step judges this one's books by; the step's judgement
+    (each member's scaled least eigenvalue and the cluster's, the asymmetry, the gain, the lagged step's amplification
+    and its relaxation in steps, the dissipation rate at the starting twists, the step before's books and their lagged
+    residual, the least gap between two bodies and which pair) with the flags it raises; with a wall, each body's least
+    distance from it; and the stop's record (the step, why, which member and which other, the value, the poses)."""
 
     resistance: ReadOnly[Float[Array, "k k"]]  # noqa: F722 - a jaxtyping shape
     least_eigenvalue: ReadOnly[Annotated[Float[Array, "n"], Units("1")]]  # noqa: F722 - a jaxtyping shape
     cluster_least: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     asymmetry: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     gain: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    amplification: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     relaxation_steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     dissipation: ReadOnly[Annotated[Float[Array, ""], Units("W")]]  # noqa: F722 - a jaxtyping shape
+    cluster_dissipation: ReadOnly[Annotated[Float[Array, ""], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    lag_residual: ReadOnly[Annotated[Float[Array, ""], Units("J")]]  # noqa: F722 - a jaxtyping shape
+    start_twists: ReadOnly[Annotated[Float[Array, "n 6"], Units("m/s; rad/s")]]  # noqa: F722 - a jaxtyping shape
+    least_gap: ReadOnly[Annotated[Float[Array, ""], Units("m")]]  # noqa: F722 - a jaxtyping shape
+    gap_pair: ReadOnly[Annotated[Float[Array, "2"], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    overlap: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    near_contact: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     wall_accepted: ReadOnly[Annotated[Bool[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     indefinite: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     gain_exceeded: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
@@ -100,6 +120,7 @@ class JointDragState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
     stopped_at: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_why: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_member: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    stopped_other: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_value: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_poses: ReadOnly[Annotated[Float[Array, "n 7"], Units("m; 1")]]  # noqa: F722 - a jaxtyping shape
 
@@ -109,30 +130,48 @@ class JointDragInputs(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
 
 
 class JointDragNode(MimeNode):
-    """The drag of a medium's interacting MRS bodies, solved as one joint system each step (C1: one joint node per
-    medium; Bundle 2: the bodies' steps lagged, with a gain check).
+    """The drag of a medium's interacting MRS bodies, solved as one joint system each step: one joint node per medium,
+    the bodies' steps lagged, with a gain check.
 
     **Its members** are the bodies of ``members``, each with the constructor arguments its per-body
     ``MRSDragNode`` takes, written ``m<i>_<argument>``; the node builds each one's ``MRSDragNode`` (never added to the
     graph) and takes its discretisation from it (:class:`MRSOperator`). The wall's constants are the medium's, once.
 
     **Each step**: the joint matrix at the members' poses (each one's free part, made once per build in its frame and
-    turned to its pose, with its wall's self-image as dev1's; each pair's cross-kernel within its reach and the wall's
-    image between them), the grand resistance ``R`` by one dense LU with every body's six rigid motions, its symmetric
-    part taken; then each body ``a`` is delivered its own ``R_aa`` into ``resistance`` and its lagged cross load
-    ``-sum_b R_ab V_b`` at the step's starting twists into ``background_load``. The cluster's ``R`` stays in the state,
-    so that each body's block and load are derived from it.
+    turned to its pose, with its wall's self-image as the per-body node's; each pair's cross-kernel within its reach
+    and the wall's image between them), the grand resistance ``R`` by one dense LU with every body's six rigid motions,
+    its symmetric part taken; then each body ``a`` is delivered its own ``R_aa`` into ``resistance`` and its lagged
+    cross load ``-sum_b R_ab V_b`` at the step's starting twists into ``background_load``. The cluster's ``R`` and the
+    starting twists stay in the state, so that each body's block and load are derived from it and the next step judges
+    this one's books.
 
-    **Judged before the bodies take it** (each held out of every derivative): each body's ``R_aa`` and the cluster's
-    ``R`` by their least eigenvalue, each row and column scaled by its diagonal, and the lagged step's gain
-    ``rho((M/dt + R_d)^-1 R_off)`` from each body's mass matrix as it publishes it. Where a body's or the cluster's
-    resistance is not positive definite, or the gain is not below one (the lagged step would grow), every delivery is
-    replaced by NaN and the run stops there (``stop_problem`` says which, when and why). Reported: the scaled least
-    eigenvalues (the margin), the gain and the lagged coupling's relaxation in steps ``1/(1-g)``, the cluster's
-    dissipation rate ``V^T R V`` at the starting twists (``cluster_gift`` where it is negative past its rounding,
-    counted in ``cluster_gift_steps``: the ledger's judgement of the near field's cross loads, ``CHECK_CLUSTER``), the
-    asymmetry, each body's distance from the wall, and whether a cross-kernel or a wall image ran short of its
-    budget."""
+    **Judged before the bodies take it** (each held out of every derivative): the gap between each pair of bodies,
+    estimated from their force points and their surfaces' normals there (:func:`pair_gaps`): where one body's points
+    lie behind another's surface by more than a quarter of a cell (``OVERLAP_RESOLUTION``), the bodies overlap, their
+    joint system describes no fluid between them, and the run stops; where a pair is closer than ``CONTACT_GAP`` of the
+    smaller body's equivalent radius, the validity line's lower edge, the step raises ``near_contact``. Then each body's
+    ``R_aa`` and the cluster's ``R`` by their least eigenvalue, each row and column scaled by its diagonal, and the
+    lagged step's gain ``rho((M/dt + R_d)^-1 R_off)`` from each body's mass matrix as it publishes it, the per-step
+    fixed point's contraction (the record's check: sufficient for the lagged step's stability, not necessary, so that
+    it refuses some stable inertial clusters, three spheres near contact between about tau/dt 0.05 and 0.11). Where
+    two bodies overlap, a body's or the cluster's resistance is not positive definite, or the gain is not below one,
+    every delivery is replaced by NaN and the run stops there (``stop_problem`` says which, when and why). Reported:
+    the scaled least eigenvalues (the margin), the gain, the lagged step's amplification ``rho((M/dt + R_d)^-1 (M/dt -
+    R_off))`` and its relaxation in steps ``1/(1 - rho)``, the cluster's dissipation rate ``V^T R V`` at the starting
+    twists, the least gap and its pair, the asymmetry, each body's distance from the wall, and whether a cross-kernel or
+    a wall image ran short of its budget.
+
+    **The cluster's books, judged a step late**: once the bodies have taken a step, the next judges the near field's
+    own work on them over it, from what it delivered and the twists they reached, as the energy ledger books it on each
+    body (:func:`booked_work`): the fluid may not give the cluster energy past the ledger's floor, as the ledger's route
+    1 judges a step that claims no identity (``cluster_gift``, counted in ``cluster_gift_steps``, which the run's account
+    reads into the near field's law, ``CHECK_CLUSTER``); the fluid's dissipation and its lagged residual are reported.
+    **Its reach**: an energy check sees an error that makes the fluid a source, and none that leaves it dissipating.
+    Measured on two spheres, one dragged: cross loads delivered three times over make it one to a gap of a radius along
+    the line of centres and a third of one across it, twice over to a third of a radius along it; those at wider gaps,
+    any delivered at half their value or with their sign flipped, and any error in ``R`` that leaves it definite, leave
+    it dissipating and are the force gates' to catch (the delivery's own check against ``R``, the dense assembly, the
+    two-sphere series and Rotne and Prager's mobility). The run's last step is judged by no step after it."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-122",
@@ -349,11 +388,13 @@ class JointDragNode(MimeNode):
             state[f"background_load_{i}"] = as_run_array(jnp.zeros(6))
         state.update(resistance=as_run_array(jnp.zeros((6 * count, 6 * count))),
                      least_eigenvalue=as_run_array(jnp.zeros(count)), cluster_least=zero, asymmetry=zero, gain=zero,
-                     relaxation_steps=zero, dissipation=zero, wall_accepted=jnp.asarray(True), indefinite=zero,
+                     amplification=zero, relaxation_steps=zero, dissipation=zero, cluster_dissipation=zero,
+                     lag_residual=zero, start_twists=as_run_array(jnp.zeros((count, 6))), least_gap=zero,
+                     gap_pair=as_run_array(jnp.zeros(2)), wall_accepted=jnp.asarray(True), indefinite=zero,
                      gain_exceeded=zero, near_wall=zero, asymmetric=zero, cluster_gift=zero, cluster_gift_steps=zero,
-                     cross_cells_short=zero,
-                     steps=zero, stopped_at=zero, stopped_why=zero, stopped_member=zero, stopped_value=zero,
-                     stopped_poses=as_run_array(jnp.zeros((count, 7))))
+                     cross_cells_short=zero, overlap=zero, near_contact=zero,
+                     steps=zero, stopped_at=zero, stopped_why=zero, stopped_member=zero, stopped_other=zero,
+                     stopped_value=zero, stopped_poses=as_run_array(jnp.zeros((count, 7))))
         if self._gapped():
             state.update(wall_gap=as_run_array(jnp.zeros(count)), wall_gap_spacings=as_run_array(jnp.zeros(count)))
         if self._wall_budgeted():
@@ -374,10 +415,11 @@ class JointDragNode(MimeNode):
     def _leaves(self, index: int, p: Mapping[str, Any]) -> dict[str, Any]:
         return {key: p[f"{member_prefix(index)}{key}"] for key in self._member_leaf_names(index)}
 
-    def solved(self, p: Mapping[str, Any], poses: Array) -> tuple[Array, Array, Array, Array, Array]:
+    def solved(self, p: Mapping[str, Any], poses: Array) -> tuple[Array, ...]:
         """The cluster's grand resistance at ``poses`` (``(K, 7)``) from the constants ``p``, not symmetrised; whether
         every wall read was accepted; whether any wall image or cross-kernel ran short; each body's least distance from
-        the wall (zero without a wall's distance). Checkpointed: reverse mode keeps its inputs and solves again."""
+        the wall (zero without a wall's distance); and the gaps between the bodies, from the same placements
+        (:meth:`body_gaps`). Checkpointed: reverse mode keeps its inputs and solves again."""
         wall = self._wall()
         parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
         leaves = [self._leaves(i, p) for i in range(len(self._members))]
@@ -385,13 +427,47 @@ class JointDragNode(MimeNode):
         operators, distance = self._operators, wall.distance
 
         def solve(held: Sequence[Array], leaves: Sequence[Mapping[str, Any]], poses: Array, viscosity: Array,
-                  parameters: Mapping[str, Any], reach: Array) -> tuple[Array, Array, Array, Array, Array]:
+                  parameters: Mapping[str, Any], reach: Array) -> tuple[Array, ...]:
             joint = joint_matrix(operators, leaves, held, poses, viscosity, wall, parameters, reach)
             gaps = jnp.zeros(len(operators), dtype=poses.dtype) if distance is None else jnp.stack(
                 [least_distance(distance(cast(Quadrature, placed.own).points, parameters)) for placed in joint.placed])
-            return grand_resistance(joint), joint.accepted, jnp.any(joint.wall_short), jnp.any(joint.cross_short), gaps
+            return (grand_resistance(joint), joint.accepted, jnp.any(joint.wall_short), jnp.any(joint.cross_short),
+                    gaps, *self.body_gaps(joint.placed))
 
         return checkpoint(solve)(held, leaves, poses, p["viscosity"], parameters, p["reach"])
+
+    @staticmethod
+    def body_gaps(placed: Sequence[Placed]) -> tuple[Array, Array, Array]:
+        """The bodies' gaps at their placements (:func:`pair_gaps`: each ordered pair's least height of one body's
+        points above the other's surface, m, and whether one lies behind it beyond the estimate's resolution), and each
+        body's equivalent radius, its surface's area over four pi rooted (m). A judgement, held out of every
+        derivative."""
+        gaps, beyond = pair_gaps(placed)
+        radii = jnp.stack([jnp.sqrt(jnp.sum(body.area) / (4.0 * jnp.pi)) for body in placed])
+        return _lax.stop_gradient(gaps), _lax.stop_gradient(beyond), _lax.stop_gradient(radii)
+
+    def judged_books(self, state: NodeFields, twists: Array, dt: float) -> tuple[Array, Array, Array]:
+        """The step before's books, judged now that the bodies have taken it: the near field's own work on the cluster
+        over that step as the energy ledger pairs it (:func:`booked_work`, from the blocks and loads the node delivered
+        then, ``state``, and the twists the bodies reached, ``twists``), the fluid's dissipation, minus that work; its
+        lagged residual, ``dt V'^T R_off (V' - V)``, by which the books of a lagged step differ from ``dt V'^T R V'`` at
+        one velocity; and whether the fluid gave energy past the ledger's floor (``IDENTITY_ULPS`` units of eps on the
+        books' scale), as the ledger's route 1 judges a step that claims no identity. Judged only where the step before
+        was stepped and not stopped: the first step has no books before it, and a stopped step's deliveries are NaN."""
+        count = len(self._members)
+        dtype = state["gain"].dtype
+        held = cast(Mapping[str, Array], _lax.stop_gradient(dict(state)))
+        own = jnp.stack([held[f"resistance_{i}"] for i in range(count)])
+        loads = jnp.stack([held[f"background_load_{i}"] for i in range(count)])
+        work, scale = booked_work(own, loads, twists, dt)
+        dissipated = -work
+        _, off = blocks_of(held["resistance"], count)
+        after, before = twists.reshape(-1), held["start_twists"].reshape(-1)
+        residual = dt * jnp.dot(after, jnp.matmul(off, after - before, precision=PRECISION), precision=PRECISION)
+        judged = (state["steps"] >= 1.0) & (state["stopped_at"] == 0.0)
+        gift = judged & ~(dissipated >= -IDENTITY_ULPS * jnp.finfo(dtype).eps * scale)
+        return (jnp.where(judged, dissipated, 0.0).astype(dtype), jnp.where(judged, residual, 0.0).astype(dtype),
+                gift)
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
@@ -403,44 +479,59 @@ class JointDragNode(MimeNode):
         twists = jnp.stack([boundary_inputs.get(f"twist_{i}", jnp.zeros(6, dtype=dtype)) for i in range(count)])
         masses = jnp.stack([boundary_inputs.get(f"mass_matrix_{i}", jnp.zeros((6, 6), dtype=dtype))
                             for i in range(count)])
-        found, accepted, wall_short, cross_short, gaps = self.solved(p, poses)
+        found, accepted, wall_short, cross_short, gaps, apart, beyond, radii = self.solved(p, poses)
         found = found.astype(dtype)
         symmetric = 0.5 * (found + found.T)
         own, off = blocks_of(symmetric, count)
         loads = cross_loads(off, twists)
         judged = _lax.stop_gradient(found)
         held_own, held_off = blocks_of(0.5 * (judged + judged.T), count)
+        held_masses, held_twists = _lax.stop_gradient(masses), _lax.stop_gradient(twists)
         least = jnp.stack([scaled_least_eigenvalue(judged[6 * i:6 * i + 6, 6 * i:6 * i + 6])
                            for i in range(count)]).astype(dtype)
         cluster = scaled_least_eigenvalue(judged).astype(dtype)
         dropped = asymmetry(judged).astype(dtype)
-        gain = lagged_gain(held_own, held_off, _lax.stop_gradient(masses), dt).astype(dtype)
-        form, scale = quadratic_form(0.5 * (judged + judged.T), _lax.stop_gradient(twists))
-        gift = form < -FORM_ULPS * jnp.finfo(dtype).eps * scale
+        gain = lagged_gain(held_own, held_off, held_masses, dt).astype(dtype)
+        amplification = lagged_amplification(held_own, held_off, held_masses, dt).astype(dtype)
+        form, _ = quadratic_form(0.5 * (judged + judged.T), held_twists)
+        dissipated, residual, gift = self.judged_books(state, held_twists, dt)
+        nearest = jnp.argmin(apart.reshape(-1))
+        pair = jnp.stack([nearest // count, nearest % count]).astype(dtype)
+        least_gap = (jnp.min(apart) if count > 1 else jnp.zeros(())).astype(dtype)
+        contact = jnp.any(apart < CONTACT_GAP * jnp.minimum(radii[:, None], radii[None, :]))
+        overlap_stop = jnp.any(beyond)
         member_stop, cluster_stop, gain_stop = ~(jnp.min(least) > 0.0), ~(cluster > 0.0), ~(gain < 1.0)
-        stop = accepted & (member_stop | cluster_stop | gain_stop)
-        why = jnp.where(member_stop, WHY_MEMBER, jnp.where(cluster_stop, WHY_CLUSTER, WHY_GAIN)).astype(dtype)
-        value = jnp.where(member_stop, jnp.min(least), jnp.where(cluster_stop, cluster, gain)).astype(dtype)
+        stop = overlap_stop | (accepted & (member_stop | cluster_stop | gain_stop))
+        why = jnp.where(overlap_stop, WHY_OVERLAP, jnp.where(member_stop, WHY_MEMBER, jnp.where(
+            cluster_stop, WHY_CLUSTER, WHY_GAIN))).astype(dtype)
+        value = jnp.where(overlap_stop, least_gap, jnp.where(member_stop, jnp.min(least),
+                                                             jnp.where(cluster_stop, cluster, gain))).astype(dtype)
+        member = jnp.where(overlap_stop, pair[0], jnp.argmin(least).astype(dtype))
+        other = jnp.where(overlap_stop, pair[1], member)
         steps = state["steps"] + 1.0
         first = stop & (state["stopped_at"] == 0.0)
-        record = jnp.where(first, jnp.concatenate([steps[None], why[None], jnp.argmin(least).astype(dtype)[None],
-                                                   value[None], poses.reshape(-1)]),
+        record = jnp.where(first, jnp.concatenate([steps[None], why[None], member[None], other[None], value[None],
+                                                   poses.reshape(-1)]),
                            jnp.concatenate([state["stopped_at"][None], state["stopped_why"][None],
-                                            state["stopped_member"][None], state["stopped_value"][None],
-                                            state["stopped_poses"].reshape(-1)]))
+                                            state["stopped_member"][None], state["stopped_other"][None],
+                                            state["stopped_value"][None], state["stopped_poses"].reshape(-1)]))
         out: dict[str, Array] = {}
         for i in range(count):
             out[f"resistance_{i}"] = jnp.where(stop, jnp.nan, own[i]).astype(dtype)
             out[f"background_load_{i}"] = jnp.where(stop, jnp.nan, loads[i]).astype(dtype)
-        flags = jnp.stack([stop & (member_stop | cluster_stop), stop & gain_stop, dropped > CONFINED_ASYMMETRY_LIMIT,
-                           gift, cross_short]).astype(dtype)
-        relaxation = jnp.where(gain < 1.0, 1.0 / (1.0 - jnp.minimum(gain, 1.0 - jnp.finfo(dtype).eps)), jnp.inf)
+        flags = jnp.stack([stop & ~overlap_stop & (member_stop | cluster_stop), stop & ~overlap_stop & gain_stop,
+                           dropped > CONFINED_ASYMMETRY_LIMIT, gift, cross_short, overlap_stop, contact]).astype(dtype)
+        relaxation = jnp.where(amplification < 1.0,
+                               1.0 / (1.0 - jnp.minimum(amplification, 1.0 - jnp.finfo(dtype).eps)), jnp.inf)
         out.update(resistance=symmetric, least_eigenvalue=least, cluster_least=cluster, asymmetry=dropped, gain=gain,
-                   relaxation_steps=relaxation.astype(dtype), dissipation=form.astype(dtype), wall_accepted=accepted,
+                   amplification=amplification, relaxation_steps=relaxation.astype(dtype),
+                   dissipation=form.astype(dtype), cluster_dissipation=dissipated, lag_residual=residual,
+                   start_twists=twists.astype(dtype), least_gap=least_gap, gap_pair=pair, wall_accepted=accepted,
                    indefinite=flags[0], gain_exceeded=flags[1], asymmetric=flags[2], cluster_gift=flags[3],
-                   cluster_gift_steps=state["cluster_gift_steps"] + flags[3],
-                   cross_cells_short=flags[4], steps=steps, stopped_at=record[0], stopped_why=record[1],
-                   stopped_member=record[2], stopped_value=record[3], stopped_poses=record[4:].reshape(count, 7))
+                   cluster_gift_steps=state["cluster_gift_steps"] + flags[3], cross_cells_short=flags[4],
+                   overlap=flags[5], near_contact=flags[6], steps=steps, stopped_at=record[0], stopped_why=record[1],
+                   stopped_member=record[2], stopped_other=record[3], stopped_value=record[4],
+                   stopped_poses=record[5:].reshape(count, 7))
         near = jnp.asarray(False)
         if self._gapped():
             spacing = jnp.stack([p[f"{member_prefix(i)}force_spacing"] for i in range(count)]).astype(dtype)
@@ -474,8 +565,8 @@ class JointDragNode(MimeNode):
 
     def built_problems(self, start: Mapping[str, Any] | None = None) -> list[Problem]:
         """Each member's own refusals of its free part (``MRSDragNode.built_problems``); a joint system past the dense
-        route's size (:data:`DENSE_UNKNOWNS`); and at the bodies' starting poses and twists, a body's or the cluster's
-        resistance that is not positive definite, or a lagged gain not below one."""
+        route's size (:data:`DENSE_UNKNOWNS`); and at the bodies' starting poses and twists, two bodies that overlap, a
+        body's or the cluster's resistance that is not positive definite, or a lagged gain not below one."""
         found: list[Problem] = []
         for body, member in zip(self.members, self._members, strict=True):
             found += [Problem(problem.code, f"{body}: {problem.message}", problem.action)
@@ -490,10 +581,11 @@ class JointDragNode(MimeNode):
                                                     f"outgrows an iterative solve's (measured at 21,168 unknowns: 11 "
                                                     f"against 5.5 GiB in float64, in about the same time); this one's "
                                                     f"LU would hold about "
-                                                    f"{3 * 8 * self.unknowns ** 2 / 2 ** 30:.3g} GiB",
+                                                    f"{3 * _itemsize() * self.unknowns ** 2 / 2 ** 30:.3g} GiB in "
+                                                    f"the run's dtype",
                             "write a coarser spacing on the bodies' drag, Drag.MRS(spacing=...), or fewer bodies in "
                             "the medium; the near field's iterative route (GMRES, each body's own block its "
-                            "preconditioner), planned and not in this release, lifts this line")]
+                            "preconditioner), not built yet, lifts this line")]
         if start is None or not all(f"pose_{i}" in start for i in range(len(self.members))):
             return found
         judged = self.judged_at(start)
@@ -509,6 +601,7 @@ class JointDragNode(MimeNode):
         size and the gain and margins at the start."""
         counts = ", ".join(f"{body} {op.count}" for body, op in zip(self.members, self._operators, strict=True))
         budgets = ", ".join(f"{body} {op.budget}" for body, op in zip(self.members, self._operators, strict=True))
+        share = float(self.constants()["cross_share"])
         lines = [f"the medium's near field couples {', '.join(self.members)} in one joint system (force points: "
                  f"{counts}; {self.unknowns} unknowns), solved each step by one dense LU for the cluster's grand "
                  f"resistance, each body's step lagged: its own coupled 6 x 6 implicit, the others' loads from the "
@@ -516,19 +609,25 @@ class JointDragNode(MimeNode):
                  f"the cross-kernel between bodies: the source's regularised Stokeslet at its force points where the "
                  f"pair is farther apart than {self.constants()['reach']:g} of the source's cells' own size, "
                  f"integrated over every cell within half that, blended between; integrated over at most {budgets} "
-                 f"quadrature points a source, the nearest cells first (cross_cells_short where a pair within the "
-                 f"reach left a cell out)",
-                 f"its matrix in the run's dtype {8 * self.unknowns ** 2 / 2 ** 20:.4g} MiB in float64, the LU's "
+                 f"quadrature points a source ({share:g} of them), the nearest cells first (cross_cells_short where "
+                 f"a cell within the reach of the other body was left at its force point)",
+                 f"its matrix in the run's dtype {_itemsize() * self.unknowns ** 2 / 2 ** 20:.4g} MiB, the LU's "
                  f"peak about three times that; past {DENSE_UNKNOWNS} unknowns the build refuses the dense route"]
         if start is not None and all(f"pose_{i}" in start for i in range(len(self.members))):
             judged = self.judged_at(start)
             margins = ", ".join(f"{body} {float(v):.3g}" for body, v in zip(self.members, judged["least_eigenvalue"],
                                                                              strict=True))
             gain = float(judged["gain"])
-            lines.append(f"at the start: the lagged gain {gain:.3g} (a step's error relaxes over about "
-                         f"{float(judged['relaxation_steps']):.3g} steps; at one or above the run stops), the scaled "
-                         f"least eigenvalue of each body's coupled resistance {margins} and of the cluster's "
-                         f"{float(judged['cluster_least']):.3g} (its margin; not above zero, the run stops)")
+            first, second = (self.members[int(round(float(i)))] for i in judged["gap_pair"])
+            lines.append(f"at the start: the lagged gain {gain:.3g} (at one or above the run stops; the check is "
+                         f"sufficient for the lagged step's stability, not necessary), the lagged step's "
+                         f"amplification {float(judged['amplification']):.3g} (an error relaxes over about "
+                         f"{float(judged['relaxation_steps']):.3g} steps), the scaled least eigenvalue of each body's "
+                         f"coupled resistance {margins} and of the cluster's {float(judged['cluster_least']):.3g} (its "
+                         f"margin; not above zero, the run stops), and the least gap between two bodies' surfaces, "
+                         f"{first} and {second}, {float(judged['least_gap']) * 1e3:.4g} mm as their discretisations "
+                         f"estimate it (closer than {CONTACT_GAP:g} of the smaller one's equivalent radius, a step "
+                         f"raises near_contact, the validity line's edge)")
         return lines
 
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
@@ -544,12 +643,26 @@ class JointDragNode(MimeNode):
                           for body, pose in zip(self.members, poses, strict=True))
         when = (f"at its step {step} (t = {step * self.delta_t:.6g} s), and the run stopped there, before the bodies "
                 f"took it")
+        if why == WHY_OVERLAP:
+            first, second = (self.members[int(round(float(np.asarray(state[key]))))]
+                             for key in ("stopped_member", "stopped_other"))
+            return Problem(
+                "drag.near-field-overlap",
+                f"{first} and {second} overlap {when} ({where}): a point of {first} lies {-value * 1e3:.4g} mm behind "
+                f"{second}'s surface as their discretisations estimate it (deeper than {OVERLAP_RESOLUTION:g} of a "
+                f"cell, their estimate's resolution), so that no fluid lies between them and their joint system "
+                f"describes none",
+                "start the bodies apart, Body(..., initial=State(position=...)), or hold them apart, "
+                "Contact.Projection(margin=...)")
         if why == WHY_GAIN:
             return Problem(
                 "drag.near-field-gain",
-                f"the lagged coupling of {', '.join(self.members)} would grow: its gain, the spectral radius of "
-                f"(M/dt + R_d)^-1 R_off, was {value:.4g} {when} ({where}); a lagged step above one amplifies its "
-                f"error at every step (three overdamped bodies in a triangle near contact do)",
+                f"the lagged coupling of {', '.join(self.members)} may grow: its gain, the spectral radius of "
+                f"(M/dt + R_d)^-1 R_off, the per-step fixed point's contraction, was {value:.4g} {when} ({where}); "
+                f"the check is sufficient for the lagged step's stability, not necessary: overdamped (three bodies "
+                f"in a triangle near contact) the step's amplification is the gain and grows, while with inertia it "
+                f"lies below the gain, so that the check refuses some stable runs (three spheres near contact between "
+                f"about tau/dt 0.05 and 0.11)",
                 "write a shorter step, dt=..., where the bodies are inertial enough for it to lower the gain, or hold "
                 "the bodies further apart, Contact.Projection(margin=...); the joint step that takes such clusters "
                 "is not in this release")
@@ -564,5 +677,10 @@ class JointDragNode(MimeNode):
             "Contact.Projection(margin=...)")
 
 
-__all__ = ["DENSE_UNKNOWNS", "EQUATIONS", "HELD_MATRIX", "JointDragInputs", "JointDragNode", "JointDragState",
-           "member_prefix"]
+def _itemsize() -> int:
+    """The bytes of a floating value in the run's dtype (float64 with JAX's x64 mode, else float32)."""
+    return int(jnp.zeros(()).dtype.itemsize)
+
+
+__all__ = ["CONTACT_GAP", "DENSE_UNKNOWNS", "EQUATIONS", "HELD_MATRIX", "JointDragInputs", "JointDragNode",
+           "JointDragState", "member_prefix"]

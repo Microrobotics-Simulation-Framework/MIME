@@ -1,8 +1,8 @@
 """Gate 8, the seam as a pure function of geometry (Bundle 2; C3's multi-contact report: W2's lift evaluates the coarse
 MRS with the walls and the neighbours moved per contact): the joint node's grand resistance evaluated with a neighbour
-moved along the line of centres, or the tube's radius moved, equals a fresh build at that geometry to rounding (1e-12
-of each entry's diagonal scale, float64), and its derivative through the move is the central difference's to the
-difference's own resolution. The control: the moved geometry against the build it was moved from, far past the line,
+moved along the line of centres, the tube's radius or the plane's offset moved, equals a fresh build at that geometry
+to rounding (1e-12 of each entry's diagonal scale, float64), and its derivative through the move is the central
+difference's to the difference's own resolution. The control: the moved geometry against the build it was moved from, far past the line,
 so that the comparison sees the move."""
 
 import jax
@@ -54,6 +54,24 @@ def test_the_tubes_radius_moved_in_the_call_is_a_fresh_build_at_that_radius():
         before = np.asarray(grand_at(node, parameter_leaves(narrow.graph)[NODE], poses_of(narrow)))
     found, control = entrywise(moved, fresh), entrywise(before, fresh)
     print(f"\nthe radius moved against a fresh build at it {found:.3g} (line {LINE:g}); unmoved {control:.3g}")
+    assert found <= LINE and control > 1e3 * LINE
+
+
+def test_the_planes_offset_moved_in_the_call_is_a_fresh_build_at_that_offset():
+    """The plane wall kind's arm of the moved wall (its offset is the node's leaf ``wall_offset``, which a contact's
+    opening moves): two spheres a radius above the plane, the offset moved by a tenth of a millimetre in the call
+    against a fresh build there, the wall's image between the bodies and each one's own regularised by its blob."""
+    law = mrs(SPACING, wall_kind="plane")
+    with precision("float64"):
+        near = bodies("near", spheres(0.4e-3, 2), law, plane=-2e-3).build()
+        far = bodies("far", spheres(0.4e-3, 2), law, plane=-2.1e-3).build()
+        node, params = joint_node(near), dict(parameter_leaves(near.graph)[NODE])
+        params["wall_offset"] = jnp.asarray(-2.1e-3)
+        moved = np.asarray(grand_at(node, params, poses_of(near)))
+        fresh = np.asarray(grand_at(joint_node(far), parameter_leaves(far.graph)[NODE], poses_of(far)))
+        before = np.asarray(grand_at(node, parameter_leaves(near.graph)[NODE], poses_of(near)))
+    found, control = entrywise(moved, fresh), entrywise(before, fresh)
+    print(f"\nthe plane's offset moved against a fresh build at it {found:.3g} (line {LINE:g}); unmoved {control:.3g}")
     assert found <= LINE and control > 1e3 * LINE
 
 

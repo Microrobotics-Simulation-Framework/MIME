@@ -87,17 +87,61 @@ beyond, since near contact the joint system amplifies the point kernel's error i
 them) and solves it once, densely, for the cluster's grand resistance. Each body is delivered its own coupled
 resistance and, as its background load, the others' load on it at their velocities at the step's start: their steps
 are **lagged**, each body's own resistance implicit, the others' loads a step behind. That costs a first-order error in
-the step, and a step's delay after a sudden change, relaxing at the lagged step's **gain**, which the node checks every
-step from each body's mass matrix: at one or above (three overdamped bodies in a triangle near contact) the lagged error
-would grow, and the run stops there (`drag.near-field-gain`); the build refuses a configuration that starts there.
-Each body's coupled resistance and the cluster's are judged as one body's is near a wall (`drag.near-field-indefinite`),
-their margins reported. A body alone in its medium keeps its own node, step for step. The dense solve's memory grows
-as the square of the cluster's force points, so the build refuses a cluster past `DENSE_UNKNOWNS` unknowns
-(`drag.near-field-size`). With the energy ledger attached, each body's own resistance is its drag's law, and the
-cross loads are the near field's own law, `near_field:<medium>`, booked on each body by the one pairing rule and judged
-in the cluster's sum by the node (its quadratic form at the step's starting twists), never on one body's row: one
-body drags another. A
-body on the surrogate rung in the same medium is computed alone, and the build report says so.
+the step, and a step's delay after a sudden change. The node checks the lagged step's **gain** every step from each
+body's mass matrix, the per-step fixed point's contraction: at one or above (three overdamped bodies in a triangle near
+contact) the run stops there (`drag.near-field-gain`), and the build refuses a configuration that starts there. The
+check is sufficient for the lagged step's stability, not necessary: with inertia the step's amplification of an error
+lies below the gain, so it refuses some stable clusters (three spheres a tenth of a radius apart, each body's relaxation
+time between about a twentieth and a tenth of the step); the amplification, and the steps an error takes to relax at
+it, are reported. Every body in a near field steps at the base step: the build refuses one whose dynamics steps at
+another rate (`drag.near-field-rates`), whose longer step the gain does not judge. Each body's coupled resistance and
+the cluster's are judged as one body's is near a wall (`drag.near-field-indefinite`), their margins reported.
+
+**Gaps.** Each step the node estimates the gap between each pair of bodies from their force points and their surfaces'
+normals there (each point's height above the other body's surface, read on the tangent plane at its nearest force
+point). Where one body's point lies behind another's surface by more than a quarter of a cell, the estimate's
+resolution, the bodies overlap, no fluid lies between them, and the run stops there (`drag.near-field-overlap`); the
+build refuses bodies that start so, coincident ones included. A pair closer than a twentieth of the smaller body's
+equivalent radius (its surface's area over four pi, rooted) raises `near_contact`: the validity line's lower edge,
+lubrication's territory. An overlap shallower than a quarter of a cell reads as contact.
+
+**The cross-kernel's budget.** Within the reach every cell of the source is integrated by default
+(`near_field_share`, the share of the source's quadrature points the kernel may integrate, defaults to all of them).
+A lower share, such as a quarter, `Drag.MRS(near_field_share=...)`, is a cost setting: the cells nearest the other body are
+integrated while their points fit, and a cell within the reach that does not fit keeps the point kernel there and
+raises `cross_cells_short`. A quarter held the two-sphere and gain gates at MIME's sphere at its default count, and
+left five hull kinds of six past their conformance case's line near contact at that case's coarser spacings, the box
+furthest, which is why every point is the default. What a step costs at the default, on the laptop CPU it was
+measured on (MIME's sphere at its default count, free space, twelve cores, shared with other work):
+
+| bodies | float64, a step | float32, a step | at a quarter of the points, float64 |
+|---|---|---|---|
+| three in a triangle a tenth of a radius apart | 10.2 s | 3.6 s | 2.9 s |
+| eight in a cube half a radius apart | 39.2 s | 16.3 s | 17.6 s |
+
+The step compiles in about as long as one step takes, and holds under two hundred MiB of temporaries for the triangle and
+about a GiB for the cube in float64 (half that in float32): a thousand steps of the cube take about eleven hours.
+
+A body alone in its medium keeps its own node, step for step. The dense solve's memory grows as the square of the
+cluster's force points, so the build refuses a cluster past `DENSE_UNKNOWNS` unknowns (`drag.near-field-size`). A
+medium where two bodies or more join a near field beside a body on the kept 0.4.0 mrs rung is refused
+(`drag.near-field-mixed`: the one would see the others and not be seen); one body on 0.5.0 beside one on 0.4.0 forms
+no near field, so both are computed alone, and the build report says so.
+
+**The energy ledger beside a near field.** Each body's own resistance is its drag's law, and the cross loads are the
+near field's own law, `near_field:<medium>`, booked on each body by the one pairing rule and never judged on one body's
+row: one body drags another. Once the bodies have taken a step, the node judges the near field's books over it as the
+ledger books them, from what it delivered and the twists the bodies reached: the fluid may not give the cluster energy
+past the ledger's floor (`cluster_gift`, counted into the near field's law in the run's account), the ledger's first
+route on the cluster. Its reach is what an energy check can see: an error that makes the fluid a source. Measured on
+two spheres, one dragged, at gaps of a tenth of a radius to two radii: a cross load delivered three times over is
+caught to a gap of a radius along the line of centres and a third of one across it, twice over to a third of a radius
+along it. An error that leaves the fluid dissipating it cannot see: those cross loads at wider gaps, any cross load at
+half its value or with its sign flipped, an error in the grand resistance that leaves it definite (one that leaves it
+indefinite stops the run). Those are the force oracles' to catch: the delivery's own check against the grand
+resistance, the dense assembly the node is held to, and the two-sphere series and Rotne and Prager's mobility. The run's last step is
+judged by no step after it. A body on the surrogate rung in the same medium is computed alone, and the build report
+says so.
 
 `wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
 no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.

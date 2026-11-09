@@ -13,8 +13,9 @@ TWIST = define(Interface(
 MASS_MATRIX = define(Interface(
     "body.mass_matrix", ReadKind.STATE, "kg; kg m; kg m^2", "world", (6, 6), magnitude=1e-6,
     description="the body's mass on the translations' diagonal and its inertia about the centre of mass, turned to "
-                "the body's pose, on the rotations' block: what its step solves with, published only where a plan "
-                "reads it (a medium's near field, whose lagged gain needs every body's)"))
+                "the body's pose, on the rotations' block, published only where a plan reads it (a medium's near "
+                "field, whose lagged gain needs every body's); a step that takes the gyroscopic term implicitly "
+                "solves with this less half the step times its stiffness, which vanishes for an isotropic body"))
 APPLIED_WRENCH = define(Interface(
     "body.applied_wrench", TargetKind.LOAD, "N; N m", "world", (6,), sign="on the body, about its centre of mass",
     magnitude=1e-6, description="[force; torque], summed over every law that loads the body"))

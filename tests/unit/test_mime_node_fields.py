@@ -17,11 +17,26 @@ from mime.core import MimeNode
 from mime.core.multibody import read_urdf
 from mime.data import asset
 from mime.nodes import actuation, body, control, hydro, magnetic
-from mime.nodes.hydro import mrs
+from mime.nodes.hydro import mrs, near_field
 
 DT = 1e-3
 TUBE = dict(surface_shape="cylinder", extent=1e-3, margin=1e-4, velocity_rule="remove_outward",
             surface_centre=(0.0, 0.0, 0.0), surface_axis=(1.0, 0.0, 0.0), surface_radius=3e-3)
+
+#: An MRS sphere's arguments at a coarse count, its quadrature the force points themselves (one to a cell).
+SPHERE = dict(blob=0.5, kind="sphere", kind_version="0.1.0", patches=("surface",), counts=((3, 5),),
+              part_centre=(0.0, 0.0, 0.0), part_rotation=(1, 0, 0, 0, 1, 0, 0, 0, 1), shape_radius=1e-3)
+
+
+def _joint_node():
+    """A medium's near field of two coarse spheres, each member's arguments under ``m<i>_``."""
+    count = mrs.MRSDragNode("c", DT, viscosity=1e-3, wall_kind="free_space", wall_kind_version="0.1.0",
+                            **SPHERE).sample_count
+    member = {**SPHERE, "quadrature_owners": tuple(range(count))}
+    return near_field.JointDragNode("n", DT, members=("a", "b"), viscosity=1e-3, wall_kind="free_space",
+                                          wall_kind_version="0.1.0",
+                                          **{f"m{i}_{key}": value for i in range(2) for key, value in member.items()})
+
 
 PLANAR = read_urdf(Path(__file__).parents[1] / "descriptions" / "three_link_planar.urdf").tree.articulation
 IDENTITY = (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
@@ -74,6 +89,8 @@ TYPED = [
     (mrs.MRSDragNode("e", DT, viscosity=1e-3, blob=0.5, kind="sphere", kind_version="0.1.0", patches=("surface",),
                      counts=((3, 5),), part_centre=(0.0, 0.0, 0.0), part_rotation=(1, 0, 0, 0, 1, 0, 0, 0, 1),
                      wall_kind="free_space", wall_kind_version="0.1.0", shape_radius=1e-3), mrs.MRSDragState, mrs.MRSDragInputs, set()),
+    (_joint_node(), near_field.JointDragState, near_field.JointDragInputs,
+     {f"{field}_{i}" for i in range(2) for field in ("resistance", "background_load", "pose", "twist", "mass_matrix")}),
     (control.ControllerNode("k", DT, step=lambda state, reads: (state, {"angle": reads["pose"][4]}),
                             controller="toy 0.0.0", reads={"pose": ("m; 1", (7,))},
                             initial_state={"filtered": jnp.zeros(())}, initial_writes={"angle": jnp.zeros(())}),
@@ -85,6 +102,15 @@ TYPED = [
 
 def _declared(kind) -> set[str]:
     return set() if kind is None else set(kind.__annotations__)
+
+
+def _required(kind) -> set[str]:
+    """The fields a node always holds: its typed state's, but those it marks ``NotRequired`` (a joint near field's wall
+    distances, held only beside a wall that reports them)."""
+    from mime.core._field_kinds import _typed
+
+    typed = None if kind is None else _typed(kind)
+    return set() if typed is None else set(typed[1])
 
 
 def _extra(kind) -> bool:
@@ -114,7 +140,7 @@ def test_each_nodes_typeddicts_name_the_fields_it_holds_and_the_inputs_it_declar
     given = {name: jnp.zeros(spec.shape) for name, spec in node.boundary_input_spec().items()}
     stepped = node.update(initial, given, DT)
     for fields in (set(initial), set(stepped)):
-        assert _declared(state) <= fields
+        assert _required(state) <= fields
         extra = fields - _declared(state)
         assert extra <= constructed and (not extra or _extra(state)), extra
     declared_inputs = set(node.boundary_input_spec())

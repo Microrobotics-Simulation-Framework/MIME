@@ -14,21 +14,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the
   cluster's grand resistance (each body's own block dev1's; each pair coupled by the source's regularised Stokeslet,
   integrated over every cell where the pair is within a reach of each other, in the source's cells' own size, and taken
-  at its force points beyond; the wall's image between them) and delivers each body its own coupled resistance and, as its background load,
-  the others' load on it a step behind. The lagged step's gain, the spectral radius of `(M/dt + R_d)^-1 R_off`, is
-  checked every step from each body's mass matrix, which the rigid body now publishes (`body.mass_matrix`) only where
-  the near field reads it: at one or above the run stops (`drag.near-field-gain`), and the build refuses a
-  configuration that starts there. Each body's coupled resistance and the cluster's are judged definite as dev1's is
-  near a wall (`drag.near-field-indefinite`), their margins reported. A body alone in its medium keeps its own node,
-  so no program with one mrs body a medium moves; a folder saved with `drag` 0.4.0, kept as `UncoupledDrag`, rebuilds
-  its bodies' own nodes. The build refuses a cluster past the dense route's size, a memory line
-  (`drag.near-field-size`), and a medium mixing the two versions (`drag.near-field-mixed`). With the energy ledger
-  attached, each body's own resistance is its drag's law and the cross loads are the near field's own,
-  `near_field:<medium>`, booked on each body by the one pairing rule and judged in the cluster's sum
-  (`mime.core.ledger.CHECK_CLUSTER`: the node's quadratic form at the step's starting twists), never on one body's
-  row, where they have no sign (one body drags another). The near field's contract (`BodyOperator`: the points where a body reads and
-  delivers, its own block, its cross-kernel) takes the MRS as its first body model; its joint system is a pure function
-  of the bodies' poses, their leaves and the wall's parameters.
+  at its force points beyond; the wall's image between them) and delivers each body its own coupled resistance and, as
+  its background load, the others' load on it a step behind. The lagged step's gain, the spectral radius of
+  `(M/dt + R_d)^-1 R_off` (the per-step fixed point's contraction), is checked every step from each body's mass matrix,
+  which the rigid body now publishes (`body.mass_matrix`) only where the near field reads it: at one or above the run
+  stops (`drag.near-field-gain`), and the build refuses a configuration that starts there. The check is sufficient for
+  the lagged step's stability, not necessary (it refuses three spheres a tenth of a radius apart at tau/dt about 0.05 to
+  0.11, which are stable); the step's amplification `rho((M/dt + R_d)^-1 (M/dt - R_off))` and its relaxation in steps
+  are reported. The build refuses a near field whose bodies step at another rate than the base step
+  (`drag.near-field-rates`: bodies at 1 s against a node at 1 ms passed a gain of 0.877 while their own step amplified
+  by 1.0146). Each body's coupled resistance and the cluster's are judged definite as dev1's is near a wall
+  (`drag.near-field-indefinite`), their margins reported. **Gaps between bodies** are estimated each step from the
+  force points and their normals: two bodies that overlap by more than a quarter of a cell stop the run, and the build
+  refuses bodies that start so, coincident ones with the overlap's message (`drag.near-field-overlap`); a pair closer
+  than a twentieth of the smaller body's equivalent radius raises `near_contact`, the validity line's edge. **The
+  cross-kernel's budget** is every quadrature point of a source by default, by measurement: a quarter of them held the
+  two-sphere and gain gates at MIME's default sphere but left five hull kinds of six past their conformance line near
+  contact (the box 12 % at a third of a cell); `Drag.MRS(near_field_share=...)` lowers it as a cost setting, a cell
+  within the reach that does not fit raising `cross_cells_short`. A body alone in its medium keeps its own node, so no
+  program with one mrs body a medium moves; a folder saved with `drag` 0.4.0, kept as `UncoupledDrag`, rebuilds its
+  bodies' own nodes. The build refuses a cluster past the dense route's size, a memory line (`drag.near-field-size`),
+  and a medium mixing the two versions (`drag.near-field-mixed`). With the energy ledger attached, each body's own
+  resistance is its drag's law and the cross loads are the near field's own, `near_field:<medium>`, booked on each body
+  by the one pairing rule and never judged on one body's row, where they have no sign (one body drags another): the
+  node judges the cluster's books a step late, from what it delivered and the twists the bodies reached, as the
+  ledger's route 1 judges a step (`mime.core.ledger.CHECK_CLUSTER`, the gift steps read into the law's lines). That
+  check sees an error that makes the fluid a source (cross loads delivered three times over, caught to a radius's gap
+  along the line of centres, a third of one across it) and none that leaves it dissipating (the same at wider gaps,
+  half their value, their sign flipped, an error in the grand resistance that leaves it definite), which the force
+  oracles hold. The near field's contract (`BodyOperator`: the points where a body reads and
+  delivers, its own block, its cross-kernel, its normals) takes the MRS as its first body model; its joint system is a
+  pure function of the bodies' poses, their leaves and the wall's parameters, and a body model of another kind in the
+  same medium (a slender body's, a resistive-force body's) needs the joint node to hold a member kind per index.
 
 - **The two-builds check** (`mime.testing.two_builds`, `two_builds_of`, `step_program`, `graph_program`, `run_form`;
   float64 only): whether a compiled program holds a value made from a declared one as a constant of its own, which a
@@ -325,6 +342,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A round length keeps its count of samples** (`mime.scene`'s solids and screw). A kind's count along a length was
+  the ceiling of the length over the spacing, so a round input (a 2 mm capsule at a 1 mm spacing, a whole number of
+  spacings) took the next count, and a recompiled program, where its last digit or a study's move of a millionth lifted
+  the ratio past the whole number: the two-builds walk saw the near field's case's program change. The ceiling now
+  takes a slack of a ten-thousandth of the ratio (`COUNT_SLACK`), so a length up to that share past a whole number of
+  spacings keeps the lower count and the count's step lies off the round values. **The counts at such round inputs
+  were a float artefact of 0.3.0.dev1, fixed under the kinds' own versions**: a configuration whose length lies within
+  that share above a whole number of spacings takes one row fewer than in 0.3.0.dev1 (5 of 400 round inputs on a 0.1 mm
+  grid, pinned by `tests/scene/test_sampling.py`: 1.3 mm at 0.1 mm takes 13 rows where dev1 took 14, 2.1 mm at 0.1 mm
+  21 for 22, 2.1 mm at 0.7 mm 3 for 4, 2.6 mm at 0.1 mm 26 for 27, 2.6 mm at 0.2 mm 13 for 14), and 0.3.0.dev2 refuses
+  a folder saved by another release, so none is rebuilt with the moved count. No registered case's golden output and
+  no released program's arrays moved (each compared bit for bit).
 - **The MRS drag's held matrix is compared with leaves, not constants, and its second key is gone.** Beside
   `held_in_body_frame` each separated-quadrature drag holds `held_from.<leaf>`, the leaves the matrix was made at;
   `held_or_made` compares the step's leaves with them, so the step's program is the same at every value (the trace form
@@ -545,14 +574,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A round length keeps its count of samples** (`mime.scene`'s solids and screw). A kind's count along a length was
-  the ceiling of the length over the spacing, so a round input (a 2 mm capsule at a 1 mm spacing, a whole number of
-  spacings) took the next count, and a recompiled program, where its last digit or a study's move of a millionth lifted
-  the ratio past the whole number: the two-builds walk saw the near field's case's program change. The ceiling now
-  takes a slack of a ten-thousandth of the ratio (`COUNT_SLACK`), so a length up to that share past a whole number of
-  spacings keeps the lower count and the count's step lies off the round values. No registered case's golden output
-  and no released program's arrays moved (each compared bit for bit); a configuration whose length lies within that
-  share above a whole number of spacings takes one row fewer than in 0.3.0.dev1.
 - **The energy ledger's running sums are pairs, and no longer drift with the steps** (MIME-ANO-149; the ledger is
   unreleased, so no version step). A plain float32 sum of a series of 1e5 terms drifted by tens of units of eps on the
   terms' summed magnitudes (45 on a mixed-sign series, 107 on a positive one, measured through the ledger's own update;

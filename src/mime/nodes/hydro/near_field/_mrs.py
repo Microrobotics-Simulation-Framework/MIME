@@ -16,7 +16,7 @@ near contact the joint system amplifies a small error in any entry of a cross-bl
 is integrated whole (``CROSS_SHARE``'s measurement). **The budget** is a fixed count of the source's quadrature
 points (a share of them, fixed at build, so the step's shapes are static; by default all of them): the cells nearest
 the targets are integrated, nearest first, while their points fit; a cell that does not fit keeps its point column,
-and the step reports that the pair ran short."""
+and the step reports a cell within the reach that did not."""
 
 from __future__ import annotations
 
@@ -50,19 +50,23 @@ checkpoint: Any = cast(Any, jax).checkpoint
 #: gap of 2.6 force spacings, +4 % at 1.3, -17.5 % at 0.5.
 REACH = 4.0
 #: The share of a source's quadrature points one cross-kernel integrates at most, fixed at build (its budget), the
-#: nearest cells first. All of them by default, from a measurement at MIME's 338-point sphere in float64 (W3's pull
-#: request): with each cell switched by its own distance from the targets (integrated within half the reach, at its
-#: force point beyond), two spheres a tenth of a radius apart squeezed 5.8 % over Brenner and Maude's series against
-#: 3.2 % with every cell integrated (4.8 % at twice the reach), and three in a triangle there had a lagged gain of 1.57
-#: against 0.88: near contact the joint system amplifies the point kernel's error in every cell. A lower share is a cost
-#: setting, reported where a pair runs short (``cross_cells_short``).
+#: nearest cells first: every cell within the reach of the other body, in its own size, is integrated while its points
+#: fit, and one that does not keeps its point column, reported (``cross_cells_short``); a cell beyond the reach takes
+#: its point column as the reach's conformance cases hold it. All of them by default, from a measurement under the
+#: pair's switch in float64 (W3's fix round): at MIME's 338-point sphere a quarter held gates 3 and 6 (the squeeze to
+#: 0.03 %, the gains to 1e-4, every cell within the reach fitting), but at the conformance cases' kinds and spacings,
+#: where most of a coarse body's cells lie within the reach of a neighbour near contact, a quarter left the grand
+#: resistance off the integrated one, past the 0.5 % line, for five kinds of six (the box 4.6 % at one cell and 12 % at
+#: a third of one, the screw 1.8 % and 2.7 %, the capsule 1.0 %, the cylinder 0.65 %, the ellipsoid 0.53 %); every
+#: point holds them all, at three to four times a quarter's cost a step near contact. A lower share is the drag's
+#: ``near_field_share``, a cost setting, its shortfall reported.
 CROSS_SHARE = 1.0
 
 
 def cross_weight(distance: Array, reach: Any) -> Array:
     """A pair's weight on its integrated cross-block from its least distance, in its cells' own sizes: 1 within half
-    the reach, 0 beyond it, a smoothstep between (continuous with its first derivative), as dev1's ``reach_weight`` for
-    the wall's image."""
+    the reach, 0 beyond it, a smoothstep between (continuous with its first derivative), as the per-body node's
+    ``reach_weight`` for the wall's image."""
     t = jnp.clip((reach - distance) / (0.5 * reach), 0.0, 1.0)
     return t * t * (3.0 - 2.0 * t)
 
@@ -111,12 +115,14 @@ class MRSOperator:
         force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
         centroid = pose[:3] + jnp.matmul(body.centroid, turn.T, precision=PRECISION)
         points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
-        return Placed(force, centroid, body.area, body.eps_squared, pose[:3], Quadrature(points, body.weights))
+        normals = self.member.samples({**theta, "viscosity": jnp.asarray(theta["blob"])}).normals
+        return Placed(force, centroid, body.area, body.eps_squared, pose[:3], Quadrature(points, body.weights),
+                      jnp.matmul(normals, turn.T, precision=PRECISION))
 
     def self_block(self, placed: Placed, leaves: Mapping[str, Any], held: Array | None, pose: Array, viscosity: Any,
                    wall: WallCorrection, parameters: Mapping[str, Any]) -> tuple[Array, Array, Array]:
-        """dev1's: the held free part turned to the pose over the viscosity, and the wall's self-image as dev1's step
-        adds it."""
+        """The per-body node's: the held free part turned to the pose over the viscosity, and the wall's self-image as
+        its step adds it."""
         if held is None:
             raise ValueError("the MRS body model's free part is made once per build and held")
         turn = quaternion.rotation_matrix(pose[3:])
@@ -158,7 +164,8 @@ class MRSOperator:
         """The cross-kernel of a pair within the reach: the nearest cells integrated while their points fit the
         budget, the whole block blended by the pair's least distance (the least of ``pairs``, each target's from each
         cell in the cell's size, its derivative kept), so that the blend is continuous in every position; ``held``
-        (each cell's least distance, held out of every derivative) chooses the cells. Short where a cell was left out."""
+        (each cell's least distance, held out of every derivative) chooses the cells. Short where a cell within the
+        reach of the targets was left out."""
         cells = self.count
         nearest = jnp.argsort(held)
         sizes = jnp.asarray(self.sizes)
@@ -176,7 +183,7 @@ class MRSOperator:
                                       placed.eps_squared)
         weights = cross_weight(jnp.min(pairs), reach) * chosen.astype(pairs.dtype)
         blend = jnp.repeat(weights, 3)[None, :]
-        return point + blend * (integrated - point), ~jnp.all(chosen)
+        return point + blend * (integrated - point), jnp.any(~chosen & (held < reach))
 
 
 def point_block(targets: Array, source: Placed) -> Array:
