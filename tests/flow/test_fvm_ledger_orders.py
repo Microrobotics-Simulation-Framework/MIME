@@ -22,9 +22,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
-from fvm_cases import METERED, eps, in_dtype, run, tube_node
+from fvm_cases import METERED, eps, in_dtype, tube_node
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import ImplicitFlowNode
@@ -59,29 +61,11 @@ def cellular(node: ImplicitFlowNode, seed: int) -> dict[str, Any]:
 #: quarter of its step, which the stiff interior and the drive's start settle in (the penalty damps the solid's start in
 #: a step whatever the step is, which no order describes).
 STEP, WARM_STEP, WARM_STEPS = 0.0025, 0.000625, 20
-
-
-def warmed(dtype: str, seed: int) -> dict[str, Any]:
-    """The swirl and its drive after the warm-up: the start of every arm."""
-    with in_dtype(dtype):
-        start = cellular(tube_node(8, length_cells=4, dt=WARM_STEP), seed)
-        state = run(tube_node(8, length_cells=4, dt=WARM_STEP, convection=True, **start), WARM_STEPS)
-    return {f"initial_velocity_{c}": np.asarray(state[f"velocity_{c}"]) for c in "xyz"}
-
-
-def summed(dtype: str, dt: float, start: dict[str, Any], **settings: Any) -> dict[str, float]:
-    """Each term's summed magnitude over :data:`TIME` (``N_BE`` is never negative; ``N_conv``, ``dt <C(u), u - u'>``
-    with ``<C(u), u>`` zero to rounding on a divergence-free field, and ``N_Krylov`` change sign), the viscous loss's
-    sum, and the identity's worst step over its floor."""
-    with in_dtype(dtype):
-        node = tube_node(8, length_cells=4, dt=dt, convection=True, ledger=METERED, **start, **settings)
-        state, records = run(node, int(round(TIME / dt)), record=lambda s: (s[f"{books.RECORDS}step_terms"],
-                                                                             s[f"{books.RECORDS}step_work"]))
-    terms = np.abs(np.asarray(records[0], dtype=np.float64))
-    work = np.asarray(records[1], dtype=np.float64)
-    return {**{name: float(terms[:, index].sum()) for name, index in TERMS.items()},
-            "viscous": float(-work[:, 1].sum()),
-            "worst": float(state[f"{books.RECORDS}identity_worst"]) / (books.IDENTITY_ULPS * eps(dtype))}
+#: The tolerances of the Krylov arms, a hundred apart, each dtype's: float32's above its rounding floor; the dt arms take
+#: the tighter.
+TOLERANCES = {"float64": (1e-6, 1e-8), "float32": (1e-3, 1e-5)}
+#: The drive, constant: the tube's Poiseuille body force.
+DRIVE = 8.0
 
 
 def moved_into(term: str):
@@ -97,50 +81,74 @@ def moved_into(term: str):
     return planted
 
 
-#: The tolerances of the Krylov arms, a hundred apart, each dtype's: float32's above its rounding floor.
-TOLERANCES = {"float64": (1e-6, 1e-8), "float32": (1e-3, 1e-5)}
+def arms(dtype: str, seeds: range) -> list[dict[str, float]]:
+    """For each seed, every arm from its warmed state: the terms' summed magnitudes (``N_BE`` is never negative;
+    ``N_conv``, ``dt <C(u), u - u'>`` with ``<C(u), u>`` zero to rounding on a divergence-free field, and ``N_Krylov``
+    change sign) at ``dt`` and ``dt / 2``, ``N_Krylov``'s at the two tolerances, the viscous loss, and the identity's worst
+    step over its floor. One program for every arm: the step, the run's length and the tolerance are its arguments."""
+    loose, tight = TOLERANCES[dtype]
+    with in_dtype(dtype):
+        node = tube_node(8, length_cells=4, dt=STEP, convection=True, tolerance=tight, ledger=METERED)
+        p0 = node._step_constants(None)  # noqa: SLF001
+        held = books.deliveries(node.constants())
+        given = {books.law_input(d.field, index): jnp.asarray([0.0, 0.0, DRIVE]) if d.field == "body_force"
+                 else jnp.zeros(7) for index, d in enumerate(held) if d.kind == books.LOAD}
+
+        def arm(state, dt, steps, tolerance):
+            p = {**p0, "tolerance": tolerance}
+
+            def body(_, carry):
+                s, sums = carry
+                s = node.advance(p, s, given, dt)
+                terms = jnp.abs(s[f"{books.RECORDS}step_terms"])
+                return s, sums + jnp.concatenate([terms, -s[f"{books.RECORDS}step_work"][1:2]])
+
+            ended, sums = jax.lax.fori_loop(0, steps, body, (state, jnp.zeros(len(TERMS) + 1, dtype=dt.dtype)))
+            return ended, sums
+
+        compiled = jax.jit(arm)
+        dtype_of = jnp.asarray(0.0).dtype
+        found = []
+        for seed in seeds:
+            start = node.initial_state()
+            swirl = cellular(node, seed)
+            begin = {**start, **{f"velocity_{c}": jnp.asarray(swirl[f"initial_velocity_{c}"], dtype=dtype_of)
+                                 for c in "xyz"}}
+            begin = books.with_records(node, books.unrecorded(begin))
+            warm, _ = compiled(begin, jnp.asarray(WARM_STEP, dtype=dtype_of), WARM_STEPS,
+                               jnp.asarray(tight, dtype=dtype_of))
+            fresh = books.with_records(node, books.unrecorded({**start, **{f"velocity_{c}": warm[f"velocity_{c}"]
+                                                                            for c in "xyz"}}))
+            sums, worst = {}, 0.0
+            for label, dt, tolerance in (("coarse", STEP, tight), ("fine", STEP / 2, tight), ("loose", STEP, loose)):
+                ended, summed = compiled(fresh, jnp.asarray(dt, dtype=dtype_of), int(round(TIME / dt)),
+                                         jnp.asarray(tolerance, dtype=dtype_of))
+                sums[label] = np.asarray(summed, dtype=np.float64)
+                worst = max(worst, float(ended[f"{books.RECORDS}identity_worst"]) / (books.IDENTITY_ULPS * eps(dtype)))
+            found.append({**{f"{name}_ratio": float(sums["coarse"][i] / sums["fine"][i])
+                             for name, i in TERMS.items() if name != "krylov"},
+                          "krylov_ratio": float(sums["loose"][TERMS["krylov"]] / sums["coarse"][TERMS["krylov"]]),
+                          "viscous": float(sums["coarse"][-1]), "worst": worst})
+        return found
 
 
-def dt_ratios(dtype: str, seed: int) -> tuple[dict[str, float], dict[str, float]]:
-    start = warmed(dtype, seed)
-    coarse, fine = summed(dtype, STEP, start), summed(dtype, STEP / 2, start)
-    return {name: coarse[name] / fine[name] for name in ("backward_euler", "convection")}, coarse
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_each_numerical_term_falls_at_its_order(dtype):
+    for found in arms(dtype, range(3)):
+        assert found["worst"] <= 1.0
+        for name in ("backward_euler", "convection"):
+            assert FIRST_ORDER[0] <= found[f"{name}_ratio"] <= FIRST_ORDER[1], (name, found)
+        assert found["krylov_ratio"] >= KRYLOV_FALL, found
 
 
-def krylov_ratio(dtype: str, seed: int) -> tuple[float, dict[str, float]]:
-    start = warmed(dtype, seed)
-    loose, tight = (summed(dtype, STEP, start, tolerance=t) for t in TOLERANCES[dtype])
-    return loose["krylov"] / tight["krylov"], loose
-
-
-@pytest.mark.parametrize("seed", range(3))
-def test_n_be_and_n_conv_fall_at_first_order_in_dt(dtype, seed):
-    ratios, coarse = dt_ratios(dtype, seed)
-    assert coarse["worst"] <= 1.0
-    for name, ratio in ratios.items():
-        assert FIRST_ORDER[0] <= ratio <= FIRST_ORDER[1], (name, ratio)
-
-
-@pytest.mark.parametrize("seed", range(3))
-def test_n_krylov_falls_with_the_tolerance(dtype, seed):
-    ratio, loose = krylov_ratio(dtype, seed)
-    assert loose["worst"] <= 1.0
-    assert ratio >= KRYLOV_FALL, ratio
-
-
-@pytest.mark.parametrize("term", ["backward_euler", "convection"])
-@pytest.mark.parametrize("seed", range(3))
-def test_control_the_viscous_loss_written_into_a_dt_term_leaves_its_band(dtype, seed, term, monkeypatch):
-    """The identity still closes with the loss moved, and the term's ratio leaves the first-order band."""
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+@pytest.mark.parametrize("term", ["backward_euler", "convection", "krylov"])
+def test_control_the_viscous_loss_written_into_a_term_leaves_its_order(dtype, term, monkeypatch):
+    """The identity still closes with the loss moved, and the term's ratio leaves its band on every seed."""
     monkeypatch.setattr(ImplicitFlowNode, "energy_terms", moved_into(term))
-    ratios, coarse = dt_ratios(dtype, seed)
-    assert coarse["worst"] <= 1.0
-    assert not FIRST_ORDER[0] <= ratios[term] <= FIRST_ORDER[1], ratios[term]
-
-
-@pytest.mark.parametrize("seed", range(3))
-def test_control_the_viscous_loss_written_into_n_krylov_stops_it_falling(dtype, seed, monkeypatch):
-    monkeypatch.setattr(ImplicitFlowNode, "energy_terms", moved_into("krylov"))
-    ratio, loose = krylov_ratio(dtype, seed)
-    assert loose["worst"] <= 1.0
-    assert ratio < KRYLOV_FALL, ratio
+    for found in arms(dtype, range(3)):
+        assert found["worst"] <= 1.0
+        if term == "krylov":
+            assert found["krylov_ratio"] < KRYLOV_FALL, found
+        else:
+            assert not FIRST_ORDER[0] <= found[f"{term}_ratio"] <= FIRST_ORDER[1], found
