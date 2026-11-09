@@ -298,6 +298,80 @@ def test_the_asset_is_refused_for_what_is_not_a_builds_pages_or_ci_pages_with_no
     assert not out.exists()
 
 
+# -- check-ci, the release gate, with a fake gh ------------------------------------------------------------------------
+
+class CiGh:
+    """``gh`` as ``check-ci`` calls it: the runs of ``ci.yml`` on a commit, and each run's jobs."""
+
+    def __init__(self, runs: list[dict[str, Any]], jobs: dict[int, list[dict[str, Any]]]) -> None:
+        self.runs, self.jobs = runs, jobs
+
+    def __call__(self, arguments: list[str]) -> str:
+        if arguments[0] == "api" and "/actions/workflows/ci.yml/runs?" in arguments[1]:
+            return json.dumps({"workflow_runs": self.runs})
+        if arguments[0] == "api" and (held := re.search(r"/actions/runs/(\d+)/jobs\?", arguments[1])):
+            return "\n".join(json.dumps(job) for job in self.jobs[int(held[1])])
+        raise AssertionError(f"gh called with {arguments}")
+
+
+def lanes(**changed: str | None) -> list[dict[str, Any]]:
+    """The five lanes' jobs, each ``success`` unless ``changed`` says otherwise, with a job that is none of them."""
+    names = {lane.replace(" ", "_").replace("(", "").replace(")", "").replace(".", "_").replace("-", "_"): lane
+             for lane in release.LANE_JOBS}
+    return [{"name": lane, "conclusion": changed.get(key, "success")} for key, lane in names.items()] + [
+        {"name": "typecheck (pyright, Python 3.12)", "conclusion": "failure"}]
+
+
+def ci_run(number: int, event: str = "push") -> dict[str, Any]:
+    return {**a_run(number), "event": event}
+
+
+def test_a_release_head_whose_newest_run_has_all_five_lanes_green_passes(capsys):
+    gh = CiGh([ci_run(5)], {5: lanes()})
+    assert release.check_ci(REPOSITORY, COMMIT, gh) == 0
+    assert "all five lanes" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("lane", release.LANE_JOBS)
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled", "skipped", None])
+def test_a_lane_that_is_not_green_refuses_the_release_naming_it(capsys, lane, conclusion):
+    """The control of the gate: each of the five lanes, each way of not being green, fails it, every run."""
+    key = lane.replace(" ", "_").replace("(", "").replace(")", "").replace(".", "_").replace("-", "_")
+    gh = CiGh([ci_run(5)], {5: lanes(**{key: conclusion})})
+    assert release.check_ci(REPOSITORY, COMMIT, gh) == 1
+    error = capsys.readouterr().err
+    assert f"{lane}: concluded" in error and error.count("error:") == 1
+
+
+def test_a_lane_with_no_job_in_the_run_refuses_the_release(capsys):
+    gh = CiGh([ci_run(5)], {5: [job for job in lanes() if job["name"] != "maddening-main"]})
+    assert release.check_ci(REPOSITORY, COMMIT, gh) == 1
+    assert "maddening-main: the run has no such job" in capsys.readouterr().err
+
+
+def test_the_newest_push_or_manual_run_of_the_commit_is_the_one_read(capsys):
+    """A newer red run beats an older green one; a pull request's or a scheduled run, or another commit's, is not read."""
+    runs = [ci_run(5), ci_run(8, "workflow_dispatch"), ci_run(9, "pull_request"), ci_run(10, "schedule"),
+            {**ci_run(11), "head_sha": "another"}]
+    red = lanes(openmaterica_main="failure")
+    assert release.check_ci(REPOSITORY, COMMIT, CiGh(runs, {5: lanes(), 8: red})) == 1
+    assert "openmaterica-main" in capsys.readouterr().err
+    assert release.check_ci(REPOSITORY, COMMIT, CiGh(runs, {5: red, 8: lanes()})) == 0
+
+
+@pytest.mark.parametrize("event", ["pull_request", "schedule"])
+def test_a_commit_with_only_a_pull_request_or_scheduled_run_has_no_run_to_read(capsys, event):
+    assert release.check_ci(REPOSITORY, COMMIT, CiGh([ci_run(5, event)], {5: lanes()})) == 1
+    assert "no push or manual run" in capsys.readouterr().err
+
+
+def test_a_gh_that_fails_refuses_the_release_and_does_not_pass_it(capsys):
+    def failing(arguments: list[str]) -> str:
+        raise subprocess.CalledProcessError(1, ["gh", *arguments])
+    assert release.check_ci(REPOSITORY, COMMIT, failing) == 1
+    assert "nothing is released on a gate that was not checked" in capsys.readouterr().err
+
+
 # -- the workflow, read and run ----------------------------------------------------------------------------------------
 
 def load(path: Path = WORKFLOW) -> Workflow:
@@ -465,6 +539,17 @@ def workflow_problems(path: Path, scratch: Path) -> list[str]:
     held = publish.get("permissions", workflow.get("permissions")) or {}
     if held.get("id-token") != "write":
         found.append("the publishing job cannot request the OIDC token trusted publishing needs (id-token: write)")
+    gated = steps_running(build, "scripts/release.py check-ci")
+    if len(gated) != 1:
+        found.append(f"{len(gated)} steps of the build job run release.py check-ci; one does")
+    else:
+        gate = gated[0][1]
+        if gate.get("if") or gate.get("continue-on-error") or "shell" in gate or NEUTERING.search(str(gate["run"])):
+            found.append("the release gate can be skipped or its failure hidden")
+        if '--commit "${{ github.sha }}"' not in str(gate["run"]) or "GH_TOKEN" not in (gate.get("env") or {}):
+            found.append("the release gate does not read the tagged commit's CI run with a token")
+    if (build.get("permissions") or {}).get("actions") != "read":
+        found.append("the build job cannot read the tagged commit's CI run (actions: read)")
     if len(steps_running(build, "mime assets audit")) != 1:
         found.append("the build job does not audit the distributions and the tag's tree (mime assets audit)")
     if docs.get("needs") != "build":
@@ -530,6 +615,18 @@ PLANTS = {
     "the-tag-step-dropped": (TAG_STEP, "", "0 steps of the build job run release.py check-tag; one does"),
     "the-tag-step-neutered": ('dist/*.whl dist/*.tar.gz\n', 'dist/*.whl dist/*.tar.gz || true\n',
                               "the tag step can be skipped or its failure hidden"),
+    "the-release-gate-dropped": (
+        "      - name: Every lane of CI is green on the tagged commit\n        env:\n          GH_TOKEN: ${{ github.token }}\n"
+        "        run: python3 scripts/release.py check-ci --repository \"${{ github.repository }}\" --commit \"${{ github.sha }}\"\n\n",
+        "", "0 steps of the build job run release.py check-ci; one does"),
+    "the-release-gate-neutered": (
+        'check-ci --repository "${{ github.repository }}" --commit "${{ github.sha }}"\n',
+        'check-ci --repository "${{ github.repository }}" --commit "${{ github.sha }}" || true\n',
+        "the release gate can be skipped or its failure hidden"),
+    "the-release-gate-without-the-actions-permission": (
+        "      contents: read\n      actions: read\n    outputs:\n      version:",
+        "      contents: read\n    outputs:\n      version:",
+        "the build job cannot read the tagged commit's CI run (actions: read)"),
     "the-tag-step-told-its-tag": ('--ref "$GITHUB_REF"', f'--ref "refs/tags/v{VERSION}"',
                                   "the tag step passes a run from a branch"),
     "the-publishing-job-freed": ("    needs: build\n    runs-on: ubuntu-latest\n    environment: pypi\n",
