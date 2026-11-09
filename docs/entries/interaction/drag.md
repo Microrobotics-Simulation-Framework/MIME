@@ -9,10 +9,10 @@ its centre of mass, in the world frame, with the load a flowing medium puts on t
 a medium at rest). The rung is written in the script, and there is no default: `Drag.Surrogate(...)`, `Drag.MRS(...)`
 or `Drag.RFT(...)`.
 
-Every rung assumes the medium at rest. A medium that carries a flow providing the velocity at points
-(`fields={"flow": FVM(...)}` or `fields={"flow": Womersley()}`) is refused for each rung when the experiment is
-planned (`drag.medium-flows`, naming the flow): a rung that reads the medium's flow, its load on the body held still,
-is a later release's.
+Every rung assumes the medium at rest. Wherever the region its medium fills carries a field (`fields={"flow":
+FVM(...)}` or `fields={"flow": Womersley()}`, on the drag's medium or on another filling the same region), each rung is
+refused when the experiment is planned (`drag.medium-flows`, naming the field), whatever quantities the field's kind
+declares it provides: a rung that reads the medium's flow, its load on the body held still, is a later release's.
 
 ## Rung `surrogate`
 

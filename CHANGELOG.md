@@ -10,15 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
-  spacing and resolution) and the step's memory estimate against the device's memory, or the host's on a CPU, and a
-  box whose step will not fit is refused when planned (`flow.memory`, with a coarser grid or a shorter period as its
-  route). A field kind a medium carries declares the quantities it provides (`Dynamics.provides`, the vocabulary's
-  field interfaces, checked at registration; the FVM and the prescribed flow provide `field.flow.velocity`), and a law
-  finds the medium's field by quantity (`PlanContext.fields_providing` and `field_for`, refusing none and two unless
-  the law names one, `binding.field-quantity` and `binding.field-ambiguous`). Every drag rung (surrogate, mrs, rft, on
-  drag 0.4.0 and 0.3.0) assumes its medium at rest, so it is refused in a medium whose flow provides the velocity
-  (`drag.medium-flows`, naming the flow), until a rung reads a provided flow. Every dot in the FVM's programs is
-  checked to state the highest precision (a CPU test of the traced programs).
+  spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to
+  hold at its peak, against the memory a run can have (a GPU's limit; on a CPU the smaller of the host's available
+  memory and its control group's limit), and a box whose run will not fit is refused when planned (`flow.memory`, with
+  a coarser grid or a shorter period as its route). A dynamics a medium carries is a field kind: its solved-field
+  declarations (`Dynamics.field_declarations()`) state the quantities it provides, the FVM and the prescribed flow
+  `field.flow.velocity`, and one that declares none, or provides nothing, is refused at registration.
+  `PlanContext.fields_providing` and `field_for` find a field by quantity, refusing none and two unless the law names
+  one (`binding.field-quantity` and `binding.field-ambiguous`): the surface a later rung's law plans through, since no
+  law reads a field by quantity yet. Every drag rung (surrogate, mrs, rft, on drag 0.4.0 and 0.3.0) assumes its medium
+  at rest, so it is refused wherever the region its medium fills carries a field, its own medium's or another's,
+  whatever the field declares it provides (`drag.medium-flows`, naming the field), until a rung reads a provided flow.
+  With the energy ledger attached, a run's account names what the build leaves unmetered, a medium's flow among them,
+  with its reason (`result.energy.unmetered`, in `result.energy.text()` and `result.text()`), where it was `None`.
+  Every dot in the FVM's programs is checked to state the highest precision (a CPU test of the traced programs).
 
 - **A medium's flow, solved: the FVM on a periodic box** (`fvm` 0.1.0, with `body_force` 0.1.0 and
   `mime.scene.PeriodicBox`). `Medium(..., fields={"flow": FVM(domain=PeriodicBox(length=...))})` solves the flow of the

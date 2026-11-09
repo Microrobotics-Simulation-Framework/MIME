@@ -5,10 +5,10 @@ rebuilt document written back so for its input hash; one whose medium holds ``fi
 
 The folders of the tenth form:
 
-- ``form10/periodic_flow``: the round-trip case ``periodic_tube_flow`` (the FVM on a periodic box, the steady limit
-  under Stokes, eight cells across, driven by ``BodyForce``), written by MIME at the last commit of form 10 on its branch
-  (9d728fc, F1a-2's first PR), float64, four usable CPUs (``taskset -c 0-3``), one BLAS thread, saved by
-  ``exp.build().save(folder)``, pinned by its sha256;
+- ``form10/periodic_flow``: the round-trip case ``periodic_tube_flow`` (the FVM on a periodic box, IMEX Euler with
+  convection, eight cells across, driven by ``BodyForce``'s steady and pulsatile parts), written by MIME at the last
+  commit of form 10 on its branch (9d728fc, F1a-2's first PR), float64, four usable CPUs (``taskset -c 0-3``), one BLAS
+  thread, saved by ``exp.build().save(folder)``, pinned by its sha256;
 - ``form10/chain_screw``: the current folder as form 10 wrote it.
 
 A reader of version 10 refuses a folder of version 11 as ``load.newer-form``, the document and the lock each once.
@@ -99,7 +99,7 @@ def test_a_form_ten_document_whose_medium_holds_fields_is_refused_and_the_same_d
     text = path.read_text(encoding="utf-8")
     assert text.count("    dynamics:\n      flow:\n") == 1
     path.write_text(text.replace("    dynamics:\n      flow:\n", "    fields:\n      flow:\n"), encoding="utf-8")
-    assert codes_of(folder) != []
+    assert codes_of(folder) == ["load.document-shape"]
 
 
 @contextmanager

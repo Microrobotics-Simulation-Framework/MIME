@@ -1657,6 +1657,18 @@ class _Planner:
             return None
         return path
 
+    def fields_in_region_of(self, medium: str) -> dict[str, tuple[str, ...]]:
+        """The fields carried in the region medium ``medium`` fills, by their ids (``water.flow``): its own and those of
+        every other medium filling the same region, each with the quantities its kind's solved-field declarations
+        provide (SF-2)."""
+        path = self.fills.get(medium)
+        media = [medium, *sorted(other for other, held in self.fills.items() if path is not None and held == path
+                                 and other != medium)]
+        return {f"{name}.{role}": tuple(dict.fromkeys(quantity for declared in type(kind).field_declarations()
+                                                      for quantity in declared.provides))
+                for name in media for thing in (self.things.get(name),) if isinstance(thing, Medium)
+                for role, kind in thing.fields.items()}
+
     def region_of(self, medium: str) -> Region | None:
         """The region medium ``medium`` fills, as a shape and its parameters in SI, when its geometry kind gives that
         region a shape; ``None`` otherwise."""
@@ -2655,9 +2667,8 @@ class _Planner:
                  for hull in (self.hull_of(name),) if hull is not None}
         reactions = {role: mount.segment for role, name in bindings.items() if cls.roles[role] is RoleKind.FIELD
                      for mount in (self.source_mount(name),) if mount is not None}
-        provided = {role: {f"{name}.{field_role}": kind.provides for field_role, kind in medium.fields.items()}
-                    for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
-                    for medium in (self.things.get(name),) if isinstance(medium, Medium)}
+        provided = {role: self.fields_in_region_of(name) for role, name in bindings.items()
+                    if cls.roles[role] is RoleKind.MEDIUM}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
                               hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided)
         try:

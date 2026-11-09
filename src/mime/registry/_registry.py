@@ -310,20 +310,32 @@ def _output_problems(cls: type[Entry]) -> list[str]:
     return found
 
 
-def _provides_problems(held: object, applies: list[object]) -> list[str]:
-    """What is wrong with a dynamics' ``provides``: a tuple of the vocabulary's field interfaces, declared only by a
-    medium's field kind."""
-    provides: object = getattr(held, "provides", ())
-    if not (isinstance(provides, tuple) and all(isinstance(n, str) for n in cast(tuple[object, ...], provides))):
-        return ["provides: a tuple of the names of the vocabulary's field interfaces"]
-    found: list[str] = []
-    if provides and ThingKind.MEDIUM not in applies:
-        found.append("provides: only a field kind a medium carries provides a quantity")
-    for name in cast(tuple[str, ...], provides):
+def _field_problems(cls: type[Entry], applies: list[object]) -> list[str]:
+    """What is wrong with a dynamics' solved-field declarations (``Dynamics.field_declarations``): a dynamics a medium
+    carries is a field kind and declares at least one, each with no problem of its own (SF-2's among them: it provides
+    at least one quantity) and each quantity an interface of the vocabulary a reading gives; any other declares none."""
+    from mime.fields._solved import SolvedField
+
+    try:
+        declared: object = getattr(cls, "field_declarations")()
+    except Exception as error:  # noqa: BLE001 - a kind's own code, refused naming it
+        return [f"field_declarations() raised {error!r}"]
+    if not (isinstance(declared, tuple)
+            and all(isinstance(d, SolvedField) for d in cast(tuple[object, ...], declared))):
+        return ["field_declarations(): a tuple of mime.fields.SolvedField"]
+    held = cast(tuple[SolvedField, ...], declared)
+    if ThingKind.MEDIUM not in applies:
+        return ["field_declarations(): only a field kind a medium carries declares itself under the solved-field "
+                "contract"] if held else []
+    if not held:
+        return ["a dynamics a medium carries is a field kind: it declares itself under the solved-field contract "
+                "(field_declarations(), each a mime.fields.SolvedField naming in provides what a law finds it by)"]
+    found = [f"its solved-field declaration: {problem}" for d in held for problem in d.problems()]
+    for name in dict.fromkeys(name for d in held for name in d.provides):
         interface = interface_named(name)
-        if interface is None or interface.kind is not ReadKind.FIELD:
-            found.append(f"provides {name!r}, which is not a field interface of the vocabulary")
-    return found
+        if interface is None or not isinstance(interface.kind, ReadKind):
+            found.append(f"provides {name!r}, which is not an interface of the vocabulary that a reading gives")
+    return list(dict.fromkeys(found))
 
 
 def _flag_problems(cls: type[Entry]) -> list[str]:
@@ -453,7 +465,7 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
             found.append("applies_to: a non-empty frozenset of ThingKind")
         if not all(isinstance(flag, Capability) for flag in cast(frozenset[object], getattr(held, "flags", ()))):
             found.append("flags: members of mime.vocabulary.Capability, the closed list")
-        found += _provides_problems(held, members)
+        found += _field_problems(cls, members)
     if kind is EntryKind.GEOMETRY:
         surfaces: object = getattr(held, "surfaces", None)
         for name in ("regions", "directions"):

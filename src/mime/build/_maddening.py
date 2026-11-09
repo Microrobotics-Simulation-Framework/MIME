@@ -5,11 +5,11 @@ here, once, and given the type MIME relies on. Nothing here changes what is call
 from __future__ import annotations
 
 import hashlib
-import os
 import warnings
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, cast
 
 import jax
@@ -536,19 +536,60 @@ def devices() -> list[tuple[str, str]]:
     return [(str(device.platform), str(device.device_kind)) for device in _held(jax).devices()]
 
 
-def device_memory() -> tuple[str, int | None]:
-    """The memory a run's arrays live in, as what it is and its size in bytes: the first device's limit where it
-    reports one (a GPU's ``bytes_limit``), and otherwise the host's physical memory (``None`` where the system does not
-    say)."""
+def device_memory(root: Path = Path("/")) -> tuple[str, int | None]:
+    """The memory a run's arrays can have, as what it is and its size in bytes: the first device's limit where it
+    reports one (a GPU's ``bytes_limit``); on a CPU the smaller of the host's available memory (``MemAvailable``) and
+    the memory limit of the control group the process runs in (a container's, a batch job's), where one is set;
+    ``None`` where the system says neither. ``root`` is where ``/proc`` and ``/sys`` are read from."""
     device = _held(jax).devices()[0]
     stats = cast(object, getattr(device, "memory_stats", lambda: None)())
     limit = cast(dict[str, object], stats).get("bytes_limit") if isinstance(stats, dict) else None
     if isinstance(limit, int) and limit > 0:
         return f"the {device.platform} device ({device.device_kind})", limit
+    room = [(what, size) for what, size in (("the host's available memory", available_memory(root)),
+                                            ("the control group's memory limit", cgroup_limit(root)))
+            if size is not None]
+    return min(room, key=lambda held: held[1]) if room else ("the host's memory", None)
+
+
+def available_memory(root: Path = Path("/")) -> int | None:
+    """The host's available memory in bytes, ``MemAvailable`` of ``/proc/meminfo``; ``None`` where there is none."""
     try:
-        return "the host", int(os.sysconf("SC_PAGE_SIZE")) * int(os.sysconf("SC_PHYS_PAGES"))
-    except (AttributeError, ValueError, OSError):
-        return "the host", None
+        lines = (root / "proc/meminfo").read_text(encoding="ascii").splitlines()
+    except OSError:
+        return None
+    found = [int(line.split()[1]) * 1024 for line in lines if line.startswith("MemAvailable:")]
+    return found[0] if found else None
+
+
+def cgroup_limit(root: Path = Path("/")) -> int | None:
+    """The least memory limit, in bytes, of the control group the process runs in and the groups above it (cgroup
+    v2's ``memory.max``; v1's ``memory.limit_in_bytes``); ``None`` where none is set or the system has none."""
+    try:
+        lines = (root / "proc/self/cgroup").read_text(encoding="ascii").splitlines()
+    except OSError:
+        return None
+    files: list[Path] = []
+    for line in lines:
+        _, controllers, path = line.split(":", 2)
+        if controllers == "":
+            files += [root / "sys/fs/cgroup" / p / "memory.max" for p in _ancestors(path)]
+        elif "memory" in controllers.split(","):
+            files += [root / "sys/fs/cgroup/memory" / p / "memory.limit_in_bytes" for p in _ancestors(path)]
+    limits = [int(text) for file in files for text in (_read(file),) if text.isdigit()]
+    return min(limits) if limits else None
+
+
+def _ancestors(path: str) -> list[str]:
+    parts = [part for part in path.strip().split("/") if part]
+    return ["/".join(parts[:end]) for end in range(len(parts), -1, -1)]
+
+
+def _read(file: Path) -> str:
+    try:
+        return file.read_text(encoding="ascii").strip()
+    except OSError:
+        return ""
 
 
 def compute_capability() -> str | None:

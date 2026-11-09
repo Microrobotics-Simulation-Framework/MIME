@@ -42,7 +42,6 @@ class Womersley(Dynamics):
     builds = {"": (PrescribedFlowNode,)}
     applies_to = frozenset({ThingKind.MEDIUM})
     accepts = {FLOW_WAVEFORM.name: Port("waveform")}
-    provides = (FLOW_VELOCITY.name,)
     values = {"viscosity": "viscosity", "density": "density"}
     unmetered = ("outside (it takes nothing back from what reads it) and it stores nothing: the energy ledger has no "
                  "receiver here")
@@ -57,6 +56,11 @@ class Womersley(Dynamics):
         ledger_reason="outside, it takes nothing back from what reads it, and it stores nothing (R4-C, C-8)",
         steady_solve=False, affine_response=False, stores="nothing", batches=True, dtypes=("float32", "float64"),
         rates=NOT_DECLARED)
+
+    @classmethod
+    @override
+    def field_declarations(cls) -> tuple[SolvedField, ...]:
+        return (cls.field,)
 
     @override
     def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         Slot,
     )
     from mime.core.multibody import DescriptionClassification, MultibodyTree, Payload
+    from mime.fields._solved import SolvedField
 
 _EMPTY: Mapping[str, Any] = MappingProxyType({})
 
@@ -293,8 +294,9 @@ class PlanContext:
     each bound thing's dynamics or bound field's provider, its own dimensioned settings in SI (``settings``, read
     with :meth:`scalar` and :meth:`vector`), the declared values of the things it is bound to (:meth:`value`), for a
     plan that depends on one, the region each bound medium fills (:meth:`region`), the hull of each bound body
-    (:meth:`geometry`) and the segment that takes the reaction on each bound field's source (:meth:`reaction`). A value
-    it uses is still read through ``Plan.values``."""
+    (:meth:`geometry`), the segment that takes the reaction on each bound field's source (:meth:`reaction`), and, by
+    each medium role, the fields carried in the region its medium fills with what each provides (``provided``, read
+    with :meth:`fields_providing`). A value it uses is still read through ``Plan.values``."""
 
     dt: float
     up: tuple[float, float, float]
@@ -314,14 +316,16 @@ class PlanContext:
         return _scalar(self.settings, name)
 
     def fields_providing(self, role: str, quantity: str) -> tuple[str, ...]:
-        """The fields of the medium bound to ``role`` that provide ``quantity`` (a vocabulary interface's name, SF-2's
-        quantity rule), by their id (``water.flow``): a law that needs the quantity takes its field from them
-        (:meth:`field_for`), and a law that assumes the medium at rest refuses any."""
+        """The fields carried in the region the medium bound to ``role`` fills (its own, and any other medium's filling
+        the same region) that provide ``quantity`` (a vocabulary interface's name, SF-2's quantity rule), by their id
+        (``water.flow``): a law that needs the quantity takes its field from them (:meth:`field_for`)."""
         return tuple(sorted(name for name, quantities in self.provided.get(role, {}).items() if quantity in quantities))
 
     def field_for(self, role: str, quantity: str, named: str | None = None) -> str | Problem:
-        """The one field of the medium bound to ``role`` that provides ``quantity``, or the problem: none provides it,
-        or several do and ``named`` (the law's ``field=``, ``water.flow``) names none of them."""
+        """The one field carried where the medium bound to ``role`` is that provides ``quantity``
+        (:meth:`fields_providing`), or the problem: none provides it, or several do and ``named`` (the law's
+        ``field=``, ``water.flow``) names none of them. No law reads a field by quantity yet: this is the extension
+        surface a later rung's law plans through."""
         found = self.fields_providing(role, quantity)
         medium = self.bindings.get(role, role)
         if named is not None:
@@ -776,16 +780,14 @@ class Dynamics(Entry):
     reason. ``limits`` states what its model leaves out, each line naming the anomaly that records it; its capability
     record carries them. ``port`` names the port kind (``mime.vocabulary.port_kind``) its node's accepted inputs are
     paired by when the energy ledger is attached, its node writing its step identity; empty for a dynamics the ledger
-    does not meter, with ``unmetered`` its reason. A field kind a medium carries names in ``provides`` the quantities
-    it provides (the vocabulary's field interfaces, SF-2): a law finds the medium's field by them
-    (``PlanContext.field_for``).
+    does not meter, with ``unmetered`` its reason. A dynamics a medium carries is a field kind, and declares itself
+    under the solved-field contract (:meth:`field_declarations`), what it provides among it.
     """
 
     applies_to: ClassVar[frozenset[ThingKind]]
     flags: ClassVar[frozenset[Capability]] = frozenset()
     publishes: ClassVar[Mapping[str, Port]] = _EMPTY
     accepts: ClassVar[Mapping[str, Port]] = _EMPTY
-    provides: ClassVar[tuple[str, ...]] = ()
     port: ClassVar[str] = ""
     unmetered: ClassVar[str] = ""
     registration_kinds: ClassVar[frozenset[str]] = frozenset()
@@ -802,6 +804,14 @@ class Dynamics(Entry):
     def capabilities(self) -> CapabilityRecord:
         return CapabilityRecord(self.label(), frozenset(self.flags), dict(self.publishes), dict(self.accepts),
                                 frozenset(self.registration_kinds), tuple(self.limits))
+
+    @classmethod
+    def field_declarations(cls) -> tuple[SolvedField, ...]:
+        """A field kind's declarations under the solved-field contract (``mime.fields.SolvedField``), one for each way
+        it is stepped (the FVM's, a scheme each): what their ``provides`` names (SF-2) is the one statement of the
+        quantities the kind provides, which a law finds a medium's field by. A dynamics a medium carries declares at
+        least one, or it is refused at registration; any other declares none."""
+        return ()
 
     def initial_problems(self, initial: Mapping[str, Magnitude]) -> list[str]:
         """What is wrong with an initial state whose dimensions are right (a quaternion that is not a unit one, a

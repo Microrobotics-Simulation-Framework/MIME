@@ -64,7 +64,7 @@ from mime.registry import (
 )
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
-from mime.vocabulary import BACKGROUND_LOAD, FLOW_VELOCITY, POSE, RESISTANCE, Capability, Definiteness, EnergyClass
+from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, Capability, Definiteness, EnergyClass
 from mime.walls import RESERVED
 
 if TYPE_CHECKING:
@@ -106,19 +106,21 @@ VESSEL_PARAMETERS = ("centre", "axis", "radius")
 
 
 def at_rest_problems(ctx: PlanContext, rung: str | None) -> list[Problem]:
-    """Every drag rung here assumes the medium at rest (its background load is zero), so it is refused in a medium
-    whose field provides the flow's velocity (``field.flow.velocity``, SF-2's quantity rule): a rung that reads a
-    provided flow is a later release's."""
-    flowing = ctx.fields_providing("medium", FLOW_VELOCITY.name)
-    if not flowing:
+    """Every drag rung here assumes its medium at rest (its background load is zero), so it is refused where the region
+    its medium fills carries a field, the medium's own or another's filling the same region. No quantity a field kind
+    provides shows its medium at rest, so a field counts whatever it declares it provides: the refusal does not rest
+    on a kind declaring ``field.flow.velocity``. A rung that reads a provided flow is a later release's."""
+    carried = ctx.provided.get("medium", {})
+    if not carried:
         return []
     medium = ctx.bindings["medium"]
+    fields = ", ".join(f"{name} (providing {', '.join(provides) or 'nothing it declares'})"
+                       for name, provides in sorted(carried.items()))
     return [Problem("drag.medium-flows",
-                    f"the {rung} rung assumes medium {medium!r} at rest (it delivers no load from the medium's flow), "
-                    f"and the medium carries a flow that provides the velocity at points ({', '.join(flowing)}): a "
-                    f"drag that reads a medium's flow is a later release's",
-                    f"attach the drag to a medium that carries no flow field, Medium({medium!r}, fills=...), or take "
-                    f"the flow field out of this one")]
+                    f"the {rung} rung assumes medium {medium!r} at rest (it delivers no load from a flow), and the "
+                    f"region it fills carries {fields}: a drag that reads a medium's flow is a later release's",
+                    "leave the flow out of the region the drag's medium fills (a medium with no fields=), or leave "
+                    "the drag out")]
 
 
 def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
