@@ -11,6 +11,7 @@ import numpy as np
 from maddening.core.node import SimulationNode
 
 from mime.core import jnp, shape_named, shape_switches, switch
+from mime.registry._centreline import Centreline
 from mime.gradients import RANK, GradientStatus
 from mime.things import ThingKind, TypedPath
 from mime.units import Dimension, Length, Magnitude, Quantity
@@ -229,6 +230,43 @@ class Region:
     path: str
     shape: str
     parameters: Mapping[str, Magnitude]
+
+
+@dataclass(frozen=True)
+class DriveQuery:
+    """A law that drives a thing, as a dynamics' step rule reads it: the law's registered name and its settings in SI."""
+
+    law: str
+    settings: Mapping[str, Magnitude]
+
+
+@dataclass(frozen=True)
+class StepQuery:
+    """What a dynamics' step rule (:meth:`Dynamics.time_step`) may read: the region its medium fills, the values it
+    reads (resolved, SI, by label), its own settings in SI, and the laws that drive its thing. The bodies' speeds a
+    rule will read once bodies couple to a field join here."""
+
+    region: Region | None
+    values: Mapping[str, float]
+    settings: Mapping[str, Magnitude]
+    drives: tuple[DriveQuery, ...] = ()
+
+
+@dataclass(frozen=True)
+class StepRule:
+    """A dynamics' own bound on its step: ``largest``, the largest step its node is stable at (s; ``None`` where nothing
+    bounds it, which ``dt="auto"`` refuses), and, at the step its node takes (``step``, s, which is ``every`` base steps:
+    its ``rate=``), ``problems(step, every)`` (its refusals before any step is taken, each with the route) and
+    ``report(step, every)`` (the lines the build report shows: the step, the scheme it chose, its margins, the price of
+    the alternatives). ``refusals`` are refused whatever the step (a prediction that cannot be made); a rule with any
+    takes no part in choosing ``dt="auto"``'s step."""
+
+    largest: float | None
+    problems: Callable[[float, int], list[Problem]]
+    report: Callable[[float, int], tuple[str, ...]]
+    #: The period the step must divide into a whole number of steps (s), where the dynamics' drive is periodic.
+    period: float | None = None
+    refusals: tuple[Problem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -591,12 +629,14 @@ class Flag:
     """A flag an entry's node raises: its state field ``field`` (of node ``node``, ``""`` for the entry's only node),
     nonzero at a step where what ``meaning`` says happened, and zero otherwise. ``rung`` is the rung whose node raises
     it, for an entry with rungs. A run reports the flags raised over each window it reads, and a flag never blocks a
-    read."""
+    read. A flag that ``warns`` is also warned of after a run that raised it, with its count: one whose steps hold
+    values that are not what the step computes to its stated accuracy (a solve that stopped short)."""
 
     field: str
     meaning: str
     node: str = ""
     rung: str | None = None
+    warns: bool = False
 
 
 @dataclass(frozen=True)
@@ -667,6 +707,12 @@ class Entry:
         """What makes settings whose dimensions are right wrong all the same (a radius below zero, a direction along
         an axis it must not lie on), given in SI, one line each: each is refused in phase 1."""
         return []
+
+    def unrecorded_settings(self) -> frozenset[str]:
+        """The settings the resolved record leaves out for this entry as written: a setting added to a registered version
+        after its release, which the entry's rung does not read. The record then holds what the released version's did,
+        and a program that never touches the setting keeps its input hash."""
+        return frozenset()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -741,6 +787,18 @@ class Dynamics(Entry):
     def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:
         """What is wrong with the values this dynamics reads (``values``, by label, once every one is resolved) that
         their dimensions do not show (a moment of inertia of zero, which the step divides by), as refusals."""
+        return []
+
+    def time_step(self, query: StepQuery) -> StepRule | None:
+        """The dynamics' own bound on the base step, from what it knows at planning (``query``): what ``dt="auto"``
+        takes the largest stable step from, and what a given step is checked against before any step is taken.
+        ``None`` (the default) for a dynamics whose step the base step does not bound."""
+        return None
+
+    def region_problems(self, region: Region | None) -> list[Problem]:
+        """What is wrong with the region a medium's dynamics fills (``None``: it fills none with a shape), as
+        refusals: a solved field's domain holds only the regions its kind supports. The region reaches the build as
+        ``ctx.region("medium")``."""
         return []
 
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:
@@ -1167,7 +1225,7 @@ class Geometry(Entry):
     surface is sampled by, each with the region whose boundary it lies on (a closed kind's patches are its whole
     surface, and a solid's body is the intersection of its regions): :meth:`samples` by patch at a count of samples a consumer chooses (:meth:`sample_counts` for a spacing),
     :meth:`area` by patch, :meth:`family_parameters`, :meth:`radial_reach` (the hull's), :meth:`tangent`,
-    :meth:`drawing` and :meth:`region_primitive`. Its run-time capabilities (signed distance, outward normal, nearest
+    :meth:`drawing`, :meth:`region_primitive` and :meth:`centreline`. Its run-time capabilities (signed distance, outward normal, nearest
     point) are its regions' shapes.
 
     **Its own frame** is its prim's: the settings ``placement`` names place the kind rather than shape it (``"origin"``
@@ -1270,6 +1328,13 @@ class Geometry(Entry):
         implements none, and a contact holds it by its samples."""
         raise NotImplementedError
 
+    def centreline(self, settings: Mapping[str, Magnitude]) -> Centreline:
+        """The kind's centreline (``mime.registry.Centreline``): its segments' structure from its settings in SI,
+        their values JAX functions of its parameters, in the frame its samples are in. A consumer that needs one of a kind that
+        declares none (a slender drag law) refuses the kind by name, pointing to how a lab adds one
+        (``mime.scene.polyline`` for a curve given by points)."""
+        raise NotImplementedError
+
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
         """The hull query: how far the kind reaches along ``direction`` (three numbers in the frame its samples are
         in, of any length above zero), the largest ``x . direction`` over its body, in m times the direction's length:
@@ -1283,7 +1348,7 @@ class Geometry(Entry):
 #: The build-side capabilities a kind may implement, by method name; ``native`` is the class variable, and
 #: ``mass_properties`` a solid's ``volume`` and ``inertia_per_mass``.
 CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent", "mass_properties", "drawing",
-                "native", "region_primitive", "sampling", "reach", "support")
+                "native", "region_primitive", "sampling", "reach", "support", "centreline")
 
 
 def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:

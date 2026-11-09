@@ -411,6 +411,13 @@ def record_of(settings: RunSettings, declarations: Sequence[Declaration], plans:
               derived: DerivedGraph, stage: str = "") -> SavedRecord:
     unsavable: list[Refusal] = []
     document: ExperimentDocument | None = None
+    if isinstance(settings.dt, str) and settings.dt == "auto" and plans.dt:
+        # dt="auto" is saved as the step the build chose: the saved experiment rebuilds at that step, bit for bit, and
+        # a later change to what the step was chosen from is checked against it (the flow's step rule refuses a step
+        # past its line, naming dt='auto' as a route).
+        from mime.units import s as seconds
+
+        settings = dataclasses.replace(settings, dt=seconds(plans.dt))
     try:
         document = document_of(settings, declarations)
     except UnsavableError as error:

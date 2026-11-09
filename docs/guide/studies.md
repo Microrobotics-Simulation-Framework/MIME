@@ -67,7 +67,9 @@ declared static**: one kept in a Python attribute alone is invisible to the stud
 the value the group was built with. What splits a group is what a node makes from a value when it is built: a static it
 declares, a count or a layout (the MRS rung's force points from its spacing, a hull's counts from the contact's spacing
 or margin). The MRS rung's settings and wall tables are leaves, and so is the matrix it holds, made at build with the
-leaves it was made at beside it, so a sweep of its blob is one group. A geometry's number is an axis, named as
+leaves it was made at beside it, so a sweep of its blob is one group while the number of quadrature points the blob gives stays the same, and splits where
+it changes (the count is a static the rung derives: on the settling sphere a small spread of blob values is one group, and a
+spread wide enough to change the count is two). A geometry's number is an axis, named as
 `exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`); a kind's setting that is not one number (an
 ellipsoid's semi-axes) is refused as one. Without a declared range, a sweep of a radius splits where the MRS rung's force
 points change; with one, it does not (below). The two-builds check (`mime.testing.two_builds`) is how an entry shows that no value of it is held as a constant of the

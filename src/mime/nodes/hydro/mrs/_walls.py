@@ -3,24 +3,29 @@ function the MRS's node evaluates, keyed by the wall kind's name and version (``
 declaration every solver shares: the geometry it matches, the parameters it reads, its validity and gradient status).
 
 A correction takes the body's samples in the world frame (``N x 3``), its parameters by name (each a leaf of the
-node's ``wall_<name>``) and the viscosity, and returns the ``3N x 3N`` block matrix added to the free-space matrix, the
-velocity at each sample per unit force at each that the wall's image system adds, in m/(N s), the matrix's own units;
-and whether every read it made of its data was accepted (a table read inside its readable range), which the node
-publishes. ``prepare`` turns the parameters the wall kind reads from the geometry kind, in SI, into those node
-constants at build: a frame across the tube's axis, a table loaded and compiled for the run's dtype. The node knows
-Stokes kernels and quadrature, and nothing about tubes or planes.
+node's ``wall_<name>``), the viscosity and the drag's regularisation ``eps_squared`` (the blob's ``eps^2``, m^2, the one
+the free part is made with, passed to every wall kind, whether it uses it or not: ``WallCorrection.regularised``), and
+returns the ``3N x 3N`` block matrix added to the free-space matrix, the velocity at each sample per unit force at each
+that the wall's image system adds, in m/(N s), the matrix's own units; and whether every read it made of its data was
+accepted (a table read inside its readable range), which the node publishes. ``prepare`` turns the parameters the
+wall kind reads from the geometry kind, in SI, into those node constants at build: a frame across the tube's axis, a
+table loaded and compiled for the run's dtype. The node knows Stokes kernels and quadrature, and nothing about tubes or
+planes.
 
-Free space is the trivial wall, with no correction. The straight circular tube's (``_tube``: its image system read
-from a table) is in place for the tube's wall kind, which is reserved until its tables are built again."""
+Free space is the trivial wall, with no correction. The straight circular tube's (``_tube``) is its image system read
+from a table, singular (no blob in it); the plane's (``_plane``) is the regularised image of the drag's own blob, in
+closed form."""
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Protocol, cast
 
 from jax import Array
 
+from mime.build._refusals import ArgumentRefused, Refusal, entry_defect
 from mime.core import jnp
 from mime.nodes.hydro.mrs._quadrature import Chunks, cell_integrated
 
@@ -34,6 +39,22 @@ class Corrected(NamedTuple):
 
     matrix: Array
     accepted: Array
+
+
+class CorrectionAt(Protocol):
+    """A wall's correction at a body's samples (``WallCorrection.correction``): ``points`` (world frame, m), the
+    correction's ``parameters``, the ``viscosity`` and the drag's ``eps_squared`` (m^2)."""
+
+    def __call__(self, points: Array, parameters: Mapping[str, Any], viscosity: Any, eps_squared: Any) -> Corrected: ...
+
+
+class ImageBetween(Protocol):
+    """A wall's image between two point sets (``WallCorrection.image``): at each of ``targets`` per unit force at each
+    of ``sources`` (world frame, m), with the correction's ``parameters``, the ``viscosity`` and the drag's
+    ``eps_squared`` (m^2: one value, or one per source)."""
+
+    def __call__(self, targets: Array, sources: Array, parameters: Mapping[str, Any], viscosity: Any,
+                 eps_squared: Any) -> Corrected: ...
 
 
 def _nothing_to_prepare(parameters: Mapping[str, Any], dtype: Any) -> dict[str, object]:
@@ -64,12 +85,18 @@ class WallCorrection:
     matrix's units, with whether every read was accepted; ``correction`` is its value with the targets the sources. A
     node integrates it over a body's cells (:func:`cell_image`), and the same kernel serves any targets and any source
     cells: one body's force points against another's cells. A correction without one is taken at the force points
-    only."""
+    only. ``regularised`` declares whether the correction and the image use the drag's regularisation they are passed
+    (``eps_squared``, the blob's): the plane's image is regularised by it, so that it is the exact no-slip partner of
+    the free part's regularised Stokeslet; the tube's table image is singular and free space adds nothing, so both
+    take it and ignore it. The build report says which each wall uses. ``cost_text`` and ``near_wall_text`` are a wall
+    kind's own figures for the build report where it has them: what a step costs (a wall with no table to read has no
+    reads to count, and the tube's step and memory measurements are not its), and what was measured of the resistance
+    near it; left empty, the report quotes the tube's, which are the table walls'."""
 
     name: str
     version: str
     parameters: tuple[str, ...]
-    correction: Callable[[Array, Mapping[str, Any], Any], Corrected]
+    correction: CorrectionAt
     prepare: Callable[[Mapping[str, Any], Any], dict[str, object]] = _nothing_to_prepare
     units: Mapping[str, str] = field(default_factory=dict[str, str])
     held: frozenset[str] = frozenset()
@@ -77,25 +104,28 @@ class WallCorrection:
     assets: tuple[str, ...] = ()
     adds_nothing: bool = False
     distance: Callable[[Array, Mapping[str, Any]], Array] | None = None
-    image: Callable[[Array, Array, Mapping[str, Any], Any], Corrected] | None = None
+    image: ImageBetween | None = None
     #: The floating values one pair of ``image`` holds while a chunk of a cell's quadrature is read: a chunk is cut to
     #: hold :data:`mime.nodes.hydro.mrs._quadrature.CHUNK_BYTES` of them against every target.
     pair_values: int = 16
+    regularised: bool = False
+    cost_text: str = ""
+    near_wall_text: str = ""
 
 
 def cell_image(wall: WallCorrection, targets: Array, points: Array, weights: Array, chunks: Chunks,
-               parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
+               parameters: Mapping[str, Any], viscosity: Any, eps_squared: Any) -> Corrected:
     """``wall``'s image at ``targets`` (world frame, m) per unit traction on each source cell, ``3T x 3C``: ``sum over q
     in cell c of image(x_t, y_q) w_q``, the cells' quadrature ``points`` (world frame) and ``weights`` taken in
-    ``chunks`` (``mime.nodes.hydro.mrs._quadrature.cell_integrated``); and whether every read was accepted. The kernel
-    between arbitrary targets and source cells: a body's force points against its own cells, or against another
-    body's."""
+    ``chunks`` (``mime.nodes.hydro.mrs._quadrature.cell_integrated``), with the drag's regularisation ``eps_squared``
+    (m^2, the source body's); and whether every read was accepted. The kernel between arbitrary targets and source
+    cells: a body's force points against its own cells, or against another body's."""
     image = wall.image
     if image is None:
         raise ValueError(f"the wall correction {wall.name} {wall.version} gives no image between point sets")
 
     def kernel(at: Array, sources: Array) -> tuple[Array, Array]:
-        found = image(at, sources, parameters, viscosity)
+        found = image(at, sources, parameters, viscosity, eps_squared=eps_squared)
         return found.matrix, found.accepted
 
     found, accepted = cell_integrated(kernel, targets, points, weights, chunks)
@@ -105,7 +135,35 @@ def cell_image(wall: WallCorrection, targets: Array, points: Array, weights: Arr
 _corrections: dict[tuple[str, str], WallCorrection] = {}
 
 
+#: The calls the node makes of a wall's functions, by name: the positional arguments, then ``eps_squared=`` (the drag
+#: passes its regularisation to every wall kind).
+_CALLS = {"correction": ("points", "parameters", "viscosity"), "image": ("targets", "sources", "parameters", "viscosity")}
+
+
 def register_wall_correction(wall: WallCorrection) -> WallCorrection:
+    """Register ``wall`` for the wall kind it names. Refused (``entry.defect``, naming the function's package) where its
+    ``correction`` or ``image`` does not take the call the node makes, ``correction(points, parameters, viscosity,
+    eps_squared=...)`` and ``image(targets, sources, parameters, viscosity, eps_squared=...)``: found here, not at the
+    first trace as a bare ``TypeError``."""
+    refusals: list[Refusal] = []
+    for label, arguments in _CALLS.items():
+        function = cast("Callable[..., Any] | None", getattr(wall, label))
+        if function is None:
+            continue
+        try:
+            signature = inspect.signature(function)
+        except ValueError:  # no signature to read (a builtin): the first trace judges it
+            continue
+        try:
+            signature.bind(*arguments, eps_squared=None)
+        except TypeError as error:
+            refusals.append(entry_defect(
+                cast(type, function), f"its {label}, {function.__qualname__}{signature}, does not take the call the node makes, {label}("
+                f"{', '.join(arguments)}, eps_squared=...): {error}. The drag passes its regularisation to every wall "
+                f"kind, so the function takes it (a default of None serves one that ignores it)",
+                label=f"wall correction {wall.name} {wall.version}"))
+    if refusals:
+        raise ArgumentRefused(refusals)
     held = _corrections.get((wall.name, wall.version))
     if held is not None and held is not wall:
         raise ValueError(f"a wall correction {wall.name} {wall.version} is already registered")
@@ -125,13 +183,14 @@ def wall_corrections() -> list[str]:
     return sorted(f"{name} {version}" for name, version in _corrections)
 
 
-def _unbounded(points: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
+def _unbounded(points: Array, parameters: Mapping[str, Any], viscosity: Any, eps_squared: Any = None) -> Corrected:
     """No wall: nothing to add, and no read to refuse."""
     count = 3 * points.shape[0]
     return Corrected(jnp.zeros((count, count), dtype=points.dtype), jnp.asarray(True))
 
 
-def _no_image(targets: Array, sources: Array, parameters: Mapping[str, Any], viscosity: Any) -> Corrected:
+def _no_image(targets: Array, sources: Array, parameters: Mapping[str, Any], viscosity: Any,
+              eps_squared: Any = None) -> Corrected:
     """No wall: no image between any two point sets."""
     return Corrected(jnp.zeros((targets.shape[0], sources.shape[0], 3, 3), dtype=targets.dtype), jnp.asarray(True))
 
@@ -141,5 +200,5 @@ UNBOUNDED = register_wall_correction(WallCorrection(FREE_SPACE, "0.1.0", (), _un
                                                     image=_no_image))
 
 
-__all__ = ["FREE_SPACE", "UNBOUNDED", "Corrected", "WallCorrection", "cell_image", "register_wall_correction",
-           "wall_correction_named", "wall_corrections"]
+__all__ = ["FREE_SPACE", "UNBOUNDED", "Corrected", "CorrectionAt", "ImageBetween", "WallCorrection", "cell_image",
+           "register_wall_correction", "wall_correction_named", "wall_corrections"]

@@ -7,6 +7,7 @@ from types import MappingProxyType
 
 from mime.interactions._previous import CentreContact, CentreMagneticForce, CentreMagneticTorque, UnrolledContact
 from mime.interactions.contact import Contact
+from mime.interactions.flow import BodyForce
 from mime.interactions.gravity import Gravity
 from mime.interactions.hydrodynamic import Drag, Lubrication, PointForceDrag
 from mime.interactions.magnetic import Magnetic, MagneticForce, MagneticTorque
@@ -24,4 +25,4 @@ KEPT: Mapping[tuple[str, str], tuple[type[Interaction], str]] = MappingProxyType
     ("magnetic.force", "0.1.0"): (CentreMagneticForce, MagneticForce.version),
 })
 
-__all__ = ["KEPT", "Contact", "Drag", "Gravity", "Lubrication", "Magnetic", "MagneticForce", "MagneticTorque"]
+__all__ = ["KEPT", "BodyForce", "Contact", "Drag", "Gravity", "Lubrication", "Magnetic", "MagneticForce", "MagneticTorque"]

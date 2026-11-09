@@ -249,8 +249,9 @@ def _noted(value: object, where: str) -> SettingValue:
 
 def all_settings(entry: Entry, where: str) -> dict[str, SettingValue]:
     """Every setting of ``entry``, its defaults included: the resolved record's view. A setting the document cannot
-    hold is noted as such here; the document refuses it, and so does ``save``."""
-    skip = _binding_fields(entry)
+    hold is noted as such here; the document refuses it, and so does ``save``. A setting the entry leaves out
+    (``Entry.unrecorded_settings``) is not held."""
+    skip = _binding_fields(entry) | entry.unrecorded_settings()
     return {f.name: _noted(getattr(entry, f.name), f"{where}, setting {f.name!r}")
             for f in dataclasses.fields(entry) if f.name not in skip}
 

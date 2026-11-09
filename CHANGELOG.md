@@ -44,16 +44,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field against `RUN_FACTOR` times the program's own resolution there (a start one ulp off, as a saved folder's
   resolution is measured), and sees a value that reaches the run outside the step. `RUN_FACTOR` is declared, 16,
   provisional: measured in a window whose margins are 1.1 and 1.2, so the run form's gating plants stand four times
-  its line up. On the registry walk's cases one pair fires, and it is `held`: the ellipsoid's semi-axes, which the body
-  consumes when it is built and which an override and a sweep refuse. Every planted bake of the bake-check spike's set
-  is caught by the trace form at every move from 1e-1 to one ulp (`tests/two_builds/`). New refusals:
-  `two-builds.float32`, `two-builds.leaf-shapes`, `two-builds.not-movable`, and `run.run-constant` (MIME's defect).
+  its line up. The trace form compares the constants of every nested sub-program as well as the top level's (a node's
+  step runs inside a `jit`, where an array it holds as built is a constant that neither the printed program nor the
+  top-level constants carry): a NumPy or JAX array of half the magnetic torque's moment taken from the build is a `bake`
+  at every move from 1e-1 to 1e-15, in the step's `jit`, a `scan` and a `cond`, its twin quiet. A pair that moves nothing
+  is `not-discriminating`, never `quiet`; a run form that fires with the program the same and no state or input moved
+  is the check's own gap and is refused (`two-builds.undetected`). On the registry walk's cases three pairs fire, each
+  `held` and each pinned: the ellipsoid's semi-axes of `bound_robot_with_parts` and the brick's size and the egg's
+  semi-axes of `mrs_solids`, which their nodes consume when they are built and which an override and a sweep refuse; the
+  walk bounds what it walked (the trace form over the nonzero floats of those cases' documents), not nodes no case
+  builds. Every planted bake of the bake-check spike's set is caught by the trace form at every move from 1e-1 to one
+  ulp (`tests/two_builds/`). New refusals: `two-builds.float32`, `two-builds.leaf-shapes`, `two-builds.not-movable`,
+  `two-builds.undetected` and `run.run-constant` (MIME's defects).
 - **Run-constants** (`MimeNode.run_constants`): a quantity a node makes from its leaves and holds over a run, made once
   per chunk inside the compiled program, before the step loop, by MIME's chunked runs (the flagged run, a study's
   batched run, and `mime.build._maddening.chunk_function`, a pure function of the state and the parameters to
   differentiate through), and read as given by the loop's steps (`run_constants_given`). Reverse mode then derives it
   once per chunk: on FL-9 in free space at 222 force points the gradient through a chunk equals the per-step form's to
   1e-12, and the 666-wide LU leaves the backward loop (MIME-ANO-147). Forward runs keep their arrays bit for bit.
+- **A medium's flow, solved: the FVM on a periodic box** (`fvm` 0.1.0, with `body_force` 0.1.0 and
+  `mime.scene.PeriodicBox`). `Medium(..., fields={"flow": FVM(domain=PeriodicBox(length=...))})` solves the flow of the
+  fluid filling a straight tube's lumen on a Cartesian MAC grid of cubic cells, the wall a smooth Brinkman band (one
+  registered band, its stiff interior beyond), stepped by IMEX Euler on the projected monolithic conjugate gradient
+  (`Scheme.IMEXEuler()`, convection explicit) or by its steady limit (`Scheme.Steady()`, with `stokes=True`), driven
+  by `exp.attach(BodyForce(along=..., steady=...), medium=water)` on the fluid. Each step reports its solve (its
+  iterations, its true residual against the tolerance and how it stopped); a step whose solve stopped other than
+  converging raises `solve_flagged`, read in `result.flags` with its count and warned of after the run (a flag may now
+  declare that it warns, `Flag.warns`); a solve whose residual is not finite returns NaN, so the run is refused as not
+  finite, naming the flow. It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
+  with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
+  with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
+  gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
+  the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
+  refused, naming the step and a timestep to try. The wall's settings are its group, `wall=Band(delta_in=...)`. Its
+  derivative is checked exact in the viscosity, the density and the drive, and declared unverified in the tube's
+  geometry (the entry's status). `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is
+  unchanged (a medium's flow is written where dev1 wrote it). The drive is delivered once a step and as its
+  waveform's coefficients (`flow.waveform`), for a scheme whose stages read it at their own instants.
+
+- **Resistive force theory, `Drag.RFT`, on kinds with a centreline** (phase R1). A slender body's resistance from local
+  drag coefficients along its centreline, its segments feeling no interaction through the free fluid, with a wall's
+  image between its points (the tube's table, through the wall kind, never by name). The coefficients are a setting,
+  `coefficients=`: Lighthill's on a segment with a wavelength (a helix), a slender prolate spheroid's on a straight one
+  (the default per segment), each computed in the step from the viscosity and the kind's numbers, so its derivatives
+  in the geometry and the viscosity are exact (checked against a central difference that rebuilds, both modes, both
+  loss scales, with a `stop_gradient` and a baked coefficient as controls). Its resistance is judged each step: a straight body's (a capsule's, a prolate spheroid's) as
+  **semidefinite at a floor** (`floored_least_eigenvalue`, 64 units in the last place of the run's dtype), since its spin
+  about itself meets no drag; a helix's, which is definite, as the MRS rung's is, against zero. With a wall, a body whose local drag outweighs its true resistance
+  (a helix the size of its vessel) is refused at build, `drag.rft-indefinite`, and a step that reaches one
+  stops the run, naming the MRS as the route. A kind without a centreline is refused, `drag.no-centreline`, the
+  message naming the new guide page on adding one (a custom geometry, an STL or CAD mesh). The rung was added to drag
+  0.4.0, changing nothing the other rungs compute: its setting `coefficients` is left out of the resolved record of a
+  program on another rung (`Entry.unrecorded_settings`), so every such program keeps its input hash and a folder saved
+  before the rung loads. Its tube family was measured at one gap to the wall, and a step at another gap, wider or
+  narrower, raises `unmeasured`. Its validity lines, measured against the MRS rung on the same
+  bodies, are recorded in `docs/data/slender_validity/`.
+- **The centreline capability** (`mime.registry.Centreline`): a tree of segments joined at named junctions, each a
+  JAX function of its kind's parameters giving the point, the unit tangent and the rotation-minimising frame's normal
+  at arc length, with an optional local radius, a filament radius and a wavelength. Declared by the new **`Helix`**
+  (registry `helix` 0.1.0: a helical filament with hemispherical caps, its origin its centroid, its samples
+  quasi-uniform), by `Capsule` (tip to tip), by a prolate `Ellipsoid` (its long axis) and by `Tube` (its axis, the
+  radius from the lumen's signed distance). `mime.scene.polyline` declares one through points; `mime.testing.
+  centreline_problems` holds a kind's to the contract.
+- **The plane wall kind** (`plane` 0.1.0, `mime.walls.PlaneWall`): an unbounded no-slip plane for the drag's MRS rung,
+  its image system in closed form, regularised by the drag's own blob, so that with the free Stokeslet of that blob it
+  vanishes on the wall and has no divergence to rounding, and as the blob vanishes it is Blake's singular image. The
+  plane is a structure, `mime.scene.Plane(normal=+Z, offset=...)`, whose `half_space` a medium fills
+  (`Medium("water", fills=floor.half_space)`); its shape is `mime.core.HalfSpace` (`half_space`), convex, taking many
+  points, with no switch. The offset is the drag node's leaf `wall_offset`, which a gradient and a caller of the node
+  reach; **a structure's settings are not yet study or override axes** (`override={"floor.offset": ...}` is refused,
+  `value.unknown`, and so are `drag:<body>.wall_offset` and `drag:<body>.offset`, `study.unknown-path`), and they come
+  with the study layer's declared ranges. The normal is held as built and normalised in the
+  program, so declaring it a leaf later changes no program. The gradient is exact. The plane has no surface yet, so no
+  contact can be held against it; the build refuses a body that starts through it, and the drag's near-wall flags
+  speak in a run. **The wall protocol passes the drag's regularisation to every wall kind**: a correction and its
+  image between point sets take `eps_squared`, the blob's square, and `WallCorrection.regularised` declares whether a
+  kind uses it (the tube's table image is singular and declares it does not); the build report says per wall which
+  image it adds. A correction a lab registers must take the new argument (a default of `None`
+  serves), and registration refuses one that does not (`entry.defect`, naming the function and the argument) instead
+  of failing with a bare `TypeError` at the first trace. Every released program on the tube and in free space runs to the same bits.
+
+- **RK3, the step rule and `dt="auto"`; the prescribed flow; the solved-field contract's suite** (F1b). `FVM(...,
+  scheme=Scheme.RK3())` steps the flow by S1's explicit RK3 (three low-storage stages, the wall's penalty implicit in
+  each, the incremental fast projection, the pressure carried, a consistent pressure made in the program at the run's
+  start and after a state handed over), reading the drive's waveform at its stage times. With no `scheme=` the build
+  picks RK3 where its explicit viscosity holds at `dt` and IMEX Euler otherwise; it predicts the flow's CFL number from
+  the drive (Poiseuille's centreline and twice Womersley's peak, the bound on a run from rest, in the empty tube) and
+  refuses a `dt` past the chosen
+  scheme's line before any step (`flow.cfl-predicted`, `flow.viscous-limit`), with the step that keeps it;
+  `Experiment(..., dt="auto")` takes the largest stable step (stability only, its steps a period reported beside it),
+  saved as the step it chose. The rule is judged at the flow's own step (`FVM(rate=...)` included), its prediction in
+  float64 whatever the run's dtype, with a bound past the series' Womersley number of 50. The lines are one value each, along a grid axis, scaled along a tilted vessel's axis by
+  `max|n_d| / sum|n_d|`: RK3's is 1.7, not the 2.0 first decided, at which a plug flow grows (the maintainer's
+  decision). RK3 is a scheme of the registry's interface: its state the velocity, the pressure and whether the pressure
+  is made, its stages reading the drive at their own instants, its terms its own; its node holds its state past the CFL
+  line as the implicit node does. RK3's books are judged on the ledger's first route, per step (`ledger_route_one_*`).
+  `Womersley()` (`womersley` 0.1.0) is a medium's flow prescribed in a straight tube, Poiseuille and Womersley by an in-program
+  series valid to a Womersley number of 50 in float64 and 25 in float32, outside and with no grid; `BodyForce` drives
+  either rung (it delivers its waveform where the field reads one). `mime.fields.SolvedField` holds a field kind's
+  declarations and `mime.testing.field_conformance` its suite, each case applicable by declaration and every skipped
+  case listed with its reason.
+
 - **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
   `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the
   spinners' momenta and the inertia its frames carry, and the new `spinner` kind): each records its step identity
@@ -319,13 +410,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is quiet on the rung), a study's member keeps its own float64-made matrix, and the save's resolution rerun gives the
   step the matrix with the leaves it was made at, which keeps it (`made_again`). The value-keyed second key (#201) is
   removed, and the stale read it allowed (a step given every body leaf as the rerun moves it kept the build's matrix)
-  cannot be reached. **The derived hash of every separated-quadrature MRS experiment moves**; no array moves.
+  cannot be reached. No array moves. Folders of four experiments (the MRS sphere in free space, `mrs_tube`, `hull_contact`, `script_a`) saved by the tree before this change load with it, in the same environment and in float64, as "the same graph, hash for hash" [measured]; no golden hash is in the diff, and whether the derived hash moves for any other experiment was not measured.
 - **A hull contact's search values are leaves** (`search_apart_squared`, `search_tolerance`, `search_shortfall`,
   `trainable=False`): made when the body is built from its hull's shape, they were Python numbers in the step's program
   (MIME-ANO-145), so a study whose members' hulls differed under one program would have run the first member's. The
-  step reads the same numbers in the run's dtype, so every array is bit for bit what it was; **the derived hash of every
-  hull contact moves**. They stay outside every derivative: where a search starts and when it stops, which the point it
+  step reads the same numbers in the run's dtype, so every array is bit for bit what it was (the `hull_contact` folder saved before loads as "the same graph, hash for hash"
+  [measured, as above]). They stay outside every derivative: where a search starts and when it stops, which the point it
   converges to does not depend on.
+- **The rft rung judges in its step whether a body lies within its measured lines**, from the step's leaves: the family
+  of its shape and its slenderness, its coefficient set, its spacing and, with a wall, the gap its family was measured
+  at. R1 decided the family and the gap at build, from leaves the step reads, so the step held them as constants: the
+  two-builds walk fired on `rft_tube`'s helix turns, whose move crossed the family's one measured slenderness, and a
+  leaf written into a compiled chunk would have kept the build's `unmeasured`. The node holds the `spacing` its counts
+  were made with (a leaf, `trainable=False`) in place of `measured` and `gap_least`; its build report evaluates the
+  same judgement at the leaves as built. A control plants R1's build-time values back and the walk fires on the same
+  pair. In float32 R1 flagged every body of `rft_free_space` and `rft_tube` unmeasured (its build compared the spacing
+  with a filament radius rounded to float32); the step's judgement agrees with float64's, tested in both.
+- **The FVM's float32 solve stops at its rounding floor where 1e-5 is out of reach.** With no tolerance given, a
+  float32 run's solve now stops at a true residual of 1e-5 or, where that is higher, at the solve's own rounding
+  floor, `eps || |A| |x| + |b| || / ||b||`, made at each check from the iterate (a tolerance given is held as given;
+  float64 is unchanged). On the empty tube at 64 cells across with `wall=Band(delta_in=0.01)` the solve that
+  stagnated, flagged, after 1000 iterations now stops unflagged after 69, its flux within 1.3e-7 of float64's. A solve
+  that stalls above the floor still stops stagnated and is flagged: with the 0.01h interior in a flow with a pressure
+  gradient, float32's conjugate gradient can stall well above it.
+
+- **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
+  JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;
+  it weighs 28876 s now), and `scripts/shard_matrix.py`'s default is 16 (the repository variable and a manual run's input
+  still win). A file heavier than a shard's mean can now be dealt by test (the table's `split`, `scripts/shard_weights.py
+  --split FILE`); at sixteen none is, so none is split. Every lane runs cold once: the compilation cache's keys name the
+  shard count.
 
 - **`mime verify` judges each field block by block, and the saved form is version 10** (`mime.document/10`,
   `mime.lock/10`). Where `verify` claims no bits, in another environment or of a reference no run repeats bit for bit,
@@ -533,6 +647,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The rft rung's resistance is the same bit for bit whichever kind of core a process started on** (MIME-ANO-125
+  again; the rung is unreleased). R1's node summed `M^T f` over its 3n unknowns in one product (282 on
+  `rft_free_space`'s helix), and with a wall took its block-diagonal local drag into `B M` and `B G` as dense products
+  as long; XLA:CPU's Eigen blocks such a sum by the L1 data cache of the core it first ran on, so on a CPU with two
+  sizes of core the registry walk's round trip of `rft_free_space` failed by where each process started. It sums
+  `M^T f` by `force_sums` (pieces of at most `DEPTH` terms, added in order) and takes `B M` and `B G` point by point,
+  three terms a sum; every product in its compiled step sums at most `DEPTH` terms
+  (`tests/oracles/test_mrs_force_sums.py`, with a control that puts the whole product back). Its numbers move at
+  rounding only: R6's oracle and the rung's golden outputs hold within their tolerances.
 - **The energy ledger's running sums are pairs, and no longer drift with the steps** (MIME-ANO-149; the ledger is
   unreleased, so no version step). A plain float32 sum of a series of 1e5 terms drifted by tens of units of eps on the
   terms' summed magnitudes (45 on a mixed-sign series, 107 on a positive one, measured through the ledger's own update;

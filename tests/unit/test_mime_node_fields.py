@@ -8,12 +8,17 @@ from pathlib import Path
 
 import jax.numpy as jnp
 import pytest
+from rft_cases import r6_node
 from maddening.core.node import SimulationNode
 from typing_extensions import NoExtraItems
 
 import mime.nodes
+
 import mime.scene  # noqa: F401 - registers the sphere kind the MRS node is made with
 from mime.core import MimeNode
+from mime.nodes.flow import fvm as flow
+from mime.nodes.flow._body_force import BodyForceNode, BodyForceState
+from mime.nodes.flow._womersley import PrescribedFlowInputs, PrescribedFlowNode, PrescribedFlowState
 from mime.core.multibody import read_urdf
 from mime.data import asset
 from mime.nodes import actuation, body, control, hydro, magnetic
@@ -48,6 +53,15 @@ TYPED = [
      actuation.IntegratingRotatingState, actuation.UniformRotatingInputs, {"flux_density_r", "gradient_r"}),
     (actuation.ConstantNode("c", DT, value=10.0), actuation.Command, None, set()),
     (actuation.RampNode("c", DT, start=10.0, rate=-1.0, duration=2.0, hold=0.5), actuation.RampState, None, set()),
+    (flow.ImplicitFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=2, spacing=1e-4, viscosity=1e-3, density=1e3,
+                           tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
+     flow.FlowState, flow.FlowInputs, set()),
+    (BodyForceNode("f", DT, along=(0, 0, 1), steady=1.0), BodyForceState, None, set()),
+    (flow.ExplicitFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=2, spacing=1e-4, viscosity=1e-3, density=1e3,
+                           tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
+     flow.ExplicitFlowState, flow.FlowInputs, set()),
+    (PrescribedFlowNode("w", DT, viscosity=1e-3, density=1e3, tube_centre=(0, 0, 0), tube_axis=(0, 0, 1),
+                        tube_radius=2.5e-4), PrescribedFlowState, PrescribedFlowInputs, set()),
     (hydro.SurrogateDragNode("d", DT, weights="dejongh_mlp_v2", weights_sha256=asset("dejongh_mlp_v2").sha256,
                              viscosity=1e-3, helix_wavenumber=2.33, length=7.47e-3, radius=1.56e-3,
                              outer_radius=1.33 * 1.56e-3, vessel_shape="cylinder", vessel_centre=(0, 0, 0), vessel_axis=(1, 0, 0), vessel_radius=3.175e-3,
@@ -74,6 +88,7 @@ TYPED = [
     (mrs.MRSDragNode("e", DT, viscosity=1e-3, blob=0.5, kind="sphere", kind_version="0.1.0", patches=("surface",),
                      counts=((3, 5),), part_centre=(0.0, 0.0, 0.0), part_rotation=(1, 0, 0, 0, 1, 0, 0, 0, 1),
                      wall_kind="free_space", wall_kind_version="0.1.0", shape_radius=1e-3), mrs.MRSDragState, mrs.MRSDragInputs, set()),
+    (r6_node(tube=False), hydro.RFTDragState, hydro.RFTDragInputs, set()),
     (control.ControllerNode("k", DT, step=lambda state, reads: (state, {"angle": reads["pose"][4]}),
                             controller="toy 0.0.0", reads={"pose": ("m; 1", (7,))},
                             initial_state={"filtered": jnp.zeros(())}, initial_writes={"angle": jnp.zeros(())}),

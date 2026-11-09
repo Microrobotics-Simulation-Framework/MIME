@@ -106,7 +106,7 @@ def labeller_of(kind, settings):
 
 #: The kinds the suite runs on, by name: every installed kind that samples its surface, less the kept versions (held to
 #: their failure below). A kind registered without a line here fails the first test.
-WALKED = ("sphere", "capsule", "screw", "cylinder", "box", "ellipsoid", "labx.bead")
+WALKED = ("sphere", "capsule", "screw", "cylinder", "box", "ellipsoid", "helix", "labx.bead")
 
 
 def test_the_suite_walks_every_installed_kind_that_samples_and_each_has_a_declaration(declared, sampling_classes):
@@ -329,6 +329,18 @@ def tube_closed_form(centre, axis, radius):
 
 
 TUBE = {"centre": (1.0e-3, -2.0e-3, 0.5e-3), "axis": (0.0, 0.6, 0.8), "radius": 3.175e-3}
+#: A plane below the tube's points along a turned normal, given at twice unit length: they all lie in its medium.
+PLANE = {"normal": (0.0, 1.2, 1.6), "offset": -2.5e-2}
+
+
+def plane_closed_form(normal, offset):
+    """The plane's distance written again: the point's height above it along the unit normal, and the normal."""
+    n = np.asarray(normal) / np.linalg.norm(normal)
+
+    def closed(points):
+        return points @ n - offset, np.broadcast_to(n, points.shape)
+
+    return closed
 
 
 def tube_points():
@@ -349,11 +361,12 @@ def test_every_wall_kind_gives_its_distance_and_free_space_none():
     walls = {record.name: record.cls for record in registered_entries(EntryKind.WALL_KIND)
              if (record.kind.value, record.name, record.version) in installed}
     assert {"free_space", "tube"} <= set(walls)
-    closed = {"tube": tube_closed_form(TUBE["centre"], TUBE["axis"], TUBE["radius"])}
+    closed = {"tube": tube_closed_form(TUBE["centre"], TUBE["axis"], TUBE["radius"]),
+              "plane": plane_closed_form(PLANE["normal"], PLANE["offset"])}
     unchecked = [name for name, cls in walls.items() if cls.matches is not None and name not in closed]
     assert unchecked == [], f"no closed form here holds the distance of {unchecked}"
     for name, cls in walls.items():
-        parameters = TUBE if cls.matches == "cylinder" else {}
+        parameters = {"cylinder": TUBE, "half_space": PLANE}.get(cls.matches or "", {})
         assert distance_problems(cls(), parameters, tube_points(), closed.get(name)) == [], name
 
 

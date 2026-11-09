@@ -40,10 +40,13 @@ MARGIN_SECONDS = 10 * 60
 #: a lane's read of its completion job after anything red. Any other (``${{ false }}`` included) switches the check off.
 LANE_RAN = "${{ !cancelled() && env.MIME_CI_RUNS == 'true' }}"
 AFTER_TESTS = "${{ !cancelled() && steps.tests.outcome != 'skipped' }}"
-#: The completion job's own ``if``, per lane: the lane's shards' (the default lane's every Python; the others, the full matrix).
+#: The completion job's own ``if``, per lane: the lane's shards' (the default lane's every Python that runs; the others, where the count job says the lane runs).
 JOB_IF = {"default": "github.event_name != 'schedule'",
-          "openmaterica-main": "${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}",
-          "maddening-main": "${{ github.event_name != 'schedule' && needs.shards.outputs.full == 'true' }}"}
+          "openmaterica-main": "${{ github.event_name != 'schedule' && needs.shards.outputs.openmaterica == 'true' }}",
+          "maddening-main": "${{ github.event_name != 'schedule' && needs.shards.outputs.maddening == 'true' }}"}
+#: What the lane's own read of the completion job runs under: the default lane's job runs in every mode but refuses in a
+#: reduced run (``MIME_CI_RUNS``); the other two have no job where their lane does not run.
+LANE_CHECK_IF = {"default": LANE_RAN, "openmaterica-main": "${{ !cancelled() }}", "maddening-main": "${{ !cancelled() }}"}
 NEUTERING = re.compile(r"\|\|\s*(?:true|:)(?![\w-])|\bset\s+\+e\b")
 INSTALL_RUN = "bash scripts/install_shells.sh"
 needs_posix = pytest.mark.skipif(sys.platform == "win32", reason="a CI Linux runner's script")
@@ -146,7 +149,7 @@ def summary_problems(lane: str, jobs: dict) -> list[str]:
         return [f"{lane}: {len(steps)} steps check the completion tests job's result; one does"]
     step = steps[0]
     run = str(step.get("run", ""))
-    found = step_faults(f"{lane}: the step checking the completion tests job", step, LANE_RAN)
+    found = step_faults(f"{lane}: the step checking the completion tests job", step, LANE_CHECK_IF[lane])
     if not re.search(r"^\s*set -e?o pipefail$", run, re.MULTILINE) or "python3 scripts/run_jobs.py \"$JOBS_URL\"" not in run \
             or "scripts/check_shard_jobs.py" not in run or not run.rstrip().endswith("--shards 1"):
         found.append(f"{lane}: the step checking the completion tests job does not read the run's jobs by scripts/run_jobs.py "

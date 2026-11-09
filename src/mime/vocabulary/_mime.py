@@ -75,3 +75,18 @@ LINK_INERTIA = define(Interface(
                 "the order the segment lists them, at the step's start and at its end, summed over every delivery: "
                 "what a rotor unequal across its spin axis hands the frame it is mounted on, its half difference "
                 "across the axis, which turns with it. A dynamic segment takes it, a kinematic one does not"))
+FLOW_VELOCITY = define(Interface(
+    "field.flow.velocity", ReadKind.FIELD, "m/s", "world", (3,), magnitude=1e-3,
+    description="the velocity of a medium's flow at a point: the quantity a flow field kind provides"))
+FLOW_BODY_FORCE = define(Interface(
+    "flow.body_force", TargetKind.LOAD, "m/s^2", "world", (3,), sign="on the fluid of a medium, per unit mass",
+    magnitude=1e-3,
+    description="a uniform body force per unit mass on a medium's fluid (none on its solid), summed over every law "
+                "that drives it: on a periodic box, the drive that stands in for a pressure drop"))
+FLOW_WAVEFORM = define(Interface(
+    "flow.waveform", TargetKind.EQUALITY_CONSTRAINT, "1", "world", (7,),
+    sign="on the fluid of a medium, per unit mass", magnitude=1.0,
+    description="a medium's drive as its waveform: a unit direction, the steady part and one harmonic's amplitude "
+                "(accelerations), frequency and phase, the force per unit mass on its fluid, which the field kind "
+                "evaluates at its own instants or responds to analytically. At most one law delivers it: a waveform is "
+                "not summed"))

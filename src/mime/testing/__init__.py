@@ -122,6 +122,7 @@ from mime.testing._two_builds import (
     FieldGap,
     RunForm,
     TwoBuilds,
+    graph_program,
     run_form,
     step_program,
     two_builds,
@@ -149,6 +150,7 @@ from mime.testing._sampling_conformance import (
     sampling_quality,
     suite_spacing,
 )
+from mime.testing._centreline import CENTRELINE_ROUNDING_ULPS, centreline_problems
 from mime.testing._kind_conformance import (
     KIND_ROUNDING_ULPS,
     NORMAL_ROUNDING_ULPS,
@@ -284,6 +286,8 @@ __all__ = [
     "distance_problems",
     "drawing_checks",
     "drawing_kinds",
+    "CENTRELINE_ROUNDING_ULPS",
+    "centreline_problems",
     "drawing_problems",
     "entry_key",
     "fallback_problems",
@@ -313,6 +317,7 @@ __all__ = [
     "FieldGap",
     "RunForm",
     "TwoBuilds",
+    "graph_program",
     "run_form",
     "step_program",
     "two_builds",

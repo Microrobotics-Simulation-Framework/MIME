@@ -265,6 +265,7 @@ SITES = {
     ("dynamics", "motor", "prescribed velocity"): "radian",
     ("dynamics", "arm", "setting initial_velocities"): "radian",
     ("field provider", "uniform_rotating", "command frequency"): "turn",
+    ("interaction", "body_force", "setting frequency"): "turn",
     ("controller", "controller", "rate"): "turn",
 }
 

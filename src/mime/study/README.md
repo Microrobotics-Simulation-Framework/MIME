@@ -26,7 +26,10 @@
   value when it is built and keeps in its program: a static it derives and declares, a count or a layout (the MRS
   rung's force points from its spacing, a hull's counts and groups from the contact's spacing or margin), the node set,
   `dt` and the precision. The MRS rung's settings and wall tables are leaves, and so is its held body-frame matrix, made
-  at build with the leaves it was made at beside it: a sweep of its blob is one group. A geometry's number is an axis,
+  at build with the leaves it was made at beside it: a sweep of its blob is one group while the number of quadrature
+  points the blob gives stays the same, and splits where it changes (`reference_quadrature_counts`, a static; measured
+  on the settling sphere: a small spread of blob values is one group, a spread wide enough to change the count is two).
+  A geometry's number is an axis,
   named as `exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`); a kind's setting that is not one
   number (an ellipsoid's semi-axes, a box's size, a direction, a count) is refused as one (`study.held-geometry`). Without
   a declared range a geometry sweep splits as its key says (the MRS rung re-picks its force points from each radius);

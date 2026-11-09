@@ -12,7 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_solids, mrs_tube
+from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_plane, mrs_solids, mrs_tube
+from rft_cases import rft_free_space, rft_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, swing_magnet, tracked_rpm
 from hull_cases import hull_contact
 from robot_asset import bound_robot, bound_robot_with_parts
@@ -57,6 +58,48 @@ class Case:
     refused: tuple[str, ...] = ()
     #: Whether it uses the lab fixture's entries, which every CI lane installs and a local run may not.
     lab: bool = False
+
+
+def periodic_tube_flow(steady: bool = False, rk3: bool = False) -> Experiment:
+    """The FVM on its periodic box around a straight tube, eight cells across the lumen, driven by a pulsatile body
+    force on the fluid; IMEX Euler with convection on, or its steady limit under Stokes."""
+    from mime.dynamics import FVM, Scheme
+    from mime.interactions import BodyForce
+    from mime.scene import PeriodicBox, Scene, Tube, Z
+    from mime.units import Pa_s, kg_per_m3, m_per_s2
+
+    name = "steady_tube_flow" if steady else "rk3_tube_flow" if rk3 else "periodic_tube_flow"
+    # dt 0.25 ms: the drive's periodic state is predicted at 0.09 m/s, a CFL of 0.18 on the case's grid, inside IMEX
+    # Euler's 0.4 (at 1 ms the build refuses it, flow.cfl-predicted).
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), dt=ms(0.25))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(10.0))))
+    flow = FVM(domain=PeriodicBox(length=mm(0.25), margin=4), cells_across=8, stokes=steady,
+               scheme=Scheme.Steady() if steady else Scheme.RK3() if rk3 else Scheme.IMEXEuler())
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": flow}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0), amplitude=m_per_s2(0.5), frequency=Hz(2.0)),
+                      medium="water")
+    return experiment
+
+
+def prescribed_tube_flow() -> Experiment:
+    """The prescribed flow (Womersley) in the same tube under the same drive: the cheap rung, no grid."""
+    from mime.dynamics import Womersley
+    from mime.interactions import BodyForce
+    from mime.scene import Scene, Tube, Z
+    from mime.units import Pa_s, kg_per_m3, m_per_s2
+
+    experiment = Experiment("prescribed_tube_flow", scene=Scene.new(up=Z, units="m"), dt=ms(1.0))
+    experiment.add_structure(Structure("tube", geometry=Tube(axis=+Z, inner_radius=mm(0.5), wall=mm(0.2),
+                                                             length=mm(10.0))))
+    experiment.add_medium(Medium("water", fills="tube.lumen", fields={"flow": Womersley()}))
+    experiment.declare("water.viscosity", Pa_s(1e-3), reason="water near 20 C")
+    experiment.declare("water.density", kg_per_m3(1000.0), reason="water near 20 C")
+    experiment.attach(BodyForce(along=(0.0, 0.0, 1.0), steady=m_per_s2(1.0), amplitude=m_per_s2(0.5), frequency=Hz(2.0)),
+                      medium="water")
+    return experiment
 
 
 def walled_toy() -> Experiment:
@@ -247,6 +290,12 @@ CASES = (
     # The same on the contact 0.5.0, its loops XLA loops: 0.5.0's golden outputs come from it.
     Case("hull_contact_looped", lambda: hull_contact("hull_contact_looped")),
     Case("coupled_toy", coupled_toy),
+    # A medium's flow on the FVM, its periodic box driven by a pulsatile body force: IMEX Euler, and its steady limit.
+    Case("periodic_tube_flow", periodic_tube_flow),
+    Case("steady_tube_flow", lambda: periodic_tube_flow(steady=True)),
+    # The same tube stepped by RK3, and its prescribed flow: the second scheme and the second flow field kind.
+    Case("rk3_tube_flow", lambda: periodic_tube_flow(rk3=True)),
+    Case("prescribed_tube_flow", prescribed_tube_flow),
     Case("full_toy", full_toy),
     Case("walled_toy", walled_toy),
     Case("anchored_toy", anchored_toy),
@@ -292,11 +341,20 @@ CASES = (
     # The same rung in a straight tube, with the tube wall kind: it reads the corrected table, the asset
     # unit_tube_R0.997, which the run fetches into the cache before the tests (CI does it once per job).
     Case("mrs_tube", mrs_tube),
+    # The same rung above a plane wall along a turned normal, with the plane wall kind: its regularised image, of the
+    # drag's own blob.
+    Case("mrs_plane", mrs_plane),
     # The kept rigid_inertial 0.2.0 on a body of three different moments: what a folder saved with the explicit
     # gyroscopic term names.
     Case("rigid_explicit", rigid_explicit),
     # Script A with its frequency ramped and its phase lag observed: the ramp's and the lag's golden outputs.
     Case("script_a_ramped", script_a_ramped),
+    # The drag's rft rung in an unbounded medium, on each kind with a centreline: a helix, a capsule and a prolate
+    # ellipsoid, each moving and turning; the helix's golden output comes from it.
+    Case("rft_free_space", rft_free_space),
+    # The same rung with the tube wall kind, on a helix small against its tube (definite with the wall): it reads the
+    # corrected table, the asset unit_tube_R0.997.
+    Case("rft_tube", rft_tube),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,
     # so that the rung's and free space's golden outputs stay mrs_free_space's.
     Case("lab_bead", lab_bead, lab=True),

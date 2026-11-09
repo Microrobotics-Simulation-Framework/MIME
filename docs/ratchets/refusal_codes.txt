@@ -36,7 +36,6 @@ record.not-an-interval    # no test names it
 record.not-read           # no test names it
 record.unit               # no test names it
 record.unreadable         # no test names it
-run.seed                  # no test names it
 scene.asset-dependencies  # no test names it
 scene.asset-missing       # no test names it
 scene.asset-name          # no test names it

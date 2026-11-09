@@ -19,6 +19,7 @@ from mime.scene._compose import (
     valid_prim_path,
     within,
 )
+from mime.scene._domains import PeriodicBox
 from mime.scene._derived import (
     DERIVED_FROM,
     DERIVED_HASH,
@@ -39,7 +40,7 @@ from mime.scene._frame import (
     up_axis_problem,
     world_frame,
 )
-from mime.scene._geometry import Axis, Tube, X, Y, Z
+from mime.scene._geometry import Axis, Plane, Tube, X, Y, Z
 from mime.scene._previous import KEPT
 from mime.scene._sampling import (
     QUADRATURE,
@@ -53,6 +54,8 @@ from mime.scene._sampling import (
     sampled_points,
     sampled_reach,
 )
+from mime.scene._centreline import polyline, straight
+from mime.scene._helix import Helix
 from mime.scene._screw import Screw
 from mime.scene._kinds import kind_frame, placed, shape_settings
 from mime.scene._read import KindOnStage, geometry_schema_problems, read_kind
@@ -97,10 +100,12 @@ from mime.scene._visual_sets import (
 STAGE_FILE = "scene/scene.usda"
 
 __all__ = [
+    "PeriodicBox",
     "ARROW", "Asset", "Axis", "active_visual_pins", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
     "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
-    "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY",
+    "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
+    "Helix", "polyline", "straight",
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
     "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",
     "VectorPrim", "VisualPins", "VisualPrim", "WorldFrame", "X", "Y", "Z", "asset", "body_reach",

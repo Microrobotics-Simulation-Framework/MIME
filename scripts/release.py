@@ -9,6 +9,12 @@ distribution's own metadata (a wheel's ``METADATA``, an sdist's ``PKG-INFO``). R
 branch, which is refused. Writes ``version=<version>`` to ``$GITHUB_OUTPUT`` when it is set. Exits 1 naming each
 disagreement.
 
+``check-ci --repository OWNER/NAME --commit SHA``: the release gate (CONTRIBUTING.md, "CI: which lanes a pull request runs").
+Three of CI's five lanes are no required check of a pull request: ``default`` on Python 3.13, ``maddening-main``
+and ``openmaterica-main`` run on a pull request only by its diff. So a release is refused unless the newest push or manual run
+of ``ci.yml`` on the release head has all five lanes' jobs (``default`` on 3.12, 3.13 and 3.14, and the two ``-main``
+lanes) concluded ``success``, each named when it did not, or when there is no such run. Exits 0 or 1.
+
 ``find-pages --repository OWNER/NAME --commit SHA --out DIR``: the documentation pages of the commit's own CI run, the
 artifact ``docs-pages-python-3.12`` that CI's default lane builds with the lane's JUnit reports (so its evidence counts
 page states each cited test's outcome in that run), downloaded into DIR with ``gh`` from the newest run of ``ci.yml`` on
@@ -41,6 +47,7 @@ import tempfile
 import zipfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = Path("src/mime/__init__.py")
@@ -52,6 +59,12 @@ ARTIFACT = "docs-pages-python-3.12"
 DOCS = "https://microrobotica.org/mime"
 
 Gh = Callable[[list[str]], str]
+
+#: The jobs of ``ci.yml`` that stand for its five test lanes, by their names, and the events whose runs hold them all
+#: (a pull request's run holds the lanes its diff starts, and a scheduled run only ``usd-core-newest``).
+LANE_JOBS = ("default (Python 3.12)", "default (Python 3.13)", "default (Python 3.14)", "maddening-main",
+             "openmaterica-main")
+FULL_EVENTS = ("push", "workflow_dispatch")
 
 
 def output(**values: str) -> None:
@@ -150,6 +163,56 @@ def find_pages(repository: str, commit: str, out: Path, gh: Gh = run_gh) -> int:
     return 0
 
 
+# -- check-ci --------------------------------------------------------------------------------------------------------
+
+def lane_problems(jobs: Sequence[dict[str, Any]]) -> list[str]:
+    """Each of the five lanes whose job is missing from ``jobs`` (a run's jobs at their latest attempts, each a mapping
+    with a ``name`` and a ``conclusion``) or did not conclude ``success``, named."""
+    conclusion = {str(job["name"]): job.get("conclusion") for job in jobs}
+    found: list[str] = []
+    for lane in LANE_JOBS:
+        if lane not in conclusion:
+            found.append(f"{lane}: the run has no such job")
+        elif conclusion[lane] != "success":
+            found.append(f"{lane}: concluded {conclusion[lane] or 'nothing yet (still running)'}")
+    return found
+
+
+def run_jobs(repository: str, run_id: int, gh: Gh) -> list[dict[str, Any]]:
+    """The run's jobs at their latest attempts, as ``name`` and ``conclusion``."""
+    text = gh(["api", f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100", "--paginate",
+               "--jq", ".jobs[] | {name, conclusion}"])
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
+def ci_problems(repository: str, commit: str, gh: Gh) -> tuple[str, list[str]]:
+    """The newest push or manual run of CI on ``commit``, and every lane of it that is not green."""
+    listed = json.loads(gh(["api", f"repos/{repository}/actions/workflows/{WORKFLOW}/runs?head_sha={commit}"
+                                   f"&per_page=100"]))
+    runs = [run for run in listed.get("workflow_runs", []) if run.get("head_sha") == commit
+            and run.get("event") in FULL_EVENTS]
+    if not runs:
+        return "", [f"no push or manual run of {WORKFLOW} on {commit}: push the commit to a release branch, or run "
+                    f"{WORKFLOW} by hand on it, and let it finish"]
+    newest = max(runs, key=lambda run: int(run["id"]))
+    return str(newest.get("html_url", newest["id"])), lane_problems(run_jobs(repository, int(newest["id"]), gh))
+
+
+def check_ci(repository: str, commit: str, gh: Gh = run_gh) -> int:
+    try:
+        url, problems = ci_problems(repository, commit, gh)
+    except (subprocess.CalledProcessError, ValueError, KeyError) as error:
+        print(f"error: CI's runs on {commit} could not be read ({type(error).__name__}: {error}); nothing is released "
+              f"on a gate that was not checked", file=sys.stderr)
+        return 1
+    if problems:
+        print("\n".join(f"error: not every lane is green on {commit} ({url or 'no run'}): {problem}"
+                        for problem in problems), file=sys.stderr)
+        return 1
+    print(f"all five lanes ({', '.join(LANE_JOBS)}) are green on {commit} ({url})")
+    return 0
+
+
 # -- pack-pages ------------------------------------------------------------------------------------------------------
 
 def release_of(version: str) -> str:
@@ -233,6 +296,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     check = commands.add_parser("check-tag")
     check.add_argument("--ref", required=True)
     check.add_argument("distributions", nargs="*", type=Path)
+    gate = commands.add_parser("check-ci")
+    gate.add_argument("--repository", required=True)
+    gate.add_argument("--commit", required=True)
     find = commands.add_parser("find-pages")
     find.add_argument("--repository", required=True)
     find.add_argument("--commit", required=True)
@@ -254,6 +320,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"the tag is v{version}, and every distribution is of {version}")
         output(version=str(version))
         return 0
+    if arguments.command == "check-ci":
+        return check_ci(arguments.repository, arguments.commit)
     if arguments.command == "find-pages":
         return find_pages(arguments.repository, arguments.commit, arguments.out)
     return pack_pages(arguments.pages, arguments.version, arguments.commit, arguments.source, arguments.run,

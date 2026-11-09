@@ -23,6 +23,8 @@ the concept pages, which this guide links to where you meet each idea and does n
 
 - [Extending MIME](lab_author.md): a plugin, a package of a lab's own entries, asset records and storage adapters, and what a
   lab may claim for what it adds.
+- [Adding a centreline to your geometry](centrelines.md): what a slender drag law reads of a body's kind, and how a lab's
+  kind, a custom geometry or a mesh, declares it.
 - [Assets in depth](assets.md): what a record says, where an experiment's records come from, where the bytes may go, and the
   audit for a package's CI.
 
