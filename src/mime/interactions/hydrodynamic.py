@@ -31,6 +31,7 @@ from mime.nodes.hydro.mrs._quadrature import empty_cells
 from mime.nodes.hydro.near_field import JointDragNode, member_prefix
 from mime.scene import KEPT, quadrature, quadrature_counts, quadrature_owners, sampled_points
 from mime.scene._grading import CONTACT_SPACINGS, Contact, GradedDensity, finest_share, graded_density, graded_patch
+from mime.scene._sampling import FINEST
 from mime.registry import (
     DESIGN,
     Centreline,
@@ -1235,6 +1236,14 @@ class Drag(UncoupledDrag):
             NUMERICAL, "on the mrs rung with contact written, the experiment's closest approach to the wall (the "
                        "margin a contact holds the body off it by), where one is declared",
             by="default_contact_gap"),
+        "quadrature_refinement": numerical_default(
+            "on the mrs rung, two over the blob, rounded up: the quadrature's spacing at most half the blob; with "
+            "grading or contact written, at least two over FINEST, so that the finest graded cells hold points",
+            "chosen by measurement: finer, neither family's number moved by what the stamp states (the sphere's drag "
+            "and rotational drag, a screw's speed, over a ladder of blobs); coarser, the quadrature no longer resolves "
+            "the blob (scripts/default_spacing_table.py); a graded cell a quarter of the force spacing across is left "
+            "empty by a quadrature as coarse as itself (drag.empty-cell)",
+            by="default_quadrature_refinement", measured=SEPARATED_REFINEMENT_MEASURED),
     }
     mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share", "grading", "contact", "contact_gap")
     #: The values ``grading`` takes beside none.
@@ -1329,6 +1338,15 @@ class Drag(UncoupledDrag):
     def graded(self) -> bool:
         """Whether the force points are graded: ``grading`` or ``contact`` written."""
         return self.rung == "mrs" and (self.grading is not None or self.contact is not None)
+
+    @override
+    def default_quadrature_refinement(self, ctx: PlanContext) -> int | None:
+        """0.4.0's rule, and where graded at least ``QUADRATURE_PER_BLOB`` over ``FINEST``: the quadrature's spacing at
+        most half the finest graded cell's."""
+        found = super().default_quadrature_refinement(ctx)
+        if found is None or not self.graded():
+            return found
+        return max(found, math.ceil(QUADRATURE_PER_BLOB / FINEST - 1e-9))
 
     def joins_near_field(self) -> bool:
         """Whether this drag, with others of its version in its medium, is built as their joint near field: the mrs

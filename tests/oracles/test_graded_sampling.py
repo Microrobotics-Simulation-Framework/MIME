@@ -170,14 +170,14 @@ def test_graded_bodies_in_a_shared_medium_are_refused():
 
 
 def test_a_graded_experiment_saves_and_loads_with_its_settings(tmp_path):
-    experiment = cylinder(0.5, blob=0.1, graded=True, contact=(0.0, -1.0, 0.0), contact_gap=mm(0.12))
+    experiment = cylinder(0.5, blob=0.5, graded=True, contact=(0.0, -1.0, 0.0), contact_gap=mm(0.12))
     built = experiment.build()
     built.save(tmp_path / "graded")
-    again = Experiment.load(tmp_path / "graded")
-    settings = [entry["settings"] for entry in again.build().record.resolved["entries"].values()
+    again = Experiment.load(tmp_path / "graded").build()
+    settings = [entry["settings"] for entry in again.record.resolved["entries"].values()
                 if entry["name"] == "drag"][0]
     assert settings["grading"] == "features" and tuple(settings["contact"]) == (0.0, -1.0, 0.0)
-    node, rebuilt = drag_node(built), drag_node(again.build())
+    node, rebuilt = drag_node(built), drag_node(again)
     assert node.sample_count == rebuilt.sample_count
     np.testing.assert_array_equal(node.constants()["sampling_chosen"], rebuilt.constants()["sampling_chosen"])
     np.testing.assert_array_equal(node.constants()["graded_patch"], rebuilt.constants()["graded_patch"])
