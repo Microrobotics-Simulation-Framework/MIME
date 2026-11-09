@@ -215,7 +215,8 @@ class ImplicitFlowNode(MimeNode):
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
                  viscosity: float, density: float, tube_centre: Sequence[float], tube_axis: Sequence[float],
                  tube_radius: float, scheme: str = "imex_euler", convection: bool = True, tolerance: float | None = None,
-                 cap: int = 5000, check_every: int = 20, band: str = "smooth_2h_0.3h", interior: str = "0.1h",
+                 at_floor: bool | None = None, cap: int = 5000, check_every: int = 20, band: str = "smooth_2h_0.3h",
+                 interior: str = "0.1h",
                  preconditioner: str = "jacobi", scaling_start: bool = True, periodic_images: str = "own",
                  report_rows: int = 0,
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
@@ -234,7 +235,10 @@ class ImplicitFlowNode(MimeNode):
         preconditioner_named(preconditioner)
         if periodic_images not in ("own", "transverse"):
             raise ValueError(f"periodic_images is 'own' (an aligned tube) or 'transverse', not {periodic_images!r}")
-        at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
+        # A node made again from its own arguments (the ledger's wiring, a test's rebuild) carries the stop it was made
+        # with; otherwise the stop at the floor is float32's default, where no tolerance is given.
+        if at_floor is None:
+            at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
         if tolerance is None:
             tolerance = default_tolerance(run_dtype())
         initial: dict[str, Any] = {}
