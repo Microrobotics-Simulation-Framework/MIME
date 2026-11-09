@@ -1,17 +1,22 @@
 name: CI
 
 # Four test lanes and a typing gate. `default` installs the locked PyPI releases on every supported Python and
-# blocks. The other three leave the run's conclusion alone (job-level `continue-on-error`: a failure there marks its
-# own job red): `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and `usd-core-newest`
-# re-resolves usd-core to the newest release. release/v0.3.0's branch protection requires four checks, by these jobs'
-# names: `default (Python 3.12)`, `default (Python 3.14)`, `typecheck (pyright, Python 3.12)` and `no private name or
-# path`, so a red one of them blocks a merge, and tests/test_ci_wiring.py holds the names and the checks' wiring.
-# Three lanes are no longer required (a decision of 2026-11-08 the maintainer can reverse, CONTRIBUTING.md, "CI: which
+# blocks. `openmaterica-main` and `maddening-main` swap one upstream for its `main`, and `usd-core-newest` re-resolves
+# usd-core to the newest release. Their shard and completion jobs are `continue-on-error`, and so is `usd-core-newest`: a
+# failure there marks its own job red and leaves the run's conclusion alone. The job under a `-main` lane's own name is
+# `continue-on-error` on a pull request only, so on a push and a manual run (the nightly run's) a red `-main` lane
+# turns the run red, which the nightly run (nightly.yml) and the release gate (scripts/release.py check-ci) read.
+# After the merge that moves them, release/v0.3.0's branch protection will require four checks, by these jobs' names (the
+# maintainer edits it at the merge, CONTRIBUTING.md): `default (Python 3.12)`, `default (Python 3.14)`, `typecheck
+# (pyright, Python 3.12)` and `no private name or path`, so a red one of them blocks a merge, and tests/test_ci_wiring.py
+# holds the names and the checks' wiring.
+# Three lanes leave the required checks (a decision of 2026-11-08 the maintainer can reverse, CONTRIBUTING.md, "CI: which
 # lanes a pull request runs"): `default` on Python 3.13, `maddening-main` and `openmaterica-main`. They run on a push to
 # `main` or a `release/**` branch, on a manual run, and on the nightly run (nightly.yml, which fires once it is on
 # `main`); on a pull request only in the full matrix and only when its diff touches the dependency pins, CI, or MIME's
 # adapter to that upstream (scripts/ci_boundary.py, which holds the paths; Python 3.13 on the pins or CI alone). Where a
-# lane does not run it has no job: it is not reported as failing. These three lanes keep no compilation cache (they
+# lane does not run, `default` on 3.13 has no job and the `-main` lanes' jobs are skipped (a skipped job passes a required
+# check; neither lane is required once the protection is edited). These three lanes keep no compilation cache (they
 # restore none and save none; each push saved about 13 GB across five lanes against GitHub's 10 GB limit, so each
 # evicted the last), and their per-test duration gate warns where the gate of `default` on 3.12 and 3.14 fails the job
 # (`--warn-only`, scripts/report_test_durations.py). Each lane names itself in MIME_CI_LANE,
@@ -57,7 +62,7 @@ name: CI
 # of jobs (never `needs.<job>.result`: a failed `continue-on-error` job reads `success` there); every shard deselects the
 # file and installs no shell (tests/test_completion_job.py).
 # Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix runs on a push to a branch, a manual run, and a
-# pull request that carries the label `ready`: 63 jobs for a push (every lane and Python at ten shards), 27 for a pull
+# pull request that carries the label `ready`: 63 jobs for a push (every lane and Python at ten shards, plus the skipped `usd-core-newest` entry), 27 for a pull
 # request that touches no pin, CI file or adapter (`default` on Python 3.12 and 3.14, with `typecheck`, `no private name
 # or path` and `shard count`). A pull request without the label runs a reduced set: `typecheck`, `no private name or
 # path`, the docs check and the default lane on Python 3.12 with all its shards (16 jobs), and the one required job it
@@ -134,7 +139,7 @@ env:
 jobs:
   # How many shards each lane runs as: the repository variable MIME_CI_SHARDS, a manual run's `shards` input over it, or 10
   # (scripts/shard_matrix.py, CONTRIBUTING.md). A count outside 1 to 32 fails this job by name, and every job that needs
-  # it, the lanes' required jobs included, then fails too.
+  # it, the lanes' required jobs included, then do not run (a required check that never reports blocks the merge).
   # And the run's mode (`full`): the full matrix on a push or a manual run, and on a pull request whose labels, read
   # now and not from the event, hold `ready`. The step after it runs only in the full matrix, so the run's jobs say which
   # mode it took (scripts/ci_ready.py reads it). A label that cannot be read fails this job, and the lanes with it.
@@ -508,7 +513,9 @@ jobs:
     name: openmaterica-main
     needs: [shards, openmaterica-main-tests, openmaterica-main-completion]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.shards.outputs.openmaterica == 'true' }}
-    continue-on-error: true
+    # Red on a push and a manual run (the run is then red: GitHub's mail, the release gate's read), though its shards
+    # and completion job are `continue-on-error`; a pull request's run is left alone, where the lane is no required check.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     # contents for the checkout, actions to read the run's own jobs (scripts/check_shard_jobs.py).
     permissions:
       contents: read
@@ -546,6 +553,16 @@ jobs:
           set -eo pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
             | python3 scripts/check_shard_jobs.py --prefix "completion tests (openmaterica-main)" --shards 1
+
+      - name: Every shard job, at its latest attempt, passed
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+        run: |
+          set -o pipefail
+          python3 scripts/run_jobs.py "$JOBS_URL" \
+            | python3 scripts/check_shard_jobs.py --prefix "openmaterica-main tests (shard " --shards "${{ needs.shards.outputs.count }}"
 
   maddening-main-tests:
     name: maddening-main tests (shard ${{ matrix.shard }} of ${{ needs.shards.outputs.count }})
@@ -623,7 +640,9 @@ jobs:
     name: maddening-main
     needs: [shards, maddening-main-tests, maddening-main-completion]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.shards.outputs.maddening == 'true' }}
-    continue-on-error: true
+    # Red on a push and a manual run (the run is then red: GitHub's mail, the release gate's read), though its shards
+    # and completion job are `continue-on-error`; a pull request's run is left alone, where the lane is no required check.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     # contents for the checkout, actions to read the run's own jobs (scripts/check_shard_jobs.py).
     permissions:
       contents: read
@@ -661,6 +680,16 @@ jobs:
           set -eo pipefail
           python3 scripts/run_jobs.py "$JOBS_URL" \
             | python3 scripts/check_shard_jobs.py --prefix "completion tests (maddening-main)" --shards 1
+
+      - name: Every shard job, at its latest attempt, passed
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?filter=latest&per_page=100
+        run: |
+          set -o pipefail
+          python3 scripts/run_jobs.py "$JOBS_URL" \
+            | python3 scripts/check_shard_jobs.py --prefix "maddening-main tests (shard " --shards "${{ needs.shards.outputs.count }}"
 
   # tests/cli/test_completion.py, alone: the shells it runs under (zsh and fish) are installed here and on no shard, since
   # `apt-get install` took 8 to 10 minutes on a slow mirror and a shard that held it beside its tests was cut at its 20

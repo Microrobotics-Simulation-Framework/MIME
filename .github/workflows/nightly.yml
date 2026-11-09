@@ -12,6 +12,10 @@ name: Nightly
 # GITHUB_TOKEN does start a run, which an event of no other kind started this way does. They ask for a warm compilation
 # cache (restore, save nothing: the pushes build it, and a nightly run saving would evict theirs), and a manual run
 # runs usd-core-newest too. A branch whose dispatch is refused fails this job after the others have been tried.
+# The job then waits for the runs it dispatched (scripts/nightly_wait.py) and fails itself, naming the branch and the lane,
+# when one is red or does not finish: the two `-main` lanes' shard jobs are `continue-on-error`, so without the wait a
+# red upstream `main` would show nowhere, and GitHub mails the maintainer about a failed scheduled run. `workflow_dispatch`
+# runs it once by hand from the Actions tab, after it reaches `main`.
 # tests/test_ci_nightly.py reads this.
 
 on:
@@ -19,9 +23,10 @@ on:
     - cron: "17 2 * * *"
   workflow_dispatch:
 
-# The token starts workflow runs and reads nothing else: the repository is public, so listing its branches needs no scope.
+# The token starts workflow runs, reads their jobs, and reads the repository for the checkout of the wait step's script.
 permissions:
   actions: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}
@@ -31,20 +36,28 @@ jobs:
   dispatch:
     name: dispatch CI on the release branches
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # A full matrix is 63 jobs against the organisation's 60 at once: the wait is up to 300 minutes, and its limit is above.
+    timeout-minutes: 330
     steps:
       - name: Dispatch ci.yml on each active release branch
+        id: dispatch
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           ACTIVE_DAYS: "45"
         run: |
           cutoff=$(date -u -d "$ACTIVE_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+          started=$(date -u -d "1 minute ago" +%Y-%m-%dT%H:%M:%SZ)
+          branches=""
           names=$(gh api --paginate "repos/$REPOSITORY/branches?per_page=100" --jq '.[].name | select(startswith("release/"))')
           dispatched=0
           failed=0
           for branch in $names; do
-            tip=$(gh api "repos/$REPOSITORY/branches/${branch//\//%2F}" --jq '.commit.commit.committer.date')
+            if ! tip=$(gh api "repos/$REPOSITORY/branches/${branch//\//%2F}" --jq '.commit.commit.committer.date'); then
+              echo "::error::the newest commit of $branch could not be read"
+              failed=1
+              continue
+            fi
             if [[ ! "$tip" > "$cutoff" ]]; then
               echo "$branch: its newest commit ($tip) is older than $ACTIVE_DAYS days; left alone" | tee -a "$GITHUB_STEP_SUMMARY"
               continue
@@ -52,6 +65,7 @@ jobs:
             if gh workflow run ci.yml --repo "$REPOSITORY" --ref "$branch" -f compilation_cache=warm; then
               echo "$branch: ci.yml dispatched" | tee -a "$GITHUB_STEP_SUMMARY"
               dispatched=$((dispatched + 1))
+              branches="$branches $branch"
             else
               echo "::error::ci.yml could not be dispatched on $branch"
               failed=1
@@ -61,4 +75,18 @@ jobs:
             echo "::error::no active release branch to dispatch CI on"
             failed=1
           fi
+          { echo "started=$started"; echo "branches=${branches# }"; } >> "$GITHUB_OUTPUT"
           exit "$failed"
+      # Runs after a failed dispatch too, for the branches whose dispatch was accepted.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ !cancelled() && steps.dispatch.outputs.branches != '' }}
+        with:
+          persist-credentials: false
+      - name: Wait for the dispatched runs; fail naming each red lane
+        if: ${{ !cancelled() && steps.dispatch.outputs.branches != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          STARTED: ${{ steps.dispatch.outputs.started }}
+          BRANCHES: ${{ steps.dispatch.outputs.branches }}
+        run: python3 scripts/nightly_wait.py --repository "$REPOSITORY" --since "$STARTED" $BRANCHES

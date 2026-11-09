@@ -12,11 +12,17 @@ every pull request (3.12, the floor, and 3.14, the newest). A pull request runs 
 - the dependency pins (``PINS``): both lanes and Python 3.13;
 - CI itself (``CI``): the workflows, the actions they use, and the scripts they call: both lanes and Python 3.13;
 - MIME's explicit adapters to an upstream (``MADDENING_ADAPTERS``, ``OPENMATERICA_ADAPTERS``): that upstream's lane
-  alone. The adapters are the files that name the upstream's classes on MIME's behalf. MADDENING is imported by 41 of
-  ``src/mime``'s 354 files (about 12 %), spread over the build, the nodes, the testing harness and the docs, so no
-  directory stands for the boundary; the rest of that surface is covered by the push and nightly runs, and
-  ``tests/test_ci_boundary.py`` fails if MADDENING comes to be imported by most of the package, since this filter would
-  then stand for little.
+  alone. The rule for MADDENING: **an adapter is a module that calls into it**, that is, that imports its graph manager
+  (``GraphManager``), its edge or boundary-input specs (``EdgeSpec``, ``BoundaryInputSpec``), its warning
+  (``UnitMismatchWarning``), its compliance internals (``resolve_dotted_name``) or its verification machinery
+  (``maddening.testing``), anywhere in ``src/mime`` outside ``nodes/`` and in ``lab_fixture/`` (installed in every lane),
+  plus ``core/_node.py``, the base class every MIME node derives from. A module whose only use is a node's declaration
+  is not one: ``nodes/`` imports ``NodeMeta`` (``maddening.core.compliance.metadata``), ``ParamSpec``, ``StaticArray`` and
+  ``BoundaryInputSpec`` to describe a node, and a module that names ``SimulationNode`` only to annotate a type
+  (``build/_ledger.py``, ``registry/_entries.py``) does not call it. A change to one of those can still move a lane,
+  and the push and nightly runs cover it. ``tests/test_ci_boundary.py`` pins the rule: every module outside ``nodes/``
+  that imports one of those names is listed, and it fails if MADDENING comes to be imported by most of the package,
+  since this filter would then stand for little.
 
 Everything here lives in this file, and ``tests/test_ci_boundary.py`` holds it against the workflows and the code.
 
@@ -45,16 +51,27 @@ CI_SCRIPTS = (
     "scripts/check_confidential.py", "scripts/check_no_skips.py",
     "scripts/check_shard_jobs.py", "scripts/check_shards.py", "scripts/ci_boundary.py", "scripts/ci_ready.py",
     "scripts/compilation_cache_mode.py", "scripts/install_shells.sh", "scripts/latest_attempt.py",
-    "scripts/platforms_smoke.py", "scripts/prune_jax_cache.py", "scripts/release.py",
+    "scripts/nightly_wait.py", "scripts/platforms_smoke.py", "scripts/prune_jax_cache.py", "scripts/release.py",
     "scripts/report_test_durations.py", "scripts/run_jobs.py", "scripts/shard_matrix.py", "scripts/stress_select.py",
     "scripts/stress_summary.py", "scripts/typing_check.py",
     "tests/test_ci_lane.py",
 )
 #: CI: a directory (ending in ``/``) or a file.
 CI = (".github/workflows/", ".github/actions/", *CI_SCRIPTS)
-#: MIME's adapters to MADDENING: the file that wraps its graph, edge and parameter calls at MIME's boundary, and the
-#: node base class every MIME node derives from.
-MADDENING_ADAPTERS = ("src/mime/build/_maddening.py", "src/mime/core/_node.py")
+#: MIME's adapters to MADDENING, by the rule in this file's docstring: the modules that call into it, and the node base
+#: class every MIME node derives from.
+MADDENING_ADAPTERS = (
+    "lab_fixture/",
+    "src/mime/build/_checks.py", "src/mime/build/_construct.py", "src/mime/build/_derived.py", "src/mime/build/_key.py",
+    "src/mime/build/_maddening.py", "src/mime/build/_probes.py", "src/mime/build/_report.py", "src/mime/build/_run.py",
+    "src/mime/control/_run.py", "src/mime/core/_node.py", "src/mime/core/ledger.py", "src/mime/docs/_symbols.py",
+    "src/mime/experiment/_experiment.py", "src/mime/experiment/_mermaid.py",
+    "src/mime/testing/_energy.py", "src/mime/testing/_families.py", "src/mime/testing/_nodes.py",
+    "src/mime/testing/toys/_nodes.py",
+)
+#: What makes a module an adapter to MADDENING (``tests/test_ci_boundary.py`` holds the list against it).
+MADDENING_CALLS = ("GraphManager", "EdgeSpec", "BoundaryInputSpec", "UnitMismatchWarning", "resolve_dotted_name",
+                   "maddening.testing")
 #: MIME's adapters to OpenMaterica: the three modules that import ``materica``, which read a record's field at an
 #: experiment's conditions.
 OPENMATERICA_ADAPTERS = ("src/mime/materials/_read.py", "src/mime/materials/_records.py",

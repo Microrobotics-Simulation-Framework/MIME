@@ -9,6 +9,7 @@ are the files that import their upstream and MADDENING is not so widely imported
 the workflows keep the three lanes out of the compilation cache and their duration gate a warning. The workflows' side
 of the boundary, the jobs each scenario starts, is played in ``tests/test_ci_ready_label.py``."""
 
+import ast
 import importlib.util
 import json
 import re
@@ -52,12 +53,20 @@ UPSTREAM_IMPORT = {"maddening": re.compile(r"^\s*(?:from|import) maddening\b", r
     # An adapter starts its upstream's lane alone, and Python 3.13 stays out.
     ("pull_request", True, ["src/mime/build/_maddening.py"], (True, False, False), PY313, PY313),
     ("pull_request", True, ["src/mime/core/_node.py"], (True, False, False), PY313, PY313),
+    # The modules that call into MADDENING (build the graph, its edge specs, its verification machinery) are adapters too,
+    # lab_fixture/ among them (installed in every lane).
+    ("pull_request", True, ["src/mime/build/_construct.py"], (True, False, False), PY313, PY313),
+    ("pull_request", True, ["src/mime/core/ledger.py", "src/mime/testing/_nodes.py"], (True, False, False), PY313, PY313),
+    ("pull_request", True, ["lab_fixture/src/mime_lab_fixture/__init__.py"], (True, False, False), PY313, PY313),
     ("pull_request", True, ["src/mime/materials/_read.py"], (False, True, False), PY313, PY313),
     ("pull_request", True, ["src/mime/materials/_resolver.py", "src/mime/materials/_records.py"], (False, True, False),
      PY313, PY313),
     # Not an adapter: a file beside one, a script CI does not call, the shards' table.
     ("pull_request", True, ["src/mime/build/_plan.py", "scripts/mrs_budget.py", "tests/shard_weights.json",
                             "tests/duration_allowlist.txt"], (False, False, False), PY313, PY313),
+    # Not an adapter either: a node's declaration (metadata, parameter specs) and a type annotation of its base class.
+    ("pull_request", True, ["src/mime/nodes/body/_gravity.py", "src/mime/build/_ledger.py",
+                            "src/mime/registry/_entries.py"], (False, False, False), PY313, PY313),
     # Unreadable paths count as everything changed.
     ("pull_request", True, None, (True, True, True), [], []),
 ])
@@ -111,7 +120,8 @@ def test_the_one_test_file_a_workflow_runs_as_a_script_is_named():
                                                 ("materica", boundary.OPENMATERICA_ADAPTERS)])
 def test_each_adapter_imports_its_upstream(upstream, adapters):
     for path in adapters:
-        assert UPSTREAM_IMPORT[upstream].search((ROOT / path).read_text(encoding="utf-8")), (
+        files = sorted((ROOT / path).rglob("*.py")) if path.endswith("/") else [ROOT / path]
+        assert any(UPSTREAM_IMPORT[upstream].search(each.read_text(encoding="utf-8")) for each in files), (
             f"{path} is named an adapter to {upstream} and imports none of it")
 
 
@@ -121,14 +131,61 @@ def test_every_file_that_imports_openmaterica_is_an_adapter():
     assert importers == set(boundary.OPENMATERICA_ADAPTERS)
 
 
+def _maddening_calls(path: Path) -> bool:
+    """Whether the module imports one of the names by which MIME calls into MADDENING (``boundary.MADDENING_CALLS``):
+    read from its syntax tree, so that a multi-line import and an import inside a function count."""
+    calls = set(boundary.MADDENING_CALLS)
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] == "maddening":
+            if any(name.name in calls for name in node.names) or any(
+                    node.module == call or node.module.startswith(call + ".") for call in calls):
+                return True
+        if isinstance(node, ast.Import) and any(
+                name.name == call or name.name.startswith(call + ".") for name in node.names for call in calls):
+            return True
+    return False
+
+
+def _covered(path: str) -> bool:
+    return any(path == each or (each.endswith("/") and path.startswith(each)) for each in boundary.MADDENING_ADAPTERS)
+
+
+def test_every_module_that_calls_into_maddening_is_an_adapter_and_each_adapter_is_one():
+    """The rule in ``scripts/ci_boundary.py``: outside ``nodes/`` (a node's declaration: metadata, parameter specs, the
+    boundary inputs it names), a module that imports MADDENING's graph manager, its specs, its warning, its compliance
+    internals or its verification machinery is an adapter, and ``lab_fixture/`` is one wholesale. Both directions, so that a
+    new caller is listed and a listed file that stops calling is dropped."""
+    callers = {rel for path in [*SRC.rglob("*.py"), *(ROOT / "lab_fixture").rglob("*.py")]
+               if not (rel := str(path.relative_to(ROOT))).startswith("src/mime/nodes/") and _maddening_calls(path)}
+    unlisted = sorted(path for path in callers if not _covered(path))
+    assert unlisted == [], f"call into MADDENING and are no adapter (add them to MADDENING_ADAPTERS): {unlisted}"
+    stale = sorted(path for path in boundary.MADDENING_ADAPTERS if not path.endswith("/") and path not in callers)
+    assert stale == [], f"named adapters that call into MADDENING no longer: {stale}"
+
+
+def test_control_the_rule_reads_a_call_and_leaves_out_a_declaration(tmp_path):
+    """A planted module of each kind: the calling one is read as a caller, the declaring one is not (so the test above
+    can fail both ways)."""
+    calls = tmp_path / "calls.py"
+    calls.write_text("from maddening import (\n    GraphManager,\n)\n", encoding="utf-8")
+    declares = tmp_path / "declares.py"
+    declares.write_text("from maddening.core.compliance.metadata import NodeMeta\n"
+                        "from maddening.core.node import SimulationNode\n", encoding="utf-8")
+    verifies = tmp_path / "verifies.py"
+    verifies.write_text("from maddening.testing import verification\n", encoding="utf-8")
+    assert _maddening_calls(calls) and _maddening_calls(verifies) and not _maddening_calls(declares)
+
+
 def test_maddening_is_not_imported_across_most_of_the_package():
-    """The filter stands for the boundary with MADDENING because it is imported in a minority of files, and the
-    adapters are the two places that bind MIME to its graph and node classes. If most of ``src/mime`` came to import it, the
-    pins-and-CI-and-adapters filter would stand for little, and the choice would be reopened."""
+    """The filter stands for the boundary with MADDENING because the modules that call into it are a minority of the
+    package. If most of ``src/mime`` came to import it, the pins-and-CI-and-adapters filter would stand for little, and
+    the choice would be reopened."""
     files = list(SRC.rglob("*.py"))
     importers = [path for path in files if UPSTREAM_IMPORT["maddening"].search(path.read_text(encoding="utf-8"))]
     assert 0 < len(importers) / len(files) < 0.5, f"{len(importers)} of {len(files)} files import maddening"
-    assert {str(path.relative_to(ROOT)) for path in importers} >= set(boundary.MADDENING_ADAPTERS)
+    adapters = {path for path in boundary.MADDENING_ADAPTERS if path.startswith("src/")}
+    assert {str(path.relative_to(ROOT)) for path in importers} >= adapters
+    assert len(adapters) / len(files) < 0.1, "the adapters are no small part of the package"
 
 
 def workflow() -> dict:
@@ -165,3 +222,37 @@ def test_python_3_13_keeps_no_compilation_cache_and_its_duration_gate_warns_and_
     gate = next(each for each in steps if each.get("name") == "Test durations")
     assert gate["env"]["WARN_ONLY"] == "${{ matrix.python-version == '3.13' && '--warn-only' || '' }}"
     assert "$WARN_ONLY" in gate["run"]
+
+
+def moved_lane_problems(jobs: dict) -> list[str]:
+    """How a red ``-main`` lane stays visible: the job under the lane's name is ``continue-on-error`` on a pull request
+    alone (its shards and completion job are, always), so on a push and a manual run it turns the run red, and it reads
+    the shard jobs' own conclusions (a shard that died before it uploaded a report is no report to miss)."""
+    found: list[str] = []
+    for lane in ("maddening-main", "openmaterica-main"):
+        job = jobs[lane]
+        if job.get("continue-on-error") != "${{ github.event_name == 'pull_request' }}":
+            found.append(f"{lane}: its job's continue-on-error is {job.get('continue-on-error')!r}, not the pull request alone")
+        if jobs[f"{lane}-tests"].get("continue-on-error") is not True:
+            found.append(f"{lane}: its shards are not continue-on-error, so a red shard fails the run before the lane reports")
+        reads = [step for step in job["steps"] if f'--prefix "{lane} tests (shard "' in str(step.get("run", ""))]
+        if len(reads) != 1 or reads[0].get("if") != "${{ !cancelled() }}":
+            found.append(f"{lane}: its job does not read its shard jobs' conclusions after a red step")
+    return found
+
+
+def test_a_red_moved_lane_turns_a_push_run_red():
+    assert moved_lane_problems(workflow()["jobs"]) == []
+
+
+@pytest.mark.parametrize("plant", ["job-always-continues", "shards-stop-continuing", "shard-read-dropped"])
+def test_control_each_way_a_red_moved_lane_could_hide_is_found(plant):
+    jobs = workflow()["jobs"]
+    if plant == "job-always-continues":
+        jobs["maddening-main"]["continue-on-error"] = True
+    elif plant == "shards-stop-continuing":
+        del jobs["openmaterica-main-tests"]["continue-on-error"]
+    else:
+        jobs["maddening-main"]["steps"] = [step for step in jobs["maddening-main"]["steps"]
+                                           if "maddening-main tests (shard" not in str(step.get("run", ""))]
+    assert moved_lane_problems(jobs) != []

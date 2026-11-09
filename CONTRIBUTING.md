@@ -116,7 +116,9 @@ file stays whole on one shard, so beyond about 11 shards (the longest file, `tes
 ## The development branch's name
 
 The development branch is `release/v0.3.0`. The workflows that run on a push or a pull request (`ci.yml`, `platforms.yml`,
-`ready.yml`, `stress.yml`) name `release/**`, so they run on it and on the next release's branch alike. It was named `v0.3`
+`ready.yml`, `stress.yml`) name `release/**` in their triggers, so they run on it and on the next release's branch alike. Two
+steps still name `release/v0.3.0` itself and must be pointed at the next branch when this one closes: the docs check's
+`--base` (`ci.yml`, `platforms.yml`) and the confidentiality scan's `--public` (`ci.yml`). It was named `v0.3`
 until 2026-11-05. A clone
 follows the rename in one of two ways, by whether it has a local branch `v0.3`:
 
@@ -161,8 +163,10 @@ stress workflow's run. `platforms.yml` (not a required check) runs its mode job 
 
 ## CI: which lanes a pull request runs
 
-Four checks are required on `release/v0.3.0`: **`default (Python 3.12)`**, **`default (Python 3.14)`**, **`typecheck
-(pyright, Python 3.12)`** and **`no private name or path`**. 3.12 is the floor and 3.14 the newest Python, so a pull request
+From the merge of the change that moves the lanes, four checks are to be required on `release/v0.3.0`: **`default (Python
+3.12)`**, **`default (Python 3.14)`**, **`typecheck (pyright, Python 3.12)`** and **`no private name or path`**. Until then
+branch protection still requires seven (the three lanes below as well), so the maintainer edits it at the merge: remove
+the three, then merge (or merge first, and every pull request after it waits on `default (Python 3.13)` until he does). 3.12 is the floor and 3.14 the newest Python, so a pull request
 that passes both passes between them. Three lanes are not required, and run on a pull request only when its diff can
 change by itself whether MIME works with them (a decision of 2026-11-08 the maintainer can reverse; it follows from the
 count of jobs above and from the compilation cache below):
@@ -172,18 +176,32 @@ count of jobs above and from the compilation cache below):
 - on a pull request they run only in the full matrix (`ready`), and only when the diff touches (`scripts/ci_boundary.py`
   holds the paths, `tests/test_ci_boundary.py` pins them to the repository): the dependency pins (`pyproject.toml`,
   `uv.lock`) or CI itself (the workflows, the actions, the scripts they call), which start all three; or MIME's adapter to
-  one upstream, which starts that upstream's lane alone (`src/mime/build/_maddening.py` and `src/mime/core/_node.py` for
-  MADDENING, the three modules of `src/mime/materials/` that import `materica` for OpenMaterica). MADDENING is imported by
-  41 of `src/mime`'s 354 files, in a dozen directories, so the filter keeps to the pins, CI and the adapters; the push and
-  nightly runs cover the rest;
-- where a lane does not run it has **no job**: it is not reported as failing, and not as skipped by a required name.
+  one upstream, which starts that upstream's lane alone. For MADDENING an adapter is a module that **calls into it**: that
+  imports `GraphManager`, `EdgeSpec`, `BoundaryInputSpec`, `UnitMismatchWarning`, `resolve_dotted_name` or
+  `maddening.testing`, outside `nodes/` (the graph's construction and compile, the build's checks, the experiment and
+  control runs, the verification harness, `core/_node.py`, `core/ledger.py`), and `lab_fixture/`; the list is
+  `MADDENING_ADAPTERS` in `scripts/ci_boundary.py` and `tests/test_ci_boundary.py` fails when a caller is missing from it.
+  For OpenMaterica, the three modules of `src/mime/materials/` that import `materica`. A module that only describes a node
+  (`NodeMeta`, `ParamSpec`, `StaticArray` and `BoundaryInputSpec` under `nodes/`) or names `SimulationNode` to annotate a
+  type is no adapter: the push and nightly runs cover it;
+- where a lane does not run, `default` on 3.13 has **no job**, and the two `-main` lanes' jobs are **skipped** (GitHub
+  reports a job excluded by an `if` as skipped, and a skipped job passes a required check; so neither stays required).
+  Counts of jobs in this file are jobs that run: a push's run lists one more, the skipped `usd-core-newest` entry.
 
 The **nightly** run dispatches `ci.yml` on each `release/*` branch whose newest commit is under 45 days old. GitHub runs a
 schedule from the default branch's file only, so it fires from the next fast-forward of `main` to the release branch (or
-from a pull request of that one file into `main`). It asks for a warm compilation cache, which saves nothing.
+from a pull request of that one file into `main`), and can be run once by hand (Actions, Nightly, Run workflow) after that.
+It asks for a warm compilation cache, which saves nothing. It then **waits for the runs it dispatched** and fails itself,
+naming the branch and each lane that is red, missing or unfinished, so that GitHub's mail about a failed scheduled run
+reaches the maintainer: the `-main` lanes' shard jobs are `continue-on-error`, so a red upstream `main` would otherwise
+show nowhere. On a push and a manual run the `-main` lanes' own jobs (the ones under their names) turn the run red when
+their shards fail; on a pull request they do not (neither lane is required there).
 
 **The release gate: every lane, `default` on 3.13 and both `-main` lanes included, green on the release branch's head
-before a release.** The required checks no longer say so; read the head's push run, or the last nightly run of the branch.
+before a release**, and it is enforced: `publish.yml`'s build job runs `scripts/release.py check-ci`, which refuses unless
+the newest push or manual run of `ci.yml` on the tagged commit has all five lanes' jobs concluded `success`, naming each
+that did not (a run's own conclusion is not read: it is `success` over a red `continue-on-error` job). To check before
+tagging: `python3 scripts/release.py check-ci --repository <owner>/<repo> --commit <sha>`.
 
 These three lanes keep **no compilation cache**: they restore none and save none. Each push saved about 13 GB of
 compilation caches across the five lanes against GitHub's 10 GB per-repository limit, so each push evicted the last, and a
