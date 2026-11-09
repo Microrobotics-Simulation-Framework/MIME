@@ -26,9 +26,9 @@ name: CI
 # `typecheck` blocks: pyright, pinned, strict over src/mime at zero errors, on a run that must be trustworthy.
 # `confidential` blocks: the confidentiality scan over the tracked tree and its paths, the commits' diffs and messages
 # and the branch's name.
-# `default`, `openmaterica-main` and `maddening-main` each run their tests as shard jobs (`<lane>-tests`), ten unless
+# `default`, `openmaterica-main` and `maddening-main` each run their tests as shard jobs (`<lane>-tests`), sixteen unless
 # the repository variable MIME_CI_SHARDS or a manual run's `shards` input says otherwise (the `shards` job,
-# scripts/shard_matrix.py, CONTRIBUTING.md). The split is in tests/_sharding.py, by file and stable. The job under the
+# scripts/shard_matrix.py, CONTRIBUTING.md). The split is in tests/_sharding.py, by file (by test for a file heavier than a shard's mean) and stable. The job under the
 # lane's own name, which branch protection requires, passes only when every shard passed, their selections partition
 # one collection and the shards' JUnit
 # reports agree (every test has an outcome in one report, none failed, none skipped; scripts/check_shards.py); it runs
@@ -62,10 +62,10 @@ name: CI
 # of jobs (never `needs.<job>.result`: a failed `continue-on-error` job reads `success` there); every shard deselects the
 # file and installs no shell (tests/test_completion_job.py).
 # Two modes (CONTRIBUTING.md, "CI: the `ready` label"). The full matrix runs on a push to a branch, a manual run, and a
-# pull request that carries the label `ready`: 63 jobs for a push (every lane and Python at ten shards, plus the skipped `usd-core-newest` entry), 27 for a pull
+# pull request that carries the label `ready`: 93 jobs for a push (every lane and Python at sixteen shards, plus the skipped `usd-core-newest` entry), 39 for a pull
 # request that touches no pin, CI file or adapter (`default` on Python 3.12 and 3.14, with `typecheck`, `no private name
 # or path` and `shard count`). A pull request without the label runs a reduced set: `typecheck`, `no private name or
-# path`, the docs check and the default lane on Python 3.12 with all its shards (16 jobs), and the one required job it
+# path`, the docs check and the default lane on Python 3.12 with all its shards (22 jobs), and the one required job it
 # does not run for (`default` on 3.14) still runs and fails with "the full matrix has not run on this head: add the
 # `ready` label", so that no required check passes by being skipped. An agent adds `ready` when its head is final.
 # The mode is read when the run starts, from the pull request's labels as they are then (the `shards` job), not from the
