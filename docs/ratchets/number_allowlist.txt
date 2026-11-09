@@ -99,6 +99,20 @@ src/mime/cli/README.md  3  #1  # a name, the 3-D view
 src/mime/cli/README.md  12  #1  # the size in kB of the page with Mermaid from jsDelivr: measured, held by tests/build/test_graph_and_tree.py
 src/mime/experiment/README.md  3  #1  # a name, the 3-D view
 src/mime/experiment/_mermaid_lib/README.md  3 2.0 2.0 2.0 2.0  #1  # licence names (BSD-3-Clause, Apache-2.0, MPL-2.0), not quantities
+docs/entries/dynamics/fvm.md  20 8 16  #1  # the page's account of the gradient record: the measured ripple and the resolutions it was measured at
+docs/entries/dynamics/fvm.md  10 32  #1  # the page's account of the gradient record: the measured ripple and the resolutions it was measured at
+generated/entries/dynamics/fvm.md  -20 8 16 -10 32  #1  # the gradient record: the measured within-cell ripple (static tube) and the resolutions it was measured at
+generated/entries/dynamics/fvm.md  1  #1  # a flag's meaning: the declared line it is raised past
+generated/entries/dynamics/fvm.md  0.001 0.01  #1  # a flag's meaning: the declared line it is raised past
+generated/entries/dynamics/fvm.md  1.7 0.4  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  2 0.15 0.209  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  1e-08 1e-05 20 12 5 0.5 0.1h 0.01h 8 16 32 64 10 0.1 2.6 0.01h 32 3.8 64 64 0.01h 1e-5 1.1e-5 1.3e-4 5000 16 48 131 0.01h 48 3 6 1.03 1.21 1e-5 1814 4306 240 940 8 32  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  16 256 32 0.3 0.4 32 +2.1 16 +10.8 8 5 32  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  0.001 1.4e-4 32 4.8e-4 16 2.6e-3 8 0.1h 6.4e-5 1.4e-4 1.2e-3 0.01h  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  1  #2  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  2 2 4  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  -20 8 16 -10 32  #2  # a validity line: each number a declared line or a measured value, its basis stated in the line
+generated/entries/dynamics/fvm.md  0.001  #1  # a validity line: each number a declared line or a measured value, its basis stated in the line
 docs/results.md  0  #1  # an argument in a code example: reference=0, the first member
 docs/results.md  50.0  #1  # an argument in a code example: a 50 Hz drive named for the time-base rule
 docs/results.md  10  #1  # an argument in a code example: stage_every=ms(10)

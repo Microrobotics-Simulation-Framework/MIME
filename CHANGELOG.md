@@ -35,6 +35,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   differentiate through), and read as given by the loop's steps (`run_constants_given`). Reverse mode then derives it
   once per chunk: on FL-9 in free space at 222 force points the gradient through a chunk equals the per-step form's to
   1e-12, and the 666-wide LU leaves the backward loop (MIME-ANO-147). Forward runs keep their arrays bit for bit.
+- **A medium's flow, solved: the FVM on a periodic box** (`fvm` 0.1.0, with `body_force` 0.1.0 and
+  `mime.scene.PeriodicBox`). `Medium(..., fields={"flow": FVM(domain=PeriodicBox(length=...))})` solves the flow of the
+  fluid filling a straight tube's lumen on a Cartesian MAC grid of cubic cells, the wall a smooth Brinkman band (one
+  registered band, its stiff interior beyond), stepped by IMEX Euler on the projected monolithic conjugate gradient
+  (`Scheme.IMEXEuler()`, convection explicit) or by its steady limit (`Scheme.Steady()`, with `stokes=True`), driven
+  by `exp.attach(BodyForce(along=..., steady=...), medium=water)` on the fluid. Each step reports its solve (its
+  iterations, its true residual against the tolerance and how it stopped); a step whose solve stopped other than
+  converging raises `solve_flagged`, read in `result.flags` with its count and warned of after the run (a flag may now
+  declare that it warns, `Flag.warns`); a solve whose residual is not finite returns NaN, so the run is refused as not
+  finite, naming the flow. It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
+  with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
+  with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
+  gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
+  the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
+  refused, naming the step and a timestep to try. The wall's settings are its group, `wall=Band(delta_in=...)`. Its
+  derivative is checked exact in the viscosity, the density and the drive, and declared unverified in the tube's
+  geometry (the entry's status). `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is
+  unchanged (a medium's flow is written where dev1 wrote it). The drive is delivered once a step and as its
+  waveform's coefficients (`flow.waveform`), for a scheme whose stages read it at their own instants.
+
 - **Resistive force theory, `Drag.RFT`, on kinds with a centreline** (phase R1). A slender body's resistance from local
   drag coefficients along its centreline, its segments feeling no interaction through the free fluid, with a wall's
   image between its points (the tube's table, through the wall kind, never by name). The coefficients are a setting,
@@ -76,6 +96,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   image it adds. A correction a lab registers must take the new argument (a default of `None`
   serves), and registration refuses one that does not (`entry.defect`, naming the function and the argument) instead
   of failing with a bare `TypeError` at the first trace. Every released program on the tube and in free space runs to the same bits.
+
+- **RK3, the step rule and `dt="auto"`; the prescribed flow; the solved-field contract's suite** (F1b). `FVM(...,
+  scheme=Scheme.RK3())` steps the flow by S1's explicit RK3 (three low-storage stages, the wall's penalty implicit in
+  each, the incremental fast projection, the pressure carried, a consistent pressure made in the program at the run's
+  start and after a state handed over), reading the drive's waveform at its stage times. With no `scheme=` the build
+  picks RK3 where its explicit viscosity holds at `dt` and IMEX Euler otherwise; it predicts the flow's CFL number from
+  the drive (Poiseuille's centreline and twice Womersley's peak, the bound on a run from rest, in the empty tube) and
+  refuses a `dt` past the chosen
+  scheme's line before any step (`flow.cfl-predicted`, `flow.viscous-limit`), with the step that keeps it;
+  `Experiment(..., dt="auto")` takes the largest stable step (stability only, its steps a period reported beside it),
+  saved as the step it chose. The rule is judged at the flow's own step (`FVM(rate=...)` included), its prediction in
+  float64 whatever the run's dtype, with a bound past the series' Womersley number of 50. The lines are one value each, along a grid axis, scaled along a tilted vessel's axis by
+  `max|n_d| / sum|n_d|`: RK3's is 1.7, not the 2.0 first decided, at which a plug flow grows (the maintainer's
+  decision). RK3 is a scheme of the registry's interface: its state the velocity, the pressure and whether the pressure
+  is made, its stages reading the drive at their own instants, its terms its own; its node holds its state past the CFL
+  line as the implicit node does. RK3's books are judged on the ledger's first route, per step (`ledger_route_one_*`).
+  `Womersley()` (`womersley` 0.1.0) is a medium's flow prescribed in a straight tube, Poiseuille and Womersley by an in-program
+  series valid to a Womersley number of 50 in float64 and 25 in float32, outside and with no grid; `BodyForce` drives
+  either rung (it delivers its waveform where the field reads one). `mime.fields.SolvedField` holds a field kind's
+  declarations and `mime.testing.field_conformance` its suite, each case applicable by declaration and every skipped
+  case listed with its reason.
 
 - **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
   `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the

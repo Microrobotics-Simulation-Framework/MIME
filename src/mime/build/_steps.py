@@ -22,3 +22,24 @@ def whole_runs_either_side(seconds: float | tuple[float, ...], dt: float) -> tup
     least), the two that a refusal offers."""
     ratio = math.nan if isinstance(seconds, tuple) else seconds / dt
     return (max(1, math.floor(ratio)) * dt, max(1, math.ceil(ratio)) * dt) if math.isfinite(ratio) else (dt, dt)
+
+
+#: How many times the bound's steps a period ``dt="auto"`` searches for a step that also divides a declared duration.
+_AUTO_SEARCH = 64
+
+
+def auto_step(largest: float, period: float | None, duration: float | None) -> float:
+    """``dt="auto"``'s base step: the largest at most ``largest`` that divides ``period`` (a periodic drive's) and a
+    declared ``duration`` into whole steps; where none within the search divides both, the period's own (and the
+    duration's refusal names the step)."""
+    spans = [span for span in (period, duration) if span]
+    if not spans:
+        return largest
+    first = spans[0]
+    least = max(1, math.ceil(first / largest - 1e-12))
+    if len(spans) == 1:
+        return first / least
+    for count in range(least, _AUTO_SEARCH * least + 1):
+        if whole_steps(spans[1], first / count) is not None:
+            return first / count
+    return first / least

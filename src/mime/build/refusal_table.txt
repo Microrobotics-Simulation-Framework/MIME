@@ -158,6 +158,19 @@ env.variant                   user
 error.uncoded                 internal
 error.unrecognised            unrecognised
 experiment.name               user
+flow.box-axis                 user
+flow.box-margin               user
+flow.cfl-exceeded             user
+flow.cfl-predicted            user
+flow.interior                 user
+flow.preconditioner           user
+flow.prescribed-alpha         user
+flow.prescribed-region        user
+flow.region                   user
+flow.report-rows              user
+flow.resolution               user
+flow.steady-convection        user
+flow.viscous-limit            user
 frame.gravity-invalid         user
 frame.gravity-missing         user
 frame.gravity-units           user
@@ -257,6 +270,8 @@ material.nominal              user
 material.nominal-pending      user
 material.not-a-record         user
 material.require              user
+medium.field-role             user
+medium.flow-twice             user
 modal.study-base              user
 modal.study-shards            user
 modal.wheel                   environment
@@ -389,6 +404,8 @@ result.not-recorded           user
 result.table                  user
 result.window                 user
 run.chunks                    user
+run.dt-auto-rate              user
+run.dt-auto-unset             user
 run.dt-invalid                user
 run.dt-missing                user
 run.dt-units                  user

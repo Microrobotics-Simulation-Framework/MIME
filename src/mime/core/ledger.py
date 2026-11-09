@@ -464,9 +464,63 @@ def metered_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mappi
     return {**ended, **recorded(state, account, held)}
 
 
+#: The fields a route-1 receiver adds to its records (:func:`route_one_records`).
+ROUTE_ONE_FIELDS = ("route_one_step", "route_one_worst", "route_one_negative_steps",
+                    f"route_one_negative_steps{LOW}")
+
+
+def route_one_records(state: Mapping[str, Array]) -> dict[str, Array]:
+    """``state``'s ledger fields with a route-1 receiver's own: each step's dissipation over its scale, its smallest over
+    the run, and the count of steps that gave energy (all zero at the run's start)."""
+    zero = as_run_array(jnp.zeros(()))
+    return {**state, **{f"{RECORDS}{name}": zero for name in ROUTE_ONE_FIELDS}}
+
+
+def route_one_recorded(state: Mapping[str, Array], step: StepAccount,
+                       held: Sequence[LedgerDelivery] = ()) -> dict[str, Array]:
+    """The records after ``step`` of a receiver whose scheme claims no step identity (route 1, F0's SF-9: storage at
+    least; S1's RK3, whose split penalty has no formula term). The running sums are :func:`recorded`'s; its identity
+    is not judged, so its residual, the scheme's numerical dissipation that no formula books, is left in the balance
+    (``dH - W + N`` summed, as for any receiver) and the identity's fields read zero. **Route 1's check is that every
+    step dissipated**: the work every law that is not dissipative supplied, the unattributed included, less the change
+    in storage, ``D = W - dH``, is at least ``-IDENTITY_ULPS`` units of eps on the step's scale. A step that gave energy
+    (an energy gift larger than the step's own dissipation, by the identity ``D = D_true - G``), or whose books went
+    non-finite, is counted (``route_one_negative_steps``, a running sum kept as a pair as :data:`PAIRED`'s are, its
+    ``_low`` beside it); ``route_one_step`` is the step's ``D`` over its scale, ``route_one_worst`` its
+    smallest over the run."""
+    out = recorded(state, step, held)
+    dtype = step.work.dtype
+    rows = laws(held)
+    dissipative = jnp.asarray([any(d.law == law and d.energy_class == DISSIPATIVE for d in held) for law in rows],
+                              dtype=bool)
+    supplied = jnp.sum(jnp.where(dissipative, 0.0, step.work)) + step.unattributed
+    dissipated = supplied - (step.storage_end - step.storage_start)
+    relative = dissipated / jnp.maximum(step.scale, jnp.finfo(dtype).tiny)
+    floor = IDENTITY_ULPS * jnp.finfo(dtype).eps
+    r = RECORDS
+    zero = jnp.zeros((), dtype=dtype)
+    first = jnp.asarray(state[f"{r}scale"]) == 0.0
+    worst = jnp.where(first, relative, jnp.minimum(state[f"{r}route_one_worst"], relative))
+    return {**out, f"{r}step_identity": zero, f"{r}identity_worst": zero,
+            f"{r}route_one_step": relative, f"{r}route_one_worst": worst,
+            **summed_pair(state, "route_one_negative_steps", (~(relative >= -floor)).astype(dtype))}
+
+
+def metered_route_one_step(node: MimeNode, spec: Mapping[str, BoundaryInputSpec], p: Mapping[str, Any],
+                           state: Mapping[str, Array], boundary_inputs: Mapping[str, Array], dt: float,
+                           step: Step) -> dict[str, Array]:
+    """:func:`metered_step` for a route-1 receiver: its account recorded by :func:`route_one_recorded`."""
+    held = deliveries(node.constants())
+    own = unrecorded(state)
+    ended, parts = step(p, own, summed(spec, held, boundary_inputs), dt)
+    account = node.identity_terms(p, held, own, boundary_inputs, ended, parts, dt)
+    return {**ended, **route_one_recorded(state, account, held)}
+
+
 __all__ = ["CHECK_DEFINITE", "DEFINITE_ULPS", "DELIVERY_KINDS", "DISSIPATIVE", "ENERGY_CLASSES", "FLOW_IN", "HOSTED",
-           "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS", "SOLVED", "UNMETERED",
-           "WORKLESS", "LedgerDelivery", "LedgerRecords", "StepAccount", "balance", "balance_floor", "between_floors",
-           "definite_at_floor", "deliveries", "initial_records", "law_input", "laws", "losses", "magnitude",
-           "metered_step", "own_input", "paired_work", "recorded", "stored", "summed", "summed_pair", "unrecorded",
+           "IDENTITY_ULPS", "INERTIA", "LEDGER", "LOAD", "LOW", "PAIRED", "POTENTIAL", "RECORDS", "ROUTE_ONE_FIELDS",
+           "SOLVED", "UNMETERED", "WORKLESS", "LedgerDelivery", "LedgerRecords", "StepAccount", "balance",
+           "balance_floor", "between_floors", "definite_at_floor", "deliveries", "initial_records", "law_input", "laws",
+           "losses", "magnitude", "metered_route_one_step", "metered_step", "own_input", "paired_work", "recorded",
+           "route_one_recorded", "route_one_records", "stored", "summed", "summed_pair", "unrecorded",
            "with_law_inputs", "with_records"]
