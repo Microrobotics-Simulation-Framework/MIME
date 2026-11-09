@@ -35,11 +35,12 @@ from mime.saved._schema import BoundEntryDoc, ControllerDoc, EntryDoc, EntryReco
     SettingValue, ThingDoc
 from mime.scene import Scene, asset, up_axis_problem, within
 from mime.things import WORLD, ThingKind
+from mime.things._things import MEDIUM_FIELD_ROLES
 
 #: The dynamics aspects each kind of thing takes, and whether it takes an initial state or fields.
 _ASPECTS: dict[ThingKind, frozenset[str]] = {
     ThingKind.STRUCTURE: frozenset({"motion"}),
-    ThingKind.MEDIUM: frozenset({"flow"}),
+    ThingKind.MEDIUM: frozenset(),
     ThingKind.BODY: frozenset({"motion"}),
     ThingKind.APPARATUS: frozenset(),
 }
@@ -103,12 +104,20 @@ class _Reader:
                                                             "again: built.save(folder)")
             return None
         if (("initial" in doc) != (kind is ThingKind.BODY)
-                or (("fields" in doc or "commands" in doc) and kind is not ThingKind.APPARATUS)
+                or ("fields" in doc and kind not in (ThingKind.APPARATUS, ThingKind.MEDIUM))
+                or ("commands" in doc and kind is not ThingKind.APPARATUS)
                 or ("geometry" in doc and kind is not ThingKind.STRUCTURE)
                 or ("fills" in doc and kind is not ThingKind.MEDIUM)):
-            self.refuse("load.document-thing", f"{where}: only a body has an initial state, only an apparatus has "
-                                               f"fields and commands, only a structure a geometry, and only a medium "
-                                               f"fills a region", "write the thing as experiment.save() writes it")
+            self.refuse("load.document-thing", f"{where}: only a body has an initial state, only an apparatus and "
+                                               f"a medium have fields, only an apparatus commands, only a structure "
+                                               f"a geometry, and only a medium fills a region",
+                        "write the thing as experiment.save() writes it")
+            return None
+        roles = sorted(set(doc.get("fields", {})) - set(MEDIUM_FIELD_ROLES)) if kind is ThingKind.MEDIUM else []
+        if roles:
+            self.refuse("load.document-thing", f"{where} carries fields under {roles}: a medium carries its fields "
+                                               f"under the roles {list(MEDIUM_FIELD_ROLES)}",
+                        "write the thing as experiment.save() writes it")
             return None
         if kind is ThingKind.BODY and "motion" not in dynamics:
             self.refuse("load.document-thing", f"{where} has no motion "
@@ -149,7 +158,8 @@ class _Reader:
                 return None
             entries[(name, aspect)] = built
         for field_name, provider_doc in doc.get("fields", {}).items():
-            built = self.entry("field provider", provider_doc, f"{where}'s field {field_name!r}")
+            built = self.entry("dynamics" if kind is ThingKind.MEDIUM else "field provider", provider_doc,
+                               f"{where}'s field {field_name!r}")
             if built is None:
                 return None
             entries[(name, f"field:{field_name}")] = built

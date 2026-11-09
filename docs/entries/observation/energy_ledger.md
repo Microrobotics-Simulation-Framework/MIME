@@ -26,10 +26,14 @@ useful work as a share of what was supplied.
 - To find a wrong delivery between laws: the build compares its graph with the deliveries it made and refuses a
   swap, a duplicate or a missing delivery by name (`post-build.ledger-inputs`). The books cannot see them, and a law's
   residual shows only a swap that involves gravity and a moving load.
-- On a dynamics that is not metered (a toy's, a lab's that names no port kind): the build report lists it, with the
-  reason, and the account leaves it out. A dynamic arm and a dynamic motor are metered: each books its commands under
-  their writer, the loads on its frames under each law, and the laws it holds itself (an arm's weight, damping, stops
-  and friction; a motor's bearing) under their names; a kinematic segment is outside, a prescribed motion.
+- On a dynamics that is not metered: a medium's flow (the FVM, whose hosted laws the build does not yet name for the
+  ledger; the prescribed flow, outside and storing nothing), a toy's, a lab's that names no port kind. The build report
+  lists it with its reason, and the account leaves it out and says so: `result.energy.unmetered`,
+  `result.energy.text()` and `result.text()` name it with the reason, and a run whose receivers are all unmetered has
+  an account that says no receiver is metered, not `None`. A dynamic arm and a dynamic motor are metered: each books
+  its commands under their writer, the loads on its frames under each law, and the laws it holds itself (an arm's
+  weight, damping, stops and friction; a motor's bearing) under their names; a kinematic segment is outside, a
+  prescribed motion.
 - On a run read back from a folder: the account needs each law's parameters, which only the built experiment holds.
 - To attribute a controller's work when it is called on the host. A controller in its callback mode is no node of the
   graph, so what it writes into a metered receiver arrives unattributed: the books close (the identity books it), the

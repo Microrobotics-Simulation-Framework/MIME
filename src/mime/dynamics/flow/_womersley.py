@@ -57,6 +57,11 @@ class Womersley(Dynamics):
         steady_solve=False, affine_response=False, stores="nothing", batches=True, dtypes=("float32", "float64"),
         rates=NOT_DECLARED)
 
+    @classmethod
+    @override
+    def field_declarations(cls) -> tuple[SolvedField, ...]:
+        return (cls.field,)
+
     @override
     def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:
         return []

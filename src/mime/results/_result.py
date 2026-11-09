@@ -382,7 +382,8 @@ class RunResult:
     def energy(self) -> EnergyAccount | None:
         """The energy ledger's account of the run (:class:`~mime.results.EnergyAccount`), from the build's start to its
         end: what is stored, lost and supplied, named by what supplies it, and each potential's change, in plain words
-        (``result.energy.text()``). ``None`` for a run built without ``EnergyLedger``, and for one read back from a
+        (``result.energy.text()``), and what the build left unmetered, with its reason (``unmetered``: a flow the
+        build does not yet meter). ``None`` for a run built without ``EnergyLedger``, and for one read back from a
         folder, which keeps no law's parameters to take a potential's change from."""
         if self._account is None and self._energy is not None:
             self._account = self._energy()
@@ -693,6 +694,8 @@ class RunResult:
     @public
     def text(self) -> str:
         stale = self.stale
+        account = self.energy
+        unmetered: Mapping[str, str] = account.unmetered if account is not None else {}
         lines = [f"run of {self.layout.experiment}: {self.steps} steps of {self.dt!r} s, "
                  f"{window_text(self.start_step * self.dt, self.end_step * self.dt)}",
                  *([f"STALE: {stale}"] if stale is not None else []),
@@ -705,6 +708,8 @@ class RunResult:
                  watches_text(self.watches),
                  *(f"post-run {read.text()}" for read in self.containment),
                  *(f"energy ledger: {finding}" for finding in self.energy_findings),
+                 *(f"energy ledger: {name} is not metered, so not in the account: {reason}"
+                   for name, reason in unmetered.items()),
                  *(f"coupling group {members}: {verdict}" for members, verdict in self.groups.items()),
                  self.layout.stamp.text() if self.layout.stamp is not None else "profile: not recorded (a run "
                                                                                  "written before profiles)"]

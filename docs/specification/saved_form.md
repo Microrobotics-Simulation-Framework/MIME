@@ -96,6 +96,16 @@ refusal table's (`mime/build/refusal_table.txt`).
   `tests/saved/test_based_on.py::test_a_doi_that_is_not_a_dois_shape_is_not_recorded_and_the_warning_says_why`,
   `tests/sharing/test_based_on_shared.py::test_a_bundle_whose_lock_names_another_record_records_the_one_it_was_pulled_from_and_warns_naming_both`,
   `tests/saved/test_form7.py::test_dev1s_reader_refuses_a_folder_of_the_current_form_as_newer_each_file_once`.
+- **[document.medium-fields]** From the eleventh form a medium's fields are written under `fields`, by role
+  (`fields: {flow: ...}`), as an apparatus's are; a document of an earlier form, which wrote a medium's flow as
+  `dynamics: {flow: ...}`, is read with it as `fields: {flow: ...}` and written back so for its lock's hashes, and one of
+  them whose medium holds `fields` is refused. A reader of the tenth form refuses a folder of the eleventh as
+  `load.newer-form`.
+  *Cases:* `tests/saved/test_form11.py::test_version_eleven_writes_a_mediums_fields_by_role_and_reads_them_back`,
+  `tests/saved/test_form11.py::test_a_form_ten_folder_with_a_flow_loads_rebuilds_and_verifies`,
+  `tests/saved/test_form11.py::test_control_the_form_ten_flow_folder_without_the_write_back_is_refused_by_its_input_hash`,
+  `tests/saved/test_form11.py::test_a_form_ten_document_whose_medium_holds_fields_is_refused_and_the_same_document_without_them_loads`,
+  `tests/saved/test_form11.py::test_version_tens_reader_refuses_a_folder_of_version_eleven_as_newer_each_file_once`.
 - **[document.terms]** The document's licence, custom licences, terms and permissions are read in the form `save`
   writes them; terms in any other form are refused by their own codes.
   *Cases:* `tests/saved/test_terms_saved.py::test_terms_edited_by_hand_are_refused_at_load_by_their_code`.

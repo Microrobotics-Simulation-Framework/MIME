@@ -46,3 +46,5 @@ half_space.boundary  # the half-space's case in the shape conformance suite: the
 plotly.graph_objects  # a module name: the plotly package's figure classes, imported when a figure is drawn
 plotly.subplots  # a module name: plotly's subplot helper, imported when a figure is drawn
 plotly.offline  # a module name: plotly's bundled plotly.js, imported when a page inlines it
+memory.max  # a file name: cgroup v2's memory limit, read for the memory a CPU run can have
+memory.limit_in_bytes  # a file name: cgroup v1's memory limit, read for the memory a CPU run can have
