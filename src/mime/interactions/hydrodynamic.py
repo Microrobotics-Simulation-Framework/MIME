@@ -18,13 +18,15 @@ import numpy as np
 from mime.core import run_dtype, shape_named, switch
 from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
-from mime.nodes.hydro import SurrogateDragNode
+from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
+from mime.nodes.hydro._rft_drag import COEFFICIENT_SETS, coefficient_problem, default_coefficients, measured_family
 from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
 from mime.scene import quadrature_counts, quadrature_owners, sampled_points
 from mime.registry import (
     DESIGN,
+    Centreline,
     NUMERICAL,
     PHYSICAL,
     BuildContext,
@@ -56,6 +58,7 @@ from mime.registry import (
     register_setting_group,
     registered,
     requires,
+    centreline_counts,
     versions_of,
     wall_kinds_matching,
 )
@@ -634,6 +637,38 @@ SEPARATED_REFINEMENT_MEASURED = (
     "more than 5%")
 
 
+#: The rft rung's default spacing of its points along the centreline, in filament radii: the integrand of its
+#: resistance is smooth along the centreline (a helix's turn spans many radii), so the midpoint rule converges long
+#: before this; a convention, not a measurement of the rung's error, which its validity lines state.
+RFT_POINTS_PER_RADIUS = 1.0
+#: Where a lab is told how to add a centreline to a kind (a custom geometry, an STL or CAD mesh): the guide's page,
+#: ``docs/guide/centrelines.md``.
+CENTRELINE_GUIDE = "centrelines"
+
+
+def centreline_guide() -> str:
+    """The address of the guide's page on adding a centreline, in this MIME version's documentation."""
+    from mime.build._refusals import guide_page_of
+
+    return guide_page_of(CENTRELINE_GUIDE)
+
+
+def hull_centreline(hull: Hull | None) -> Centreline | str:
+    """The body's hull kind's centreline, or why it has none: no hull, a kind that declares none, or one that refuses
+    its settings (an ellipsoid that is no prolate spheroid)."""
+    if hull is None:
+        return "it has no hull"
+    if not implements(hull.kind, "centreline"):
+        screw = (" (a screw's only straight axis has no handedness, so a slender-body law along it would give no "
+                 "coupling between turning and advancing: use Drag.MRS(...) or the surrogate rung)"
+                 if hull.kind.name == "screw" else "")
+        return f"its hull is {hull.label()}, a kind that declares no centreline{screw}"
+    try:
+        return hull.kind.centreline(hull.settings)
+    except (ValueError, KeyError) as error:
+        return f"its hull is {hull.label()}, whose centreline is refused: {error}"
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class Drag(PointForceDrag):
@@ -720,11 +755,17 @@ class Drag(PointForceDrag):
     version = "0.4.0"
     setting_roles = {
         **PointForceDrag.setting_roles,
+        "wall_kind": determined(PHYSICAL, "on the mrs and rft rungs, the one wall kind that matches the region the "
+                                          "medium fills (free_space where it fills none)", by="default_wall_kind"),
+        "coefficients": determined(NUMERICAL, "on the rft rung, Lighthill's where every segment of the body's "
+                                              "centreline declares a wavelength (a helix), else the slender "
+                                              "spheroid's (a straight centreline)", by="default_coefficients"),
         "spacing": numerical_default(
             "on the mrs rung, the largest spacing, to three significant figures, at which the hull's kind gives its "
             "family's count of force points on its grid (SEPARATED_SAMPLES: a compact body's, a screw's); for a body a "
             "law holds off the wall of its medium's region (a contact), no coarser than that closest approach over "
-            "CONFINED_GAP force spacings, or INTEGRATED_GAP where wall_refinement is written",
+            "CONFINED_GAP force spacings, or INTEGRATED_GAP where wall_refinement is written; on the rft rung, its "
+            "points' spacing along the centreline, RFT_POINTS_PER_RADIUS a filament radius",
             "a first look at a laptop's cost, chosen by measurement, never a converged value: for each family the "
             "count whose miss against its reference (Stokes's law, the shipped helix reference) is within the stated "
             "error at a run's cost a laptop's CPU takes (scripts/default_spacing_table.py measures the misses and "
@@ -753,6 +794,16 @@ class Drag(PointForceDrag):
     compact_samples = SEPARATED_COMPACT_SAMPLES
     unset_spacing_planned = True
     mrs_settings = (*PointForceDrag.mrs_settings, "quadrature_refinement", "wall_refinement")
+    rungs = (*PointForceDrag.rungs, "rft")
+    builds = {**PointForceDrag.builds, "rft": (RFTDragNode,)}
+    rung_gradients = {**PointForceDrag.rung_gradients, "rft": RungGradient(differentiability=GradientStatus.EXACT)}
+    reynolds = (*PointForceDrag.reynolds, ReynoldsRange(STOKES_REYNOLDS, STOKES_BASIS, rung="rft"))
+    support = (*PointForceDrag.support, SupportRow("rft", {
+        "body": requires(Capability.RIGID, accepts=[RESISTANCE.name, BACKGROUND_LOAD.name], publishes=[POSE.name]),
+    }, note="a rigid body whose dynamics takes a resistance and whose hull kind declares a centreline, in a medium at "
+            "rest that a wall kind matches"))
+    #: The settings the rft rung reads, beside the wall kind and the spacing.
+    rft_settings: ClassVar[tuple[str, ...]] = ("coefficients",)
     raises = (
         *PointForceDrag.raises,
         Flag("indefinite", "the step's resistance, the wall's correction in it, was not positive definite (its least "
@@ -768,6 +819,13 @@ class Drag(PointForceDrag):
         Flag("asymmetric", "the step's resistance, before its symmetric part was taken, was symmetric only to more than "
                            "a twentieth of itself (CONFINED_ASYMMETRY_LIMIT), so its error is at least half that share "
                            "(the share bounds it from below; a small share bounds nothing)", rung="mrs"),
+        Flag("unmeasured", "the body lay outside the points the rft rung's validity lines were measured over (another "
+                           "family, slenderness, coefficient set or a coarser spacing; with a wall, a gap other than "
+                           "the one measured): its error against the MRS is not measured there", rung="rft"),
+        Flag("indefinite", "the step's resistance, the wall's image in it, was indefinite past the semidefinite floor "
+                           "(its least eigenvalue, each row and column scaled by its diagonal, below minus "
+                           "SEMIDEFINITE_FLOOR_ULPS units in the last place): the node replaced it by NaN before the "
+                           "body took it, so the run stopped there (drag.rft-indefinite)", rung="rft"),
     )
     validity = (
         *(line for line in PointForceDrag.validity if not line.startswith("mrs: a medium at rest")
@@ -778,6 +836,19 @@ class Drag(PointForceDrag):
         "the sphere's exact regularised drag and Stokes's law, the prolate spheroid's closed form, Haberman and "
         "Sayre's confined sphere and a de Jongh screw's shipped free-space reference by its oracle tests, not bounded "
         "here",
+        "rft: quasi-steady Stokes flow, the limit of vanishing Reynolds number (declared, STOKES_REYNOLDS, not "
+        "measured); a medium at rest; a slender body whose segments do not interact through the free fluid; its "
+        "validity lines measured against the mrs rung on the same bodies (a prolate spheroid's against its closed "
+        "form), each the largest miss over the points it names, an estimate against the MRS at the MRS's own "
+        "resolution, never a bound, held only over those points (the families, their slenderness and the misses are "
+        "the record's, docs/data/slender_validity, and MEASURED in mime.nodes.hydro._rft_drag); a body outside them "
+        "raises unmeasured at every step and the build report says so. In the helix families measured it is a model "
+        "of the swimming speed, not of the forces: its translational resistance is several times the MRS's, since its "
+        "segments do not interact; a straight body's spin about its own axis meets no drag",
+        "rft: with the tube's table, the helix family was measured at one gap to the wall only, the "
+        "largest of four tried, where the wall's feedback of its local drag made its resistance many times the MRS's; at "
+        "the three narrower gaps its resistance was indefinite, which the build refuses (drag.rft-indefinite) and a step "
+        "stops; at any other gap, wider included, a step raises unmeasured, since the line is that one point's",
         "mrs: a wall's correction is taken at the force points unless wall_refinement is written, and they do not "
         "resolve the image near the wall: within half a force spacing of it the resistance was measured indefinite, and "
         "within a quarter of one with the image integrated over each cell (a step whose resistance is indefinite "
@@ -787,6 +858,17 @@ class Drag(PointForceDrag):
     )
     quadrature_refinement: int | None = None
     wall_refinement: int | None = None
+    coefficients: str | None = None
+
+    @override
+    def unrecorded_settings(self) -> frozenset[str]:
+        """Drag 0.4.0 was released without ``coefficients``; the other rungs read none, so their resolved record, and
+        the input hash of every program on them, are the released version's."""
+        return frozenset() if self.rung == "rft" else frozenset(self.rft_settings)
+
+    @classmethod
+    def RFT(cls, **settings: Any) -> Self:  # noqa: N802 - a rung's alias reads as a class
+        return cls(rung="rft", **settings)
 
     @classmethod
     def BEM(cls, **settings: Any) -> Self:  # noqa: N802 - the old rung's alias, refused by its name
@@ -810,6 +892,8 @@ class Drag(PointForceDrag):
         band where the resistance was measured indefinite (MIME-ANO-130). A body nothing holds off the wall takes its
         family's, and the build reports that its closest approach is the wall itself. A body a law holds on the wall
         (a margin of 0) takes none: no force spacing clears it, and its plan is refused (``drag.mrs-on-wall``)."""
+        if self.rung == "rft":
+            return self._rft_spacing(ctx)
         family = super().default_spacing(ctx)
         approach = ctx.approach(of="body")
         if family is None or self.rung != "mrs" or ctx.region("medium") is None or approach is None:
@@ -825,6 +909,142 @@ class Drag(PointForceDrag):
         if spacing > confined:  # rounded up past the bound: one unit of the third figure below it
             spacing = float(f"{spacing - 10.0 ** (math.floor(math.log10(spacing)) - 2):.3g}")
         return m(spacing)
+
+    def _rft_spacing(self, ctx: PlanContext) -> Quantity | None:
+        """The rft rung's spacing when none is written: ``RFT_POINTS_PER_RADIUS`` points a filament radius, the
+        thinnest of the centreline's segments', to three significant figures."""
+        centreline = hull_centreline(ctx.geometry(of="body"))
+        hull = ctx.geometry(of="body")
+        if isinstance(centreline, str) or hull is None:
+            return None
+        radii: list[float] = []
+        for segment in centreline.segments:
+            if segment.filament_radius is None:
+                return None
+            radii.append(float(segment.filament_radius(hull.settings)))
+        return m(float(f"{min(radii) / RFT_POINTS_PER_RADIUS:.3g}"))
+
+    def default_coefficients(self, ctx: PlanContext) -> str | None:
+        """The rft rung's coefficients when none are written: Lighthill's where every segment of the body's centreline
+        declares a wavelength (a helix), else the slender spheroid's (a straight centreline)."""
+        if self.rung != "rft":
+            return None
+        centreline = hull_centreline(ctx.geometry(of="body"))
+        return None if isinstance(centreline, str) else default_coefficients(centreline)
+
+    @override
+    def default_wall_kind(self, ctx: PlanContext) -> str | None:
+        """The mrs and rft rungs' wall kind when none is written: the one that matches the region the medium fills."""
+        if self.rung != "rft":
+            return super().default_wall_kind(ctx)
+        return dataclasses.replace(self, rung="mrs").default_wall_kind(ctx)
+
+    @override
+    def definiteness(self) -> Definiteness | None:
+        """The rft rung's resistance is solved at the body's state, and with a wall its definiteness depends on it:
+        checked at run time, as the MRS's is."""
+        return Definiteness.STATE if self.rung == "rft" else super().definiteness()
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        if self.rung == "rft":
+            return self._rft_setting_problems(settings)
+        found = super().setting_problems(settings)
+        if self.coefficients is not None:
+            found.append(f"coefficients= is a setting of the rft rung, and the {self.rung} rung reads none")
+        return found
+
+    def _rft_setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        refused = ("weights", "lubrication", "blob", "patches", "quadrature_refinement", "wall_refinement")
+        found = [f"{name}= is a setting of another rung, and the rft rung reads none" for name in refused
+                 if getattr(self, name) is not None]
+        spacing = settings.get("spacing")
+        if spacing is not None and not (isinstance(spacing, float) and math.isfinite(spacing) and spacing > 0.0):
+            found.append(f"spacing is {spacing!r} m, not a length above zero: the rft rung reads the body's centreline "
+                         f"at points about spacing apart, so write spacing=um(...)")
+        written = cast(object, self.coefficients)
+        if written is not None and written not in COEFFICIENT_SETS:
+            found.append(f"coefficients={written!r} is not one of {COEFFICIENT_SETS}")
+        if self.wall_kind is not None:
+            wall = _wall_kind(cast(object, self.wall_kind))
+            if isinstance(wall, str):
+                found.append(wall)
+        return found
+
+    @override
+    def plan(self, ctx: PlanContext) -> Plan:
+        if self.rung != "rft":
+            return super().plan(ctx)
+        return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
+                    problems=tuple(self._rft_problems(ctx)), assets=self._wall_assets())
+
+    def _rft_problems(self, ctx: PlanContext) -> list[Problem]:
+        """The rft rung's refusals: a body whose hull declares no centreline (``drag.no-centreline``, naming the guide's
+        page on adding one), a coefficient set its centreline cannot take, and the medium's wall as the mrs rung's."""
+        body, medium = ctx.bindings["body"], ctx.bindings["medium"]
+        hull = ctx.geometry(of="body")
+        centreline = hull_centreline(hull)
+        found: list[Problem] = []
+        if isinstance(centreline, str):
+            found.append(Problem(
+                "drag.no-centreline",
+                f"the rft rung reads the body's centreline, and {body} has none: {centreline}. A slender body's drag "
+                f"along its centreline needs the curve its kind declares; adding one to a kind (a custom geometry, an "
+                f"STL or CAD mesh) is set out at {centreline_guide()}",
+                f"give {body} a hull whose kind declares a centreline (Helix, Capsule, a prolate Ellipsoid), add one "
+                f"to its kind as {centreline_guide()} shows, or choose another rung: Drag.MRS(...)"))
+        else:
+            name = self.coefficients if self.coefficients is not None else default_coefficients(centreline)
+            problem = coefficient_problem(name, centreline)
+            if problem is not None:
+                found.append(Problem("drag.rft-coefficients", f"{body}'s centreline cannot take this coefficient set: "
+                                                              f"{problem}",
+                                     "write coefficients= one its centreline takes"))
+        if self.wall_kind is None:
+            region = ctx.region("medium")
+            shape = region.shape if region is not None else None
+            matching = [f"{record.name} {record.version}" for record in wall_kinds_matching(shape)]
+            fills = f"fills {region.path}, a {shape} region" if region is not None else "fills no region"
+            found.append(Problem("drag.wall-kind", f"wall_kind is not written, and it is determined by the region the "
+                                                   f"medium fills only where one wall kind matches it: medium {medium!r} "
+                                                   f"{fills}, which {len(matching) or 'no'} wall kinds match"
+                                                   + (f" ({', '.join(matching)})" if matching else ""),
+                                 f"write wall_kind= the one this experiment has; the wall kinds are "
+                                 f"{_wall_kinds_listed()}"))
+            return found
+        found += _wall_problems(self.wall_kind, ctx.region("medium"), medium, hull)
+        return found
+
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        if self.rung != "rft":
+            super().build(ctx, b)
+            return
+        hull, wall = ctx.geometry(of="body"), _wall_kind(cast(object, self.wall_kind))
+        centreline = hull_centreline(hull)
+        if hull is None or isinstance(wall, str) or isinstance(centreline, str) or self.coefficients is None:
+            raise ValueError("phase 1 refuses an rft drag with no centreline, no wall kind or no coefficients")
+        correction = wall_correction_named(wall.name, wall.version)
+        region = ctx.region("medium")
+        constants = correction.prepare(dict(region.parameters) if region is not None else {}, run_dtype())
+        settings = {setting.name: hull.settings.get(setting.name, getattr(hull.kind, setting.name))
+                    for setting in dataclasses.fields(hull.kind)}
+        lengths = [float(segment.length(hull.settings)) for segment in centreline.segments]
+        thinnest = min(float(cast(Any, segment.filament_radius)(hull.settings)) for segment in centreline.segments)
+        family = measured_family(hull.kind.name, hull.settings, sum(lengths) / thinnest, wall.name)
+        node = b.add_response_node(RFTDragNode(
+            ctx.node_name(), ctx.timestep, viscosity=ctx.scalar_value("viscosity"), kind=hull.kind.name,
+            kind_version=hull.kind.version, counts=centreline_counts(centreline, hull.settings, ctx.scalar("spacing")),
+            part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
+            coefficients=self.coefficients, wall_kind=wall.name, wall_kind_version=wall.version,
+            measured=family is not None and self.coefficients == default_coefficients(centreline)
+            and ctx.scalar("spacing") <= thinnest / RFT_POINTS_PER_RADIUS * (1.0 + 1e-9),
+            gap_least=0.0 if family is None or wall.name == "free_space" else family.gap,
+            **cast(dict[str, Any], {f"{WALL}{name}": value for name, value in constants.items()}),
+            **cast(dict[str, Any], {f"{SHAPE}{name}": value for name, value in settings.items()})))
+        b.connect(b.read("pose"), into=node["pose"])
+        b.connect(node["resistance"], into=b.target("resistance"))
+        b.connect(node["background_load"], into=b.target("background_load"))
 
     @override
     def _mrs_problems(self, ctx: PlanContext) -> list[Problem]:

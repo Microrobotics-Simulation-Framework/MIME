@@ -101,12 +101,14 @@ def test_the_report_keeps_the_attached_rungs_validity_lines_and_the_control_keep
     def plan(rung: str) -> SimpleNamespace:
         return SimpleNamespace(registered=SimpleNamespace(cls=Drag), entry=SimpleNamespace(rung=rung))
 
-    surrogate, mrs = attached_validity(plan("surrogate")), attached_validity(plan("mrs"))  # type: ignore[arg-type]
-    assert surrogate and all(not line.startswith("mrs: ") for line in surrogate)
-    assert mrs and all(not line.startswith("surrogate: ") for line in mrs)
-    every = [line for line in Drag.validity if line.split(": ", 1)[0] not in ("surrogate", "mrs")]
-    assert every and all(line in surrogate and line in mrs for line in every), "a line of every rung's holds for each"
-    assert len(surrogate) + len(mrs) == len(Drag.validity) + len(every)
+    rungs = ("surrogate", "mrs", "rft")
+    held = {rung: attached_validity(plan(rung)) for rung in rungs}  # type: ignore[arg-type]
+    for rung, lines in held.items():
+        assert lines and all(not line.startswith(f"{other}: ") for line in lines for other in rungs if other != rung)
+        assert any(line.startswith(f"{rung}: ") for line in lines), "the attached rung's own lines are kept"
+    every = [line for line in Drag.validity if line.split(": ", 1)[0] not in rungs]
+    assert every and all(line in lines for lines in held.values() for line in every), "a line of every rung's holds for each"
+    assert sum(len(lines) for lines in held.values()) == len(Drag.validity) + (len(rungs) - 1) * len(every)
 
 
 def test_the_report_gives_a_summary_first_and_its_details_on_request():

@@ -155,3 +155,4 @@ PhaseLagNode \mathbf{m}  # pinned at landing
 PhaseLagNode \mathbf{a}  # pinned at landing
 PhaseLagNode k  # pinned at landing
 PhaseLagNode t_{a}  # pinned at landing
+RFTDragNode \mathbf{R}  # pinned at landing

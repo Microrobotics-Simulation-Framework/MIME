@@ -416,6 +416,10 @@ def _floating_leaves(name: str, value: object) -> dict[str, Any]:
             if jnp.issubdtype(leaf.dtype, jnp.floating)}
 
 
+#: The pytree helpers a node holding a wall's table reads its leaves with, for a node that holds one too.
+array_tree, path_name, floating_leaves = _array_tree, _path_name, _floating_leaves
+
+
 def rerun_leaves(theta: Mapping[str, Any], built: Mapping[str, Any]) -> dict[str, np.ndarray]:
     """``built``'s leaves in ``theta``'s dtypes as the save's resolution rerun moves them (``one_ulp_up_leaf``): where
     the step is given the held value made at them (:meth:`MRSDragNode.made_again`). Only that rerun reaches them: they
@@ -1248,6 +1252,7 @@ class MRSDragNode(MimeNode):
 __all__ = ["ASYMMETRY_LIMIT", "CONFINED_ASYMMETRY_LIMIT", "CONFINED_GAP", "EQUATIONS", "HELD", "INTEGRATED_GAP", "NEAR_WALL", "NEAR_WALL_MAPPED",
            "QUADRATURE_MOVE_LIMIT", "READ_SECONDS", "RUN_GIB_AT_NO_POINTS", "RUN_GIB_PER_POINT_SQUARED", "SHAPE", "SIGNIFICANT_ENTRY", "WALL", "WALL_CELL_CAP",
            "WALL_CELL_SHARE", "WALL_REACH",
-           "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "judged",
+           "Body", "Built", "Judgement", "MRSDragInputs", "MRSDragNode", "MRSDragState", "SeparatedDragState", "array_tree",
+           "floating_leaves", "judged", "path_name",
            "kind_from_settings", "least_distance", "near_wall_image", "on_the_cells", "quadrature_move",
            "reach_weight", "rerun_leaves", "run_gib", "stops_where"]

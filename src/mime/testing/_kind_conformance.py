@@ -116,9 +116,55 @@ class _EllipsoidLevel:
         return gradient / jnp.sqrt(jnp.sum(gradient * gradient))
 
 
+#: Newton's steps the helix's level set takes to its centreline's nearest point, from the turn the point's axial
+#: position and angle name: converged to rounding on the filament's surface, where the nearest point is unique (the
+#: filament neither folding nor meeting its neighbouring turn, as the kind refuses).
+HELIX_NEWTON_STEPS = 8
+
+
+def _helix_nearest(parameters: Mapping[str, Any], point: Any, xp: Any) -> tuple[Any, Any]:
+    """The helix's centreline point nearest ``point`` (in the frame its samples are in, ``(..., 3)``) and the offset
+    from it, in ``xp`` (NumPy or JAX): Newton's steps on the angle, clamped to the arc's ends, whose hemispheres are
+    the points within the filament's radius of the ends."""
+    from mime.scene._helix import HelixTurn
+
+    turn = HelixTurn(parameters)
+    radius, b, sweep = (xp.asarray(v) for v in (turn.radius, turn.b, turn.sweep))
+    at = xp.asarray(point) + xp.asarray(turn.centroid())
+    angle = xp.arctan2(at[..., 2], at[..., 1])
+    axial = at[..., 0] / b + 0.5 * sweep
+    theta = xp.clip(angle + 2.0 * math.pi * xp.round((axial - angle) / (2.0 * math.pi)), 0.0, sweep)
+    for _ in range(HELIX_NEWTON_STEPS):
+        curve = xp.stack([b * (theta - 0.5 * sweep), radius * xp.cos(theta), radius * xp.sin(theta)], axis=-1)
+        first = xp.stack([b * xp.ones_like(theta), -radius * xp.sin(theta), radius * xp.cos(theta)], axis=-1)
+        second = xp.stack([xp.zeros_like(theta), -radius * xp.cos(theta), -radius * xp.sin(theta)], axis=-1)
+        gap = curve - at
+        slope = xp.sum(gap * first, axis=-1)
+        bend = xp.sum(first * first, axis=-1) + xp.sum(gap * second, axis=-1)
+        theta = xp.clip(theta - slope / bend, 0.0, sweep)
+    curve = xp.stack([b * (theta - 0.5 * sweep), radius * xp.cos(theta), radius * xp.sin(theta)], axis=-1)
+    return curve, at - curve
+
+
+class _HelixLevel:
+    """The helix's surface as a level set, for its samples' check: the distance from its centreline's arc less the
+    filament's radius, zero on the surface (the tube and the hemispherical caps alike), with the outward normal the unit
+    offset from the nearest point. Written from the kind's definition (``_helix_nearest``), not from its samples."""
+
+    parameter_names: tuple[str, ...] = ("radius", "pitch", "turns", "filament_radius")
+
+    def signed_distance(self, parameters: Mapping[str, Any], point: Any) -> Any:
+        _, offset = _helix_nearest(parameters, point, jnp)
+        return jnp.sqrt(jnp.sum(offset * offset, axis=-1)) - jnp.asarray(parameters["filament_radius"])
+
+    def outward_normal(self, parameters: Mapping[str, Any], point: Any) -> Any:
+        _, offset = _helix_nearest(parameters, point, jnp)
+        return offset / jnp.sqrt(jnp.sum(offset * offset, axis=-1, keepdims=True))
+
+
 #: The level set of each kind's region that no registered shape evaluates, by kind and region: written from the kind's
 #: definition, not from its samples, which it checks.
-_LEVELS: Mapping[tuple[str, str], Any] = {("ellipsoid", "solid"): _EllipsoidLevel()}
+_LEVELS: Mapping[tuple[str, str], Any] = {("ellipsoid", "solid"): _EllipsoidLevel(), ("helix", "solid"): _HelixLevel()}
 
 
 def _region_shape(kind: Geometry, region: str) -> Any:
@@ -286,11 +332,24 @@ def _ellipsoid_surface(settings: Mapping[str, Magnitude]) -> _Surface:
     return _Surface(off, 4.0 / 3.0 * math.pi * a * b * c, area)
 
 
+def _helix_surface(settings: Mapping[str, Magnitude]) -> _Surface:
+    held = {name: float(cast(float, settings[name])) for name in ("radius", "pitch", "turns", "filament_radius")}
+    r = held["filament_radius"]
+    length = 2.0 * math.pi * held["turns"] * math.hypot(held["radius"], held["pitch"] / (2.0 * math.pi))
+
+    def off(points: np.ndarray) -> np.ndarray:
+        _, offset = _helix_nearest(held, points, np)
+        return np.asarray(np.linalg.norm(np.asarray(offset, dtype=np.float64), axis=-1) - r, dtype=np.float64)
+
+    return _Surface(off, math.pi * r * r * length + 4.0 / 3.0 * math.pi * r ** 3,
+                    2.0 * math.pi * r * length + 4.0 * math.pi * r * r)
+
+
 #: The surface of each kind that draws itself with no shape to hold its drawing to, by name: written from the kind's
 #: definition and not from its drawing, which it holds. A drawing kind with neither shapes nor an entry here is not
 #: checked on its surface, and the registry walk fails on it.
 _SURFACES: Mapping[str, Callable[[Mapping[str, Magnitude]], _Surface]] = {
-    "tube": _tube_surface, "box": _box_surface, "ellipsoid": _ellipsoid_surface}
+    "tube": _tube_surface, "box": _box_surface, "ellipsoid": _ellipsoid_surface, "helix": _helix_surface}
 
 
 def _has_shapes(kind: Geometry) -> bool:
