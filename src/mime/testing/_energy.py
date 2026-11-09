@@ -265,10 +265,10 @@ def fluid_rig(dt: float = _FLUID_STEP) -> SimulationNode:
 
     across = 8
     layout = periodic_tube_layout(_TUBE_RADIUS, 4 * 2.0 * _TUBE_RADIUS / across, cells_across=across)
-    return ImplicitFlowNode("case_water.flow", dt, cells_x=layout.cells[0], cells_y=layout.cells[1],
+    return ImplicitFlowNode("case_flow", dt, cells_x=layout.cells[0], cells_y=layout.cells[1],
                             cells_z=layout.cells[2], spacing=layout.spacing, viscosity=_WATER_VISCOSITY,
                             density=_WATER_DENSITY, tube_centre=layout.centre, tube_axis=layout.axis,
-                            tube_radius=layout.radius, wall_name="case_tube.wall")
+                            tube_radius=layout.radius, wall_name="case_wall")
 
 
 @st.composite
@@ -295,8 +295,10 @@ def _fluid_step(twin: Any, deliveries: Sequence[ledger.LedgerDelivery], drawn: M
     centre = c["tube_centre"]
     across = ((points[..., 0] - centre[0]) ** 2 + (points[..., 1] - centre[1]) ** 2) / c["tube_radius"] ** 2
     axial = 2.0 * float(drawn["mean"]) * np.clip(1.0 - across, 0.0, None)
-    swirl = [float(drawn["swirl"]) * rng.standard_normal(grid.cells) for _ in range(3)]
-    flow = grid.project(tuple(jnp.asarray(swirl[k] + (axial if k == 2 else 0.0), dtype=dtype) for k in range(3)))
+    cells = tuple(int(n) for n in grid.cells)
+    swirl: list[np.ndarray] = [float(drawn["swirl"]) * rng.standard_normal(cells) for _ in range(3)]
+    flow = grid.project((jnp.asarray(swirl[0], dtype=dtype), jnp.asarray(swirl[1], dtype=dtype),
+                         jnp.asarray(swirl[2] + axial, dtype=dtype)))
     held = twin.initial_state()
     state = {key: jnp.asarray(value) for key, value in held.items() if not key.startswith(ledger.RECORDS)}
     state.update(velocity_x=flow[0], velocity_y=flow[1], velocity_z=flow[2])

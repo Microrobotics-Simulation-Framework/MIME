@@ -102,7 +102,10 @@ MEMORY_MEASURED = ("measured on a CPU with 24 threads as the slope of the proces
                    "for IMEX Euler and its steady limit in float64 (689 to 832 over the runs), 868 for RK3 (771 to "
                    "868), and in float32 539 (447 to 539) and 462 (433 to 462); fewer threads hold less (the steady "
                    "limit in float64 about 560 with 8 and 430 with 4) and more may hold more; the process's fixed "
-                   "part, its imports and compile, about 0.8 to 0.9 GiB, is not in it; a GPU's is not measured")
+                   "part, its imports and compile, about 0.8 to 0.9 GiB, is not in it; a GPU's is not measured; the "
+                   "figures are without the energy ledger, whose terms add to a step: XLA's analysis of one step's "
+                   "program at D/h 32 gives 1.26 and 1.20 times its size without it for IMEX Euler (float64 and "
+                   "float32) and 1.15 for RK3 in both, which the estimate does not include")
 
 
 #: The least margin of solid, in cells, between a tube's band and its image: their fields flatten 3 cells into the

@@ -17,5 +17,14 @@
   "fluid_case_controls": "the plain input's work misbooked under the law: the case fails on its first draw; over 200 draws, 200 of 200 fail; the solution scaled by 1 + 1e-9 unbooked: fails on its first draw, 200 of 200 over 200 draws (float64)",
   "order_tests": "written after the order probe (probe/orders.py, exploration only) and before the order tests ran: see order_tests_predictions, added in the commit before those tests",
   "released_programs": "every released program's every recorded array bit-identical to release/v0.3.0's tip (beeae2e) in both dtypes, pinned to cores 8-15: script_a, script_a_metered, hull_contact, coupled_toy, dynamic_rpm, kinematic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow, prescribed_tube_flow, nudged_toy (the FVM nodes gain only a string constant; the source rule changes only class-less laws, of which the metered script A has none)"
+ },
+ "order_tests_predictions": {
+  "written": "2026-11-09 ~22:10 CET, before tests/flow/test_fvm_ledger_orders.py ran; the order probe (probe/orders.py) was still queued for the heavy slot, so these come from the orders the terms have, not from a measurement",
+  "setup": "the periodic tube at D/h 8, nu = rho = D = 1, g = 8, convection on, a smooth cellular swirl of unit amplitude warmed for 20 steps of 0.000625 (the stiff interior's start settled); each arm 0.05 long; seeds 0, 1, 2; both dtypes",
+  "n_be": "summed |N_BE| at dt 0.0025 over dt 0.00125 within 1.6 to 2.4 on every seed and dtype (predicted 1.9 to 2.1)",
+  "n_conv": "summed |N_conv| likewise within 1.6 to 2.4 (predicted 1.8 to 2.2: <C(u), u> is zero to rounding on a divergence-free field, 2.7e-17 of its magnitude measured on a 12^3 random field, so N_conv = dt <C(u), u - u'> is first order)",
+  "n_krylov": "summed |N_Krylov| at tolerance 1e-6 over 1e-8 (float64), 1e-3 over 1e-5 (float32): at least 10 on every seed (predicted 30 to 300)",
+  "controls": "the viscous loss written into N_BE, N_conv or N_Krylov (the viscous row emptied by as much): the identity still within its floor; N_BE's and N_conv's ratios under 1.3 (outside the band) and N_Krylov's under 2, on every seed and dtype (each control fails every run)",
+  "womersley_step_changed": "the Womersley gates ran (and passed) at 500 steps of 0.5 ms as predicted above; their step was then raised to 1 ms (250 steps a period, CFL 0.32 of the line) for CI's time, and they ran again at it"
  }
 }

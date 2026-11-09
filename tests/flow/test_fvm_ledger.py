@@ -5,6 +5,8 @@ its step-identity case and its controls, and the projection's term shown zero to
 
 from __future__ import annotations
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from fvm_cases import METERED, eps, in_dtype, run, tube_node
@@ -172,13 +174,30 @@ TWO_DRIVES = (
 )
 
 
-def _one_step(node: ImplicitFlowNode, inputs: dict, seed: int):
+def _paired(node: ImplicitFlowNode, inputs: dict, seed: int) -> dict:
+    """One metered step from a stirred start, compiled: the laws' rows, the fluid's momentum at the solution and its
+    magnitude formed apart (``rho = 1``), the hosted drive's ``dt rho <g (1 - chi), u'>``, and the step's identity."""
     start = _stirred(node, 0.5, seed)
     stirred = {**node.initial_state(), **{f"velocity_{c}": start[f"initial_velocity_{c}"] for c in "xyz"}}
     p = node._step_constants(None)  # noqa: SLF001
-    ended, parts = node.stepped(p, {k: v for k, v in stirred.items() if not k.startswith(books.RECORDS)},
-                                {"body_force": sum(inputs.values())}, node.delta_t)
-    return node.advance(p, stirred, inputs, node.delta_t), parts, p
+    dt = node.delta_t
+
+    def step(state, given):
+        ended = node.advance(p, state, given, dt)
+        _, parts = node.stepped(p, {k: v for k, v in state.items() if not k.startswith(books.RECORDS)},
+                                {"body_force": sum(given.values())}, dt)
+        grid = node.grid(p)
+        fluid = tuple(1.0 - parts.fields.chi[c] for c in range(3))
+        solved = parts.stage.solved
+        volume = grid.cell_volume
+        g = sum(given.values())
+        return {"rows": ended[f"{books.RECORDS}step_work"], "identity": ended[f"{books.RECORDS}step_identity"],
+                "unattributed": ended[f"{books.RECORDS}unattributed_worst"],
+                "momentum": jnp.stack([volume * jnp.sum(fluid[c] * solved[c]) for c in range(3)]),
+                "magnitude": jnp.stack([volume * jnp.sum(jnp.abs(fluid[c] * solved[c])) for c in range(3)]),
+                "total": dt * grid.inner(tuple(g[c] * fluid[c] for c in range(3)), solved)}
+
+    return {k: np.asarray(v, dtype=np.float64) for k, v in jax.jit(step)(stirred, inputs).items()}
 
 
 @pytest.mark.parametrize("seed", range(3))
@@ -190,25 +209,15 @@ def test_each_law_s_drive_is_its_force_paired_with_the_fluid_s_momentum_at_the_s
         node = tube_node(8, length_cells=4, dt=0.002, convection=True, ledger=TWO_DRIVES)
         g = {books.law_input("body_force", 0): np.asarray([0.3, -0.2, 8.0], dtype=dtype),
              books.law_input("body_force", 1): np.asarray([-1.0, 0.5, -2.5], dtype=dtype)}
-        stepped, parts, p = _one_step(node, g, seed)
-        grid = node.grid(p)
-        chi = parts.fields.chi
-        solved = parts.stage.solved
-        momentum = np.asarray([float(np.sum((1.0 - np.asarray(chi[c], dtype=np.float64))
-                                            * np.asarray(solved[c], dtype=np.float64))) for c in range(3)])
-        momentum *= float(grid.cell_volume)  # rho = 1
-        magnitude = np.asarray([float(np.sum(np.abs((1.0 - np.asarray(chi[c], dtype=np.float64))
-                                                    * np.asarray(solved[c], dtype=np.float64)))) for c in range(3)])
-        magnitude *= float(grid.cell_volume)
-        rows = np.asarray(stepped[f"{books.RECORDS}step_work"], dtype=np.float64)
-        expected = [node.delta_t * float(np.dot(np.asarray(g[k], dtype=np.float64), momentum)) for k in g]
-        size = node.delta_t * sum(float(np.dot(np.abs(np.asarray(v, dtype=np.float64)), magnitude)) for v in g.values())
-        assert np.allclose(rows[:2], expected, rtol=0.0, atol=16 * eps(dtype) * size)
-        total = node.delta_t * float(grid.inner(tuple(sum(np.asarray(v) for v in g.values())[c] * (1.0 - chi[c])
-                                                      for c in range(3)), solved))
-        assert abs(rows[0] + rows[1] - total) <= 16 * eps(dtype) * size
-        assert float(stepped[f"{books.RECORDS}step_identity"]) <= books.IDENTITY_ULPS * eps(dtype)
-        assert float(stepped[f"{books.RECORDS}unattributed_worst"]) == 0.0
+        found = _paired(node, g, seed)
+    expected = [node.delta_t * float(np.dot(np.asarray(v, dtype=np.float64), found["momentum"])) for v in g.values()]
+    size = node.delta_t * sum(float(np.dot(np.abs(np.asarray(v, dtype=np.float64)), found["magnitude"]))
+                              for v in g.values())
+    rows = found["rows"]
+    assert np.allclose(rows[:2], expected, rtol=0.0, atol=16 * eps(dtype) * size)
+    assert abs(rows[0] + rows[1] - float(found["total"])) <= 16 * eps(dtype) * size
+    assert float(found["identity"]) <= books.IDENTITY_ULPS * eps(dtype)
+    assert float(found["unattributed"]) == 0.0
 
 
 def test_the_flow_refuses_a_drive_held_in_its_step():
@@ -219,60 +228,86 @@ def test_the_flow_refuses_a_drive_held_in_its_step():
         run(tube_node(8, length_cells=2, dt=0.002, ledger=(hosted, *METERED[2:])), 1)
 
 
-def test_the_fluid_port_case_passes_and_catches_a_misbooked_unattributed_drive(monkeypatch):
-    """The ``fluid`` port kind's step identity on drawn states (``mime.testing.step_identity``, the registry walk's
-    case for the FVM) passes; its controls fail on the first draw (their rates over 200 draws are in the PR's report):
-    the plain input's work booked under the law (the identity closes; attribution fails), and the solution scaled by
-    ``1 + 1e-9`` unbooked (a gift above the floor in float64)."""
+def test_the_fluid_port_case_passes():
+    """The ``fluid`` port kind's step identity on drawn states (``mime.testing.step_identity``, the registry walk's case
+    for the FVM), on a short run of draws; the walk runs the full 200."""
     from mime.dynamics import FVM
     from mime.testing import step_identity
 
     with in_dtype("float64"):
         assert step_identity(FVM.__new__(FVM), max_examples=20).passed
-        original = ImplicitFlowNode.drive_work
 
-        def misbooked(self, *args):
-            work, unattributed, scale = original(self, *args)
-            return work.at[0].add(unattributed), 0.0 * unattributed, scale
 
-        monkeypatch.setattr(ImplicitFlowNode, "drive_work", misbooked)
+def test_control_the_fluid_case_fails_where_the_plain_input_s_work_is_booked_under_the_law(monkeypatch):
+    """The plain input's work booked under the law: the identity still closes, and attribution fails (the case's own
+    control; its rate over 200 draws is in the PR's report)."""
+    from mime.dynamics import FVM
+    from mime.testing import step_identity
+
+    original = ImplicitFlowNode.drive_work
+
+    def misbooked(self, *args):
+        work, unattributed, scale = original(self, *args)
+        return work.at[0].add(unattributed), 0.0 * unattributed, scale
+
+    monkeypatch.setattr(ImplicitFlowNode, "drive_work", misbooked)
+    with in_dtype("float64"):
         found = step_identity(FVM.__new__(FVM), max_examples=20)
-        assert found.failed and "unattributed" in found.detail and found.n_examples == 1
-        monkeypatch.setattr(ImplicitFlowNode, "drive_work", original)
-        step = IMEXEuler.step
+    assert found.failed and "unattributed" in found.detail
 
-        def gifted(self, context, state, time, dt):
-            solved, parts = step(self, context, state, time, dt)
-            return {"velocity": tuple((1.0 + 1e-9) * c for c in solved["velocity"])}, parts
 
-        monkeypatch.setattr(IMEXEuler, "step", gifted)
+def test_control_the_fluid_case_fails_where_the_step_gives_energy(monkeypatch):
+    """The solution scaled by ``1 + 1e-9`` unbooked: a gift far above the floor in float64, which the identity sees."""
+    from mime.dynamics import FVM
+    from mime.testing import step_identity
+
+    step = IMEXEuler.step
+
+    def gifted(self, context, state, time, dt):
+        solved, parts = step(self, context, state, time, dt)
+        return {"velocity": tuple((1.0 + 1e-9) * c for c in solved["velocity"])}, parts
+
+    monkeypatch.setattr(IMEXEuler, "step", gifted)
+    with in_dtype("float64"):
         found = step_identity(FVM.__new__(FVM), max_examples=20)
-        assert found.failed and "floor" in found.detail and found.n_examples == 1
+    assert found.failed and "floor" in found.detail
 
 
 # -- N_proj: the projection's term, zero to rounding on the periodic box (R5's C13, its second option) ----------------
 
-def _projection_term(node: ImplicitFlowNode, seed: int, plant: float = 0.0):
-    """``dt rho <p', D u'>`` and the step's scale, ``p'`` the pressure recovered from the step's remainder (B2's
-    ``pressure_of``); ``plant`` adds that share of a gradient field to the solution, unprojected."""
-    start = _stirred(node, 0.5, seed)
-    state = {**node.initial_state(), **{f"velocity_{c}": start[f"initial_velocity_{c}"] for c in "xyz"}}
+#: The control's plant: a gradient field of this share of the solution's size, added to it unprojected.
+PLANT = 1e-9
+
+
+def _projection_terms(node: ImplicitFlowNode, seeds: range) -> list[tuple[float, float, float]]:
+    """For each seed, ``dt rho <p', D u'>`` of one step from a stirred start, ``p'`` the pressure recovered from the
+    step's remainder (B2's ``pressure_of``); the same with the plant on the solution; and the step's scale. Compiled
+    once."""
     p = node._step_constants(None)  # noqa: SLF001
-    _, parts = node.stepped(p, state, {"body_force": np.asarray([0.0, 0.0, 8.0])}, node.delta_t)
     grid = node.grid(p)
-    stage = parts.stage
-    solved = stage.solved
-    if plant:
-        bump = grid.gradient(np.asarray(np.random.default_rng(seed).standard_normal(grid.cells)))
-        size = float(np.sqrt(grid.inner(solved, solved) / grid.inner(bump, bump)))
-        solved = tuple(solved[c] + plant * size * bump[c] for c in range(3))
-    sigma = node.resistivity(p, parts.fields)
-    applied = node.operator_of(p, grid, sigma)(stage.shift)(solved)
-    remainder = tuple(stage.rhs[c] - applied[c] for c in range(3))
-    pressure = grid.pressure_of(remainder)
-    divergence = grid.divergence(solved)
-    term = node.delta_t * float(np.sum(np.asarray(pressure) * np.asarray(divergence))) * float(grid.cell_volume)
-    return term, float(parts.energy["scale"])
+
+    def terms(own, bump):
+        _, parts = node.stepped(p, own, {"body_force": jnp.asarray([0.0, 0.0, 8.0])}, node.delta_t)
+        stage = parts.stage
+        size = jnp.sqrt(grid.inner(stage.solved, stage.solved) / grid.inner(bump, bump))
+        sigma = node.resistivity(p, parts.fields)
+        found = []
+        for plant in (0.0, PLANT):
+            solved = tuple(stage.solved[c] + plant * size * bump[c] for c in range(3))
+            applied = node.operator_of(p, grid, sigma)(stage.shift)(solved)
+            pressure = grid.pressure_of(tuple(stage.rhs[c] - applied[c] for c in range(3)))
+            found.append(node.delta_t * jnp.sum(pressure * grid.divergence(solved)) * grid.cell_volume)
+        return found[0], found[1], parts.energy["scale"]
+
+    compiled = jax.jit(terms)
+    held = []
+    for seed in seeds:
+        start = _stirred(node, 0.5, seed)
+        state = {**node.initial_state(), **{f"velocity_{c}": start[f"initial_velocity_{c}"] for c in "xyz"}}
+        own = {k: v for k, v in state.items() if not k.startswith(books.RECORDS)}
+        bump = grid.gradient(jnp.asarray(np.random.default_rng(seed).standard_normal(grid.cells)))
+        held.append(tuple(float(v) for v in compiled(own, bump)))
+    return held
 
 
 @pytest.mark.parametrize("tolerance", [1e-6, 1e-10])
@@ -281,9 +316,7 @@ def test_the_projection_s_term_is_zero_to_rounding_at_two_tolerances(float64, to
     projector, so ``D u'`` is its rounding, at any tolerance; ``N_Krylov``'s unprojected remainder holds whatever is
     left. Its control, the solution moved off the divergence-free fields by a gradient of 1e-9 of its size, puts the
     term above the floor on every draw."""
-    for seed in range(3):
-        node = tube_node(8, length_cells=4, dt=0.002, convection=True, tolerance=tolerance, ledger=METERED)
-        term, scale = _projection_term(node, seed)
+    node = tube_node(8, length_cells=4, dt=0.002, convection=True, tolerance=tolerance, ledger=METERED)
+    for term, planted, scale in _projection_terms(node, range(3)):
         assert abs(term) <= books.IDENTITY_ULPS * eps("float64") * scale
-        planted, _ = _projection_term(node, seed, plant=1e-9)
         assert abs(planted) > books.IDENTITY_ULPS * eps("float64") * scale

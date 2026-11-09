@@ -45,7 +45,9 @@ estimate (the cells times the bytes a cell a run on a CPU was measured to hold a
 can have: a GPU's limit, or on a CPU the smaller of the host's available memory and the limit of the control group the
 process runs in (a container's, a batch job's). A box whose run will not fit is refused when the experiment is planned
 (`flow.memory`), with a coarser grid or a shorter period as its route. The estimate is measured, not a bound: the peak
-grows with the threads a run uses, and a GPU's bytes a cell are not measured. The flow provides the velocity at points
+grows with the threads a run uses, and a GPU's bytes a cell are not measured. It is measured without the energy
+ledger, whose terms make a step's program 1.15 to 1.26 times larger by XLA's analysis at D/h 32: a metered run holds
+more than the estimate says. The flow provides the velocity at points
 (`field.flow.velocity`, its solved-field declarations' `provides`); a drag, which assumes its medium at rest, is refused
 wherever the region its medium fills carries a field.
 

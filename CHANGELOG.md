@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A medium's flow metered by the energy ledger: the `fluid` port kind, and the rule for a source.** With
+  `exp.observe(EnergyLedger())` the build meters an FVM flow as a receiver of the new `fluid` port kind: its fluid's
+  momentum (`flow.momentum`, kg m/s, over the fluid alone, as the drive acts on it alone) against the body force each
+  law driving it delivers (`flow.body_force`, a load; the drive's waveform a mapped load, which RK3 evaluates at its
+  stage instants). The flow's step pairs each law's drive with the fluid's momentum at the instant it applied it; the
+  viscosity and the wall's band are held in the step and booked under `<medium>.flow.viscosity` and the wall's own
+  region (`tube.wall`); IMEX Euler and its steady limit close the step identity to rounding, and RK3 judges each step
+  to have dissipated. The ledger's boundary gains a rule: **a law that declares no class and whose own nodes read
+  nothing of the components is outside**, and what it delivers is supplied work under its own name (a `BodyForce`); a
+  law that declares a class keeps it whatever its node reads (gravity reads nothing without a couple, and stays a
+  potential). A source that states no reason for declaring no class is still logged under exploratory and refused
+  under research (`ledger.unmetered`). The flow's reason for being unmetered is gone, and `mime.testing`'s port cases
+  gain the fluid's (`fluid_rig`, `fluid_states`).
+
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
   `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the

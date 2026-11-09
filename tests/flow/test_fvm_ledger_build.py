@@ -2,7 +2,7 @@
 the ``fluid`` port kind, the ``BodyForce`` driving it is outside and supplies its work (the source rule, D2), and the
 viscosity and the wall's band are held in the flow's step under their own names.
 
-**The account closes on a driven Womersley flow** (a steady and a harmonic body force, Womersley number about 1.8,
+**The account closes on a driven Womersley flow** (a steady and a harmonic body force, Womersley number about 2.5,
 one period), in both dtypes: IMEX Euler's step identity within its floor at every step, nothing unattributed, the
 books' balance within their rounding, the losses under ``water.flow.viscosity`` and ``tube.wall``, the supply under
 ``body_force:water``; RK3, on route 1, every step judged to have dissipated, its drive's work under the same law.
@@ -29,8 +29,9 @@ from mime.things import Medium, Structure
 from mime.units import Hz, kg_per_m3, m_per_s2, mm, mPa_s, ms
 
 #: The Womersley drive: a 1 mm tube of water, 4 Hz (Womersley number R sqrt(omega / nu) about 2.5), a steady part
-#: and a harmonic one, at a step under IMEX Euler's CFL line and RK3's viscous number at eight cells across.
-FREQUENCY, PERIOD, STEP = 4.0, ms(250.0), ms(0.5)
+#: and a harmonic one, at a step under IMEX Euler's CFL line (the predicted peak's 0.32 of it) and RK3's viscous number
+#: at eight cells across: one period, 250 steps.
+FREQUENCY, PERIOD, STEP = 4.0, ms(250.0), ms(1.0)
 LAWS = {"body_force:water": ledger.UNMETERED, "water.flow.viscosity": ledger.DISSIPATIVE,
         "tube.wall": ledger.DISSIPATIVE}
 
