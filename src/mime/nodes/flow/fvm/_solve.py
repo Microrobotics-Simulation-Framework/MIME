@@ -12,6 +12,14 @@ the step's answer either, so the run's own non-finite refusal names the flow. It
 start whose residual is already below the tolerance is never accepted unsolved; only an exactly zero residual is (a zero
 right-hand side from a zero start among them).
 
+**Restarts from the true residual.** The CG restarts from the true residual (``r`` set to it, ``z`` made from it, the
+direction ``z``: :func:`restarted`) where its recursive residual falls under the tolerance before the true one, and,
+where its stopping says so (float32's default, :data:`RESTARTED_BY_DEFAULT`), every ``restart_every`` iterations
+(:data:`RESTART_EVERY`). On stiff solves in float32 the recurrence otherwise stalls far above the solve's rounding
+floor, and a periodic restart breaks the stall where replacing the residual alone, the direction kept, measured
+unreliable (:data:`RESTART_MEASURED`). A solve that ends within ``restart_every`` iterations never restarts, so its
+arithmetic is unchanged; the stop judges the true residual alone, so a wrong restart cannot pass as converged.
+
 **The report block** (``BACKWARD_DIAGNOSTICS``'s design, one for every iterative solve in MIME). The solve's
 right-hand side carries a block of :data:`REPORT_SIZE` numbers on which the operator is the identity, and the solve
 writes its own report into that block of its answer. JAX's ``custom_linear_solve`` calls the same solve for the
@@ -27,7 +35,7 @@ against each other: the residual of an ``x`` that solves the system with each co
 rounding unit (Oettli and Prager's componentwise backward error at ``eps``). On fine stiff solves float32's floor sits
 above its 1e-5 (:data:`FLOOR_MEASURED`), so float32's default tolerance is the larger of the two, made in the program at
 each check from the iterate; a tolerance given is held as given. A solve that stalls above the floor still stops
-stagnated, and is flagged: in float32 the CG's recurrence can stall there although the solve could converge.
+stagnated, and is flagged.
 
 **Starts that scale.** The start is made inside the solve from its own right-hand side, the Galerkin multiple of the
 previous solution ``x0 = alpha g``, ``alpha = <g, b> / <g, A g>``: linear in ``b``, so a tangent or transpose solve starts
@@ -82,13 +90,30 @@ STAGNATION_MEASURED = (
     "8 to 32")
 
 
+#: How often float32's default stop restarts the CG from the true residual, in iterations (module docstring); the
+#: dtypes that restart by default; and the measurements that chose both.
+RESTART_EVERY = 100
+RESTARTED_BY_DEFAULT = frozenset({"float32"})
+RESTART_MEASURED = (
+    "measured on the solid's interior spike's stenosis (75 %, two diameters long, the 0.01h interior, steady Stokes, "
+    "float32 under its default stop), over draws of its narrowing (0.4 to 0.6), its centre's sub-cell offset and the "
+    "drive's tilt: without a periodic restart the recurrence stalls above the solve's floor on every draw (20 of 20 "
+    "at D/h 8, 16 of 16 at D/h 16, stagnated at 2.6e-5 to 1.7e-4, the centred D/h 16 one's floor 4.8e-6); restarted "
+    "every 100 iterations every "
+    "draw converges (at 102 to 171 iterations at D/h 8, 412 to 649 at D/h 16); replacing the residual alone every "
+    "100 iterations, the direction kept, converged at D/h 8 but left 13 of 16 stalled at D/h 16, and every 200 the "
+    "reverse (20 of 20 stalled at D/h 8); in float64, where no draw stalled, restarting every 100 iterations costs "
+    "1.4 times the iterations (450 to 639 on average at D/h 16), so float64 does not restart by default")
+
+
 @dataclass(frozen=True)
 class Stopping:
     """When the CG stops: the relative tolerance on the true residual (a ``params`` leaf: the accuracy-bearing
     setting, 1e-8 in float64 and 1e-5 in float32 by default), whether it is raised to the solve's rounding floor where
     that is higher (``at_floor``: float32's default, :func:`rounding_floor`), the cap, how often the true residual is
-    checked, the stagnation's window (in checks) and the factor a check in it must beat the best before it by, and the
-    least iterations taken from a nonzero residual."""
+    checked, the stagnation's window (in checks) and the factor a check in it must beat the best before it by, the
+    least iterations taken from a nonzero residual, and how often the CG restarts from the true residual (in
+    iterations; 0 never: float32's default is :data:`RESTART_EVERY`)."""
 
     tolerance: Any
     at_floor: bool = False
@@ -97,6 +122,7 @@ class Stopping:
     window: int = STAGNATION_WINDOW
     stagnation: float = STAGNATION_FACTOR
     least_iterations: int = 1
+    restart_every: int = 0
 
 
 DEFAULT_TOLERANCE = {"float64": 1e-8, "float32": 1e-5}
@@ -112,6 +138,11 @@ def default_tolerance(dtype: Any) -> float:
     return DEFAULT_TOLERANCE[str(jnp.dtype(dtype))]
 
 
+def default_restart_every(dtype: Any) -> int:
+    """:data:`RESTART_EVERY` for a dtype that restarts by default (float32), 0 for one that does not."""
+    return RESTART_EVERY if str(jnp.dtype(dtype)) in RESTARTED_BY_DEFAULT else 0
+
+
 #: The dtypes whose default tolerance is raised to the solve's rounding floor where that is higher: float32, whose
 #: floor on fine stiff solves sits above its 1e-5; float64's 1e-8 sits orders above its floor on every solve measured.
 AT_FLOOR_BY_DEFAULT = frozenset({"float32"})
@@ -121,9 +152,9 @@ FLOOR_MEASURED = (
     "1.6e-5 to 2.1e-5, the floor 2.1e-4; the stop takes 69 iterations, its flux within 1.3e-7 of float64's, where the "
     "fixed 1e-5 stagnated at 1000), and at D/h 16 to 32 it lies above the residual each solve reaches with the 0.1h "
     "interior; with the 0.01h interior in a flow with a pressure gradient (a 75 % stenosis) the CG's recurrence "
-    "stalls far above it (1.0e-4 at D/h 16 and 5.9e-4 at 32, against floors of 4.7e-6 and 1.8e-5), flagged, its flux "
-    "within 1e-7 of float64's: replacing the residual with the true one every 100 iterations brings the D/h 16 solve "
-    "to 5.0e-6, so these are stalls, not floors")
+    "stalls far above it without a periodic restart (1.0e-4 at D/h 16 and 5.9e-4 at 32, against floors of 4.7e-6 and "
+    "1.8e-5), its flux within 1e-7 of float64's: stalls, not floors; the restart breaks the one at D/h 16, not the "
+    "one at 32")
 
 
 def rounding_floor(b: Velocity, magnitude: Operator, inner: Callable[[Velocity, Velocity], Array]
@@ -212,6 +243,13 @@ def guarded_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
     return _scaled(x, scale), report
 
 
+def restarted(true_r: Velocity, precondition: Operator, inner: Callable[[Velocity, Velocity], Array]
+              ) -> tuple[Velocity, Velocity, Array]:
+    """The CG restarted from the true residual ``true_r``: ``r``, ``z`` (the new direction too) and ``<r, z>``."""
+    true_z = precondition(true_r)
+    return true_r, true_z, inner(true_r, true_z)
+
+
 def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: Velocity, stopping: Stopping,
                inner: Callable[[Velocity, Velocity], Array], magnitude: Operator | None) -> tuple[Velocity, Array]:
     dtype = b[0].dtype
@@ -249,6 +287,7 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
         count = count + 1
         recursive_small = jnp.sqrt(inner(r, r)) <= threshold
         at_check = (count % stopping.check_every) == 0
+        due = (count % stopping.restart_every) == 0 if stopping.restart_every > 0 else jnp.asarray(False)
 
         def checked(_: Any) -> tuple[Any, ...]:
             true_r = _add(b, operator(x), -1.0)
@@ -260,14 +299,14 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
             before = jnp.minimum(best, recent[0])
             full = checks + 1 >= stopping.window
             stagnated = (~converged) & at_check & full & (jnp.min(held) > stopping.stagnation * before)
-            restart = recursive_small & (~converged)
-            true_z = precondition(true_r)
+            restart = (recursive_small | due) & (~converged)
+            new_r, new_z, new_rz = restarted(true_r, precondition, inner)
             ended = jnp.where(~jnp.isfinite(true_norm), _NOT_FINITE,
                               jnp.where(converged, _CONVERGED, jnp.where(stagnated, _STAGNATED, _RUNNING)))
             # The iterate of the least true residual checked, which a solve stopped short returns.
             lower = true_norm < lowest
-            return (_select(restart, true_r, r), _select(restart, true_z, z), _select(restart, true_z, d),
-                    jnp.where(restart, inner(true_r, true_z), rz_next), jnp.where(at_check, held, recent),
+            return (_select(restart, new_r, r), _select(restart, new_z, z), _select(restart, new_z, d),
+                    jnp.where(restart, new_rz, rz_next), jnp.where(at_check, held, recent),
                     jnp.where(at_check, before, best), jnp.where(at_check, checks + 1, checks),
                     _select(lower, x, kept), jnp.where(lower, true_norm, lowest), reached,
                     ended.astype(jnp.int32))
@@ -277,7 +316,7 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
             return r, z, d, rz_next, recent, best, checks, kept, lowest, threshold, ended
 
         r, z, d, rz_next, recent, best, checks, kept, lowest, threshold, ended = lax.cond(
-            recursive_small | at_check, checked, unchecked, None)
+            recursive_small | at_check | due, checked, unchecked, None)
         ended = jnp.where((ended == _RUNNING) & (count >= stopping.cap), _AT_CAP, ended).astype(jnp.int32)
         return x, r, z, d, rz_next, count, recent, best, checks, kept, lowest, threshold, ended
 
@@ -359,8 +398,9 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
     return solved, report
 
 
-__all__ = ["AT_FLOOR_BY_DEFAULT", "DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "FLOOR_MEASURED", "STAGNATION_FACTOR",
+__all__ = ["AT_FLOOR_BY_DEFAULT", "DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "FLOOR_MEASURED",
+           "RESTARTED_BY_DEFAULT", "RESTART_EVERY", "RESTART_MEASURED", "STAGNATION_FACTOR",
            "STAGNATION_LEAST_WINDOW", "STAGNATION_MEASURED", "STAGNATION_SPAN", "STAGNATION_WINDOW",
            "stagnation_window", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "Jacobi", "Preconditioner",
-           "Stopping", "default_tolerance", "guarded_cg", "preconditioner_named", "projected_solve", "rounding_floor",
-           "scaling_start"]
+           "Stopping", "default_restart_every", "default_tolerance", "guarded_cg", "preconditioner_named",
+           "projected_solve", "restarted", "rounding_floor", "scaling_start"]

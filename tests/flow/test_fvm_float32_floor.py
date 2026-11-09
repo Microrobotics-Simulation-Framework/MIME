@@ -1,7 +1,7 @@
 """Float32's default stop at the solve's rounding floor (``mime.nodes.flow.fvm._solve.rounding_floor``): where 1e-5 is
 out of float32's reach the solve stops at its floor, unflagged, its values float64's within the tolerance; where the
-conjugate gradient stalls above the floor the solve still stops stagnated and is flagged. The cases are the solid's
-interior spike's float32 runs that the fixed 1e-5 flagged."""
+conjugate gradient's recurrence stalls above the floor float32's periodic restart from the true residual breaks the
+stall. The cases are the solid's interior spike's float32 runs that the fixed 1e-5 flagged."""
 
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ from test_fvm_experiment import experiment
 from mime.dynamics import Band
 from mime.nodes.flow.fvm import Jacobi, Stopping, projected_solve
 from mime.nodes.flow.fvm._band import DEFAULT_BAND, band_named, wall_fields
-from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE, default_tolerance, rounding_floor, \
-    stagnation_window
+from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE, default_restart_every, default_tolerance, \
+    rounding_floor, stagnation_window
 from mime.units import mm, ms
 
-STAGNATED = REPORT_FIELDS.index("stagnated")
+STAGNATED, RESIDUAL = REPORT_FIELDS.index("stagnated"), REPORT_FIELDS.index("residual")
 
 
 def _tube_flux(dtype: str, **settings: object) -> tuple[float, np.ndarray, bool]:
@@ -49,7 +49,8 @@ def test_float32s_default_stop_takes_the_rounding_floor_where_its_tolerance_is_o
     assert given_flagged and given[STAGNATED] == 1.0, given
 
 
-def _stenosis_solve(dtype: str, tolerance: float, at_floor: bool) -> tuple[np.ndarray, float, float, float]:
+def _stenosis_solve(dtype: str, tolerance: float, at_floor: bool,
+                    **stop: int) -> tuple[np.ndarray, float, float, float]:
     """The 75 % stenosis at 16 cells across with the 0.01h interior, steady Stokes, driven on its fluid: the solve's
     report, the relative rounding floor at its answer, its flux through the box (m^3/s per unit length's worth), and its
     true relative residual."""
@@ -67,7 +68,8 @@ def _stenosis_solve(dtype: str, tolerance: float, at_floor: bool) -> tuple[np.nd
         magnitude = node.magnitude_of(p, grid, sigma)(shift)
         rhs = node.drive(fields, jnp.asarray([0.0, 0.0, 1.0], dtype=run))
         stopping = Stopping(tolerance=jnp.asarray(tolerance, dtype=run), at_floor=at_floor,
-                            window=stagnation_window(grid.cells, 20))
+                            window=stagnation_window(grid.cells, 20),
+                            **{"restart_every": default_restart_every(run), **stop})
 
         @jax.jit
         def solved(r):
@@ -84,14 +86,18 @@ def _stenosis_solve(dtype: str, tolerance: float, at_floor: bool) -> tuple[np.nd
         return np.asarray(report), float(floor), float(flux), float(residual)
 
 
-def test_a_float32_stall_above_the_floor_is_still_flagged():
-    """With the 0.01h interior in a flow with a pressure gradient float32's conjugate gradient stalls far above the
-    floor (1.0e-4 against 4.7e-6, measured; it is a stall, not a floor: replacing its residual with the true one every
-    100 iterations reaches 5.0e-6): the default stop does not take it as converged, the solve stops stagnated, flagged.
-    Its flux is float64's within the tolerance. The control is the floor itself, which the stall's residual is above,
-    so the case can tell a stall from a floor."""
-    report, floor, flux, residual = _stenosis_solve("float32", default_tolerance("float32"), at_floor=True)
-    assert report[STAGNATED] == 1.0, report
-    assert residual > max(floor, default_tolerance("float32"))
+def test_a_float32_stall_above_the_floor_is_broken_by_the_restart():
+    """With the 0.01h interior in a flow with a pressure gradient float32's conjugate gradient's recurrence stalls far
+    above the floor (1.0e-4 against 4.7e-6, measured): a stall, not a floor. Float32's default restart from the true
+    residual every 100 iterations breaks it: the solve converges, unflagged, at its tolerance or floor, its flux
+    float64's within the tolerance. The control is the CG without the restart, which stops stagnated above its floor,
+    so the case tells a stall from a floor."""
+    tolerance = default_tolerance("float32")
+    report, floor, flux, _ = _stenosis_solve("float32", tolerance, at_floor=True)
+    assert report[2:5].sum() == 0.0, report
+    assert report[RESIDUAL] <= max(floor, tolerance), (report, floor)
     _, _, reference, _ = _stenosis_solve("float64", 1e-12, at_floor=False)
-    assert abs(flux - reference) <= default_tolerance("float32") * abs(reference)
+    assert abs(flux - reference) <= tolerance * abs(reference)
+    stalled, stalled_floor, _, residual = _stenosis_solve("float32", tolerance, at_floor=True, restart_every=0)
+    assert stalled[STAGNATED] == 1.0, stalled
+    assert residual > max(stalled_floor, tolerance)

@@ -28,7 +28,8 @@ from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_C
     STOKES_REYNOLDS
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, PRECONDITIONERS, \
-    STAGNATION_FACTOR, STAGNATION_LEAST_WINDOW, STAGNATION_MEASURED, STAGNATION_SPAN
+    RESTART_EVERY, RESTART_MEASURED, STAGNATION_FACTOR, STAGNATION_LEAST_WINDOW, STAGNATION_MEASURED, \
+    STAGNATION_SPAN
 from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Flag, GradientRecord, Port, Problem, Region, \
     SettingGroup, StepQuery, StepRule, convention, register_dynamics, register_setting_group
 from mime.dynamics.flow._fields import fvm_field
@@ -209,8 +210,12 @@ class FVM(Dynamics):
         "the stop: each step's solve stops at a true relative residual of its tolerance (by default "
         f"{DEFAULT_TOLERANCE['float64']:g} in float64; in float32 {DEFAULT_TOLERANCE['float32']:g}, or the solve's "
         "rounding floor eps || |A| |x| + |b| || / ||b|| where that is higher, made at each check from the iterate; a "
-        f"tolerance given is held as given; {FLOOR_MEASURED}), the step's values and gradients holding to about it; a "
-        "flag in float32 with the 0.01h interior can be the solve's stall, not float32's floor; a stagnation is no "
+        f"tolerance given is held as given; {FLOOR_MEASURED}), the step's values and gradients holding to about it; "
+        f"in float32 the CG restarts from the true residual every {RESTART_EVERY} iterations ({RESTART_MEASURED}); a "
+        f"stall that persists stays flagged, as in float32 the 75 % stenosis at D/h 32 with the 0.01h interior does "
+        f"(restarted: its steady solve stagnated at 2.2e-4 after 2100 iterations, its first IMEX Euler step at 3.3e-5 "
+        f"after 1800 while its second converged; without: 5.7e-4, 1.5e-4 and 2.4e-4; floors of 1.8e-5, 7.2e-6 and "
+        f"8.1e-6; fluxes within 2e-6 of float64's) [measured]; a stagnation is no "
         "check of the true residual (one every 20 iterations) over a window of "
         f"{STAGNATION_SPAN} iterations per cell along the box's longest side (at least "
         f"{STAGNATION_LEAST_WINDOW} checks) below {STAGNATION_FACTOR:g} of the best before them ({STAGNATION_MEASURED}); "

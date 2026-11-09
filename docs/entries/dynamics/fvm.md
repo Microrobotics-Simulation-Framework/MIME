@@ -66,9 +66,11 @@ stopped, and a run that records every step (`history=True`) keeps each step's. A
 checks of the true residual, none fell below a share of the best before them (the entry's validity lists the window and
 the share). With no tolerance given, a float32 run's solve stops at its tolerance, or at its own rounding floor where
 that is higher (on a fine grid with a stiff interior): the residual an answer reaches when each of the operator's
-coefficients and the right-hand side is off by one rounding unit. A tolerance given is held as given. A float32 solve
-that stalls above that floor is still flagged: with the stiffer interior (`Band`'s smaller `delta_in`) in a flow with a
-pressure gradient its conjugate gradient can stall well above it, though the solve could still converge. A solve whose
+coefficients and the right-hand side is off by one rounding unit. A tolerance given is held as given. In float32 the
+solve also restarts from its true residual at a fixed period (the entry's validity gives it): with the stiffer interior
+(`Band`'s smaller `delta_in`) in a flow with a pressure gradient, its conjugate gradient otherwise stalls well above
+its floor. A stall that persists is still flagged; the entry's validity names the stenosis measured to persist, at the
+finest grid measured, in float32. A solve whose
 residual is not finite (a NaN in the step's drive or operator) returns NaN, never a velocity it did not solve for, so
 the run is refused for its state's not being finite, naming the flow (and, in a run that records every step, the step
 where it began).
