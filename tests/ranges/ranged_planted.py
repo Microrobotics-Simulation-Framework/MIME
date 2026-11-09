@@ -10,7 +10,11 @@ equal shares (summing to one, so the wrench is the same whatever the count), the
 - ``unreported``: over the range, plus a share sized from the range's width read past ``choose_over`` (a dependence the
   range forbids);
 - ``bake``: over the range, its wrench scaled again by a Python float made from the body's own radius at build (a value
-  baked into the step).
+  baked into the step);
+- ``array-bake``: the same with a NumPy array made from the radius at build, which the node's step (inside the ``jit``
+  a ``MimeNode`` runs its step in) closes over: a constant of that nested sub-program, not of the top-level one;
+- ``deaf``: over the range, the node built at a radius of its own, so that a move of the body's changes nothing it
+  holds.
 
 The node reads the radius as a leaf, so that a sweep of it changes what each member computes.
 
@@ -53,6 +57,8 @@ register_namespace("rangetoy", "0.0.1")
 
 #: The radius the planted peak sits at, inside the ranges the tests declare ([1.0, 1.15] mm).
 PEAK = 1.075e-3
+#: The radius the ``deaf`` plant's node is built at, whatever the body's.
+DEAF_RADIUS = 1.0e-3
 WRENCH = (1e-9, -2e-9, 0.5e-9, 1e-15, 0.0, -1e-15)
 
 
@@ -71,12 +77,14 @@ class _Wrench(TypedDict, closed=True):
 
 class SharesNode(MimeNode):
     """``value`` times the sum of its ``count`` equal shares (a static table), times the body's radius in mm (a leaf
-    it reads) and ``kept`` (a Python float, one unless baked): the wrench it delivers."""
+    it reads), ``kept`` (a Python float, one unless baked) and ``held`` (a NumPy array, none unless baked): the wrench
+    it delivers."""
 
     def __init__(self, name: str, timestep: float, *, value: tuple[float, ...], count: int, radius: float,
-                 kept: float = 1.0) -> None:
+                 kept: float = 1.0, held: np.ndarray | None = None) -> None:
         super().__init__(name, timestep, value=value, count=int(count), radius=float(radius))
         self.kept = float(kept)
+        self.held = held
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -88,23 +96,23 @@ class SharesNode(MimeNode):
         count = int(self.constants()["count"])
         return {"shares": StaticArray(np.full(count, 1.0 / count))}
 
-    def _value(self, params: Mapping[str, Any] | None = None) -> Array:
-        p = self.constants(params)
+    def _value(self, p: Mapping[str, Any]) -> Array:
         shares = jnp.sum(jnp.asarray(self.static_data["shares"].value))
-        return as_run_array(jnp.asarray(p["value"]) * shares * (1e3 * jnp.asarray(p["radius"])) * self.kept)
+        found = jnp.asarray(p["value"]) * shares * (1e3 * jnp.asarray(p["radius"])) * self.kept
+        return as_run_array(found if self.held is None else found * self.held)
 
     @override
     def initial_state(self) -> NodeFields:
-        return node_fields(_Wrench(value=self._value()))
+        return node_fields(_Wrench(value=self._value(self.constants())))
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
         return {}
 
     @override
-    def update(self, state: NodeFields, boundary_inputs: Mapping[str, Array], dt: float, *,
-               params: Mapping[str, Any] | None = None) -> NodeFields:
-        return node_fields(_Wrench(value=self._value(params)))
+    def advance(self, p: Mapping[str, Any], state: dict[str, Array], boundary_inputs: Mapping[str, Array],
+                dt: float) -> dict[str, Array]:
+        return node_fields(_Wrench(value=self._value(p)))
 
 
 @register_interaction
@@ -145,11 +153,12 @@ class RangedShares(Interaction):
         hull = ctx.geometry(of="body")
         assert hull is not None
         count = self._count(ctx.id, hull)
-        radius = float(hull.settings["radius"])
+        radius = DEAF_RADIUS if self.mode == "deaf" else float(hull.settings["radius"])
         kept = 1e3 * radius if self.mode == "bake" else 1.0
+        held = np.full(6, 1e3 * radius) if self.mode == "array-bake" else None
         node = b.add_response_node(SharesNode(ctx.node_name(), ctx.timestep, value=WRENCH, count=int(count),
-                                              radius=radius, kept=kept))
+                                              radius=radius, kept=kept, held=held))
         b.connect(node["value"], into=b.target("wrench"))
 
 
-__all__ = ["PEAK", "WRENCH", "RangedShares", "SharesNode", "growing", "peaked"]
+__all__ = ["DEAF_RADIUS", "PEAK", "WRENCH", "RangedShares", "SharesNode", "growing", "peaked"]

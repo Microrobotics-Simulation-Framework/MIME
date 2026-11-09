@@ -13,8 +13,10 @@ is in.
 
 **The trace form**, at a relative move of ``1e-6`` inside each range (towards its middle): the base and the moved
 point assembled as a study assembles points, each step traced with the state, the inputs and the parameters as
-arguments; a constant of one that the other lacks is a value baked from the ranged one, which every member of a batched
-group would run at the first point's value. Refused as that entry's defect. Both checks run in float64, whatever the
+arguments; a constant of one that the other lacks, in the program or in a sub-program nested in it (a node's ``jit``, a
+``cond``, a ``scan``), is a value baked from the ranged one, which every member of a batched group would run at the
+first point's value. Refused as that entry's defect. A move that changes no leaf, no initial state and not the program
+is ``not-discriminating``, never ``quiet``: the form had nothing to see. Both checks run in float64, whatever the
 study's precision; each is made once for an experiment's content (its document, ranges included, and the code of its
 entries' packages) in a process, and reused."""
 
@@ -43,7 +45,7 @@ from mime.build import (
     plan_experiment,
 )
 from mime.build._construct import assemble
-from mime.build._in_graph import program_of
+from mime.build._in_graph import nested_program
 from mime.build._key import structure_key
 from mime.build._maddening import (
     chunk_step,
@@ -69,6 +71,10 @@ if TYPE_CHECKING:
 
 #: The relative move the trace form makes inside a range.
 MOVE = 1e-6
+#: The trace form's verdict on a move that changed no leaf, no initial state and not the step's program: neither build
+#: had anything to show, which is not ``quiet`` (the two-builds check's ``not-discriminating``).
+NOT_DISCRIMINATING = ("not-discriminating: the move changed no leaf, no initial state and not the step's program, so "
+                      "the trace form had nothing to see")
 #: The reason the checks' points declare their values with.
 CHECK_REASON = "a check of the experiment's declared ranges (mime.study)"
 
@@ -90,8 +96,8 @@ class Built:
 @dataclass(frozen=True)
 class RangeCheck:
     """What the checks found: each difference the independence check found (empty where none), by the point it was
-    found at; each ranged path's trace-form verdict (``quiet`` or what fired); their refusals; and what they cost,
-    in seconds, where they ran (``0.0`` where the verdicts were reused)."""
+    found at; each ranged path's trace-form verdict (``quiet``, ``not-discriminating`` or what fired); their refusals;
+    and what they cost, in seconds, where they ran (``0.0`` where the verdicts were reused)."""
 
     differences: tuple[str, ...]
     traced: Mapping[str, str]
@@ -116,7 +122,9 @@ def _built(settings: RunSettings, declarations: Sequence[Declaration]) -> Built:
 
 def step_program(graph: Any) -> Program:
     """An assembled graph's step, as MIME's chunked run executes it, traced with the state, a zero for each external
-    input and the parameters as arguments: its text without addresses and the constants it closes over."""
+    input and the parameters as arguments: its text without addresses and the constants it closes over, with those of
+    every nested sub-program (``mime.build._in_graph.nested_program``: a node's step runs inside a ``jit``, whose
+    closed-over arrays are that sub-program's constants)."""
     graph.compile()
     zeros: dict[str, dict[str, Any]] = {}
     for node, field in external_inputs(graph):
@@ -127,7 +135,7 @@ def step_program(graph: Any) -> Program:
     graph.reset_state()
     state = {node: dict(fields) for node, fields in full_state(graph).items()}
     traced = cast(Any, jax).make_jaxpr(traced_step)(state, fed_inputs(graph, zeros), graph_params(graph))
-    return program_of(traced)
+    return nested_program(traced)
 
 
 def programs_differ(a: Program, b: Program) -> bool:
@@ -261,7 +269,7 @@ def traced(settings: RunSettings, declarations: Sequence[Declaration]) -> tuple[
             verdicts[path] = "held: the move writes a leaf the step does not read"
             continue
         if not programs_differ(first, step_program(other.graph)):
-            verdicts[path] = "quiet"
+            verdicts[path] = "quiet" if moved or _array_differences(other.state, base.state, "") else NOT_DISCRIMINATING
             continue
         verdicts[path] = "fired"
         node = next((n for n, _ in moved), "")
@@ -334,4 +342,4 @@ def range_check(experiment: Experiment) -> RangeCheck:
     return found
 
 
-__all__ = ["CHECK_REASON", "MOVE", "RangeCheck", "forget", "independence", "range_check", "step_program", "traced"]
+__all__ = ["CHECK_REASON", "MOVE", "NOT_DISCRIMINATING", "RangeCheck", "forget", "independence", "range_check", "step_program", "traced"]

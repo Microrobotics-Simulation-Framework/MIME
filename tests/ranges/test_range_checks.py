@@ -9,7 +9,10 @@ sweep, on the planted entry (``ranged_planted.RangedShares``, no solver of its o
   range, and the plan reports it so (exploratory and research); the strict profile's rule refuses it.
 - **The independence check.** The planted entry that reads the range's width past ``choose_over`` is refused; the
   clean one is not.
-- **The trace form.** The planted entry that bakes a Python float from the radius into its step is refused.
+- **The trace form.** The planted entry that bakes a Python float from the radius into its step is refused, and so is
+  the one that bakes a NumPy array, which the node's step closes over inside the ``jit`` a ``MimeNode`` runs it in (the
+  control: the comparison of the top-level program alone, ``program_of``, calls it quiet). A move that changes nothing
+  the build holds is ``not-discriminating``, never ``quiet``.
 - **Cached.** The second plan of an unchanged experiment reuses both verdicts.
 
 Every control here fails on every run: each is deterministic (no draw), and each test asserts its control's refusal by
@@ -135,6 +138,29 @@ def test_the_trace_form_refuses_an_entry_that_bakes_the_ranged_value_into_its_st
         sweep("bake").plan()
     assert [r.code for r in refused.value.refusals] == ["entry.defect"]
     assert "changes a constant of the compiled step" in refused.value.refusals[0].message
+
+
+def test_the_trace_form_refuses_an_array_baked_into_the_nodes_nested_step_which_the_top_level_form_misses(
+        monkeypatch: pytest.MonkeyPatch):
+    import mime.study._ranges as ranges
+    from mime.build._in_graph import program_of
+
+    with pytest.raises(BuildRefused) as refused:
+        sweep("array-bake").plan()
+    assert [r.code for r in refused.value.refusals] == ["entry.defect"]
+    assert "changes a constant of the compiled step" in refused.value.refusals[0].message
+    forget()
+    monkeypatch.setattr(ranges, "nested_program", program_of)
+    blind = range_check(planted("array-bake"))
+    assert blind.traced == {RADIUS: "quiet"} and blind.refusals == (), "the control: the top-level program is blind"
+
+
+def test_a_move_that_changes_nothing_the_build_holds_is_not_discriminating_never_quiet():
+    from mime.study._ranges import NOT_DISCRIMINATING
+
+    found = range_check(planted("deaf"))
+    assert found.traced == {RADIUS: NOT_DISCRIMINATING} and found.refusals == ()
+    assert range_check(planted("clean")).traced == {RADIUS: "quiet"}, "the control: a moved leaf is quiet"
 
 
 def test_an_unchanged_experiments_next_plan_reuses_the_checks_verdicts():
