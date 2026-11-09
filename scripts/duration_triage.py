@@ -6,17 +6,22 @@ It reads the JUnit reports that the push runs and the nightly run of ``ci.yml`` 
 keeps the cold ones (a push starts with an empty compilation cache, the nightly run too), and writes
 
 1. ``tests/duration_ceilings.json``, the file the gate reads: for each listed test seen in at least ``--min-runs``
-   reports, 3 times its median, at least 60 s. The gate fails a push whose listed test passes its ceiling (once re-run
-   alone), and warns on a pull request unless the pull request owns the test. This file is written here and nowhere
-   else;
+   reports, the larger of 3 times its median and 1.2 times its 95th percentile, at least 60 s, and the medians it
+   came from. The gate fails a push whose listed test passes its ceiling (once re-run alone), and warns on a pull
+   request unless the pull request owns the test. This file is written here and nowhere else;
 2. additions to ``tests/duration_allowlist.txt`` by CONTRIBUTING's borderline rule: an unlisted test that was over the
    line (30 s) at least once, or over 85 % of it in at least a quarter of its reports. The entry's reason is a template
    with the measured times, ending in what a person must write before the pull request merges;
 3. removals from it: a listed test under 10 s in every one of its reports (at least ``--min-runs``).
 
-It lists, in the pull request body and not in the files, what a person should look at: the listed tests whose 90th
-percentile is over their ceiling, and the unlisted tests whose cold median is over 20 s (the real slow tests that the
-30 s line passes).
+It lists, in the pull request body and not in the files, what a person should look at, first of all **each ceiling
+that rose more than 1.5 times** since the file it replaces, with the test's median before and after (a possible
+regression: a ceiling fitted to a regression stops failing it, so a rise is never folded in silently), then the
+listed tests whose median moved more than 2 times between the window's earlier reports and its latest quarter, the listed tests whose largest report is over
+their ceiling, and the unlisted tests whose cold median is over 20 s (the real slow tests that the 30 s line passes).
+An addition is proposed only for a test pytest collects on this checkout, and never for ``tests/test_canary.py``
+(the planted tests of a manual run); run it on a checkout of ``release/v0.3.0``, because the branch is made from
+``HEAD``. The download is every duration artifact of the window (about 37 MB a run, so some 2 GB for a week of pushes).
 
     python scripts/duration_triage.py --days 7 --branch triage/durations-2026-11-16 --body-file body.md
     git push -u origin triage/durations-2026-11-16
@@ -38,6 +43,7 @@ import json
 import math
 import re
 import statistics
+import os
 import subprocess
 import tempfile
 import sys
@@ -52,9 +58,18 @@ CEILINGS = ROOT / "tests" / "duration_ceilings.json"
 LINE_S = 30.0
 NEAR_SHARE = 0.85
 QUARTER = 0.25
-#: A listed test is ceilinged at ``CEILING_FACTOR`` times its median, never under ``CEILING_FLOOR_S``.
+#: A listed test is ceilinged at the larger of ``CEILING_FACTOR`` times its median and ``SPREAD_FACTOR`` times its
+#: 95th percentile, never under ``CEILING_FLOOR_S`` (the review of #218: on the 35 cold push reports this was red on
+#: 9 raw and 0 persistent runs, against 23 and 9 for 3 times the median alone).
 CEILING_FACTOR = 3.0
+SPREAD_FACTOR = 1.2
 CEILING_FLOOR_S = 60.0
+#: A ceiling that rose over this share of the file it replaces is a possible regression, listed first in the body.
+RISE_SHARE = 1.5
+#: A listed test whose median in the window's latest quarter is this far from the rest of the window moved.
+MOVED_SHARE = 2.0
+#: The planted tests of a manual run (``plant_slow_tests``): never proposed.
+CANARY_FILE = "tests/test_canary.py"
 #: A listed test under this in every report is proposed for removal.
 REMOVE_UNDER_S = 10.0
 #: An unlisted test whose cold median is over this is named in the body, though the line passes it.
@@ -82,6 +97,7 @@ class Stats(NamedTuple):
     n: int
     median: float
     p90: float
+    p95: float
     maximum: float
     max_run: int
     over_line: int
@@ -95,39 +111,73 @@ class Proposal(NamedTuple):
     over_ceiling: dict[str, tuple[Stats, float]]
     flagged: dict[str, Stats]
     reports: int
+    #: ``{test: (old ceiling, new ceiling, old median or None, new median)}`` for each ceiling that rose over RISE_SHARE.
+    raised: dict[str, tuple[float, float, float | None, float]] = {}
+    #: ``{test: (median of its earlier reports, of its latest quarter)}`` where they differ over MOVED_SHARE.
+    moved: dict[str, tuple[float, float]] = {}
+    #: Tests that would have been proposed but that pytest does not collect on this checkout.
+    uncollected: tuple[str, ...] = ()
+
+
+def _percentile(sorted_seconds: list[float], share: float) -> float:
+    """Nearest rank."""
+    return sorted_seconds[min(len(sorted_seconds) - 1, math.ceil(share * len(sorted_seconds)) - 1)]
 
 
 def stats_of(observations: list[Observation], *, line: float = LINE_S) -> Stats:
     seconds = sorted(o.seconds for o in observations)
-    p90 = seconds[min(len(seconds) - 1, math.ceil(0.9 * len(seconds)) - 1)]
     worst = max(observations, key=lambda o: o.seconds)
-    return Stats(len(seconds), statistics.median(seconds), p90, worst.seconds, worst.run,
-                 sum(s > line for s in seconds), sum(s > NEAR_SHARE * line for s in seconds))
+    return Stats(len(seconds), statistics.median(seconds), _percentile(seconds, 0.9), _percentile(seconds, 0.95),
+                 worst.seconds, worst.run, sum(s > line for s in seconds), sum(s > NEAR_SHARE * line for s in seconds))
 
 
-def ceiling_of(median: float) -> float:
-    return float(max(CEILING_FLOOR_S, math.ceil(CEILING_FACTOR * median)))
+def ceiling_of(median: float, p95: float = 0.0) -> float:
+    return float(max(CEILING_FLOOR_S, math.ceil(max(CEILING_FACTOR * median, SPREAD_FACTOR * p95))))
+
+
+def moved_of(observations: list[Observation]) -> tuple[float, float] | None:
+    """The medians of a test's earlier reports and of its latest quarter (by run), if they differ over MOVED_SHARE: a
+    regime change near the end of the window, which a median over the whole window hides."""
+    ordered = [o.seconds for o in sorted(observations, key=lambda o: (o.run, o.lane))]
+    if len(ordered) < 8:
+        return None
+    cut = len(ordered) - len(ordered) // 4
+    early, late = statistics.median(ordered[:cut]), statistics.median(ordered[cut:])
+    low, high = sorted((early, late))
+    return (early, late) if low > 0 and high / low > MOVED_SHARE else None
 
 
 def triage(observed: dict[str, list[Observation]], allow: dict[str, str], old_ceilings: dict[str, float], *,
-           line: float = LINE_S, min_runs: int = 3) -> Proposal:
-    """What the week's cold observations propose. Pure: nothing is read or written here."""
+           line: float = LINE_S, min_runs: int = 3, old_medians: dict[str, float] | None = None,
+           collected: set[str] | None = None) -> Proposal:
+    """What the week's cold observations propose. Pure: nothing is read or written here.
+
+    ``collected`` (``None``: unknown) is the set of node ids pytest collects on this checkout; a test outside it is
+    never proposed for the allowlist (it was renamed or removed since the reports). The planted canary never is.
+    """
+    old_medians = old_medians or {}
+    observed = {n: o for n, o in observed.items() if not n.startswith(f"{CANARY_FILE}::")}
     stats = {nodeid: stats_of(obs, line=line) for nodeid, obs in observed.items()}
-    additions = {n: s for n, s in stats.items()
-                 if n not in allow and (s.over_line >= 1 or s.near_line >= QUARTER * s.n)}
+    candidates = {n: s for n, s in stats.items()
+                  if n not in allow and (s.over_line >= 1 or s.near_line >= QUARTER * s.n)}
+    additions = {n: s for n, s in candidates.items() if collected is None or n in collected}
+    uncollected = tuple(sorted(set(candidates) - set(additions)))
     removals = {n: s for n, s in stats.items()
                 if n in allow and s.n >= min_runs and s.maximum < REMOVE_UNDER_S}
     listed = (set(allow) | set(additions)) - set(removals)
     ceilings = {}
     for nodeid in sorted(listed):
         if nodeid in stats and stats[nodeid].n >= min_runs:
-            ceilings[nodeid] = ceiling_of(stats[nodeid].median)
+            ceilings[nodeid] = ceiling_of(stats[nodeid].median, stats[nodeid].p95)
         elif nodeid in old_ceilings:
             ceilings[nodeid] = old_ceilings[nodeid]      # not seen enough this week: its ceiling stands
-    over = {n: (stats[n], c) for n, c in ceilings.items() if n in stats and stats[n].n >= min_runs and stats[n].p90 > c}
+    over = {n: (stats[n], c) for n, c in ceilings.items() if n in stats and stats[n].n >= min_runs and stats[n].maximum > c}
     flagged = {n: s for n, s in stats.items() if n not in allow and n not in additions and s.median > FLAG_MEDIAN_S}
     reports = len({(o.run, o.lane) for obs in observed.values() for o in obs})
-    return Proposal(additions, removals, ceilings, over, flagged, reports)
+    raised = {n: (old_ceilings[n], c, old_medians.get(n), stats[n].median) for n, c in ceilings.items()
+              if n in old_ceilings and n in stats and stats[n].n >= min_runs and c > RISE_SHARE * old_ceilings[n]}
+    moved = {n: m for n in ceilings if n in observed and (m := moved_of(observed[n]))}
+    return Proposal(additions, removals, ceilings, over, flagged, reports, raised, moved, uncollected)
 
 
 def addition_line(nodeid: str, s: Stats) -> str:
@@ -144,14 +194,43 @@ def apply_allowlist(text: str, proposal: Proposal) -> str:
     return "\n".join(kept) + "\n"
 
 
-def ceilings_json(proposal: Proposal, *, today: datetime.date, source: str) -> str:
+def ceilings_json(proposal: Proposal, *, today: datetime.date, source: str, medians: dict[str, float] | None = None) -> str:
+    """``medians`` (a test's median over the source) are kept so that the next triage can show a ceiling's rise."""
+    medians = medians or {}
     return json.dumps({
         "written_by": "scripts/duration_triage.py: do not edit by hand",
         "generated": today.isoformat(),
         "source": source,
-        "rule": f"{CEILING_FACTOR:g} times the test's median over the cold reports of the source, at least {CEILING_FLOOR_S:g} s",
+        "rule": (f"the larger of {CEILING_FACTOR:g} times the test's median and {SPREAD_FACTOR:g} times its 95th percentile "
+                 f"over the cold reports of the source, at least {CEILING_FLOOR_S:g} s"),
         "ceilings": dict(sorted(proposal.ceilings.items())),
+        "medians": {n: round(medians[n], 1) for n in sorted(proposal.ceilings) if n in medians},
     }, indent=1) + "\n"
+
+
+def read_old(path: Path) -> tuple[dict[str, float], dict[str, float]]:
+    """The ceilings and the medians of the file the triage replaces (none of either if it is absent)."""
+    if not path.exists():
+        return {}, {}
+    table = json.loads(path.read_text(encoding="utf-8"))
+    return ({n: float(c) for n, c in table["ceilings"].items()},
+            {n: float(m) for n, m in table.get("medians", {}).items()})
+
+
+def collect_ids(files: list[str]) -> set[str]:
+    """The node ids pytest collects in ``files`` on this checkout (slow-marked ones too, as the allowlist's own test does)."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("MADDENING_TEST_SHARD", "MADDENING_TEST_JAX_TIMING", "MADDENING_TEST_RELEASE_BETWEEN_FILES",
+                        "PYTEST_ADDOPTS", "MIME_CI_PLANT_FAILURE", "MIME_CI_PLANT_SLOW_TESTS")}
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    files = [f for f in files if (ROOT / f).is_file()]      # a file the checkout no longer has collects nothing
+    if not files:
+        return set()
+    done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+                           "-m", "slow or not slow", *files], cwd=ROOT, env=env, capture_output=True, text=True)
+    if done.returncode not in (0, 5):
+        raise SystemExit(f"duration_triage: pytest could not collect {len(files)} files:\n{done.stdout[-2000:]}{done.stderr[-2000:]}")
+    return {line.strip() for line in done.stdout.splitlines() if "::" in line}
 
 
 # -- reading what CI uploaded ---------------------------------------------------------------------------------------
@@ -229,17 +308,35 @@ def body(proposal: Proposal, *, today: datetime.date, source: str, ceilings_only
            "starts none). Nothing here merges itself.", ""]
     if ceilings_only:
         out += ["This run wrote the ceilings file alone (`--ceilings-only`).", ""]
+    out += [f"### Possible regressions: ceilings that rose more than {RISE_SHARE:g} times ({len(proposal.raised)})", "",
+            "A ceiling fitted to a regression stops failing it, so each rise is looked at before this merges: find the "
+            "commit that slowed the test, or say here why the new cost is the right one.", ""]
+    out += ["| test | ceiling before s | ceiling after s | median before s | median after s |", "|---|---:|---:|---:|---:|",
+            *[f"| `{n}` | {old:g} | {new:g} | {'not recorded' if before is None else f'{before:g}'} | {after:.1f} |"
+              for n, (old, new, before, after) in sorted(proposal.raised.items())], ""] \
+        if proposal.raised else ["None.", ""]
     out += [f"### Allowlist additions ({len(proposal.additions)})", "",
             f"Over {LINE_S:g} s at least once, or over {NEAR_SHARE * LINE_S:g} s in a quarter of the reports "
-            "(CONTRIBUTING.md, borderline tests). **Each entry's reason ends with a sentence to write before merging**, "
+            "(CONTRIBUTING.md, borderline tests); only tests pytest collects on this checkout. **Each entry's reason ends "
+            "with a sentence to write before merging** (`tests/test_duration_rule.py` refuses a merged placeholder), "
             "and the file's own check refuses an entry that does not start `kept:`.", ""]
     out += [head, rule, *[_row(n, s) for n, s in sorted(proposal.additions.items())], ""] if proposal.additions else ["None.", ""]
+    if proposal.uncollected:
+        out += ["Over the line but not collected on this checkout (renamed or removed since the reports; not proposed): "
+                + ", ".join(f"`{n}`" for n in proposal.uncollected), ""]
     out += [f"### Allowlist removals ({len(proposal.removals)})", "",
             f"Under {REMOVE_UNDER_S:g} s in every cold report.", ""]
     out += [head, rule, *[_row(n, s) for n, s in sorted(proposal.removals.items())], ""] if proposal.removals else ["None.", ""]
     out += [f"### Ceilings ({len(proposal.ceilings)} listed tests)", "",
-            f"`tests/duration_ceilings.json` is rewritten: {CEILING_FACTOR:g} times the median, at least {CEILING_FLOOR_S:g} s. "
-            "Look at these, whose 90th percentile is over their ceiling (the ceiling would fail one push in ten):", ""]
+            f"`tests/duration_ceilings.json` is rewritten: the larger of {CEILING_FACTOR:g} times the median and "
+            f"{SPREAD_FACTOR:g} times the 95th percentile, at least {CEILING_FLOOR_S:g} s.", ""]
+    out += [f"Listed tests whose median moved more than {MOVED_SHARE:g} times within the window (the earlier "
+            "reports against the latest quarter: a regime change, not noise; the ceiling is fitted to both):", "",
+            "| test | earlier median s | latest quarter median s |", "|---|---:|---:|",
+            *[f"| `{n}` | {early:.1f} | {late:.1f} |" for n, (early, late) in sorted(proposal.moved.items())], ""] \
+        if proposal.moved else []
+    out += ["Whose largest report is over their ceiling (the ceiling would have failed a push in the window; the ceiling is "
+            "never under 1.2 times the 95th percentile, so only the top of the window can pass it):", ""]
     out += ["| test | reports | median s | p90 s | max s | ceiling s |", "|---|---:|---:|---:|---:|---:|",
             *[_row(n, s, f"{c:g}") for n, (s, c) in sorted(proposal.over_ceiling.items())], ""] \
         if proposal.over_ceiling else ["None.", ""]
@@ -274,8 +371,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"duration_triage: no cold report under {root}", file=sys.stderr)
         return 1
     allow = gate.read_allowlist(ALLOWLIST)
-    old = gate.read_ceilings(CEILINGS) if CEILINGS.exists() else {}
-    proposal = triage(observed, allow, old, min_runs=args.min_runs)
+    old, old_medians = read_old(CEILINGS)
+    proposal = triage(observed, allow, old, min_runs=args.min_runs, old_medians=old_medians)
+    if proposal.additions and not args.ceilings_only:
+        files = sorted({n.split("::", 1)[0] for n in proposal.additions})
+        proposal = triage(observed, allow, old, min_runs=args.min_runs, old_medians=old_medians,
+                          collected=collect_ids(files))
     if args.ceilings_only:
         proposal = proposal._replace(additions={}, removals={}, ceilings={
             n: c for n, c in proposal.ceilings.items() if n in allow})
@@ -294,7 +395,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"duration_triage: uncommitted changes to the files it writes:\n{dirty}", file=sys.stderr)
             return 1
         subprocess.run(["git", "switch", "-c", args.branch], cwd=ROOT, check=True)
-    CEILINGS.write_text(ceilings_json(proposal, today=today, source=source), encoding="utf-8")
+    medians = {n: statistics.median(o.seconds for o in observed[n]) for n in proposal.ceilings if n in observed}
+    medians |= {n: m for n, m in old_medians.items() if n in proposal.ceilings and n not in medians}
+    CEILINGS.write_text(ceilings_json(proposal, today=today, source=source, medians=medians), encoding="utf-8")
     if not args.ceilings_only:
         ALLOWLIST.write_text(apply_allowlist(ALLOWLIST.read_text(encoding="utf-8"), proposal),
                              encoding="utf-8")

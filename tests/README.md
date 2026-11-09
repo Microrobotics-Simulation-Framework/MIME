@@ -565,9 +565,10 @@ MADDENING's, read from each test's wall time (setup, call and teardown) in the J
 | over 5 s | Mark it `slow`, make it much faster, or keep it on every push by listing it in `duration_allowlist.txt` as `<node id> # kept: <why>`. |
 
 An unlisted test over 5 s gets a warning annotation on the run. An unlisted test over 30 s is re-run once, alone, and
-fails the job if it is over 30 s again, when it is the change's own (its file is in the diff, or its node id is new on the
-base); any other unlisted test fails only over a flat 90 s. An allowlisted test over 30 s passes with a warning, and over
-its ceiling (3 times its weekly median, at least 60 s, `duration_ceilings.json`, written by `scripts/duration_triage.py`)
+fails the job if it is over 30 s again, on a push whatever the diff, and on a pull request when it is the change's own
+(its file is in the diff, or its node id is new on the base); on a pull request any other unlisted test fails only over a
+flat 90 s. An allowlisted test over 30 s passes with a warning, and over its ceiling (the larger of 3 times its median
+and 1.2 times its 95th percentile, at least 60 s, `duration_ceilings.json`, written by `scripts/duration_triage.py`)
 fails a push and warns a pull request (CONTRIBUTING.md, "CI: the duration gate"; the rule of 2026-11-09). Each lane's `Test durations` step (`scripts/report_test_durations.py`, a copy of MADDENING's) writes the
 bands, the slowest tests and files, and the totals of wall time and CPU time to the run page. `conftest.py` records
 each test's own CPU time and that of the processes it starts, since the xdist workers share the runner's cores and a
@@ -580,5 +581,5 @@ The controls are in `test_report_test_durations.py` (the gate on hand-written re
 writes its report and lets the gate fail the job, with a mutation per way it could stop), in `test_duration_rule.py` (each
 branch of the 30 s, 90 s and ceiling rule on a pull request and on a push, each with a control that fails the other way,
 the check that every gate step applies it, and the weekly triage) and in a planted CI run: the `plant_slow_tests` input
-makes the two planted tests in `test_canary.py` take 95 s and 6 s, and every lane must fail on the first (the planted
-test is no change's own, so it must pass the flat 90 s) and warn on the second.
+makes the two planted tests in `test_canary.py` take 95 s and 6 s, and every lane must fail on the first (95 s is over the flat 90 s, which a test no change owns must pass; a test pins
+that) and warn on the second.

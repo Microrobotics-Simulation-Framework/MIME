@@ -231,33 +231,60 @@ job in every lane; each lane's required check must then be red.
 **The rule (decided 2026-11-09 on the maintainer's approval of a measured proposal; he can reverse it).** Each shard's
 `Test durations` step (`scripts/report_test_durations.py`) judges every test by who answers for it:
 
-- An unlisted test over **30 s** fails the job only if it is **the change's own**: its file is in the change's diff, or
-  its node id is new (the base does not collect it, which covers a case that a registry entry adds to a test file the
-  change never opened). The test is re-run once, alone, with an empty compilation cache, and fails only if it is over
-  30 s again.
-- Any **other** unlisted test fails only over a flat **90 s** (again after the re-run); between 30 s and 90 s it warns.
-  Over 5 s every unlisted test warns, as before.
-- A **listed** test has a **ceiling**: 3 times its median over the week's cold runs, at least 60 s
-  (`tests/duration_ceilings.json`, written by the triage below, never by hand). Over it, the step fails a push and warns a
-  pull request, unless the pull request owns the test (the same two tests of "own"), where it fails. The re-run applies
-  to a ceiling too. A listed test with no ceiling in the file (added since the last triage) has none.
-- "The change" is the pull request's diff against its base (the merge commit against its first parent); on a push and a
-  manual run, the push's head against the previous head (`github.event.before`), else against the head's first parent.
-  The 3.13 and `-main` lanes apply the same rule and warn instead of failing (above). If the diff or the base's
-  collection cannot be read, every test counts as the change's own.
+- An unlisted test over **30 s** is re-run once, alone, with an empty compilation cache, and fails the job only if it is
+  over 30 s again. **On a push, a manual run and the nightly run, that holds for every unlisted test, whatever the diff**:
+  the push is the merged change, and its cache is more often warm than a pull request's. **On a pull request** it holds
+  only for **the change's own** test: its file is in the change's diff, or its node id is new (the base does not collect
+  it, which covers a case that a registry entry adds to a test file the change never opened).
+- On a pull request, any **other** unlisted test fails only over a flat **90 s** (again after the re-run); **between 30 s
+  and 90 s it warns, and the pull request passes.** That band is the price of the rule: a pull request that slows a test
+  it did not touch (an un-jitted loop in `src`) can take a 3 s test to 89 s with green checks, and it is caught by the
+  push after the merge (over 30 s, and for a listed test over its ceiling). Over 5 s every unlisted test warns, as before.
+- A **listed** test has a **ceiling**: the larger of 3 times its median and 1.2 times its 95th percentile over the
+  triage's window of cold runs, at least 60 s (`tests/duration_ceilings.json`, written by the triage below, never by
+  hand). Over it, the step fails a push and warns a pull request, unless the pull request owns the test (the same two
+  tests of "own"), where it fails. The re-run applies to a ceiling too. A listed test with no ceiling in the file (added
+  since the last triage) has none.
+- "The change" on a pull request is its diff against its base (`--own-against HEAD^1`: the merge commit against its first
+  parent). If the diff or the base's collection cannot be read, or the base is a zero or an unfetchable revision, every
+  test counts as the change's own (strict).
+- The 3.13 and `-main` lanes apply the same rule and warn instead of failing (above).
 
-The numbers come from two days of pull request runs (28 push runs beside them): at 20 s the gate failed 24 shard jobs of
-9 of 79 runs; 3 of its (run, test) pairs, in 2 runs, were slow in the real sense and the rest cold-cache artefacts (a
-warm time of 0.1 to 17 s). At 30 s for the change's own tests and 90 s for the rest it fails 13 of those jobs, in 3 runs,
-one of them real (the other two are an own test's cold first run and a cold-by-design run, which the re-run alone
-clears or does not). What it lets through is slow tests between 20 s and 30 s, and the triage is the check on those.
+**Why the ceiling is not 3 times the median.** On the 35 cold push reports of 6 to 9 November (729 listed tests, 694 with a
+ceiling), 3 times the median with a 60 s floor left 23 of the 35 runs with a first-run exceedance and 9 with the same test
+over in both lanes (a proxy for the re-run alone not clearing it): a red push most days. A spread term fixes most of it:
+
+| ceiling | runs with an exceedance, of 35 | with the same test over in both lanes | rolling (ceiling from the previous 10 runs), of 34 |
+|---|---:|---:|---:|
+| 3 x median, at least 60 s | 23 | 9 | 17 and 8 |
+| **max(3 x median, 1.2 x p95), at least 60 s** | **9** | **0** | **13 and 3** |
+| max(3 x median, 1.5 x p90) | 11 | 2 | 13 and 4 |
+| 4 x median, at least 60 s | 10 | 3 | 11 and 4 |
+
+The in-sample columns are optimistic (the exceeding run is in the statistic); the rolling column is the fairer read. On the
+last 10 of the 35 runs, 5 of the 694 listed tests pass the new ceiling (4 runs, none in both lanes), against 8 for the first.
+Three tests changed regime inside the window (`test_closed_loop`'s 0.2.0 pair case, median 76 s, then 275 to 664 s in the
+last 4 runs, with the 0.2.0 family-walk cases beside it; the two `driven` cases of `test_full_inertia_tensor`, 9 to 22 s,
+then 36 to 87 s); no rule can be fitted to them, so the triage names each ceiling that **rose over 1.5 times** at the top
+of its pull request body, with the test's median before and after (a ceiling fitted to a regression stops failing it, so a
+rise is never folded in silently).
+
+The numbers come from two days of pull request runs (28 push runs beside them): at 20 s the gate failed 20 shard jobs
+(24 failing records) in 9 of 79 runs; 3 of its (run, test) pairs, in 2 runs, were slow in the real sense and the rest
+cold-cache artefacts (a warm time of 0.1 to 17 s). At 30 s for the change's own tests and 90 s for the rest it fails 12
+of those jobs (13 records), in 3 runs, one of them real (the other two are an own test's cold first run and a
+cold-by-design run, which the re-run alone clears or does not). Both counts are upper bounds. What it lets through is slow
+tests between 20 s and 30 s, and the triage is the check on those.
 
 **The weekly triage** (`scripts/duration_triage.py`) reads a week of cold push and nightly reports (`durations-default-*`
-of `ci.yml` on `release/v0.3.0`, Python 3.12 and 3.14, about 20 runs) and writes one branch: the ceilings file, additions
-to `tests/duration_allowlist.txt` by the rule below, and removals (a listed test under 10 s in every report). Its pull
-request body also names the listed tests whose 90th percentile is over their ceiling and the unlisted tests whose cold
-median is over 20 s. **Run it as your own account**, never from a workflow: a pull request opened with `GITHUB_TOKEN`
-starts no checks. No schedule is set; the maintainer sets one when he wants it.
+of `ci.yml` on `release/v0.3.0`, Python 3.12 and 3.14: about 50 push runs and 2 GB of artifacts a week) and writes one
+branch, made from the checkout's `HEAD`, so run it on a clean checkout of `release/v0.3.0`: the ceilings file,
+additions to `tests/duration_allowlist.txt` by the rule below (only a test pytest collects on that checkout, and never
+`tests/test_canary.py`, the planted tests), and removals (a listed test under 10 s in every report). Its pull request body
+names, first, each ceiling that rose over 1.5 times; then the listed tests whose median moved over 2 times between the
+window's earlier reports and its latest quarter, the listed tests whose largest report is over their ceiling, and the
+unlisted tests whose cold median is over 20 s. **Run it as your own account**, never from a workflow: a pull request
+opened with `GITHUB_TOKEN` starts no checks. No schedule is set; the maintainer sets one when he wants it.
 
 ```
 python scripts/duration_triage.py --branch triage/durations-$(date +%F) --body-file body.md
@@ -266,7 +293,8 @@ gh pr create --base release/v0.3.0 --title "ci: the weekly duration triage" --bo
 ```
 
 An added entry's reason ends in a sentence a person writes (why the test must run on every push) before the pull request
-merges; the allowlist's own test refuses an entry that does not start `kept:`.
+merges; the allowlist's own test refuses an entry that does not start `kept:`, and `test_duration_rule.py` one that still
+holds the placeholder.
 
 **Borderline tests.** A push to `release/v0.3.0` runs cold (an empty compilation cache) and a shard draws whichever runner
 class is free, so a test near the line fails the `Test durations` step on some runs and not others, with nothing wrong in

@@ -1,8 +1,9 @@
 """The duration rule of 2026-11-09 (CONTRIBUTING.md, "CI: the duration gate"), branch by branch, and the weekly triage.
 
-An unlisted test over 30 s fails only if it is the change's own (its file is in the diff, or its node id is new on the
-base); any other unlisted test fails only over a flat 90 s. A listed test has a ceiling from ``tests/duration_ceilings.json``,
-which fails a push and warns a pull request unless the pull request owns the test. Every failure is re-run alone first.
+An unlisted test over 30 s fails a push whatever the diff, and fails a pull request only if it is the change's own (its
+file is in the diff, or its node id is new on the base); on a pull request any other unlisted test fails only over a flat
+90 s. A listed test has a ceiling from ``tests/duration_ceilings.json``, which fails a push and warns a pull request
+unless the pull request owns the test. Every failure is re-run alone first.
 
 Each branch is a test with a control beside it that must fail the other way: a rule that passes everything, or fails
 everything, would pass half of every pair. Everything runs in-process on hand-written XML, except the one test that asks
@@ -80,51 +81,73 @@ PUSH, PULL = ["--event", "push"], ["--event", "pull_request"]
 
 # -- an unlisted test, own or not ------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("event", [PUSH, PULL])
 @pytest.mark.parametrize("seconds, code", [(30.0, 0), (30.1, 1)])
 def test_a_test_in_a_file_the_diff_touches_fails_over_the_30_s_line_and_not_at_it(
-        gate, tmp_path, capsys, monkeypatch, event, seconds, code):
+        gate, tmp_path, capsys, monkeypatch, seconds, code):
     report = _report(tmp_path, _case(FILE, "test_slow", seconds))
     _own(gate, monkeypatch, [FILE], {FILE: {NODE}})            # the id is old: only the file makes it the change's own
-    got, out = _run(gate, capsys, report, "--own-against", "", *event)
+    got, out = _run(gate, capsys, report, "--own-against", "", *PULL)
     assert got == code, out
     assert ("title=Test over 30 s::" in out) is bool(code)
 
 
-@pytest.mark.parametrize("event", [PUSH, PULL])
-def test_control_the_same_slow_test_in_an_untouched_file_with_an_old_id_only_warns(
-        gate, tmp_path, capsys, monkeypatch, event):
+def test_control_the_same_slow_test_in_an_untouched_file_with_an_old_id_only_warns_on_a_pull_request(
+        gate, tmp_path, capsys, monkeypatch):
     report = _report(tmp_path, _case(FILE, "test_slow", 35.0))
     _own(gate, monkeypatch, ["tests/other/test_y.py"], {FILE: {NODE}})
-    code, out = _run(gate, capsys, report, "--own-against", "", *event)
+    code, out = _run(gate, capsys, report, "--own-against", "", *PULL)
     assert code == 0 and "::error" not in out
     assert "title=Test over 30 s, not this change's::" in out
     assert "not this change's, under the flat line -- warns" in Path(str(report) + ".md").read_text()
     # ... and without --own-against every test is the change's own, which fails the same report.
-    assert _run(gate, capsys, report, *event)[0] == 1
+    assert _run(gate, capsys, report, *PULL)[0] == 1
 
 
-@pytest.mark.parametrize("event", [PUSH, PULL])
-def test_a_new_node_id_in_a_file_the_diff_does_not_touch_is_the_changes_own(gate, tmp_path, capsys, monkeypatch, event):
+@pytest.mark.parametrize("event", [["--event", "push"], ["--event", "workflow_dispatch"], ["--event", "schedule"]])
+def test_on_a_push_or_a_manual_run_an_unlisted_test_over_30_s_fails_whatever_the_diff(
+        gate, tmp_path, capsys, monkeypatch, event):
+    """A slow test that a change caused without touching it (an un-jitted loop in ``src``): the push is the merged change."""
+    report = _report(tmp_path, _case(FILE, "test_slow", 35.0))
+    monkeypatch.setattr(gate, "scope_against", lambda rev: pytest.fail("a push reads no diff"))
+    code, out = _run(gate, capsys, report, "--own-against", "HEAD^1", *event)
+    assert code == 1 and "title=Test over 30 s::" in out
+    # The control: the same report, the same flag and an untouched file on a pull request only warns ...
+    _own(gate, monkeypatch, ["src/mime/x.py"], {FILE: {NODE}})
+    code, out = _run(gate, capsys, report, "--own-against", "HEAD^1", *PULL)
+    assert code == 0 and "::error" not in out
+    # ... and a push still passes a test at the line, so the push rule is 30 s and not zero.
+    ok = _report(tmp_path, _case(FILE, "test_slow", 30.0), name="ok.xml")
+    monkeypatch.setattr(gate, "scope_against", lambda rev: pytest.fail("a push reads no diff"))
+    assert _run(gate, capsys, ok, "--own-against", "HEAD^1", *event)[0] == 0
+
+
+def test_a_push_forgives_a_test_over_30_s_that_a_re_run_alone_clears(gate, tmp_path, capsys, monkeypatch):
+    report = _report(tmp_path, _case(FILE, "test_slow", 35.0))
+    for again, code in ((12.0, 0), (31.0, 1)):
+        monkeypatch.setattr(gate, "run_pytest_again", lambda nodeids, rep, cache, s=again, **_: rep.write_text(
+            '<testsuites><testsuite name="pytest">' + _case(FILE, "test_slow", s) + "</testsuite></testsuites>") or 0)
+        assert _run(gate, capsys, report, "--retry-outliers", *PUSH)[0] == code
+
+
+def test_a_new_node_id_in_a_file_the_diff_does_not_touch_is_the_changes_own(gate, tmp_path, capsys, monkeypatch):
     """The case a registry entry adds: the test file is never opened, the id is new (#186's `rigid_inertial` case)."""
     new = f"{FILE}::test_slow[dynamics rigid_inertial 0.4.0]"
     report = _report(tmp_path, _case(FILE, "test_slow[dynamics rigid_inertial 0.4.0]", 34.0))
     _own(gate, monkeypatch, ["src/mime/nodes/body/_rigid_inertial.py"], {FILE: {f"{FILE}::test_slow[dynamics toy.body 0.1.0]"}})
-    code, out = _run(gate, capsys, report, "--own-against", "", *event)
+    code, out = _run(gate, capsys, report, "--own-against", "", *PULL)
     assert code == 1 and new in out
     # The control: the base collects that id too, so it is not new, and the same time only warns.
     _own(gate, monkeypatch, ["src/mime/nodes/body/_rigid_inertial.py"], {FILE: {new}})
-    code, out = _run(gate, capsys, report, "--own-against", "", *event)
+    code, out = _run(gate, capsys, report, "--own-against", "", *PULL)
     assert code == 0 and "::error" not in out
 
 
-@pytest.mark.parametrize("event", [PUSH, PULL])
 @pytest.mark.parametrize("seconds, code", [(90.0, 0), (90.1, 1)])
-def test_a_test_that_is_not_the_changes_fails_only_over_the_flat_90_s(
-        gate, tmp_path, capsys, monkeypatch, event, seconds, code):
+def test_a_test_that_is_not_the_changes_fails_a_pull_request_only_over_the_flat_90_s(
+        gate, tmp_path, capsys, monkeypatch, seconds, code):
     report = _report(tmp_path, _case(FILE, "test_slow", seconds))
     _own(gate, monkeypatch, ["tests/other/test_y.py"], {FILE: {NODE}})
-    got, out = _run(gate, capsys, report, "--own-against", "", *event)
+    got, out = _run(gate, capsys, report, "--own-against", "", *PULL)
     assert got == code, out
     assert ("title=Test over 90 s::" in out) is bool(code)
 
@@ -132,20 +155,20 @@ def test_a_test_that_is_not_the_changes_fails_only_over_the_flat_90_s(
 def test_a_base_that_cannot_be_read_makes_every_test_the_changes_own(gate, tmp_path, capsys, monkeypatch):
     report = _report(tmp_path, _case(FILE, "test_slow", 35.0))
     monkeypatch.setattr(gate, "scope_against", lambda rev: gate.Scope(None))
-    code, out = _run(gate, capsys, report, "--own-against", "")
+    code, out = _run(gate, capsys, report, "--own-against", "", *PULL)
     assert code == 1 and "could not be read, so every test counts as this change's own" in out
     # A diff that was read but whose base could not be collected is strict for the test it cannot place, not for all.
     monkeypatch.setattr(gate, "scope_against", lambda rev: gate.Scope({"x.py"}, lambda f: None))
-    assert _run(gate, capsys, report, "--own-against", "")[0] == 1
+    assert _run(gate, capsys, report, "--own-against", "", *PULL)[0] == 1
     monkeypatch.setattr(gate, "scope_against", lambda rev: gate.Scope({"x.py"}, lambda f: {NODE}))
-    assert _run(gate, capsys, report, "--own-against", "")[0] == 0
+    assert _run(gate, capsys, report, "--own-against", "", *PULL)[0] == 0
 
 
 def test_the_base_is_collected_only_for_a_test_that_is_over_the_line(gate, tmp_path, capsys, monkeypatch):
     report = _report(tmp_path, _case(FILE, "test_fast", 3.0), _case(FILE, "test_middling", 29.0))
     monkeypatch.setattr(gate, "scope_against", lambda rev: gate.Scope(
         {"x.py"}, lambda f: pytest.fail("a test under the line has no need of the base")))
-    assert _run(gate, capsys, report, "--own-against", "")[0] == 0
+    assert _run(gate, capsys, report, "--own-against", "", *PULL)[0] == 0
 
 
 def test_every_failure_is_run_again_alone_against_the_line_that_applied_to_it(gate, tmp_path, capsys, monkeypatch):
@@ -165,11 +188,11 @@ def test_every_failure_is_run_again_alone_against_the_line_that_applied_to_it(ga
 
     # Mine is forgiven by a 29 s re-run (under 30) and the other by an 89 s one (under 90).
     monkeypatch.setattr(gate, "run_pytest_again", again({mine: 29.0, other: 89.0}))
-    code, out = _run(gate, capsys, report, "--own-against", "", "--retry-outliers")
+    code, out = _run(gate, capsys, report, "--own-against", "", "--retry-outliers", *PULL)
     assert code == 0 and sorted(ran[0]) == sorted([mine, other]), (code, out)
     # The control: 31 s is over mine's line of 30, though under the other's flat 90, so mine alone stays red.
     monkeypatch.setattr(gate, "run_pytest_again", again({mine: 31.0, other: 89.0}))
-    code, out = _run(gate, capsys, report, "--own-against", "", "--retry-outliers")
+    code, out = _run(gate, capsys, report, "--own-against", "", "--retry-outliers", *PULL)
     assert code == 1 and f"{mine} took" in out and "::error" in out
     assert out.count("::error") == 1 and other not in "".join(ln for ln in out.splitlines() if ln.startswith("::error"))
 
@@ -290,7 +313,11 @@ def test_scope_against_a_real_base_reads_the_diff_and_the_ids_the_base_collects(
         assert scope.is_own(touched)                     # its file is in the diff
     finally:
         scope.close()
-    assert gate.scope_against("0" * 40).changed == scope.changed      # an unknown revision falls back to the first parent
+    assert gate.scope_against("HEAD^1").changed == scope.changed
+    # Strict, not lenient: a zero revision (a new branch's `before`) or one the clone cannot get makes every test the
+    # change's own, where the diff of the last commit alone would have let the earlier commits' tests go.
+    assert gate.scope_against("0" * 40).changed is None
+    assert gate.scope_against("1234567890abcdef" * 2 + "12345678").changed is None
 
 
 # -- CI runs the rule everywhere it runs the gate ---------------------------------------------------------------------
@@ -311,7 +338,7 @@ def _problems(ci):
     problems, seen = [], 0
     for name, job, step, run in _gate_steps(ci):
         seen += 1
-        if '--own-against "$DURATION_BASE"' not in run:
+        if "--own-against HEAD^1" not in run:
             problems.append(f"{name}: the gate does not say what the change's own tests are")
         if "--ceilings tests/duration_ceilings.json" not in run:
             problems.append(f"{name}: the gate reads no ceilings")
@@ -320,9 +347,6 @@ def _problems(ci):
             problems.append(f"{name}: the checkout is not two deep, so the head's first parent is not there to diff")
     if seen < 7:
         problems.append(f"{seen} gate steps found; the three shard lanes, their three completion jobs and usd-core-newest have one each")
-    expected = "${{ github.event_name == 'push' && github.event.before || '' }}"
-    if ci["env"].get("DURATION_BASE") != expected:
-        problems.append("DURATION_BASE is not the previous push's head on a push and empty otherwise")
     return problems
 
 
@@ -335,16 +359,27 @@ def test_control_the_check_fails_on_each_way_a_gate_step_can_stop_applying_the_r
     ci = _ci()
     name, job, step, _ = next(iter(_gate_steps(ci)))
     if mutation == "no own-against":
-        step["run"] = step["run"].replace(' --own-against "$DURATION_BASE"', "")
+        step["run"] = step["run"].replace(" --own-against HEAD^1", "")
     elif mutation == "no ceilings":
         step["run"] = step["run"].replace(" --ceilings tests/duration_ceilings.json", "")
     elif mutation == "shallow checkout":
         next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout")).pop("with", None)
     elif mutation == "wrong base":
-        ci["env"]["DURATION_BASE"] = "${{ github.event.before }}"
+        step["run"] = step["run"].replace("--own-against HEAD^1", "--own-against HEAD")
     else:
         job["steps"].remove(step)
     assert _problems(ci), mutation
+
+
+def test_the_planted_slow_test_stays_over_the_flat_line_so_that_every_lane_fails_on_it(gate):
+    """``plant_slow_tests`` plants a test that is no change's own, so only the flat 90 s fails it (and its re-run alone)."""
+    sleeps = [float(m) for m in re.findall(r"time\.sleep\(([\d.]+)\)", (REPO_ROOT / "tests" / "test_canary.py").read_text())]
+    assert len(sleeps) == 2 and max(sleeps) > gate.OTHER_FAIL_OVER, sleeps
+    assert 5.0 < min(sleeps) <= gate.OTHER_FAIL_OVER                      # and the other one only warns
+
+
+def test_the_shipped_allowlist_holds_no_entry_whose_reason_the_triage_left_to_be_written():
+    assert "to be written" not in (REPO_ROOT / "tests" / "duration_allowlist.txt").read_text(encoding="utf-8")
 
 
 def test_the_shipped_ceilings_name_listed_tests_and_keep_the_floor(gate):
@@ -387,20 +422,67 @@ def test_the_triage_removes_a_listed_test_that_was_under_10_s_in_every_report_an
     assert triage.triage(observed, {}, {}).removals == {}            # an unlisted test is never "removed"
 
 
-def test_the_triage_sets_a_ceiling_of_3_medians_never_under_60_s_and_keeps_an_unseen_tests(triage):
+def test_the_triage_sets_a_ceiling_of_the_larger_of_3_medians_and_1_2_p95_never_under_60_s_and_keeps_an_unseen_tests(triage):
     observed = {"t::big": _obs(triage, [100, 110, 90, 120]), "t::small": _obs(triage, [15, 16, 17]),
-                "t::twice": _obs(triage, [200, 200])}
+                "t::twice": _obs(triage, [200, 200]),
+                "t::spread": _obs(triage, [20] * 17 + [100, 200, 300])}      # median 20, p95 200
     allow = dict.fromkeys([*observed, "t::unseen"], "kept: x")
     proposal = triage.triage(observed, allow, {"t::unseen": 77.0, "t::twice": 55.0})
-    assert proposal.ceilings["t::big"] == 315.0                      # 3 x median 105
+    assert proposal.ceilings["t::big"] == 315.0                      # 3 x median 105 (1.2 x p95 120 = 144)
     assert proposal.ceilings["t::small"] == 60.0                     # 3 x 16 = 48, under the floor
+    assert proposal.ceilings["t::spread"] == 240.0                   # 1.2 x p95 200; 3 x median is only 60
     assert proposal.ceilings["t::twice"] == 55.0 and proposal.ceilings["t::unseen"] == 77.0
     assert triage.triage(observed, allow, {}).ceilings.get("t::unseen") is None
 
 
-def test_the_triage_names_the_listed_tests_a_ceiling_would_fail_and_the_slow_ones_the_line_passes(triage):
-    observed = {"t::drifting": _obs(triage, [100] * 8 + [400, 500]),    # median 100, ceiling 300, p90 over it
-                "t::steady": _obs(triage, [100] * 10),
+def test_a_ceiling_that_rose_over_1_5_times_is_listed_first_with_the_medians_and_never_folded_in(triage):
+    """A sustained 5x regression must not turn into a bigger ceiling that the next body is silent about."""
+    allow = dict.fromkeys(["t::slowed", "t::steady", "t::new", "t::eased"], "kept: x")
+    observed = {"t::slowed": _obs(triage, [300] * 6), "t::steady": _obs(triage, [100] * 6),
+                "t::new": _obs(triage, [100] * 6), "t::eased": _obs(triage, [50] * 6)}
+    old = {"t::slowed": 230.0, "t::steady": 303.0, "t::eased": 600.0}
+    proposal = triage.triage(observed, allow, old, old_medians={"t::slowed": 76.5, "t::steady": 101.0})
+    assert proposal.raised == {"t::slowed": (230.0, 900.0, 76.5, 300.0)}          # not steady (1.0x), new (no old) or eased
+    text = triage.body(proposal, today=datetime.date(2026, 11, 16), source="s", ceilings_only=False)
+    assert text.index("Possible regressions") < text.index("Allowlist additions")
+    assert "| `t::slowed` | 230 | 900 | 76.5 | 300.0 |" in text and "t::steady" not in text.split("### Allowlist additions")[0]
+    # The control: a ceiling that stays within 1.5x is not listed, and a first triage has no old file to compare with.
+    assert triage.triage(observed, allow, {"t::slowed": 700.0}).raised == {}
+    assert triage.triage(observed, allow, {}).raised == {}
+
+
+def test_the_ceilings_file_keeps_the_medians_the_next_triage_compares_against(triage, gate, tmp_path):
+    observed = {"t::a": _obs(triage, [100, 101, 102])}
+    proposal = triage.triage(observed, {"t::a": "kept: x"}, {})
+    path = tmp_path / "c.json"
+    path.write_text(triage.ceilings_json(proposal, today=datetime.date(2026, 11, 9), source="3 runs", medians={"t::a": 101.0}))
+    assert triage.read_old(path) == ({"t::a": 303.0}, {"t::a": 101.0})
+    assert triage.read_old(tmp_path / "absent.json") == ({}, {})
+    assert gate.read_ceilings(path) == {"t::a": 303.0}                # the gate reads the ceilings and ignores the medians
+
+
+def test_a_listed_test_whose_median_moved_within_the_window_is_named(triage):
+    allow = dict.fromkeys(["t::moved", "t::flat", "t::few"], "kept: x")
+    observed = {"t::moved": _obs(triage, [20] * 9 + [90] * 3), "t::flat": _obs(triage, [20, 40] * 6),
+                "t::few": _obs(triage, [20, 90, 90])}
+    assert list(triage.triage(observed, allow, {}).moved) == ["t::moved"]
+
+
+def test_the_triage_never_proposes_the_planted_canary_or_a_test_pytest_does_not_collect(triage):
+    canary = "tests/test_canary.py::test_a_planted_test_over_the_hard_line"
+    observed = {canary: _obs(triage, [95, 95, 95]), "t::real": _obs(triage, [3, 3, 31]),
+                "t::renamed": _obs(triage, [3, 3, 31])}
+    assert sorted(triage.triage(observed, {}, {}).additions) == ["t::real", "t::renamed"]      # the canary is gone anyway
+    proposal = triage.triage(observed, {}, {}, collected={"t::real", canary})
+    assert sorted(proposal.additions) == ["t::real"] and proposal.uncollected == ("t::renamed",)
+    assert canary not in proposal.additions and not any("canary" in n for n in proposal.ceilings)
+    text = triage.body(proposal, today=datetime.date(2026, 11, 16), source="s", ceilings_only=False)
+    assert "`t::renamed`" in text and "not collected" in text
+
+
+def test_the_triage_names_the_listed_tests_a_ceiling_would_have_failed_and_the_slow_ones_the_line_passes(triage):
+    observed = {"t::drifting": _obs(triage, [100] * 28 + [150, 500]),   # median 100, ceiling 300, the largest report over it
+                "t::steady": _obs(triage, [100] * 30),
                 "t::slowish": _obs(triage, [22, 23, 24, 22])}
     proposal = triage.triage(observed, {"t::drifting": "kept: x", "t::steady": "kept: x"}, {})
     assert list(proposal.over_ceiling) == ["t::drifting"]
@@ -461,6 +543,7 @@ def test_main_writes_the_two_files_and_prints_the_body_and_a_dry_run_writes_noth
     allow.write_text("tests/a/test_x.py::test_kept # kept: a\ntests/a/test_x.py::test_gone # kept: b\n")
     monkeypatch.setattr(triage, "ALLOWLIST", allow)
     monkeypatch.setattr(triage, "CEILINGS", ceilings)
+    monkeypatch.setattr(triage, "collect_ids", lambda files: {"tests/a/test_x.py::test_new"})
     assert triage.main(["--reports", str(reports), "--dry-run"]) == 0
     assert not ceilings.exists() and "test_gone" in allow.read_text()
     assert "test_new" in capsys.readouterr().out
@@ -475,6 +558,33 @@ def test_main_writes_the_two_files_and_prints_the_body_and_a_dry_run_writes_noth
     allow.write_text("tests/a/test_x.py::test_kept # kept: a\ntests/a/test_x.py::test_gone # kept: b\n")
     assert triage.main(["--reports", str(reports), "--ceilings-only"]) == 0
     assert allow.read_text().count("\n") == 2 and "test_new" not in allow.read_text()
+
+
+def test_what_main_writes_to_the_allowlist_holds_no_canary_and_no_test_pytest_does_not_collect(triage, tmp_path, monkeypatch):
+    """Pinned for ``test_report_test_durations.py``'s two checks of the shipped allowlist (every entry a real, collected id)."""
+    reports = tmp_path / "reports"
+    stale, canary, real = "tests/a/test_x.py::test_renamed_since", "tests/test_canary.py::test_a_planted_test_over_the_hard_line", \
+        "tests/a/test_x.py::test_real"
+    for i in range(3):
+        _artifact(reports / str(900 + i), "3.12", 1, 1, "cold", [
+            _case("tests/a/test_x.py", "test_renamed_since", 40.0), _case("tests/a/test_x.py", "test_real", 41.0),
+            _case("tests/test_canary.py", "test_a_planted_test_over_the_hard_line", 95.0)])
+    allow, ceilings = tmp_path / "allow.txt", tmp_path / "c.json"
+    allow.write_text("")
+    monkeypatch.setattr(triage, "ALLOWLIST", allow)
+    monkeypatch.setattr(triage, "CEILINGS", ceilings)
+    monkeypatch.setattr(triage, "collect_ids", lambda files: {real})
+    assert triage.main(["--reports", str(reports)]) == 0
+    written = allow.read_text()
+    assert real in written and stale not in written and "test_canary" not in written
+    assert "test_canary" not in ceilings.read_text()
+
+
+def test_collect_ids_asks_pytest_and_survives_a_file_the_checkout_no_longer_has(triage):
+    ids = triage.collect_ids(["tests/test_canary.py", "tests/gone/test_deleted.py"])
+    assert "tests/test_canary.py::test_a_planted_test_over_the_hard_line" in ids
+    assert not [n for n in ids if "gone" in n]
+    assert triage.collect_ids(["tests/gone/test_deleted.py"]) == set()
 
 
 def test_the_triage_is_not_a_scheduled_job_and_runs_as_a_person():

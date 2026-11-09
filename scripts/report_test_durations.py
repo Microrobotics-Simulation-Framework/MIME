@@ -23,12 +23,14 @@
 #    is reported as a warning annotation and the exit status stays 0, for the lanes
 #    whose budget warns instead of failing (CONTRIBUTING.md, "CI: which lanes a
 #    pull request runs"). A report that cannot be read still exits 2.
-# 4. The duration rule of 2026-11-09 (CONTRIBUTING.md, "CI: the duration gate"): `--fail-over` is 30 s, not 20 s, and
-#    holds only for a test that is the change's own; `--own-against REV` says which (a test whose file the diff against
-#    REV touches, or whose node id REV's collection lacks) and any other unlisted test fails only over
-#    `--other-fail-over` (90 s) and warns between the two. `--ceilings FILE` gives a listed test a ceiling, which fails
-#    on a push and warns on a pull request (`--event`) unless the change is the test's own. The re-run alone applies to
-#    every failing test, against its own limit.
+# 4. The duration rule of 2026-11-09 (CONTRIBUTING.md, "CI: the duration gate"): `--fail-over` is 30 s, not 20 s. On a
+#    pull request (`--event pull_request`) it holds only for a test that is the change's own; `--own-against REV` says
+#    which (a test whose file the diff against REV touches, or whose node id REV's collection lacks) and any other
+#    unlisted test fails only over `--other-fail-over` (90 s) and warns between the two. On any other event (a push, a
+#    manual or nightly run) every test is the change's own, whatever the diff: the push is the merged change, and a
+#    slow test that a change caused without touching its file is caught there. `--ceilings FILE` gives a listed test a
+#    ceiling, which fails on a push and warns on a pull request unless the change is the test's own. The re-run alone
+#    applies to every failing test, against its own limit.
 """Report per-test wall-clock from CI, and stop new slow tests landing.
 
 The default CI lane (everything not marked ``@pytest.mark.slow``) grew to
@@ -53,25 +55,29 @@ over ``--slow-over`` (5 s)
     reason*.  Unlisted tests over this line get a warning annotation on
     the run.
 over ``--fail-over`` (30 s)
-    An unlisted test this slow fails the job when it is the change's own
-    (``--own-against``: its file is in the diff, or its node id is new on the
-    base); any other unlisted test fails only over ``--other-fail-over``
-    (90 s) and warns between the two.  An allowlisted one passes but gets a
-    warning annotation, so a kept test that regresses from 6 s to 900 s is not
-    silent; with ``--ceilings`` it has a ceiling (3 times its weekly median,
-    at least 60 s, written by ``scripts/duration_triage.py``), over which the
-    job fails on a push and warns on a pull request, unless the change is the
-    test's own.  Every failure is re-run alone first (``--retry-outliers``).
+    An unlisted test this slow fails the job on a push or a manual run, and on
+    a pull request when it is the change's own (``--own-against``: its file is
+    in the diff, or its node id is new on the base); on a pull request any
+    other unlisted test fails only over ``--other-fail-over`` (90 s) and warns
+    between the two.  An allowlisted one passes but gets a warning
+    annotation, so a kept test that regresses from 6 s to 900 s is not silent;
+    with ``--ceilings`` it has a ceiling (the larger of 3 times its median and
+    1.2 times its 95th percentile, at least 60 s, written by
+    ``scripts/duration_triage.py``), over which the job fails on a push and
+    warns on a pull request, unless the change is the test's own.  Every
+    failure is re-run alone first (``--retry-outliers``).
 
-Why the hard line is four times the policy line
------------------------------------------------
+Why the hard line is six times the policy line
+----------------------------------------------
 Measured on eight green lane-runs of the same tree (2026-09-24): a test
 whose median was over 2 s varied between runs by 1.7x at the median and
 3.1x at the 90th percentile (2.5x even after normalising each run by its
 total).  Runners differ, and a test that compiles something first pays for
 every later test that reuses it, so moving one test moves another's time.
 A hard gate at 5 s would fail on noise every day.  At 20 s it fires on the
-tests that actually drag the lane: the ten slowest tests took 17 minutes.
+tests that actually drag the lane: the ten slowest tests took 17 minutes.  MIME
+moved the line to 30 s on 2026-11-09, because at 20 s it failed on cold-cache
+runs that a re-run alone did not always clear.
 
 Why a test is slow
 ------------------
@@ -578,14 +584,19 @@ def _git(*args: str, **kw) -> subprocess.CompletedProcess:
 
 
 def _resolve_base(rev: str) -> str | None:
-    """The revision to diff against: ``rev`` (fetched, one commit deep, if the clone lacks it), else the head's first
-    parent (a pull request's merge commit has its base's tip there; a push's has the previous commit)."""
+    """The revision to diff against: ``rev`` (fetched, one commit deep, if the clone lacks it); an empty ``rev`` is the
+    head's first parent (a pull request's merge commit has its base's tip there). A revision that is given and is zero
+    (a new branch's ``before``) or cannot be had is ``None``, and so is a head with no first parent: the strict reading,
+    every test the change's own."""
     def have(r):
         return _git("rev-parse", "--verify", "--quiet", f"{r}^{{commit}}").returncode == 0
-    if rev and set(rev) != {"0"}:
-        if have(rev) or (_git("fetch", "--no-tags", "--depth=1", "origin", rev).returncode == 0 and have(rev)):
-            return rev
-    return "HEAD^1" if have("HEAD^1") else None
+    if not rev:
+        return "HEAD^1" if have("HEAD^1") else None
+    if set(rev) == {"0"}:
+        return None
+    if have(rev) or (_git("fetch", "--no-tags", "--depth=1", "origin", rev).returncode == 0 and have(rev)):
+        return rev
+    return None
 
 
 def scope_against(rev: str) -> Scope:
@@ -641,13 +652,14 @@ def judge(tests, allow, *, watch_over, slow_over, fail_over, other_fail_over=Non
     """Split the tests into the budget's bands; pure, so it can be tested.
 
     ``scope`` (``None``: every test is the change's own) and ``other_fail_over`` (``None``: ``fail_over``) give the
-    duration rule of 2026-11-09: an unlisted test over ``fail_over`` is in ``failing`` when it is the change's own or
-    over ``other_fail_over``, and in ``other_over_line`` (a warning) when it is not. A listed test over its ceiling
+    duration rule of 2026-11-09 on a pull request: an unlisted test over ``fail_over`` is in ``failing`` when it is the
+    change's own or over ``other_fail_over``, and in ``other_over_line`` (a warning) when it is not. Off a pull request
+    (``on_pull_request`` false) every test is the change's own, whatever the scope: the push is the merged change. A listed test over its ceiling
     (``ceilings``) is in ``over_ceiling`` as ``(test, ceiling)``, and also in ``failing`` unless this is a pull request
     and the test is not the change's own.
     """
     other_fail_over = fail_over if other_fail_over is None else max(other_fail_over, fail_over)
-    own = (lambda t: True) if scope is None else scope.is_own
+    own = scope.is_own if scope is not None and on_pull_request else (lambda t: True)
     ceilings = ceilings or {}
     by_id = {}
     for t in tests:  # several reports: keep each test's slowest time
@@ -786,8 +798,8 @@ def markdown(verdict, allow, *, title, watch_over, slow_over, fail_over, top, ca
     unlisted_failing = [t for t in verdict["failing"] if t.nodeid not in allow]
     if unlisted_failing:
         lines += [f"### Over its line and not on the allowlist -- {consequence}", "",
-                  f"The line is {fail_over:g} s for a test this change owns (its file is in the diff, or its id is "
-                  "new on the base), and the flat line otherwise.", ""]
+                  f"The line is {fail_over:g} s for a test this change owns (on a pull request: its file is in the diff, "
+                  "or its id is new on the base; on a push, every test), and the flat line otherwise.", ""]
         lines += [f"- `{t.nodeid}` -- {_fmt(t.seconds)} (line {limits.get(t.nodeid, fail_over):g} s) {diagnose(t)}"
                   for t in unlisted_failing] + [""]
     if verdict.get("other_over_line"):
@@ -798,8 +810,8 @@ def markdown(verdict, allow, *, title, watch_over, slow_over, fail_over, top, ca
     if verdict.get("over_ceiling"):
         failing_ids = {t.nodeid for t in verdict["failing"]}
         lines += ["### Allowlisted and over its ceiling", "",
-                  "A ceiling is 3 times the test's weekly median, at least 60 s (`tests/duration_ceilings.json`, "
-                  "written by `scripts/duration_triage.py`). It fails on a push, and on a pull request when the "
+                  "A ceiling is the larger of 3 times the test's median and 1.2 times its 95th percentile, at least 60 s "
+                  "(`tests/duration_ceilings.json`, written by `scripts/duration_triage.py`). It fails on a push, and on a pull request when the "
                   "change owns the test; otherwise it warns.", ""]
         lines += [f"- `{t.nodeid}` -- {_fmt(t.seconds)} over {_fmt(c)} -- "
                   + (consequence if t.nodeid in failing_ids else "warns") + f" {diagnose(t)}"
@@ -932,8 +944,8 @@ def annotations(verdict, *, slow_over, fail_over, warn_only=False):
         level = "warning" if warn_only else "error"
         if t.nodeid in ceilings:
             out.append(f"::{level} {loc}title=Allowlisted test over its ceiling::" + _escape(
-                f"{t.nodeid} took {_fmt(t.seconds)}{why}, over its ceiling of {_fmt(ceilings[t.nodeid])} (3 times its "
-                f"weekly median, at least 60 s; tests/duration_ceilings.json). Find what slowed it; if it is "
+                f"{t.nodeid} took {_fmt(t.seconds)}{why}, over its ceiling of {_fmt(ceilings[t.nodeid])} (the larger of 3 "
+                f"times its median and 1.2 times its 95th percentile, at least 60 s; tests/duration_ceilings.json). Find what slowed it; if it is "
                 f"the cost now, the weekly triage raises the ceiling."))
             continue
         line = limits.get(t.nodeid, fail_over)
@@ -986,10 +998,11 @@ def main(argv=None) -> int:
                    help="an unlisted test that is not the change's own fails only over this, and warns over "
                         "--fail-over (default 90)")
     p.add_argument("--own-against", metavar="REV", nargs="?", const="",
-                   help="the revision the change is measured against: a test is the change's own when the diff "
-                        "from REV to HEAD touches its file, or REV collects no test of its node id (an empty REV, "
-                        "or one the clone cannot get, is the head's first parent). Without the flag every test is "
-                        "the change's own")
+                   help="on a pull request (--event pull_request), the revision the change is measured against: a "
+                        "test is the change's own when the diff from REV to HEAD touches its file, or REV collects "
+                        "no test of its node id (an empty REV is the head's first parent; a zero REV, or one the "
+                        "clone cannot get, makes every test the change's own). Without the flag, or on any other "
+                        "event, every test is the change's own")
     p.add_argument("--ceilings", type=Path,
                    help="the file scripts/duration_triage.py writes: a ceiling for each listed test")
     p.add_argument("--event", default=os.environ.get("GITHUB_EVENT_NAME", ""),
@@ -1054,7 +1067,7 @@ def main(argv=None) -> int:
                 "on and left it on, so these times are partly warm"))
 
     fail_over = args.fail_over or float("inf")
-    scope = scope_against(args.own_against) if args.own_against is not None else None
+    scope = scope_against(args.own_against) if args.own_against is not None and args.event == "pull_request" else None
     if scope is not None and scope.changed is None:
         print("::warning title=Test durations::" + _escape(
             "the diff against the base could not be read, so every test counts as this change's own"))
