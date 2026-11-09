@@ -15,7 +15,7 @@ from mime.build._maddening import node_state, parameter_leaves
 from mime.dynamics import RigidInertial
 from mime.experiment import BuiltExperiment, Experiment
 from mime.interactions import Drag
-from mime.interactions.hydrodynamic import PointForceDrag
+from mime.interactions.hydrodynamic import PointForceDrag, UncoupledDrag
 from mime.nodes.hydro.mrs import MRSDragNode
 from mime.registry import Dynamics, Geometry, Interaction
 from mime.scene import KEPT, Box, Capsule, Cylinder, Ellipsoid, Plane, Scene, Sphere, Tube, Z
@@ -39,6 +39,14 @@ def mrs(spacing: Quantity, **settings: object) -> Interaction:
     (its default at that blob, written so that a blob moved by a study's difference keeps the quadrature)."""
     return Drag.MRS(spacing=spacing, blob=settings.pop("blob", 0.5),
                     quadrature_refinement=settings.pop("quadrature_refinement", 4), wall_kind="free_space", **settings)
+
+
+def uncoupled(spacing: Quantity, **settings: object) -> Interaction:
+    """``mrs`` on drag 0.4.0, kept registered: each body's drag alone, its own node, in a medium of several bodies too
+    (0.5.0 couples them in the medium's near field)."""
+    return UncoupledDrag.MRS(spacing=spacing, blob=settings.pop("blob", 0.5),
+                             quadrature_refinement=settings.pop("quadrature_refinement", 4), wall_kind="free_space",
+                             **settings)
 
 
 def point_forces(spacing: Quantity, **settings: object) -> Interaction:
@@ -69,8 +77,9 @@ def free_space(name: str, kinds: Mapping[str, Geometry], law: Mapping[str, Inter
 
 def mrs_free_space(law: Interaction | None = None, name: str = "mrs_free_space") -> Experiment:
     """The round-trip case: a ball, a pill and a screw, each with the rung at its coarsest spacing, each moving and turning
-    from the start, so that every leaf of every node acts within the walk's first steps."""
-    return free_space(name, KINDS, law if law is not None else mrs(mm(1.5)), mass=kg(1e-7),
+    from the start, so that every leaf of every node acts within the walk's first steps; on drag 0.4.0, kept, so that
+    each body has its own node, as a folder saved before the near field names (``mrs_near_field`` is 0.5.0's)."""
+    return free_space(name, KINDS, law if law is not None else uncoupled(mm(1.5)), mass=kg(1e-7),
                       inertia=kg_m2((1e-14, 2e-14, 3e-14)), velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
                       spin=rad_per_s((3.0, -1.0, 2.0)))
 
@@ -103,9 +112,33 @@ def mrs_kept() -> Experiment:
 
 
 def mrs_solids() -> Experiment:
-    """The rung on the solids that sample their surface from 7m-a, at a coarse spacing, each moving and turning."""
-    return free_space("mrs_solids", SOLIDS, mrs(mm(0.35)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
+    """The rung on the solids that sample their surface from 7m-a, at a coarse spacing, each moving and turning; on drag
+    0.4.0, kept, each body its own node."""
+    return free_space("mrs_solids", SOLIDS, uncoupled(mm(0.35)), mass=kg(1e-7), inertia=kg_m2((1e-14, 2e-14, 3e-14)),
                       velocity=m_per_s((1e-3, -2e-3, 0.5e-3)), spin=rad_per_s((3.0, -1.0, 2.0)))
+
+
+#: The near field's round-trip case's bodies and where they start: a ball and a pill beside it, a millimetre apart, and a
+#: second ball behind them, each turned, so that its joint node couples blocks of different sizes.
+NEAR = {"ball": (BALL, mm((0.0, 0.0, 0.0)), (HALF, TURN, 0.0, 0.0)),
+        "pill": (PILL, mm((2.5, 0.0, 0.0)), (HALF, 0.0, TURN, 0.0)),
+        "bead": (Sphere(radius=mm(0.6)), mm((1.0, 2.2, 0.0)), (HALF, 0.0, 0.0, TURN))}
+
+
+def mrs_near_field(name: str = "mrs_near_field", spacing: Quantity = mm(1.0)) -> Experiment:
+    """The round-trip case of drag 0.5.0's near field: three bodies in one unbounded medium on the mrs rung, one joint
+    node, each moving and turning from the start."""
+    experiment = Experiment(name, scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    experiment.add_medium(Medium("water"))
+    experiment.declare("water.viscosity", WATER, reason="water")
+    for body, (kind, position, orientation) in NEAR.items():
+        experiment.add_body(Body(body, dynamics=RigidInertial(), parts={"shell": Part(kind)}, initial=State(
+            position=position, orientation=orientation, velocity=m_per_s((1e-3, -2e-3, 0.5e-3)),
+            angular_velocity=rad_per_s((3.0, -1.0, 2.0)))))
+        experiment.declare(f"{body}.mass", kg(1e-7), reason="a millimetre body's order")
+        experiment.declare(f"{body}.inertia", kg_m2((1e-14, 2e-14, 3e-14)), reason="a millimetre body's order")
+        experiment.attach(mrs(spacing), body=body, medium="water")
+    return experiment
 
 
 def mrs_tube() -> Experiment:

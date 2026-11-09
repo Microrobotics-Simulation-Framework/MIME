@@ -390,7 +390,10 @@ class BuildContext:
     mounted on it, a spinner, a controller or an observation; a segment that computes them only to publish them may
     skip them where nothing does. A controller finds in ``models`` the built tree of each segment that carries mass,
     what is mounted on it grafted on and each joint's armature on its joints, by its id: a model-based controller reads
-    that, and one that reads a bare description of its own declares that choice."""
+    that, and one that reads a bare description of its own declares that choice. ``mass_read`` is whether a plan reads
+    a body's mass matrix (``body.mass_matrix``: a medium's near field), which a body publishes only then. An entry that
+    builds for a group of entries of its class (a medium's near field, built once for the bodies whose drag joins it)
+    finds each member's context in ``members``, keyed by its id, its reads and deliveries keyed ``<id>/<label>``."""
 
     id: str
     dt: float
@@ -413,6 +416,10 @@ class BuildContext:
     models: Mapping[str, MultibodyTree] = field(default_factory=dict[str, "MultibodyTree"])
     spin_asymmetry: tuple[float, ...] = ()
     rates_read: bool = True
+    mass_read: bool = False
+    members: Mapping[str, BuildContext] = field(default_factory=dict[str, "BuildContext"])
+    #: The entry the context is for: what a group's entry builds each member's part from.
+    entry: Any = None
 
     def geometry(self, of: str) -> Hull | None:
         """The hull of the body bound to the role ``of``, as its plan saw it."""
@@ -653,15 +660,22 @@ class Output:
 class Flag:
     """A flag an entry's node raises: its state field ``field`` (of node ``node``, ``""`` for the entry's only node),
     nonzero at a step where what ``meaning`` says happened, and zero otherwise. ``rung`` is the rung whose node raises
-    it, for an entry with rungs. A run reports the flags raised over each window it reads, and a flag never blocks a
-    read. A flag that ``warns`` is also warned of after a run that raised it, with its count: one whose steps hold
-    values that are not what the step computes to its stated accuracy (a solve that stopped short)."""
+    it, for an entry with rungs; ``group``, where it is not ``None``, whether only the node an entry builds for a group
+    of entries raises it (``True``: a medium's joint near field) or only the node it builds for itself (``False``). A
+    run reports the flags raised over each window it reads, and a flag never blocks a read. A flag that ``warns`` is
+    also warned of after a run that raised it, with its count: one whose steps hold values that are not what the step
+    computes to its stated accuracy (a solve that stopped short)."""
 
     field: str
     meaning: str
     node: str = ""
     rung: str | None = None
+    group: bool | None = None
     warns: bool = False
+
+    def raised_by(self, rung: str | None, group: bool) -> bool:
+        """Whether the node built for ``rung``, for a group or not, raises it."""
+        return (self.rung is None or self.rung == rung) and (self.group is None or self.group == group)
 
 
 @dataclass(frozen=True)

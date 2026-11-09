@@ -48,7 +48,7 @@ experiment tutorial_a0  (profile exploratory)
   laws
     contact:umr  contact 0.1.0, rung projection
       between body umr, surface tube.inner_surface
-    drag:umr  drag 0.4.0, rung surrogate
+    drag:umr  drag 0.5.0, rung surrogate
       between body umr, medium water
     gravity:umr  gravity 0.1.0
       between body umr, medium water
@@ -102,7 +102,7 @@ flowchart LR
     n3["drive:rpm.motor.velocity<br/>drive.constant 0.1.0<br/>ConstantNode"]
     n4["rpm.motor<br/>motor 0.2.0 (rung kinematic)<br/>KinematicMotorNode"]
     n5["rpm.magnetic<br/>point_dipole 0.1.0<br/>PointDipoleNode"]
-    n6["drag:umr<br/>drag 0.4.0 (rung surrogate)<br/>SurrogateDragNode"]
+    n6["drag:umr<br/>drag 0.5.0 (rung surrogate)<br/>SurrogateDragNode"]
     n7["magnetic.force:umr<br/>magnetic.force 0.2.0<br/>MagneticForceNode"]
     n8["magnetic.torque:umr<br/>magnetic.torque 0.2.0<br/>MagneticTorqueNode"]
     n9["umr<br/>rigid_inertial 0.4.0<br/>RigidInertialTensorNode"]

@@ -38,13 +38,16 @@ HERE = Path(__file__).parent
 
 def with_page(tmp_path, *lines: str, listed: str = LISTED) -> Path:
     """A copy of the checkout with the page source ``PAGE`` holding ``lines`` (after its front matter), in place of the
-    drag's own, and ``listed`` appended to the number allowlist."""
+    drag's own, the allowlist's rows for that page dropped with its text, and ``listed`` appended to it."""
     root = copy_checkout(tmp_path)
     path = root / PAGE
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("---\ndescribes: [\"0.3.0\", \"0.4.0\"]\n---\n\n" + "".join(f"{line}\n" for line in lines), encoding="utf-8")
+    path.write_text("---\ndescribes: [\"0.3.0\", \"0.4.0\", \"0.5.0\"]\n---\n\n" + "".join(f"{line}\n" for line in lines), encoding="utf-8")
     allowlist = root / ALLOWLIST
-    allowlist.write_text(allowlist.read_text(encoding="utf-8") + listed, encoding="utf-8")
+    # the page's own rows go with its replaced text: they name lines the copy no longer has
+    kept = "".join(row for row in allowlist.read_text(encoding="utf-8").splitlines(keepends=True)
+                   if not row.startswith(f"{PAGE} "))
+    allowlist.write_text(kept + listed, encoding="utf-8")
     return root
 
 

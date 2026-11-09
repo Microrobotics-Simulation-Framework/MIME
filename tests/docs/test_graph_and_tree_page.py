@@ -50,7 +50,7 @@ def test_the_page_shows_tutorial_a0s_tree_and_graph_as_the_experiment_prints_the
 @pytest.mark.parametrize("which", ["tree", "graph"])
 def test_control_a_block_with_one_character_changed_fails_the_comparison(views, which):
     page = PAGE.read_text(encoding="utf-8")
-    old = "drag:umr  drag 0.4.0" if which == "tree" else 'n0["controller<br/>arm_tracking 0.1.0'
+    old = "drag:umr  drag 0.5.0" if which == "tree" else 'n0["controller<br/>arm_tracking 0.1.0'
     assert old in page
     assert differences(page.replace(old, old.replace("0.", "1.", 1)), views) == [which]
 

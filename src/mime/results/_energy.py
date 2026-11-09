@@ -360,9 +360,12 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
         for row, law in enumerate(ledger.laws(held)):
             first = next(d for d in held if d.law == law)
             work = _scalar(records[f"{ledger.RECORDS}work"][row])
+            gifts = records[f"{ledger.RECORDS}gift_steps"][row]
+            if first.check == ledger.CHECK_CLUSTER and "cluster_gift_steps" in final.get(law, {}):
+                gifts = final[law]["cluster_gift_steps"]  # judged in the cluster's sum, by the node named for it
             line = LawEnergy(law, name, first.energy_class, work, _scalar(taken[row]),
                              tuple(first.supplied_by.split(",")) if first.supplied_by else (),
-                             gift_steps=_count(records[f"{ledger.RECORDS}gift_steps"][row]),
+                             gift_steps=_count(gifts),
                              indefinite_steps=_count(records[f"{ledger.RECORDS}indefinite_steps"][row]))
             if first.kind == ledger.HOSTED:
                 host = _scalar(records[f"{ledger.RECORDS}hosted"][row, 1])
