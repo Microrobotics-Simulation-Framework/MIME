@@ -2655,8 +2655,11 @@ class _Planner:
                  for hull in (self.hull_of(name),) if hull is not None}
         reactions = {role: mount.segment for role, name in bindings.items() if cls.roles[role] is RoleKind.FIELD
                      for mount in (self.source_mount(name),) if mount is not None}
+        provided = {role: {f"{name}.{field_role}": kind.provides for field_role, kind in medium.fields.items()}
+                    for role, name in bindings.items() if cls.roles[role] is RoleKind.MEDIUM
+                    for medium in (self.things.get(name),) if isinstance(medium, Medium)}
         context = PlanContext(self.dt, up, gravity, dict(bindings), records, dict(settings), declared, regions,
-                              hulls, reactions, approaches=self.approaches(cls.roles, bindings))
+                              hulls, reactions, approaches=self.approaches(cls.roles, bindings), provided=provided)
         try:
             plan = cast(object, entry.plan(context))  # an entry's own code, checked like a script's
         except BuildRefused as refused:

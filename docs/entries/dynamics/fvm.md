@@ -40,6 +40,12 @@ is unstable at a lower face CFL than one along an axis. RK3's line sits under a 
 its rule allows, where the line first decided for it did not: a plug flow grew there. With `stokes=True` no CFL line
 applies.
 
+The build report shows the box: its cells, their spacing and the lumen's diameter in them, and the step's memory
+estimate (the cells times the bytes a cell its scheme was measured to take), against the device's memory, or the host's
+on a CPU. A box whose step will not fit is refused when the experiment is planned (`flow.memory`), with a coarser grid
+or a shorter period as its route. The flow provides the velocity at points (`field.flow.velocity`), the quantity a law
+finds the medium's flow by; a drag that assumes the medium at rest is refused in it.
+
 The flow is driven by laws bound to the medium: on a periodic box, a `BodyForce` on the fluid, which stands in for the
 pressure drop a period of the vessel would carry. The fluid's viscosity and density are the medium's values, from its
 material record or `exp.declare`, never settings of the field.

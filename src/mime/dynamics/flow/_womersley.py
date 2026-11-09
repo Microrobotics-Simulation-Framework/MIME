@@ -42,6 +42,7 @@ class Womersley(Dynamics):
     builds = {"": (PrescribedFlowNode,)}
     applies_to = frozenset({ThingKind.MEDIUM})
     accepts = {FLOW_WAVEFORM.name: Port("waveform")}
+    provides = (FLOW_VELOCITY.name,)
     values = {"viscosity": "viscosity", "density": "density"}
     unmetered = ("outside (it takes nothing back from what reads it) and it stores nothing: the energy ledger has no "
                  "receiver here")

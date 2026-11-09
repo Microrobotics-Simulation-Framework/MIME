@@ -307,9 +307,37 @@ class PlanContext:
     hulls: Mapping[str, Hull] = field(default_factory=dict[str, Hull])
     reactions: Mapping[str, str] = field(default_factory=dict[str, str])
     approaches: Mapping[str, float] = field(default_factory=dict[str, float])
+    provided: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
+        default_factory=dict[str, Mapping[str, tuple[str, ...]]])
 
     def scalar(self, name: str) -> float:
         return _scalar(self.settings, name)
+
+    def fields_providing(self, role: str, quantity: str) -> tuple[str, ...]:
+        """The fields of the medium bound to ``role`` that provide ``quantity`` (a vocabulary interface's name, SF-2's
+        quantity rule), by their id (``water.flow``): a law that needs the quantity takes its field from them
+        (:meth:`field_for`), and a law that assumes the medium at rest refuses any."""
+        return tuple(sorted(name for name, quantities in self.provided.get(role, {}).items() if quantity in quantities))
+
+    def field_for(self, role: str, quantity: str, named: str | None = None) -> str | Problem:
+        """The one field of the medium bound to ``role`` that provides ``quantity``, or the problem: none provides it,
+        or several do and ``named`` (the law's ``field=``, ``water.flow``) names none of them."""
+        found = self.fields_providing(role, quantity)
+        medium = self.bindings.get(role, role)
+        if named is not None:
+            if named in found:
+                return named
+            return Problem("binding.field-quantity", f"field={named!r} is not a field of medium {medium!r} that "
+                                                     f"provides {quantity} (those that do: {list(found) or 'none'})",
+                           f"name one of them with field=, or give the medium a field that provides {quantity}")
+        if len(found) == 1:
+            return found[0]
+        if not found:
+            return Problem("binding.field-quantity", f"medium {medium!r} carries no field that provides {quantity}",
+                           f"give the medium a field that provides it: Medium({medium!r}, ..., fields={{...}})")
+        return Problem("binding.field-ambiguous", f"medium {medium!r} carries {len(found)} fields that provide "
+                                                  f"{quantity}: {list(found)}",
+                       f"name the one the law reads with field=, one of {list(found)}")
 
     def approach(self, of: str) -> float | None:
         """The closest approach of the body bound to the role ``of`` to the wall of the region the entry's medium fills
@@ -748,13 +776,16 @@ class Dynamics(Entry):
     reason. ``limits`` states what its model leaves out, each line naming the anomaly that records it; its capability
     record carries them. ``port`` names the port kind (``mime.vocabulary.port_kind``) its node's accepted inputs are
     paired by when the energy ledger is attached, its node writing its step identity; empty for a dynamics the ledger
-    does not meter, with ``unmetered`` its reason.
+    does not meter, with ``unmetered`` its reason. A field kind a medium carries names in ``provides`` the quantities
+    it provides (the vocabulary's field interfaces, SF-2): a law finds the medium's field by them
+    (``PlanContext.field_for``).
     """
 
     applies_to: ClassVar[frozenset[ThingKind]]
     flags: ClassVar[frozenset[Capability]] = frozenset()
     publishes: ClassVar[Mapping[str, Port]] = _EMPTY
     accepts: ClassVar[Mapping[str, Port]] = _EMPTY
+    provides: ClassVar[tuple[str, ...]] = ()
     port: ClassVar[str] = ""
     unmetered: ClassVar[str] = ""
     registration_kinds: ClassVar[frozenset[str]] = frozenset()

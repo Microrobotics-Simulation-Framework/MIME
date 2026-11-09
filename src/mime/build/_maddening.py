@@ -5,6 +5,7 @@ here, once, and given the type MIME relies on. Nothing here changes what is call
 from __future__ import annotations
 
 import hashlib
+import os
 import warnings
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
@@ -533,6 +534,21 @@ def make_jaxpr(fn: Callable[..., object], *args: object) -> Jaxpr:
 def devices() -> list[tuple[str, str]]:
     """JAX's devices, each as its platform and its ``device_kind``."""
     return [(str(device.platform), str(device.device_kind)) for device in _held(jax).devices()]
+
+
+def device_memory() -> tuple[str, int | None]:
+    """The memory a run's arrays live in, as what it is and its size in bytes: the first device's limit where it
+    reports one (a GPU's ``bytes_limit``), and otherwise the host's physical memory (``None`` where the system does not
+    say)."""
+    device = _held(jax).devices()[0]
+    stats = cast(object, getattr(device, "memory_stats", lambda: None)())
+    limit = cast(dict[str, object], stats).get("bytes_limit") if isinstance(stats, dict) else None
+    if isinstance(limit, int) and limit > 0:
+        return f"the {device.platform} device ({device.device_kind})", limit
+    try:
+        return "the host", int(os.sysconf("SC_PAGE_SIZE")) * int(os.sysconf("SC_PHYS_PAGES"))
+    except (AttributeError, ValueError, OSError):
+        return "the host", None
 
 
 def compute_capability() -> str | None:

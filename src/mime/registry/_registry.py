@@ -50,7 +50,8 @@ from mime.registry._entries import (
 )
 from mime.things import ThingKind
 from mime.units import SAY_THE_ANGLE, TIME, Dimension, Quantity, UnitError, says_its_angle, si
-from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, namespace_of
+from mime.vocabulary import MIME_NAMESPACE, Capability, EnergyClass, ReadKind, namespace_of
+from mime.vocabulary import lookup as interface_named
 
 _NAME = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 #: A controller's read or write label.
@@ -309,6 +310,22 @@ def _output_problems(cls: type[Entry]) -> list[str]:
     return found
 
 
+def _provides_problems(held: object, applies: list[object]) -> list[str]:
+    """What is wrong with a dynamics' ``provides``: a tuple of the vocabulary's field interfaces, declared only by a
+    medium's field kind."""
+    provides: object = getattr(held, "provides", ())
+    if not (isinstance(provides, tuple) and all(isinstance(n, str) for n in cast(tuple[object, ...], provides))):
+        return ["provides: a tuple of the names of the vocabulary's field interfaces"]
+    found: list[str] = []
+    if provides and ThingKind.MEDIUM not in applies:
+        found.append("provides: only a field kind a medium carries provides a quantity")
+    for name in cast(tuple[str, ...], provides):
+        interface = interface_named(name)
+        if interface is None or interface.kind is not ReadKind.FIELD:
+            found.append(f"provides {name!r}, which is not a field interface of the vocabulary")
+    return found
+
+
 def _flag_problems(cls: type[Entry]) -> list[str]:
     held: object = getattr(cls, "raises", ())
     if not (isinstance(held, tuple) and all(isinstance(f, Flag) for f in cast(tuple[object, ...], held))):
@@ -436,6 +453,7 @@ def _problems(kind: EntryKind, candidate: object) -> list[str]:
             found.append("applies_to: a non-empty frozenset of ThingKind")
         if not all(isinstance(flag, Capability) for flag in cast(frozenset[object], getattr(held, "flags", ()))):
             found.append("flags: members of mime.vocabulary.Capability, the closed list")
+        found += _provides_problems(held, members)
     if kind is EntryKind.GEOMETRY:
         surfaces: object = getattr(held, "surfaces", None)
         for name in ("regions", "directions"):

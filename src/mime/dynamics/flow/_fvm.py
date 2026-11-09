@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Annotated, override
 
+from mime.core import jnp, run_dtype
 from mime.gradients import GradientStatus
 from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTERIORS, ExplicitFlowNode, \
     ImplicitFlowNode, periodic_tube_layout
@@ -37,7 +38,7 @@ from mime.units import Magnitude
 from mime.scene import PeriodicBox
 from mime.things import ThingKind
 from mime.units import Length, Quantity
-from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM
+from mime.vocabulary import FLOW_BODY_FORCE, FLOW_VELOCITY, FLOW_WAVEFORM
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -84,6 +85,21 @@ class Band(SettingGroup):
     setting_roles = {"delta_in": convention(NUMERICAL, "the default interior lets about a ninth of the band's Darcy "
                                                        "velocity through the solid, at no extra cost (B3)")}
     delta_in: float = 0.1
+
+
+#: The step's device bytes a cell, by the stage kind (the monolithic projected CG's, the explicit one's) and the run's
+#: dtype, without and with the energy ledger: XLA's memory analysis of the compiled step (arguments, outputs and
+#: temporaries), the same at D/h 24, 32 and 48 to three figures, so the estimate is the cells times it (#258's form,
+#: its fixed part under a thousandth here).
+BYTES_PER_CELL = {
+    (StageKind.MONOLITHIC_PROJECTED_CG, "float64"): (389.0, 461.0),
+    (StageKind.MONOLITHIC_PROJECTED_CG, "float32"): (268.0, 304.0),
+    (StageKind.EXPLICIT_PROJECTED, "float64"): (636.0, 769.0),
+    (StageKind.EXPLICIT_PROJECTED, "float32"): (307.0, 386.0),
+}
+MEMORY_MEASURED = ("XLA's memory analysis of the step on a CPU, measured at 24 to 48 cells across: 389 bytes a cell "
+                   "for IMEX Euler and its steady limit in float64, 636 for RK3, 268 and 307 in float32, and 461, 769, "
+                   "304 and 386 with the energy ledger; a GPU's is not measured")
 
 
 #: The least margin of solid, in cells, between a tube's band and its image: their fields flatten 3 cells into the
@@ -165,6 +181,7 @@ class FVM(Dynamics):
     builds = {"": (ImplicitFlowNode, ExplicitFlowNode)}
     applies_to = frozenset({ThingKind.MEDIUM})
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform")}
+    provides = (FLOW_VELOCITY.name,)
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
                               "true residual no longer falling), so the step's values hold only to the residual it "
@@ -209,6 +226,8 @@ class FVM(Dynamics):
         "float32 near a steady state: its rounding floor eps x tau/dt, tau = R^2 / ((pi^2/4) nu), the share by which "
         "a near-steady run stops short of its fixed point; a float32 build whose floor is above its tolerance reports "
         "it",
+        f"the memory: the box's cells times the bytes a cell its step takes ({MEMORY_MEASURED}), reported at build "
+        f"and refused past the device's memory, or the host's on a CPU (flow.memory)",
         f"geometry: {GEOMETRY}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_LINE:g} (stall_flagged), is written with the "
         f"energy ledger attached; the build does not yet meter the flow, so a run through the build has no stall "
@@ -342,9 +361,21 @@ class FVM(Dynamics):
         else:
             largest = max(bounded.values()) if bounded else None
 
+        cells = layout.cells[0] * layout.cells[1] * layout.cells[2]
+        where, available = device_memory()
+
         def problems(step: float, every: int) -> list[Problem]:
             name = chosen_scheme(self.scheme, nu, h, step)
             found: list[Problem] = []
+            needed = memory_estimate(name, cells, metered=False)
+            if available is not None and needed > available:
+                found.append(Problem(
+                    "flow.memory",
+                    f"the flow's box is {layout.cells[0]} x {layout.cells[1]} x {layout.cells[2]} = {cells} cells at "
+                    f"{2.0 * radius / h:.4g} cells across the lumen, whose {name} step needs about "
+                    f"{needed / 2 ** 30:.3g} GiB ({MEMORY_MEASURED}), more than {where}'s {available / 2 ** 30:.3g} GiB",
+                    f"a coarser grid (FVM(cells_across=...) under {self.cells_across}: halving it divides the cells by "
+                    f"about eight), a shorter period (PeriodicBox(length=...)), or a device with more memory"))
             limit = scheme_named(name).viscous_limit(nu, h)
             if limit is not None and step > limit * (1.0 + 1e-12):
                 found.append(Problem(
@@ -372,9 +403,17 @@ class FVM(Dynamics):
         def report(step: float, every: int) -> tuple[str, ...]:
             name = chosen_scheme(self.scheme, nu, h, step)
             line = line_of(name)
-            return report_lines(name, step, every, nu * step / h ** 2,
-                                RK3.viscous_number if name == RK3.name else None,
-                                peak * step / h if line is not None else None, line, drive.period, bounded, alpha)
+            room = f"{where}'s {available / 2 ** 30:.3g} GiB" if available is not None else f"{where}'s, which it " \
+                                                                                            f"does not report"
+            box = (f"the box: {layout.cells[0]} x {layout.cells[1]} x {layout.cells[2]} = {cells} cells of "
+                   f"{h:.4g} m, {2.0 * radius / h:.4g} across the lumen; the {name} step's memory about "
+                   f"{memory_estimate(name, cells, metered=False) / 2 ** 20:.4g} MiB, "
+                   f"{memory_estimate(name, cells, metered=True) / 2 ** 20:.4g} MiB with the energy ledger, against "
+                   f"{room}")
+            return (box, *report_lines(name, step, every, nu * step / h ** 2,
+                                       RK3.viscous_number if name == RK3.name else None,
+                                       peak * step / h if line is not None else None, line, drive.period, bounded,
+                                       alpha))
 
         return StepRule(largest, problems, report, period=drive.period)
 
@@ -406,6 +445,19 @@ class FVM(Dynamics):
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
             interior=interior, periodic_images=images, report_rows=self.report_rows))
+
+
+def memory_estimate(scheme: str, cells: int, *, metered: bool) -> float:
+    """The bytes a step of ``scheme`` on ``cells`` cells needs, in the run's dtype (:data:`BYTES_PER_CELL`)."""
+    per_cell = BYTES_PER_CELL[(scheme_named(scheme).stage_kind, str(jnp.dtype(run_dtype())))]
+    return cells * per_cell[1 if metered else 0]
+
+
+def device_memory() -> tuple[str, int | None]:
+    """The memory the run's arrays live in and its size (``mime.build._maddening.device_memory``)."""
+    from mime.build._maddening import device_memory as held
+
+    return held()
 
 
 def host_line(scheme: str, axis: Sequence[float]) -> float | None:

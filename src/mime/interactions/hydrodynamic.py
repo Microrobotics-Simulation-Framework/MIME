@@ -64,7 +64,7 @@ from mime.registry import (
 )
 from mime.surrogates import SURROGATES, ScrewSurrogate
 from mime.units import Length, Magnitude, Quantity, m
-from mime.vocabulary import BACKGROUND_LOAD, POSE, RESISTANCE, Capability, Definiteness, EnergyClass
+from mime.vocabulary import BACKGROUND_LOAD, FLOW_VELOCITY, POSE, RESISTANCE, Capability, Definiteness, EnergyClass
 from mime.walls import RESERVED
 
 if TYPE_CHECKING:
@@ -103,6 +103,22 @@ def _triple(value: Any) -> tuple[float, float, float]:
 
 #: The parameters of the shape the drag's node evaluates the tube with, each its node's ``vessel_<name>``.
 VESSEL_PARAMETERS = ("centre", "axis", "radius")
+
+
+def at_rest_problems(ctx: PlanContext, rung: str | None) -> list[Problem]:
+    """Every drag rung here assumes the medium at rest (its background load is zero), so it is refused in a medium
+    whose field provides the flow's velocity (``field.flow.velocity``, SF-2's quantity rule): a rung that reads a
+    provided flow is a later release's."""
+    flowing = ctx.fields_providing("medium", FLOW_VELOCITY.name)
+    if not flowing:
+        return []
+    medium = ctx.bindings["medium"]
+    return [Problem("drag.medium-flows",
+                    f"the {rung} rung assumes medium {medium!r} at rest (it delivers no load from the medium's flow), "
+                    f"and the medium carries a flow that provides the velocity at points ({', '.join(flowing)}): a "
+                    f"drag that reads a medium's flow is a later release's",
+                    f"attach the drag to a medium that carries no flow field, Medium({medium!r}, fills=...), or take "
+                    f"the flow field out of this one")]
 
 
 def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
@@ -469,8 +485,9 @@ class PointForceDrag(Interaction):
     def plan(self, ctx: PlanContext) -> Plan:
         if self.rung == "mrs":
             return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
-                        problems=tuple(self._mrs_problems(ctx)), assets=self._wall_assets())
-        problems: list[Problem] = []
+                        problems=tuple(at_rest_problems(ctx, self.rung) + self._mrs_problems(ctx)),
+                        assets=self._wall_assets())
+        problems: list[Problem] = at_rest_problems(ctx, self.rung)
         tube = uniform_tube(ctx.region("medium"), ctx.bindings["medium"])
         surrogate = self.surrogates.get(self.weights.name) if self.weights is not None else None
         if isinstance(tube, Problem):
@@ -976,7 +993,8 @@ class Drag(PointForceDrag):
         if self.rung != "rft":
             return super().plan(ctx)
         return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
-                    problems=tuple(self._rft_problems(ctx)), assets=self._wall_assets())
+                    problems=tuple(at_rest_problems(ctx, self.rung) + self._rft_problems(ctx)),
+                    assets=self._wall_assets())
 
     def _rft_problems(self, ctx: PlanContext) -> list[Problem]:
         """The rft rung's refusals: a body whose hull declares no centreline (``drag.no-centreline``, naming the guide's

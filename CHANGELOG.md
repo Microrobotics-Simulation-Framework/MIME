@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
+  spacing and resolution) and the step's memory estimate against the device's memory, or the host's on a CPU, and a
+  box whose step will not fit is refused when planned (`flow.memory`, with a coarser grid or a shorter period as its
+  route). A field kind a medium carries declares the quantities it provides (`Dynamics.provides`, the vocabulary's
+  field interfaces, checked at registration; the FVM and the prescribed flow provide `field.flow.velocity`), and a law
+  finds the medium's field by quantity (`PlanContext.fields_providing` and `field_for`, refusing none and two unless
+  the law names one, `binding.field-quantity` and `binding.field-ambiguous`). Every drag rung (surrogate, mrs, rft, on
+  drag 0.4.0 and 0.3.0) assumes its medium at rest, so it is refused in a medium whose flow provides the velocity
+  (`drag.medium-flows`, naming the flow), until a rung reads a provided flow. Every dot in the FVM's programs is
+  checked to state the highest precision (a CPU test of the traced programs).
+
 - **A medium's flow, solved: the FVM on a periodic box** (`fvm` 0.1.0, with `body_force` 0.1.0 and
   `mime.scene.PeriodicBox`). `Medium(..., fields={"flow": FVM(domain=PeriodicBox(length=...))})` solves the flow of the
   fluid filling a straight tube's lumen on a Cartesian MAC grid of cubic cells, the wall a smooth Brinkman band (one
@@ -350,6 +361,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **Saved form 11: a medium's fields are written by role.** A medium's fields are saved under its own key `fields`
+  (`fields: {flow: {name: fvm, ...}}`), as an apparatus's are, where form 10 wrote a medium's flow as a dynamics aspect
+  (`dynamics: {flow: ...}`). A folder of form 10 or earlier loads as before: its medium's flow is read as `fields.flow`
+  and written back so for its input hash; one of them whose medium holds `fields` is refused. A reader of form 10
+  refuses a folder of form 11 as `load.newer-form`.
 
 - **The FVM's float32 solve stops at its rounding floor where 1e-5 is out of reach.** With no tolerance given, a
   float32 run's solve now stops at a true residual of 1e-5 or, where that is higher, at the solve's own rounding
