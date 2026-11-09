@@ -206,7 +206,7 @@ tagging: `python3 scripts/release.py check-ci --repository <owner>/<repo> --comm
 These three lanes keep **no compilation cache**: they restore none and save none. Each push saved about 13 GB of
 compilation caches across the five lanes against GitHub's 10 GB per-repository limit, so each push evicted the last, and a
 cold run of a lane that runs on a push or at night costs minutes nobody waits for. Their **per-test duration gate warns
-instead of failing** (`scripts/report_test_durations.py --warn-only`: a test over 20 s is a warning annotation, and a
+instead of failing** (`scripts/report_test_durations.py --warn-only`: an unlisted test over its line is a warning annotation, and a
 report that cannot be read still fails); the gate stays a failure on `default` for 3.12 and 3.14, which gate every pull
 request. A `stress` run with `python=3.13` finds no compilation cache to restore and runs cold.
 
@@ -226,14 +226,55 @@ name reads from the run's list of jobs at their latest attempts, as it reads its
 `continue-on-error` cannot read it from `needs.<job>.result`. The manual run's `plant_completion_failure` input fails that
 job in every lane; each lane's required check must then be red.
 
-## CI: borderline tests
+## CI: the duration gate
 
-A push to `release/v0.3.0` runs cold (an empty compilation cache) and a shard draws whichever runner class is free, so a test
-near the 20 s budget fails the `Test durations` step on some runs and not others, with nothing wrong in it. A test is
-listed in `tests/duration_allowlist.txt` as persistently borderline when, over the last cold push runs of the CI
-workflow, it was over 20 s at least once, or over 17 s (85 % of the budget) in at least a quarter of them. Its entry says
-its largest cold duration and the runner, and its typical warm duration. The list is a record of measurements: no test
-is made faster, slow-marked, shrunk or derandomised to leave it.
+**The rule (decided 2026-11-09 on the maintainer's approval of a measured proposal; he can reverse it).** Each shard's
+`Test durations` step (`scripts/report_test_durations.py`) judges every test by who answers for it:
+
+- An unlisted test over **30 s** fails the job only if it is **the change's own**: its file is in the change's diff, or
+  its node id is new (the base does not collect it, which covers a case that a registry entry adds to a test file the
+  change never opened). The test is re-run once, alone, with an empty compilation cache, and fails only if it is over
+  30 s again.
+- Any **other** unlisted test fails only over a flat **90 s** (again after the re-run); between 30 s and 90 s it warns.
+  Over 5 s every unlisted test warns, as before.
+- A **listed** test has a **ceiling**: 3 times its median over the week's cold runs, at least 60 s
+  (`tests/duration_ceilings.json`, written by the triage below, never by hand). Over it, the step fails a push and warns a
+  pull request, unless the pull request owns the test (the same two tests of "own"), where it fails. The re-run applies
+  to a ceiling too. A listed test with no ceiling in the file (added since the last triage) has none.
+- "The change" is the pull request's diff against its base (the merge commit against its first parent); on a push and a
+  manual run, the push's head against the previous head (`github.event.before`), else against the head's first parent.
+  The 3.13 and `-main` lanes apply the same rule and warn instead of failing (above). If the diff or the base's
+  collection cannot be read, every test counts as the change's own.
+
+The numbers come from two days of pull request runs (28 push runs beside them): at 20 s the gate failed 24 shard jobs of
+9 of 79 runs; 3 of its (run, test) pairs, in 2 runs, were slow in the real sense and the rest cold-cache artefacts (a
+warm time of 0.1 to 17 s). At 30 s for the change's own tests and 90 s for the rest it fails 13 of those jobs, in 3 runs,
+one of them real (the other two are an own test's cold first run and a cold-by-design run, which the re-run alone
+clears or does not). What it lets through is slow tests between 20 s and 30 s, and the triage is the check on those.
+
+**The weekly triage** (`scripts/duration_triage.py`) reads a week of cold push and nightly reports (`durations-default-*`
+of `ci.yml` on `release/v0.3.0`, Python 3.12 and 3.14, about 20 runs) and writes one branch: the ceilings file, additions
+to `tests/duration_allowlist.txt` by the rule below, and removals (a listed test under 10 s in every report). Its pull
+request body also names the listed tests whose 90th percentile is over their ceiling and the unlisted tests whose cold
+median is over 20 s. **Run it as your own account**, never from a workflow: a pull request opened with `GITHUB_TOKEN`
+starts no checks. No schedule is set; the maintainer sets one when he wants it.
+
+```
+python scripts/duration_triage.py --branch triage/durations-$(date +%F) --body-file body.md
+git push -u origin HEAD
+gh pr create --base release/v0.3.0 --title "ci: the weekly duration triage" --body-file body.md
+```
+
+An added entry's reason ends in a sentence a person writes (why the test must run on every push) before the pull request
+merges; the allowlist's own test refuses an entry that does not start `kept:`.
+
+**Borderline tests.** A push to `release/v0.3.0` runs cold (an empty compilation cache) and a shard draws whichever runner
+class is free, so a test near the line fails the `Test durations` step on some runs and not others, with nothing wrong in
+it. A test is listed in `tests/duration_allowlist.txt` as persistently borderline when, over the last cold push runs of the
+CI workflow, it was over the line (30 s; 20 s before 2026-11-09, and the entries of that time stay) at least once, or over
+85 % of it (25.5 s; 17 s before) in at least a quarter of them. Its entry says its largest cold duration and the runner,
+and its typical warm duration. The list is a record of measurements: no test is made faster, slow-marked, shrunk or
+derandomised to leave it.
 
 ## CI: stress runs
 
