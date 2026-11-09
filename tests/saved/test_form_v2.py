@@ -81,7 +81,7 @@ def test_the_rung_is_named_bem_in_the_old_folder_and_read_as_mrs():
     report = experiment.load_report
     assert report is not None
     lines = report.text().splitlines()
-    assert lines[1] == ("saved form: mime.document/2, read as version 11; the rung bem of drag:ball is read as mrs: the "
+    assert lines[1] == ("saved form: mime.document/2, read as version 12; the rung bem of drag:ball is read as mrs: the "
                         "rung was renamed for its method, and is the same; it declares no licence, terms or "
                         "permission, being of a form before them")
     assert lines[2] == "input hash: reproduced exactly"
@@ -91,7 +91,7 @@ def test_the_rung_is_named_bem_in_the_old_folder_and_read_as_mrs():
 def test_a_folder_without_the_rung_loads_without_saying_so():
     report = Experiment.load(PREVIOUS / "possessive_ball").load_report
     assert report is not None
-    assert report.text().splitlines()[1] == ("saved form: mime.document/2, read as version 11; it declares no licence, "
+    assert report.text().splitlines()[1] == ("saved form: mime.document/2, read as version 12; it declares no licence, "
                                              "terms or permission, being of a form before them")
     assert report.text().splitlines()[2] == "input hash: reproduced exactly"
 
