@@ -32,6 +32,8 @@ weight, to 64 floors) they are checked in float32 and float64 above."""
 
 from __future__ import annotations
 
+import math
+
 import jax
 import jax.numpy as jnp
 import pytest
@@ -65,7 +67,8 @@ from mime.nodes.body import RigidInertialTensorNode
 SIZE = 64.0
 #: The unplanted identity is within one floor (``test_body_identity``); the plant reads as its size within that.
 SLACK = 1.0
-#: How many times over the reversed hold takes the correction the wrong way.
+#: How many times over the reversed hold takes the correction the wrong way, at least: :func:`reversal` raises it on a
+#: draw where this many would read as fewer than ``SIZE`` floors.
 REVERSAL = 100.0
 
 ARMS = {
@@ -97,6 +100,21 @@ def floors(found: dict[str, jax.Array], quantity: jax.Array) -> float:
     """``quantity`` in units of the step's floor."""
     return float(quantity) / (books.IDENTITY_ULPS * float(jnp.finfo(found["ledger_scale"].dtype).eps)
                               * float(found["ledger_scale"]))
+
+
+def reversal(node: RigidInertialTensorNode, drawn: dict, clean: dict[str, jax.Array]) -> float:
+    """How many times over to reverse the hold on this draw so that the contact's work reads ``SIZE`` floors of the step
+    in the dtype under test. The work the reversed hold does grows as the square of the multiplier (measured from 100
+    times on: the work at 100 times, read in float64 where its size is far above any floor, is the draw's own number),
+    and it differs by orders of magnitude from draw to draw with how much the hold has to correct: a fixed multiplier
+    reads 0.35 floors in float32 on a draw whose correction is 10^-13 m, below the instrument's resolution. At least
+    ``REVERSAL``, the physical form's own."""
+    with in_dtype("float64") as wide:
+        planted = one_step(node, drawn, wide, plant={REVERSED_HOLD: REVERSAL})
+    work = float(planted["ledger_step_work"][contact_row(node)])
+    assert work > 0.0, ("the hold acts in this dtype but its reversal does no work in float64", work)
+    floor = books.IDENTITY_ULPS * float(jnp.finfo(clean["ledger_scale"].dtype).eps) * float(clean["ledger_scale"])
+    return REVERSAL * max(1.0, math.sqrt(SIZE * floor / work))
 
 
 @DTYPES
@@ -162,11 +180,12 @@ def test_a_contact_that_gives_energy_is_caught_by_its_class_alone_on_every_draw(
 @DTYPES
 @HELD_ARM
 def test_a_hold_reversed_is_caught_by_the_contact_s_sign_wherever_the_hold_acts(arm, name):
-    """The physical form: the correction taken the wrong way (``REVERSAL`` times over), the identity closed (the work
-    booked under the contact's name), the contact's work positive beyond the floor, on every draw on which the hold
-    acts. Where it does not (the rod's nearest point, carried by its turning, is not moving into the wall: the hull
-    contact has nothing to hold) the reversed step is the unplanted step bit for bit and there is nothing planted; the
-    share of draws on which the hold acts is counted and must be at least half."""
+    """The physical form: the correction taken the wrong way (``REVERSAL`` times over, more where that would read below
+    ``SIZE`` floors: :func:`reversal`), the identity closed (the work booked under the contact's name), the contact's
+    work positive beyond the floor, on every draw on which the hold acts. Where it does not (the rod's nearest point,
+    carried by its turning, is not moving into the wall: the hull contact has nothing to hold) the reversed step is the
+    unplanted step bit for bit and there is nothing planted; the share of draws on which the hold acts is counted and
+    must be at least half."""
     acting = []
 
     @settings(deadline=None)
@@ -177,9 +196,14 @@ def test_a_hold_reversed_is_caught_by_the_contact_s_sign_wherever_the_hold_acts(
         with in_dtype(name) as dtype:
             found = one_step(node, drawn, dtype, plant={REVERSED_HOLD: REVERSAL})
             clean = one_step(node, drawn, dtype)
-        holds = not bool(jnp.array_equal(found["twist"], clean["twist"]))
+            holds = not bool(jnp.array_equal(found["twist"], clean["twist"]))
+            if holds:
+                found = one_step(node, drawn, dtype, plant={REVERSED_HOLD: reversal(node, drawn, clean)})
         acting.append(holds)
         if holds:
+            # The plant is above the instrument's resolution: the work reads about its size in floors.
+            work = floors(found, found["ledger_step_work"][row])
+            assert work >= SIZE / 2, work
             assert identity_over_floor(found) <= 1.0, identity_over_floor(found)
             assert float(found["ledger_gift_steps"][row]) == 1.0, floors(found, found["ledger_step_work"][row])
         else:
