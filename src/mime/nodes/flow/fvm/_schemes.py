@@ -8,11 +8,14 @@ a run starts, the instants at which each stage reads the medium's drive, its led
 CFL line (which bounds convection only) and its viscous limit, and whether it has a steady limit. **Its step and start
 carry a scheme state**, a mapping keyed by ``state_fields`` (``"velocity"`` a :data:`Velocity`, any other field an
 array), never the velocity alone: ``start(grid, velocity)`` gives the state a run starts from, and ``step(context,
-state, time, dt)`` the next state and what the ledger reads of the step. A start the scheme makes in the program (RK3's
-consistent pressure, round 4, item 8) is its step's, from a state its start marks unmade. A scheme's step takes a
-:class:`StepContext` (what the field kind gives every scheme: its grid, its operators, the viscosity and the regions'
-resistivity, its drive at each stage's instant, its solve). Nothing here names the CG, the projector or a fluid: those
-are the context's.
+state, time, dt)`` the next state and what the ledger reads of the step, **its stage kind's record** (``TimeScheme`` is
+generic in it): :class:`StageParts` for the monolithic projected CG, one implicit stage's parts, from which the node
+forms route 2's terms; for the explicit stage kind, the scheme's own record of the step's terms as its stages form them
+(route 1: a quadrature over the stages, which only the stages can make; RK3's is F1b's). A start the scheme makes in
+the program (RK3's consistent pressure, round 4, item 8) is its step's, from a state its start marks unmade. A scheme's
+step takes a :class:`StepContext` (what the field kind gives every scheme: its grid, its operators, the viscosity and
+the regions' resistivity, its drive at each stage's instant, its solve). Nothing here names the CG, the projector or a
+fluid: those are the context's.
 
 **IMEX Euler**: backward Euler for viscosity, the penalty and incompressibility in one solve on the projected
 operator, forward Euler for convection when it is on; the drive at the step's end. **The steady solve** is the same
@@ -38,13 +41,16 @@ from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 
 
 class StageKind(StrEnum):
+    """How a scheme's stages are solved, and so which record its step returns (:class:`TimeScheme`)."""
+
     MONOLITHIC_PROJECTED_CG = "monolithic_projected_cg"
     EXPLICIT_PROJECTED = "explicit_projected"
 
 
 class StageParts(NamedTuple):
-    """What the ledger reads of an implicit stage: its right-hand side's parts (the drive's force, the convective
-    term, the time term's coefficient ``c``), its solution and the primal solve's report."""
+    """The monolithic projected CG's record, what the ledger reads of its one implicit stage: its right-hand side's
+    parts (the drive's force, the convective term, the time term's coefficient ``c``), its solution and the primal
+    solve's report. Route 2's terms are formed from it by the node; the explicit stage kind records its own."""
 
     force: Velocity
     convection: Velocity
@@ -75,8 +81,9 @@ class StepContext:
     resistivity: Velocity | None = None
 
 
-class TimeScheme:
-    """A registered time scheme (the module's interface)."""
+class TimeScheme[Record]:
+    """A registered time scheme (the module's interface), generic in ``Record``, what the ledger reads of its step: its
+    stage kind's record (the module says which)."""
 
     name: ClassVar[str]
     version: ClassVar[str]
@@ -113,12 +120,12 @@ class TimeScheme:
         """The state a run starts from, given its initial velocity: the velocity projected once (B2)."""
         return {"velocity": grid.project(velocity)}
 
-    def step(self, context: StepContext, state: SchemeState, time: Any, dt: Any) -> tuple[SchemeState, StageParts]:
-        """The state one step on from ``state`` at ``time``, and what the ledger reads of the step."""
+    def step(self, context: StepContext, state: SchemeState, time: Any, dt: Any) -> tuple[SchemeState, Record]:
+        """The state one step on from ``state`` at ``time``, and what the ledger reads of the step (its record)."""
         raise NotImplementedError
 
 
-class IMEXEuler(TimeScheme):
+class IMEXEuler(TimeScheme[StageParts]):
     name = "imex_euler"
     version = "0.1.0"
     stage_kind = StageKind.MONOLITHIC_PROJECTED_CG
@@ -147,7 +154,7 @@ class IMEXEuler(TimeScheme):
         return {"velocity": solved}, StageParts(force, convection, rhs, solved, shift, report)
 
 
-class Steady(TimeScheme):
+class Steady(TimeScheme[StageParts]):
     name = "steady"
     version = "0.1.0"
     stage_kind = StageKind.MONOLITHIC_PROJECTED_CG
@@ -171,10 +178,10 @@ class Steady(TimeScheme):
         return {"velocity": solved}, StageParts(force, grid.zeros(velocity[0].dtype), force, solved, zero, report)
 
 
-SCHEMES: MappingProxyType[str, TimeScheme] = MappingProxyType({IMEXEuler.name: IMEXEuler(), Steady.name: Steady()})
+SCHEMES: MappingProxyType[str, TimeScheme[Any]] = MappingProxyType({IMEXEuler.name: IMEXEuler(), Steady.name: Steady()})
 
 
-def scheme_named(name: str) -> TimeScheme:
+def scheme_named(name: str) -> TimeScheme[Any]:
     if name not in SCHEMES:
         raise ValueError(f"no time scheme {name!r} is registered: {sorted(SCHEMES)}")
     return SCHEMES[name]

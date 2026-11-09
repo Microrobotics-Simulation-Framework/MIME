@@ -285,7 +285,7 @@ class ImplicitFlowNode(MimeNode):
 
     # -- the pieces of a step ------------------------------------------------------------------------------------
     @property
-    def scheme(self) -> TimeScheme:
+    def scheme(self) -> TimeScheme[Any]:
         return scheme_named(self.constants()["scheme"])
 
     def grid(self, p: Mapping[str, Any]) -> MACGrid:
@@ -316,7 +316,7 @@ class ImplicitFlowNode(MimeNode):
         nu = self.kinematic(p)
         return (nu * k[0], nu * k[1], nu * k[2])
 
-    def forcing(self, fields: WallFields, boundary_inputs: Mapping[str, Array], scheme: TimeScheme,
+    def forcing(self, fields: WallFields, boundary_inputs: Mapping[str, Array], scheme: TimeScheme[Any],
                 dtype: Any) -> Callable[[int, Any], Velocity]:
         """``force(stage, time)``, the drive each stage reads at its instant (:class:`StepContext`): the body force the
         laws bound to the medium delivered, summed, where the scheme's stages read at the step's end, the instant it is
@@ -416,7 +416,7 @@ class ImplicitFlowNode(MimeNode):
     def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> tuple[dict[str, Array], StepParts]:
         c = self.constants()
-        scheme = scheme_named(c["scheme"])
+        scheme: TimeScheme[StageParts] = self.scheme
         grid = self.grid(p)
         dtype = run_dtype()
         fields = self.fields(p, grid)
@@ -557,7 +557,7 @@ class ImplicitFlowNode(MimeNode):
     def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
         """The validity lines fixed when the node is built, each reported where it is crossed (never a refusal): the
         lumen's resolution in cells under the band's calibration, and float32's rounding floor near a steady state
-        above the solve's tolerance."""
+        above the monolithic solve's tolerance (a node with no such solve has no such line)."""
         del start, closest_approach
         c = self.constants()
         cells = 2.0 * float(c["tube_radius"]) / float(c["spacing"])
@@ -568,7 +568,7 @@ class ImplicitFlowNode(MimeNode):
                          f"provisional until a stenosis case measures it, the band added +2.1 % of the flux at 16 "
                          f"and +10.8 % at 8, and under about 5 cells the build refuses")
         nu = float(c["viscosity"]) / float(c["density"])
-        if run_dtype() == jnp.float32 and self.scheme.stores_inertia:
+        if run_dtype() == jnp.float32 and self.scheme.stores_inertia and "tolerance" in c:
             tau = float(c["tube_radius"]) ** 2 / (STALL_SECTION * nu)
             floor = float(np.finfo(np.float32).eps) * tau / self.delta_t
             if floor > float(c["tolerance"]):

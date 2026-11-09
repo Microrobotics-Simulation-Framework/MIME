@@ -23,7 +23,10 @@ cap, stagnated, at a residual that is not finite). A step whose solve stopped ot
 `solve_flagged`, which the run's result reads (`result.flags`, with the count of steps that raised it), and the run warns
 of it with that count after it ends; the step's report, `solve_report`, says which way it stopped, and a run that records
 every step (`history=True`) keeps each step's. A solve stagnates when, over its last checks of the true residual, none
-fell below a share of the best before them (the entry's validity lists the window and the share).
+fell below a share of the best before them (the entry's validity lists the window and the share). A solve whose
+residual is not finite (a NaN in the step's drive or operator) returns NaN, never a velocity it did not solve for, so the
+run is refused for its state's not being finite, naming the flow (and, in a run that records every step, the step
+where it began).
 
 With convection on, each step checks the flow's CFL number against the scheme's line along the vessel's axis. At the
 first step past it the flow's state is held (that step and the later ones leave it unchanged), the run ends at the end of

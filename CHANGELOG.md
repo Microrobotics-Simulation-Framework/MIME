@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by `exp.attach(BodyForce(along=..., steady=...), medium=water)` on the fluid. Each step reports its solve (its
   iterations, its true residual against the tolerance and how it stopped); a step whose solve stopped other than
   converging raises `solve_flagged`, read in `result.flags` with its count and warned of after the run (a flag may now
-  declare that it warns, `Flag.warns`). It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
+  declare that it warns, `Flag.warns`); a solve whose residual is not finite returns NaN, so the run is refused as not
+  finite, naming the flow. It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
   with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
   with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
   gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
