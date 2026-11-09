@@ -252,7 +252,7 @@ class FVM(Dynamics):
                                            "floor at each check where that is higher"),
         "preconditioner": convention(NUMERICAL, "Jacobi, the one preconditioner measured in three dimensions"),
         "wall": convention(NUMERICAL, "the one registered smooth band, with its default stiff interior (B3)"),
-        "report_rows": convention(NUMERICAL, "the derivative solves' reports summed over the run"),
+        "solve_report_rows": convention(NUMERICAL, "the derivative solves' reports summed over the run"),
     }
 
     domain: PeriodicBox
@@ -263,7 +263,7 @@ class FVM(Dynamics):
     tolerance: float | None = None
     preconditioner: str = DEFAULT_PRECONDITIONER
     wall: Band = Band()
-    report_rows: int = 0
+    solve_report_rows: int = 0
 
     @override
     def value_problems(self, values: Mapping[str, Magnitude]) -> list[Problem]:
@@ -455,7 +455,7 @@ class FVM(Dynamics):
             spacing=layout.spacing, viscosity=viscosity, density=density,
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
-            interior=interior, periodic_images=images, report_rows=self.report_rows))
+            interior=interior, periodic_images=images, solve_report_rows=self.solve_report_rows))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:

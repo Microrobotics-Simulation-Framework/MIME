@@ -14,8 +14,8 @@ from typing import Any, Literal, Never, TypeAliasType, cast
 
 from typing_extensions import NotRequired, ReadOnly, Required, TypedDict, get_type_hints, is_typeddict
 
-DOCUMENT_SCHEMA = "mime.document/11"
-LOCK_SCHEMA = "mime.lock/11"
+DOCUMENT_SCHEMA = "mime.document/12"
+LOCK_SCHEMA = "mime.lock/12"
 
 type SettingValue = (None | bool | int | float | str | list[SettingValue] | QuantityDoc | AssetDoc | FileDoc
                      | GroupDoc)
@@ -342,9 +342,10 @@ class ExperimentDocument(TypedDict, closed=True):
     (``Experiment.based_on``), absent where it was made from none. Version 8 adds nothing to the document; its schema
     moves with the lock's, which records the program the reference outputs were run by, the CPUs the build could use
     and the threads of its BLAS. Version 11 writes a medium's fields under ``fields``, by role (``fields: {flow:
-    ...}``), as an apparatus's are, where earlier versions wrote its flow under ``dynamics``."""
+    ...}``), as an apparatus's are, where earlier versions wrote its flow under ``dynamics``. Version 12 names the FVM's
+    setting ``solve_report_rows``, where earlier versions named it ``report_rows``."""
 
-    schema: ReadOnly[Literal["mime.document/11"]]
+    schema: ReadOnly[Literal["mime.document/12"]]
     mime: ReadOnly[str]
     experiment: ReadOnly[str]
     based_on: NotRequired[BasedOnDoc]
@@ -805,7 +806,7 @@ class Lock(TypedDict, closed=True):
     seeds, the hashes, the resolved record, the derived graph, the stage, the record files by material and the
     reference outputs; and, where there are any, the remote assets and the files that travel as references."""
 
-    schema: ReadOnly[Literal["mime.lock/11"]]
+    schema: ReadOnly[Literal["mime.lock/12"]]
     environment: ReadOnly[EnvironmentRecord]
     entries: ReadOnly[list[EntryRecord]]
     seeds: ReadOnly[dict[str, dict[str, int]]]

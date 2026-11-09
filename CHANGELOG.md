@@ -63,8 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finite, naming the flow. It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
   with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
   with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
-  gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
-  the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
+  gradient, a row a step with `solve_report_rows` (a run past the last row refused before it runs). With convection on,
+  at the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
   refused, naming the step and a timestep to try. The wall's settings are its group, `wall=Band(delta_in=...)`. Its
   derivative is checked exact in the viscosity, the density and the drive, and declared unverified in the tube's
   geometry (the entry's status). `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is
@@ -392,6 +392,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `pull`.
 
 ### Changed
+
+- **Saved form 12: the FVM's `report_rows` is `solve_report_rows`.** The setting, its refusal
+  (`flow.solve-report-rows`) and the flow node's parameter take the new name. A folder of form 11 or earlier loads as
+  before: its old name is read as the new and written back with the old name for its input hash. A reader of form 11
+  refuses a folder of form 12 as `load.newer-form`.
 
 - **Saved form 11: a medium's fields are written by role.** A medium's fields are saved under its own key `fields`
   (`fields: {flow: {name: fvm, ...}}`), as an apparatus's are, where form 10 wrote a medium's flow as a dynamics aspect
