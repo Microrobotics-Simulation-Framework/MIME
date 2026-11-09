@@ -22,7 +22,17 @@
   traced step, and the precision. One build and one compile per group. A leaf that varies among a group's members and
   that the compiled step does not read is refused (`study.leaf-unread`), and so is an axis whose values change no leaf,
   no initial state and no key (`study.axis-inert`): a study sees a value only where a node holds it in a leaf or a
-  declared static, so a node must hold every value it consumes there.
+  declared static, so a node must hold every value it consumes there. What splits a group is what a node makes from a
+  value when it is built and keeps in its program: a static it derives and declares, a count or a layout (the MRS
+  rung's force points from its spacing, a hull's counts and groups from the contact's spacing or margin), the node set,
+  `dt` and the precision. The MRS rung's settings and wall tables are leaves, and so is its held body-frame matrix, made
+  at build with the leaves it was made at beside it: a sweep of its blob is one group while the number of quadrature points the blob gives stays the same, and splits where it
+  changes (`reference_quadrature_counts`, a static; measured on the settling sphere: a small spread of blob values is one group, a
+  spread wide enough to change the count is two). Geometry is no axis yet (a
+  kind's settings are given where they are written); inside a declared range it will be a declared parameter, its
+  counts and box sizes fixed by the range. A value held in a node's program as a constant of its own, not as a leaf, is
+  a silent bake: every member would run the first point's. The two-builds check (`mime.testing.two_builds`) is how an
+  entry shows it holds none.
 - **The plan's memory estimate** (`Memory`): on the device, XLA's buffer assignment of one chunk of the batched step
   compiled at the batch's own size and not run, and `fixed + each` a member from the line through two batch sizes
   (four and eight, or a smaller batch and half of it), checked at a third; no figure a member where the third lies more

@@ -19,7 +19,12 @@ from mime.core import run_dtype, shape_named, switch
 from mime.data import Asset, asset_problem
 from mime.gradients import GradientStatus
 from mime.nodes.hydro import RFTDragNode, SurrogateDragNode
-from mime.nodes.hydro._rft_drag import COEFFICIENT_SETS, coefficient_problem, default_coefficients, measured_family
+from mime.nodes.hydro._rft_drag import (
+    COEFFICIENT_SETS,
+    RFT_POINTS_PER_RADIUS,
+    coefficient_problem,
+    default_coefficients,
+)
 from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
@@ -656,10 +661,6 @@ SEPARATED_REFINEMENT_MEASURED = (
     "more than 5%")
 
 
-#: The rft rung's default spacing of its points along the centreline, in filament radii: the integrand of its
-#: resistance is smooth along the centreline (a helix's turn spans many radii), so the midpoint rule converges long
-#: before this; a convention, not a measurement of the rung's error, which its validity lines state.
-RFT_POINTS_PER_RADIUS = 1.0
 #: Where a lab is told how to add a centreline to a kind (a custom geometry, an STL or CAD mesh): the guide's page,
 #: ``docs/guide/centrelines.md``.
 CENTRELINE_GUIDE = "centrelines"
@@ -1049,17 +1050,12 @@ class Drag(PointForceDrag):
         constants = correction.prepare(dict(region.parameters) if region is not None else {}, run_dtype())
         settings = {setting.name: hull.settings.get(setting.name, getattr(hull.kind, setting.name))
                     for setting in dataclasses.fields(hull.kind)}
-        lengths = [float(segment.length(hull.settings)) for segment in centreline.segments]
-        thinnest = min(float(cast(Any, segment.filament_radius)(hull.settings)) for segment in centreline.segments)
-        family = measured_family(hull.kind.name, hull.settings, sum(lengths) / thinnest, wall.name)
         node = b.add_response_node(RFTDragNode(
             ctx.node_name(), ctx.timestep, viscosity=ctx.scalar_value("viscosity"), kind=hull.kind.name,
             kind_version=hull.kind.version, counts=centreline_counts(centreline, hull.settings, ctx.scalar("spacing")),
             part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
             coefficients=self.coefficients, wall_kind=wall.name, wall_kind_version=wall.version,
-            measured=family is not None and self.coefficients == default_coefficients(centreline)
-            and ctx.scalar("spacing") <= thinnest / RFT_POINTS_PER_RADIUS * (1.0 + 1e-9),
-            gap_least=0.0 if family is None or wall.name == "free_space" else family.gap,
+            spacing=ctx.scalar("spacing"),
             **cast(dict[str, Any], {f"{WALL}{name}": value for name, value in constants.items()}),
             **cast(dict[str, Any], {f"{SHAPE}{name}": value for name, value in settings.items()})))
         b.connect(b.read("pose"), into=node["pose"])

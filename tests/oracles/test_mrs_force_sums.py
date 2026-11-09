@@ -12,6 +12,12 @@ bitwise reproduction in a fresh process: the registry walk's ``mrs_solids`` roun
 - **A longer one equals the product to rounding**: within the worst-case bound of a sum in any order, ``2 (K + 1) u``
   of the sum of the terms' magnitudes.
 - **The control**, failing on every run: the product taken whole at 297 unknowns is found by the same scan.
+- **The rft rung's step** (R1) too: it took ``M^T f`` over its 3n unknowns whole (282 on ``rft_free_space``'s helix,
+  279 on ``rft_tube``'s, with the walled form's block-diagonal ``B M`` and ``B G`` as long), and the registry walk's
+  round trip of ``rft_free_space`` failed on that laptop by where each process started; pinned there, the product
+  taken whole gave one bit pattern on the larger cores and another on the smaller, three runs of each, and the pieces
+  one pattern on both. Every product in its compiled step now sums at most ``DEPTH`` terms; the control puts the
+  product taken whole back and the scan finds it.
 
 CI's runners have one size of core, so nothing here can show that two processes' bits differ; that was measured on a
 laptop with both, in fresh processes on each core type (in the pull request)."""
@@ -24,8 +30,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from mrs_cases import SOLIDS, drag_node, free_space, mrs
+from rft_cases import rft_free_space, rft_tube
 
 from mime.build._maddening import node_state, parameter_leaves
+from mime.nodes.hydro import _rft_drag
 from mime.nodes.hydro.mrs import DEPTH, PRECISION, force_sums, resistance
 from mime.units import mm
 
@@ -93,3 +101,32 @@ def test_a_longer_sum_equals_the_product_to_rounding(count):
 def test_control_the_product_taken_whole_is_found_by_the_scan():
     motions, forces = drawn(297)
     assert 297 in depths(jax.jit(whole).lower(motions, forces).compile().as_text())
+
+
+#: The rft cases whose helix has more than ``DEPTH`` unknowns: the case, its drag node and its body.
+RFT_STEPS = {"rft_free_space": (rft_free_space, "drag:coil", "coil"), "rft_tube": (rft_tube, "drag:helix", "helix")}
+
+
+def rft_step_depths(case: str) -> tuple[list[int], int]:
+    """The sums of every product in the compiled step of ``case``'s helix drag, and its unknowns, 3n."""
+    make, name, body = RFT_STEPS[case]
+    built = make().build()
+    node = built.graph.get_node(name)
+    held = node_state(built.graph, name)
+    step = jax.jit(lambda p, pose: node.update(held, {"pose": pose}, 1e-3, params=p)["resistance"])
+    program = step.lower(parameter_leaves(built.graph)[name], jnp.asarray(node_state(built.graph, body)["pose"]))
+    return depths(program.compile().as_text()), 3 * node.point_count
+
+
+@pytest.mark.parametrize("case", list(RFT_STEPS))
+def test_every_product_in_the_compiled_rft_step_sums_at_most_depth_terms(case):
+    found, unknowns = rft_step_depths(case)
+    assert unknowns > DEPTH
+    assert found and max(found) <= DEPTH, found
+
+
+@pytest.mark.parametrize("case", list(RFT_STEPS))
+def test_control_the_rft_steps_product_taken_whole_is_found_by_the_scan(case, monkeypatch):
+    monkeypatch.setattr(_rft_drag, "force_sums", whole)
+    found, unknowns = rft_step_depths(case)
+    assert unknowns in found, found

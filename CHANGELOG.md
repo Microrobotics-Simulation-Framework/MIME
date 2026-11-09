@@ -25,6 +25,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with its reason (`result.energy.unmetered`, in `result.energy.text()` and `result.text()`), where it was `None`.
   Every dot in the FVM's programs is checked to state the highest precision (a CPU test of the traced programs).
 
+- **The two-builds check** (`mime.testing.two_builds`, `two_builds_of`, `step_program`, `graph_program`, `run_form`;
+  float64 only): whether a compiled program holds a value made from a declared one as a constant of its own, which a
+  study's batched members would all run at the group's first value and a derivative would not see. Its trace form
+  compares two builds' steps, traced as MIME's chunked run executes them with the state, the inputs and the whole
+  parameter tree as arguments; its run form writes one build's leaves into the other's compiled chunk and judges each
+  field against `RUN_FACTOR` times the program's own resolution there (a start one ulp off, as a saved folder's
+  resolution is measured), and sees a value that reaches the run outside the step. `RUN_FACTOR` is declared, 16,
+  provisional: measured in a window whose margins are 1.1 and 1.2, so the run form's gating plants stand four times
+  its line up. The trace form compares the constants of every nested sub-program as well as the top level's (a node's
+  step runs inside a `jit`, where an array it holds as built is a constant that neither the printed program nor the
+  top-level constants carry): a NumPy or JAX array of half the magnetic torque's moment taken from the build is a `bake`
+  at every move from 1e-1 to 1e-15, in the step's `jit`, a `scan` and a `cond`, its twin quiet. A pair that moves nothing
+  is `not-discriminating`, never `quiet`; a run form that fires with the program the same and no state or input moved
+  is the check's own gap and is refused (`two-builds.undetected`). On the registry walk's cases three pairs fire, each
+  `held` and each pinned: the ellipsoid's semi-axes of `bound_robot_with_parts` and the brick's size and the egg's
+  semi-axes of `mrs_solids`, which their nodes consume when they are built and which an override and a sweep refuse; the
+  walk bounds what it walked (the trace form over the nonzero floats of those cases' documents), not nodes no case
+  builds. Every planted bake of the bake-check spike's set is caught by the trace form at every move from 1e-1 to one
+  ulp (`tests/two_builds/`). New refusals: `two-builds.float32`, `two-builds.leaf-shapes`, `two-builds.not-movable`,
+  `two-builds.undetected` and `run.run-constant` (MIME's defects).
+- **Run-constants** (`MimeNode.run_constants`): a quantity a node makes from its leaves and holds over a run, made once
+  per chunk inside the compiled program, before the step loop, by MIME's chunked runs (the flagged run, a study's
+  batched run, and `mime.build._maddening.chunk_function`, a pure function of the state and the parameters to
+  differentiate through), and read as given by the loop's steps (`run_constants_given`). Reverse mode then derives it
+  once per chunk: on FL-9 in free space at 222 force points the gradient through a chunk equals the per-step form's to
+  1e-12, and the 666-wide LU leaves the backward loop (MIME-ANO-147). Forward runs keep their arrays bit for bit.
 - **A medium's flow, solved: the FVM on a periodic box** (`fvm` 0.1.0, with `body_force` 0.1.0 and
   `mime.scene.PeriodicBox`). `Medium(..., fields={"flow": FVM(domain=PeriodicBox(length=...))})` solves the flow of the
   fluid filling a straight tube's lumen on a Cartesian MAC grid of cubic cells, the wall a smooth Brinkman band (one
@@ -373,6 +399,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and written back so for its input hash; one of them whose medium holds `fields` is refused. A reader of form 10
   refuses a folder of form 11 as `load.newer-form`.
 
+- **The MRS drag's held matrix is compared with leaves, not constants, and its second key is gone.** Beside
+  `held_in_body_frame` each separated-quadrature drag holds `held_from.<leaf>`, the leaves the matrix was made at;
+  `held_or_made` compares the step's leaves with them, so the step's program is the same at every value (the trace form
+  is quiet on the rung), a study's member keeps its own float64-made matrix, and the save's resolution rerun gives the
+  step the matrix with the leaves it was made at, which keeps it (`made_again`). The value-keyed second key (#201) is
+  removed, and the stale read it allowed (a step given every body leaf as the rerun moves it kept the build's matrix)
+  cannot be reached. No array moves. Folders of four experiments (the MRS sphere in free space, `mrs_tube`, `hull_contact`, `script_a`) saved by the tree before this change load with it, in the same environment and in float64, as "the same graph, hash for hash" [measured]; no golden hash is in the diff, and whether the derived hash moves for any other experiment was not measured.
+- **A hull contact's search values are leaves** (`search_apart_squared`, `search_tolerance`, `search_shortfall`,
+  `trainable=False`): made when the body is built from its hull's shape, they were Python numbers in the step's program
+  (MIME-ANO-145), so a study whose members' hulls differed under one program would have run the first member's. The
+  step reads the same numbers in the run's dtype, so every array is bit for bit what it was (the `hull_contact` folder saved before loads as "the same graph, hash for hash"
+  [measured, as above]). They stay outside every derivative: where a search starts and when it stops, which the point it
+  converges to does not depend on.
+- **The rft rung judges in its step whether a body lies within its measured lines**, from the step's leaves: the family
+  of its shape and its slenderness, its coefficient set, its spacing and, with a wall, the gap its family was measured
+  at. R1 decided the family and the gap at build, from leaves the step reads, so the step held them as constants: the
+  two-builds walk fired on `rft_tube`'s helix turns, whose move crossed the family's one measured slenderness, and a
+  leaf written into a compiled chunk would have kept the build's `unmeasured`. The node holds the `spacing` its counts
+  were made with (a leaf, `trainable=False`) in place of `measured` and `gap_least`; its build report evaluates the
+  same judgement at the leaves as built. A control plants R1's build-time values back and the walk fires on the same
+  pair. In float32 R1 flagged every body of `rft_free_space` and `rft_tube` unmeasured (its build compared the spacing
+  with a filament radius rounded to float32); the step's judgement agrees with float64's, tested in both.
 - **The FVM's float32 solve stops at its rounding floor where 1e-5 is out of reach.** With no tolerance given, a
   float32 run's solve now stops at a true residual of 1e-5 or, where that is higher, at the solve's own rounding
   floor, `eps || |A| |x| + |b| || / ||b||`, made at each check from the iterate (a tolerance given is held as given;
@@ -594,6 +642,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The rft rung's resistance is the same bit for bit whichever kind of core a process started on** (MIME-ANO-125
+  again; the rung is unreleased). R1's node summed `M^T f` over its 3n unknowns in one product (282 on
+  `rft_free_space`'s helix), and with a wall took its block-diagonal local drag into `B M` and `B G` as dense products
+  as long; XLA:CPU's Eigen blocks such a sum by the L1 data cache of the core it first ran on, so on a CPU with two
+  sizes of core the registry walk's round trip of `rft_free_space` failed by where each process started. It sums
+  `M^T f` by `force_sums` (pieces of at most `DEPTH` terms, added in order) and takes `B M` and `B G` point by point,
+  three terms a sum; every product in its compiled step sums at most `DEPTH` terms
+  (`tests/oracles/test_mrs_force_sums.py`, with a control that puts the whole product back). Its numbers move at
+  rounding only: R6's oracle and the rung's golden outputs hold within their tolerances.
 - **The energy ledger's running sums are pairs, and no longer drift with the steps** (MIME-ANO-149; the ledger is
   unreleased, so no version step). A plain float32 sum of a series of 1e5 terms drifted by tens of units of eps on the
   terms' summed magnitudes (45 on a mixed-sign series, 107 on a positive one, measured through the ledger's own update;

@@ -1827,6 +1827,15 @@ anomalies:
       sizes, predicts all twelve depths measured (the rule is inference from Eigen's published blocking heuristic; the
       library inside jaxlib was not read). The rung's numbers are right to rounding either way; what failed is the
       promise that a run reproduces bit for bit.
+
+      **The rft rung (R1, unreleased) took its products whole again.** Its resistance, M^T f, summed the helix's 3n
+      unknowns in one product (282 on rft_free_space's helix, 279 on rft_tube's), and with a wall its block-diagonal
+      local drag entered B M and B G as dense products as long. The registry walk's round trip of rft_free_space then
+      failed on the hybrid laptop by where each process started (the coil's pose 6.8e-21 apart at its first step, on
+      #208's branch and on the release branch alone alike). Pinned there, the coil's product taken whole gave one bit
+      pattern on the larger cores and another on the smaller, three processes of each; summed by force_sums, one
+      pattern on both. Fixed before release: the node sums M^T f by force_sums and takes B M and B G point by point,
+      three terms a sum.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1840,12 +1849,16 @@ anomalies:
     affected_components:
       - "entry: interaction drag, rung mrs; mime.nodes.hydro.mrs.resistance's force sums"
       - "node: MRSDragNode"
+      - "entry: interaction drag, rung rft; mime.nodes.hydro._rft_drag.RFTDragNode.resistance_at's products"
+      - "node: RFTDragNode"
     verification:
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_mrs_step_sums_at_most_depth_terms"
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_resistance_sums_at_most_depth_terms"
       - "tests/oracles/test_mrs_force_sums.py::test_a_sum_no_longer_than_depth_is_the_product_it_was_bit_for_bit"
       - "tests/oracles/test_mrs_force_sums.py::test_a_longer_sum_equals_the_product_to_rounding"
       - "tests/oracles/test_mrs_force_sums.py::test_control_the_product_taken_whole_is_found_by_the_scan"
+      - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_rft_step_sums_at_most_depth_terms"
+      - "tests/oracles/test_mrs_force_sums.py::test_control_the_rft_steps_product_taken_whole_is_found_by_the_scan"
       - "tests/saved/test_registry_walk.py::test_every_case_round_trips_through_a_fresh_process"
     residual_risk: "CI's runners have one size of core, so no test there can show that two processes' bits differ; the tests hold the cause (no product in the compiled MRS step sums more than 248 terms), and the cure was measured on a hybrid laptop (50 of 50 fresh processes, and 5 pinned to each kind of core, bitwise equal on all three bodies; mrs_solids saved on one kind and loaded on the other 10 of 10). 248 is the block Eigen takes in float64 with AVX2 on a 32 KB L1d (in float32 its block is longer); a CPU whose smaller cores had a smaller L1d, or wider vectors on both kinds, would need a shorter piece. The other products in MIME that contract over both operands' first axis (a chain's links, a 3 x 3 frame) sum a few terms, surveyed and not tested"
     workaround: "Before the fix, pin a process to one kind of core (taskset) where its bits are compared with another's"
@@ -3309,6 +3322,21 @@ anomalies:
       1e-6); in hull_contact all 21 pairs read 0 units. That the 1.6e-9 comes from these three floats,
       and not from another quantity held at build, is an inference that was not checked; why hull_contact's five steps
       did not show them was not checked either.
+
+      Resolved by lane S's S-F0-1. The three values are leaves of the node's params (search_apart_squared,
+      search_tolerance, search_shortfall; trainable=False), each build's own, holding the numbers the step used as
+      literals (the tolerance in the run's dtype), so the step's program is the same whatever their values and each point
+      of a study holds its own. Measured: the step given them as leaves gives the arrays of the step reading them as the
+      build's numbers, bit for bit, on the contact 0.5.0 and the 0.4.0 kept registered, in float64 and float32. The
+      two-builds check (mime.testing.two_builds), over the registry walk's cases with every float of each document moved
+      by 1e-6, fires on no hull setting of hull_contact or hull_contact_looped. It fires on one pair of
+      bound_robot_with_parts, the ellipsoid's semi-axes: the step holds the ellipsoid's points made from them as
+      constants (a vector setting of the kind held as built; its leaf hull_shape_semi_axes is one the step does not read).
+      With the three values as leaves that pair's run still moves by 7.0e6 units in the last place over five steps
+      [measured, float64]: the semi-axes' points dominate that run. Whether the three floats contributed some part of
+      the spike's 1.6e-9 is not separated by that [estimate, not a bound]. No run varies the
+      semi-axes: an override of them is refused (value.unknown) and a sweep over them refuses every point and its run, so
+      a new value is a new build.
     severity: major
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -3316,17 +3344,31 @@ anomalies:
       the shape the experiment was built with, with nothing flagging it. The size of the error is measured at one pair
       over five steps (1.6e-9 relative at a perturbation of 1e-6) and not at a large change of shape, so no bound on it is
       claimed. Whether a deployment sweeps or differentiates the hull's shape decides whether it matters.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev1"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1, <0.3.0.dev2"
+    resolution_version: "0.3.0.dev2"
     affected_components:
       - "node: RigidInertialNode; the hull's starting separation, size and shortfall (_apart, _size, _shortfall)"
+    verification:
+      - "tests/two_builds/test_run_constant_seam.py::test_the_hulls_search_values_as_leaves_are_the_literal_steps_bit_for_bit[hull_contact_looped-float64]"
+      - "tests/two_builds/test_run_constant_seam.py::test_the_hulls_search_values_as_leaves_are_the_literal_steps_bit_for_bit[hull_contact_looped-float32]"
+      - "tests/two_builds/test_run_constant_seam.py::test_the_hulls_search_values_as_leaves_are_the_literal_steps_bit_for_bit[hull_contact_kept-float64]"
+      - "tests/two_builds/test_run_constant_seam.py::test_the_hulls_search_values_as_leaves_are_the_literal_steps_bit_for_bit[hull_contact_kept-float32]"
+      - "tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[hull_contact]"
+      - "tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[hull_contact_looped]"
+      - "tests/two_builds/test_two_builds_walk.py::test_no_pair_of_the_registry_walks_cases_fires_the_trace_form[bound_robot_with_parts]"
+      - "tests/two_builds/test_two_builds_walk.py::test_control_the_leaves_closed_over_fire_on_every_pair_whose_leaves_move[hull_contact_looped]"
+      - "tests/two_builds/test_two_builds_walk.py::test_a_held_setting_takes_a_rebuild_an_override_and_a_sweep_are_refused[bound_robot_with_parts]"
     residual_risk: >
-      Not measured: the effect of a large change of a hull setting on the contact's rows or the run; the other hull kinds
-      (the spike's two cases were FL-9's hull and a hull given by semi-axes); whether the starting separation or the shortfall
-      moves the search's start count (a count keyed on a value is a structural quantity that a build fixes; it is not part
-      of this entry); float32, in which the check stops at about 3e-8 of a setting.
-    workaround: "Build the experiment again at each value of a hull setting instead of overriding it, and do not differentiate the hull's shape through the body; the build's values are then the right ones."
-    planned_resolution: "Open. Lane S's S-F0-1 classifies it (a leaf the step reads, a build-time quantity declared as such, or a structural value) and fixes it: either the three values are derived in the step from the leaves, or the settings that fix them are declared held as built, with the check that compares two builds that differ in one declared value passing on the hull's cases. This entry changes no code."
+      The derivative of the contact with respect to a hull setting through these three values is zero, as their leaves
+      declare (they set where the search starts and when it stops); that the converged point does not depend on them is
+      that declaration's reasoning, not measured here. The hull's start count and start places are structure the build
+      makes from the shape and that the structure key does not hold; no study axis reaches them, since a hull's shape is
+      no axis, and declared geometry ranges (lane S's next phase) are to fix them. Not measured: a large change of a hull
+      setting; hull kinds other than the walk's (FL-9's hull and the ellipsoid); float32, in which the two-builds check
+      does not run.
+    workaround: "None needed for the three values. A hull's shape is varied by building the experiment again at each value, which an override or a sweep of it says."
+    planned_resolution: "Done in lane S's S-F0-1: the three values are leaves of each build, read by the step as arguments, the arrays bit for bit the program they replace. The ellipsoid's semi-axes, held as built, are no axis; declared geometry is lane S's next phase."
 
   - anomaly_id: MIME-ANO-146
     title: "The arm-tracking controller's home pose reaches the run through the controller's held write and not through params, so a check of the step's parameters does not see it"
@@ -3342,6 +3384,14 @@ anomalies:
       last place of the magnetic force's scale over 5 steps. So a check or an override that works on the step's params does
       not reach this value, and a check that traces the step alone cannot see it. What a sweep over the home pose does in
       today's code (whether an override refuses it, ignores it or applies it from the build) was not measured here.
+
+      Detected by lane S's S-F0-1, not fixed: the two-builds check compares the graph's external inputs as well as the
+      step, and on this case, with the home moved by a relative 1e-6, 1e-5 and 1e-4, its trace form is quiet, no leaf
+      moves, the held inputs move and its run form fires at least four times above its line, so its verdict is
+      outside-step [measured, float64]. The controller holds its pose in float32, so a move below about 6e-8 does not
+      reach the run. Read: an override of a run whose controller is called on the host is refused (override.callback), and
+      each member of a study makes its own law from its own settings, so no merged path runs one member's home for
+      another's.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -3353,13 +3403,18 @@ anomalies:
     affected_versions: ">=0.3.0.dev1"
     affected_components:
       - "entry: controller arm_tracking 0.1.0; the home setting and the controller's first write"
+    verification:
+      - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[1e-06]"
+      - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[1e-05]"
+      - "tests/two_builds/test_outside_step.py::test_a_callback_controllers_setting_is_reported_outside_the_step[0.0001]"
+      - "tests/two_builds/test_outside_step.py::test_control_the_same_controller_built_twice_fires_neither_form"
     residual_risk: >
       One setting of one controller was measured; whether the controller's other settings (the axis, the up direction, the
       base) and the other controllers reach the run in the same way is not known. The size of the effect is the case's
       (a 1e-6 relative change of the home pose moved the magnetic force by 1.3e10 units in the last place of its scale), not
       a bound.
-    workaround: "Build the experiment again for each home pose, and compare two runs rather than the programs of two builds."
-    planned_resolution: "Open. Lane S's S-F0-1 classifies it together with the question of controller settings as leaves: a setting that moves the run is a leaf, or the check that compares two builds also compares the controller's held write. This entry changes no code."
+    workaround: "Build the experiment again for each home pose, and compare two builds with mime.testing.two_builds, whose run form and held inputs see the home pose, rather than the programs of two builds alone."
+    planned_resolution: "Open. Detected in lane S's S-F0-1 (the two-builds check's outside-step verdict, above); fixed in lane S's S-F0-3, which makes a controller's settings leaves."
 
   - anomaly_id: MIME-ANO-147
     title: "In reverse mode the MRS rung's held-or-made resistance is made again at every step of the backward loop, about 0.5 s a step on 222 force points, whether or not a setting moved"
@@ -3382,22 +3437,47 @@ anomalies:
         8.8e-16: 19 to 40 times less at those lengths.
       The values are the same; the cost is not. Not measured: a GPU, other sizes, the node with a wall (where the step solves
       the turned free matrix plus the image anyway), the dev2 study layer's batched scan.
+
+      Resolved by lane S's S-F0-1. The held-or-made resistance is the MRS node's run-constant (MimeNode.run_constants):
+      MIME's chunked runs (the chunked scan with flags, the batched scan, and chunk_function, the chunk as a pure function
+      to differentiate through) make it once per chunk inside the program, before the step loop, and the loop's steps
+      read it as given; held_or_made compares the step's leaves with held_from leaves, never the build's values as
+      constants. Measured on FL-9's shell in free space at 222 force points, float64: the reverse-mode gradient of a loss
+      of the final pose in the radius moved 1 % (so the resistance is made from it), through the chunk, equals the one
+      through MADDENING's scan of the step to 1e-12 of its size at 20 steps; in the chunk's compiled program, value and
+      gradient, the 666-wide LU sits outside the scan's loops only, and in the per-step form's program it sits inside the
+      backward loop (the control). Forward, MIME's chunked scan, MADDENING's scan of the step and the step with the
+      build's values as constants give the same arrays bit for bit, in free space and with the tube's wall, float64 and
+      float32.
     severity: minor
     safety_relevance: not_safety_relevant
     safety_relevance_rationale: >
       It changes the time and memory of a gradient through a run, not a value: the form that makes the resistance once gave
       the same value and gradient to 8.8e-16 relative in float64. A run that takes too long may not be finished, which does
       not change any output that is produced.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev1"
+    resolution_status: resolved
+    affected_versions: ">=0.3.0.dev1, <0.3.0.dev2"
+    resolution_version: "0.3.0.dev2"
     affected_components:
       - "entry: interaction drag 0.4.0, rung mrs; the held or made resistance (held_or_made) in reverse mode"
+    verification:
+      - "tests/two_builds/test_run_constant_seam.py::test_reverse_mode_through_the_chunk_equals_the_per_step_form"
+      - "tests/two_builds/test_run_constant_seam.py::test_the_chunks_lu_sits_outside_its_loops"
+      - "tests/two_builds/test_run_constant_seam.py::test_control_the_per_step_forms_lu_sits_inside_its_backward_loop"
+      - "tests/two_builds/test_run_constant_seam.py::test_forward_the_seam_the_steps_own_comparison_and_the_literal_one_are_bit_for_bit[free_ball-float64]"
+      - "tests/two_builds/test_run_constant_seam.py::test_forward_the_seam_the_steps_own_comparison_and_the_literal_one_are_bit_for_bit[free_ball-float32]"
+      - "tests/two_builds/test_run_constant_seam.py::test_forward_the_seam_the_steps_own_comparison_and_the_literal_one_are_bit_for_bit[mrs_tube-float64]"
+      - "tests/two_builds/test_run_constant_seam.py::test_forward_the_seam_the_steps_own_comparison_and_the_literal_one_are_bit_for_bit[mrs_tube-float32]"
     residual_risk: >
-      The cost was measured at one size (222 force points) on one CPU; it grows with the dense solve, so a finer spacing or
-      more bodies costs more per step, unmeasured. Forward runs are not affected on the compiler measured; another
-      backend's compiler may not hoist the conditional.
-    workaround: "None measured that avoids the cost. Keep a gradient's run short (the cost is per step), or take finite differences of forward runs, which pay one remake a call [inference from the forward rows above, not run]."
-    planned_resolution: "Open. Lane S's S-F0-1 adds a run-constant seam: the held-or-made resistance is derived once per chunk from the moved settings before the scan, and the step reads it, with the held-or-made choice kept. The spike's derive-once form gave the same value and gradient and 0.50 s for the whole gradient. This entry changes no code."
+      What the tests hold is where the LU sits in the compiled program, not the backward time. The time was measured
+      twice, by scripts not kept in the repository: the spike's (0.50 s for the whole gradient of the derive-once form,
+      against 471 ms a step), and the build's, through the chunk against the per-step form, one CPU, float64, 222 force
+      points: 0.30 s and 0.33 s against 5.43 s and 10.24 s at 20 and 40 steps (17.9 and 30.9 times) [measured once]. A gradient
+      taken through MADDENING's own scans (its run scan, its history scan, graph.step), which keep the step's own path,
+      still makes the resistance again at every backward step; MIME's gradient path (lane S's S-F0-3) goes through the
+      chunk. Measured at one size (222 force points), on one CPU.
+    workaround: "Differentiate through MIME's chunk, which the chunked runs (the flagged run, a study's batched run) already use, not through MADDENING's scans; the function that gives the chunk as a pure function, mime.build._maddening.chunk_function, is private until lane S's gradient phase names a public one."
+    planned_resolution: "Done in lane S's S-F0-1: the run-constant seam; MIME's chunked runs make the resistance once per chunk, before the step loop."
 
   - anomaly_id: MIME-ANO-148
     title: "Seen on a worktree before the fix of MIME-ANO-138: in float32 the screw's held resistance differs between a process's first build of a document and later builds by 2.4e-10 of its largest entry; whether the head still does it is not measured"
@@ -3417,6 +3497,15 @@ anomalies:
       3.5e-7 and the resistance by 1.1e-5, where the spike measured 2.4e-10 of the held leaf's largest entry, and the
       spike did not run MIME-ANO-138's test or its example on a branch that has the fix. Whether a build on this branch
       still differs between the first and later builds in float32 is therefore not known.
+
+      Measured by lane S's S-F0-1, with the spike's own script, three builds of mrs_free_space in one float32 process
+      each: on the spike's worktree the screw's held value differs between the first build and the later ones by 2.35e-10
+      of its largest entry; with MIME-ANO-138's change (cap_rings handing out copies) patched into that worktree, by 0; on
+      the branch's tip, by 0, by three routes (builds of the experiment, builds of its document, the spike's script)
+      [measured]. So it is MIME-ANO-138 seen on code without its fix, and is closed as its duplicate. Why it is so much
+      smaller here than MIME-ANO-138's 1.1e-5 (the caps' small share of the coarse screw's samples, and no wall's solve to
+      amplify it) is an inference, not measured: MIME-ANO-138's sizes are the samples (2.0e-7, 3.5e-7) and the resistance
+      through a tube's solve, the spike's the held free-space resistance relative to its largest entry.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -3424,16 +3513,19 @@ anomalies:
       which breaks the claim that one program builds to one answer; as MIME-ANO-138 measured it, both answers are valid
       discretisations of the same body and the difference is far below the rung's discretisation error. It bounds nothing
       about the rung's accuracy.
-    resolution_status: open
-    affected_versions: ">=0.3.0.dev1"
+    resolution_status: duplicate
+    affected_versions: ">=0.3.0.dev1, <0.3.0.dev2"
     affected_components:
       - "node: MRSDragNode; the held part of the resistance (held_in_body_frame), built from the screw's samples"
       - "entry: geometry screw 0.1.0; the cap patches' layout (cap_rings)"
+    verification:
+      - "tests/oracles/test_mrs_builds_alike.py::test_three_builds_hold_the_same_matrix_in_float32[screw]"
+      - "tests/oracles/test_mrs_builds_alike.py::test_control_the_layout_as_one_cached_array_makes_the_first_build_differ_from_the_rest[screw]"
     residual_risk: >
-      Not measured: the same three builds on this branch's tip, in float32; whether any of the 2.4e-10 is left once
-      MIME-ANO-138's copies are in; other bodies with a layout cached by the process.
-    workaround: "Run in float64, or build the experiment once more before the run that is compared (the second build on), as MIME-ANO-138 says."
-    planned_resolution: "Open. Lane S's S-F0-1 re-measures it first: the spike's three builds of mrs_free_space in a float32 process on this branch's tip. If every build holds the same value, the entry is set to resolved by MIME-ANO-138's fix with the measurement as evidence; if not, it is classified and fixed there. This entry changes no code."
+      The free-space case was measured by hand, outside the test suite; MIME-ANO-138's tests hold the screw and the
+      cylinder in the tube, and its residual risk (other bodies with a layout the process caches) is this entry's.
+    workaround: "None needed: MIME-ANO-138's fix is in."
+    planned_resolution: "Closed as a duplicate of MIME-ANO-138, measured in lane S's S-F0-1 (above)."
 
   - anomaly_id: MIME-ANO-149
     title: "The energy ledger's running sums are kept in the run's dtype, and a float32 sum of a mixed-sign series reaches about 15 units of rounding by 1e5 steps, the floor its balance is judged against"
