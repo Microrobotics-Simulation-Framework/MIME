@@ -91,26 +91,35 @@ When you name test files, name each directory's files together (`sorted` does it
 ## CI: how many shards
 
 CI runs each test lane (`default` on three Pythons, `maddening-main` and `openmaterica-main`) as several shard jobs,
-split by test file (`tests/_sharding.py`), and the lane's own job, which branch protection requires, waits for them and
+split by test file (`tests/_sharding.py`), and the lane's own job, which branch protection requires for `default` on 3.12
+and 3.14 (the other lanes: "CI: which lanes a pull request runs"), waits for them and
 checks that together they ran every collected test, with none failed or skipped (`scripts/check_shards.py`). How many
 shards is a setting, **ten unless set**:
 
 - the repository variable **`MIME_CI_SHARDS`** (Settings, Secrets and variables, Actions, Variables) sets it for every
   run; unset or empty means 10;
 - a manual run's **`shards`** input (Actions, CI, Run workflow) sets it for that run and wins over the variable;
-- it is a whole number from **1 to 12**. Anything else fails the `shard count` job by name, and the lanes with it, so
+- it is a whole number from **1 to 32**. Anything else fails the `shard count` job by name, and the lanes with it, so
   no run starts on a count nobody chose.
 
 The trade-off: every shard job costs about the same job-minutes whatever the count (its own setup is about 20 s), so
 more shards shorten a run's wall time and put more jobs against the organisation's concurrent limit (60 on the Team
-plan), and fewer shards do the opposite. A run is 5 lanes' shard jobs (`default` on three Pythons, `maddening-main`,
-`openmaterica-main`) plus 8 other jobs: 58 jobs at the default 10 and 18 at 2. Lower the count when several runs queue
-behind one another, raise it for a single run's speed. The compilation cache is kept per shard count, so changing the
-count starts that count's caches cold.
+plan), and fewer shards do the opposite. Each lane is its shards, one completion-tests job and its own job: 12 jobs at
+the default 10. A push's run is five lanes and 3 other jobs (`shard count`, `typecheck`, `no private name or path`): 63
+jobs at the default 10. A pull request's full run is two lanes (`default` on Python 3.12 and 3.14) and those 3: 27 jobs, and
+more where its diff starts the other lanes. Lower the count when several runs queue behind one another, raise it for a
+single run's speed. The compilation cache is kept per shard count, so changing the count starts that count's caches cold.
+The split works for any count: `tests/shard_weights.json` lists the files with their seconds, dealt longest first, and a
+file stays whole on one shard, so beyond about 11 shards (the longest file, `tests/saved/test_registry_walk.py`, weighs
+2044 s of 22920) the slowest shard no longer shortens.
 
 ## The development branch's name
 
-The development branch is `release/v0.3.0`, and the workflows run on it alone. It was named `v0.3` until 2026-11-05. A clone
+The development branch is `release/v0.3.0`. The workflows that run on a push or a pull request (`ci.yml`, `platforms.yml`,
+`ready.yml`, `stress.yml`) name `release/**` in their triggers, so they run on it and on the next release's branch alike. Two
+steps still name `release/v0.3.0` itself and must be pointed at the next branch when this one closes: the docs check's
+`--base` (`ci.yml`, `platforms.yml`) and the confidentiality scan's `--public` (`ci.yml`). It was named `v0.3`
+until 2026-11-05. A clone
 follows the rename in one of two ways, by whether it has a local branch `v0.3`:
 
 - with one (`git branch --list v0.3` prints it):
@@ -123,17 +132,17 @@ The steps that read the branch (the docs check's `--base`, the confidentiality s
 
 ## CI: the `ready` label
 
-A run of the whole matrix is 58 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
+A run of the whole matrix is 63 jobs against the organisation's 60 at once, so two pull requests in CI queue each other,
 and an agent pushes two to four times a round. So `ci.yml` has two modes. The **full** matrix runs on a push to a branch
-(the development branch's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**. A pull
-request without it runs a **reduced** set of 18 jobs: `typecheck`, `no private name or path`, the docs check, and the
+(the development branch's post-merge run included), on a manual run, and on a pull request that carries the label **`ready`**
+(for a pull request, 27 jobs, or more when its diff starts the lanes of "CI: which lanes a pull request runs"). A pull
+request without it runs a **reduced** set of 16 jobs: `typecheck`, `no private name or path`, the docs check, and the
 `default` lane on Python 3.12 with all its shards.
 
-A required check never passes by being skipped. In a reduced run the required jobs it does not run for (`default (Python
-3.13)`, `default (Python 3.14)`, `maddening-main`, `openmaterica-main`) still run, and fail in their first step with "the
-full matrix has not run on this head: add the `ready` label". So a pull request is mergeable only on a full run of its
-head: add `ready` when the head is final, and merge when every required check is green on that run. Pushing while the
-label is on starts a full run of the new head.
+A required check never passes by being skipped. In a reduced run the one required job it does not run for (`default (Python
+3.14)`) still runs, and fails in its first step with "the full matrix has not run on this head: add the `ready` label". So a
+pull request is mergeable only on a full run of its head: add `ready` when the head is final, and merge when every required
+check is green on that run. Pushing while the label is on starts a full run of the new head.
 
 A run reads the mode when it starts, from the pull request's labels as they are then (the `shards` job's mode step),
 not from the event that started it. Neither `ci.yml` nor `platforms.yml` listens to `labeled`, so no label starts a run
@@ -151,6 +160,55 @@ runs started by `push`, `pull_request` and a few other events, not by a manual r
 label (`stress` among them) starts only `ready.yml`'s skipped job, in a group of its own, under no required name, and the
 stress workflow's run. `platforms.yml` (not a required check) runs its mode job alone until `ready`.
 `tests/test_ci_ready_label.py` reads the three workflows for all of this, and `tests/test_ci_ready.py` the script.
+
+## CI: which lanes a pull request runs
+
+From the merge of the change that moves the lanes, four checks are to be required on `release/v0.3.0`: **`default (Python
+3.12)`**, **`default (Python 3.14)`**, **`typecheck (pyright, Python 3.12)`** and **`no private name or path`**. Until then
+branch protection still requires seven (the three lanes below as well), so the maintainer edits it at the merge: remove
+the three, then merge (or merge first, and every pull request after it waits on `default (Python 3.13)` until he does). 3.12 is the floor and 3.14 the newest Python, so a pull request
+that passes both passes between them. Three lanes are not required, and run on a pull request only when its diff can
+change by itself whether MIME works with them (a decision of 2026-11-08 the maintainer can reverse; it follows from the
+count of jobs above and from the compilation cache below):
+
+- `default` on **Python 3.13**, `maddening-main` (MADDENING's `main`) and `openmaterica-main` (OpenMaterica's `main`) run on a
+  push to `main` or a `release/**` branch, on a manual run, and on the **nightly** run (`.github/workflows/nightly.yml`);
+- on a pull request they run only in the full matrix (`ready`), and only when the diff touches (`scripts/ci_boundary.py`
+  holds the paths, `tests/test_ci_boundary.py` pins them to the repository): the dependency pins (`pyproject.toml`,
+  `uv.lock`) or CI itself (the workflows, the actions, the scripts they call), which start all three; or MIME's adapter to
+  one upstream, which starts that upstream's lane alone. For MADDENING an adapter is a module that **calls into it**: that
+  imports `GraphManager`, `EdgeSpec`, `BoundaryInputSpec`, `UnitMismatchWarning`, `resolve_dotted_name` or
+  `maddening.testing`, outside `nodes/` (the graph's construction and compile, the build's checks, the experiment and
+  control runs, the verification harness, `core/_node.py`, `core/ledger.py`), and `lab_fixture/`; the list is
+  `MADDENING_ADAPTERS` in `scripts/ci_boundary.py` and `tests/test_ci_boundary.py` fails when a caller is missing from it.
+  For OpenMaterica, the three modules of `src/mime/materials/` that import `materica`. A module that only describes a node
+  (`NodeMeta`, `ParamSpec`, `StaticArray` and `BoundaryInputSpec` under `nodes/`) or names `SimulationNode` to annotate a
+  type is no adapter: the push and nightly runs cover it;
+- where a lane does not run, `default` on 3.13 has **no job**, and the two `-main` lanes' jobs are **skipped** (GitHub
+  reports a job excluded by an `if` as skipped, and a skipped job passes a required check; so neither stays required).
+  Counts of jobs in this file are jobs that run: a push's run lists one more, the skipped `usd-core-newest` entry.
+
+The **nightly** run dispatches `ci.yml` on each `release/*` branch whose newest commit is under 45 days old. GitHub runs a
+schedule from the default branch's file only, so it fires from the next fast-forward of `main` to the release branch (or
+from a pull request of that one file into `main`), and can be run once by hand (Actions, Nightly, Run workflow) after that.
+It asks for a warm compilation cache, which saves nothing. It then **waits for the runs it dispatched** and fails itself,
+naming the branch and each lane that is red, missing or unfinished, so that GitHub's mail about a failed scheduled run
+reaches the maintainer: the `-main` lanes' shard jobs are `continue-on-error`, so a red upstream `main` would otherwise
+show nowhere. On a push and a manual run the `-main` lanes' own jobs (the ones under their names) turn the run red when
+their shards fail; on a pull request they do not (neither lane is required there).
+
+**The release gate: every lane, `default` on 3.13 and both `-main` lanes included, green on the release branch's head
+before a release**, and it is enforced: `publish.yml`'s build job runs `scripts/release.py check-ci`, which refuses unless
+the newest push or manual run of `ci.yml` on the tagged commit has all five lanes' jobs concluded `success`, naming each
+that did not (a run's own conclusion is not read: it is `success` over a red `continue-on-error` job). To check before
+tagging: `python3 scripts/release.py check-ci --repository <owner>/<repo> --commit <sha>`.
+
+These three lanes keep **no compilation cache**: they restore none and save none. Each push saved about 13 GB of
+compilation caches across the five lanes against GitHub's 10 GB per-repository limit, so each push evicted the last, and a
+cold run of a lane that runs on a push or at night costs minutes nobody waits for. Their **per-test duration gate warns
+instead of failing** (`scripts/report_test_durations.py --warn-only`: a test over 20 s is a warning annotation, and a
+report that cannot be read still fails); the gate stays a failure on `default` for 3.12 and 3.14, which gate every pull
+request. A `stress` run with `python=3.13` finds no compilation cache to restore and runs cold.
 
 ## CI: re-running one shard
 

@@ -13,7 +13,7 @@ name: Ready
 
 on:
   pull_request:
-    branches: [main, release/v0.3.0]
+    branches: [main, "release/**"]
     types: [labeled]
 
 permissions:
