@@ -120,7 +120,7 @@ def test_the_research_profile_asks_a_range_for_its_reason():
 
     with pytest.raises(BuildRefused) as refused:
         Experiment.declared_from(replace(settings, profile="research"), declarations).plan()
-    assert "range.reason" in codes(refused.value)
+    assert "range.reason-pending" in codes(refused.value)
 
 
 def test_a_range_whose_corner_the_plan_refuses_is_refused_at_build_naming_the_corner():

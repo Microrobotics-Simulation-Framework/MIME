@@ -70,8 +70,11 @@ or margin). The MRS rung's settings and wall tables are leaves, and so is the ma
 leaves it was made at beside it, so a sweep of its blob is one group while the number of quadrature points the blob gives stays the same, and splits where
 it changes (the count is a static the rung derives: on the settling sphere a small spread of blob values is one group, and a
 spread wide enough to change the count is two). A geometry's number is an axis, named as
-`exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`); a kind's setting that is not one number (an
-ellipsoid's semi-axes) is refused as one. Without a declared range, a sweep of a radius splits where the MRS rung's force
+`exp.source` names it (`"ball.parts.shell.radius"`, `"tube.inner_radius"`, a plane's `"floor.offset"`), of a study, an
+override and a range: a structure's number reaches the drag node's leaf as a build at that value does (the plane's
+`wall_offset`, the tube's `wall_radius`), and each point is judged by the build's own validity lines (a plane moved
+through the body is refused at that point); a kind's setting that is not one number (an ellipsoid's semi-axes) is
+refused as one. Without a declared range, a sweep of a radius splits where the MRS rung's force
 points change; with one, it does not (below). The two-builds check (`mime.testing.two_builds`) is how an entry shows that no value of it is held as a constant of the
 program. Such an entry is a defect to report; its values run as experiments of their own, `Experiment.based_on(...)`,
 each built. A point outside a validity limit is refused in every profile, and `study.run()` refuses
@@ -101,11 +104,33 @@ A point outside the range is built for its own value, a group of its own, and th
 outside it is refused (`override.outside-range`). A range is refused on `dt`, the precision, a rung or a numerical
 setting (each is a variant), on a value that is not one quantity, where the experiment's own value lies outside it, and
 where the experiment is refused at one of its corners: the build plans each corner, so each validity line is judged
-over the range. At most six ranges are declared, since the corners double with each. Before its first sweep, a ranged study checks, once for
-the experiment's content, that the range reaches the build only through the choices its entries report, and that a
-value moved inside the range moves no constant of the compiled step; a ranged study's plan reports the checks and their
-cost. Members inside a range that still split are an entry's defect: reported in the exploratory and research profiles,
-refused in strict.
+over the range. At most six ranges are declared, since the corners double with each.
+
+**What a range costs.** A choice over a range is made in every plan the ranges ask for, the experiment's own and one at
+each corner (`2 ** n` for `n` ranges), at each of its rule's points: the corners of the ranged numbers where its rule is
+monotone, nine values of each where it is sampled. Where no entry samples a body, a corner's plan takes milliseconds
+(script A with six ranges: its 64 corner plans in 0.48 s). The MRS rung's choices sample the body at each point, which is
+not cheap: on FL-9 at a written spacing of 1.5 mm (measured on a shared laptop, about 0.16 s an evaluation), its radius
+ranged alone, 27 evaluations, plans in about 4 s; its radius and length, 405, in about a minute; its length,
+wavenumber and modulation, monotone, 72, in 6 s; its radius, length and modulation, 6561, took about ten minutes. Past
+1024 evaluations (points times plans, about three minutes there) a choice is refused before its first, `range.cost`,
+naming the numbers its rule samples: range fewer of them, and sweep the others as a study's axes. The default spacing
+is sampled in every number (its rounding to three figures steps under a power of ten, and it falls over a screw's
+modulation), so an unwritten spacing adds its own choice's points.
+
+**What reads a range.** Only a body's hull's numbers reach an entry as a range (the MRS rung's force points and
+spacing, a planted entry's choice). A range of anything else, a structure's number (`"tube.inner_radius"`), a thing's
+value or a command, has no consumer: it bounds a run's overrides and places a study's points inside or outside it, and
+the price report says "no consumer reads this range". Where the build makes something from such a value, a sweep
+across it splits, and the plan says it is the build's, not an entry's defect.
+
+Before its first sweep, a ranged study checks, once for the experiment's content, that the range reaches the build only
+through the choices its entries report (the independence check, at three points: the experiment's own value and the
+ranges' two extreme corners, all low and all high; a dependence that vanishes at all three is not seen), and that a
+value moved inside the range moves no constant of the compiled step (the trace form); a ranged study's plan reports the
+checks, their cost, and each trace verdict that is not `quiet` (`held`, `not-discriminating`). Members inside a range
+that still split, against the first group inside it, are an entry's defect where an entry is offered the range:
+reported in the exploratory and research profiles, refused in strict.
 
 ## The result
 

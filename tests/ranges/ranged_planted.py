@@ -2,7 +2,8 @@
 equal shares (summing to one, so the wrench is the same whatever the count), the count chosen from the body's hull by
 ``mode``:
 
-- ``clean``: over the range, monotone, the count growing with the radius (``choose_over`` with ``Monotone``);
+- ``clean``: over the range, monotone, the count growing with the radius (``choose_over`` with
+  ``ChoiceRule.Monotone``);
 - ``peak`` and ``peak-sampled``: a count that peaks inside the range, declared monotone (its corners miss the peak) or
   sampled at nine points a setting (which find it);
 - ``unruled``: a choice over the range that declares no rule;
@@ -14,7 +15,10 @@ equal shares (summing to one, so the wrench is the same whatever the count), the
 - ``array-bake``: the same with a NumPy array made from the radius at build, which the node's step (inside the ``jit``
   a ``MimeNode`` runs its step in) closes over: a constant of that nested sub-program, not of the top-level one;
 - ``deaf``: over the range, the node built at a radius of its own, so that a move of the body's changes nothing it
-  holds.
+  holds;
+- ``unread`` and ``bake-unread``: over the range, a node that never reads its radius leaf (a move of the radius writes a
+  leaf the step does not read), and in ``bake-unread`` scales its wrench by a Python float made from the radius at
+  build as ``bake`` does: a bake beside an unread leaf.
 
 The node reads the radius as a leaf, so that a sweep of it changes what each member computes.
 
@@ -34,7 +38,7 @@ from maddening.core.params import ParamSpec
 from maddening.core.static_data import StaticArray
 from typing_extensions import ReadOnly, TypedDict
 
-from mime.build import InteractionBuilder
+from mime.build import InteractionBuilder, entry_id
 from mime.core import MimeNode, NodeFields, as_run_array, node_fields
 from mime.gradients import GradientStatus
 from mime.registry import (
@@ -42,13 +46,11 @@ from mime.registry import (
     Delivery,
     Hull,
     Interaction,
-    Monotone,
+    ChoiceRule,
     Plan,
     PlanContext,
     RoleKind,
-    Sampled,
     choose_over,
-    owner_of,
     register_interaction,
 )
 from mime.vocabulary import APPLIED_WRENCH, register_namespace
@@ -115,6 +117,15 @@ class SharesNode(MimeNode):
         return node_fields(_Wrench(value=self._value(p)))
 
 
+class UnreadSharesNode(SharesNode):
+    """:class:`SharesNode` whose wrench ignores the radius leaf it declares: ``value`` times its shares and ``kept``."""
+
+    @override
+    def _value(self, p: Mapping[str, Any]) -> Array:
+        shares = jnp.sum(jnp.asarray(self.static_data["shares"].value))
+        return as_run_array(jnp.asarray(p["value"]) * shares * self.kept)
+
+
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
 class RangedShares(Interaction):
@@ -123,16 +134,16 @@ class RangedShares(Interaction):
     differentiability = GradientStatus.EXACT
     roles = {"body": RoleKind.BODY, "medium": RoleKind.MEDIUM}
     delivers = {"wrench": Delivery("body", APPLIED_WRENCH.name)}
-    builds = {"": (SharesNode,)}
+    builds = {"": (SharesNode, UnreadSharesNode)}
     references = ()
     mode: str = "clean"
 
     def _count(self, owner: str, hull: Hull) -> float:
         if self.mode == "own":
             return growing(hull)
-        rule: Any = {"peak": Monotone("planted: claims monotone, peaks inside"),
-                     "peak-sampled": Sampled(9, "planted: peaks inside, sampled"),
-                     "unruled": None}.get(self.mode, Monotone("planted: the count grows with the radius"))
+        rule: Any = {"peak": ChoiceRule.Monotone("planted: claims monotone, peaks inside"),
+                     "peak-sampled": ChoiceRule.Sampled(9, "planted: peaks inside, sampled"),
+                     "unruled": None}.get(self.mode, ChoiceRule.Monotone("planted: the count grows with the radius"))
         measure = peaked if self.mode.startswith("peak") else growing
         chosen = choose_over(owner, hull, "shares", rule, measure)
         count = measure(chosen)
@@ -145,7 +156,7 @@ class RangedShares(Interaction):
     def plan(self, ctx: PlanContext) -> Plan:
         hull = ctx.geometry(of="body")
         if hull is not None:
-            self._count(owner_of(self, ctx.bindings), hull)
+            self._count(entry_id(type(self), ctx.bindings), hull)
         return Plan(delivers=dict(self.delivers))
 
     @override
@@ -154,11 +165,12 @@ class RangedShares(Interaction):
         assert hull is not None
         count = self._count(ctx.id, hull)
         radius = DEAF_RADIUS if self.mode == "deaf" else float(hull.settings["radius"])
-        kept = 1e3 * radius if self.mode == "bake" else 1.0
+        kept = 1e3 * radius if self.mode in ("bake", "bake-unread") else 1.0
         held = np.full(6, 1e3 * radius) if self.mode == "array-bake" else None
-        node = b.add_response_node(SharesNode(ctx.node_name(), ctx.timestep, value=WRENCH, count=int(count),
+        node_class = UnreadSharesNode if self.mode in ("unread", "bake-unread") else SharesNode
+        node = b.add_response_node(node_class(ctx.node_name(), ctx.timestep, value=WRENCH, count=int(count),
                                               radius=radius, kept=kept, held=held))
         b.connect(node["value"], into=b.target("wrench"))
 
 
-__all__ = ["DEAF_RADIUS", "PEAK", "WRENCH", "RangedShares", "SharesNode", "growing", "peaked"]
+__all__ = ["DEAF_RADIUS", "PEAK", "WRENCH", "RangedShares", "SharesNode", "UnreadSharesNode", "growing", "peaked"]

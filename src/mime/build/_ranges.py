@@ -7,7 +7,12 @@ not one quantity, and where the experiment's own value lies outside it. Every ch
 the range by the entry that makes it (``mime.registry.choose_over``), so a run of the experiment uses the range's
 discretisation, not its value's own. The build plans the experiment at every corner of its ranges, so that each
 validity line is judged over the range, and refuses one whose corner it refuses; past :data:`MAX_RANGES` ranges it
-refuses, since the corners double with each."""
+refuses, since the corners double with each.
+
+Only a body's hull's numbers reach an entry as a range (``Hull.ranges``), so only those are chosen over. A range of
+anything else (a structure's number, a thing's value, a command, a law's setting) has no consumer: it bounds the
+overrides of a run and places a study's points inside or outside it, and the price report says that no consumer reads
+it."""
 
 from __future__ import annotations
 
@@ -24,10 +29,12 @@ if TYPE_CHECKING:
     from mime.build._plan import PlanSet
     from mime.registry import RangeChoice
 
-#: The most ranges an experiment declares: its build plans the experiment at each of the ``2 ** n`` corners (64 here),
-#: a plan of a few milliseconds each and, where an entry chooses over a body's hull, its choice made at each of the
-#: hull's corners again. Each range past it doubles the work, and a design space of more parameters than this is a
-#: study's axes, each value its own build.
+#: The most ranges an experiment declares: its build plans the experiment at each of the ``2 ** n`` corners (64 here).
+#: Where no entry chooses over them a corner's plan is the experiment's plan, a few milliseconds where nothing in it
+#: samples a body (script A with six ranges: its 64 corner plans in 0.48 s); where an entry chooses over a body's hull,
+#: each plan makes the choice again, and its cost is that choice's, refused past ``mime.registry``'s limit
+#: (``range.cost``). Each range past it doubles the work, and a design space of more parameters than this is a study's
+#: axes, each value its own build.
 MAX_RANGES = 6
 #: The reason a corner's plan declares its values with.
 CORNER_REASON = "a corner of the experiment's declared ranges, planned to judge its validity over them"
@@ -36,7 +43,7 @@ CORNER_REASON = "a corner of the experiment's declared ranges, planned to judge 
 @dataclass(frozen=True)
 class PlannedRange:
     """A declared range as phase 1 checked it: its axis's path and kind, its ends as written and in SI, its unit and its
-    reason."""
+    reason, and whether an entry is offered it to choose over (``offered``: a number of a body's hull)."""
 
     path: str
     kind: str
@@ -46,6 +53,7 @@ class PlannedRange:
     high_si: float
     unit: str
     reason: Any
+    offered: bool = False
 
     def text(self) -> str:
         return f"{self.path} in [{self.low_si:.6g}, {self.high_si:.6g}] {self.unit}"
@@ -187,15 +195,24 @@ def judged_over_ranges(settings: RunSettings, declarations: Sequence[Declaration
         raise BuildRefused(found)
 
 
+#: The price report's line for a range no entry is offered, and the split reason's clause for one.
+UNREAD = ("no consumer reads this range: no entry chooses over a number that is not a body's hull's, so the range "
+          "bounds a run's overrides and places a study's points, and a sweep across it splits wherever the build makes "
+          "something from the value itself, which is no entry's defect")
+
+
 def range_lines(plans: PlanSet) -> tuple[str, ...]:
     """The price report: each declared range, and each choice it moved with its cost against the experiment's own
-    value's choice."""
+    value's choice; a range no entry is offered says so, and so does one no entry chose over."""
     lines: list[str] = []
     units = {path: held.unit for path, held in plans.ranges.items()}
     for path, held in sorted(plans.ranges.items()):
-        moved = [choice for choice in plans.range_choices if path in choice.over and choice.moved]
-        lines.append(f"{held.text()}: " + ("; ".join(choice.text(units) for choice in moved) if moved else
-                                           "no choice of the build moved from the experiment's own value"))
+        made = [choice for choice in plans.range_choices if path in choice.over]
+        moved = [choice for choice in made if choice.moved]
+        text = ("; ".join(choice.text(units) for choice in moved) if moved else
+                "no choice of the build moved from the experiment's own value" if made else
+                "no entry chose over it, so the build is the experiment's own value's" if held.offered else UNREAD)
+        lines.append(f"{held.text()}: {text}")
     return tuple(lines)
 
 
@@ -209,15 +226,15 @@ def choice_refusals(plans_choices: Sequence[RangeChoice], owner_class: Mapping[s
         if not choice.short:
             continue
         problem = (f"its choice {choice.what!r} over the declared range ({', '.join(choice.over)}) gives "
-                   f"{choice.chosen:g} at {choice.at}, and the experiment's own value needs {choice.own:g}: the rule it "
-                   f"declares ({type(choice.rule).__name__}: {choice.rule.basis}) misses this value, so a run of the "
-                   f"range would be coarser here than the value alone; declare the choice Sampled(count, basis) at a "
-                   f"count that finds its extreme, or correct the rule")
+                   f"{choice.chosen:g} at {choice.at}, and the experiment's own value needs {choice.own:g}: the rule "
+                   f"it declares ({type(choice.rule).__qualname__}: {choice.rule.basis}) misses this value, so a run "
+                   f"of the range would be coarser here than the value alone; declare the choice "
+                   f"ChoiceRule.Sampled(count, basis) at a count that finds its extreme, or correct the rule")
         cls = owner_class.get(choice.owner)
         if cls is not None:  # an entry refused before its plan was made already stands refused with its own reason
             found.append(entry_defect(cls, problem))
     return found
 
 
-__all__ = ["CORNER_REASON", "MAX_RANGES", "PlannedRange", "choice_refusals", "corner_text", "corners",
+__all__ = ["CORNER_REASON", "MAX_RANGES", "UNREAD", "PlannedRange", "choice_refusals", "corner_text", "corners",
            "judged_over_ranges", "planned_ranges", "range_lines", "variant_refusal"]

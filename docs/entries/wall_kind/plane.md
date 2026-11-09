@@ -14,8 +14,10 @@ wall and has no divergence, to rounding, and as the blob vanishes it is Blake's 
 **What it reads.** The plane's normal and offset, from the half-space region the medium fills (a
 [plane structure](../geometry/plane.md)'s `half_space`), and the drag's blob: the drag passes its own regularisation to
 every wall kind, and this one uses it (the build report says so, with the blob's size). The offset is the drag node's
-leaf `wall_offset`, which a gradient or a caller of the node reaches; a structure's settings are not yet study or
-override axes (naming `floor.offset` or `drag:<body>.wall_offset` as one is refused), and the normal is held as built.
+leaf `wall_offset`, which a gradient or a caller of the node reaches, and the plane's `floor.offset` is a study's axis, a
+run's override and a range: the override writes that leaf, and the resistance with it is a fresh build's at the offset,
+entry for entry; an offset that puts the plane through the body is refused at its point. The drag's own names for it
+(`drag:<body>.wall_offset`, `drag:<body>.offset`) are no axis (`study.unknown-path`). The normal is held as built.
 
 **Where it holds.** Every sample of the body above the plane. A sample through the plane is outside the image's
 domain, and nothing holds a body off a plane yet (no contact against it): the build refuses a body that starts

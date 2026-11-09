@@ -42,7 +42,7 @@ from mime.registry import (
     GradientRecord,
     Hull,
     Interaction,
-    Monotone,
+    ChoiceRule,
     Plan,
     PlanContext,
     Problem,
@@ -51,7 +51,6 @@ from mime.registry import (
     ReynoldsRange,
     RoleKind,
     RungGradient,
-    Sampled,
     Sampling,
     SettingGroup,
     SupportRow,
@@ -63,7 +62,6 @@ from mime.registry import (
     implements,
     lookup,
     numerical_default,
-    owner_of,
     register_interaction,
     register_setting_group,
     registered,
@@ -254,41 +252,51 @@ SPACING_MEASURED = ("on a 100 um steel sphere settling in still water (338 sampl
 
 
 #: The mrs rung's choices over a declared range of its hull's numbers (``mime.registry.choose_over``). The force points
-#: at one spacing are measured monotone in these numbers of each kind (``tests/ranges/test_mrs_monotone.py``, and FL-9's
-#: over 0.8 to 1.4 times its own at 1.0 and 1.5 mm): there the range's corners hold the most, and each is judged at
-#: them. Any other number (the screw's radius, whose count is not monotone; a kind not measured) is judged at
-#: :data:`SAMPLED_COUNT` points along it as well.
+#: at one spacing never fall as these numbers grow, measured on dense scans in CI over a window of each kind's own
+#: (``tests/ranges/test_mrs_monotone.py``): there the range's corners hold the most, and each is judged at them. Any
+#: other number of the kind, or a kind not measured, is judged at :data:`SAMPLED_COUNT` points along it as well: the
+#: screw's radius is not monotone (106 force points at 2.153 mm, 91 at 2.184 mm, at 1.5 mm).
 MONOTONE_NUMBERS: Mapping[str, frozenset[str]] = MappingProxyType({
     "sphere": frozenset({"radius"}), "capsule": frozenset({"radius", "height"}),
     "screw": frozenset({"length", "wavenumber", "modulation"})})
 SAMPLED_COUNT = 9
-FORCE_POINTS_MONOTONE = Monotone(
+FORCE_POINTS_MONOTONE = ChoiceRule.Monotone(
     "at one spacing a larger body has at least as many force points, measured in each of the kind's ranged numbers "
-    "(tests/ranges/test_mrs_monotone.py)")
-FORCE_POINTS_SAMPLED = Sampled(
+    "over a window of them (tests/ranges/test_mrs_monotone.py)")
+FORCE_POINTS_SAMPLED = ChoiceRule.Sampled(
     SAMPLED_COUNT, "the force points are not measured monotone in this number of the kind (the screw's radius is "
                    "not: tests/ranges/test_mrs_monotone.py)")
-SPACING_MONOTONE = Monotone(
-    "the family's default spacing is the largest at which the kind gives the family's count of samples, which grows as "
-    "the body grows where the count at one spacing grows with it (the numbers measured monotone)")
-SPACING_SAMPLED = Sampled(
-    SAMPLED_COUNT, "the family's default spacing follows the force points, which are not measured monotone in this "
-                   "number of the kind")
+#: The default spacing over a range is sampled in every number: it is the largest spacing to three figures at which
+#: the kind gives the family's sample count, and it falls as the body grows in two ways, measured. Where the bisection's
+#: boundary lies in the last half unit under a power of ten, the rounded spacing (1.00 mm) gives too few samples and
+#: the rule steps a unit of its own third figure down, ten times the unit below it (0.99 mm, not 0.999: the ball at a
+#: radius of 3.977 mm, against 0.999 mm at 3.976); and over FL-9's modulation the boundary itself falls (0.817 to
+#: 0.809 mm as the modulation grows from 0.231 to 0.238; inside [0.231, 0.2504] 0.98 % finer than at its ends). A
+#: body inside a range whose own spacing lies in a dip the samples miss is refused as the rung's defect (its choice
+#: falls short), never run coarser.
+SPACING_SAMPLED = ChoiceRule.Sampled(
+    SAMPLED_COUNT, "the family's default spacing falls as the body grows where its rounding steps under a power of ten "
+                   "and over the screw's modulation (tests/ranges/test_mrs_monotone.py)")
 
 
-def _measured_monotone(hull: Hull) -> bool:
-    return set(hull.ranges) <= MONOTONE_NUMBERS.get(hull.kind.name, frozenset())
+def _owner(entry: Interaction, bindings: Mapping[str, str]) -> str:
+    """The id a choice over a range names its entry by: the build's (``mime.build.entry_id``)."""
+    from mime.build import entry_id
+
+    return entry_id(type(entry), bindings)
 
 
-def force_points_rule(hull: Hull) -> Monotone | Sampled:
+def force_points_rule(hull: Hull) -> ChoiceRule.Monotone | ChoiceRule.Sampled:
     """The rule the hull's force points are chosen over its ranged numbers by: monotone where each ranged number is one
     measured monotone for its kind (:data:`MONOTONE_NUMBERS`), sampled otherwise."""
-    return FORCE_POINTS_MONOTONE if _measured_monotone(hull) else FORCE_POINTS_SAMPLED
+    numbers = MONOTONE_NUMBERS.get(hull.kind.name, frozenset())
+    return FORCE_POINTS_MONOTONE if set(hull.ranges) <= numbers else FORCE_POINTS_SAMPLED
 
 
-def spacing_rule(hull: Hull) -> Monotone | Sampled:
-    """The rule the family's default spacing is chosen over the hull's ranged numbers by, as its force points'."""
-    return SPACING_MONOTONE if _measured_monotone(hull) else SPACING_SAMPLED
+def spacing_rule(hull: Hull) -> ChoiceRule.Monotone | ChoiceRule.Sampled:
+    """The rule the family's default spacing is chosen over the hull's ranged numbers by: sampled, in every number
+    (:data:`SPACING_SAMPLED`)."""
+    return SPACING_SAMPLED
 
 
 @functools.lru_cache(maxsize=256)
@@ -450,7 +458,7 @@ class PointForceDrag(Interaction):
         hull = ctx.geometry(of="body")
         if self.rung != "mrs" or hull is None or not implements(hull.kind, "sampling"):
             return None
-        chosen = choose_over(owner_of(self, ctx.bindings), hull, "default spacing", spacing_rule(hull),
+        chosen = choose_over(_owner(self, ctx.bindings), hull, "default spacing", spacing_rule(hull),
                              self._family_spacing, largest=False, unit="mm")
         return m(self._family_spacing(chosen))
 
@@ -565,7 +573,7 @@ class PointForceDrag(Interaction):
             problems = at_rest_problems(ctx, self.rung) + self._mrs_problems(ctx)
             hull = ctx.geometry(of="body")
             if not problems and hull is not None and "spacing" in ctx.settings:
-                self._sampled_hull(owner_of(self, ctx.bindings), hull, ctx.scalar("spacing"))
+                self._sampled_hull(_owner(self, ctx.bindings), hull, ctx.scalar("spacing"))
             return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
                         problems=tuple(problems), assets=self._wall_assets())
         problems: list[Problem] = at_rest_problems(ctx, self.rung)

@@ -38,20 +38,26 @@
   (`mime.testing.two_builds`) is how an entry shows it holds none.
 - **Declared ranges** (`exp.declare_range(path, low, high, reason=...)`, saved with the experiment): on any axis but `dt`,
   the precision, a rung and a numerical setting. Every choice an entry makes from the value (a count, a spacing) is made
-  over the range through `mime.registry.choose_over`, with a rule it declares (`Monotone`, judged at the corners, or
-  `Sampled`, inside as well; neither is refused as the entry's defect), so that every value inside builds one program: a
+  over the range through `mime.registry.choose_over`, with a rule it declares (`ChoiceRule.Monotone`, judged at the
+  corners, or `ChoiceRule.Sampled`, inside as well; neither is refused as the entry's defect), so that every value inside builds one program: a
   sweep across it is one group and one compile, and an override inside it runs as data. A run of the experiment alone
   uses the range's discretisation; the build report prices what the range moved against the experiment's own value's
   choice, and the build plans the experiment at every corner (at most `MAX_RANGES` ranges, six, the corners doubling
-  with each). A point outside a
-  range is built for its own value, that range taken out, a group of its own whose split reason names it; members inside
-  a range that still split are an entry's defect, reported in the plan (exploratory, research) or refused (`strict`,
-  `study.range-split`). Before its first sweep a ranged study checks, in float64 and cached by the experiment's content,
-  that the range reaches the build only through the choices entries report (the independence check: the build over the
-  range against the build without it, every reported choice pinned, at the base and at both corners) and the two-builds
-  trace form at a small move inside each range (`mime.study._ranges.MOVE`); either refuses as the entry's defect. The first consumer is
-  `Drag.MRS`: its force points (and its default spacing) chosen at the range's corner with the most, monotone in the
-  kinds' numbers measured so, sampled at nine points a number elsewhere (the screw's radius).
+  with each); a choice asking for more than `mime.registry`'s 1024 evaluations over those plans is refused before its
+  first (`range.cost`). Only a body's hull's numbers reach an entry as a range; the price report says "no consumer reads
+  this range" of any other. A point outside a range is built for its own value, that range taken out, a group of its
+  own whose split reason names it; members inside a range that still split, against the first group inside it, are an
+  entry's defect where an entry is offered the range (the build's otherwise), reported in the plan (exploratory,
+  research) or refused (`strict`, `study.range-split`). Before its first sweep a ranged study checks, in float64 and
+  cached by the experiment's content, that the range reaches the build only through the choices entries report (the
+  independence check: the build over the range against the build without it, every reported choice pinned, at the
+  base and at the two extreme corners, all low and all high, not at the mixed ones) and the two-builds trace form at a
+  small move inside each range (`mime.study._ranges.MOVE`); either refuses as the entry's defect, and the plan names
+  each trace verdict that is not `quiet`. The first consumer is `Drag.MRS`: its force points and its default spacing
+  chosen at the range's point with the most and the finest, the force points monotone in the kinds' numbers its CI
+  scans measure so (`tests/ranges/test_mrs_monotone.py`) and sampled at nine points a number elsewhere (the screw's
+  radius), the default spacing sampled in every number (its rounding steps under a power of ten, and it falls over the
+  screw's modulation).
 - **The plan's memory estimate** (`Memory`): on the device, XLA's buffer assignment of one chunk of the batched step
   compiled at the batch's own size and not run, and `fixed + each` a member from the line through two batch sizes
   (four and eight, or a smaller batch and half of it), checked at a third; no figure a member where the third lies more

@@ -186,23 +186,47 @@ def test_the_planes_offset_is_one_trainable_leaf_and_moving_it_is_a_build_at_the
     assert np.array_equal(moved, again)
 
 
-def test_the_offset_is_reached_as_the_node_leaf_and_no_override_or_study_axis_names_it():
-    """The shipped text says so: the offset is the drag node's leaf ``wall_offset`` (the test above), and a structure's
-    setting is not yet an override or a study axis. The refusals, by code and route: ``floor.offset`` as an override is
-    ``value.unknown`` (a structure has no value), ``drag:ball.wall_offset`` and ``drag:ball.offset`` as an override are
-    ``study.unknown-path``, and as a study axis likewise; ``floor.offset`` as a study axis plans and its run refuses
-    every point (``study.refused-points``, each ``value.unknown``). Control: a node setting the same
-    route does reach (``drag:ball.blob``) is accepted, so the refusal is the offset's own."""
+def test_the_offset_is_an_override_and_a_study_axis_that_reaches_the_node_leaf_as_a_fresh_build_does():
+    """A structure's number is an axis of a study, an override and a range (geometry axes): ``floor.offset`` as an
+    override writes the drag node's leaf ``wall_offset`` (0 to 1e-4 m), and the resistance at one pose with the
+    override's leaves is a fresh build's at that offset, entry for entry, so the override is neither inert nor held at
+    the built value. The validity is judged at each point: an offset of 2.5 mm puts the plane through the body
+    (``drag.mrs-resistance``) and one of 5 mm leaves the body outside the half space (``state.outside-region``), each
+    refused as an override and as a study's point, the study keeping the other point as a group of its own. The drag's
+    own names for the offset are no axis: ``drag:ball.wall_offset`` and ``drag:ball.offset`` are ``study.unknown-path``
+    as an override and as an axis. Controls: the base's resistance differs from the moved one at the same pose, so the
+    equality can fail; a node setting the same route does reach (``drag:ball.blob``) plans."""
     from mime import Study
     from mime.build import ArgumentRefused, BuildRefused
     from mime.study import grid
+    from mime.study._override import overridden
     from mime.units import s
 
     experiment = sphere_above_plane(SPACING, 2.0)
     built = experiment.build()
-    with pytest.raises(BuildRefused) as structure:
-        built.run(s(0.001), override={"floor.offset": m(1e-4)})
-    assert structure.value.codes() == ["value.unknown"]
+    assert float(parameter_leaves(built.graph)["drag:ball"]["wall_offset"]) == 0.0
+    moved = overridden(built, {"floor.offset": m(1e-4)}).params["nodes"]["drag:ball"]
+    assert float(moved["wall_offset"]) == 1e-4
+    fresh = sphere_above_plane(SPACING, 2.0 - 1e-4 / RADIUS, offset=1e-4).build()
+    pose = jnp.asarray((0.0, 0.0, RADIUS * 3.0, 1.0, 0.0, 0.0, 0.0))
+
+    def resistance(of, leaves):
+        return np.asarray(drag_node(of).update(node_state(of.graph, "drag:ball"), {"pose": pose}, 1e-3,
+                                               params=leaves)["resistance"])
+
+    base = resistance(built, parameter_leaves(built.graph)["drag:ball"])
+    by_override = resistance(built, moved)
+    assert np.array_equal(by_override, resistance(fresh, parameter_leaves(fresh.graph)["drag:ball"]))
+    assert not np.array_equal(base, by_override), "the control: the offset moves the resistance"
+    built.run(s(0.001), override={"floor.offset": m(1e-4)})
+    for offset, code in ((2.5e-3, "drag.mrs-resistance"), (5e-3, "state.outside-region")):
+        with pytest.raises(BuildRefused) as through:
+            built.run(s(0.001), override={"floor.offset": m(offset)})
+        assert code in through.value.codes(), (offset, through.value.codes())
+    plan = Study(experiment).sweep(grid({"floor.offset": [m(1e-4), m(2.5e-3), m(5e-3)]}), duration=s(0.001)).plan()
+    assert [len(group.members) for group in plan.groups] == [1] and len(plan.refused) == 2
+    assert [code for point in plan.refused for code in (r.code for r in point.refusals)] == [
+        "drag.mrs-resistance", "state.outside-region"]
     for path in ("drag:ball.wall_offset", "drag:ball.offset"):
         with pytest.raises(ArgumentRefused) as override:
             built.run(s(0.001), override={path: m(1e-4)})
@@ -210,10 +234,6 @@ def test_the_offset_is_reached_as_the_node_leaf_and_no_override_or_study_axis_na
         with pytest.raises(ArgumentRefused) as axis:
             Study(experiment).sweep(grid({path: [m(1e-4), m(2e-4)]}), duration=s(0.001)).plan()
         assert axis.value.codes() == ["study.unknown-path"], path
-    with pytest.raises(BuildRefused) as study_structure:
-        Study(experiment).sweep(grid({"floor.offset": [m(1e-4), m(2e-4)]}), duration=s(0.001)).run()
-    assert study_structure.value.codes() == ["study.refused-points"]
-    assert "[value.unknown] a structure has no value 'offset'" in str(study_structure.value)
     Study(experiment).sweep(grid({"drag:ball.blob": [0.1, 0.2]}), duration=s(0.001)).plan()
 
 

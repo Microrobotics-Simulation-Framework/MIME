@@ -41,7 +41,7 @@ N45_REASONS = ("stated_without_origin", "condition_unstated:temperature", "condi
                "condition_unstated:test_method")
 #: The codes research refuses a pending reason with, by where it is written.
 PENDING_CODES = {"source.pending", "value.reason-pending", "material.accept-pending", "material.nominal-pending",
-                 "range.reason"}
+                 "range.reason-pending"}
 #: The schema's slots no case reaches, each with why no experiment writes one (a test below holds each claim where the
 #: registry can): a group of settings in an entry that takes none, a flow with no flow entry registered.
 UNREACHED = {

@@ -15,8 +15,9 @@ is in.
 point assembled as a study assembles points, each step traced with the state, the inputs and the parameters as
 arguments; a constant of one that the other lacks, in the program or in a sub-program nested in it (a node's ``jit``, a
 ``cond``, a ``scan``), is a value baked from the ranged one, which every member of a batched group would run at the
-first point's value. Refused as that entry's defect. A move that changes no leaf, no initial state and not the program
-is ``not-discriminating``, never ``quiet``: the form had nothing to see. Both checks run in float64, whatever the
+first point's value. Refused as that entry's defect, whether or not the move also writes a leaf the step does not read
+(``held`` where it changes no constant). A move that changes no leaf, no initial state and not the program is
+``not-discriminating``, never ``quiet``: the form had nothing to see. Both checks run in float64, whatever the
 study's precision; each is made once for an experiment's content (its document, ranges included, and the code of its
 entries' packages) in a process, and reused."""
 
@@ -75,6 +76,9 @@ MOVE = 1e-6
 #: had anything to show, which is not ``quiet`` (the two-builds check's ``not-discriminating``).
 NOT_DISCRIMINATING = ("not-discriminating: the move changed no leaf, no initial state and not the step's program, so "
                       "the trace form had nothing to see")
+#: The trace form's verdict on a move that writes a leaf the step does not read and changes no constant of the program:
+#: a sweep or an override of it is refused elsewhere (``study.leaf-unread``), and the leaf's value never reaches a run.
+HELD = "held: the move writes a leaf the step does not read, and changes no constant of the program"
 #: The reason the checks' points declare their values with.
 CHECK_REASON = "a check of the experiment's declared ranges (mime.study)"
 
@@ -96,8 +100,8 @@ class Built:
 @dataclass(frozen=True)
 class RangeCheck:
     """What the checks found: each difference the independence check found (empty where none), by the point it was
-    found at; each ranged path's trace-form verdict (``quiet``, ``not-discriminating`` or what fired); their refusals;
-    and what they cost, in seconds, where they ran (``0.0`` where the verdicts were reused)."""
+    found at; each ranged path's trace-form verdict (``quiet``, ``held``, ``not-discriminating`` or ``fired``); their
+    refusals; and what they cost, in seconds, where they ran (``0.0`` where the verdicts were reused)."""
 
     differences: tuple[str, ...]
     traced: Mapping[str, str]
@@ -265,11 +269,10 @@ def traced(settings: RunSettings, declarations: Sequence[Declaration]) -> tuple[
         unread = unreadable_leaves(base.graph)
         moved = [(node, key) for node, key in _array_differences(other.tree, base.tree, "")]
         moved = [(node, key.strip()) for node, key in moved]
-        if any(pair in unread for pair in moved):
-            verdicts[path] = "held: the move writes a leaf the step does not read"
-            continue
         if not programs_differ(first, step_program(other.graph)):
-            verdicts[path] = "quiet" if moved or _array_differences(other.state, base.state, "") else NOT_DISCRIMINATING
+            verdicts[path] = (HELD if any(pair in unread for pair in moved) else
+                              "quiet" if moved or _array_differences(other.state, base.state, "") else
+                              NOT_DISCRIMINATING)
             continue
         verdicts[path] = "fired"
         node = next((n for n, _ in moved), "")
@@ -342,4 +345,5 @@ def range_check(experiment: Experiment) -> RangeCheck:
     return found
 
 
-__all__ = ["CHECK_REASON", "MOVE", "NOT_DISCRIMINATING", "RangeCheck", "forget", "independence", "range_check", "step_program", "traced"]
+__all__ = ["CHECK_REASON", "HELD", "MOVE", "NOT_DISCRIMINATING", "RangeCheck", "forget", "independence", "range_check",
+           "step_program", "traced"]

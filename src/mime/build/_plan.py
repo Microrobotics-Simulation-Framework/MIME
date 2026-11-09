@@ -140,7 +140,7 @@ from mime.things import (
 )
 from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnitude, Quantity, UnitError, \
     rate_symbol, says_its_angle, si, unit_symbol
-from mime.registry._ranges import RangeChoice, recording
+from mime.registry._ranges import RangeChoice, planned_over, recording
 from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
     Capability, ReadKind, TargetKind
@@ -2752,6 +2752,9 @@ class _Planner:
                 continue
             try:
                 value = cast(object, getattr(entry, declared.by)(context))
+            except BuildRefused as refused:  # a rule refusing in the table's terms (a choice over a range's cost)
+                self.refusals.extend(refused.refusals)
+                continue
             except Exception as error:  # noqa: BLE001 - an entry's defect becomes a refusal naming it
                 self.defect(record.cls, f"{declared.by}() raised {error!r}")
                 continue
@@ -3095,15 +3098,20 @@ class _Planner:
     def plan_ranges(self) -> None:
         """Each declared range checked (``mime.build._ranges``): what a hull's choices are made over. A range's reason,
         pending or not given (which the saved form holds as pending), is judged by the profile as a declared value's is:
-        research refuses it (``range.reason``), exploratory stamps it."""
+        research refuses it (``range.reason-pending``), exploratory stamps it."""
         found, refusals = planned_ranges(self.settings, self.declarations)
         self.ranges = found
         self.refusals += refusals
+        planned_over(len(found))
+        bodies = [name for name in self.parts if isinstance(self.things.get(name), Body)]
+        offered = {f"{hull.body}.parts.{hull.part}.{name}" for body in bodies
+                   for hull in (self.hull_of(body),) if hull is not None for name in hull.ranges}
+        self.ranges = {path: dataclasses.replace(held, offered=path in offered) for path, held in found.items()}
         for path, held in found.items():
             if held.reason is None or is_pending(held.reason):
                 what = "its reason is pending" if held.reason is not None else \
                     "it is declared with no reason, which the saved form holds as pending"
-                self.work.pending("range.reason", f"the declared range {held.text()}", what,
+                self.work.pending("range.reason-pending", f"the declared range {held.text()}", what,
                                   range_item(path, held.low, held.high, "declared in the experiment with its reason "
                                                                         "pending"))
 

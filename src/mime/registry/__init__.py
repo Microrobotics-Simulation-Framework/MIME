@@ -97,7 +97,7 @@ from mime.registry._entries import (
     setting_value,
     uniform,
 )
-from mime.registry._ranges import Monotone, RangeChoice, Sampled, choose_over, owner_of
+from mime.registry._ranges import ChoiceRule, RangeChoice, choose_over
 from mime.registry._registry import (
     WHY_REQUIRED,
     EntryKind,
@@ -177,11 +177,9 @@ __all__ = [
     "GroupRequest",
     "Hull",
     "Interaction",
-    "Monotone",
     "RangeChoice",
-    "Sampled",
+    "ChoiceRule",
     "choose_over",
-    "owner_of",
     "LiveInput",
     "Native",
     "NoPrimitive",

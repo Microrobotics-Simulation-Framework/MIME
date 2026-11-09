@@ -383,12 +383,13 @@ push.too-large                user
 push.too-many-files           user
 push.unconfirmed              user
 range.corner                  user
+range.cost                    user
 range.duplicate               user
 range.kind                    user
 range.order                   user
 range.outside                 user
 range.path                    user
-range.reason                  user
+range.reason-pending          user
 range.too-many                user
 range.units                   user
 read.not-published            user
