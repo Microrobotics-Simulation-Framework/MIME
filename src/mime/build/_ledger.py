@@ -33,8 +33,8 @@ With the ledger attached:
   ledger cannot meter;
 - **an entry that declares nothing** (a law with no class that reads nothing from outside, a source among them, whose
   work is booked as supplied all the same; a dynamics receiving deliveries with no port kind) and states no reason
-  (``unmetered``) is logged under exploratory and refused under research (``ledger.unmetered``); strict, a1's, refuses every unmetered entry, reason or not: :func:`refuses_unmetered`
-  is where it does."""
+  (``unmetered``) is logged under exploratory and refused under research (``ledger.unmetered``); strict, a1's, refuses
+  every unmetered entry, reason or not: :func:`refuses_unmetered` is where it does."""
 
 from __future__ import annotations
 
