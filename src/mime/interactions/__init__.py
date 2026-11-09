@@ -9,7 +9,7 @@ from mime.interactions._previous import CentreContact, CentreMagneticForce, Cent
 from mime.interactions.contact import Contact
 from mime.interactions.flow import BodyForce
 from mime.interactions.gravity import Gravity
-from mime.interactions.hydrodynamic import Drag, Lubrication, PointForceDrag
+from mime.interactions.hydrodynamic import Drag, Lubrication, PointForceDrag, UncoupledDrag
 from mime.interactions.magnetic import Magnetic, MagneticForce, MagneticTorque
 from mime.registry import Interaction
 
@@ -21,6 +21,7 @@ KEPT: Mapping[tuple[str, str], tuple[type[Interaction], str]] = MappingProxyType
     ("contact", "0.1.0"): (CentreContact, Contact.version),
     ("contact", "0.4.0"): (UnrolledContact, Contact.version),
     ("drag", "0.3.0"): (PointForceDrag, Drag.version),
+    ("drag", "0.4.0"): (UncoupledDrag, Drag.version),
     ("magnetic.torque", "0.1.0"): (CentreMagneticTorque, MagneticTorque.version),
     ("magnetic.force", "0.1.0"): (CentreMagneticForce, MagneticForce.version),
 })

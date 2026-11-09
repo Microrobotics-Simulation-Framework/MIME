@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
+  `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
+  `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the
+  cluster's grand resistance (each body's own block dev1's; each pair coupled by the source's regularised Stokeslet,
+  integrated over every cell where the pair is within a reach of each other, in the source's cells' own size, and taken
+  at its force points beyond; the wall's image between them) and delivers each body its own coupled resistance and, as
+  its background load, the others' load on it a step behind. The lagged step's gain, the spectral radius of
+  `(M/dt + R_d)^-1 R_off` (the per-step fixed point's contraction), is checked every step from each body's mass matrix,
+  which the rigid body now publishes (`body.mass_matrix`) only where the near field reads it: at one or above the run
+  stops (`drag.near-field-gain`), and the build refuses a configuration that starts there. The check is sufficient for
+  the lagged step's stability, not necessary (it refuses three spheres a tenth of a radius apart at tau/dt about 0.05 to
+  0.11, which are stable); the step's amplification `rho((M/dt + R_d)^-1 (M/dt - R_off))` and its relaxation in steps
+  are reported. The build refuses a near field whose bodies step at another rate than the base step
+  (`drag.near-field-rates`: bodies at 1 s against a node at 1 ms passed a gain of 0.877 while their own step amplified
+  by 1.0146). Each body's coupled resistance and the cluster's are judged definite as dev1's is near a wall
+  (`drag.near-field-indefinite`), their margins reported. **Gaps between bodies** are estimated each step from the
+  force points and their normals: two bodies that overlap by more than a quarter of a cell stop the run, and the build
+  refuses bodies that start so, coincident ones with the overlap's message (`drag.near-field-overlap`); a pair closer
+  than a twentieth of the smaller body's equivalent radius raises `near_contact`, the validity line's edge. **The
+  cross-kernel's budget** is every quadrature point of a source by default, by measurement: a quarter of them held the
+  two-sphere and gain gates at MIME's default sphere but left five hull kinds of six past their conformance line near
+  contact (the box 12 % at a third of a cell); `Drag.MRS(near_field_share=...)` lowers it as a cost setting, a cell
+  within the reach that does not fit raising `cross_cells_short`. A body alone in its medium keeps its own node, so no
+  program with one mrs body a medium moves; a folder saved with `drag` 0.4.0, kept as `UncoupledDrag`, rebuilds its
+  bodies' own nodes. The build refuses a cluster past the dense route's size, a memory line (`drag.near-field-size`),
+  and a medium mixing the two versions (`drag.near-field-mixed`). With the energy ledger attached, each body's own
+  resistance is its drag's law and the cross loads are the near field's own, `near_field:<medium>`, booked on each body
+  by the one pairing rule and never judged on one body's row, where they have no sign (one body drags another): the
+  node judges the cluster's books a step late, from what it delivered and the twists the bodies reached, as the
+  ledger's route 1 judges a step (`mime.core.ledger.CHECK_CLUSTER`, the gift steps read into the law's lines). That
+  check sees an error that makes the fluid a source (cross loads delivered three times over, caught to a radius's gap
+  along the line of centres, a third of one across it) and none that leaves it dissipating (the same at wider gaps,
+  half their value, their sign flipped, an error in the grand resistance that leaves it definite), which the force
+  oracles hold. The near field's contract (`BodyOperator`: the points where a body reads and
+  delivers, its own block, its cross-kernel, its normals) takes the MRS as its first body model; its joint system is a
+  pure function of the bodies' poses, their leaves and the wall's parameters, and a body model of another kind in the
+  same medium (a slender body's, a resistive-force body's) needs the joint node to hold a member kind per index.
+
 - **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
   spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to
   hold at its peak, against the memory a run can have (a GPU's limit; on a CPU the smaller of the host's available
@@ -18,9 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `field.flow.velocity`, and one that declares none, or provides nothing, is refused at registration.
   `PlanContext.fields_providing` and `field_for` find a field by quantity, refusing none and two unless the law names
   one (`binding.field-quantity` and `binding.field-ambiguous`): the surface a later rung's law plans through, since no
-  law reads a field by quantity yet. Every drag rung (surrogate, mrs, rft, on drag 0.4.0 and 0.3.0) assumes its medium
-  at rest, so it is refused wherever the region its medium fills carries a field, its own medium's or another's,
-  whatever the field declares it provides (`drag.medium-flows`, naming the field), until a rung reads a provided flow.
+  law reads a field by quantity yet. Every drag rung (surrogate, mrs, rft, on drag 0.5.0, 0.4.0 and 0.3.0, and each
+  member of a medium's near field) assumes its medium at rest, so it is refused wherever the region its medium fills
+  carries a field, its own medium's or another's, whatever the field declares it provides (`drag.medium-flows`, naming
+  the field), until a rung reads a provided flow.
   With the energy ledger attached, a run's account names what the build leaves unmetered, a medium's flow among them,
   with its reason (`result.energy.unmetered`, in `result.energy.text()` and `result.text()`), where it was `None`.
   Every dot in the FVM's programs is checked to state the highest precision (a CPU test of the traced programs).
@@ -83,9 +122,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (a helix the size of its vessel) is refused at build, `drag.rft-indefinite`, and a step that reaches one
   stops the run, naming the MRS as the route. A kind without a centreline is refused, `drag.no-centreline`, the
   message naming the new guide page on adding one (a custom geometry, an STL or CAD mesh). The rung was added to drag
-  0.4.0, changing nothing the other rungs compute: its setting `coefficients` is left out of the resolved record of a
-  program on another rung (`Entry.unrecorded_settings`), so every such program keeps its input hash and a folder saved
-  before the rung loads. Its tube family was measured at one gap to the wall, and a step at another gap, wider or
+  0.4.0, changing nothing the other rungs compute: its setting `coefficients` is left out of 0.4.0's resolved record of
+  a program on another rung (`Entry.unrecorded_settings`), so every such program keeps its input hash and a folder saved
+  before the rung loads. Drag 0.5.0 (the near field) carries the rung too, and records `coefficients` on every rung, null
+  off the rft rung, since 0.5.0 has no earlier release whose hash to keep (pinned in `tests/saved/test_drag_record.py`). Its tube family was measured at one gap to the wall, and a step at another gap, wider or
   narrower, raises `unmeasured`. Its validity lines, measured against the MRS rung on the same
   bodies, are recorded in `docs/data/slender_validity/`.
 - **The centreline capability** (`mime.registry.Centreline`): a tree of segments joined at named junctions, each a
@@ -406,6 +446,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`flow.solve-report-rows`) and the flow node's parameter take the new name. A folder of form 11 or earlier loads as
   before: its old name is read as the new and written back with the old name for its input hash. A reader of form 11
   refuses a folder of form 12 as `load.newer-form`.
+
+- **A round length keeps its count of samples** (`mime.scene`'s solids and screw). A kind's count along a length was
+  the ceiling of the length over the spacing, so a round input (a 2 mm capsule at a 1 mm spacing, a whole number of
+  spacings) took the next count, and a recompiled program, where its last digit or a study's move of a millionth lifted
+  the ratio past the whole number: the two-builds walk saw the near field's case's program change. The ceiling now
+  takes a slack of a ten-thousandth of the ratio (`COUNT_SLACK`), so a length up to that share past a whole number of
+  spacings keeps the lower count and the count's step lies off the round values. **The counts at such round inputs
+  were a float artefact of 0.3.0.dev1, fixed under the kinds' own versions**: a configuration whose length lies within
+  that share above a whole number of spacings takes one row fewer than in 0.3.0.dev1 (5 of 400 round inputs on a 0.1 mm
+  grid, pinned by `tests/scene/test_sampling.py`: 1.3 mm at 0.1 mm takes 13 rows where dev1 took 14, 2.1 mm at 0.1 mm
+  21 for 22, 2.1 mm at 0.7 mm 3 for 4, 2.6 mm at 0.1 mm 26 for 27, 2.6 mm at 0.2 mm 13 for 14), and 0.3.0.dev2 refuses
+  a folder saved by another release, so none is rebuilt with the moved count. No registered case's golden output and
+  no released program's arrays moved (each compared bit for bit).
 
 - **Saved form 11: a medium's fields are written by role.** A medium's fields are saved under its own key `fields`
   (`fields: {flow: {name: fvm, ...}}`), as an apparatus's are, where form 10 wrote a medium's flow as a dynamics aspect

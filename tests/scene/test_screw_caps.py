@@ -23,6 +23,7 @@ from screw_grid import FL9, HELIX_SETTINGS, REACH_FRACTIONS
 
 from mime.scene import Screw
 from mime.scene._caps import cap_rings, ring_floor, symmetric_total
+from mime.scene._sampling import counted
 from mime.scene._screw import CAP_SEPARATION, LARGEST_MODULATION, LARGEST_WAVENUMBER, STARTS
 from mime.testing import KIND_ROUNDING_ULPS
 from mime.units import dimensionless, m
@@ -64,8 +65,10 @@ def closest_within_a_cap(points: np.ndarray) -> float:
 
 
 def grid_counts(kind, held, spacing) -> tuple[int, int]:
-    """The polar grid's ``(outward, around)`` at ``spacing``: 0.1.0's caps' counts, ``around`` the lateral patch's."""
-    return math.ceil(kind.radial_reach(held) / spacing), kind.sample_counts(held, spacing, "lateral")[0]
+    """The polar grid's ``(outward, around)`` at ``spacing``: 0.1.0's caps' counts by the kinds' count of samples along
+    a length (``counted``, the ratio's ceiling less its slack, so that a round ratio keeps its count: Hypothesis found
+    a fineness of 15.0 where the bare ceiling read one ring more than the kind's), ``around`` the lateral patch's."""
+    return counted(kind.radial_reach(held) / spacing), kind.sample_counts(held, spacing, "lateral")[0]
 
 
 def turned_by_a_start(points: np.ndarray, starts: int) -> np.ndarray:

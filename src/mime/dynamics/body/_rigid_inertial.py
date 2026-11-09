@@ -17,6 +17,7 @@ from mime.vocabulary import (
     APPLIED_WRENCH,
     BACKGROUND_LOAD,
     CONFINEMENT,
+    MASS_MATRIX,
     POSE,
     RESISTANCE,
     RIGID_BODY,
@@ -139,7 +140,7 @@ class RigidInertial(Dynamics):
     applies_to = frozenset({ThingKind.BODY})
     flags = frozenset({Capability.RIGID, Capability.INERTIAL, Capability.RESISTANCE_IMPLICIT,
                        Capability.PROJECTS_CONFINEMENT, Capability.HOLDS_HULL})
-    publishes = {POSE.name: Port("pose"), TWIST.name: Port("twist")}
+    publishes = {POSE.name: Port("pose"), TWIST.name: Port("twist"), MASS_MATRIX.name: Port("mass_matrix")}
     port = RIGID_BODY.name
     accepts = {APPLIED_WRENCH.name: Port("applied_wrench"), RESISTANCE.name: Port("resistance"),
                BACKGROUND_LOAD.name: Port("background_load"), CONFINEMENT.name: Port("confinement")}
@@ -174,9 +175,10 @@ class RigidInertial(Dynamics):
         pose = (*initial["position"], *initial["orientation"])
         twist = (*initial["velocity"], *initial["angular_velocity"])
         mass, inertia = ctx.scalar_value("mass"), self.node_inertia(ctx.vector_value("inertia"))
+        published: dict[str, Any] = {"publishes_mass_matrix": True} if ctx.mass_read else {}
         if not ctx.confinements:
             b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
-                            initial_twist=twist))
+                            initial_twist=twist, **published))
             return
         (held,) = ctx.confinements
         hull: dict[str, Any] = {}
@@ -192,4 +194,4 @@ class RigidInertial(Dynamics):
         surface: dict[str, Any] = {f"{SURFACE}{name}": value for name, value in held.parameters.items()}
         b.add_node(node(ctx.node_name(), ctx.timestep, mass=mass, inertia=inertia, initial_pose=pose,
                         initial_twist=twist, surface_shape=held.shape, extent=held.extent, margin=held.margin,
-                        velocity_rule=held.rule, **hull, **surface))
+                        velocity_rule=held.rule, **hull, **surface, **published))
