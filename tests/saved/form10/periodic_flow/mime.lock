@@ -1,0 +1,478 @@
+{
+ "derived": {
+  "observations": {
+   "edges": [],
+   "external_inputs": [],
+   "nodes": [],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {}
+  },
+  "physics": {
+   "coupling_groups": [],
+   "edges": [
+    {
+     "additive": true,
+     "source_field": "force",
+     "source_node": "body_force:water",
+     "source_units": "m/s^2",
+     "target_field": "body_force",
+     "target_node": "water.flow",
+     "target_units": "m/s^2"
+    },
+    {
+     "source_field": "waveform",
+     "source_node": "body_force:water",
+     "source_units": "1",
+     "target_field": "waveform",
+     "target_node": "water.flow",
+     "target_units": "1"
+    }
+   ],
+   "external_inputs": [],
+   "nodes": [
+    {
+     "name": "body_force:water",
+     "params": {
+      "along": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "amplitude": 0.5,
+      "frequency": 2.0,
+      "instant": 1.0,
+      "phase": 0.0,
+      "steady": 1.0
+     },
+     "timestep": 0.00025,
+     "type": "BodyForceNode"
+    },
+    {
+     "name": "water.flow",
+     "params": {
+      "at_floor": false,
+      "band": "smooth_2h_0.3h",
+      "cap": 5000,
+      "cells_x": 15,
+      "cells_y": 15,
+      "cells_z": 2,
+      "check_every": 20,
+      "convection": true,
+      "density": 1000.0,
+      "interior": "0.1h",
+      "periodic_images": "own",
+      "preconditioner": "jacobi",
+      "report_rows": 0,
+      "scaling_start": true,
+      "scheme": "imex_euler",
+      "solve_report": {
+       "dtype": "float64",
+       "sha256": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+       "shape": [
+        1,
+        6
+       ]
+      },
+      "spacing": 0.000125,
+      "tolerance": 1e-08,
+      "tube_axis": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "tube_centre": [
+       0.0009375,
+       0.0009375,
+       0.0
+      ],
+      "tube_radius": 0.0005,
+      "viscosity": 0.001
+     },
+     "timestep": 0.00025,
+     "type": "ImplicitFlowNode"
+    }
+   ],
+   "param_specs": {},
+   "recipe": "mime.hash/1",
+   "static": {
+    "body_force:water": {},
+    "water.flow": {}
+   }
+  }
+ },
+ "entries": [
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "dynamics",
+   "name": "fvm",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "geometry",
+   "name": "tube",
+   "version": "0.1.0"
+  },
+  {
+   "distribution": "mime-engine",
+   "distribution_version": "0.3.0.dev1",
+   "kind": "interaction",
+   "name": "body_force",
+   "version": "0.1.0"
+  }
+ ],
+ "environment": {
+  "blas_threads": 1,
+  "cpu": {
+   "flags_sha256": "5124b048901de4914eb2d5d6d584fa4cc9f80ed3bef810d7beea092108841d56",
+   "model": "12th Gen Intel(R) Core(TM) i7-12850HX"
+  },
+  "deterministic": false,
+  "device": "cpu",
+  "gpu": null,
+  "jax": "0.12.0.1",
+  "jaxlib": "0.12.0.1",
+  "maddening": "0.4.2",
+  "matmul_precision": null,
+  "mime": "0.3.0.dev1",
+  "openmaterica": "0.1.0.dev3",
+  "platform": "linux-x86_64",
+  "prng": "threefry2x32 (jax_threefry_partitionable=True)",
+  "python": "3.14.5",
+  "runner": {},
+  "runner_info": {},
+  "usable_cpus": 4,
+  "usd_core": "26.11",
+  "x64": true,
+  "xla_flags": ""
+ },
+ "hashes": {
+  "derived": "sha256:1b5f826fd19da3202eadd18c32571be075df9d3d3149c2cca2fb5f63ef97e630",
+  "document": "sha256:a270d230647c1ccad9e27f6bb1286cdf4bac63a9f56b28eb6fddef0b359e2dce",
+  "input": "sha256:4e9e1f8ade9aaecadd062a25db46d6ce9134edfb18a2e7acd25ec666a7f7edb6",
+  "observations": "sha256:d4cc01409df50de906ea16c15897fbd6be0a17d370728ca412933d731134a51f",
+  "recipe": "mime.hash/1"
+ },
+ "records": {},
+ "reference": {
+  "atol": 0.0,
+  "file": "reference.npz",
+  "resolution": {
+   "body_force:water.force": {
+    "m/s^2": 6.661338147750939e-16
+   },
+   "body_force:water.waveform": {
+    "1": 4.440892098500626e-16
+   },
+   "water.flow.bypass_flagged": {
+    "1": 0.0
+   },
+   "water.flow.bypass_ratio": {
+    "1": 1.0842021724855044e-17
+   },
+   "water.flow.cfl": {
+    "1": 2.6020852139652106e-18
+   },
+   "water.flow.lumen_flux": {
+    "m^3/s": 2.895132143935597e-24
+   },
+   "water.flow.negative_resistivity": {
+    "1": 0.0
+   },
+   "water.flow.reynolds": {
+    "1": 2.6645352591003757e-15
+   },
+   "water.flow.reynolds_flagged": {
+    "1": 0.0
+   },
+   "water.flow.solve_flagged": {
+    "1": 0.0
+   },
+   "water.flow.solve_report": {
+    "1": 2.8153859771850746e-17
+   },
+   "water.flow.solve_report_sum": {
+    "1": 9.809712893534177e-17
+   },
+   "water.flow.stopped_cfl": {
+    "1": 0.0
+   },
+   "water.flow.velocity_x": {
+    "m/s": 4.793806889927038e-19
+   },
+   "water.flow.velocity_y": {
+    "m/s": 4.634877852281117e-19
+   },
+   "water.flow.velocity_z": {
+    "m/s": 3.903127820947816e-18
+   }
+  },
+  "resolution_factor": 30.0,
+  "rtol": 2e-14,
+  "sha256": "sha256:c20a11aadaf33f6a2d13e9d199c99a2ed4d46c272ff7a07f66837e674d84644d",
+  "steps": 8
+ },
+ "resolved": {
+  "assets": {},
+  "controller": null,
+  "descriptions": {},
+  "entries": {
+   "body_force:water": {
+    "binds": {
+     "medium": "water"
+    },
+    "differentiability": "exact",
+    "every": 1,
+    "initial": {},
+    "kind": "interaction",
+    "name": "body_force",
+    "nodes": [
+     "body_force:water"
+    ],
+    "settings": {
+     "along": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "amplitude": {
+      "unit": "m/s^2",
+      "value": 0.5
+     },
+     "frequency": {
+      "unit": "Hz",
+      "value": 2.0
+     },
+     "phase": 0.0,
+     "steady": {
+      "unit": "m/s^2",
+      "value": 1.0
+     }
+    },
+    "version": "0.1.0"
+   },
+   "water.flow": {
+    "binds": {},
+    "differentiability": "unverified",
+    "every": 1,
+    "initial": {},
+    "kind": "dynamics",
+    "name": "fvm",
+    "nodes": [
+     "water.flow"
+    ],
+    "settings": {
+     "cells_across": 8,
+     "domain": {
+      "group": "periodic_box",
+      "settings": {
+       "length": {
+        "unit": "m",
+        "value": 0.00025
+       },
+       "margin": 4
+      }
+     },
+     "preconditioner": "jacobi",
+     "rate": null,
+     "report_rows": 0,
+     "scheme": {
+      "group": "imex_euler",
+      "settings": {}
+     },
+     "spacing": null,
+     "stokes": false,
+     "tolerance": null,
+     "wall": {
+      "group": "band",
+      "settings": {}
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "fills": {
+   "water": "tube.lumen"
+  },
+  "geometry": {
+   "tube": {
+    "name": "tube",
+    "settings": {
+     "axis": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "centre": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "inner_radius": {
+      "unit": "m",
+      "value": 0.0005
+     },
+     "length": {
+      "unit": "m",
+      "value": 0.01
+     },
+     "wall": {
+      "unit": "m",
+      "value": 0.0002
+     }
+    },
+    "version": "0.1.0"
+   }
+  },
+  "groups": [],
+  "materials": {
+   "conditions": {},
+   "parts": {},
+   "reads": [],
+   "records": {}
+  },
+  "order": [
+   "body_force:water",
+   "water.flow"
+  ],
+  "profile": {
+   "changes": {},
+   "defaults": {
+    "body_force:water.phase": {
+     "entry": "body_force 0.1.0",
+     "kind": "convention",
+     "value": 0.0
+    },
+    "gravity": {
+     "entry": null,
+     "kind": "convention",
+     "value": {
+      "unit": "m/s^2",
+      "value": 9.80665
+     }
+    },
+    "tube.centre": {
+     "entry": "tube 0.1.0",
+     "kind": "convention",
+     "value": {
+      "unit": "m",
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    "water.flow.preconditioner": {
+     "entry": "fvm 0.1.0",
+     "kind": "convention",
+     "value": "jacobi"
+    },
+    "water.flow.report_rows": {
+     "entry": "fvm 0.1.0",
+     "kind": "convention",
+     "value": 0
+    },
+    "water.flow.stokes": {
+     "entry": "fvm 0.1.0",
+     "kind": "convention",
+     "value": false
+    },
+    "water.flow.wall": {
+     "entry": "fvm 0.1.0",
+     "kind": "convention",
+     "value": {
+      "group": "band",
+      "settings": {}
+     }
+    },
+    "water.flow.wall.delta_in": {
+     "entry": "fvm 0.1.0",
+     "kind": "convention",
+     "value": 0.1
+    }
+   },
+   "listed": [],
+   "pending": [],
+   "profile": "exploratory",
+   "sources": {},
+   "waivers": []
+  },
+  "registrations": {},
+  "run": {
+   "dt": 0.00025,
+   "experiment": "periodic_tube_flow",
+   "gravity": [
+    -0.0,
+    -0.0,
+    -9.80665
+   ],
+   "seed": 0,
+   "structure": "one compiled scan",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "scene": {
+   "bound": [],
+   "magnets": {},
+   "meters_per_unit": 1.0,
+   "prims": {
+    "tube": "/World/tube",
+    "water": "/World/water"
+   },
+   "units": "m",
+   "up": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "slots": {},
+  "things": {
+   "tube": "structure",
+   "water": "medium"
+  },
+  "values": {
+   "water.density": {
+    "details": [],
+    "read_by": [
+     "water.flow"
+    ],
+    "reason": "water near 20 C",
+    "source": "declared in the experiment",
+    "unit": "kg/m^3",
+    "value": 1000.0
+   },
+   "water.viscosity": {
+    "details": [],
+    "read_by": [
+     "water.flow"
+    ],
+    "reason": "water near 20 C",
+    "source": "declared in the experiment",
+    "unit": "Pa s",
+    "value": 0.001
+   }
+  },
+  "vocabulary": {
+   "mime": "0.3.0.dev1"
+  }
+ },
+ "schema": "mime.lock/10",
+ "seeds": {},
+ "stage": {
+  "file": "scene/scene.usda",
+  "layers": {},
+  "sha256": "ada6dcbfd8ce8e660a83aae1ed016895ac3002524a281a3515ec0d646a665cf0",
+  "writer": 2
+ }
+}

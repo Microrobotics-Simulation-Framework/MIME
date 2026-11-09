@@ -1471,7 +1471,8 @@ class BuiltExperiment:
                          origin=self._origin, overrides=point.records if point is not None else (),
                          energy=functools.partial(energy_account, self._graph, final,
                                                   (point.params if point is not None else graph_params(self._graph))
-                                                  .get("nodes", {}), steps=start + steps)
+                                                  .get("nodes", {}), steps=start + steps,
+                                                  unmetered=self._report.unmetered)
                          if self._report.energy else None,
                          groups=functools.partial(group_verdicts, self._graph) if self._report.groups else None)
         result.drives = (plans if plans is not None else self._plans).turning

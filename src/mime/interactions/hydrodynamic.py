@@ -115,6 +115,24 @@ def _triple(value: Any) -> tuple[float, float, float]:
 VESSEL_PARAMETERS = ("centre", "axis", "radius")
 
 
+def at_rest_problems(ctx: PlanContext, rung: str | None) -> list[Problem]:
+    """Every drag rung here assumes its medium at rest (its background load is zero), so it is refused where the region
+    its medium fills carries a field, the medium's own or another's filling the same region. No quantity a field kind
+    provides shows its medium at rest, so a field counts whatever it declares it provides: the refusal does not rest
+    on a kind declaring ``field.flow.velocity``. A rung that reads a provided flow is a later release's."""
+    carried = ctx.provided.get("medium", {})
+    if not carried:
+        return []
+    medium = ctx.bindings["medium"]
+    fields = ", ".join(f"{name} (providing {', '.join(provides) or 'nothing it declares'})"
+                       for name, provides in sorted(carried.items()))
+    return [Problem("drag.medium-flows",
+                    f"the {rung} rung assumes medium {medium!r} at rest (it delivers no load from a flow), and the "
+                    f"region it fills carries {fields}: a drag that reads a medium's flow is a later release's",
+                    "leave the flow out of the region the drag's medium fills (a medium with no fields=), or leave "
+                    "the drag out")]
+
+
 def uniform_tube(region: Region | None, medium: str) -> UniformTube | Problem:
     """The tube the medium fills, through the shape protocol: its axis, a point on it, and its radius (the shape's
     signed distance on its axis, negated); or why there is none."""
@@ -544,13 +562,13 @@ class PointForceDrag(Interaction):
     @override
     def plan(self, ctx: PlanContext) -> Plan:
         if self.rung == "mrs":
-            problems = self._mrs_problems(ctx)
+            problems = at_rest_problems(ctx, self.rung) + self._mrs_problems(ctx)
             hull = ctx.geometry(of="body")
             if not problems and hull is not None and "spacing" in ctx.settings:
                 self._sampled_hull(owner_of(self, ctx.bindings), hull, ctx.scalar("spacing"))
             return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
                         problems=tuple(problems), assets=self._wall_assets())
-        problems: list[Problem] = []
+        problems: list[Problem] = at_rest_problems(ctx, self.rung)
         tube = uniform_tube(ctx.region("medium"), ctx.bindings["medium"])
         surrogate = self.surrogates.get(self.weights.name) if self.weights is not None else None
         if isinstance(tube, Problem):
@@ -1063,7 +1081,8 @@ class Drag(PointForceDrag):
         if self.rung != "rft":
             return super().plan(ctx)
         return Plan(reads=dict(self.reads), delivers=dict(self.delivers), values=dict(self.values),
-                    problems=tuple(self._rft_problems(ctx)), assets=self._wall_assets())
+                    problems=tuple(at_rest_problems(ctx, self.rung) + self._rft_problems(ctx)),
+                    assets=self._wall_assets())
 
     def _rft_problems(self, ctx: PlanContext) -> list[Problem]:
         """The rft rung's refusals: a body whose hull declares no centreline (``drag.no-centreline``, naming the guide's

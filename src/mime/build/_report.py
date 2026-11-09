@@ -185,6 +185,9 @@ class BuildReport:
     #: being unmetered and what it is supplied by, each receiver the ledger cannot meter, and what is outside, worked
     #: out from the graph (``mime.build._ledger``). Empty without the ledger.
     energy: tuple[str, ...] = ()
+    #: With the energy ledger attached: each node that receives deliveries and is not metered, with its reason, which
+    #: the run's account names as left out of it (``RunResult.energy``).
+    unmetered: Mapping[str, str] = field(default_factory=dict[str, str])
 
     def energy_lines(self) -> list[str]:
         if not self.energy:

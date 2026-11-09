@@ -15,6 +15,7 @@ from mime.build import (
     ResolvedRegistration,
     Slot,
 )
+from mime.fields._solved import NOT_DECLARED, SolvedField
 from mime.gradients import GradientStatus
 from mime.registry import (
     BuildContext,
@@ -144,6 +145,16 @@ class ToyRelaxation(Dynamics):
     coupling: Annotated[Quantity, Length**-1] = 1.9 / m(1.0)
     drag_gain: Annotated[Quantity, Force] = N(0.61)
     value: tuple[float, float, float] = (0.1, 0.2, -0.1)
+
+    @classmethod
+    @override
+    def field_declarations(cls) -> tuple[SolvedField, ...]:
+        return (SolvedField(
+            hosting="solved", role="flow", provides=(MEDIUM_VALUE.name,), time_level=NOT_DECLARED,
+            own_contribution="none", accepts=(MEDIUM_REGISTRATION.name,), exchange=NOT_DECLARED, outside=False,
+            domain_kinds=(), ports="none", properties=(), settings=("relax_rate", "coupling", "drag_gain", "value"),
+            ledger_route=None, ledger_reason=TOY_UNMETERED, steady_solve=False, affine_response=False,
+            stores="its value", batches=True, dtypes=("float32", "float64"), rates=NOT_DECLARED),)
 
     @override
     def build(self, ctx: BuildContext, b: DynamicsBuilder, registrations: Sequence[ResolvedRegistration]) -> None:

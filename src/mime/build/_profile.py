@@ -312,9 +312,9 @@ def experiment_sites(things: Sequence[object], readers: Sequence[tuple[str, str,
                 found += _entry_sites(thing.dynamics, f"{thing.name}.motion", f"in structure {thing.name!r}'s "
                                       f"dynamics", _fragment("things", thing.name, "dynamics", "motion"))
         elif isinstance(thing, Medium):
-            if thing.flow is not None:
-                found += _entry_sites(thing.flow, f"{thing.name}.flow", f"in medium {thing.name!r}'s flow",
-                                      _fragment("things", thing.name, "dynamics", "flow"))
+            for role, kind in sorted(thing.fields.items()):
+                found += _entry_sites(kind, f"{thing.name}.{role}", f"in medium {thing.name!r}'s field {role!r}",
+                                      _fragment("things", thing.name, "fields", role))
         elif isinstance(thing, Body):
             found += _entry_sites(thing.dynamics, f"{thing.name}.motion", f"in body {thing.name!r}'s dynamics",
                                   _fragment("things", thing.name, "dynamics", "motion"))

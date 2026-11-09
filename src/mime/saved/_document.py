@@ -324,8 +324,8 @@ def _magnet_doc(role: object, where: str) -> MagnetDoc:
 def _thing_doc(thing: Thing) -> ThingDoc:
     where = f"{thing.kind.value} {thing.name!r}"
     doc: ThingDoc = {"kind": thing.kind.value, "prim": prim_path_of(thing)}
-    if isinstance(thing, Medium) and thing.flow is not None:
-        doc["dynamics"] = DynamicsDoc(flow=_entry_doc(thing.flow, f"{where}'s flow"))
+    if isinstance(thing, Medium) and thing.fields:
+        doc["fields"] = {role: _entry_doc(kind, f"{where}'s field {role!r}") for role, kind in sorted(thing.fields.items())}
     elif isinstance(thing, (Body, Structure)) and thing.dynamics is not None:
         doc["dynamics"] = DynamicsDoc(motion=_entry_doc(thing.dynamics, f"{where}'s motion"))
     if isinstance(thing, Body):
@@ -829,8 +829,8 @@ def thing_from(name: str, doc: ThingDoc, entries: Mapping[tuple[str, str], Entry
     held = materials or {}
     if kind is ThingKind.MEDIUM:
         material = held[doc["material"]] if "material" in doc else None
-        return Medium(name, fills=doc.get("fills"), flow=cast(Dynamics | None, entries.get((name, "flow"))),
-                      material=material)
+        return Medium(name, fills=doc.get("fills"), material=material,
+                      fields={role: cast(Dynamics, entries[(name, f"field:{role}")]) for role in doc.get("fields", {})})
     if kind is ThingKind.BODY:
         initial = {key: decode_setting(value) for key, value in doc.get("initial", {}).items()}
         from mime.things import State
