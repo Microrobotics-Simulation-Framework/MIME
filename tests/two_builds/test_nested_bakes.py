@@ -9,6 +9,10 @@ above it, at every move.
   ``custom_vjp`` or ``custom_linear_solve``, inside two ``jit`` levels, a NumPy or a JAX array, differs by
   ``nested_program`` and not by ``program_of`` (the control: the old comparison is blind to every one of them, so the
   test can fail), and the same array twice does not differ.
+- An array a ``jit`` closes over *inside* a ``cond`` branch or ``custom_linear_solve``'s matvec or solve, a NumPy or a
+  JAX array: JAX hoists an array closed over by the branch or the function itself out to the enclosing program's
+  constants, so the cases above never need the walk through a tuple-valued parameter (``branches``, ``jaxprs``); this
+  array lives only in the closed program of a ``jit`` inside that tuple, and the same three assertions hold.
 - A real node (``MagneticTorqueNode``, in ``rotating_screw``; the builder planted none there): half the moment taken
   from the build as a NumPy or a JAX array, in the step's ``jit`` alone, inside a ``scan`` and inside a ``cond``, with
   the moment moved by a relative 1e-1 to 1e-15: the trace form fires as a ``bake`` at every move (and the run form, on
@@ -80,6 +84,29 @@ def traced(function: Callable[[Any], Any]) -> Any:
 def test_an_array_held_inside_a_nested_construct_is_a_constant_the_form_compares(construct: str, make: Any):
     def program(scale: float) -> Any:
         return traced(constructs(make(VALUE) * scale)[construct])
+
+    moved, same, again = program(1.0 + 1e-12), program(1.0), program(1.0)
+    assert programs_differ(program_of(same), program_of(moved)) == "", "the control: the old comparison is blind"
+    assert programs_differ(nested_program(same), nested_program(moved)) == "consts-value"
+    assert programs_differ(nested_program(same), nested_program(again)) == "", "the same array twice is the same"
+
+
+def inside_a_tuple_parameter(held: Any) -> dict[str, Callable[[Any], Any]]:
+    """Each construct whose sub-programs sit in a tuple-valued parameter, with ``held`` closed over by a ``jit`` inside
+    them: the array is in the closed program of that inner ``jit`` and nowhere else (not hoisted to the enclosing one)."""
+    return {
+        "cond": lambda x: jax.lax.cond(x[0] > 0, lambda y: jax.jit(lambda z: z * held)(y), lambda y: y, x),
+        "custom_linear_solve": lambda x: jax.lax.custom_linear_solve(
+            lambda y: jax.jit(lambda z: held * z)(y), x, lambda _, b: jax.jit(lambda z: z / held)(b), symmetric=True),
+    }
+
+
+@pytest.mark.parametrize("make", [np.asarray, jnp.asarray], ids=["numpy", "jax"])
+@pytest.mark.parametrize("construct", list(inside_a_tuple_parameter(np.asarray(VALUE))))
+def test_an_array_a_jit_closes_inside_a_tuple_valued_parameter_is_a_constant_the_form_compares(
+        construct: str, make: Any):
+    def program(scale: float) -> Any:
+        return traced(inside_a_tuple_parameter(make(VALUE) * scale)[construct])
 
     moved, same, again = program(1.0 + 1e-12), program(1.0), program(1.0)
     assert programs_differ(program_of(same), program_of(moved)) == "", "the control: the old comparison is blind"
