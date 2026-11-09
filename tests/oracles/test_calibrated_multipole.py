@@ -38,6 +38,7 @@ from hypothesis import strategies as st
 
 from mime import Apparatus, Body, Experiment, State
 from mime.build._maddening import _held, fed_inputs
+from mime.build._refusals import ArgumentRefused
 from mime.data import asset
 from mime.dynamics import RigidInertial
 from mime.fields import CalibratedMultipole, allocate
@@ -344,6 +345,27 @@ def test_dev1s_magnetic_pair_on_a_sphere_delivers_mag_manips_force_and_torque(sy
     assert miss(torque[3:], oracle(system, "torque")[0]) < tol and np.all(torque[:3] == 0.0)
 
 
+def test_the_host_actuation_under_a_pose_and_a_background_is_the_nodes():
+    """Review minor 8: the host helper at a placed, turned array with a background agrees with the node's step."""
+    at, turn, background = np.array([0.02, -0.03, 0.01]), (0.8, 0.1, -0.5, 0.3), np.array([3e-5, -4e-5, 1.2e-4])
+    unit = tuple(c / np.linalg.norm(turn) for c in turn)
+    provider = CalibratedMultipole(calibration=asset("cardiomag"), at=m(tuple(at)), orientation=unit,
+                                   background=T(tuple(background)))
+    node = built_node("cardiomag", at=m(tuple(at)), orientation=unit, background=T(tuple(background)))
+    currents = oracle("cardiomag", "currents")[0]
+    point = at + np.array([0.01, 0.02, -0.01])
+    found = provider.actuation(m(tuple(point))).at(A(tuple(currents)))
+    out = step(node, point, currents)
+    assert miss(np.asarray(found[0].value), out["flux_density"]) < 1e-12
+    assert miss(np.asarray(found[1].value), out["gradient"].reshape(-1)) < 1e-12
+
+
+def test_allocation_refuses_a_wanted_field_that_is_not_finite():
+    actuation = CalibratedMultipole(calibration=asset("cardiomag")).actuation(m((0.0, 0.0, 0.0)))
+    with pytest.raises(ArgumentRefused, match="not finite"):
+        allocate(actuation, field=mT((float("nan"), 0.0, 0.0)), limits=A(20.0))
+
+
 def test_the_sphere_is_pulled_along_the_force():
     """The force alone: with the torque the sphere (1.6e-12 kg m^2) turns about a radian in 2 ms, and its moment with
     it, so the force's direction would not hold over the run."""
@@ -400,22 +422,153 @@ def test_outside_region_is_mag_manips_point_in_workspace_negated(system):
         assert step(node, probe, np.zeros(node.coils))["outside_region"] == (0.0 if inside else 1.0), probe
 
 
-def test_near_source_rises_within_the_guard_and_not_in_the_region():
+def test_near_source_is_the_gradients_departure_by_default_and_a_distance_when_declared():
+    """Navion_2's region is smooth (its gradient reaches 13.5 times its median, the guard is 30): nowhere flagged in it,
+    flagged at a fitted source; a declared ``source_clearance`` replaces the rule with the distance."""
     held = calibration("navion_2")
     node = built_node("navion_2")
-    assert node.constants()["source_clearance"] == pytest.approx(held.nearest_approach())
+    assert node.constants()["guard"] == "gradient"
+    assert np.asarray(node.constants()["gradient_limit"]) == pytest.approx(held.gradient_limit())
     for point in oracle("navion_2", "points")[:16]:
-        out = step(node, point, np.zeros(3))
-        assert out["near_source"] == 0.0 and out["source_distance"] > held.nearest_approach() * (1 - 1e-12)
+        assert step(node, point, np.zeros(3))["near_source"] == 0.0
     source = held.positions[0, 0]
-    out = step(node, source + np.array([0.0, 0.0, 0.5 * held.nearest_approach()]), np.zeros(3))
-    assert out["near_source"] == 1.0 and out["source_distance"] == pytest.approx(0.5 * held.nearest_approach())
+    out = step(node, source + np.array([0.0, 0.0, 1e-3]), np.zeros(3))
+    assert out["near_source"] == 1.0 and out["source_distance"] == pytest.approx(1e-3)
+    by_distance = built_node("navion_2", source_clearance=m(held.nearest_approach() * 1.5))
+    assert by_distance.constants()["guard"] == "distance"
+    assert step(by_distance, source + np.array([0.0, 0.0, held.nearest_approach() * 1.2]), np.zeros(3))["near_source"] == 1.0
+    assert step(by_distance, oracle("navion_2", "points")[0], np.zeros(3))["near_source"] == 0.0
+
+
+@pytest.mark.parametrize("system", ("navion_2", "cardiomag"))
+def test_the_guard_raises_nowhere_in_a_smooth_region(system):
+    """The measured basis of the factor: over the region's drawn points and its faces and corners the gradient stays
+    under the guard in the two calibrations whose sources lie far from the region."""
+    held = calibration(system)
+    drawn = np.concatenate([oracle(system, "points"), oracle(system, "probes")[32:], held.grid(5)])
+    node = built_node(system)
+    assert all(step(node, point, np.zeros(node.coils))["near_source"] == 0.0 for point in drawn)
+
+
+def octomags_source() -> np.ndarray:
+    """OctoMag's fitted source nearest its declared region: 20 um outside its -x face, 0.8 and 0.6 mm from the face's
+    edges (not at a corner, as the card once said)."""
+    held = calibration("octomag")
+    outside = np.maximum(0.0, np.maximum(held.region[:, 0] - held.positions, held.positions - held.region[:, 1]))
+    distance = np.where(held.real, np.linalg.norm(outside, axis=-1), np.inf)
+    k, j = np.unravel_index(np.argmin(distance), distance.shape)
+    assert (k, j) == (4, 0) and distance[k, j] == pytest.approx(held.nearest_approach())
+    return held.positions[k, j]
+
+
+def test_octomags_guard_fires_at_its_source_and_its_nearest_corner_and_not_in_the_centre():
+    """M1 of the review: the default must be able to fire inside the region it was designed for. A point 20 um from
+    OctoMag's fitted source reads a gradient of hundreds of kT/m with the earlier distance default silent; here it is
+    flagged, as is the region's nearest grid corner (1 mm from the source); the workspace centre is not. The control, on
+    every run: with the guard removed (``source_clearance`` zero) the same point reads the same gradient, unflagged."""
+    held = calibration("octomag")
+    source = octomags_source()
+    on_the_face = np.array([held.region[0, 0], source[1], source[2]])
+    corner = np.array([-0.01, 0.01, -0.01])
+    centre = np.zeros(3)
+    currents = np.zeros(8)
+    currents[4] = 16.0
+    node, removed = built_node("octomag"), built_node("octomag", source_clearance=m(0.0))
+    assert removed.constants()["guard"] == "distance"
+    flagged = {label: step(node, point, currents) for label, point in
+               (("source", on_the_face), ("corner", corner), ("centre", centre))}
+    silent = step(removed, on_the_face, currents)
+    assert np.linalg.norm(on_the_face - source) == pytest.approx(held.nearest_approach())
+    assert (flagged["source"]["near_source"], flagged["corner"]["near_source"], flagged["centre"]["near_source"]) == \
+        (1.0, 1.0, 0.0)
+    assert silent["near_source"] == 0.0
+    assert np.array_equal(silent["gradient"], flagged["source"]["gradient"])
+    assert np.max(np.abs(silent["gradient"])) > 1e5, "the control reads the singular gradient silently, in T/m"
+    assert np.max(np.abs(flagged["centre"]["gradient"])) < 10.0
+
+
+@PROPERTY
+@given(st.tuples(st.floats(-1, 1), st.floats(-1, 1), st.floats(-1, 1)).filter(lambda v: sum(c * c for c in v) > 1e-2),
+       st.floats(2e-5, 3e-4))
+def test_octomags_guard_fires_on_every_draw_within_300_um_of_its_source(direction, distance):
+    node = built_node("octomag")
+    unit = np.asarray(direction) / np.linalg.norm(direction)
+    out = step(node, octomags_source() + distance * unit, np.zeros(8))
+    assert out["near_source"] == 1.0, (direction, distance)
 
 
 @pytest.mark.parametrize("system", SYSTEMS)
-def test_zero_current_gives_zero_field(system):
+def test_zero_current_gives_the_oracles_zero_even_where_a_file_carries_an_offset_block(system):
     out = step(built_node(system), oracle(system, "points")[0], np.zeros(calibration(system).coils))
     assert not np.any(out["flux_density"]) and not np.any(out["gradient"])
+    assert not np.any(oracle(system, "zero_current_field_gradient5")), "mag_manip gives zero at zero current"
+
+
+# -- the Offset block: carried by CardioMag's file, evaluated by neither mag_manip nor MIME ------------------------
+
+def offset_field(raw: dict[str, Any], point: np.ndarray) -> np.ndarray:
+    """The field of a file's ``Offset`` block at ``point`` (T), the order-one sum, written out from the file."""
+    field = np.zeros(3)
+    for name in raw["Offset"]["Source_List"]:
+        source = raw["Offset"][name]
+        direction = np.asarray(source["Source_Direction"], dtype=float)
+        direction = direction / np.linalg.norm(direction)
+        offset = point - np.asarray(source["Source_Position"], dtype=float)
+        distance = np.linalg.norm(offset)
+        field += float(source["B_Coeff"][0]) * (3.0 * (direction @ offset) * offset / distance**5 - direction / distance**3)
+    return field
+
+
+def emns_file(system: str) -> bytes:
+    return (REFERENCES.parents[1].parent / f"src/mime/data/emns_calibrations/{system}.yaml").read_bytes()
+
+
+def test_only_cardiomags_file_carries_an_offset_block_and_the_reader_counts_it():
+    assert {system: calibration(system).offset_sources for system in SYSTEMS} == {"navion_2": 0, "octomag": 0,
+                                                                                   "cardiomag": 8}
+    import yaml
+
+    assert {system: "Offset" in yaml.safe_load(emns_file(system)) for system in SYSTEMS} == \
+        {"navion_2": False, "octomag": False, "cardiomag": True}
+
+
+def test_the_offset_block_is_about_1_5_mt_in_cardiomags_region_the_figure_the_card_and_validity_state():
+    import yaml
+
+    raw = yaml.safe_load(emns_file("cardiomag"))
+    region = calibration("cardiomag").region
+    sizes = [np.linalg.norm(offset_field(raw, point)) for point in region[:, 0] + np.random.default_rng(3).random((200, 3))
+             * (region[:, 1] - region[:, 0])]
+    assert 1.3e-3 < np.median(sizes) < 1.7e-3 and max(sizes) < 1.8e-3
+    assert "about 1.5 mT" in " ".join(CalibratedMultipole.validity)
+
+
+def test_mag_manip_does_not_evaluate_the_offset_block_of_the_shipped_file():
+    """The archive's control: mag_manip on the shipped CardioMag file and on a copy whose Offset coefficients are 1000
+    times larger give identical fields and gradients at zero and at drawn currents (upstream loads the block only if
+    ``Coil_List`` names it). The block this test would otherwise be blind to is not small: scaled, it is 1.5 T."""
+    import yaml
+
+    assert float(oracle("cardiomag", "offset_scaled_difference")) == 0.0
+    raw = yaml.safe_load(emns_file("cardiomag"))
+    point = calibration("cardiomag").region[:, 0] / 2
+    scaled = {"Offset": {**raw["Offset"], **{name: {**raw["Offset"][name], "B_Coeff": [1000.0 * raw["Offset"][name]["B_Coeff"][0]]}
+                                             for name in raw["Offset"]["Source_List"]}}}
+    assert np.linalg.norm(offset_field(scaled, point)) > 0.1
+
+
+def test_the_reader_refuses_a_coil_list_that_names_the_offset_block_and_the_build_report_states_the_block():
+    import yaml
+
+    from mime.nodes.actuation import CalibrationError
+
+    raw = yaml.safe_load(emns_file("cardiomag"))
+    assert read_calibration(yaml.safe_dump(raw).encode()).offset_sources == 8, "the control: the file as it is reads"
+    raw["Coil_List"] = [*raw["Coil_List"], "Offset"]
+    with pytest.raises(CalibrationError, match="names an Offset block"):
+        read_calibration(yaml.safe_dump(raw).encode())
+    text = sphere_in_the_array("cardiomag", 0).build().report.text()
+    assert "Offset block of eight sources" in text and "neither mag_manip nor this node evaluates" in text
 
 
 # -- allocation -----------------------------------------------------------------------------------------------------
@@ -449,7 +602,6 @@ def test_a_three_coil_array_asked_for_field_and_gradient_reports_its_rank():
 
 
 def test_allocation_refuses_a_gradient_no_currents_make():
-    from mime.build._refusals import ArgumentRefused
 
     actuation = CalibratedMultipole(calibration=asset("cardiomag")).actuation(m((0.0, 0.0, 0.0)))
     with pytest.raises(ArgumentRefused, match="symmetric and trace-free") as asymmetric:

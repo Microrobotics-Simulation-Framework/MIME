@@ -23,7 +23,12 @@ open: it ships in the wheel.
 
 **Its conditioning** (`Calibration.cancellation` and `floor`, over the declared region): cancellation 6.9e-5; float64
 rounding 3.2e-12 and float32 1.7e-3 of the field, above the guard: refused in float32; least distance from a source to
-the region 20 um, at a corner; furthest source 245 km.
+the region 20 um, outside its -x face (0.8 and 0.6 mm from the face's edges, not at a corner; the nearest of the
+region's corners is 1 mm from it); furthest source 245 km. Its guard (`near_source`, a coil's gradient per unit current
+above 30 times its median over the region): the medians are 0.067 to 0.087 T/(m A); 19 of 60 000 drawn points of the
+region reach it, a pocket about 1.2 mm across around that source, where the source's own term takes the gradient to
+10^8 times the median at 20 um and 86 times at the nearest grid corner; elsewhere its smooth gradient stays within 5.5
+times the median at the 99.9th percentile.
 
 **Its accuracy, by use.** Against ETH's `mag_manip`, MIME's evaluation agrees to a tolerance derived from the field's
 cancellation at the compared points (`tests/oracles/test_calibrated_multipole.py`): a software oracle, which pins sign

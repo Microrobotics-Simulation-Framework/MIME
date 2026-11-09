@@ -16,7 +16,8 @@ delivered as commanded, so a later stage between the command and the coils (a sl
 with no script changed. The calibration's own frame is placed in the world by `at` and `orientation`, one exact
 transform (`B = R b(R^T (x - t))`, `G = R G_c R^T`); `background` adds a uniform field in the world frame, zero unless
 declared. The sources' positions, directions and coefficients, the pose and the background are the node's leaves, read
-by its step, so a study varies them without a rebuild and a derivative passes through them.
+by its step, so a derivative passes through them and a later phase's overrides can vary them without a rebuild (this release has
+no override or study axis for them).
 
 It gives, outside a run, the field and gradient per unit current at a point (`provider.actuation(point)`, an
 `Actuation`, whose `matrix()` is the actuation matrix: the field's rows over the gradient's independent ones) and
@@ -26,16 +27,19 @@ limits=...)`: bounded least squares). No system ships limits; the validity lines
 It publishes the flux density and the gradient at the reader's point, or at the point fixed in the body a read names
 (the magnet's centroid), so it feeds `Magnetic.Torque` and `Magnetic.Force`. With the energy ledger attached the array
 is outside the components (an apparatus with no chain receives nothing from them), and the magnetic pair's work is
-supplied by it.
+supplied by it. The ledger books the wrench the laws deliver as given, so it cannot see a wrong field: a mis-scaled
+flux density closes its account; the oracle is what checks the field.
 
 **When not to use it.**
 - As evidence of accuracy inside the calibration's `Workspace_Dimensions`, or of extrapolation outside it: that region
   is declared, never fitted. A reader outside it raises the flag `outside_region` ("outside the declared region"), which
   says only that.
 - Near a fitted source, where the field is singular. The sources are basis functions, not hardware: a fit may place them
-  far out, or just outside its own declared region (OctoMag's, at a corner). A reader nearer one than `source_clearance`
-  raises `near_source`; the guard's default is the least distance from a source to the declared region, each
-  calibration's own (its card), so declare one for OctoMag where its region's corner is reached.
+  far out, or just outside its own declared region (OctoMag's, 20 um outside its -x face). `near_source` is raised where
+  a coil's gradient per unit current at a reader is more than 30 times its median over the declared region, which is a
+  source's own term (each card gives the medians and what the rule flags: nothing in Navion_2's or CardioMag's region,
+  a pocket about 1.2 mm around the source in OctoMag's, 19 of 60 000 drawn points). `source_clearance`, a length,
+  replaces the rule with a distance from a fitted source, and zero removes the guard.
 - In float32 for OctoMag: its sources cancel so deeply in its region that float32's rounding would cost more of the
   field than the declared guard allows, and more of its gradient; it is refused, and float64 is the route. Navion_2 and
   CardioMag build in float32. On a GPU set `JAX_DEFAULT_MATMUL_PRECISION=highest`.
@@ -43,9 +47,13 @@ supplied by it.
   measured Navion data disagree with by a global sign, and which side is flipped is not known (MIME-ANO-153). Gradient
   pull on a field-aligned body does not change with it; the torque on a fixed moment does.
 - Above core saturation, for a calibration of a higher order, a lab's own calibration file, or a coil's circuit
-  (inductance, back-EMF): none is in this release. S-MPEM saturation is deferred because no shipped calibration has
-  fitted its parameter and it makes the field nonlinear in current; the reader refuses a higher order, which no shipped
+  (inductance, back-EMF): none is in this release. Saturation is deferred because no shipped calibration has fitted its
+  parameter and it makes the field nonlinear in current; the reader refuses a higher order, which no shipped
   calibration has.
+- For CardioMag at zero current, or wherever a current-independent field matters: its file carries an `Offset` block of
+  eight sources, about 1.5 mT at the median over its region (3 to 30 % of a 5 to 50 mT field), that neither mag_manip nor
+  MIME evaluates (upstream loads the block only when `Coil_List` names it, and the file's does not). `background` is
+  not it, the sources being position dependent. Navion_2's and OctoMag's files carry none.
 
 **What its agreement with mag_manip says.** The node and its helper match ETH's `mag_manip` on every system, to a
 tolerance derived per system from the field's cancellation at the compared points

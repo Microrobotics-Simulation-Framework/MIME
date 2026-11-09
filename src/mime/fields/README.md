@@ -47,8 +47,9 @@ model of order one, from one of the three packaged calibrations (`asset("navion_
 field linear in the command `currents`, which reaches the node as `delivered_currents`, so a stage between a command and
 the coils can sit there later; the array placed by `at` and `orientation`, one exact transform; a uniform `background`,
 zero unless declared. Its sources, its pose and its background are its node's leaves. It raises `outside_region` (a
-reader outside the calibration's declared region, which is not a fit domain) and `near_source` (nearer a fitted source
-than `source_clearance`, by default the least distance from a source to the declared region), and refuses float32 where
+reader outside the calibration's declared region, which is not a fit domain) and `near_source` (a coil's gradient per
+unit current above 30 times its median over the declared region, a fitted source's own term; `source_clearance`
+replaces it with a distance), and refuses float32 where
 the sources' cancellation puts float32's rounding above its declared guard (OctoMag). Outside a run,
 `provider.actuation(point)` is the field and gradient per unit current there (`Actuation`, its `matrix()` the actuation
 matrix), and

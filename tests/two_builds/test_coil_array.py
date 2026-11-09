@@ -1,5 +1,6 @@
 """The two-builds check on the calibrated multipole's leaves (float64): its sources' coefficients and positions, which
-the registry walk cannot move (the calibration is an asset in the document, not its numbers), and its background, the
+the registry walk cannot move (the calibration is an asset in the document, not its numbers), its sources' directions, its
+placement's orientation and its background, the
 walk's own move of it repeated here. Each pair of builds differs in that one value; the trace form is quiet (the step's
 program is the same: the value is a leaf the step reads), and the run form sees the leaf move the run. The control: the
 same pairs traced with the parameters closed over (every leaf a constant of the program) fire on every pair."""
@@ -31,6 +32,10 @@ def moved(held: Calibration, what: str) -> Calibration:
         coefficients = held.coefficients.copy()
         coefficients[0, 0] *= 1.0 + RELATIVE
         return dataclasses.replace(held, coefficients=coefficients)
+    if what == "direction":
+        directions = held.directions.copy()
+        directions[0, 0, 0] += RELATIVE
+        return dataclasses.replace(held, directions=directions)
     positions = held.positions.copy()
     positions[0, 0, 0] *= 1.0 + RELATIVE
     return dataclasses.replace(held, positions=positions)
@@ -43,6 +48,10 @@ BACKGROUND = (2e-5, 0.0, -4e-5)
 def other_build(what: str, monkeypatch: pytest.MonkeyPatch) -> Any:
     if what == "background":
         return coil_array(background=T(tuple(c * (1.0 + RELATIVE) for c in BACKGROUND))).build()
+    if what == "orientation":
+        turned = (0.96, 0.0, 0.0, 0.28 + RELATIVE)
+        length = float(np.linalg.norm(turned))
+        return coil_array(orientation=tuple(c / length for c in turned)).build()
     calibration_of = _coil_array.calibration_of
     with monkeypatch.context() as patched:
         patched.setattr(_coil_array, "calibration_of", lambda asset: moved(calibration_of(asset), what))
@@ -67,7 +76,7 @@ def base() -> Any:
     return coil_array().build()
 
 
-@pytest.mark.parametrize("what", ["coefficient", "position", "background"])
+@pytest.mark.parametrize("what", ["coefficient", "position", "direction", "orientation", "background"])
 def test_a_moved_calibration_number_or_background_is_a_leaf_the_step_reads(base: Any, what: str,
                                                                           monkeypatch: pytest.MonkeyPatch):
     found = two_builds(base, other_build(what, monkeypatch))
@@ -76,6 +85,6 @@ def test_a_moved_calibration_number_or_background_is_a_leaf_the_step_reads(base:
     assert found.run is not None and found.run.ratio < 1.0
 
 
-@pytest.mark.parametrize("what", ["coefficient", "position", "background"])
+@pytest.mark.parametrize("what", ["coefficient", "position", "direction", "orientation", "background"])
 def test_control_the_same_pair_closed_over_fires(base: Any, what: str, monkeypatch: pytest.MonkeyPatch):
     assert programs_differ(closed_program(base.graph), closed_program(other_build(what, monkeypatch).graph))

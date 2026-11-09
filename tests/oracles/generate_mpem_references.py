@@ -18,12 +18,18 @@ generator) at that archive's points exactly. Per system, from one seed:
   the currents (the field, then ``[dBx/dx, dBx/dy, dBx/dz, dBy/dy, dBy/dz]``);
 - ``force`` and ``torque`` (64, 3), ``forceOnDipole`` and ``torqueOnDipole`` on the moments there;
 - ``probes`` (48, 3): 32 points drawn in a box twice the region's size about its centre and 16 on its faces, with
-  ``in_workspace`` (48,), ``pointInWorkspace`` (bounds inclusive)."""
+  ``in_workspace`` (48,), ``pointInWorkspace`` (bounds inclusive);
+- ``zero_current_field_gradient5`` (64, 8): ``computeFieldGradient5FromCurrents`` at zero currents at ``points``, and, for a
+  file that carries an ``Offset`` block (CardioMag's: eight current-independent sources that are not named in its
+  ``Coil_List``), ``offset_scaled_difference``: the largest difference between mag_manip's field and gradient on the file
+  and on a copy whose ``Offset`` coefficients are 1000 times larger, at ``points`` at the zero and the drawn currents, which is
+  zero when mag_manip does not evaluate the block (upstream loads it only when ``Coil_List`` names it)."""
 
 import hashlib
 import json
 import platform
 import sys
+import tempfile
 from pathlib import Path
 
 import mag_manip.mag_manip as mm
@@ -42,6 +48,27 @@ POINTS, PROBES, FACES = 64, 32, 16
 
 def column(v: np.ndarray) -> np.ndarray:
     return np.asarray(v, dtype=np.float64).reshape(-1, 1)
+
+
+def offset_scaled_difference(path: Path, points: np.ndarray, currents: np.ndarray) -> float:
+    """The largest difference between mag_manip on ``path`` and on a copy whose ``Offset`` block's coefficients are 1000
+    times larger, at ``points`` with zero currents and with ``currents``."""
+    raw = yaml.safe_load(path.read_text())
+    for name in raw["Offset"]["Source_List"]:
+        raw["Offset"][name]["B_Coeff"] = [1000.0 * float(c) for c in raw["Offset"][name]["B_Coeff"]]
+    with tempfile.TemporaryDirectory() as folder:
+        scaled_path = Path(folder) / "scaled.yaml"
+        scaled_path.write_text(yaml.safe_dump(raw))
+        plain, scaled = mm.ForwardModelMPEM(), mm.ForwardModelMPEM()
+        plain.setCalibrationFile(str(path))
+        scaled.setCalibrationFile(str(scaled_path))
+        worst = 0.0
+        for p, c in zip(points, currents):
+            for held in (c, np.zeros_like(c)):
+                a = np.asarray(plain.computeFieldGradient5FromCurrents(column(p), column(held))).ravel()
+                b = np.asarray(scaled.computeFieldGradient5FromCurrents(column(p), column(held))).ravel()
+                worst = max(worst, float(np.max(np.abs(a - b))))
+        return worst
 
 
 def main() -> None:
@@ -66,6 +93,8 @@ def main() -> None:
         actuation = np.stack([np.asarray(model.getActuationMatrix(column(p))) for p in points])
         both = np.stack([np.asarray(model.computeFieldGradient5FromCurrents(column(p), column(c))).ravel()
                          for p, c in zip(points, currents)])
+        zero = np.stack([np.asarray(model.computeFieldGradient5FromCurrents(column(p), column(np.zeros(coils)))).ravel()
+                         for p in points])
         force = np.stack([np.asarray(mm.forceOnDipole(column(m), column(g[3:]))).ravel() for m, g in zip(moments, both)])
         torque = np.stack([np.asarray(mm.torqueOnDipole(column(m), column(g[:3]))).ravel() for m, g in zip(moments, both)])
         centre, half = (low + high) / 2, (high - low) / 2
@@ -78,8 +107,11 @@ def main() -> None:
         inside = np.array([bool(model.pointInWorkspace(column(p))) for p in probes])
         for key, value in (("points", points), ("currents", currents), ("moments", moments),
                            ("field_matrix", field_matrix), ("actuation", actuation), ("field_gradient5", both),
-                           ("force", force), ("torque", torque), ("probes", probes), ("in_workspace", inside)):
+                           ("force", force), ("torque", torque), ("probes", probes), ("in_workspace", inside),
+                           ("zero_current_field_gradient5", zero)):
             arrays[f"{name}_{key}"] = value
+        if "Offset" in yaml.safe_load(path.read_text()):
+            arrays[f"{name}_offset_scaled_difference"] = np.asarray(offset_scaled_difference(path, points, currents))
     OUT.mkdir(exist_ok=True)
     np.savez_compressed(OUT / "mpem_mag_manip.npz", **arrays)
     provenance = {"generator": "tests/oracles/generate_mpem_references.py", "seed": SEED, "mag_manip": "3.0.0",

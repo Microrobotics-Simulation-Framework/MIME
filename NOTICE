@@ -23,7 +23,8 @@ roughjs, marked, dayjs, Langium, lodash-es and others (MIT), Chevrotain (Apache-
 Apache-2.0, used as Apache-2.0) and robust-predicates (Unlicense). The name, version, licence and text of each
 package are in LICENSE.mermaid in that folder.
 
-This product includes three electromagnetic navigation systems' calibrations, Copyright 2018 Multi-Scale Robotics Lab,
-ETH Zurich (Prof. Bradley J. Nelson), under the Apache License, Version 2.0, unmodified, in
-src/mime/data/emns_calibrations/: Navion_2's from ethz-msrl/Workspace_eMNS, OctoMag's and CardioMag's from
-ethz-msrl/Tesla_core_public, each with its upstream commit in that folder's README.md.
+This product includes three electromagnetic navigation systems' calibrations, unmodified, in
+src/mime/data/emns_calibrations/, under the Apache License, Version 2.0: OctoMag's and CardioMag's from
+ethz-msrl/Tesla_core_public, whose files carry the header "Copyright 2018 Multi Scale Robotics Lab" (ETH Zurich);
+Navion_2's from ethz-msrl/Workspace_eMNS, whose repository is under the Apache License and whose file states no holder
+or year. Each file's upstream commit is in that folder's README.md.

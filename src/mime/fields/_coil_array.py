@@ -73,6 +73,11 @@ def _read(name: str, sha256: str) -> Calibration:
     return read_calibration(asset_bytes(Asset(name, sha256)))
 
 
+@cache
+def _gradient_limit(name: str, sha256: str) -> tuple[float, ...]:
+    return tuple(float(c) for c in _read(name, sha256).gradient_limit())
+
+
 def calibration_of(held: Asset) -> Calibration:
     """The calibration a packaged asset holds, read once."""
     return _read(held.name, held.sha256)
@@ -162,7 +167,10 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
     ``dB_i/dx_j``), in least squares: the field's rows in T and the gradient's five independent ones in T/m, as
     mag_manip's backward model stacks them, bounded (SciPy's bounded-variable least squares). No system ships limits:
     the hardware's are the user's to declare. A wanted gradient must be symmetric and trace-free, as every gradient of
-    a field with no current where it is read is."""
+    a field with no current where it is read is. Out of reach, the rows are stacked unweighted, so the gradient (in
+    T/m, a hundred times the field's scale for 10 mT against 1 T/m) is favoured over the field: ask for one alone when it
+    must win. A wanted value that is not finite is refused. It runs on the host in SciPy: no derivative passes
+    through it."""
     if field is None and gradient is None:
         raise ArgumentRefused([Refusal("allocation.wanted", RefusalClass.USER,
                                        "allocate() is asked for neither a field nor a gradient",
@@ -176,6 +184,10 @@ def allocate(actuation: Actuation, *, limits: Quantity, field: Quantity | None =
                                        f"limit above zero, or one per coil",
                                        "declare the hardware's limits: limits=A(...), one for every coil or one per "
                                        "coil")])
+    for name, wanted in (("field", field), ("gradient", gradient)):
+        if wanted is not None and not np.all(np.isfinite(np.asarray(wanted.value, dtype=np.float64))):
+            raise ArgumentRefused([Refusal("allocation.wanted", RefusalClass.USER,
+                                           f"the wanted {name} is not finite", f"give finite numbers for {name}=")])
     rows: list[NDArray[np.float64]] = []
     targets: list[NDArray[np.float64]] = []
     wanted_field = wanted_gradient = None
@@ -282,21 +294,22 @@ class CalibratedMultipole(CoilArray):
     the sum of a few fitted point sources, ``b = sum_j beta_j (3 (d_j . r) r / r^5 - d_j / r^3)``, from
     ``calibration``, one of the systems MIME packages (``asset("navion_2")``, ``asset("octomag")``,
     ``asset("cardiomag")``), its coefficients and sources the node's leaves, read from the file. The calibration's own
-    frame is placed by ``at`` and ``orientation``. ``source_clearance`` is the guard on a reader's distance from a
-    fitted source (none given: the least distance from a source to the declared region, the calibration's own).
+    frame is placed by ``at`` and ``orientation``.
 
     Each step it raises ``outside_region`` where a reader is outside the calibration's ``Workspace_Dimensions``, a
-    declared region, not a fit domain, and ``near_source`` where one is nearer a fitted source than the guard. In
-    float32 it is refused where rounding would cost more than :data:`FLOAT32_BUDGET` of the field (OctoMag)."""
+    declared region, not a fit domain, and ``near_source`` where a coil's gradient per unit current at a reader is more
+    than 30 times its median over that region (a source's own term, near the source). ``source_clearance``, a length,
+    replaces that rule with a distance from a fitted source, and zero removes the guard. In float32 it is refused where
+    rounding would cost more than :data:`FLOAT32_BUDGET` of the field (OctoMag)."""
 
     name = "calibrated_multipole"
     version = "0.1.0"
     setting_roles = {
         "calibration": DESIGN,
-        "source_clearance": convention(NUMERICAL, "the least distance from a fitted source to the declared "
-                                                        "region, the calibration's own, so the guard is never raised "
-                                                        "inside the region and is raised where a reader comes nearer "
-                                                        "a source than any point of it")}
+        "source_clearance": convention(NUMERICAL, "none given: the guard is the gradient's, a coil's gradient per "
+                                                        "unit current above 30 times its median over the declared "
+                                                        "region, each calibration's own; a length given replaces it "
+                                                        "with a distance from a fitted source")}
     references = ("Petruska2017", "Charreyron2021", "Kummer2010", "Zughaibi2025")
     builds = {"": (CalibratedMultipoleNode,)}
     validity = (
@@ -306,10 +319,14 @@ class CalibratedMultipole(CoilArray):
         "Workspace_Dimensions is a declared region, never fitted: a reader outside it raises outside_region, outside "
         "the declared region, which is no evidence of extrapolation, and inside it is no evidence of accuracy; the "
         "fit's own domain is not published",
-        "the field is singular at a fitted source: a reader nearer one than source_clearance raises near_source; its "
-        "default is the least distance from a source to the declared region, each calibration's own (its card); "
-        "OctoMag has a fitted source 20 um outside its declared region's corner, so declare a guard there where the "
-        "corner is reached",
+        "the field is singular at a fitted source, where a source's own term takes the gradient to many times its "
+        "interior scale: near_source is raised where a coil's gradient per unit current at a reader is more than 30 "
+        "times its median over the declared region (measured over 60 000 drawn points of each region: Navion_2 and "
+        "CardioMag nowhere, their smooth gradient reaching 13.5 and 2.4 times the median; OctoMag at 19, a pocket "
+        "about 1.2 mm across around its fitted source, which sits 20 um outside the region's -x face and whose own "
+        "gradient there is 10^8 times the median; the region's nearest grid corner, 1 mm from it, reads 86 times); "
+        "source_clearance, a length, replaces the rule with a distance from a fitted source, and zero removes the "
+        "guard",
         "float32 is refused where rounding at its eps over the field's cancellation in the declared region exceeds "
         "the declared guard, 1e-4 of the field: OctoMag; Navion_2 and CardioMag build (each card's conditioning); on a "
         "GPU set JAX_DEFAULT_MATMUL_PRECISION=highest",
@@ -325,7 +342,12 @@ class CalibratedMultipole(CoilArray):
         "beside one lab's 45 A hardware and 25 A operating figures (Zughaibi2025); CardioMag 20 A as the 0.2 line "
         "declared it, unsourced",
         _BACKGROUND,
-        "not in this release: S-MPEM saturation (no shipped calibration has fitted its beta, all were fitted below "
+        "CardioMag's file carries an Offset block of eight sources, current-independent, worth about 1.5 mT at the "
+        "median over its region (3 to 30 % of a 5 to 50 mT field), which neither mag_manip nor this node evaluates: "
+        "upstream loads the block only when Coil_List names it, and this file's does not (a Coil_List that names it is "
+        "refused here); background is not it, the sources being position dependent; Navion_2's and OctoMag's files "
+        "carry no Offset block",
+        "not in this release: saturation of the cores (no shipped calibration has fitted it, all were fitted below "
         "core saturation, and it makes the field nonlinear in current: a later phase, once a calibration fits it, or "
         "beside the response and circuit stage); a calibration of order above one (none ships; the reader refuses "
         "one); a lab's own calibration file (the three packaged ones only); a coil's circuit (the currents delivered "
@@ -397,13 +419,16 @@ class CalibratedMultipole(CoilArray):
     def build(self, ctx: BuildContext, b: ProviderBuilder, slots: Sequence[Slot]) -> None:
         held = self._held()
         clearance = ctx.settings.get("source_clearance")
+        by_distance = clearance is not None
         at_body_points = [slot for slot in slots if slot.offset is not None]
         b.add_node(CalibratedMultipoleNode(
             ctx.node_name(), ctx.timestep, slots=[slot.name for slot in slots], sources=held.sources,
             source_positions=held.positions.ravel(), source_directions=held.directions.ravel(),
             coefficients=held.coefficients.ravel(), at=ctx.vector("at"), orientation=_unit(self.orientation),
             background=ctx.vector("background"), region=held.region.ravel(),
-            source_clearance=float(cast(float, clearance)) if clearance is not None else held.nearest_approach(),
+            gradient_limit=_gradient_limit(cast(Asset, self.calibration).name, cast(Asset, self.calibration).sha256),
+            guard="distance" if by_distance else "gradient",
+            source_clearance=float(cast(float, clearance)) if by_distance else 0.0,
             offset_slots=tuple(slot.name for slot in at_body_points),
             offsets=tuple(c for slot in at_body_points for c in slot.offset or ())))
 

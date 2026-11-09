@@ -3704,8 +3704,7 @@ anomalies:
       Which side is flipped is not known: a sign-symmetric excitation (currents over +-35 A) cannot tell a calibration's
       polarity from the rig's current or sensor convention, and ETH's own validation metric (convex-hull distances over a
       symmetric current box) is invariant under B -> -B, so neither would have been caught. 0.2 carried a field_sign
-      parameter, default +1; 0.3 does not carry one (the maintainer's decision, design row #306): the convention is
-      stated, not a setting. Gradient pull on a field-aligned body is invariant under the flip (F proportional to grad
+      parameter, default +1; 0.3 does not carry one: the convention is stated, not a setting. Gradient pull on a field-aligned body is invariant under the flip (F proportional to grad
       |B|^2); the torque on a fixed moment, m x B, flips, and so does which way a permanent-magnet body turns to align.
     severity: minor
     safety_relevance: context_dependent

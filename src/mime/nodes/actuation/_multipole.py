@@ -31,6 +31,14 @@ PAD_POSITION = (0.0, 0.0, 1.0e3)
 #: The points per axis of the grid over the declared region the conditioning is judged on: the 0.2 line's, at which
 #: ``eps / c`` was measured to predict the float32 error of the three shipped calibrations within about 1.4 times.
 CONDITIONING_GRID = 3
+#: The points per axis of the grid over the declared region that a coil's gradient scale is the median over.
+SCALE_GRID = 9
+#: How many times its scale (its median over the declared region) a coil's gradient per unit current may reach before
+#: ``near_source`` is raised: a declared convention, set from a measurement. Over 60 000 drawn points of its own region
+#: the smooth gradient of Navion_2 (the widest of the three shipped calibrations) reaches 13.5 times its median at the
+#: most, CardioMag's 2.4 and OctoMag's 5.5 at the 99.9th percentile, so 30 flags no smooth part of any of them; the
+#: gradient at OctoMag's fitted source, 20 um outside its region's face, is 10^8 times it.
+GRADIENT_DEPARTURE = 30.0
 
 _MODULE = "mime.nodes.actuation._multipole"
 _NODE = f"{_MODULE}.CalibratedMultipoleNode"
@@ -45,7 +53,8 @@ class Calibration:
     """An order-one calibrated multipole model as its file holds it, in the calibration's own frame, SI: per coil ``k``
     and source ``j`` the source's fitted position (m), its direction (normalised on reading: the files do not hold
     unit vectors) and its coefficient ``beta`` (T m^3 / A), the coils' sources padded to one count; ``sources`` the
-    real count per coil; ``region`` the declared ``Workspace_Dimensions``, ``[[x0, x1], [y0, y1], [z0, z1]]`` (m).
+    real count per coil; ``region`` the declared ``Workspace_Dimensions``, ``[[x0, x1], [y0, y1], [z0, z1]]`` (m);
+    ``offset_sources`` the count of sources in an ``Offset`` block the file carries and does not enable (not read).
 
     A source is a fitted basis function, not hardware: its position need not be a coil's, and a fit may place one
     far away with a large coefficient (OctoMag's sit up to 245 km out). The region is declared, never fitted: the
@@ -58,6 +67,7 @@ class Calibration:
     coefficients: NDArray[np.float64]
     sources: tuple[int, ...]
     region: NDArray[np.float64]
+    offset_sources: int = 0
 
     @property
     def coils(self) -> int:
@@ -70,12 +80,23 @@ class Calibration:
         return np.array([[j < count for j in range(width)] for count in self.sources], dtype=np.bool_)
 
     def nearest_approach(self) -> float:
-        """The least distance (m) from a fitted source to the declared region: the default of the guard on a reader's
-        distance from the sources."""
+        """The least distance (m) from a fitted source to the declared region."""
         low, high = self.region[:, 0], self.region[:, 1]
         held = self.positions[self.real]
         outside = np.maximum(0.0, np.maximum(low - held, held - high))
         return float(np.min(np.linalg.norm(outside, axis=-1)))
+
+    def gradient_scale(self) -> NDArray[np.float64]:
+        """Each coil's gradient scale, ``(K,)`` (T/(m A)): the median over the declared region (a ``SCALE_GRID`` grid)
+        of the Frobenius norm of the coil's gradient per unit current. What the gradient is inside the region, as the
+        fit left it; a reader's gradient many times it is a source's own term (``GRADIENT_DEPARTURE``)."""
+        norms = np.array([np.linalg.norm(self.unit_fields(point)[1], axis=(0, 1)) for point in self.grid(SCALE_GRID)])
+        scale: NDArray[np.float64] = np.median(norms, axis=0)
+        return scale
+
+    def gradient_limit(self) -> NDArray[np.float64]:
+        """Each coil's gradient per unit current above which ``near_source`` is raised, ``(K,)`` (T/(m A))."""
+        return GRADIENT_DEPARTURE * self.gradient_scale()
 
     def grid(self, count: int = CONDITIONING_GRID) -> NDArray[np.float64]:
         """``count`` points a side over the declared region, ``(count**3, 3)``."""
@@ -132,9 +153,11 @@ def read_calibration(data: bytes) -> Calibration:
     """The calibration in ``data``, a file in the upstream MPEM schema (``Coil_List``, each coil's ``Source_List``,
     each source's ``A_Coeff``, ``B_Coeff``, ``Source_Direction`` and ``Source_Position``, and ``Workspace_Dimensions``).
     Refused (:class:`CalibrationError`): interior terms (``A_Coeff``), which no shipped calibration holds; an order
-    above one, which none holds either and whose fit this release does not validate; a zero direction. An ``Offset``
-    block (current-independent sources) is not read, as the upstream forward model does not read it by default, so
-    zero current gives zero field."""
+    above one, which none holds either and whose fit this release does not validate; a zero direction; and a
+    ``Coil_List`` that names the ``Offset`` block, current-independent sources that the upstream model (``mag_manip``)
+    then evaluates and this release does not. An ``Offset`` block the list does not name is a disabled one, which
+    upstream does not evaluate either (it loads a block as the offset only by that name, in ``Coil_List``): it is not
+    read, and is counted in ``offset_sources`` so that what the file carries is said (CardioMag's carries eight)."""
     try:
         raw = yaml.safe_load(data.decode("utf-8"))
     except (UnicodeDecodeError, yaml.YAMLError) as error:
@@ -142,6 +165,12 @@ def read_calibration(data: bytes) -> Calibration:
     if not isinstance(raw, dict) or "Coil_List" not in raw or "Workspace_Dimensions" not in raw:
         raise CalibrationError("the file holds no Coil_List and Workspace_Dimensions: not an MPEM calibration")
     held = cast(dict[str, Any], raw)
+    if any("Offset" in name for name in cast(list[str], held["Coil_List"])):
+        raise CalibrationError("Coil_List names an Offset block, current-independent sources that mag_manip evaluates "
+                               "and this release does not: remove it from the list to run without them")
+    offset = cast(object, held.get("Offset"))
+    offset_sources = (len(cast(list[str], cast(dict[str, Any], offset).get("Source_List", [])))
+                      if isinstance(offset, dict) else 0)
     per_coil: list[list[tuple[list[float], list[float], float]]] = []
     for coil in cast(list[str], held["Coil_List"]):
         sources: list[tuple[list[float], list[float], float]] = []
@@ -176,7 +205,7 @@ def read_calibration(data: bytes) -> Calibration:
     if region.shape != (3, 2) or not np.all(region[:, 0] < region[:, 1]):
         raise CalibrationError(f"Workspace_Dimensions is {region.tolist()}, not three ordered bounds")
     return Calibration(str(held.get("System_Name", "")), positions, directions, coefficients,
-                       tuple(len(sources) for sources in per_coil), region)
+                       tuple(len(sources) for sources in per_coil), region, offset_sources)
 
 
 def source_field(vector: Array, position: Array, point: Array) -> tuple[Array, Array]:
@@ -218,7 +247,9 @@ EQUATIONS = (r"\mathbf{B} = R \sum_{k} i_{k} \sum_{j} \beta_{kj} \left( \frac{3 
 
 class CalibratedMultipoleState(TypedDict, extra_items=ReadOnly[Float[Array, "..."]]):
     """The two flags, ``outside_region`` and ``near_source`` (1 at a step where any reader was outside the declared
-    region, or nearer a fitted source than the guard; 0 otherwise); and per reader slot ``flux_density_<slot>``,
+    region, or where a coil's gradient per unit current at a reader was more than ``GRADIENT_DEPARTURE`` times its
+    scale in the region, or, with a declared ``source_clearance``, a reader was nearer a fitted source than that; 0
+    otherwise); and per reader slot ``flux_density_<slot>``,
     ``gradient_<slot>`` and ``source_distance_<slot>``, the reader's distance to the nearest fitted source (m; zero
     before the first step)."""
 
@@ -236,8 +267,11 @@ class CalibratedMultipoleNode(MimeNode):
     ``points_<slot>``, or, in ``offset_slots``, at the point fixed in that pose at its row of ``offsets``.
 
     Each step it raises ``outside_region`` where a reader lies outside the declared ``region`` (``x0, x1, y0, y1, z0,
-    z1`` in the calibration's frame), and ``near_source`` where one is nearer a fitted source than
-    ``source_clearance``: reports no edge reads."""
+    z1`` in the calibration's frame), and ``near_source`` where a reader is near a fitted source: with ``guard``
+    ``"gradient"``, where some coil's gradient per unit current there exceeds that coil's ``gradient_limit``; with
+    ``"distance"``, where the reader is nearer a fitted source than ``source_clearance``. Both are reports no edge
+    reads. A node built directly, not through the provider, skips the provider's float32 refusal (OctoMag's arrays in
+    float32 are not guarded)."""
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-128",
@@ -277,10 +311,15 @@ class CalibratedMultipoleNode(MimeNode):
     def __init__(self, name: str, timestep: float, *, slots: Sequence[str], sources: Sequence[int],
                  source_positions: ArrayLike, source_directions: ArrayLike, coefficients: ArrayLike,
                  at: Sequence[float], orientation: Sequence[float], background: Sequence[float],
-                 region: ArrayLike, source_clearance: float,
+                 region: ArrayLike, gradient_limit: ArrayLike, guard: str = "gradient", source_clearance: float = 0.0,
                  offset_slots: Sequence[str] = (), offsets: Sequence[float] = ()) -> None:
         counts = tuple(int(c) for c in sources)
         width = max(counts)
+        if guard not in ("gradient", "distance"):
+            raise ValueError(f"guard {guard!r} is not 'gradient' or 'distance'")
+        limits = flattened(gradient_limit)
+        if len(limits) != len(counts):
+            raise ValueError(f"{len(counts)} coils take {len(counts)} gradient limits, not {len(limits)}")
         held = [flattened(values) for values in (source_positions, source_directions, coefficients)]
         if len(held[2]) != len(counts) * width or len(held[0]) != 3 * len(held[2]) or len(held[1]) != len(held[0]):
             raise ValueError(f"{len(counts)} coils of up to {width} sources take {len(counts) * width} coefficients "
@@ -289,7 +328,8 @@ class CalibratedMultipoleNode(MimeNode):
         super().__init__(name, timestep, slots=tuple(slots), sources=counts,
                          source_positions=held[0], source_directions=held[1], coefficients=held[2], at=flattened(at),
                          orientation=flattened(orientation), background=flattened(background), region=flattened(region),
-                         source_clearance=float(source_clearance), **at_body_points)
+                         gradient_limit=limits, guard=guard, source_clearance=float(source_clearance),
+                         **at_body_points)
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -300,13 +340,19 @@ class CalibratedMultipoleNode(MimeNode):
                 "coefficients": ParamSpec(units="T m^3/A", description="each source's coefficient, zero for padding"),
                 "at": ParamSpec(units="m", description="where the calibration's origin sits in the world"),
                 "orientation": ParamSpec(units="1", description="the calibration frame's turn in the world, a unit "
-                                                                "quaternion (w, x, y, z)"),
+                                                                "quaternion (w, x, y, z), checked at build and "
+                                                                "not normalised in the step: moved off the unit "
+                                                                "sphere it gives a wrong field, unflagged"),
                 "background": ParamSpec(units="T", description="a uniform field in the world frame, added to the "
                                                                "coils'"),
                 "region": ParamSpec(trainable=False, units="m", description="the declared region the reader is "
                                                                             "counted outside of"),
-                "source_clearance": ParamSpec(trainable=False, units="m", description="the guard on the reader's "
-                                                                                      "distance from a fitted source"),
+                "gradient_limit": ParamSpec(trainable=False, units="T/(m A)",
+                                            description="each coil's gradient per unit current above which "
+                                                        "near_source is raised, in the 'gradient' guard"),
+                "source_clearance": ParamSpec(trainable=False, units="m", description="the reader's least distance "
+                                                                                      "from a fitted source, in the "
+                                                                                      "'distance' guard"),
                 "offsets": ParamSpec(units="m", description="each offset slot's point, in the frame of the pose it "
                                                             "reads; a node with no offset slot has none")}
 
@@ -369,6 +415,8 @@ class CalibratedMultipoleNode(MimeNode):
         region = jnp.reshape(jnp.asarray(p["region"], dtype=dtype), (3, 2))
         counts = self._sources()
         real = np.arange(max(counts))[None, :] < np.asarray(counts)[:, None]
+        by_gradient = self.constants()["guard"] == "gradient"
+        limits = jnp.asarray(p["gradient_limit"], dtype=dtype)
         out: NodeFields = {}
         outside, near = jnp.asarray(False), jnp.asarray(False)
         for slot in self._slots():
@@ -380,7 +428,10 @@ class CalibratedMultipoleNode(MimeNode):
             outside = outside | jnp.any(local < region[:, 0]) | jnp.any(local > region[:, 1])
             distances = switch.nonzero_norm(local - positions, axis=-1)
             nearest = jnp.min(switch.static_select(real, distances, jnp.inf))
-            near = near | (nearest < jnp.asarray(p["source_clearance"], dtype=dtype))
+            if by_gradient:
+                near = near | jnp.any(jnp.sum(gradients**2, axis=(0, 1)) > limits**2)
+            else:
+                near = near | (nearest < jnp.asarray(p["source_clearance"], dtype=dtype))
             out[f"source_distance_{slot}"] = nearest
         out["outside_region"], out["near_source"] = outside.astype(dtype), near.astype(dtype)
         return out

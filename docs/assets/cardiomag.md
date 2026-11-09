@@ -1,7 +1,7 @@
 # CardioMag's calibration
 
-**What it is.** The calibrated multipole model (MPEM, order one) of CardioMag, eight coils, the variant with no offset
-sources: each coil's sources, each a fitted position, direction and coefficient, and the system's declared region of
+**What it is.** The calibrated multipole model (MPEM, order one) of CardioMag, eight coils, the variant whose `Offset`
+block is not enabled: each coil's sources, each a fitted position, direction and coefficient, and the system's declared region of
 interest. Packaged as `asset("cardiomag")`, read by the field provider `CalibratedMultipole`.
 
 **The file.** `src/mime/data/emns_calibrations/cardiomag.yaml`, byte for byte its upstream's, which every read checks
@@ -22,11 +22,18 @@ open: it ships in the wheel.
   of accuracy, and being outside it none of extrapolation; the fit's own domain is not published.
 
 **Its conditioning** (`Calibration.cancellation` and `floor`, over the declared region): cancellation 0.25; float64
-rounding 8.9e-16 and float32 4.8e-7 of the field; least distance from a source to the region 0.163 m.
+rounding 8.9e-16 and float32 4.8e-7 of the field; least distance from a source to the region 0.163 m. Its guard
+(`near_source`, a coil's gradient per unit current above 30 times its median over the region): the medians are 0.016 to
+0.027 T/(m A), and none of 60 000 drawn points of the region reaches it (its smooth gradient reaches 2.4 times the
+median).
 
 **Its accuracy, by use.** Against ETH's `mag_manip`, MIME's evaluation agrees to a tolerance derived from the field's
 cancellation at the compared points (`tests/oracles/test_calibrated_multipole.py`): a software oracle, which pins sign
-and frame to mag_manip's convention and cannot ground them against hardware. The upstream variant with offset sources
-(current-independent sources for remanent and ambient field) is not shipped: here zero current gives zero field. Its
+and frame to mag_manip's convention and cannot ground them against hardware. **The file carries an `Offset` block
+of eight current-independent sources, worth about 1.5 mT at the median over the region (1.3 to 1.6 mT, 200 draws), which
+neither mag_manip nor MIME evaluates**: upstream loads that block as the offset only when `Coil_List` names it, and this
+file's list does not (so the file is named `no_offset`; its content is not). Against a 5 to 50 mT field that is 3 to
+30 %. A real CardioMag has a field at zero current of that order that this evaluation drops; `background` is not it, the
+sources being position dependent. A `Coil_List` that names the block is refused by the reader. Its
 file mixes CRLF and LF line ends, which the repository keeps as they are (`.gitattributes`), so its sha256 is its
 upstream's.

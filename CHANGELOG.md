@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the coil field alone; Earth's 50 uT is 0.1 to 1 % of a 5 to 50 mT field and has no gradient). The sources' positions,
   directions and coefficients, the pose and the background are the node's leaves. It publishes the flux density and
   its gradient at the reader's point or its magnet's centroid, so dev1's magnetic pair reads it; it raises
-  `outside_region` (outside the calibration's declared region, which is not a fit domain) and `near_source` (nearer a
-  fitted source than `source_clearance`), and refuses float32 where the sources' cancellation puts its rounding above
+  `outside_region` (outside the calibration's declared region, which is not a fit domain) and `near_source` (a coil's
+  gradient per unit current above 30 times its median over the region, which is a fitted source's own term;
+  `source_clearance` replaces the rule with a distance), and refuses float32 where the sources' cancellation puts its rounding above
   1e-4 of the field (OctoMag; `setting.value`). `provider.actuation(point)` gives the field and gradient per unit
   current at a point (`Actuation`, its `matrix()` the 8 x K actuation matrix), and `allocate(actuation, field=,
   gradient=, limits=)` bounded least-squares currents within limits the user declares (`allocation.wanted` refuses a
@@ -29,7 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cancellation (its archive's generator in `tests/oracles/`); its sign convention is mag_manip's, which no hardware
   grounds here (MIME-ANO-153). Not returned from the 0.2 line's `CoilArrayFieldNode`: the sign setting (a validity line
   and MIME-ANO-153 instead), S-MPEM saturation (no shipped calibration fits it; it makes the field nonlinear in
-  current), orders above one.
+  current), orders above one. CardioMag's file carries an `Offset` block of eight current-independent sources (about 1.5 mT at the
+  median over its region) that neither mag_manip nor this evaluates, stated on its card and in the validity lines; a
+  `Coil_List` that names the block is refused.
 
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,

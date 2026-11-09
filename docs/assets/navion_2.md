@@ -22,7 +22,10 @@ ETH Zurich. Its tier is open: it ships in the wheel.
   of accuracy, and being outside it none of extrapolation; the fit's own domain is not published.
 
 **Its conditioning** (`Calibration.cancellation` and `floor`, over the declared region): cancellation 8.0e-3; float64
-rounding 2.8e-14 and float32 1.5e-5 of the field; least distance from a source to the region 0.116 m.
+rounding 2.8e-14 and float32 1.5e-5 of the field; least distance from a source to the region 0.116 m. Its guard
+(`near_source`, a coil's gradient per unit current above 30 times its median over the region): the medians are 0.006 to
+0.007 T/(m A), and none of 60 000 drawn points of the region reaches it (its smooth gradient reaches 13.5 times the
+median, the widest of the three).
 
 **Its accuracy, by use.** Against ETH's `mag_manip`, MIME's evaluation agrees to a tolerance derived from the field's
 cancellation at the compared points (`tests/oracles/test_calibrated_multipole.py`): a software oracle, which pins sign

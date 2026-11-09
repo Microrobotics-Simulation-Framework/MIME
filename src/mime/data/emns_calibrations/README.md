@@ -9,7 +9,7 @@ each file's provenance, sha256 and conditioning are on its card in `docs/assets/
 |---|---|---|
 | `navion_2.yaml` | Navion_2 | [ethz-msrl/Workspace_eMNS](https://github.com/ethz-msrl/Workspace_eMNS), its `models/` folder |
 | `octomag.yaml` | OctoMag | [ethz-msrl/Tesla_core_public](https://github.com/ethz-msrl/Tesla_core_public), its `mag_control/mpem/cal/` folder |
-| `cardiomag.yaml` | CardioMag, the variant with no offset sources | the same repository and folder |
+| `cardiomag.yaml` | CardioMag, the variant whose `Offset` block is not enabled | the same repository and folder |
 
 Copyright Multi-Scale Robotics Lab, ETH Zurich (Prof. Bradley J. Nelson), under the Apache License, MIME's own (the
 repository's `LICENSE`); the attribution is in `NOTICE`.
@@ -34,7 +34,10 @@ it is.
 `Source_Position`, `Source_Direction` and `B_Coeff` are fitted: a source is a basis function, not hardware.
 `Source_Direction` is not a unit vector in the files, and is normalised when read. `Workspace_Dimensions` is declared,
 never fitted (the upstream fitter never writes it). Every shipped calibration is of order one and holds no interior
-terms (`A_Coeff: ~`).
+terms (`A_Coeff: ~`). **CardioMag's file carries an `Offset` block** (eight current-independent sources, about 1.5 mT at
+the median over its region) that upstream's `mag_manip` does not evaluate, because it loads that block only when
+`Coil_List` names it, and this file's does not; MIME does not evaluate it either (a `Coil_List` that names it is
+refused). Navion_2's and OctoMag's files carry no `Offset` block.
 
 ## The rule
 

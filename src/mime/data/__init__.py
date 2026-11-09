@@ -63,8 +63,8 @@ PACKAGED: Mapping[str, PackagedAsset] = MappingProxyType({
         "Tesla_core_public's OctoMag_Calibration.yaml byte for byte; Apache-2.0, Multi-Scale Robotics Lab, ETH Zurich"),
     "cardiomag": PackagedAsset(
         "emns_calibrations/cardiomag.yaml", "31bd9b234586497275c8abff6ff292ece7ed029be8b6077b027264870facd51c",
-        "the CardioMag electromagnetic navigation system's calibrated multipole model (8 coils, order one, the "
-        "variant with no offset sources), Tesla_core_public's C_Mag_Calibration_06-25-2015_no_offset.yaml byte for "
+        "the CardioMag electromagnetic navigation system's calibrated multipole model (8 coils, order one; its "
+        "Offset block of eight sources is carried and not enabled), Tesla_core_public's C_Mag_Calibration_06-25-2015_no_offset.yaml byte for "
         "byte; Apache-2.0, Multi-Scale Robotics Lab, ETH Zurich"),
 })
 
