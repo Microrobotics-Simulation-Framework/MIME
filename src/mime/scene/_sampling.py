@@ -297,7 +297,8 @@ def _density_at(kind: Geometry, density: Density, points: np.ndarray) -> np.ndar
         raise ValueError(f"{kind.label()}: a sampling's density is a number above zero at every point")
     if np.max(held) > 1.0 / FINEST ** 2 * (1.0 + 1e-9):
         raise ValueError(f"{kind.label()}: a graded sampling's density is at most {1.0 / FINEST ** 2:g} (its spacing "
-                         f"at least {FINEST:g} of the sampling's), and it asks {float(np.max(held)):.4g}")
+                         f"at least {FINEST:g} of the sampling's, the finest its dense set is refined for), and it "
+                         f"asks {float(np.max(held)):.4g}")
     return held
 
 
@@ -307,8 +308,8 @@ def _graded(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, p
 
     - **the dense set is finer**, ``REFINEMENT`` times the finest local spacing the density asks for (at most
       ``REFINEMENT / FINEST`` times finer than the spacing), so that the finest cells hold as many dense points as a
-      uniform sampling's; the farthest points are chosen on the uniform sampling's dense set, which places them, and
-      Lloyd's steps run on the finer one;
+      uniform sampling's; the count (the density's mean over the area) and the farthest points are taken on the
+      uniform sampling's dense set, as a density's always were, and Lloyd's steps run on the finer one;
     - **Lloyd's mass is the area times the density's square**, so that the generators' density in two dimensions is the
       density (a centroidal tessellation's generators fall as the square root of its mass);
     - **each sample sits at its cell's area centre**: the cells are the relaxed generators' (each dense point's
@@ -320,16 +321,14 @@ def _graded(kind: Geometry, settings: Mapping[str, Magnitude], spacing: float, p
       spacing from the wall, blob 0.1); at the area centres it lowered it (+5.2 %), and a cylinder's rim's alike;
     - ``generators`` keeps the relaxed generators, whose cells a solver takes (``quadrature_owners``)."""
     coarse_counts = quadrature_counts(kind, settings, spacing / REFINEMENT, patches)
-    coarse = quadrature_arrays(kind, settings, patches, coarse_counts)[0]
+    coarse, coarse_weights, _ = quadrature_arrays(kind, settings, patches, coarse_counts)
     coarse_density = _density_at(kind, density, coarse)
+    own, _, _ = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))
+    count = max(1, round(len(own) * float(np.sum(coarse_weights * coarse_density) / np.sum(coarse_weights))))
     finer = math.ceil(REFINEMENT * math.sqrt(float(np.max(coarse_density))) - 1e-9)
     counts = quadrature_counts(kind, settings, spacing / max(finer, REFINEMENT), patches)
     points, weights, _ = quadrature_arrays(kind, settings, patches, counts)
     held = _density_at(kind, density, points)
-    own, _, _ = quadrature_arrays(kind, settings, patches, quadrature_counts(kind, settings, spacing, patches))
-    count = max(1, round(len(own) * float(np.sum(weights * held) / np.sum(weights))))
-    if count > len(coarse):
-        raise ValueError(f"{kind.label()}: {count} samples asked of a dense set of {len(coarse)}")
     start = coarse[_farthest(coarse, coarse_density, count, tie_quantum(coarse))]
     quantum = tie_quantum(points)
     generators = _relaxed_from(points, weights * held * held, start, quantum)

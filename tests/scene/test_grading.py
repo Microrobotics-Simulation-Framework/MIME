@@ -6,7 +6,8 @@ sampling every kind takes through ``Geometry.sampling``'s density (``mime.scene.
 - **The policy** is the module's formula at the features, away from them, at a contact, and at the floor.
 - **A graded sampling** keeps its generators apart from its samples: each sample is the dense point of its generator's
   cell nearest that cell's area centre, the cells the separated quadrature takes are the generators', the count is the
-  uniform one times the density's mean, and the cells near a feature are smaller. **Its control:** the generators
+  uniform one times the density's mean (on the uniform sampling's dense set, as before), and the cells near a feature
+  are smaller. **Its control:** the generators
   themselves, where the relaxation leaves them (the arm design #296 measured, whose error near a wall was larger than
   uniform's), lie at least one and a half times as far from their cells' area centres near the feature, every run
   (nothing is drawn).
@@ -166,7 +167,9 @@ def test_a_graded_sampling_samples_each_cell_at_its_area_centre(graded_cylinder)
         assert sampling.chosen[i] == cell[np.lexsort((cell, away))[0]]
     own = len(quadrature_arrays(kind, settings, sampling.patches, quadrature_counts(kind, settings, spacing,
                                                                                     sampling.patches))[0])
-    assert len(sampling.chosen) == round(own * float(np.sum(weights * density(points)) / np.sum(weights)))
+    coarse, coarse_weights, _ = quadrature_arrays(kind, settings, sampling.patches, quadrature_counts(
+        kind, settings, spacing / _sampling.REFINEMENT, sampling.patches))
+    assert len(sampling.chosen) == round(own * float(np.sum(coarse_weights * density(coarse)) / np.sum(coarse_weights)))
     assert float(np.sum(sampling.samples(kind, settings).weights)) == pytest.approx(float(np.sum(weights)), rel=1e-12)
 
 

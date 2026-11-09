@@ -134,7 +134,6 @@ scene/_kinds.py::_vector TypeError 1  # invariant: MIME's own check, which no su
 scene/_kinds.py::kind_frame KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_sampling.py::_quasi_uniform ValueError 2  # a kind's sampling at the build, from a density or a count a kind's own code gives: a lab's kind that passes one above its dense set, or a density not above zero, is a defect of that kind; reached, it is error.uncoded
 scene/_sampling.py::_density_at ValueError 2  # a kind's sampling at the build, from a density a kind's or a grading's own code gives: one not above zero, or above the floor's (FINEST), is a defect of that code; reached, it is error.uncoded
-scene/_sampling.py::_graded ValueError 1  # a graded sampling's count above its dense set, which the floor (FINEST) bounds: a defect of a lab's density; reached, it is error.uncoded
 scene/_grading.py::GradedDensity.traced ValueError 1  # a kind's declared feature of a form not in FEATURE_FORMS: a defect of that kind's own code, raised at the build; reached, it is error.uncoded
 scene/_grading.py::graded_density ValueError 1  # invariant: features asked of a kind that declares none, which drag.grading-features refuses when planned; reached, it is error.uncoded
 scene/_scene.py::asset ValueError 1  # construction: a file declared by its record given a sha256 or terms too, raised where the script declares it, outside every public call
