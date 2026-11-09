@@ -25,7 +25,7 @@ from mime.nodes.flow.fvm import BANDS, DEFAULT_BAND, DEFAULT_CELLS_ACROSS, INTER
 from mime.nodes.flow.fvm._node import BYPASS_LINE, BYPASS_MEASURED, CALIBRATED_CELLS, GEOMETRY, STALL_LINE, \
     STOKES_REYNOLDS
 from mime.nodes.flow.fvm._schemes import IMEXEuler, Steady
-from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, PRECONDITIONERS, \
+from mime.nodes.flow.fvm._solve import DEFAULT_PRECONDITIONER, DEFAULT_TOLERANCE, FLOOR_MEASURED, PRECONDITIONERS, \
     STAGNATION_FACTOR, STAGNATION_LEAST_WINDOW, STAGNATION_MEASURED, STAGNATION_SPAN
 from mime.registry import NUMERICAL, PHYSICAL, BuildContext, Dynamics, Flag, GradientRecord, Port, Problem, Region, \
     SettingGroup, convention, register_dynamics, register_setting_group
@@ -152,9 +152,12 @@ class FVM(Dynamics):
         "the flow's state is held, the run ends at its chunk's end and is refused (flow.cfl-exceeded). With "
         "stokes=True no line applies (they bound convection only)",
         "the stop: each step's solve stops at a true relative residual of its tolerance (by default "
-        f"{DEFAULT_TOLERANCE['float64']:g} in float64, {DEFAULT_TOLERANCE['float32']:g} in float32), the step's "
-        "values and gradients holding to about it; a stagnation is no check of the true residual (one every 20 "
-        f"iterations) over a window of {STAGNATION_SPAN} iterations per cell along the box's longest side (at least "
+        f"{DEFAULT_TOLERANCE['float64']:g} in float64; in float32 {DEFAULT_TOLERANCE['float32']:g}, or the solve's "
+        "rounding floor eps || |A| |x| + |b| || / ||b|| where that is higher, made at each check from the iterate; a "
+        f"tolerance given is held as given; {FLOOR_MEASURED}), the step's values and gradients holding to about it; a "
+        "flag in float32 with the 0.01h interior can be the solve's stall, not float32's floor; a stagnation is no "
+        "check of the true residual (one every 20 iterations) over a window of "
+        f"{STAGNATION_SPAN} iterations per cell along the box's longest side (at least "
         f"{STAGNATION_LEAST_WINDOW} checks) below {STAGNATION_FACTOR:g} of the best before them ({STAGNATION_MEASURED}); "
         "a step stopped otherwise raises solve_flagged, with a warning after the run",
         f"the wall: {BANDS[DEFAULT_BAND].validity}. Its resolution: the lumen's diameter in cells, the band calibrated "
@@ -185,8 +188,8 @@ class FVM(Dynamics):
         "cells_across": convention(NUMERICAL, "the band's calibrated resolution across the narrowest lumen"),
         "scheme": convention(NUMERICAL, "IMEX Euler, the one scheme of the low-Reynolds regimes"),
         "stokes": convention(PHYSICAL, "convection is on unless the Stokes approximation is declared"),
-        "tolerance": convention(NUMERICAL, "none given: each dtype's own default, at its reachable floor for the true "
-                                           "residual"),
+        "tolerance": convention(NUMERICAL, "none given: each dtype's own, float32's raised to the solve's rounding "
+                                           "floor at each check where that is higher"),
         "preconditioner": convention(NUMERICAL, "Jacobi, the one preconditioner measured in three dimensions"),
         "wall": convention(NUMERICAL, "the one registered smooth band, with its default stiff interior (B3)"),
         "report_rows": convention(NUMERICAL, "the derivative solves' reports summed over the run"),

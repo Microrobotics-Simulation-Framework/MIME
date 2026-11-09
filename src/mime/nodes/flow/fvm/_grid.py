@@ -1,10 +1,10 @@
 """The grid kind's contract and its first kind, the Cartesian MAC grid on a box periodic on every axis.
 
 **The contract** (F0's B2) is what the time scheme, the solve, the preconditioner and the ledger use of a grid, and
-nothing more: the operators (divergence, gradient, Laplacian, convection), the weighted inner product, a projector
-with its exactness declared, where each field component is sampled, and the indicator of a solid from a signed
-distance (``_band``). A face-graph grid or an open axis fits it because the projector's exactness is declared, never
-assumed. Gather and scatter weights (bodies) and port patches (openings) are its later entries.
+nothing more: the operators (divergence, gradient, Laplacian and its magnitude, convection), the weighted inner product,
+a projector with its exactness declared, where each field component is sampled, and the indicator of a solid from a
+signed distance (``_band``). A face-graph grid or an open axis fits it because the projector's exactness is declared,
+never assumed. Gather and scatter weights (bodies) and port patches (openings) are its later entries.
 
 **The Cartesian MAC kind.** Cubic cells of spacing ``h``; the velocity's three components on the faces normal to their
 axis, ``u`` at ``(i h, (j + 1/2) h, (k + 1/2) h)``, ``v`` and ``w`` alike, the pressure at the cells' centres. Its
@@ -108,6 +108,17 @@ class MACGrid:
 
         def of(a: Array) -> Array:
             return sum(((_roll(a, 1, axis) + _roll(a, -1, axis) - 2.0 * a) for axis in range(3)),
+                       start=jnp.zeros_like(a)) / h2
+
+        return (of(velocity[0]), of(velocity[1]), of(velocity[2]))
+
+    def laplacian_magnitude(self, velocity: Velocity) -> Velocity:
+        """:meth:`laplacian` with every coefficient in magnitude, ``(sum of the six neighbours + 6 a) / h^2``: the
+        scale its rounding is judged on (a solve's rounding floor)."""
+        h2 = self.spacing ** 2
+
+        def of(a: Array) -> Array:
+            return sum(((_roll(a, 1, axis) + _roll(a, -1, axis) + 2.0 * a) for axis in range(3)),
                        start=jnp.zeros_like(a)) / h2
 
         return (of(velocity[0]), of(velocity[1]), of(velocity[2]))

@@ -53,8 +53,8 @@ from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
-from mime.nodes.flow.fvm._solve import REPORT_SIZE, Stopping, preconditioner_named, projected_solve, \
-    stagnation_window
+from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, REPORT_SIZE, Stopping, default_tolerance, \
+    preconditioner_named, projected_solve, stagnation_window
 from mime.registry import Problem
 
 EQUATIONS = (r"\frac{\mathbf{u}_{n+1} - \mathbf{u}_{n}}{h} = -\nabla \cdot \left( \mathbf{u}_{n} \mathbf{u}_{n} \right) + "
@@ -234,8 +234,9 @@ class ImplicitFlowNode(MimeNode):
         preconditioner_named(preconditioner)
         if periodic_images not in ("own", "transverse"):
             raise ValueError(f"periodic_images is 'own' (an aligned tube) or 'transverse', not {periodic_images!r}")
+        at_floor = tolerance is None and str(jnp.dtype(run_dtype())) in AT_FLOOR_BY_DEFAULT
         if tolerance is None:
-            tolerance = 1e-8 if run_dtype() == jnp.float64 else 1e-5
+            tolerance = default_tolerance(run_dtype())
         initial: dict[str, Any] = {}
         for key, value in (("initial_velocity_x", initial_velocity_x), ("initial_velocity_y", initial_velocity_y),
                            ("initial_velocity_z", initial_velocity_z)):
@@ -245,7 +246,8 @@ class ImplicitFlowNode(MimeNode):
                          spacing=float(spacing), viscosity=float(viscosity), density=float(density),
                          tube_centre=tuple(float(c) for c in tube_centre),
                          tube_axis=tuple(float(c) for c in tube_axis), tube_radius=float(tube_radius),
-                         scheme=str(scheme), convection=bool(convection), tolerance=float(tolerance), cap=int(cap),
+                         scheme=str(scheme), convection=bool(convection), tolerance=float(tolerance),
+                         at_floor=bool(at_floor), cap=int(cap),
                          check_every=int(check_every), band=str(band), interior=str(interior),
                          preconditioner=str(preconditioner), scaling_start=bool(scaling_start),
                          periodic_images=str(periodic_images), report_rows=int(report_rows),
@@ -346,6 +348,23 @@ class ImplicitFlowNode(MimeNode):
 
         return operator
 
+    def magnitude_of(self, p: Mapping[str, Any], grid: MACGrid, sigma: Velocity) -> Any:
+        """:meth:`operator_of` with every coefficient in magnitude, applied to a field of magnitudes: the scale the
+        solve's rounding floor is judged on. The shift (``1/dt``, or none), the viscosity (bounded below by zero) and
+        the resistivity (its positivity reported at sampling) are each its own magnitude; the Laplacian's is the grid
+        kind's."""
+        nu = self.kinematic(p)
+
+        def magnitude(shift: Any) -> Any:
+            def apply(u: Velocity) -> Velocity:
+                viscous = grid.laplacian_magnitude(u)
+                return (shift * u[0] + nu * viscous[0] + sigma[0] * u[0],
+                        shift * u[1] + nu * viscous[1] + sigma[1] * u[1],
+                        shift * u[2] + nu * viscous[2] + sigma[2] * u[2])
+            return apply
+
+        return magnitude
+
     def diagonal_of(self, p: Mapping[str, Any], grid: MACGrid, sigma: Velocity, shift: Any) -> Velocity:
         base = shift - self.kinematic(p) * grid.laplacian_diagonal()
         return (base + sigma[0], base + sigma[1], base + sigma[2])
@@ -422,16 +441,19 @@ class ImplicitFlowNode(MimeNode):
         fields = self.fields(p, grid)
         sigma = self.resistivity(p, fields)
         operator = self.operator_of(p, grid, sigma)
-        stopping = Stopping(tolerance=as_run_array(p["tolerance"]), cap=int(c["cap"]),
+        stopping = Stopping(tolerance=as_run_array(p["tolerance"]), at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
                             check_every=int(c["check_every"]),
                             window=stagnation_window(grid.cells, int(c["check_every"])))
         preconditioner = preconditioner_named(c["preconditioner"])
         steps = jnp.asarray(state["steps"])
         tap = self.report_row(p, steps)
 
+        magnitude = self.magnitude_of(p, grid, sigma)
+
         def solve(shift: Any, rhs: Velocity, guess: Velocity | None) -> tuple[Velocity, Array]:
             return projected_solve(grid, operator(shift), self.diagonal_of(p, grid, sigma, shift), rhs,
-                                   guess if c["scaling_start"] else None, stopping, tap, preconditioner)
+                                   guess if c["scaling_start"] else None, stopping, tap, preconditioner,
+                                   magnitude(shift))
 
         context = StepContext(grid, operator, self.forcing(fields, boundary_inputs, scheme, dtype),
                               bool(c["convection"]), solve, self.kinematic(p), sigma)

@@ -1,15 +1,16 @@
 """The solve: the preconditioner contract, Jacobi, the guarded conjugate gradient and its report block.
 
 **Stopping is never silent** (F0's B4 and the stall decision). The CG stops on the **true** residual, recomputed as
-``b - A x`` from its iterate, relative to the right-hand side (its last iterate returned); or at a stagnation (over the last ``window`` checks of the
-true residual, none fell below ``stagnation`` times the best before them: CG's residual is not monotone, least of all
-against Jacobi's contrast between the fluid and a stiff interior, so a stagnation is judged against the best over a
-window, never against the last check); or at its cap: these two return the better of its last iterate and the one of
-the least true residual checked; or at a residual that is not finite, which **returns NaN**, never its start or a
-checked iterate: a NaN that arises in a step (its drive, its operator) is not a number in the step's answer either, so
-the run's own non-finite refusal names the flow. It takes at
-least one iteration, so a warm start whose residual is already below the tolerance is never accepted unsolved; only an
-exactly zero residual is (a zero right-hand side from a zero start among them).
+``b - A x`` from its iterate, relative to the right-hand side (its last iterate returned), at its tolerance or, where
+its stopping says so (float32's default), at the solve's own rounding floor if that is higher; or at a stagnation (over
+the last ``window`` checks of the true residual, none fell below ``stagnation`` times the best before them: CG's
+residual is not monotone, least of all against Jacobi's contrast between the fluid and a stiff interior, so a stagnation
+is judged against the best over a window, never against the last check); or at its cap: these two return the better of
+its last iterate and the one of the least true residual checked; or at a residual that is not finite, which **returns
+NaN**, never its start or a checked iterate: a NaN that arises in a step (its drive, its operator) is not a number in
+the step's answer either, so the run's own non-finite refusal names the flow. It takes at least one iteration, so a warm
+start whose residual is already below the tolerance is never accepted unsolved; only an exactly zero residual is (a zero
+right-hand side from a zero start among them).
 
 **The report block** (``BACKWARD_DIAGNOSTICS``'s design, one for every iterative solve in MIME). The solve's
 right-hand side carries a block of :data:`REPORT_SIZE` numbers on which the operator is the identity, and the solve
@@ -19,6 +20,14 @@ tangent's is that block's tangent, the transpose's is the cotangent of the block
 step reads. The blocks are coupled to the field by exact zeros, so that each has a defined tangent whenever anything
 in the solve is differentiated, and the report is always finite (a residual that is not is written as -1, with its
 count), so the zeros add nothing.
+
+**The rounding floor** (:func:`rounding_floor`). An iterate ``x`` stored and multiplied in the run's dtype cannot
+bring the true residual much below ``eps || |A| |x| + |b| ||``, the operator's and the right-hand side's own rounding
+against each other: the residual of an ``x`` that solves the system with each coefficient and each datum moved by one
+rounding unit (Oettli and Prager's componentwise backward error at ``eps``). On fine stiff solves float32's floor sits
+above its 1e-5 (:data:`FLOOR_MEASURED`), so float32's default tolerance is the larger of the two, made in the program at
+each check from the iterate; a tolerance given is held as given. A solve that stalls above the floor still stops
+stagnated, and is flagged: in float32 the CG's recurrence can stall there although the solve could converge.
 
 **Starts that scale.** The start is made inside the solve from its own right-hand side, the Galerkin multiple of the
 previous solution ``x0 = alpha g``, ``alpha = <g, b> / <g, A g>``: linear in ``b``, so a tangent or transpose solve starts
@@ -76,11 +85,13 @@ STAGNATION_MEASURED = (
 @dataclass(frozen=True)
 class Stopping:
     """When the CG stops: the relative tolerance on the true residual (a ``params`` leaf: the accuracy-bearing
-    setting, 1e-8 in float64 and 1e-5 in float32 by default), the cap, how often the true residual is checked, the
-    stagnation's window (in checks) and the factor a check in it must beat the best before it by, and the least
-    iterations taken from a nonzero residual."""
+    setting, 1e-8 in float64 and 1e-5 in float32 by default), whether it is raised to the solve's rounding floor where
+    that is higher (``at_floor``: float32's default, :func:`rounding_floor`), the cap, how often the true residual is
+    checked, the stagnation's window (in checks) and the factor a check in it must beat the best before it by, and the
+    least iterations taken from a nonzero residual."""
 
     tolerance: Any
+    at_floor: bool = False
     cap: int = 5000
     check_every: int = 20
     window: int = STAGNATION_WINDOW
@@ -99,6 +110,34 @@ def stagnation_window(cells: tuple[int, ...], check_every: int) -> int:
 
 def default_tolerance(dtype: Any) -> float:
     return DEFAULT_TOLERANCE[str(jnp.dtype(dtype))]
+
+
+#: The dtypes whose default tolerance is raised to the solve's rounding floor where that is higher: float32, whose
+#: floor on fine stiff solves sits above its 1e-5; float64's 1e-8 sits orders above its floor on every solve measured.
+AT_FLOOR_BY_DEFAULT = frozenset({"float32"})
+FLOOR_MEASURED = (
+    "measured in float32 on the solid's interior spike's cases: the floor bounds what float32 can reach where its "
+    "1e-5 cannot be, the empty tube at D/h 64 with the 0.01h interior (float64's answer rounded to float32 reads "
+    "1.6e-5 to 2.1e-5, the floor 2.1e-4; the stop takes 69 iterations, its flux within 1.3e-7 of float64's, where the "
+    "fixed 1e-5 stagnated at 1000), and at D/h 16 to 32 it lies above the residual each solve reaches with the 0.1h "
+    "interior; with the 0.01h interior in a flow with a pressure gradient (a 75 % stenosis) the CG's recurrence "
+    "stalls far above it (1.0e-4 at D/h 16 and 5.9e-4 at 32, against floors of 4.7e-6 and 1.8e-5), flagged, its flux "
+    "within 1e-7 of float64's: replacing the residual with the true one every 100 iterations brings the D/h 16 solve "
+    "to 5.0e-6, so these are stalls, not floors")
+
+
+def rounding_floor(b: Velocity, magnitude: Operator, inner: Callable[[Velocity, Velocity], Array]
+                   ) -> Callable[[Velocity], Array]:
+    """The true residual's floor at an iterate ``x``, ``eps || |A| |x| + |b| ||`` in the solve's own norm:
+    ``magnitude`` is the operator with every coefficient in magnitude, applied to a field of magnitudes."""
+    eps = jnp.finfo(b[0].dtype).eps
+    size = (jnp.abs(b[0]), jnp.abs(b[1]), jnp.abs(b[2]))
+
+    def floor(x: Velocity) -> Array:
+        held = _add(magnitude((jnp.abs(x[0]), jnp.abs(x[1]), jnp.abs(x[2]))), size)
+        return eps * jnp.sqrt(inner(held, held))
+
+    return floor
 
 
 def _add(a: Velocity, b: Velocity, scale: Any = 1.0) -> Velocity:
@@ -157,23 +196,33 @@ def preconditioner_named(name: str) -> Preconditioner:
 
 
 def guarded_cg(operator: Operator, b: Velocity, precondition: Operator, start: Velocity, stopping: Stopping,
-               inner: Callable[[Velocity, Velocity], Array]) -> tuple[Velocity, Array]:
+               inner: Callable[[Velocity, Velocity], Array], magnitude: Operator | None = None
+               ) -> tuple[Velocity, Array]:
     """The preconditioned CG on ``operator x = b`` from ``start``, stopping as the module states; its answer and its
-    report (:data:`REPORT_FIELDS`). The system is solved scaled by the right-hand side's largest magnitude, which
+    report (:data:`REPORT_FIELDS`). ``magnitude`` (the operator with its coefficients in magnitude) gives the rounding
+    floor a stop ``at_floor`` takes. The system is solved scaled by the right-hand side's largest magnitude, which
     changes no iterate's direction and keeps every inner product clear of float32's underflow (a drive of 1e-12 in SI
     on micrometre cells squares below the smallest normal number, and 0/0 follows)."""
+    if stopping.at_floor and magnitude is None:
+        raise ValueError("a stop at the rounding floor needs the operator's magnitude")
     size = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in b]))
     scale = jnp.where(size > 0.0, size, 1.0)
     x, report = _scaled_cg(operator, _scaled(b, 1.0 / scale), precondition, _scaled(start, 1.0 / scale), stopping,
-                           inner)
+                           inner, magnitude)
     return _scaled(x, scale), report
 
 
 def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: Velocity, stopping: Stopping,
-               inner: Callable[[Velocity, Velocity], Array]) -> tuple[Velocity, Array]:
+               inner: Callable[[Velocity, Velocity], Array], magnitude: Operator | None) -> tuple[Velocity, Array]:
     dtype = b[0].dtype
     norm_b = jnp.sqrt(inner(b, b))
-    threshold = stopping.tolerance * norm_b
+    target = stopping.tolerance * norm_b
+    floor = rounding_floor(b, magnitude, inner) if stopping.at_floor and magnitude is not None else None
+
+    def threshold_at(x: Velocity) -> Array:
+        return target if floor is None else jnp.maximum(target, floor(x))
+
+    threshold = threshold_at(start)
     r0 = _add(b, operator(start), -1.0)
     z0 = precondition(r0)
     true0 = jnp.sqrt(inner(r0, r0))
@@ -187,7 +236,7 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
         return carry[-1] == _RUNNING
 
     def iterate(carry: tuple[Any, ...]) -> tuple[Any, ...]:
-        x, r, z, d, rz, count, recent, best, checks, kept, lowest, _ = carry
+        x, r, z, d, rz, count, recent, best, checks, kept, lowest, threshold, _ = carry
         ad = operator(d)
         # A breakdown (a curvature or an rz that underflowed to zero, past the dtype's rounding floor) takes no step,
         # so the iterate stays finite and the window sees the residual stop falling: a stagnation, not a NaN.
@@ -204,7 +253,8 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
         def checked(_: Any) -> tuple[Any, ...]:
             true_r = _add(b, operator(x), -1.0)
             true_norm = jnp.sqrt(inner(true_r, true_r))
-            converged = (true_norm <= threshold) & (count >= stopping.least_iterations)
+            reached = threshold_at(x)
+            converged = (true_norm <= reached) & (count >= stopping.least_iterations)
             # A regular check enters the window; the one it pushes out joins the best before it.
             held = jnp.concatenate([recent[1:], true_norm[None]])
             before = jnp.minimum(best, recent[0])
@@ -219,21 +269,22 @@ def _scaled_cg(operator: Operator, b: Velocity, precondition: Operator, start: V
             return (_select(restart, true_r, r), _select(restart, true_z, z), _select(restart, true_z, d),
                     jnp.where(restart, inner(true_r, true_z), rz_next), jnp.where(at_check, held, recent),
                     jnp.where(at_check, before, best), jnp.where(at_check, checks + 1, checks),
-                    _select(lower, x, kept), jnp.where(lower, true_norm, lowest), ended.astype(jnp.int32))
+                    _select(lower, x, kept), jnp.where(lower, true_norm, lowest), reached,
+                    ended.astype(jnp.int32))
 
         def unchecked(_: Any) -> tuple[Any, ...]:
             ended = jnp.where(jnp.isfinite(rz_next), _RUNNING, _NOT_FINITE).astype(jnp.int32)
-            return r, z, d, rz_next, recent, best, checks, kept, lowest, ended
+            return r, z, d, rz_next, recent, best, checks, kept, lowest, threshold, ended
 
-        r, z, d, rz_next, recent, best, checks, kept, lowest, ended = lax.cond(
+        r, z, d, rz_next, recent, best, checks, kept, lowest, threshold, ended = lax.cond(
             recursive_small | at_check, checked, unchecked, None)
         ended = jnp.where((ended == _RUNNING) & (count >= stopping.cap), _AT_CAP, ended).astype(jnp.int32)
-        return x, r, z, d, rz_next, count, recent, best, checks, kept, lowest, ended
+        return x, r, z, d, rz_next, count, recent, best, checks, kept, lowest, threshold, ended
 
     window = jnp.full((stopping.window,), jnp.inf, dtype=dtype)
     initial = (start, r0, z0, z0, inner(r0, z0), jnp.asarray(0, jnp.int32), window, true0,
-               jnp.asarray(0, jnp.int32), start, true0, ended0.astype(jnp.int32))
-    x, _, _, _, _, count, _, _, _, kept, _, ended = lax.while_loop(going, iterate, initial)
+               jnp.asarray(0, jnp.int32), start, true0, jnp.asarray(threshold, dtype), ended0.astype(jnp.int32))
+    x, _, _, _, _, count, _, _, _, kept, _, _, ended = lax.while_loop(going, iterate, initial)
     # A solve that converged (or was accepted) returns its last iterate; one stopped short, the better of its last and
     # its best checked one: past the rounding floor the iterate wanders (a planted stall's grew to a true residual of
     # 7e-2 in float64 at D/h 16), and a cap short of the first check has only its last. One whose residual went
@@ -270,11 +321,13 @@ def scaling_start(guess: Velocity | None, b: Velocity, operator: Operator,
 
 
 def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Velocity, guess: Velocity | None,
-                    stopping: Stopping, tap: Array, preconditioner: Preconditioner) -> tuple[Velocity, Array]:
+                    stopping: Stopping, tap: Array, preconditioner: Preconditioner,
+                    magnitude: Operator | None = None) -> tuple[Velocity, Array]:
     """``P A P u = P rhs`` in the divergence-free subspace (the null-space form of the saddle-point problem, the
     projector the grid kind's exact one), through ``custom_linear_solve`` with the report block on its right-hand
     side; ``tap`` is the block's input (zeros, :data:`REPORT_SIZE`), whose cotangent is the transpose solve's report.
-    Returns the divergence-free solution and the primal solve's report."""
+    ``magnitude`` is ``apply`` with its coefficients in magnitude, for a stop at the rounding floor. Returns the
+    divergence-free solution and the primal solve's report."""
     project = grid.project
     inner = grid.inner
     precondition_raw = preconditioner.made(diagonal)
@@ -297,7 +350,7 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
 
         b = project(b)
         start = scaling_start(projected_guess, b, field_operator, inner)
-        x, report = guarded_cg(field_operator, b, precondition, start, stopping, inner)
+        x, report = guarded_cg(field_operator, b, precondition, start, stopping, inner, magnitude)
         return project(x), report
 
     coupled_rhs = _add(rhs, (tap[0], tap[0], tap[0]), 0.0)
@@ -306,7 +359,8 @@ def projected_solve(grid: MACGrid, apply: Operator, diagonal: Velocity, rhs: Vel
     return solved, report
 
 
-__all__ = ["DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "STAGNATION_FACTOR", "STAGNATION_LEAST_WINDOW",
-           "STAGNATION_MEASURED", "STAGNATION_SPAN", "STAGNATION_WINDOW", "stagnation_window", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "Jacobi",
-           "Preconditioner", "Stopping", "default_tolerance", "guarded_cg", "preconditioner_named", "projected_solve",
+__all__ = ["AT_FLOOR_BY_DEFAULT", "DEFAULT_PRECONDITIONER", "DEFAULT_TOLERANCE", "FLOOR_MEASURED", "STAGNATION_FACTOR",
+           "STAGNATION_LEAST_WINDOW", "STAGNATION_MEASURED", "STAGNATION_SPAN", "STAGNATION_WINDOW",
+           "stagnation_window", "PRECONDITIONERS", "REPORT_FIELDS", "REPORT_SIZE", "Jacobi", "Preconditioner",
+           "Stopping", "default_tolerance", "guarded_cg", "preconditioner_named", "projected_solve", "rounding_floor",
            "scaling_start"]

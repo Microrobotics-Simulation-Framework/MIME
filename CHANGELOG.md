@@ -330,6 +330,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The FVM's float32 solve stops at its rounding floor where 1e-5 is out of reach.** With no tolerance given, a
+  float32 run's solve now stops at a true residual of 1e-5 or, where that is higher, at the solve's own rounding
+  floor, `eps || |A| |x| + |b| || / ||b||`, made at each check from the iterate (a tolerance given is held as given;
+  float64 is unchanged). On the empty tube at 64 cells across with `wall=Band(delta_in=0.01)` the solve that
+  stagnated, flagged, after 1000 iterations now stops unflagged after 69, its flux within 1.3e-7 of float64's. A solve
+  that stalls above the floor still stops stagnated and is flagged: with the 0.01h interior in a flow with a pressure
+  gradient, float32's conjugate gradient can stall well above it.
+
 - **CI runs each lane as sixteen shards, not ten, from a rebuilt table.** `tests/shard_weights.json` is rebuilt from the
   JUnit reports of the push run of `fe7c73f` (the old table dated from 2026-11-05, when the suite weighed 22920 s a lane;
   it weighs 28876 s now), and `scripts/shard_matrix.py`'s default is 16 (the repository variable and a manual run's input
