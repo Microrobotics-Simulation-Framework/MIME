@@ -48,7 +48,7 @@ from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_ar
     quaternion, typed_view
 from mime.nodes.hydro.mrs._node import SHAPE, WALL, array_tree, floating_leaves, path_name
 from mime.nodes.hydro.mrs._quadrature import floored_least_eigenvalue, scaled_least_eigenvalue, semidefinite_floor
-from mime.nodes.hydro.mrs._solve import PRECISION, rigid_motions
+from mime.nodes.hydro.mrs._solve import PRECISION, force_sums, rigid_motions
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
 from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
 from mime.registry import Centreline, Problem, centreline_points
@@ -363,27 +363,29 @@ class RFTDragNode(MimeNode):
         return points, tangents, blocks
 
     def resistance_at(self, p: Mapping[str, Any], pose: Array) -> tuple[Array, Array]:
-        """The resistance at ``pose`` (its symmetric part) and whether every read of the wall's data was accepted."""
+        """The resistance at ``pose`` (its symmetric part) and whether every read of the wall's data was accepted. The
+        local drag ``B`` is block diagonal, so ``B M`` and ``B G`` are taken point by point (three terms a sum), and
+        ``M^T f`` over the points in pieces of at most ``DEPTH`` terms added in order (``mrs.force_sums``): a product
+        over the 3n unknowns taken whole is blocked by the L1 data cache of the core XLA:CPU's Eigen first ran on, so its
+        last bits would depend on where a process started (MIME-ANO-125)."""
         points, _, blocks = self.local_drag(p)
         turn = quaternion.rotation_matrix(pose[3:])
         world = pose[:3] + jnp.matmul(points, turn.T, precision=PRECISION)
         local = jnp.einsum("ab,nbc,dc->nad", turn, blocks, turn, precision=PRECISION)
         motions = rigid_motions(world, pose[:3])
         count = world.shape[0]
+        pushed = jnp.einsum("nab,nbk->nak", local, motions.reshape(count, 3, 6), precision=PRECISION).reshape(
+            3 * count, 6)
         wall = self._wall()
         if wall.adds_nothing:
-            pushed = jnp.einsum("nab,nbk->nak", local, motions.reshape(count, 3, 6),
-                                precision=PRECISION).reshape(3 * count, 6)
-            found, accepted = jnp.matmul(motions.T, pushed, precision=PRECISION), jnp.asarray(True)
+            found, accepted = force_sums(motions, pushed), jnp.asarray(True)
         else:
             parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
             image = wall.correction(world, parameters, p["viscosity"], jnp.zeros((), dtype=world.dtype))
-            index = jnp.arange(count)
-            dense = jnp.zeros((count, 3, count, 3), dtype=world.dtype).at[index, :, index, :].set(local).reshape(
-                3 * count, 3 * count)
-            system = jnp.eye(3 * count, dtype=world.dtype) + jnp.matmul(dense, image.matrix, precision=PRECISION)
-            forces = jnp.linalg.solve(system, jnp.matmul(dense, motions, precision=PRECISION))
-            found, accepted = jnp.matmul(motions.T, forces, precision=PRECISION), image.accepted
+            fed_back = jnp.einsum("nab,nbk->nak", local, image.matrix.reshape(count, 3, 3 * count),
+                                  precision=PRECISION).reshape(3 * count, 3 * count)
+            forces = jnp.linalg.solve(jnp.eye(3 * count, dtype=world.dtype) + fed_back, pushed)
+            found, accepted = force_sums(motions, forces), image.accepted
         return (found + found.T) / 2.0, accepted
 
     def wall_gap(self, p: Mapping[str, Any], pose: Array) -> Array:

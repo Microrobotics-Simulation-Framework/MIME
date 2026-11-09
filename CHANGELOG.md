@@ -570,6 +570,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The rft rung's resistance is the same bit for bit whichever kind of core a process started on** (MIME-ANO-125
+  again; the rung is unreleased). R1's node summed `M^T f` over its 3n unknowns in one product (282 on
+  `rft_free_space`'s helix), and with a wall took its block-diagonal local drag into `B M` and `B G` as dense products
+  as long; XLA:CPU's Eigen blocks such a sum by the L1 data cache of the core it first ran on, so on a CPU with two
+  sizes of core the registry walk's round trip of `rft_free_space` failed by where each process started. It sums
+  `M^T f` by `force_sums` (pieces of at most `DEPTH` terms, added in order) and takes `B M` and `B G` point by point,
+  three terms a sum; every product in its compiled step sums at most `DEPTH` terms
+  (`tests/oracles/test_mrs_force_sums.py`, with a control that puts the whole product back). Its numbers move at
+  rounding only: R6's oracle and the rung's golden outputs hold within their tolerances.
 - **The energy ledger's running sums are pairs, and no longer drift with the steps** (MIME-ANO-149; the ledger is
   unreleased, so no version step). A plain float32 sum of a series of 1e5 terms drifted by tens of units of eps on the
   terms' summed magnitudes (45 on a mixed-sign series, 107 on a positive one, measured through the ledger's own update;

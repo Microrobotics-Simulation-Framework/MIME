@@ -1822,6 +1822,15 @@ anomalies:
       sizes, predicts all twelve depths measured (the rule is inference from Eigen's published blocking heuristic; the
       library inside jaxlib was not read). The rung's numbers are right to rounding either way; what failed is the
       promise that a run reproduces bit for bit.
+
+      **The rft rung (R1, unreleased) took its products whole again.** Its resistance, M^T f, summed the helix's 3n
+      unknowns in one product (282 on rft_free_space's helix, 279 on rft_tube's), and with a wall its block-diagonal
+      local drag entered B M and B G as dense products as long. The registry walk's round trip of rft_free_space then
+      failed on the hybrid laptop by where each process started (the coil's pose 6.8e-21 apart at its first step, on
+      #208's branch and on the release branch alone alike). Pinned there, the coil's product taken whole gave one bit
+      pattern on the larger cores and another on the smaller, three processes of each; summed by force_sums, one
+      pattern on both. Fixed before release: the node sums M^T f by force_sums and takes B M and B G point by point,
+      three terms a sum.
     severity: minor
     safety_relevance: context_dependent
     safety_relevance_rationale: >
@@ -1835,12 +1844,16 @@ anomalies:
     affected_components:
       - "entry: interaction drag, rung mrs; mime.nodes.hydro.mrs.resistance's force sums"
       - "node: MRSDragNode"
+      - "entry: interaction drag, rung rft; mime.nodes.hydro._rft_drag.RFTDragNode.resistance_at's products"
+      - "node: RFTDragNode"
     verification:
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_mrs_step_sums_at_most_depth_terms"
       - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_resistance_sums_at_most_depth_terms"
       - "tests/oracles/test_mrs_force_sums.py::test_a_sum_no_longer_than_depth_is_the_product_it_was_bit_for_bit"
       - "tests/oracles/test_mrs_force_sums.py::test_a_longer_sum_equals_the_product_to_rounding"
       - "tests/oracles/test_mrs_force_sums.py::test_control_the_product_taken_whole_is_found_by_the_scan"
+      - "tests/oracles/test_mrs_force_sums.py::test_every_product_in_the_compiled_rft_step_sums_at_most_depth_terms"
+      - "tests/oracles/test_mrs_force_sums.py::test_control_the_rft_steps_product_taken_whole_is_found_by_the_scan"
       - "tests/saved/test_registry_walk.py::test_every_case_round_trips_through_a_fresh_process"
     residual_risk: "CI's runners have one size of core, so no test there can show that two processes' bits differ; the tests hold the cause (no product in the compiled MRS step sums more than 248 terms), and the cure was measured on a hybrid laptop (50 of 50 fresh processes, and 5 pinned to each kind of core, bitwise equal on all three bodies; mrs_solids saved on one kind and loaded on the other 10 of 10). 248 is the block Eigen takes in float64 with AVX2 on a 32 KB L1d (in float32 its block is longer); a CPU whose smaller cores had a smaller L1d, or wider vectors on both kinds, would need a shorter piece. The other products in MIME that contract over both operands' first axis (a chain's links, a 3 x 3 frame) sum a few terms, surveyed and not tested"
     workaround: "Before the fix, pin a process to one kind of core (taskset) where its bits are compared with another's"
