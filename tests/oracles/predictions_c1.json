@@ -44,5 +44,17 @@
  "gate_9_allocation": {
   "case": "allocate() on each system at drawn points: a field (and gradient on the 8-coil systems) made by drawn currents within the limits; a wanted field out of reach of the limits",
   "predicted": "the drawn currents' field and gradient recovered to rounding where the rows are of full rank and the currents within limits (CardioMag, OctoMag field and gradient; Navion_2 field alone); out of reach, every current within its limit and at least one at it, the miss reported; Navion_2 asked for field and gradient reports rank 3 of 8 rows"
+ },
+ "outcomes": {
+  "written": "2026-11-09, after the gates ran, beside the predictions above (which are unchanged)",
+  "gate_1": "within tolerance on every system, the miss within a factor of three of eps64 / c as predicted: Navion_2 field 2.33e-14, gradient rows 2.56e-14, host 2.34e-14 (eps / c 2.65e-14, tolerance 2.65e-13, c at the new points 8.38e-3); CardioMag 1.01e-15, 1.13e-15, host 5.6e-16 (eps / c 8.3e-16, c 0.269); OctoMag 1.62e-12, 7.57e-12 (2.7 eps / c, the most), host 7.76e-12 (eps / c 2.81e-12, tolerance 2.81e-11, c 7.9e-5). The control (directions read unnormalised) misses Navion_2's oracle by more than ten tolerances",
+  "gate_2": "force and torque within tolerance on every system, both laws; the sphere's first 5 ms move along the force with the force alone attached. A first draft attached the torque too and failed: the sphere (1.6e-12 kg m^2) turns about a radian in 2 ms and its moment with it, so the force's direction does not hold; the test's mistake, not the law's. With the ledger, the build report names the coil apparatus outside and both laws supplied by it",
+  "gate_3": "1500 draws of the measurement probe (300 a kind) and the property test's: every plant detected; the least miss over tolerance per kind: global sign 7.1e10, coil sign 5.2e10, turned (from 1 degree) 9.1e8, swapped axes 4.8e10, shifted (from 1 mm) 4.0e9",
+  "gate_4": "within four tolerances on every draw; the wrong-way control failed on a 180-degree turn in its first draft, where a turn is its own inverse and the control cannot discriminate: it now draws turns of 1 to 179 degrees, and fails on every draw",
+  "gate_5": "both dtypes: the field moved by the background within two eps of the sum, the gradient unchanged to the bit",
+  "gate_6": "outside_region equal to not pointInWorkspace at all 48 probes of each system (16 on the faces, inside on both); near_source 0 at the region's points and 1 within the guard",
+  "gate_7": "OctoMag refused in float32 (setting.value, floor 1.73e-3); Navion_2's float32 field 7.4e-6 and gradient 1.6e-5 of their peaks (eps32 / c 1.42e-5 at the points), CardioMag's 4.7e-7 and 4.1e-7 (4.4e-7): each within 1.2 eps32 / c, under the 4 the test holds",
+  "gate_8": "quiet on the coefficient, the source's position and the background, each moved by 1e-6; the closed-over control fires on all three",
+  "gate_9": "CardioMag and OctoMag: drawn currents recovered to 1e-6 A from their field and gradient (rank 8); Navion_2 out of reach (0.5 T): every current within 35 A, at least one at it, the miss reported; asked for field and gradient, rank 3 of 8 rows"
  }
 }
