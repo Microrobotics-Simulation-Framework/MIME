@@ -16,7 +16,7 @@ from hydro_oracles import StokesSphere, surrogate_reference
 from mime.data import asset
 from mime.core import quaternion
 from mime.interactions import KEPT, Contact, Drag, Gravity, Lubrication, Magnetic
-from mime.interactions.hydrodynamic import PointForceDrag
+from mime.interactions.hydrodynamic import PointForceDrag, UncoupledDrag
 from mime.registry import Interaction
 from mime.testing import CaseKind, NodeCase, Oracle, unit_quaternion
 from mime.testing._mime_families import SCREW, TUBE_AXIS, TUBE_RADIUS
@@ -94,6 +94,11 @@ def a_drag() -> Drag:
     return Drag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
 
 
+def uncoupled_drag() -> UncoupledDrag:
+    """Script A's drag on the version kept registered, 0.4.0, whose bodies in one medium are each computed alone."""
+    return UncoupledDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
+
+
 def kept_drag() -> PointForceDrag:
     """Script A's drag on the version kept registered, 0.3.0, whose surrogate rung is 0.4.0's."""
     return PointForceDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(epsilon=mm(0.15)))
@@ -143,7 +148,8 @@ FAMILY_CASES: dict[tuple[str, str, str], FamilyCase] = {
         lambda: Contact.Projection(margin=mm(0.1)), projected,
         NodeCase(no_node="a projection, built into the body's node")),
     ("interaction", "drag", "0.3.0"): FamilyCase(kept_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
-    ("interaction", "drag", "0.4.0"): FamilyCase(a_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
+    ("interaction", "drag", "0.4.0"): FamilyCase(uncoupled_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
+    ("interaction", "drag", "0.5.0"): FamilyCase(a_drag, surrogate, DRAG_NODE, swap_with=StokesSphere),
     ("interaction", "toy.drag", "0.2.0"): FamilyCase(ToyDrag.Linear, linear),
     ("interaction", "toy.spring", "0.1.0"): FamilyCase(no_family=TOY),
     ("interaction", "toy.lift", "0.1.0"): FamilyCase(no_family=TOY),

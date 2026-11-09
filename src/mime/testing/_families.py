@@ -319,8 +319,12 @@ def _confinement_probe(built: BuiltExperiment, plan: EntryPlan, family: Family) 
         free = type(node)(saved["name"], saved["timestep"], **{**held, **_UNCONFINED})
     except Exception as error:  # noqa: BLE001 - a dynamics that takes no confinement as MIME's nodes do
         return f"{plan.owner} confines {body!r}, whose node does not rebuild without its confinement: {error!r}"
-    outputs = {port.field: port.field for port in dynamics.record.publishes.values()}
-    at = {(confinement.role, interface): port.field for interface, port in dynamics.record.publishes.items()}
+    # A field the record declares that the built node does not publish (the mass matrix, published only where a plan
+    # reads it) is no output of the step the law confines.
+    published = set(_initial(free))
+    outputs = {port.field: port.field for port in dynamics.record.publishes.values() if port.field in published}
+    at = {(confinement.role, interface): port.field for interface, port in dynamics.record.publishes.items()
+          if port.field in published}
     return Probe(built, plan, node, {}, outputs, at, at, free)
 
 

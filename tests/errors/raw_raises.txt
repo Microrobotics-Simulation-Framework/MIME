@@ -61,7 +61,8 @@ env/_pins.py::applicable ValueError 1  # invariant: MIME's own check, which no s
 env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and refused with its code (env.lab, by the env check)
 experiment/_experiment.py::ObservationHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 experiment/_mermaid_page.py::library_bytes ValueError 1  # invariant: the packaged Mermaid library's bytes against their pinned sha256, which the packaging and graph tests hold
-interactions/hydrodynamic.py::PointForceDrag._build_mrs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+interactions/hydrodynamic.py::Drag._build_near_field ValueError 1  # invariant: the near field's members read one medium and one wall kind, which drag.wall-kind refuses first where two bodies in one medium name different wall kinds; reached, it is error.uncoded, keeping its class
+interactions/hydrodynamic.py::PointForceDrag._mrs_arguments ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 interactions/hydrodynamic.py::PointForceDrag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 live/_protocol.py::FrameSchema.decode ValueError 3  # a client's frame of another schema, length or protocol: a Python client's own check of a message it received, below any public call; the protocol's page documents it
 live/_protocol.py::FrameSchema.encode ValueError 1  # a frame whose field has another shape than its schema's: the session's own state, which a schema fixed at its start always fits; a defect if reached
@@ -89,6 +90,10 @@ nodes/hydro/mrs/_tube.py::unit_tube_table ValueError 1  # a node's constructor, 
 nodes/hydro/mrs/_walls.py::cell_image ValueError 1  # invariant: MIME's own check, which no supported script reaches (a node integrates the image only of a wall correction that gives one); reached, it is error.uncoded, keeping its class
 nodes/hydro/mrs/_walls.py::register_wall_correction ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_walls.py::wall_correction_named KeyError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/near_field/_contract.py::cross_image ValueError 1  # invariant: every registered wall kind gives its image between point sets (free space, the tube, the plane); a lab's wall kind without one is refused here, where the build first couples two bodies by it; reached, it is error.uncoded, keeping its class
+nodes/hydro/near_field/_mrs.py::MRSOperator.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded (the near field joins drag 0.5.0's bodies only, every one on the separated quadrature)
+nodes/hydro/near_field/_mrs.py::MRSOperator.self_block ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class (the joint node passes every member's held free part)
+nodes/hydro/near_field/_node.py::JointDragNode.__init__ ValueError 2  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded (the build gives the joint node its members once each, their arguments as m<i>_<argument>)
 registry/_entries.py::_held KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 registry/_entries.py::_scalar TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 registry/_entries.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
