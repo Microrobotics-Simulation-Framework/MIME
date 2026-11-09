@@ -89,8 +89,8 @@ def in_the_navion_region(given):
     return held
 
 
-#: The array's drawn readers sit in the Navion_2's declared region, and its drawn currents within the coils' +-35 A
-#: (the 0.2 line's Navion figure): in the default box of 1e4 a reader is far beyond every coil, where the field is some
+#: The array's drawn readers sit in the Navion_2's declared region, and its drawn currents within +-35 A
+#: (an arbitrary box, not a rating): in the default box of 1e4 a reader is far beyond every coil, where the field is some
 #: 1e-16 of its value in the region, and the battery would test underflow.
 COILS = NodeCase(options={"boundary_bounds": {"delivered_currents": (-35.0, 35.0)},
                           "constrain_boundary": in_the_navion_region})

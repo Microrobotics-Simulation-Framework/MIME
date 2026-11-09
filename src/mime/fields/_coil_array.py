@@ -338,9 +338,9 @@ class CalibratedMultipole(CoilArray):
         "the currents are ideal and unlimited here: allocate() takes the limits the user declares, and no system ships "
         "one; cited figures, none of them a rating of the rig a calibration was fitted on (which neither source "
         "states): OctoMag 16 A a coil, a published operating limit of ETH's rig (Zughaibi2025), and a 15 A amplifier "
-        "saturation its 2010 force tables assume (Kummer2010); Navion 35 A as the 0.2 line declared it, unsourced, "
-        "beside one lab's 45 A hardware and 25 A operating figures (Zughaibi2025); CardioMag 20 A as the 0.2 line "
-        "declared it, unsourced",
+        "saturation its 2010 force tables assume (Kummer2010); Navion 25 A a coil as one lab's operating restriction (Zughaibi2025, Sec. III-B: \"we conservatively "
+        "restrict them to 25 A per coil for safety\"), and 45 A as the drivers' capability, not a coil rating; CardioMag "
+        "20 A as the 0.2 line declared it, unsourced",
         _BACKGROUND,
         "CardioMag's file carries an Offset block of eight sources, current-independent, worth about 1.5 mT at the "
         "median over its region (3 to 30 % of a 5 to 50 mT field), which neither mag_manip nor this node evaluates: "
@@ -348,8 +348,8 @@ class CalibratedMultipole(CoilArray):
         "refused here); background is not it, the sources being position dependent; Navion_2's and OctoMag's files "
         "carry no Offset block",
         "not in this release: saturation of the cores (no shipped calibration has fitted it, all were fitted below "
-        "core saturation, and it makes the field nonlinear in current: a later phase, once a calibration fits it, or "
-        "beside the response and circuit stage); a calibration of order above one (none ships; the reader refuses "
+        "core saturation, and it makes the field nonlinear in current: it waits for a calibration "
+        "that fits it, or for the response and circuit stage); a calibration of order above one (none ships; the reader refuses "
         "one); a lab's own calibration file (the three packaged ones only); a coil's circuit (the currents delivered "
         "are ideal)",
     )

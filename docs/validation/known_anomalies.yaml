@@ -3701,7 +3701,7 @@ anomalies:
       reading nor its script is in the 0.2 tree [read: src/mime/nodes/actuation/coil_array_field.py at the tag pre-0.3,
       its field_sign parameter and hazard hints].
 
-      Which side is flipped is not known: a sign-symmetric excitation (currents over +-35 A) cannot tell a calibration's
+      Which side is flipped is not known: a sign-symmetric excitation cannot tell a calibration's
       polarity from the rig's current or sensor convention, and ETH's own validation metric (convex-hull distances over a
       symmetric current box) is invariant under B -> -B, so neither would have been caught. 0.2 carried a field_sign
       parameter, default +1; 0.3 does not carry one: the convention is stated, not a setting. Gradient pull on a field-aligned body is invariant under the flip (F proportional to grad

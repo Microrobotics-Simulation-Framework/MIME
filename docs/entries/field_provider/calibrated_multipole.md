@@ -16,7 +16,7 @@ delivered as commanded, so a later stage between the command and the coils (a sl
 with no script changed. The calibration's own frame is placed in the world by `at` and `orientation`, one exact
 transform (`B = R b(R^T (x - t))`, `G = R G_c R^T`); `background` adds a uniform field in the world frame, zero unless
 declared. The sources' positions, directions and coefficients, the pose and the background are the node's leaves, read
-by its step, so a derivative passes through them and a later phase's overrides can vary them without a rebuild (this release has
+by its step, so a derivative passes through them and a later release's overrides can vary them without a rebuild (this release has
 no override or study axis for them).
 
 It gives, outside a run, the field and gradient per unit current at a point (`provider.actuation(point)`, an
