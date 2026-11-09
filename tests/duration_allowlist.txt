@@ -10,8 +10,14 @@
 #               it much faster, or keep it here with
 #               "kept: <why it must run on every push>"
 #
-# An unlisted test over 5 s gets a warning on the run; over 20 s, once re-run
-# alone, it fails the job. A listed test over 20 s passes with a warning.
+# An unlisted test over 5 s gets a warning on the run. Since 2026-11-09 (CONTRIBUTING.md,
+# "CI: the duration gate"): over 30 s, once re-run alone, it fails the job if it is the
+# change's own (its file is in the diff, or its node id is new on the base), and any other
+# unlisted test fails only over 90 s. A listed test over 30 s passes with a warning, and
+# over its ceiling (3 times its weekly median, at least 60 s, tests/duration_ceilings.json,
+# written by scripts/duration_triage.py, never by hand) it fails a push and warns a pull
+# request unless the pull request owns the test. The entries below that quote 20 s and
+# 17 s were listed under the earlier line of 20 s and stay: they are measurements.
 #
 # A property test is never shrunk and never marked slow to meet the budget:
 # slow runs in no CI job, so a slow-marked property is checked nowhere.

@@ -23,6 +23,14 @@
 #    is reported as a warning annotation and the exit status stays 0, for the lanes
 #    whose budget warns instead of failing (CONTRIBUTING.md, "CI: which lanes a
 #    pull request runs"). A report that cannot be read still exits 2.
+# 4. The duration rule of 2026-11-09 (CONTRIBUTING.md, "CI: the duration gate"): `--fail-over` is 30 s, not 20 s. On a
+#    pull request (`--event pull_request`) it holds only for a test that is the change's own; `--own-against REV` says
+#    which (a test whose file the diff against REV touches, or whose node id REV's collection lacks) and any other
+#    unlisted test fails only over `--other-fail-over` (90 s) and warns between the two. On any other event (a push, a
+#    manual or nightly run) every test is the change's own, whatever the diff: the push is the merged change, and a
+#    slow test that a change caused without touching its file is caught there. `--ceilings FILE` gives a listed test a
+#    ceiling, which fails on a push and warns on a pull request unless the change is the test's own. The re-run alone
+#    applies to every failing test, against its own limit.
 """Report per-test wall-clock from CI, and stop new slow tests landing.
 
 The default CI lane (everything not marked ``@pytest.mark.slow``) grew to
@@ -46,20 +54,30 @@ over ``--slow-over`` (5 s)
     pay for on every push.  A kept test goes on the allowlist *with the
     reason*.  Unlisted tests over this line get a warning annotation on
     the run.
-over ``--fail-over`` (20 s)
-    An unlisted test this slow fails the job.  An allowlisted one passes
-    -- the allowlist has no ceiling -- but gets a warning annotation, so a
-    kept test that regresses from 6 s to 900 s is not silent.
+over ``--fail-over`` (30 s)
+    An unlisted test this slow fails the job on a push or a manual run, and on
+    a pull request when it is the change's own (``--own-against``: its file is
+    in the diff, or its node id is new on the base); on a pull request any
+    other unlisted test fails only over ``--other-fail-over`` (90 s) and warns
+    between the two.  An allowlisted one passes but gets a warning
+    annotation, so a kept test that regresses from 6 s to 900 s is not silent;
+    with ``--ceilings`` it has a ceiling (the larger of 3 times its median and
+    1.2 times its 95th percentile, at least 60 s, written by
+    ``scripts/duration_triage.py``), over which the job fails on a push and
+    warns on a pull request, unless the change is the test's own.  Every
+    failure is re-run alone first (``--retry-outliers``).
 
-Why the hard line is four times the policy line
------------------------------------------------
+Why the hard line is six times the policy line
+----------------------------------------------
 Measured on eight green lane-runs of the same tree (2026-09-24): a test
 whose median was over 2 s varied between runs by 1.7x at the median and
 3.1x at the 90th percentile (2.5x even after normalising each run by its
 total).  Runners differ, and a test that compiles something first pays for
 every later test that reuses it, so moving one test moves another's time.
 A hard gate at 5 s would fail on noise every day.  At 20 s it fires on the
-tests that actually drag the lane: the ten slowest tests took 17 minutes.
+tests that actually drag the lane: the ten slowest tests took 17 minutes.  MIME
+moved the line to 30 s on 2026-11-09, because at 20 s it failed on cold-cache
+runs that a re-run alone did not always clear.
 
 Why a test is slow
 ------------------
@@ -168,7 +186,7 @@ Writes Markdown to ``--markdown`` (default ``$GITHUB_STEP_SUMMARY`` when
 set), GitHub annotations to stdout, and exits
 
 * 0 -- within budget,
-* 1 -- an unlisted test over ``--fail-over`` (not with ``--warn-only``, which warns and exits 0),
+* 1 -- a test over the line that applies to it (not with ``--warn-only``, which warns and exits 0),
 * 2 -- nothing to judge: a report missing, unreadable, with no test
   cases, or holding only collection errors (a test file that fails to
   import stops pytest before any test runs).  A gate with nothing to read
@@ -180,9 +198,12 @@ set), GitHub annotations to stdout, and exits
 from __future__ import annotations
 
 import argparse
+import io
+import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -209,6 +230,11 @@ CHILDREN_CPU_PROPERTY = "children_cpu_seconds"
 COLLECTION_FAILURE = "collection failure"
 
 CACHE_MODES = ("off", "cold", "warm", "mixed")
+
+#: The duration rule of 2026-11-09 (CONTRIBUTING.md, "CI: the duration gate"): an unlisted test fails over ``FAIL_OVER``
+#: when it is the change's own, and over ``OTHER_FAIL_OVER`` when it is not.
+FAIL_OVER = 30.0
+OTHER_FAIL_OVER = 90.0
 
 #: A restored cache counts as used (``warm``) only when more than this share
 #: of a shard's persistent-cache lookups hit.  Measured on CI (2026-09-25):
@@ -527,21 +553,146 @@ def diagnose(t: TestTime) -> str:
     return f"{what} {pct:.0f}%: {hint}"
 
 
-def judge(tests, allow, *, watch_over, slow_over, fail_over):
-    """Split the tests into the budget's bands; pure, so it can be tested."""
+class Scope:
+    """Which tests a change answers for: the tests of a file its diff touches, and any test whose node id is new.
+
+    ``changed`` is the set of files the diff names (``None``: the diff could not be read, so every test counts as the
+    change's own, the strict reading); ``base_ids(file)`` is the set of node ids the base collects in ``file`` (``None``:
+    it could not be collected, strict again). The second is read only for a test that is over a line in a file the
+    diff does not touch, so a run with nothing slow pays for neither. A node id a registry entry adds to a test file
+    that the change never opened is new on the base's collection, which is why a file list is not enough.
+    """
+
+    def __init__(self, changed, base_ids=None, *, close=None):
+        self.changed, self._base_ids, self._close, self._seen = changed, base_ids, close, {}
+
+    def is_own(self, t: TestTime) -> bool:
+        if self.changed is None or t.file in self.changed:
+            return True
+        if t.file not in self._seen:
+            self._seen[t.file] = self._base_ids(t.file) if self._base_ids else None
+        ids = self._seen[t.file]
+        return ids is None or t.nodeid not in ids
+
+    def close(self):
+        if self._close:
+            self._close()
+
+
+def _git(*args: str, **kw) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], capture_output=True, **kw)
+
+
+def _resolve_base(rev: str) -> str | None:
+    """The revision to diff against: ``rev`` (fetched, one commit deep, if the clone lacks it); an empty ``rev`` is the
+    head's first parent (a pull request's merge commit has its base's tip there). A revision that is given and is zero
+    (a new branch's ``before``) or cannot be had is ``None``, and so is a head with no first parent: the strict reading,
+    every test the change's own."""
+    def have(r):
+        return _git("rev-parse", "--verify", "--quiet", f"{r}^{{commit}}").returncode == 0
+    if not rev:
+        return "HEAD^1" if have("HEAD^1") else None
+    if set(rev) == {"0"}:
+        return None
+    if have(rev) or (_git("fetch", "--no-tags", "--depth=1", "origin", rev).returncode == 0 and have(rev)):
+        return rev
+    return None
+
+
+def scope_against(rev: str) -> Scope:
+    base = _resolve_base(rev)
+    if base is None:
+        return Scope(None)
+    done = _git("diff", "--name-only", "--no-renames", base, "HEAD", text=True)
+    if done.returncode != 0:
+        return Scope(None)
+    tree = {}
+
+    def base_ids(file: str) -> set[str] | None:
+        """The node ids ``base`` collects in ``file``, with ``base``'s own source first on the path."""
+        if "tmp" not in tree:
+            archive = _git("archive", "--format=tar", base)
+            if archive.returncode != 0:
+                return None
+            tree["tmp"] = tempfile.TemporaryDirectory(prefix="own-base-")
+            with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+                tar.extractall(tree["tmp"].name, filter="data")
+        root = tree["tmp"].name
+        env = {k: v for k, v in os.environ.items() if k != "MADDENING_TEST_SHARD"}
+        env["PYTHONPATH"] = os.pathsep.join(p for p in (f"{root}/src", env.get("PYTHONPATH", "")) if p)
+        try:
+            run = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", file],
+                                 cwd=root, env=env, capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            return None
+        if run.returncode not in (0, 5):     # 5: the file collects nothing on the base
+            return None
+        return {ln.strip() for ln in run.stdout.splitlines() if ln.startswith(f"{file}::")}
+
+    def close():
+        if "tmp" in tree:
+            tree["tmp"].cleanup()
+
+    return Scope(set(done.stdout.split()), base_ids, close=close)
+
+
+def read_ceilings(path: Path | None) -> dict[str, float]:
+    """``{nodeid: seconds}`` from the file ``scripts/duration_triage.py`` writes; an unreadable one is refused."""
+    if path is None:
+        return {}
+    try:
+        table = json.loads(path.read_text(encoding="utf-8"))["ceilings"]
+        return {nodeid: float(seconds) for nodeid, seconds in table.items()}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ReportError(f"{path}: not a ceilings file ({exc}); `scripts/duration_triage.py` writes it") from exc
+
+
+def judge(tests, allow, *, watch_over, slow_over, fail_over, other_fail_over=None, scope=None, ceilings=None,
+          on_pull_request=False):
+    """Split the tests into the budget's bands; pure, so it can be tested.
+
+    ``scope`` (``None``: every test is the change's own) and ``other_fail_over`` (``None``: ``fail_over``) give the
+    duration rule of 2026-11-09 on a pull request: an unlisted test over ``fail_over`` is in ``failing`` when it is the
+    change's own or over ``other_fail_over``, and in ``other_over_line`` (a warning) when it is not. Off a pull request
+    (``on_pull_request`` false) every test is the change's own, whatever the scope: the push is the merged change. A listed test over its ceiling
+    (``ceilings``) is in ``over_ceiling`` as ``(test, ceiling)``, and also in ``failing`` unless this is a pull request
+    and the test is not the change's own.
+    """
+    other_fail_over = fail_over if other_fail_over is None else max(other_fail_over, fail_over)
+    own = scope.is_own if scope is not None and on_pull_request else (lambda t: True)
+    ceilings = ceilings or {}
     by_id = {}
     for t in tests:  # several reports: keep each test's slowest time
         if t.nodeid not in by_id or t.seconds > by_id[t.nodeid].seconds:
             by_id[t.nodeid] = t
     ranked = sorted(by_id.values(), key=lambda t: -t.seconds)
+    failing, other_over_line, limits = [], [], {}
+    for t in ranked:
+        if t.seconds > fail_over and t.nodeid not in allow:
+            mine = own(t)
+            if mine or t.seconds > other_fail_over:
+                failing.append(t)
+                limits[t.nodeid] = fail_over if mine else other_fail_over
+            else:
+                other_over_line.append(t)
+    over_ceiling = [(t, ceilings[t.nodeid]) for t in ranked
+                    if t.nodeid in allow and t.seconds > ceilings.get(t.nodeid, float("inf"))]
+    for t, ceiling in over_ceiling:
+        if not on_pull_request or own(t):
+            failing.append(t)
+            limits[t.nodeid] = ceiling
     return {
         "ranked": ranked,
+        "limits": limits,
+        "other_over_line": other_over_line,
+        "over_ceiling": over_ceiling,
         "watch": [t for t in ranked if watch_over < t.seconds <= slow_over],
         "slow": [t for t in ranked if t.seconds > slow_over],
         "new_slow": [t for t in ranked if t.seconds > slow_over and t.nodeid not in allow],
-        "failing": [t for t in ranked if t.seconds > fail_over and t.nodeid not in allow],
+        "failing": failing,
         # Exempt from failing, not from being seen: the allowlist has no ceiling.
-        "kept_over_hard_line": [t for t in ranked if t.seconds > fail_over and t.nodeid in allow],
+        "kept_over_hard_line": [t for t in ranked if t.seconds > fail_over and t.nodeid in allow
+                                and t.nodeid not in {c.nodeid for c, _ in over_ceiling}],
         "slow_warm": [t for t in ranked if t.jax and t.uncacheable > slow_over
                       and not t.subprocess_work],
         "slow_subprocess": [t for t in ranked if t.jax and t.uncacheable > slow_over
@@ -642,10 +793,29 @@ def markdown(verdict, allow, *, title, watch_over, slow_over, fail_over, top, ca
               f"| {watch_over:g}-{slow_over:g} s: watch, optimise | {band(verdict['watch'])} |",
               f"| over {slow_over:g} s: mark slow, speed up, or keep with a reason | {band(verdict['slow'])} |",
               ""]
-    if verdict["failing"]:
-        consequence = "this warns, and the job passes (--warn-only)" if warn_only else "this fails the job"
-        lines += [f"### Over {fail_over:g} s and not on the allowlist -- {consequence}", ""]
-        lines += [f"- `{t.nodeid}` -- {_fmt(t.seconds)} {diagnose(t)}" for t in verdict["failing"]] + [""]
+    consequence = "this warns, and the job passes (--warn-only)" if warn_only else "this fails the job"
+    limits = verdict.get("limits", {})
+    unlisted_failing = [t for t in verdict["failing"] if t.nodeid not in allow]
+    if unlisted_failing:
+        lines += [f"### Over its line and not on the allowlist -- {consequence}", "",
+                  f"The line is {fail_over:g} s for a test this change owns (on a pull request: its file is in the diff, "
+                  "or its id is new on the base; on a push, every test), and the flat line otherwise.", ""]
+        lines += [f"- `{t.nodeid}` -- {_fmt(t.seconds)} (line {limits.get(t.nodeid, fail_over):g} s) {diagnose(t)}"
+                  for t in unlisted_failing] + [""]
+    if verdict.get("other_over_line"):
+        lines += [f"### Over {fail_over:g} s, not this change's, under the flat line -- warns", "",
+                  "A test this change did not touch fails only over the flat line; the weekly triage "
+                  "(`scripts/duration_triage.py`) reads these.", ""]
+        lines += [f"- `{t.nodeid}` -- {_fmt(t.seconds)} {diagnose(t)}" for t in verdict["other_over_line"]] + [""]
+    if verdict.get("over_ceiling"):
+        failing_ids = {t.nodeid for t in verdict["failing"]}
+        lines += ["### Allowlisted and over its ceiling", "",
+                  "A ceiling is the larger of 3 times the test's median and 1.2 times its 95th percentile, at least 60 s "
+                  "(`tests/duration_ceilings.json`, written by `scripts/duration_triage.py`). It fails on a push, and on a pull request when the "
+                  "change owns the test; otherwise it warns.", ""]
+        lines += [f"- `{t.nodeid}` -- {_fmt(t.seconds)} over {_fmt(c)} -- "
+                  + (consequence if t.nodeid in failing_ids else "warns") + f" {diagnose(t)}"
+                  for t, c in verdict["over_ceiling"]] + [""]
     if verdict["kept_over_hard_line"]:
         lines += [f"### Allowlisted and over {fail_over:g} s -- passes, but check the cost", "",
                   "The allowlist exempts a test at any duration. Check that this is still "
@@ -736,12 +906,13 @@ def run_pytest_again(nodeids: list[str], report: Path, cache_dir: Path, *, timeo
         return -1
 
 
-def retry_outliers(failing: list[TestTime], *, fail_over: float, run=None,
+def retry_outliers(failing: list[TestTime], *, fail_over: float, limits: dict[str, float] | None = None, run=None,
                    ) -> tuple[list[TestTime], list[tuple[TestTime, TestTime]]]:
     """Re-run each of ``failing`` once; ``(still failing, [(first run, re-run) forgiven])``.
 
     A test is forgiven only when the re-run found it, passed, and took no
-    more than ``fail_over``.  Pure but for ``run`` (default
+    more than its limit: ``limits[nodeid]`` (a listed test's ceiling, or the line that applied to it), else
+    ``fail_over``.  Pure but for ``run`` (default
     ``run_pytest_again``, looked up when called), which tests replace.
     """
     run = run or run_pytest_again
@@ -755,7 +926,8 @@ def retry_outliers(failing: list[TestTime], *, fail_over: float, run=None,
     still, forgiven = [], []
     for t in failing:
         again = second.get(t.nodeid)
-        if again is not None and again.outcome == "passed" and again.seconds <= fail_over:
+        if (again is not None and again.outcome == "passed"
+                and again.seconds <= (limits or {}).get(t.nodeid, fail_over)):
             forgiven.append((t, again))
         else:
             still.append(t)
@@ -764,14 +936,36 @@ def retry_outliers(failing: list[TestTime], *, fail_over: float, run=None,
 
 def annotations(verdict, *, slow_over, fail_over, warn_only=False):
     out = []
+    limits = verdict.get("limits", {})
+    ceilings = {t.nodeid: c for t, c in verdict.get("over_ceiling", ())}
     for t in verdict["failing"]:
         loc = f"file={t.file},line={t.line}," if t.line else f"file={t.file},"
         why = f" ({diagnose(t)})" if t.jax else ""
         level = "warning" if warn_only else "error"
-        out.append(f"::{level} {loc}title=Test over {fail_over:g} s::" + _escape(
+        if t.nodeid in ceilings:
+            out.append(f"::{level} {loc}title=Allowlisted test over its ceiling::" + _escape(
+                f"{t.nodeid} took {_fmt(t.seconds)}{why}, over its ceiling of {_fmt(ceilings[t.nodeid])} (the larger of 3 "
+                f"times its median and 1.2 times its 95th percentile, at least 60 s; tests/duration_ceilings.json). Find what slowed it; if it is "
+                f"the cost now, the weekly triage raises the ceiling."))
+            continue
+        line = limits.get(t.nodeid, fail_over)
+        out.append(f"::{level} {loc}title=Test over {line:g} s::" + _escape(
             f"{t.nodeid} took {_fmt(t.seconds)}{why}. Mark it @pytest.mark.slow, make it "
             f"faster, or add it to tests/duration_allowlist.txt with the reason it "
             f"must run on every push."))
+    failing_ids = {t.nodeid for t in verdict["failing"]}
+    for t, c in verdict.get("over_ceiling", ()):
+        if t.nodeid in failing_ids:
+            continue
+        loc = f"file={t.file},line={t.line}," if t.line else f"file={t.file},"
+        out.append(f"::warning {loc}title=Allowlisted test over its ceiling::" + _escape(
+            f"{t.nodeid} took {_fmt(t.seconds)}, over its ceiling of {_fmt(c)}. On a pull request this warns "
+            f"unless the change owns the test; a push fails."))
+    for t in verdict.get("other_over_line", ()):
+        loc = f"file={t.file},line={t.line}," if t.line else f"file={t.file},"
+        out.append(f"::warning {loc}title=Test over {fail_over:g} s, not this change's::" + _escape(
+            f"{t.nodeid} took {_fmt(t.seconds)}; this change did not touch its file or add its id, so it fails only "
+            f"over the flat line. The weekly triage decides whether it is slow."))
     for t in verdict["kept_over_hard_line"]:
         loc = f"file={t.file},line={t.line}," if t.line else f"file={t.file},"
         why = f" ({diagnose(t)})" if t.jax else ""
@@ -797,8 +991,24 @@ def main(argv=None) -> int:
     p.add_argument("--allowlist", type=Path, help="node ids exempt from the gate, with reasons")
     p.add_argument("--watch-over", type=float, default=1.0)
     p.add_argument("--slow-over", type=float, default=5.0)
-    p.add_argument("--fail-over", type=float, default=20.0,
-                   help="an unlisted test slower than this fails; 0 disables the gate")
+    p.add_argument("--fail-over", type=float, default=FAIL_OVER,
+                   help="an unlisted test slower than this fails when it is the change's own (see --own-against), "
+                        "or every one is, without it; 0 disables the gate")
+    p.add_argument("--other-fail-over", type=float, default=OTHER_FAIL_OVER,
+                   help="an unlisted test that is not the change's own fails only over this, and warns over "
+                        "--fail-over (default 90)")
+    p.add_argument("--own-against", metavar="REV", nargs="?", const="",
+                   help="on a pull request (--event pull_request), the revision the change is measured against: a "
+                        "test is the change's own when the diff from REV to HEAD touches its file, or REV collects "
+                        "no test of its node id (an empty REV is the head's first parent; a zero REV, or one the "
+                        "clone cannot get, makes every test the change's own). Without the flag, or on any other "
+                        "event, every test is the change's own")
+    p.add_argument("--ceilings", type=Path,
+                   help="the file scripts/duration_triage.py writes: a ceiling for each listed test")
+    p.add_argument("--event", default=os.environ.get("GITHUB_EVENT_NAME", ""),
+                   help="the event that started the run (default $GITHUB_EVENT_NAME): a listed test over its "
+                        "ceiling fails the job on any but pull_request, and on a pull request only when the "
+                        "change owns it")
     p.add_argument("--cache-mode", choices=CACHE_MODES,
                    help="the run's compilation cache: off, cold (started empty), warm, "
                         "or mixed (shards differed, or a shard's mode is unknown)")
@@ -834,6 +1044,7 @@ def main(argv=None) -> int:
                 "collection error (a test file failed to import)" if broken else
                 f"no test cases in {', '.join(map(str, args.reports))}")
         allow = read_allowlist(args.allowlist)
+        ceilings = read_ceilings(args.ceilings)
     except ReportError as exc:
         print(f"::error title=Test durations::{_escape(str(exc))}")
         print(f"report_test_durations: {exc}", file=sys.stderr)
@@ -856,8 +1067,17 @@ def main(argv=None) -> int:
                 "on and left it on, so these times are partly warm"))
 
     fail_over = args.fail_over or float("inf")
-    verdict = judge(tests, allow, watch_over=args.watch_over,
-                    slow_over=args.slow_over, fail_over=fail_over)
+    scope = scope_against(args.own_against) if args.own_against is not None and args.event == "pull_request" else None
+    if scope is not None and scope.changed is None:
+        print("::warning title=Test durations::" + _escape(
+            "the diff against the base could not be read, so every test counts as this change's own"))
+    try:
+        verdict = judge(tests, allow, watch_over=args.watch_over, slow_over=args.slow_over, fail_over=fail_over,
+                        other_fail_over=args.other_fail_over, scope=scope, ceilings=ceilings,
+                        on_pull_request=args.event == "pull_request")
+    finally:
+        if scope is not None:
+            scope.close()
     forgiven = []
     if args.retry_outliers and verdict["failing"]:
         if len(verdict["failing"]) > args.retry_max:
@@ -867,12 +1087,14 @@ def main(argv=None) -> int:
         else:
             print(f"re-running {len(verdict['failing'])} test(s) over {args.fail_over:g} s once, alone, "
                   "with an empty compilation cache", flush=True)
-            still, forgiven = retry_outliers(verdict["failing"], fail_over=fail_over)
+            still, forgiven = retry_outliers(verdict["failing"], fail_over=fail_over, limits=verdict["limits"])
             verdict["failing"] = still
+            verdict["over_ceiling"] = [(t, c) for t, c in verdict["over_ceiling"]
+                                       if t.nodeid not in {first.nodeid for first, _ in forgiven}]
             for first, again in forgiven:
                 print("::warning title=Outlier forgiven::" + _escape(
                     f"{first.nodeid} took {_fmt(first.seconds)} here and {_fmt(again.seconds)} on a re-run "
-                    f"alone (limit {args.fail_over:g} s): one runner's outlier, not a slow test. If it "
+                    f"alone (limit {verdict['limits'].get(first.nodeid, args.fail_over):g} s): one runner's outlier, not a slow test. If it "
                     "repeats, look at the runner and at what the test shares with its neighbours."))
     if args.no_removable:
         # An entry absent from a partial view may simply be in the part
@@ -898,7 +1120,7 @@ def main(argv=None) -> int:
           f"({len(verdict['new_slow'])} not allowlisted; "
           f"{len(verdict['slow_warm'])} slow even with a warm cache; "
           f"{len(verdict['slow_subprocess'])} with work in a subprocess, not measured here); "
-          + (f"{len(verdict['failing'])} unlisted over {args.fail_over:g} s"
+          + (f"{len(verdict['failing'])} over their line ({args.fail_over:g} s for an unlisted test of this change)"
              + (f" after a re-run ({len(forgiven)} forgiven)" if forgiven else "")
              + (f", {len(verdict['kept_over_hard_line'])} allowlisted over it."
                 if verdict["kept_over_hard_line"] else ".")

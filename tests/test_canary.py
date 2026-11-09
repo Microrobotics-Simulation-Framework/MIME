@@ -1,9 +1,10 @@
 """CI's planted failures: the controls that every lane runs its tests and can go red, and that the time budget can.
 
 The ``plant_failure`` input of a manual CI run sets ``MIME_CI_PLANT_FAILURE=1``; every lane must then fail here. The
-``plant_slow_tests`` input sets ``MIME_CI_PLANT_SLOW_TESTS=1``: the two tests below then take 21 s and 6 s, neither is
+``plant_slow_tests`` input sets ``MIME_CI_PLANT_SLOW_TESTS=1``: the two tests below then take 95 s and 6 s, neither is
 on ``tests/duration_allowlist.txt``, and every lane's ``Test durations`` step must fail the job on the first (still
-over the hard line when it is re-run alone) and warn on the second. Otherwise both return at once.
+over the flat 90 s line when it is re-run alone: the planted test is no change's own, so the 30 s line does not apply to
+it) and warn on the second. Otherwise both return at once.
 """
 
 import os
@@ -18,7 +19,7 @@ def test_the_canary_fails_when_a_failure_is_planted():
 
 def test_a_planted_test_over_the_hard_line():
     if PLANTED_SLOW:
-        time.sleep(21.0)
+        time.sleep(95.0)
 
 
 def test_a_planted_test_over_the_policy_line():

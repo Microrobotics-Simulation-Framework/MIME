@@ -94,19 +94,19 @@ def _run(gate, capsys, *argv):
 
 
 def test_an_unlisted_test_over_the_hard_line_fails_the_job(gate, tmp_path, capsys):
-    report = _report(tmp_path, _case("tests/a/test_x.py", "test_slow", 25.0),
+    report = _report(tmp_path, _case("tests/a/test_x.py", "test_slow", 35.0),
                      _case("tests/a/test_x.py", "test_fast", 0.2))
     code, out = _run(gate, capsys, report)
     assert code == 1
     assert "::error file=tests/a/test_x.py,line=11," in out
-    assert "tests/a/test_x.py::test_slow took 25.0 s" in out
+    assert "tests/a/test_x.py::test_slow took 35.0 s" in out
 
 
 def test_warn_only_reports_an_unlisted_test_over_the_hard_line_as_a_warning_and_passes(gate, tmp_path, capsys):
-    report = _report(tmp_path, _case("tests/a/test_x.py", "test_slow", 25.0), _case("tests/a/test_x.py", "test_fast", 0.2))
+    report = _report(tmp_path, _case("tests/a/test_x.py", "test_slow", 35.0), _case("tests/a/test_x.py", "test_fast", 0.2))
     code, out = _run(gate, capsys, report, "--warn-only")
     assert code == 0
-    assert "::warning file=tests/a/test_x.py,line=11,title=Test over 20 s::" in out and "::error" not in out
+    assert "::warning file=tests/a/test_x.py,line=11,title=Test over 30 s::" in out and "::error" not in out
     assert "this warns, and the job passes (--warn-only)" in Path(str(report) + ".md").read_text()
     # The control: the same report without the flag fails, and a report that cannot be read still does with it.
     assert _run(gate, capsys, report)[0] == 1
@@ -123,7 +123,7 @@ def test_the_same_test_on_the_allowlist_passes(gate, tmp_path, capsys):
     assert "title=Test over" not in out     # neither the 20 s error nor the 5 s warning
 
 
-@pytest.mark.parametrize("seconds, warned", [(6.0, False), (20.0, False), (25.0, True),
+@pytest.mark.parametrize("seconds, warned", [(6.0, False), (30.0, False), (35.0, True),
                                              (900.0, True)])
 def test_an_allowlisted_test_over_the_hard_line_passes_but_is_not_silent(
         gate, tmp_path, capsys, seconds, warned):
@@ -145,11 +145,11 @@ def test_an_allowlisted_test_over_the_hard_line_passes_but_is_not_silent(
         return
     (warning,) = warnings
     assert warning.startswith(
-        "::warning file=tests/a/test_x.py,line=11,title=Allowlisted test over 20 s::"
+        "::warning file=tests/a/test_x.py,line=11,title=Allowlisted test over 30 s::"
         f"tests/a/test_x.py::test_kept took {gate._fmt(seconds)}"), warning
     assert "the allowlist has no ceiling" in warning
-    assert "### Allowlisted and over 20 s" in md and "`tests/a/test_x.py::test_kept`" in md
-    assert out.rstrip().endswith("0 unlisted over 20 s, 1 allowlisted over it."), out
+    assert "### Allowlisted and over 30 s" in md and "`tests/a/test_x.py::test_kept`" in md
+    assert out.rstrip().endswith(", 1 allowlisted over it."), out
     # The lane summary and the slow lane pass --fail-over 0: no hard line, no warning.
     Path(str(report) + ".md").unlink()
     code, out = _run(gate, capsys, report, "--allowlist", allow, "--fail-over", "0")
@@ -164,10 +164,10 @@ def test_an_unlisted_test_over_the_policy_line_warns_without_failing(gate, tmp_p
     assert "tests/a/test_x.py::TestA::test_middling" in out
 
 
-@pytest.mark.parametrize("seconds, code, warned", [(20.4, 1, False), (5.4, 0, True), (4.9, 0, False)])
+@pytest.mark.parametrize("seconds, code, warned", [(30.4, 1, False), (5.4, 0, True), (4.9, 0, False)])
 def test_a_test_is_judged_on_its_fractional_seconds(gate, tmp_path, capsys, seconds, code, warned):
     """JUnit records milliseconds; truncated to whole seconds, an unlisted
-    20.4 s test would pass the 20 s line and a 5.4 s one would escape the
+    30.4 s test would pass the 30 s line and a 5.4 s one would escape the
     5 s warning."""
     report = _report(tmp_path, _case("tests/a/test_x.py", "test_t", seconds))
     got, out = _run(gate, capsys, report)
@@ -260,7 +260,7 @@ def test_node_ids_are_rebuilt_exactly(gate, tmp_path):
 
 def test_two_lanes_are_judged_on_each_tests_slower_time(gate, tmp_path, capsys):
     fast = _report(tmp_path, _case("tests/a/test_x.py", "test_t", 2.0), name="a.xml")
-    slow = _report(tmp_path, _case("tests/a/test_x.py", "test_t", 30.0), name="b.xml")
+    slow = _report(tmp_path, _case("tests/a/test_x.py", "test_t", 40.0), name="b.xml")
     assert _run(gate, capsys, fast, slow)[0] == 1
     assert _run(gate, capsys, slow, fast)[0] == 1
 
@@ -286,17 +286,17 @@ def test_an_allowlist_entry_exempts_exactly_its_node_id(gate, tmp_path, capsys):
     # Not a prefix: a base id does not exempt its parametrisations, and a
     # file does not exempt its tests.  One entry must not quietly cover
     # tests nobody decided to keep.
-    report = _report(tmp_path, _case("tests/a/test_x.py", "test_p[a]", 30.0),
-                     _case("tests/a/test_x.py", "test_q", 30.0),
-                     _case("tests/a/test_x.py", "test_kept[b]", 30.0))
+    report = _report(tmp_path, _case("tests/a/test_x.py", "test_p[a]", 40.0),
+                     _case("tests/a/test_x.py", "test_q", 40.0),
+                     _case("tests/a/test_x.py", "test_kept[b]", 40.0))
     allow = tmp_path / "allow.txt"
     allow.write_text("tests/a/test_x.py::test_p # kept: only the base id is listed\n"
                      "tests/a/test_x.py # kept: only the file is listed\n"
                      "tests/a/test_x.py::test_kept[b] # kept: the exact id\n")
     code, out = _run(gate, capsys, report, "--allowlist", allow)
     assert code == 1
-    assert "tests/a/test_x.py::test_p[a] took 30.0 s" in out
-    assert "tests/a/test_x.py::test_q took 30.0 s" in out
+    assert "tests/a/test_x.py::test_p[a] took 40.0 s" in out
+    assert "tests/a/test_x.py::test_q took 40.0 s" in out
     errors = [ln for ln in out.splitlines() if ln.startswith("::error")]
     assert not any("test_kept[b]" in ln for ln in errors), errors
 
@@ -579,14 +579,14 @@ def _again(gate, outcome="passed", seconds=1.2, ran=None):
 
 
 @pytest.mark.parametrize("again_seconds, outcome, forgiven", [
-    (1.2, "passed", True),           # the outlier of 2026-10-13: 23.9 s once, 1.1-1.6 s everywhere else
-    (20.0, "passed", True),          # exactly on the line is not over it
-    (20.1, "passed", False),         # over twice
+    (1.2, "passed", True),           # the outlier of 2026-10-13: 33.9 s once, 1.1-1.6 s everywhere else
+    (30.0, "passed", True),          # exactly on the line is not over it
+    (30.1, "passed", False),         # over twice
     (1.2, "failed", False),          # a re-run that fails is not a pass
 ])
 def test_a_test_over_the_hard_line_once_is_run_again_and_fails_only_if_it_is_over_twice(
         gate, tmp_path, capsys, monkeypatch, again_seconds, outcome, forgiven):
-    report = _report(tmp_path, _case("tests/a/test_x.py", "test_outlier", 23.9),
+    report = _report(tmp_path, _case("tests/a/test_x.py", "test_outlier", 33.9),
                      _case("tests/a/test_x.py", "test_fast", 0.2))
     ran = []
     monkeypatch.setattr(gate, "run_pytest_again", _again(gate, outcome, again_seconds, ran))
@@ -594,7 +594,7 @@ def test_a_test_over_the_hard_line_once_is_run_again_and_fails_only_if_it_is_ove
     assert ran == [["tests/a/test_x.py::test_outlier"]], ran    # only the test over the line, once
     if forgiven:
         assert code == 0 and "::error" not in out
-        assert ("::warning title=Outlier forgiven::tests/a/test_x.py::test_outlier took 23.9 s here "
+        assert ("::warning title=Outlier forgiven::tests/a/test_x.py::test_outlier took 33.9 s here "
                 f"and {gate._fmt(again_seconds)} on a re-run alone") in out, out
         assert "after a re-run (1 forgiven)" in out
     else:
@@ -604,7 +604,7 @@ def test_a_test_over_the_hard_line_once_is_run_again_and_fails_only_if_it_is_ove
 
 def test_a_test_whose_rerun_found_nothing_still_fails(gate, tmp_path, capsys, monkeypatch):
     # pytest could not start, or the test no longer exists under its id: no report, no pardon.
-    report = _report(tmp_path, _case("tests/a/test_x.py", "test_outlier", 23.9))
+    report = _report(tmp_path, _case("tests/a/test_x.py", "test_outlier", 33.9))
     monkeypatch.setattr(gate, "run_pytest_again", lambda nodeids, report, cache_dir, **_: 4)
     code, out = _run(gate, capsys, report, "--retry-outliers")
     assert code == 1 and "::error" in out
@@ -615,7 +615,7 @@ def test_a_test_whose_rerun_found_nothing_still_fails(gate, tmp_path, capsys, mo
 
 
 def test_without_the_flag_nothing_is_run_again(gate, tmp_path, capsys, monkeypatch):
-    report = _report(tmp_path, _case("tests/a/test_x.py", "test_outlier", 23.9))
+    report = _report(tmp_path, _case("tests/a/test_x.py", "test_outlier", 33.9))
     monkeypatch.setattr(gate, "run_pytest_again", lambda *a, **k: pytest.fail("a re-run nobody asked for"))
     code, out = _run(gate, capsys, report)
     assert code == 1
@@ -633,13 +633,13 @@ def test_a_listed_test_and_a_fast_one_are_not_run_again(gate, tmp_path, capsys, 
 
 def test_more_tests_over_the_line_than_the_retry_limit_are_a_regression_not_an_outlier(
         gate, tmp_path, capsys, monkeypatch):
-    report = _report(tmp_path, *(_case("tests/a/test_x.py", f"test_{i}", 30.0) for i in range(6)))
+    report = _report(tmp_path, *(_case("tests/a/test_x.py", f"test_{i}", 40.0) for i in range(6)))
     monkeypatch.setattr(gate, "run_pytest_again", lambda *a, **k: pytest.fail("six are not outliers"))
     code, out = _run(gate, capsys, report, "--retry-outliers")
     assert code == 1
-    assert "6 tests are over 20 s, more than --retry-max 5: not outliers, none is re-run" in out
+    assert "6 tests are over 30 s, more than --retry-max 5: not outliers, none is re-run" in out
     # ... and five are.
-    report = _report(tmp_path, *(_case("tests/a/test_x.py", f"test_{i}", 30.0) for i in range(5)),
+    report = _report(tmp_path, *(_case("tests/a/test_x.py", f"test_{i}", 40.0) for i in range(5)),
                      name="five.xml")
     ran = []
     monkeypatch.setattr(gate, "run_pytest_again", _again(gate, ran=ran))
