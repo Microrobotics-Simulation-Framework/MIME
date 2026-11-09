@@ -17,10 +17,11 @@ its chunk and is refused (``ImplicitFlowNode.held_past_the_line`` and ``stop_pro
 fast solve, which cannot stop short); ``bypass_flagged`` and, under the Stokes approximation, ``reynolds_flagged`` as
 the implicit node's.
 
-**The ledger: route 1.** The step books the drive's work, the viscosity's and the wall's dissipations under their laws'
-names and the scheme's terms (``TimeScheme.ledger_terms``: the convective power), each by RK3's own quadrature; the split
-penalty has no formula term, so the identity is not claimed and each step is judged to have dissipated
-(``mime.core.ledger.route_one_recorded``)."""
+**The ledger: route 1.** The step books the drive's work under the law that delivered the waveform it read (one law
+delivers a waveform), the viscosity's and the wall's dissipations under their laws' names (the implicit node's
+:meth:`~ImplicitFlowNode.hosted_laws`) and the scheme's terms (``TimeScheme.ledger_terms``: the convective power), each
+by RK3's own quadrature; the split penalty has no formula term, so the identity is not claimed and each step is judged
+to have dissipated (``mime.core.ledger.route_one_recorded``)."""
 
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ from mime.core import ledger as books
 from mime.nodes.flow.fvm import _rk3
 from mime.nodes.flow.fvm._band import WallFields, band_named, interior_depth, negative_resistivity
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode
+from mime.nodes.flow.fvm._node import BYPASS_LINE, STOKES_REYNOLDS, ImplicitFlowNode, check_deliveries
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StepContext, TimeScheme, scheme_named
 from mime.registry import Problem
 
@@ -152,7 +153,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
     def __init__(self, name: str, timestep: float, *, cells_x: int, cells_y: int, cells_z: int, spacing: float,
                  viscosity: float, density: float, tube_centre: Sequence[float], tube_axis: Sequence[float],
                  tube_radius: float, scheme: str = "rk3", convection: bool = True, band: str = "smooth_2h_0.3h",
-                 interior: str = "0.1h", periodic_images: str = "own",
+                 interior: str = "0.1h", periodic_images: str = "own", wall_name: str = "",
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
                  ledger: Sequence[str] = ()) -> None:
         chosen = scheme_named(scheme)
@@ -175,6 +176,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
                           tube_axis=tuple(float(c) for c in tube_axis), tube_radius=float(tube_radius),
                           scheme=str(scheme), convection=bool(convection), band=str(band), interior=str(interior),
                           periodic_images=str(periodic_images), **initial,
+                          **({"wall_name": str(wall_name)} if wall_name else {}),
                           **({"ledger": tuple(ledger)} if ledger else {}))
 
     @override
@@ -223,7 +225,7 @@ class ExplicitFlowNode(ImplicitFlowNode):
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
         if self.metered:
-            ended = books.metered_route_one_step(self, self.boundary_input_spec(), p, state, boundary_inputs, dt,
+            ended = books.metered_route_one_step(self, self.own_inputs(), p, state, boundary_inputs, dt,
                                                  self.explicit_stepped)
         else:
             ended = self.explicit_stepped(p, state, boundary_inputs, dt)[0]
@@ -263,26 +265,39 @@ class ExplicitFlowNode(ImplicitFlowNode):
     def identity_terms(self, p: Mapping[str, Any], held: Sequence[books.LedgerDelivery], state: Mapping[str, Array],
                        boundary_inputs: Mapping[str, Array], ended: Mapping[str, Array], parts: Any,
                        dt: float) -> books.StepAccount:
-        """The step's account on route 1: the hosted laws' work under their names (the drive's ``+W``, the viscosity's
-        and the wall's ``-D``, each by RK3's quadrature), the scheme's terms (``ledger_terms``: the convective power,
-        ``N_conv = -C``), the storage at both ends. The residual, the split penalty's numerical dissipation, is not
-        claimed to vanish."""
+        """The step's account on route 1: the drive's ``+W`` under the law that delivered what the scheme read, the
+        hosted laws' work under their names (the viscosity's and the wall's ``-D``), each by RK3's quadrature, the
+        scheme's terms (``ledger_terms``: the convective power, ``N_conv = -C``), the storage at both ends. The
+        residual, the split penalty's numerical dissipation, is not claimed to vanish. The quadrature records the
+        drive's work summed, so one law delivers what the scheme reads (a waveform is not summed); fed into the plain
+        input as well, the work is unattributed."""
         stage = parts.stage
         rho = as_run_array(p["density"])
         dtype = jnp.asarray(stage.drive).dtype
-        work_of = {"body_force": rho * stage.drive, "viscous": -rho * stage.viscous, "penalty": -rho * stage.penalty}
-        numerical = {"convection": -rho * stage.convection}
+        check_deliveries(held)
         rows = books.laws(held)
+        read = self.drive_read()
+        driving = [d for d in held if d.kind == books.LOAD and d.field == read]
+        if len(driving) > 1:
+            raise ValueError(f"{len(driving)} laws deliver the flow's {read}; the explicit stage records the drive's work "
+                             f"summed, so one law delivers it")
+        work_of = {"viscous": -rho * stage.viscous, "penalty": -rho * stage.penalty}
+        numerical = {"convection": -rho * stage.convection}
         work = jnp.zeros(len(rows), dtype=dtype)
         hosted = jnp.zeros((len(rows), 2), dtype=dtype)
+        drive = rho * stage.drive
+        unattributed = jnp.zeros((), dtype=dtype)
+        if driving and read not in boundary_inputs:
+            work = work.at[rows.index(driving[0].law)].add(drive)
+        else:
+            unattributed = unattributed + drive
         named: set[str] = set()
         for delivery in held:
-            if delivery.kind != books.HOSTED or delivery.field not in work_of:
-                raise ValueError(f"the flow node hosts {list(work_of)}: it takes no delivery {delivery}")
-            work = work.at[rows.index(delivery.law)].add(work_of[delivery.field])
-            named.add(delivery.field)
-        unattributed = cast(Array, sum((value for field, value in work_of.items() if field not in named),
-                                       start=jnp.zeros((), dtype=dtype)))
+            if delivery.kind == books.HOSTED:
+                work = work.at[rows.index(delivery.law)].add(work_of[delivery.field])
+                named.add(delivery.field)
+        unattributed = cast(Array, unattributed + sum((value for field, value in work_of.items() if field not in named),
+                                                      start=jnp.zeros((), dtype=dtype)))
         terms = jnp.stack([numerical[name] for name in self.scheme.ledger_terms])
         return books.StepAccount(work=work, hosted=hosted, unattributed=unattributed, terms=terms,
                                  storage_start=self.storage(p, state), storage_end=self.storage(p, ended),

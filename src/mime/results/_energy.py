@@ -161,7 +161,7 @@ class EnergyAccount:
     #: Each coupling group by its members (``a+b``): MADDENING's verdict at the run's last step, and the group's
     #: residual, its members' jumps between steps summed.
     groups: Mapping[str, str] = field(default_factory=dict[str, str])
-    #: Each node the build left unmetered though it receives deliveries (a flow the build does not yet meter), with
+    #: Each node the build left unmetered though it receives deliveries (a lab's dynamics naming no port kind), with
     #: its reason: what the account leaves out.
     unmetered: Mapping[str, str] = field(default_factory=dict[str, str])
 

@@ -38,7 +38,7 @@ from mime.units import Magnitude
 from mime.scene import PeriodicBox
 from mime.things import ThingKind
 from mime.units import Length, Quantity
-from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM
+from mime.vocabulary import FLOW_BODY_FORCE, FLOW_WAVEFORM, FLUID
 
 if TYPE_CHECKING:
     from mime.build import DynamicsBuilder, ResolvedRegistration
@@ -183,6 +183,7 @@ class FVM(Dynamics):
     references = ("HarlowWelch1965", "Angot1999", "Womersley1955")
     builds = {"": (ImplicitFlowNode, ExplicitFlowNode)}
     applies_to = frozenset({ThingKind.MEDIUM})
+    port = FLUID.name
     accepts = {FLOW_BODY_FORCE.name: Port("body_force"), FLOW_WAVEFORM.name: Port("waveform")}
     raises = (
         Flag("solve_flagged", "the step's solve stopped other than converging: at its iteration cap, stagnated (its "
@@ -233,13 +234,9 @@ class FVM(Dynamics):
         f"available memory and the limit of the control group the process runs in, where one is set",
         f"geometry: {GEOMETRY}",
         f"the stall detector |N_Krylov| / D_visc, flagged above {STALL_LINE:g} (stall_flagged), is written with the "
-        f"energy ledger attached; the build does not yet meter the flow, so a run through the build has no stall "
-        f"report",
+        f"energy ledger attached (exp.observe(EnergyLedger())); a run without it has no stall report",
     )
     values = {"viscosity": "viscosity", "density": "density"}
-    unmetered = ("its step identity is written and gated on its node (every term by formula, the solve's residual "
-                 "included), but the build does not yet name its hosted laws (the viscosity, the wall's penalty, the "
-                 "drive) for the ledger, so it leaves the flow unmetered")
     setting_roles = {
         "domain": PHYSICAL,
         "spacing": convention(NUMERICAL, "none given: the lumen's diameter over cells_across, the band's sweet-spot "
@@ -443,19 +440,22 @@ class FVM(Dynamics):
         scheme = chosen_scheme(self.scheme, viscosity / density, layout.spacing, ctx.timestep)
         band, interior = DEFAULT_BAND, _INTERIOR_NAMES[self.wall.delta_in]
         images = "own" if lattice == (0, 1) else "transverse"
+        # The wall's band is booked under the wall's own region: the medium fills a tube's lumen, its solid that tube's
+        # wall (B9: a region's loss under its own name).
+        wall = f"{region.path.rpartition('.')[0]}.wall"
         if scheme_named(scheme).stage_kind is StageKind.EXPLICIT_PROJECTED:
             b.add_node(ExplicitFlowNode(
                 ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1],
                 cells_z=layout.cells[2], spacing=layout.spacing, viscosity=viscosity, density=density,
                 tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
-                convection=not self.stokes, band=band, interior=interior, periodic_images=images))
+                convection=not self.stokes, band=band, interior=interior, periodic_images=images, wall_name=wall))
             return
         b.add_node(ImplicitFlowNode(
             ctx.node_name(), ctx.timestep, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
             spacing=layout.spacing, viscosity=viscosity, density=density,
             tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius, scheme=scheme,
             convection=not self.stokes, tolerance=self.tolerance, preconditioner=self.preconditioner, band=band,
-            interior=interior, periodic_images=images, report_rows=self.report_rows))
+            interior=interior, periodic_images=images, report_rows=self.report_rows, wall_name=wall))
 
 
 def memory_estimate(scheme: str, cells: int) -> float:

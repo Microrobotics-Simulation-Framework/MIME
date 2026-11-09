@@ -1,0 +1,21 @@
+{
+ "written": "2026-11-09 ~20:40 CET, in the commit that holds it, before the gates below ran (F2b PR 1, the flow's ledger wiring)",
+ "seen_before": [
+  "the merged graph rule on the periodic FVM with BodyForce and EnergyLedger: 'outside: nothing', the drive 'declares no energy class and reads nothing from outside: not metered' (probe, before any change)",
+  "the fluid port kind's step-identity case (mime.testing.step_identity on FVM): PASS 200 of 200 draws in float64 (12.7 s) and in float32 (11.5 s), on the first implementation",
+  "a smoke run of the periodic tube (IMEX Euler, convection on, steady drive 0.5 m/s^2, 20 steps at 0.5 ms) metered through the build: the identity's worst step 0.20 of its floor (float64) and 0.07 (float32), unattributed 0, balance -1.1e-27 J against 4.1e-25 J (float64) and 2.6e-19 J against 2.2e-16 J (float32), supplied under body_force:water, lost under water.flow.viscosity and tube.wall"
+ ],
+ "gates": {
+  "womersley_imex_closes": "the driven Womersley flow (steady 0.1 and harmonic 0.4 m/s^2 at 4 Hz, alpha about 2.5, 1 mm tube, D/h 8, one period of 500 steps), IMEX Euler, both dtypes: no finding; the identity's worst step under 0.5 of its floor; unattributed exactly 0; the balance within its rounding; no gift step; lost under exactly water.flow.viscosity and tube.wall, each above zero; supplied and paired supply under exactly body_force:water",
+  "womersley_rk3_route_one": "the same flow on RK3, both dtypes: no step gave energy (route_one_negative_steps 0), no finding, unattributed 0, the drive's paired work under body_force:water and above zero over the period",
+  "per_law_pairing": "two laws driving the flow (different sizes and directions), 3 seeds, both dtypes: each law's row equals dt g . P' formed apart in float64 within 16 eps of the products' magnitude; the two rows sum to the hosted drive's dt rho <g (1 - chi), u'> within the same; the identity within its floor; unattributed 0",
+  "control_drive_reading_fluid": "the Womersley build's plans and edges with one planted state read (water.flow.lumen_flux into the drive's node): the drive is not outside and supplies nothing; without it, outside and self-supplied: deterministic, fails every run",
+  "control_class_less_reading_body": "a class-less law (gravity's weight, its class taken out) on a body whose centre of buoyancy is off its centre of mass reads the body's pose: not outside, supplied by nothing, its 'not metered' line; the same law with the centre of buoyancy at the centre of mass: outside, self-supplied: deterministic",
+  "control_gravity_stays_potential": "gravity with no couple reads nothing and stays potential, supplied by nothing, 'outside: nothing'; with the rule's class restriction planted out, gravity is counted outside and self-supplied: deterministic, the plant seen every run",
+  "source_without_reason": "a class-less source stating no reason: exploratory logs it (outside, self-supplied), research refuses it with ledger.unmetered only",
+  "n_proj_zero": "dt rho <p', D u'> at tolerances 1e-6 and 1e-10, 3 seeds each, float64: within 16 eps of the step's scale on every draw (predicted at or under 1 eps); its plant (a gradient field of 1e-9 of the solution's size added unprojected) above the floor on every draw (predicted 1e3 or more floors)",
+  "fluid_case_controls": "the plain input's work misbooked under the law: the case fails on its first draw; over 200 draws, 200 of 200 fail; the solution scaled by 1 + 1e-9 unbooked: fails on its first draw, 200 of 200 over 200 draws (float64)",
+  "order_tests": "written after the order probe (probe/orders.py, exploration only) and before the order tests ran: see order_tests_predictions, added in the commit before those tests",
+  "released_programs": "every released program's every recorded array bit-identical to release/v0.3.0's tip (beeae2e) in both dtypes, pinned to cores 8-15: script_a, script_a_metered, hull_contact, coupled_toy, dynamic_rpm, kinematic_rpm, periodic_tube_flow, steady_tube_flow, rk3_tube_flow, prescribed_tube_flow, nudged_toy (the FVM nodes gain only a string constant; the source rule changes only class-less laws, of which the metered script A has none)"
+ }
+}

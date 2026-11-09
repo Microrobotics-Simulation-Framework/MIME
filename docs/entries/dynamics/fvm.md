@@ -49,9 +49,15 @@ grows with the threads a run uses, and a GPU's bytes a cell are not measured. Th
 (`field.flow.velocity`, its solved-field declarations' `provides`); a drag, which assumes its medium at rest, is refused
 wherever the region its medium fills carries a field.
 
-The build does not yet meter the flow for the energy ledger (its step identity is written and gated on its node, but
-its hosted laws are not named for the ledger). With `EnergyLedger()` attached the run's account names the flow as not
-metered, with that reason (`result.energy.unmetered`, `result.energy.text()`, `result.text()`).
+With `EnergyLedger()` attached the build meters the flow as a receiver of the `fluid` port kind: its fluid's momentum
+(`flow.momentum`, the integral of the density times the velocity over the fluid, none over the solid) against the body
+force each law driving it delivers. The kinetic energy is what the flow stores; each law's drive is booked as the work
+it did on the fluid, a `BodyForce` supplying its own (it reads nothing of the components, so it is outside); the
+viscous loss is booked under the flow's viscosity (`water.flow.viscosity`) and the wall's band under the wall
+(`tube.wall`); the scheme's own terms (backward Euler's, convection at mixed time levels and the solve's residual) are
+numerical, never a loss. IMEX Euler and its steady limit close the step's identity to rounding at every step; RK3's
+split penalty has no formula term, so each RK3 step is judged to have dissipated instead. The stall detector is written
+with the ledger.
 
 The flow is driven by laws bound to the medium: on a periodic box, a `BodyForce` on the fluid, which stands in for the
 pressure drop a period of the vessel would carry. The fluid's viscosity and density are the medium's values, from its

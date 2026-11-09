@@ -10,7 +10,12 @@ With the ledger attached:
   reading it deliver their reactions into a segment of it (a magnet on a dynamic arm, whose field's change the arm's
   paired reaction pays, is not outside; a magnet on a kinematic one is), so that an apparatus holding a dynamic and a
   kinematic segment is outside in its kinematic part alone. A drive and a controller receive nothing, and are outside;
-  a command they write into a metered receiver is supplied work, named by its writer. Nothing is declared;
+  a command they write into a metered receiver is supplied work, named by its writer. **A law is a source outside the
+  components where it declares no class and its own nodes read no component's state** (a body force driving a medium's
+  flow, whose node computes its waveform from its own parameters): what it delivers is supplied work, named by the law.
+  The rule is for laws that declare no class, and only those: a class says how a law's work is booked, so a law that
+  declares one keeps it whatever its node reads (gravity without a couple reads nothing, and is a potential, its
+  energy's change the components'). Nothing is declared;
 - **each law delivers into its own input on its receiver.** A receiver is a dynamics' node that writes its step
   identity (``MimeNode.LEDGER_TERMS``) and names its port kind (``Dynamics.port``). Every delivery edge into it is moved
   from the input it sums into (``applied_wrench``) to the law's own (``mime.core.ledger.law_input``), the summed input
@@ -26,9 +31,9 @@ With the ledger attached:
 - **the boundary is reported**, the build report's ``energy`` lines: each metered receiver and each law's class (or
   its reason for being unmetered), what each supplied law reads from outside, what is outside, and each receiver the
   ledger cannot meter;
-- **an entry that declares nothing** (a law with no class that reads nothing from outside, a dynamics receiving
-  deliveries with no port kind) and states no reason (``unmetered``) is logged under exploratory and refused under
-  research (``ledger.unmetered``); strict, a1's, refuses every unmetered entry, reason or not: :func:`refuses_unmetered`
+- **an entry that declares nothing** (a law with no class that reads nothing from outside, a source among them, whose
+  work is booked as supplied all the same; a dynamics receiving deliveries with no port kind) and states no reason
+  (``unmetered``) is logged under exploratory and refused under research (``ledger.unmetered``); strict, a1's, refuses every unmetered entry, reason or not: :func:`refuses_unmetered`
   is where it does."""
 
 from __future__ import annotations
@@ -130,7 +135,8 @@ def boundary(plans: PlanSet, edges: Sequence[EdgeDecl]) -> tuple[tuple[str, ...]
     """What is outside, by unit (:func:`_unit`), and each law that reads it with the units it reads. A unit is outside
     when none of its nodes receives a delivery or a reaction from the components; a field an apparatus carries, when
     no law reading it delivers into a segment of that apparatus (the reaction its field's change is paid by); a drive
-    and a controller always."""
+    and a controller always; and a law that declares no class whose own nodes read no component's state
+    (:func:`_sources`), which supplies its own deliveries."""
     owners = _owners(plans)
     chained = _chained(plans)
     units = {name: unit for name, plan in owners.items() for unit in (_unit(plans, plan),) if unit is not None}
@@ -153,16 +159,36 @@ def boundary(plans: PlanSet, edges: Sequence[EdgeDecl]) -> tuple[tuple[str, ...]
             receiving.discard(plan.owner)
     writers = {unit for plan in plans.entries if plan.section in _WRITERS
                for unit in (_unit(plans, plan),) if unit is not None}
-    outside = tuple(sorted((producing - receiving) | (writers & producing)))
-    supplied_by: dict[str, tuple[str, ...]] = {}
+    found = (producing - receiving) | (writers & producing)
+    sources = _sources(plans, edges, units, found)
+    outside = tuple(sorted(found | sources))
+    supplied_by: dict[str, tuple[str, ...]] = {law: (law,) for law in sorted(sources)}
     for plan in plans.entries:
-        if plan.section is not Section.INTERACTION:
+        if plan.section is not Section.INTERACTION or plan.owner in sources:
             continue
         read = {units[e.source[0]] for e in edges if e.by == plan.owner and e.carries in (STATE, FIELD)
                 and e.source[0] in units and units[e.source[0]] in outside}
         if read:
             supplied_by[plan.owner] = tuple(sorted(read))
     return outside, supplied_by
+
+
+def _sources(plans: PlanSet, edges: Sequence[EdgeDecl], units: Mapping[str, str], outside: set[str]) -> set[str]:
+    """The laws that are sources outside the components: each declares no class, has nodes of its own, and none of
+    them reads a state or a field from anything but itself and the units outside. **Only a law that declares no class**:
+    a class says how a law's work is booked (a potential's as its energy's change, which is the components'), so gravity
+    without a couple, whose node reads nothing, stays a potential. A read from a node that is no unit (another law's) is
+    a component's."""
+    found: set[str] = set()
+    for plan in plans.entries:
+        law = plan.entry
+        if plan.section is not Section.INTERACTION or not isinstance(law, Interaction) or law.energy_class is not None:
+            continue
+        mine = set(plan.node_names())
+        if mine and all(units.get(e.source[0]) in outside for e in edges
+                        if e.target[0] in mine and e.carries in (STATE, FIELD) and e.source[0] not in mine):
+            found.add(plan.owner)
+    return found
 
 
 def _law_of(edge: EdgeDecl, laws: Mapping[str, EntryPlan], owners: Mapping[str, EntryPlan]) -> str:
@@ -231,10 +257,16 @@ def attach(plans: PlanSet, built: dict[str, SimulationNode],
             lines += _receiver_lines(name, dynamics, held, laws)
     for by, plan in laws.items():
         law = plan.entry
-        if not isinstance(law, Interaction) or law.energy_class is not None or by in supplied_by:
+        if not isinstance(law, Interaction) or law.energy_class is not None:
             continue
         reason = _unmetered_reason(law)
-        lines.append(f"{by}: declares no energy class and reads nothing from outside: not metered: {reason}" if reason
+        source = supplied_by.get(by) == (by,)
+        if by in supplied_by and (reason or not source):
+            continue
+        # A source that states no reason for declaring no class is still a declaration missing: logged, or refused.
+        lines.append(f"{by}: declares no energy class and states no reason; its own nodes read nothing of the "
+                     f"components, so it is outside and supplies its own work" if source else
+                     f"{by}: declares no energy class and reads nothing from outside: not metered: {reason}" if reason
                      else f"{by}: declares no energy class, reads nothing from outside and states no reason")
         if refuses_unmetered(profile, reason):
             refusals.append(_unmetered_refusal(by, f"{by} ({type(law).label()})",
@@ -324,7 +356,7 @@ def _receiver_lines(name: str, dynamics: Dynamics, held: Sequence[ledger.LedgerD
             notes.append("its cross loads judged in its cluster's sum by its node, the grand resistance's quadratic "
                          "form at the step's starting twists, not on this row (one body drags another)")
         entry = laws[law].entry if law in laws else None
-        if first.energy_class == ledger.UNMETERED and _unmetered_reason(entry):
+        if first.energy_class == ledger.UNMETERED and _unmetered_reason(entry) and first.supplied_by != law:
             notes.append(f"unmetered: {_unmetered_reason(entry)}")
         lines.append(f"  {law}: {first.energy_class} ({how})" + "".join(f"; {note}" for note in notes))
     return lines

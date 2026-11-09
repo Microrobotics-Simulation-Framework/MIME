@@ -9,16 +9,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from fvm_cases import Waveform, eps, in_dtype, step_of
+from fvm_cases import METERED, Waveform, eps, in_dtype, step_of
 
 from mime.core import ledger as books
 from mime.nodes.flow.fvm import RK3, ExplicitFlowNode, _rk3, cfl_check, periodic_tube_layout
-
-HOSTED = (
-    books.LedgerDelivery("body_force", "drive:water.body_force", books.UNMETERED, books.HOSTED).encoded(),
-    books.LedgerDelivery("viscous", "viscosity:water", books.DISSIPATIVE, books.HOSTED).encoded(),
-    books.LedgerDelivery("penalty", "wall:vessel", books.DISSIPATIVE, books.HOSTED).encoded(),
-)
 
 
 def rk3_node(dh: int = 8, *, nu: float = 1.0, dt: float | None = None, length_cells: int = 4,
@@ -47,7 +41,7 @@ def _stirred(node, amplitude, seed):
 def _metered(dtype, seed):
     with in_dtype(dtype):
         start = _stirred(rk3_node(), 0.5, seed)
-        node = rk3_node(ledger=HOSTED, **start)
+        node = rk3_node(ledger=METERED, **start)
         return run(node, 20)
 
 

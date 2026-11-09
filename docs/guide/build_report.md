@@ -178,8 +178,9 @@ graph: each body it meters, with each law acting on it and that law's class (`di
 with the law's reason), what each law that reads something outside is supplied by, each thing that receives loads and
 cannot be metered with its reason, and what is outside (a thing that receives no load from the components: a field
 turning on its own, a drive, the controller, a prescribed motion; on an apparatus with a chain, each segment and each
-field it carries apart, so a kinematic arm carrying a dynamic motor is outside and the motor inside). Empty without
-the ledger.
+field it carries apart, so a kinematic arm carrying a dynamic motor is outside and the motor inside; a law that
+declares no class and whose own node reads nothing of the components, such as a body force driving a medium's flow,
+which supplies its own work). Empty without the ledger.
 
 A law that couples two receivers is checked in every profile: one whose receivers step at different rates is refused
 (`law.rate-divided`), and a damper between two receivers that no one step holds and no coupling group solves together
@@ -190,5 +191,5 @@ A run's result gives the account itself, `result.energy` ([the results note](../
 ## `unmetered`
 
 With the energy ledger, each node that receives loads and that the build leaves unmetered, by name, with its reason (a
-medium's flow, whose hosted laws the build does not yet name for the ledger). A run's account names each as left out of
+lab's dynamics that names no port kind). A run's account names each as left out of
 it (`result.energy.unmetered`), as does `result.text()`. Empty without the ledger, and where every receiver is metered.
