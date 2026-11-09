@@ -1,0 +1,54 @@
+{
+ "written": "2026-11-09 ~16:20 CET, in the commit that holds it, before any gate of the residual replacement ran (the controls' rates, the derivative solves, the stenosis at D/h 64, the stall gate's tests, the floors' tests and the released programs' bits)",
+ "rule": "every 100 iterations, at a check, the true residual replaces the recursive one and the recurrence carries on from it (z made from it, the direction rebuilt from the previous one at the new <r, z>'s ratio to the last: van der Vorst and Ye's replacement, not a restart); where the recursive residual falls under the tolerance before the true one the CG restarts from the true residual, as before",
+ "seen_before": [
+  "the arms probe, through the shipped projected_solve and stop (float32 1e-5 or its floor, float64 1e-8), the interior spike's cases (D = 1, nu = 1, g = 1), rules: none, every 100 with the direction kept (keep), every 100 restarted (restart, F1a-2's probe form), and a gap trigger (replace with the direction kept where the recursive residual is under half the true one at a check):",
+  "float32, the stenosis at D/h 16, 0.01h, steady: none stagnated at 640 (1.0e-4); keep converged at 288; restart at 477; gap never fired (stagnated as none)",
+  "float32, the same, IMEX Euler (dt 0.01) steps 1 to 3: none 580 stagnated (6.8e-5), 209, 189; keep 276, 213, 194, all converged; restart 251, 240, 216; gap 620 stagnated, 209, 680 stagnated",
+  "float32, the stenosis at D/h 32, 0.01h, steady: none stagnated at 1300 (5.7e-4); keep stagnated at 1320 (4.1e-4); restart stagnated at 2100 (2.2e-4); gap as none",
+  "float32, the stenosis at D/h 32, 0.01h, IMEX Euler steps 1 and 2: none stagnated at 1200 (1.5e-4) and 1160 (2.4e-4); keep stagnated at 1240 (1.4e-4) and 1200 (1.3e-4); restart stagnated at 1800 (3.3e-5), then converged at 1382; gap stagnated both",
+  "float32, the stenosis at D/h 16, 0.1h, and at D/h 32, 0.1h (now at its floor, 1.8e-5, since #220), and the open tube at D/h 64, 0.01h (its floor, 1.9e-4 at 69 iterations): every rule identical to none (each ends within 100 iterations)",
+  "float64 iterations, none against keep against restart: the D/h 16 0.01h stenosis steady 302 / 308 / 573, its IMEX steps 243 / 248 / 338, 241 / 250 / 335, 231 / 236 / 325; the D/h 32 0.01h stenosis steady 820 / 838 / 2607, its IMEX steps 655 / 666 / 1237, 643 / 656 / 1160; fluxes against float64 to 1e-12: keep within 5.8e-13, restart within 4.9e-10",
+  "float32 fluxes against float64 to 1e-12: keep within 5.2e-8 on every converged case above",
+  "the stall the case plants, 4 draws (the stenosis at D/h 8, 0.01h, narrowing 0.43 to 0.58, centre offsets and drive tilts drawn): none stagnated at 380 on 4 of 4 (2.6e-5 to 4.6e-5), keep converged on 4 of 4 at 141 to 166"
+ ],
+ "choice": "keep: in float64 it costs 1.7 to 2.2 % more iterations where restart costs 1.4 to 3.2 times as many; in float32 it breaks every D/h 16 stall the restart breaks, faster on the steady one (288 against 477); at D/h 32 with the 0.01h interior neither breaks the steady stall, and restart alone converges one IMEX step of two (and comes closer on the other), a measured alternative for that case not adopted for its float64 cost; the gap trigger never fired on the steady stall (its recursive residual sits at about half the true one, the trigger's own line) and stalled two IMEX steps that converge without it, so it is not measured better",
+ "gates": [
+  {
+   "gate": "the stall the case plants (test_control_a_float32_stall_the_rule_breaks_on_every_draw), rates over 200 draws by probe and 20 Hypothesis draws in the test",
+   "prediction": "without the rule stagnated above max(1e-5, its floor) on 200 of 200; with it converged, unflagged, on 200 of 200, under 300 iterations, its error against float64 at most the stalled one's or 1e-4"
+  },
+  {
+   "gate": "the wrong replacement, the residual's sign flipped (test_control_a_wrong_replacement_moves_the_answer_and_is_flagged_on_every_draw), both dtypes, 200 draws by probe",
+   "prediction": "flagged (stagnated or at its cap) on 200 of 200 in each dtype, its answer more than 10 times the tolerance from the right one on 200 of 200"
+  },
+  {
+   "gate": "the derivative solves (test_the_derivative_solves_converge_with_the_primal_through_the_report_block): the D/h 16 0.01h stenosis, the axial flux's derivative in the narrowing, forward and reverse",
+   "prediction": "float32 with the rule: the primal, tangent and transpose reports unflagged; both derivatives within 1e-4 of float64's (the line, declared now); float64: unflagged, the rule moving neither derivative by more than 1e-8 relative; without the rule in float32 (not asserted) the primal stagnates and at least one derivative solve does"
+  },
+  {
+   "gate": "the stenosis at D/h 64 (probe; 75 x 75 x 128 cells), steady, both interiors",
+   "prediction": "float32 0.1h: without the rule stalled above its floor (flagged, as F1a-2 measured 8.2e-5 against a floor near 7e-5); with it unflagged at its floor or tolerance; float32 0.01h: flagged with and without the rule (the stated limit extends to D/h 64); float64 both interiors converged with and without, iterations within 5 % of each other, fluxes within 1e-9 relative"
+  },
+  {
+   "gate": "the genuine floor: the open tube at D/h 64, 0.01h, float32 (test_float32s_default_stop_takes_the_rounding_floor_where_its_tolerance_is_out_of_reach, unchanged)",
+   "prediction": "passes unchanged: it stops at its floor within 100 iterations, so bit for bit; its control (1e-5 given, no floor) still stagnates, flagged, the replacement not reaching under 1.37e-5"
+  },
+  {
+   "gate": "the interior spike's float32 stall through the shipped stop (test_fvm_float32_floor.py's stall test, now the stall broken)",
+   "prediction": "the D/h 16 0.01h stenosis converges unflagged at its tolerance, its flux float64's within 1e-5; without the rule it stagnates (seen)"
+  },
+  {
+   "gate": "a solve that ends within 100 iterations (test_a_solve_ending_before_its_first_replacement_is_the_cg_without_it: the D/h 8 tube at a shift of 50, 20 draws, both dtypes)",
+   "prediction": "its answer and report bit for bit the CG's without the rule on every draw"
+  },
+  {
+   "gate": "the stiff interior at D/h 32 (test_a_stiff_interior_at_d_h_32_converges_on_every_step, unchanged)",
+   "prediction": "passes in both dtypes: every step converges unflagged; its float32 steps that stopped at their floor (1.07e-5 to 1.18e-5) now reach 1e-5 or stay at the floor; its old-rule control still stagnates a step"
+  },
+  {
+   "gate": "released programs (probe): script_a, hull_contact, coupled_toy, dynamic_rpm, periodic_tube_flow, steady_tube_flow and rk3_tube_flow, 20 ms, every recorded field at every step, float64 and float32, this branch against the release tip on the same cores",
+   "prediction": "every array bit-identical in both dtypes: the dev1 programs and RK3 run no CG, and the tube flows' solves end within 5 iterations"
+  }
+ ]
+}
