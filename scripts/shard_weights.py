@@ -7,7 +7,9 @@ reports, and print the seconds each shard is then predicted to hold.
 
 A file's weight is the median over the lanes of its tests' summed times, rounded to whole seconds (each directory is
 one artifact, and a shard's, named ``...-shard-<n>`` or ``...-shard-<n>-attempt-<k>``, is its lane's); the table lists
-the files at or over ``--over`` seconds, and every other file goes by its hash. Run it in the project's
+the files at or over ``--over`` seconds, and every other file goes by its hash. A file named by ``--split`` (or already
+under the table's ``split``) is listed by test as well: its tests at or over ``--over`` seconds, each the median over the
+lanes of that test's time, are what the deal places, so the file's tests spread over the shards. Run it in the project's
 environment: it loads ``tests/_sharding.py``, which imports pytest.
 """
 
@@ -46,6 +48,16 @@ def file_seconds(reports: list[Path]) -> dict[str, float]:
     return seconds
 
 
+def test_seconds(reports: list[Path]) -> dict[str, float]:
+    """Each test's time over ``reports``, one lane's."""
+    seconds: dict[str, float] = {}
+    for report in reports:
+        for case in ET.parse(report).getroot().iter("testcase"):
+            nodeid = node_id(case)
+            seconds[nodeid] = seconds.get(nodeid, 0.0) + float(case.get("time") or 0.0)
+    return seconds
+
+
 def medians(lanes: list[list[Path]]) -> dict[str, float]:
     """Each file's median over the lanes (a file a lane did not run counts as 0 s there)."""
     per_lane = [file_seconds(reports) for reports in lanes]
@@ -76,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="the downloaded artifacts' directories, each holding a lane's or a shard's JUnit XML")
     parser.add_argument("--shards", type=int, required=True)
     parser.add_argument("--over", type=float, default=1.0, help="list the files at or over this many seconds")
+    parser.add_argument("--split", action="append", default=[], metavar="FILE",
+                        help="deal this test file by test (repeat for more); the files already split stay split")
     parser.add_argument("--source", required=True, help="the runs the times come from, for the table's record")
     args = parser.parse_args(argv)
     lanes = lanes_of(args.directories)
@@ -84,23 +98,46 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     times = medians(lanes)
     seconds = {path: max(1, round(t)) for path, t in times.items() if t >= args.over}
-    alone = {}
+    alone, split_files = {}, set(args.split)
     if TABLE.exists():  # the files that hold a shard of their own, and why, are kept while they are still listed
-        alone = {path: why for path, why in json.loads(TABLE.read_text(encoding="utf-8")).get("alone", {}).items()
-                 if path in seconds}
-    table = {"source": args.source, "over": args.over, "seconds": seconds, **({"alone": alone} if alone else {})}
+        old = json.loads(TABLE.read_text(encoding="utf-8"))
+        alone = {path: why for path, why in old.get("alone", {}).items() if path in seconds}
+        split_files |= set(old.get("split", {}))
+    split_files &= set(seconds)
+    per_test = [test_seconds(reports) for reports in lanes]
+    split = {}
+    for file in sorted(split_files - set(alone)):
+        names = sorted({n for lane in per_test for n in lane if n.split("::", 1)[0] == file})
+        tests = {n.split("::", 1)[1]: max(1, round(statistics.median(lane.get(n, 0.0) for lane in per_test)))
+                 for n in names if "::" in n}
+        split[file] = {n: t for n, t in tests.items() if t >= args.over}
+    table = {"source": args.source, "over": args.over, "seconds": seconds, **({"alone": alone} if alone else {}),
+             **({"split": {f: t for f, t in split.items() if t}} if split else {})}
     TABLE.write_text(json.dumps(table, indent=1) + "\n",
                      encoding="utf-8")
     spec = importlib.util.spec_from_file_location("_sharding", ROOT / "tests" / "_sharding.py")
     assert spec is not None and spec.loader is not None
     sharding = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(sharding)
-    dealt = sharding.deal(sharding.load_weights(), args.shards)
+    dealt = sharding.deal(sharding.load_weights(TABLE), args.shards)
+    split_names = set(sharding.load_split(TABLE))
     load = [0.0] * args.shards
     for path, t in times.items():
-        load[sharding.shard_of(path, args.shards, dealt) - 1] += t
+        if path not in split_names:
+            load[sharding.shard_of(path, args.shards, dealt) - 1] += t
+    for lane in per_test:  # a split file's tests are placed one by one; each lane counts for its share of the median
+        for nodeid, t in lane.items():
+            if nodeid.split("::", 1)[0] in split_names:
+                load[sharding.shard_of(nodeid, args.shards, dealt, split_names) - 1] += t / len(per_test)
     print(f"{len(seconds)} files listed from {len(lanes)} lanes; predicted seconds per shard: "
-          + ", ".join(f"{t:.0f}" for t in load))
+          + ", ".join(f"{t:.0f}" for t in load)
+          + (f"; split by test: {', '.join(sorted(split_names))}" if split_names else ""))
+    mean = sum(w for path, w in seconds.items() if path not in alone) / max(1, args.shards - len(alone))
+    heavy = sorted(path for path, w in seconds.items() if w > mean and path not in alone and path not in split_names)
+    if heavy:
+        print(f"WARNING: heavier than a shard's mean ({mean:.0f} s) and dealt whole, so a shard holds it alone at best: "
+              + ", ".join(heavy) + " (--split FILE deals a file by test; each shard that gets some of its tests "
+              "compiles the programs they share once more)")
     return 0
 
 

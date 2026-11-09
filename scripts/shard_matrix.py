@@ -23,7 +23,7 @@ import json
 import os
 import re
 
-MINIMUM, MAXIMUM, DEFAULT = 1, 32, 10
+MINIMUM, MAXIMUM, DEFAULT = 1, 32, 16
 VARIABLE = "MIME_CI_SHARDS"
 
 
