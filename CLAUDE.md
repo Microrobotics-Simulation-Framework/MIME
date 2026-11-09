@@ -86,7 +86,7 @@ Rules that follow:
 
 ## Property tests
 
-Most of phase 4's agent time went into flakes, and every one so far had one of four causes. Check them before
+Most of phase 4's agent time went into flakes, and every one so far had one of five causes. Check them before
 changing a tolerance.
 
 - **Draw what a body can have.** Hypothesis shrinks towards extremes: quaternions whose squares underflow, a torque
@@ -100,9 +100,10 @@ changing a tolerance.
   contact oracle missed a 1 µm error about one run in eight, because the harness's rounding floor is one number for
   the whole state, about 15 µm on a typical float32 draw (`src/mime/testing/README.md`). Plant above the oracle's
   resolution, or sharpen the resolution.
+- **Check the test's own premise.** An assertion about the harness, not the law, can fail on rare draws: a one-ulp nudge to a coarsely quantised field changes nothing, so its measured resolution is exactly zero by design (about one draw in 700, `tests/two_builds/test_plants.py`). Before treating a rare failure as the law's, ask whether the code guarantees what the test assumes.
 
 When one flakes: capture the failing example first (Hypothesis prints a reproduction blob with `print_blob=True`),
-classify it by the four causes, then fix. Stress-run a suite in a loop before calling it stable. Never `xfail` or
+classify it by the five causes, then fix. Stress-run a suite in a loop before calling it stable. Never `xfail` or
 derandomize a property test to make it pass, and never shrink its example count for speed.
 
 ## Claim hygiene
