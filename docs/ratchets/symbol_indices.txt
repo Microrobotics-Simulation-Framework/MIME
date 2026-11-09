@@ -51,3 +51,11 @@ PhaseLagNode h  # the step's own timestep, which MADDENING hands the step and no
 RampNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 BodyForceNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
 ImplicitFlowNode h  # the step's own timestep, which MADDENING hands the step and no spec declares; route: the row kind for the step's dt
+RFTDragNode B  # each point's local drag, its coefficients times its arc, defined in the equations, held by no field
+RFTDragNode G  # the wall's image at the points, the registered wall correction's output, held by no field
+RFTDragNode I  # the identity
+RFTDragNode M  # the unit rigid motions at the points, the output of mime.nodes.hydro.mrs.rigid_motions, held by no field
+RFTDragNode \Delta  # the arc a point stands for, Delta s, its segment's length over its count
+RFTDragNode s  # arc length along the centreline, in Delta s
+RFTDragNode t  # each point's unit tangent, from the kind's centreline at each step, held by no field
+RFTDragNode \xi  # the coefficients, computed in the step by drag_coefficients from the viscosity and the centreline, held by no field

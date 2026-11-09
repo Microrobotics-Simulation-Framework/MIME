@@ -1,0 +1,166 @@
+{
+ "what": "The rft rung's validity lines against MIME's MRS rung on the same body: measured, never quoted. This spec was written after the runs that the record (record.json) holds, and so was its rule below (the largest miss, rounded up to two significant figures), set once the numbers were seen; the record stores the hash of the spec as it stands. A line is set from the record by that rule, and an estimate against the MRS at the resolution stated, never a bound. The rounding's headroom is smaller than the reference's own spread across spacings (a review measured the pitch-8 helix's resistance miss at 69.8 % and at 70.7 % of the MRS at two spacings, against a line of 70 %): a line is good to that spread, not to its two figures.",
+ "rule": "A line is the largest miss measured over the points it claims, rounded up to two significant figures; it holds only over those points (their range in each axis named), and a body outside them is flagged as unmeasured, never claimed. A point whose rft resistance is indefinite (refused by the rung) is reported as refused and claims no line.",
+ "outputs": {
+  "speed": "the force-free swimming speed along the body's axis, U / Omega = -R[0,3] / R[0,0] about the helix's axis's middle; the miss |rft / mrs - 1|",
+  "resistance": "the 6 x 6 about the body's centre of mass, each row and column scaled by the square root of the MRS's diagonal; the miss the largest entry of the scaled difference (rft - mrs)"
+ },
+ "reference": "Drag.MRS on the same kind: spacing 0.79 filament radii (8 force points round the filament), blob 0.25 of the spacing, quadrature_refinement 8 (the screw family's blob and its rule's refinement); its own resolution measured at the first point by spacings 1.05, 0.79 and 0.52 filament radii and blobs 0.1 to 0.5.",
+ "rft": "Drag.RFT at its defaults (spacing one point a filament radius; Lighthill's coefficients on a helix, the slender spheroid's on a straight centreline).",
+ "points": [
+  {
+   "name": "p4_rf060",
+   "kind": "helix",
+   "radius": 0.00015,
+   "pitch": 0.0006,
+   "turns": 2.5,
+   "filament_radius": 6e-05,
+   "wall": "free_space"
+  },
+  {
+   "name": "p4_rf030",
+   "kind": "helix",
+   "radius": 0.00015,
+   "pitch": 0.0006,
+   "turns": 2.5,
+   "filament_radius": 3e-05,
+   "wall": "free_space"
+  },
+  {
+   "name": "p4_rf015",
+   "kind": "helix",
+   "radius": 0.00015,
+   "pitch": 0.0006,
+   "turns": 2.5,
+   "filament_radius": 1.5e-05,
+   "wall": "free_space"
+  },
+  {
+   "name": "p4_rf0075",
+   "kind": "helix",
+   "radius": 0.00015,
+   "pitch": 0.0006,
+   "turns": 2.5,
+   "filament_radius": 7.5e-06,
+   "wall": "free_space"
+  },
+  {
+   "name": "open_rf030",
+   "kind": "helix",
+   "radius": 0.00015,
+   "pitch": 0.0012,
+   "turns": 1.5,
+   "filament_radius": 3e-05,
+   "wall": "free_space"
+  },
+  {
+   "name": "tight_rf030",
+   "kind": "helix",
+   "radius": 0.0003,
+   "pitch": 0.0006,
+   "turns": 2.0,
+   "filament_radius": 3e-05,
+   "wall": "free_space"
+  },
+  {
+   "name": "tube_k012",
+   "kind": "helix",
+   "radius": 5e-05,
+   "pitch": 0.0002,
+   "turns": 2.5,
+   "filament_radius": 1e-05,
+   "wall": "tube",
+   "tube_radius": 0.0005
+  },
+  {
+   "name": "tube_k024",
+   "kind": "helix",
+   "radius": 0.0001,
+   "pitch": 0.0004,
+   "turns": 2.5,
+   "filament_radius": 2e-05,
+   "wall": "tube",
+   "tube_radius": 0.0005
+  },
+  {
+   "name": "tube_k036",
+   "kind": "helix",
+   "radius": 0.00015,
+   "pitch": 0.0006,
+   "turns": 2.5,
+   "filament_radius": 3e-05,
+   "wall": "tube",
+   "tube_radius": 0.0005
+  },
+  {
+   "name": "tube_k056",
+   "kind": "helix",
+   "radius": 0.00025,
+   "pitch": 0.0006,
+   "turns": 2.5,
+   "filament_radius": 3e-05,
+   "wall": "tube",
+   "tube_radius": 0.0005
+  },
+  {
+   "name": "rod_l35",
+   "kind": "capsule",
+   "radius": 3e-05,
+   "height": 0.001,
+   "wall": "free_space"
+  },
+  {
+   "name": "rod_l69",
+   "kind": "capsule",
+   "radius": 1.5e-05,
+   "height": 0.001,
+   "wall": "free_space"
+  }
+ ],
+ "resolution_ladder": {
+  "point": "p4_rf030",
+  "spacings_in_filament_radii": [
+   1.05,
+   0.79,
+   0.52
+  ],
+  "blobs": [
+   0.1,
+   0.25,
+   0.5
+  ]
+ },
+ "exact_points": [
+  {
+   "name": "spheroid_ab10",
+   "kind": "ellipsoid",
+   "semi_axes": [
+    0.0001,
+    0.0001,
+    0.001
+   ],
+   "wall": "free_space"
+  },
+  {
+   "name": "spheroid_ab30",
+   "kind": "ellipsoid",
+   "semi_axes": [
+    3.3333333333333335e-05,
+    3.3333333333333335e-05,
+    0.001
+   ],
+   "wall": "free_space"
+  },
+  {
+   "name": "spheroid_ab100",
+   "kind": "ellipsoid",
+   "semi_axes": [
+    1e-05,
+    1e-05,
+    0.001
+   ],
+   "wall": "free_space"
+  }
+ ],
+ "exact_reference": "A prolate spheroid's exact resistance (Kim & Karrila's closed form, the MRS rung's tests, tests/mrs_cases.py::prolate), in place of the MRS: the same outputs and misses."
+}

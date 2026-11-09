@@ -167,3 +167,4 @@ ImplicitFlowNode \mu  # pinned at landing
 ImplicitFlowNode \rho  # pinned at landing
 ImplicitFlowNode \mathbf{g}  # pinned at landing
 BodyForceNode \theta  # pinned at landing
+RFTDragNode \mathbf{R}  # pinned at landing
