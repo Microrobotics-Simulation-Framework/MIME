@@ -35,6 +35,7 @@ latest_attempt = _script("latest_attempt")
 check_shard_jobs = _script("check_shard_jobs")
 cache_mode = _script("compilation_cache_mode")
 shard_weights = _script("shard_weights")
+shard_matrix = _script("shard_matrix")
 #: The shard counts the recorded artifacts are made for: one, a pair, a count that does not divide the files, and
 #: today's default. A lane may run as any whole number of shards from ``scripts/shard_matrix.py``'s bounds.
 COUNTS = (1, 2, 3, 6)
@@ -356,6 +357,145 @@ def test_a_files_tests_share_its_shard_and_a_file_outside_the_table_goes_by_its_
     assert added not in dealt and _sharding.shard_of(f"{added}::test_added", 6, dealt) == _sharding.by_hash(added, 6)
 
 
+SPLIT_TABLE = {"seconds": {"tests/big.py": 60, "tests/mid.py": 20, "tests/small.py": 10},
+               "split": {"tests/big.py": {f"test_{i}[{i}]": 10 for i in range(6)}}}
+
+#: A project's conftest that registers the shard plugin with a given table, as ``_sharding.register`` does with the committed one.
+SPLIT_CONFTEST = """import sys
+from pathlib import Path
+sys.path.insert(0, {tests!r})
+import _sharding
+
+
+def pytest_addoption(parser):
+    parser.addoption("--mime-shard")
+    parser.addoption("--mime-shard-record")
+
+
+def pytest_configure(config):
+    if config.getoption("--mime-shard"):
+        shard, of = _sharding.parse(config.getoption("--mime-shard"))
+        table = Path({table!r})
+        config.pluginmanager.register(_sharding.Plugin(
+            shard, of, _sharding.load_weights(table), config.getoption("--mime-shard-record"),
+            _sharding.load_split(table)))
+"""
+
+
+def _split_table(tmp_path: Path, table: dict | None = None) -> Path:
+    path = tmp_path / "w.json"
+    path.write_text(json.dumps(table or SPLIT_TABLE), encoding="utf-8")
+    return path
+
+
+def test_a_split_file_is_dealt_by_test_and_stably_and_an_unlisted_test_of_it_goes_by_its_node_id(tmp_path):
+    """The heaviest file, split: its listed tests are dealt one by one beside the other files, longest first, and a test
+    the table does not list goes by the hash of its node id, so adding a test moves no other. The control is the same
+    file unsplit, which stays whole on one shard."""
+    path = _split_table(tmp_path)
+    weights, split = _sharding.load_weights(path), set(_sharding.load_split(path))
+    assert split == {"tests/big.py"} and "tests/big.py" not in weights
+    assert {f"tests/big.py::test_{i}[{i}]" for i in range(6)} <= set(weights)
+    dealt = _sharding.deal(weights, 3)
+    where = [_sharding.shard_of(f"tests/big.py::test_{i}[{i}]", 3, dealt, split) for i in range(6)]
+    assert set(where) == {1, 2, 3}
+    assert dealt == _sharding.deal(dict(reversed(list(weights.items()))), 3)
+    added = "tests/big.py::test_added[x]"
+    assert added not in dealt and _sharding.shard_of(added, 3, dealt, split) == _sharding.by_hash(added, 3)
+    assert [_sharding.shard_of(f"tests/big.py::test_{i}[{i}]", 3, dealt, split) for i in range(6)] == where
+    whole = _sharding.deal(SPLIT_TABLE["seconds"], 3)
+    assert {_sharding.shard_of(f"tests/big.py::test_{i}[{i}]", 3, whole) for i in range(6)} == {whole["tests/big.py"]}
+
+
+def test_a_split_file_running_for_real_is_kept_by_the_shards_between_them_and_the_check_passes_them(tmp_path):
+    """The split, in the plugin and in pytest: three shards of a project whose big file is split. Every test is run by
+    one shard, the big file's by more than one, and ``scripts/check_shards.py`` passes the lane."""
+    project = tmp_path / "project"
+    project.mkdir()
+    table = _split_table(tmp_path, {"seconds": {"big.py": 60, "mid.py": 20, "small.py": 10},
+                                    "split": {"big.py": {f"test_big[{i}]": 10 for i in range(6)}}})
+    (project / "conftest.py").write_text(SPLIT_CONFTEST.format(tests=str(ROOT / "tests"), table=str(table)),
+                                         encoding="utf-8")
+    (project / "test_big.py").write_text("import pytest\n\n\n@pytest.mark.parametrize('i', range(6))\n"
+                                         "def test_big(i):\n    pass\n", encoding="utf-8")
+    (project / "test_mid.py").write_text("def test_mid():\n    pass\n", encoding="utf-8")
+    (project / "test_small.py").write_text("def test_small():\n    pass\n", encoding="utf-8")
+    table.write_text(json.dumps({"seconds": {"test_big.py": 60, "test_mid.py": 20, "test_small.py": 10},
+                                 "split": {"test_big.py": {f"test_big[{i}]": 10 for i in range(6)}}}),
+                     encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_XDIST", "MIME_CI_PLANT", "MIME_TEST_JAX"))}
+    directories = []
+    for shard in (1, 2, 3):
+        directory = tmp_path / f"shard-{shard}"
+        directory.mkdir()
+        done = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o",
+                               "junit_family=xunit1", "--mime-shard", f"{shard}/3",
+                               "--mime-shard-record", str(directory / "shard.json"),
+                               f"--junitxml={directory / f'test-results-shard{shard}.xml'}"],
+                              cwd=project, env=env, capture_output=True, text=True, check=False, timeout=300)
+        assert done.returncode == 0, done.stdout + done.stderr
+        (directory / "outcome.txt").write_text("success\n", encoding="utf-8")
+        directories.append(directory)
+    kept = [json.loads((d / "shard.json").read_text(encoding="utf-8"))["selected"] for d in directories]
+    assert sum(len(each) for each in kept) == 8 and len({nodeid for each in kept for nodeid in each}) == 8
+    assert sum(any(nodeid.startswith("test_big.py") for nodeid in each) for each in kept) > 1
+    assert check_shards.problems(directories, 3, 0) == []
+
+
+def test_the_table_cannot_name_a_split_file_it_does_not_list_or_one_that_is_also_alone(tmp_path):
+    base = {"seconds": {"a": 5, "b": 5}}
+    for extra in ({"split": {"c": {"t": 1}}}, {"split": {"a": {}}}, {"split": {"a": {"t": 0}}},
+                  {"split": {"a": {"t": 1.5}}}, {"split": ["a"]}, {"split": {"a": {"t": 1}}, "alone": {"a": "why"}}):
+        path = _split_table(tmp_path, {**base, **extra})
+        with pytest.raises(pytest.UsageError):
+            _sharding.load_weights(path)
+
+
+def test_no_file_heavier_than_a_shards_mean_is_dealt_whole_at_the_default_count():
+    """The reason a file is split: whole, it would be a shard's floor however many shards there are. When the suite
+    grows a file past the mean at ``scripts/shard_matrix.py``'s default, this fails and names it, and
+    ``scripts/shard_weights.py --split FILE`` deals it by test (it prints the same list)."""
+    table = json.loads(_sharding.WEIGHTS_FILE.read_text(encoding="utf-8"))
+    alone, split = set(table.get("alone", {})), set(table.get("split", {}))
+    ordinary = {path: seconds for path, seconds in table["seconds"].items() if path not in alone}
+    mean = sum(ordinary.values()) / (shard_matrix.DEFAULT - len(alone))
+    assert sorted(path for path, seconds in ordinary.items() if seconds > mean and path not in split) == []
+    for file, tests in table.get("split", {}).items():
+        assert abs(sum(tests.values()) - table["seconds"][file]) <= 0.1 * table["seconds"][file] + len(tests)
+
+
+def _lane_reports(tmp_path: Path) -> list[Path]:
+    """Two lanes of one shard each: a file of six 10 s tests, a 20 s file and a 10 s file."""
+    cases = ([("tests/h.py", f"test_h[{i}]", 10) for i in range(6)] + [("tests/m.py", "test_m", 20),
+                                                                      ("tests/s.py", "test_s", 10)])
+    directories = []
+    for lane in ("durations-a", "durations-b"):
+        directory = tmp_path / f"{lane}-shard-1-attempt-1"
+        directory.mkdir()
+        body = "".join(f'<testcase classname="{file[:-3].replace("/", ".")}" name="{name}" file="{file}" time="{t}"/>'
+                       for file, name, t in cases)
+        (directory / "r.xml").write_text(f"<testsuites><testsuite>{body}</testsuite></testsuites>", encoding="utf-8")
+        directories.append(directory)
+    return directories
+
+
+def test_the_weights_script_splits_the_files_it_is_told_to_keeps_them_split_and_warns_of_the_heavy_ones(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(shard_weights, "TABLE", tmp_path / "table.json")
+    reports = [str(path) for path in _lane_reports(tmp_path)]
+    assert shard_weights.main([*reports, "--shards", "4", "--source", "x"]) == 0
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "tests/h.py" in out and "split" not in json.loads((tmp_path / "table.json").read_text())
+    assert shard_weights.main([*reports, "--shards", "4", "--split", "tests/h.py", "--source", "x"]) == 0
+    out = capsys.readouterr().out
+    table = json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))
+    assert "WARNING" not in out and table["split"] == {"tests/h.py": {f"test_h[{i}]": 10 for i in range(6)}}
+    assert table["seconds"]["tests/h.py"] == 60
+    assert "predicted seconds per shard: 30, 20, 20, 20" in out
+    assert shard_weights.main([*reports, "--shards", "4", "--source", "x"]) == 0  # a file stays split
+    assert "split" in json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))
+
+
 @pytest.mark.parametrize("spec", ["0/4", "5/4", "1/0", "a/4", "1/4/2", " 1/4", "1/4:weighted"])
 def test_a_malformed_shard_is_a_usage_error(spec):
     with pytest.raises(pytest.UsageError):
@@ -365,7 +505,7 @@ def test_a_malformed_shard_is_a_usage_error(spec):
 def test_a_bad_table_is_an_error_never_an_unweighted_split(tmp_path):
     for content in ("", "{}", '{"seconds": {}}', '{"seconds": {"a": 1.5}}', '{"seconds": {"a": 0}}',
                     '{"seconds": {"a": 1}, "alone": {"b": "x"}}', '{"seconds": {"a": 1}, "alone": {"a": ""}}',
-                    '{"seconds": {"a": 1}, "alone": ["a"]}'):
+                    '{"seconds": {"a": 1}, "alone": ["a"]}', '{"seconds": {"a": 1}, "split": {"b": {"t": 1}}}'):
         (tmp_path / "w.json").write_text(content, encoding="utf-8")
         with pytest.raises(pytest.UsageError):
             _sharding.load_weights(tmp_path / "w.json")
