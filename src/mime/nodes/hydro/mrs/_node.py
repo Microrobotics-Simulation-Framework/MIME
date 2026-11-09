@@ -35,6 +35,7 @@ from mime.nodes.hydro.mrs._quadrature import (
     turned_resistance,
     unchanged,
 )
+from mime.nodes.hydro._near_singular import blended, nearest_cells, smoothstep, within_reach
 from mime.nodes.hydro.mrs._solve import PRECISION, blob_squared, resistance
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection, cell_image, wall_correction_named
 from mime.nodes._kinds import held_as_built, kind_from_settings, registered_kind, setting_units, traced_settings
@@ -223,7 +224,8 @@ class SeparatedDragState(TypedDict, closed=True):
     each row and column scaled by its diagonal and the share its symmetric part drops, with the flags they raise; and,
     with a wall, the body's least distance from it (m, and in force spacings, the near-wall flag's measure) and the
     stop's record: the node's count of steps, and the step (zero for none), pose, gap and least eigenvalue at which its
-    resistance first turned indefinite."""
+    resistance first turned indefinite. On a graded sampling, ``off_patch``: the body within :data:`NEAR_WALL` force
+    spacings of the wall with its nearest point outside the graded patch (zero without a wall)."""
 
     resistance: ReadOnly[Float[Array, "6 6"]]  # noqa: F722 - a jaxtyping shape
     background_load: ReadOnly[Annotated[Float[Array, "6"], Units("N; N m")]]
@@ -236,6 +238,7 @@ class SeparatedDragState(TypedDict, closed=True):
     wall_gap: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("m")]]]  # noqa: F722 - a jaxtyping shape
     wall_gap_spacings: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
     wall_cells_short: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
+    off_patch: NotRequired[ReadOnly[Annotated[Float[Array, ""], Units("1")]]]  # noqa: F722 - a jaxtyping shape
     steps: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_at: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     stopped_pose: ReadOnly[Annotated[Float[Array, "7"], Units("m; 1")]]
@@ -262,10 +265,10 @@ def on_the_cells(weights: Array, owners: np.ndarray, area: Array) -> Array:
 
 
 def reach_weight(gap: Array) -> Array:
-    """A cell's weight on its integrated column, from its force point's distance from the wall in force spacings: 1
-    within half of :data:`WALL_REACH`, 0 beyond it, and a smoothstep between (continuous with its first derivative)."""
-    t = jnp.clip((WALL_REACH - gap) / (0.5 * WALL_REACH), 0.0, 1.0)
-    return t * t * (3.0 - 2.0 * t)
+    """A cell's weight on its integrated column, from its force point's distance from the wall in force spacings (in a
+    graded run, in its own cell's size): 1 within half of :data:`WALL_REACH`, 0 beyond it, and a smoothstep between
+    (continuous with its first derivative)."""
+    return smoothstep(gap, WALL_REACH)
 
 
 def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
@@ -280,11 +283,13 @@ def near_wall_image(wall: WallCorrection, point: Corrected, force: Array, points
     points of it (:attr:`MRSDragNode.wall_table`) and ``chunks`` the budget's rows of it flattened; with no ``table``
     every cell is integrated and blended, ``chunks`` the whole quadrature's by its owners. Also whether a cell
     within the reach was left out of the budget. A step with no cell within the reach reads no more than the image at
-    the force points (a ``cond``, whose two branches agree there, every weight zero)."""
-    return _lax.cond(jnp.any(gap < WALL_REACH),
-                     lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
-                                              parameters, viscosity, eps_squared),
-                     lambda: (point, jnp.asarray(False)))
+    the force points (a ``cond``, whose two branches agree there, every weight zero). ``gap`` is in force spacings, or
+    in a graded run in each cell's own size, ``sqrt(area)`` (design #308): the switch's mechanics are
+    ``mime.nodes.hydro._near_singular``'s, shared with the near field's cross-kernel."""
+    return within_reach(gap, WALL_REACH,
+                        lambda: _integrated_near(wall, point, force, points, weights, gap, table, budget, chunks,
+                                                 parameters, viscosity, eps_squared),
+                        lambda: (point, jnp.asarray(False)))
 
 
 def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, points: Array, weights: Array, gap: Array,
@@ -294,20 +299,15 @@ def _integrated_near(wall: WallCorrection, point: Corrected, force: Array, point
     force points alone and reads nothing more."""
     if table is None:
         integrated = cell_image(wall, force, points, weights, chunks, parameters, viscosity, eps_squared)
-        blend = jnp.repeat(reach_weight(gap), 3)[None, :]
-        matrix = point.matrix + blend * (integrated.matrix - point.matrix)
+        matrix = blended(point.matrix, integrated.matrix, reach_weight(gap))
         return Corrected(matrix, point.accepted & integrated.accepted), jnp.asarray(False)
-    count = force.shape[0]
-    nearest = _lax.top_k(-gap, min(budget + 1, count))[1]
-    chosen = nearest[:budget]
-    short = jnp.asarray(False) if budget >= count else gap[nearest[budget]] < WALL_REACH
+    chosen, short = nearest_cells(gap, budget, WALL_REACH)
     held, mass = padded(points, weights)
     rows = jnp.asarray(table)[chosen].reshape(-1)
     integrated = cell_image(wall, force, held[rows], mass[rows], chunks, parameters, viscosity, eps_squared)
     columns = (3 * chosen[:, None] + jnp.arange(3)[None, :]).reshape(-1)
     near = point.matrix[:, columns]
-    blend = jnp.repeat(reach_weight(gap[chosen]), 3)[None, :]
-    matrix = point.matrix.at[:, columns].set(near + blend * (integrated.matrix - near))
+    matrix = point.matrix.at[:, columns].set(blended(near, integrated.matrix, reach_weight(gap[chosen])))
     return Corrected(matrix, point.accepted & integrated.accepted), short
 
 
@@ -531,6 +531,7 @@ class MRSDragNode(MimeNode):
                  wall_quadrature_counts: Sequence[Sequence[int]] | None = None,
                  wall_quadrature_owners: np.ndarray | None = None, wall_cells: int | None = None,
                  wall_refinement: int | None = None, wall_refinement_written: int | None = None,
+                 graded_patch: np.ndarray | None = None, grading: str | None = None,
                  **constants: object) -> None:
         if len(patches) != len(counts) or not patches:
             raise ValueError(f"patches {patches!r} and counts {counts!r} name one count per patch, and one patch or "
@@ -597,6 +598,14 @@ class MRSDragNode(MimeNode):
             separated["wall_refinement"] = int(wall_refinement)
         if wall_refinement_written is not None:
             separated["wall_refinement_written"] = int(wall_refinement_written)
+        self._patch: np.ndarray | None = None
+        if graded_patch is not None:
+            if quadrature_owners is None:
+                raise ValueError("a graded sampling's patch is judged on a separated quadrature (quadrature_owners)")
+            self._patch = np.asarray(graded_patch, dtype=bool)
+            self._patch.flags.writeable = False
+            separated["graded_patch"] = self._patch
+            separated["grading"] = str(grading or "")
         super().__init__(name, timestep, viscosity=viscosity, blob=blob, kind=kind, kind_version=kind_version,
                          patches=tuple(patches), counts=held_counts, part_centre=tuple(float(c) for c in part_centre),
                          part_rotation=tuple(float(c) for c in part_rotation), wall_kind=wall_kind,
@@ -604,6 +613,15 @@ class MRSDragNode(MimeNode):
                          **{key: value for key, value in constants.items()})
         if self._owners is not None:
             self._check_owners(self._owners)
+        if self._patch is not None and self._patch.shape != (self.sample_count,):
+            raise ValueError(f"graded_patch names whether each of the {self.sample_count} force points lies in the "
+                             f"graded patch; it has shape {self._patch.shape}")
+
+    @property
+    def graded(self) -> bool:
+        """Whether the node's sampling is graded (``graded_patch`` given): its wall's self-image then measures each
+        cell's distance in the cell's own size, and its step flags ``off_patch``."""
+        return self._patch is not None
 
     @override
     def param_specs(self) -> dict[str, ParamSpec]:
@@ -683,20 +701,21 @@ class MRSDragNode(MimeNode):
                                             wall_accepted=jnp.asarray(True)))
         zero = as_run_array(jnp.zeros(()))
         resistance, load, accepted = as_run_array(jnp.zeros((6, 6))), as_run_array(jnp.zeros(6)), jnp.asarray(True)
+        patch = {"off_patch": zero} if self._patch is not None else {}
         if self._free():
             return node_fields(SeparatedDragState(resistance=resistance, background_load=load, wall_accepted=accepted,
                                                   least_eigenvalue=zero, indefinite=zero, near_wall=zero,
                                                   asymmetric=zero, steps=zero, stopped_at=zero,
-                                                  stopped_pose=as_run_array(jnp.zeros(7)), stopped_least=zero))
+                                                  stopped_pose=as_run_array(jnp.zeros(7)), stopped_least=zero)) | patch
         state = node_fields(SeparatedDragState(resistance=resistance, background_load=load, wall_accepted=accepted,
                                                least_eigenvalue=zero, asymmetry=zero, indefinite=zero, near_wall=zero,
                                                asymmetric=zero, steps=zero, stopped_at=zero,
                                                stopped_pose=as_run_array(jnp.zeros(7)), stopped_least=zero))
         if self._wall().distance is None:
-            return state
+            return state | patch
         spaced = "force_spacing" in self.constants()
         return state | {"wall_gap": zero, "stopped_gap": zero} | ({"wall_gap_spacings": zero} if spaced else {}) | (
-            {"wall_cells_short": zero} if spaced and self._wall_quadrature is not None else {})
+            {"wall_cells_short": zero} if spaced and self._wall_quadrature is not None else {}) | patch
 
     @override
     def boundary_input_spec(self) -> dict[str, BoundaryInputSpec]:
@@ -1037,9 +1056,10 @@ class MRSDragNode(MimeNode):
         experiment's closest approach needs (``closest_approach``, m: the margin a contact holds the body's hull off
         the wall by, ``None`` where nothing holds it off)."""
         spacing = self._force_spacing()
+        graded = self._graded_lines()
         if self._owners is None or self._free() or self._wall().distance is None or spacing is None or \
                 start is None or "pose" not in start:
-            return []
+            return graded
         judged = self.judged_at(start["pose"])
         lines = [f"the body's least distance from the wall at its start is {(judged.gap or 0.0) * 1e3:.4g} mm, "
                  f"{(judged.gap or 0.0) / spacing:.3g} of the force spacing ({spacing * 1e3:.4g} mm): a step with the "
@@ -1083,7 +1103,19 @@ class MRSDragNode(MimeNode):
         if integrated is not None:
             lines.append(integrated)
         lines.append(self._image_text())
-        return lines
+        return graded + lines
+
+    def _graded_lines(self) -> list[str]:
+        """What the build reports of a graded sampling: what it was graded towards, as the drag described it, and the
+        patch's share of the cells."""
+        if self._patch is None:
+            return []
+        held = int(np.count_nonzero(self._patch))
+        flag = ("; a step with the body within one force spacing of the wall and its nearest point outside the patch "
+                "raises off_patch (the sampling is fixed on the body, so a body that turns carries the patch away)"
+                if not self._free() else "")
+        return [f"the force points are graded: {self.constants().get('grading')}; {held} of the {self.sample_count} "
+                f"cells lie in the graded patch, finer than the force spacing{flag}"]
 
     def _memory_at(self, force_points: float) -> str:
         """The run's memory at ``force_points`` for the report's closest-approach line, as the tube's fit states it; a
@@ -1209,11 +1241,12 @@ class MRSDragNode(MimeNode):
         held = self._held_value(p)
         dtype = pose.dtype
         zero = jnp.zeros((), dtype=dtype)
+        patch = {"off_patch": zero} if self._patch is not None else {}
         if self._free():
             found = viscosity * turned_resistance(held, quaternion.rotation_matrix(pose[3:]))
             fields = judged(found.astype(dtype), jnp.asarray(True), zero, None, state, pose)
             return node_fields({key: value for key, value in fields.items()
-                                if key not in ("asymmetry", "wall_gap", "stopped_gap")})
+                                if key not in ("asymmetry", "wall_gap", "stopped_gap")}) | patch
         wall = self._wall()
         theta = {key: p[key] for key in self.body_leaf_names()}
         parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
@@ -1221,9 +1254,10 @@ class MRSDragNode(MimeNode):
                                                                self.wall_chunks)
 
         spacing = p.get("force_spacing")
+        graded, cells_in_patch, owners = self._patch is not None, self._patch, self._owners
 
         def solved(held: Array, theta: Mapping[str, Any], viscosity: Array, pose: Array,
-                   parameters: Mapping[str, Any]) -> tuple[Array, Array, Array, Array]:
+                   parameters: Mapping[str, Any]) -> tuple[Array, ...]:
             turn = quaternion.rotation_matrix(pose[3:])
             body = self.body(theta)
             force = pose[:3] + jnp.matmul(body.force, turn.T, precision=PRECISION)
@@ -1235,31 +1269,42 @@ class MRSDragNode(MimeNode):
                     distance is not None and spacing is not None:
                 cells = self._quadrature_samples({**theta, "viscosity": jnp.asarray(theta["blob"])},
                                                  wall_quadrature[0])
-                kept, runs, owners = wall_capped
+                kept, runs, capped_owners = wall_capped
                 weights = _ops.segment_sum(cells.weights, jnp.asarray(runs), num_segments=len(kept))
+                measure = jnp.sqrt(body.area) if graded else spacing
                 image, short = near_wall_image(
                     wall, image, force, pose[:3] + jnp.matmul(cells.points[jnp.asarray(kept)], turn.T,
                                                               precision=PRECISION),
-                    on_the_cells(weights, owners, body.area), distance(force, parameters) / spacing,
+                    on_the_cells(weights, capped_owners, body.area), distance(force, parameters) / measure,
                     None if self.wall_every else cast(np.ndarray, self.wall_table), self.wall_budget, wall_chunks,
                     parameters, viscosity, body.eps_squared)
             found = separated_resistance(turned(held, turn) / viscosity + image.matrix, force, body.area, centroid,
                                          pose[:3])
             points = pose[:3] + jnp.matmul(body.points, turn.T, precision=PRECISION)
-            gap = zero if distance is None else least_distance(distance(points, parameters))
-            return found, image.accepted, gap, short
+            if not graded:
+                gap = zero if distance is None else least_distance(distance(points, parameters))
+                return found, image.accepted, gap, short
+            if distance is None:
+                return found, image.accepted, zero, short, jnp.asarray(False)
+            away = distance(points, parameters)
+            outside = ~jnp.asarray(cells_in_patch)[jnp.asarray(owners)[jnp.argmin(away)]]
+            return found, image.accepted, least_distance(away), short, outside
 
-        found, accepted, gap, short = checkpoint(solved)(held, theta, viscosity, pose, parameters)
+        found, accepted, gap, short, *outside = checkpoint(solved)(held, theta, viscosity, pose, parameters)
         fields = judged(found, accepted, gap, None if distance is None or spacing is None else NEAR_WALL * spacing,
                         state, pose)
+        if graded:
+            within = jnp.asarray(False) if distance is None or spacing is None else gap < NEAR_WALL * spacing
+            patch = {"off_patch": jnp.where(within & outside[0], jnp.ones((), dtype=dtype), zero)}
         if distance is None:
-            return node_fields({key: value for key, value in fields.items() if key not in ("wall_gap", "stopped_gap")})
+            return node_fields({key: value for key, value in fields.items()
+                                if key not in ("wall_gap", "stopped_gap")}) | patch
         if spacing is None:
-            return node_fields(fields)
+            return node_fields(fields) | patch
         extra = {"wall_gap_spacings": (gap / spacing).astype(dtype)}
         if wall_quadrature is not None:
             extra["wall_cells_short"] = jnp.where(short, jnp.ones((), dtype=dtype), zero)
-        return node_fields(fields) | extra
+        return node_fields(fields) | extra | patch
 
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],

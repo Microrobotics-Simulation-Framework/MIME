@@ -30,15 +30,16 @@ import numpy as np
 from jax import Array
 
 from mime.core import jnp, quaternion
+from mime.nodes.hydro._near_singular import blended, nearest_points, smoothstep, within_reach
+from mime.nodes.hydro._near_singular import integrated_cells as integrated
 from mime.nodes.hydro.mrs._node import MRSDragNode, near_wall_image, on_the_cells
-from mime.nodes.hydro.mrs._quadrature import CHUNK_BYTES, regularised_stokeslet, turned
+from mime.nodes.hydro.mrs._quadrature import regularised_stokeslet, turned
 from mime.nodes.hydro.mrs._solve import PRECISION
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection
 from mime.nodes.hydro.near_field._contract import BODY_FRAME_CONSTANT, CROSS_KERNEL, PRECONDITIONER, Placed
 
 _lax: Any = cast(Any, jax).lax
 _ops: Any = cast(Any, jax).ops
-checkpoint: Any = cast(Any, jax).checkpoint
 
 #: The cross-kernel's reach, in each source cell's own size ``sqrt(area)``: a pair of bodies farther apart than it takes
 #: the kernel at the source's force points, a pair within half of it the kernel integrated over every cell, a smoothstep
@@ -66,9 +67,8 @@ CROSS_SHARE = 1.0
 def cross_weight(distance: Array, reach: Any) -> Array:
     """A pair's weight on its integrated cross-block from its least distance, in its cells' own sizes: 1 within half
     the reach, 0 beyond it, a smoothstep between (continuous with its first derivative), as the per-body node's
-    ``reach_weight`` for the wall's image."""
-    t = jnp.clip((reach - distance) / (0.5 * reach), 0.0, 1.0)
-    return t * t * (3.0 - 2.0 * t)
+    ``reach_weight`` for the wall's image (both ``mime.nodes.hydro._near_singular``'s)."""
+    return smoothstep(distance, reach)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -155,9 +155,8 @@ class MRSOperator:
         apart = jnp.linalg.norm(targets[:, None, :] - placed.force[None, :, :], axis=-1)
         pairs = apart / jnp.sqrt(placed.area)[None, :]
         held = _lax.stop_gradient(jnp.min(pairs, axis=0))
-        return _lax.cond(jnp.any(held < reach),
-                         lambda: self._near(point, placed, quadrature, targets, pairs, held, reach),
-                         lambda: (point, jnp.asarray(False)))
+        return within_reach(held, reach, lambda: self._near(point, placed, quadrature, targets, pairs, held, reach),
+                            lambda: (point, jnp.asarray(False)))
 
     def _near(self, point: Array, placed: Placed, quadrature: Quadrature, targets: Array, pairs: Array,
               held: Array, reach: Any) -> tuple[Array, Array]:
@@ -167,23 +166,13 @@ class MRSOperator:
         (each cell's least distance, held out of every derivative) chooses the cells. Short where a cell within the
         reach of the targets was left out."""
         cells = self.count
-        nearest = jnp.argsort(held)
-        sizes = jnp.asarray(self.sizes)
-        filled = jnp.cumsum(sizes[nearest])
-        fits = filled <= self.budget
-        chosen = jnp.zeros(cells, dtype=bool).at[nearest].set(fits)
-        slot = jnp.arange(self.budget)
-        rank = jnp.searchsorted(filled, slot, side="right")
-        valid = (rank < cells) & fits[jnp.minimum(rank, cells - 1)]
-        cell = nearest[jnp.minimum(rank, cells - 1)]
-        within = slot - (filled[jnp.minimum(rank, cells - 1)] - sizes[cell])
+        cell, within, valid, chosen = nearest_points(held, jnp.asarray(self.sizes), self.budget)
         index = jnp.asarray(self.order)[jnp.clip(jnp.asarray(self.starts)[cell] + within, 0, len(self.order) - 1)]
         weights = jnp.where(valid, quadrature.weights[index], 0.0)
         integrated = integrated_cells(targets, quadrature.points[index], weights, jnp.where(valid, cell, 0), cells,
                                       placed.eps_squared)
         weights = cross_weight(jnp.min(pairs), reach) * chosen.astype(pairs.dtype)
-        blend = jnp.repeat(weights, 3)[None, :]
-        return point + blend * (integrated - point), jnp.any(~chosen & (held < reach))
+        return blended(point, integrated, weights), jnp.any(~chosen & (held < reach))
 
 
 def point_block(targets: Array, source: Placed) -> Array:
@@ -195,32 +184,9 @@ def point_block(targets: Array, source: Placed) -> Array:
 
 
 def integrated_cells(targets: Array, points: Array, weights: Array, cell: Array, cells: int, eps_squared: Any) -> Array:
-    """``3T x 3C``: the regularised Stokeslet at unit viscosity integrated over each cell's points, ``sum over q in
-    cell c of S(x_t, y_q) w_q``, from ``points`` and ``weights`` gathered at the step (each point's cell ``cell``; a
-    point of weight zero adds nothing), in chunks of a fixed count, each checkpointed and summed into the cells by
-    ``segment_sum``: never an array of every target against every point."""
-    count, total = targets.shape[0], points.shape[0]
-    size = max(1, min(total, CHUNK_BYTES // (count * 16 * 8)))
-    chunks = -(-total // size)
-    pad = chunks * size - total
-    held_points = jnp.concatenate([points, jnp.broadcast_to(points[:1], (pad, 3))]).reshape(chunks, size, 3)
-    held_weights = jnp.concatenate([weights, jnp.zeros(pad, dtype=weights.dtype)]).reshape(chunks, size)
-    held_cells = jnp.concatenate([cell, jnp.zeros(pad, dtype=cell.dtype)]).reshape(chunks, size)
-    kernel = regularised_stokeslet(eps_squared)
-
-    def piece(at: Array, mass: Array, owner: Array) -> Array:
-        blocks, _ = kernel(targets, at)
-        weighted = (blocks * mass[None, :, None, None]).transpose(1, 0, 2, 3)
-        return _ops.segment_sum(weighted, owner, num_segments=cells)
-
-    made = checkpoint(piece)
-
-    def add(total_so_far: Array, chunk: tuple[Array, Array, Array]) -> tuple[Array, None]:
-        return total_so_far + made(*chunk), None
-
-    start = jnp.zeros((cells, count, 3, 3), dtype=targets.dtype)
-    by_cell, _ = _lax.scan(add, start, (held_points, held_weights, held_cells))
-    return by_cell.transpose(1, 2, 0, 3).reshape(3 * count, 3 * cells)
+    """``3T x 3C``: the regularised Stokeslet at unit viscosity integrated over each cell's points
+    (``mime.nodes.hydro._near_singular``'s ``integrated_cells`` with its kernel)."""
+    return integrated(regularised_stokeslet(eps_squared), targets, points, weights, cell, cells)
 
 
 __all__ = ["CROSS_SHARE", "REACH", "MRSOperator", "Quadrature", "cross_weight", "integrated_cells", "point_block"]

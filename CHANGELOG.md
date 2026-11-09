@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Graded sampling on the MRS rung** (`drag` 0.5.0, design #296; `mime.scene._grading`). `Drag.MRS(grading="features")`
+  grades the force points towards the hull kind's declared features, and `Drag.MRS(contact=(0, 0, -1), contact_gap=...)`
+  towards a contact held facing the wall (opt-in, for a body whose orientation to the wall is held; `contact_gap`
+  defaults to the experiment's closest approach where a contact law declares one). One policy turns them into a local
+  spacing: an edge a third of the force spacing, a crest 0.3 of its radius across, a contact its gap over 1.5, each
+  growing by the distance from it, never finer than a quarter of the force spacing; the count is the uniform one times
+  the density's mean. **Each graded force point sits at its cell's area centre** (the dense point of its cell nearest
+  it), the cells the relaxed generators', which the separated quadrature, the reference and the wall quadratures take
+  (`Sampling.generators`): with the points where the relaxation leaves them, grading raised the error near a wall (the
+  measurements behind design #296). Lloyd's mass on a graded density is the area times the density's square, so the
+  samples' density is the density. **Geometry kinds declare features** (`Geometry.features`, a new optional capability;
+  `mime.registry.Feature`): the cylinder its rims, the box its twelve edges, the screw its rims and crests (each crest's
+  radius across it from the thread's height and turn, within 0.1 % of the surface's own principal curvature on FL-9).
+  The sampling is fixed on the body: **`off_patch`** flags a step whose body lies within one force spacing of the wall
+  with its nearest point outside the graded patch (a body turned past it), raised only where grading or contact is
+  written (`Flag.written`, new). In graded runs the wall's self-image measures each cell's distance from the wall in the
+  cell's own size (design #308) and a written `wall_refinement` is taken from the finest spacing. The build reports what
+  was graded, the counts and the finest spacing. Refused: features of a kind with none (`drag.grading-features`), a kept
+  version (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`) or no gap to grade for
+  (`drag.grading-approach`), and graded bodies in a medium's joint near field (`drag.grading-near-field`: the joint node
+  raises no `off_patch` yet). The uniform sampling is untouched: every released program's steps trace the same programs
+  (`tests/saved/step_jaxprs.py`, base against head, float32 and float64). The wall's self-image and the near field's
+  cross-kernel share one private switch (`mime.nodes.hydro._near_singular`: the C1 smoothstep, the nearest-first budget
+  and its shortfall, the cond that skips the near work, the kernel integrated over cells), each caller keeping its
+  kernel, distance, reach, budget and granularity.
+
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,
   `near_field:<medium>`, in place of their own: each step it solves their joint system by one dense LU for the

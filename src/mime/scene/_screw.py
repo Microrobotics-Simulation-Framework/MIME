@@ -13,7 +13,7 @@ import jax
 
 from mime.core import SCREW, jnp, switch
 from mime.gradients import GradientStatus
-from mime.registry import PHYSICAL, WHY_REQUIRED
+from mime.registry import PHYSICAL, WHY_REQUIRED, Feature
 from mime.registry import (
     Density,
     Drawing,
@@ -304,6 +304,33 @@ class Screw(Solid):
     def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
                  density: Density = uniform) -> Sampling:
         return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[Feature, ...]:
+        """Its two rims, edges where the thread meets a flat cap, each the end's section turned by the screw; and its
+        ``starts`` crests, smooth ridges along the thread at ``R (1 + modulation)``, each of the least radius across
+        it the thread's height and turn give: the section's height ``R modulation sin(starts theta)`` curves at
+        ``R modulation starts^2`` per square radian, and the ridge turns ``sqrt(1 / R_crest^2 + (wavenumber / R)^2)``
+        radians per metre across it, with the crest cylinder's own curvature beside it."""
+        radius, length, nu, epsilon = self._section(settings)
+        starts, k, crest = self.starts, nu / radius, radius * (1.0 + epsilon)
+        across = 1.0 / crest ** 2 + k * k
+        bending = radius * epsilon * starts * starts * across + (1.0 / crest) * (1.0 / crest ** 2) / across
+        around = max(4 * starts + 1, math.ceil(2.0 * math.pi * crest * (1.0 + epsilon * starts) / resolution))
+        angle = 2.0 * math.pi * np.arange(around) / around
+        rho = radius * (1.0 + epsilon * np.sin(starts * angle))
+        found: list[Feature] = []
+        for end in (-1.0, 1.0):
+            turned = angle + k * (end * length / 2.0 + length / 2.0)
+            found.append(Feature("rim", "edge", 0.0, np.stack(
+                [np.full(around, end * length / 2.0), rho * np.cos(turned), rho * np.sin(turned)], axis=-1)))
+        along = np.linspace(-length / 2.0, length / 2.0,
+                            max(2, math.ceil(length * math.sqrt(1.0 + (crest * k) ** 2) / resolution) + 1))
+        for j in range(starts):
+            turned = (math.pi / 2.0 + 2.0 * math.pi * j) / starts + k * (along + length / 2.0)
+            found.append(Feature("crest", "crest", 1.0 / bending, np.stack(
+                [along, crest * np.cos(turned), crest * np.sin(turned)], axis=-1)))
+        return tuple(found)
 
     @override
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:

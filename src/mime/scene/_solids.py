@@ -14,7 +14,7 @@ import numpy as np
 
 from mime.core import AXIS_ULPS, jnp, switch
 from mime.gradients import GradientStatus
-from mime.registry import PHYSICAL
+from mime.registry import PHYSICAL, Feature
 from mime.registry import (
     Centreline,
     Density,
@@ -244,6 +244,17 @@ class Cylinder(Solid):
     def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
                  density: Density = uniform) -> Sampling:
         return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[Feature, ...]:
+        """Its two rims, edges where the side meets a cap at a right angle, each a circle of ``radius`` at an end."""
+        radius, half = _length(settings, "radius"), _length(settings, "length") / 2.0
+        axis = np.asarray(_lengths(settings, "axis"), dtype=np.float64)
+        axis = axis / np.linalg.norm(axis)
+        first, second = _across(axis)
+        angle = _around(max(8, math.ceil(2.0 * math.pi * radius / resolution)))
+        ring = radius * (np.cos(angle)[:, None] * first + np.sin(angle)[:, None] * second)
+        return tuple(Feature("rim", "edge", 0.0, ring + end * half * axis) for end in (-1.0, 1.0))
 
     @override
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
@@ -523,6 +534,22 @@ class Box(Solid):
     def sampling(self, settings: Mapping[str, Magnitude], spacing: float, patches: Sequence[str],
                  density: Density = uniform) -> Sampling:
         return quasi_uniform(self, settings, spacing, patches, density)
+
+    @override
+    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[Feature, ...]:
+        """Its twelve edges, where two faces meet at a right angle, each traced from corner to corner."""
+        size = np.asarray(_lengths(settings, "size"), dtype=np.float64)
+        found: list[Feature] = []
+        for along in range(3):
+            others = [i for i in range(3) if i != along]
+            steps = np.linspace(-0.5, 0.5, max(2, math.ceil(size[along] / resolution) + 1))
+            for one in (-0.5, 0.5):
+                for two in (-0.5, 0.5):
+                    edge = np.zeros((len(steps), 3))
+                    edge[:, along] = steps * size[along]
+                    edge[:, others[0]], edge[:, others[1]] = one * size[others[0]], two * size[others[1]]
+                    found.append(Feature("edge", "edge", 0.0, edge))
+        return tuple(found)
 
     @override
     def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:

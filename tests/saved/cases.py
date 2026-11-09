@@ -12,7 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_near_field, mrs_plane, mrs_solids, mrs_tube
+from mrs_cases import free_space, mrs, mrs_free_space, mrs_graded, mrs_kept, mrs_near_field, mrs_plane, mrs_solids, \
+    mrs_tube
 from rft_cases import rft_free_space, rft_kept, rft_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, swing_magnet, tracked_rpm
 from hull_cases import hull_contact
@@ -360,6 +361,9 @@ CASES = (
     # The same rung above a plane wall along a turned normal, with the plane wall kind: its regularised image, of the
     # drag's own blob.
     Case("mrs_plane", mrs_plane),
+    # Graded sampling above the plane: a tilted cylinder's rims and its side held facing the wall, the wall's image
+    # integrated near it, so that the graded step's own operations (the cells' sizes, the patch) are traced.
+    Case("mrs_graded", mrs_graded),
     # The kept rigid_inertial 0.2.0 on a body of three different moments: what a folder saved with the explicit
     # gyroscopic term names.
     Case("rigid_explicit", rigid_explicit),

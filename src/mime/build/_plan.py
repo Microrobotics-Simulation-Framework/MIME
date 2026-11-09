@@ -815,7 +815,7 @@ class _Planner:
                             "or put the other body in a medium of its own")
                 continue
             owner = f"near_field:{medium}"
-            if self.near_field_rates_differ(medium, members):
+            if self.near_field_rates_differ(medium, members) or self.near_field_graded(medium, members):
                 continue
             where = f"interaction {owner}"
             reads: dict[str, ResolvedRead] = {}
@@ -841,6 +841,22 @@ class _Planner:
                 member.reads, member.delivers = {}, {}
             self.readers.append(group)
             self.declared.append(group)
+
+    def near_field_graded(self, medium: str, members: Sequence[EntryPlan]) -> bool:
+        """Whether a body of the medium's near field has graded force points (``grading`` or ``contact``), refused if
+        so (``drag.grading-near-field``): the joint node takes each body's wall self-image on the force spacing and
+        raises no ``off_patch``, so a graded body's patch leaving the wall would go unflagged."""
+        graded = sorted(plan.owner for plan in members if getattr(plan.entry, "graded", lambda: False)())
+        if not graded:
+            return False
+        self.refuse("drag.grading-near-field", RefusalClass.USER,
+                    f"medium {medium!r}'s near field couples the bodies of {', '.join(m.owner for m in members)}, and "
+                    f"{', '.join(graded)} grade their force points: the joint node measures each body's wall image on "
+                    f"its force spacing and raises no off_patch, so a graded body's patch leaving the wall would go "
+                    f"unflagged (graded sampling in a near field is not built yet)",
+                    "leave grading and contact out of the drags in a medium shared by two bodies or more, "
+                    "Drag.MRS(spacing=...), or put the graded body in a medium of its own, exp.add_medium(Medium(...))")
+        return True
 
     def near_field_rates_differ(self, medium: str, members: Sequence[EntryPlan]) -> bool:
         """Whether a body of the medium's near field steps at another rate than the joint node, refused if so

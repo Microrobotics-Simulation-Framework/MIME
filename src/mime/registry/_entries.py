@@ -664,7 +664,8 @@ class Flag:
     of entries raises it (``True``: a medium's joint near field) or only the node it builds for itself (``False``). A
     run reports the flags raised over each window it reads, and a flag never blocks a read. A flag that ``warns`` is
     also warned of after a run that raised it, with its count: one whose steps hold values that are not what the step
-    computes to its stated accuracy (a solve that stopped short)."""
+    computes to its stated accuracy (a solve that stopped short). ``written``, where given, names settings of which
+    one written (not ``None``) makes the node raise it: a flag of an opt-in option."""
 
     field: str
     meaning: str
@@ -672,10 +673,12 @@ class Flag:
     rung: str | None = None
     group: bool | None = None
     warns: bool = False
+    written: tuple[str, ...] = ()
 
-    def raised_by(self, rung: str | None, group: bool) -> bool:
-        """Whether the node built for ``rung``, for a group or not, raises it."""
-        return (self.rung is None or self.rung == rung) and (self.group is None or self.group == group)
+    def raised_by(self, rung: str | None, group: bool, entry: object = None) -> bool:
+        """Whether the node built for ``rung``, for a group or not, from ``entry`` (its settings), raises it."""
+        return (self.rung is None or self.rung == rung) and (self.group is None or self.group == group) and (
+            not self.written or any(getattr(entry, name, None) is not None for name in self.written))
 
 
 @dataclass(frozen=True)
@@ -1218,6 +1221,24 @@ def uniform(points: np.ndarray) -> np.ndarray:
     return np.ones(len(points))
 
 
+@dataclass(frozen=True)
+class Feature:
+    """A feature of a kind's surface that its sampling may be graded towards (``mime.scene.graded``): its ``name``
+    (``"rim"``, ``"crest"``), its ``form`` (:data:`FEATURE_FORMS`: an ``"edge"``, where two faces meet at an angle, its
+    ``size`` zero; a ``"crest"``, a smooth ridge, its ``size`` its least radius of curvature across it, m), and
+    ``points`` on it, ``(n, 3)`` in the kind's own frame, no two neighbours farther apart than the resolution they were
+    asked at, from which a point's distance to the feature is read."""
+
+    name: str
+    form: str
+    size: float
+    points: np.ndarray
+
+
+#: The forms a feature takes: an edge (two faces meeting at an angle) and a crest (a smooth ridge of small radius).
+FEATURE_FORMS = ("edge", "crest")
+
+
 @dataclass(frozen=True, eq=False)
 class Sampling:
     """A kind's surface sampled at a spacing, for a solver whose unknowns sit at the samples (the MRS rung's): a choice
@@ -1226,13 +1247,19 @@ class Sampling:
     study's derivative in them flows through. ``chosen`` indexes the quadrature's samples, the patches' concatenated in
     order; ``members`` holds, row by row, the quadrature samples nearest each chosen one (its cell), padded with one
     past the last index, so that a sample's weight is its cell's area and the weights sum to the patches' area; both
-    ``None`` where the samples are the quadrature's own. ``method`` names how they were chosen."""
+    ``None`` where the samples are the quadrature's own. ``method`` names how they were chosen.
+
+    ``generators``, where given, index the quadrature samples whose cells the cells are (each point's nearest
+    generator), each sample lying in its own generator's cell at that cell's area centre (a graded sampling's,
+    ``mime.scene.graded``): a solver whose cells are the samples' nearest points takes them from the generators
+    instead (``mime.scene.quadrature_owners``). ``None`` where the samples are their own cells' generators."""
 
     patches: tuple[str, ...]
     counts: tuple[tuple[int, ...], ...]
     method: str
     chosen: np.ndarray | None = None
     members: np.ndarray | None = None
+    generators: np.ndarray | None = None
 
     def samples(self, kind: Geometry, parameters: Mapping[str, Any]) -> Samples:
         """The samples, in the kind's own frame, from its ``parameters`` (its settings in SI, numbers or traced
@@ -1361,6 +1388,13 @@ class Geometry(Entry):
         its own. A consumer that needs it of a kind that does not implement it refuses the kind by name."""
         raise NotImplementedError
 
+    def features(self, settings: Mapping[str, Magnitude], resolution: float) -> tuple[Feature, ...]:
+        """The features of its surface a sampling may be graded towards (:class:`Feature`): its edges and crests, each
+        traced in its own frame by points no farther apart than ``resolution`` (m), from its settings in SI, at build.
+        A kind with none (a sphere, a capsule) does not implement it; a consumer that grades towards features refuses
+        such a kind by name."""
+        raise NotImplementedError
+
     def support(self, parameters: Mapping[str, Any], direction: Any, near: Any) -> Support:
         """The support query: the body's farthest point along ``direction`` (three numbers in the frame its samples
         are in, of any length above zero) and that point's derivative in the direction, a JAX function of its
@@ -1396,7 +1430,7 @@ class Geometry(Entry):
 #: The build-side capabilities a kind may implement, by method name; ``native`` is the class variable, and
 #: ``mass_properties`` a solid's ``volume`` and ``inertia_per_mass``.
 CAPABILITIES = ("samples", "area", "family_parameters", "radial_reach", "tangent", "mass_properties", "drawing",
-                "native", "region_primitive", "sampling", "reach", "support", "centreline")
+                "native", "region_primitive", "sampling", "reach", "support", "centreline", "features")
 
 
 def implements(kind: type[Geometry] | Geometry, capability: str) -> bool:

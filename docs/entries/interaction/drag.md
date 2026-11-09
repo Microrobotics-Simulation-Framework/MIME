@@ -148,6 +148,27 @@ resistance, the dense assembly the node is held to, and the two-sphere series an
 judged by no step after it. A body on the surrogate rung in the same medium is computed alone, and the build report
 says so.
 
+**Graded sampling** (0.5.0, opt-in; design #296). `Drag.MRS(grading="features")` grades the force points towards the
+hull kind's declared features: a cylinder's rims, a box's edges, a screw's rims and crests (`Geometry.features`; a
+sphere, a capsule, an ellipsoid and a helix declare none, and are refused, `drag.grading-features`).
+`Drag.MRS(contact=..., contact_gap=...)` grades the side of the body held facing the wall, `contact` a direction in
+the body's frame, for a gap to the wall: the experiment's closest approach where a contact law declares
+one, else `contact_gap`, which is then required (`drag.grading-approach`). One policy turns them into a local spacing,
+finest at the feature or the contact and growing by the distance from it, never finer than a quarter of the force
+spacing, and the count rises by the density's mean; each graded force point sits at its cell's area centre, which is
+what makes grading help (with the points left where the relaxation puts them, it raised the error near a wall). The
+sampling is fixed on the body, as every sampling is, so a graded contact serves a body whose orientation to the wall is
+held, and a crest or a rim serves whichever way the body rolls about its axis: a step whose body lies within one force
+spacing of the wall with its nearest point outside the graded patch raises `off_patch`, and its resistance there has
+the uniform sampling's error near the wall, not the graded one's. Resampling to follow the pose is not done (it would
+break the held matrix and the derivatives). In a graded run the wall's self-image measures each cell's distance in the
+cell's own size, and a written `wall_refinement` counts from the finest spacing. The build report states what was
+graded, the counts against the uniform sampling's, and the finest spacing. The blob is unchanged, a share of the force
+points' mean spacing. Measured against exact answers and finer references by `tests/oracles/test_graded_sampling.py`
+(a sphere's contact at a plane against Brenner's series, its wrong-way and leaves-the-patch controls); not bounded
+elsewhere. Refused: a kept version (`drag.grading-kind`), a contact with no wall (`drag.grading-contact`), and a graded
+body in a medium's joint near field (`drag.grading-near-field`: the joint node raises no `off_patch` yet).
+
 `wall_kind` names the wall whose correction the solve adds: `free_space`, an unbounded medium, for a medium that fills
 no region, and [`tube`](../wall_kind/tube.md), a straight circular tube's no-slip wall, for one that fills a tube's lumen.
 

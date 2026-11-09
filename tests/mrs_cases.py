@@ -179,6 +179,28 @@ def mrs_plane() -> Experiment:
     return experiment
 
 
+def mrs_graded() -> Experiment:
+    """The round-trip case of graded sampling (design #296): a cylinder tilted above a plane wall, its rims graded
+    (``grading="features"``) and its side facing the wall graded as a held contact, the wall's image integrated over the
+    cells near it, moving along the plane and turning, at a coarse spacing."""
+    experiment = Experiment("mrs_graded", scene=Scene.new(up=Z, units="m"), gravity=m_per_s2(0.0), dt=ms(1))
+    floor = experiment.add_structure(Structure("floor", geometry=Plane(normal=(0.0, 0.0, 1.0), offset=mm(0.0))))
+    experiment.add_medium(Medium("water", fills=floor.half_space))
+    experiment.declare("water.viscosity", WATER, reason="water")
+    tilt = math.radians(30.0)
+    experiment.add_body(Body("can", dynamics=RigidInertial(),
+                             parts={"shell": Part(Cylinder(radius=mm(0.5), length=mm(1.2), axis=(0.0, 0.0, 1.0)))},
+                             initial=State(position=mm((0.0, 0.0, 1.0)),
+                                           orientation=(math.cos(tilt / 2), 0.0, math.sin(tilt / 2), 0.0),
+                                           velocity=m_per_s((1e-3, 0.0, -2e-4)),
+                                           angular_velocity=rad_per_s((1.0, -2.0, 0.5)))))
+    experiment.declare("can.mass", kg(1e-6), reason="a millimetre body's order")
+    experiment.declare("can.inertia", kg_m2((1e-13, 1e-13, 1e-13)), reason="a millimetre body's order")
+    experiment.attach(Drag.MRS(spacing=mm(0.4), blob=0.5, wall_kind="plane", wall_refinement=2, grading="features",
+                               contact=(1.0, 0.0, -1.0), contact_gap=mm(0.3)), body="can", medium="water")
+    return experiment
+
+
 def prolate(a: float, b: float, mu: float = 1.0) -> np.ndarray:
     """The diagonal of a prolate spheroid's resistance about its centre, its axis along x: Kim & Karrila's ``X^A``,
     ``Y^A``, ``X^C``, ``Y^C`` with ``F = 6 pi mu a X^A U`` and ``T = 8 pi mu a^3 X^C Omega``, ``e`` the eccentricity."""
