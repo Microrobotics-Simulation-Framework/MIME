@@ -1,0 +1,19 @@
+{
+  "written": "2026-11-09, committed before the fix round's gates ran (the commit that adds this file is the timestamp): the refuting review's blocker, two majors and minors",
+  "blocker": {
+    "prediction": "floor.offset as an override of the built sphere above the plane (spacing 0.3 radii, gap 2 radii) writes the drag node's wall_offset leaf 0 -> 1e-4 m, and the resistance at z = 3 mm with the override's leaves equals a fresh build's at that offset entry for entry (np.array_equal), and differs from the base's; offsets of 2.5 mm and 5 mm are refused, drag.mrs-resistance and state.outside-region, as an override and as two of a study's three points (the third a group of one); drag:ball.wall_offset and drag:ball.offset are study.unknown-path as an override and as an axis",
+    "control": "the base's resistance differs from the moved one at the same pose, so the equality can fail"
+  },
+  "cost": {
+    "prediction": "FL-9 at 1.5 mm with its radius, length and modulation ranged (729 sampled points, 9 plans, 6561 evaluations) is refused range.cost before any force-points evaluation (0 calls); the planted peak-sampled choice over one range (9 points, 3 plans, 27 evaluations) plans at a limit of 27 and is refused at 26, and with a second range (5 plans, 45) plans at 45 and is refused at 44",
+    "control": "the limit's boundary: one evaluation fewer refuses, every run (no draw)"
+  },
+  "monotone": {
+    "prediction": "on the CI scans no fall: the force points in the sphere's radius (0.5 to 2 times, 61 values, 0.3 and 0.6 mm), the capsule's radius and height (0.5 to 2 times, 31 values, 0.3 and 0.6 mm), FL-9's length and modulation (0.7 to 1.6 times, 21 values, 1.0 and 1.5 mm) and wavenumber (constant); the default spacing in the sphere's radius and the capsule's radius and height (0.2 to 5 times, 400 values) and FL-9's length and wavenumber (0.7 to 1.6 times, 200 values)",
+    "control": "FL-9's modulation's default spacing falls on its 200-value scan (at least once), and FL-9's radius's force points fall on a 21-value scan at 1.5 mm (uncertain: the known fall is between 2.153 and 2.184 mm, a step finer than the grid's); every run"
+  },
+  "unread_range": "a range of a value no entry is offered (the planted ball's mass) reads 'no consumer reads this range' in the price report; a split inside a range no entry is offered does not call it the entry's defect, and one inside an offered range still does",
+  "split_reference": "the 'own' plant swept at 1.2, 1.0, 1.05 and 1.1 mm (group 0 outside the range): groups 2 and 3 are reported as split inside the range against group 1, the first group inside it",
+  "held": "a bake beside an unread leaf (the planted bake-unread) fires the trace form and is refused as the entry's defect; an unread leaf with no bake (unread) is held, not refused",
+  "bits": "every unranged experiment of the bits gate (pulled, mrs_free_space, mrs_tube, screw_in_tube, sphere_settling_tube; history, tallied, batched) equal array for array (np.array_equal) between the tip 46fcc79 and the final head, in float64 and float32"
+}
