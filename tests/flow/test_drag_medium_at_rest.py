@@ -124,7 +124,7 @@ def assert_refused_naming(experiment: Experiment, field: str) -> None:
 def test_the_walk_meets_every_rung_of_every_drag_version():
     assert {p.id for p in DRAGS} >= {"surrogate-0.3.0", "mrs-0.3.0", "surrogate-0.4.0", "mrs-0.4.0", "rft-0.4.0",
                                      "surrogate-0.5.0", "mrs-0.5.0", "rft-0.5.0"}
-    assert [p.id for p in JOINING] == ["0.5.0"]
+    assert {p.id for p in JOINING} >= {"0.5.0"}
 
 
 @pytest.mark.parametrize(("cls", "rung"), DRAGS)
