@@ -413,7 +413,8 @@ class RFTDragNode(MimeNode):
         its family was measured at (filament radii; zero in free space or outside them), from the step's leaves: its
         family (:func:`measured_family`) by its shape and its slenderness (its centreline's length over its thinnest
         filament radius), at the default coefficients and a spacing no coarser than ``RFT_POINTS_PER_RADIUS`` a filament
-        radius. Held out of every derivative: a report."""
+        radius. A report that no derivative passes: comparisons, and the gap a selection between the families'
+        measured numbers."""
         parameters = self.parameters(p)
         dtype = jnp.asarray(p["viscosity"]).dtype
         segments = self._centreline.segments
@@ -425,7 +426,7 @@ class RFTDragNode(MimeNode):
                                       held["wall_kind"])
         fine = jnp.asarray(p["spacing"], dtype=dtype) <= thinnest / RFT_POINTS_PER_RADIUS * (1.0 + 1e-9)
         found = family & fine & (held["coefficients"] == default_coefficients(self._centreline))
-        return _lax.stop_gradient(found), _lax.stop_gradient(gap.astype(dtype))
+        return found, gap.astype(dtype)
 
     def gap_unmeasured(self, p: Mapping[str, Any], pose: Array, measured: Array) -> Array:
         """Whether the wall's gap at ``pose`` is other than ``measured``, the one its family was measured at (none is,
