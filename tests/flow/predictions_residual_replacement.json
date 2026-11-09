@@ -97,5 +97,54 @@
     "prediction": "every array bit-identical in both dtypes (float64 never restarts; the float32 tube flows end within 5 iterations)"
    }
   ]
+ },
+ "amended_again": {
+  "written": "2026-11-09 ~20:45 CET, in the commit that holds it, after the gates ran under the rule just above and before any gate runs under the rule below",
+  "what_the_runs_under_the_periodic_restart_showed": [
+   "the gates passed locally (the stall control, the flipped restart, the derivative solves, the bit-for-bit gate, the floor tests; 200 of 200 draws for each control by probe; released programs 125 of 125 arrays bit for bit in both dtypes)",
+   "the stenosis at D/h 64 (the D/h 64 gate): 0.1h unflagged with and without (151 and 165 iterations, at the floor); 0.01h: without the restart stagnated at 2.0e-3, flux within 1.1e-7 of float64's; with it stagnated at its first full window, 1540 iterations, at 0.76, its flux 3.7 % off: restarting every 100 iterations stops a large stiff solve from making progress",
+   "the stiff-interior gate's case (0.01h open tube at D/h 32, IMEX Euler, float32): the periodic restart cost 358 to 684 iterations a step against 241 to 370, both converging",
+   "D/h 32, 0.01h, steady, no stagnation stop: the periodic restart converged at 3237 iterations (1.8e-5), the plain CG capped at 5000 at 5.7e-4",
+   "a restart where the stagnation stop would fire (forms2.py and arms_final.py, float32, the shipped window): D/h 8, 8 draws: converged 8 of 8 at 342 to 383 iterations (none stagnated at 340 to 380); D/h 16, 8 draws: 8 of 8 at 657 to 686 (none at 640 to 660); D/h 32 0.01h steady: converged at 1693 (1.3e-5, its floor 1.8e-5), its IMEX steps at 1264 and 1240; one restart allowed or three, the same on every case"
+  ],
+  "rule": "where the stop would find a stagnation the CG restarts from the true residual instead (r and z from the true residual, the direction z), its window begun again, up to three times (Stopping.stall_restarts, STALL_RESTARTS = 3), in both dtypes; a solve that never stagnates never restarts so; the start is made through the same restart (the seam restarted)",
+  "gates": [
+   {
+    "gate": "the stall the case plants (test_control_a_float32_stall_the_restart_breaks_on_every_draw), 200 draws by probe",
+    "prediction": "without the restart stagnated on 200 of 200; with it converged unflagged on 200 of 200, under 420 iterations"
+   },
+   {
+    "gate": "the wrong restart, the sign flipped from the start (test_control_a_wrong_restart_moves_the_answer_and_is_flagged_on_every_draw), 200 draws by probe",
+    "prediction": "flagged on 200 of 200 in each dtype, the answer moved by more than ten times the tolerance on 200 of 200"
+   },
+   {
+    "gate": "the derivative solves at the shifted D/h 16 stenosis",
+    "prediction": "float32: primal, tangent and transpose unflagged, derivatives float64's within 1e-4; float64 bit for bit with and without the restart"
+   },
+   {
+    "gate": "the stenosis at D/h 64 under the stall restart (probe job3, float32, one and three restarts)",
+    "prediction": "0.1h: bit for bit the no-restart result (151 iterations, 4.89e-5), it does not stagnate; 0.01h: the restart breaks the stall and the solve converges unflagged at its floor, its flux within 1e-6 of float64's, with 60 % confidence; if not, flagged with a flux no worse than without"
+   },
+   {
+    "gate": "the genuine floor (unchanged test) and its control",
+    "prediction": "passes: the floor stop takes 69 iterations, no stagnation; its 1e-5-given control still ends flagged (stagnated after its restarts, or at its cap)"
+   },
+   {
+    "gate": "the D/h 16 stall through the shipped stop",
+    "prediction": "converges unflagged, flux float64's within 1e-5"
+   },
+   {
+    "gate": "a solve that never stagnates (test_a_solve_that_never_stagnates_is_the_cg_without_the_restart)",
+    "prediction": "bit for bit on every draw, both dtypes"
+   },
+   {
+    "gate": "the stiff interior at D/h 32, the stagnation tests with a tolerance below rounding (tests/flow)",
+    "prediction": "pass: the window arm never stagnates, so bit for bit; the old-rule control still stagnates a step; the planted tolerances still end stagnated before their caps"
+   },
+   {
+    "gate": "released programs (probe)",
+    "prediction": "bit for bit in both dtypes"
+   }
+  ]
  }
 }
