@@ -100,6 +100,8 @@ registry/_entries.py::_held KeyError 1  # protocol: the class Python's protocol 
 registry/_entries.py::_scalar TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 registry/_entries.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 registry/_entries.py::implements KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+registry/_ranges.py::choose_over TypeError 1  # an entry's defect: a choice over a declared range that declares no rule, raised inside the entry's plan or build, which the planner refuses as entry.defect naming the entry
+registry/_ranges.py::choose_over ValueError 1  # an entry's defect: a sampled rule asking for more points than SAMPLED_POINTS, raised inside the entry's plan or build, which the planner refuses as entry.defect naming the entry
 registry/_registry.py::_register TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 registry/_registry.py::_register ValueError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call
 registry/_registry.py::register_setting_group TypeError 1  # registration: an entry's, a kind's or a lab's registration at import, outside every public call

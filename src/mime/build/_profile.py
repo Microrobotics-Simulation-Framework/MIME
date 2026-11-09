@@ -725,6 +725,16 @@ def declared_item(path: str, value: Quantity, what: str) -> PendingItem:
                        imports=quantity_imports(value))
 
 
+def range_item(path: str, low: Quantity, high: Quantity, what: str) -> PendingItem:
+    """A range declared in the experiment, in place of its ``exp.declare_range(...)``."""
+    return PendingItem(path, what, "in place of its exp.declare_range(...)",
+                       f"exp.declare_range({_quote(path)}, {quantity_line(low, None)}, {quantity_line(high, None)}, "
+                       f"reason={REASON})",
+                       {"ranges": {path: {"low": float(cast(float, low.value)), "high": float(cast(float, high.value)),
+                                          "unit": unit_symbol(low.dimension), "reason": REASON}}},
+                       kind="its reason pending", codes=(BASIS_PENDING,), imports=quantity_imports(low))
+
+
 def source_item(path: str, what: str, *, kind: str = "its source pending",
                 codes: tuple[str, ...] = (BASIS_PENDING,)) -> PendingItem:
     """A setting's source by ``exp.source``."""
@@ -805,4 +815,5 @@ def reader_sites(declarations: Sequence[object], entry_id: Callable[[Any, Mappin
 __all__ = ["BASIS_PENDING", "DEFAULT_NUMERICAL", "DEFAULT_UNDECLARED", "EVIDENCE_MISSING", "GRAVITY_CONVENTION",
            "PENDING", "SOURCE_MISSING", "DefaultTaken", "ProfileOutcome", "ProfileWork", "Site", "acceptance_item",
            "declared_item", "default_item", "experiment_sites", "nominal_item", "quantity_doc", "quantity_imports",
-           "quantity_line", "reader_sites", "reasons_without_a_site", "run_sites", "setting_item", "source_item"]
+           "quantity_line", "range_item", "reader_sites", "reasons_without_a_site", "run_sites", "setting_item",
+           "source_item"]

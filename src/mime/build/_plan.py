@@ -36,6 +36,7 @@ from mime.build._profile import (
     ProfileWork,
     declared_item,
     experiment_sites,
+    range_item,
     reader_sites,
     run_sites,
 )
@@ -140,7 +141,7 @@ from mime.things import (
 from mime.units import FREQUENCY, LENGTH, SAY_THE_ANGLE, TIME, Dimension, Magnitude, Quantity, UnitError, \
     rate_symbol, says_its_angle, si, unit_symbol
 from mime.registry._ranges import RangeChoice, recording
-from mime.validity import DEFAULT_PROFILE, PENDING, Basis, Profile, is_pending, profile_of
+from mime.validity import DEFAULT_PROFILE, PENDING, Basis, is_pending, profile_of
 from mime.vocabulary import FRAME_ANGULAR_VELOCITIES, FRAME_POSES, LINK_INERTIA, LINK_MOMENTUM, LINK_WRENCH, \
     Capability, ReadKind, TargetKind
 
@@ -3078,26 +3079,30 @@ class _Planner:
                 self.refuse_problems([below])
 
     def plan_ranges(self) -> None:
-        """Each declared range checked (``mime.build._ranges``): what a hull's choices are made over."""
+        """Each declared range checked (``mime.build._ranges``): what a hull's choices are made over. A range's reason,
+        pending or not given (which the saved form holds as pending), is judged by the profile as a declared value's is:
+        research refuses it (``range.reason``), exploratory stamps it."""
         found, refusals = planned_ranges(self.settings, self.declarations)
         self.ranges = found
         self.refusals += refusals
+        for path, held in found.items():
+            if held.reason is None or is_pending(held.reason):
+                what = "its reason is pending" if held.reason is not None else \
+                    "it is declared with no reason, which the saved form holds as pending"
+                self.work.pending("range.reason", f"the declared range {held.text()}", what,
+                                  range_item(path, held.low, held.high, "declared in the experiment with its reason "
+                                                                        "pending"))
 
     def judge_ranges(self) -> None:
         """What a range is judged on once the plan is made: a setting whose role is numerical has none (a variant); a
-        value a record gives lies inside its range; in the research profile a range gives its reason; and each choice
-        made over a range covers the experiment's own value (its rule found the extreme)."""
+        value a record gives lies inside its range; and each choice made over a range covers the experiment's own value
+        (its rule found the extreme). A range's reason is judged where it is planned (:meth:`plan_ranges`)."""
         roles = self.outcome.roles
         for path, held in list(self.ranges.items()):
             role = roles.get(path)
             if held.kind == "setting" and role is not None and role.role is Role.NUMERICAL:
                 self.refusals.append(variant_refusal(path, "a numerical setting"))
                 continue
-            if self.settings.profile != Profile.EXPLORATORY.value and (held.reason is None or is_pending(held.reason)):
-                self.refuse("range.reason", RefusalClass.USER,
-                            f"the {self.settings.profile} profile needs each declared range to say why it is declared, "
-                            f"and {held.text()} has no reason", f"give it one: exp.declare_range({path!r}, ..., "
-                                                                 f"reason='<why this range>')")
             if held.kind == "value":
                 kinds = {name: thing.kind for name, thing in self.things.items()}
                 parts = {name: frozenset(thing.parts) for name, thing in self.things.items()

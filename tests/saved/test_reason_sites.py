@@ -33,14 +33,15 @@ from mime.saved._schema import ExperimentDocument, QuantityDoc, ReasonDoc  # noq
 from mime.scene import Box
 from mime.testing.toys import ToyField, full_toy
 from mime.things import Part
-from mime.units import K, T, Condition, degC, m, mm, ms
+from mime.units import K, T, Condition, degC, m, mm, mPa_s, ms
 from mime.validity import pending
 
 #: N45's remanence read's four reasons, which its acceptance covers.
 N45_REASONS = ("stated_without_origin", "condition_unstated:temperature", "condition_unstated:specimen_shape",
                "condition_unstated:test_method")
 #: The codes research refuses a pending reason with, by where it is written.
-PENDING_CODES = {"source.pending", "value.reason-pending", "material.accept-pending", "material.nominal-pending"}
+PENDING_CODES = {"source.pending", "value.reason-pending", "material.accept-pending", "material.nominal-pending",
+                 "range.reason"}
 #: The schema's slots no case reaches, each with why no experiment writes one (a test below holds each claim where the
 #: registry can): a group of settings in an entry that takes none, a flow with no flow entry registered.
 UNREACHED = {
@@ -119,8 +120,8 @@ def with_pending(document: dict[str, Any], place: tuple[object, ...], kind: str)
 
 
 def ball() -> Experiment:
-    """The settling ball with a declared value, a source, a condition, a motion setting, a part placed and a nominal:
-    sealed but for its numerical defaults, which it writes."""
+    """The settling ball with a declared value, a source, a condition, a motion setting, a part placed, a nominal and a
+    declared range: sealed but for its numerical defaults, which it writes."""
     exp = settling_ball(Paperwork(profile="research", acceptance="water is Newtonian", density="steel",
                                   spacing=mm(0.2, reason="converged"), blob=0.5, quadrature_refinement=4,
                                   sources={"drag:ball.blob": "usual", "drag:ball.quadrature_refinement": "usual"}))
@@ -129,6 +130,7 @@ def ball() -> Experiment:
         **body.parts, "bead": Part(Box(size=mm((0.1, 0.1, 0.1))), at=mm((0.1, 0.0, 0.0)), inside="shell")})
     exp._declarations = [dataclasses.replace(d, thing=placed) if getattr(d, "thing", None) is body else d
                          for d in exp._declarations]
+    exp.declare_range("water.viscosity", mPa_s(0.5), mPa_s(2.0), reason="the bath's temperatures")
     return exp
 
 
