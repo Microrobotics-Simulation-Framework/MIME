@@ -182,3 +182,4 @@ PrescribedFlowNode \varphi  # pinned at landing
 PrescribedFlowNode R  # pinned at landing
 PrescribedFlowNode \mu  # pinned at landing
 PrescribedFlowNode \rho  # pinned at landing
+RFTDragNode \mathbf{R}  # pinned at landing

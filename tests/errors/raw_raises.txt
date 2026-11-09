@@ -61,6 +61,7 @@ env/_pins.py::applicable ValueError 1  # invariant: MIME's own check, which no s
 env/_pins.py::parse_requirements ValueError 2  # caught where it is raised and refused with its code (env.lab, by the env check)
 experiment/_experiment.py::ObservationHandle.__getattr__ AttributeError 2  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 experiment/_mermaid_page.py::library_bytes ValueError 1  # invariant: the packaged Mermaid library's bytes against their pinned sha256, which the packaging and graph tests hold
+interactions/hydrodynamic.py::Drag.build ValueError 1  # invariant: the rft rung's build after its plan has refused a body with no centreline, wall kind or coefficients; reached, it is error.uncoded, keeping its class
 interactions/hydrodynamic.py::PointForceDrag._build_mrs ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 interactions/hydrodynamic.py::PointForceDrag.build ValueError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 live/_protocol.py::FrameSchema.decode ValueError 3  # a client's frame of another schema, length or protocol: a Python client's own check of a message it received, below any public call; the protocol's page documents it
@@ -79,6 +80,8 @@ nodes/actuation/_uniform_field.py::UniformRotatingNode.__init__ ValueError 1  # 
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ TypeError 3  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/body/_rigid_inertial.py::RigidInertialNode.__init__ ValueError 8  # a node's constructor, which the build calls with what phase 1 checked (and, with the ledger attached, one hosted law for its confinement, a definiteness check on its resistance alone, and each delivery paired as the body pairs its input): reached, it is error.uncoded (a confining shape with no curvature for a hull with a support is refused first by the plan, coded confinement.surface-shape; contact_loops with no hull, which the build sets only beside a hull's settings; the node layer constructs no refusal)
 nodes/control/_controller.py::DelayNode.__init__ ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+nodes/hydro/_rft_drag.py::RFTDragNode.__init__ ValueError 5  # construction: the node's constructor given a coefficient set, a stop form, shape and wall constants or counts it cannot take, which only the rung's build gives and its plan has checked; reached, it is error.uncoded
+nodes/hydro/_rft_drag.py::drag_coefficients ValueError 1  # invariant: a coefficient set the setting's own check (drag.rft-coefficients) has already refused; reached, it is error.uncoded, keeping its class
 nodes/hydro/_surrogate_drag.py::SurrogateDragNode.__init__ ValueError 4  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode.__init__ ValueError 7  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_node.py::MRSDragNode._check_owners ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
@@ -89,6 +92,10 @@ nodes/hydro/mrs/_tube.py::unit_tube_table ValueError 1  # a node's constructor, 
 nodes/hydro/mrs/_walls.py::cell_image ValueError 1  # invariant: MIME's own check, which no supported script reaches (a node integrates the image only of a wall correction that gives one); reached, it is error.uncoded, keeping its class
 nodes/hydro/mrs/_walls.py::register_wall_correction ValueError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
 nodes/hydro/mrs/_walls.py::wall_correction_named KeyError 1  # a node's constructor, which the build calls with what phase 1 checked: reached, it is error.uncoded
+registry/_centreline.py::Centreline.__post_init__ ValueError 4  # construction: a kind's own centreline given no segment, a repeated junction name, a junction of one end or an end outside its segments, raised where a kind's author writes it; a registered kind's is held by the centreline harness
+registry/_centreline.py::Centreline.junction KeyError 1  # a junction looked up by its name, by the kind's own code; the lookup's own error class
+registry/_centreline.py::centreline_counts ValueError 1  # invariant: a segment length that is not above zero, which the centreline harness holds for every registered kind; reached, it is error.uncoded
+registry/_centreline.py::centreline_points ValueError 1  # invariant: a count that is not one or more for a segment, which the rung's build gives from centreline_counts; reached, it is error.uncoded
 registry/_entries.py::_held KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 registry/_entries.py::_scalar TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 registry/_entries.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
@@ -111,6 +118,12 @@ scene/_geometry.py::Tube.region_parameters KeyError 1  # protocol: the class Pyt
 scene/_geometry.py::Tube.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_geometry.py::Tube.surface_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_geometry.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
+scene/_helix.py::Helix.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_helix.py::Helix.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_helix.py::Helix.region_primitive KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_helix.py::Helix.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_helix.py::Helix.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_helix.py::_held TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_kinds.py::_vector TypeError 1  # invariant: MIME's own check, which no supported script reaches; reached, it is error.uncoded, keeping its class
 scene/_kinds.py::kind_frame KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_sampling.py::_quasi_uniform ValueError 2  # a kind's sampling at the build, from a density or a count a kind's own code gives: a lab's kind that passes one above its dense set, or a density not above zero, is a defect of that kind; reached, it is error.uncoded
@@ -134,6 +147,7 @@ scene/_solids.py::Cylinder.region_parameters KeyError 1  # protocol: the class P
 scene/_solids.py::Cylinder.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Cylinder.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Ellipsoid.area KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
+scene/_solids.py::Ellipsoid.centreline ValueError 1  # caught where the rft rung reads a body's centreline (hull_centreline), which reports it as drag.no-centreline with the ellipsoid's semi-axes in its message
 scene/_solids.py::Ellipsoid.region_parameters KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Ellipsoid.sample_counts KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
 scene/_solids.py::Ellipsoid.samples KeyError 1  # protocol: the class Python's protocol needs (hasattr, a mapping's lookup, a kind's own keys), caught by its caller
