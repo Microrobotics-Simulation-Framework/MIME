@@ -103,7 +103,9 @@ RESTART_MEASURED = (
     "draw converges (at 102 to 171 iterations at D/h 8, 412 to 649 at D/h 16); replacing the residual alone every "
     "100 iterations, the direction kept, converged at D/h 8 but left 13 of 16 stalled at D/h 16, and every 200 the "
     "reverse (20 of 20 stalled at D/h 8); in float64, where no draw stalled, restarting every 100 iterations costs "
-    "1.4 times the iterations (450 to 639 on average at D/h 16), so float64 does not restart by default")
+    "1.4 times the iterations (450 to 639 on average at D/h 16), so float64 does not restart by default; on a float32 "
+    "solve that converges without it the restart costs iterations (the 0.01h open tube at D/h 32, IMEX Euler: 358 to "
+    "684 a step against 241 to 370, the flux moved by at most 2.5e-6 of itself)")
 
 
 @dataclass(frozen=True)
