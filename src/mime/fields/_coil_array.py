@@ -310,7 +310,7 @@ class CalibratedMultipole(CoilArray):
                                                         "unit current above 30 times its median over the declared "
                                                         "region, each calibration's own; a length given replaces it "
                                                         "with a distance from a fitted source")}
-    references = ("Petruska2017", "Charreyron2021", "Kummer2010", "Zughaibi2025")
+    references = ("Petruska2017", "Charreyron2021", "Kummer2010", "Zughaibi2025", "Zughaibi2026", "Gervasoni2024")
     builds = {"": (CalibratedMultipoleNode,)}
     validity = (
         "the field is linear in the delivered currents, each coil a calibrated multipole model of order one: fitted "
@@ -339,8 +339,11 @@ class CalibratedMultipole(CoilArray):
         "one; cited figures, none of them a rating of the rig a calibration was fitted on (which neither source "
         "states): OctoMag 16 A a coil, a published operating limit of ETH's rig (Zughaibi2025), and a 15 A amplifier "
         "saturation its 2010 force tables assume (Kummer2010); Navion 25 A a coil as one lab's operating restriction (Zughaibi2025, Sec. III-B: \"we conservatively "
-        "restrict them to 25 A per coil for safety\"), and 45 A as the drivers' capability, not a coil rating; CardioMag "
-        "20 A as the 0.2 line declared it, unsourced",
+        "restrict them to 25 A per coil for safety\"), the figure MIME uses; 45 A as what that lab says the hardware "
+        "supports (Zughaibi2025, Sec. III-B, and its sequel Zughaibi2026, Sec. II-C, the same three-coil system and "
+        "drivers); the drivers rated 50 A continuous and 100 A peak, with the system paper's workspace maps at 50 A in "
+        "each coil (Gervasoni2024, Experimental Section and Fig. 3); no source states a coil rating, or that its unit is "
+        "the one the calibration was fitted on; CardioMag 20 A as the 0.2 line declared it, unsourced",
         _BACKGROUND,
         "CardioMag's file carries an Offset block of eight sources, current-independent, worth about 1.5 mT at the "
         "median over its region (3 to 30 % of a 5 to 50 mT field), which neither mag_manip nor this node evaluates: "

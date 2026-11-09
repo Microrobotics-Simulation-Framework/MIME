@@ -39,6 +39,14 @@ the median over its region) that upstream's `mag_manip` does not evaluate, becau
 `Coil_List` names it, and this file's does not; MIME does not evaluate it either (a `Coil_List` that names it is
 refused). Navion_2's and OctoMag's files carry no `Offset` block.
 
+## Current limits
+
+None of the files states a current limit, and MIME ships none (`allocate()` takes the user's). The figures published for
+the Navion system, none a coil rating: 25 A a coil as one lab's operating restriction (Zughaibi et al. 2025, Sec. III-B),
+the figure MIME uses where it needs one; 45 A as what that lab says the hardware supports (the same section, and
+Zughaibi et al. 2026, Sec. II-C); drivers rated 50 A continuous and 100 A peak (Gervasoni et al. 2024, Experimental
+Section and Fig. 3). No source says that the unit measured is the one the calibration was fitted on.
+
 ## The rule
 
 These files are never edited here. A newer calibration is a new file with its own pins, taken from its source.

@@ -27,6 +27,13 @@ rounding 2.8e-14 and float32 1.5e-5 of the field; least distance from a source t
 0.007 T/(m A), and none of 60 000 drawn points of the region reaches it (its smooth gradient reaches 13.5 times the
 median, the widest of the three).
 
+**Its current limits.** None ships (`allocate()` takes the user's). The figures published for the Navion system: 25 A a
+coil as one lab's operating restriction (Zughaibi2025, Sec. III-B), the figure MIME uses where it needs one; 45 A as what
+that lab says the hardware supports (Zughaibi2025, Sec. III-B, and its sequel Zughaibi2026, Sec. II-C, the same three-coil
+system and drivers); the drivers rated 50 A continuous and 100 A peak, with the system paper's workspace maps at 50 A in
+each coil (Gervasoni2024, Experimental Section and Fig. 3). No source states a coil rating, or that its unit is the one
+this calibration was fitted on.
+
 **Its accuracy, by use.** Against ETH's `mag_manip`, MIME's evaluation agrees to a tolerance derived from the field's
 cancellation at the compared points (`tests/oracles/test_calibrated_multipole.py`): a software oracle, which pins sign
 and frame to mag_manip's convention and cannot ground them against hardware. Its sources' directions are not of unit
