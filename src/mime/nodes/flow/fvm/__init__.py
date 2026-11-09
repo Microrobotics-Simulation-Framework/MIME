@@ -7,13 +7,13 @@ from mime.nodes.flow.fvm._box import DEFAULT_CELLS_ACROSS, TubeLayout, periodic_
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow.fvm._node import STALL_LINE, FlowInputs, FlowState, ImplicitFlowNode, MeteredFlowState, \
     StepParts
-from mime.nodes.flow.fvm._explicit import ExplicitFlowInputs, ExplicitFlowNode, ExplicitFlowState, cfl_check
+from mime.nodes.flow.fvm._explicit import ExplicitFlowNode, ExplicitFlowState, cfl_check
 from mime.nodes.flow.fvm._schemes import RK3, SCHEMES, IMEXEuler, StageKind, Steady, TimeScheme, scheme_named
 from mime.nodes.flow.fvm._solve import DEFAULT_TOLERANCE, PRECONDITIONERS, REPORT_FIELDS, REPORT_SIZE, Jacobi, \
     Preconditioner, Stopping, guarded_cg, projected_solve, scaling_start
 
 __all__ = ["BANDS", "Band", "DEFAULT_BAND", "DEFAULT_CELLS_ACROSS", "DEFAULT_INTERIOR", "DEFAULT_TOLERANCE",
-           "ExplicitFlowInputs", "ExplicitFlowNode", "ExplicitFlowState", "FlowInputs", "FlowState", "IMEXEuler", "INTERIORS",
+           "ExplicitFlowNode", "ExplicitFlowState", "FlowInputs", "FlowState", "IMEXEuler", "INTERIORS",
            "ImplicitFlowNode", "Jacobi", "MACGrid", "MeteredFlowState", "PRECONDITIONERS", "Preconditioner", "RK3",
            "REPORT_FIELDS", "REPORT_SIZE", "SCHEMES", "STALL_LINE", "StageKind", "Steady", "StepParts", "Stopping",
            "TimeScheme", "TubeLayout", "TubeSolid",

@@ -10,7 +10,8 @@ resistivity ``nu x sum(chi / K)``, the drive at a time), so nothing derived from
 
 **The start** (B2; B6 and B7, decision 14; round 4, item 8). A run from rest or from a given velocity starts from a
 consistent pressure, ``p = (D G)^-1 D h(u)`` with ``h`` the momentum's right-hand side without the pressure (one fast
-solve), computed in the program at the run's first step (:func:`consistent_pressure`).
+solve), computed in the program at the run's first step (:func:`consistent_pressure`), from a state the scheme's start
+marks unmade (:func:`ready_pressure`).
 
 **The ledger** (route 1, B1 "Energy", B9 "Other tableaux"). The step records the terms S1's step records, each by
 RK3's own quadrature (``b = (1/4, 0, 3/4)`` at the stage starts) or, for the penalty, at its implicit stage solutions:
@@ -22,8 +23,9 @@ residual ``N = W - D_visc - D_pen - C - dH``."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
+import jax
 from jax import Array
 
 from mime.core import jnp
@@ -39,6 +41,8 @@ STAGE_TIMES = (0.0, 8.0 / 15.0, 2.0 / 3.0)
 QUADRATURE = (0.25, 0.0, 0.75)
 
 Force = Callable[[int, Any], Velocity]
+#: ``jax.lax``, whose hints name a device type from jaxlib's compiled core, which ships no stubs.
+_LAX: Any = jax.lax
 
 
 class ExplicitStage(NamedTuple):
@@ -74,6 +78,14 @@ def consistent_pressure(grid: MACGrid, velocity: Velocity, viscosity: Any, resis
     rhs, _, _ = _explicit(grid, velocity, viscosity, force, convection)
     penalised = (resistivity[0] * velocity[0], resistivity[1] * velocity[1], resistivity[2] * velocity[2])
     return grid.poisson(grid.divergence(_add(rhs, penalised, -1.0)))
+
+
+def ready_pressure(grid: MACGrid, velocity: Velocity, pressure: Array, ready: Array, viscosity: Any,
+                   resistivity: Velocity, force: Velocity, convection: bool) -> Array:
+    """The pressure a step starts from: ``pressure`` where ``ready`` marks it made, otherwise (a run's start, a state
+    given from outside) the pressure consistent with ``velocity`` at the stage-0 drive ``force``, one fast solve."""
+    return cast(Array, _LAX.cond(jnp.asarray(ready) > 0.5, lambda: pressure,
+                                 lambda: consistent_pressure(grid, velocity, viscosity, resistivity, force, convection)))
 
 
 def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, resistivity: Velocity, force: Force,
@@ -114,4 +126,5 @@ def step(grid: MACGrid, velocity: Velocity, pressure: Array, viscosity: Any, res
     return velocity, pressure, ExplicitStage(drive, viscous_d, penalty_d, conv_p, scale)
 
 
-__all__ = ["ALPHA", "GAMMA", "QUADRATURE", "STAGE_TIMES", "ZETA", "ExplicitStage", "consistent_pressure", "step"]
+__all__ = ["ALPHA", "GAMMA", "QUADRATURE", "STAGE_TIMES", "ZETA", "ExplicitStage", "consistent_pressure",
+           "ready_pressure", "step"]

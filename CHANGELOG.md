@@ -15,11 +15,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered band, its stiff interior beyond), stepped by IMEX Euler on the projected monolithic conjugate gradient
   (`Scheme.IMEXEuler()`, convection explicit) or by its steady limit (`Scheme.Steady()`, with `stokes=True`), driven
   by `exp.attach(BodyForce(along=..., steady=...), medium=water)` on the fluid. Each step reports its solve (its
-  iterations, its true residual against the tolerance and how it stopped, never silently at a cap), the lumen's and
-  the solid's fluxes, and with the energy ledger on the node its step identity; the derivative solves report through a
-  zero parameter's gradient. With convection on, a run past the scheme's CFL line is refused, naming the step and the
-  timestep that keeps it; a CFL number that is not finite counts as past the line. `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is unchanged
-  (a medium's flow is written where dev1 wrote it).
+  iterations, its true residual against the tolerance and how it stopped); a step whose solve stopped other than
+  converging raises `solve_flagged`, read in `result.flags` with its count and warned of after the run (a flag may now
+  declare that it warns, `Flag.warns`). It reports the lumen's and the solid's fluxes, flagging the solid's bypass and,
+  with `stokes=True`, the lumen's Reynolds number past their declared lines, lists every validity line it carries, and
+  with the energy ledger on the node its step identity; the derivative solves report through a zero parameter's
+  gradient, a row a step with `report_rows` (a run past the last row refused before it runs). With convection on, at
+  the first step past the scheme's CFL line the flow's state is held, the run ends at the end of that chunk and is
+  refused, naming the step and a timestep to try. The wall's settings are its group, `wall=Band(delta_in=...)`. Its
+  derivative is checked exact in the viscosity, the density and the drive, and declared unverified in the tube's
+  geometry (the entry's status). `Medium(flow=...)` is kept as `fields={"flow": ...}`'s alias; the saved form is
+  unchanged (a medium's flow is written where dev1 wrote it). The drive is delivered once a step and as its
+  waveform's coefficients (`flow.waveform`), for a scheme whose stages read it at their own instants.
+
+- **The plane wall kind** (`plane` 0.1.0, `mime.walls.PlaneWall`): an unbounded no-slip plane for the drag's MRS rung,
+  its image system in closed form, regularised by the drag's own blob, so that with the free Stokeslet of that blob it
+  vanishes on the wall and has no divergence to rounding, and as the blob vanishes it is Blake's singular image. The
+  plane is a structure, `mime.scene.Plane(normal=+Z, offset=...)`, whose `half_space` a medium fills
+  (`Medium("water", fills=floor.half_space)`); its shape is `mime.core.HalfSpace` (`half_space`), convex, taking many
+  points, with no switch. The offset is the drag node's leaf `wall_offset`, which a gradient and a caller of the node
+  reach; **a structure's settings are not yet study or override axes** (`override={"floor.offset": ...}` is refused,
+  `value.unknown`, and so are `drag:<body>.wall_offset` and `drag:<body>.offset`, `study.unknown-path`), and they come
+  with the study layer's declared ranges. The normal is held as built and normalised in the
+  program, so declaring it a leaf later changes no program. The gradient is exact. The plane has no surface yet, so no
+  contact can be held against it; the build refuses a body that starts through it, and the drag's near-wall flags
+  speak in a run. **The wall protocol passes the drag's regularisation to every wall kind**: a correction and its
+  image between point sets take `eps_squared`, the blob's square, and `WallCorrection.regularised` declares whether a
+  kind uses it (the tube's table image is singular and declares it does not); the build report says per wall which
+  image it adds. A correction a lab registers must take the new argument (a default of `None`
+  serves), and registration refuses one that does not (`entry.defect`, naming the function and the argument) instead
+  of failing with a bare `TypeError` at the first trace. Every released program on the tube and in free space runs to the same bits.
 
 - **RK3, the step rule and `dt="auto"`; the prescribed flow; the solved-field contract's suite** (F1b). `FVM(...,
   scheme=Scheme.RK3())` steps the flow by S1's explicit RK3 (three low-storage stages, the wall's penalty implicit in
@@ -31,9 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scheme's line before any step (`flow.cfl-predicted`, `flow.viscous-limit`), with the step that keeps it;
   `Experiment(..., dt="auto")` takes the largest stable step (stability only, its steps a period reported beside it),
   saved as the step it chose. The lines are one value each, along a grid axis, scaled along a tilted vessel's axis by
-  `max|n_d| / sum|n_d|`: RK3's is 1.7, not the 2.0 first decided, at which a plug flow grows (the maintainer's to
-  confirm). RK3's books are judged on the ledger's first route, per step (`ledger_route_one_*`). `Womersley()`
-  (`womersley` 0.1.0) is a medium's flow prescribed in a straight tube, Poiseuille and Womersley by an in-program
+  `max|n_d| / sum|n_d|`: RK3's is 1.7, not the 2.0 first decided, at which a plug flow grows (the maintainer's
+  decision). RK3 is a scheme of the registry's interface: its state the velocity, the pressure and whether the pressure
+  is made, its stages reading the drive at their own instants, its terms its own; its node holds its state past the CFL
+  line as the implicit node does. RK3's books are judged on the ledger's first route, per step (`ledger_route_one_*`).
+  `Womersley()` (`womersley` 0.1.0) is a medium's flow prescribed in a straight tube, Poiseuille and Womersley by an in-program
   series valid to a Womersley number of 50 in float64 and 25 in float32, outside and with no grid; `BodyForce` drives
   either rung (it delivers its waveform where the field reads one). `mime.fields.SolvedField` holds a field kind's
   declarations and `mime.testing.field_conformance` its suite, each case applicable by declaration and every skipped

@@ -175,6 +175,7 @@ TYPICAL = {
     "cylinder": {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": 3.175e-3},
     "capsule": {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "radius": 5e-4, "height": 2e-3},
     "slab": {"centre": (0.0, 0.0, 0.0), "axis": (1.0, 0.0, 0.0), "half_thickness": 5e-4},
+    "half_space": {"normal": (1.0, 0.0, 0.0), "offset": 1e-3},
     "screw": {"centre": (0.0, 0.0, 0.0), "orientation": (1.0, 0.0, 0.0, 0.0), "radius": 1.56e-3,
                       "length": 7.47e-3, "wavenumber": 2.33, "modulation": 0.33, "starts": 2},
 }
@@ -236,8 +237,9 @@ def test_autodiff_equals_the_difference_at_an_example_near_each_set_for_each_mov
 
 #: The examples whose derivative along the curve is zero wherever a difference is taken, so that no scaling of the
 #: tangent can show: the slab's normal is its axis on one side of the mid-plane and its opposite on the other, so it
-#: moves with neither the point, the half-thickness nor the centre (only the axis turns it).
-CONSTANT = {("slab", "normal", "half_thickness"), ("slab", "normal", "centre")}
+#: moves with neither the point, the half-thickness nor the centre (only the axis turns it); the half-space's normal is
+#: its own everywhere, so it moves with neither the point nor the offset (only the normal turns it).
+CONSTANT = {("slab", "normal", "half_thickness"), ("slab", "normal", "centre"), ("half_space", "normal", "offset")}
 
 
 @pytest.mark.parametrize("dtype", DTYPES)

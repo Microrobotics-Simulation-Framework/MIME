@@ -18,8 +18,8 @@ def fvm_field(scheme: str) -> SolvedField:
         own_contribution="none", accepts=(FLOW_BODY_FORCE.name, FLOW_WAVEFORM.name), exchange=NOT_DECLARED,
         outside=False, domain_kinds=(PeriodicBox.group,), ports="none",
         properties=("viscosity", "density", "inverse_permeability"),
-        settings=("domain", "spacing", "cells_across", "scheme", "stokes", "tolerance", "preconditioner", "band",
-                  "interior"),
+        settings=("domain", "spacing", "cells_across", "scheme", "stokes", "tolerance", "preconditioner", "wall",
+                  "report_rows"),
         ledger_route=chosen.ledger_route, ledger_reason="", steady_solve=chosen.steady,
         affine_response=False, stores="the fluid's inertia" if chosen.stores_inertia else "nothing", batches=True,
         dtypes=("float32", "float64"), rates=NOT_DECLARED)

@@ -40,7 +40,7 @@ from mime.scene._frame import (
     up_axis_problem,
     world_frame,
 )
-from mime.scene._geometry import Axis, Tube, X, Y, Z
+from mime.scene._geometry import Axis, Plane, Tube, X, Y, Z
 from mime.scene._previous import KEPT
 from mime.scene._sampling import (
     QUADRATURE,
@@ -101,7 +101,7 @@ __all__ = [
     "PeriodicBox",
     "ARROW", "Asset", "Axis", "active_visual_pins", "Box", "Capsule", "ComposedLayer", "Composition", "Cylinder", "DERIVED_FROM",
     "DERIVED_HASH", "DRAWING_SEGMENTS", "DerivedFinding", "Ellipsoid", "GEOMETRY_API", "KEPT", "KindOnStage",
-    "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY",
+    "KindPrim", "LAYERS", "MAGNET_API", "MAGNET_DIRECTION", "METERS_PER_UNIT", "MagnetDesign", "MountedPrim", "PROXY", "Plane",
     "QUADRATURE", "QUASI_UNIFORM", "Reference", "RegionPrim", "STAGE_FILE", "STAGE_WRITER", "STAGE_WRITERS", "Scene",
     "Screw", "Shape", "Sphere", "StageEdits", "StageFinding", "StageSpec", "ThingPrim", "Tube", "UP_AXES",
     "VECTOR_SCALE", "VECTOR_UNITS", "VECTOR_VALUE", "VISUAL_ASSET", "VISUAL_FILE", "VISUAL_ROLE", "VISUAL_SHA256",

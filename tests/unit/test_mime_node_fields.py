@@ -58,7 +58,7 @@ TYPED = [
     (BodyForceNode("f", DT, along=(0, 0, 1), steady=1.0), BodyForceState, None, set()),
     (flow.ExplicitFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=2, spacing=1e-4, viscosity=1e-3, density=1e3,
                            tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
-     flow.ExplicitFlowState, flow.ExplicitFlowInputs, set()),
+     flow.ExplicitFlowState, flow.FlowInputs, set()),
     (PrescribedFlowNode("w", DT, viscosity=1e-3, density=1e3, tube_centre=(0, 0, 0), tube_axis=(0, 0, 1),
                         tube_radius=2.5e-4), PrescribedFlowState, PrescribedFlowInputs, set()),
     (hydro.SurrogateDragNode("d", DT, weights="dejongh_mlp_v2", weights_sha256=asset("dejongh_mlp_v2").sha256,

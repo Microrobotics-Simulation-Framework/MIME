@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 from mime.nodes.flow.fvm import RK3, MACGrid, _rk3
+from mime.nodes.flow.fvm._schemes import StepContext
 
 NU_SPACE, NU_TIME, T_END = 0.1, 0.01, 1.0
 
@@ -82,32 +83,28 @@ def _sampler(grid, function):
                                    for c in range(3)))
 
 
-def _run(n: int, nu: float, steps: int, plant: str = "none", start: str = "consistent"):
-    """The velocity and pressure at T_END on an N grid in ``steps`` steps (float64), the drive the manufactured
-    forcing at each stage's time."""
+def _unused(*_):
+    raise AssertionError("the explicit stage reads neither the monolithic operator nor its solve")
+
+
+def _run(n: int, nu: float, steps: int, plant: str = "none"):
+    """The velocity and pressure at T_END on an N grid in ``steps`` steps (float64), stepped through the scheme's
+    interface (``RK3().start``, then ``step`` on its state, the consistent pressure made in the first), the drive the
+    manufactured forcing at each stage's time (``StepContext.force``)."""
     grid = type(f"Planted_{plant}", (Planted,), {"plant": plant})((n, n, n), 2.0 * math.pi / n)
     dt = T_END / steps
     velocity_at = _sampler(grid, _velocity)
     force_at = _sampler(grid, _forcing(nu))
-    zero = grid.zeros(jnp.float64)
+    scheme = RK3()
+    context = StepContext(grid, _unused, lambda stage, time: force_at(time), True, _unused, nu,
+                          grid.zeros(jnp.float64))
 
-    def force(stage, time):
-        del stage
-        return force_at(time)
+    def body(state, k):
+        return scheme.step(context, state, k * dt, dt)[0], None
 
-    u0 = grid.project(velocity_at(jnp.asarray(0.0)))
-    if start == "consistent":
-        p0 = _rk3.consistent_pressure(grid, u0, nu, zero, force(0, jnp.asarray(0.0)), True)
-    else:
-        p0 = jnp.zeros(grid.cells)
-
-    def body(carry, k):
-        u, p = carry
-        u, p, _ = _rk3.step(grid, u, p, nu, zero, force, True, k * dt, dt)
-        return (u, p), None
-
-    (u, p), _ = jax.jit(lambda c: jax.lax.scan(body, c, jnp.arange(steps, dtype=jnp.float64)))((u0, p0))
-    return grid, u, p, velocity_at
+    start = scheme.start(grid, velocity_at(jnp.asarray(0.0)))
+    ended, _ = jax.jit(lambda c: jax.lax.scan(body, c, jnp.arange(steps, dtype=jnp.float64)))(start)
+    return grid, ended["velocity"], ended["pressure"], velocity_at
 
 
 def _relative(a, b):

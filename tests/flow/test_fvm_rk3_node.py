@@ -27,8 +27,7 @@ def rk3_node(dh: int = 8, *, nu: float = 1.0, dt: float | None = None, length_ce
     return ExplicitFlowNode("flow", step, cells_x=layout.cells[0], cells_y=layout.cells[1], cells_z=layout.cells[2],
                             spacing=layout.spacing, viscosity=nu, density=1.0, tube_centre=layout.centre,
                             tube_axis=layout.axis, tube_radius=layout.radius,
-                            periodic_images="own" if lattice == (0, 1) else "transverse",
-                            **{"drive": "held", **settings})
+                            periodic_images="own" if lattice == (0, 1) else "transverse", **settings)
 
 
 def run(node, steps, waveform=Waveform(steady=8.0), state=None, p=None):
@@ -110,8 +109,9 @@ def _plug(node, speed):
 @pytest.mark.parametrize(("lattice", "factor"), [((0, 1), 1.0), ((1, 1), 0.5)])
 @pytest.mark.parametrize("ratio", [0.98, 1.02])
 def test_the_check_stops_at_the_first_step_past_rk3s_line_along_the_axis(dtype, lattice, factor, ratio):
-    """A plug at a known CFL: past ``1.7 g(n)`` the first step is named, under it none (the tilted tube's line is half
-    the aligned one's)."""
+    """A plug at a known CFL: past ``1.7 g(n)`` the first step is named and the state held from it (F1a's stop: the
+    run past the line does not advance), under it none and the flow moves (the tilted tube's line is half the aligned
+    one's)."""
     with in_dtype(dtype):
         probe = rk3_node(dt=1.0, lattice=lattice)
         h = probe.constants()["spacing"]
@@ -121,9 +121,12 @@ def test_the_check_stops_at_the_first_step_past_rk3s_line_along_the_axis(dtype, 
         top = max(float(np.max(np.abs(v))) for v in start.values())
         speed = ratio * line * h / dt / top
         node = rk3_node(dt=dt, lattice=lattice, convection=True, **_plug(rk3_node(dt=dt, lattice=lattice), speed))
-        state = run(node, 1, Waveform())
+        state = run(node, 2, Waveform())
+        start = dict(node.initial_state())
     assert float(RK3().cfl_limit(node.constants()["tube_axis"])) == pytest.approx(RK3.cfl_line * factor, rel=1e-6)
     assert int(state["stopped_at"]) == (1 if ratio > 1.0 else -1)
+    unmoved = all(bool(jnp.array_equal(state[f"velocity_{c}"], start[f"velocity_{c}"])) for c in "xyz")
+    assert unmoved == (ratio > 1.0)
     if ratio > 1.0:
         problem = node.stop_problem(state)
         assert problem is not None and problem.code == "flow.cfl-exceeded" and "dt='auto'" in problem.action
@@ -139,13 +142,15 @@ def test_a_stokes_run_is_never_stopped(dtype):
 
 
 def test_a_non_finite_velocity_counts_as_past_the_line(dtype):
+    """A NaN stops the run at its step, and its state not being finite is the run's own refusal's to name (F1a's
+    stop: the CFL's refusal names none for it)."""
     with in_dtype(dtype):
         node = rk3_node()
         start = dict(node.initial_state())
         start["velocity_z"] = start["velocity_z"].at[0, 0, 0].set(jnp.nan)
         state = run(node, 1, Waveform(), state=start)
     assert int(state["stopped_at"]) == 1
-    assert node.stop_problem(state) is not None
+    assert node.stop_problem(state) is None
 
 
 def test_control_a_check_on_the_wrong_spacing_misses_the_first_step(dtype):

@@ -152,6 +152,17 @@ def test_a_warm_start_already_within_the_tolerance_takes_an_iteration(dtype):
     assert int(control[0]) == 0
 
 
+def test_a_tolerance_below_rounding_stops_stagnated_before_its_cap(dtype):
+    """The planted stall: asked for a residual the dtype cannot reach, the solve reaches its rounding floor and stops
+    there as stagnated, the window's checks no longer falling under half the best before them, well before its cap;
+    its iterate stays finite (a breakdown at the floor takes no step)."""
+    problem = Problem(dtype)
+    for seed in range(4):
+        x, report = problem.cg(problem.rhs(seed), tolerance=1e-30)
+        assert float(report[STAGNATED]) == 1.0 and float(report[AT_CAP]) == 0.0, report
+        assert int(report[0]) < 5000 and bool(jnp.all(jnp.isfinite(jnp.stack([jnp.max(jnp.abs(c)) for c in x]))))
+
+
 def test_an_exactly_zero_residual_is_accepted_unsolved(dtype):
     problem = Problem(dtype)
     zero = tuple(jnp.zeros(problem.grid.cells, dtype=dtype) for _ in range(3))

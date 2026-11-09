@@ -116,17 +116,18 @@ def _run(n: int, dt_steps: int | None, plant: str, pressure_plant: str, dtype: s
                              for _ in range(3))
             return projected_solve(grid, operator(shift), diagonal, rhs, guess, stopping, tap, Jacobi())
 
-        context = StepContext(grid, operator, sample_force, True, solve)
+        context = StepContext(grid, operator, lambda stage, t: sample_force(t), True, solve)
         scheme = IMEXEuler()
 
         def body(u, k):
-            ended, parts = scheme.step(context, u, k * dt, dt)
-            return ended, None
+            ended, parts = scheme.step(context, {"velocity": u}, k * dt, dt)
+            return ended["velocity"], None
 
         start = grid.project(sample_velocity(jnp.asarray(0.0, dtype=dtype)))
         run = jax.jit(lambda u: jax.lax.scan(body, u, jnp.arange(steps - 1, dtype=dtype))[0])
         before = run(start)
-        last, parts = jax.jit(lambda u: scheme.step(context, u, (steps - 1) * dt, dt))(before)
+        ended, parts = jax.jit(lambda u: scheme.step(context, {"velocity": u}, (steps - 1) * dt, dt))(before)
+        last = ended["velocity"]
         remainder = tuple(r - a for r, a in zip(parts.rhs, operator(parts.shift)(last), strict=True))
         if pressure_plant == "no_convection":
             remainder = tuple(r - c for r, c in zip(remainder, parts.convection, strict=True))
@@ -211,11 +212,11 @@ def _final(n: int, steps: int):
         diagonal = tuple(jnp.full(grid.cells, shift - NU * grid.laplacian_diagonal()) for _ in range(3))
         return projected_solve(grid, operator(shift), diagonal, rhs, guess, stopping, tap, Jacobi())
 
-    context = StepContext(grid, operator, sample_force, True, solve)
+    context = StepContext(grid, operator, lambda stage, t: sample_force(t), True, solve)
     scheme = IMEXEuler()
 
     def body(u, k):
-        return scheme.step(context, u, k * dt, dt)[0], None
+        return scheme.step(context, {"velocity": u}, k * dt, dt)[0]["velocity"], None
 
     start = grid.project(sample_velocity(jnp.asarray(0.0)))
     return jax.jit(lambda u: jax.lax.scan(body, u, jnp.arange(steps, dtype=jnp.float64))[0])(start)
@@ -245,9 +246,9 @@ def _golden_step(plant: str):
         diagonal = tuple(jnp.full(grid.cells, shift - nu * grid.laplacian_diagonal()) for _ in range(3))
         return projected_solve(grid, operator(shift), diagonal, rhs, guess, stopping, tap, Jacobi())
 
-    context = StepContext(grid, operator, lambda t: tuple(jnp.cos(t) * f for f in force), True, solve)
+    context = StepContext(grid, operator, lambda stage, t: tuple(jnp.cos(t) * f for f in force), True, solve)
     start = tuple(jnp.asarray(v) for v in data["velocity_in"])
-    ended, _ = IMEXEuler().step(context, start, jnp.asarray(t0), dt)
+    ended = IMEXEuler().step(context, {"velocity": start}, jnp.asarray(t0), dt)[0]["velocity"]
     if plant == "picard":
         # The time-level plant: convection evaluated at the step's own solution, by one more pass.
         shift = 1.0 / dt
@@ -269,3 +270,56 @@ def test_one_step_equals_the_independent_implementations_golden_step(float64):
 
 def test_control_convection_at_the_wrong_time_level_misses_the_golden_step(float64):
     assert _golden_step("picard") > 1e-6
+
+
+# -- the registry's interface, written for RK3 (M4) ----------------------------------------------------------------
+
+def test_a_scheme_whose_state_carries_a_pressure_and_whose_stages_read_their_own_instants_steps(float64):
+    """Round 4, item 7: a scheme's step and start carry a scheme state keyed by its ``state_fields``, and its stages
+    read the drive at their own instants through the context, which also gives an explicit stage the viscosity and the
+    resistivity. A toy two-stage scheme carrying a pressure steps through the interface unchanged; the flow node gives
+    a scheme whose stages read off the step's end the delivered waveform at each stage's time. The control: the
+    registered monolithic schemes read at the step's end alone, where the held delivery is made."""
+    from mime.nodes.flow._waveform import waveform, waveform_at
+    from mime.nodes.flow.fvm._schemes import StageKind, TimeScheme
+    from fvm_cases import tube_node
+
+    asked: list[tuple[int, float]] = []
+
+    class TwoStage(TimeScheme):
+        name, version = "two_stage", "0.0.0"
+        stage_kind = StageKind.EXPLICIT_PROJECTED
+        state_fields = ("velocity", "pressure")
+        stage_times = drive_instants = (0.0, 0.5)
+        ledger_route, ledger_terms, cfl_line = 1, ("convection",), 1.0
+        steady, stores_inertia, takes_convection = False, True, True
+
+        def start(self, grid, velocity):
+            return {"velocity": grid.project(velocity), "pressure": jnp.zeros(grid.cells)}
+
+        def step(self, context, state, time, dt):
+            u = state["velocity"]
+            for k, instant in enumerate(self.drive_instants):
+                asked.append((k, float(time + instant * dt)))
+                f = context.force(k, time + instant * dt)
+                u = tuple(a + 0.5 * dt * (b - context.resistivity[i] * a) for i, (a, b) in enumerate(zip(u, f)))
+            return {"velocity": context.grid.project(u), "pressure": state["pressure"] + context.viscosity}, None
+
+    node = tube_node(8, length_cells=2)
+    p = node._step_constants(None)  # noqa: SLF001
+    grid = node.grid(p)
+    fields = node.fields(p, grid)
+    coefficients = waveform(jnp.asarray([0.0, 0.0, 1.0]), jnp.asarray(2.0), 1.0, 3.0, 0.25)
+    scheme = TwoStage()
+    force = node.forcing(fields, {"body_force": jnp.zeros(3), "waveform": coefficients}, scheme, jnp.float64)
+    context = StepContext(grid, node.operator_of(p, grid, node.resistivity(p, fields)), force, False,
+                          lambda *a: None, node.kinematic(p), node.resistivity(p, fields))
+    state, _ = scheme.step(context, scheme.start(grid, grid.zeros(jnp.float64)), 0.2, 0.1)
+    assert set(state) == {"velocity", "pressure"} and asked == [(0, 0.2), (1, pytest.approx(0.25))]
+    assert float(state["pressure"][0, 0, 0]) == pytest.approx(float(node.kinematic(p)))
+    for t in (0.2, 0.25):
+        expected = node.drive(fields, waveform_at(coefficients, t))
+        assert all(bool(jnp.array_equal(a, b)) for a, b in zip(force(1, t), expected))
+    held = node.forcing(fields, {"body_force": jnp.asarray([0.0, 0.0, 7.0])}, IMEXEuler(), jnp.float64)
+    assert IMEXEuler().drive_instants == (1.0,)
+    assert float(jnp.max(held(0, 123.0)[2])) == pytest.approx(7.0)

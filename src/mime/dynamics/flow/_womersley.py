@@ -4,7 +4,7 @@ fields={"flow": Womersley()})``, the cheap rung of #216, a CPU path with no grid
 Poiseuille's steady term and Womersley's harmonic in a straight circular tube, responding to the waveform of the body
 force bound to the medium (``BodyForce``, the drive of either rung: swapping ``Womersley()`` and ``FVM(...)`` touches
 neither the drive's line nor the medium's ``fills=``). It takes nothing back from what reads it, so it is outside (F0-1
-M3). It provides the flow's velocity at points (``field.flow.velocity``). **The name is the maintainer's to confirm**:
+M3). It provides the flow's velocity at points (``field.flow.velocity``). **The name is the maintainer's decision**:
 it is written here and in :data:`PRESCRIBED_FLOW` alone."""
 
 from __future__ import annotations

@@ -1,15 +1,18 @@
 """The time-scheme registry: each scheme a registered tableau with its stage kind, an accuracy-bearing numerical
-setting; F1a registers IMEX Euler and its steady limit.
+setting: IMEX Euler and its steady limit (F1a), and S1's explicit RK3 (F1b).
 
-**The interface is written against two consumers**: IMEX Euler, built here, and S1's explicit RK3, F1b's, on paper.
+**The interface is written against two consumers**: IMEX Euler, built here, and S1's explicit RK3, F1b's.
 A scheme declares its stage kind (the monolithic projected CG, or the explicit stage with its split penalty and fast
-projection), the fields its state carries (the velocity alone, or the velocity and the pressure), how a run starts
-(project the initial velocity once; RK3 also takes a consistent pressure, one fast solve, in the program), the stage
-times at which the medium's drives are evaluated and its port laws called, its ledger route and its numerical terms,
-its CFL line (which bounds convection only) and its viscous limit, and whether it has a steady limit. A scheme's step
-takes a :class:`StepContext` (what the field kind gives every scheme: its grid, its operators, its drive, its solve) and
-returns the new velocity and what the ledger reads of the step. Nothing here names the CG, the projector or a fluid:
-those are the context's.
+projection), the fields its state carries (``state_fields``: the velocity alone, or the velocity and the pressure), how
+a run starts, the instants at which each stage reads the medium's drive, its ledger route and its numerical terms, its
+CFL line (which bounds convection only) and its viscous limit, and whether it has a steady limit. **Its step and start
+carry a scheme state**, a mapping keyed by ``state_fields`` (``"velocity"`` a :data:`Velocity`, any other field an
+array), never the velocity alone: ``start(grid, velocity)`` gives the state a run starts from, and ``step(context,
+state, time, dt)`` the next state and what the ledger reads of the step. A start the scheme makes in the program (RK3's
+consistent pressure, round 4, item 8) is its step's, from a state its start marks unmade. A scheme's step takes a
+:class:`StepContext` (what the field kind gives every scheme: its grid, its operators, the viscosity and the regions'
+resistivity, its drive at each stage's instant, its solve). Nothing here names the CG, the projector or a fluid: those
+are the context's.
 
 **IMEX Euler**: backward Euler for viscosity, the penalty and incompressibility in one solve on the projected
 operator, forward Euler for convection when it is on; the drive at the step's end. **The steady solve** is the same
@@ -52,17 +55,25 @@ class StageParts(NamedTuple):
     report: Array
 
 
+#: A scheme's state, keyed by its ``state_fields``: ``"velocity"`` a :data:`Velocity`, any other field an array.
+type SchemeState = dict[str, Any]
+
+
 @dataclass(frozen=True)
 class StepContext:
-    """What a field kind gives a scheme for one step: the grid, the operator ``A_c u = c u - nu L u + Sigma u`` and its
-    diagonal for a time coefficient ``c``, the drive's body force at a time, whether convection is on, and the solve
-    (``solve(c, rhs, guess) -> (u, report)``)."""
+    """What a field kind gives a scheme for one step: the grid; the operator ``A_c u = c u - nu L u + Sigma u`` for a
+    time coefficient ``c``; the drive, ``force(stage, time)``, the body force per unit mass on each face set that the
+    scheme's stage ``stage`` reads at ``time`` (its instant, ``t_n + drive_instants[stage] dt``); whether convection is
+    on; the solve (``solve(c, rhs, guess) -> (u, report)``); and, for a stage kind that applies them explicitly, the
+    kinematic viscosity and the regions' resistivity ``nu x sum(1/K)`` on each face set."""
 
     grid: MACGrid
     operator: Callable[[Any], Callable[[Velocity], Velocity]]
-    force: Callable[[Any], Velocity]
+    force: Callable[[int, Any], Velocity]
     convection: bool
     solve: Callable[[Any, Velocity, Velocity | None], tuple[Velocity, Array]]
+    viscosity: Any = None
+    resistivity: Velocity | None = None
 
 
 class TimeScheme:
@@ -99,11 +110,12 @@ class TimeScheme:
         """The largest dt the scheme's explicit viscosity allows; ``None`` for a scheme whose viscosity is implicit."""
         return None
 
-    def start(self, grid: MACGrid, velocity: Velocity) -> Velocity:
-        """The velocity a run starts from, made in the program from the initial one."""
-        return grid.project(velocity)
+    def start(self, grid: MACGrid, velocity: Velocity) -> SchemeState:
+        """The state a run starts from, given its initial velocity: the velocity projected once (B2)."""
+        return {"velocity": grid.project(velocity)}
 
-    def step(self, context: StepContext, velocity: Velocity, time: Any, dt: Any) -> tuple[Velocity, StageParts]:
+    def step(self, context: StepContext, state: SchemeState, time: Any, dt: Any) -> tuple[SchemeState, StageParts]:
+        """The state one step on from ``state`` at ``time``, and what the ledger reads of the step."""
         raise NotImplementedError
 
 
@@ -124,15 +136,16 @@ class IMEXEuler(TimeScheme):
     takes_convection = True
 
     @override
-    def step(self, context: StepContext, velocity: Velocity, time: Any, dt: Any) -> tuple[Velocity, StageParts]:
+    def step(self, context: StepContext, state: SchemeState, time: Any, dt: Any) -> tuple[SchemeState, StageParts]:
         grid = context.grid
+        velocity: Velocity = state["velocity"]
         shift = 1.0 / dt
-        force = context.force(time + self.drive_instants[0] * dt)
+        force = context.force(0, time + self.drive_instants[0] * dt)
         convection = grid.convection(velocity) if context.convection else grid.zeros(velocity[0].dtype)
         rhs = (shift * velocity[0] + force[0] + convection[0], shift * velocity[1] + force[1] + convection[1],
                shift * velocity[2] + force[2] + convection[2])
         solved, report = context.solve(shift, rhs, velocity)
-        return solved, StageParts(force, convection, rhs, solved, shift, report)
+        return {"velocity": solved}, StageParts(force, convection, rhs, solved, shift, report)
 
 
 class Steady(TimeScheme):
@@ -150,12 +163,13 @@ class Steady(TimeScheme):
     takes_convection = False
 
     @override
-    def step(self, context: StepContext, velocity: Velocity, time: Any, dt: Any) -> tuple[Velocity, StageParts]:
+    def step(self, context: StepContext, state: SchemeState, time: Any, dt: Any) -> tuple[SchemeState, StageParts]:
         grid = context.grid
-        force = context.force(time + self.drive_instants[0] * dt)
+        velocity: Velocity = state["velocity"]
+        force = context.force(0, time + self.drive_instants[0] * dt)
         zero = jnp.zeros((), dtype=velocity[0].dtype)
         solved, report = context.solve(zero, force, velocity)
-        return solved, StageParts(force, grid.zeros(velocity[0].dtype), force, solved, zero, report)
+        return {"velocity": solved}, StageParts(force, grid.zeros(velocity[0].dtype), force, solved, zero, report)
 
 
 class RK3(TimeScheme):
@@ -163,7 +177,7 @@ class RK3(TimeScheme):
     three stages, convection and viscosity explicit, the wall's penalty implicit and pointwise in each stage, the
     incremental fast projection each stage, the pressure carried as state.
 
-    **Its lines** (one value each, the maintainer's to confirm): ``max|u| dt / h <= 1.7 g(n)`` and ``nu dt / h^2 <=
+    **Its lines** (one value each, the maintainer's decision): ``max|u| dt / h <= 1.7 g(n)`` and ``nu dt / h^2 <=
     0.15``, ``g(n) = max_d |n_d| / sum_d |n_d|`` along the vessel's axis ``n``. Below the linear limit of a plug flow
     along ``n`` at every viscous number up to 0.15 (the limit on the component sum is at least 1.73 there, the axis the
     worst direction; derived, and the step's Jacobian about a uniform flow matches it to 1e-14); a plug at the
@@ -173,7 +187,8 @@ class RK3(TimeScheme):
     name = "rk3"
     version = "0.1.0"
     stage_kind = StageKind.EXPLICIT_PROJECTED
-    state_fields = ("velocity", "pressure")
+    #: The velocity, the kinematic pressure, and whether the pressure is made (the start marks it unmade).
+    state_fields = ("velocity", "pressure", "pressure_ready")
     stage_times = _rk3.STAGE_TIMES
     #: Each stage reads its drive at its own start time: third order in a time-varying drive (held at the step's end
     #: instead, the alpha-6 gate's fit moved +5.4 %).
@@ -191,6 +206,30 @@ class RK3(TimeScheme):
     def viscous_limit(self, viscosity: float, spacing: float) -> float | None:
         return self.viscous_number * spacing ** 2 / viscosity
 
+    @override
+    def start(self, grid: MACGrid, velocity: Velocity) -> SchemeState:
+        """The velocity projected once (B2), its pressure marked unmade: the first step makes the consistent pressure
+        in the program, one fast solve (round 4, item 8), as it does for a state given from outside so marked."""
+        dtype = velocity[0].dtype
+        return {"velocity": grid.project(velocity), "pressure": jnp.zeros(grid.cells, dtype=dtype),
+                "pressure_ready": jnp.zeros((), dtype=dtype)}
+
+    @override
+    def step(self, context: StepContext, state: SchemeState, time: Any, dt: Any) -> tuple[SchemeState, Any]:
+        """One RK3 step on the scheme's state. What the ledger reads of it is ``_rk3.ExplicitStage``, the stages'
+        quadrature of each term, which the interface's ``StageParts`` (an implicit stage's) cannot carry yet: typed
+        ``Any`` here until the interface's parts are widened for it (#207's follow-up)."""
+        grid, viscosity, resistivity = context.grid, context.viscosity, context.resistivity
+        assert viscosity is not None and resistivity is not None, "the explicit stage applies them itself"
+        velocity: Velocity = state["velocity"]
+        pressure = _rk3.ready_pressure(grid, velocity, state["pressure"], state["pressure_ready"], viscosity,
+                                       resistivity, context.force(0, time + self.drive_instants[0] * dt),
+                                       context.convection)
+        ended, ended_pressure, stage = _rk3.step(grid, velocity, pressure, viscosity, resistivity, context.force,
+                                                 context.convection, time, dt)
+        return ({"velocity": ended, "pressure": ended_pressure,
+                 "pressure_ready": jnp.ones((), dtype=velocity[0].dtype)}, stage)
+
 
 SCHEMES: MappingProxyType[str, TimeScheme] = MappingProxyType({IMEXEuler.name: IMEXEuler(), Steady.name: Steady(),
                                                              RK3.name: RK3()})
@@ -202,5 +241,5 @@ def scheme_named(name: str) -> TimeScheme:
     return SCHEMES[name]
 
 
-__all__ = ["RK3", "SCHEMES", "IMEXEuler", "StageKind", "StageParts", "Steady", "StepContext", "TimeScheme",
-           "scheme_named"]
+__all__ = ["RK3", "SCHEMES", "IMEXEuler", "SchemeState", "StageKind", "StageParts", "Steady", "StepContext",
+           "TimeScheme", "scheme_named"]

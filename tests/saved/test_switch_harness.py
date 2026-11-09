@@ -60,7 +60,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import tube_asset
-from mrs_cases import mrs_free_space, mrs_solids
+from mrs_cases import mrs_free_space, mrs_plane, mrs_solids
 import multibody_cases
 from chain_cases import AR4_BASE, AR4_HOME, kinematic_rpm, tracked_rpm
 from script_a import script_a
@@ -1137,6 +1137,21 @@ def guard_points(graph):
 
     egg_pose = jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
 
+    # Built here, outside every point's reach: planning evaluates the half-space's own norm (the start's region
+    # check), which is no node's step.
+    plane_graph = mrs_plane_graph()
+
+    def plane_elements(pose):
+        """The drag's MRS rung above a plane wall, whose image normalises the plane's normal in the step (its
+        ``nonzero_norm``), away from zero for every normal the plan admits."""
+        built = plane_graph
+        node = built.get_node("drag:ball")
+        out = node.fresh_update(node_state(built, "drag:ball"), {"pose": pose}, DT,
+                                params=parameter_leaves(built)["drag:ball"])
+        return {key: value for key, value in out.items() if key != "wall_accepted"}
+
+    plane_pose = jnp.asarray((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
+
     def tube_read(points):
         """The tube wall kind's correction at samples on the tube's axis, where its rule on the axis is."""
         found = tube_correction(points, {"table": unit_tube_arrays(), "frame": frame_across((0.0, 0.0, 1.0)),
@@ -1178,6 +1193,7 @@ def guard_points(graph):
                                                lambda: jax.jacfwd(elements)(screw_pose)),
         "the MRS samples on the ellipsoid": (lambda: egg_elements(egg_pose),
                                              lambda: jax.jacfwd(egg_elements)(egg_pose)),
+        "the MRS above a plane": (lambda: plane_elements(plane_pose), lambda: jax.jacfwd(plane_elements)(plane_pose)),
         "the tube's read on the axis": (lambda: tube_read(on_the_tube_axis),
                                         lambda: jax.jacfwd(tube_read)(on_the_tube_axis)),
         "a log-log table read past its range": (lambda: logarithmic(not_positive),
@@ -1194,6 +1210,11 @@ def mrs_graph():
 @cache
 def mrs_solids_graph():
     return mrs_solids().build().graph
+
+
+@cache
+def mrs_plane_graph():
+    return mrs_plane().build().graph
 
 
 def tracking_points():

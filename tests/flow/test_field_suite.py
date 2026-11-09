@@ -63,8 +63,7 @@ def fvm_rig(scheme: str, dtype: str) -> tuple[object, FieldRig]:
             dt = 0.15 * h * h / nu
             node = ExplicitFlowNode("flow", dt, cells_x=layout.cells[0], cells_y=layout.cells[1],
                                     cells_z=layout.cells[2], spacing=h, viscosity=nu, density=1.0,
-                                    tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius,
-                                    drive="held")
+                                    tube_centre=layout.centre, tube_axis=layout.axis, tube_radius=layout.radius)
             steps = 3000
         else:
             node = tube_node(dh, nu=nu, g=g, dt=0.05, convection=False, scheme=scheme)
@@ -152,6 +151,24 @@ def test_each_kind_passes_the_suite_and_lists_what_it_skipped(dtype, name):
     else:
         assert FieldCase.OUTSIDE in report.skipped
         assert (FieldCase.STEADY in report.skipped) == (name != "steady")
+
+
+@pytest.mark.parametrize("entry", ["fvm", "womersley"])
+def test_a_kinds_declared_settings_are_its_entrys_own(entry):
+    """SF-8: the settings a kind declares are its entry's own, by name (the entry's fields past the base's ``rate``):
+    the FVM's wall group, ``wall=Band(...)``, replaced its flat band and interior. The control is the declaration as it
+    stood before that, which names two settings the entry no longer has."""
+    from mime.dynamics import FVM
+    from mime.registry import Dynamics
+
+    cls, declared = (FVM, fvm_field("rk3")) if entry == "fvm" else (Womersley, Womersley.field)
+    base = {f.name for f in dataclasses.fields(Dynamics)}
+    own = tuple(f.name for f in dataclasses.fields(cls) if f.name not in base)
+    assert declared.settings == own
+    if entry == "fvm":
+        stale = ("domain", "spacing", "cells_across", "scheme", "stokes", "tolerance", "preconditioner", "band",
+                 "interior")
+        assert stale != own
 
 
 def test_a_case_left_out_is_listed_as_left_out(float64):

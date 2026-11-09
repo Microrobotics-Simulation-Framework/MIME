@@ -94,8 +94,8 @@ def _central(name: str) -> float:
     return central(name)
 
 
-#: The loss scales: the decided 1e-12 and 1e6, and 1e-30, where a start that does not scale with its right-hand side
-#: breaks (at 1e-12 the CG recovers from the primal's warm start, at 2.5 times the iterations).
+#: The loss scales: the decided 1e-12 and 1e6, and 1e-30, further out (a start that does not scale with its right-hand
+#: side breaks at both: measured, the primal's warm start is 1.5e10 off in reverse mode at 1e-12, and passes at 1 only).
 SCALES = [1e-30, 1e-12, 1e6]
 
 
@@ -144,8 +144,9 @@ def test_control_the_penalty_viscosity_baked_at_build_fails_the_gate(float64, mo
 def test_control_the_primals_plain_warm_start_fails_the_scale_test(float64, monkeypatch, mode):
     """The previous step's velocity as every solve's start, the tangent's and transpose's included (the shared
     closure): at a loss scale of 1e-30 their right-hand sides are thirty orders under the start's residual, so they
-    stagnate, which their reports show, or end wrong. (At 1e-12 the CG recovers, at 2.5 times the iterations: the
-    structural test that every start scales with its right-hand side, in ``test_fvm_solve.py``, sees it there.)"""
+    stagnate, which their reports show, or end wrong. It fails at 1e-12 too (measured: 1.5e10 off in reverse mode,
+    7.0e6 in forward, two and three of the six derivative solves stagnated) and passes at a scale of 1 alone; the
+    structural test that every start scales with its right-hand side is in ``test_fvm_solve.py``."""
     nu_central = _central("viscosity")
 
     def plain(guess, b, operator, inner):

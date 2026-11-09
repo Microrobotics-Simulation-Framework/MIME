@@ -13,6 +13,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from mime.nodes.flow._waveform import waveform
 from mime.nodes.flow.fvm import ImplicitFlowNode, MACGrid, periodic_tube_layout
 
 
@@ -62,6 +63,11 @@ class Waveform:
         value = self.steady + self.amplitude * jnp.cos(self.omega * time + self.phase)
         return jnp.asarray(self.along) * value
 
+    def coefficients(self, dtype: Any) -> Any:
+        """The drive as the law delivers it to a scheme whose stages read it at their own instants (RK3)."""
+        return waveform(self.along, jnp.asarray(self.steady, dtype=dtype), self.amplitude, self.omega / (2 * np.pi),
+                        self.phase)
+
 
 #: Each node's drive, by the node (a test constructs a node and runs it with its own drive).
 DRIVES: "weakref.WeakKeyDictionary[ImplicitFlowNode, Waveform]" = weakref.WeakKeyDictionary()
@@ -86,15 +92,19 @@ def tube_node(dh: int = 16, *, nu: float = 1.0, rho: float = 1.0, g: float = 8.0
 
 
 def step_of(node: ImplicitFlowNode, p: Any, waveform: Waveform | None = None) -> Any:
-    """The node's step with its drive delivered at the instant its scheme reads it, ``(state) -> state``."""
+    """The node's step with its drive delivered as the law delivers it, ``(state) -> state``: the value at the
+    instant a scheme reads it once a step at, and the waveform, which a scheme whose stages read their own instants
+    evaluates at each."""
     drive = waveform if waveform is not None else DRIVES.get(node, Waveform())
     dt = node.delta_t
 
     instant = node.scheme.drive_instants[0]
 
     def step(s: Any) -> Any:
-        time = (jnp.asarray(s["steps"]).astype(s["velocity_z"].dtype) + instant) * dt
-        return node.advance(p, s, {"body_force": drive.at(time).astype(s["velocity_z"].dtype)}, dt)
+        dtype = s["velocity_z"].dtype
+        time = (jnp.asarray(s["steps"]).astype(dtype) + instant) * dt
+        return node.advance(p, s, {"body_force": drive.at(time).astype(dtype),
+                                   "waveform": drive.coefficients(dtype)}, dt)
 
     return step
 

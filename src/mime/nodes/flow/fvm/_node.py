@@ -9,11 +9,17 @@ diagonal from the viscosity; the body force on the fluid, ``g (1 - chi)``, ``g``
 deliver for the step (the waveform is theirs); then the scheme's step.
 
 **The CFL check** (item 1, F1a's half). With convection on, each step reads ``max|u| dt / h`` of the velocity the
-explicit convection uses; past the scheme's line the node records the first such step in ``stopped_at`` with the CFL it
-read, and :meth:`stop_problem` refuses the run after it, naming the step and the route. The check selects nothing in
-the step (it is a report, as the build's other flags are), so it writes no NaN and the field's derivative keeps its
-status; a run past the line is refused, so no result or derivative across it is returned. ``stokes=True`` runs are
-exempt (the lines bound convection only).
+explicit convection uses. At the first step past the scheme's line the node records the step in ``stopped_at`` with the
+CFL it read, and **holds its state**: that step and every later one leave it unchanged (a held state writes no NaN).
+The run ends at the end of the chunk the step lies in (``STOP_FIELD``, read between chunks) and :meth:`stop_problem`
+refuses it after, naming the step and the route. A finished run's every step is on the other branch, so no derivative
+of a run that is returned crosses the hold. ``stokes=True`` runs are exempt (the lines bound convection only).
+
+**The validity lines it flags each step** (the entry lists every line): a solve that stopped other than converging
+(``solve_flagged``); with ``stokes=True``, the lumen's Reynolds number past the declared Stokes line
+(``reynolds_flagged``, :data:`STOKES_REYNOLDS`); the solid's bypass flux past its declared line (``bypass_flagged``,
+:data:`BYPASS_LINE`). The resolution in cells and float32's rounding floor are fixed when the node is built, so the
+build reports them (:meth:`built_lines`).
 
 **The report.** Each step's primal solve report (``mime.nodes.flow.fvm._solve``'s block) is a state field, with its
 running sum; the derivative solves' reports come out through the ``solve_report`` parameter's gradient (summed over
@@ -29,8 +35,8 @@ D_visc`` per step (the stall detector, flagged above :data:`STALL_LINE`)."""
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
-from typing import Any, NamedTuple, override
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, ClassVar, NamedTuple, override
 
 import numpy as np
 from jax import Array
@@ -44,8 +50,11 @@ from mime.core import ledger as books
 from mime.nodes.flow.fvm._band import TubeSolid, WallFields, band_named, interior_depth, negative_resistivity, \
     wall_fields
 from mime.nodes.flow.fvm._grid import MACGrid, Velocity
-from mime.nodes.flow.fvm._schemes import StageParts, StepContext, TimeScheme, scheme_named
-from mime.nodes.flow.fvm._solve import REPORT_SIZE, Stopping, preconditioner_named, projected_solve
+from mime.nodes.flow._body_force import STEP_END
+from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
+from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
+from mime.nodes.flow.fvm._solve import REPORT_SIZE, Stopping, preconditioner_named, projected_solve, \
+    stagnation_window
 from mime.registry import Problem
 
 EQUATIONS = (r"\frac{\mathbf{u}_{n+1} - \mathbf{u}_{n}}{h} = -\nabla \cdot \left( \mathbf{u}_{n} \mathbf{u}_{n} \right) + "
@@ -58,12 +67,39 @@ _STEP = "mime.nodes.flow.fvm._node.ImplicitFlowNode.stepped"
 _OPERATOR = "mime.nodes.flow.fvm._node.ImplicitFlowNode.operator_of"
 _DRIVE = "mime.nodes.flow.fvm._node.ImplicitFlowNode.drive"
 
+#: The Reynolds number, by the lumen's diameter and mean speed, up to which the Stokes approximation (``stokes=True``)
+#: is declared: a declaration, not a fit (B8.3 asks for the line, and no measurement sets it). In the straight
+#: periodic tube F1a builds the axial flow's convection vanishes identically, so the line bounds nothing measured here:
+#: it is for the geometries and bodies that follow.
+STOKES_REYNOLDS = 1.0
+#: The solid's bypass flux, as a share of the lumen's, above which a step is flagged: a declaration (B3 makes the
+#: bypass a validity line and offers the 0.01h interior "when it fires"; no measurement sets the line). Measured at the
+#: defaults (0.1h): BYPASS_MEASURED.
+BYPASS_LINE = 1e-3
+BYPASS_MEASURED = ("measured on the straight tube, steady Stokes: 1.4e-4 at D/h 32, 4.8e-4 at 16 and 2.6e-3 at 8 with "
+                   "the 0.1h interior; 6.4e-5, 1.4e-4 and 1.2e-3 with 0.01h")
+#: The state field a node that stops a run holds the step it stopped at in (-1 while it has not): the run reads it
+#: between chunks and ends at the chunk the stop lies in.
+STOP_FIELD = "stopped_at"
+#: The lumen's diameter in cells at and above which the band's shift is calibrated (B3; round 1, item 2).
+CALIBRATED_CELLS = 32.0
+#: The slowest decay of a section's viscous mode, ``tau = R_max^2 / (STALL_SECTION nu)``: pi^2/4, conservative for
+#: every convex section (round 4, item 3; round 5, item 10).
+STALL_SECTION = math.pi ** 2 / 4.0
 #: The stall detector's line: ``|N_Krylov| / D_visc`` above it is a stall (the stall spike's transient values sat about
 #: three orders below a stall's reading) [inference from the measured separation].
 STALL_LINE = 1e-3
 #: Half of each dtype's digits, sqrt(eps): the share of its scale a report's denominator must exceed (:meth:`ratio`).
 HALF_DIGITS = {np.dtype(np.float32): math.sqrt(float(np.finfo(np.float32).eps)),
                np.dtype(np.float64): math.sqrt(float(np.finfo(np.float64).eps))}
+#: What a geometry leaf's derivative is worth, where a user reads it (its parameter's description, the entry's gradient
+#: record and validity line): no gate has earned it.
+GEOMETRY = ("its derivative is unverified: the tube's radius, centre and axis are not in the gradient gate yet (its "
+            "loss is to be the box's whole axial flux, since the lumen's mask moves with the radius); through the "
+            "band a geometry derivative carries a ripple within a cell of about +-20 % at D/h 8 to 16 and +-10 % at "
+            "32 (measured on a static tube)")
+#: The fields a held state still writes: the stop's own record.
+_STOP_RECORD = frozenset({STOP_FIELD, "stopped_cfl"})
 #: The hosted laws a metered node books, by the field their delivery names.
 HOSTED_FIELDS = ("body_force", "viscous", "penalty")
 
@@ -82,6 +118,10 @@ class _FlowFields(TypedDict):
     stopped_cfl: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     lumen_flux: ReadOnly[Annotated[Float[Array, ""], Units("m^3/s")]]  # noqa: F722 - a jaxtyping shape
     bypass_ratio: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    bypass_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    #: The lumen's Reynolds number by its diameter and mean speed, ``2 |Q| / (pi R nu)``, and its Stokes flag.
+    reynolds: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
+    reynolds_flagged: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
     negative_resistivity: ReadOnly[Annotated[Float[Array, ""], Units("1")]]  # noqa: F722 - a jaxtyping shape
 
 
@@ -119,11 +159,26 @@ def _velocity(state: Mapping[str, Array]) -> Velocity:
     return (state["velocity_x"], state["velocity_y"], state["velocity_z"])
 
 
+def _scheme_state(state: Mapping[str, Array]) -> SchemeState:
+    """The scheme's state (keyed by its ``state_fields``) from the node's: the velocity's three face sets as one."""
+    return {"velocity": _velocity(state)}
+
+
+def _held_of(scheme_state: SchemeState) -> dict[str, Array]:
+    """The node's state fields of a scheme's state: the velocity as a column per MAC component (``mime.mappings``'
+    first workaround), any other field under its own name."""
+    held = {name: value for name, value in scheme_state.items() if name != "velocity"}
+    velocity: Velocity = scheme_state["velocity"]
+    return {"velocity_x": velocity[0], "velocity_y": velocity[1], "velocity_z": velocity[2], **held}
+
+
 class ImplicitFlowNode(MimeNode):
     """The flow field of a medium on a periodic box holding a straight tube, stepped by a scheme of the monolithic
     projected CG's stage kind (the module states the step)."""
 
     LEDGER_TERMS = ("backward_euler", "convection", "krylov")
+    #: The state field the run reads between chunks for the step the CFL check stopped it at.
+    STOP_FIELD: ClassVar[str] = STOP_FIELD
 
     meta = NodeMeta(
         algorithm_id="MIME-NODE-123",
@@ -166,6 +221,12 @@ class ImplicitFlowNode(MimeNode):
                  initial_velocity_x: Any = None, initial_velocity_y: Any = None, initial_velocity_z: Any = None,
                  ledger: Sequence[str] = ()) -> None:
         chosen = scheme_named(scheme)
+        if chosen.stage_kind is not StageKind.MONOLITHIC_PROJECTED_CG or chosen.state_fields != ("velocity",) or \
+                chosen.ledger_terms != self.LEDGER_TERMS:
+            raise ValueError(f"the {scheme} scheme is of the {chosen.stage_kind} stage kind, carries "
+                             f"{chosen.state_fields} and books {chosen.ledger_terms}: this node steps the monolithic "
+                             f"projected CG's schemes, whose state is the velocity and whose terms are "
+                             f"{self.LEDGER_TERMS}")
         if convection and not chosen.takes_convection:
             raise ValueError(f"the {scheme} scheme needs the Stokes approximation (convection off)")
         band_named(band)
@@ -199,8 +260,11 @@ class ImplicitFlowNode(MimeNode):
                 "viscosity": ParamSpec(units="Pa s", bounds=(0.0, None),
                                        description="the fluid's dynamic viscosity, mu; the step uses mu / rho"),
                 "density": ParamSpec(units="kg/m^3", bounds=(0.0, None)),
-                "tube_centre": ParamSpec(units="m"), "tube_axis": ParamSpec(units="1"),
-                "tube_radius": ParamSpec(units="m", bounds=(0.0, None)),
+                "tube_centre": ParamSpec(units="m", description=f"the tube's axis passes through it; {GEOMETRY}"),
+                "tube_axis": ParamSpec(units="1", description=f"the tube's direction, the lattice direction the box "
+                                                              f"was built for; {GEOMETRY}"),
+                "tube_radius": ParamSpec(units="m", bounds=(0.0, None),
+                                         description=f"the lumen's radius; {GEOMETRY}"),
                 "tolerance": ParamSpec(trainable=False, units="1",
                                        description="the solve's relative tolerance on its true residual"),
                 "solve_report": ParamSpec(trainable=False, units="1",
@@ -209,12 +273,15 @@ class ImplicitFlowNode(MimeNode):
 
     @override
     def boundary_input_spec(self) -> dict[str, Any]:
-        """The body force per unit mass the laws bound to the medium drive its fluid with (summed), this step's; and the
-        drive's waveform, which the FVM's entry accepts for RK3's stages, read by no implicit scheme (they read the
-        value at their own instant, the step's end)."""
+        """The body force per unit mass the laws bound to the medium drive its fluid with (summed), delivered once a step
+        at its end; and the drive's waveform, which a scheme whose stages read their drive at other instants evaluates
+        at each (``StepContext.force``). The monolithic schemes registered read at the step's end, so they take the
+        delivered value."""
         return {"body_force": node_input("m/s^2", (3,), additive=True,
                                          description="a uniform body force per unit mass on the fluid"),
-                "waveform": node_input("1", (7,), description="the drive's waveform (RK3's: unread here)")}
+                "waveform": node_input("1", (WAVEFORM_SIZE,),
+                                       description="the drive's waveform, read at a stage's instant where it is not "
+                                                   "the step's end")}
 
     # -- the pieces of a step ------------------------------------------------------------------------------------
     @property
@@ -249,10 +316,20 @@ class ImplicitFlowNode(MimeNode):
         nu = self.kinematic(p)
         return (nu * k[0], nu * k[1], nu * k[2])
 
+    def forcing(self, fields: WallFields, boundary_inputs: Mapping[str, Array], scheme: TimeScheme,
+                dtype: Any) -> Callable[[int, Any], Velocity]:
+        """``force(stage, time)``, the drive each stage reads at its instant (:class:`StepContext`): the body force the
+        laws bound to the medium delivered, summed, where the scheme's stages read at the step's end, the instant it is
+        delivered for; otherwise the delivered waveform evaluated at the stage's time."""
+        if all(instant == STEP_END for instant in scheme.drive_instants):
+            delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
+            return lambda stage, time: self.drive(fields, delivered)
+        coefficients = jnp.asarray(boundary_inputs.get("waveform", jnp.zeros(WAVEFORM_SIZE, dtype=dtype)), dtype=dtype)
+        return lambda stage, time: self.drive(fields, waveform_at(coefficients, time).astype(dtype))
+
     def drive(self, fields: WallFields, delivered: Array) -> Velocity:
-        """The body force per unit mass (m/s^2) on each face set: what the laws bound to the medium delivered for the
-        step (at its end, IMEX Euler's stage time), on the fluid only (``1 - chi``). The waveform is the drive's, never
-        the field's."""
+        """The body force per unit mass (m/s^2) on each face set, on the fluid only (``1 - chi``): what the laws bound
+        to the medium deliver. The waveform is the drive's, never the field's."""
         chi = fields.chi
         return (delivered[0] * (1.0 - chi[0]), delivered[1] * (1.0 - chi[1]), delivered[2] * (1.0 - chi[2]))
 
@@ -308,13 +385,13 @@ class ImplicitFlowNode(MimeNode):
         zero = jnp.zeros(grid.cells, dtype=dtype)
         given = tuple(jnp.asarray(c[key], dtype=dtype) if key in c else zero
                       for key in ("initial_velocity_x", "initial_velocity_y", "initial_velocity_z"))
-        start = self.scheme.start(grid, (given[0], given[1], given[2]))
+        start = _held_of(self.scheme.start(grid, (given[0], given[1], given[2])))
         z = as_run_array(0.0)
         common: dict[str, Array] = dict(
-            velocity_x=start[0], velocity_y=start[1], velocity_z=start[2], steps=jnp.asarray(0, dtype=jnp.int32),
+            **start, steps=jnp.asarray(0, dtype=jnp.int32),
             solve_report=jnp.zeros(REPORT_SIZE, dtype=dtype), solve_report_sum=jnp.zeros(REPORT_SIZE, dtype=dtype),
             solve_flagged=z, cfl=z, stopped_at=jnp.asarray(-1, dtype=jnp.int32), stopped_cfl=z, lumen_flux=z,
-            bypass_ratio=z, negative_resistivity=z)
+            bypass_ratio=z, bypass_flagged=z, reynolds=z, reynolds_flagged=z, negative_resistivity=z)
         if not self.metered:
             return node_fields(FlowState(**common))
         return books.with_records(self, {**node_fields(FlowState(**common)), "stall_ratio": z, "stall_flagged": z})
@@ -323,8 +400,18 @@ class ImplicitFlowNode(MimeNode):
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
         if self.metered:
-            return books.metered_step(self, self.boundary_input_spec(), p, state, boundary_inputs, dt, self.stepped)
-        return self.stepped(p, state, boundary_inputs, dt)[0]
+            ended = books.metered_step(self, self.boundary_input_spec(), p, state, boundary_inputs, dt, self.stepped)
+        else:
+            ended = self.stepped(p, state, boundary_inputs, dt)[0]
+        return self.held_past_the_line(state, ended)
+
+    @staticmethod
+    def held_past_the_line(state: Mapping[str, Array], ended: NodeFields) -> NodeFields:
+        """``ended``, or ``state`` unchanged from the first step past the CFL line on (the stop's record excepted):
+        the run past the line does not advance, and ends at the chunk's end (:data:`STOP_FIELD`)."""
+        stopped = jnp.asarray(ended[STOP_FIELD]) >= 0
+        return {name: value if name in _STOP_RECORD else jnp.where(stopped, jnp.asarray(state[name]), value)
+                for name, value in ended.items()}
 
     def stepped(self, p: Mapping[str, Any], state: Mapping[str, Array], boundary_inputs: Mapping[str, Array],
                 dt: float) -> tuple[dict[str, Array], StepParts]:
@@ -336,7 +423,8 @@ class ImplicitFlowNode(MimeNode):
         sigma = self.resistivity(p, fields)
         operator = self.operator_of(p, grid, sigma)
         stopping = Stopping(tolerance=as_run_array(p["tolerance"]), cap=int(c["cap"]),
-                            check_every=int(c["check_every"]))
+                            check_every=int(c["check_every"]),
+                            window=stagnation_window(grid.cells, int(c["check_every"])))
         preconditioner = preconditioner_named(c["preconditioner"])
         steps = jnp.asarray(state["steps"])
         tap = self.report_row(p, steps)
@@ -345,9 +433,8 @@ class ImplicitFlowNode(MimeNode):
             return projected_solve(grid, operator(shift), self.diagonal_of(p, grid, sigma, shift), rhs,
                                    guess if c["scaling_start"] else None, stopping, tap, preconditioner)
 
-        delivered = jnp.asarray(boundary_inputs.get("body_force", jnp.zeros(3, dtype=dtype)), dtype=dtype)
-        context = StepContext(grid, operator, lambda time: self.drive(fields, delivered), bool(c["convection"]),
-                              solve)
+        context = StepContext(grid, operator, self.forcing(fields, boundary_inputs, scheme, dtype),
+                              bool(c["convection"]), solve, self.kinematic(p), sigma)
         velocity = _velocity(state)
         time = steps.astype(dtype) * dt
         speed = jnp.max(jnp.stack([jnp.max(jnp.abs(component)) for component in velocity]))
@@ -356,24 +443,28 @@ class ImplicitFlowNode(MimeNode):
         stopped_before = jnp.asarray(state["stopped_at"]) >= 0
         # Past the line unless provably at or under it: a NaN or an infinite CFL is past it too.
         past = ~(cfl <= scheme.cfl_limit(p["tube_axis"])) if checked else jnp.asarray(False)
-        ended_velocity, stage = scheme.step(context, velocity, time, dt)
+        ended_state, stage = scheme.step(context, _scheme_state(state), time, dt)
+        ended_velocity: Velocity = ended_state["velocity"]
         report = stage.report
         flagged = (report[2] + report[3] + report[4] > 0).astype(dtype)
         axis = as_run_array(p["tube_axis"])
         axis = axis / jnp.sqrt(jnp.sum(axis * axis))
-        lumen, solid, lumen_scale = self.fluxes(grid, fields, axis,
-                                                (ended_velocity[0], ended_velocity[1], ended_velocity[2]))
+        lumen, solid, lumen_scale = self.fluxes(grid, fields, axis, ended_velocity)
         ratio = self.ratio(solid, lumen, lumen_scale)
+        reynolds = 2.0 * jnp.abs(lumen) / (jnp.pi * as_run_array(p["tube_radius"]) * self.kinematic(p))
+        stokes = not bool(c["convection"])
         energy = self.energy_terms(p, grid, velocity, stage, sigma, dt) if self.metered else {}
         ended: dict[str, Array] = dict(
-            velocity_x=ended_velocity[0], velocity_y=ended_velocity[1], velocity_z=ended_velocity[2],
-            steps=steps + 1, solve_report=report, solve_report_sum=jnp.asarray(state["solve_report_sum"]) + report,
+            **_held_of(ended_state), steps=steps + 1, solve_report=report,
+            solve_report_sum=jnp.asarray(state["solve_report_sum"]) + report,
             solve_flagged=flagged, cfl=cfl.astype(dtype),
             stopped_at=jnp.where(stopped_before, jnp.asarray(state["stopped_at"]),
                                  jnp.where(past, steps + 1, -1)).astype(jnp.int32),
             stopped_cfl=jnp.where(stopped_before, jnp.asarray(state["stopped_cfl"]),
                                   jnp.where(past, cfl, 0.0)).astype(dtype),
-            lumen_flux=lumen, bypass_ratio=ratio,
+            lumen_flux=lumen, bypass_ratio=ratio, bypass_flagged=(jnp.abs(ratio) > BYPASS_LINE).astype(dtype),
+            reynolds=reynolds.astype(dtype),
+            reynolds_flagged=((reynolds > STOKES_REYNOLDS) & stokes).astype(dtype),
             negative_resistivity=negative_resistivity(fields).astype(dtype))
         held = node_fields(FlowState(**ended))
         if self.metered:
@@ -457,16 +548,51 @@ class ImplicitFlowNode(MimeNode):
             named.add(delivery.field)
         unattributed = sum((value for field, value in work_of.items() if field not in named),
                            start=jnp.zeros((), dtype=dtype))
-        terms = jnp.stack([energy["backward_euler"], energy["convection"], energy["krylov"]])
+        terms = jnp.stack([energy[name] for name in self.scheme.ledger_terms])
         return books.StepAccount(work=work, hosted=hosted, unattributed=unattributed, terms=terms,
                                  storage_start=self.storage(p, state), storage_end=self.storage(p, ended),
                                  scale=energy["scale"], operators={})
 
-    # -- after the run ------------------------------------------------------------------------------------------------
+    # -- at the build and after the run ---------------------------------------------------------------------------
+    def built_lines(self, start: Mapping[str, Any] | None, closest_approach: float | None) -> list[str]:
+        """The validity lines fixed when the node is built, each reported where it is crossed (never a refusal): the
+        lumen's resolution in cells under the band's calibration, and float32's rounding floor near a steady state
+        above the monolithic solve's tolerance (a node with no such solve has no such line)."""
+        del start, closest_approach
+        c = self.constants()
+        cells = 2.0 * float(c["tube_radius"]) / float(c["spacing"])
+        lines: list[str] = []
+        if cells < CALIBRATED_CELLS:
+            lines.append(f"the lumen is {cells:.3g} cells across, under the {CALIBRATED_CELLS:g} at and above which "
+                         f"the band's wall shift is calibrated on straight tubes (0.3 to 0.4 % of the flux at 32); "
+                         f"provisional until a stenosis case measures it, the band added +2.1 % of the flux at 16 "
+                         f"and +10.8 % at 8, and under about 5 cells the build refuses")
+        nu = float(c["viscosity"]) / float(c["density"])
+        if run_dtype() == jnp.float32 and self.scheme.stores_inertia and "tolerance" in c:
+            tau = float(c["tube_radius"]) ** 2 / (STALL_SECTION * nu)
+            floor = float(np.finfo(np.float32).eps) * tau / self.delta_t
+            if floor > float(c["tolerance"]):
+                lines.append(f"float32's rounding floor near a steady state, eps x tau/dt = {floor:.3g} (tau = R^2 / "
+                             f"((pi^2/4) nu) = {tau:.3g} s), is above the solve's tolerance {c['tolerance']:.3g}: a "
+                             f"run near its steady state stops short of it by about that share; run in float64 "
+                             f"(JAX_ENABLE_X64=1), or with a larger dt")
+        return lines
+
+    def run_problem(self, end: int) -> Problem | None:
+        """A run that would end past the last row of the derivative solves' per-step reports (``report_rows``) is
+        refused before it runs: a row is a step's, and a step past the last would be summed into it."""
+        rows = int(self.constants()["report_rows"])
+        if rows == 0 or end <= rows:
+            return None
+        return Problem("flow.report-rows", f"the derivative solves' reports are kept a row a step for {rows} steps, "
+                                           f"and this run would end at step {end}",
+                       f"build with FVM(report_rows={end}) or more, or report_rows=0 to sum them over the run")
+
     def stop_problem(self, state: Mapping[str, Any]) -> Problem | None:
-        """The step the CFL check stopped the run at, with the CFL it read and the timestep that keeps the line."""
-        step = int(np.asarray(state["stopped_at"])) if "stopped_at" in state else -1
-        if step < 0:
+        """The step the CFL check stopped the run at, with the CFL it read and the timestep that keeps the line. A state
+        that is not finite is the run's own refusal's to name (the first node and field that went so), so none here."""
+        step = int(np.asarray(state[STOP_FIELD])) if STOP_FIELD in state else -1
+        if step < 0 or not all(np.isfinite(np.asarray(state[f"velocity_{c}"])).all() for c in "xyz"):
             return None
         cfl = float(np.asarray(state["stopped_cfl"]))
         line = float(self.scheme.cfl_limit(self.constants()["tube_axis"]))
@@ -476,13 +602,14 @@ class ImplicitFlowNode(MimeNode):
             "flow.cfl-exceeded",
             f"at its step {step} (t = {step * self.delta_t:.6g} s) the flow's CFL number max|u| dt / h read {cfl:.4g}, "
             f"past the {self.scheme.name} scheme's line of {line:.4g} along the vessel's axis: past it the scheme's "
-            f"explicit convection is not stable (a CFL that is not finite is past it too), so the run is refused from "
-            f"that step on",
-            (f"use a timestep dt <= {safe:.4g} s (the line at the speed it reached), or the Stokes approximation "
-             f"FVM(stokes=True) where convection is negligible") if finite else
-            "the flow went non-finite before the step: use a smaller timestep, dt=..., or the Stokes approximation "
-            "FVM(stokes=True)")
+            f"explicit convection is not stable, so the flow's state was held from that step and the run ended at the "
+            f"end of its chunk",
+            (f"use a timestep under dt <= {safe:.4g} s, the line at the speed the flow had reached by then: a flow "
+             f"still speeding up needs a smaller one (for a steady drive g, the Poiseuille centreline speed g R^2 / "
+             f"(4 nu) bounds it); or dt='auto', the step from the drive's predicted peak; or the Stokes approximation "
+             f"FVM(stokes=True) where convection is negligible")
+            if finite else "use a smaller timestep, dt=..., or dt='auto', or the Stokes approximation FVM(stokes=True)")
 
 
-__all__ = ["HOSTED_FIELDS", "STALL_LINE", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState",
-           "StepParts"]
+__all__ = ["BYPASS_LINE", "CALIBRATED_CELLS", "GEOMETRY", "HOSTED_FIELDS", "STALL_LINE", "STALL_SECTION", "STOKES_REYNOLDS",
+           "STOP_FIELD", "FlowInputs", "FlowState", "ImplicitFlowNode", "MeteredFlowState", "StepParts"]

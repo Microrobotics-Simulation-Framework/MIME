@@ -277,6 +277,20 @@ def _quasi_uniform(kind: Geometry, settings: Mapping[str, Magnitude], spacing: f
     return Sampling(patches, counts, QUASI_UNIFORM, chosen, members)
 
 
+#: How far past a whole number a length over its spacing may lie and still take that many samples: a share of the
+#: ratio. Round inputs (a 2 mm length at a 1 mm spacing) divide to a whole number, which a last digit of rounding or a
+#: study's move of a millionth of the length would otherwise lift to the next count, and the program with it; with the
+#: slack such a length takes a spacing up to this share coarser than written, and the count's step lies off the round
+#: values, a ten-thousandth of the ratio above them.
+COUNT_SLACK = 1e-4
+
+
+def counted(ratio: float, least: int = 1) -> int:
+    """The samples a length takes at a spacing, ``ratio`` the length over the spacing: the least whole number not
+    below ``ratio`` less its slack (:data:`COUNT_SLACK`), and at least ``least``."""
+    return max(least, math.ceil(ratio * (1.0 - COUNT_SLACK)))
+
+
 def length_of(v: Any) -> Any:
     """``|v|`` for a reach's part across an axis, zero with a zero derivative where ``v`` is zero: there the farthest
     set is a whole face (a cap), and the derivative is its middle. Not yet a switch of ``mime.core.switch``: no node's
@@ -464,7 +478,7 @@ def _spread_farthest(points: np.ndarray, directions: np.ndarray, apart: float,
     return index, reach
 
 
-__all__ = ["JUDGED_SAMPLES", "LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach", "cells",
-           "hull_shortfall", "judged_samples", "length_of", "magnitude_of", "nearest", "quadrature",
+__all__ = ["COUNT_SLACK", "JUDGED_SAMPLES", "LLOYD_STEPS", "QUADRATURE", "QUASI_UNIFORM", "REFINEMENT", "TIE", "body_reach", "cells",
+           "counted", "hull_shortfall", "judged_samples", "length_of", "magnitude_of", "nearest", "quadrature",
            "quadrature_arrays", "quadrature_counts", "quadrature_owners", "quasi_uniform", "sampled_points",
            "sampled_reach", "samples_shortfall", "shortfall_directions", "tie_quantum"]

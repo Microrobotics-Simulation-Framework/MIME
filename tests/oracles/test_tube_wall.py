@@ -376,7 +376,8 @@ def test_a_wall_kind_named_for_a_geometry_it_does_not_declare_is_refused_listing
     print(f"\n{message}")
     assert refused.value.codes() == ["drag.wall-kind"]
     assert "a slab region" in message and "free_space 0.1.0" in message and "oracle.tube_series 0.0.1" in message
-    assert "a plane wall has none in 0.3" in message and "tube 0.1.0 (matches a cylinder region)" in message
+    assert "no wall kind matches a slab region yet" in message and "tube 0.1.0 (matches a cylinder region)" in message
+    assert "plane 0.1.0 (matches a half_space region)" in message
 
 
 def test_control_the_tube_in_a_tube_is_not_refused_for_its_geometry():
@@ -432,8 +433,8 @@ def test_control_the_tubes_correction_replaced_by_free_spaces_fails_the_confined
     for free space's, which adds nothing."""
     held = wall_correction_named("oracle.tube_series", "0.0.1")
     monkeypatch.setitem(walls._corrections, ("oracle.tube_series", "0.0.1"),
-                        dataclasses.replace(held, correction=lambda points, parameters, viscosity:
-                                            UNBOUNDED.correction(points, parameters, viscosity)))
+                        dataclasses.replace(held, correction=lambda points, parameters, viscosity, eps_squared=None:
+                                            UNBOUNDED.correction(points, parameters, viscosity, eps_squared)))
     each, extrapolated, _ = sphere_misses()
     print(f"\nthe free space's correction in the tube's place: misses {np.round(each, 5)}, extrapolated "
           f"{extrapolated:.5f}")
