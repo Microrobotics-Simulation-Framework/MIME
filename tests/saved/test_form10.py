@@ -11,7 +11,8 @@ The folders of the ninth form, each written by MIME at the last commit of form 9
 - ``form9/free_ball``: a free 1 mm sphere of density 1000 kg/m^3 at the origin moving at 1 mm/s along x and turning at
   (30, -20, 10) rad/s, no gravity and no law, float64, four usable CPUs (``taskset -c 0-3``), one BLAS thread, saved
   by ``exp.build().save(folder)``, pinned by its sha256.
-- ``form9/chain_screw``: the current folder as form 9 wrote it (a document and a lock).
+- ``form9/chain_screw``: the current folder as form 9 wrote it (a document and a lock); ``form10/chain_screw`` likewise,
+  as form 10 wrote it.
 
 A reader of version 9 refuses a folder of version 10 as ``load.newer-form``, the document and the lock each once.
 
@@ -43,6 +44,7 @@ from mime.saved._versions import CURRENT, DOCUMENT_SCHEMAS, LOCK_SCHEMAS, RESOLU
 SAVED = Path(__file__).parent
 FREE9 = SAVED / "form9" / "free_ball"
 FORM9_CHAIN = SAVED / "form9" / "chain_screw"
+FORM10_CHAIN = SAVED / "form10" / "chain_screw"
 CURRENT_FOLDER = SAVED / "current" / "chain_screw"
 PINNED = {"experiment.mime.yaml": "f113c23f78f9c3a5116e3b9dc5ac0924b6e3d1478f58b07a0ee86a63d8412cd7",
           "mime.lock": "e023d1da1868263a4915d3782fd47f8bb6b74e5a4d66acd9ddab7ff49f7d5791",
@@ -60,11 +62,11 @@ def lock_of(folder: Path) -> dict:
 def test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part_and_each_fields_resolution(tmp_path: Path):
     from mime.testing.toys import full_toy
 
-    assert CURRENT == SOURCE_SCALE_ADDED == _scales.SCALED_FROM == 10
-    assert DOCUMENT_SCHEMAS[CURRENT] == "mime.document/10" and LOCK_SCHEMAS[CURRENT] == "mime.lock/10"
+    assert SOURCE_SCALE_ADDED == _scales.SCALED_FROM == 10 < CURRENT
+    assert DOCUMENT_SCHEMAS[SOURCE_SCALE_ADDED] == "mime.document/10" and LOCK_SCHEMAS[SOURCE_SCALE_ADDED] == "mime.lock/10"
     lock = full_toy().save(tmp_path / "toy")
     reference = lock["reference"]
-    assert lock["schema"] == "mime.lock/10"
+    assert lock["schema"] == LOCK_SCHEMAS[CURRENT]
     assert (reference["rtol"], reference["atol"]) == (tolerance_for(lock["environment"]["x64"]), 0.0)
     assert tolerance_for(False) == 1e-5 and tolerance_for(True) == 2e-14
     assert reference["resolution_factor"] == _scales.RESOLUTION_FACTOR
@@ -75,7 +77,7 @@ def test_version_ten_writes_its_precisions_tolerance_with_no_absolute_part_and_e
         "the start one ulp off moved the toy"
 
 
-@pytest.mark.parametrize("folder", [FORM9_CHAIN, CURRENT_FOLDER], ids=["form9", "current"])
+@pytest.mark.parametrize("folder", [FORM9_CHAIN, FORM10_CHAIN, CURRENT_FOLDER], ids=["form9", "form10", "current"])
 def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Path):
     document = parse_yaml((folder / DOCUMENT_FILE).read_text(encoding="utf-8"))
     lock = lock_of(folder)
@@ -84,7 +86,7 @@ def test_a_committed_folders_lock_holds_the_hashes_its_document_makes(folder: Pa
 
 
 def test_saving_again_under_form_ten_moves_the_document_and_input_hashes_and_the_tolerance_and_never_the_others():
-    nine, ten = lock_of(FORM9_CHAIN), lock_of(CURRENT_FOLDER)
+    nine, ten = lock_of(FORM9_CHAIN), lock_of(FORM10_CHAIN)
     assert [key for key in ("document", "input", "derived", "observations")
             if nine["hashes"][key] != ten["hashes"][key]] == ["document", "input"]
     assert (nine["reference"]["rtol"], nine["reference"]["atol"]) == (1e-6, 1e-9)

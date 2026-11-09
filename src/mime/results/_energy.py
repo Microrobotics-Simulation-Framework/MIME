@@ -161,6 +161,9 @@ class EnergyAccount:
     #: Each coupling group by its members (``a+b``): MADDENING's verdict at the run's last step, and the group's
     #: residual, its members' jumps between steps summed.
     groups: Mapping[str, str] = field(default_factory=dict[str, str])
+    #: Each node the build left unmetered though it receives deliveries (a flow the build does not yet meter), with
+    #: its reason: what the account leaves out.
+    unmetered: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @property
     def supplied_total(self) -> Scalar:
@@ -184,11 +187,16 @@ class EnergyAccount:
         def joules(held: Mapping[str, Scalar]) -> str:
             return ", ".join(f"{name} {value:+.4g} J" for name, value in held.items()) or "none"
 
+        left_out = [f"  not metered, so not in the account: {name}: {reason}"
+                    for name, reason in self.unmetered.items()]
+        if not self.stored:
+            return "\n".join([f"energy over {self.steps} steps from the build's start: no receiver is metered",
+                              *left_out])
         lines = [f"energy over {self.steps} steps from the build's start:",
                  f"  stored: {joules(self.stored)}",
                  f"  lost: {joules(self.lost)}",
                  f"  supplied: {joules(self.supplied) if self.supplied else f'{self.supplied_total:+.4g} J'} "
-                 f"(what was lost plus the change in what is stored)"]
+                 f"(what was lost plus the change in what is stored)", *left_out]
         if self.potentials:
             lines.append(f"  potentials, each one's change: {joules(self.potentials)}")
         lines += [f"  FINDING: {finding}" for finding in self.findings]
@@ -295,10 +303,11 @@ def _field_change(graph: Any, law: str, receiver: Any, final: Mapping[str, Mappi
 
 
 def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: Mapping[str, Any] | None = None,
-                   *, steps: int = 0) -> EnergyAccount | None:
+                   *, steps: int = 0, unmetered: Mapping[str, str] | None = None) -> EnergyAccount | None:
     """The account of a run of ``graph`` (built with ``EnergyLedger`` attached) that ended at ``final``, each law's
-    parameters as the run had them (``params``, the parameter tree's nodes; the graph's own where not given); ``None``
-    for a graph with no metered receiver."""
+    parameters as the run had them (``params``, the parameter tree's nodes; the graph's own where not given), naming
+    what the build left unmetered (``unmetered``, each node with its reason); ``None`` for a graph with no metered
+    receiver and nothing unmetered."""
     nodes = dict(params or {})
     stored: dict[str, Scalar] = {}
     lost: dict[str, Scalar] = {}
@@ -395,8 +404,10 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
                              f"{name}'s stored change, and where the law has another half on another receiver, the "
                              f"two halves' sum is the coupling's first-order error, reported, not judged")
             lines.append(line)
+    left_out = dict(unmetered or {})
     if not stored:
-        return None
+        return EnergyAccount({}, {}, {}, {}, (), {}, {}, {}, {}, 0.0, 0.0, steps, unmetered=left_out) if left_out \
+            else None
     for law in sorted(paired_fields - set(potentials)):
         if field_laws:
             notes.append(f"{law}'s energy is its pair's, stated once by its field and taken under "
@@ -412,7 +423,7 @@ def energy_account(graph: Any, final: Mapping[str, Mapping[str, Any]], params: M
     supplied = _shared(total, paired)
     return EnergyAccount(stored, lost, potentials, supplied, tuple(lines), numerical, paired, unattributed, worst,
                          balance, floor, steps, tuple(notes), between, between_worst, tuple(findings), exchanges,
-                         groups)
+                         groups, left_out)
 
 
 def _findings(name: str, records: Mapping[str, Any], identity: Scalar, between_floors: Scalar, summed: Scalar,

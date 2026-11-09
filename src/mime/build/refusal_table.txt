@@ -26,6 +26,8 @@ asset.size-exceeded           environment
 asset.unknown                 user
 asset.unknown-role            user
 asset.unreachable             environment
+binding.field-ambiguous       user
+binding.field-quantity        user
 binding.missing               user
 binding.moving-surface        user
 binding.unknown               user
@@ -123,6 +125,7 @@ description.missing           user
 description.refused           user
 drag.body-kind                user
 drag.empty-cell               user
+drag.medium-flows             user
 drag.mrs-indefinite           user
 drag.mrs-on-wall              user
 drag.mrs-quadrature           user
@@ -169,6 +172,7 @@ flow.box-margin               user
 flow.cfl-exceeded             user
 flow.cfl-predicted            user
 flow.interior                 user
+flow.memory                   user
 flow.preconditioner           user
 flow.prescribed-alpha         user
 flow.prescribed-region        user

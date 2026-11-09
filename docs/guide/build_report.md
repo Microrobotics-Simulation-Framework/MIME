@@ -186,3 +186,9 @@ A law that couples two receivers is checked in every profile: one whose receiver
 is flagged by a line under the law's validity ("computed at build"). A law or a dynamics that declares nothing
 and states no reason is listed here under the exploratory profile and refused under research (`ledger.unmetered`).
 A run's result gives the account itself, `result.energy` ([the results note](../results.md)).
+
+## `unmetered`
+
+With the energy ledger, each node that receives loads and that the build leaves unmetered, by name, with its reason (a
+medium's flow, whose hosted laws the build does not yet name for the ledger). A run's account names each as left out of
+it (`result.energy.unmetered`), as does `result.text()`. Empty without the ledger, and where every receiver is metered.

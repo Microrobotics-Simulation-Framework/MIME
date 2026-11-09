@@ -72,7 +72,8 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
               external_inputs: tuple[str, ...] = (), reported: Sequence[ReportedWarning] = (),
               derived_hash: str | None = None, lags: Sequence[EdgeLag] = (),
               models: tuple[str, ...] | None = None,
-              computed: Mapping[str, tuple[str, ...]] | None = None, energy: tuple[str, ...] = ()) -> BuildReport:
+              computed: Mapping[str, tuple[str, ...]] | None = None, energy: tuple[str, ...] = (),
+              unmetered: Mapping[str, str] | None = None) -> BuildReport:
     owners = {name: plan for plan in plans.entries for name in plan.node_names()}
     lines = [NodeLine(position, name, owners[name].owner, owners[name].section.name.lower(), owners[name].describe(),
                       owners[name].divider_of(name), plans.dt * owners[name].divider_of(name))
@@ -91,7 +92,7 @@ def report_of(plans: PlanSet, order: Sequence[str], refusals: Sequence[Refusal] 
         masses=plans.masses, profile=plans.profile, watches=plans.watches, replaced=plans.replaced, removed=plans.removed,
         checked=dict(sorted({**plans.checked, **{owner: (*plans.checked.get(owner, ()), *lines)
                                                  for owner, lines in (computed or {}).items()}}.items())),
-        energy=energy)
+        energy=energy, unmetered=dict(unmetered or {}))
 
 
 def model_lines(plans: PlanSet, models: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -437,4 +438,5 @@ def construct(plans: PlanSet, law: ControlLaw | None = None,
         raise BuildRefused(refusals, report_of(plans, order, refusals, external, reported, lags=lags))
     derived = derive(graph, (n for p in plans.entries if p.section is Section.OBSERVATION for n in p.node_names()))
     return graph, report_of(plans, order, [], external, reported, derived.physics_hash, lags, models,
-                            merged(node_lines(graph, plans), held.flags), energy), derived
+                            merged(node_lines(graph, plans), held.flags), energy,
+                            held.energy.unmetered if held.energy is not None else None), derived

@@ -47,6 +47,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pure function of the bodies' poses, their leaves and the wall's parameters, and a body model of another kind in the
   same medium (a slender body's, a resistive-force body's) needs the joint node to hold a member kind per index.
 
+- **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
+  spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to
+  hold at its peak, against the memory a run can have (a GPU's limit; on a CPU the smaller of the host's available
+  memory and its control group's limit), and a box whose run will not fit is refused when planned (`flow.memory`, with
+  a coarser grid or a shorter period as its route). A dynamics a medium carries is a field kind: its solved-field
+  declarations (`Dynamics.field_declarations()`) state the quantities it provides, the FVM and the prescribed flow
+  `field.flow.velocity`, and one that declares none, or provides nothing, is refused at registration.
+  `PlanContext.fields_providing` and `field_for` find a field by quantity, refusing none and two unless the law names
+  one (`binding.field-quantity` and `binding.field-ambiguous`): the surface a later rung's law plans through, since no
+  law reads a field by quantity yet. Every drag rung (surrogate, mrs, rft, on drag 0.5.0, 0.4.0 and 0.3.0, and each
+  member of a medium's near field) assumes its medium at rest, so it is refused wherever the region its medium fills
+  carries a field, its own medium's or another's, whatever the field declares it provides (`drag.medium-flows`, naming
+  the field), until a rung reads a provided flow.
+  With the energy ledger attached, a run's account names what the build leaves unmetered, a medium's flow among them,
+  with its reason (`result.energy.unmetered`, in `result.energy.text()` and `result.text()`), where it was `None`.
+  Every dot in the FVM's programs is checked to state the highest precision (a CPU test of the traced programs).
+
 - **The two-builds check** (`mime.testing.two_builds`, `two_builds_of`, `step_program`, `graph_program`, `run_form`;
   float64 only): whether a compiled program holds a value made from a declared one as a constant of its own, which a
   study's batched members would all run at the group's first value and a derivative would not see. Its trace form
@@ -428,6 +445,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   21 for 22, 2.1 mm at 0.7 mm 3 for 4, 2.6 mm at 0.1 mm 26 for 27, 2.6 mm at 0.2 mm 13 for 14), and 0.3.0.dev2 refuses
   a folder saved by another release, so none is rebuilt with the moved count. No registered case's golden output and
   no released program's arrays moved (each compared bit for bit).
+- **Saved form 11: a medium's fields are written by role.** A medium's fields are saved under its own key `fields`
+  (`fields: {flow: {name: fvm, ...}}`), as an apparatus's are, where form 10 wrote a medium's flow as a dynamics aspect
+  (`dynamics: {flow: ...}`). A folder of form 10 or earlier loads as before: its medium's flow is read as `fields.flow`
+  and written back so for its input hash; one of them whose medium holds `fields` is refused. A reader of form 10
+  refuses a folder of form 11 as `load.newer-form`.
+
 - **The MRS drag's held matrix is compared with leaves, not constants, and its second key is gone.** Beside
   `held_in_body_frame` each separated-quadrature drag holds `held_from.<leaf>`, the leaves the matrix was made at;
   `held_or_made` compares the step's leaves with them, so the step's program is the same at every value (the trace form
