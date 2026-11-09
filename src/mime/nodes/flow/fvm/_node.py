@@ -53,8 +53,8 @@ from mime.nodes.flow.fvm._grid import MACGrid, Velocity
 from mime.nodes.flow._body_force import STEP_END
 from mime.nodes.flow._waveform import WAVEFORM_SIZE, waveform_at
 from mime.nodes.flow.fvm._schemes import SchemeState, StageKind, StageParts, StepContext, TimeScheme, scheme_named
-from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, REPORT_SIZE, Stopping, default_restart_every, \
-    default_tolerance, preconditioner_named, projected_solve, stagnation_window
+from mime.nodes.flow.fvm._solve import AT_FLOOR_BY_DEFAULT, REPORT_SIZE, Stopping, default_tolerance, \
+    preconditioner_named, projected_solve, stagnation_window
 from mime.registry import Problem
 
 EQUATIONS = (r"\frac{\mathbf{u}_{n+1} - \mathbf{u}_{n}}{h} = -\nabla \cdot \left( \mathbf{u}_{n} \mathbf{u}_{n} \right) + "
@@ -447,8 +447,7 @@ class ImplicitFlowNode(MimeNode):
         operator = self.operator_of(p, grid, sigma)
         stopping = Stopping(tolerance=as_run_array(p["tolerance"]), at_floor=bool(c["at_floor"]), cap=int(c["cap"]),
                             check_every=int(c["check_every"]),
-                            window=stagnation_window(grid.cells, int(c["check_every"])),
-                            restart_every=default_restart_every(dtype))
+                            window=stagnation_window(grid.cells, int(c["check_every"])))
         preconditioner = preconditioner_named(c["preconditioner"])
         steps = jnp.asarray(state["steps"])
         tap = self.report_row(p, steps)

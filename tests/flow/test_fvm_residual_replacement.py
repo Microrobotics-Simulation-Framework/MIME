@@ -1,13 +1,13 @@
-"""The CG's residual replacement in its restart form (``mime.nodes.flow.fvm._solve``'s module docstring): in float32,
-by default, every ``RESTART_EVERY`` iterations the CG restarts from the true residual.
+"""The CG's residual replacement as a restart at the stall (``mime.nodes.flow.fvm._solve``'s module docstring): where the
+stop would find a stagnation, the CG restarts from the true residual instead, up to ``STALL_RESTARTS`` times.
 
 Its gates: float32's recurrence stalls with the 0.01h interior in a flow with a pressure gradient (a stenosis) are
 broken, unflagged, at float64's answer within the tolerance; the derivative solves (tangent and transpose, read through
-the report block) converge with the primal; float64, which does not restart by default, moves by no more than its
-tolerance when asked to; a solve that ends before the first restart is bit for bit the CG without it. Its controls: a
-stall the case plants (the 0.01h interior in a stenosis eight cells across, over draws of its shape, its place on the
-grid and its drive), which the restart breaks on every draw and the CG without it does not; and a planted wrong restart
-(the residual's sign flipped), which moves the answer and is flagged on every draw."""
+the report block) converge with the primal; a solve that never stagnates is bit for bit the CG without the restart, in
+either dtype. Its controls: a stall the case plants (the 0.01h interior in a stenosis eight cells across, over draws of
+its shape, its place on the grid and its drive), which the restart breaks on every draw and the CG without it does not;
+and a planted wrong restart (the residual's sign flipped, from the start), which moves the answer and is flagged on
+every draw."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ from test_fvm_solve import problem_in
 import mime.nodes.flow.fvm._solve as solve_module
 from mime.nodes.flow.fvm import Jacobi, MACGrid, Stopping, periodic_tube_layout, projected_solve
 from mime.nodes.flow.fvm._band import DEFAULT_BAND, band_named, wall_fields
-from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE, default_restart_every, default_tolerance, \
-    rounding_floor, stagnation_window
+from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE, default_tolerance, rounding_floor, \
+    stagnation_window
 
 ITERATIONS, RESIDUAL, AT_CAP, STAGNATED = (REPORT_FIELDS.index(name) for name in
                                            ("iterations", "residual", "at_cap", "stagnated"))
@@ -37,17 +37,17 @@ class StenosisSolve:
     long, ``cells_across`` cells across the lumen (nu = 1), driven on its fluid along ``(tilt_x, tilt_y, 1)``; the
     stenosis's narrowing, its centre's offset from the box's (in cells) and the drive's tilt are the solve's
     arguments, so a draw changes no shape and the program compiles once. Its solve is ``projected_solve`` under each
-    dtype's default stop, restarting every ``restart_every`` iterations (0: never; none given: the dtype's default)."""
+    dtype's default stop, restarting at a stall up to ``stall_restarts`` times (0: never; none given: the default)."""
 
-    def __init__(self, dtype: str, cells_across: int, restart_every: int | None = None):
+    def __init__(self, dtype: str, cells_across: int, stall_restarts: int | None = None):
         self.dtype = dtype
         self.run = jnp.float64 if dtype == "float64" else jnp.float32
         self.layout = periodic_tube_layout(0.5, 2.0, cells_across=cells_across)
         self.grid = MACGrid(self.layout.cells, self.layout.spacing)
         self.stopping = Stopping(tolerance=jnp.asarray(default_tolerance(dtype), dtype=self.run),
                                  at_floor=dtype == "float32", window=stagnation_window(self.grid.cells, 20),
-                                 restart_every=default_restart_every(dtype) if restart_every is None
-                                 else restart_every)
+                                 stall_restarts=solve_module.STALL_RESTARTS if stall_restarts is None
+                                 else stall_restarts)
         self.solved = jax.jit(self._solved)
 
     def pieces(self, shape):
@@ -90,9 +90,9 @@ class StenosisSolve:
 
 
 @functools.cache
-def stenosis(dtype: str, cells_across: int = 8, restart_every: int | None = None) -> StenosisSolve:
+def stenosis(dtype: str, cells_across: int = 8, stall_restarts: int | None = None) -> StenosisSolve:
     with in_dtype(dtype):
-        return StenosisSolve(dtype, cells_across, restart_every)
+        return StenosisSolve(dtype, cells_across, stall_restarts)
 
 
 def _flagged(report) -> bool:
@@ -115,10 +115,10 @@ SHAPES = st.tuples(st.floats(0.4, 0.6), st.floats(-0.5, 0.5), st.floats(-0.5, 0.
 @given(shape=SHAPES)
 def test_control_a_float32_stall_the_restart_breaks_on_every_draw(shape):
     """The 0.01h interior in a stenosis eight cells across, float32: without the restart the CG's recurrence stalls
-    above the solve's floor and the solve stops stagnated, flagged; with float32's default restart it converges,
-    unflagged, at its tolerance or floor, and its answer is the flagged one's or closer to float64's."""
+    above the solve's floor and the solve stops stagnated, flagged; restarted at the stall it converges, unflagged, at
+    its tolerance or floor, and its answer is the flagged one's or closer to float64's."""
     with in_dtype("float32"):
-        stalled, without = stenosis("float32", restart_every=0)(shape)
+        stalled, without = stenosis("float32", stall_restarts=0)(shape)
         assert without[STAGNATED] == 1.0, without
         assert without[RESIDUAL] > max(default_tolerance("float32"), stenosis("float32").floor(shape, stalled))
         solved, report = stenosis("float32")(shape)
@@ -135,9 +135,9 @@ def test_control_a_float32_stall_the_restart_breaks_on_every_draw(shape):
 @settings(max_examples=20, deadline=None)
 @given(shape=SHAPES)
 def test_control_a_wrong_restart_moves_the_answer_and_is_flagged_on_every_draw(shape):
-    """The restart planted with the residual's sign flipped (``A x - b``) in both dtypes, at every check (20 iterations)
-    so that it acts well before the solve would converge: the recurrence then carries on away from the answer, so the
-    true residual stops falling; the stop, which judges the true residual alone, never passes it as converged. On every
+    """The restart planted with the residual's sign flipped (``A x - b``) in both dtypes; the start is made through the
+    same restart, so the plant acts from the first iteration: the recurrence carries on away from the answer and the
+    true residual never falls; the stop, which judges the true residual alone, never passes it as converged. On every
     draw the solve is flagged and its answer is farther from the right one than ten times the tolerance."""
     for dtype in ("float32", "float64"):
         with in_dtype(dtype):
@@ -149,8 +149,8 @@ def test_control_a_wrong_restart_moves_the_answer_and_is_flagged_on_every_draw(s
 
 @functools.cache
 def flipped(dtype: str) -> StenosisSolve:
-    """The stenosis's solve restarted at every check with its residual's sign flipped, traced once with the plant in
-    place (the compiled program keeps it)."""
+    """The stenosis's solve with its restarts' (and so its start's) residual sign flipped, traced once with the plant
+    in place (the compiled program keeps it)."""
     original = solve_module.restarted
 
     def plant(true_r, precondition, inner):
@@ -158,7 +158,7 @@ def flipped(dtype: str) -> StenosisSolve:
 
     with in_dtype(dtype), pytest.MonkeyPatch.context() as patch:
         patch.setattr(solve_module, "restarted", plant)
-        solve = StenosisSolve(dtype, 8, 20)
+        solve = StenosisSolve(dtype, 8)
         solve((0.5, 0.0, 0.0, 0.0, 0.0))
     return solve
 
@@ -179,12 +179,12 @@ def _axial_flux(solve: StenosisSolve, u) -> jax.Array:
     return jnp.sum(u[2]) * grid.cell_volume / (grid.cells[2] * grid.spacing)
 
 
-def _derivatives(dtype: str, restart_every: int | None = None):
+def _derivatives(dtype: str, stall_restarts: int | None = None):
     """The axial flux's derivative in the stenosis's narrowing at ``SHIFTED``, sixteen cells across: forward (one
     tangent solve) and reverse (one transpose solve), with the primal's, the tangent's and the transpose's reports
     read through the report block."""
     with in_dtype(dtype):
-        solve = stenosis(dtype, 16, restart_every)
+        solve = stenosis(dtype, 16, stall_restarts)
         shape = jnp.asarray(SHIFTED, dtype=solve.run)
         tap = jnp.zeros(REPORT_SIZE, dtype=solve.run)
         along = jnp.zeros(5, dtype=solve.run).at[0].set(1.0)
@@ -200,10 +200,10 @@ def _derivatives(dtype: str, restart_every: int | None = None):
 
 def test_the_derivative_solves_converge_with_the_primal_through_the_report_block():
     """The stenosis sixteen cells across with the 0.01h interior, float32, where without the restart the primal
-    stalls: the axial flux's derivative in the narrowing, forward and reverse. Under float32's default restart the
-    primal, the tangent and the transpose solve each converge unflagged, as their reports read through the block say,
-    and both derivatives are float64's within the line below. Float64, which does not restart by default, converges
-    unflagged, and asked to restart moves neither derivative by more than its tolerance."""
+    stalls: the axial flux's derivative in the narrowing, forward and reverse. Restarted at its stalls, the primal, the
+    tangent and the transpose solve each converge unflagged, as their reports read through the block say, and both
+    derivatives are float64's within the line below. Float64's solves converge unflagged and never stagnate, so its
+    derivatives are bit for bit the CG's without the restart."""
     forward, reverse, primal, tangent, transposed = _derivatives("float32")
     for report in (primal, tangent, transposed):
         assert not _flagged(report) and report[ITERATIONS] >= 1.0, report
@@ -211,24 +211,21 @@ def test_the_derivative_solves_converge_with_the_primal_through_the_report_block
     assert all(not _flagged(report) for report in reports), reports
     for derivative, exact in ((forward, exact_forward), (reverse, exact_reverse)):
         assert abs(derivative / exact - 1.0) <= DERIVATIVE_LINE, (derivative, exact)
-    restarted_forward, restarted_reverse, *reports = _derivatives("float64", solve_module.RESTART_EVERY)
-    assert all(not _flagged(report) for report in reports), reports
-    for a, b in ((restarted_forward, exact_forward), (restarted_reverse, exact_reverse)):
-        assert abs(a / b - 1.0) <= 100 * default_tolerance("float64")
+    without_forward, without_reverse, *_ = _derivatives("float64", 0)
+    assert (without_forward, without_reverse) == (exact_forward, exact_reverse)
 
 
 @settings(max_examples=20, deadline=None)
 @given(seed=st.integers(0, 2**31 - 1), amplitude=st.floats(1e-3, 1e3))
-def test_a_solve_ending_before_its_first_restart_is_the_cg_without_it(seed, amplitude):
-    """The empty tube eight cells across at a backward-Euler shift (``test_fvm_solve.Problem``), whose solves end well
-    within the first ``RESTART_EVERY`` iterations: asked to restart, in either dtype, its answer and report are bit for
-    bit the CG's without it."""
+def test_a_solve_that_never_stagnates_is_the_cg_without_the_restart(seed, amplitude):
+    """The empty tube eight cells across at a backward-Euler shift (``test_fvm_solve.Problem``), whose solves converge
+    without a stagnation: in either dtype its answer and report are bit for bit the CG's without the restart."""
     for dtype in ("float32", "float64"):
         with in_dtype(dtype):
             problem = problem_in(dtype)
             b = problem.rhs(seed, amplitude)
-            x, report = problem.cg(b, restart_every=solve_module.RESTART_EVERY)
-            assert int(report[ITERATIONS]) < solve_module.RESTART_EVERY
-            plain, plain_report = problem.cg(b, restart_every=0)
+            x, report = problem.cg(b)
+            assert report[STAGNATED] == 0.0
+            plain, plain_report = problem.cg(b, stall_restarts=0)
             assert np.array_equal(np.asarray(report), np.asarray(plain_report))
             assert all(np.array_equal(np.asarray(a), np.asarray(c)) for a, c in zip(x, plain, strict=True))

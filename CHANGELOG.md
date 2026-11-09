@@ -433,14 +433,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **In float32 the FVM's conjugate gradient restarts from its true residual every 100 iterations.** With the stiffer
+- **The FVM's conjugate gradient restarts from its true residual where it would stop stagnated.** With the stiffer
   interior (`Band(delta_in=0.01)`) in a flow with a pressure gradient, float32's recurrence stalled far above its
-  rounding floor (a 75 % stenosis at 16 cells across, 1e-4 against 4.8e-6), flagged: on every draw of the stenosis
-  measured at 8 and 16 cells across it now converges, unflagged, at its tolerance (`Stopping.restart_every`, float32's
-  default). Replacing the residual alone, the direction kept, measured unreliable; float64, which no draw stalled,
-  does not restart by default (it would cost 1.4 times the iterations). A float32 solve that ends within 100 iterations
-  is bit for bit what it was, and float64 is unchanged. A stall that persists is still flagged: the stenosis at 32
-  cells across with the stiffer interior, in float32, is the measured case, named in the entry's validity.
+  rounding floor (a 75 % stenosis at 16 cells across, 1e-4 against 4.8e-6), flagged. Now, where the stop would find a
+  stagnation, the CG restarts from the true residual, its window begun again, up to three times before it stops
+  flagged (`Stopping.stall_restarts`): every stall measured at 8, 16 and 32 cells across converges, unflagged, at its
+  tolerance or floor. A solve that never stagnates never restarts, so its arithmetic is unchanged, in either dtype; no
+  saved or released program moves. A restart every 100 iterations and the residual replaced with the direction kept
+  were measured first and not adopted (the entry's validity says why).
 
 - **Saved form 12: the FVM's `report_rows` is `solve_report_rows`.** The setting, its refusal
   (`flow.solve-report-rows`) and the flow node's parameter take the new name. A folder of form 11 or earlier loads as

@@ -1,7 +1,6 @@
 """Float32's default stop at the solve's rounding floor (``mime.nodes.flow.fvm._solve.rounding_floor``): where 1e-5 is
 out of float32's reach the solve stops at its floor, unflagged, its values float64's within the tolerance; where the
-conjugate gradient's recurrence stalls above the floor float32's periodic restart from the true residual breaks the
-stall. The cases are the solid's interior spike's float32 runs that the fixed 1e-5 flagged."""
+conjugate gradient's recurrence stalls above the floor a restart from the true residual at the stall breaks it. The cases are the solid's interior spike's float32 runs that the fixed 1e-5 flagged."""
 
 from __future__ import annotations
 
@@ -16,8 +15,8 @@ from test_fvm_experiment import experiment
 from mime.dynamics import Band
 from mime.nodes.flow.fvm import Jacobi, Stopping, projected_solve
 from mime.nodes.flow.fvm._band import DEFAULT_BAND, band_named, wall_fields
-from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE, default_restart_every, default_tolerance, \
-    rounding_floor, stagnation_window
+from mime.nodes.flow.fvm._solve import REPORT_FIELDS, REPORT_SIZE, default_tolerance, rounding_floor, \
+    stagnation_window
 from mime.units import mm, ms
 
 STAGNATED, RESIDUAL = REPORT_FIELDS.index("stagnated"), REPORT_FIELDS.index("residual")
@@ -68,8 +67,7 @@ def _stenosis_solve(dtype: str, tolerance: float, at_floor: bool,
         magnitude = node.magnitude_of(p, grid, sigma)(shift)
         rhs = node.drive(fields, jnp.asarray([0.0, 0.0, 1.0], dtype=run))
         stopping = Stopping(tolerance=jnp.asarray(tolerance, dtype=run), at_floor=at_floor,
-                            window=stagnation_window(grid.cells, 20),
-                            **{"restart_every": default_restart_every(run), **stop})
+                            window=stagnation_window(grid.cells, 20), **stop)
 
         @jax.jit
         def solved(r):
@@ -88,8 +86,8 @@ def _stenosis_solve(dtype: str, tolerance: float, at_floor: bool,
 
 def test_a_float32_stall_above_the_floor_is_broken_by_the_restart():
     """With the 0.01h interior in a flow with a pressure gradient float32's conjugate gradient's recurrence stalls far
-    above the floor (1.0e-4 against 4.7e-6, measured): a stall, not a floor. Float32's default restart from the true
-    residual every 100 iterations breaks it: the solve converges, unflagged, at its tolerance or floor, its flux
+    above the floor (1.0e-4 against 4.7e-6, measured): a stall, not a floor. A restart from the true residual where the
+    stop would find the stagnation breaks it: the solve converges, unflagged, at its tolerance or floor, its flux
     float64's within the tolerance. The control is the CG without the restart, which stops stagnated above its floor,
     so the case tells a stall from a floor."""
     tolerance = default_tolerance("float32")
@@ -98,6 +96,6 @@ def test_a_float32_stall_above_the_floor_is_broken_by_the_restart():
     assert report[RESIDUAL] <= max(floor, tolerance), (report, floor)
     _, _, reference, _ = _stenosis_solve("float64", 1e-12, at_floor=False)
     assert abs(flux - reference) <= tolerance * abs(reference)
-    stalled, stalled_floor, _, residual = _stenosis_solve("float32", tolerance, at_floor=True, restart_every=0)
+    stalled, stalled_floor, _, residual = _stenosis_solve("float32", tolerance, at_floor=True, stall_restarts=0)
     assert stalled[STAGNATED] == 1.0, stalled
     assert residual > max(stalled_floor, tolerance)
