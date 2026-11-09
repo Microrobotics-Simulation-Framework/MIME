@@ -1157,7 +1157,8 @@ class MRSDragNode(MimeNode):
         which = "every cell" if self.wall_every else f"the {self.wall_budget} cells nearest the wall"
         held = self.constants()
         used, written = held.get("wall_refinement"), held.get("wall_refinement_written")
-        finer = f" {used} times finer than the force spacing" if used is not None else ""
+        finer = (f" {used} times finer than the {'finest graded spacing' if self.graded else 'force spacing'}"
+                 if used is not None else "")
         promoted = (f" (wall_refinement={written} written, which leaves a cell of this body with no wall point, so the "
                     f"next finer that leaves none)" if used is not None and written != used else "")
         return (f"the image at the force points, and where a cell lies within {WALL_REACH:g} force spacings of the "
