@@ -71,6 +71,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serves), and registration refuses one that does not (`entry.defect`, naming the function and the argument) instead
   of failing with a bare `TypeError` at the first trace. Every released program on the tube and in free space runs to the same bits.
 
+- **RK3, the step rule and `dt="auto"`; the prescribed flow; the solved-field contract's suite** (F1b). `FVM(...,
+  scheme=Scheme.RK3())` steps the flow by S1's explicit RK3 (three low-storage stages, the wall's penalty implicit in
+  each, the incremental fast projection, the pressure carried, a consistent pressure made in the program at the run's
+  start and after a state handed over), reading the drive's waveform at its stage times. With no `scheme=` the build
+  picks RK3 where its explicit viscosity holds at `dt` and IMEX Euler otherwise; it predicts the flow's CFL number from
+  the drive (Poiseuille's centreline and twice Womersley's peak, the bound on a run from rest, in the empty tube) and
+  refuses a `dt` past the chosen
+  scheme's line before any step (`flow.cfl-predicted`, `flow.viscous-limit`), with the step that keeps it;
+  `Experiment(..., dt="auto")` takes the largest stable step (stability only, its steps a period reported beside it),
+  saved as the step it chose. The rule is judged at the flow's own step (`FVM(rate=...)` included), its prediction in
+  float64 whatever the run's dtype, with a bound past the series' Womersley number of 50. The lines are one value each, along a grid axis, scaled along a tilted vessel's axis by
+  `max|n_d| / sum|n_d|`: RK3's is 1.7, not the 2.0 first decided, at which a plug flow grows (the maintainer's
+  decision). RK3 is a scheme of the registry's interface: its state the velocity, the pressure and whether the pressure
+  is made, its stages reading the drive at their own instants, its terms its own; its node holds its state past the CFL
+  line as the implicit node does. RK3's books are judged on the ledger's first route, per step (`ledger_route_one_*`).
+  `Womersley()` (`womersley` 0.1.0) is a medium's flow prescribed in a straight tube, Poiseuille and Womersley by an in-program
+  series valid to a Womersley number of 50 in float64 and 25 in float32, outside and with no grid; `BodyForce` drives
+  either rung (it delivers its waveform where the field reads one). `mime.fields.SolvedField` holds a field kind's
+  declarations and `mime.testing.field_conformance` its suite, each case applicable by declaration and every skipped
+  case listed with its reason.
+
 - **The energy ledger on an apparatus, the magnetic pair's class, and the build's structural flags**. With
   `EnergyLedger` attached, **a dynamic arm and a dynamic motor are metered** (the `joint` port kind, now taking the
   spinners' momenta and the inertia its frames carry, and the new `spinner` kind): each records its step identity

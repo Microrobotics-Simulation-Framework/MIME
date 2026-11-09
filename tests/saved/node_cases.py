@@ -118,6 +118,11 @@ FLOW = NodeCase(options={"bounds": {"velocity_x": (-1e-3, 1e-3), "velocity_y": (
                          "boundary_bounds": {"body_force": (-10.0, 10.0)},
                          "jit_consistent_of": _jit_consistent_but_the_floor})
 
+#: The prescribed flow's drawn waveform is a drive's: a direction and accelerations of a few m/s^2, a frequency of a few
+#: hertz and a phase in radians, so its Womersley number stays inside each dtype's validity line on the case's tube
+#: (the series is not built for a frequency far past it, which the run refuses).
+PRESCRIBED = NodeCase(options={"boundary_bounds": {"waveform": (-5.0, 5.0)}})
+
 _EVALUATIONS: dict[tuple[str, str], tuple] = {}
 
 
@@ -185,6 +190,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("observation", "labx.height", "0.1.0"): NodeCase(),
     ("dynamics", "fvm", "0.1.0"): FLOW,
     ("interaction", "body_force", "0.1.0"): NodeCase(),
+    ("dynamics", "womersley", "0.1.0"): PRESCRIBED,
     ("dynamics", "rigid_inertial", "0.2.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.3.0"): RIGID_BODY,
     ("dynamics", "rigid_inertial", "0.4.0"): RIGID_BODY,

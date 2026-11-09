@@ -18,6 +18,7 @@ import mime.scene  # noqa: F401 - registers the sphere kind the MRS node is made
 from mime.core import MimeNode
 from mime.nodes.flow import fvm as flow
 from mime.nodes.flow._body_force import BodyForceNode, BodyForceState
+from mime.nodes.flow._womersley import PrescribedFlowInputs, PrescribedFlowNode, PrescribedFlowState
 from mime.core.multibody import read_urdf
 from mime.data import asset
 from mime.nodes import actuation, body, control, hydro, magnetic
@@ -56,6 +57,11 @@ TYPED = [
                            tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
      flow.FlowState, flow.FlowInputs, set()),
     (BodyForceNode("f", DT, along=(0, 0, 1), steady=1.0), BodyForceState, None, set()),
+    (flow.ExplicitFlowNode("w", DT, cells_x=11, cells_y=11, cells_z=2, spacing=1e-4, viscosity=1e-3, density=1e3,
+                           tube_centre=(5.5e-4, 5.5e-4, 0.0), tube_axis=(0, 0, 1), tube_radius=2.5e-4),
+     flow.ExplicitFlowState, flow.FlowInputs, set()),
+    (PrescribedFlowNode("w", DT, viscosity=1e-3, density=1e3, tube_centre=(0, 0, 0), tube_axis=(0, 0, 1),
+                        tube_radius=2.5e-4), PrescribedFlowState, PrescribedFlowInputs, set()),
     (hydro.SurrogateDragNode("d", DT, weights="dejongh_mlp_v2", weights_sha256=asset("dejongh_mlp_v2").sha256,
                              viscosity=1e-3, helix_wavenumber=2.33, length=7.47e-3, radius=1.56e-3,
                              outer_radius=1.33 * 1.56e-3, vessel_shape="cylinder", vessel_centre=(0, 0, 0), vessel_axis=(1, 0, 0), vessel_radius=3.175e-3,

@@ -67,12 +67,27 @@ def test_a_saved_flow_loads_and_runs_bit_for_bit(float64, tmp_path: pathlib.Path
     assert "name: fvm" in text and "group: periodic_box" in text and "group: steady" in text
 
 
+def test_a_run_past_the_cfl_line_is_refused_before_any_step(float64):
+    """Convection on, a drive strong enough that its predicted peak passes the CFL line: refused at the build, before
+    any step, with the route (F1b's step rule); the per-step stop behind it is the next test's."""
+    exp = experiment(steady=False, g=2000.0, dt=ms(1.0))
+    with pytest.raises(BuildRefused) as raised:
+        exp.build()
+    refusal = next(r for r in raised.value.refusals if r.code == "flow.cfl-predicted")
+    assert "dt <=" in refusal.action and "dt='auto'" in refusal.action
+
+
 @pytest.mark.parametrize("asked", [200, 2000])
-def test_a_run_past_the_cfl_line_holds_its_state_and_ends_at_the_chunk(float64, asked):
+def test_a_run_past_the_cfl_line_holds_its_state_and_ends_at_the_chunk(float64, asked, monkeypatch):
     """Convection on, a drive strong enough that the flow passes the CFL line at its second step (the review's case,
     g = 2000 m/s^2 at dt 1 ms): from that step the state is held, the run ends at the end of the chunk the step lies in,
     not at the steps asked for, and is refused after, naming the step and the route; its result comes with the
-    refusal. The control is the run's own steps before the crossing, which advance."""
+    refusal. The control is the run's own steps before the crossing, which advance. The build's prediction would
+    refuse this run before any step (the test above); it is set aside here (a prediction of no flow), so the per-step
+    stop behind it is what runs."""
+    import mime.dynamics.flow._fvm as entry
+
+    monkeypatch.setattr(entry, "predicted_peak", lambda *_: 0.0)
     exp = experiment(steady=False, g=2000.0, dt=ms(1.0), cells_across=8)
     with pytest.raises(RunFailed) as raised:
         exp.build().run(ms(float(asked)), history=True)
@@ -90,7 +105,7 @@ def test_a_run_past_the_cfl_line_holds_its_state_and_ends_at_the_chunk(float64, 
 
 
 def test_a_run_inside_the_cfl_line_is_not_refused(float64):
-    exp = experiment(steady=False, g=1.0, dt=ms(1.0))
+    exp = experiment(steady=False, g=1.0, dt=ms(0.2))
     result = exp.build().run(ms(20.0))
     assert int(np.asarray(result.final["water.flow"]["stopped_at"])) == -1
 
@@ -222,11 +237,11 @@ def test_the_validity_lines_crossed_raise_their_flags(float64):
     """M6: the Stokes line on the lumen's Reynolds number (stokes=True) and the solid's bypass line, each per step,
     and the build's lines fixed at build (the resolution under the band's calibration). The drive of 1 m/s^2 in this
     tube gives a Reynolds number of about 31 at D/h 8, past the Stokes line, and a bypass of 2.6e-3, past its line; the
-    controls are the Reynolds flag of the same flow with convection on (no Stokes approximation declared), and the
-    bypass flag at D/h 16."""
+    controls are the Reynolds flag of the same flow with convection on (no Stokes approximation declared; at dt 0.5 ms,
+    inside the step the build's CFL prediction allows, 0.71 ms), and the bypass flag at D/h 16."""
     flags = {}
     for name, exp in (("stokes_8", experiment(cells_across=8)),
-                      ("convection_8", experiment(steady=False, stokes=False, dt=ms(1.0), cells_across=8)),
+                      ("convection_8", experiment(steady=False, stokes=False, dt=ms(0.5), cells_across=8)),
                       ("stokes_16", experiment(cells_across=16))):
         built = exp.build()
         lines = [line for held in built.report.checked.values() for line in held]
