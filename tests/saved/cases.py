@@ -12,8 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_plane, mrs_solids, mrs_tube
-from rft_cases import rft_free_space, rft_tube
+from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_near_field, mrs_plane, mrs_solids, mrs_tube
+from rft_cases import rft_free_space, rft_kept, rft_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, swing_magnet, tracked_rpm
 from hull_cases import hull_contact
 from robot_asset import bound_robot, bound_robot_with_parts
@@ -29,7 +29,7 @@ from mime.dynamics.body import RigidInertialExplicit, RigidInertialMoments
 from mime.interactions import KEPT
 from mime.experiment import Experiment
 from mime.interactions import Lubrication
-from mime.interactions.hydrodynamic import PointForceDrag
+from mime.interactions.hydrodynamic import PointForceDrag, UncoupledDrag
 from mime.scene import Capsule, Sphere
 from mime.testing.toys import (
     ToyAnchoredBody,
@@ -221,6 +221,15 @@ def script_a_with_drag() -> Experiment:
     return script_a(velocity=m_per_s((1e-3, 0.0, 0.0)))
 
 
+def script_a_uncoupled_drag() -> Experiment:
+    """Script A with the drag kept registered, 0.4.0 (``UncoupledDrag``): what a folder saved before the near field
+    names, and the case drag 0.4.0's golden output came from; 0.5.0's surrogate rung is 0.4.0's, and its golden output
+    comes from script A's case."""
+    return script_a("script_a_uncoupled", velocity=m_per_s((1e-3, 0.0, 0.0)),
+                    drag=UncoupledDrag.Surrogate(weights=asset("dejongh_mlp_v2"), lubrication=Lubrication(
+                        epsilon=EPSILON)))
+
+
 def script_a_metered() -> Experiment:
     """Script A with the energy ledger attached: its body metered, each law in its own input on it."""
     from mime.observations import EnergyLedger
@@ -309,6 +318,9 @@ def rigid_explicit() -> Experiment:
 CASES = (
     Case("script_a_body", script_a_body),
     Case("script_a", script_a_with_drag),
+    # Script A's surrogate on drag 0.4.0, kept registered: drag 0.4.0's golden output, its values from before the near
+    # field (script A's on 0.4.0); after script A, so that the entries script A uses keep their golden outputs' case.
+    Case("script_a_uncoupled", script_a_uncoupled_drag),
     # Script A's surrogate on drag 0.3.0, kept registered: what a folder saved before the separated quadrature names.
     Case("script_a_kept", script_a_kept_drag),
     Case("script_a_records", script_a_records),
@@ -356,8 +368,12 @@ CASES = (
     # on link 3 and a stator part on the motor's base by their declared masses, each welded on its link, the rotor's
     # mass and mean inertia across its axis on the flange.
     Case("massive_rpm", lambda: massive_rpm(extra=True)),
-    # The drag's MRS rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw.
+    # The drag's MRS rung in an unbounded medium, on each kind it serves: a ball, a pill and a screw, on drag 0.4.0,
+    # kept registered, each body its own node: its golden outputs are 0.4.0's.
     Case("mrs_free_space", mrs_free_space),
+    # Drag 0.5.0's near field: a ball, a pill and a smaller ball close together in one medium, one joint node; its
+    # golden outputs are 0.5.0's mrs rung's and the joint node's.
+    Case("mrs_near_field", mrs_near_field),
     # The same on drag 0.3.0, kept registered: a point force at each sample, what a folder saved before the separated
     # quadrature names.
     Case("mrs_point_forces", mrs_point_forces),
@@ -383,6 +399,8 @@ CASES = (
     # The same rung with the tube wall kind, on a helix small against its tube (definite with the wall): it reads the
     # corrected table, the asset unit_tube_R0.997.
     Case("rft_tube", rft_tube),
+    # rft_free_space on drag 0.4.0, kept: its rft rung's golden output, the version the rung was added to first.
+    Case("rft_kept", rft_kept),
     # A body in an electromagnet array's field, the calibrated multipole, placed, turned and with a background.
     Case("coil_array", coil_array),
     # The lab fixture's geometry kind, a ball with its own quadrature, as a body's hull under the drag's MRS rung: last,

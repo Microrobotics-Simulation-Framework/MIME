@@ -28,6 +28,7 @@ from mime.nodes.hydro._rft_drag import (
 from mime.nodes.hydro.mrs import SHAPE, WALL, MRSDragNode, wall_correction_named
 from mime.nodes.hydro.mrs._node import CONFINED_GAP, INTEGRATED_GAP
 from mime.nodes.hydro.mrs._quadrature import empty_cells
+from mime.nodes.hydro.near_field import JointDragNode, member_prefix
 from mime.scene import quadrature_counts, quadrature_owners, sampled_points
 from mime.registry import (
     DESIGN,
@@ -551,7 +552,9 @@ class PointForceDrag(Interaction):
         found += _wall_problems(self.wall_kind, ctx.region("medium"), medium, hull)
         return found
 
-    def _build_mrs(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+    def _mrs_arguments(self, ctx: BuildContext) -> dict[str, Any]:
+        """The arguments of the body's ``MRSDragNode`` but its name and timestep: its own (``body``) and the wall's
+        constants (``wall``, ``wall_<name>``, the medium's)."""
         hull, wall = ctx.geometry(of="body"), _wall_kind(cast(object, self.wall_kind))
         if hull is None or isinstance(wall, str) or self.blob is None:
             raise ValueError("phase 1 refuses an mrs drag with no hull, no wall kind or no blob")
@@ -566,8 +569,8 @@ class PointForceDrag(Interaction):
         counts, owners = self._quadrature_arguments(hull, sampling, spacing)
         reference_counts, reference_owners = self._reference_quadrature(hull, sampling, spacing)
         wall_counts, wall_owners, refinement = self._wall_quadrature(hull, sampling, spacing)
-        node = b.add_response_node(MRSDragNode(
-            ctx.node_name(), ctx.timestep, viscosity=ctx.scalar_value("viscosity"), blob=float(self.blob),
+        return dict(
+            viscosity=ctx.scalar_value("viscosity"), blob=float(self.blob),
             kind=hull.kind.name, kind_version=hull.kind.version, patches=patches, counts=sampling.counts,
             part_centre=hull.centre, part_rotation=[c for row in hull.rotation for c in row],
             wall_kind=wall.name, wall_kind_version=wall.version, sampling_chosen=sampling.chosen,
@@ -579,7 +582,10 @@ class PointForceDrag(Interaction):
             wall_refinement=refinement,
             wall_refinement_written=None if refinement is None else cast(int, getattr(self, "wall_refinement")),
             **{f"{WALL}{name}": value for name, value in constants.items()},
-            **{f"{SHAPE}{name}": value for name, value in settings.items()}))
+            **{f"{SHAPE}{name}": value for name, value in settings.items()})
+
+    def _build_mrs(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        node = b.add_response_node(MRSDragNode(ctx.node_name(), ctx.timestep, **self._mrs_arguments(ctx)))
         b.connect(b.read("pose"), into=node["pose"])
         b.connect(node["resistance"], into=b.target("resistance"))
         b.connect(node["background_load"], into=b.target("background_load"))
@@ -691,9 +697,10 @@ def hull_centreline(hull: Hull | None) -> Centreline | str:
 
 @register_interaction
 @dataclass(frozen=True, kw_only=True)
-class Drag(PointForceDrag):
-    """The medium's resistance to the body's motion, by the written rung; ``Drag.Surrogate(...)`` is
-    ``Drag(rung="surrogate", ...)`` and saves identically.
+class UncoupledDrag(PointForceDrag):
+    """The drag 0.4.0, each body's alone: the medium's resistance to the body's motion, by the written rung, with no
+    hydrodynamic interaction between bodies in one medium (0.5.0, ``Drag``, couples a medium's mrs bodies). Kept
+    registered so that a folder saved with it, and an experiment whose comparisons were declared against it, reproduce.
 
     ``surrogate``: the Cholesky MLP's resistance for a de Jongh screw body in a straight tube, from ``weights`` (a
     packaged asset, ``mime.data.asset("dejongh_mlp_v2")``), with ``lubrication=Lubrication(epsilon=...)`` blended in when given.
@@ -1167,6 +1174,169 @@ class Drag(PointForceDrag):
         return counts, quadrature_owners(hull.kind, hull.settings, sampling, counts)
 
 
+@register_interaction
+@dataclass(frozen=True, kw_only=True)
+class Drag(UncoupledDrag):
+    """The medium's resistance to the body's motion, by the written rung; ``Drag.Surrogate(...)`` is
+    ``Drag(rung="surrogate", ...)`` and saves identically. Every rung as 0.4.0's (``UncoupledDrag``), but for bodies
+    sharing a medium on the mrs rung.
+
+    **A medium's near field.** Where two bodies or more in one medium take the mrs rung, the build groups them into one
+    joint node, ``near_field:<medium>`` (``JointDragNode``), and no body has a node of its own: each step it solves
+    their joint system (each body's free part as 0.4.0 holds it, each pair coupled by the source's regularised
+    Stokeslet, integrated over every cell where the pair is within the reach of each other and taken at its force
+    points beyond, and the wall's image between them), and delivers each body its own coupled resistance and, as its background load, the
+    others' lagged load on it, ``-sum_b R_ab V_b`` at their twists at the step's start. The bodies' steps are lagged: a
+    body takes its own resistance implicitly and the others' loads from the step before. **The lagged step's gain**,
+    the spectral radius of ``(M/dt + R_d)^-1 R_off`` from each body's mass matrix (its dynamics publishes it where the
+    near field reads it), is checked every step: at one or above the lagged error would grow (three overdamped bodies
+    in a triangle near contact), and the run stops there (``drag.near-field-gain``); the gain and the relaxation in
+    steps, ``1/(1-g)``, are reported. Each body's coupled resistance and the cluster's grand resistance are judged as
+    0.4.0's (their scaled least eigenvalue above zero, else the run stops, ``drag.near-field-indefinite``, the margin
+    reported). A body alone in its medium keeps its own node, 0.4.0's, step for step. The joint system is solved
+    dense, so the build refuses a cluster past ``DENSE_UNKNOWNS`` unknowns (``drag.near-field-size``).
+
+    Version 0.5.0 couples a medium's mrs bodies; version 0.4.0 (``UncoupledDrag``, kept registered) computed each
+    body's drag alone, and its surrogate rung, like 0.5.0's, is 0.3.0's; its rft rung, added before 0.5.0, is 0.5.0's.
+    Version 0.3.0 (``PointForceDrag``) put a point force at each sample.
+
+    **Its record** holds every setting on every rung, ``coefficients`` included (``unrecorded_settings`` is empty): the
+    hook keeps a setting added to a version after its release out of that version's record, so that its released
+    programs keep their input hash (0.4.0's ``coefficients``), and 0.5.0 has no release before its settings."""
+
+    version = "0.5.0"
+    builds = {**UncoupledDrag.builds, "mrs": (MRSDragNode, JointDragNode)}
+    setting_roles = {
+        **UncoupledDrag.setting_roles,
+        "near_field_share": convention(
+            NUMERICAL, "on the mrs rung, every quadrature point of a source, the whole share: the share that holds each "
+                       "registered hull kind's conformance case within the cross-kernel's reach (measured: at a "
+                       "quarter of a source's points, five kinds of six at their cases' spacings fell past the case's "
+                       "line near contact, the box furthest, while MIME's sphere at its default count was unmoved to "
+                       "within a few hundredths of a per cent)"),
+    }
+    mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share")
+    raises = (
+        *UncoupledDrag.raises,
+        Flag("gain_exceeded", "the lagged coupling of the medium's near field reached a gain of one or more (the "
+                              "per-step fixed point's contraction, a check sufficient for the lagged step's stability "
+                              "and not necessary): the node replaced every delivery by NaN before the bodies took it, "
+                              "so the run stopped there (drag.near-field-gain)",
+             rung="mrs", group=True),
+        Flag("cluster_gift", "the near field's own work on its bodies over the step before, as the energy ledger "
+                             "books it from what the node delivered and the twists the bodies reached, was positive "
+                             "past the ledger's floor: the fluid gave the cluster energy (an energy check sees an "
+                             "error that makes the fluid a source, not one that leaves it dissipating)",
+             rung="mrs", group=True),
+        Flag("cross_cells_short", "a source cell within the cross-kernel's reach of the other body did not fit the "
+                                  "cross-kernel's budget (near_field_share set below one), which kept that cell's "
+                                  "kernel at its force point, where the reach's conformance cases do not hold it",
+             rung="mrs", group=True),
+        Flag("overlap", "two bodies of the medium's near field overlapped: a point of one lay behind the other's "
+                        "surface by more than a quarter of a cell, as their discretisations estimate it; the node "
+                        "replaced every delivery by NaN before the bodies took it, so the run stopped there "
+                        "(drag.near-field-overlap)", rung="mrs", group=True),
+        Flag("near_contact", "two bodies of the medium's near field lay closer than a twentieth of the smaller one's "
+                             "equivalent radius (CONTACT_GAP), the validity line's lower edge, where the MRS's own "
+                             "error is not monotone in the spacing", rung="mrs", group=True),
+    )
+    validity = (
+        *(line for line in UncoupledDrag.validity),
+        "mrs: two bodies or more in one medium are solved as one joint system (their near field), each body's steps "
+        "lagged against the others' (a first-order error in the step, and a step's delay in the others' loads after a "
+        "sudden change, both relaxing at the reported gain); the cross-kernel's reach is in each source cell's own "
+        "size, its default from the sphere's data, and each registered hull kind's conformance case is its check; "
+        "below a gap of about a twentieth of a radius the MRS's own error is not monotone in the spacing, lubrication's "
+        "territory, not this rung's (a step there raises near_contact; two bodies that overlap stop the run, "
+        "drag.near-field-overlap, and the build refuses a start where they do)",
+        "mrs: the near field's lagged step is checked by its gain, the per-step fixed point's contraction, which is "
+        "sufficient for the step's stability, not necessary: with inertia the step's amplification lies below the "
+        "gain, so the check refuses some stable clusters (measured: three spheres a tenth of a radius apart, each "
+        "body's relaxation time between about a twentieth and a tenth of the step), and the amplification and its "
+        "relaxation are reported",
+        "mrs: the near field's cross loads are judged by the energy ledger's first route on the cluster's books, which "
+        "sees an error that makes the fluid a source and none that leaves it dissipating (an error in the grand "
+        "resistance that leaves it definite, a cross load at half its value or with its sign flipped); those are "
+        "the force oracles' (the two-sphere series, Rotne and Prager's mobility, the dense assembly)",
+    )
+
+    near_field_share: float | None = None
+
+    @override
+    def unrecorded_settings(self) -> frozenset[str]:
+        """None: 0.5.0 records every setting (the class's docstring says why)."""
+        return frozenset()
+
+    @override
+    def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        found = super().setting_problems(settings)
+        if self.rung == "rft" and self.near_field_share is not None:
+            found.append("near_field_share= is a setting of the mrs rung's near field, and the rft rung reads none")
+        return found
+
+    def joins_near_field(self) -> bool:
+        """Whether this drag, with others of its version in its medium, is built as their joint near field: the mrs
+        rung's."""
+        return self.rung == "mrs"
+
+    @override
+    def build(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        if ctx.members:
+            self._build_near_field(ctx, b)
+            return
+        super().build(ctx, b)
+
+    @override
+    def _mrs_setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
+        found = super()._mrs_setting_problems(settings)
+        share = cast(object, self.near_field_share)
+        if share is not None and (isinstance(share, bool) or not isinstance(share, int | float)
+                                  or not 0.0 < float(share) <= 1.0):
+            found.append(f"near_field_share is {share!r}, not a share above 0 and at most 1: the most of a source's "
+                         f"quadrature points the near field's cross-kernel integrates, so write near_field_share=0.25 "
+                         f"(or leave it out for every point, 1)")
+        return found
+
+    def _build_near_field(self, ctx: BuildContext, b: InteractionBuilder) -> None:
+        """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the
+        wall's constants once; each body's pose, twist and mass matrix read, its resistance and background load
+        delivered. The cross-kernel's budget is the largest ``near_field_share`` its members write (every point where
+        none writes one)."""
+        ids = sorted(ctx.members)
+        written = [cast(UncoupledDrag, ctx.members[owner].entry) for owner in ids]
+        shares = [float(cast(float, getattr(entry, "near_field_share"))) for entry in written
+                  if getattr(entry, "near_field_share", None) is not None]
+        bodies: list[str] = []
+        held: dict[str, Any] = {}
+        walls: dict[str, Any] = {}
+        common: dict[str, Any] | None = None
+        for i, owner in enumerate(ids):
+            member = ctx.members[owner]
+            entry = cast(UncoupledDrag, member.entry)
+            arguments = entry._mrs_arguments(member)
+            correction = wall_correction_named(arguments["wall_kind"], arguments["wall_kind_version"])
+            names = {f"{WALL}{name}" for name in correction.parameters}
+            shared = {key: arguments.pop(key) for key in ("viscosity", "wall_kind", "wall_kind_version")}
+            if common is None:
+                common = shared
+                walls = {key: arguments[key] for key in names}
+            elif shared != common:
+                raise ValueError(f"the near field's members read one medium and one wall: {owner} reads {shared}, "
+                                 f"{ids[0]} {common}")
+            held.update({f"{member_prefix(i)}{key}": value for key, value in arguments.items() if key not in names})
+            bodies.append(member.bindings["body"])
+        assert common is not None
+        node = b.add_response_node(JointDragNode(ctx.node_name(), ctx.timestep, members=tuple(bodies), **common,
+                                                 **walls, **({"cross_share": max(shares)} if shares else {}),
+                                                 **held))
+        for i, owner in enumerate(ids):
+            b.connect(b.read(f"{owner}/pose"), into=node[f"pose_{i}"])
+            b.connect(b.read(f"{owner}/twist"), into=node[f"twist_{i}"])
+            b.connect(b.read(f"{owner}/mass_matrix"), into=node[f"mass_matrix_{i}"])
+            b.connect(node[f"resistance_{i}"], into=b.target(f"{owner}/resistance"))
+            b.connect(node[f"background_load_{i}"], into=b.target(f"{owner}/background_load"))
+
+
 def _wall_kinds_listed() -> str:
     """Every registered wall kind with the region it matches, and every reserved one, for a refusal to list."""
     built = [f"{record.name} {record.version} (matches "
@@ -1287,4 +1457,4 @@ def _outside_training(surrogate: ScrewSurrogate, ctx: PlanContext, tube: Uniform
     return found
 
 
-__all__ = ["Drag", "Lubrication", "PointForceDrag", "UniformTube", "uniform_tube"]
+__all__ = ["Drag", "Lubrication", "PointForceDrag", "UncoupledDrag", "UniformTube", "uniform_tube"]

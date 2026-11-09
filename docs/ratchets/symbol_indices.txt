@@ -16,6 +16,17 @@ PointDipoleNode R  # the rotation matrix of the part's orientation q: a function
 PointDipoleNode \delta  # Kronecker's delta, the identity's entries
 MagneticForceNode l  # the lever, the magnet's centroid turned into the world, R(q) c_b: defined in the equations, held by no field
 MagneticForceNode R  # the rotation matrix of the body's orientation q: a function of a row's symbol
+JointDragNode A  # the joint matrix of every body's cells against every body's force points, assembled each step, held by no field
+JointDragNode B  # each body's mass matrix in the world, the input mass_matrix_<i> of each member, block-diagonal over them
+JointDragNode F  # each body's lagged cross load, the output background_load_<i> of each member
+JointDragNode G  # the wall's image between two bodies' cells and force points, the registered wall correction's, held by no field
+JointDragNode M  # the unit rigid motions at every body's force points, block-diagonal, held by no field
+JointDragNode S  # the free-space kernel between two bodies (a body's own free part on the diagonal), held by no field
+JointDragNode V  # each body's twist at the step's start, the input twist_<i> of each member
+JointDragNode W  # each cell's wrench per unit traction, block-diagonal over the bodies, held by no field
+JointDragNode \Delta  # with t, the step, the node's timestep
+JointDragNode \rho  # the spectral radius, an operator on the matrix after it
+JointDragNode t  # with \Delta, the step, the node's timestep
 MRSDragNode A  # the matrix of the regularised Stokeslet between every pair of samples, defined in the equations, held by no field
 MRSDragNode G  # the wall's correction, the registered wall correction's output, added to A and held by no field
 MRSDragNode I  # the identity, in the Stokeslet's isotropic term
