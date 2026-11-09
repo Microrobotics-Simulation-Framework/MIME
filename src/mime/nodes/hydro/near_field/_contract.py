@@ -5,16 +5,18 @@ the flow and delivers its traction (its force points, placed by its pose), the c
 centroids and blob), and its response at those points (its own block of the joint matrix, at unit viscosity, in the
 world). Beside the core it declares capabilities: a cross-kernel (the velocity its traction makes at any other body's
 points), a self-block constant in its own frame (made once per build and turned to the pose, so a rigid body's
-free-space operator is never made again in a run), and a preconditioner block (its own block's factors, which W3b's
-GMRES takes). Linear (Stokes) near fields only. Several geometries and body models in one medium are blocks of
-different sizes.
+free-space operator is never made again in a run), and a preconditioner block (its own block's factors, which the
+joint system's GMRES takes). Linear (Stokes) near fields only. Several geometries and body models in one medium are
+blocks of different sizes.
 
 **The joint system** (:func:`joint_matrix`, :func:`grand_resistance`). Every block is a pure function of geometry:
 the bodies' poses and leaves, the wall's parameters and the viscosity are arguments, never read from a node's state
 behind the call, so that a caller may evaluate it with a neighbour or a wall moved (a contact opened). The cluster's
-grand resistance ``R = W^T A^-1 M`` (``6K x 6K``) is solved by the dense LU of the joint matrix, every body's six
-rigid motions as right-hand sides: a body's coupled 6 x 6 is six columns of it, each a whole column block, so a
-lagged step needs all of it whatever the solver."""
+grand resistance ``R = W^T A^-1 M`` (``6K x 6K``) has every body's six rigid motions as right-hand sides: a body's
+coupled 6 x 6 is six columns of it, each a whole column block, so a lagged step needs all of it whatever the solver.
+It is solved by the dense LU of the joint matrix (:func:`grand_resistance`), whose factors serve every right-hand
+side, or, for a cluster past the dense route's size, by GMRES on every column at once, each body's own block's
+inverse its preconditioner (:func:`iterative_resistance`), which holds no factors of the whole."""
 
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ from jax import Array
 from mime.core import jnp
 from mime.nodes.hydro.mrs._solve import PRECISION, force_sums, rigid_motions
 from mime.nodes.hydro.mrs._walls import Corrected, WallCorrection
+from mime.nodes.hydro.near_field._gmres import Operator, Stopping, reported_solve
 
 #: The capabilities a body model may declare beside the core.
 CROSS_KERNEL, BODY_FRAME_CONSTANT, PRECONDITIONER = "cross_kernel", "body_frame_constant", "preconditioner"
@@ -162,20 +165,50 @@ def joint_matrix(members: Sequence[BodyOperator], leaves: Sequence[Mapping[str, 
     return Joint(jnp.concatenate(rows, axis=0), placed, accepted, jnp.stack(wall_short), jnp.stack(cross_short))
 
 
-def grand_resistance(joint: Joint) -> Array:
-    """``R = W^T A^-1 M``, ``6K x 6K``: the force and torque on each body (about its centre) for each unit rigid motion
-    of each body, the others held, by one dense LU of the joint matrix with every body's six motions as right-hand
-    sides (``jnp.linalg.solve``: its derivative reuses the factors). Not symmetrised: its asymmetry is the
-    discretisation's."""
+def joint_motions(joint: Joint) -> Array:
+    """``M``, ``3 sum N x 6K``: each body's six rigid motions at its own force points, zero at the others'."""
     counts = [p.count for p in joint.placed]
     at = offsets(counts)
     size, bodies = at[-1], len(counts)
     motions = jnp.zeros((size, 6 * bodies), dtype=joint.matrix.dtype)
     for i, p in enumerate(joint.placed):
         motions = motions.at[at[i]:at[i + 1], 6 * i:6 * i + 6].set(p.motions())
-    tractions = jnp.linalg.solve(joint.matrix, motions)
+    return motions
+
+
+def _wrenches(joint: Joint, tractions: Array) -> Array:
+    at = offsets([p.count for p in joint.placed])
     rows = [force_sums(p.wrench(), tractions[at[i]:at[i + 1]]) for i, p in enumerate(joint.placed)]
     return jnp.concatenate(rows, axis=0)
+
+
+def grand_resistance(joint: Joint) -> Array:
+    """``R = W^T A^-1 M``, ``6K x 6K``: the force and torque on each body (about its centre) for each unit rigid motion
+    of each body, the others held, by one dense LU of the joint matrix with every body's six motions as right-hand
+    sides (``jnp.linalg.solve``: its derivative reuses the factors). Not symmetrised: its asymmetry is the
+    discretisation's."""
+    return _wrenches(joint, jnp.linalg.solve(joint.matrix, joint_motions(joint)))
+
+
+def iterative_resistance(joint: Joint, blocks: Sequence[Operator | None], transposed: Sequence[Operator | None],
+                         stopping: Stopping, tap: Array) -> tuple[Array, Array]:
+    """:func:`grand_resistance`'s ``R`` by GMRES on its ``6K`` columns at once, right-preconditioned by each body's own
+    block (``blocks[i]`` on its rows; ``None``, the identity, for a model that declares no :data:`PRECONDITIONER`),
+    ``transposed`` the transpose solve's, through ``custom_linear_solve`` with the report block ``tap`` on its
+    right-hand side (``mime.nodes.hydro.near_field._gmres.reported_solve``); with the primal solve's report. Its
+    answer is the dense route's to the solve's tolerance."""
+    at = offsets([p.count for p in joint.placed])
+
+    def joined(parts: Sequence[Operator | None]) -> Operator:
+        def apply(v: Array) -> Array:
+            return jnp.concatenate([v[at[i]:at[i + 1]] if part is None else part(v[at[i]:at[i + 1]])
+                                    for i, part in enumerate(parts)])
+
+        return apply
+
+    tractions, report = reported_solve(joint.matrix, joint_motions(joint), tap, joined(blocks), joined(transposed),
+                                       stopping)
+    return _wrenches(joint, tractions), report
 
 
 def blocks_of(resistance: Array, bodies: int) -> tuple[Array, Array]:
@@ -295,5 +328,6 @@ def quadratic_form(resistance: Array, twists: Array) -> tuple[Array, Array]:
 
 
 __all__ = ["BODY_FRAME_CONSTANT", "CROSS_KERNEL", "OVERLAP_RESOLUTION", "PRECONDITIONER", "BodyOperator", "Joint",
-           "Placed", "blocks_of", "booked_work", "cross_image", "cross_loads", "grand_resistance", "joint_matrix",
-           "lagged_amplification", "lagged_gain", "offsets", "pair_gaps", "quadratic_form"]
+           "Placed", "blocks_of", "booked_work", "cross_image", "cross_loads", "grand_resistance",
+           "iterative_resistance", "joint_matrix", "joint_motions", "lagged_amplification", "lagged_gain", "offsets",
+           "pair_gaps", "quadratic_form"]

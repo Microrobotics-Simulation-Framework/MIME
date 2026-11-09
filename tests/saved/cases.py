@@ -12,7 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from mrs_cases import free_space, mrs, mrs_free_space, mrs_kept, mrs_near_field, mrs_plane, mrs_solids, mrs_tube
+from mrs_cases import (free_space, mrs, mrs_free_space, mrs_kept, mrs_near_field, mrs_near_field_gmres, mrs_plane,
+                       mrs_solids, mrs_tube)
 from rft_cases import rft_free_space, rft_kept, rft_tube
 from chain_cases import dynamic_rpm, gantry_magnet, kinematic_rpm, massive_rpm, swing_magnet, tracked_rpm
 from hull_cases import hull_contact
@@ -346,6 +347,8 @@ CASES = (
     # Drag 0.5.0's near field: a ball, a pill and a smaller ball close together in one medium, one joint node; its
     # golden outputs are 0.5.0's mrs rung's and the joint node's.
     Case("mrs_near_field", mrs_near_field),
+    # The same past the takeover line: the joint system by GMRES, its report and its preconditioner's held inverses.
+    Case("mrs_near_field_gmres", mrs_near_field_gmres),
     # The same on drag 0.3.0, kept registered: a point force at each sample, what a folder saved before the separated
     # quadrature names.
     Case("mrs_point_forces", mrs_point_forces),

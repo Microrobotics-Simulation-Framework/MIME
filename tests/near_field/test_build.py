@@ -1,8 +1,8 @@
 """The build's near field (drag 0.5.0, C1, 4 and Bundle 2): a medium's mrs bodies grouped into one joint node, their
 reads and deliveries its; the mass matrix each body publishes only where the near field reads it; one declared mass
 read by both the body and the joint node (an override of it moves the node's gain); the build's refusals (a medium
-mixing a kept, uncoupled drag with the near field; a cluster past the dense route's size); and a saved folder of a near
-field that loads and reproduces. The energy ledger beside a near field is ``test_ledger.py``'s."""
+mixing a kept, uncoupled drag with the near field); a cluster past the takeover line built on the iterative route; and
+a saved folder of a near field, on either route, that loads and reproduces. The energy ledger beside a near field is ``test_ledger.py``'s."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ from mime.units import kg, m, ms
 SPACING = 0.6e-3
 
 
-def cluster(count: int = 2, gap: float = 0.4e-3, **settings):
-    return bodies("near", spheres(gap, count), mrs(SPACING), **settings)
+def cluster(count: int = 2, gap: float = 0.4e-3, law=None, **settings):
+    return bodies("near", spheres(gap, count), law if law is not None else mrs(SPACING), **settings)
 
 
 def test_a_mediums_mrs_bodies_are_one_joint_node_reading_each_pose_twist_and_mass_and_delivering_each_load():
@@ -76,24 +76,27 @@ def test_a_medium_mixing_the_kept_uncoupled_drag_with_the_near_field_is_refused(
     assert "drag.near-field-mixed" in refused.value.codes()
 
 
-def test_a_cluster_past_the_dense_routes_size_is_refused(monkeypatch):
+def test_a_cluster_past_the_takeover_line_takes_the_iterative_route(monkeypatch):
     from mime.nodes.hydro.near_field import _node
 
-    monkeypatch.setattr(_node, "DENSE_UNKNOWNS", 100)
-    with pytest.raises(BuildRefused) as refused:
-        cluster(2).build()
-    assert "drag.near-field-size" in refused.value.codes()
+    below = joint_node(cluster(2).build())
+    monkeypatch.setattr(_node, "DENSE_UNKNOWNS", below.unknowns - 1)
+    past = joint_node(cluster(2).build())
+    assert not below.iterative and past.iterative and past.dense_unknowns == below.unknowns - 1
+    assert "solve_report" in past.initial_state() and "solve_report" not in below.initial_state()
 
 
-def test_a_saved_near_field_loads_and_reproduces_its_run(tmp_path):
+@pytest.mark.parametrize("route", ["dense", "iterative"])
+def test_a_saved_near_field_loads_and_reproduces_its_run(tmp_path, route):
     with precision("float64"):
-        experiment = cluster(2)
+        experiment = cluster(2, law=mrs(SPACING, **({"near_field_dense": 0} if route == "iterative" else {})))
         built = experiment.build()
         first = built.run(ms(3.0), history=True)
         built.save(tmp_path / "near", steps=3)
         again = Experiment.load(tmp_path / "near").build()
         second = again.run(ms(3.0), history=True)
     assert sorted(again.graph.node_names) == sorted(built.graph.node_names)
+    assert joint_node(again).iterative == (route == "iterative")
     for node in (NODE, "s0", "s1"):
         for field, value in first.history[node].items():
             assert np.array_equal(np.asarray(value), np.asarray(second.history[node][field])), (node, field)

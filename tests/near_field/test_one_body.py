@@ -49,15 +49,16 @@ def lone(tube: bool) -> Experiment:
     return experiment
 
 
-def pair(built, scale: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
-    """dev1's node's resistance at ``POSE`` and the one-member joint node's, its radius scaled by ``scale``."""
+def pair(built, scale: float = 1.0, **settings) -> tuple[np.ndarray, np.ndarray]:
+    """dev1's node's resistance at ``POSE`` and the one-member joint node's (built with ``settings``), its radius scaled
+    by ``scale``."""
     node = built.graph.get_node("drag:ball")
     assert isinstance(node, MRSDragNode)
     leaves = parameter_leaves(built.graph)["drag:ball"]
     dtype = leaves["viscosity"].dtype
     pose = jnp.asarray(POSE, dtype=dtype)
     dev1 = node.update(node.initial_state(), {"pose": pose}, 1e-3, params=leaves)
-    joint = single(node)
+    joint = single(node, **settings)
     params = joint.params_pytree()
     params["m0_shape_radius"] = params["m0_shape_radius"] * scale
     out = joint.update(joint.initial_state(), {"pose_0": pose, "twist_0": jnp.zeros(6, dtype=dtype),
@@ -78,3 +79,24 @@ def test_one_member_of_the_joint_node_gives_dev1s_resistance_to_its_rounding(dty
           f"{LINES[dtype]:g}); the radius {PLANTS[dtype]:g} up {control:.3g}")
     assert found <= LINES[dtype]
     assert control > 10.0 * LINES[dtype], "the control: the planted radius is seen"
+
+
+#: Gate 1 on the iterative route (the one member past a takeover line of zero), each entry over its diagonal scale: the
+#: solve's tolerance carried through the member's conditioned block (float64's 1e-10, float32's 1e-5). In free space the
+#: member's preconditioner is its own block's inverse and one iteration solves it; in the tube the block holds the wall's
+#: image too, which the preconditioner leaves out.
+ITERATIVE_LINES = {"float64": 1e-8, "float32": 5e-5}
+
+
+@pytest.mark.parametrize("tube", [False, True], ids=["free_space", "tube"])
+@pytest.mark.parametrize("dtype", ["float64", "float32"])
+def test_on_the_iterative_route_one_member_gives_dev1s_resistance_to_the_solves_tolerance(dtype, tube):
+    with precision(dtype):
+        built = lone(tube).build()
+        dev1, joint = pair(built, dense_unknowns=0)
+        _, moved = pair(built, 1.0 + PLANTS[dtype], dense_unknowns=0)
+    found, control = entrywise(joint, dev1), entrywise(moved, dev1)
+    print(f"\n{dtype}, {'tube' if tube else 'free space'}, GMRES: the joint node against dev1 {found:.3g} (line "
+          f"{ITERATIVE_LINES[dtype]:g}); the radius {PLANTS[dtype]:g} up {control:.3g}")
+    assert found <= ITERATIVE_LINES[dtype]
+    assert control > 10.0 * ITERATIVE_LINES[dtype], "the control: the planted radius is seen"

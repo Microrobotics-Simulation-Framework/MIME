@@ -33,8 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contact (the box 12 % at a third of a cell); `Drag.MRS(near_field_share=...)` lowers it as a cost setting, a cell
   within the reach that does not fit raising `cross_cells_short`. A body alone in its medium keeps its own node, so no
   program with one mrs body a medium moves; a folder saved with `drag` 0.4.0, kept as `UncoupledDrag`, rebuilds its
-  bodies' own nodes. The build refuses a cluster past the dense route's size, a memory line (`drag.near-field-size`),
-  and a medium mixing the two versions (`drag.near-field-mixed`). With the energy ledger attached, each body's own
+  bodies' own nodes. The build refuses a medium mixing the two versions (`drag.near-field-mixed`). With the energy
+  ledger attached, each body's own
   resistance is its drag's law and the cross loads are the near field's own, `near_field:<medium>`, booked on each body
   by the one pairing rule and never judged on one body's row, where they have no sign (one body drags another): the
   node judges the cluster's books a step late, from what it delivered and the twists the bodies reached, as the
@@ -46,6 +46,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delivers, its own block, its cross-kernel, its normals) takes the MRS as its first body model; its joint system is a
   pure function of the bodies' poses, their leaves and the wall's parameters, and a body model of another kind in the
   same medium (a slender body's, a resistive-force body's) needs the joint node to hold a member kind per index.
+
+- **The near field past the dense route: GMRES, never silent** (`drag` 0.5.0, unreleased; `JointDragNode`). A cluster
+  past the takeover line, `DENSE_UNKNOWNS` (16,000) joint unknowns, is solved by GMRES on its grand resistance's
+  right-hand sides at once, each body's held free part's inverse (a new leaf, made once per build in its frame, made
+  again with the free part where a leaf moves) its preconditioner block, through `custom_linear_solve`: each solve,
+  the primal's and each derivative's, from a cold start, stopping on its true residual relative to its own right-hand
+  side, the transpose solve preconditioned by the transposed blocks. `Drag.MRS(near_field_dense=...)` moves the line
+  and `Drag.MRS(near_field_tolerance=...)` sets the tolerance (1e-10 in float64, 1e-5 in float32, above the floor its
+  arithmetic leaves the residual at), both numerical settings; the build report says which route a cluster took.
+  The solve's report is the FVM's: each step's a state field (`solve_report`, its running sum beside it) with a flag
+  the run warns of with its count (`solve_flagged`: at the cap, stagnated, or a residual not finite; zero on the dense
+  route), the tangent solves' as those fields' tangents, and the transpose solves' as the gradient of the node's zero
+  `solve_report` parameter. The dense route's size refusal, `drag.near-field-size`, is gone: GMRES lifts it.
 
 - **The two-builds check** (`mime.testing.two_builds`, `two_builds_of`, `step_program`, `graph_program`, `run_form`;
   float64 only): whether a compiled program holds a value made from a declared one as a constant of its own, which a

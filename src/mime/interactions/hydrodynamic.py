@@ -1173,8 +1173,10 @@ class Drag(UncoupledDrag):
     in a triangle near contact), and the run stops there (``drag.near-field-gain``); the gain and the relaxation in
     steps, ``1/(1-g)``, are reported. Each body's coupled resistance and the cluster's grand resistance are judged as
     0.4.0's (their scaled least eigenvalue above zero, else the run stops, ``drag.near-field-indefinite``, the margin
-    reported). A body alone in its medium keeps its own node, 0.4.0's, step for step. The joint system is solved
-    dense, so the build refuses a cluster past ``DENSE_UNKNOWNS`` unknowns (``drag.near-field-size``).
+    reported). A body alone in its medium keeps its own node, 0.4.0's, step for step. The joint system is solved by
+    one dense LU up to the takeover line (``near_field_dense``, ``DENSE_UNKNOWNS`` unknowns by default), and past it by
+    GMRES, each body's own block's inverse its preconditioner, each solve to ``near_field_tolerance`` on its true
+    residual and never silently short of it (``solve_flagged``, warned of with its count).
 
     Version 0.5.0 couples a medium's mrs bodies; version 0.4.0 (``UncoupledDrag``, kept registered) computed each
     body's drag alone, and its surrogate rung, like 0.5.0's, is 0.3.0's; its rft rung, added before 0.5.0, is 0.5.0's.
@@ -1194,8 +1196,19 @@ class Drag(UncoupledDrag):
                        "quarter of a source's points, five kinds of six at their cases' spacings fell past the case's "
                        "line near contact, the box furthest, while MIME's sphere at its default count was unmoved to "
                        "within a few hundredths of a per cent)"),
+        "near_field_dense": convention(
+            NUMERICAL, "on the mrs rung, the most joint unknowns the near field's dense LU takes, DENSE_UNKNOWNS, past "
+                       "which its GMRES does: a memory line (measured on a laptop CPU in float64 near the line: the "
+                       "dense LU held about three times its matrix, about twice GMRES's peak; GMRES took the less "
+                       "time at every size measured, by a ratio the shared machine's load set); either route's "
+                       "answer is the other's to GMRES's tolerance"),
+        "near_field_tolerance": convention(
+            NUMERICAL, "on the mrs rung past the dense route, GMRES's relative tolerance on each solve's true "
+                       "residual, DEFAULT_TOLERANCE by the run's dtype: float64's holds the grand resistance to the "
+                       "dense route's to within its gates' lines near contact, float32's sits above the floor its own "
+                       "arithmetic leaves the residual at"),
     }
-    mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share")
+    mrs_settings = (*UncoupledDrag.mrs_settings, "near_field_share", "near_field_dense", "near_field_tolerance")
     raises = (
         *UncoupledDrag.raises,
         Flag("gain_exceeded", "the lagged coupling of the medium's near field reached a gain of one or more (the "
@@ -1208,6 +1221,10 @@ class Drag(UncoupledDrag):
                              "past the ledger's floor: the fluid gave the cluster energy (an energy check sees an "
                              "error that makes the fluid a source, not one that leaves it dissipating)",
              rung="mrs", group=True),
+        Flag("solve_flagged", "the near field's GMRES stopped other than converging (at its cap, stagnated, or at a "
+                              "residual not finite): that step's resistances and loads are not the joint system's to "
+                              "the solve's tolerance (the dense route, an LU, never raises it)",
+             rung="mrs", group=True, warns=True),
         Flag("cross_cells_short", "a source cell within the cross-kernel's reach of the other body did not fit the "
                                   "cross-kernel's budget (near_field_share set below one), which kept that cell's "
                                   "kernel at its force point, where the reach's conformance cases do not hold it",
@@ -1241,6 +1258,8 @@ class Drag(UncoupledDrag):
     )
 
     near_field_share: float | None = None
+    near_field_dense: int | None = None
+    near_field_tolerance: float | None = None
 
     @override
     def unrecorded_settings(self) -> frozenset[str]:
@@ -1250,8 +1269,10 @@ class Drag(UncoupledDrag):
     @override
     def setting_problems(self, settings: Mapping[str, Magnitude]) -> list[str]:
         found = super().setting_problems(settings)
-        if self.rung == "rft" and self.near_field_share is not None:
-            found.append("near_field_share= is a setting of the mrs rung's near field, and the rft rung reads none")
+        if self.rung == "rft":
+            found += [f"{name}= is a setting of the mrs rung's near field, and the rft rung reads none"
+                      for name in ("near_field_share", "near_field_dense", "near_field_tolerance")
+                      if getattr(self, name) is not None]
         return found
 
     def joins_near_field(self) -> bool:
@@ -1275,13 +1296,25 @@ class Drag(UncoupledDrag):
             found.append(f"near_field_share is {share!r}, not a share above 0 and at most 1: the most of a source's "
                          f"quadrature points the near field's cross-kernel integrates, so write near_field_share=0.25 "
                          f"(or leave it out for every point, 1)")
+        line = cast(object, self.near_field_dense)
+        if line is not None and (isinstance(line, bool) or not isinstance(line, int) or line < 0):
+            found.append(f"near_field_dense is {line!r}, not a whole number at or above zero: the most joint unknowns "
+                         f"the near field's dense LU takes before its GMRES does, so write near_field_dense=16000 (or 0 "
+                         f"for GMRES at every size)")
+        tolerance = cast(object, self.near_field_tolerance)
+        if tolerance is not None and (isinstance(tolerance, bool) or not isinstance(tolerance, int | float)
+                                      or not 0.0 < float(tolerance) < 1.0):
+            found.append(f"near_field_tolerance is {tolerance!r}, not a number between 0 and 1: GMRES's relative "
+                         f"tolerance on each solve's true residual, so write near_field_tolerance=1e-10 (float64's "
+                         f"default; float32's is 1e-5)")
         return found
 
     def _build_near_field(self, ctx: BuildContext, b: InteractionBuilder) -> None:
         """The medium's joint node for every member's body, each member's own node's arguments under ``m<i>_``, the
         wall's constants once; each body's pose, twist and mass matrix read, its resistance and background load
         delivered. The cross-kernel's budget is the largest ``near_field_share`` its members write (every point where
-        none writes one)."""
+        none writes one); the takeover line the largest ``near_field_dense`` and the tolerance the smallest
+        ``near_field_tolerance`` they write (the more accurate route and solve any member asks for)."""
         ids = sorted(ctx.members)
         written = [cast(UncoupledDrag, ctx.members[owner].entry) for owner in ids]
         shares = [float(cast(float, getattr(entry, "near_field_share"))) for entry in written
@@ -1306,9 +1339,15 @@ class Drag(UncoupledDrag):
             held.update({f"{member_prefix(i)}{key}": value for key, value in arguments.items() if key not in names})
             bodies.append(member.bindings["body"])
         assert common is not None
+        lines = [int(cast(int, getattr(entry, "near_field_dense"))) for entry in written
+                 if getattr(entry, "near_field_dense", None) is not None]
+        tolerances = [float(cast(float, getattr(entry, "near_field_tolerance"))) for entry in written
+                      if getattr(entry, "near_field_tolerance", None) is not None]
+        solve = {**({"dense_unknowns": max(lines)} if lines else {}),
+                 **({"tolerance": min(tolerances)} if tolerances else {})}
         node = b.add_response_node(JointDragNode(ctx.node_name(), ctx.timestep, members=tuple(bodies), **common,
                                                  **walls, **({"cross_share": max(shares)} if shares else {}),
-                                                 **held))
+                                                 **solve, **held))
         for i, owner in enumerate(ids):
             b.connect(b.read(f"{owner}/pose"), into=node[f"pose_{i}"])
             b.connect(b.read(f"{owner}/twist"), into=node[f"twist_{i}"])
