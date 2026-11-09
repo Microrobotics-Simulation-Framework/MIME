@@ -72,6 +72,29 @@ def outside_the_magnet(given):
 DIPOLE = NodeCase(options={"boundary_bounds": {"mount_poses": (-1.0, 1.0)},
                            "constrain_boundary": outside_the_magnet})
 
+#: The Navion_2's declared region (its Workspace_Dimensions), where the walk's case reads the array.
+NAVION_REGION = np.array([[-0.123, 0.101], [-0.09, 0.134], [-0.1216, 0.1216]])
+
+
+def in_the_navion_region(given):
+    """Each drawn reader's pose moved into the Navion_2's declared region, its quaternion of unit length."""
+    held = dict(given)
+    for key, value in given.items():
+        if key.startswith("points_"):
+            pose = np.asarray(value, dtype=np.float64).copy()
+            low, high = NAVION_REGION[:, 0], NAVION_REGION[:, 1]
+            pose[:3] = low + (np.clip(pose[:3], -1.0, 1.0) + 1.0) / 2.0 * (high - low)
+            pose = np.asarray(unit_quaternion(pose), dtype=np.float64)
+            held[key] = pose.astype(np.asarray(value).dtype)
+    return held
+
+
+#: The array's drawn readers sit in the Navion_2's declared region, and its drawn currents within the coils' +-35 A
+#: (the 0.2 line's Navion figure): in the default box of 1e4 a reader is far beyond every coil, where the field is some
+#: 1e-16 of its value in the region, and the battery would test underflow.
+COILS = NodeCase(options={"boundary_bounds": {"delivered_currents": (-35.0, 35.0)},
+                          "constrain_boundary": in_the_navion_region})
+
 #: The drag's drawn pose is a body's: inside a box a little larger than its tube, its quaternion of unit length. In
 #: the default box of 1e4 every body is far beyond the wall, where the clamp and the lubrication's gap floor hold every
 #: output still.
@@ -223,6 +246,7 @@ NODE_CASES: dict[tuple[str, str, str], NodeCase] = {
     ("dynamics", "motor", "0.2.0"): MOTOR,
     ("dynamics", "labx.gantry", "0.1.0"): NodeCase(),
     ("field provider", "point_dipole", "0.1.0"): DIPOLE,
+    ("field provider", "calibrated_multipole", "0.1.0"): COILS,
     ("interaction", "magnetic.force", "0.1.0"): NodeCase(),
     ("interaction", "magnetic.force", "0.2.0"): NodeCase(),
     ("controller", "arm_tracking", "0.1.0"): NodeCase(

@@ -1,0 +1,41 @@
+# `mime.data/emns_calibrations`
+
+**Three electromagnetic navigation systems' calibrations**, each a calibrated multipole model (MPEM, order one) as its
+makers publish it, read by `mime.fields.CalibratedMultipole`. They are third parties' files, shipped byte for byte;
+each file's provenance, sha256 and conditioning are on its card in `docs/assets/` (`navion_2.md`, `octomag.md`,
+`cardiomag.md`).
+
+| File | System | Upstream |
+|---|---|---|
+| `navion_2.yaml` | Navion_2 | [ethz-msrl/Workspace_eMNS](https://github.com/ethz-msrl/Workspace_eMNS), its `models/` folder |
+| `octomag.yaml` | OctoMag | [ethz-msrl/Tesla_core_public](https://github.com/ethz-msrl/Tesla_core_public), its `mag_control/mpem/cal/` folder |
+| `cardiomag.yaml` | CardioMag, the variant with no offset sources | the same repository and folder |
+
+Copyright Multi-Scale Robotics Lab, ETH Zurich (Prof. Bradley J. Nelson), under the Apache License, MIME's own (the
+repository's `LICENSE`); the attribution is in `NOTICE`.
+
+## The licences, as read
+
+Each licence was read from its source, at the commit its card names, before the file entered the repository.
+Workspace_eMNS's `LICENSE` is the Apache License, and its Navion file holds no header of its own. Tesla_core_public's
+top-level `LICENSE` is a BSD licence with an advertising clause; its two files carry their own Apache License headers,
+which govern them. The Navion file is in Tesla_core_public too, numerically identical, and the copy shipped is
+Workspace_eMNS's. No source code of either repository is copied: MIME's evaluator is its own, from the published
+formulation (Petruska et al.).
+
+## What is changed
+
+Nothing. The previous line appended a newline to the Navion file; this one ships the upstream bytes, so each file's
+sha256 is its upstream's. CardioMag's file mixes CRLF and LF line ends, and `.gitattributes` keeps every file here as
+it is.
+
+## Each value's basis
+
+`Source_Position`, `Source_Direction` and `B_Coeff` are fitted: a source is a basis function, not hardware.
+`Source_Direction` is not a unit vector in the files, and is normalised when read. `Workspace_Dimensions` is declared,
+never fitted (the upstream fitter never writes it). Every shipped calibration is of order one and holds no interior
+terms (`A_Coeff: ~`).
+
+## The rule
+
+These files are never edited here. A newer calibration is a new file with its own pins, taken from its source.

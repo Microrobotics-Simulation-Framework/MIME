@@ -30,8 +30,8 @@ bit: 0.1.0's product carries that rounding. Its step is the node's own timestep,
 readers' slots take no points; its gradient is zero. Version 0.1.0, whose phase is the present frequency times the
 time (MIME-ANO-139), is kept registered for saved folders (`KEPT`), and refuses any writer of its frequency but a
 constant drive (`command.held-constant`). A provider declares the commands it reads as constant over a run
-(`constant_commands`), and the build refuses any other writer of them. The point dipole of an arm-held magnet is described below; the calibrated coil array and the standing wave in
-a2.
+(`constant_commands`), and the build refuses any other writer of them. The point dipole of an arm-held magnet and the
+calibrated coil array are described below; the standing wave in a2.
 
 **`PointDipole`** (`point_dipole` 0.1.0): a magnet part of the apparatus as a point
 dipole, its field and gradient (by the closed form) at each reader's point, the part placed by its mount, so it
@@ -40,5 +40,19 @@ follows the chain carrying it. A reader's slot whose read names a point fixed in
 (`Capability.BODY_POINTS`). Its moment is the apparatus's `magnetic_moment`, declared as a magnitude along the
 magnet's declared direction; its node holds the magnet's radius, against which its near-field limit is stated
 (MIME-ANO-100). A provider may read its apparatus's parts (`parts`) and values (`values`).
+
+**`CalibratedMultipole`** (`calibrated_multipole` 0.1.0): an electromagnet array whose coils are a calibrated multipole
+model of order one, from one of the three packaged calibrations (`asset("navion_2")`, `"octomag"`, `"cardiomag"`), on
+`CoilArray`, the contract every kind of coil array keeps (not registered; coils from their geometry join it later): a
+field linear in the command `currents`, which reaches the node as `delivered_currents`, so a stage between a command and
+the coils can sit there later; the array placed by `at` and `orientation`, one exact transform; a uniform `background`,
+zero unless declared. Its sources, its pose and its background are its node's leaves. It raises `outside_region` (a
+reader outside the calibration's declared region, which is not a fit domain) and `near_source` (nearer a fitted source
+than `source_clearance`, by default the least distance from a source to the declared region), and refuses float32 where
+the sources' cancellation puts float32's rounding above its declared guard (OctoMag). Outside a run,
+`provider.actuation(point)` is the field and gradient per unit current there (`Actuation`, its `matrix()` the actuation
+matrix), and
+`allocate(actuation, field=, gradient=, limits=)` the bounded least-squares currents for a wanted field and gradient
+within limits the user declares. Its sign convention is mag_manip's, which hardware has not grounded (MIME-ANO-153).
 
 Releases are explained in the [package manifest](../README.md#status).

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The coil array returns: `mime.fields.CalibratedMultipole`** (`calibrated_multipole` 0.1.0, its node
+  `CalibratedMultipoleNode`), an electromagnet array whose coils are a calibrated multipole model of order one, from one
+  of three packaged calibrations, `asset("navion_2")`, `asset("octomag")` and `asset("cardiomag")`: Apache-2.0,
+  Multi-Scale Robotics Lab, ETH Zurich, byte for byte their upstreams' at pinned commits, each with its card
+  (`docs/assets/`). On `mime.fields.CoilArray`, the contract every kind of coil array keeps: the command `currents`, one
+  per coil, reaches the node as `delivered_currents`; the array is placed by `at` and `orientation`, one exact
+  transform; `background` is a uniform field in the world frame, zero unless declared (the calibrations are fitted to
+  the coil field alone; Earth's 50 uT is 0.1 to 1 % of a 5 to 50 mT field and has no gradient). The sources' positions,
+  directions and coefficients, the pose and the background are the node's leaves. It publishes the flux density and
+  its gradient at the reader's point or its magnet's centroid, so dev1's magnetic pair reads it; it raises
+  `outside_region` (outside the calibration's declared region, which is not a fit domain) and `near_source` (nearer a
+  fitted source than `source_clearance`), and refuses float32 where the sources' cancellation puts its rounding above
+  1e-4 of the field (OctoMag; `setting.value`). `provider.actuation(point)` gives the field and gradient per unit
+  current at a point (`Actuation`, its `matrix()` the 8 x K actuation matrix), and `allocate(actuation, field=,
+  gradient=, limits=)` bounded least-squares currents within limits the user declares (`allocation.wanted` refuses a
+  wanted gradient that is not symmetric and trace-free, and limits that are not above zero). The units `T_per_m` and
+  `mT_per_m`, of the dimension `FIELD_GRADIENT`. Held to ETH's `mag_manip` 3.0.0 per system at 10 eps over the field's
+  cancellation (its archive's generator in `tests/oracles/`); its sign convention is mag_manip's, which no hardware
+  grounds here (MIME-ANO-153). Not returned from the 0.2 line's `CoilArrayFieldNode`: the sign setting (a validity line
+  and MIME-ANO-153 instead), S-MPEM saturation (no shipped calibration fits it; it makes the field nonlinear in
+  current), orders above one.
+
 - **The FVM's declaration at the build, and the quantity rule.** The build report shows the flow's box (its cells,
   spacing and resolution) and the run's memory estimate, the cells times the bytes a cell a CPU run was measured to
   hold at its peak, against the memory a run can have (a GPU's limit; on a CPU the smaller of the host's available
