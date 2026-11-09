@@ -32,7 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and MIME-ANO-153 instead), S-MPEM saturation (no shipped calibration fits it; it makes the field nonlinear in
   current), orders above one. CardioMag's file carries an `Offset` block of eight current-independent sources (about 1.5 mT at the
   median over its region) that neither mag_manip nor this evaluates, stated on its card and in the validity lines; a
-  `Coil_List` that names the block is refused.
+  `Coil_List` that names the block is refused. No system ships a current limit: the figures published for each are cited
+  in its card and the validity lines (Navion 25 A an operating restriction and 45 A the hardware's, CardioMag 35 A a
+  coil, OctoMag 16 A), and the previous line's unsourced 35 A and 20 A are dropped.
 
 - **A medium's near field: its mrs bodies solved together** (`drag` 0.5.0; `JointDragNode`, MIME-NODE-127;
   `mime.nodes.hydro.near_field`). Two bodies or more in one medium on `Drag.MRS(...)` are built as one joint node,

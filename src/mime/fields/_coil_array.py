@@ -310,7 +310,7 @@ class CalibratedMultipole(CoilArray):
                                                         "unit current above 30 times its median over the declared "
                                                         "region, each calibration's own; a length given replaces it "
                                                         "with a distance from a fitted source")}
-    references = ("Petruska2017", "Charreyron2021", "Kummer2010", "Zughaibi2025", "Zughaibi2026", "Gervasoni2024")
+    references = ("Petruska2017", "Charreyron2021", "Kummer2010", "Zughaibi2025", "Zughaibi2026", "Gervasoni2024", "Yu2019")
     builds = {"": (CalibratedMultipoleNode,)}
     validity = (
         "the field is linear in the delivered currents, each coil a calibrated multipole model of order one: fitted "
@@ -343,7 +343,9 @@ class CalibratedMultipole(CoilArray):
         "supports (Zughaibi2025, Sec. III-B, and its sequel Zughaibi2026, Sec. II-C, the same three-coil system and "
         "drivers); the drivers rated 50 A continuous and 100 A peak, with the system paper's workspace maps at 50 A in "
         "each coil (Gervasoni2024, Experimental Section and Fig. 3); no source states a coil rating, or that its unit is "
-        "the one the calibration was fitted on; CardioMag 20 A as the 0.2 line declared it, unsourced",
+        "the one the calibration was fitted on; CardioMag 35 A a coil, with 15 kW for the whole system, as the maximum "
+        "its eight electromagnets are given (Yu2019, Sec. III-A), nothing stating that its unit is the one the "
+        "calibration was fitted on, and the power cap not modelled here (the coils' resistance is unknown)",
         _BACKGROUND,
         "CardioMag's file carries an Offset block of eight sources, current-independent, worth about 1.5 mT at the "
         "median over its region (3 to 30 % of a 5 to 50 mT field), which neither mag_manip nor this node evaluates: "

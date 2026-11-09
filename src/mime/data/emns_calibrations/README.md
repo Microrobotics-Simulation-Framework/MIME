@@ -45,7 +45,9 @@ None of the files states a current limit, and MIME ships none (`allocate()` take
 the Navion system, none a coil rating: 25 A a coil as one lab's operating restriction (Zughaibi et al. 2025, Sec. III-B),
 the figure MIME uses where it needs one; 45 A as what that lab says the hardware supports (the same section, and
 Zughaibi et al. 2026, Sec. II-C); drivers rated 50 A continuous and 100 A peak (Gervasoni et al. 2024, Experimental
-Section and Fig. 3). No source says that the unit measured is the one the calibration was fitted on.
+Section and Fig. 3). No source says that the unit measured is the one the calibration was fitted on. For the CardioMag: 35 A in each
+electromagnet and 15 kW in the whole system (Yu et al. 2019, Sec. III-A), again with no statement that its unit is the
+one the calibration was fitted on; the previous line's unsourced 20 A is dropped.
 
 ## The rule
 

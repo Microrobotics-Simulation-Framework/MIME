@@ -27,6 +27,12 @@ rounding 8.9e-16 and float32 4.8e-7 of the field; least distance from a source t
 0.027 T/(m A), and none of 60 000 drawn points of the region reaches it (its smooth gradient reaches 2.4 times the
 median).
 
+**Its current limits.** None ships (`allocate()` takes the user's). The figure published for the CardioMag: "the maximum
+current in each electromagnet is 35 A, and the maximum power in the whole system is 15 kW" (Yu et al. 2019, Sec. III-A,
+the eight-electromagnet system with a 10 cm cubic workspace). Nothing states that the unit measured is the one this
+calibration was fitted on, and the 15 kW cap is not modelled here (the coils' resistance is unknown), so 35 A in every coil
+at once is an upper bound. The previous line's 20 A had no source and is dropped.
+
 **Its accuracy, by use.** Against ETH's `mag_manip`, MIME's evaluation agrees to a tolerance derived from the field's
 cancellation at the compared points (`tests/oracles/test_calibrated_multipole.py`): a software oracle, which pins sign
 and frame to mag_manip's convention and cannot ground them against hardware. **The file carries an `Offset` block
