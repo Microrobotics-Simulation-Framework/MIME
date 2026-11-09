@@ -44,9 +44,16 @@ from rft_cases import (
 
 from mime.build import BuildRefused
 from mime.core import quaternion
-from mime.nodes.hydro._rft_drag import drag_coefficients
-from mime.nodes.hydro.mrs._quadrature import floored_least_eigenvalue, scaled_least_eigenvalue, semidefinite_floor
+from mime.nodes.hydro._rft_drag import SEMIDEFINITE_KINDS, drag_coefficients
+from mime.nodes.hydro.mrs._quadrature import (
+    DIAGONAL_FLOOR,
+    floored_least_eigenvalue,
+    scaled_least_eigenvalue,
+    semidefinite_floor,
+)
 from mime.nodes.hydro.mrs._solve import rigid_motions
+from mime.scene import Capsule
+from mime.units import mm
 
 #: Gate 1's line, relative: the node path's rounding with room (the first step's reproduction: 7e-15).
 R6_LINE = 1e-9
@@ -207,3 +214,64 @@ def test_control_the_check_on_the_free_block_passes_r6_in_the_tube():
     assert float(floored_least_eigenvalue(jnp.asarray(free))) > -semidefinite_floor(np.float64)
     assert not float(floored_least_eigenvalue(jnp.asarray(with_wall))) > -semidefinite_floor(np.float64)
     assert math.isfinite(float(np.min(np.linalg.eigvalsh(with_wall))))
+
+
+def _planted(node, pose, dtype, c):
+    """The node's resistance at ``pose`` with its least scaled eigenvalue planted at ``-c`` (its least eigenvector
+    shifted, in the scaling the kind's check uses), and the least eigenvalue the node's check reads there."""
+    leaves = {key: jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple, np.ndarray)) else value
+              for key, value in node.constants().items()}
+    found = np.asarray(node.resistance_at({**leaves, **node._wall_arguments()}, jnp.asarray(pose, dtype=jnp.float64))[0])
+    symmetric = (found + found.T) / 2.0
+    diagonal = np.abs(np.diag(symmetric))
+    if node.constants()["kind"] in SEMIDEFINITE_KINDS:
+        largest = np.repeat([diagonal[:3].max(), diagonal[3:].max()], 3)
+        scale = np.sqrt(np.maximum(diagonal, DIAGONAL_FLOOR * largest))
+    else:
+        scale = np.sqrt(diagonal)
+    scaled = symmetric / np.outer(scale, scale)
+    values, vectors = np.linalg.eigh(scaled)
+    shift = -c - values[0]
+    planted = np.outer(scale, scale) * (scaled + shift * np.outer(vectors[:, 0], vectors[:, 0]))
+    least, floor = node.judged(jnp.asarray(planted, dtype=dtype), dtype)
+    return float(least), floor
+
+
+def _random_poses(count):
+    rng = np.random.default_rng(20261109)
+    quaternions = rng.normal(size=(count, 4))
+    quaternions /= np.linalg.norm(quaternions, axis=1, keepdims=True)
+    return np.concatenate([rng.uniform(-1e-4, 1e-4, size=(count, 3)), quaternions], axis=1)
+
+
+def _node_of(kind, settings):
+    built = helix_body("rft_plant", kind, settings, rft(wall_kind="free_space")).build()
+    return built.graph.get_node("drag:helix")
+
+
+PLANT_KINDS = {"capsule": (Capsule(radius=mm(0.03), height=mm(1.0), axis=(1.0, 0.0, 0.0)), {}),
+               "helix": (R6_HELIX, R6_SETTINGS)}
+
+
+@pytest.mark.parametrize("kind", ["capsule", "helix"])
+@pytest.mark.parametrize("dtype, amounts", [(np.float64, (1e-3, 1e-8, 1e-12)), (np.float32, (1e-3, 1e-4))])
+def test_a_planted_indefinite_resistance_is_refused_at_every_pose_above_the_kinds_floor(kind, dtype, amounts):
+    """The plant: the node's own resistance at 100 random poses with its least scaled eigenvalue moved to ``-c``. The
+    capsule (semidefinite) is refused where ``c`` is above its floor, 64 units in the last place; the helix (definite),
+    judged against zero, where ``c`` is above rounding. Every pose, not most: the amounts sit decades above the
+    thresholds (1.4e-14 and 7.6e-6 at the floor)."""
+    node = _node_of(*PLANT_KINDS[kind])
+    with jax.enable_x64(True):
+        for c in amounts:
+            reads = [_planted(node, pose, dtype, c) for pose in _random_poses(100)]
+            assert all(not least > -floor for least, floor in reads), (kind, dtype, c, max(l for l, _ in reads))
+
+
+def test_control_below_the_floor_the_semidefinite_kind_passes_and_the_definite_one_is_still_refused():
+    """A planted ``-1e-16`` in float64 is under the capsule's floor (it passes: the spin's rounding is not refused) and
+    over the helix's zero (it is refused): the split between the kinds is what is tested."""
+    with jax.enable_x64(True):
+        capsule, helix = _node_of(*PLANT_KINDS["capsule"]), _node_of(*PLANT_KINDS["helix"])
+        poses = _random_poses(50)
+        assert all(not l > -f for l, f in (_planted(helix, p, np.float64, 1e-13) for p in poses))
+        assert all(l > -f for l, f in (_planted(capsule, p, np.float64, 1e-16) for p in poses))

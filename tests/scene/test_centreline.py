@@ -20,9 +20,11 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mime.registry import Centreline, CentrelineFrame, CentrelineSegment, implements, registered
+from mime.build import ArgumentRefused
+from mime.registry import Centreline, CentrelineFrame, CentrelineSegment, Junction, implements, registered
 from mime.registry import EntryKind
 from mime.scene import Capsule, Ellipsoid, Helix, Tube, polyline, straight
+from mime.scene._centreline import transported
 from mime.scene._helix import HELIX_CENTRELINE
 from mime.testing import centreline_problems
 from mime.units import DIMENSIONLESS, Quantity, m, mm
@@ -111,8 +113,45 @@ def test_a_polyline_meets_at_its_junctions_and_carries_its_frame():
     assert [junction.name for junction in line.junctions] == ["j1", "j2"]
     assert centreline_problems(KINDS["helix"][0], {}, line) == []
     assert float(line.segments[0].filament_radius({})) == pytest.approx(2e-5)
-    with pytest.raises(ValueError, match="back on itself"):
-        polyline([(0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (0.0, 0.0, 0.0)])
+
+
+@pytest.mark.parametrize("points, radii, said", [
+    ([(0.0, 0.0, 0.0), (1e-3, 0.0, 0.0), (0.0, 0.0, 0.0)], None, "back on itself"),
+    ([(0.0, 0.0, 0.0)], None, "two points or more"),
+    ([(0.0, 0.0, 0.0), (0.0, 0.0, 0.0)], None, "distinct and finite"),
+    ([(0.0, 0.0, 0.0), (1e-3, 0.0, 0.0)], [1e-5, -1e-5], "above zero a point")],
+    ids=["a_corner_turning_back", "one_point", "a_repeated_point", "a_radius_below_zero"])
+def test_a_polyline_given_bad_points_is_refused_with_its_code(points, radii, said):
+    with pytest.raises(ArgumentRefused) as refused:
+        polyline(points, radii)
+    (refusal,) = refused.value.refusals
+    assert refusal.code == "call.polyline" and said in refusal.message
+
+
+def _branch(daughter_normals):
+    """A Y of three straight segments: a trunk along x, and two daughters leaving its end at 45 degrees up and down in
+    the x-y plane, each with the given normal at its start."""
+    trunk_normal = np.array([0.0, 0.0, 1.0])
+    trunk = straight(lambda p: (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), lambda p: 1e-3, normal=trunk_normal)
+    up, down = np.array([1.0, 1.0, 0.0]) / math.sqrt(2.0), np.array([1.0, -1.0, 0.0]) / math.sqrt(2.0)
+    daughters = [straight(lambda p: (1e-3, 0.0, 0.0), direction, lambda p: 1e-3, normal=normal)
+                 for direction, normal in zip((up, down), daughter_normals, strict=True)]
+    return Centreline((trunk, *daughters), (Junction("branch", ((0, 1), (1, 0), (2, 0))),)), trunk_normal, (up, down)
+
+
+def test_a_branched_centrelines_frame_is_continuous_at_the_branch_point():
+    """Each daughter's normal at the branch is the trunk's carried across the corner; a daughter whose normal is turned
+    a quarter turn from that is reported, on every run (the control: the same Y, one daughter's normal turned)."""
+    _, trunk_normal, (up, down) = _branch([np.array([0.0, 0.0, 1.0])] * 2)
+    carried = [transported(trunk_normal, np.array([1.0, 0.0, 0.0]), d) for d in (up, down)]
+    good, _, _ = _branch(carried)
+    assert centreline_problems(KINDS["helix"][0], {}, good) == []
+    turned = np.cross(up, carried[0])
+    bad, _, _ = _branch([turned, carried[1]])
+    (problem,) = centreline_problems(KINDS["helix"][0], {}, bad)
+    assert "junction 'branch'" in problem and "segment 1's normal" in problem and "carried across the corner" in problem
+    both, _, _ = _branch([turned, np.cross(down, carried[1])])
+    assert len(centreline_problems(KINDS["helix"][0], {}, both)) == 2
 
 
 def test_the_guides_straight_rod_keeps_the_contract():

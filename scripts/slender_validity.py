@@ -18,20 +18,18 @@ from pathlib import Path
 from typing import Any
 
 import jax
+import jax.numpy as jnp
+import numpy as np
 
-jax.config.update("jax_enable_x64", True)
-import jax.numpy as jnp  # noqa: E402
-import numpy as np  # noqa: E402
-
-from mime.build._maddening import node_state, parameter_leaves  # noqa: E402
-from mime.dynamics import RigidInertial  # noqa: E402
-from mime.experiment import Experiment  # noqa: E402
-from mime.interactions import Drag  # noqa: E402
-from mime.nodes.hydro.mrs._quadrature import floored_least_eigenvalue  # noqa: E402
-from mime.scene import Capsule, Ellipsoid, Helix, Scene, Tube, Z  # noqa: E402
-from mime.scene._helix import HelixTurn  # noqa: E402
-from mime.things import Body, Medium, Part, State, Structure  # noqa: E402
-from mime.units import DIMENSIONLESS, Quantity, kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s  # noqa: E402
+from mime.build._maddening import node_state, parameter_leaves
+from mime.dynamics import RigidInertial
+from mime.experiment import Experiment
+from mime.interactions import Drag
+from mime.nodes.hydro.mrs._quadrature import floored_least_eigenvalue
+from mime.scene import Capsule, Ellipsoid, Helix, Scene, Tube, Z
+from mime.scene._helix import HelixTurn
+from mime.things import Body, Medium, Part, State, Structure
+from mime.units import DIMENSIONLESS, Quantity, kg, kg_m2, m, m_per_s, m_per_s2, mm, mPa_s, ms, rad_per_s
 
 SPEC = Path(__file__).resolve().parents[1] / "docs" / "data" / "slender_validity" / "spec.json"
 VISCOSITY = 1e-3
@@ -194,6 +192,7 @@ def families(spec: dict[str, Any], record: dict[str, Any]) -> list[dict[str, Any
 
 
 def main() -> int:
+    jax.config.update("jax_enable_x64", True)  # the run is float64; importing the module changes no process setting
     parser = argparse.ArgumentParser()
     parser.add_argument("record", nargs="?", default=str(SPEC.with_name("record.json")))
     parser.add_argument("--only", default="")
@@ -203,7 +202,9 @@ def main() -> int:
     only = set(filter(None, args.only.split(",")))
     import hashlib
 
-    record: dict[str, Any] = {"spec": "spec.json", "spec_sha256": hashlib.sha256(SPEC.read_bytes()).hexdigest(),
+    record: dict[str, Any] = {"spec": "spec.json",
+                              "spec_written": "after the runs, with its rule; the hash below is of the spec as it stands",
+                              "spec_sha256": hashlib.sha256(SPEC.read_bytes()).hexdigest(),
                               "points": [], "ladder": []}
     path = Path(args.record)
     if path.exists():

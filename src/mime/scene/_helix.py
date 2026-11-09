@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, override
 
+import jax
 import numpy as np
 
 from mime.core import jnp
@@ -41,6 +42,9 @@ MOMENT_NODES = 16
 MOMENT_AROUND, MOMENT_THROUGH = 8, 4
 #: Points a turn the reach of the helix's centreline about the centroid's axis is found from (a build-time number).
 REACH_POINTS = 4096
+#: The turns a helix whose turn count JAX traces is taken to make at most, where the hull query counts the roots the
+#: farthest point can be at.
+TRACED_TURNS = 64
 
 
 def _gauss_legendre(count: int) -> tuple[np.ndarray, np.ndarray]:
@@ -346,6 +350,32 @@ class Helix(Solid):
         and the filament's radius."""
         points = self._centreline_points(settings)
         return float(np.max(np.hypot(points[:, 1], points[:, 2]))) + _held(settings, "filament_radius")
+
+    @override
+    def reach(self, parameters: Mapping[str, Any], direction: Any) -> Any:
+        """The hull query, exact: the body is the union of balls of the filament's radius centred on the centreline, so
+        its reach is the centreline's farthest point along ``direction`` plus the radius times the direction's length.
+        The farthest point along ``d`` of ``(b (t - sweep/2), R cos t, R sin t)`` less the centroid is at a stationary
+        point of ``a t + A cos(t - phi)``, ``a = b d_x`` and ``A = R |d_yz|``, at ``sin(t - phi) = a / A`` (two roots a
+        turn, found for every turn the helix makes), or at an end; the gradient is that point. A turn count traced by
+        JAX is taken to be below ``TRACED_TURNS``."""
+        names = ("radius", "pitch", "turns", "filament_radius")
+        turn, d = HelixTurn({name: jnp.asarray(parameters[name]) for name in names}), jnp.asarray(direction)
+        try:
+            turns = int(math.ceil(float(turn.turns)))
+        except Exception:  # noqa: BLE001 - a traced turn count has no value to read
+            turns = TRACED_TURNS
+        phi = jnp.arctan2(d[2], d[1])
+        along, across = turn.b * d[0], turn.radius * jnp.hypot(d[1], d[2])
+        base = jnp.arcsin(jnp.clip(along / jnp.where(across > 0.0, across, 1.0), -1.0, 1.0))
+        laps = 2.0 * math.pi * jnp.arange(-1, turns + 2)
+        roots = jnp.concatenate([phi + base + laps, phi + math.pi - base + laps])
+        # The roots are held out of the derivative: at a stationary point the value does not move with them, and the
+        # derivative is the point's; an end carries its own.
+        inside = jax.lax.stop_gradient(jnp.clip(roots, 0.0, jax.lax.stop_gradient(turn.sweep)))
+        candidates = jnp.concatenate([inside, jnp.stack([jnp.zeros_like(turn.sweep), turn.sweep])])
+        points = turn.curve(candidates)[0] - turn.centroid()
+        return jnp.max(points @ d) + turn.filament * jnp.sqrt(jnp.sum(d * d))
 
     @override
     def enclosing_radius(self, settings: Mapping[str, Magnitude]) -> float:

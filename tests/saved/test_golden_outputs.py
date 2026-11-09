@@ -50,10 +50,14 @@ RTOL = 1e-10
 FLOORS = {"frame_angular_velocities": 1e3, "contact_residual": 1.0, "contact_short": 1e-4,
           "ledger_step_identity": 1.0, "ledger_identity_worst": 1.0}
 LEDGER_FLOOR = 1e-9
+#: The rft rung's least eigenvalue is of a matrix scaled to a unit diagonal, so its scale is one; for a straight body
+#: (the rod, the seed) it is the spin's rounding, of either sign, a few units in the last place, and is judged against
+#: that scale, never its own. The coil's, 0.79, is a real number and is held to 1e-10 of it.
+CASE_FLOORS = {("rft_free_space", "least_eigenvalue"): 1.0}
 
 
-def floor_of(field: str) -> float:
-    return FLOORS.get(field, LEDGER_FLOOR if field.startswith("ledger_") else 0.0)
+def floor_of(field: str, case: str = "") -> float:
+    return CASE_FLOORS.get((case, field), 0.0) or FLOORS.get(field, LEDGER_FLOOR if field.startswith("ledger_") else 0.0)
 
 
 def path_of(key: tuple[str, str, str], rung: str = "") -> Path:
@@ -142,7 +146,7 @@ def differences(found: dict, golden: dict) -> list[str]:
                 if want.shape != got.shape or not np.array_equal(want, got):
                     moved.append(f"{node}.{field} moved from its golden output")
                 continue
-            scale = max(float(np.max(np.abs(want), initial=0.0)), floor_of(field))
+            scale = max(float(np.max(np.abs(want), initial=0.0)), floor_of(field, str(golden.get("case", ""))))
             if want.shape != got.shape or float(np.max(np.abs(got - want), initial=0.0)) > RTOL * scale:
                 moved.append(f"{node}.{field} moved from its golden output")
     return moved
@@ -221,3 +225,13 @@ def test_a_rate_moved_beyond_a_positions_last_bits_over_the_step_is_caught():
         moved = json.loads(json.dumps(golden))
         moved["outputs"]["rpm.arm"]["frame_angular_velocities"][-1][-1][0] += shift
         assert bool(differences(moved, golden)) is caught
+
+
+def test_the_rft_least_eigenvalue_is_judged_on_its_unit_scale():
+    """The control: the coil's real least eigenvalue moved by 1e-8 is caught on every run; a straight body's, a few units
+    in the last place of rounding, moved by 1e-14 is not (it is noise), and by 1e-8 is."""
+    golden = json.loads(path_of(("interaction", "drag", "0.4.0"), "rft").read_text())
+    for node, size, caught in (("drag:coil", 1e-8, True), ("drag:rod", 1e-14, False), ("drag:rod", 1e-8, True)):
+        moved = json.loads(json.dumps(golden))
+        moved["outputs"][node]["least_eigenvalue"][0] += size
+        assert bool(differences(moved, golden)) is caught, (node, size)

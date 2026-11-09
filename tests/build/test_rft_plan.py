@@ -20,7 +20,8 @@ from mime.scene import Capsule, Sphere
 from mime.units import mm
 
 PROFILES = ("exploratory", "research", "strict")
-GUIDE = Path(__file__).resolve().parents[2] / "docs" / f"{CENTRELINE_GUIDE}.md"
+ROOT = Path(__file__).resolve().parents[2]
+GUIDE = ROOT / "docs" / "guide" / f"{CENTRELINE_GUIDE}.md"
 
 
 def codes(experiment):
@@ -36,6 +37,29 @@ def test_a_kind_without_a_centreline_is_refused_naming_the_guide(profile):
     assert len(found) == 1
     assert centreline_guide() in found[0].message
     assert GUIDE.is_file()
+
+
+def test_the_guide_address_is_where_the_docs_build_writes_the_page():
+    """The address is checked against the docs' source tree and the build's own page layout, never against the
+    function that builds it: the page file exists in ``docs/guide/``, and the page the build makes of it is written
+    at the path the address names (as an error's page is: ``pages/errors/<code>``)."""
+    from mime.build._refusals import DOCS, docs_version
+    from mime.docs._build import Page, out_path
+
+    address = centreline_guide()
+    prefix = f"{DOCS}/{docs_version()}/"
+    assert address.startswith(prefix)
+    written = out_path(Page(f"guide/{GUIDE.name}", GUIDE.read_text(encoding="utf-8")))
+    assert written == address.removeprefix(prefix) + ".md"
+    assert (ROOT / "docs" / "guide" / Path(written).name).is_file()
+
+
+def test_the_screw_refusal_says_why_it_has_no_centreline():
+    from script_a import fl9
+
+    experiment = helix_body("rft_screw", fl9(), {}, rft(wall_kind="free_space"))
+    (found,) = [r for r in codes(experiment) if r.code == "drag.no-centreline"]
+    assert "no handedness" in found.message and "surrogate" in found.message
 
 
 def test_the_screw_declares_no_centreline():

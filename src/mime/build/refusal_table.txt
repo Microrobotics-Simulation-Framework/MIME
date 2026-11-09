@@ -47,6 +47,7 @@ bundle.unreadable             user
 bundle.unsafe                 user
 bundle.unscannable            user
 call.missing-setting          user
+call.polyline                 user
 call.renamed                  user
 call.units                    user
 call.unknown-name             user

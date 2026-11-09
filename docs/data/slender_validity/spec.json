@@ -1,5 +1,5 @@
 {
- "what": "The rft rung's validity lines against MIME's MRS rung on the same body (#175: measured, never quoted). Written before the run that records them; the record (record.json) holds the measured misses, and each line is set from it by the rule below, never by a tolerance chosen after the numbers were seen.",
+ "what": "The rft rung's validity lines against MIME's MRS rung on the same body: measured, never quoted. This spec was written after the runs that the record (record.json) holds, and so was its rule below (the largest miss, rounded up to two significant figures), set once the numbers were seen; the record stores the hash of the spec as it stands. A line is set from the record by that rule, and an estimate against the MRS at the resolution stated, never a bound. The rounding's headroom is smaller than the reference's own spread across spacings (a review measured the pitch-8 helix's resistance miss at 69.8 % and at 70.7 % of the MRS at two spacings, against a line of 70 %): a line is good to that spread, not to its two figures.",
  "rule": "A line is the largest miss measured over the points it claims, rounded up to two significant figures; it holds only over those points (their range in each axis named), and a body outside them is flagged as unmeasured, never claimed. A point whose rft resistance is indefinite (refused by the rung) is reported as refused and claims no line.",
  "outputs": {
   "speed": "the force-free swimming speed along the body's axis, U / Omega = -R[0,3] / R[0,0] about the helix's axis's middle; the miss |rft / mrs - 1|",
@@ -9,7 +9,7 @@
  "rft": "Drag.RFT at its defaults (spacing one point a filament radius; Lighthill's coefficients on a helix, the slender spheroid's on a straight centreline).",
  "points": [
   {
-   "name": "r6_rf060",
+   "name": "p4_rf060",
    "kind": "helix",
    "radius": 0.00015,
    "pitch": 0.0006,
@@ -18,7 +18,7 @@
    "wall": "free_space"
   },
   {
-   "name": "r6_rf030",
+   "name": "p4_rf030",
    "kind": "helix",
    "radius": 0.00015,
    "pitch": 0.0006,
@@ -27,7 +27,7 @@
    "wall": "free_space"
   },
   {
-   "name": "r6_rf015",
+   "name": "p4_rf015",
    "kind": "helix",
    "radius": 0.00015,
    "pitch": 0.0006,
@@ -36,7 +36,7 @@
    "wall": "free_space"
   },
   {
-   "name": "r6_rf0075",
+   "name": "p4_rf0075",
    "kind": "helix",
    "radius": 0.00015,
    "pitch": 0.0006,
@@ -118,7 +118,7 @@
   }
  ],
  "resolution_ladder": {
-  "point": "r6_rf030",
+  "point": "p4_rf030",
   "spacings_in_filament_radii": [
    1.05,
    0.79,
@@ -162,5 +162,5 @@
    "wall": "free_space"
   }
  ],
- "exact_reference": "A prolate spheroid's exact resistance (Kim & Karrila's closed form, dev1's tests/mrs_cases.py::prolate), in place of the MRS: the same outputs and misses."
+ "exact_reference": "A prolate spheroid's exact resistance (Kim & Karrila's closed form, the MRS rung's tests, tests/mrs_cases.py::prolate), in place of the MRS: the same outputs and misses."
 }

@@ -19,9 +19,11 @@ arc length a turn) and ``r`` its filament radius; ``spheroid``, a slender prolat
 length, which gives a prolate spheroid's translational resistance to leading order in ``1 / ln(L / r)``.
 
 **Judged at every step**, held out of every derivative: the resistance's least eigenvalue, each row and column scaled
-by its diagonal (a zero diagonal by its block's largest, ``floored_least_eigenvalue``), against minus the semidefinite
-floor of the run's dtype: a straight centreline's spin about itself meets no drag, so the resistance is semidefinite
-and its least eigenvalue that spin's rounding. Below the floor, where the wall's reads were accepted, the delivery is
+by its diagonal. A straight body's (``SEMIDEFINITE_KINDS``: the capsule and the prolate spheroid) is judged against minus
+the semidefinite floor of the run's dtype, a zero diagonal scaled by its block's largest (``floored_least_eigenvalue``):
+its spin about itself meets no drag, so the resistance is semidefinite and its least eigenvalue that spin's rounding.
+Every other kind's (a helix's) is definite, and is judged as the MRS rung judges, against zero (``scaled_least_eigenvalue``).
+Below the line, where the wall's reads were accepted, the delivery is
 replaced by NaN so that the run stops there (``indefinite``; ``on_indefinite="flag"`` delivers it and raises the flag
 alone, the form a differentiated run takes)."""
 
@@ -45,7 +47,7 @@ from typing_extensions import Annotated, NotRequired, ReadOnly, TypedDict
 from mime.core import MimeNode, NodeFields, Symbol, SymbolKind, Units, as_run_array, jnp, node_fields, node_input, \
     quaternion, typed_view
 from mime.nodes.hydro.mrs._node import SHAPE, WALL, array_tree, floating_leaves, path_name
-from mime.nodes.hydro.mrs._quadrature import floored_least_eigenvalue, semidefinite_floor
+from mime.nodes.hydro.mrs._quadrature import floored_least_eigenvalue, scaled_least_eigenvalue, semidefinite_floor
 from mime.nodes.hydro.mrs._solve import PRECISION, rigid_motions
 from mime.nodes.hydro.mrs._walls import WallCorrection, wall_correction_named
 from mime.nodes._kinds import kind_from_settings, registered_kind, setting_units, traced_settings
@@ -70,10 +72,11 @@ ON_INDEFINITE = ("stop", "flag")
 @dataclass(frozen=True)
 class Measured:
     """Where one of the rung's validity lines holds: a kind's family as its misses against the MRS rung on the same
-    bodies were measured (``docs/data/slender_validity``, phase R1's record): its shape's ratios, each held to
+    bodies were measured (``docs/data/slender_validity``, the record): its shape's ratios, each held to
     ``SHAPE_TOLERANCE`` (a helix's pitch over its radius and its turns), the range of its slenderness (its centreline's
-    length over its filament radius) the points spanned, the wall kinds measured, and with a wall the least gap
-    measured between the filament and the wall, in filament radii. Each line is the largest miss measured over those
+    length over its filament radius) the points spanned, the wall kinds measured, and with a wall the gap measured
+    between the filament and the wall, in filament radii: the one gap, held to ``GAP_TOLERANCE``, since a wider or a
+    narrower one was not measured. Each line is the largest miss measured over those
     points, an estimate against the MRS at its resolution, never a bound: the swimming speed's (``None`` for a straight
     body, which does not swim) and the resistance's largest entry, each row and column scaled by the MRS's diagonal."""
 
@@ -86,8 +89,14 @@ class Measured:
     resistance: float
 
 
+#: The kinds whose line model's resistance is semidefinite, a straight centreline's spin about itself meeting no drag: their
+#: least eigenvalue is judged at a floor. Declared here per kind; the near-field contract's own field is the later home.
+SEMIDEFINITE_KINDS = ("capsule", "ellipsoid")
 #: How close a body's shape ratios must be to a measured family's for its line to hold.
 SHAPE_TOLERANCE = 1e-6
+#: How close the gap between the filament and a wall must be, in shares of the measured gap, for a family's line to hold
+#: (declared, not fitted: half a filament radius at the 44 radii measured).
+GAP_TOLERANCE = 1e-2
 #: The families the rung's validity lines were measured over, by the rule the spec states (each line the largest miss
 #: over its points, rounded up to two significant figures; ``docs/data/slender_validity``, held to the record by
 #: ``tests/oracles/test_rft_validity.py``), against the MRS rung on the same bodies (a prolate spheroid's against its
@@ -97,7 +106,7 @@ MEASURED: tuple[Measured, ...] = (
     Measured("capsule", {}, (35.33333333333333, 68.66666666666667), ('free_space',), 0.0, None, 1.0),  # rod_l35, rod_l69
     Measured("ellipsoid", {}, (20.0, 200.0), ('free_space',), 0.0, None, 1.0),  # spheroid_ab10, spheroid_ab30, spheroid_ab100
     Measured("helix", {"pitch/radius": 2.0, "turns": 2.0}, (131.8763323790246, 131.8763323790246), ('free_space',), 0.0, 0.28, 1.4),  # tight_rf030
-    Measured("helix", {"pitch/radius": 4.0, "turns": 2.5}, (46.55239722796466, 372.4191778237173), ('free_space',), 0.0, 0.11, 2.1),  # r6_rf060, r6_rf030, r6_rf015, r6_rf0075
+    Measured("helix", {"pitch/radius": 4.0, "turns": 2.5}, (46.55239722796466, 372.4191778237173), ('free_space',), 0.0, 0.11, 2.1),  # p4_rf060, p4_rf030, p4_rf015, p4_rf0075
     Measured("helix", {"pitch/radius": 4.0, "turns": 2.5}, (93.10479445592932, 93.10479445592932), ('tube',), 44.0, 0.12, 15.0),  # tube_k012
     Measured("helix", {"pitch/radius": 8.0, "turns": 1.5}, (76.29325651881105, 76.29325651881105), ('free_space',), 0.0, 0.065, 0.7),  # open_rf030
 )
@@ -196,7 +205,7 @@ class RFTDragNode(MimeNode):
                      "A medium at rest, so the background load is zero",
                      "A wall reaches the points through its image at each point, per unit point force"),
         limitations=("Its segments do not interact, so a body coiled on itself (a helix of several turns) is resisted "
-                     "more than it is: measured against the MRS in phase R's validity lines, never quoted",
+                     "more than it is: measured against the MRS in the rung's validity lines, never quoted",
                      "With a wall, a body whose local drag is large against its true resistance can turn the "
                      "resistance indefinite; the step judges it and stops the run there"),
         references=(Reference("Lighthill1976", "the local drag coefficients along a slender filament"),
@@ -358,7 +367,7 @@ class RFTDragNode(MimeNode):
             found, accepted = jnp.matmul(motions.T, pushed, precision=PRECISION), jnp.asarray(True)
         else:
             parameters = {name: p[f"{WALL}{name}"] for name in wall.parameters}
-            image = wall.correction(world, parameters, p["viscosity"])
+            image = wall.correction(world, parameters, p["viscosity"], jnp.zeros((), dtype=world.dtype))
             index = jnp.arange(count)
             dense = jnp.zeros((count, 3, count, 3), dtype=world.dtype).at[index, :, index, :].set(local).reshape(
                 3 * count, 3 * count)
@@ -380,6 +389,19 @@ class RFTDragNode(MimeNode):
                                       for segment in self._centreline.segments]))
         return _lax.stop_gradient((jnp.min(wall.distance(world, parameters)) - filament) / filament).astype(pose.dtype)
 
+    def judged(self, found: Array, dtype: Any) -> tuple[Array, float]:
+        """The resistance's least eigenvalue as the kind's line model is judged, and the floor it is judged against
+        (minus it): a straight body's, at the semidefinite floor; any other kind's, definite, against zero."""
+        if self.constants()["kind"] in SEMIDEFINITE_KINDS:
+            return floored_least_eigenvalue(found).astype(dtype), semidefinite_floor(dtype)
+        return scaled_least_eigenvalue(found).astype(dtype), 0.0
+
+    def gap_unmeasured(self, p: Mapping[str, Any], pose: Array) -> Array:
+        """Whether the wall's gap at ``pose`` is other than the one the family was measured at (none is, in free space):
+        a narrower or a wider gap was not measured."""
+        measured = p["gap_least"]
+        return (measured > 0.0) & (jnp.abs(self.wall_gap(p, pose) - measured) > GAP_TOLERANCE * measured)
+
     @override
     def advance(self, p: Mapping[str, Any], state: NodeFields, boundary_inputs: Mapping[str, Array],
                 dt: float) -> NodeFields:
@@ -388,12 +410,11 @@ class RFTDragNode(MimeNode):
         dtype = pose.dtype
         found, accepted = self.resistance_at(p, pose)
         found = found.astype(dtype)
-        least = floored_least_eigenvalue(_lax.stop_gradient(found)).astype(dtype)
-        indefinite = accepted & jnp.logical_not(least > -semidefinite_floor(dtype))
+        least, floor = self.judged(_lax.stop_gradient(found), dtype)
+        indefinite = accepted & jnp.logical_not(least > -floor)
         stop = indefinite if self.constants()["on_indefinite"] == "stop" else jnp.asarray(False)
         held = self.constants()
-        unmeasured = jnp.asarray(not held["measured"]) | (
-            self.wall_gap(p, pose) < p["gap_least"] * (1.0 - SHAPE_TOLERANCE))
+        unmeasured = jnp.asarray(not held["measured"]) | self.gap_unmeasured(p, pose)
         steps = state["steps"] + 1.0
         first = indefinite & (state["stopped_at"] == 0.0)
         record = jnp.where(first, jnp.concatenate([steps[None], least[None], pose]),
@@ -419,14 +440,15 @@ class RFTDragNode(MimeNode):
                       else value for key, value in self.constants().items()}
             found, accepted = self.resistance_at({**leaves, **self._wall_arguments()},
                                                  jnp.asarray(pose, dtype=jnp.float64))
-            least = float(floored_least_eigenvalue(found))
+            least_array, floor = self.judged(found, jnp.float64)
+            least = float(least_array)
         if not bool(accepted):
             return [Problem("drag.rft-wall-range", "the wall's data was read outside its range at the body's starting "
                                                    "pose: a point of its centreline lies beyond what the wall kind's "
                                                    "table holds",
                             "start the body inside the wall's range, initial=State(position=...), or write a wall kind "
                             "that reaches it, Drag.RFT(wall_kind=...)")]
-        if not least > -semidefinite_floor(jnp.float64):
+        if not least > -floor:
             return [Problem("drag.rft-indefinite", f"its resistance at the starting pose is indefinite: its least "
                                                    f"eigenvalue, each row and column scaled by its diagonal, is "
                                                    f"{least:.3g} ({self._settings_text()}); resistive force theory "
@@ -450,9 +472,25 @@ class RFTDragNode(MimeNode):
         line = (f"the rft rung's validity lines hold for this body's family (its points in "
                 f"docs/data/slender_validity, estimates against the MRS at its resolution, never bounds)")
         if held["gap_least"] > 0.0:
-            line += (f"; with its wall, down to a gap of {held['gap_least']:.3g} filament radii between the filament and "
-                     f"the wall, below which a step raises unmeasured")
+            gap = self._start_gap(start)
+            if gap is not None and abs(gap - held["gap_least"]) > GAP_TOLERANCE * held["gap_least"]:
+                return [f"the rft rung's validity lines were measured at a gap of {held['gap_least']:.3g} filament radii "
+                        f"between the filament and the wall, and this body starts at {gap:.3g}: its error against the MRS "
+                        f"is not measured there, so each step at another gap raises unmeasured; the lines and the "
+                        f"points they hold over are in docs/data/slender_validity"]
+            line += (f"; with its wall, at the gap measured, {held['gap_least']:.3g} filament radii between the "
+                     f"filament and the wall (held to {GAP_TOLERANCE:.0%}), any other raising unmeasured")
         return [line]
+
+    def _start_gap(self, start: Mapping[str, Any] | None) -> float | None:
+        """The gap between the filament and the wall at the body's starting pose, in filament radii."""
+        pose = None if start is None else start.get("pose")
+        if pose is None:
+            return None
+        with cast(Any, jax).enable_x64(True), cast(Any, jax).ensure_compile_time_eval():
+            leaves = {key: jnp.asarray(value, dtype=jnp.float64) if isinstance(value, (float, tuple, np.ndarray))
+                      else value for key, value in self.constants().items()}
+            return float(self.wall_gap({**leaves, **self._wall_arguments()}, jnp.asarray(pose, dtype=jnp.float64)))
 
     def _settings_text(self) -> str:
         held = self.constants()
@@ -480,6 +518,6 @@ class RFTDragNode(MimeNode):
                        "wall")
 
 
-__all__ = ["COEFFICIENT_SETS", "EQUATIONS", "LIGHTHILL_Q", "MEASURED", "ON_INDEFINITE", "SHAPE_TOLERANCE", "Measured",
-           "RFTDragInputs", "RFTDragNode", "RFTDragState", "coefficient_problem", "default_coefficients",
+__all__ = ["COEFFICIENT_SETS", "EQUATIONS", "GAP_TOLERANCE", "LIGHTHILL_Q", "MEASURED", "ON_INDEFINITE", "SEMIDEFINITE_KINDS", "SHAPE_TOLERANCE",
+           "Measured", "RFTDragInputs", "RFTDragNode", "RFTDragState", "coefficient_problem", "default_coefficients",
            "drag_coefficients", "measured_family", "shape_ratios"]

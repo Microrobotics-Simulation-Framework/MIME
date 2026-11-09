@@ -662,6 +662,12 @@ class Entry:
         an axis it must not lie on), given in SI, one line each: each is refused in phase 1."""
         return []
 
+    def unrecorded_settings(self) -> frozenset[str]:
+        """The settings the resolved record leaves out for this entry as written: a setting added to a registered version
+        after its release, which the entry's rung does not read. The record then holds what the released version's did,
+        and a program that never touches the setting keeps its input hash."""
+        return frozenset()
+
 
 @dataclass(frozen=True, kw_only=True)
 class SettingGroup:

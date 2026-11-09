@@ -21,7 +21,7 @@ from rft_cases import R6_TUBE, SMALL_HELIX, SMALL_SETTINGS, helix_body, rft
 
 from mime.build._maddening import node_state, parameter_leaves
 from mime.nodes.hydro._rft_drag import MEASURED
-from mime.scene import Helix
+from mime.scene import Helix, Tube
 from mime.units import mm
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,13 +82,31 @@ def test_a_body_outside_the_measured_points_is_flagged(kind, settings, law, meas
     assert ("not measured here" in line) == (not measured)
 
 
-@pytest.mark.parametrize("offset, flagged", [(0.0, False), (0.2e-3, True)], ids=["at_the_measured_gap", "closer"])
-def test_with_the_tube_a_body_closer_than_the_least_measured_gap_is_flagged(offset, flagged):
-    node, out, built = _step(helix_body("rft_gap", SMALL_HELIX, SMALL_SETTINGS, rft(wall_kind="tube"), tube=R6_TUBE,
-                                        offset=(0.0, offset, 0.0)))
+def _tube(radius_mm):
+    return Tube(axis=(1.0, 0.0, 0.0), inner_radius=mm(radius_mm), wall=mm(0.1), length=mm(20.0))
+
+
+@pytest.mark.parametrize("radius_mm, offset, gap, flagged", [
+    (0.5, 0.0, 44.0, False), (0.5, 0.2e-3, 24.0, True), (0.8, 0.0, 74.0, True), (1.5, 0.0, 144.0, True)],
+    ids=["at_the_measured_gap", "closer", "a_wider_tube", "a_much_wider_tube"])
+def test_with_the_tube_a_body_at_another_gap_than_the_one_measured_is_flagged(radius_mm, offset, gap, flagged):
+    """The tube family was measured at one gap, 44 filament radii: a narrower gap and a wider one are both flagged each
+    step, and the build report says the start is not measured there. (The family's ``measured`` is the shape's, the
+    slenderness', the coefficients' and the spacing's; the gap is judged at the pose each step.)"""
+    node, out, built = _step(helix_body("rft_gap", SMALL_HELIX, SMALL_SETTINGS, rft(wall_kind="tube"),
+                                        tube=_tube(radius_mm), offset=(0.0, offset, 0.0)))
     assert node.constants()["measured"]
     assert float(out["unmeasured"]) == (1.0 if flagged else 0.0)
     pose = node_state(built.graph, "helix")["pose"]
-    gap = float(node.wall_gap({**node.params_pytree(), **{k: jnp.asarray(v) if isinstance(v, float) else v
-                                                          for k, v in node.constants().items()}}, pose))
-    assert (gap < node.constants()["gap_least"] * (1.0 - 1e-6)) == flagged
+    held = {**node.params_pytree(), **{k: jnp.asarray(v) if isinstance(v, float) else v
+                                       for k, v in node.constants().items()}}
+    assert float(node.wall_gap(held, pose)) == pytest.approx(gap, rel=1e-3)
+    (line,) = node.built_lines({"pose": pose}, None)
+    assert ("were measured at a gap of 44 filament radii" in line) == flagged
+    assert ("at the gap measured" in line) == (not flagged)
+
+
+def test_the_tube_family_is_its_measured_gap_only_and_free_space_stays_its_own_family():
+    tube = [m for m in MEASURED if "tube" in m.walls]
+    assert [(m.gap, m.walls) for m in tube] == [(44.0, ("tube",))]
+    assert all(m.gap == 0.0 for m in MEASURED if "free_space" in m.walls)

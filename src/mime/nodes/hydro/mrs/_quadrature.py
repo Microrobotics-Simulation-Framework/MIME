@@ -283,7 +283,7 @@ def scaled_least_eigenvalue(found: Array) -> Array:
 #: The floor of a semidefinite resistance's check (:func:`floored_least_eigenvalue`), in units in the last place of the
 #: run's dtype: a declaration, ten times the largest a straight rod's resistance by a line model reads at a turned pose
 #: (its spin about its own axis meets none, so its least eigenvalue is that spin's rounding: at most 5.8 units in
-#: float64 and 3.5 in float32 over 50 random turns, phase R's first step), rounded up to a power of two.
+#: float64 and 3.5 in float32 over 50 random turns, measured when the rung was built), rounded up to a power of two.
 SEMIDEFINITE_FLOOR_ULPS = 64.0
 #: How small a diagonal entry may be against its block's largest before it is scaled by that floor instead: a zero
 #: diagonal (a line model's spin about its own axis) then scales to a zero row, not to NaN.

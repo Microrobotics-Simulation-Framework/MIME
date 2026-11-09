@@ -15,13 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `coefficients=`: Lighthill's on a segment with a wavelength (a helix), a slender prolate spheroid's on a straight one
   (the default per segment), each computed in the step from the viscosity and the kind's numbers, so its derivatives
   in the geometry and the viscosity are exact (checked against a central difference that rebuilds, both modes, both
-  loss scales, with a `stop_gradient` and a baked coefficient as controls). Its resistance is judged each step as
-  **semidefinite at a floor** (`floored_least_eigenvalue`, 64 units in the last place of the run's dtype): a straight
-  centreline's spin about itself meets no drag. With a wall, a body whose local drag outweighs its true resistance
+  loss scales, with a `stop_gradient` and a baked coefficient as controls). Its resistance is judged each step: a straight body's (a capsule's, a prolate spheroid's) as
+  **semidefinite at a floor** (`floored_least_eigenvalue`, 64 units in the last place of the run's dtype), since its spin
+  about itself meets no drag; a helix's, which is definite, as the MRS rung's is, against zero. With a wall, a body whose local drag outweighs its true resistance
   (a helix the size of its vessel) is refused at build, `drag.rft-indefinite`, and a step that reaches one
   stops the run, naming the MRS as the route. A kind without a centreline is refused, `drag.no-centreline`, the
   message naming the new guide page on adding one (a custom geometry, an STL or CAD mesh). The rung was added to drag
-  0.4.0, changing nothing the other rungs compute. Its validity lines, measured against the MRS rung on the same
+  0.4.0, changing nothing the other rungs compute: its setting `coefficients` is left out of the resolved record of a
+  program on another rung (`Entry.unrecorded_settings`), so every such program keeps its input hash and a folder saved
+  before the rung loads. Its tube family was measured at one gap to the wall, and a step at another gap, wider or
+  narrower, raises `unmeasured`. Its validity lines, measured against the MRS rung on the same
   bodies, are recorded in `docs/data/slender_validity/`.
 - **The centreline capability** (`mime.registry.Centreline`): a tree of segments joined at named junctions, each a
   JAX function of its kind's parameters giving the point, the unit tangent and the rotation-minimising frame's normal

@@ -1,9 +1,10 @@
 {
  "spec": "spec.json",
- "spec_sha256": "fff4ea0d211a93589e9fa5fef67ddcc6c54b8d7ea02ee20e63fb547da8e582a1",
+ "spec_written": "after the runs, with its rule; the hash below is of the spec as it stands",
+ "spec_sha256": "ef6cb4fc26da714bfcad5c65fcf78c21a029774b1f3b135bd4091dbe0e299ed2",
  "points": [
   {
-   "name": "r6_rf060",
+   "name": "p4_rf060",
    "mrs_points": 504,
    "mrs_build_s": 14.032822370529175,
    "mrs_step_s": 0.40217041969299316,
@@ -30,7 +31,7 @@
    "slenderness": 46.55239722796466
   },
   {
-   "name": "r6_rf030",
+   "name": "p4_rf030",
    "mrs_points": 976,
    "mrs_build_s": 12.709540367126465,
    "mrs_step_s": 0.6678783893585205,
@@ -57,7 +58,7 @@
    "slenderness": 93.10479445592932
   },
   {
-   "name": "r6_rf015",
+   "name": "p4_rf015",
    "mrs_points": 1920,
    "mrs_build_s": 47.00790500640869,
    "mrs_step_s": 1.338364601135254,
@@ -84,7 +85,7 @@
    "slenderness": 186.20958891185865
   },
   {
-   "name": "r6_rf0075",
+   "name": "p4_rf0075",
    "mrs_points": 3808,
    "mrs_build_s": 251.2469563484192,
    "mrs_step_s": 1.1676318645477295,

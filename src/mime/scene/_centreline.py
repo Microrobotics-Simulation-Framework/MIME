@@ -44,6 +44,15 @@ def straight(start: Callable[[Parameters], Any], direction: Sequence[float] | np
     return CentrelineSegment(length=length, frame=frame, radius=radius, filament_radius=filament_radius)
 
 
+def _refused(message: str) -> Exception:
+    """The refusal of a polyline's points (``call.polyline``): the ``ValueError`` a call's argument raises, coded."""
+    from mime.build._refusals import ArgumentRefused, Refusal, RefusalClass
+
+    return ArgumentRefused([Refusal("call.polyline", RefusalClass.USER, message,
+                                    "give polyline(points) two points or more, each three numbers, consecutive ones "
+                                    "distinct, no corner turning back on itself, and one radius above zero a point")])
+
+
 def transported(normal: np.ndarray, before: np.ndarray, after: np.ndarray) -> np.ndarray:
     """``normal`` (across ``before``) carried across a corner from the unit tangent ``before`` to ``after`` by the
     rotation that turns one into the other about their cross product: the parallel transport of a frame round a
@@ -51,7 +60,7 @@ def transported(normal: np.ndarray, before: np.ndarray, after: np.ndarray) -> np
     axis = np.cross(before, after)
     sine, cosine = float(np.linalg.norm(axis)), float(np.dot(before, after))
     if cosine <= -1.0 + 1e-12:
-        raise ValueError("a polyline's corner turns its direction back on itself, where no frame is carried across")
+        raise _refused("a polyline's corner turns its direction back on itself, where no frame is carried across")
     if sine == 0.0:
         return normal
     k = axis / sine
@@ -78,15 +87,15 @@ def polyline(points: Sequence[Sequence[float]], radii: Sequence[float] | None = 
     curve a lab declares and for a mesh's extracted skeleton."""
     held = np.asarray(points, dtype=np.float64)
     if held.ndim != 2 or held.shape[1] != 3 or len(held) < 2:
-        raise ValueError(f"a polyline takes two points or more, each three numbers; it was given shape {held.shape}")
+        raise _refused(f"a polyline takes two points or more, each three numbers; it was given shape {held.shape}")
     steps = np.diff(held, axis=0)
     lengths = np.linalg.norm(steps, axis=1)
     if np.any(lengths <= 0.0) or not np.all(np.isfinite(lengths)):
-        raise ValueError("a polyline's consecutive points are distinct and finite")
+        raise _refused("a polyline's consecutive points are distinct and finite")
     tangents = steps / lengths[:, None]
     widths = None if radii is None else np.asarray(radii, dtype=np.float64)
     if widths is not None and (widths.shape != (len(held),) or np.any(widths <= 0.0)):
-        raise ValueError(f"a polyline's radii are one length above zero a point, {len(held)}")
+        raise _refused(f"a polyline's radii are one length above zero a point, {len(held)}")
     thickest = filament_radius if filament_radius is not None else (
         None if widths is None else float(np.max(widths)))
     segments: list[CentrelineSegment] = []

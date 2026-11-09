@@ -641,15 +641,16 @@ SEPARATED_REFINEMENT_MEASURED = (
 #: resistance is smooth along the centreline (a helix's turn spans many radii), so the midpoint rule converges long
 #: before this; a convention, not a measurement of the rung's error, which its validity lines state.
 RFT_POINTS_PER_RADIUS = 1.0
-#: Where a lab is told how to add a centreline to a kind (a custom geometry, an STL or CAD mesh): the guide's page.
-CENTRELINE_GUIDE = "guide/centrelines"
+#: Where a lab is told how to add a centreline to a kind (a custom geometry, an STL or CAD mesh): the guide's page,
+#: ``docs/guide/centrelines.md``.
+CENTRELINE_GUIDE = "centrelines"
 
 
 def centreline_guide() -> str:
     """The address of the guide's page on adding a centreline, in this MIME version's documentation."""
-    from mime.build._refusals import DOCS, docs_version
+    from mime.build._refusals import guide_page_of
 
-    return f"{DOCS}/{docs_version()}/{CENTRELINE_GUIDE}"
+    return guide_page_of(CENTRELINE_GUIDE)
 
 
 def hull_centreline(hull: Hull | None) -> Centreline | str:
@@ -658,7 +659,10 @@ def hull_centreline(hull: Hull | None) -> Centreline | str:
     if hull is None:
         return "it has no hull"
     if not implements(hull.kind, "centreline"):
-        return f"its hull is {hull.label()}, a kind that declares no centreline"
+        screw = (" (a screw's only straight axis has no handedness, so a slender-body law along it would give no "
+                 "coupling between turning and advancing: use Drag.MRS(...) or the surrogate rung)"
+                 if hull.kind.name == "screw" else "")
+        return f"its hull is {hull.label()}, a kind that declares no centreline{screw}"
     try:
         return hull.kind.centreline(hull.settings)
     except (ValueError, KeyError) as error:
@@ -816,8 +820,8 @@ class Drag(PointForceDrag):
                            "a twentieth of itself (CONFINED_ASYMMETRY_LIMIT), so its error is at least half that share "
                            "(the share bounds it from below; a small share bounds nothing)", rung="mrs"),
         Flag("unmeasured", "the body lay outside the points the rft rung's validity lines were measured over (another "
-                           "family, slenderness, coefficient set or a coarser spacing; with a wall, a gap below the "
-                           "least measured): its error against the MRS is not measured there", rung="rft"),
+                           "family, slenderness, coefficient set or a coarser spacing; with a wall, a gap other than "
+                           "the one measured): its error against the MRS is not measured there", rung="rft"),
         Flag("indefinite", "the step's resistance, the wall's image in it, was indefinite past the semidefinite floor "
                            "(its least eigenvalue, each row and column scaled by its diagonal, below minus "
                            "SEMIDEFINITE_FLOOR_ULPS units in the last place): the node replaced it by NaN before the "
@@ -841,10 +845,10 @@ class Drag(PointForceDrag):
         "raises unmeasured at every step and the build report says so. In the helix families measured it is a model "
         "of the swimming speed, not of the forces: its translational resistance is several times the MRS's, since its "
         "segments do not interact; a straight body's spin about its own axis meets no drag",
-        "rft: with the tube's table, the helix family measured on the tube's axis was definite only at the largest gap "
-        "to the wall measured, where the wall's feedback of its local drag made its resistance many times the MRS's; "
-        "closer, its resistance was indefinite, which the build refuses (drag.rft-indefinite) and a step stops; below "
-        "the measured gap a step raises unmeasured",
+        "rft: with the tube's table, the helix family was measured at one gap to the wall only, the "
+        "largest of four tried, where the wall's feedback of its local drag made its resistance many times the MRS's; at "
+        "the three narrower gaps its resistance was indefinite, which the build refuses (drag.rft-indefinite) and a step "
+        "stops; at any other gap, wider included, a step raises unmeasured, since the line is that one point's",
         "mrs: a wall's correction is taken at the force points unless wall_refinement is written, and they do not "
         "resolve the image near the wall: within half a force spacing of it the resistance was measured indefinite, and "
         "within a quarter of one with the image integrated over each cell (a step whose resistance is indefinite "
@@ -855,6 +859,12 @@ class Drag(PointForceDrag):
     quadrature_refinement: int | None = None
     wall_refinement: int | None = None
     coefficients: str | None = None
+
+    @override
+    def unrecorded_settings(self) -> frozenset[str]:
+        """Drag 0.4.0 was released without ``coefficients``; the other rungs read none, so their resolved record, and
+        the input hash of every program on them, are the released version's."""
+        return frozenset() if self.rung == "rft" else frozenset(self.rft_settings)
 
     @classmethod
     def RFT(cls, **settings: Any) -> Self:  # noqa: N802 - a rung's alias reads as a class

@@ -120,9 +120,10 @@ prolate spheroid's leading order) on a straight one, each computed in the step f
 numbers, so a study's derivative in them flows through. With a wall the points' forces reach one another through the
 wall kind's image, as the MRS's do. It is fast: microseconds a step on a CPU in free space.
 
-**Its resistance, judged.** A straight centreline's spin about itself meets no drag, so the resistance is semidefinite;
-each step judges its least eigenvalue, each row and column scaled by its diagonal, against minus a floor of the run's
-rounding, not against zero. With a wall, a body whose local drag is large against its true resistance (a helix the
+**Its resistance, judged.** A straight centreline's spin about itself meets no drag, so the resistance of a capsule or a
+prolate spheroid is semidefinite; each step judges its least eigenvalue, each row and column scaled by its diagonal,
+against minus a floor of the run's rounding, not against zero. A helix's is definite, and is
+judged as the MRS rung's is, against zero. With a wall, a body whose local drag is large against its true resistance (a helix the
 size of its vessel) can turn the resistance indefinite: the build refuses one at its starting pose
 (`drag.rft-indefinite`) and a step that reaches one stops the run, naming the MRS as the route.
 
@@ -144,4 +145,7 @@ sample, the samples its quadrature, with the blob half their mean spacing, which
 0.4.0 also gives; a script that writes `Drag.MRS(...)` gets 0.4.0. Version 0.3.0 reads the body's shape from its hull's kind, not
 from declared values; 0.2.0 moved the resistance from the end of the body's axis to its centre; 0.1.0 delivered it
 about the end (MIME-ANO-112). The mrs rung was added to 0.3.0, changing nothing the surrogate computes; the rft rung
-was added to 0.4.0, changing nothing the other rungs compute.
+was added to 0.4.0, changing nothing the other rungs compute: its one setting, `coefficients`, is left out of the
+resolved record of every program on another rung, so a folder saved before the rung loads and reproduces. The rung's
+validity lines are set from `docs/data/slender_validity` by the rule its spec states; the spec, and the rule, were written
+after the runs the record holds, not before them, and the record stores the hash of the spec as it stands.

@@ -4,7 +4,8 @@ On each segment at points through its arc: the tangent is a unit vector and the 
 (by forward-mode autodiff, so to rounding: a curve given by another parameter than arc length fails it); the frame's
 normal is a unit vector across the tangent, and turns only as the tangent turns (its derivative along the tangent, the
 rotation-minimising frame's property); a local radius and the filament's radius, where given, are above zero; and the
-ends a junction names meet. Each is judged at ``CENTRELINE_ROUNDING_ULPS`` units in the last place of float64 on the
+ends a junction names meet, and the frame is continuous across it (a daughter's normal at its start is the parent's
+at its end carried across the corner, ``mime.scene.transported``). Each is judged at ``CENTRELINE_ROUNDING_ULPS`` units in the last place of float64 on the
 scale it came from: a unit vector's on one, a point's on the segment's reach from the kind's origin, a derivative's on
 its own scale times the curvature's (``1 + |t'| scale``)."""
 
@@ -18,7 +19,7 @@ import jax
 import numpy as np
 
 from mime.core import jnp
-from mime.registry import Centreline, Geometry, implements
+from mime.registry import Centreline, Geometry, Junction, implements
 from mime.units import Magnitude
 
 #: The harness's tolerance in units in the last place of float64, on each quantity's own scale (the module's docstring).
@@ -76,6 +77,7 @@ def centreline_problems(kind: Geometry, settings: Mapping[str, Magnitude],
     label = kind.label()
     found: list[str] = []
     ends: dict[tuple[int, int], np.ndarray] = {}
+    frames: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
     for index, segment in enumerate(centreline.segments):
         length = float(segment.length(parameters))
         if not (math.isfinite(length) and length > 0.0):
@@ -116,6 +118,9 @@ def centreline_problems(kind: Geometry, settings: Mapping[str, Magnitude],
                 found.append(f"{label}: segment {index}'s filament radius is {radius!r} m, not a length above zero")
         tips = np.asarray(segment.frame(parameters, jnp.asarray([0.0, length], dtype=jnp.float64))[0], dtype=np.float64)
         ends[(index, 0)], ends[(index, 1)] = tips[0], tips[1]
+        at_ends = segment.frame(parameters, jnp.asarray([0.0, length], dtype=jnp.float64))
+        for end in (0, 1):
+            frames[(index, end)] = (_rows(at_ends[1])[end], _rows(at_ends[2])[end])
     for junction in centreline.junctions:
         held = [ends[end] for end in junction.ends if end in ends]
         if held:
@@ -123,6 +128,31 @@ def centreline_problems(kind: Geometry, settings: Mapping[str, Magnitude],
             reach = max(float(np.linalg.norm(p)) for p in held)
             if not apart <= CENTRELINE_ROUNDING_ULPS * _EPSILON * max(reach, 1e-300):
                 found.append(f"{label}: junction {junction.name!r}'s ends lie {apart:.3g} m apart")
+        found += _frame_problems(label, junction, frames)
+    return found
+
+
+def _frame_problems(label: str, junction: Junction, frames: Mapping[tuple[int, int], tuple[np.ndarray, np.ndarray]]
+                    ) -> list[str]:
+    """Where a junction's parent (the first segment ending there) and a daughter (a segment starting there) are both
+    read: the daughter's normal at its start is the parent's at its end carried across the corner."""
+    from mime.scene._centreline import transported
+
+    parents = [end for end in junction.ends if end[1] == 1 and end in frames]
+    found: list[str] = []
+    for daughter in (end for end in junction.ends if end[1] == 0 and end in frames):
+        if not parents:
+            break
+        tangent_before, normal_before = frames[parents[0]]
+        tangent_after, normal_after = frames[daughter]
+        try:
+            wanted = transported(normal_before, tangent_before, tangent_after)
+        except ValueError:
+            continue
+        apart = float(np.linalg.norm(normal_after - wanted))
+        if not apart <= CENTRELINE_ROUNDING_ULPS * _EPSILON * 16.0:
+            found.append(f"{label}: junction {junction.name!r}: segment {daughter[0]}'s normal at its start is not "
+                         f"segment {parents[0][0]}'s carried across the corner, by {apart:.3g}")
     return found
 
 

@@ -59,7 +59,7 @@ CAPABILITY_ROWS = {
                          "clipped at the kind's own length, or refused",
                          "OpenMaterica's manifest and stage"),
     "centreline": ("a centreline: a curve by arc length with its frame, a tree of segments", "a slender drag law (the "
-                   "rft rung); a vessel's region and paths along it"),
+                   "rft rung); the region and paths along a duct"),
 }
 NO_HAND_WRITTEN = "No hand-written part: this entry's source has not been written (the docs walk counts it)."
 NOT_ESTABLISHED = "not established"
